@@ -1,0 +1,25 @@
+[package]
+name = "eq-options-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-dependency Rust equity options pricing engine, cross-validated against the eq_options Python reference and the C++ engine"
+license = "MIT"
+publish = false
+
+[lib]
+name = "eq_options_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+# ZERO external dependencies by design: determinism and auditability.
+# RNG (SplitMix64 -> xoshiro256++) and the normal CDF (Cody's erfc) are
+# implemented in-crate against std only.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

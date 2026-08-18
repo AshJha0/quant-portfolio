@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fx-credit"
+version = "1.0.0"
+description = "FX / cross-border credit risk: sovereign PD scorecard (WOE/IV + IRLS logistic), FX settlement (Herstatt) risk, counterparty pre-settlement exposure (EE/PFE/CVA) and capital (EL, Basel standardized, Vasicek economic capital)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning:dateutil.*",
+    "ignore:Setting penalty=None:UserWarning",
+]

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eq-algo"
+version = "1.0.0"
+description = "Equity algorithmic trading & execution modeling: point-in-time cross-sectional alpha (momentum, reversal, vol, RSI, volume), IC-based signal evaluation with Newey-West and deflated Sharpe, long-short backtest with linear + square-root impact costs, intraday execution simulator (U-shaped volume, temporary/permanent impact), VWAP/TWAP/POV schedulers, Almgren-Chriss optimal execution, and Perold implementation-shortfall TCA."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+live = ["yfinance>=0.2"]
+plots = ["matplotlib>=3.7"]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+filterwarnings = ["error::RuntimeWarning"]

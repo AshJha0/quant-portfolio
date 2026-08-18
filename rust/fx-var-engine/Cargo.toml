@@ -1,0 +1,21 @@
+[package]
+name = "fx-var-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress) - Rust twin of python/fx/03-var-es-engine"
+license = "MIT"
+
+[lib]
+name = "fx_var_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+[dependencies]
+# Deliberately empty: std only. The RNG, linear algebra and special
+# functions are implemented and validated inside the crate.
+
+[profile.release]
+opt-level = 3

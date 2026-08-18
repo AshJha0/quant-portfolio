@@ -1,0 +1,25 @@
+[package]
+name = "eq-var-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Equity market-risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall and regulatory backtesting. Zero external dependencies (std only); Rust twin of the Python eq_var reference and the C++ eqvar engine."
+license = "MIT"
+publish = false
+
+[lib]
+name = "eq_var_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+# Zero external dependencies by design: the deterministic RNG, special
+# functions (erfc, inverse normal CDF, incomplete beta/gamma) and linear
+# algebra are all implemented in-crate. See docs/METHODOLOGY.md.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

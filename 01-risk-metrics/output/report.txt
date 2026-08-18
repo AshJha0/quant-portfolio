@@ -1,0 +1,47 @@
+======================================================================
+RISK METRICS REPORT
+Data file : data/sample_prices.csv
+Period    : 2016-12-19 to 2026-08-14  (2519 daily returns)
+======================================================================
+
+--- Volatility ---
+Annualised volatility (full sample) : 13.90%
+Latest 21-day rolling volatility    : 11.54%
+Latest EWMA (lambda=0.94) volatility: 12.71%
+Interpretation: if EWMA/rolling vol differs materially from the
+full-sample figure, the market is in a different regime than the
+long-run average and the unconditional number is misleading.
+
+--- Value at Risk (1-day, % of portfolio value) ---
+  95% confidence:
+    Historical VaR      : 1.30%
+    Gaussian VaR        : 1.41%
+    Cornish-Fisher VaR  : 1.36%
+    Expected Shortfall  : 1.97%
+  99% confidence:
+    Historical VaR      : 2.38%
+    Gaussian VaR        : 2.01%
+    Cornish-Fisher VaR  : 3.12%
+    Expected Shortfall  : 3.27%
+
+Gaussian vs historical gap at 99%: +0.37%
+A positive gap means the normal distribution UNDERSTATES tail
+risk, which is the typical finding for daily equity returns.
+
+--- Drawdown ---
+Maximum drawdown : -27.11%
+Peak date        : 2025-06-25
+Trough date      : 2026-07-20
+
+--- Risk-adjusted performance (rf = 3% annual) ---
+Sharpe ratio  : 0.33
+Sortino ratio : 0.47
+
+--- Distribution diagnostics ---
+Skewness         : -0.149
+Excess kurtosis  : +5.022
+Jarque-Bera stat : 2656.0 (p = 0.00e+00)
+Normality rejected at 5%: True
+Excess kurtosis > 0 means fat tails: extreme days happen more
+often than a normal distribution predicts, which is exactly why
+historical VaR and Gaussian VaR disagree above.

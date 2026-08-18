@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eq-surface"
+version = "1.0.0"
+description = "Equity volatility surface & stochastic volatility: robust implied vol, SVI smiles with no-arbitrage checks, total-variance surface, Heston pricing (Fourier + Monte Carlo), calibration, Greeks and model validation"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::FutureWarning",
+]

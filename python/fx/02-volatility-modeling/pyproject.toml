@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fx-vol"
+version = "1.0.0"
+description = "FX volatility modeling & forecasting: realized estimators, EWMA, GARCH / EGARCH / GJR from scratch, forecasting and evaluation, specialized for FX"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ashish Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "statsmodels>=0.14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "arch>=6.0",   # cross-validation ONLY -- all models are implemented from scratch
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

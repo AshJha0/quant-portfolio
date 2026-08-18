@@ -1,0 +1,30 @@
+======================================================================
+BLACK-SCHOLES REPLICATION -- VALIDATION REPORT
+Test contract: S=100.0, K=105.0, r=3%, sigma=25%, T=0.75y
+======================================================================
+
+Call price : 7.467460
+Put price  : 10.131340
+Put-call parity error: 0.00e+00  (should be ~0)
+
+Greeks: delta=0.4947  gamma=0.0184  vega=34.5464
+        theta=-7.0179/yr  rho=31.5052
+
+--- Monte Carlo vs closed form (same risk-neutral GBM) ---
+     paths   MC price   std err  abs error
+     1,000     6.8840    0.3947     0.5835
+    10,000     7.4104    0.1337     0.0571
+   100,000     7.4314    0.0425     0.0361
+ 1,000,000     7.4517    0.0135     0.0158
+Errors shrink roughly like 1/sqrt(n): two independent
+implementations of the same model agree, which is the point.
+
+Implied vol round trip: input sigma 0.250000 -> recovered 0.250000
+
+--- Model breakdown demo: implied vol smile ---
+BS implied vol at K=70 : 27.6%
+BS implied vol at K=105: 22.9%
+BS implied vol at K=140: 28.6%
+Under fat-tailed returns, deep OTM/ITM options carry higher
+BS-implied vols than ATM ones. Real markets show exactly this
+smile/skew, which is direct evidence against constant-vol GBM.

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fx-algo"
+version = "1.0.0"
+description = "FX algorithmic trading & execution modeling for OTC dealer markets: intraday signal generation with point-in-time discipline, event-driven backtesting with session-dependent spreads and carry accrual, a 24h session-liquidity market simulator with sqrt impact and last-look dealer behaviour, TWAP/liquidity-weighted/POV/fix-targeting schedulers, piecewise Almgren-Chriss optimal execution under time-varying liquidity, and transaction-cost analysis (implementation-shortfall decomposition, venue comparison, WM/R fix benchmarking)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning:dateutil.*",
+]
