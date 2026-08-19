@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eq-signal-backtest"
+version = "1.0.0"
+description = "Long/flat moving-average crossover signal backtest: no-look-ahead execution, transaction costs, in-sample/out-of-sample split, walk-forward validation, and a parameter-sensitivity map to expose overfitting."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy",
+    "pandas",
+]
+
+[project.optional-dependencies]
+live = ["yfinance>=0.2"]
+plots = ["matplotlib>=3.7"]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+filterwarnings = ["error::RuntimeWarning"]

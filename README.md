@@ -1,12 +1,14 @@
 # Quant Finance Portfolio
 
-A flagship, end-to-end quant finance portfolio: **10 project areas**, each built
-**twice** (equity and FX as fully separate, self-contained projects), in
-**Python** throughout and with **C++ and Rust performance twins** for the four
-highest-value pricing/risk engines. 28 sub-projects in total, every one with
-its own tests, benchmarks, and documentation answering *why this model*,
-*what assumptions it makes*, *how it was validated*, *where it fails*, and
-*how a real desk would use it*.
+A flagship, end-to-end quant finance portfolio: **10 dual-asset-class project
+areas**, each built **twice** (equity and FX as fully separate, self-contained
+projects), in **Python** throughout and with **C++ and Rust performance
+twins** for the four highest-value pricing/risk engines — plus **3 standalone
+foundations projects** that build and validate core techniques from scratch,
+single-asset, single-language. 31 sub-projects in total, every one with its
+own tests, and documentation answering *why this model*, *what assumptions
+it makes*, *how it was validated*, *where it fails*, and *how a real desk
+would use it*.
 
 ```
 quant-portfolio/
@@ -14,7 +16,11 @@ quant-portfolio/
 ├── README.md              # This file
 ├── python/
 │   ├── equity/01-…10-…    # 10 equity projects
-│   └── fx/01-…10-…        # 10 FX projects (fully separate from equity)
+│   ├── fx/01-…10-…        # 10 FX projects (fully separate from equity)
+│   └── foundations/       # 3 standalone, single-asset foundations projects
+│       ├── 01-risk-metrics/
+│       ├── 02-trading-signal-backtest/
+│       └── 03-black-scholes-replication/
 ├── cpp/                   # 4 performance-critical engines, C++20
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
@@ -48,6 +54,27 @@ full contract. Run any project's pipeline end-to-end with:
 
 ```bash
 cd python/equity/01-options-pricing
+pip install -e . && pytest -q && python examples/run_pipeline.py
+```
+
+## Foundations projects
+
+Three additional, standalone projects that predate the 10-area buildout above
+and are kept deliberately smaller in scope: single asset (equity), single
+language (Python), no FX twin, no compiled engine. Each still follows the
+full CONVENTIONS.md documentation contract. They exist to demonstrate core
+technique from first principles rather than to duplicate the flagship
+engines above — cross-references to the relevant flagship project are called
+out explicitly in each one's `docs/DESK_GUIDE.md`.
+
+| # | Project | Path | What it is, and how it differs from the flagship equivalent |
+|---|---|---|---|
+| F1 | Risk Metrics on Real Data | `python/foundations/01-risk-metrics` | Single-asset volatility/VaR/ES/Sharpe toolkit with three VaR methods compared side by side. Single-asset only — no correlation/portfolio risk; see `python/equity/03-var-es-engine` for the multi-asset, backtested extension. |
+| F2 | Trading Signal Backtest | `python/foundations/02-trading-signal-backtest` | A moving-average crossover strategy, backtested with strict no-look-ahead execution, transaction costs, in-sample/out-of-sample and walk-forward evaluation. The point is backtest discipline, not the signal itself. |
+| F3 | Black-Scholes Replication | `python/foundations/03-black-scholes-replication` | A from-scratch, zero-scipy (`math.erf` only) rebuild of Black-Scholes-Merton, validated by an independent Monte Carlo pricer, analytic identities, and Greeks-vs-finite-differences — used as a model-validation reference, not a production pricer. `python/equity/01-options-pricing` (with C++/Rust twins) is the production-grade version. |
+
+```bash
+cd python/foundations/01-risk-metrics
 pip install -e . && pytest -q && python examples/run_pipeline.py
 ```
 
@@ -96,8 +123,8 @@ explicitly in each engine's `docs/VALIDATION.md`.
 ## Build & test everything
 
 ```bash
-# Python (all 20 projects)
-for d in python/equity/*/ python/fx/*/; do (cd "$d" && pip install -e . -q && pytest -q); done
+# Python (all 23 projects: 20 dual-asset-class + 3 foundations)
+for d in python/equity/*/ python/fx/*/ python/foundations/*/; do (cd "$d" && pip install -e . -q && pytest -q); done
 
 # C++ (4 engines)
 for d in cpp/*/; do
