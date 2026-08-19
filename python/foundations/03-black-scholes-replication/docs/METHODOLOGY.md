@@ -118,6 +118,33 @@ project ships both: the closed form for exactness and speed, the Monte
 Carlo pricer as an *independent witness* that the closed form is
 actually correct and not just internally consistent.
 
+**Two consequences of taking that witness seriously**, both of which the
+implementation now enforces rather than assumes:
+
+1. **The witness must share the closed form's input contract.** The
+   simulation would run perfectly happily at `sigma = 0` or `T = 0` — the
+   terminal price is simply deterministic — while the closed form refuses
+   those inputs so the caller takes the intrinsic-value limit explicitly.
+   Letting the two disagree about what a valid contract *is* would mean
+   the cross-check silently stops comparing like with like at exactly the
+   boundaries where bugs live, so `mc_call_price` validates identically.
+2. **The witness's error bar must be honest.** "The two agree within 3
+   standard errors" is only evidence if the standard error is the real
+   one. Antithetic sampling makes the mirrored payoffs *negatively
+   correlated* by construction, so computing the error as though the
+   `2m` draws were independent overstates it — by about a third on an ATM
+   contract. That inflation is invisible to a test suite, because every
+   agreement check keeps passing against a looser bar. The standard error
+   is therefore computed from the `m` independent *pair averages*, and a
+   dedicated test compares the reported error against the estimator's
+   actual dispersion across 60 seeds. See `docs/VALIDATION.md` §2.1.
+
+The general principle is worth stating plainly, because it applies well
+beyond this project: **a tolerance expressed in units of your own error
+estimate is only as trustworthy as that estimate.** A validation suite
+that certifies "within 3 sigma" while computing sigma incorrectly is
+certifying its own arithmetic, not the model.
+
 ### 1.3 Extending to dividends (not built, but a documented one-liner)
 
 A continuous dividend yield `q` requires only replacing `S` with
@@ -290,6 +317,16 @@ follows directly from this methodology:
    method (Newton-Raphson with a bisection fallback) than the forward
    direction, and are the exact operation a trading desk performs on
    every incoming quote.
+5. **Behaviour at the boundaries of the parameter space** — 30-year
+   maturities, strikes from `1e-10` to `1e10`, total volatilities where
+   the price saturates against its own no-arbitrage bound, the smallest
+   legal Monte Carlo sample, and quotes sitting exactly *on* a
+   no-arbitrage bound (where implied volatility ceases to be identified
+   at all). These are where a from-scratch implementation either
+   overflows, silently returns `NaN`, or quietly returns a number that
+   satisfies its stated tolerance while being economically meaningless —
+   and the difference between those three outcomes is the difference
+   between a bug, an outage, and a bad trade. `docs/VALIDATION.md` §7.
 
 Each of these is why this project exists in the shape it does: not to
 build a pricer, but to demonstrate — with actual numbers, reproducibly

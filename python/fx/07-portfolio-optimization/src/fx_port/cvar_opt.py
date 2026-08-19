@@ -57,6 +57,8 @@ def empirical_cvar(returns: pd.Series | np.ndarray, alpha: float = 0.95) -> floa
     losses = -np.asarray(returns, dtype=float).ravel()
     if losses.size == 0:
         raise ValueError("empty return sample")
+    if not np.all(np.isfinite(losses)):
+        raise ValueError("return scenarios contain NaN/Inf; clean the sample first")
     cand = np.unique(losses)
     vals = cand + np.maximum(losses[None, :] - cand[:, None], 0.0).mean(axis=1) / (
         1.0 - alpha
@@ -69,6 +71,10 @@ def empirical_var(returns: pd.Series | np.ndarray, alpha: float = 0.95) -> float
     if not 0.0 < alpha < 1.0:
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     losses = -np.asarray(returns, dtype=float).ravel()
+    if losses.size == 0:
+        raise ValueError("empty return sample")
+    if not np.all(np.isfinite(losses)):
+        raise ValueError("return scenarios contain NaN/Inf; clean the sample first")
     return float(np.quantile(losses, alpha, method="higher"))
 
 
@@ -111,6 +117,13 @@ def _build_lp(
     Variable vector: ``[w+ (n), w- (n), z (1), u (S)]``.
     Returns (A_ub, b_ub, A_eq, b_eq, bounds, n, S); A_eq may be empty.
     """
+    if r.ndim != 2 or r.size == 0:
+        raise ValueError("scenarios must be a non-empty 2-D panel (rows=dates)")
+    if not np.all(np.isfinite(r)):
+        raise ValueError(
+            "scenarios contain NaN/Inf; drop or fill missing scenario rows "
+            "before building the CVaR LP"
+        )
     s_n, n = r.shape
     n_var = 2 * n + 1 + s_n
     # u_s >= L_s - z  <=>  -r_s'(w+ - w-) - z - u_s <= 0

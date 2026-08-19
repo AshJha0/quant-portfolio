@@ -219,3 +219,19 @@ dedicated unit test; edge cases are in `tests/test_edge_cases.py`.
     time value; they are dropped (`nan`) rather than fitted. *If instead
     inverted*: garbage vols in the wings would corrupt SVI wings and hence
     density tails. (T)
+11. **No-arbitrage is diagnosed, not silently repaired.** Butterfly
+    (Durrleman `g ≥ 0`) and calendar (`∂w/∂T ≥ 0`) violations raise warnings
+    and are exposed on the result objects; the running-max calendar fix is
+    opt-in. *If violated* — i.e. if a desk consumed the surface without
+    reading the diagnostics — a negative risk-neutral density produces
+    negative butterfly prices and nonsensical variance-swap and digital
+    marks. The checkers are themselves tested against planted violations, so
+    a silent regression in the checker would fail the suite rather than pass
+    unnoticed. (T)
+12. **The surface's vol floor must be uniform in T.** Implied vol is floored
+    at 1e-6, imposed as `w ≥ 1e-12·T`. *If violated* — as it was, with an
+    absolute floor on total variance — the floor binds only at tiny T and
+    silently rewrites the short end: overnight and same-day expiries reported
+    100 vol points instead of the correct flat short-end vol. Any clamp
+    applied to total variance rather than variance has this failure mode.
+    (T: pinned from `T = 1e-14` upward.)

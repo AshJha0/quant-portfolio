@@ -75,10 +75,10 @@ def expected_loss(
     p = np.asarray(pd_1y, dtype=float)
     l = np.asarray(lgd, dtype=float)
     e = np.asarray(ead, dtype=float)
-    if np.any((p < 0) | (p > 1)) or np.any((l < 0) | (l > 1)):
-        raise ValueError("PD and LGD must be in [0,1]")
-    if np.any(e < 0):
-        raise ValueError("EAD must be >= 0")
+    if not np.all((p >= 0) & (p <= 1)) or not np.all((l >= 0) & (l <= 1)):
+        raise ValueError("PD and LGD must be in [0,1] (NaN/Inf rejected)")
+    if not np.all((e >= 0) & np.isfinite(e)):
+        raise ValueError("EAD must be finite and >= 0 (NaN/Inf rejected)")
     out = p * l * e
     return float(out) if out.ndim == 0 else out
 
@@ -107,9 +107,11 @@ def vasicek_conditional_pd(
     """
     if not 0.0 <= rho < 1.0:
         raise ValueError("rho must be in [0,1)")
+    if not np.isfinite(x):
+        raise ValueError("systematic factor x must be finite")
     p = np.asarray(pd_1y, dtype=float)
-    if np.any((p < 0) | (p > 1)):
-        raise ValueError("pd must be in [0,1]")
+    if not np.all((p >= 0) & (p <= 1)):
+        raise ValueError("pd must be in [0,1] (NaN/Inf rejected)")
     with np.errstate(divide="ignore"):
         thresh = norm.ppf(p)
     out = norm.cdf((thresh + np.sqrt(rho) * x) / np.sqrt(1.0 - rho))
@@ -133,6 +135,8 @@ def vasicek_capital(
         raise ValueError("alpha must be in [0.5, 1)")
     p = np.asarray(pd_1y, dtype=float)
     l = np.asarray(lgd, dtype=float)
+    if not np.all((l >= 0) & (l <= 1)):
+        raise ValueError("lgd must be in [0,1] (NaN/Inf rejected)")
     x_a = norm.ppf(alpha)
     cond = vasicek_conditional_pd(p, rho, x_a)
     k = l * (np.asarray(cond) - p)

@@ -30,6 +30,10 @@ def _to_arrays(
     s = np.asarray(sigma, dtype=float)
     if s.ndim != 2 or s.shape[0] != s.shape[1]:
         raise ValueError(f"sigma must be square, got shape {s.shape}")
+    if s.size == 0:
+        raise ValueError("sigma is empty: no assets to optimise over")
+    if not np.all(np.isfinite(s)):
+        raise ValueError("sigma contains NaN/Inf; clean the covariance estimate first")
     labels = (
         list(sigma.index) if isinstance(sigma, pd.DataFrame) else list(range(len(s)))
     )
@@ -38,6 +42,8 @@ def _to_arrays(
         m = np.asarray(mu, dtype=float).ravel()
         if len(m) != len(s):
             raise ValueError("mu and sigma dimensions differ")
+        if not np.all(np.isfinite(m)):
+            raise ValueError("mu contains NaN/Inf; clean the return estimate first")
     return m, s, labels
 
 
@@ -240,7 +246,24 @@ def _solve_split_qp(
     return res.x[:n] - res.x[n:], res
 
 
-def _check_feasible(sum_to: float | None, gross_limit: float | None) -> None:
+def _check_feasible(
+    sum_to: float | None,
+    gross_limit: float | None,
+    bounds: tuple[float | None, float | None] | None = None,
+    n: int | None = None,
+) -> None:
+    """Reject constraint sets with an empty feasible region, with a reason.
+
+    Two ways an FX mandate becomes infeasible in practice:
+
+    * a gross-leverage budget below the required net budget (you cannot hold
+      net 100% with only 50% of gross allowed), and
+    * a per-currency box that cannot reach the net budget (e.g. 8 currencies
+      capped at 10% each cannot sum to 1.0).
+
+    Silently returning the solver's failed iterate would put weights that
+    violate the mandate in front of a trader, so both raise ``ValueError``.
+    """
     if (
         gross_limit is not None
         and sum_to is not None
@@ -249,6 +272,20 @@ def _check_feasible(sum_to: float | None, gross_limit: float | None) -> None:
         raise ValueError(
             f"infeasible: gross_limit={gross_limit} < |sum_to|={abs(sum_to)}"
         )
+    if bounds is not None and sum_to is not None and n is not None:
+        lo, hi = bounds
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError(f"infeasible box: lower bound {lo} > upper bound {hi}")
+        if hi is not None and n * hi < sum_to - 1e-12:
+            raise ValueError(
+                f"infeasible box: {n} weights capped at {hi} cannot sum to "
+                f"{sum_to} (max attainable {n * hi})"
+            )
+        if lo is not None and n * lo > sum_to + 1e-12:
+            raise ValueError(
+                f"infeasible box: {n} weights floored at {lo} cannot sum to "
+                f"{sum_to} (min attainable {n * lo})"
+            )
 
 
 def max_utility(
@@ -283,9 +320,9 @@ def max_utility(
     """
     if gamma <= 0:
         raise ValueError(f"gamma must be > 0, got {gamma}")
-    _check_feasible(sum_to, gross_limit)
     m, s, labels = _to_arrays(mu, sigma)
     n = len(s)
+    _check_feasible(sum_to, gross_limit, bounds, n)
     if gross_limit is not None and gross_limit == 0:
         w = pd.Series(np.zeros(n), index=labels)
         return MVOResult(w, 0.0, 0.0, True, "gross_limit=0: zero portfolio")
@@ -356,9 +393,9 @@ def min_variance_slsqp(
     (or :func:`frontier_weights` when ``target_return`` is set) to high
     precision — used as a cross-check in the tests.
     """
-    _check_feasible(sum_to, gross_limit)
     m, s, labels = _to_arrays(mu, sigma)
     n = len(s)
+    _check_feasible(sum_to, gross_limit, bounds, n)
     # Scale-invariant objective (see max_utility): keeps SLSQP's ftol honest.
     scale = 1.0 / max(float(np.mean(np.diag(s))), 1e-300)
     s_sc = s * scale

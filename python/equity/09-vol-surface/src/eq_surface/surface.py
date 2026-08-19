@@ -53,6 +53,12 @@ from .smile import SVIParams, svi_total_variance
 
 __all__ = ["VolSurface", "CalendarCheck", "check_calendar"]
 
+#: Minimum implied *variance* (vol^2) returned by the surface. The floor is
+#: applied as ``w >= _MIN_VARIANCE * T`` so it is a floor on implied vol
+#: (1e-6 = 0.0001 vol points) that is uniform in T and therefore does not
+#: distort the T -> 0 limit.
+_MIN_VARIANCE = 1e-12
+
 
 @dataclass
 class CalendarCheck:
@@ -237,7 +243,12 @@ class VolSurface:
             lam = (T - t0) / (t1 - t0)
             w = (1.0 - lam) * wp[i] + lam * wp[i + 1]
 
-        w = np.maximum(w, 1e-12)
+        # Floor the *variance*, not the total variance. An absolute floor on w
+        # destroys the T -> 0 limit: at T = 1e-12 a legitimate w of 3e-13 was
+        # clamped to 1e-12, so sqrt(w/T) reported an ATM vol of 1.0 instead of
+        # the flat short-end vol. Scaling the floor by T keeps the implied vol
+        # floored at sqrt(_MIN_VARIANCE) uniformly in T.
+        w = np.maximum(w, _MIN_VARIANCE * T)
         return w if np.ndim(k) else float(w[0])
 
     def vol_k(self, k: np.ndarray | float, T: float) -> np.ndarray | float:

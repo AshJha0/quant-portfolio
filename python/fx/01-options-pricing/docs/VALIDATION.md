@@ -2,7 +2,7 @@
 
 All numbers below are produced by `python examples/run_pipeline.py`
 (seeded, offline, < 1s) and enforced by the test suite
-(`python -m pytest tests -q`, **340 tests**, all offline & deterministic).
+(`python -m pytest tests -q`, **411 tests**, all offline & deterministic).
 
 ## 1. Analytic benchmarks
 
@@ -127,6 +127,46 @@ foreign-interest accounting, 2000–4000 GBM paths, seeded:
 7. **CRR probability bound.** For extreme `|r_d − r_f|` with tiny σ and
    coarse steps, `p ∉ [0,1]`; the tree raises with the fix (more steps)
    in the message instead of returning garbage.
+
+Additional FX-flavoured edge coverage (`tests/test_edge_cases_extra.py`):
+
+- **Pegged/managed pairs** (EURCHF pre-break parameters, σ = 2%):
+  strike-from-delta and implied-vol round-trips at peg vol; the 10Δ–25Δ
+  strike ladder compresses to < 25% of its normal-vol width (why peg
+  books *look* riskless); clean post-break revaluation at (S −18%, σ×15).
+- **PA-delta fold exhibited explicitly**: at USDJPY 35%-vol parameters the
+  second (smaller-strike) root sharing the 25Δ PA call delta is located by
+  scan and shown to lie left of the solver's returned strike; PA call
+  delta vanishes in *both* wings; high-vol PA **puts** stay monotone.
+- **σ → ∞ limits**: spot delta saturates at `e^{−r_f T}`, PA call delta
+  collapses to 0, put price → `K·e^{−r_d T}`.
+- **Digital foreign–domestic symmetry**: domestic-cash digital call =
+  S × foreign-cash digital put on the inverted pair (d1′ = −d2), 1e-12;
+  digital call+put parity sums to `e^{−r_d T}`.
+- **CIP-violation detection**: a 10-pip premium perturbation moves the
+  option-implied synthetic forward off CIP by exactly
+  `e^{r_d T}·10 pips` — the conversion-arbitrage signal is measurable.
+
+Input hardening on the secondary API (`tests/test_input_hardening.py`):
+
+- **NaN never becomes a price.** A guard spelled `if x <= 0: raise` accepts
+  NaN silently, because every comparison against NaN is False. The helpers
+  that take scalars *outside* `validate_inputs` — `forward_points`'
+  `pip_factor`, `simulate_delta_hedge`'s `sigma_hedge` / `mu` /
+  `transaction_cost_pips` / `pip_size`, `premium_adjust_spot_delta`'s
+  premium and delta, the two delta-convention converters, and the
+  synthetic-quote generator's `base_atm`/`skew`/`smile`/`noise`/`tenors` —
+  are each asserted to raise `ValueError` on NaN, +Inf and −Inf rather
+  than propagate a NaN result. Before the fix a NaN `pip_factor` returned
+  `nan` forward points and a NaN `sigma_hedge` produced an all-NaN P&L
+  vector with `mean_pnl = nan` and no error.
+- **Arbitrage boundaries.** Calendar monotonicity of the call when
+  `r_d = r_f` across T ∈ {0.05 … 5y}; `|Δ_spot| ≤ e^{−r_f T}`;
+  domestic-cash digital ∈ `[0, e^{−r_d T}]`; foreign-cash digital
+  ∈ `[0, S e^{−r_f T}]`.
+- **Managed-pair tree guard reproduced**: HKD-style parameters
+  (S = 7.80, r_d − r_f = 4.9%, σ = 0.2%) with `steps = 2` raise on
+  `p ∉ [0,1]`; `steps = 4000` prices cleanly.
 
 ## 5. What is deliberately *not* validated here
 

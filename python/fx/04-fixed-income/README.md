@@ -23,7 +23,7 @@ PVs in the quote currency. See `docs/METHODOLOGY.md`.
 
 ```bash
 cd python/fx/04-fixed-income
-python -m pytest tests -q        # 198 tests, offline, ~0.4s
+python -m pytest tests -q        # 418 tests, offline, ~0.4s
 python examples/run_pipeline.py  # end-to-end, < 1s
 ```
 
@@ -65,13 +65,13 @@ dv01(fwd, market, "EUR")           # signed EUR-curve DV01 (negative!)
 ```
 src/fx_rates/            daycount, curve, bootstrap, fxforward, xccy,
                          risk, scenarios, arbitrage, data/{synthetic,live}
-tests/                   198 offline seeded tests (identities, round trips,
+tests/                   269 offline seeded tests (identities, round trips,
                          economic signs, edge cases)
 examples/run_pipeline.py end-to-end reproduction of every number above
 docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```
 
 Documentation contract: model choice vs alternatives and the assumptions
-register (A1–A8) in `docs/METHODOLOGY.md`; validation evidence and failure
+register (A1–A9) in `docs/METHODOLOGY.md`; validation evidence and failure
 modes F1–F6 in `docs/VALIDATION.md`; desk usage, scenarios and limits in
 `docs/DESK_GUIDE.md`.

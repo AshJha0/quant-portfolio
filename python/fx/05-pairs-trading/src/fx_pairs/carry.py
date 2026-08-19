@@ -42,6 +42,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ._validation import require_finite
+
 __all__ = [
     "day_count_fractions",
     "forward_outright",
@@ -116,11 +118,19 @@ def daily_roll_yield(
 
 
 def _as_rate_array(r: float | pd.Series | np.ndarray, n: int, name: str) -> np.ndarray:
+    """Broadcast a rate to length ``n``, rejecting non-finite values.
+
+    A NaN deposit rate would otherwise flow straight into the carry accrual,
+    the carry-vs-spot P&L decomposition and the strategy Sharpe, all without
+    raising.
+    """
     if np.isscalar(r):
+        require_finite(**{name: r})
         return np.full(n, float(r))
     arr = np.asarray(r, dtype=float)
     if len(arr) != n:
         raise ValueError(f"{name} has length {len(arr)}, expected {n}")
+    require_finite(**{name: arr})
     return arr
 
 

@@ -11,7 +11,15 @@
 
 namespace fxvar {
 
-double simple_to_log(double pct) { return std::log1p(pct); }
+double simple_to_log(double pct) {
+  // log1p(-1) is -inf and pct < -1 is NaN: a currency cannot lose more
+  // than all of its value, and an infinite shock would silently poison a
+  // whole stress report.
+  if (!(pct > -1.0) || !std::isfinite(pct))
+    throw std::invalid_argument(
+        "simple_to_log: percentage move must be finite and > -100%");
+  return std::log1p(pct);
+}
 
 std::map<std::string, Scenario> historical_scenarios() {
   std::map<std::string, Scenario> lib;

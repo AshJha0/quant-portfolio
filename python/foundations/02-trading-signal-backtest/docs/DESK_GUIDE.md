@@ -39,6 +39,22 @@ The typical review chain:
 
 ## 2. Pre-launch checklist
 
+**Gate 0, before any of the below: does the strategy pass its own
+validation?** On the bundled data it does not — in-sample Sharpe 0.87,
+out-of-sample -0.12, walk-forward -0.06 (`docs/VALIDATION.md` §6). The
+correct desk decision there is not "allocate smaller" or "re-tune the
+windows"; it is **do not allocate**, and the checklist stops at this line.
+Everything below describes what a desk does with a signal that *has*
+cleared this gate — and the most valuable thing this project demonstrates
+is a harness that says no.
+
+A note on what re-tuning would cost: every additional parameter
+configuration tried against the out-of-sample window converts it into an
+in-sample window. Once the test set has been consulted a handful of times,
+its verdict is worth nothing, and there is no way to un-consult it. A desk
+that treats "did not pass" as "try again" has quietly deleted its only
+honest measurement.
+
 1. **Walk-forward validation, not a single split.** `walk_forward_backtest`
    is the minimum bar: does the stitched out-of-sample Sharpe survive
    several independent (as independent as one asset's history allows)
@@ -76,9 +92,9 @@ The typical review chain:
 
 | Signal | What it means | Action |
 |---|---|---|
-| Live Sharpe well below the walk-forward OOS Sharpe over a rolling window comparable in length to one walk-forward trading window (here, ~1 year) | Either bad luck within the expected dispersion of a Sharpe-0.6-0.8 strategy, or a regime the backtest didn't cover | Compare live trade-by-trade cost realisation against the 5 bps assumption first (§4, scenario 1) before concluding the *signal* is broken |
+| Live Sharpe well below the walk-forward OOS Sharpe over a rolling window comparable in length to one walk-forward trading window (here, ~1 year) | Either bad luck within the expected dispersion of a strategy whose *validated* Sharpe is around zero, or a regime the backtest didn't cover | Compare live trade-by-trade cost realisation against the 5 bps assumption first (§4, scenario 1) before concluding the *signal* is broken |
 | Live trade count diverging sharply from the backtest's trade count over the same window | The live (fast, slow) parameters may not match what's actually deployed, or live data has gaps/adjustments the backtest data didn't | Reconcile the live signal computation against `ma_crossover_signal` on the exact same price series used in production |
-| Realised max drawdown exceeds the walk-forward stitched OOS max drawdown (-18.53% on the bundled data) by a wide margin | The live regime may be range-bound/choppy — the documented failure mode (`docs/VALIDATION.md` §8) | Check whether recent price action resembles the choppy synthetic case study (frequent small crossovers, no sustained trend); if so, this is the strategy behaving as documented, not a bug — the question is whether to reduce size, not whether to panic |
+| Realised max drawdown exceeds the walk-forward stitched OOS max drawdown (-43.93% on the bundled data) by a wide margin | The live regime may be range-bound/choppy — the documented failure mode (`docs/VALIDATION.md` §8) | Check whether recent price action resembles the choppy synthetic case study (frequent small crossovers, no sustained trend); if so, this is the strategy behaving as documented, not a bug — the question is whether to reduce size, not whether to panic |
 | Realised transaction costs consistently above the 5 bps assumption | Slippage assumption was too optimistic for the traded size/liquidity | Re-run the backtest with the realised cost figure; if the edge disappears at realistic costs, the strategy was never viable at this size (§4, scenario 2) |
 
 **Tracking error vs. the backtest.** Because this project's engine is a
@@ -157,7 +173,7 @@ Every number in `docs/VALIDATION.md` regenerates from
 repo, run the script, get the same numbers", not a static report that can
 drift from the code. Any change to the signal, cost model, or split logic
 is a new run archived with its seed and diffed against the previous
-numbers; the test suite (`pytest -q`, 64 tests) is the regression gate —
+numbers; the test suite (`pytest -q`, 99 tests) is the regression gate —
 it must stay green for any change, and a change that alters a documented
 number (e.g. the walk-forward Sharpe) requires updating
 `docs/VALIDATION.md` in the same change, not as a follow-up.

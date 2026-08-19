@@ -50,13 +50,19 @@ pub fn simulate_factor_returns(
             cov.cols()
         )));
     }
+    if !cov.all_finite() {
+        return Err(EqVarError::InvalidInput(
+            "simulate_factor_returns: covariance contains NaN or infinite entries"
+                .to_string(),
+        ));
+    }
     let n = cov.rows();
     let df = match tail {
         TailModel::Normal => None,
         TailModel::StudentT { df } => {
-            if df <= 2.0 {
+            if !(df > 2.0) || !df.is_finite() {
                 return Err(EqVarError::InvalidInput(format!(
-                    "simulate_factor_returns: Student-t df must be > 2 for finite variance, got {df}"
+                    "simulate_factor_returns: Student-t df must be finite and > 2 for finite variance, got {df}"
                 )));
             }
             Some(df)
@@ -151,7 +157,9 @@ pub fn monte_carlo_pnl(
 
 fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
     let mut v = pnl.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).expect("finite values compare totally"));
+    // `total_cmp` orders every f64 bit pattern, so this sort has no panic
+    // path (the callers validate finiteness first regardless).
+    v.sort_by(f64::total_cmp);
     v
 }
 

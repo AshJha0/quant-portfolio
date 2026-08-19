@@ -114,7 +114,12 @@ MCResult mc_price(double S, double K, double T, double r_d, double r_f,
         ss += d * d;
     }
     const double n = static_cast<double>(samples.size());
-    const double se = std::sqrt(ss / (n - 1.0)) / std::sqrt(n);
+    // With fewer than two *independent* samples the sample variance is 0/0.
+    // That happens only for the degenerate n_paths <= 2 antithetic case
+    // (one mirrored pair); report SE = 0 rather than propagating NaN into
+    // the price's confidence interval.  Documented in monte_carlo.hpp.
+    const double se =
+        samples.size() > 1 ? std::sqrt(ss / (n - 1.0)) / std::sqrt(n) : 0.0;
 
     std::string method = antithetic ? "antithetic+" : "";
     method += control_variate ? "control_variate" : "plain";

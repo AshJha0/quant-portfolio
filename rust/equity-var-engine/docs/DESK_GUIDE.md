@@ -84,7 +84,7 @@ Gate every commit on, in order:
 1. **Build gate**: `RUSTFLAGS="-D warnings" cargo build --release` clean —
    zero rustc warnings, `#![deny(missing_docs)]` enforced (every public item
    documented).
-2. **Unit gate**: `cargo test --release` 100 % (77 integration tests + 9
+2. **Unit gate**: `cargo test --release` 100 % (81 integration tests + 10
    rustdoc examples) — includes all analytic identities and edge cases.
 3. **Golden gate**: `tests/test_cross_language.rs` — the engine's numbers vs
    the committed Python-generated constants at 1e-9. *Any* drift here is

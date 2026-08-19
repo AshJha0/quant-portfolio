@@ -57,8 +57,10 @@ def ewma_variance(
         raise ValueError(f"lambda must be in (0, 1), got {lam}")
     if init is None:
         init = float(np.mean(arr ** 2))
-    if init < 0:
-        raise ValueError("init variance must be non-negative")
+    if not np.isfinite(init) or init < 0:
+        raise ValueError(
+            f"init variance must be non-negative and finite, got {init!r}"
+        )
     n = arr.size
     sigma2 = np.empty(n)
     sigma2[0] = init

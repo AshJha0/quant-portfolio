@@ -44,6 +44,7 @@ from ._mle import (
     gaussian_loglik,
     hessian_std_errors,
     student_t_loglik,
+    validate_filter_params,
     validate_returns,
 )
 
@@ -106,22 +107,38 @@ def garch_filter(
         Conditional variance path, same length as ``returns``.
     """
     y = np.asarray(returns, dtype=float)
+    validate_filter_params(omega=omega, alpha=alpha, beta=beta,
+                           initial_variance=initial_variance)
     if omega <= 0 or alpha < 0 or beta < 0 or beta >= 1:
         raise ValueError(
             f"require omega > 0, alpha >= 0, 0 <= beta < 1; got "
             f"omega={omega}, alpha={alpha}, beta={beta}"
         )
     b = backcast(y) if initial_variance is None else float(initial_variance)
+    if b <= 0.0:
+        raise ValueError(f"initial_variance must be positive, got {b!r}")
     n = y.size
     u = np.empty(n)
     u[0] = omega + alpha * b
     u[1:] = omega + alpha * y[:-1] ** 2
     if x is not None:
+        if gamma_x is None:
+            raise ValueError(
+                "x was supplied without gamma_x; the exogenous coefficients are "
+                "required (passing only x would give an all-NaN variance path)"
+            )
         gx = np.atleast_1d(np.asarray(gamma_x, dtype=float))
+        if not np.isfinite(gx).all():
+            raise ValueError(f"gamma_x contains NaN or infinite values: {gamma_x!r}")
         xm = _validate_x(x, n)
         if gx.size != xm.shape[1]:
             raise ValueError(f"gamma_x has {gx.size} entries but x has {xm.shape[1]} columns")
         u += xm @ gx
+    elif gamma_x is not None:
+        raise ValueError(
+            "gamma_x was supplied without x; exogenous coefficients have no "
+            "regressors to multiply -- pass x as well or drop gamma_x"
+        )
     sigma2, _ = lfilter([1.0], [1.0, -beta], u, zi=np.array([beta * b]))
     return sigma2
 

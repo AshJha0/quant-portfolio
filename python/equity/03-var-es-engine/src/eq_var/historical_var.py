@@ -128,12 +128,25 @@ def ewma_volatility(x: np.ndarray, lam: float = 0.94, init: Literal["sample", "f
     Returns
     -------
     ndarray, same length as ``x``, of vol forecasts ``sigma[t] > 0``.
+
+    Raises
+    ------
+    ValueError
+        If ``lam`` is outside (0, 1), fewer than 2 observations are supplied,
+        ``init`` is unknown, or ``x`` contains NaN/infinite values.  The
+        recursion is multiplicative in its own past, so a single non-finite
+        input would poison every subsequent forecast; it is rejected up front
+        rather than propagated.
     """
     if not 0.0 < lam < 1.0:
         raise ValueError(f"decay lam must be in (0, 1), got {lam}")
+    if init not in ("sample", "first"):
+        raise ValueError(f"init must be 'sample' or 'first', got {init!r}")
     arr = np.asarray(x, dtype=float).ravel()
     if arr.size < 2:
         raise ValueError("need at least 2 observations for EWMA volatility")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("x contains NaN or infinite values")
     sig2 = np.empty(arr.size)
     seed = float(np.var(arr)) if init == "sample" else float(arr[0] ** 2)
     if seed <= 0.0:
@@ -189,10 +202,19 @@ def overlapping_horizon_pnl(pnl: np.ndarray, horizon_days: int) -> np.ndarray:
     ``t = 0..n-h``.  Caveat: overlapping sums are serially dependent, so the
     effective sample size is ~``n/h`` and quantile standard errors are much
     larger than the nominal count suggests (documented in METHODOLOGY.md).
+
+    Raises
+    ------
+    ValueError
+        If ``horizon_days < 1``, the series is too short, or ``pnl`` contains
+        NaN/infinite values (one bad day would contaminate ``horizon_days``
+        overlapping windows, so it is rejected rather than propagated).
     """
     arr = np.asarray(pnl, dtype=float).ravel()
     if horizon_days < 1:
         raise ValueError(f"horizon_days must be >= 1, got {horizon_days}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("pnl contains NaN or infinite values")
     if arr.size < horizon_days + MIN_OBS:
         raise ValueError(
             f"need at least {horizon_days + MIN_OBS} observations for {horizon_days}-day "

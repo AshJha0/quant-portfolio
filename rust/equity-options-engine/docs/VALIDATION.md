@@ -1,8 +1,8 @@
 # Validation — eq-options-engine (Rust)
 
 How this engine was validated, what tolerances are enforced in CI
-(`RUSTFLAGS="-D warnings" cargo test` — 45 integration tests + 26
-doctests, all green), and where the models fail.
+(`RUSTFLAGS="-D warnings" cargo test` — 58 integration tests + 27
+doctests, 85 in total, all green), and where the models fail.
 
 ## 1. Three-way cross-language golden validation (the headline)
 
@@ -52,6 +52,20 @@ Regenerate after the Python project changes:
 | Same seed => bitwise-identical `McResult`; different seeds differ | exact bits | `monte_carlo.rs` |
 | RNG: stream reproducibility, uniforms strictly in (0,1), normal mean/variance within 3-sigma bands at n=1e6 | — | `monte_carlo.rs` |
 | Vol monotonicity and strike convexity (butterfly >= 0) | 1e-12 | `black_scholes.rs` |
+| Extreme moneyness `S/K = 1e4` and `1e-4`: parity to relative 1e-12, worthless wing underflows to a clean non-negative zero | 1e-12 rel | `black_scholes.rs` |
+| 30-year expiry: price finite and inside `[max(Se^{-qT}-Ke^{-rT},0), Se^{-qT}]`, parity holds | 1e-12 rel | `black_scholes.rs` |
+| `T = 1e-6` (~30 s): price collapses to intrinsic and stays at/above the sigma->0 floor | 1e-3 / 1e-12 | `black_scholes.rs` |
+| Non-finite rejection: `+/-inf` in `S`, `K`, `T`, `sigma`; NaN/inf in `r`, `q`; across BS, tree, MC, Black-76, IV | exact | all suites |
+| Resource caps: `n_steps > MAX_STEPS` (1e7) and `n_paths > MAX_PATHS` (1e9) rejected as `InvalidInput` | exact | `binomial.rs`, `monte_carlo.rs` |
+| Implied vol above the initial bracket top (`sigma = 15`, forces doubling to the 1e3 cap) | 1e-6 | `implied_vol.rs` |
+| Implied vol at the *bottom* of the range: `sigma` in [1e-3, 5e-2] x `T` in [1/365, 1] round-trips to its identifiability bound `~1e-9/vega`; a quote exactly on the `sigma->0` floor is rejected as `ArbitrageBound` | 1e-8 / vega-scaled | `implied_vol.rs` |
+| Non-finite rejection at **both** Greek entry points: 11 NaN/inf placements x call/put x `bs_greeks`/`fd_greeks` all return `InvalidInput` | exact | `greeks.rs` |
+| `fd_greeks` rejects `sigma < h_v2` (2e-4) and `s < h_s2` even when the pricer closure does *no* validation of its own | exact | `greeks.rs` |
+| Extreme-moneyness Greeks (`S/K = 100x`, both directions): all 8 outputs finite, `gamma, vega >= 0`, `delta` inside `[-e^{-qT}, e^{-qT}]`, deep-ITM call delta -> `e^{-qT}` | 1e-12 | `greeks.rs` |
+| CRR at 100x moneyness and `T` in {30y, 100y}: finite, `American >= European`, inside the static upper bounds, European within 5e-3 *relative* of BS | 5e-3 rel | `binomial.rs` |
+| CRR with negative `r`, negative `q` and both: converges to BS; `n_steps = 1` matches the closed-form two-node value | 2e-3 / 1e-12 | `binomial.rs` |
+| MC with the minimum admissible path counts (2, 3, 4 with antithetic): `std_error` finite and non-negative, CI ordered and self-containing; the single-pair case gives `SE = 0` exactly, never `0/0 = NaN` | exact | `monte_carlo.rs` |
+| MC at 100x moneyness and `T = 30y`: non-negative, within `3 SE + 1e-9 x scale` of BS (scale-relative, since the control variate drives SE below f64 summation noise on a 1e4-sized price) | 3 SE + rel | `monte_carlo.rs` |
 
 ## 3. Edge cases (documented *and* tested)
 
@@ -63,13 +77,38 @@ Regenerate after the Python project changes:
   call -> dividend-adjusted forward; American K=0 call worth `S` when
   `q > 0`).
 - Negative `r` and `q` supported end-to-end (golden cases include them).
-- Invalid inputs (negative `S`, `K`, `T`, `sigma`, NaN, `n_steps = 0`,
-  `n_paths < 2`) return `Err(PricingError::InvalidInput)` with the
-  offending parameter named; `Display` output is asserted.
+- Invalid inputs (negative `S`, `K`, `T`, `sigma`, NaN, **infinity**,
+  `n_steps = 0`, `n_paths < 2`) return `Err(PricingError::InvalidInput)`
+  with the offending parameter named; `Display` output is asserted.
+  Non-finite **rates** (`r`, `q`) are rejected too — see the hardening
+  note below.
+- Extreme moneyness (`S/K` from 1e-4 to 1e4): the worthless wing
+  underflows to a clean non-negative zero rather than a negative
+  cancellation residue, and put-call parity still holds to 1e-12
+  *relative*.
+- Very long (`T = 30y`) and very short (`T = 1e-6y`, ~30 seconds)
+  expiries: both stay inside the static no-arbitrage bounds. Note that a
+  near-expiry European **put** with `r > 0` legitimately prices *below*
+  its undiscounted intrinsic (`K - S`) — the correct floor is the
+  `sigma -> 0` discounted-forward intrinsic, which is what the test
+  asserts.
 - Implied vol: sub-intrinsic and above-upper-bound quotes rejected as
   `ArbitrageBound`; expired options rejected; sigma=3.0 premiums
   recovered via bracket expansion; tiny-vega wings exercise the bisection
-  fallback.
+  fallback; sigma down to 1e-3 at `T = 1/365` either round-trips to its
+  identifiability bound or fails loudly, never silently.
+- Minimum-size Monte Carlo: `n_paths = 2` with antithetic sampling leaves
+  exactly **one** independent sample, so the `(n-1)` sample-variance
+  denominator is zero. The estimator reports `SE = 0` and a degenerate
+  point interval rather than computing `0/0` and handing back a NaN
+  standard error that would silently poison every downstream `within 3
+  SE` check.
+- Finite-difference bump domain: `fd_greeks` bumps are floored at
+  `rel_bump x 1`, so for `sigma < 2e-4` (or `S < 2e-4`) the down-leg of
+  the central stencil would sit at a *negative* volatility or spot.
+  `bs_price` would reject that, but an arbitrary caller-supplied pricer
+  closure need not — so `fd_greeks` checks the bump domain itself, up
+  front, and returns `InvalidInput`.
 
 ## 4. Known failure modes and numerical limits
 
@@ -94,7 +133,29 @@ Regenerate after the Python project changes:
    conservative bounds. MC numbers do not match NumPy's stream (different
    RNG); they match the analytic price statistically (3 SE), and match
    themselves bit-for-bit per seed.
-6. **Model risk proper** (GBM, constant vol, continuous dividends) is
+6. **Non-finite inputs are a caller error, not a pricing regime.** The
+   Python reference rejects NaN but lets `inf` flow through into
+   `inf`/NaN outputs. This crate is deliberately stricter: every public
+   entry point rejects `+/-inf` in `S`, `K`, `T`, `sigma` **and**
+   NaN/`inf` in `r`, `q`, so a corrupt market-data tick cannot silently
+   become a NaN risk number downstream. Negative `r`/`q` remain fully
+   supported. This tightening changes no admissible-input value, so the
+   golden vectors are untouched.
+7. **Resource exhaustion is an input error.** `crr_price` is O(n^2) in
+   time and O(n) in memory, `mc_price` O(n) in both. Requests above
+   `binomial::MAX_STEPS` (1e7) and `monte_carlo::MAX_PATHS` (1e9) return
+   `InvalidInput` rather than hanging for hours or aborting inside the
+   allocator — a library must not take the process down on a bad
+   argument.
+8. **Finite-difference Greeks have a floor on `sigma`, `S` and `T`.**
+   The central bumps are `1e-5 x max(|x|, 1)` (first order) and
+   `2e-4 x max(|x|, 1)` (second order), floored at 1 so that they do not
+   collapse to zero for small inputs. The price of that floor is that
+   `fd_greeks` cannot be used below `sigma = 2e-4`, `S = 2e-4` or
+   `T = 1e-5`; it returns `InvalidInput` there rather than differencing
+   across the domain boundary. Analytic `bs_greeks` has no such
+   restriction and should be used in that regime.
+9. **Model risk proper** (GBM, constant vol, continuous dividends) is
    documented in METHODOLOGY.md — validation here is *internal*
    consistency plus cross-implementation agreement, not market fit.
 

@@ -37,11 +37,19 @@ def vwap(prices: np.ndarray, volumes: np.ndarray) -> float:
     v = np.asarray(volumes, dtype=float)
     if p.shape != v.shape:
         raise ValueError("prices and volumes must have the same shape")
+    if p.size == 0:
+        raise ValueError("empty price tape")
+    if not (np.all(np.isfinite(p)) and np.all(np.isfinite(v))):
+        raise ValueError("prices and volumes must be finite (no NaN/Inf)")
     if np.any(v < 0):
         raise ValueError("volumes must be >= 0")
     tot = v.sum()
     if tot <= 0:
-        raise ValueError("total volume must be > 0 for VWAP")
+        raise ValueError(
+            "total volume must be > 0 for VWAP: the tape is empty (halted "
+            "session / auction-only day) — VWAP is undefined, use TWAP or "
+            "arrival as the benchmark"
+        )
     return float((p * v).sum() / tot)
 
 
@@ -50,6 +58,8 @@ def twap(prices: np.ndarray) -> float:
     p = np.asarray(prices, dtype=float)
     if p.size == 0:
         raise ValueError("empty price tape")
+    if not np.all(np.isfinite(p)):
+        raise ValueError("prices must be finite (no NaN/Inf)")
     return float(p.mean())
 
 
@@ -114,8 +124,11 @@ def vwap_schedule(parent_qty: float, profile: np.ndarray) -> np.ndarray:
     if parent_qty <= 0:
         raise ValueError("parent_qty must be > 0")
     p = np.asarray(profile, dtype=float)
-    if p.size == 0 or np.any(p < 0) or p.sum() <= 0:
-        raise ValueError("profile must be non-negative with positive sum")
+    if p.size == 0 or not np.all(np.isfinite(p)) or np.any(p < 0) or p.sum() <= 0:
+        raise ValueError(
+            "profile must be finite, non-negative and have a positive sum "
+            "(an all-zero forecast profile means no expected volume at all)"
+        )
     return parent_qty * p / p.sum()
 
 
@@ -134,6 +147,8 @@ def pov_schedule(parent_qty: float, market_volumes: np.ndarray,
     if not 0 < participation <= 1:
         raise ValueError("participation must be in (0, 1]")
     v = np.asarray(market_volumes, dtype=float)
+    if not np.all(np.isfinite(v)):
+        raise ValueError("market volumes must be finite (no NaN/Inf)")
     if np.any(v < 0):
         raise ValueError("market volumes must be >= 0")
     q = np.zeros(v.size)

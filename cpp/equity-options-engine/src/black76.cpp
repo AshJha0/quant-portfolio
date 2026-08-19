@@ -26,6 +26,7 @@ std::pair<double, double> b76_d1_d2(double F, double K, double T,
 double black76_price(double F, double K, double T, double r, double sigma,
                      OptionType type) {
     validate_inputs(F, K, T, sigma);
+    validate_rates(r);
     const double sign = type == OptionType::Call ? 1.0 : -1.0;
     if (T == 0.0) {
         return std::fmax(sign * (F - K), 0.0);
@@ -40,6 +41,7 @@ double black76_price(double F, double K, double T, double r, double sigma,
 
 Black76Greeks black76_greeks(double F, double K, double T, double r,
                              double sigma, OptionType type) {
+    validate_rates(r);
     const auto [d1, d2] = b76_d1_d2(F, K, T, sigma);
     const double df = std::exp(-r * T);
     const double sqrt_t = std::sqrt(T);

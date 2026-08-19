@@ -73,7 +73,7 @@ scenario panel.
 Gate every commit on, in order:
 
 1. **Build gate**: `-Wall -Wextra -Werror` clean, C++20.
-2. **Unit gate**: `ctest` 100 % (77 tests) — includes all analytic
+2. **Unit gate**: `ctest` 100 % (83 tests) — includes all analytic
    identities and edge cases.
 3. **Golden gate**: `test_cross_language` — the engine's numbers vs the
    committed Python-generated constants at 1e-9. *Any* drift here is either

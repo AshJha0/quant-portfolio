@@ -106,8 +106,8 @@ impl Market {
     /// Build a [`Market`] from `(ccy, usd_price)` and `(ccy, rate)` pairs.
     ///
     /// # Errors
-    /// [`FxVarError::Invalid`] if any spot is non-positive/non-finite, or
-    /// `spot_usd["USD"]` is present and not 1.0.
+    /// [`FxVarError::Invalid`] if any spot is non-positive/non-finite, any
+    /// rate is non-finite, or `spot_usd["USD"]` is present and not 1.0.
     pub fn new<I, J, S1, S2>(spot_usd: I, rates: J) -> Result<Self>
     where
         I: IntoIterator<Item = (S1, f64)>,
@@ -133,7 +133,14 @@ impl Market {
         spots.insert("USD".to_string(), 1.0);
         let mut rate_map = HashMap::new();
         for (c, r) in rates {
-            rate_map.insert(c.into().to_uppercase(), r);
+            let c = c.into().to_uppercase();
+            if !r.is_finite() {
+                return Err(FxVarError::invalid(format!(
+                    "rates[{c}] must be finite, got {r} (a non-finite rate produces \
+                     a non-finite forward, P&L and VaR with no diagnostic)"
+                )));
+            }
+            rate_map.insert(c, r);
         }
         Ok(Market { spot_usd: spots, rates: rate_map })
     }
@@ -246,6 +253,12 @@ pub enum Position {
 fn validate_position(p: &Position) -> Result<()> {
     match p {
         Position::Cash(c) => {
+            if !c.amount.is_finite() {
+                return Err(FxVarError::invalid(format!(
+                    "cash amount must be finite, got {}",
+                    c.amount
+                )));
+            }
             if c.ccy.len() != 3 {
                 return Err(FxVarError::invalid(format!(
                     "cash ccy must be a 3-letter code, got '{}'",
@@ -256,21 +269,42 @@ fn validate_position(p: &Position) -> Result<()> {
         }
         Position::Spot(s) => {
             split_pair(&s.pair)?;
+            if !s.notional.is_finite() {
+                return Err(FxVarError::invalid(format!(
+                    "spot notional must be finite, got {}",
+                    s.notional
+                )));
+            }
             if let Some(r) = s.entry_rate {
-                if r <= 0.0 {
-                    return Err(FxVarError::invalid("entry_rate must be > 0"));
+                // `!(r > 0.0)` rather than `r <= 0.0`: the latter is false
+                // for NaN, which would flow into the P&L as a silent NaN.
+                if !(r > 0.0) || !r.is_finite() {
+                    return Err(FxVarError::invalid(format!(
+                        "entry_rate must be finite and > 0, got {r}"
+                    )));
                 }
             }
             Ok(())
         }
         Position::Forward(fw) => {
             split_pair(&fw.pair)?;
-            if fw.expiry < 0.0 {
-                return Err(FxVarError::invalid("expiry must be >= 0"));
+            if !fw.notional.is_finite() {
+                return Err(FxVarError::invalid(format!(
+                    "forward notional must be finite, got {}",
+                    fw.notional
+                )));
+            }
+            if !(fw.expiry >= 0.0) || !fw.expiry.is_finite() {
+                return Err(FxVarError::invalid(format!(
+                    "expiry must be finite and >= 0, got {}",
+                    fw.expiry
+                )));
             }
             if let Some(k) = fw.strike {
-                if k <= 0.0 {
-                    return Err(FxVarError::invalid("strike must be > 0"));
+                if !(k > 0.0) || !k.is_finite() {
+                    return Err(FxVarError::invalid(format!(
+                        "strike must be finite and > 0, got {k}"
+                    )));
                 }
             }
             Ok(())

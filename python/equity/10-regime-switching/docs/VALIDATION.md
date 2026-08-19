@@ -3,7 +3,7 @@
 Documentation contract items 3–4: **how the model was validated** and
 **where it fails**. Every number below is reproduced by
 `python examples/run_pipeline.py` (53s) or by the test suite
-(`pytest -q`, 130 tests, ~20s, offline, seeded).
+(`pytest -q`, 152 tests, ~20s, offline, seeded).
 
 ## 1. Cross-model consistency checks
 
@@ -125,6 +125,63 @@ All in `tests/test_edge_cases.py` unless noted:
   inequalities, documented convention);
 * ledger arithmetic: exact hand-computed scenario, entry cost included;
 * vol targeting realizes the ex-ante target within 15% on constant-vol data.
+
+### 6.1 Degenerate-regime suite (`tests/test_degenerate_regimes.py`)
+
+**Single-regime (null) data.** Fitting K = 2 to genuinely one-regime data
+must fail *visibly*, not silently: all parameters stay finite, every fitted
+covariance stays positive-definite (the `reg_covar` ridge), rows still sum to
+1 to 1e-12, and the two state means end up within 3σ of each other — the
+honest signature of "there is no second regime here". The population-level
+check is that the decoded path on a null GBM panel flip-flops strictly more
+than on a true 2-regime panel, which is the diagnostic that rejects a
+spurious model.
+
+**Label switching.** EM numbers the states arbitrarily, so the economic
+labelling must be permutation-invariant. Tested three ways: (i) vol-sorted
+labels attach to the right states under an explicit index permutation;
+(ii) the *decoded economic path* is bit-identical when the state numbering
+and the vol means are permuted together; (iii) `match_permutation` recovers
+every planted relabelling of a 3-component mean set exactly (all 4
+permutations checked).
+
+**Degenerate transition matrices.**
+
+| Matrix | Expected behaviour | Status |
+|---|---|---|
+| absorbing state `[[1,0],[0.2,0.8]]` | `π = (1, 0)` exactly; `πP = π` to 1e-12; duration `(∞, 5)` | tested |
+| identity `I₃` | reducible — *every* distribution is stationary; solver returns the min-norm (uniform) one, `πP = π` still exact to 1e-14, all durations `∞` flag the degeneracy | tested + documented in the docstring |
+| K = 1 fit | single absorbing state, `π = (1,)`, duration `∞` | tested |
+| random row-stochastic, K ∈ {2,3,5} | `πP = π` to 1e-12, `Σπ = 1`, `π ≥ 0` over 60 random chains | property test |
+| non-stochastic rows / non-square / NaN / negative entries | informative `ValueError` | tested |
+
+**Fitted-chain invariants (property tests over seeds).** EM must never emit a
+row that fails to normalise, and never a hard zero — the 1e-12 clip is what
+keeps the Viterbi log-space recursion free of `-inf` propagation. Both are
+asserted across four seeds, with a Viterbi decode run afterwards to confirm.
+
+**Probability invariants.** Filtered and smoothed probabilities are valid
+distributions (rows in [0,1], summing to 1 to 1e-10); forward and
+forward-backward report the same log-likelihood to 1e-12; expected transition
+counts `Σξ` total exactly `T − 1`; EM log-likelihood is monotone
+non-decreasing over iterations.
+
+**Causality (the tradeability property).** Truncating the future leaves every
+filtered row bit-stable (drift ≤ machine epsilon) while shifting the smoothed
+rows by 4+ orders of magnitude more — the quantitative statement of why
+filtered probabilities may be traded and smoothed ones may not. The boundary
+identity `γ_T = α̂_T` (β_T = 1) is checked alongside.
+
+### 6.2 NaN/Inf rejection (bug found by this test pass)
+
+`fit_hmm` and `fit_gmm` checked `np.isnan(x)` only. `Inf` therefore passed
+validation and poisoned every sufficient statistic — means, covariances and
+the log-likelihood all came back `NaN`, accompanied by nothing louder than a
+handful of NumPy `RuntimeWarning`s. Both fitters now require `np.isfinite`
+and raise an informative `ValueError`; `stationary_distribution` and
+`expected_durations` gained the same guard plus shape and
+probability-domain checks. Regression-tested for both `+Inf`, `-Inf` and
+`NaN`.
 
 ## 7. Walk-forward result (synthetic 3-state panel, net of 5 bps)
 

@@ -66,6 +66,9 @@ double forward_to_spot_delta(double delta_forward, double T, double r_f);
 /// Premium-adjust a spot delta: delta_pa = delta_spot - V/S, where V is
 /// the domestic-currency premium (V/S is the premium converted to base
 /// currency -- a long-base position the hedger already holds).
+/// Throws std::invalid_argument unless S > 0 and all three arguments are
+/// finite (a NaN premium from a bad quote must not silently poison the
+/// hedge ratio).
 double premium_adjust_spot_delta(double delta_spot, double price, double S);
 
 /// ATM-forward strike: K = F = S e^{(r_d - r_f) T}.

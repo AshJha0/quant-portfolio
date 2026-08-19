@@ -78,6 +78,10 @@ Matrix covariance_from_vols(std::span<const double> vols, const Matrix& corr) {
 
 namespace {
 
+/// Largest diagonal jitter, as a multiple of mean(diag), that still counts as
+/// a rounding repair rather than a change of model.
+constexpr double kMaxRelJitter = 1e-6;
+
 /// Plain Cholesky attempt; returns false if a non-positive pivot is hit.
 bool try_cholesky(const Matrix& a, Matrix& l) {
     const std::size_t n = a.rows();
@@ -105,7 +109,16 @@ CholeskyResult cholesky(const Matrix& cov, double jitter, int max_tries) {
         throw std::invalid_argument("cholesky: covariance must be square and non-empty");
     }
     double amax = 0.0;
-    for (std::size_t i = 0; i < cov.size(); ++i) amax = std::max(amax, std::abs(cov.data()[i]));
+    for (std::size_t i = 0; i < cov.size(); ++i) {
+        // A NaN/Inf entry would otherwise survive every jitter attempt (the
+        // pivot test rejects NaN) and surface as a misleading "badly
+        // indefinite" runtime_error; reject it here as the input error it is.
+        if (!std::isfinite(cov.data()[i])) {
+            throw std::invalid_argument(
+                "cholesky: covariance contains NaN or infinite entries");
+        }
+        amax = std::max(amax, std::abs(cov.data()[i]));
+    }
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i + 1; j < n; ++j) {
             if (std::abs(cov(i, j) - cov(j, i)) > 1e-12 * std::max(1.0, amax)) {
@@ -126,6 +139,21 @@ CholeskyResult cholesky(const Matrix& cov, double jitter, int max_tries) {
         Matrix a = cov;
         for (std::size_t i = 0; i < n; ++i) a(i, i) += eps;
         if (try_cholesky(a, res.lower)) {
+            // The jitter is only legitimate while it is negligible against
+            // the variances themselves.  A matrix that needs more than
+            // kMaxRelJitter * mean(diag) to become positive definite is not
+            // "numerically singular PSD" but materially indefinite: factoring
+            // it would silently simulate a covariance that is not the one the
+            // caller passed in.  Reject instead, and say so.
+            if (eps > kMaxRelJitter * scale) {
+                throw std::runtime_error(
+                    "cholesky: covariance needed a diagonal jitter of " +
+                    std::to_string(eps / scale) +
+                    " x mean(diag) to factor, far above the " +
+                    std::to_string(kMaxRelJitter) +
+                    " tolerance; the matrix is materially indefinite. Repair it "
+                    "(eigenvalue clipping / nearest-PSD projection) before use.");
+            }
             res.jitter_added = eps;
             return res;
         }

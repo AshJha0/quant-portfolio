@@ -18,7 +18,19 @@ double portfolio_sigma(std::span<const double> exposures, const Matrix& cov) {
         throw std::invalid_argument("portfolio_sigma: covariance shape does not match " +
                                     std::to_string(exposures.size()) + " exposures");
     }
+    for (double w : exposures) {
+        if (!std::isfinite(w)) {
+            throw std::invalid_argument("portfolio_sigma: exposures must be finite");
+        }
+    }
     const double var = quad_form(exposures, cov);
+    // NaN fails every ordered comparison below, so a non-finite covariance
+    // would otherwise return a NaN sigma and poison the whole VaR report.
+    if (!std::isfinite(var)) {
+        throw std::invalid_argument(
+            "portfolio_sigma: w'Sw is not finite (covariance contains NaN/Inf "
+            "or overflows)");
+    }
     double wmax = 0.0;
     for (double w : exposures) wmax = std::max(wmax, std::abs(w));
     if (var < -1e-10 * std::max(1.0, wmax * wmax)) {
@@ -59,6 +71,17 @@ double cornish_fisher_z(double z, double skew, double excess_kurt) {
 }
 
 bool cornish_fisher_domain_ok(double skew, double excess_kurt, double z_range, int n_grid) {
+    if (!(z_range > 0.0) || !std::isfinite(z_range)) {
+        throw std::invalid_argument("cornish_fisher_domain_ok: z_range must be finite and > 0");
+    }
+    if (n_grid < 2) {
+        // n_grid == 1 would divide by (n_grid - 1) == 0 below.
+        throw std::invalid_argument("cornish_fisher_domain_ok: n_grid must be >= 2");
+    }
+    if (!std::isfinite(skew) || !std::isfinite(excess_kurt)) {
+        throw std::invalid_argument(
+            "cornish_fisher_domain_ok: skew and excess_kurt must be finite");
+    }
     // dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36 must stay > 0.
     for (int i = 0; i < n_grid; ++i) {
         const double z = -z_range + 2.0 * z_range * static_cast<double>(i) /

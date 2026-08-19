@@ -90,6 +90,10 @@ def synthetic_vol_quotes(base_atm: float = 0.10, skew: float = -0.01,
     risk-off skew); BF widens with tenor.  Small seeded noise mimics
     market scatter while remaining fully deterministic.
     """
+    for name, value in (("base_atm", base_atm), ("skew", skew),
+                        ("smile", smile), ("noise", noise)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value!r}")
     if base_atm <= 0:
         raise ValueError(f"base_atm must be positive, got {base_atm}")
     if noise < 0:
@@ -97,8 +101,8 @@ def synthetic_vol_quotes(base_atm: float = 0.10, skew: float = -0.01,
     gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
     quotes = []
     for t in tenors:
-        if t <= 0:
-            raise ValueError(f"tenors must be positive, got {t}")
+        if not math.isfinite(t) or t <= 0:
+            raise ValueError(f"tenors must be positive and finite, got {t!r}")
         eps = gen.normal(0.0, noise, size=5)
         term = 1.0 + 0.15 * math.log1p(t)
         quotes.append(VolQuote(

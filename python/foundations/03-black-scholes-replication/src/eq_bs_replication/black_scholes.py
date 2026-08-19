@@ -106,6 +106,42 @@ def _norm_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
+def _discount_factor(r: float, T: float) -> float:
+    """``exp(-r*T)``, with an informative error instead of ``OverflowError``.
+
+    A sufficiently negative ``r*T`` (e.g. ``r=-10`` over ``T=100``) makes
+    ``exp(-r*T)`` exceed the largest representable double, and ``math.exp``
+    raises a bare ``OverflowError: math range error`` that says nothing
+    about which input caused it. Such inputs are economically absurd
+    rather than merely extreme, so the right response is a clear refusal.
+
+    Parameters
+    ----------
+    r : float
+        Continuously compounded, annualised rate (may be negative).
+    T : float
+        Time to expiry in years.
+
+    Returns
+    -------
+    float
+        The discount factor ``exp(-r*T)``.
+
+    Raises
+    ------
+    ValueError
+        If ``-r*T`` is large enough to overflow a double (about 709.78).
+    """
+    exponent = -r * T
+    if exponent > 709.0:
+        raise ValueError(
+            f"discount factor exp({exponent:.1f}) overflows double precision "
+            f"(r={r}, T={T}); a rate/maturity combination this extreme is "
+            "outside the representable range, not merely an unusual market"
+        )
+    return math.exp(exponent)
+
+
 def _d1_d2(S: float, K: float, r: float, sigma: float, T: float) -> tuple[float, float]:
     """Compute the Black-Scholes ``d1`` and ``d2`` terms.
 
@@ -178,7 +214,7 @@ def call_price(S: float, K: float, r: float, sigma: float, T: float) -> float:
         If ``sigma <= 0``, ``T <= 0``, or ``S``/``K`` are non-positive.
     """
     d1, d2 = _d1_d2(S, K, r, sigma, T)
-    return S * _norm_cdf(d1) - K * math.exp(-r * T) * _norm_cdf(d2)
+    return S * _norm_cdf(d1) - K * _discount_factor(r, T) * _norm_cdf(d2)
 
 
 def put_price(S: float, K: float, r: float, sigma: float, T: float) -> float:
@@ -212,7 +248,7 @@ def put_price(S: float, K: float, r: float, sigma: float, T: float) -> float:
         If ``sigma <= 0``, ``T <= 0``, or ``S``/``K`` are non-positive.
     """
     d1, d2 = _d1_d2(S, K, r, sigma, T)
-    return K * math.exp(-r * T) * _norm_cdf(-d2) - S * _norm_cdf(-d1)
+    return K * _discount_factor(r, T) * _norm_cdf(-d2) - S * _norm_cdf(-d1)
 
 
 @dataclass
@@ -264,13 +300,14 @@ def call_greeks(S: float, K: float, r: float, sigma: float, T: float) -> Greeks:
     """
     d1, d2 = _d1_d2(S, K, r, sigma, T)
     sqrtT = math.sqrt(T)
+    disc = _discount_factor(r, T)
     return Greeks(
         delta=_norm_cdf(d1),
         gamma=_norm_pdf(d1) / (S * sigma * sqrtT),
         vega=S * _norm_pdf(d1) * sqrtT,
         theta=(-S * _norm_pdf(d1) * sigma / (2 * sqrtT)
-               - r * K * math.exp(-r * T) * _norm_cdf(d2)),
-        rho=K * T * math.exp(-r * T) * _norm_cdf(d2),
+               - r * K * disc * _norm_cdf(d2)),
+        rho=K * T * disc * _norm_cdf(d2),
     )
 
 
@@ -317,7 +354,7 @@ def put_greeks(S: float, K: float, r: float, sigma: float, T: float) -> Greeks:
         delta, gamma, vega, theta, rho for the put.
     """
     c = call_greeks(S, K, r, sigma, T)
-    disc_K = K * math.exp(-r * T)
+    disc_K = K * _discount_factor(r, T)
     return Greeks(
         delta=c.delta - 1.0,
         gamma=c.gamma,
@@ -334,8 +371,33 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
     Vega is the derivative of price w.r.t. sigma, so the Newton update
     is ``sigma -= (model_price - market_price) / vega``.
 
-    Falls back to bisection when vega is tiny (deep ITM/OTM), where
-    Newton becomes unstable.
+    Falls back to bisection when vega is tiny (deep ITM/OTM) or when
+    Newton fails to converge in ``max_iter`` steps. The bisection
+    bracket starts at ``[1e-6, 5.0]`` (0.0001% to 500% volatility) and
+    is **doubled upward** until it contains the target price, so a quote
+    implying a volatility above 500% is still inverted rather than
+    silently pinned to the bracket's edge.
+
+    Conditioning -- the part that matters more than the algorithm
+    ------------------------------------------------------------------
+    Implied volatility is only as well-determined as vega is large.
+    Near either no-arbitrage bound, vega collapses toward zero and a
+    whole range of volatilities reprices the option to within any
+    reasonable tolerance:
+
+    - **At (or just above) intrinsic value**, the true implied vol is 0,
+      but ``|dPrice/dsigma|`` is so small that the returned sigma can be
+      of order 1e-2 while still matching the input price to ``1e-8``.
+      The number is *correct to tolerance* and *meaningless as a vol*.
+    - **At the upper bound ``C = S``**, the true implied vol is infinite;
+      the routine returns whatever large finite value first matches to
+      tolerance.
+
+    Both are documented in ``docs/VALIDATION.md`` and unit-tested. A desk
+    would not quote either: the practical rule is that implied vol from a
+    quote whose vega is below some floor (a few cents per vol point) is
+    not information, and such strikes are dropped from surface fits
+    rather than fitted with a wide error bar.
 
     Parameters
     ----------
@@ -344,8 +406,9 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
     S, K, r, T : float
         See :func:`call_price`.
     tol : float, default 1e-8
-        Convergence tolerance on the price residual for the
-        Newton-Raphson stage.
+        Convergence tolerance on the **price residual** (not on sigma)
+        for the Newton-Raphson stage. See the conditioning note above:
+        a tight price tolerance does not imply a tight vol tolerance.
     max_iter : int, default 100
         Maximum Newton-Raphson iterations before falling back to
         bisection.
@@ -363,10 +426,19 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
         call, ``max(S - K*exp(-rT), 0) <= C <= S``. A price outside
         these bounds cannot correspond to any volatility, so refusing
         to invent one is intentional (see ``docs/VALIDATION.md``
-        numerical-limits section).
+        numerical-limits section). Also raised for non-positive ``S``,
+        ``K`` or ``T``, and for rate/maturity combinations whose
+        discount factor overflows.
     """
+    if S <= 0 or K <= 0:
+        raise ValueError(f"S and K must be strictly positive (got S={S}, K={K})")
+    if T <= 0:
+        raise ValueError(
+            f"T must be strictly positive (got T={T}); at expiry the price is "
+            "intrinsic value and carries no volatility information at all"
+        )
     # No-arbitrage bounds for a call: max(S - K e^{-rT}, 0) <= C <= S
-    intrinsic = max(S - K * math.exp(-r * T), 0.0)
+    intrinsic = max(S - K * _discount_factor(r, T), 0.0)
     if price < intrinsic - 1e-12 or price > S + 1e-12:
         raise ValueError(
             f"price {price} violates no-arbitrage bounds "
@@ -383,7 +455,16 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
             break  # Newton unreliable -> bisection below
         sigma = max(1e-6, sigma - diff / vega)
 
+    # Bisection fallback. Expand the upper bracket until it spans the
+    # target price, so an extreme quote is inverted rather than clamped
+    # to an arbitrary 500% ceiling. The call price is increasing in sigma
+    # and bounded above by S, so this terminates unless price == S (which
+    # the bound check above has already narrowed to the degenerate case).
     lo, hi = 1e-6, 5.0
+    for _ in range(20):
+        if call_price(S, K, r, hi, T) >= price:
+            break
+        lo, hi = hi, hi * 2.0
     for _ in range(200):
         mid = 0.5 * (lo + hi)
         if call_price(S, K, r, mid, T) > price:

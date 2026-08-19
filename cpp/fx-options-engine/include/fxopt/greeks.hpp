@@ -84,6 +84,10 @@ struct FDGreeks {
 /// (theta = -dV/dT).  Second-order Greeks (gamma, vanna, volga) use the
 /// standard central stencils; the sigma second difference uses a larger
 /// bump (sigma*1e-3) to balance round-off against truncation error.
+///
+/// Throws std::invalid_argument on invalid inputs, on T <= 0, or when
+/// sigma is smaller than its own central bump (the down-bumped volatility
+/// would be negative).
 template <typename PriceFn>
 FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K,
                                   double T, double r_d, double r_f,
@@ -94,6 +98,19 @@ FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K,
     const double h_r = 1e-6;
     const double h_t = std::min(1e-6, T / 4.0);
     const double h_v2 = std::max(sigma * 1e-3, 1e-5);
+    // Central stencils bump *down* as well as up: reject inputs whose down
+    // bump would leave the valid domain (negative vol / expiry) with a
+    // clear message instead of letting the inner pricer throw about a
+    // negative sigma the caller never supplied.
+    if (T <= 0.0) {
+        throw std::invalid_argument(
+            "finite_difference_greeks requires T > 0");
+    }
+    if (sigma - std::max(h_v, h_v2) <= 0.0) {
+        throw std::invalid_argument(
+            "sigma too small for a central vega/volga bump; need sigma > " +
+            std::to_string(std::max(h_v, h_v2)));
+    }
 
     const auto p = [&](double s, double sig, double rd, double rf, double t) {
         return price_fn(s, K, t, rd, rf, sig);

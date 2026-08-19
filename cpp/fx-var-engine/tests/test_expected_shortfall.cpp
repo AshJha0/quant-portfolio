@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "fxvar/expected_shortfall.hpp"
+#include "fxvar/monte_carlo.hpp"
 #include "fxvar/stats.hpp"
 
 using namespace fxvar;
@@ -96,4 +97,26 @@ TEST(ClosedForm, EmpiricalConvergesToNormalIdentity) {
   const auto [v, e] = empirical_var_es(pnl, 0.975);
   EXPECT_NEAR(v, normal_var(1.0, 0.975), 2e-4);
   EXPECT_NEAR(e, normal_es(1.0, 0.975), 2e-3);
+}
+
+
+TEST(EmpiricalVar, SingleAndTwoElementSamples) {
+  // A one-scenario sample is degenerate but must not read out of bounds:
+  // both VaR and ES collapse onto that scenario's loss for every alpha.
+  const std::vector<double> one{-250.0};
+  for (const double a : {0.5, 0.95, 0.99, 0.999}) {
+    EXPECT_DOUBLE_EQ(empirical_var(one, a), 250.0);
+    EXPECT_DOUBLE_EQ(empirical_es(one, a), 250.0);
+  }
+  // A profit-only single scenario reports a negative "loss" (a gain floor).
+  EXPECT_DOUBLE_EQ(empirical_var(std::vector<double>{40.0}, 0.99), -40.0);
+  // Two scenarios: the 99% level picks the worse one; ES >= VaR always.
+  const std::vector<double> two{-100.0, 20.0};
+  EXPECT_DOUBLE_EQ(empirical_var(two, 0.99), 100.0);
+  EXPECT_DOUBLE_EQ(empirical_es(two, 0.99), 100.0);
+  EXPECT_DOUBLE_EQ(empirical_var(two, 0.5), 100.0);
+  EXPECT_GE(empirical_es(two, 0.5), empirical_var(two, 0.5));
+  // ... and the standard-error machinery refuses samples this small.
+  EXPECT_THROW(var_standard_error(one, 0.99), std::invalid_argument);
+  EXPECT_THROW(var_standard_error(two, 0.99), std::invalid_argument);
 }

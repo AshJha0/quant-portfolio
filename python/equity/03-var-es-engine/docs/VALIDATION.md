@@ -3,7 +3,7 @@
 Contract items 3 and 4: **how the engine was validated** (analytic
 benchmarks, convergence, statistical backtests, cross-model consistency)
 and **where it fails** (reproducible failure modes). All numbers below are
-reproduced by `python -m pytest tests -q` (183 tests, ~35 s, offline,
+reproduced by `python -m pytest tests -q` (264 tests, ~16 s, offline,
 seeded) and `python examples/run_pipeline.py` (~95 s).
 
 ## 1. Analytic benchmarks (exact identities)
@@ -97,11 +97,27 @@ the fingerprint of an unconditional model in a clustered-vol world
    each VaR₉₅ = −5 (gain), portfolio VaR₉₅ = 95: splitting the book
    "removes" the risk. ES stays subadditive on the same scenarios
    (`TestCoherence` — the classic counterexample, constructed exactly).
-3. **√t scaling breaks under vol clustering.** Pipeline: 10d 99 % VaR is
-   $171.6k by √t vs $140.3k by overlapping windows on the same history;
-   under GARCH the true 10-day quantile exceeds both. √t is exact only for
-   i.i.d. returns (verified: on i.i.d. normal data the two agree within
-   15 %, `test_sqrt_time_matches_iid_normal_overlapping_roughly`).
+3. **√t scaling breaks under vol clustering — and the error has no fixed
+   sign.** Pipeline: 10d 99 % VaR is $171.6k by √t vs $140.3k by
+   overlapping windows on the same history. The direction depends on which
+   VaR is being scaled:
+   - *unconditional* (the pipeline case): √t **overstates**, because
+     temporal aggregation thins the tail — measured excess kurtosis on the
+     20k-day GARCH sample falls from **4.76 (1-day) to 1.94 (10-day)**, and
+     √t lands ~8 % above the direct overlapping estimate
+     (`test_sqrt_time_overstates_the_unconditional_10day_var_under_garch`,
+     `test_temporal_aggregation_thins_the_tail_of_garch_returns`);
+   - *conditional, from a calm state*: √t **understates**, because variance
+     mean-reverts upward over the horizon
+     (`test_sqrt_time_understates_from_a_calm_conditional_state`).
+
+   √t is exact only for i.i.d. zero-drift returns (verified: on i.i.d.
+   normal data the two agree within 15 %,
+   `test_sqrt_time_matches_iid_normal_overlapping_roughly`, and within 5 %
+   at 95 % on 60k draws, `test_sqrt_time_is_accurate_for_iid_normal_returns`).
+   With a non-zero drift the mean scales like `h` and sigma like `√h`, so
+   they must not be scaled together
+   (`test_nonzero_mean_breaks_pure_sqrt_scaling`).
 4. **Historical window myopia ("great moderation" problem).** Plain HS
    after 450 calm days + 50 wild days reports a VaR ~40 % below FHS
    (`test_fhs_scales_up_after_vol_regime_switch`); symmetrically it
@@ -139,6 +155,41 @@ the fingerprint of an unconditional model in a clustered-vol world
 | T→0 / vol→0 options | intrinsic / forward-intrinsic limits, step-function delta | `test_zero_tau_is_intrinsic`, `bs_greeks` degenerate branch |
 | x = 0 or x = T exceptions in Kupiec | 0·ln0 convention, LR finite | `test_zero_exceptions_known_value` |
 | No exceptions in Christoffersen / AS Z₂ | LR = 0 / Z₂ = +1 (defined, not NaN) | `test_no_exceptions_*` |
+| **NaN / ±Inf P&L** | `ValueError` ("NaN or infinite") from `historical_var`, `expected_shortfall`, `age_weighted_var`, `filtered_historical_var`, and now also `ewma_volatility` and `overlapping_horizon_pnl` — the two recursive/aggregating helpers that previously propagated the poison silently | `TestNonFiniteRejection` |
+| Unknown `init` for `ewma_volatility` | `ValueError` instead of silently falling back to `x[0]²` | `test_ewma_volatility_rejects_unknown_init` |
+| Kupiec with x > T or x < 0 | `ValueError` naming `n_exceptions` | `test_kupiec_rejects_invalid_counts` |
+| ES quoted below VaR in the AS Z₂ backtest | `ValueError` ("ES must be >= VaR") — an inconsistent risk feed is rejected, not scored | `test_acerbi_szekely_rejects_es_below_var` |
+| Exception on exactly `pnl = −VaR` | **not** an exception (strict `<`), pinned so the convention cannot drift | `test_exceptions_definition_is_strict_inequality` |
+| Negative VaR passed to the exception counter | `ValueError` ("positive loss") | `test_exceptions_reject_negative_var` |
+| Basel zone boundaries | exactly 4→green, 5→yellow, 9→yellow, 10→red; multiplier non-decreasing in exception count, 3.0 → 4.0 | `test_basel_zone_boundaries_are_exactly_at_5_and_10` |
+
+### 6.1 Structural (property-based) invariants
+
+Checked as inequalities/invariants rather than hard-coded values, so they
+constrain the engine without pinning numbers the C++/Rust engines
+cross-validate against:
+
+| Invariant | Detail | Test |
+|---|---|---|
+| **ES ≥ VaR** for every family and every α ∈ {0.1 %, 1 %, 2.5 %, 5 %, 10 %} | strict for continuous P&L | `TestOrdering` |
+| Risk measures **non-increasing in α** | historical, ES, age-weighted, FHS | `test_risk_measure_decreasing_in_alpha` |
+| **ES subadditivity** ES(X+Y) ≤ ES(X)+ES(Y) | 25 random fat-tailed pairs | `test_es_subadditive_on_random_splits` |
+| **VaR non-subadditivity** reproduced | constructed default-style counterexample where VaR is superadditive while ES is not | `test_var_can_violate_subadditivity` |
+| **Positive homogeneity** VaR(cX) = c·VaR(X) | 1e-10 relative, c ∈ {0.5, 1, 3, 100} | `test_positive_homogeneity` |
+| **Translation invariance** ρ(X+m) = ρ(X) − m | 1e-9 relative | `test_translation_invariance` |
+| Parametric VaR **linear in exposures**; σ_p scales as √c in Σ; sign-flip invariant | 1e-12 relative | `TestParametricEquivariance` |
+| Horizon scaling is exactly √h at zero mean, and **breaks** with drift | 1e-12 / directional | `test_horizon_scaling_is_sqrt_time_at_zero_mean`, `test_nonzero_mean_breaks_pure_sqrt_scaling` |
+| **Variance-matched t is fatter than normal only in the deep tail** — t(5) charges *less* than the normal at 95 %, crossover near α ≈ 2.8 %. ES, which averages the whole tail, stays higher at every α. A real trap for anyone switching to t "to be conservative" | directional at α ∈ {0.1 %, 1 %, 2.5 %} vs {5 %, 10 %} | `test_variance_matched_t_is_thinner_than_normal_in_the_shoulder`, `test_t_vs_normal_var_crossover_is_between_2_5_and_5_percent` |
+| Student-t → normal as df → ∞ | gap monotone, < 1 % of σ at df = 500 | `test_student_t_converges_to_normal_as_df_grows` |
+| BRW weights sum to 1 and increase monotonically toward the present | 1e-12 | `TestWeightingSchemes` |
+| Age-weighting → plain HS as λ → 1 | gap shrinks | `test_age_weighting_converges_to_plain_hs_as_lambda_goes_to_one` |
+| FHS is **conditional**: same unconditional sample, turmoil at the end vs the start gives a higher VaR | directional | `test_fhs_tracks_the_current_vol_regime` |
+| `ewma_volatility` is **causal**: σ[t] does not depend on x[t] | 1e-12 | `test_ewma_volatility_is_causal_and_positive` |
+| Kupiec LR = 0 exactly at the expected rate, increasing away from it; p-value decreasing in exception count | 1e-9 | `TestBacktestProperties` |
+| Christoffersen rejects planted 5-day exception runs (p < 0.01) and passes i.i.d. exceptions (p > 0.01) | — | `test_christoffersen_detects_clustering_and_passes_iid` |
+| Bootstrap VaR SE **shrinks with sample size**; order-statistics CI brackets the point estimate and widens for deeper tails | — | `TestEstimationError` |
+| MC VaR converges to the closed form as paths grow | within 2 % at 800k paths | `test_mc_var_converges_to_the_parametric_answer` |
+| **Crisis regime**: a 5× vol burst lifts every family, and the conditional ones (FHS, BRW) react *more* than plain HS | directional | `test_crisis_regime_all_families_reprice_upward` |
 
 ## 7. What was *not* validated (honest scope)
 

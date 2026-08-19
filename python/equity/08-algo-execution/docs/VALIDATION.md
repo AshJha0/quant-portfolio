@@ -1,7 +1,7 @@
 # Validation — evidence, numbers, failure modes
 
 All numbers below are produced by `python examples/run_pipeline.py` (seed
-42) or by named tests in `tests/` (145 tests, all passing, ~4 s, offline).
+42) or by named tests in `tests/` (161 tests, all passing, ~4 s, offline).
 
 ---
 
@@ -122,8 +122,44 @@ noise (SE ≈ 8 bps); the variance ordering is the robust result.
 | single-bucket market | exact half-spread fill | `test_single_bucket_intraday_market` |
 | eta_tilde <= 0 | ValueError (ill-posed AC) | `test_params_validation` |
 | zero-vol returns / N=0 trials / short series | ValueError | `test_deflated_sharpe_edge_inputs` et al. |
+| **extreme risk aversion (κT ≫ 710)** | finite front-loaded schedule (was NaN — see §8) | `test_ac_extreme_risk_aversion_does_not_overflow_to_nan` |
+| **λ → ∞ limit** | >99.9% of the parent in slice 1, sums to X exactly | `test_ac_infinite_urgency_limit_dumps_first_slice` |
+| **fully halted day** (all buckets zero volume) | empty schedule legal; VWAP raises "total volume must be > 0"; TWAP still defined | `test_fully_halted_day_zero_schedule_is_legal_but_has_no_vwap` |
+| **POV on an all-zero-volume day** | ValueError (day capacity 0) | `test_pov_on_all_zero_volume_day_raises_with_capacity_zero` |
+| **one-tick day** (all volume in one bucket) | VWAP schedule routes 100% to that bucket; slippage vs VWAP = exactly half the quoted spread | `test_one_tick_market_all_volume_in_one_bucket` |
+| **single-bucket day** | VWAP = TWAP = arrival identically | `test_single_bucket_day_vwap_equals_twap_equals_arrival` |
+| **σ = 0 market** | both impact terms vanish; trading cost = exactly half-spread, opportunity cost = 0 | `test_zero_volatility_market_isolates_pure_impact_cost` |
+| **NaN/Inf schedule, volumes, tapes or fills** | ValueError everywhere (was silent NaN — see §8) | `test_nan_schedule_rejected_not_silently_filled`, `test_benchmarks_reject_non_finite_tapes`, `test_is_decomposition_rejects_non_finite_fills` |
+| partial fill (unfilled tail) | Perold identity delay+trading+opportunity = total holds exactly, in $ and bps | `test_is_components_sum_to_total_on_partial_fill` |
+| buy vs sell symmetry | equal and opposite price moves give identical signed cost | `test_buy_and_sell_costs_are_sign_symmetric` |
+| monotonicity in order size | cost in bps strictly increasing in parent size (sqrt law) | `test_larger_orders_cost_more_monotonicity` |
 
-## 7. Known failure modes
+## 7. Numerical-stability fixes found by this test pass
+
+1. **Almgren-Chriss overflow to NaN at high urgency.** `x_j = X ·
+   sinh(κ(T−t_j)) / sinh(κT)` was evaluated literally. `sinh` overflows the
+   double range past an argument of ~710, so for `κT ≳ 710` (reached at
+   λ ≈ 1e12 with the demo parameters) both numerator and denominator became
+   `inf` and the entire trajectory came back `NaN` — silently, with no
+   warning, and every downstream cost figure `NaN`. The ratio is now
+   evaluated as
+
+   ```
+   sinh(a)/sinh(b) = e^{a−b} · (1 − e^{−2a}) / (1 − e^{−2b}),   0 ≤ a ≤ b
+   ```
+
+   using `expm1` for the small-argument terms. Every exponential argument is
+   now non-positive, so the result is finite for arbitrarily large κ, and the
+   λ → ∞ limit correctly converges to "everything in slice 1". Verified
+   finite, monotone and exactly share-conserving up to λ = 1e30.
+2. **NaN quantities accepted by the simulator.** `np.any(q < 0)` and
+   `np.any(q > volumes)` are both `False` for `NaN`, so a NaN child order
+   passed every guard and produced NaN fill prices, a NaN average price and a
+   NaN TCA report. `IntradayMarket.execute` now rejects non-finite schedules
+   and market volumes up front; the same `isfinite` guard was added to
+   `vwap`, `twap`, `vwap_schedule`, `pov_schedule` and `is_decomposition`.
+
+## 8. Known failure modes
 
 1. **Alpha decay and crowding.** The planted IC is stationary; real
    momentum ICs decay as capital crowds in. The IC-weighted combiner

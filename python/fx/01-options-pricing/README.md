@@ -23,7 +23,7 @@ compounded, ACT/365F; premiums in quote ccy per unit base notional.
 
 ```bash
 pip install -e .            # from this directory (deps: numpy/scipy/pandas)
-python -m pytest tests -q   # 340 tests, offline, deterministic, ~3s
+python -m pytest tests -q   # 411 tests, offline, deterministic, ~3s
 python examples/run_pipeline.py   # full EURUSD + USDJPY report, <1s
 ```
 
@@ -94,7 +94,7 @@ atm = atm_dns_strike(147.5, 0.5, 0.0050, 0.0525, 0.1075, "forward_pa")
 │   ├── hedging.py           # delta-hedge sim with foreign-interest accounting
 │   ├── comparison.py        # cross-model harness + convergence tables
 │   └── data/                # synthetic.py (seeded), live.py (guarded ECB)
-├── tests/                   # 340 offline deterministic tests
+├── tests/                   # 359 offline deterministic tests
 │   └── golden/              # generate_golden.py + golden_vectors.json
 ├── examples/run_pipeline.py # EURUSD + USDJPY end-to-end report
 └── docs/                    # METHODOLOGY / VALIDATION / DESK_GUIDE

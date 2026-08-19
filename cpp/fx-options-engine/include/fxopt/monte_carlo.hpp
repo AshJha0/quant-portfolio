@@ -40,6 +40,13 @@ struct MCResult {
 /// n_paths >= 2 (throws otherwise).  n_paths is rounded up to even when
 /// antithetic.  The RNG is std::mt19937_64 with the given seed;
 /// single-threaded and fully deterministic.
+///
+/// The standard error is computed from *independent* samples: the pair
+/// averages when antithetic (mirrored draws are perfectly dependent), the
+/// raw payoffs otherwise.  Fewer than two independent samples (i.e.
+/// n_paths <= 2 with antithetic on) leaves the SE unestimable; it is
+/// reported as 0.0 and the CI collapses to the point estimate, so use at
+/// least 4 antithetic paths if the error bar matters.
 MCResult mc_price(double S, double K, double T, double r_d, double r_f,
                   double sigma, OptionType type,
                   std::int64_t n_paths = 100'000, std::uint64_t seed = 0,

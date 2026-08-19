@@ -2,7 +2,7 @@
 
 Documentation-contract items 3 (how validated) and 4 (where it fails). All
 numbers below are produced by `python examples/run_pipeline.py` (seeded,
-deterministic) or by the test suite (`python -m pytest tests -q`, 184 tests,
+deterministic) or by the test suite (`python -m pytest tests -q`, 322 tests,
 offline, ~35 s). Nothing is hand-typed from memory.
 
 ---
@@ -163,9 +163,67 @@ variance within 5% (`test_evaluation.py`).
   unmodelled, it mildly fattens residual tails (A10).
 - **Constant series** (broken feed, hard peg at fix precision): all fitters
   raise `ValueError("returns are constant...")` — degenerate likelihood,
-  refuse rather than return garbage.
+  refuse rather than return garbage. The degeneracy test is **relative**
+  (`std <= 1e-12 · max|r|`), not `std == 0`: a series pinned at a constant
+  *non-zero* value has `std ≈ 1e-19` from floating-point cancellation, not
+  exactly zero. Before this was tightened, `fit_garch(np.full(500, 4e-4))`
+  returned `α = 0.617, β = 0.383` — pure optimiser noise on a flat
+  likelihood — with a confident-looking log-likelihood of 3202. Now it
+  raises. (`test_edge_cases_extra.py::TestConstantAndZeroInputs`.)
+- **GARCH-X plumbing errors fail loudly.** Passing `x` without `gamma_x`
+  previously produced an **all-NaN variance path silently**
+  (`np.asarray(None, dtype=float)` → `nan`); both half-specified
+  combinations, non-finite `gamma_x` and negative event dummies now raise
+  with actionable messages
+  (`test_edge_cases_extra.py::TestGarchXMisuse`).
+- **Quote direction is part of the model.** On a simulated USD/EM series
+  the asymmetry sits on *positive* pair returns (EM selling off): realised
+  next-day |r| after up-moves 0.0051 vs 0.0044 after down-moves. GJR-t
+  (which constrains γ ≥ 0 onto *negative* returns) pins γ at the boundary
+  in the quoted direction and recovers γ ≈ 0.07–0.13 on the inverted pair,
+  with a higher likelihood. EGARCH-t is exactly quote-direction agnostic:
+  inversion flips γ's sign and leaves α, β, ω and the log-likelihood
+  unchanged to 1e-5. On jumpy EM data this only shows up under the **t**
+  likelihood — the Gaussian MLE chases the jumps and obscures it.
+  (`test_edge_cases_extra.py::TestQuoteDirectionAsymmetry`.)
+- **Managed-band regimes (CNY-style, 1.5 bp daily vol)**: all three fitters
+  converge with positive finite variance paths; 500-day forecasts stay
+  under 2% annualised; and estimates are scale-invariant across four orders
+  of magnitude (α, β to 1e-4; ω by the exact 1e8 factor; log-likelihood by
+  the exact `−n·log(1e4)` change-of-variables constant).
+- **Vol-triangle degeneracies**: ρ = −1 with equal leg vols cancels exactly
+  to 0 (the negative-variance guard returns 0, never NaN); ρ = +1 adds
+  linearly; the sign product flips addition to subtraction; a zero leg vol
+  returns the other leg.
+- **VRP through a depeg**: a short-variance program marked at peg-regime
+  implied vol (5%) is profitable day to day but the 20-day window spanning
+  a −15% gap alone produces a P&L worse than −0.5 vega units and turns the
+  whole program net negative — the convexity of the variance payoff working
+  against the seller (`test_edge_cases_extra.py::TestVolPremiumInCrisis`).
+- **Tiny/empty samples**: empty series, single observations and
+  out-of-range forward-RV windows all raise; two observations is the
+  documented floor for `close_to_close_vol` / `ewma_variance` and works.
 - **NaN policy**: reject, never impute — any NaN/inf in returns, prices or
   regressors raises with an explicit message (tested across all fitters).
+- **NaN *parameters*, not just NaN data** (`test_filter_param_guards.py`).
+  The filters previously guarded their coefficients with inequalities only
+  (`if omega <= 0 or alpha < 0 or beta < 0 or beta >= 1: raise`). Every
+  comparison against NaN is False, so a NaN ω/α/β passed the guard and
+  `garch_filter` returned an all-NaN variance path — which then became a NaN
+  forecast and a NaN VaR with no exception anywhere. All three filters
+  (`garch_filter`, `gjr_filter`, `egarch_filter`) now route their scalars
+  through `fx_vol._mle.validate_filter_params` first, and reject a
+  non-finite or non-positive `initial_variance` seed; `egarch_filter` also
+  checks `abs_moment`. The same class of hole is closed on
+  `ewma_variance(init=…)`, `cross_volatility(vol1, vol2, corr)`,
+  `variance_swap_pnl(vega_notional=…)` and the `periods_per_year`
+  annualisation factor of `close_to_close_vol`, `rolling_close_vol`,
+  `parkinson_vol`, `garman_klass_vol` and `realized_vol_forward` (a negative
+  factor previously produced `sqrt` of a negative variance → NaN vol).
+- **Annualisation-convention identity**: `close_to_close_vol` at 260 vs 252
+  periods per year differs by exactly √(260/252) = 1.01575 — asserted to
+  1e-12, so a desk comparing realized vol to an implied quote on the other
+  convention knows the 1.6%-of-vol offset is convention, not signal.
 - **Short series**: fewer than 100 observations raises; the floor is a
   keyword (`min_obs`) so a desk can consciously override.
 - **Numerical limits**: transformed parameters are clipped at ±30 (expit/exp

@@ -64,19 +64,34 @@ def _phi(x: float) -> float:
 
 
 def _validate(S: float, K: float, T: float, sigma: float | None = None) -> None:
-    if S <= 0.0:
-        raise ValueError(f"spot must be positive, got S={S}")
-    if K <= 0.0:
-        raise ValueError(f"strike must be positive, got K={K}")
-    if T <= 0.0:
-        raise ValueError(f"time to expiry must be positive, got T={T}")
-    if sigma is not None and sigma <= 0.0:
-        raise ValueError(f"volatility must be positive, got sigma={sigma}")
+    """Validate pricer inputs.
+
+    Note the explicit ``isfinite`` guards: a bare ``S <= 0`` test is
+    silently passed by ``NaN`` (every comparison with NaN is False), so a
+    NaN spot or vol would otherwise propagate into a NaN premium — a
+    price that looks like a number to every downstream consumer.
+    """
+    if not math.isfinite(S) or S <= 0.0:
+        raise ValueError(f"spot must be finite and positive, got S={S}")
+    if not math.isfinite(K) or K <= 0.0:
+        raise ValueError(f"strike must be finite and positive, got K={K}")
+    if not math.isfinite(T) or T <= 0.0:
+        raise ValueError(f"time to expiry must be finite and positive, got T={T}")
+    if sigma is not None and (not math.isfinite(sigma) or sigma <= 0.0):
+        raise ValueError(f"volatility must be finite and positive, got sigma={sigma}")
 
 
 def _check_cp(cp: int) -> None:
     if cp not in (+1, -1):
         raise ValueError(f"cp must be +1 (call) or -1 (put), got {cp}")
+
+
+def _check_rates(r_d: float, r_f: float) -> None:
+    """Reject non-finite rates (NaN slips past every inequality test)."""
+    if not math.isfinite(r_d):
+        raise ValueError(f"domestic (quote-ccy) rate must be finite, got r_d={r_d}")
+    if not math.isfinite(r_f):
+        raise ValueError(f"foreign (base-ccy) rate must be finite, got r_f={r_f}")
 
 
 def _d1_d2(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float):
@@ -87,6 +102,11 @@ def _d1_d2(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float):
 
 def gk_forward(S: float, T: float, r_d: float, r_f: float) -> float:
     """FX forward ``F = S * exp((r_d - r_f) T)`` (covered interest parity)."""
+    _check_rates(r_d, r_f)
+    if not math.isfinite(S) or S <= 0.0:
+        raise ValueError(f"spot must be finite and positive, got S={S}")
+    if not math.isfinite(T):
+        raise ValueError(f"T must be finite, got T={T}")
     return S * math.exp((r_d - r_f) * T)
 
 
@@ -118,6 +138,7 @@ def gk_price(
     """
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     d1, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     return cp * (
         S * math.exp(-r_f * T) * ndtr(cp * d1) - K * math.exp(-r_d * T) * ndtr(cp * d2)
@@ -145,6 +166,7 @@ def gk_delta(
     """
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     if convention not in DELTA_CONVENTIONS:
         raise ValueError(
             f"unknown delta convention {convention!r}; expected one of {DELTA_CONVENTIONS}"
@@ -163,6 +185,7 @@ def gk_delta(
 def gk_vega(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float) -> float:
     """dV/dsigma (per unit vol, i.e. per 1.00 = 100 vol points)."""
     _validate(S, K, T, sigma)
+    _check_rates(r_d, r_f)
     d1, _ = _d1_d2(S, K, T, r_d, r_f, sigma)
     return S * math.exp(-r_f * T) * math.sqrt(T) * _phi(d1)
 
@@ -170,6 +193,7 @@ def gk_vega(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float) 
 def gk_gamma(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float) -> float:
     """d2V/dS2 (spot gamma)."""
     _validate(S, K, T, sigma)
+    _check_rates(r_d, r_f)
     d1, _ = _d1_d2(S, K, T, r_d, r_f, sigma)
     return math.exp(-r_f * T) * _phi(d1) / (S * sigma * math.sqrt(T))
 
@@ -178,6 +202,7 @@ def gk_vanna(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float)
     """d2V/dS dsigma.  Positive for high strikes (d2 < 0), negative for
     strikes well below the forward (d2 > 0)."""
     _validate(S, K, T, sigma)
+    _check_rates(r_d, r_f)
     d1, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     return -math.exp(-r_f * T) * _phi(d1) * d2 / sigma
 
@@ -185,6 +210,7 @@ def gk_vanna(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float)
 def gk_volga(S: float, K: float, T: float, r_d: float, r_f: float, sigma: float) -> float:
     """d2V/dsigma2 (vomma).  Positive away from ATM, ~0 at the DNS strike."""
     _validate(S, K, T, sigma)
+    _check_rates(r_d, r_f)
     d1, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     return gk_vega(S, K, T, r_d, r_f, sigma) * d1 * d2 / sigma
 
@@ -195,6 +221,7 @@ def gk_rho_domestic(
     """dV/dr_d.  Positive for calls (forward rises with r_d)."""
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     _, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     return cp * K * T * math.exp(-r_d * T) * ndtr(cp * d2)
 
@@ -205,6 +232,7 @@ def gk_rho_foreign(
     """dV/dr_f.  Negative for calls (forward falls with r_f)."""
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     d1, _ = _d1_d2(S, K, T, r_d, r_f, sigma)
     return -cp * S * T * math.exp(-r_f * T) * ndtr(cp * d1)
 
@@ -215,6 +243,7 @@ def gk_theta(
     """Calendar theta dV/dt = -dV/dT, per year."""
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     d1, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     term = -S * math.exp(-r_f * T) * _phi(d1) * sigma / (2.0 * math.sqrt(T))
     term += cp * (
@@ -235,6 +264,7 @@ def gk_digital(
     """
     _validate(S, K, T, sigma)
     _check_cp(cp)
+    _check_rates(r_d, r_f)
     _, d2 = _d1_d2(S, K, T, r_d, r_f, sigma)
     return math.exp(-r_d * T) * ndtr(cp * d2)
 

@@ -5,10 +5,10 @@ areas**, each built **twice** (equity and FX as fully separate, self-contained
 projects), in **Python** throughout and with **C++ and Rust performance
 twins** for the four highest-value pricing/risk engines — plus **3 standalone
 foundations projects** that build and validate core techniques from scratch,
-single-asset, single-language. 31 sub-projects in total, every one with its
-own tests, and documentation answering *why this model*, *what assumptions
-it makes*, *how it was validated*, *where it fails*, and *how a real desk
-would use it*.
+single-asset, single-language. 31 sub-projects and **5,913 passing tests** in
+total, every one with its own tests, and documentation answering *why this
+model*, *what assumptions it makes*, *how it was validated*, *where it
+fails*, and *how a real desk would use it*.
 
 ```
 quant-portfolio/
@@ -137,18 +137,48 @@ done
 for d in rust/*/; do (cd "$d" && RUSTFLAGS="-D warnings" cargo test --release); done
 ```
 
-## Engine status
+## Test coverage
+
+**5,913 tests across the portfolio**, all passing, all independently
+reproduced from a clean build (not taken from build logs):
+
+| Area | Projects | Tests |
+|---|---|---|
+| Python — equity | 10 | 2,075 |
+| Python — FX | 10 | 2,704 |
+| Python — foundations | 3 | 462 |
+| C++ engines | 4 | 307 |
+| Rust engines | 4 | 365 |
+| **Total** | **31** | **5,913** |
+
+Per-engine, showing the three-language cross-validation:
 
 | Engine | Python ref | C++ | Rust |
 |---|---|---|---|
-| Equity options/Greeks | `python/equity/01-options-pricing` | 48/48 tests | 71 tests (45 integration + 26 doctests) |
-| FX options/Greeks | `python/fx/01-options-pricing` | 79/79 tests | 88 tests (69 integration + 19 doctests) |
-| Equity VaR/ES | `python/equity/03-var-es-engine` | 77/77 tests | 86 tests (77 integration + 9 doctests) |
-| FX VaR/ES | `python/fx/03-var-es-engine` | 72/72 tests | 84 tests |
+| Equity options/Greeks | `python/equity/01-options-pricing` — 288 | 55 | 85 |
+| FX options/Greeks | `python/fx/01-options-pricing` — 411 | 86 | 96 |
+| Equity VaR/ES | `python/equity/03-var-es-engine` — 264 | 83 | 91 |
+| FX VaR/ES | `python/fx/03-var-es-engine` — 365 | 83 | 93 |
 
-All counts independently reproduced (`ctest` / `cargo test`) from a clean
-build, not taken from build logs — see each engine's `docs/VALIDATION.md`
-for the exact commands and tolerances.
+See each project's `docs/VALIDATION.md` for the exact commands, tolerances,
+and the documented failure modes each suite pins.
+
+### On input validation
+
+A portfolio-wide hardening pass found the same defect class in project after
+project, in all three languages: **a guard written as `if x <= 0: raise`
+silently accepts NaN**, because every comparison with NaN is false. The
+consequences were not cosmetic — a NaN spot reaching a pricer returned a NaN
+"price"; a NaN covariance reaching a VaR aggregator returned, in the Rust and
+C++ VaR engines, a portfolio VaR of *exactly zero* (because `max(NaN, 0.0)`
+propagates the non-NaN operand), which is more dangerous than a NaN because it
+is a plausible number for a hedged book; and a NaN in a P&L feed caused
+VaR-exception counters to record zero breaches, so a broken model passed its
+Kupiec and Basel traffic-light backtests green.
+
+Every public entry point across the portfolio now validates with explicit
+finiteness checks, and each project's `docs/VALIDATION.md` documents its
+validation contract and what the pre-fix symptom was.
 
 ## Data
 

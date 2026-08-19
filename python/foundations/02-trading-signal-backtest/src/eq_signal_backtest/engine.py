@@ -34,7 +34,132 @@ import pandas as pd
 
 TRADING_DAYS = 252
 
-__all__ = ["TRADING_DAYS", "BacktestResult", "run_backtest", "performance_stats"]
+__all__ = [
+    "TRADING_DAYS",
+    "BacktestResult",
+    "strategy_returns",
+    "run_backtest",
+    "performance_stats",
+]
+
+
+def _validate_inputs(prices: pd.Series, signal: pd.Series, cost_bps: float) -> None:
+    """Reject inputs that would silently produce a wrong equity curve.
+
+    Every check here corresponds to a way this engine used to fail
+    *quietly* -- returning a plausible-looking number rather than an
+    error. See ``docs/VALIDATION.md`` for the reproductions.
+
+    Parameters
+    ----------
+    prices : pandas.Series
+        Candidate close prices.
+    signal : pandas.Series
+        Candidate 0/1 signal.
+    cost_bps : float
+        Candidate one-way transaction cost in basis points.
+
+    Raises
+    ------
+    ValueError
+        If ``prices`` is empty; contains a non-finite (``NaN``/``inf``) or
+        non-positive value; if ``signal`` does not share the exact index
+        of ``prices``; if ``signal`` contains anything other than 0.0/1.0;
+        or if ``cost_bps`` is negative or not finite.
+    """
+    if len(prices) == 0:
+        raise ValueError("run_backtest: prices is empty")
+    price_values = prices.to_numpy(dtype=float)
+    if not np.isfinite(price_values).all():
+        n_bad = int((~np.isfinite(price_values)).sum())
+        raise ValueError(
+            f"run_backtest: prices contains {n_bad} non-finite value(s) "
+            "(NaN/inf). A NaN close is a missing observation, and "
+            "pct_change().fillna(0) would silently record it as a FLAT DAY "
+            "-- swallowing the whole move across the gap. Forward-fill, drop "
+            "or otherwise resolve the gap deliberately before backtesting."
+        )
+    if (price_values <= 0).any():
+        raise ValueError(
+            "run_backtest: prices must be strictly positive; a zero price "
+            "makes the next day's pct_change infinite and poisons the entire "
+            "equity curve from that point on"
+        )
+    if not signal.index.equals(prices.index):
+        raise ValueError(
+            "run_backtest: signal must share the exact index of prices "
+            f"(got {len(signal)} signal rows for {len(prices)} prices). "
+            "Misaligned indices would be silently outer-joined into NaN "
+            "positions rather than raising."
+        )
+    signal_values = signal.to_numpy(dtype=float)
+    if not np.isfinite(signal_values).all():
+        raise ValueError(
+            "run_backtest: signal contains non-finite values; it must be "
+            "strictly 0.0 (flat) or 1.0 (long) on every date"
+        )
+    if not np.isin(signal_values, (0.0, 1.0)).all():
+        raise ValueError(
+            "run_backtest: this engine is long/flat only -- signal values "
+            "must be exactly 0.0 or 1.0 (no shorts, no fractional sizing). "
+            f"Got values in [{signal_values.min()}, {signal_values.max()}]."
+        )
+    if not np.isfinite(cost_bps) or cost_bps < 0:
+        raise ValueError(
+            f"run_backtest: cost_bps must be finite and >= 0, got {cost_bps!r} "
+            "(a negative transaction cost would pay the strategy to trade)"
+        )
+
+
+def strategy_returns(
+    prices: pd.Series, signal: pd.Series, cost_bps: float
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Daily net strategy returns, executed position, and trade flags.
+
+    The single source of truth for how a signal becomes a P&L stream:
+    one-day execution lag, cost charged on every position change, daily
+    return floored at ``-1.0``. :func:`run_backtest` and
+    :func:`eq_signal_backtest.split.walk_forward_backtest` both go through
+    here, so the walk-forward path cannot silently drift away from the
+    single-shot path (they were separate copies of this arithmetic before,
+    which is exactly the kind of duplication that turns into a
+    discrepancy no one notices).
+
+    Parameters
+    ----------
+    prices : pandas.Series
+        Close prices, strictly positive, finite, ascending date index.
+    signal : pandas.Series
+        0.0/1.0 signal on the same index as ``prices``.
+    cost_bps : float
+        One-way transaction cost in basis points; a round trip costs
+        twice this.
+
+    Returns
+    -------
+    (strat_rets, position, trades) : tuple of pandas.Series
+        ``strat_rets`` -- daily strategy returns net of costs, floored at
+        ``-1.0``; ``position`` -- the executed 0/1 position after the
+        one-day lag; ``trades`` -- 1.0 on days the position changed, else
+        0.0 (its sum is the trade count).
+
+    Raises
+    ------
+    ValueError
+        See :func:`_validate_inputs`.
+    """
+    _validate_inputs(prices, signal, cost_bps)
+    rets = prices.pct_change().fillna(0.0)
+
+    # Execution lag: today's position is yesterday's signal. This is the
+    # single line that prevents look-ahead bias.
+    position = signal.shift(1).fillna(0.0)
+
+    trades = position.diff().abs().fillna(0.0)
+    costs = trades * cost_bps / 10_000
+
+    strat_rets = (position * rets - costs).clip(lower=-1.0)
+    return strat_rets, position, trades
 
 
 @dataclass
@@ -78,24 +203,35 @@ def run_backtest(
         (or any other 0.0/1.0-valued series on the same index).
     cost_bps : float, default 5.0
         One-way transaction cost in basis points of traded value, charged
-        on every day the position changes. 5 bps is a reasonable all-in
-        figure (commission + half spread + slippage) for a liquid
-        large-cap ETF; it is optimistic for anything less liquid.
+        on every day the position changes -- so a round trip (in and back
+        out) costs ``2 * cost_bps``. 5 bps is a reasonable all-in figure
+        (commission + half spread + slippage) for a liquid large-cap ETF;
+        it is optimistic for anything less liquid. Must be finite and
+        non-negative.
 
     Returns
     -------
     BacktestResult
+
+    Raises
+    ------
+    ValueError
+        If ``prices`` is empty, non-finite or non-positive; if ``signal``
+        is misaligned with ``prices`` or is not strictly 0.0/1.0; or if
+        ``cost_bps`` is negative or non-finite. See :func:`_validate_inputs`.
+
+    Notes
+    -----
+    The daily strategy return is floored at ``-1.0`` (a total wipe-out).
+    This only ever binds for absurd cost assumptions -- a one-way cost
+    above 100% of traded value -- but without it the equity curve goes
+    *negative* and then flips sign on every subsequent day, producing a
+    nonsensical "recovery" (and a finite-looking CAGR). With the floor,
+    an unaffordable cost assumption wipes the equity curve to zero and it
+    stays there, which is what actually happens to a trader.
     """
+    strat_rets, position, trades = strategy_returns(prices, signal, cost_bps)
     rets = prices.pct_change().fillna(0.0)
-
-    # Execution lag: today's position is yesterday's signal. This is the
-    # single line that prevents look-ahead bias.
-    position = signal.shift(1).fillna(0.0)
-
-    trades = position.diff().abs().fillna(0.0)
-    costs = trades * cost_bps / 10_000
-
-    strat_rets = position * rets - costs
     equity = (1 + strat_rets).cumprod()
     benchmark = (1 + rets).cumprod()
 
@@ -128,7 +264,9 @@ def performance_stats(returns: pd.Series, equity: pd.Series) -> dict[str, float]
         ``cagr`` : float
             Compound annual growth rate, annualised over
             ``len(returns) / TRADING_DAYS`` years. ``NaN`` if the sample
-            spans zero years (empty series).
+            spans zero years (empty series). Exactly ``-1.0`` (a total
+            loss) if the equity curve reaches zero, which the engine's
+            ``-1.0`` daily return floor makes an absorbing state.
         ``volatility`` : float
             Annualised standard deviation of daily returns
             (``ddof=1``, scaled by ``sqrt(TRADING_DAYS)``).

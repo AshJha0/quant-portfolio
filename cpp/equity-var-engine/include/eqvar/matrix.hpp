@@ -90,8 +90,19 @@ struct CholeskyResult {
 /// moments are unchanged to within Monte Carlo noise.  Mirrors
 /// eq_var.monte_carlo_var.safe_cholesky.
 ///
-/// Throws std::invalid_argument if `cov` is not square/symmetric, and
-/// std::runtime_error if the matrix is badly indefinite even after jitter.
+/// The escalation is capped at 1e-6 * mean(diag): a matrix that needs more
+/// than that is materially indefinite (a genuine negative eigenvalue, not
+/// rounding), and factoring it would silently simulate a *different*
+/// covariance from the one supplied, understating or overstating risk with
+/// no diagnostic.  Such matrices throw std::runtime_error; repair them
+/// upstream (eigenvalue clipping / nearest-PSD projection) instead.
+/// `jitter_added` reports the perturbation actually used so callers can log
+/// or alert on it.
+///
+/// Throws std::invalid_argument if `cov` is not square, not symmetric, or
+/// contains NaN/Inf entries, and std::runtime_error if the matrix is badly
+/// indefinite even after the jitter escalation (a genuinely unusable
+/// covariance, e.g. a correlation > 1 typo, rather than a bad argument).
 [[nodiscard]] CholeskyResult cholesky(const Matrix& cov, double jitter = 1e-10,
                                       int max_tries = 12);
 

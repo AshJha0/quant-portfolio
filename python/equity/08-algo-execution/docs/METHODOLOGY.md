@@ -182,3 +182,21 @@ Each assumption states *what breaks if violated*.
    (our own trading does not move the close). Reasonable below ~5% ADV
    participation; the capacity curve is exactly the tool that flags when
    this assumption dies.
+9. **All inputs are finite and in-domain.** Quantities, volumes, prices and
+   tapes must be finite; every entry point now enforces this. What breaks if
+   violated: `NaN` is *not* caught by ordinary range checks (`NaN < 0` is
+   `False`), so a single NaN child order used to flow straight through the
+   simulator into NaN fills, a NaN average price and a NaN TCA report — a
+   silently wrong number is far worse on an execution desk than a loud
+   failure. Real feeds produce NaNs routinely (missing prints, halted
+   symbols, stale volume forecasts), so this is an operational assumption,
+   not a theoretical one.
+10. **Floating-point representability of the AC schedule.** The closed form
+    `sinh(κ(T−t))/sinh(κT)` is mathematically fine for any κ but the naive
+    evaluation overflows for `κT ≳ 710`. What breaks if violated: the whole
+    trajectory returns `NaN` and the schedule silently disappears. The ratio
+    is now computed in exponential form (VALIDATION.md §7), so the model is
+    valid over the entire representable range of risk aversions rather than
+    the sub-1e12 λ band. Practically, λ beyond ~1e6 is already the
+    "liquidate immediately" corner — the fix makes that corner return the
+    right answer instead of no answer.

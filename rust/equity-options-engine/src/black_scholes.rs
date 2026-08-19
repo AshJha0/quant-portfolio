@@ -16,7 +16,8 @@
 //!   `exp(-rT) * max(±(F - K), 0)` with `F = S exp((r - q) T)`.
 //! * `k == 0`     -> call is a forward on the stock, `S exp(-qT)`; put is 0.
 //! * `s == 0`     -> call is 0; put is `K exp(-rT)`.
-//! * Negative `s`, `k`, `t` or `sigma` (or NaN) return
+//! * Negative `s`, `k`, `t` or `sigma`, and any non-finite input
+//!   (NaN or infinity, including in `r`/`q`), return
 //!   [`PricingError::InvalidInput`]. Negative `r` and `q` are fully
 //!   supported.
 
@@ -102,8 +103,15 @@ impl std::error::Error for PricingError {}
 
 /// Validate common Black-Scholes inputs.
 ///
-/// Requires `s >= 0`, `k >= 0`, `t >= 0`, `sigma >= 0` and no NaNs;
-/// negative `r`/`q` are allowed (and therefore not checked here).
+/// Requires `s >= 0`, `k >= 0`, `t >= 0`, `sigma >= 0`, all finite (no
+/// NaN, no infinity); negative `r`/`q` are allowed (and therefore not
+/// checked here — see [`validate_rates`] for the finiteness check on
+/// rates).
+///
+/// Note: the Python reference rejects NaN but lets `inf` flow through
+/// (producing `inf`/NaN outputs); this crate is strictly tighter and
+/// rejects all non-finite inputs so that garbage can never propagate
+/// silently into a risk number.
 ///
 /// # Errors
 ///
@@ -116,6 +124,7 @@ impl std::error::Error for PricingError {}
 /// assert!(validate_inputs(100.0, 100.0, 1.0, 0.2).is_ok());
 /// assert!(validate_inputs(100.0, 100.0, -1.0, 0.2).is_err());
 /// assert!(validate_inputs(f64::NAN, 100.0, 1.0, 0.2).is_err());
+/// assert!(validate_inputs(f64::INFINITY, 100.0, 1.0, 0.2).is_err());
 /// ```
 pub fn validate_inputs(s: f64, k: f64, t: f64, sigma: f64) -> Result<(), PricingError> {
     for (name, value) in [("S", s), ("K", k), ("T", t), ("sigma", sigma)] {
@@ -124,9 +133,43 @@ pub fn validate_inputs(s: f64, k: f64, t: f64, sigma: f64) -> Result<(), Pricing
                 "{name} must not be NaN"
             )));
         }
+        if value.is_infinite() {
+            return Err(PricingError::InvalidInput(format!(
+                "{name} must be finite, got {value}"
+            )));
+        }
         if value < 0.0 {
             return Err(PricingError::InvalidInput(format!(
                 "{name} must be >= 0, got {value}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Validate that the rate inputs `r` and `q` are finite.
+///
+/// Negative rates are fully supported (and common post-2015), so only
+/// NaN and infinity are rejected. Called by every public pricing entry
+/// point so that a NaN rate can never silently produce a NaN price.
+///
+/// # Errors
+///
+/// [`PricingError::InvalidInput`] naming the offending parameter.
+///
+/// # Examples
+///
+/// ```
+/// use eq_options_engine::black_scholes::validate_rates;
+/// assert!(validate_rates(-0.01, 0.02).is_ok());
+/// assert!(validate_rates(f64::NAN, 0.0).is_err());
+/// assert!(validate_rates(0.05, f64::INFINITY).is_err());
+/// ```
+pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
+    for (name, value) in [("r", r), ("q", q)] {
+        if !value.is_finite() {
+            return Err(PricingError::InvalidInput(format!(
+                "{name} must be finite, got {value}"
             )));
         }
     }
@@ -345,6 +388,7 @@ pub fn d1_d2(
     q: f64,
 ) -> Result<(f64, f64), PricingError> {
     validate_inputs(s, k, t, sigma)?;
+    validate_rates(r, q)?;
     if s <= 0.0 || k <= 0.0 || t <= 0.0 || sigma <= 0.0 {
         return Err(PricingError::InvalidInput(format!(
             "d1/d2 require strictly positive S, K, T and sigma; \
@@ -372,7 +416,7 @@ pub fn d1_d2(
 /// # Errors
 ///
 /// [`PricingError::InvalidInput`] if `s`, `k`, `t` or `sigma` is negative
-/// or NaN.
+/// or non-finite, or if `r` or `q` is NaN/infinite.
 ///
 /// # Examples
 ///
@@ -395,6 +439,7 @@ pub fn bs_price(
     option_type: OptionType,
 ) -> Result<f64, PricingError> {
     validate_inputs(s, k, t, sigma)?;
+    validate_rates(r, q)?;
     if t == 0.0 {
         return Ok(intrinsic_value(s, k, option_type));
     }

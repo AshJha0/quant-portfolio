@@ -60,6 +60,12 @@ def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
         for c in CONF_LEVELS
     }
 
+    backtest = {
+        (c, method): rm.kupiec_pof_test(rets, var_table[c][method], c)
+        for c in CONF_LEVELS
+        for method in ("historical", "parametric")
+    }
+
     dd = rm.max_drawdown(prices)
     sharpe = rm.sharpe_ratio(rets)
     sortino = rm.sortino_ratio(rets)
@@ -108,6 +114,30 @@ def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
     es_gap99 = var_table[0.99]["expected_shortfall"] - var_table[0.99]["historical"]
     add(f"ES - historical VaR gap at 99%: {es_gap99:+.2%} (ES >= VaR always)")
 
+    add("\n--- VaR backtest (Kupiec proportion-of-failures, in-sample) ---")
+    for c in CONF_LEVELS:
+        for method, label in (("historical", "Historical"), ("parametric", "Gaussian  ")):
+            b = backtest[(c, method)]
+            add(
+                f"  {c:.0%} {label}: {b['n_exceptions']:>4} exceptions in "
+                f"{b['n_observations']} days (expected {b['expected_exceptions']:.1f}), "
+                f"LR = {b['lr_statistic']:.2f}, p = {b['p_value']:.3f} -> "
+                + ("REJECT" if b["reject_at_5pct"] else "not rejected")
+            )
+    add(
+        "The Gaussian estimator failing at 99% while the historical one "
+        "passes is this project's central claim, made falsifiable: the "
+        "normal assumption does not merely look wrong on a QQ plot, it "
+        "breaks the coverage the confidence level promises."
+    )
+    add(
+        "Caveat: this is an IN-SAMPLE backtest -- both estimators are fitted "
+        "on the same window they are scored on, so passing only confirms the "
+        "quantile arithmetic, not forecasting power. A real control runs "
+        "out-of-sample on a rolling forecast and adds an independence "
+        "(clustering) test -- see docs/DESK_GUIDE.md."
+    )
+
     add("\n--- Drawdown ---")
     add(f"Maximum drawdown : {dd['max_drawdown']:.2%}")
     add(f"Peak date        : {pd.Timestamp(dd['peak_date']).date()}")
@@ -139,6 +169,7 @@ def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
         "vol": vol,
         "dd": dd,
         "var_table": var_table,
+        "backtest": backtest,
     }
     return "\n".join(lines), context
 

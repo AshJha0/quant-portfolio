@@ -58,6 +58,7 @@ from .risk import (
     pnl_approximation_table,
     portfolio_risk,
     portfolio_value,
+    ZeroNetValueWarning,
 )
 from .scenarios import (
     HISTORICAL_SCENARIOS,
@@ -119,6 +120,7 @@ __all__ = [
     "Position",
     "portfolio_value",
     "portfolio_risk",
+    "ZeroNetValueWarning",
     # keyrates
     "DEFAULT_KEY_TENORS",
     "triangle_weights",

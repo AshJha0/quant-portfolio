@@ -157,10 +157,14 @@ pub fn validate_returns(
             "returns is missing required factor columns: {missing:?}"
         )));
     }
-    if returns.data.as_slice().iter().any(|v| v.is_nan()) {
+    // `is_finite`, not `!is_nan`: an infinite return is just as corrosive
+    // as a NaN (it produces an infinite covariance and an infinite VaR, and
+    // `inf - inf` in the demeaning step is a NaN), and an `is_nan`-only
+    // screen waves it straight through.
+    if returns.data.as_slice().iter().any(|v| !v.is_finite()) {
         return Err(FxVarError::invalid(
-            "returns contains NaNs; clean or drop them explicitly before calling the \
-             engine (NaN policy: refuse, never impute silently)",
+            "returns contains NaN or infinite values; clean or drop them explicitly \
+             before calling the engine (NaN policy: refuse, never impute silently)",
         ));
     }
     Ok(())
@@ -175,6 +179,13 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
     let k = returns.n_factors();
     if n < 2 {
         return Err(FxVarError::invalid("sample_cov: need at least 2 observations"));
+    }
+    if !returns.data.all_finite() {
+        return Err(FxVarError::invalid(
+            "sample_cov: returns contain NaN or infinite values; a single bad \
+             observation would otherwise turn the whole covariance - and every VaR \
+             derived from it - into a silent NaN",
+        ));
     }
     let mut mean = vec![0.0; k];
     for i in 0..n {
@@ -217,7 +228,7 @@ pub fn ewma_cov(returns: &ReturnsMatrix, lam: f64) -> Result<FactorCov> {
     if !(lam > 0.0 && lam < 1.0) {
         return Err(FxVarError::invalid(format!("lambda must be in (0, 1), got {lam}")));
     }
-    let mut out = sample_cov(returns)?;
+    let mut out = sample_cov(returns)?; // also rejects non-finite input
     let n = returns.n_obs();
     let k = returns.n_factors();
     for i in 0..n {
@@ -258,6 +269,11 @@ pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatili
     let k = returns.n_factors();
     if n < 2 {
         return Err(FxVarError::invalid("ewma_volatility: need at least 2 observations"));
+    }
+    if !returns.data.all_finite() {
+        return Err(FxVarError::invalid(
+            "ewma_volatility: returns contain NaN or infinite values",
+        ));
     }
     let mut mean = vec![0.0; k];
     for i in 0..n {

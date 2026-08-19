@@ -32,7 +32,7 @@ synthetic RORO panel (known truth: states, transition matrix, per-state
 ```bash
 cd python/fx/10-regime-switching
 pip install -e .[dev]          # or just have numpy/scipy/pandas/sklearn/hmmlearn
-pytest -q                      # 125 tests, offline, ~35s
+pytest -q                      # 158 tests, offline, ~40s
 python examples/run_pipeline.py   # full pipeline, ~50s, all numbers below
 ```
 

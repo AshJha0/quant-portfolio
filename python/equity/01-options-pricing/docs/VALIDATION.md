@@ -5,7 +5,7 @@ engine was validated** (analytic benchmarks, convergence studies,
 cross-model consistency) and **where it fails** (failure modes with
 reproducible numbers). Every number below is produced by the committed
 code — `PYTHONPATH=src python examples/run_pipeline.py` regenerates the
-tables; `python -m pytest tests -q` (262 tests, offline, seeded) enforces
+tables; `python -m pytest tests -q` (288 tests, offline, seeded) enforces
 them permanently.
 
 Reference contract unless stated otherwise:
@@ -182,6 +182,16 @@ represent (it produces a smooth exercise boundary instead).
   σ∈[1e-6,8], r∈[−5%,10%] are finite (tested); `RuntimeWarning`s are
   promoted to errors in the pytest config so silent overflow cannot creep
   in.
+- **NaN/Inf inputs:** `validate_inputs` rejects NaN *and* ±Inf in S, K,
+  T, σ with a `ValueError` (`"must be finite"`), for every engine —
+  garbage market data fails loudly at the boundary instead of propagating
+  Inf/NaN into the book (tested in `test_properties.py`).
+- **Shape invariants (property tests):** homogeneity of degree 1 in
+  (S, K) to 1e-12 relative; call/put monotone in σ; call delta monotone
+  in S; butterfly convexity in K for BS, Black-76 and the American tree;
+  American ≥ max(European, intrinsic); implied vol monotone in price;
+  the T→0 and σ→0 limits are continuous (no jump at the documented
+  boundary values).
 - **Negative rates:** fully supported and cross-model consistent
   (tested), including the r<0 American-call early-exercise premium that
   surprises people trained on r≥0.

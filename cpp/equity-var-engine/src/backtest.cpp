@@ -1,5 +1,6 @@
 #include "eqvar/backtest.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -23,8 +24,19 @@ std::vector<std::uint8_t> exceptions_from_pnl(std::span<const double> pnl,
             "exceptions_from_pnl: var must be scalar (size 1) or one entry per day");
     }
     for (double v : var) {
+        // NaN fails every comparison, so an unchecked NaN VaR would silently
+        // record *zero* exceptions and make a broken model look perfect.
+        if (!std::isfinite(v)) {
+            throw std::invalid_argument("exceptions_from_pnl: VaR must be finite");
+        }
         if (v < 0.0) {
             throw std::invalid_argument("exceptions_from_pnl: VaR must be a positive loss");
+        }
+    }
+    for (double v : pnl) {
+        if (!std::isfinite(v)) {
+            throw std::invalid_argument(
+                "exceptions_from_pnl: pnl contains NaN or infinite values");
         }
     }
     std::vector<std::uint8_t> ex(pnl.size());

@@ -58,7 +58,18 @@ and the golden-vector suite proves the C++ engine gives the same answer.
   read-only market data.
 * **Errors are exceptions.** `std::invalid_argument` mirrors the Python
   `ValueError` contract exactly (same conditions, similar messages), so the
-  two implementations reject the same inputs.
+  two implementations reject the same inputs. Validation is *total* at the
+  API boundary: every entry point rejects NaN/Inf in any argument —
+  including the two rates and the observed premium — because a single
+  non-finite quote propagating through a book-level aggregate is far more
+  expensive to find than an exception in the service log.
+* **Statistics are only reported when they exist.** The Monte Carlo
+  standard error is estimated from *independent* samples (pair averages
+  under antithetic sampling). With fewer than two of them the SE is
+  reported as 0 rather than the `0/0` NaN the naive formula produces, and
+  the header documents the minimum path count for a meaningful error bar.
+  Likewise the finite-difference Greeks refuse a `T` or `sigma` too small
+  for their own central down-bump instead of pricing at a negative input.
 * **Own normal-distribution kernel.** `N(x)` via `std::erfc` (full double
   precision in both tails); `N^{-1}(p)` via Acklam's rational approximation
   polished with two Halley steps (~1e-15). No dependence on any math

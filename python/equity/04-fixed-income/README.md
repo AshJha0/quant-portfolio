@@ -39,7 +39,7 @@ Yield Curve Construction → Bootstrapping → Bond Pricing → Duration
 ```bash
 cd python/equity/04-fixed-income
 pip install -e .[dev]
-python -m pytest tests -q      # 235 tests, ~1s, offline
+python -m pytest tests -q      # 342 tests, ~1s, offline
 python examples/run_pipeline.py
 ```
 

@@ -37,6 +37,7 @@ double crr_price(double S, double K, double T, double r, double sigma,
                  double q, OptionType type, ExerciseStyle exercise,
                  int n_steps) {
     validate_inputs(S, K, T, sigma);
+    validate_rates(r, q);
     if (n_steps < 1) {
         std::ostringstream oss;
         oss << "n_steps must be >= 1, got " << n_steps;

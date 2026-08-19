@@ -46,7 +46,7 @@ risk.py          per-regime stats · transition P&L attribution (exact
 ```bash
 cd python/equity/10-regime-switching
 pip install -e .[dev]          # numpy/scipy/pandas + sklearn/hmmlearn for cross-checks
-pytest -q                      # 130 tests, ~20 s, offline, seeded
+pytest -q                      # 152 tests, ~20 s, offline, seeded
 python examples/run_pipeline.py   # full pipeline, ~55 s
 ```
 
@@ -82,7 +82,7 @@ Model validation highlights (see `docs/VALIDATION.md` for tables):
 ```
 src/eq_regime/          features · pca · gmm · hmm · detection · strategy ·
                         backtest · risk · data/synthetic (seeded generators)
-tests/                  130 offline tests incl. causality mutation tests,
+tests/                  152 offline tests incl. causality mutation tests,
                         EM monotonicity, sklearn/hmmlearn cross-checks,
                         null-data guard, edge cases
 examples/run_pipeline.py  reproduces every number above

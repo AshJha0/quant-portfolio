@@ -5,7 +5,7 @@ implementation was validated** (analytic benchmarks, convergence
 studies, cross-model consistency) and **where it fails** (known failure
 modes, with reproducible numbers). Every number below is produced by
 the committed code — `python examples/run_pipeline.py` regenerates the
-report and figures under `output/`; `pytest -q` (44 tests, offline,
+report and figures under `output/`; `pytest -q` (200 tests, offline,
 seeded) enforces the numeric claims permanently.
 
 Reference contract unless stated otherwise: `S=100, K=105, r=3%,
@@ -40,12 +40,12 @@ From `python examples/run_pipeline.py` (seed=7, antithetic variates):
 
 | paths | MC price | std error | abs error | SE·√n |
 |---:|---:|---:|---:|---:|
-| 1,000 | 6.8840 | 0.3947 | 0.5835 | 12.48 |
-| 10,000 | 7.4104 | 0.1337 | 0.0571 | 13.37 |
-| 100,000 | 7.4314 | 0.0425 | 0.0361 | 13.45 |
-| 1,000,000 | 7.4517 | 0.0135 | 0.0158 | 13.49 |
+| 1,000 | 6.8840 | 0.3294 | 0.5835 | 10.42 |
+| 10,000 | 7.4104 | 0.1113 | 0.0571 | 11.13 |
+| 100,000 | 7.4314 | 0.0354 | 0.0361 | 11.21 |
+| 1,000,000 | 7.4517 | 0.0112 | 0.0158 | 11.25 |
 
-`SE·√n` is constant at **≈13.2** across three orders of magnitude of
+`SE·√n` is constant at **≈11.0** across three orders of magnitude of
 sample size — the **O(n^{-1/2})** law, measured directly rather than
 assumed. The fitted error-decay exponent over the full range is
 **0.523** against a theoretical **0.5**. Every row's absolute error is
@@ -64,10 +64,46 @@ to corrupt both in exactly the same way to still agree at every sample
 size — vanishingly unlikely to happen by coincidence across four
 independent trials of increasing precision.
 
+### 2.1 The antithetic standard error, and a bug that hid inside it
+
 Antithetic variates measurably reduce variance at equal path count
-(`tests/test_monte_carlo.py::test_mc_antithetic_reduces_variance`,
-200k paths, same seed): the antithetic standard error is strictly lower
-than the plain (non-antithetic) one, at no extra RNG draws.
+(`tests/test_monte_carlo.py::test_mc_antithetic_reduces_variance` and
+`tests/test_extremes.py::test_mc_antithetic_beats_plain_at_the_same_path_count`):
+the antithetic standard error is strictly lower than the plain one, at no
+extra RNG draws.
+
+Getting that standard error *right* is subtler than it looks, and an
+earlier version of this module got it wrong. With antithetic sampling the
+estimator averages `2m` payoffs, but those payoffs come in mirrored pairs
+that are **negatively correlated by construction** — that correlation is
+the entire mechanism of the variance reduction. Computing the error as
+`std(all 2m payoffs, ddof=1) / sqrt(2m)` treats them as `2m` independent
+observations and therefore misstates the answer.
+
+Measured directly: on the ATM reference contract at 20,000 paths, the
+empirical standard deviation of the price estimate across 400 independent
+seeds is **0.0750**. The old (naive) formula reported **0.0997** — a 33%
+overstatement. The correct calculation treats the `m` *pair averages* as
+the independent units, `std(pair means, ddof=1) / sqrt(m)`, and reports
+**0.0743**, which matches the empirical dispersion.
+
+The direction of the error is worth noting: the old formula was
+*conservative*, reporting a wider error bar than the estimator deserved.
+That made it invisible in testing — every "within 3 standard errors"
+check still passed, just against a bar 33% looser than advertised. A test
+suite that certifies accuracy in units of its own standard error is only
+as good as that standard error, so this is pinned directly now:
+`test_mc_antithetic_standard_error_is_honest_about_its_own_accuracy`
+runs 60 independent seeds and requires the mean reported standard error
+to match the empirical dispersion of the estimates to within 20%.
+
+The same reasoning gives the degenerate cases their answers. With
+antithetic sampling, `n_paths=2` (or 3) is **one** independent unit, not
+two: `ddof=1` is undefined, so the standard error is `NaN` rather than a
+falsely tight number (the old code reported a standard error numerically
+equal to the price). And `n_paths=1` with antithetic pairing requested is
+now a `ValueError` — it used to compute `1 // 2 == 0` draws and return
+`(nan, nan)` after a stack of NumPy RuntimeWarnings.
 
 ## 3. Analytic Greeks vs finite differences
 
@@ -121,6 +157,50 @@ carry much information about sigma. This is expected numerical
 behaviour, not a bug, and is tested explicitly rather than swept under
 the main round-trip test:
 `tests/test_edge_cases.py::test_deep_itm_low_vol_round_trip_is_imprecise`.
+
+### 4.1 The two no-arbitrage boundaries: where implied vol stops existing
+
+The deep-ITM case above is the mild version of a general property:
+**implied volatility is only as well-determined as vega is large**, and
+vega vanishes at both ends of the no-arbitrage interval. The two
+endpoints are now tested directly (`tests/test_extremes.py`):
+
+- **A call quoted at exactly its discounted intrinsic value**
+  (`C = max(S − K·e^{−rT}, 0)`) has a true implied vol of **zero**. The
+  routine returns **0.0092** — a sigma that reprices the option to within
+  `1e-8` of the quote while being nowhere near the right answer, because
+  every volatility below about 5% produces a price difference smaller
+  than a cent (vega at the returned point is < 1.0 per unit of vol).
+  The returned number satisfies the contract the function promises (a
+  *price* residual below `tol`) and is meaningless as a *volatility*.
+  Pinned by `test_implied_vol_at_exactly_intrinsic_is_ill_conditioned_not_wrong`,
+  which asserts both halves: it reprices, and it is wrong.
+- **A call quoted at exactly spot** (`C = S`, the upper bound) has a true
+  implied vol of **infinity**. The routine returns a large finite number
+  (~13 on the reference contract) — whatever value first matches to
+  tolerance. Pinned by
+  `test_implied_vol_at_exactly_the_upper_bound_returns_a_large_finite_number`.
+- **One tick outside either bound** is arbitrage, not an extreme
+  volatility, and raises `ValueError`
+  (`test_implied_vol_just_below_intrinsic_is_rejected`).
+
+The desk consequence, and the reason this is documented rather than
+"fixed": there is no algorithm that recovers information the price does
+not contain. A surface fit must **drop** strikes whose vega is below a
+sensible floor (a few cents per vol point) rather than fitting them with
+a wide error bar, because the implied vol there is not a noisy
+measurement of a real quantity — it is an arbitrary solution to an
+underdetermined equation.
+
+### 4.2 Volatilities above 500%
+
+The bisection fallback used a fixed `[1e-6, 5.0]` bracket. Any quote
+implying a volatility above 500% — a distressed single name, a crypto
+option, a very short-dated event straddle — would have been silently
+pinned near the bracket edge whenever Newton also failed. The bracket now
+**doubles upward** until it spans the target price, and a 900%-vol quote
+round-trips to `rel=1e-5`
+(`test_implied_vol_inverts_a_quote_above_five_hundred_percent`).
 
 ## 5. The volatility-smile experiment (where the model breaks, demonstrated)
 
@@ -262,4 +342,48 @@ numbers.
   offending values (tested, including a message-content check:
   `test_error_message_is_informative`). `implied_volatility` raises
   `ValueError` on prices outside the model-free no-arbitrage bounds
-  rather than returning a meaningless vol (tested).
+  rather than returning a meaningless vol (tested), and now also on
+  `T<=0` (at expiry the price is intrinsic value and carries no
+  volatility information at all).
+- **Very long maturities (T = 10, 30, 50 years):** nothing overflows,
+  put-call parity still holds to `1e-9`, and the Greeks stay finite and
+  correctly signed. At `T=30, r=3%` the strike discounts to 40.66% of
+  its face value, so a struck-at-spot call is worth more than 60% of the
+  stock: most of a long-dated call's value is deferred payment, not
+  optionality. Gamma falls monotonically with maturity — a 30-year option
+  is nearly a static delta hedge. Monte Carlo still matches the closed
+  form within 3 standard errors at `T=30`. All tested in
+  `tests/test_extremes.py`.
+- **Huge and tiny strikes (K from 1e-10 to 1e10):** `log(S/K)` spans
+  ±23 and `d1` runs past ±100, where `math.erf` saturates cleanly at ±1.
+  Prices stay finite and inside their no-arbitrage bounds; put-call
+  parity holds to `rel=1e-12` (checked *relatively*, since at `K=1e10`
+  both sides are ~1e10 and an absolute tolerance would be vacuous). The
+  economic limits come out exactly right: `K→0` makes the call the stock
+  itself and the put worthless; `K→∞` makes the put the discounted strike
+  minus the stock and the call worthless.
+- **Discount-factor overflow:** `exp(-r·T)` exceeds double precision for
+  sufficiently negative `r·T` (e.g. `r=-10%` × `T=100y` is fine, but
+  `r=-1000%` × `T=100y` is not). This used to surface as a bare
+  `OverflowError: math range error` naming neither the input nor the
+  reason; it is now a `ValueError` that names both
+  (`test_discount_factor_overflow_raises_informative_value_error`).
+- **Saturation at extreme total volatility:** at a total volatility
+  `sigma·sqrt(T)` of 8, a put's remaining gap to its upper bound is of
+  order 1e-100, which is below double-precision resolution next to a
+  40-point price — so the computed put *equals* the discounted strike
+  exactly. The bound is respected (`<=`, not `<`); code must not assume
+  strict inequality there
+  (`test_put_bound_is_tight_and_saturates_at_extreme_vol`).
+- **Put-side no-arbitrage bounds** `max(K·e^{−rT} − S, 0) <= P <=
+  K·e^{−rT}` are checked across a 108-contract grid spanning three orders
+  of magnitude of moneyness, negative/zero/positive rates and maturities
+  from 4 days to 30 years, at three volatility levels each
+  (`test_put_bounds_hold_across_a_wide_grid`).
+- **Monte Carlo input contract matches the closed form's.** The
+  simulation would run happily at `sigma=0` or `T=0` (the terminal price
+  is then deterministic), but the closed form refuses those inputs on
+  purpose so the caller takes the intrinsic-value limit explicitly.
+  Accepting them in one implementation and not the other would mean the
+  two are no longer testing the same contract, so `mc_call_price` now
+  validates identically (`test_mc_input_validation_mirrors_the_closed_form`).

@@ -11,6 +11,16 @@
 
 use crate::{FxVarError, Result};
 
+/// Largest diagonal jitter [`Matrix::cholesky_with_jitter`] will apply, as
+/// a multiple of the mean diagonal (mean variance).
+///
+/// `1e-6` is a part per million of the average variance: enough to repair a
+/// covariance that is only singular or indefinite through accumulated
+/// floating-point noise (a pegged currency, two currencies pegged to the
+/// same anchor, an EWMA update that lost the last bit of positivity), and
+/// far too small to paper over a genuinely indefinite matrix.
+pub const MAX_RELATIVE_JITTER: f64 = 1e-6;
+
 /// Dense `rows x cols` matrix of `f64`, row-major storage.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Matrix {
@@ -94,9 +104,40 @@ impl Matrix {
         &self.data
     }
 
+    /// True when every entry is finite (no NaN, no infinity).
+    ///
+    /// Used as an explicit pre-check by the factorisations: a NaN entry
+    /// passes every ordering test (`NaN <= 0.0` is false, `|NaN| > atol`
+    /// is false), so without this check a NaN covariance would factorise
+    /// into an all-NaN `L` and hand a silent NaN VaR to the desk.
+    pub fn all_finite(&self) -> bool {
+        self.data.iter().all(|v| v.is_finite())
+    }
+
+    /// Largest absolute entry (0 for an empty matrix) — the natural scale
+    /// for relative tolerances.
+    pub fn max_abs(&self) -> f64 {
+        self.data.iter().fold(0.0_f64, |m, v| m.max(v.abs()))
+    }
+
     /// True when the matrix is square and symmetric to `atol`.
+    ///
+    /// A matrix containing NaN is **not** symmetric by this definition:
+    /// `|NaN - NaN| > atol` is false, so a naive comparison would call it
+    /// symmetric. The NaN check is explicit.
+    ///
+    /// `atol` is an **absolute** tolerance, which is the right thing for
+    /// the caller who knows the units. Callers that receive a matrix of
+    /// unknown scale (e.g. a P&L covariance for a multi-billion book,
+    /// whose entries are ~1e12) should scale it — see
+    /// [`Matrix::is_symmetric_rel`] — because a fixed absolute tolerance
+    /// spuriously rejects a perfectly symmetric large-notional matrix
+    /// whose two triangles were accumulated in different orders.
     pub fn is_symmetric(&self, atol: f64) -> bool {
         if self.rows != self.cols {
+            return false;
+        }
+        if !self.all_finite() {
             return false;
         }
         for i in 0..self.rows {
@@ -107,6 +148,19 @@ impl Matrix {
             }
         }
         true
+    }
+
+    /// Symmetry check with a **scale-relative** tolerance:
+    /// `|a_ij - a_ji| <= rtol * max(1, max|a|)`.
+    ///
+    /// This is what covariance inputs of unknown magnitude want. With an
+    /// absolute tolerance, a genuinely symmetric covariance expressed in
+    /// currency units (entries ~1e12 for a multi-billion book) is rejected
+    /// purely because its two triangles were summed in different orders and
+    /// differ in the last ulp — roughly 1e-4 in absolute terms at that
+    /// scale, i.e. eight orders of magnitude above a 1e-12 absolute gate.
+    pub fn is_symmetric_rel(&self, rtol: f64) -> bool {
+        self.is_symmetric(rtol * self.max_abs().max(1.0))
     }
 
     /// Matrix-vector product `A x`.
@@ -144,6 +198,13 @@ impl Matrix {
         if self.rows != self.cols {
             return Err(FxVarError::invalid("cholesky requires a square matrix"));
         }
+        if !self.all_finite() {
+            return Err(FxVarError::invalid(
+                "cholesky requires finite entries; the matrix contains NaN or \
+                 infinity (a NaN covariance factorises into a NaN factor and \
+                 then into a silent NaN VaR)",
+            ));
+        }
         let n = self.rows;
         let mut l = Matrix::zeros(n, n);
         for i in 0..n {
@@ -153,7 +214,10 @@ impl Matrix {
                     s -= l.get(i, k) * l.get(j, k);
                 }
                 if i == j {
-                    if s <= 0.0 {
+                    // `!(s > 0.0)` rather than `s <= 0.0`: the latter is
+                    // FALSE for a NaN pivot, which would then propagate
+                    // through `sqrt` into an all-NaN factor.
+                    if !(s > 0.0) {
                         return Err(FxVarError::numerical(
                             "matrix is not positive definite (Cholesky pivot <= 0)",
                         ));
@@ -176,6 +240,18 @@ impl Matrix {
     /// diagnostic when jitter was needed (pegged-currency covariance
     /// blocks are the expected trigger).
     ///
+    /// # Materiality cap
+    ///
+    /// The escalation stops once the jitter would exceed
+    /// [`MAX_RELATIVE_JITTER`] times the mean diagonal, and returns
+    /// [`FxVarError::Numerical`] naming that cap. Without it the ladder
+    /// `1e-12 * 10^k` reaches a *multiple* of the mean variance for the
+    /// `max_tries` values used in this crate — at which point the factor
+    /// no longer describes the caller's covariance and the simulated risk
+    /// is materially inflated with no diagnostic. Singular-but-PSD
+    /// covariances (pegged currencies, perfectly correlated factors) are
+    /// repaired at the first rung and are unaffected.
+    ///
     /// # Errors
     /// [`FxVarError::Invalid`] for non-square/non-symmetric input;
     /// [`FxVarError::Numerical`] if factorisation still fails at maximum
@@ -184,7 +260,16 @@ impl Matrix {
         if self.rows != self.cols {
             return Err(FxVarError::invalid("cov must be a square matrix"));
         }
-        if !self.is_symmetric(1e-12) {
+        if !self.all_finite() {
+            return Err(FxVarError::invalid(
+                "cov must have finite entries (NaN or infinity present)",
+            ));
+        }
+        // SCALE-RELATIVE symmetry gate. The old absolute 1e-12 rejected a
+        // perfectly symmetric covariance expressed in currency units — a
+        // multi-billion book's P&L covariance has entries ~1e12, where the
+        // last ulp is ~1e-4, eight orders of magnitude above 1e-12.
+        if !self.is_symmetric_rel(1e-12) {
             return Err(FxVarError::invalid("cov must be symmetric"));
         }
         if let Ok(l) = self.cholesky() {
@@ -199,8 +284,12 @@ impl Matrix {
         if base <= 0.0 {
             base = 1.0;
         }
+        let cap = MAX_RELATIVE_JITTER * base;
         let mut jitter = 1e-12 * base;
         for _ in 0..max_tries {
+            if jitter > cap {
+                break;
+            }
             let mut a = self.clone();
             for i in 0..n {
                 a.set(i, i, a.get(i, i) + jitter);
@@ -210,9 +299,13 @@ impl Matrix {
             }
             jitter *= 10.0;
         }
-        Err(FxVarError::numerical(
-            "covariance matrix is not factorisable even with jitter",
-        ))
+        Err(FxVarError::numerical(format!(
+            "covariance matrix is not factorisable with a diagonal jitter of up to \
+             {MAX_RELATIVE_JITTER:e} x mean(diag) = {cap:e}; it is materially \
+             indefinite, not merely singular. A larger jitter would inflate the \
+             simulated risk with no diagnostic - fix the covariance instead \
+             (shrinkage, nearest-PSD projection, or dropping the offending factor)."
+        )))
     }
 
     /// Moore-Penrose-free symmetric linear solve `A x = b` by Cholesky with

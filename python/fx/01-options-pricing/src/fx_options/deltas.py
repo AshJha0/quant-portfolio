@@ -115,12 +115,18 @@ def spot_to_forward_delta(delta_spot: float, T: float, r_f: float) -> float:
     Holds for both plain and premium-adjusted forms.
     """
     validate_inputs(1.0, 1.0, T, 0.0, r_f, 0.0)
+    if not math.isfinite(delta_spot):
+        raise ValueError(f"delta_spot must be finite, got {delta_spot!r}")
     return delta_spot * math.exp(r_f * T)
 
 
 def forward_to_spot_delta(delta_forward: float, T: float, r_f: float) -> float:
     """Convert forward delta to spot delta: ``delta_s = delta_f e^{-r_f T}``."""
     validate_inputs(1.0, 1.0, T, 0.0, r_f, 0.0)
+    if not math.isfinite(delta_forward):
+        raise ValueError(
+            f"delta_forward must be finite, got {delta_forward!r}"
+        )
     return delta_forward * math.exp(-r_f * T)
 
 
@@ -132,8 +138,11 @@ def premium_adjust_spot_delta(delta_spot: float, price: float,
     converted to base currency, which is itself a long-base position the
     hedger already holds and therefore does not need to buy.
     """
-    if S <= 0 or not math.isfinite(S):
-        raise ValueError(f"Spot S must be positive and finite, got {S}")
+    if not math.isfinite(S) or S <= 0:
+        raise ValueError(f"Spot S must be positive and finite, got {S!r}")
+    for name, value in (("delta_spot", delta_spot), ("price", price)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value!r}")
     return delta_spot - price / S
 
 

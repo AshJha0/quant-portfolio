@@ -3,7 +3,7 @@
 How the C++ engine was validated: analytic identities, cross-language
 golden constants against the Python reference, statistical/ordering
 tests, benchmarks, and known failure modes. Every claim below is enforced
-by the test suite (`ctest --test-dir build`): **72 tests / 282 assertions,
+by the test suite (`ctest --test-dir build`): **83 tests / ~340 assertions,
 all passing under `-Wall -Wextra -Werror`**.
 
 ---
@@ -131,7 +131,44 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
 - **F5 — KDE-based VaR standard error** degrades in extremely discrete
   P&L distributions (near-degenerate books): the bandwidth floor guards
   the division but the SE is then conservative. MC convergence tests use
-  well-spread books.
+  well-spread books; samples below 10 scenarios are refused outright.
+- **F6 — Scale sensitivity of the numerical guards (fixed).** Two guards
+  used *absolute* thresholds and misfired on legitimate large-notional
+  books:
+  * `portfolio_sigma` rejected a hedged multi-billion book against a
+    rank-deficient (single-driver) covariance, because the quadratic form
+    rounds to ~1e-16 of |w|² |Σ| — larger than the old −1e-12 threshold.
+    The tolerance is now relative to |w|² max|Σ| and the rounding is
+    clamped to sigma = 0 (regression test
+    `PortfolioSigma.HedgedBillionDollarBookAgainstRankDeficientCovariance`).
+  * `robust_cholesky` rejected covariances quoted in large units as
+    "not symmetric" — they are symmetric only to ~1e-16 *relative*. The
+    symmetry test is now scaled by max|entry|
+    (`Cholesky.SymmetryToleranceIsRelativeToScale`).
+  Genuinely indefinite matrices are still rejected at any scale
+  (`Cholesky.IndefiniteCovarianceStillFails`).
+- **F7 — Non-finite inputs are refused, never propagated.** NaN/Inf in a
+  covariance previously produced either a NaN sigma or a misleading
+  "not factorisable" `runtime_error` after the full jitter ladder; both
+  paths now throw `std::invalid_argument` immediately, as does a
+  non-finite exposure and a `simple_to_log` move of −100% or worse (which
+  would inject −inf into every position of a stress report).
+
+## 4b. Edge cases (documented **and** tested)
+
+| edge case | behaviour |
+| --- | --- |
+| empty book | `std::invalid_argument` — a VaR on nothing is a configuration error, not a zero |
+| single-currency book in its own base ccy | exactly zero exposure and zero P&L under any shock; the same balance in a USD-base book is fully exposed (`Book.SingleCurrencyBookInNonUsdBaseHasNoFxRisk`) |
+| identity triangulation | `EURJPY = EURUSD · USDJPY`, `pair · inverse = 1`, and forward triangulation consistent with CIP through the USD pivot, all to 1e-12 (`Market.TriangulationIdentitiesAreExact`) |
+| 1- and 2-scenario samples | `empirical_var`/`empirical_es` collapse onto the observed loss for every alpha with no out-of-bounds read; `var_standard_error` refuses fewer than 10 scenarios |
+| empty P&L sample, mismatched or all-zero weights, NaN P&L | throw |
+| boundary alpha (1e-6, 1 − 1e-12) | accepted and usable; 0, 1, negative and NaN rejected; horizon ≤ 0 and NaN rejected |
+| rank-deficient / pegged Σ | jitter path engages, records `jittered`/`warning`; hedged books report sigma = 0 rather than being rejected |
+| indefinite Σ | `robust_cholesky` throws `std::runtime_error`; `portfolio_sigma` throws `std::invalid_argument` |
+| NaN/Inf in Σ or exposures | `std::invalid_argument` at the boundary |
+| pure base-ccy cash book | factorless: VaR = ES = 0 by construction |
+| degenerate Cornish-Fisher grid (`n_grid < 3`) | throws |
 
 ## 5. Benchmarks
 

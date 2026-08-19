@@ -95,6 +95,12 @@ inputs — perfectly correlated factors, zero-variance assets — or slight
 asymmetry-rounding indefiniteness) add `jitter * mean(diag)` to the diagonal
 and retry, escalating x10 up to 12 times. Starting at 1e-10 of the average
 variance, the perturbation is orders of magnitude below Monte Carlo noise.
+The escalation is **capped** at `matrix::MAX_RELATIVE_JITTER` (1e-6 of the
+average variance): beyond that the "repair" is no longer a rounding-noise
+correction but a material change to the matrix, and returning a factor of a
+*different* covariance with no diagnostic is worse than failing. A matrix
+that needs more is a data problem (stale correlation block, mis-signed
+loading, skipped shrinkage), and the error message says so.
 *Alternative*: eigenvalue clipping is more surgical but needs an
 eigendecomposition (O(n^3) with a big constant, plus code we'd have to write
 dependency-free); jitter achieves the same effect for PSD-but-singular

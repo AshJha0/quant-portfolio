@@ -144,13 +144,27 @@ reference; A9–A10 are C++-specific.
   flags, Cholesky jitter) are returned in result structs and the caller
   decides — the information is identical, the channel is explicit.
 - **Refuse, never impute.** NaNs in histories, invalid alphas, empty
-  books, non-monotone Cornish–Fisher moments and unfactorisable
+  books, non-monotone Cornish–Fisher moments, non-finite covariances or
+  exposures, impossible (≤ −100%) stress moves and unfactorisable
   covariances all throw with actionable messages. An empty book throws
   rather than returning 0: a VaR of zero on a misloaded book is the most
   expensive silent bug in risk IT.
 - **Jitter escalation on Cholesky** (1e-12·mean(diag), ×10 up to 8
   tries), because singular covariances are *routine* FX inputs (two ccys
-  pegged to the same anchor), with the jitter reported to the caller.
+  pegged to the same anchor), with the jitter reported to the caller. The
+  ladder tops out at 1e-5·mean(diag), which is the point of the bound: a
+  matrix with a negative eigenvalue larger than that is not "numerically
+  singular PSD" but genuinely indefinite, and factoring it would simulate
+  a covariance the caller never supplied.
+- **Numerical guards are scale-relative.** Tolerances on the PSD test
+  (`portfolio_sigma`) and the Cholesky symmetry test are measured against
+  the size of the numbers involved (|w|² max|Σ| and max|Σ| respectively),
+  not as absolute constants. FX books are quoted in wildly different
+  units — a JPY notional variance and an EUR log-return variance differ by
+  ~10 orders of magnitude — so an absolute threshold is guaranteed to be
+  simultaneously too tight for one book and too loose for another. Both
+  guards previously misfired on legitimate large-notional books; see
+  VALIDATION.md F6.
 - **Special functions from scratch** (Acklam+Halley inverse normal,
   incomplete gamma/beta): keeps the engine dependency-free and makes
   accuracy a *tested property* (< 1e-9 on the inverse CDF; scipy-matched

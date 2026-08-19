@@ -31,7 +31,7 @@ the library and validated in `tests/`.
 ```bash
 cmake -S . -B build
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # 72 tests, 282 assertions
+ctest --test-dir build --output-on-failure   # 83 tests, ~340 assertions
 ./build/fxvar_bench
 ```
 
@@ -111,7 +111,7 @@ fx-var-engine/
 ├── CMakeLists.txt
 ├── include/fxvar/         # public headers (one per pipeline stage)
 ├── src/                   # implementations
-├── tests/                 # GoogleTest suite (72 tests / 282 assertions)
+├── tests/                 # GoogleTest suite (83 tests / ~340 assertions)
 ├── bench/bench_main.cpp   # 250x50 book timings
 └── docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```

@@ -215,6 +215,9 @@ def cross_volatility(
     float
         The cross volatility, same unit as the inputs.
     """
+    for name, value in (("vol1", vol1), ("vol2", vol2), ("corr", corr)):
+        if not np.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value!r}")
     if vol1 < 0 or vol2 < 0:
         raise ValueError("volatilities must be non-negative")
     if not -1.0 <= corr <= 1.0:

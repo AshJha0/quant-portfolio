@@ -28,6 +28,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
+from ._validation import require_finite
 from .fxforward import MarketState
 
 __all__ = [
@@ -79,6 +80,10 @@ class CrossCurrencySwap:
             raise ValueError(
                 f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected"
             )
+        require_finite(notional_base=self.notional_base,
+                       notional_quote=self.notional_quote,
+                       rate_base=self.rate_base, rate_quote=self.rate_quote,
+                       maturity=self.maturity)
         if self.maturity <= 0.0:
             raise ValueError(f"maturity must be > 0, got {self.maturity}")
         if self.frequency < 1 or int(self.frequency) != self.frequency:

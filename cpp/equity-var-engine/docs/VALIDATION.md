@@ -1,7 +1,7 @@
 # Validation
 
 How the engine was validated, and where it fails. Everything below is
-enforced by the test suite (`ctest`: 9 suites, 77 tests, ~320 assertions,
+enforced by the test suite (`ctest`: 9 suites, 83 tests, ~370 assertions,
 < 1 s, offline, deterministic) — validation claims that are not unit-tested
 do not appear here.
 
@@ -98,7 +98,14 @@ the test header so model validation can re-run it at will.
 | fewer than 50 obs for historical methods | throws (`kMinHistObs` guard, boundary exact) |
 | alpha ≪ 1/n | estimate pinned to the worst observed loss (type-7 interpolation inside the first gap), never extrapolated |
 | Cornish-Fisher outside monotonicity domain (e.g. S = −0.5, K = 0) | throws with an explanation; `check_domain=false` override exists for diagnostics only |
-| badly indefinite "covariance" | `std::runtime_error` after the jitter ladder — corrupt input is fatal by design |
+| badly indefinite "covariance" | `std::runtime_error` — either the jitter ladder fails outright, or the jitter needed exceeds 1e-6 x mean(diag), i.e. it would silently simulate a *different* covariance; corrupt input is fatal by design |
+| rank-deficient (perfectly correlated) Σ | exact parametric sigma `|w1+w2|·vol`, tiny jitter (< 1e-6 of the variances), MC within 3 SE; a perfect hedge of the two legs gives sigma = 0 |
+| indefinite Σ reaching `portfolio_sigma` | `w'Σw < 0` rejected with `std::invalid_argument` rather than square-rooted |
+| NaN / Inf inside Σ or the exposures | rejected by `cholesky`, `portfolio_sigma`, `parametric_var` and `monte_carlo_var` (previously produced a NaN sigma / a misleading "badly indefinite" error) |
+| NaN / Inf VaR or P&L in the backtest | `exceptions_from_pnl` throws — a NaN compares false and would otherwise be counted as "no exception", flattering a broken model |
+| 1-element and 2-element samples | `quantile_linear`/`mean` degrade gracefully (no out-of-bounds interpolation); `stdev`, `skewness`, `excess_kurtosis`, `ewma_volatility`, `historical_var`, `expected_shortfall` and the Christoffersen test refuse them explicitly |
+| boundary alpha (1e-4, 1e-3, 0.4999) | finite everywhere, ES ≥ VaR preserved, VaR monotone in alpha |
+| degenerate Cornish-Fisher grid (`n_grid = 1`, `z_range = 0`, NaN moments) | throws instead of dividing by zero |
 | non-positive prices in return calc | throws |
 
 ## 6. Known failure modes and limits
@@ -111,19 +118,29 @@ the test header so model validation can re-run it at will.
 2. **sqrt-time scaling understates stressed multi-day risk** (vol
    clustering): known bias, stated where used; do not feed the 10-day number
    to anything that assumes it is conservative.
-3. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
+3. **The Cholesky jitter is a rounding repair, not a model fix.** It is
+   capped at 1e-6 x mean(diag); a covariance that needs more than that has a
+   genuine negative eigenvalue, and "fixing" it would mean simulating a
+   covariance the caller never supplied (in the tested 2x2 example the
+   required jitter is ~10x the variances themselves). The engine throws and
+   asks for an upstream repair (eigenvalue clipping / nearest-PSD
+   projection). `CholeskyResult::jitter_added` is reported so a service can
+   log or alert on any perturbation at all. Note this is *stricter* than the
+   Python reference's `safe_cholesky`, which keeps escalating; the
+   divergence only bites on inputs that are not valid covariance matrices.
+4. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
    fails on |z| ≤ 3.5. The engine throws rather than degrades — this is a
    feature; the Python reference behaves identically.
-4. **RNG streams differ from NumPy's**: cross-language MC agreement is
+5. **RNG streams differ from NumPy's**: cross-language MC agreement is
    statistical (within SE bars), never bitwise — the golden tests therefore
    pin the deterministic estimators and closed forms, and MC is validated
    against closed forms *within* each language.
-5. **EWMA λ is a hyperparameter**, not estimated: λ = 0.94/0.98 are
+6. **EWMA λ is a hyperparameter**, not estimated: λ = 0.94/0.98 are
    RiskMetrics/BRW conventions. A mis-tuned λ shows up as Christoffersen
    clustering failures — that is the monitoring loop, by construction.
-6. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
+7. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
    full revaluation; this engine's scope stops at the delta map.
-7. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
+8. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
    Irrelevant at desk call rates; would matter only inside a per-path loop,
    where it is never called (the MC uses inverse-normal + chi² mixing).
 

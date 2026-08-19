@@ -16,8 +16,8 @@ Edge-case policy (documented + unit tested)
   ``exp(-r T) * max(F - K, 0)`` with ``F = S exp((r - q) T)``.
 * ``K == 0``   -> call is a forward on the stock, ``S exp(-q T)``; put is 0.
 * ``S == 0``   -> call is 0; put is ``K exp(-r T)``.
-* Negative ``S``, ``K``, ``T`` or ``sigma`` raise ``ValueError``.
-  Negative ``r`` and ``q`` are fully supported.
+* Negative, NaN or infinite ``S``, ``K``, ``T`` or ``sigma`` raise
+  ``ValueError``. Negative ``r`` and ``q`` are fully supported.
 """
 
 from __future__ import annotations
@@ -63,11 +63,12 @@ def validate_inputs(
     Raises
     ------
     ValueError
-        If any of the constraints above is violated or an input is NaN.
+        If any of the constraints above is violated or an input is NaN
+        or infinite.
     """
     for name, value in (("S", S), ("K", K), ("T", T), ("sigma", sigma)):
-        if math.isnan(value):
-            raise ValueError(f"{name} must not be NaN, got {value!r}")
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value!r}")
         if value < 0.0:
             raise ValueError(f"{name} must be >= 0, got {value!r}")
     if option_type not in ("call", "put"):
@@ -280,8 +281,8 @@ def implied_vol(
         or if any underlying input is invalid.
     """
     validate_inputs(S, K, T, 0.0, option_type)
-    if math.isnan(price):
-        raise ValueError("price must not be NaN")
+    if not math.isfinite(price):
+        raise ValueError(f"price must be finite, got {price!r}")
     if T <= 0.0:
         raise ValueError("implied_vol requires T > 0 (option already expired)")
     if S <= 0.0 or K <= 0.0:

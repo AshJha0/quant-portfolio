@@ -38,8 +38,12 @@ fn make_tail(pnl: &[f64], alpha: f64, weights: Option<&[f64]>) -> Result<Tail> {
     if pnl.is_empty() {
         return Err(FxVarError::invalid("pnl sample is empty"));
     }
-    if pnl.iter().any(|v| v.is_nan()) {
-        return Err(FxVarError::invalid("pnl sample contains NaNs (NaN policy: refuse)"));
+    // `is_finite`, not `!is_nan`: an infinite scenario P&L makes every
+    // tail average infinite, and an `is_nan`-only screen lets it through.
+    if pnl.iter().any(|v| !v.is_finite()) {
+        return Err(FxVarError::invalid(
+            "pnl sample contains NaN or infinite values (NaN policy: refuse)",
+        ));
     }
     let n = pnl.len();
     let w: Vec<f64> = match weights {
@@ -50,8 +54,13 @@ fn make_tail(pnl: &[f64], alpha: f64, weights: Option<&[f64]>) -> Result<Tail> {
             }
             let mut sum = 0.0;
             for &x in ws {
-                if x < 0.0 {
-                    return Err(FxVarError::invalid("weights must be non-negative and sum > 0"));
+                // `!(x >= 0.0)` rather than `x < 0.0`: the latter is false
+                // for NaN, which would then poison the normalised weights
+                // and the whole tail average.
+                if !(x >= 0.0) || !x.is_finite() {
+                    return Err(FxVarError::invalid(
+                        "weights must be finite, non-negative and sum > 0",
+                    ));
                 }
                 sum += x;
             }
@@ -66,7 +75,9 @@ fn make_tail(pnl: &[f64], alpha: f64, weights: Option<&[f64]>) -> Result<Tail> {
     // first). A stable sort keeps ties in their original (chronological)
     // order, matching the C++/Python reference.
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| pnl[a].partial_cmp(&pnl[b]).expect("NaNs already excluded"));
+    // `total_cmp` is a total order on every f64, so this sort has no panic
+    // path at all (non-finite values are already rejected above).
+    order.sort_by(|&a, &b| pnl[a].total_cmp(&pnl[b]));
 
     let losses: Vec<f64> = order.iter().map(|&i| -pnl[i]).collect();
     let ws: Vec<f64> = order.iter().map(|&i| w[i]).collect();
@@ -133,9 +144,7 @@ pub fn empirical_var_es(pnl: &[f64], alpha: f64, weights: Option<&[f64]>) -> Res
 /// [`FxVarError::Invalid`] if `sigma < 0` or `alpha` is out of range.
 pub fn normal_var(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
-        return Err(FxVarError::invalid("sigma must be >= 0"));
-    }
+    check_sigma_mean(sigma, mean)?;
     Ok(-mean + sigma * inv_norm_cdf(alpha))
 }
 
@@ -145,18 +154,38 @@ pub fn normal_var(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
 /// Same as [`normal_var`].
 pub fn normal_es(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
-        return Err(FxVarError::invalid("sigma must be >= 0"));
-    }
+    check_sigma_mean(sigma, mean)?;
     let z = inv_norm_cdf(alpha);
     Ok(-mean + sigma * norm_pdf(z) / (1.0 - alpha))
 }
 
 fn t_scale(df: f64) -> Result<f64> {
-    if df <= 2.0 {
-        return Err(FxVarError::invalid("Student-t df must be > 2 for finite variance"));
+    // `!(df > 2.0)` rather than `df <= 2.0`: the latter is false for NaN.
+    if !(df > 2.0) || !df.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "Student-t df must be finite and > 2 for finite variance, got {df}"
+        )));
     }
     Ok(((df - 2.0) / df).sqrt())
+}
+
+/// Shared guard for the closed-form tail formulae.
+///
+/// Written with `is_finite` and `!(sigma >= 0.0)` rather than
+/// `sigma < 0.0`: every comparison against NaN is false, so the naive form
+/// accepts a NaN sigma and returns a NaN "VaR" — a risk number that
+/// breaches no limit, because `NaN <= limit` and `NaN > limit` are both
+/// false.
+fn check_sigma_mean(sigma: f64, mean: f64) -> Result<()> {
+    if !(sigma >= 0.0) || !sigma.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "sigma must be finite and >= 0, got {sigma}"
+        )));
+    }
+    if !mean.is_finite() {
+        return Err(FxVarError::invalid(format!("mean must be finite, got {mean}")));
+    }
+    Ok(())
 }
 
 /// Standardised Student-t VaR with true P&L std `sigma` (unit-variance
@@ -167,9 +196,8 @@ fn t_scale(df: f64) -> Result<f64> {
 /// `df <= 2`.
 pub fn student_t_var(sigma: f64, alpha: f64, df: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
-        return Err(FxVarError::invalid("sigma must be >= 0"));
-    }
+    check_sigma_mean(sigma, mean)?;
+    t_scale(df)?;
     let q = student_t_quantile(alpha, df)?;
     Ok(-mean + sigma * t_scale(df)? * q)
 }
@@ -182,9 +210,8 @@ pub fn student_t_var(sigma: f64, alpha: f64, df: f64, mean: f64) -> Result<f64> 
 /// Same as [`student_t_var`].
 pub fn student_t_es(sigma: f64, alpha: f64, df: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
-        return Err(FxVarError::invalid("sigma must be >= 0"));
-    }
+    check_sigma_mean(sigma, mean)?;
+    t_scale(df)?;
     let q = student_t_quantile(alpha, df)?;
     let es_std = student_t_pdf(q, df) * (df + q * q) / ((1.0 - alpha) * (df - 1.0));
     Ok(-mean + sigma * t_scale(df)? * es_std)

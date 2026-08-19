@@ -23,11 +23,23 @@ equals a parallel bump of the pillar zeros, so::
                                          non-additivity of finite differences
                                          under non-linear repricing)
 
-The residual is second-order in the bump size ``h`` (cross-gamma between key
-rates); with ``h = 1bp`` it is far below 1e-6 of PV — measured and documented
-in ``docs/VALIDATION.md``.  Under non-linear interpolation (PCHIP) each
-pillar bump also perturbs neighbouring segments, which is why the match is
-"within tolerance" rather than an algebraic identity.
+The residual has two distinct sources, and their sizes differ by three orders
+of magnitude (measured at ``h = 1bp``, 20y 4% bond, upward curve):
+
+* **Local interpolation** (``loglinear_df``, ``linear_zero``): the only
+  residual is the second-order cross-gamma of the finite differences —
+  **~3-4e-7 relative**, i.e. negligible.
+* **PCHIP** (``pchip_zero``): the monotone cubic is *non-local*, so bumping
+  one pillar also perturbs neighbouring segments and the key-rate bumps no
+  longer compose into an exact parallel bump — **~2e-4 relative**. Still
+  inside any practical risk tolerance, but three orders of magnitude worse,
+  and a reason production risk systems conventionally use a local
+  interpolator.
+
+Both magnitudes are pinned by tests in ``tests/test_properties.py``
+(``test_krdv01s_sum_to_the_parallel_dv01_for_local_schemes``,
+``test_krdv01_additivity_is_looser_under_pchip``) and documented in
+``docs/VALIDATION.md``.
 """
 
 from __future__ import annotations

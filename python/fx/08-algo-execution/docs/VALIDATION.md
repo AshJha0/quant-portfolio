@@ -2,7 +2,7 @@
 
 All numbers below are produced by `python examples/run_pipeline.py`
 (seeded, offline, ~1 s) and locked in by the test suite
-(`python -m pytest tests` — 121 tests). Tolerances follow CONVENTIONS.md:
+(`python -m pytest tests` — 152 tests). Tolerances follow CONVENTIONS.md:
 algebraic identities to 1e-10, model-vs-model to stated tolerance,
 statistical claims over seeded replications with paired seeds.
 
@@ -152,7 +152,42 @@ Each is documented here **and** unit-tested.
    unconstrained QP sells back in thin buckets — handled by the exact
    active-set clamp, verified non-negative with exact parent sum
    (`test_active_set_clamps_thin_buckets_at_high_lambda`).
-10. **Honest-result guards.** Backtest P&L is invariant to future-price
+10. **Non-finite inputs and degenerate parents (review-pass hardening).**
+    Three silent-corruption paths were found and closed:
+    * `session_of_hour(NaN)` returned the *string* `'None'` as a session
+      label, which then failed downstream with a bare `KeyError` from the
+      `PairProfile` mapping lookup. Non-finite hours now raise an
+      informative `ValueError`
+      (`test_session_lookup_rejects_nonfinite_hours`).
+    * `piecewise_ac_schedule(parent_qty=0)` returned an **all-NaN**
+      schedule: the exact-sum renormalisation `n *= X / n.sum()` divides
+      0 by 0. A zero parent is a legitimate no-op (nothing to trade) and
+      now returns a flat zero schedule
+      (`test_zero_parent_quantity_returns_a_flat_zero_schedule`).
+    * NaN/Inf in `eta`, `sigma`, `depths` or `parent_qty` either produced
+      an all-NaN schedule or surfaced as an opaque LAPACK message
+      ("array must not contain infs or NaNs"). All AC entry points and
+      schedulers now validate up front. Rationale: an execution schedule
+      is consumed by an order router — a NaN child quantity is either a
+      rejected order or, worse, an unbounded one.
+
+    The review pass added 31 tests in
+    `tests/test_edge_cases_review.py`: illiquid crosses (USDMXN's Asia
+    session is >100x wider and >100x thinner than EURUSD's overlap; the
+    liquidity-weighted schedule must give Asia far less than its
+    time-share of the clock), session-time effects (the five sessions
+    partition [0,24) with no gap or overlap, boundaries are
+    start-inclusive/end-exclusive, hour-of-day wraps correctly on
+    multi-day grids, the fix window is exactly five 1-minute buckets
+    inside the overlap, the weekend gap takes zero quantity while the
+    rest still sums to the parent), one-sided books (a buy parent never
+    sells back even at extreme risk aversion, a sell parent is the exact
+    mirror of the buy, and the sign-constrained schedule can never beat
+    the unconstrained optimum on its own objective), and degenerate
+    parents (zero quantity, single bucket, zero vol, zero risk aversion
+    collapsing to TWAP).
+
+11. **Honest-result guards.** Backtest P&L is invariant to future-price
     mutation up to the cutoff; feature matrices are bit-identical under
     future-tick mutation; a same-bar "cheat" signal cannot earn its
     contemporaneous return (`test_backtest.py`, `test_features.py`).

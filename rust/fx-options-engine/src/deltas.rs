@@ -129,9 +129,14 @@ pub fn delta(
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] on non-finite or negative `t`.
+/// [`crate::FxError::InvalidInput`] on non-finite or negative `t`, or a
+/// non-finite `delta_spot`. A NaN delta must not be scaled into a NaN
+/// forward delta: `NaN * x` is NaN and every comparison against it is
+/// false, so it would sail through any downstream `|delta| <= limit`
+/// check unnoticed.
 pub fn spot_to_forward_delta(delta_spot: f64, t: f64, r_f: f64) -> FxResult<f64> {
     validate_inputs(1.0, 1.0, t, 0.0, r_f, 0.0)?;
+    require_finite(delta_spot, "delta_spot")?;
     Ok(delta_spot * (r_f * t).exp())
 }
 
@@ -139,9 +144,11 @@ pub fn spot_to_forward_delta(delta_spot: f64, t: f64, r_f: f64) -> FxResult<f64>
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] on non-finite or negative `t`.
+/// [`crate::FxError::InvalidInput`] on non-finite or negative `t`, or a
+/// non-finite `delta_forward` (see [`spot_to_forward_delta`]).
 pub fn forward_to_spot_delta(delta_forward: f64, t: f64, r_f: f64) -> FxResult<f64> {
     validate_inputs(1.0, 1.0, t, 0.0, r_f, 0.0)?;
+    require_finite(delta_forward, "delta_forward")?;
     Ok(delta_forward * (-r_f * t).exp())
 }
 
@@ -153,11 +160,17 @@ pub fn forward_to_spot_delta(delta_forward: f64, t: f64, r_f: f64) -> FxResult<f
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] if `s` is not positive and finite.
+/// [`crate::FxError::InvalidInput`] if `s` is not positive and finite,
+/// or if `delta_spot` or `price` is NaN/infinite. The last check matters:
+/// a corrupt premium would otherwise turn the hedge ratio into a silent
+/// NaN, and a NaN delta breaches no limit and shows up in no traffic
+/// light — `NaN <= limit` is false, but so is `NaN > limit`.
 pub fn premium_adjust_spot_delta(delta_spot: f64, price: f64, s: f64) -> FxResult<f64> {
     if !(s > 0.0) || !s.is_finite() {
         return invalid(format!("Spot S must be positive and finite, got {s}"));
     }
+    require_finite(delta_spot, "delta_spot")?;
+    require_finite(price, "price")?;
     Ok(delta_spot - price / s)
 }
 
@@ -217,7 +230,14 @@ pub fn atm_dns_strike(
 fn pa_peak_strike(f: f64, t: f64, sigma: f64) -> FxResult<f64> {
     let v = sigma * t.sqrt();
     let g = |x: f64| norm_cdf(x) * v - norm_pdf(x);
-    let root = brentq(g, -20.0, 20.0, 1e-14, 200)?;
+    // Bracket: g(x) = n(x) [ (N(x)/n(x)) v - 1 ] and N(x)/n(x) -> 1/|x|
+    // as x -> -inf, so g(x) < 0 once |x| > v. A fixed -20 lower bound
+    // therefore fails to bracket for sigma*sqrt(T) > 20 (a 2000% vol
+    // year, reachable in stress scenarios and in fuzzing). -37 keeps the
+    // sign guaranteed for every v < 37 while staying above the point
+    // where n(x) itself underflows to zero (x ~ -38.5), which would make
+    // g(x) an exact 0 and be mistaken for a root.
+    let root = brentq(g, -37.0, 20.0, 1e-14, 200)?;
     Ok(f * (-root * v - 0.5 * v * v).exp())
 }
 

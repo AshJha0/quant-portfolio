@@ -65,6 +65,8 @@ def eta_from_depth(
     numpy.ndarray
     """
     depths = np.asarray(depths, dtype=float)
+    if not np.all(np.isfinite(depths)):
+        raise ValueError("depths must be finite (no NaN/Inf)")
     if np.any(depths <= 0):
         raise ValueError("depths must be strictly positive")
     if ref_depth is None:
@@ -109,6 +111,8 @@ def ac_closed_form_schedule(
         Trades per bucket, summing exactly to ``parent_qty``.
     """
     _check_ac_args(risk_aversion, tau)
+    if not (np.isfinite(eta) and np.isfinite(sigma) and np.isfinite(parent_qty)):
+        raise ValueError("eta, sigma and parent_qty must be finite (no NaN/Inf)")
     if eta <= 0:
         raise ValueError(f"eta must be > 0, got {eta}")
     N = int(n_buckets)
@@ -169,6 +173,10 @@ def piecewise_ac_schedule(
     sigma = np.asarray(sigma, dtype=float)
     if eta.ndim != 1 or len(eta) != len(sigma):
         raise ValueError("eta and sigma must be 1-D arrays of equal length")
+    if not np.all(np.isfinite(eta)) or not np.all(np.isfinite(sigma)):
+        raise ValueError("eta and sigma must be finite (no NaN/Inf)")
+    if not np.isfinite(parent_qty):
+        raise ValueError("parent_qty must be finite (no NaN/Inf)")
     if np.any(eta <= 0):
         raise ValueError("eta must be strictly positive")
     if np.any(sigma < 0):
@@ -176,6 +184,10 @@ def piecewise_ac_schedule(
     N = len(eta)
     if N == 1:
         return np.array([parent_qty], dtype=float)
+    if parent_qty == 0.0:
+        # Nothing to trade: the QP is degenerate (the exact-sum
+        # renormalisation would divide by a zero total and return NaN).
+        return np.zeros(N)
 
     sign = 1.0 if parent_qty >= 0 else -1.0
     X = abs(parent_qty)

@@ -226,7 +226,13 @@ where
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] on invalid inputs.
+/// [`crate::FxError::InvalidInput`] on invalid inputs, on `t <= 0` or
+/// `sigma <= 0` (the Greeks are singular there, and the theta bump
+/// `min(1e-6, T/4)` would collapse to zero at `T = 0`, making the
+/// difference quotient an unreported `0/0`), or on a `rel_bump` that is
+/// not finite and strictly positive (`rel_bump = 0` would divide by a
+/// zero bump; `rel_bump = NaN` would return a full set of NaN Greeks,
+/// which no downstream limit check can detect).
 pub fn finite_difference_greeks(
     s: f64,
     k: f64,
@@ -238,6 +244,16 @@ pub fn finite_difference_greeks(
     rel_bump: f64,
 ) -> FxResult<FdGreeks> {
     validate_inputs(s, k, t, r_d, r_f, sigma)?;
+    if t <= 0.0 || sigma <= 0.0 {
+        return invalid(format!(
+            "finite_difference_greeks requires T > 0 and sigma > 0, got T={t}, sigma={sigma}"
+        ));
+    }
+    if !(rel_bump > 0.0) || !rel_bump.is_finite() {
+        return invalid(format!(
+            "rel_bump must be finite and positive, got {rel_bump}"
+        ));
+    }
     let h_s = s * rel_bump;
     let h_v = (sigma * rel_bump).max(1e-7);
     let h_r = 1e-6;

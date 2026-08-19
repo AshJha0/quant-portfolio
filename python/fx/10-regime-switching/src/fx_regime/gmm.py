@@ -174,6 +174,12 @@ def fit_gmm(
         raise ValueError("k must be >= 1")
     if n < max(2, k):
         raise ValueError(f"need at least {max(2, k)} observations for k={k}")
+    if not np.all(np.isfinite(X)):
+        raise ValueError(
+            "X contains NaN/Inf: EM would return a model whose means and "
+            "covariances are all NaN, with no error. Drop or impute the "
+            "missing rows before fitting."
+        )
     rng = np.random.default_rng(seed)
 
     best: GMMResult | None = None

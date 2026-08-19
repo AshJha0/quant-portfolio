@@ -35,6 +35,15 @@ end to end in one sitting:
 4. **The model inverts correctly** (implied-vol round trips — §4).
 5. **The model's own stated failure modes are demonstrated, not just
    asserted** (the volatility-smile experiment — §5).
+6. **The boundaries of the parameter space are probed deliberately**
+   (30-year maturities, strikes spanning 20 orders of magnitude,
+   discount factors that overflow, quotes sitting exactly on a
+   no-arbitrage bound, the smallest legal Monte Carlo sample — §7). This
+   is the check most commonly skipped and the one that most often catches
+   something: a pricer that is correct in the middle of its domain and
+   returns a silent `NaN` at the edge will pass every check above and
+   still put a wrong number on a risk report the first time someone
+   prices a LEAP or a distressed name.
 
 The logic new-hire training and model-governance reviews both lean on
 is: *if an implementation cannot reproduce Black-Scholes cleanly from
@@ -113,12 +122,30 @@ that checklist for something bigger.
   function for understanding that the normal CDF *is* the model's
   economic content (exercise probability, hedge ratio), not an
   incidental library call.
-- **Internalise the four-part validation discipline** (§1 above) as the
+- **Internalise the six-part validation discipline** (§1 above) as the
   minimum bar for trusting *any* pricing code, not just this one. A new
   hire who can explain why put-call parity is model-free while a
   Greeks-vs-price self-consistency check is not (§1.2,
   `docs/METHODOLOGY.md`) understands something that generalises well
   beyond Black-Scholes.
+- **Learn to distrust your own error bars.** The Monte Carlo standard
+  error in this project was, at one point, computed by treating
+  antithetic pairs as independent draws — which overstated it by about a
+  third (`docs/VALIDATION.md` §2.1). Nothing failed: every "agrees within
+  3 standard errors" test kept passing, against a bar that was simply too
+  generous. A validation suite whose tolerances are expressed in units of
+  its own error estimate cannot detect an error *in* that estimate. The
+  general habit worth forming: at least once, check a computed error bar
+  against the empirical dispersion of the thing it claims to describe.
+- **Learn where a number stops meaning anything.** Ask a new hire for
+  the implied volatility of a call quoted at exactly its intrinsic value.
+  The solver returns 0.0092, reprices to within 1e-8, and is wrong — the
+  true answer is zero, and no algorithm can do better, because vega there
+  is so small that every vol below 5% produces the same price to within a
+  cent (`docs/VALIDATION.md` §4.1). The lesson is not about
+  Newton-Raphson; it is that a surface fit must *drop* strikes whose vega
+  is below a floor rather than fit them with a wide error bar, because
+  there is no information there to fit.
 - **See a model fail on purpose.** The volatility-smile experiment
   (`docs/VALIDATION.md` §5) is the single most useful exhibit in this
   project for a new hire: it is the first time many people see, with

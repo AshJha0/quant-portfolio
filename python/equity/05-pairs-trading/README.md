@@ -20,7 +20,7 @@ price panel ──► pair candidates (same sector)
 ```bash
 cd python/equity/05-pairs-trading
 pip install -e .[dev]
-pytest -q                        # 191 tests, offline, ~20 s
+pytest -q                        # 256 tests, offline, ~5 s
 python examples/run_pipeline.py  # every number below, ~5 s
 ```
 
@@ -74,7 +74,7 @@ src/eq_pairs/
 ├── backtest.py        # event-driven engine, costs/slippage/borrow, walk-forward
 ├── metrics.py         # Sharpe (+ Lo-adjusted SE), Sortino, MDD, turnover, attribution
 └── data/synthetic.py  # seeded: cointegrated / trap / regime-break / mixed panel
-tests/                 # 191 tests incl. the no-lookahead detector
+tests/                 # 256 tests incl. the no-lookahead detector
 docs/                  # METHODOLOGY, VALIDATION (all numbers), DESK_GUIDE
 ```
 

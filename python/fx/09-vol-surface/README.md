@@ -39,7 +39,7 @@ validation: MC (full-truncation Euler + QE) within 3 SE  heston_mc.py
 ```bash
 cd python/fx/09-vol-surface
 pip install -e .
-pytest -q                      # 195 tests, ~11 s, offline & seeded
+pytest -q                      # 253 tests, ~11 s, offline & seeded
 python examples/run_pipeline.py   # full EURUSD + USDJPY demo, ~6 s
 ```
 
@@ -87,7 +87,7 @@ src/fx_surface/          garman_kohlhagen, smile_from_quotes, smile,
                          surface, heston, heston_mc, calibration,
                          greeks, data/synthetic (seeded presets:
                          EURUSD, USDJPY-pa, 35%-vol EM, Heston ground truth)
-tests/                   195 offline seeded tests
+tests/                   253 offline seeded tests
 examples/run_pipeline.py end-to-end demo (<150 s budget; runs in ~6 s)
 docs/                    METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```

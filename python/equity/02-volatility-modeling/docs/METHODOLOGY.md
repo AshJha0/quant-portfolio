@@ -188,6 +188,35 @@ documented.
    wrong, and low-frequency samples are usually too short for MLE — see
    VALIDATION.md F5 (low-frequency limits); fitters refuse < 100 obs.
 
+9. **The pre-sample variance is a nuisance parameter whose influence dies
+   out.** GARCH/GJR/EGARCH start from an arch-compatible exponentially
+   weighted backcast (`init_method="backcast"`, decay 0.94 over ≤75 obs);
+   EWMA defaults to the full-sample mean of squared returns. *If violated*
+   (persistence near 1, or a short sample): the initial condition decays
+   geometrically at rate β, so with β ≈ 0.95 it still contributes ~1% of the
+   variance level after 90 days — on samples of a few hundred observations
+   the choice of `init_method` visibly moves ω. Two consequences a reviewer
+   should know: (i) `init_method="backcast"` vs `"sample"` agree on long
+   samples but not short ones (tested in
+   `test_garch.py::test_init_methods_agree_on_long_sample`); (ii) EWMA's
+   default `init_var` uses the *whole* sample, so an in-sample EWMA path is
+   not a strictly causal filter at its first observations. This is a level
+   effect on the initial condition only, and the out-of-sample harness never
+   inherits it — `rolling_one_step_forecasts` re-runs the filter on
+   `returns[0..t-1]` alone at every date, which is what
+   `test_forecast_alignment_no_lookahead` verifies. Pass an explicit
+   `init_var` when a strictly causal in-sample path is required.
+
+10. **Variance is scale-equivariant.** The models contain no absolute
+    threshold: rescaling returns by `c` must rescale every variance by `c²`
+    while leaving α, β and persistence untouched. *If violated*, some
+    hard-coded scale (a tolerance, a floor, a starting value) has leaked into
+    the recursion or the likelihood, and results would silently depend on
+    whether the desk feeds decimal or percent returns. This is asserted to
+    1e-12 across EWMA, realized vol, the GARCH/EGARCH recursions and the
+    fitted parameters — see VALIDATION.md §6.1
+    (`test_properties.py::TestScaleEquivariance`).
+
 ---
 
 ## 4. References

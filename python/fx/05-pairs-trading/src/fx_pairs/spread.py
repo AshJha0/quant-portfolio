@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 from scipy import optimize
 
+from ._validation import finite_series, require_finite
+
 __all__ = [
     "log_spread",
     "OUFit",
@@ -54,6 +56,9 @@ def log_spread(
     alpha : float
         Intercept of the cointegrating regression.
     """
+    require_finite(alpha=alpha, beta=beta)
+    finite_series(np.asarray(p1, dtype=float).ravel(), "p1", positive=True)
+    finite_series(np.asarray(p2, dtype=float).ravel(), "p2", positive=True)
     return np.log(p1) - alpha - beta * np.log(p2)
 
 
@@ -62,6 +67,11 @@ def half_life_days(kappa: float, dt: float = 1.0 / 252.0) -> float:
 
     ``inf`` when ``kappa <= 0`` (no mean reversion).
     """
+    require_finite(dt=dt)
+    if dt <= 0.0:
+        raise ValueError(f"dt must be positive, got {dt}")
+    if np.isnan(kappa):
+        raise ValueError("kappa must not be NaN")
     if kappa <= 0:
         return float("inf")
     return float(np.log(2.0) / (kappa * dt))
@@ -129,8 +139,10 @@ def _validate_spread(spread: pd.Series | np.ndarray) -> np.ndarray:
         raise ValueError("spread must be one-dimensional")
     if len(s) < 30:
         raise ValueError(f"spread too short to fit OU: n={len(s)}")
-    if np.isnan(s).any():
-        raise ValueError("spread contains NaNs; clean the series first")
+    # isfinite, not isnan: +/-Inf (a logged zero/missing price) would pass an
+    # isnan check, poison the AR(1) least squares and yield NaN OU parameters.
+    if not np.isfinite(s).all():
+        raise ValueError("spread contains NaN or infinite values; clean the series first")
     if np.std(s) < 1e-12:
         raise ValueError("spread has zero variance (degenerate); nothing to fit")
     return s
@@ -216,6 +228,7 @@ class RLSHedge:
     """
 
     def __init__(self, lam: float = 0.995, delta: float = 1e4) -> None:
+        require_finite(lam=lam, delta=delta)
         if not 0.0 < lam <= 1.0:
             raise ValueError(f"lam must be in (0, 1], got {lam}")
         if delta <= 0:
@@ -237,6 +250,10 @@ class RLSHedge:
 
     def update(self, log_p2: float, log_p1: float) -> tuple[float, float]:
         """One RLS step; returns the updated ``(alpha, beta)``."""
+        # A single non-finite observation permanently poisons theta and P:
+        # the filter has no mechanism to recover, so every later hedge ratio
+        # would be NaN with no error raised.
+        require_finite(log_p2=log_p2, log_p1=log_p1)
         x = np.array([1.0, float(log_p2)])
         Px = self.P @ x
         k = Px / (self.lam + x @ Px)
@@ -259,8 +276,10 @@ class RLSHedge:
             Price levels (logs are taken internally); ``p1`` is the dependent
             pair, ``p2`` the hedge pair, mirroring ``engle_granger(y, x)``.
         """
-        lp1 = np.log(np.asarray(p1, dtype=float))
-        lp2 = np.log(np.asarray(p2, dtype=float))
+        lp1 = np.log(finite_series(np.asarray(p1, dtype=float).ravel(),
+                                   "p1", positive=True))
+        lp2 = np.log(finite_series(np.asarray(p2, dtype=float).ravel(),
+                                   "p2", positive=True))
         if lp1.shape != lp2.shape:
             raise ValueError("p1 and p2 must have equal length")
         alphas = np.empty(len(lp1))

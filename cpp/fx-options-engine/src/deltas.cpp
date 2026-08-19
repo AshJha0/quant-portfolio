@@ -57,6 +57,8 @@ double premium_adjust_spot_delta(double delta_spot, double price, double S) {
         throw std::invalid_argument("Spot S must be positive and finite, got " +
                                     std::to_string(S));
     }
+    detail::require_finite(delta_spot, "delta_spot");
+    detail::require_finite(price, "price");
     return delta_spot - price / S;
 }
 

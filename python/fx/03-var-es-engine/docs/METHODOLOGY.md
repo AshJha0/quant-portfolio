@@ -233,6 +233,7 @@ Each assumption states *what breaks if violated*.
 | A9 | Exception clustering is first-order Markov (Christoffersen). | Longer-memory clustering partially escapes the LR test; the Basel count still catches level errors. |
 | A10 | Sample/EWMA covariance from the chosen window represents tomorrow. | Regime breaks (correlation flips) invalidate it — hence the stress correlation matrix and the FHS/EWMA variants. |
 | A11 | Pegs stay pegged within HS/parametric VaR. | The break loss is 20×+ the VaR (demo). Mitigated by warning + mandatory stress add-on + jump-mixture MC (§4). |
+| A12 | Every scalar input is finite — notionals, strikes, expiries, σ, df, horizons, shocks, jump sizes. | The engine's policy is refuse-never-impute, but inequality-only guards (`if sigma < 0`, `if df <= 2`, `if horizon_days <= 0`) are all False for NaN and therefore accepted it. The result was a `nan` VaR, which trips no limit, colours no traffic light and reads as a formatting bug rather than a risk failure. Now every such argument is checked with `fx_var.common.validate_finite`. If those guards are bypassed, one bad quote or one failed calibration anywhere upstream disables the entire limit framework silently. |
 
 ---
 

@@ -15,8 +15,9 @@
 ///                    `exp(-rT) * max(±(F - K), 0)` with `F = S exp((r-q)T)`;
 ///  - `K == 0`     -> call is a forward on the stock `S exp(-qT)`; put is 0;
 ///  - `S == 0`     -> call is 0; put is `K exp(-rT)`;
-///  - negative `S`, `K`, `T` or `sigma` (or NaN) throw std::invalid_argument.
-///    Negative `r` and `q` are fully supported.
+///  - negative `S`, `K`, `T` or `sigma`, and NaN/Inf in any input (including
+///    `r` and `q`), throw std::invalid_argument. Negative *finite* `r` and
+///    `q` are fully supported.
 
 #ifndef EQOPT_BLACK_SCHOLES_HPP
 #define EQOPT_BLACK_SCHOLES_HPP
@@ -50,12 +51,20 @@ inline double norm_pdf(double x) noexcept {
 
 /// \brief Validate common Black–Scholes inputs.
 ///
-/// \param S     Spot price, must satisfy `S >= 0` and not NaN.
-/// \param K     Strike price, must satisfy `K >= 0` and not NaN.
-/// \param T     Time to expiry in years (ACT/365F), `T >= 0`, not NaN.
-/// \param sigma Annualised log-return volatility, `sigma >= 0`, not NaN.
-/// \throws std::invalid_argument if any constraint is violated.
+/// \param S     Spot price, must satisfy `S >= 0` and be finite.
+/// \param K     Strike price, must satisfy `K >= 0` and be finite.
+/// \param T     Time to expiry in years (ACT/365F), `T >= 0`, finite.
+/// \param sigma Annualised log-return volatility, `sigma >= 0`, finite.
+/// \throws std::invalid_argument if any constraint is violated (negative,
+///         NaN or +/-Inf).
 void validate_inputs(double S, double K, double T, double sigma);
+
+/// \brief Validate rate-like inputs: `r` and `q` may be negative but must
+///        be finite (NaN/Inf rejected).
+/// \param r Continuously compounded annualised risk-free rate.
+/// \param q Continuously compounded annualised dividend yield.
+/// \throws std::invalid_argument if `r` or `q` is NaN or +/-Inf.
+void validate_rates(double r, double q = 0.0);
 
 /// \brief Intrinsic (exercise-now) value `max(S - K, 0)` or `max(K - S, 0)`.
 /// \param S,K  Spot and strike, currency units.

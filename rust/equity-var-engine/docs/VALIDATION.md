@@ -2,8 +2,8 @@
 
 How the engine was validated, and where it fails. Everything below is
 enforced by the test suite (`RUSTFLAGS="-D warnings" cargo test --release`:
-9 integration-test files, 77 tests, plus 9 rustdoc examples, all offline and
-deterministic) — validation claims that are not unit-tested do not appear
+9 integration-test files, 81 tests, plus 10 rustdoc examples — 91 in total,
+all offline and deterministic) — validation claims that are not unit-tested do not appear
 here.
 
 ## 1. Cross-language golden tests (the headline)
@@ -103,10 +103,16 @@ All in `tests/test_backtest.rs` and `tests/test_historical.rs`.
 | all-zero covariance | sigma = 0, parametric VaR = 0, ES = 0 exactly |
 | constant P&L series | VaR = -constant (a gain floor), moments 0 not NaN, FHS floored (no 0/0) |
 | NaN / Inf in P&L | errors — never silently dropped |
+| NaN / Inf **anywhere in the covariance, exposures, return panel, vols or correlations** | errors at every entry point: `portfolio_sigma`, `parametric_var(_full)`, `parametric_es(_full)`, `monte_carlo_{var,es,pnl}`, `simulate_factor_returns`, `Matrix::cholesky(_jitter)`, `sample_covariance`, `ewma_covariance`, `covariance_from_vols`, `normal_es`, `student_t_es`, `cornish_fisher_var` (with the domain check on **and** off), `TailModel::StudentT { df }` |
+| NaN / Inf in a **backtest** P&L or VaR series | `exceptions_from_pnl` errors instead of scoring the day as "no exception" |
+| rank-deficient covariance (a factor that is an exact linear combination of two others) | plain Cholesky fails, the jitter fallback repairs it at the first rung, and the resulting MC VaR sits within 10 % of the parametric number |
+| materially indefinite covariance (a genuinely negative eigenvalue) | `EqVarError::Numerical` naming the materiality cap — never silently repaired |
+| one- and two-element samples | `linear_quantile` is exact on 1 and 2 points; every higher-level estimator refuses samples below its documented minimum; `sample_covariance` refuses a 1-row panel and is exact on a 2-row one |
 | fewer than `MIN_OBS` (50) obs for historical methods | errors, boundary exact |
 | alpha << 1/n | estimate pinned to the worst observed loss (type-7 interpolation inside the first gap), never extrapolated |
 | Cornish-Fisher outside monotonicity domain (e.g. S = -0.5, K = 0) | errors with an explanation; `check_domain=false` override exists for diagnostics only |
 | badly indefinite "covariance" | `EqVarError::Numerical` after the jitter ladder — corrupt input is fatal by design |
+| non-finite or non-positive `jitter` argument | `EqVarError::InvalidInput` before any factorisation is attempted |
 | portfolio/panel shape mismatch | errors with the exact dimensions in the message |
 
 ## 6. Known failure modes and limits
@@ -132,7 +138,53 @@ All in `tests/test_backtest.rs` and `tests/test_historical.rs`.
    clustering failures — that is the monitoring loop, by construction.
 6. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
    full revaluation; this engine's scope stops at the delta map.
-7. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
+7. **NaN is the failure mode this engine guards hardest against — and the
+   one a naive guard misses.** A validation written as
+   `if x < 0.0 { return Err(...) }` silently **accepts** NaN, because every
+   IEEE-754 comparison against NaN is false. Rust does not help here:
+   `f64::NAN < 0.0` is `false` exactly as in C and C++. Worse, `f64::max`
+   propagates the *other* operand, so `NaN.max(0.0)` is `0.0`. Three
+   concrete holes were closed in the hardening pass, each of which turned a
+   corrupt input into a *plausible-looking* risk number rather than an
+   error:
+
+   * `portfolio_sigma` computed `w' Sigma w`, tested it with
+     `var < -tol` (false for NaN) and then returned
+     `var.max(0.0).sqrt()` — so a single NaN covariance entry reported a
+     portfolio sigma, a parametric VaR and a parametric ES of exactly
+     **zero**. A broken feed looked like a riskless book.
+   * `Matrix::cholesky` tested its pivot with `sum <= 0.0` (false for NaN),
+     so a NaN covariance factorised into an all-NaN `L`, and every Monte
+     Carlo scenario, P&L and VaR downstream was NaN with no diagnostic.
+     `is_symmetric` had the same shape of hole (`|NaN - NaN| > tol` is
+     false, i.e. a NaN matrix was "symmetric").
+   * `exceptions_from_pnl` tested `pnl_t < -var_t`. With a NaN on either
+     side that comparison is false, so the day counted as "no exception" —
+     a model whose VaR feed had broken to NaN recorded **zero breaches**
+     and passed Kupiec, Christoffersen and the Basel traffic light in the
+     green zone. The backtest certified the broken model.
+
+   All validation is now written with `is_finite()` rather than an ordering
+   comparison, and the contract is pinned by
+   `test_edge_cases::non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed`
+   and
+   `test_edge_cases::backtests_reject_non_finite_series_instead_of_scoring_them_green`.
+8. **The Cholesky jitter ladder repairs rounding noise, not indefiniteness.**
+   `cholesky_jitter(jitter, max_tries)` escalates the diagonal jitter by
+   10x per attempt. With the module defaults (`1e-10`, 12 tries) the old
+   ladder topped out at **ten times** the mean variance — enough to
+   "repair" a materially indefinite matrix and return a factor whose
+   simulated risk bears no relation to the caller's covariance, with no
+   diagnostic at all. The escalation now stops at
+   `matrix::MAX_RELATIVE_JITTER` (1e-6) times the mean diagonal and returns
+   `EqVarError::Numerical` naming that cap. PSD-but-singular covariances (a
+   riskless leg, perfectly correlated factors, an exactly rank-deficient
+   factor block) are repaired at the *first* rung and are unaffected — the
+   cap only bites on matrices that were never a covariance. A matrix that
+   needs more than a rounding-noise repair is a data problem (stale
+   correlation block, mis-signed loading, skipped shrinkage) and must be
+   surfaced.
+9. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
    Irrelevant at desk call rates; would matter only inside a per-path loop,
    where it is never called (the MC uses Box–Muller normal + chi^2 mixing,
    not `student_t_ppf`).
@@ -142,6 +194,6 @@ All in `tests/test_backtest.rs` and `tests/test_historical.rs`.
 Built and tested with `RUSTFLAGS="-D warnings" cargo test --release`
 (rustc warnings-as-errors) on the 2021 edition; `#![deny(missing_docs)]` at
 the crate root means every public item has rustdoc, and every rustdoc code
-example is itself an executed test (9 of them, `cargo test --doc`).
+example is itself an executed test (10 of them, `cargo test --doc`).
 `#![warn(clippy::all)]` is set at the crate root as a standing lint; the
 crate compiles clean under plain `cargo build`/`cargo test`.

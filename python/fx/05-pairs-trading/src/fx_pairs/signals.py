@@ -35,6 +35,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from ._validation import require_finite
+
 __all__ = [
     "zscore",
     "Trade",
@@ -76,6 +78,7 @@ def zscore(
         return (spread - m) / s
     if mu is None or sigma is None:
         raise ValueError("supply either window or both mu and sigma")
+    require_finite(mu=mu, sigma=sigma)
     if sigma <= 0:
         raise ValueError(f"sigma must be positive, got {sigma}")
     return (spread - mu) / sigma
@@ -127,6 +130,11 @@ def generate_positions(
     """
     zv = np.asarray(z, dtype=float)
     n = len(zv)
+    # `stop` in particular: `if stop <= entry` is False for NaN, so a NaN stop
+    # used to pass validation and then disable the hard stop entirely --
+    # `state * zt <= -nan` is always False. Losing the regime-break stop
+    # silently is the most expensive failure this module can have.
+    require_finite(entry=entry, exit_=exit_, stop=stop)
     if not (entry > exit_ >= 0.0):
         raise ValueError(f"need entry > exit_ >= 0, got entry={entry}, exit_={exit_}")
     if stop is not None and stop <= entry:
@@ -211,6 +219,8 @@ def carry_entry_veto(
     """
     zv = np.asarray(z, dtype=float)
     n = len(zv)
+    require_finite(sigma_spread=sigma_spread, entry=entry, exit_=exit_,
+                   holding_multiple=holding_multiple)
     if sigma_spread <= 0:
         raise ValueError("sigma_spread must be positive")
     cpd = np.full(n, float(carry_per_day)) if np.isscalar(carry_per_day) \
@@ -252,8 +262,14 @@ def vol_target_scale(
     pandas.Series
         Scale factor (NaN during warmup — treat as 0 exposure).
     """
+    require_finite(target_vol=target_vol, ann_factor=ann_factor,
+                   max_leverage=max_leverage)
     if target_vol <= 0:
         raise ValueError("target_vol must be positive")
+    if ann_factor <= 0:
+        raise ValueError("ann_factor must be positive")
+    if max_leverage <= 0:
+        raise ValueError("max_leverage must be positive")
     if lookback < 2:
         raise ValueError("lookback must be >= 2")
     dvol = spread.diff().rolling(lookback, min_periods=lookback).std(ddof=1)

@@ -3,7 +3,7 @@
 All numbers below are produced by `python examples/run_pipeline.py`
 (train: 30,000 loans, seed 42, 2.95% default rate; OOT: 12,000 loans,
 seed 123, drift 0.5 + calibration shift 0.5 → 4.78% default rate) and by the
-test suite (`pytest -q`, 123 tests, offline, seeded).
+test suite (`pytest -q`, 136 tests, offline, seeded).
 
 ## 1. Analytic and cross-model benchmarks
 
@@ -141,3 +141,20 @@ PD = 0/1 (clamped to finite scores, ordering preserved), empty portfolio
 (floored), NaN bins in PSI (own bin), unseen categories at transform time
 (mapped to missing-bin WOE), duplicate loan IDs (detected and dropped),
 train/OOT boundary (strict temporal integrity asserted).
+
+Hardening additions (`test_input_validation.py`, `test_edge_cases.py`):
+
+- **NaN/Inf rejection everywhere.**  NaN passes naive range checks
+  (`NaN < 0` is `False`), so every entry point now checks `np.isfinite`
+  explicitly: `fit_logistic` (features), `expected_loss`/`basel_k`/
+  `asset_correlation` (PD/LGD/EAD), `brier_score`/`hosmer_lemeshow`
+  (predicted PDs, also gated to [0, 1]), `woe_iv_from_counts` (counts, also
+  rejects negatives).
+- **Zero total EAD** in the Monte Carlo engine (loss *rate* undefined) raises
+  instead of returning NaN.
+- **Degenerate scorecard scalings** (`pdo <= 0`, `base_odds <= 0`, non-finite
+  `base_score`) are rejected at construction.
+- **Property checks**: Vasicek CDF monotone non-decreasing and in [0, 1];
+  Vasicek quantile monotone in q; simulated loss rates bounded in [0, 1] with
+  mean ≈ PD·LGD within 3 SE; Basel K bounded by LGD at M = 2.5; economic
+  capital quantile gated to (0, 1].

@@ -37,9 +37,30 @@ pub struct VarEs {
 /// 1-day portfolio P&L standard deviation `sqrt(w' Sigma w)`.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] on a dimension mismatch, or if the quadratic
-/// form is materially negative (covariance not PSD).
+/// [`FxVarError::Invalid`] on a dimension mismatch, on a non-finite
+/// exposure or covariance entry, or if the quadratic form is materially
+/// negative (covariance not PSD). The PSD tolerance is **scale-relative**
+/// (`1e-10 * max|w|^2`), so a large-notional book is not rejected merely
+/// for being large.
 pub fn portfolio_sigma(exposures: &[f64], cov: &Matrix) -> Result<f64> {
+    // Finiteness first, and for a concrete reason. `w' Sigma w` with a
+    // single NaN anywhere is NaN; the PSD test below (`var < -tol`) is
+    // FALSE for NaN, and `f64::max` propagates the *other* operand, so
+    // `NaN.max(0.0).sqrt()` is `0.0`. Without this guard a corrupt
+    // covariance reported a portfolio sigma - and a VaR, and an ES - of
+    // exactly ZERO: a broken feed that looks like a perfectly hedged book.
+    if exposures.iter().any(|w| !w.is_finite()) {
+        return Err(FxVarError::invalid(
+            "portfolio_sigma: exposures must all be finite (a NaN exposure \
+             silently produces a zero sigma)",
+        ));
+    }
+    if !cov.all_finite() {
+        return Err(FxVarError::invalid(
+            "portfolio_sigma: covariance must be finite (a NaN entry silently \
+             produces a zero sigma, i.e. a zero VaR)",
+        ));
+    }
     let var = cov.quad_form(exposures)?;
     let scale = exposures.iter().fold(1.0_f64, |m, w| m.max(w.abs()));
     if var < -1e-10 * scale * scale {
@@ -70,6 +91,11 @@ pub fn var_covar(
 ) -> Result<VarEs> {
     validate_alpha(alpha)?;
     validate_horizon(horizon_days)?;
+    if !mean.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "var_covar: mean must be finite, got {mean}"
+        )));
+    }
     let sig1 = portfolio_sigma(exposures, cov)?;
     let scale = horizon_days.sqrt();
     let sig = sig1 * scale;

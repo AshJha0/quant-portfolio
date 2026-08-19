@@ -98,18 +98,42 @@ def ac_kappa(params: ACParams, lam: float) -> float:
     return float(np.arccosh(1.0 + 0.5 * kt2 * tau**2) / tau)
 
 
+def _sinh_ratio(a: np.ndarray, b: float) -> np.ndarray:
+    """``sinh(a) / sinh(b)`` for ``0 <= a <= b``, overflow-free.
+
+    The naive form overflows for ``b`` beyond ~710 (``sinh`` exceeds the
+    double range) and returns ``inf/inf = NaN``.  Rewriting
+
+        sinh(a)/sinh(b) = e^{a-b} * (1 - e^{-2a}) / (1 - e^{-2b})
+
+    keeps every exponential argument non-positive, so the result is finite
+    for arbitrarily large urgency; ``expm1`` preserves accuracy as
+    ``a, b -> 0``.
+    """
+    a = np.asarray(a, dtype=float)
+    if b <= 0.0:
+        raise ValueError("b must be > 0 in _sinh_ratio")
+    # -expm1(-2x) == 1 - e^{-2x}; the two minus signs cancel in the ratio.
+    return np.exp(a - b) * np.expm1(-2.0 * a) / np.expm1(-2.0 * b)
+
+
 def ac_trajectory(params: ACParams, lam: float) -> np.ndarray:
     """Optimal holdings ``x_0..x_N`` (length ``n_slices + 1``).
 
     ``x_j = X * sinh(kappa*(T - t_j)) / sinh(kappa*T)``; exactly linear
     (TWAP) when ``lam = 0``.  Monotone decreasing from ``X`` to 0.
+
+    The sinh ratio is evaluated in an overflow-free exponential form, so
+    extreme risk aversion (``kappa*T`` in the hundreds or thousands) returns
+    the correct front-loaded schedule instead of NaN.
     """
     X, N, T = params.total_shares, params.n_slices, params.total_time
     t = np.arange(N + 1) * params.tau
     kappa = ac_kappa(params, lam)
     if kappa == 0.0:
         return X * (1.0 - t / T)
-    x = X * np.sinh(kappa * (T - t)) / np.sinh(kappa * T)
+    x = X * _sinh_ratio(kappa * np.maximum(T - t, 0.0), kappa * T)
+    x[0] = X
     x[-1] = 0.0
     return x
 

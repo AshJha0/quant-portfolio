@@ -65,6 +65,12 @@ Rationale:
   unwinding across the boundary is undefined behaviour.
 - Semantics are mirrored 1:1: every condition that raises in Python
   returns the corresponding `PricingError` here, tested case by case.
+- **One deliberate divergence, in the safe direction**: the Python
+  reference rejects NaN but lets `inf` propagate into `inf`/NaN outputs.
+  Every public entry point here also rejects `+/-inf` in `S`, `K`, `T`,
+  `sigma` and NaN/`inf` in the rates `r`/`q`, so a corrupt tick cannot
+  silently become a NaN risk number. No admissible input changes value,
+  so the golden vectors are unaffected.
 
 ### 2.2 Zero-dependency determinism
 
@@ -149,3 +155,9 @@ restated here.
 7. **IEEE-754 f64 throughout.** Deep wings underflow: `Phi(x) = 0` below
    x ~ -37.5; prices below ~1e-300 are not representable. Edge tests pin
    the behaviour.
+8. **Inputs are finite.** Non-finite inputs are treated as a caller/data
+   error, never as a pricing regime: they return `InvalidInput` at the
+   entry point. Breaks: a caller relying on `inf` as "infinitely far
+   OTM" must clamp to a large finite number instead — deliberate, since
+   the alternative is a NaN that survives aggregation into a book-level
+   risk figure.

@@ -1,7 +1,7 @@
 # Validation — FX Volatility Surface & Stochastic Volatility
 
 All numbers below are produced by the offline, seeded test suite
-(`pytest -q`: **195 tests**, ~11 s) and `examples/run_pipeline.py`
+(`pytest -q`: **253 tests**, ~11 s) and `examples/run_pipeline.py`
 (~6 s). Every figure quoted here is reproducible from those two
 commands.
 
@@ -151,6 +151,45 @@ bracket edges); pa call deltas above the attainable maximum raise with
 the maximum reported; planted calendar arbitrage (1m ATM bumped to
 20%) and planted butterfly arbitrage (SVI b = 0.35, ρ = −0.9) are both
 detected by the checks.
+
+**F8 — Non-finite inputs silently produced non-finite prices
+(review-pass finding, now fixed).** The pricer's input guards were
+written as `S <= 0.0`, `sigma <= 0.0`, `T <= 0.0`. Every comparison
+with `NaN` evaluates to `False`, so a `NaN` spot, strike, expiry, rate
+or vol passed validation untouched and `gk_price` returned `NaN` — a
+"price" that is a float, propagates through the smile fit, the
+surface build and the Greeks, and only surfaces as a blank cell on a
+risk report. The same flaw sat in `strike_from_delta` and
+`atm_dns_strike` (a `NaN` vol yielded a `NaN` *strike*, which then
+poisoned every pillar downstream) and in the rate arguments of
+`gk_forward`, `gk_vega`, `gk_gamma`, `gk_vanna` and `gk_volga`, none
+of which validated `r_d`/`r_f` at all.
+
+All of these now raise an informative `ValueError`. A parametrised
+sweep asserts that every one of the six inputs (`S`, `K`, `T`, `r_d`,
+`r_f`, `sigma`) crossed with `NaN`, `+Inf` and `-Inf` raises, for the
+pricer and each Greek
+(`test_edge_cases_review.py::test_pricer_rejects_nonfinite_inputs`,
+`::test_greeks_reject_nonfinite_rates`,
+`::test_forward_rejects_nonfinite_rates`,
+`::test_strike_solving_rejects_nonfinite_vol_and_out_of_range_delta`).
+Desk rationale: a NaN premium fails silently, whereas a raised
+exception stops the marking run — the correct failure direction for
+anything that feeds a P&L or a margin call.
+
+**F9 — Deep-wing premium underflow (documented, not a defect).** At
+microscopic expiries the OTM premium underflows to *exactly* 0.0 in
+double precision (`N(d2)` with `d2 ~ -1e4`), e.g. a 1.20 strike at
+T = 1e-6. This is correct IEEE behaviour, not an error: the value is
+below the smallest representable positive double relative to spot.
+The tests therefore assert `price >= 0` and `isfinite(price)` rather
+than strict positivity, and the deep-wing bound test confirms prices
+stay inside the static no-arbitrage envelope with put-call parity
+holding to 1e-12 out to a 6.00 strike
+(`test_deep_wing_option_prices_stay_within_no_arbitrage_bounds`).
+Consequence for the desk: never invert an implied vol from a
+deep-wing premium at very short expiry — there is no information left
+in the number.
 
 ## 5. Convergence / stability studies
 

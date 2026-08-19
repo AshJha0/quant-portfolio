@@ -41,6 +41,21 @@ __all__ = [
 _MIN_OBS = 2
 
 
+def _validate_ppy(periods_per_year) -> float:
+    """Validate the annualization factor.
+
+    Written as an explicit ``isfinite`` check: ``if periods_per_year <= 0``
+    alone silently accepts NaN (every comparison with NaN is False), which
+    would propagate a NaN volatility instead of raising.
+    """
+    ppy = float(periods_per_year)
+    if not np.isfinite(ppy) or ppy <= 0.0:
+        raise ValueError(
+            f"periods_per_year must be positive and finite, got {periods_per_year!r}"
+        )
+    return ppy
+
+
 def close_to_close_vol(
     returns: Sequence[float] | np.ndarray | pd.Series,
     periods_per_year: int = 252,
@@ -60,9 +75,8 @@ def close_to_close_vol(
     arr = _as_1d_array(returns, "returns")
     if arr.size < _MIN_OBS:
         raise ValueError(f"need at least {_MIN_OBS} returns, got {arr.size}")
-    if periods_per_year <= 0:
-        raise ValueError("periods_per_year must be positive")
-    return float(np.sqrt(periods_per_year) * arr.std(ddof=ddof))
+    ppy = _validate_ppy(periods_per_year)
+    return float(np.sqrt(ppy) * arr.std(ddof=ddof))
 
 
 def rolling_close_vol(
@@ -79,7 +93,8 @@ def rolling_close_vol(
         raise ValueError(f"window must be >= 2, got {window}")
     if window > returns.size:
         raise ValueError(f"window={window} exceeds series length {returns.size}")
-    return returns.rolling(window).std(ddof=ddof) * np.sqrt(periods_per_year)
+    ppy = _validate_ppy(periods_per_year)
+    return returns.rolling(window).std(ddof=ddof) * np.sqrt(ppy)
 
 
 def parkinson_vol(
@@ -107,8 +122,9 @@ def parkinson_vol(
         raise ValueError("low prices must be strictly positive")
     if (h < l).any():
         raise ValueError("high < low encountered -- corrupt bar data")
+    ppy = _validate_ppy(periods_per_year)
     hl = np.log(h / l)
-    var = np.mean(hl ** 2) / (4.0 * np.log(2.0)) * periods_per_year
+    var = np.mean(hl ** 2) / (4.0 * np.log(2.0)) * ppy
     return float(np.sqrt(var))
 
 
@@ -138,10 +154,11 @@ def garman_klass_vol(
         raise ValueError("prices must be strictly positive")
     if (h < l).any():
         raise ValueError("high < low encountered -- corrupt bar data")
+    ppy = _validate_ppy(periods_per_year)
     hl = np.log(h / l)
     co = np.log(c / o)
     per_day = 0.5 * hl ** 2 - (2.0 * np.log(2.0) - 1.0) * co ** 2
-    var = np.mean(per_day) * periods_per_year
+    var = np.mean(per_day) * ppy
     if var < 0:
         raise ValueError("Garman-Klass variance estimate is negative -- check bar data")
     return float(np.sqrt(var))

@@ -100,14 +100,25 @@ def simulate_delta_hedge(
         raise ValueError("simulate_delta_hedge requires T > 0, sigma_true > 0")
     if sigma_hedge is None:
         sigma_hedge = sigma_true
-    if sigma_hedge <= 0.0:
-        raise ValueError(f"sigma_hedge must be positive, got {sigma_hedge}")
+    if not math.isfinite(sigma_hedge) or sigma_hedge <= 0.0:
+        raise ValueError(
+            f"sigma_hedge must be positive and finite, got {sigma_hedge!r}"
+        )
+    if mu is not None and not math.isfinite(mu):
+        raise ValueError(f"mu must be finite, got {mu!r}")
     if not isinstance(n_rebalances, int) or n_rebalances < 1:
         raise ValueError(f"n_rebalances must be a positive int, got {n_rebalances!r}")
     if not isinstance(n_paths, int) or n_paths < 2:
         raise ValueError(f"n_paths must be an int >= 2, got {n_paths!r}")
-    if transaction_cost_pips < 0.0 or pip_size <= 0.0:
-        raise ValueError("transaction_cost_pips must be >= 0 and pip_size > 0")
+    if not math.isfinite(transaction_cost_pips) or transaction_cost_pips < 0.0:
+        raise ValueError(
+            "transaction_cost_pips must be >= 0 and finite, got "
+            f"{transaction_cost_pips!r}"
+        )
+    if not math.isfinite(pip_size) or pip_size <= 0.0:
+        raise ValueError(
+            f"pip_size must be > 0 and finite, got {pip_size!r}"
+        )
 
     gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
     drift = (r_d - r_f) if mu is None else mu

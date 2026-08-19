@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -83,6 +84,27 @@ TEST(ImpliedVol, RejectsDegenerateInputs) {
     EXPECT_THROW(
         implied_vol(std::nan(""), 100.0, 100.0, 1.0, 0.05),
         std::invalid_argument);
+}
+
+TEST(ImpliedVol, RecoversVolAboveDefaultBracketTop) {
+    // sigma = 15 > default sigma_hi = 10: exercises the automatic bracket
+    // expansion path (hi doubled until the premium is bracketed).
+    const double sigma = 15.0;
+    const double price =
+        bs_price(100.0, 100.0, 0.5, 0.02, sigma, 0.0, OptionType::Call);
+    EXPECT_NEAR(implied_vol(price, 100.0, 100.0, 0.5, 0.02, 0.0), sigma, 1e-6);
+}
+
+TEST(ImpliedVol, RejectsNonFinitePriceAndRates) {
+    constexpr double kInf = std::numeric_limits<double>::infinity();
+    EXPECT_THROW(implied_vol(kInf, 100.0, 100.0, 1.0, 0.05),
+                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(-kInf, 100.0, 100.0, 1.0, 0.05),
+                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, kInf),
+                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, 0.05, kInf),
+                 std::invalid_argument);
 }
 
 TEST(ImpliedVol, ShortDatedWingsConverge) {

@@ -49,6 +49,15 @@ def _validate(
         raise ValueError(
             "zero currency exposure: hedge ratio undefined; drop that currency"
         )
+    if not np.all(np.isfinite(exposures.to_numpy(dtype=float))):
+        raise ValueError("exposures contain NaN/Inf")
+    if not np.all(np.isfinite(fx_returns.to_numpy(dtype=float))):
+        raise ValueError(
+            "fx_returns contain NaN/Inf; align and clean the panel first "
+            "(a single missing FX day yields an all-NaN hedge ratio)"
+        )
+    if not np.all(np.isfinite(unhedged.to_numpy(dtype=float))):
+        raise ValueError("unhedged returns contain NaN/Inf")
 
 
 def optimal_hedge_ratios(

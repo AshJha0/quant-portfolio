@@ -232,6 +232,12 @@ def fit_hmm(
         raise ValueError("k must be >= 1")
     if T < max(10, 2 * k):
         raise ValueError(f"series too short for HMM: T={T}, k={k}")
+    if not np.all(np.isfinite(X)):
+        raise ValueError(
+            "X contains NaN/Inf: Baum-Welch propagates it into the emission "
+            "densities and the run fails later with the misleading message "
+            "'transmat rows must sum to 1'. Clean the series before fitting."
+        )
 
     inits: list[HMMModel] = []
     if init_model is not None:

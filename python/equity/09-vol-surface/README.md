@@ -26,7 +26,7 @@ option chain ──► implied vols ──► SVI smiles ──► total-varianc
 ```bash
 cd python/equity/09-vol-surface
 pip install -e .
-pytest -q                        # 118 tests, ~35 s, offline
+pytest -q                        # 141 tests, ~35 s, offline
 python examples/run_pipeline.py  # end-to-end, ~60 s
 ```
 
@@ -79,7 +79,7 @@ src/eq_surface/
   greeks.py          FD Greeks (Richardson), BS-equivalent Greeks, sticky-strike vs
                      sticky-moneyness delta
   data/synthetic.py  seeded chain generator (known-Heston or SVI ground truth, bid/ask)
-tests/               118 tests: analytic identities, cross-method, recovery, bias, edges
+tests/               141 tests: analytic identities, cross-method, recovery, bias, edges
 examples/run_pipeline.py
 docs/                METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```

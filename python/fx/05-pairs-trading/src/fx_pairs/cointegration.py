@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from ._validation import require_finite
+
 __all__ = [
     "ADFResult",
     "EngleGrangerResult",
@@ -234,8 +236,11 @@ def adf_test(
     y = np.asarray(y, dtype=float)
     if y.ndim != 1:
         raise ValueError("y must be one-dimensional")
-    if np.isnan(y).any():
-        raise ValueError("y contains NaNs; clean the series first")
+    # isfinite, not isnan: +/-Inf survives an isnan check, makes lstsq return
+    # NaN coefficients and yields a NaN tau statistic, and `nan < crit` is
+    # False -- so the test would silently report "no unit-root rejection".
+    if not np.isfinite(y).all():
+        raise ValueError("y contains NaN or infinite values; clean the series first")
     if regression not in ("c", "n"):
         raise ValueError(f"regression must be 'c' or 'n', got {regression!r}")
     n = len(y)
@@ -298,7 +303,10 @@ def is_degenerate_spread(
     'perfectly mean-reverting' trade.  Any real deviation lives inside the
     bid-ask spread at daily frequency, so there is no true arbitrage to trade.
     """
+    require_finite(abs_tol=abs_tol, rel_tol=rel_tol)
     s = np.asarray(spread, dtype=float)
+    if np.isinf(s).any():
+        raise ValueError("spread contains infinite values; clean the series first")
     sd = float(np.nanstd(s))
     if sd < abs_tol:
         return True
@@ -381,8 +389,14 @@ def engle_granger(
         raise ValueError("y and x must be one-dimensional")
     if len(y) < 30:
         raise ValueError(f"series too short for Engle-Granger: n={len(y)}")
-    if np.isnan(y).any() or np.isnan(x).any():
-        raise ValueError("inputs contain NaNs; clean the series first")
+    if not (np.isfinite(y).all() and np.isfinite(x).all()):
+        # An Inf (e.g. log of a zero/missing price) would pass an isnan check,
+        # give NaN OLS coefficients and a NaN ADF statistic; since
+        # bool(nan < crit) is False the pair would be reported as simply "not
+        # cointegrated" rather than as untestable data.
+        raise ValueError(
+            "inputs contain NaN or infinite values; clean the series first"
+        )
 
     X = np.column_stack([np.ones(len(x)), x])
     coefs, _, _, resid = _ols(X, y)

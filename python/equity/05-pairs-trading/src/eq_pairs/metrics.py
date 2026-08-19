@@ -129,11 +129,14 @@ def drawdown_series(equity: ArrayLike) -> np.ndarray:
 
 
 def max_drawdown(equity: ArrayLike) -> float:
-    """Maximum drawdown depth (positive number, units of ``equity``).
+    """Maximum drawdown depth (non-negative number, units of ``equity``).
 
-    Pass an equity/cumulative-P&L curve, not returns.
+    Pass an equity/cumulative-P&L curve, not returns. A monotonically rising
+    curve returns ``0.0`` (normalised: negating a drawdown series whose
+    minimum is ``0.0`` would otherwise yield ``-0.0``, which prints as a
+    negative drawdown in reports).
     """
-    return float(-drawdown_series(equity).min())
+    return float(-drawdown_series(equity).min()) + 0.0
 
 
 def hit_rate(trade_pnls: ArrayLike) -> float:

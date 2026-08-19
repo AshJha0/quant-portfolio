@@ -2,7 +2,7 @@
 
 Contract items 3 and 4: **how the library was validated** and **where it
 fails**. All numbers below are produced by the committed test suite
-(`python -m pytest tests -q`, 149 tests, ~10 s, fully offline, seeded) and by
+(`python -m pytest tests -q`, 185 tests, ~4 s, fully offline, seeded) and by
 `examples/run_pipeline.py`; every quoted figure is reproducible.
 
 ---
@@ -192,3 +192,31 @@ explicitly tested by forcing a failure.
 | Vol regime jump (crisis) | documented lag/adaptation behaviour above | `TestCrisisRegimeJump` |
 | Zero-return days in QLIKE proxy | finite loss (functional form chosen for this) | `test_qlike_handles_zero_proxy` |
 | Look-ahead in the OOS harness | forecasts invariant to future data | `test_forecast_alignment_no_lookahead` |
+| **σ → 0** (1e-6 annualised vol, daily variance ≈ 4e-15) | GARCH converges, `omega > 0`, every `sigma2 > 0` — no underflow to zero variance; EWMA and realized vol stay positive and finite | `TestExtremeVolRegimes::test_near_zero_vol_series_fits_without_underflow` |
+| **σ → ∞** (800% annualised, daily σ ≈ 0.5) | fits converge, no overflow/NaN in the recursion or the likelihood; standardised residuals still have unit variance | `TestExtremeVolRegimes::test_extreme_vol_series_fits_without_overflow` |
+| EGARCH explosive parameters (ω=5, α=3, β=0.99) | the ±60 log-variance clip keeps `exp()` finite and positive instead of overflowing mid-optimisation | `test_egarch_log_clip_keeps_recursion_finite_on_explosive_params` |
+| λ at the boundaries (λ=1, λ→0⁺) | λ=1 gives an exactly flat variance path at the initial level; λ→0⁺ reduces to the last squared return | `TestBoundaryValues` |
+| λ outside (0, 1] — including NaN | `ValueError` naming `lambda` | `test_lambda_outside_unit_interval_raises` |
+| Horizon = 1 / horizon ≤ 0 | h=1 is a valid boundary (one-row term structure); h ≤ 0 raises | `TestBoundaryValues` |
+| Rolling window equal to the sample length | one finite estimate at the last index, NaN before it (no silent truncation) | `test_window_equal_to_sample_length_is_allowed` |
+
+### 6.1 Structural (property-based) invariants
+
+Beyond individual cases, the suite pins down the *shape* of the estimators —
+these hold for any correct implementation, so they catch scale bugs and sign
+errors that point checks miss:
+
+| Invariant | Tolerance | Test |
+|---|---|---|
+| **Scale equivariance**: `r → c·r` ⇒ every variance × c², vol × c | 1e-12 relative (EWMA, realized vol, GARCH recursion) | `TestScaleEquivariance` |
+| GARCH *dynamics* are scale-free: α, β, persistence unchanged; ω scales by c² | α/β to 1e-4 absolute, ω to 1e-3 relative | `test_garch_fit_dynamics_invariant_to_scale` |
+| EGARCH scale enters log-variance additively: `ω → ω + (1−β)ln c²` reproduces `c²σ²` | 1e-10 relative | `test_egarch_recursion_scale_shift_in_log_space` |
+| EWMA reacts more to a shock the smaller λ is; half-life increasing in λ | strict ordering over λ ∈ {0.80, 0.90, 0.94, 0.99} | `TestMonotonicity` |
+| GARCH term structure moves **monotonically** to the long-run level and the gap to it never widens | converges to `ω/(1−α−β)` within 1e-4 relative at h=400 | `test_garch_term_structure_monotone_toward_unconditional` |
+| `avg_vol_annual` is bracketed by the running min/max of `forward_vol_annual` | 1e-12 | `test_term_structure_avg_vol_between_spot_and_forward_limits` |
+| Rolling-vol sampling noise decreases with window and tracks σ/√(2w) | within a factor 3 of theory | `test_realized_vol_window_noise_decreases_with_window` |
+| GJR news-impact curve: minimum at z=0, convex, left branch above right (γ>0) | exact | `TestNewsImpactGeometry` |
+| EGARCH news-impact curve: strictly positive, asymmetric for γ<0, exactly symmetric for γ=0 | 1e-12 | `TestNewsImpactGeometry` |
+| QLIKE penalises under-prediction more than over-prediction of equal ratio | strict | `test_qlike_penalises_underprediction_more_than_overprediction` |
+| Loss *rankings* are invariant to the data scale (Patton robustness) | strict at c = 1 and c = 100 | `test_qlike_scale_sensitive_mse_scale_sensitive_but_ranking_agrees` |
+| On symmetric data GJR/EGARCH collapse toward GARCH (|γ| < 0.06) and the extra parameter never lowers the maximised likelihood | — | `test_asymmetric_models_reduce_to_symmetric_on_symmetric_data` |

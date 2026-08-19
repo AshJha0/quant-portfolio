@@ -404,6 +404,11 @@ pub fn norm_ppf(p: f64) -> f64 {
 
 /// Brent's method mirroring `scipy.optimize.brentq` semantics: given
 /// `f(a) f(b) <= 0`, returns a root to absolute x-tolerance `xtol`.
+///
+/// Returns [`FxError::Numerical`] if the initial bracket has no sign
+/// change, or if `max_iter` iterations elapse without reaching `xtol`
+/// (scipy raises in both cases; silently returning the last iterate
+/// would let a non-converged strike or vol escape into a risk number).
 pub(crate) fn brentq<F>(f: F, a: f64, b: f64, xtol: f64, max_iter: usize) -> FxResult<f64>
 where
     F: Fn(f64) -> f64,
@@ -485,5 +490,8 @@ where
             dstep = e;
         }
     }
-    Ok(b)
+    Err(FxError::Numerical(format!(
+        "brentq: no convergence to xtol {xtol} in {max_iter} iterations \
+         (last iterate {b})"
+    )))
 }

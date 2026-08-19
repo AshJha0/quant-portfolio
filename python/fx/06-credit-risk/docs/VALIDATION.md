@@ -1,7 +1,7 @@
 # Validation — Evidence, Cross-Checks, Failure Modes
 
 All numbers below are produced by `examples/run_pipeline.py` (seed 42) and
-locked in by the 179-test suite (`pytest -q`, offline, ~6 s). Section 6 maps
+locked in by the 207-test suite (`pytest -q`, offline, ~8 s). Section 6 maps
 every documented edge case to its test.
 
 ## 1. Cross-model and analytic benchmarks
@@ -136,3 +136,8 @@ behaviour, documented so nobody "fixes" it.
 | PD = 0 / PD = 1 in Vasicek | `test_vasicek_degenerate_pds`, `test_capital_zero_at_boundary_pds` |
 | Unknown currency / rating / missing FX rate | `test_window_unknown_currency_raises`, `test_standardized_rw_table`, `test_missing_usd_rate_raises` |
 | Network access attempted | `test_live_loader_is_network_guarded` |
+| Pegged pair, vol = 0 (deterministic exposure, PFE = EE) | `test_edge_cases_review.py::test_pegged_pair_zero_vol_exposure_pfe_equals_ee` |
+| Distressed sovereign PD → 1 (hazard explodes, K → 0, CVA bounded) | `test_hazard_explodes_as_pd_to_one`, `test_capital_vanishes_at_both_pd_extremes_high_rho`, `test_cva_bounded_by_lgd_times_peak_ee` |
+| NaN/Inf inputs (paths, EL, Vasicek, CVA, AUC/KS/PSI/HL, USD rates) | `test_edge_cases_review.py` NaN/Inf block — every public entry point raises `ValueError` |
+| Tiny samples (2-row AUC, 2-row WOE), constant scores | `test_auc_minimal_two_row_sample`, `test_woe_single_row_per_class`, `test_auc_constant_score_is_half`, `test_ks_constant_score_is_zero` |
+| Empty / all-CLS settlement book | `test_empty_trade_book_zero_exposure`, `test_netting_all_cls_book_zero_exposure` |

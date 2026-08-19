@@ -53,6 +53,16 @@ pub struct McResult {
     pub method: &'static str,
 }
 
+/// Largest accepted `n_paths`.
+///
+/// The estimator materialises one `f64` per path (two with a control
+/// variate), so 1e9 paths already asks for 8-16 GB. Larger requests
+/// return [`crate::FxError::InvalidInput`] instead of being left to
+/// abort the process inside the allocator, and the cap also keeps the
+/// internal `2 * n_paths.div_ceil(2)` path count away from `u64`/`usize`
+/// overflow.
+pub const MAX_PATHS: u64 = 1_000_000_000;
+
 fn mean_of(x: &[f64]) -> f64 {
     x.iter().sum::<f64>() / x.len() as f64
 }
@@ -64,15 +74,18 @@ fn mean_of(x: &[f64]) -> f64 {
 /// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
 ///   requires `t > 0`.
 /// * `option_type` — call or put on the base currency.
-/// * `n_paths` — number of terminal draws, `>= 2` (rounded up to even
-///   when antithetic).
+/// * `n_paths` — number of terminal draws, in `[2, MAX_PATHS]` (rounded
+///   up to even when antithetic). With `antithetic` and `n_paths = 2`
+///   there is a single independent unit, so `std_error` is reported as
+///   `0.0` (no sample variance exists) and the confidence interval
+///   collapses to the point estimate.
 /// * `seed` — explicit RNG seed; the same seed is bit-reproducible.
 /// * `antithetic`, `control_variate` — variance-reduction switches.
 ///
 /// # Errors
 ///
 /// [`crate::FxError::InvalidInput`] on invalid inputs, `t <= 0`, or
-/// `n_paths < 2`.
+/// `n_paths` outside `[2, MAX_PATHS]`.
 ///
 /// ```
 /// use fx_options_engine::{gk_price, mc_price, OptionType};
@@ -105,6 +118,12 @@ pub fn mc_price(
     if n_paths < 2 {
         return invalid(format!("n_paths must be >= 2, got {n_paths}"));
     }
+    if n_paths > MAX_PATHS {
+        return invalid(format!(
+            "n_paths must be <= {MAX_PATHS}, got {n_paths} (the estimator \
+             buffers 8-16 bytes per path)"
+        ));
+    }
 
     let drift = (r_d - r_f - 0.5 * sigma * sigma) * t;
     let vol = sigma * t.sqrt();
@@ -114,7 +133,7 @@ pub fn mc_price(
     // (layout [z_0..z_{h-1}, -z_0..-z_{h-1}] so pair i = (i, i+half)).
     let mut rng = Xoshiro256StarStar::new(seed);
     let (half, total) = if antithetic {
-        let h = ((n_paths + 1) / 2) as usize;
+        let h = n_paths.div_ceil(2) as usize;
         (h, 2 * h)
     } else {
         (0, n_paths as usize)
@@ -198,7 +217,14 @@ pub fn mc_price(
     let price = mean_of(&samples);
     let ss: f64 = samples.iter().map(|v| (v - price) * (v - price)).sum();
     let n = samples.len() as f64;
-    let se = (ss / (n - 1.0)).sqrt() / n.sqrt();
+    // A single independent unit (n_paths = 2 with antithetic pairing
+    // collapses to one pair average) has no sample variance: report
+    // SE = 0 rather than dividing by n - 1 = 0 and returning NaN.
+    let se = if samples.len() > 1 {
+        (ss / (n - 1.0)).sqrt() / n.sqrt()
+    } else {
+        0.0
+    };
 
     let method = match (antithetic, control_variate) {
         (true, true) => "antithetic+control_variate",

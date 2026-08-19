@@ -42,7 +42,30 @@ def max_drawdown(prices: pd.Series) -> DrawdownResult:
         ``peak_date``, ``trough_date`` (index labels), and
         ``drawdown_series`` (the full drawdown path, same index as
         ``prices``).
+
+    Raises
+    ------
+    ValueError
+        If ``prices`` is empty, or contains a non-finite (NaN/inf) or a
+        non-positive value. A zero
+        or negative "price" makes ``P_t / running_max - 1`` meaningless
+        (a drawdown below -100%, or a sign flip), so it is rejected at
+        the door rather than propagated into a report -- in practice it
+        means a bad data feed, not a real market event.
     """
+    prices = pd.Series(prices)
+    if len(prices) == 0:
+        raise ValueError("max_drawdown: prices is empty; need at least 1 observation")
+    if not np.isfinite(prices.to_numpy(dtype=float)).all():
+        raise ValueError(
+            "max_drawdown: prices contains non-finite values (NaN/inf); "
+            "forward-fill or drop the gaps before measuring drawdown"
+        )
+    if (prices <= 0).any():
+        raise ValueError(
+            "max_drawdown: prices must be strictly positive "
+            "(a non-positive price level is a data error, not a drawdown)"
+        )
     running_max = prices.cummax()
     drawdown = prices / running_max - 1
     trough_date = drawdown.idxmin()

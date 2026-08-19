@@ -2,7 +2,7 @@
 
 How the implementation was validated, with the numbers. All figures below are
 reproducible: `python examples/run_pipeline.py` (seeded, offline, ~1 s) and
-`pytest -q` (149 tests, ~6 s, offline).
+`pytest -q` (246 tests, ~6 s, offline).
 
 ---
 
@@ -131,8 +131,73 @@ exposure limits (`DESK_GUIDE.md`), regime monitoring on rolling correlations.
 | Weekend/holiday accrual total | sums exactly to calendar days/365 | `test_carry` |
 | Rate spike on last day | cannot affect prior accruals (lagged rates) | `test_carry` |
 | Series too short / NaNs / mismatched lengths / bad thresholds | informative `ValueError`s | all modules |
+| **±Inf in a series** (logged zero/missing price) | rejected by `adf_test`, `engle_granger`, OU fitters and `run_backtest`; previously accepted by `isnan`-only guards and returned "not cointegrated" | `test_nan_guards` (§6.1) |
+| **NaN threshold / parameter** (`stop`, `sigma`, `notional`, `min_abs_corr`, `ann_factor`) | rejected; previously disabled the hard stop, muted the strategy or emptied the screen silently | `test_nan_guards` (§6.1) |
+| Zero or non-positive price level | rejected before `log`, with a message naming the series | `test_nan_guards` (§6.1) |
 | Vol-target on collapsing vol | scale capped at max leverage (the SNB lesson) | `test_signals` |
 | Sub-5% EG rejection on pure noise | size control holds | `test_cointegration` |
+
+### 6.1 Non-finite inputs: the guards that silently muted the strategy
+(`tests/test_nan_guards.py`)
+
+Two distinct defect patterns were found and closed; both produced a
+*plausible-looking* result instead of an error, which is why neither had
+been noticed.
+
+**Pattern 1 — inequality-only guards.** `if sigma <= 0`, `if stop <= entry`,
+`if notional <= 0`, `if target_vol <= 0`, `if delta <= 0`. Every comparison
+against NaN is False, so NaN passed every one of them. Specific
+consequences reproduced in tests:
+
+* NaN `sigma` in `zscore(mu=…, sigma=…)` → all-NaN z-score → the state
+  machine stays flat for the entire sample → the backtest reports a clean
+  zero-P&L, zero-trade run. A strategy that never traded, presented as a
+  result.
+* NaN `stop` in `generate_positions` → **the hard stop is disabled**, because
+  `state * z <= -nan` is always False. That stop is the single control that
+  exists to limit a regime break (§5, the SNB floor case). It would have been
+  switched off with no message.
+* NaN `min_abs_corr` in `correlation_screen` → every `abs(rho) >= threshold`
+  False → an empty candidate table, indistinguishable from "the universe
+  contains no tradable pairs".
+* A non-finite deposit rate in `run_backtest(rates=…)` → NaN carry accrual →
+  NaN carry P&L → a NaN Sharpe in the summary. The error now names the
+  offending dict key (`rates['rq2']`).
+* NaN `ann_factor` in the metrics → NaN Sharpe/Sortino/turnover.
+
+**Pattern 2 — `isnan`-only guards on series.** `adf_test`, `engle_granger`,
+`_validate_spread` (OU fitting) and `run_backtest` all tested
+`np.isnan(x).any()` and therefore **accepted ±Inf**. Inf, not NaN, is the
+realistic corruption in this package: a zero or missing fixing becomes
+`-inf` the instant it passes through `log`. The consequence was the most
+serious defect found here — an Inf in the input made `lstsq` return NaN
+coefficients, the ADF tau NaN, and `bool(nan < critical_value)` **False**,
+so `engle_granger` reported **"not cointegrated"** on data it could not test.
+A false negative identical in appearance to a genuine one. All four
+validators now use `np.isfinite`, and price-level inputs are additionally
+required to be strictly positive so the zero-price case raises *before* the
+`log`.
+
+Positive companions in the same file guard against over-rejection: the
+planted cointegrated pair is still detected (`cointegrated=True`,
+beta ≈ 1.0); a finite stop still fires when z walks to −6 and the position is
+flat afterwards; the vol-target cap still binds at 10× on a near-pegged
+spread; `half_life_days` still returns `inf` for `kappa <= 0` and
+`ln2/(kappa·dt)` otherwise; RLS at `lam=1` still converges to the batch OLS
+beta to 1e-6; the correlation screen still finds the EURUSD/GBPUSD block; and
+the clean backtest still satisfies `total = spot + carry + costs` to 1e-12.
+
+**RLS state integrity.** `RLSHedge.update` now validates *before* mutating
+`theta` and `P`. This matters because the filter has no recovery mechanism: a
+single non-finite tick would have made every subsequent hedge ratio NaN for
+the rest of the run. A test asserts `(alpha, beta, n_obs)` are bit-identical
+after a rejected update.
+
+**Deliberate asymmetry.** The metrics layer still *tolerates* NaN in a P&L
+series (it drops non-finite entries) because a warmup window legitimately
+produces NaN P&L before the first position exists; the pricing, signal and
+backtest layers reject. This split is now documented in `metrics._clean` and
+asserted in `test_metrics_still_tolerate_warmup_nans_in_pnl`.
 
 ## 7. Metrics validation
 

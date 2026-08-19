@@ -33,7 +33,7 @@ invalid inputs raise `ValueError`.
 ```bash
 cd python/equity/01-options-pricing
 pip install -e .                     # numpy, scipy, pandas only
-python -m pytest tests -q            # 262 tests, offline, ~6 s
+python -m pytest tests -q            # 288 tests, offline, ~5 s
 python examples/run_pipeline.py      # full report, ~1.5 s
 ```
 
@@ -86,7 +86,7 @@ N=128 drag the mean to −0.234.
 ```
 src/eq_options/          black_scholes, binomial, black76, monte_carlo,
                          greeks, hedging, comparison, data/{synthetic,live}
-tests/                   262 offline seeded pytest tests
+tests/                   288 offline seeded pytest tests
 tests/golden/            golden_vectors.json (32 cases, 1e-10) + generator
 examples/run_pipeline.py end-to-end report reproducing every number above
 docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md

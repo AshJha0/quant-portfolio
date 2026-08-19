@@ -29,6 +29,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from ._validation import require_finite
 from .bootstrap import basis_adjusted_curve
 from .curve import DiscountCurve
 
@@ -46,9 +47,17 @@ POINT_FACTORS = {"EURUSD": 1e4, "USDJPY": 1e2, "EURJPY": 1e2}
 _DEFAULT_POINT_FACTOR = 1e4
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, frozen=True)
 class MarketState:
     """Market snapshot for one currency pair.
+
+    **Immutable by design.**  ``foreign_curve_adjusted`` is a
+    :func:`functools.cached_property` derived from ``foreign_curve`` *and*
+    ``basis_spreads``; if the instance were mutable, assigning to either
+    field would leave that cache stale and every subsequent forward and
+    valuation would silently use the old basis curve.  Use :meth:`replace`
+    (which builds a fresh instance, and therefore a fresh cache) to make a
+    shocked copy — that is what the risk and scenario modules do.
 
     Attributes
     ----------
@@ -75,6 +84,9 @@ class MarketState:
     pair: tuple[str, str] = ("EUR", "USD")
 
     def __post_init__(self) -> None:
+        require_finite(spot=self.spot)
+        for _t, _s in self.basis_spreads:
+            require_finite(basis_tenor=_t, basis_spread=_s)
         if self.spot <= 0.0:
             raise ValueError(f"spot must be > 0, got {self.spot}")
         base, quote = self.pair
@@ -82,7 +94,11 @@ class MarketState:
             raise ValueError(
                 f"same-currency 'cross' {base}/{quote} rejected: base and quote must differ"
             )
-        self.basis_spreads = tuple((float(t), float(s)) for t, s in self.basis_spreads)
+        object.__setattr__(
+            self,
+            "basis_spreads",
+            tuple((float(t), float(s)) for t, s in self.basis_spreads),
+        )
 
     @cached_property
     def foreign_curve_adjusted(self) -> DiscountCurve:
@@ -116,6 +132,7 @@ def cip_forward(
     ``expiry`` may be a scalar or array of year fractions (> 0 not required;
     T = 0 returns spot).
     """
+    require_finite(spot=spot, expiry=expiry)
     if spot <= 0.0:
         raise ValueError(f"spot must be > 0, got {spot}")
     t = np.asarray(expiry, dtype=float)
@@ -136,6 +153,9 @@ def forward_points(
     """Forward points ``(F_mkt - S) * factor`` (factor 1e4 for EURUSD pips)."""
     if point_factor is None:
         point_factor = POINT_FACTORS.get("".join(market.pair), _DEFAULT_POINT_FACTOR)
+    require_finite(point_factor=point_factor)
+    if point_factor <= 0.0:
+        raise ValueError(f"point_factor must be > 0, got {point_factor}")
     f = market_forward(market, expiry)
     return (f - market.spot) * point_factor
 
@@ -203,6 +223,8 @@ class FXForward:
             raise ValueError(
                 f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected"
             )
+        require_finite(notional_base=self.notional_base, strike=self.strike,
+                       expiry=self.expiry)
         if self.strike <= 0.0:
             raise ValueError(f"strike must be > 0, got {self.strike}")
         if self.expiry <= 0.0:
@@ -261,6 +283,11 @@ class FXSwap:
             raise ValueError(
                 f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected"
             )
+        require_finite(notional_base=self.notional_base,
+                       near_strike=self.near_strike,
+                       far_strike=self.far_strike,
+                       near_expiry=self.near_expiry,
+                       far_expiry=self.far_expiry)
         if self.near_strike <= 0.0 or self.far_strike <= 0.0:
             raise ValueError("FX swap strikes must be > 0")
         if not (0.0 < self.near_expiry < self.far_expiry):

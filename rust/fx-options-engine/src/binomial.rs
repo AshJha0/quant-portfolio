@@ -18,6 +18,15 @@
 use crate::garman_kohlhagen::gk_price;
 use crate::{invalid, validate_inputs, FxResult, OptionType};
 
+/// Largest accepted `steps`.
+///
+/// Backward induction costs O(n^2) time and O(n) memory, so 1e7 steps is
+/// already far beyond any useful accuracy/latency trade-off (the tree
+/// converges at O(1/n)). Larger requests return
+/// [`crate::FxError::InvalidInput`] rather than hanging for hours or
+/// aborting inside the allocator.
+pub const MAX_STEPS: u32 = 10_000_000;
+
 /// Exercise style for [`binomial_price`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Exercise {
@@ -33,14 +42,15 @@ pub enum Exercise {
 ///
 /// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`].
 /// * `option_type` — call or put on the base currency.
-/// * `steps` — number of tree steps, `>= 1`.
+/// * `steps` — number of tree steps, in `[1, MAX_STEPS]`.
 /// * `exercise` — [`Exercise::European`] or [`Exercise::American`].
 ///
 /// Returns the price in domestic currency per unit foreign notional.
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] on invalid inputs, zero `steps`, or
+/// [`crate::FxError::InvalidInput`] on invalid inputs, `steps` outside
+/// `[1, MAX_STEPS]`, or
 /// if the tree probability falls outside `[0, 1]` (time step too coarse
 /// for the drift/vol combination).
 ///
@@ -67,6 +77,12 @@ pub fn binomial_price(
     validate_inputs(s, k, t, r_d, r_f, sigma)?;
     if steps < 1 {
         return invalid(format!("steps must be a positive integer, got {steps}"));
+    }
+    if steps > MAX_STEPS {
+        return invalid(format!(
+            "steps must be <= {MAX_STEPS}, got {steps} (backward induction \
+             is O(n^2) work and O(n) memory)"
+        ));
     }
     if t == 0.0 {
         return Ok((phi * (s - k)).max(0.0));

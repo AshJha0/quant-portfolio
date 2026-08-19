@@ -113,6 +113,71 @@ TEST(Validation, NanInputsThrowInvalidArgument) {
     EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, kNan), std::invalid_argument);
 }
 
+TEST(Validation, InfiniteInputsThrowInvalidArgument) {
+    constexpr double kInf = std::numeric_limits<double>::infinity();
+    EXPECT_THROW(bs_price(kInf, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, kInf, 1.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, kInf, 0.05, 0.2),
+                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, kInf),
+                 std::invalid_argument);
+    // Rates/yields may be negative but must be finite.
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kInf, 0.2),
+                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kNan, 0.2),
+                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kInf),
+                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kNan),
+                 std::invalid_argument);
+}
+
+TEST(EdgeCases, ExtremeMoneyness100xIsPinnedToParityBounds) {
+    // S/K = 100x and 0.01x: prices collapse to their arbitrage limits and
+    // parity still holds to machine precision.
+    const double T = 1.0, r = 0.03, q = 0.01, sigma = 0.2;
+    const double deep_itm_call =
+        bs_price(100.0, 1.0, T, r, sigma, q, OptionType::Call);
+    EXPECT_NEAR(deep_itm_call,
+                100.0 * std::exp(-q * T) - 1.0 * std::exp(-r * T), 1e-10);
+    const double deep_otm_call =
+        bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Call);
+    EXPECT_GE(deep_otm_call, 0.0);
+    EXPECT_LT(deep_otm_call, 1e-100);
+    const double deep_itm_put =
+        bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Put);
+    EXPECT_NEAR(deep_itm_put,
+                100.0 * std::exp(-r * T) - 1.0 * std::exp(-q * T), 1e-10);
+    // Parity at both wings.
+    for (double S : {1.0, 100.0}) {
+        for (double K : {1.0, 100.0}) {
+            const double c = bs_price(S, K, T, r, sigma, q, OptionType::Call);
+            const double p = bs_price(S, K, T, r, sigma, q, OptionType::Put);
+            EXPECT_NEAR(c - p,
+                        S * std::exp(-q * T) - K * std::exp(-r * T), 1e-12);
+        }
+    }
+}
+
+TEST(EdgeCases, VeryLongExpiryStaysWithinBounds) {
+    // 30y and 100y: no overflow, prices pinned inside no-arbitrage bounds,
+    // call converges towards S e^{-qT} as T grows (sigma sqrt(T) large).
+    for (double T : {30.0, 100.0}) {
+        const double c = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01,
+                                  OptionType::Call);
+        const double p = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01,
+                                  OptionType::Put);
+        ASSERT_TRUE(std::isfinite(c));
+        ASSERT_TRUE(std::isfinite(p));
+        EXPECT_GT(c, 0.0);
+        EXPECT_LE(c, 100.0 * std::exp(-0.01 * T) * (1.0 + 1e-12));
+        EXPECT_LE(p, 100.0 * std::exp(-0.03 * T) * (1.0 + 1e-12));
+        EXPECT_NEAR(c - p,
+                    100.0 * std::exp(-0.01 * T) - 100.0 * std::exp(-0.03 * T),
+                    1e-10);
+    }
+}
+
 TEST(Validation, NegativeRatesAndYieldsAreSupported) {
     EXPECT_NO_THROW(bs_price(100.0, 100.0, 1.0, -0.02, 0.2, -0.01));
     const double c = bs_price(100.0, 100.0, 1.0, -0.02, 0.2, -0.01);

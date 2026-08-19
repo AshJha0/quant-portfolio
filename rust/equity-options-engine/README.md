@@ -28,13 +28,15 @@ approximation) are implemented in-crate against `std` only.
 Conventions (identical to the Python reference): continuously compounded
 annualised `r`/`q` (ACT/365F), `T` in years, `sigma` annualised; theta per
 **year**, vega per **unit** of vol, rho per **unit** of rate. Invalid
-inputs (negative `S`, `K`, `T`, `sigma`, NaN) return
+inputs (negative `S`, `K`, `T`, `sigma`; NaN or infinity anywhere,
+including in the rates `r`/`q`) return
 `Err(PricingError::InvalidInput)` — no panics on the pricing paths.
+Negative `r` and `q` are fully supported.
 
 ## Build, test, benchmark
 
 ```sh
-RUSTFLAGS="-D warnings" cargo test    # 71 tests (45 integration + 26 doctests), all green
+RUSTFLAGS="-D warnings" cargo test    # 85 tests (58 integration + 27 doctests), all green
 cargo run --release --bin bench
 ```
 
@@ -57,8 +59,24 @@ Also enforced: put-call parity to 1e-12 across a 486-point grid, Black-76
 == European, Monte Carlo within 3 standard errors with effective variance
 reduction and bitwise seed reproducibility, analytic vs finite-difference
 Greeks to 1e-6 (first order; 5e-6 second order), implied-vol round trips to
-1e-8, and edge cases (`T=0`, `sigma=0`, `S=0`, `K=0`, invalid inputs
-returning `Err`).
+1e-8, and edge cases (`T=0`, `sigma=0`, `S=0`, `K=0`, extreme moneyness
+`S/K` from 1e-4 to 1e4, 30- and 100-year expiries, negative `r`/`q`,
+minimum path counts, invalid inputs returning `Err`).
+
+**Validation contract on non-finite input.** Every public entry point
+(`bs_price`, `bs_greeks`, `fd_greeks`, `d1_d2`, `crr_price`,
+`early_exercise_premium`, `black76_price`, `black76_greeks`, `b76_d1_d2`,
+`implied_vol`, `mc_price`) rejects NaN **and** +/-infinity in *every*
+float argument — including the rates `r` and `q`, which a naive
+`if x <= 0 { return Err(..) }` guard would wave through, because every
+comparison against NaN is false. This is deliberately stricter than the
+Python reference (which rejects NaN but lets `inf` propagate): a NaN
+"price" trips no risk limit and colours no traffic light, so it is the
+worst possible failure mode for a pricing library. `fd_greeks`
+additionally refuses inputs where the down-leg of a central bump would
+leave the domain (`sigma - h <= 0`, `s - h <= 0`, `t - h <= 0`), so a
+caller-supplied pricer closure that does no validation of its own can
+never be evaluated at a negative volatility or a negative spot.
 
 ## Benchmark (rustc 1.95, `--release`, 2 vCPU container, single run)
 

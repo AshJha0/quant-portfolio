@@ -9,7 +9,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <vector>
 
 #include "fxvar/matrix.hpp"
 #include "fxvar/stats.hpp"
@@ -133,4 +135,58 @@ TEST(Validation, AlphaAndHorizonBounds) {
   EXPECT_DOUBLE_EQ(validate_alpha(0.99), 0.99);
   EXPECT_THROW(validate_horizon(0.0), std::invalid_argument);
   EXPECT_DOUBLE_EQ(validate_horizon(10.0), 10.0);
+}
+
+
+TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
+  // Regression: a covariance quoted in large units (unscaled notional
+  // variances) is only ever symmetric to ~1e-16 RELATIVE.  An absolute
+  // 1e-12 symmetry test rejected such matrices outright.
+  Matrix big(2, 2, 0.0);
+  big(0, 0) = 1e12;
+  big(1, 1) = 1e12;
+  big(0, 1) = 5e11;
+  big(1, 0) = 5e11 * (1.0 + 1e-15);  // 5.5e-4 absolute, 1.1e-15 relative
+  EXPECT_GT(std::abs(big(1, 0) - big(0, 1)), 1e-12);  // fails an absolute test
+  CholeskyResult r;
+  ASSERT_NO_THROW(r = robust_cholesky(big));
+  EXPECT_FALSE(r.jittered);
+  // Genuinely asymmetric input is still rejected.
+  Matrix asym = big;
+  asym(1, 0) = 5e11 * 1.01;
+  EXPECT_THROW(robust_cholesky(asym), std::invalid_argument);
+}
+
+TEST(Cholesky, RejectsNonFiniteEntries) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  Matrix a = Matrix::from_rows({{1e-4, nan}, {nan, 1e-4}});
+  Matrix b = Matrix::from_rows({{1e-4, inf}, {inf, 1e-4}});
+  // Previously these ground through the whole jitter ladder and surfaced
+  // as a misleading "not factorisable" runtime_error.
+  EXPECT_THROW(robust_cholesky(a), std::invalid_argument);
+  EXPECT_THROW(robust_cholesky(b), std::invalid_argument);
+}
+
+TEST(Cholesky, IndefiniteCovarianceStillFails) {
+  // Correlation of 2 is not a covariance: the jitter ladder tops out at
+  // 1e-5 * mean(diag), far below the 1e-4 negative eigenvalue here, so the
+  // matrix is reported as unusable instead of being silently "repaired".
+  const Matrix indefinite = Matrix::from_rows({{1e-4, 2e-4}, {2e-4, 1e-4}});
+  EXPECT_THROW(robust_cholesky(indefinite), std::runtime_error);
+}
+
+TEST(Validation, AlphaExtremesInsideTheOpenInterval) {
+  // Boundary-adjacent confidence levels must be accepted and usable.
+  EXPECT_DOUBLE_EQ(validate_alpha(1e-6), 1e-6);
+  EXPECT_DOUBLE_EQ(validate_alpha(1.0 - 1e-12), 1.0 - 1e-12);
+  EXPECT_THROW(validate_alpha(std::numeric_limits<double>::quiet_NaN()),
+               std::invalid_argument);
+  EXPECT_THROW(validate_horizon(std::numeric_limits<double>::quiet_NaN()),
+               std::invalid_argument);
+  EXPECT_THROW(validate_horizon(-1.0), std::invalid_argument);
+  // norm_ppf stays finite and ordered at the extremes it will see.
+  EXPECT_LT(norm_ppf(1e-8), norm_ppf(1e-6));
+  EXPECT_GT(norm_ppf(1.0 - 1e-8), norm_ppf(1.0 - 1e-6));
+  EXPECT_TRUE(std::isfinite(norm_ppf(1e-300)));
 }

@@ -1,7 +1,7 @@
 # Validation
 
 Everything below is enforced by the committed GoogleTest suite
-(`ctest --test-dir build --output-on-failure`, 48 tests, ~130 assertion
+(`ctest --test-dir build --output-on-failure`, 55 tests, ~150 assertion
 sites, thousands of executed assertions across parameter grids). The build
 is warnings-as-errors (`-Wall -Wextra -Werror`).
 
@@ -69,8 +69,10 @@ a price or Greek by more than 1e-9 fails CI on the other side.
   floored so the strike stays within ~3 standard deviations of the forward
   — beyond that the time value underflows double precision and *no* solver
   can invert the price; that regime is covered by the rejection tests
-  instead). Extreme vol (sigma = 4) recovered to 1e-7; short-dated wings
-  (tiny vega) recovered via the bisection fallback.
+  instead). Extreme vol (sigma = 4) recovered to 1e-7; sigma = 15 — above
+  the default bracket top of 10 — recovered via the automatic bracket
+  expansion; short-dated wings (tiny vega) recovered via the bisection
+  fallback.
 
 ## 4. Edge cases and failure behaviour
 
@@ -80,11 +82,17 @@ a price or Greek by more than 1e-9 fails CI on the other side.
 - Huge vol (sigma = 50): price finite and pinned just below the
   no-arbitrage upper bound.
 - Deep wings: erfc-based CDF keeps a K = 100x OTM call finite and
-  >= 0 (< 1e-100), never NaN.
-- Negative `S`, `K`, `T`, `sigma` and NaN inputs throw
-  `std::invalid_argument` (negative `r`, `q` are supported and tested).
-- Implied vol rejects sub-intrinsic prices (at/below the sigma -> 0 bound)
-  and prices at/above the sigma -> infinity bound, and refuses `T = 0`.
+  >= 0 (< 1e-100), never NaN; 100x moneyness in both directions is pinned
+  to the parity/arbitrage limits to 1e-10, and 30y/100y expiries stay
+  finite and inside their bounds.
+- Negative `S`, `K`, `T`, `sigma` and **NaN or +/-Inf in any input —
+  including `r` and `q`** — throw `std::invalid_argument` (negative
+  *finite* `r`, `q` are supported and tested).
+- Implied vol rejects sub-intrinsic prices (at/below the sigma -> 0 bound),
+  prices at/above the sigma -> infinity bound (including +Inf), non-finite
+  rates, and refuses `T = 0`.
+- Finite-difference Greeks refuse `T` or `sigma` too small for their
+  central down-bump instead of silently pricing at a negative input.
 - Tree rejects `n_steps < 1` and a risk-neutral probability outside (0, 1).
 - **NaN-free domain scan:** 864-point sweep over S, K in [1e-6, 1e6],
   T in [1e-6, 10], sigma in [1e-8, 3], r in [-0.05, 0.1]: every price

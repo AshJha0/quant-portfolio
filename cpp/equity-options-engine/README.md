@@ -22,13 +22,14 @@ beyond the standard library (GoogleTest for tests only).
 Conventions (identical to the Python reference): continuously compounded
 annualised `r`/`q` (ACT/365F), `T` in years, `sigma` annualised; theta per
 **year**, vega per **unit** of vol, rho per **unit** of rate. Invalid inputs
-(negative `S`, `K`, `T`, `sigma`, NaN) throw `std::invalid_argument`.
+(negative `S`, `K`, `T`, `sigma`; NaN or +/-Inf anywhere, including `r` and
+`q`) throw `std::invalid_argument`.
 
 ## Build, test, benchmark
 
 ```sh
 cmake -S . -B build && cmake --build build -j
-ctest --test-dir build --output-on-failure   # 48 tests, all passing
+ctest --test-dir build --output-on-failure   # 55 tests, all passing
 ./build/eqopt_bench
 ```
 

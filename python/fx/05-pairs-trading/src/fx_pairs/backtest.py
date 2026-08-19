@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from ._validation import finite_series, require_finite
+
 from . import carry as carry_mod
 from .cointegration import engle_granger
 from .signals import Trade, generate_positions, zscore
@@ -137,17 +139,24 @@ def run_backtest(
     pos = np.asarray(positions, dtype=float)
     if len(pos) != n:
         raise ValueError(f"positions length {len(pos)} != prices length {n}")
-    if np.isnan(pos).any():
-        raise ValueError("positions contain NaNs (treat warmup as 0)")
+    if not np.isfinite(pos).all():
+        raise ValueError(
+            "positions contain NaN or infinite values (treat warmup as 0)"
+        )
+    require_finite(pip_spread_1=pip_spread_1, pip_spread_2=pip_spread_2,
+                   notional=notional, basis=basis)
     if pip_spread_1 < 0 or pip_spread_2 < 0:
         raise ValueError("pip spreads must be non-negative")
     if notional <= 0:
         raise ValueError("notional must be positive")
+    if basis <= 0:
+        raise ValueError("basis must be positive")
     index = p1.index
     beta_s = _as_series(beta, index, "beta").to_numpy()
+    require_finite(beta=beta_s)
 
-    lp1 = np.log(p1.to_numpy(dtype=float))
-    lp2 = np.log(p2.to_numpy(dtype=float))
+    lp1 = np.log(finite_series(p1.to_numpy(dtype=float), "p1", positive=True))
+    lp2 = np.log(finite_series(p2.to_numpy(dtype=float), "p2", positive=True))
 
     n1 = pos
     n2 = pos * beta_s
@@ -160,6 +169,8 @@ def run_backtest(
         for key in ("rb1", "rq1", "rb2", "rq2"):
             if key not in rates:
                 raise ValueError(f"rates dict missing key {key!r}")
+            # Named by dict key so the error points at the offending quote.
+            require_finite(**{f"rates[{key!r}]": rates[key]})
         accr1 = carry_mod.carry_accrual(rates["rb1"], rates["rq1"], index,
                                         basis=basis, method=carry_method)
         accr2 = carry_mod.carry_accrual(rates["rb2"], rates["rq2"], index,

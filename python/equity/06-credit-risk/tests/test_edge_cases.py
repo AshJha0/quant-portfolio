@@ -105,3 +105,46 @@ def test_extreme_but_valid_basel_inputs() -> None:
     # Very high PD: formula turns over but stays non-negative and finite.
     k = basel_k(np.linspace(0.5, 0.9999, 50), 0.45, 2.5)
     assert np.isfinite(k).all() and (k >= 0).all()
+
+
+def test_all_default_sample_raises_everywhere() -> None:
+    n = 100
+    x = np.random.default_rng(3).standard_normal(n)
+    y1 = pd.Series(np.ones(n, dtype=int))
+    with pytest.raises(ValueError, match="no goods"):
+        fit_numeric_binning(pd.Series(x), y1, "x")
+    with pytest.raises(ValueError, match="no goods"):
+        fit_logistic(x[:, None], y1.to_numpy())
+
+
+def test_vasicek_cdf_and_quantile_monotone_properties() -> None:
+    from eq_credit.portfolio_risk import vasicek_cdf, vasicek_quantile
+
+    xs = np.linspace(0.001, 0.999, 200)
+    cdf = vasicek_cdf(xs, pd_=0.03, rho=0.15)
+    assert np.all(np.diff(cdf) >= 0)  # CDF monotone non-decreasing
+    assert np.all((cdf >= 0) & (cdf <= 1))
+    qs = np.linspace(0.001, 0.999, 200)
+    xq = vasicek_quantile(qs, pd_=0.03, rho=0.15)
+    assert np.all(np.diff(xq) >= 0)  # quantile monotone in q
+    assert np.all((xq > 0) & (xq < 1))
+
+
+def test_simulated_loss_rates_bounded_and_mean_near_el() -> None:
+    # Property: loss rate in [0, 1]; mean loss ~ PD * LGD for homogeneous book.
+    losses = simulate_portfolio_losses(
+        0.05, 0.4, 1.0, rho=0.10, n_sims=20_000, seed=7, n_loans=200
+    )
+    assert np.all((losses >= 0) & (losses <= 1))
+    se = losses.std(ddof=1) / np.sqrt(len(losses))
+    assert abs(losses.mean() - 0.05 * 0.4) < 3 * se + 1e-3
+
+
+def test_basel_k_bounded_by_lgd_at_reference_maturity() -> None:
+    from eq_credit.portfolio_risk import basel_k
+
+    # At M = 2.5 the maturity multiplier is 1, so 0 <= K <= LGD.
+    p = np.linspace(0.0003, 0.9999, 100)
+    for lgd in (0.1, 0.45, 1.0):
+        k = basel_k(p, lgd, 2.5)
+        assert np.all(k >= 0) and np.all(k <= lgd + 1e-12)

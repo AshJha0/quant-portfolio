@@ -22,6 +22,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from ._validation import require_finite
+
 __all__ = [
     "G10_CURRENCIES",
     "EM_CURRENCIES",
@@ -200,6 +202,9 @@ def correlation_screen(
     """
     if prices.shape[1] < 2:
         raise ValueError("need at least two instruments to screen")
+    # A NaN threshold makes every `abs(rho) >= min_abs_corr` comparison False
+    # and returns an empty screen -- indistinguishable from "no candidates".
+    require_finite(min_abs_corr=min_abs_corr, vol_tol=vol_tol)
     rets = np.log(prices).diff().dropna(how="all")
     stds = rets.std()
     pegged = [c for c in prices.columns if not np.isfinite(stds[c]) or stds[c] < vol_tol]

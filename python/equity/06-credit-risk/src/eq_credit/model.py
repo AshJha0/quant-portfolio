@@ -155,6 +155,11 @@ def fit_logistic(
         raise ValueError("empty design matrix")
     if len(ya) != n:
         raise ValueError("X and y length mismatch")
+    if not np.isfinite(Xa).all():
+        raise ValueError(
+            "X contains NaN or Inf: impute or drop missing values before "
+            "fitting (the scorecard path handles NaN via WOE missing bins)"
+        )
     if not np.isin(ya, [0.0, 1.0]).all():
         raise ValueError("y must be binary 0/1")
     n_def = int(ya.sum())
@@ -313,6 +318,14 @@ class ScorecardScaling:
     base_score: float = 600.0
     base_odds: float = 50.0
     pdo: float = 20.0
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.base_score):
+            raise ValueError("base_score must be finite")
+        if not (np.isfinite(self.base_odds) and self.base_odds > 0):
+            raise ValueError("base_odds must be a positive finite number")
+        if not (np.isfinite(self.pdo) and self.pdo > 0):
+            raise ValueError("pdo (points to double the odds) must be > 0")
 
     @property
     def factor(self) -> float:

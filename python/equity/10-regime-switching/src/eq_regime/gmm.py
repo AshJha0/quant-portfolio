@@ -259,8 +259,10 @@ def fit_gmm(
         x = x[:, None]
     if x.ndim != 2:
         raise ValueError("x must be 1-D or 2-D")
-    if np.isnan(x).any():
-        raise ValueError("x contains NaN")
+    if not np.isfinite(x).all():
+        raise ValueError(
+            "x contains NaN or Inf: clean the feature matrix before fitting"
+        )
     if n_components < 1:
         raise ValueError(f"n_components must be >= 1, got {n_components}")
     if x.shape[0] < max(2 * n_components, x.shape[1] + 1):

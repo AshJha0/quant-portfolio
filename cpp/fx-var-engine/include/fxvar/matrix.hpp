@@ -83,9 +83,15 @@ struct CholeskyResult {
 /// numerically indefinite (near-zero-vol factors, perfectly correlated
 /// pegs to the same anchor).  On failure, jitter 1e-12 * mean(diag) is
 /// added and escalated x10 up to `max_tries` times; the result records
-/// the jitter actually used.  Throws std::invalid_argument if `cov` is
-/// not square/symmetric and std::runtime_error if it cannot be
-/// factorised at maximum jitter.
+/// the jitter actually used.  With the default `max_tries = 8` the largest
+/// perturbation is 1e-5 * mean(diag), so a genuinely indefinite matrix
+/// (negative eigenvalue above that) still fails rather than being silently
+/// "repaired" into a different covariance.
+///
+/// Throws std::invalid_argument if `cov` is not square, contains NaN/Inf,
+/// or is not symmetric to 1e-12 * max|entry| (a RELATIVE test: covariances
+/// in large units are only ever symmetric to rounding), and
+/// std::runtime_error if it cannot be factorised at maximum jitter.
 CholeskyResult robust_cholesky(const Matrix& cov, int max_tries = 8);
 
 }  // namespace fxvar

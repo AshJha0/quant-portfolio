@@ -7,7 +7,7 @@
 //! to years, mirroring the Python reference `eq_options.implied_vol`.
 
 use crate::black_scholes::{
-    bs_price, d1_d2, norm_pdf, validate_inputs, OptionType, PricingError,
+    bs_price, d1_d2, norm_pdf, validate_inputs, validate_rates, OptionType, PricingError,
 };
 
 /// Absolute price tolerance for the implied-vol solver.
@@ -68,8 +68,11 @@ pub fn implied_vol(
     const MAX_ITER: usize = 200;
 
     validate_inputs(s, k, t, 0.0)?;
-    if price.is_nan() {
-        return Err(PricingError::InvalidInput("price must not be NaN".into()));
+    validate_rates(r, q)?;
+    if !price.is_finite() {
+        return Err(PricingError::InvalidInput(format!(
+            "price must be finite, got {price}"
+        )));
     }
     if t <= 0.0 {
         return Err(PricingError::InvalidInput(

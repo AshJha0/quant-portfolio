@@ -13,6 +13,16 @@
 
 use crate::{EqVarError, Result};
 
+/// Largest diagonal jitter [`Matrix::cholesky_jitter`] will apply, as a
+/// multiple of the mean diagonal (mean variance).
+///
+/// `1e-6` is roughly a part per million of the average variance: enough to
+/// repair a covariance that is only singular or indefinite by accumulated
+/// floating-point noise (a riskless leg, perfectly correlated factors, an
+/// EWMA update that lost the last bit of positivity), and far too small to
+/// paper over a genuinely indefinite matrix.
+pub const MAX_RELATIVE_JITTER: f64 = 1e-6;
+
 /// Dense row-major matrix of `f64`.
 ///
 /// # Examples
@@ -115,10 +125,35 @@ impl Matrix {
         Ok(out)
     }
 
+    /// `true` if every entry is finite (no NaN, no infinity).
+    ///
+    /// Used as an explicit pre-check by [`Matrix::cholesky`]: a NaN entry
+    /// would otherwise pass every ordering test (`NaN <= 0.0` is false,
+    /// `|NaN| > tol` is false), factorise into an all-NaN `L`, and hand a
+    /// silent NaN VaR to the desk.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use eq_var_engine::matrix::Matrix;
+    /// assert!(Matrix::identity(2).all_finite());
+    /// assert!(!Matrix::from_vec(1, 1, vec![f64::NAN]).unwrap().all_finite());
+    /// ```
+    pub fn all_finite(&self) -> bool {
+        self.data.iter().all(|v| v.is_finite())
+    }
+
     /// Symmetry check with the tolerance used by the Python reference:
     /// `|a_ij - a_ji| <= 1e-12 * max(1, max|a|)`.
+    ///
+    /// A matrix containing NaN is **not** symmetric by this definition:
+    /// `|NaN - NaN| > tol` is false, so a naive comparison would call it
+    /// symmetric. The NaN check is explicit.
     pub fn is_symmetric(&self) -> bool {
         if self.rows != self.cols {
+            return false;
+        }
+        if !self.all_finite() {
             return false;
         }
         let scale = self.data.iter().fold(1.0f64, |m, v| m.max(v.abs()));
@@ -147,6 +182,12 @@ impl Matrix {
                 self.rows, self.cols
             )));
         }
+        if !self.all_finite() {
+            return Err(EqVarError::InvalidInput(
+                "Cholesky needs a matrix of finite entries; the input contains                  NaN or infinity (a NaN covariance factorises into a NaN                  factor and then into a silent NaN VaR)"
+                    .to_string(),
+            ));
+        }
         if !self.is_symmetric() {
             return Err(EqVarError::InvalidInput(
                 "Cholesky needs a symmetric matrix".to_string(),
@@ -161,7 +202,10 @@ impl Matrix {
                     sum -= l.get(i, k) * l.get(j, k);
                 }
                 if i == j {
-                    if sum <= 0.0 {
+                    // `!(sum > 0.0)` rather than `sum <= 0.0`: the latter is
+                    // FALSE for a NaN pivot, which would then propagate
+                    // through `sqrt` into an all-NaN factor.
+                    if !(sum > 0.0) {
                         return Err(EqVarError::Numerical(format!(
                             "matrix is not positive definite (pivot {sum:e} at row {i})"
                         )));
@@ -183,6 +227,24 @@ impl Matrix {
     /// perturbation is tiny relative to the variances, so simulated moments
     /// are unchanged to within Monte Carlo noise. Defaults used by the MC
     /// module: `jitter = 1e-10`, `max_tries = 12`.
+    ///
+    /// # Materiality cap
+    ///
+    /// The escalation stops once the added diagonal would exceed
+    /// [`MAX_RELATIVE_JITTER`] times the mean variance, and a
+    /// [`EqVarError::Numerical`] naming the required jitter is returned
+    /// instead. Without that cap the ladder `1e-10 * 10^k`, `k < 12`,
+    /// reaches ten *times* the mean variance — at which point the factor
+    /// being returned is no longer a factor of the caller's covariance in
+    /// any useful sense, and the simulated risk would be materially
+    /// inflated with no diagnostic. A matrix that needs more than a
+    /// rounding-noise repair is a data problem (a stale correlation
+    /// block, a mis-signed factor loading, a shrinkage step that was
+    /// skipped) and must be surfaced, not patched.
+    ///
+    /// PSD-but-singular covariances — a riskless leg, two perfectly
+    /// correlated factors — are repaired at the very first rung
+    /// (`1e-10 * mean(diag)`) and are unaffected.
     pub fn cholesky_jitter(&self, jitter: f64, max_tries: usize) -> Result<Matrix> {
         match self.cholesky() {
             Ok(l) => return Ok(l),
@@ -200,8 +262,17 @@ impl Matrix {
         if scale <= 0.0 {
             scale = 1.0;
         }
+        if !(jitter > 0.0) || !jitter.is_finite() {
+            return Err(EqVarError::InvalidInput(format!(
+                "cholesky_jitter: jitter must be finite and positive, got {jitter}"
+            )));
+        }
+        let cap = MAX_RELATIVE_JITTER * scale;
         let mut eps = jitter * scale;
         for _ in 0..max_tries {
+            if eps > cap {
+                break;
+            }
             let mut jittered = self.clone();
             for i in 0..n {
                 jittered.set(i, i, self.get(i, i) + eps);
@@ -211,10 +282,9 @@ impl Matrix {
             }
             eps *= 10.0;
         }
-        Err(EqVarError::Numerical(
-            "Cholesky failed even with jitter; covariance matrix is badly indefinite"
-                .to_string(),
-        ))
+        Err(EqVarError::Numerical(format!(
+            "Cholesky failed with a diagonal jitter of up to {MAX_RELATIVE_JITTER:e} x              mean(diag) = {cap:e}; the covariance matrix is materially indefinite, not              merely singular. Repairing it with a larger jitter would inflate the              simulated risk without any diagnostic — fix the covariance instead              (shrinkage, nearest-PSD projection, or removing the offending factor)."
+        )))
     }
 }
 
@@ -231,6 +301,12 @@ pub fn sample_covariance(returns: &Matrix) -> Result<Matrix> {
     if n == 0 {
         return Err(EqVarError::InvalidInput(
             "return panel has no columns (assets)".to_string(),
+        ));
+    }
+    if !returns.all_finite() {
+        return Err(EqVarError::InvalidInput(
+            "return panel contains NaN or infinite values; a single missing              observation would otherwise turn the whole covariance — and every              VaR derived from it — into a silent NaN"
+                .to_string(),
         ));
     }
     let mut means = vec![0.0; n];
@@ -313,6 +389,11 @@ pub fn covariance_from_vols(vols: &[f64], corr: &Matrix) -> Result<Matrix> {
     for i in 0..n {
         for j in 0..n {
             let c = corr.get(i, j);
+            if !c.is_finite() {
+                return Err(EqVarError::InvalidInput(format!(
+                    "correlation entry ({i}, {j}) = {c} is not finite"
+                )));
+            }
             if c.abs() > 1.0 + 1e-12 {
                 return Err(EqVarError::InvalidInput(format!(
                     "correlation entry ({i}, {j}) = {c} outside [-1, 1]"

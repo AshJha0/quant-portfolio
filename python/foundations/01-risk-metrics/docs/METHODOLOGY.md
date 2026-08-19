@@ -304,7 +304,83 @@ input moments, which makes the story in the report self-consistent.
 
 ---
 
-## 7. Assumptions register (summary table)
+## 7. Backtesting: does the VaR number actually hold up?
+
+Every number above is an *estimate of a quantile*. The only way to know
+whether the estimate is any good is to count how often reality fell below
+it. At 99% confidence you expect an exception (a realised loss worse than
+the VaR) on about 1% of days; materially more means the model understates
+risk, materially fewer means it wastes risk budget.
+
+`eq_risk_metrics.backtest` implements **Kupiec's proportion-of-failures
+(POF) test**: under the null that the model is correctly calibrated,
+exceptions are i.i.d. Bernoulli(`p = 1 - confidence`), and the
+likelihood-ratio statistic
+
+`LR_POF = -2 ln[ p^x (1-p)^(n-x) / (x/n)^x (1-x/n)^(n-x) ]`
+
+is asymptotically `chi-squared(1)`. It compares the assumed exception rate
+against the rate the data actually delivered.
+
+**Why Kupiec first.** It tests the one property the confidence level
+literally promises (unconditional coverage), it needs nothing but a
+sequence of returns and the VaR that was quoted against them, and its
+statistic has a closed form that can be checked by hand — which is exactly
+what `tests/test_backtest.py` does, against an independently computed
+value. On the bundled data it delivers the project's sharpest result: the
+Gaussian 99% VaR is **rejected** (60 exceptions against 25.2 expected)
+while the historical one is not, turning "fat tails make Gaussian VaR
+optimistic" from an assertion into a measurement.
+
+**Assumption A-BT1: the chi-squared(1) reference distribution is
+asymptotic.** *What breaks if violated:* on the ~250-day window a desk
+typically uses, a 99% VaR generates only ~2.5 expected exceptions, and the
+test has very low power — it fails to reject models that are badly wrong.
+Pinned as a test: at `n=250`, **twice** the nominal exception rate is not
+rejected at 5%. Do not read a Kupiec pass on a one-year window as evidence
+the model is good; read a Kupiec *failure* as strong evidence it is bad.
+
+**Assumption A-BT2: exceptions are independent.** *What breaks if
+violated:* the test counts exceptions and ignores when they happened, so a
+model that produces every one of its exceptions in a single stressed
+fortnight — the signature of a model blind to volatility regimes — passes
+Kupiec with a perfect score. Demonstrated directly in
+`test_kupiec_is_blind_to_clustering_by_construction`, which shows five
+spread-out and five consecutive exceptions producing an identical
+statistic.
+
+**Alternative not implemented: Christoffersen's independence and
+conditional-coverage tests.** Christoffersen models the exception sequence
+as a two-state Markov chain and tests whether the probability of an
+exception depends on whether yesterday was an exception; the conditional
+coverage test combines that with Kupiec's into a single `chi-squared(2)`
+statistic. This is the natural completion of the backtest and the reason
+this module documents itself as covering only half the problem. It is not
+implemented here because it wants a *rolling out-of-sample* VaR forecast to
+be interesting — which is a backtest engine, i.e. the companion
+`python/equity/03-var-es-engine` project, not a metrics kernel.
+
+**Alternative not implemented: Basel's traffic-light approach.** Rather
+than a p-value, count exceptions over 250 days and bucket the result into
+green (0-4), amber (5-9) or red (10+), with a capital multiplier attached
+to the bucket. It is a blunt instrument by design — it exists precisely
+because the asymptotic tests have so little power at n=250 — and it is a
+supervisory capital rule rather than a statistical test, so it belongs in
+a regulatory-reporting layer, not here.
+
+**Alternative not implemented: ES backtests.** Expected Shortfall is
+notoriously harder to backtest than VaR because it is not *elicitable*:
+there is no scoring function whose minimiser is the ES, so there is no
+direct analogue of "count the exceptions". The practical approaches
+(Acerbi-Székely's Z-tests, or jointly backtesting the (VaR, ES) pair,
+which *is* jointly elicitable) need the full forecast distribution rather
+than a single number, and are out of scope for this project even though ES
+is computed here. Worth knowing before anyone claims ES is strictly better
+than VaR: it is the better *risk measure* and the worse *testable* one.
+
+---
+
+## 8. Assumptions register (summary table)
 
 | # | Assumption | What breaks if violated |
 |---|---|---|
@@ -315,9 +391,10 @@ input moments, which makes the story in the report self-consistent.
 | A5 | EWMA: `lambda=0.94` is a reasonable fixed decay for this asset — no mean reversion, no fitted persistence. | A true GARCH(1,1) with mean reversion (see companion `02-volatility-modeling` project) would adapt the persistence to the data instead of assuming it; EWMA volatility can drift arbitrarily far from any long-run average since it has no `omega` term pulling it back. |
 | A6 | Constant risk-free rate for Sharpe/Sortino. | A real T-bill series moves; a stale constant misprices excess return, particularly over samples spanning a rate-hiking/cutting cycle. |
 | A7 | Jarque-Bera's chi-squared(2) reference is asymptotically valid. | Poor size/power in small samples (tens to low hundreds of observations) — a rejection (or non-rejection) on a short sample is weaker evidence than the p-value alone suggests. |
-| A8 | Single asset, no portfolio effects. | Real books hold multiple correlated positions; portfolio VaR/ES require a covariance (or copula) model and are *not* simply the sum of single-asset VaRs (in fact ES sub-additivity guarantees the portfolio ES is no worse than the sum — see §4). Out of scope here; see `python/equity/03-var-es-engine`. |
+| A8 | Kupiec backtest: chi-squared(1) is asymptotically valid and exceptions are independent. | Very low power at the ~250-day window a desk actually uses (twice the nominal exception rate is not rejected at 5%), and complete blindness to exception clustering — a model that fails only during regime shifts passes. Needs Christoffersen's independence test (§7) to complete. |
+| A9 | Single asset, no portfolio effects. | Real books hold multiple correlated positions; portfolio VaR/ES require a covariance (or copula) model and are *not* simply the sum of single-asset VaRs (in fact ES sub-additivity guarantees the portfolio ES is no worse than the sum — see §4). Out of scope here; see `python/equity/03-var-es-engine`. |
 
-## 8. Decision rule: which VaR method to trust, when
+## 9. Decision rule: which VaR method to trust, when
 
 - **Reporting/limits at 95%, well-behaved sample:** any of the three
   should roughly agree; use historical as the primary number since it

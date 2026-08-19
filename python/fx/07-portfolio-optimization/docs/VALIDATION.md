@@ -1,6 +1,6 @@
 # Validation — FX Portfolio Optimization
 
-All numbers below are reproducible offline: `pytest -q` (139 tests, ~12 s)
+All numbers below are reproducible offline: `pytest -q` (172 tests, ~10 s)
 and `python examples/run_pipeline.py` (seed 123, 3 024 days, ~26 s).
 
 ## 1. Analytic identities (unit-tested tolerances)
@@ -122,7 +122,43 @@ does bind.
    trading noise; single-currency universe likewise; momentum window longer
    than the sample yields an all-NaN signal and a flat book. All tested.
 7. **Gross budget 0** returns the zero portfolio everywhere; infeasible
-   budget combinations (|net| > gross) raise before any solver runs.
+   budget combinations raise before any solver runs. Two families are
+   detected up front, each with a reason in the message:
+   * gross-leverage budget below the net budget (`gross_limit=0.5` with
+     `sum_to=1.0` — you cannot be 100% net invested on 50% of gross), and
+   * a per-currency box that cannot reach the net budget: 3 currencies
+     capped at 20% each cannot sum to 1.0 (max attainable 0.6).
+   Previously the second case ran SLSQP to a failed iterate and returned
+   weights summing to 0.60 with `success=False`; a caller reading
+   `.weights` without checking `.success` would have put an off-mandate
+   book in front of a trader. Both now raise `ValueError`
+   (`test_box_cap_unreachable_for_net_budget_is_rejected`), while an
+   exactly-attainable box (3 x 1/3 = 1.0) still solves
+   (`test_feasible_box_at_the_boundary_still_solves`).
+
+8. **Constant (zero-dispersion) return series — a numerical-stability
+   trap.** An exactly-constant series does not produce `std == 0` in
+   floating point: `np.full(50, 4e-4).std(ddof=1)` is ~5.5e-20, not zero.
+   An exact `== 0` guard therefore let it through and `sharpe_ratio`
+   returned **1.16e17** — a headline stat that is pure floating-point
+   noise. The degeneracy guards now compare the dispersion against the
+   scale of the data (`1e-14 * max(1, max|r|)`), which is many orders of
+   magnitude below any real FX return series, so genuine low-vol books are
+   unaffected while constants raise
+   (`test_constant_return_series_has_zero_vol_and_undefined_sharpe`).
+   The same fix applies to `sharpe_se_lo`, `sortino_ratio`, `skewness`
+   and `excess_kurtosis`.
+
+9. **NaN/Inf anywhere in the inputs.** A single missing FX day used to
+   propagate silently: `optimal_hedge_ratios` returned all-NaN ratios,
+   every metric returned NaN, `psd_repair` returned an all-NaN matrix and
+   `is_psd` raised a bare `LinAlgError` ("Eigenvalues did not converge").
+   Every public entry point — covariance estimators, `psd_repair`/`is_psd`,
+   MVO (`mu` and `sigma`), the CVaR LP and its scenario panel, ERC and
+   risk contributions, the hedging block and all performance metrics —
+   now raises an informative `ValueError`. Rationale: a NaN risk number
+   that reaches a limit check reads as "no breach". Tested in the
+   NaN/Inf block of `tests/test_edge_cases_review.py`.
 
 ## 7. Cross-model consistency
 

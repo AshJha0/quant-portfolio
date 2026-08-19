@@ -85,7 +85,7 @@ equivalent, USD DV01 +$20.5k/bp, EUR DV01 -$21.3k/bp, basis DV01
   cashflows one week apart (settlement/liquidity risk).
 - **Curve quality controls:** bootstrap repricing tolerance, stale-quote
   detection, day-over-day zero/basis jump thresholds.
-- **Model governance:** assumptions A1–A8 (METHODOLOGY.md) form the model
+- **Model governance:** assumptions A1–A9 (METHODOLOGY.md) form the model
   card; A2 (no OIS/CSA discounting) and A6 (no calendars) are the two
   documented reservations, with short-date pricing explicitly out of
   scope. Golden-value pillar DFs, forwards and risk numbers are pinned by
@@ -94,6 +94,15 @@ equivalent, USD DV01 +$20.5k/bp, EUR DV01 -$21.3k/bp, basis DV01
   balance-sheet charge; alerts route to treasury, not to an auto-trader —
   see failure mode F4 for why post-2008 'CIP arbitrage' is really a
   balance-sheet rent (Du–Tepper–Verdelhan).
+- **Stale-quote gate on the arbitrage monitor.** The monitor's silent
+  failure mode is not a false *positive*, it is a false *negative*: with a
+  dropped or stale quote arriving as NaN, every comparison inside the
+  detector evaluated False and it reported a confident "no arbitrage" (see
+  VALIDATION §5.1). `CIPQuotes` now rejects non-finite quotes at
+  construction, so a broken feed raises a named error into the monitor's
+  alert channel instead of quietly muting it. The operational rule: a
+  detector that has gone quiet must be provably *running*, not merely
+  *silent* — wire the exception to the same alert queue as a signal.
 
 ## 5. Consumers of the numbers
 

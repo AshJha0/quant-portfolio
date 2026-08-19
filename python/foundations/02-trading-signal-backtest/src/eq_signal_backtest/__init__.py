@@ -13,7 +13,13 @@ parameter-sensitivity map that exposes overfitting -- see
 ``docs/METHODOLOGY.md`` and ``docs/VALIDATION.md``.
 """
 
-from .engine import TRADING_DAYS, BacktestResult, performance_stats, run_backtest
+from .engine import (
+    TRADING_DAYS,
+    BacktestResult,
+    performance_stats,
+    run_backtest,
+    strategy_returns,
+)
 from .sensitivity import parameter_grid
 from .signals import ma_crossover_signal
 from .split import (
@@ -32,6 +38,7 @@ __all__ = [
     "TRADING_DAYS",
     "BacktestResult",
     "ma_crossover_signal",
+    "strategy_returns",
     "run_backtest",
     "performance_stats",
     "parameter_grid",

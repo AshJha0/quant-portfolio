@@ -55,11 +55,15 @@ pub fn cip_forward(s: f64, t: f64, r_d: f64, r_f: f64) -> FxResult<f64> {
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] on invalid inputs or non-positive
-/// `pip_factor`.
+/// [`crate::FxError::InvalidInput`] on invalid inputs or a `pip_factor`
+/// that is not finite and strictly positive. `+inf` has to be rejected
+/// explicitly: `!(inf > 0.0)` is false, so a "must be positive" guard
+/// alone waves it through and returns `inf` forward points.
 pub fn forward_points(s: f64, t: f64, r_d: f64, r_f: f64, pip_factor: f64) -> FxResult<f64> {
-    if !(pip_factor > 0.0) {
-        return invalid(format!("pip_factor must be positive, got {pip_factor}"));
+    if !(pip_factor > 0.0) || !pip_factor.is_finite() {
+        return invalid(format!(
+            "pip_factor must be finite and positive, got {pip_factor}"
+        ));
     }
     Ok((cip_forward(s, t, r_d, r_f)? - s) * pip_factor)
 }

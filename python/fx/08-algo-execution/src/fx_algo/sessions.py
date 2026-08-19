@@ -84,10 +84,19 @@ def session_of_hour(hour_of_day: np.ndarray | float) -> np.ndarray:
         Session name per element (``"asia"``, ``"london"``, ``"overlap"``,
         ``"ny"`` or ``"late"``).
     """
-    h = np.atleast_1d(np.asarray(hour_of_day, dtype=float)) % 24.0
+    raw = np.atleast_1d(np.asarray(hour_of_day, dtype=float))
+    if not np.all(np.isfinite(raw)):
+        raise ValueError(
+            "hour_of_day contains NaN/Inf: no session can be assigned. "
+            "A non-finite timestamp previously produced the bogus session "
+            "label 'None', which then failed downstream with a bare KeyError."
+        )
+    h = raw % 24.0
     out = np.empty(h.shape, dtype=object)
     for name, (lo, hi) in SESSION_BOUNDS.items():
         out[(h >= lo) & (h < hi)] = name
+    if np.any(out == None):  # noqa: E711 - defensive: bounds must partition [0,24)
+        raise ValueError("SESSION_BOUNDS do not cover [0, 24); check the table")
     return out.astype(str)
 
 

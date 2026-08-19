@@ -32,7 +32,7 @@ weight isn't justified (see docs/METHODOLOGY.md §4).
 ```bash
 cd python/equity/07-portfolio-optimization
 pip install -e .[dev]
-pytest -q                        # 141 tests, ~3 s, offline
+pytest -q                        # 150 tests, ~3 s, offline
 python examples/run_pipeline.py  # full pipeline, ~15 s, seeded
 ```
 
@@ -90,7 +90,7 @@ min-variance loses least. Details in docs/VALIDATION.md.
 ```
 src/eq_port/          returns_est, covariance, mvo, risk_parity,
                       backtest, metrics, data/{synthetic,live}
-tests/                141 offline seeded tests (identities, solver
+tests/                150 offline seeded tests (identities, solver
                       cross-checks, no-lookahead, edge cases)
 examples/run_pipeline.py   reproduces every number above
 docs/                 METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md

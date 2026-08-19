@@ -19,8 +19,23 @@ Bond-curve bootstrap: :func:`bootstrap_bond_curve` solves each maturity
 pillar's discount factor so the quoted coupon bond reprices exactly (dirty
 price), again with intermediate cashflows interpolated.
 
-Round-trip guarantee: with matching interpolation, every input instrument
-reprices to its quote within 1e-10 (tested in ``tests/test_bootstrap.py``).
+Round-trip guarantee (interpolation-dependent — measured, not assumed):
+
+* ``loglinear_df`` and ``linear_zero`` are **local**: appending a pillar
+  cannot change the curve before it, so the sequential bootstrap is exact and
+  every input instrument reprices to its quote to machine precision
+  (measured max error **2.5e-16** in rate terms).
+* ``pchip_zero`` is **non-local**: the monotone cubic is reshaped over earlier
+  segments each time a pillar is appended, so already-solved instruments are
+  no longer reproduced exactly. The residual is small but real — measured max
+  error **3.6e-6** in rate terms on the standard quote set (well inside a
+  basis point, but ~10 orders of magnitude worse than the local schemes).
+  If exact quote reproduction matters (most production risk systems require
+  it), use a local scheme or iterate the bootstrap to a fixed point.
+
+Both behaviours are pinned by tests in ``tests/test_properties.py``
+(``test_local_schemes_reprice_every_instrument_exactly``,
+``test_pchip_bootstrap_is_only_approximately_exact``).
 
 Times are year fractions (ACT/365F when derived from dates); rates are
 simple/par rates in decimal (0.05 = 5%).

@@ -244,6 +244,13 @@ def target_return_portfolio(
     -------
     np.ndarray
         (N,) optimal weights.
+
+    Raises
+    ------
+    ValueError
+        If ``target`` is outside the return range achievable within the box
+        bounds (necessary-condition pre-check, ignoring the budget), or if
+        SLSQP reports the constraint set infeasible.
     """
     sigma, m = _validate(cov, mu)
     assert m is not None
@@ -252,8 +259,15 @@ def target_return_portfolio(
     if bl is not None:
         lo = np.array([b[0] for b in bl])
         hi = np.array([b[1] for b in bl])
-        if target > float(m @ np.where(m > 0, hi, lo)) + 1e-15:
-            pass  # let SLSQP report infeasibility; cheap pre-check only
+        # Necessary feasibility condition (box only, budget ignored): the
+        # achievable w'mu range is [sum(min over box), sum(max over box)].
+        r_hi = float(m @ np.where(m > 0, hi, lo))
+        r_lo = float(m @ np.where(m > 0, lo, hi))
+        if target > r_hi + 1e-12 or target < r_lo - 1e-12:
+            raise ValueError(
+                f"infeasible target return {target:g}: the box bounds only "
+                f"allow expected returns in [{r_lo:g}, {r_hi:g}]"
+            )
     w0 = _feasible_start(bl, n) * budget
     s = _scale(sigma)
     sig_s = sigma / s

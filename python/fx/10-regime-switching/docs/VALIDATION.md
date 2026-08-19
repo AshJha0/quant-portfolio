@@ -3,7 +3,7 @@
 All numbers below are produced by `examples/run_pipeline.py` (seeded,
 offline, ~50s) on a 2,000-business-day, 12-currency, 3-state synthetic
 RORO panel with a planted 2008-style flip, unless a test file is cited.
-The suite (`pytest -q`, 125 tests, ~35s) reproduces every claim.
+The suite (`pytest -q`, 158 tests, ~40s) reproduces every claim.
 
 ## 1. Cross-checks against reference implementations
 
@@ -182,7 +182,7 @@ the pipeline.
 
 ## 8. Test inventory
 
-125 tests, offline, seeded, ~35s (`pytest -q` from the project root):
+158 tests, offline, seeded, ~40s (`pytest -q` from the project root):
 synthetic generator recovery (13), features + PIT mutation (14), PCA
 identities + sklearn + RORO axis (12), GMM EM/BIC/sklearn (13), HMM
 identities/recovery/hmmlearn (17), detection causality/labeling/
@@ -190,3 +190,46 @@ hysteresis (15), strategy hand-checks (14), backtest ledger/no-lookahead
 (11), risk partitions/oracle ordering/null guards (16), plus edge cases
 throughout (k=1, pegged currency, one-state samples, threshold
 boundaries, short series raising `ValueError`).
+
+The review pass added 33 further edge-case and property tests
+(`tests/test_edge_cases_review.py`), grouped as:
+
+* **Single-regime (null) data (4)** — BIC must prefer k=1 on the null
+  GBM panel; a k=1 fit is degenerate but well-formed (transmat = [[1]],
+  stationary = [1], all filtered probabilities = 1); a forced 2-state
+  fit on null data must NOT manufacture separation (fitted variance
+  ratio < 3x, versus 4x+ on a genuine RORO panel). This is the
+  "does the model invent regimes that are not there" guard.
+* **Label switching (6)** — the economic labelling must be *equivariant*
+  under state permutation: permuting the rows of the means matrix
+  permutes the labels identically and changes nothing else. `risk_on`
+  is always the lowest-`avg_vol` state under every permutation, and the
+  haven direction (`haven_rs`) is what separates `risk_off` (havens
+  rally) from `usd_squeeze` (havens fall too). `match_states` recovers a
+  known permutation, including the FX-realistic case where the means are
+  indistinguishable and only the covariances identify the states.
+* **Peg-break transitions (4)** — a calm pegged series followed by a 10x
+  variance jump: the filter must switch and *stay* switched (high-vol
+  filtered probability > 0.8 after the break, < 0.2 before), the peg
+  state carries a long expected duration, a planted flip is recovered by
+  Viterbi, and a hard-pegged (identically zero) column stays finite
+  through the covariance ridge rather than producing a singular
+  emission covariance.
+* **Hysteresis (4)** — a one-day probability spike must not flip the
+  committed regime; a genuine two-day move must; the path is causal
+  (a prefix of the full run is bit-identical); parameter validation.
+* **Degenerate inputs and NaN/Inf (15)** — tiny series, k <= 0, more
+  components than observations, constant (dead) series staying finite,
+  probability rows summing to 1, stationary-distribution fixed point,
+  absorbing-state duration staying representable, monotone EM
+  log-likelihood, and NaN/Inf rejection at the two fit entry points.
+
+**Review-pass bug found: NaN input produced a misleading error or a
+silently NaN model.** `fit_gmm` returned a `GMMResult` whose means and
+covariances were entirely `NaN`, with no exception — a "fitted model"
+that would then be used to label regimes. `fit_hmm` failed one step
+later with `ValueError: transmat rows must sum to 1`, which points the
+reader at the transition matrix rather than at the dirty input row that
+actually caused it. Both now validate up front and raise a message that
+names the real problem (`test_hmm_rejects_nan_input_with_an_actionable_message`,
+`test_gmm_rejects_nan_input_instead_of_returning_nan_means`).

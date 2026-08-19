@@ -2,7 +2,7 @@
 
 How the implementation was validated (contract items 3, 4, 6). All numbers
 below are reproduced by `python examples/run_pipeline.py` (seeded, offline,
-~5 s) and the test suite (`pytest -q`, 191 tests, ~20 s, offline).
+~5 s) and the test suite (`pytest -q`, 256 tests, ~5 s, offline).
 
 ---
 
@@ -154,9 +154,64 @@ leverage to hit a return target; that is exactly the book that dies in a
 quake (drawdown scales with leverage, stationarity does not). The desk
 guide caps leverage by stressed spread vol, not recent vol.
 
+**Estimator bias in the OU half-life (measured, and it has a sign).** OLS on
+the discretised AR(1) inherits the Dickey-Fuller/Kendall small-sample bias:
+`kappa` is under-estimated, so **estimated half-lives are systematically too
+LONG**. Measured at n = 12,000 (`test_properties.py::
+test_ols_kappa_is_biased_downward_and_worse_for_slow_reversion`):
+
+| true κ | 0.01 | 0.03 | 0.08 | 0.20 |
+|---|---|---|---|---|
+| true half-life (d) | 69.3 | 23.1 | 8.7 | 3.5 |
+| estimated half-life (d) | 87.2 | 25.8 | 9.2 | 3.6 |
+| relative bias in κ | **−20.5%** | −10.5% | −5.9% | −3.5% |
+
+The bias worsens as reversion slows — exactly the regime where pairs are
+marginal anyway. Desk consequence: a time stop set at *k × estimated
+half-life* is systematically **too loose**, letting losers run past the point
+where the model says they should have converged. Either shrink the estimate
+or set `k` conservatively.
+
+**An OU fit alone cannot reject a random walk (why cointegration is the
+gate).** On a *pure random walk* OLS returns `b` slightly below 1 (finite-
+sample bias ≈ −1.5/n), so `OUFit.mean_reverting` comes back **True** with a
+spurious half-life of 300–950 days across seeds. The `mean_reverting` flag
+only trips on `b ≥ 1` exactly, so it does **not** protect you here
+(`test_an_ou_fit_alone_cannot_reject_a_random_walk`). Two screens do:
+
+1. the Engle-Granger test with **N=2** MacKinnon values (verified to reject
+   random-walk pairs), and
+2. a hard cap on the accepted half-life — an estimate in the hundreds of days
+   is the tell, and the pipeline's selection funnel filters on it.
+
+This is the concrete reason the funnel gates on cointegration *first* and
+never trades off a half-life alone.
+
 **Numerical/degenerate edges (all unit-tested):** zero-variance legs raise
 informative errors everywhere (screen excludes them without crashing); >5-day
 data gaps refuse to forward-fill; all-cash periods produce NaN Sharpe (not
 inf); zero-trade backtests produce empty ledgers and zero turnover; b≥1
 AR(1) fits are flagged non-mean-reverting; oscillatory (b<0) spreads are
-rejected as non-OU.
+rejected as non-OU; a monotone-rising equity curve reports max drawdown
+`+0.0` rather than `−0.0`.
+
+## 10. Structural invariants (property-based tests)
+
+`tests/test_properties.py` pins the *shape* of the library rather than point
+values, so the checks hold for any correct implementation:
+
+| Invariant | Tolerance | Test group |
+|---|---|---|
+| Sharpe and Sortino **scale-invariant** under leverage; Sharpe flips sign with returns; annualisation scales as √periods | 1e-12 rel | `TestMetricInvariances` |
+| Max drawdown homogeneous of degree 1 and **shift-invariant** | 1e-12 rel | `TestMetricInvariances` |
+| Lo-adjusted Sharpe SE **exceeds** the iid SE under positive autocorrelation and falls below it under negative | directional | `TestMetricInvariances` |
+| OU fit **equivariant** under `s → s + d` (μ shifts by d, κ/σ unchanged) and `s → c·s` (μ, σ scale by c, κ unchanged) | 1e-8 – 1e-9 | `TestSpreadAlgebra` |
+| OLS and MLE agree on a 4,000-point sample | 5% on κ/σ | `test_ols_and_mle_agree_on_a_long_sample` |
+| Half-life recovered for κ ∈ {0.03, 0.08, 0.20}; faster κ ⇒ strictly shorter half-life | 15% | `TestSpreadAlgebra` |
+| Stationary std matches both the simulated dispersion and σ/√(2κ) | 10% / 15% | `test_stationary_std_matches_the_simulated_dispersion` |
+| MacKinnon N=2 values strictly below N=1 at every level; gap at 5% > 0.4 t-units | exact | `test_mackinnon_values_are_ordered_and_n2_is_stricter` |
+| EG **power** (rejects a planted cointegrated pair) and **size** (rejects ≤25% of 40 correlated-random-walk samples at 5%) | — | `TestCointegrationProperties` |
+| Signal machine: positions ⊂ {−1,0,1}; **exact sign antisymmetry** under z → −z; entries non-increasing in `entry_z`; stop disarms until z re-enters the band | exact | `TestSignalProperties` |
+| Sizing: dollar mode dollar-neutral and hits the gross target; beta mode uses the cointegrating share ratio; both linear in gross and antisymmetric in direction | 1e-12 rel | `TestSizingProperties` |
+| Backtest: `net = gross − commission − slippage − borrow` daily; zero costs ⇒ net == gross; net monotone in cost bps; gross P&L homogeneous in the gross target; **antisymmetric under target → −target**; trade P&Ls reconcile to daily net | 1e-9 – 1e-6 | `TestBacktestIdentities` |
+| **No look-ahead**: truncating the sample leaves every earlier day's P&L bit-identical; the first bar never carries a position | 1e-9 | `test_no_lookahead_shifting_the_target_later_changes_nothing_before` |

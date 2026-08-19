@@ -78,6 +78,8 @@ def _validate_pd_lgd_ead(
     p, l, e = np.broadcast_arrays(p, l, e)
     if p.size == 0:
         raise ValueError("empty portfolio: no loans supplied")
+    if not (np.isfinite(p).all() and np.isfinite(l).all() and np.isfinite(e).all()):
+        raise ValueError("PD, LGD and EAD must be finite (no NaN/Inf)")
     if ((p < 0) | (p > 1)).any():
         raise ValueError("PD must lie in [0, 1]")
     if ((l < 0) | (l > 1)).any():
@@ -147,7 +149,7 @@ def asset_correlation(
     corporate, no adjustment).
     """
     p = np.asarray(pd_, dtype=float)
-    if ((p < 0) | (p > 1)).any():
+    if (~np.isfinite(p)).any() or ((p < 0) | (p > 1)).any():
         raise ValueError("PD must lie in [0, 1]")
     w = (1.0 - np.exp(-50.0 * p)) / (1.0 - np.exp(-50.0))
     r = 0.12 * w + 0.24 * (1.0 - w)
@@ -195,9 +197,9 @@ def basel_k(
     p = np.atleast_1d(np.asarray(pd_, dtype=float))
     l = np.asarray(lgd, dtype=float)
     m = np.asarray(maturity, dtype=float)
-    if ((p < 0) | (p > 1)).any():
+    if (~np.isfinite(p)).any() or ((p < 0) | (p > 1)).any():
         raise ValueError("PD must lie in [0, 1]")
-    if ((l < 0) | (l > 1)).any():
+    if (~np.isfinite(l)).any() or ((l < 0) | (l > 1)).any():
         raise ValueError("LGD must lie in [0, 1]")
     if ((m < 0)).any():
         raise ValueError("maturity must be non-negative")
@@ -306,6 +308,10 @@ def simulate_portfolio_losses(
     rng = np.random.default_rng(seed)
     thresh = norm.ppf(p)
     total_ead = e.sum()
+    if total_ead <= 0:
+        raise ValueError(
+            "total EAD is zero: portfolio loss rate (loss / total EAD) undefined"
+        )
     losses = np.empty(n_sims)
     lw = l * e / total_ead  # loss weight per loan
     sq_rho, sq_1mrho = np.sqrt(rho), np.sqrt(1.0 - rho)
@@ -330,6 +336,8 @@ def economic_capital(
     Pass either a simulated loss-rate array (quantile taken at ``q``) or a
     precomputed analytic quantile.
     """
+    if not (0.0 < q <= 1.0):
+        raise ValueError("q must lie in (0, 1]")
     if np.isscalar(losses_or_quantile):
         vq = float(losses_or_quantile)  # type: ignore[arg-type]
     else:

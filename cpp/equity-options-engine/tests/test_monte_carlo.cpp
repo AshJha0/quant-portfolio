@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "eqopt/black_scholes.hpp"
@@ -124,8 +125,23 @@ TEST(MonteCarlo, DeterministicLimitsAreExact) {
     EXPECT_DOUBLE_EQ(zero_vol.std_error, 0.0);
 }
 
+TEST(MonteCarlo, OddPathCountRoundsUpUnderAntithetic) {
+    // 101 paths with antithetic pairing -> 51 pairs -> 102 effective paths,
+    // as documented in the header.
+    const MCResult mc = mc_price(kS, kK, kT, kR, kSigma, kQ, OptionType::Call,
+                                 101, true, false, 3);
+    EXPECT_EQ(mc.n_paths, 102u);
+    const MCResult plain = mc_price(kS, kK, kT, kR, kSigma, kQ,
+                                    OptionType::Call, 101, false, false, 3);
+    EXPECT_EQ(plain.n_paths, 101u);
+}
+
 TEST(MonteCarlo, InvalidInputsThrow) {
     EXPECT_THROW(mc_price(-1.0, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
+    // Non-finite rate must be rejected up front, not simulated into NaNs.
+    EXPECT_THROW(mc_price(100.0, 100.0, 1.0,
+                          std::numeric_limits<double>::infinity(), 0.2),
+                 std::invalid_argument);
     EXPECT_THROW(mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0,
                           OptionType::Call, 1),
                  std::invalid_argument);

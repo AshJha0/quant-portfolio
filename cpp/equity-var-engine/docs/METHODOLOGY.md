@@ -96,6 +96,19 @@ dependency-free); jitter achieves the same effect for PSD-but-singular
 matrices at zero extra cost, and *badly indefinite* input still throws — it
 should, because that is corrupt data, not numerics.
 
+The escalation is **capped at 1e-6 x mean(diag)**. Without a cap the ladder
+eventually makes *any* symmetric matrix positive definite — including one
+with a genuine negative eigenvalue — by adding a perturbation larger than
+the variances themselves, so the simulation would silently run on a
+covariance the caller never supplied and the resulting VaR would be
+unrelated to the book. Past the cap the engine throws and points at the
+right fix (eigenvalue clipping / nearest-PSD projection upstream). This is
+deliberately stricter than the Python `safe_cholesky`; it only diverges on
+inputs that are not valid covariance matrices, so no golden-vector or
+cross-language result is affected. Non-finite entries are rejected up front
+as `std::invalid_argument` rather than being ground through twelve futile
+factorisations.
+
 ## 4. Parametric (variance–covariance) VaR (`eqvar/parametric.hpp`)
 
     sigma_p = sqrt(wᵀ Σ w),   VaR = -(mu·h + z_alpha · sigma_p · sqrt(h))

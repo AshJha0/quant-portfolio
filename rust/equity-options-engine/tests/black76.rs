@@ -85,4 +85,8 @@ fn black76_edge_cases_and_errors() {
     assert!(black76_price(-1.0, 100.0, 1.0, 0.05, 0.2, OptionType::Call).is_err());
     assert!(b76_d1_d2(100.0, 100.0, 0.0, 0.2).is_err());
     assert!(black76_greeks(100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Call).is_err());
+    // Non-finite inputs (including the discount rate) are rejected.
+    assert!(black76_price(f64::INFINITY, 100.0, 1.0, 0.05, 0.2, OptionType::Call).is_err());
+    assert!(black76_price(100.0, 100.0, 1.0, f64::NAN, 0.2, OptionType::Call).is_err());
+    assert!(black76_greeks(100.0, 100.0, 1.0, f64::INFINITY, 0.2, OptionType::Call).is_err());
 }

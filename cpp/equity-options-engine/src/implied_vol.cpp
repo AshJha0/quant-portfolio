@@ -24,6 +24,7 @@ double implied_vol(double price, double S, double K, double T, double r,
                    double q, OptionType type, double tol, int max_iter,
                    double sigma_lo, double sigma_hi) {
     validate_inputs(S, K, T, 0.0);
+    validate_rates(r, q);
     if (std::isnan(price)) {
         throw std::invalid_argument("price must not be NaN");
     }
@@ -69,7 +70,7 @@ double implied_vol(double price, double S, double K, double T, double r,
     }
     if (f_lo > 0.0 || f_hi < 0.0) {
         throw std::invalid_argument(
-            "failed to bracket implied volatility in [1e-9, 1e3]");
+            "failed to bracket implied volatility (solver cap ~1e3 vol)");
     }
 
     // Bracketed Newton: start from the midpoint, never leave [lo, hi];

@@ -143,6 +143,17 @@ Each assumption states what breaks if violated.
 - **A8 — Continuous compounding for zeros, simple compounding for
   deposit quotes and arbitrage round trips.** Consistent internally;
   mixing conventions with external quotes requires conversion first.
+- **A9 — Every numeric input is finite.** Quotes, notionals, strikes,
+  maturities, bumps and scenario shocks must be real numbers; the package
+  refuses NaN/Inf rather than imputing. This is an assumption about the
+  *caller's* data hygiene, and it used to be unenforced: the guards were
+  inequalities (`if spot <= 0.0`), and every comparison against NaN is
+  False, so NaN passed straight through into curves, forwards and risk
+  reports. *Breaks:* a single stale or dropped quote produces NaN forward
+  points, a NaN DV01 and — worst of all — a CIP arbitrage detector that
+  reports "no arbitrage" because every comparison in it evaluated False.
+  Enforced since via `fx_rates._validation.require_finite`; if you bypass
+  it, no downstream check will catch the bad data for you.
 
 ## 4. Units and conventions summary
 

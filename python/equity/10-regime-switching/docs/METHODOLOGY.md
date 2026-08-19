@@ -112,6 +112,32 @@ Each assumption states *what breaks if violated*.
 7. **The equity factor is investable long-only, cash earns zero.** No
    shorting in bear states; de-risking is the only defense. Violation is
    conservative (adding a short/hedge sleeve could only be layered on top).
+8. **The data genuinely contain K distinguishable regimes.** EM will always
+   return K states, whether or not they exist. *If violated* (a one-regime
+   world fitted with K = 2): the fit does not fail — it returns two
+   arbitrary, unstable partitions of the same distribution, and every
+   downstream signal becomes noise trading with real transaction costs. The
+   defences are diagnostic, not automatic: BIC model selection on the null
+   panel prefers K = 1 (`test_null_guard.py`), the flip-flop rate on
+   null data is materially higher than on true regime data, near-identical
+   fitted state means signal non-separation, and a near-identity transition
+   matrix (infinite expected durations) marks a degenerate chain. A desk
+   must read these before trading the model, which is why they are surfaced
+   on the fit object rather than buried.
+9. **The chain is irreducible.** The stationary distribution is unique only
+   for an irreducible chain. *If violated* (an absorbing state, or the
+   identity matrix that EM approaches on single-regime data): infinitely
+   many stationary distributions exist and `stationary_distribution` returns
+   the minimum-norm one — mathematically valid (`πP = π` holds exactly) but
+   economically arbitrary. Treat infinite `expected_durations` as the flag
+   that the number reported by `stationary_distribution` is not meaningful.
+10. **Inputs are finite.** Features must contain no `NaN` or `Inf`.
+    *If violated*: a single non-finite observation propagates through the
+    E-step into every mean and covariance, so the whole fit returns `NaN`.
+    This used to happen silently for `Inf` (only `NaN` was screened); both
+    are now rejected up front. `build_features` already drops the warm-up
+    rows that are legitimately `NaN`, so a non-finite value reaching the
+    fitter indicates a genuine data problem upstream.
 
 ## 5. Real-life scenarios and edge cases (each unit-tested)
 
@@ -127,7 +153,11 @@ Each assumption states *what breaks if violated*.
 | 50-sigma outlier day (no underflow) | VALIDATION §6 | `test_edge_cases.py::TestNumericalExtremes` |
 | Probability exactly at hysteresis thresholds | §3 above | `test_edge_cases.py::TestBoundaries`, `test_strategy.py` |
 | Very short series / k=1 / invalid inputs | VALIDATION §6 | `test_edge_cases.py::TestSmallAndShort`, validation-error tests per module |
-| Label switching across refits | VALIDATION §5 | economic labelling tests in `test_detection.py` |
+| Label switching across refits | VALIDATION §5, §6.1 | economic labelling tests in `test_detection.py`; permutation-invariance of the decoded path and `match_permutation` recovery in `test_degenerate_regimes.py` |
+| Single-regime data fitted with K=2 | VALIDATION §6.1 | `test_degenerate_regimes.py::test_single_regime_*`, `test_gbm_null_panel_regimes_flip_more_than_true_regime_panel` |
+| Absorbing / identity (reducible) transition matrices | VALIDATION §6.1 | `test_absorbing_state_stationary_and_duration`, `test_identity_transition_matrix_is_stationary_but_not_unique` |
+| Non-finite (`NaN`/`Inf`) observations | VALIDATION §6.2 | `test_hmm_rejects_non_finite_observations`, `test_gmm_rejects_non_finite_observations` |
+| Filtered-vs-smoothed causality (tradeability) | VALIDATION §3, §6.1 | `test_filtered_probabilities_are_causal` |
 
 ## 6. Conventions
 

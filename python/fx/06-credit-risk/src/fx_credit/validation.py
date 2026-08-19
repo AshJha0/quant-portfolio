@@ -37,6 +37,16 @@ def _check_binary(y: np.ndarray) -> np.ndarray:
     return y
 
 
+def _check_scores(score: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Validate a score vector: same length as ``y``, all finite."""
+    s = np.asarray(score, dtype=float).ravel()
+    if s.shape != y.shape:
+        raise ValueError("score and y must have equal length")
+    if not np.all(np.isfinite(s)):
+        raise ValueError("score contains NaN/Inf — clean or drop before validation")
+    return s
+
+
 def auc(y: np.ndarray, score: np.ndarray) -> float:
     """ROC AUC via the Mann-Whitney U statistic with average ranks (tie-exact).
 
@@ -45,9 +55,7 @@ def auc(y: np.ndarray, score: np.ndarray) -> float:
     ``sklearn.metrics.roc_auc_score`` including tied scores.
     """
     y = _check_binary(y)
-    s = np.asarray(score, dtype=float).ravel()
-    if s.shape != y.shape:
-        raise ValueError("score and y must have equal length")
+    s = _check_scores(score, y)
     ranks = stats.rankdata(s, method="average")
     n1 = y.sum()
     n0 = len(y) - n1
@@ -67,7 +75,7 @@ def ks_statistic(y: np.ndarray, score: np.ndarray) -> float:
     score among defaulters and non-defaulters.
     """
     y = _check_binary(y)
-    s = np.asarray(score, dtype=float).ravel()
+    s = _check_scores(score, y)
     order = np.argsort(s, kind="mergesort")
     ys = y[order]
     n1 = ys.sum()
@@ -108,7 +116,9 @@ def hosmer_lemeshow(
     contagion year.
     """
     y = _check_binary(y)
-    p = np.asarray(pd_hat, dtype=float).ravel()
+    p = _check_scores(pd_hat, y)
+    if np.any((p < 0) | (p > 1)):
+        raise ValueError("pd_hat must be probabilities in [0,1]")
     if np.any((p <= 0) | (p >= 1)):
         p = np.clip(p, 1e-12, 1 - 1e-12)
     if n_groups < 3:
@@ -149,6 +159,8 @@ def psi(
     a = np.asarray(actual, dtype=float).ravel()
     if e.size == 0 or a.size == 0:
         raise ValueError("both samples must be non-empty")
+    if not (np.all(np.isfinite(e)) and np.all(np.isfinite(a))):
+        raise ValueError("PSI inputs contain NaN/Inf — clean or drop before comparison")
     if edges is None:
         edges = np.unique(np.quantile(e, np.linspace(0, 1, n_bins + 1)))
     edges = np.asarray(edges, dtype=float)

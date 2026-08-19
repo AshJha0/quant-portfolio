@@ -263,11 +263,36 @@ def stationary_distribution(transmat: np.ndarray) -> np.ndarray:
     Solved as an overdetermined linear system (``P^T - I`` stacked with the
     normalisation row) by least squares — accurate to ~1e-14 for
     well-conditioned chains; tests require ``pi P = pi`` to 1e-12.
+
+    Degenerate chains
+    -----------------
+    For an *irreducible* chain the stationary distribution is unique and this
+    is it.  For a **reducible** chain (an absorbing state, or the identity
+    matrix, which EM can approach on single-regime data) the stationary
+    distribution is not unique: every distribution supported on the absorbing
+    set is stationary.  Least squares then returns the minimum-norm solution
+    — e.g. uniform ``1/K`` for ``P = I``, and the absorbing point mass for a
+    single absorbing state.  Both satisfy ``pi P = pi``, but only the latter
+    is economically meaningful; treat a near-identity fitted ``transmat`` as
+    a *diagnostic* that the data do not support K regimes (see
+    ``expected_durations``, which returns ``inf`` in exactly this case).
+
+    Raises
+    ------
+    ValueError
+        If ``transmat`` is not square, has non-finite or negative entries, or
+        rows that do not sum to 1.
     """
     p = np.asarray(transmat, dtype=float)
+    if p.ndim != 2:
+        raise ValueError("transmat must be a 2-D array")
     k = p.shape[0]
     if p.shape != (k, k):
         raise ValueError("transmat must be square")
+    if not np.isfinite(p).all():
+        raise ValueError("transmat contains NaN or Inf")
+    if (p < 0.0).any():
+        raise ValueError("transmat entries must be non-negative probabilities")
     if not np.allclose(p.sum(axis=1), 1.0, atol=1e-8):
         raise ValueError("transmat rows must sum to 1")
     a = np.vstack([p.T - np.eye(k), np.ones((1, k))])
@@ -283,8 +308,16 @@ def expected_durations(transmat: np.ndarray) -> np.ndarray:
     A geometric-duration identity: while in state ``i`` the chain stays with
     probability ``p_ii`` each day, so the expected run length is
     ``1 / (1 - p_ii)``.
+
+    An absorbing state (``p_ii = 1``) returns ``inf``, which is the correct
+    answer — the chain never leaves — and is the signature of a degenerate
+    fit on single-regime data.
     """
     p = np.asarray(transmat, dtype=float)
+    if p.ndim != 2 or p.shape[0] != p.shape[1]:
+        raise ValueError("transmat must be square")
+    if not np.isfinite(p).all():
+        raise ValueError("transmat contains NaN or Inf")
     diag = np.diag(p)
     with np.errstate(divide="ignore"):
         return 1.0 / (1.0 - diag)
@@ -359,8 +392,13 @@ def fit_hmm(
     """
     x = _as_2d(x)
     t_len, d = x.shape
-    if np.isnan(x).any():
-        raise ValueError("x contains NaN")
+    if not np.isfinite(x).all():
+        # Inf used to slip past an isnan-only check and poison every
+        # sufficient statistic (means, covariances) with NaN, silently.
+        raise ValueError(
+            "x contains NaN or Inf: clean the feature matrix before fitting "
+            "(features.build_features drops the warm-up rows that are NaN)"
+        )
     if n_states < 1:
         raise ValueError(f"n_states must be >= 1, got {n_states}")
     if t_len < max(10, 2 * n_states) or t_len <= d:

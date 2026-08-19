@@ -41,6 +41,7 @@ from ._mle import (
     gaussian_loglik,
     hessian_std_errors,
     student_t_loglik,
+    validate_filter_params,
     validate_returns,
 )
 
@@ -64,12 +65,16 @@ def gjr_filter(
     above.
     """
     y = np.asarray(returns, dtype=float)
+    validate_filter_params(omega=omega, alpha=alpha, gamma=gamma, beta=beta,
+                           initial_variance=initial_variance)
     if omega <= 0 or alpha < 0 or gamma < 0 or beta < 0 or beta >= 1:
         raise ValueError(
             f"require omega > 0, alpha, gamma >= 0, 0 <= beta < 1; got "
             f"omega={omega}, alpha={alpha}, gamma={gamma}, beta={beta}"
         )
     b = backcast(y) if initial_variance is None else float(initial_variance)
+    if b <= 0.0:
+        raise ValueError(f"initial_variance must be positive, got {b!r}")
     n = y.size
     u = np.empty(n)
     u[0] = omega + (alpha + 0.5 * gamma) * b

@@ -28,7 +28,7 @@ from typing import Any, Iterable, Optional
 
 import pandas as pd
 
-from .engine import performance_stats
+from .engine import performance_stats, strategy_returns
 from .sensitivity import parameter_grid
 from .signals import ma_crossover_signal
 
@@ -141,11 +141,20 @@ def select_best_params(
     ValueError
         If the grid is empty or entirely ``NaN`` (e.g. every candidate
         pair had ``fast >= slow``, or the training set is too short for
-        any slow window to produce a defined Sharpe ratio).
+        any slow window to warm up, so every strategy is flat, has zero
+        return variance and therefore an undefined Sharpe ratio). Failing
+        loudly matters here: the alternative is silently "selecting" an
+        arbitrary corner of the grid and trading it.
     """
     grid = parameter_grid(train_prices, fast_range, slow_range, cost_bps)
-    stacked = grid.stack() if not grid.empty else grid
-    if stacked.empty:
+    # ``.dropna()`` is load-bearing, not defensive tidying: pandas >= 3
+    # keeps NaN cells when stacking (older versions dropped them), so
+    # without it an all-NaN grid reaches ``idxmax`` and raises pandas'
+    # "Encountered all NA values" instead of the informative error this
+    # function documents. Dropping explicitly makes the behaviour the
+    # same on every supported pandas.
+    stacked = grid.stack().dropna() if not grid.empty else grid
+    if len(stacked) == 0:
         raise ValueError(
             "parameter grid is empty or all-NaN; widen fast_range/slow_range "
             "or lengthen train_prices"
@@ -348,11 +357,12 @@ def walk_forward_backtest(
         )
 
         signal = ma_crossover_signal(context, best_fast, best_slow)
-        position = signal.shift(1).fillna(0.0)
+        # Same engine as the single-shot backtest -- execution lag, costs
+        # and the -1.0 floor all come from one place.
+        strat_rets_full, _position, trades = strategy_returns(
+            context, signal, cost_bps
+        )
         rets = context.pct_change().fillna(0.0)
-        trades = position.diff().abs().fillna(0.0)
-        costs = trades * cost_bps / 10_000
-        strat_rets_full = position * rets - costs
 
         local_trading_start = w.trading_start - w.formation_start
         window_strat = strat_rets_full.iloc[local_trading_start:]

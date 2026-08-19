@@ -126,3 +126,165 @@ class TestLiveDataImportGuard:
 
         importlib.reload(live_module)
         assert hasattr(live_module, "load_prices")
+
+
+class TestNonFinitePrices:
+    """A missing or infinite close is a data-quality event, not a market
+    event. Both used to pass through silently and corrupt the result."""
+
+    def test_nan_price_used_to_be_recorded_as_a_flat_day_now_raises(self):
+        """``pct_change().fillna(0.0)`` turns the two days around a NaN
+        close into "no move at all", swallowing the entire move across the
+        gap and inventing a flat day that never happened."""
+        idx = pd.bdate_range("2024-01-01", periods=8)
+        prices = pd.Series([100.0, 101.0, np.nan, 103.0, 104.0, 103.0, 105.0, 106.0], index=idx)
+        signal = pd.Series(1.0, index=idx)
+        with pytest.raises(ValueError, match="non-finite"):
+            run_backtest(prices, signal, cost_bps=5.0)
+
+    def test_nan_price_is_rejected_by_the_signal_too(self):
+        """Caught one layer earlier as well: a NaN close blanks `slow` days
+        of moving average, producing a flat signal that is impossible to
+        distinguish from a genuine bearish one."""
+        idx = pd.bdate_range("2024-01-01", periods=8)
+        prices = pd.Series([100.0, 101.0, np.nan, 103.0, 104.0, 103.0, 105.0, 106.0], index=idx)
+        with pytest.raises(ValueError, match="non-finite"):
+            ma_crossover_signal(prices, fast=2, slow=4)
+
+    def test_infinite_price_raises(self):
+        idx = pd.bdate_range("2024-01-01", periods=5)
+        prices = pd.Series([100.0, 101.0, np.inf, 103.0, 104.0], index=idx)
+        with pytest.raises(ValueError, match="non-finite"):
+            run_backtest(prices, pd.Series(1.0, index=idx), cost_bps=5.0)
+
+    def test_exactly_zero_price_raises_instead_of_poisoning_the_curve(self):
+        """A zero close makes the *next* day's pct_change infinite, and
+        from that point the equity curve is NaN for the rest of the
+        sample -- previously with nothing but a RuntimeWarning."""
+        idx = pd.bdate_range("2024-01-01", periods=6)
+        prices = pd.Series([100.0, 101.0, 0.0, 103.0, 104.0, 105.0], index=idx)
+        with pytest.raises(ValueError, match="strictly positive"):
+            run_backtest(prices, pd.Series(1.0, index=idx), cost_bps=5.0)
+
+    def test_negative_price_raises(self):
+        idx = pd.bdate_range("2024-01-01", periods=4)
+        prices = pd.Series([100.0, 101.0, -5.0, 103.0], index=idx)
+        with pytest.raises(ValueError, match="strictly positive"):
+            run_backtest(prices, pd.Series(1.0, index=idx), cost_bps=5.0)
+
+    def test_empty_prices_raises(self):
+        empty = pd.Series([], dtype=float, index=pd.DatetimeIndex([]))
+        with pytest.raises(ValueError, match="empty"):
+            run_backtest(empty, empty, cost_bps=5.0)
+
+
+class TestSignalValidation:
+    def test_misaligned_signal_index_raises(self):
+        """Pandas would outer-join the two indices into NaN positions and
+        report a plausible-looking (wrong) equity curve."""
+        prices = _prices(n=20)
+        signal = pd.Series(1.0, index=prices.index[:-3])
+        with pytest.raises(ValueError, match="share the exact index"):
+            run_backtest(prices, signal, cost_bps=5.0)
+
+    def test_signal_with_nan_values_raises(self):
+        prices = _prices(n=20)
+        signal = pd.Series(1.0, index=prices.index)
+        signal.iloc[5] = np.nan
+        with pytest.raises(ValueError, match="non-finite"):
+            run_backtest(prices, signal, cost_bps=5.0)
+
+    @pytest.mark.parametrize("bad_value", [0.5, -1.0, 2.0])
+    def test_non_binary_signal_raises(self, bad_value):
+        """The engine is long/flat only: a -1 (short) or 0.5 (half size)
+        would be silently multiplied through as if it were supported,
+        producing returns from mechanics the cost model does not describe."""
+        prices = _prices(n=20)
+        signal = pd.Series(1.0, index=prices.index)
+        signal.iloc[7] = bad_value
+        with pytest.raises(ValueError, match="0.0 or 1.0"):
+            run_backtest(prices, signal, cost_bps=5.0)
+
+
+class TestExtremeTransactionCosts:
+    """cost_bps well beyond anything realistic. The engine must degrade
+    monotonically to a wipe-out, never into a sign-flipping equity curve."""
+
+    @staticmethod
+    def _alternating(n=12):
+        idx = pd.bdate_range("2024-01-01", periods=n)
+        prices = pd.Series(np.linspace(100.0, 120.0, n), index=idx)
+        signal = pd.Series([float(i % 2) for i in range(n)], index=idx)
+        return prices, signal
+
+    def test_round_trip_cost_above_one_hundred_percent_wipes_out_to_zero(self):
+        """A one-way cost of 200% (400% round trip) used to drive the daily
+        return below -100%, sending equity NEGATIVE and then flipping its
+        sign on every subsequent day -- which even produced a finite,
+        recovered-looking CAGR. It now floors at a total loss."""
+        prices, signal = self._alternating()
+        res = run_backtest(prices, signal, cost_bps=20_000.0)
+        assert (res.equity >= 0).all()
+        assert res.equity.iloc[-1] == pytest.approx(0.0, abs=1e-15)
+        assert res.stats["cagr"] == pytest.approx(-1.0, abs=1e-12)
+
+    def test_zero_is_an_absorbing_state(self):
+        """Once wiped out, the curve stays wiped out: no later gain can
+        resurrect a zero equity, which is what happens in reality."""
+        prices, signal = self._alternating(n=20)
+        res = run_backtest(prices, signal, cost_bps=20_000.0)
+        first_zero = int(np.argmax(res.equity.to_numpy() <= 0))
+        assert (res.equity.iloc[first_zero:] == 0.0).all()
+
+    def test_costs_are_monotonically_worse(self):
+        """Sanity property across the whole plausible-to-absurd range:
+        raising the cost can never improve the final equity."""
+        prices, signal = self._alternating(n=20)
+        finals = [
+            run_backtest(prices, signal, cost_bps=c).equity.iloc[-1]
+            for c in (0.0, 5.0, 50.0, 500.0, 5_000.0, 20_000.0)
+        ]
+        assert all(a >= b - 1e-15 for a, b in zip(finals, finals[1:]))
+
+    def test_hundred_percent_round_trip_cost_is_survivable_but_brutal(self):
+        """5,000 bps one-way = 50% per leg, 100% round trip: each trade
+        halves the book, so equity decays geometrically but stays strictly
+        positive. The wipe-out floor must not bind here."""
+        prices, signal = self._alternating(n=12)
+        res = run_backtest(prices, signal, cost_bps=5_000.0)
+        assert (res.equity > 0).all()
+        assert res.equity.iloc[-1] < 0.01
+
+    def test_negative_cost_is_rejected(self):
+        prices, signal = self._alternating()
+        with pytest.raises(ValueError, match="cost_bps"):
+            run_backtest(prices, signal, cost_bps=-5.0)
+
+    def test_non_finite_cost_is_rejected(self):
+        prices, signal = self._alternating()
+        with pytest.raises(ValueError, match="cost_bps"):
+            run_backtest(prices, signal, cost_bps=np.nan)
+
+
+class TestInvalidSignalWindows:
+    @pytest.mark.parametrize("fast,slow", [(0, 10), (-5, 10), (0, 1)])
+    def test_windows_below_one_are_rejected(self, fast, slow):
+        prices = _prices(n=30)
+        with pytest.raises(ValueError, match="must be >= 1"):
+            ma_crossover_signal(prices, fast, slow)
+
+    def test_non_integer_window_is_rejected(self):
+        prices = _prices(n=30)
+        with pytest.raises(ValueError, match="must be an int"):
+            ma_crossover_signal(prices, 5.5, 20)
+
+    def test_windows_longer_than_the_sample_give_an_all_flat_signal(self):
+        """Not an error: both moving averages are NaN throughout, and
+        ``NaN > NaN`` is False, so the signal is flat everywhere. A
+        strategy that never warms up simply never trades."""
+        prices = _prices(n=30)
+        sig = ma_crossover_signal(prices, fast=50, slow=200)
+        assert (sig == 0.0).all()
+        res = run_backtest(prices, sig, cost_bps=5.0)
+        assert res.n_trades == 0
+        assert (res.equity == 1.0).all()

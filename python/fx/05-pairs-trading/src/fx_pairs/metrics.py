@@ -23,12 +23,31 @@ __all__ = [
 
 
 def _clean(returns: pd.Series | np.ndarray) -> np.ndarray:
+    """Drop non-finite entries.
+
+    Metrics deliberately *tolerate* NaN here (unlike the pricing and
+    signal layers, which reject it): a warmup window legitimately produces
+    NaN P&L before the first position exists, and a metric over "the days
+    that actually traded" is the desk's intent.  Inf is dropped for the same
+    reason it must never be averaged: one infinite bar would make every
+    downstream statistic infinite.
+    """
     r = np.asarray(returns, dtype=float)
     return r[np.isfinite(r)]
 
 
+def _check_ann_factor(ann_factor: float) -> float:
+    """Validate the annualisation factor (``ann_factor <= 0`` is False for NaN)."""
+    if not np.isfinite(ann_factor) or ann_factor <= 0.0:
+        raise ValueError(
+            f"ann_factor must be positive and finite, got {ann_factor!r}"
+        )
+    return float(ann_factor)
+
+
 def sharpe_ratio(returns: pd.Series | np.ndarray, ann_factor: float = 252.0) -> float:
     """Annualised Sharpe ratio ``mean/std * sqrt(ann_factor)``; NaN if std=0."""
+    _check_ann_factor(ann_factor)
     r = _clean(returns)
     if len(r) < 2:
         return float("nan")
@@ -60,6 +79,7 @@ def sharpe_se_lo(
     -------
     (sharpe_annualised, se_annualised)
     """
+    _check_ann_factor(ann_factor)
     r = _clean(returns)
     T = len(r)
     if T < 10:
@@ -86,6 +106,7 @@ def sortino_ratio(
     returns: pd.Series | np.ndarray, ann_factor: float = 252.0
 ) -> float:
     """Annualised Sortino: mean over downside deviation (returns below 0)."""
+    _check_ann_factor(ann_factor)
     r = _clean(returns)
     if len(r) < 2:
         return float("nan")
@@ -126,7 +147,10 @@ def turnover(positions: pd.Series | np.ndarray, ann_factor: float = 252.0) -> fl
     Position units are spread units; a round trip of a 1-unit position
     contributes 2 to the |Δposition| sum.
     """
+    _check_ann_factor(ann_factor)
     pos = np.asarray(positions, dtype=float)
+    if not np.isfinite(pos).all():
+        raise ValueError("positions contain NaN or infinite values")
     if len(pos) < 2:
         return 0.0
     dpos = np.abs(np.diff(np.concatenate([[0.0], pos])))

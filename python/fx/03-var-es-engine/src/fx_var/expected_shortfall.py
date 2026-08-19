@@ -35,7 +35,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.stats import norm, t as student_t
 
-from .common import validate_alpha
+from .common import validate_alpha, validate_finite
 
 __all__ = [
     "empirical_var",
@@ -121,6 +121,7 @@ def empirical_var_es(pnl, alpha: float = 0.99, weights=None) -> tuple[float, flo
 def normal_var(sigma: float, alpha: float = 0.99, mean: float = 0.0) -> float:
     """Closed-form Normal VaR: ``-mean + sigma * z_alpha`` (positive loss)."""
     validate_alpha(alpha)
+    validate_finite(sigma=sigma, mean=mean)
     if sigma < 0:
         raise ValueError("sigma must be >= 0")
     return float(-mean + sigma * norm.ppf(alpha))
@@ -129,6 +130,7 @@ def normal_var(sigma: float, alpha: float = 0.99, mean: float = 0.0) -> float:
 def normal_es(sigma: float, alpha: float = 0.99, mean: float = 0.0) -> float:
     """Closed-form Normal ES: ``-mean + sigma * phi(z_alpha)/(1-alpha)``."""
     validate_alpha(alpha)
+    validate_finite(sigma=sigma, mean=mean)
     if sigma < 0:
         raise ValueError("sigma must be >= 0")
     z = norm.ppf(alpha)
@@ -136,6 +138,7 @@ def normal_es(sigma: float, alpha: float = 0.99, mean: float = 0.0) -> float:
 
 
 def _t_scale(df: float) -> float:
+    validate_finite(df=df)
     if df <= 2:
         raise ValueError("Student-t df must be > 2 for finite variance")
     return np.sqrt((df - 2.0) / df)
@@ -149,10 +152,12 @@ def t_var(sigma: float, alpha: float = 0.99, df: float = 6.0, mean: float = 0.0)
     comparable at equal risk.
     """
     validate_alpha(alpha)
+    validate_finite(sigma=sigma, mean=mean)
     if sigma < 0:
         raise ValueError("sigma must be >= 0")
+    scale = _t_scale(df)  # validates df before any t special function
     q = student_t.ppf(alpha, df)
-    return float(-mean + sigma * _t_scale(df) * q)
+    return float(-mean + sigma * scale * q)
 
 
 def t_es(sigma: float, alpha: float = 0.99, df: float = 6.0, mean: float = 0.0) -> float:
@@ -161,8 +166,10 @@ def t_es(sigma: float, alpha: float = 0.99, df: float = 6.0, mean: float = 0.0) 
     For standard t, ``E[X | X > q_a] = f(q_a) (df + q_a^2) / ((1-a)(df-1))``.
     """
     validate_alpha(alpha)
+    validate_finite(sigma=sigma, mean=mean)
     if sigma < 0:
         raise ValueError("sigma must be >= 0")
+    scale = _t_scale(df)  # validates df before any t special function
     q = student_t.ppf(alpha, df)
     es_std = student_t.pdf(q, df) * (df + q**2) / ((1.0 - alpha) * (df - 1.0))
-    return float(-mean + sigma * _t_scale(df) * es_std)
+    return float(-mean + sigma * scale * es_std)

@@ -83,8 +83,9 @@ a real P&L restatement.
   seeds recorded with the run; any number in a report can be reproduced
   bit-exactly. The in-house inverse-CDF sampler exists precisely so this
   holds across compiler/stdlib upgrades.
-- **Input hygiene at the boundary.** The engine throws on negative/NaN
-  inputs and on sub-intrinsic implied-vol requests instead of returning
+- **Input hygiene at the boundary.** The engine throws on negative or
+  non-finite (NaN/Inf) inputs — including non-finite rates — and on
+  sub-intrinsic implied-vol requests instead of returning
   plausible garbage — upstream data problems (stale quotes, crossed
   markets, bad dividend feeds) surface as exceptions in the service log,
   not as silent risk misstatements.

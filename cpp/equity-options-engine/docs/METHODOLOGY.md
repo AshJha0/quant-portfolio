@@ -38,8 +38,9 @@ The two implementations are kept honest against each other by
 ## 2. Design choices
 
 ### Exceptions vs error codes
-Invalid inputs (negative `S`, `K`, `T`, `sigma`, NaN) throw
-`std::invalid_argument`, mirroring the Python `ValueError` contract.
+Invalid inputs (negative `S`, `K`, `T`, `sigma`; NaN or +/-Inf anywhere,
+including the rates `r` and `q`) throw `std::invalid_argument`, mirroring
+the Python `ValueError` contract.
 Rationale: these are *programming/contract* errors at the API boundary, not
 expected runtime states — an error-code or `std::expected` return would tax
 every hot-path call site with branching and would let a corrupted input

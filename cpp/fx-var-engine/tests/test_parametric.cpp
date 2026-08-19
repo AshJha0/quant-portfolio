@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "fxvar/expected_shortfall.hpp"
@@ -131,4 +132,48 @@ TEST(ParametricVar, PegFlagSurfacedThroughDriver) {
   const auto res = parametric_var(book, m, rets, {});
   ASSERT_EQ(res.flagged_peg_factors.size(), 1u);
   EXPECT_EQ(res.flagged_peg_factors[0], "FX:HKD");
+}
+
+
+TEST(PortfolioSigma, HedgedBillionDollarBookAgainstRankDeficientCovariance) {
+  // Regression: five factors driven by one common shock (a pegged bloc)
+  // and a hedged multi-billion book.  The true variance is 0, but the
+  // quadratic form rounds to ~1e-16 of |w|^2 |Sigma| - which the old
+  // ABSOLUTE -1e-12 tolerance rejected as "not positive semi-definite" on
+  // perfectly good market data.
+  const std::vector<double> beta{1.0, 0.9997, 1.0003, 0.99991, 1.00007};
+  const double s2 = 1.1e-4;
+  Matrix cov(5, 5, 0.0);
+  for (std::size_t i = 0; i < 5; ++i)
+    for (std::size_t j = 0; j < 5; ++j) cov(i, j) = s2 * beta[i] * beta[j];
+  std::vector<double> w{7.3e9, -5.1e9, 3.7e9, -2.9e9, 0.0};
+  double s = 0.0;
+  for (std::size_t i = 0; i < 4; ++i) s += w[i] * beta[i];
+  w[4] = -s / beta[4];  // annihilate the common driver exactly
+  EXPECT_LT(quad_form(w, cov), 0.0);  // the rounding really is negative
+  double sigma = -1.0;
+  ASSERT_NO_THROW(sigma = portfolio_sigma(w, cov));
+  EXPECT_DOUBLE_EQ(sigma, 0.0);
+  const VarEs ve = var_covar(w, cov, 0.99, 1.0);
+  EXPECT_DOUBLE_EQ(ve.var, 0.0);
+  EXPECT_DOUBLE_EQ(ve.es, 0.0);
+  // A genuinely indefinite covariance is still rejected at any scale.
+  const Matrix indefinite = Matrix::from_rows({{1e-4, 2e-4}, {2e-4, 1e-4}});
+  EXPECT_THROW(portfolio_sigma({1e6, -1e6}, indefinite), std::invalid_argument);
+}
+
+TEST(PortfolioSigma, RejectsNonFiniteExposuresAndCovariance) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  const Matrix cov = Matrix::from_rows({{1e-4, 0.0}, {0.0, 1e-4}});
+  const Matrix cov_nan = Matrix::from_rows({{1e-4, nan}, {nan, 1e-4}});
+  EXPECT_THROW(portfolio_sigma({nan, 1e6}, cov), std::invalid_argument);
+  EXPECT_THROW(portfolio_sigma({inf, 1e6}, cov), std::invalid_argument);
+  EXPECT_THROW(portfolio_sigma({1e6, 1e6}, cov_nan), std::invalid_argument);
+  EXPECT_THROW(var_covar({1e6, 1e6}, cov_nan, 0.99, 1.0), std::invalid_argument);
+}
+
+TEST(CornishFisher, DegenerateGridRejected) {
+  EXPECT_THROW(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 2), std::invalid_argument);
+  EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 3));
 }

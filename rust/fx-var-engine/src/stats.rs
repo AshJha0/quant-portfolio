@@ -457,9 +457,10 @@ pub fn validate_alpha(alpha: f64) -> Result<f64> {
 /// Validate a VaR horizon in trading days, returning it unchanged.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] unless `horizon_days > 0`.
+/// [`FxVarError::Invalid`] unless `horizon_days` is finite and `> 0`
+/// (`+inf` has to be excluded explicitly: `!(inf > 0.0)` is false).
 pub fn validate_horizon(horizon_days: f64) -> Result<f64> {
-    if !(horizon_days > 0.0) {
+    if !(horizon_days > 0.0) || !horizon_days.is_finite() {
         return Err(FxVarError::invalid(format!(
             "horizon_days must be > 0, got {horizon_days}"
         )));

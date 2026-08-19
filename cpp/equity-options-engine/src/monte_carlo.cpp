@@ -82,6 +82,7 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
                   bool antithetic, bool control_variate, std::uint64_t seed,
                   unsigned threads) {
     validate_inputs(S, K, T, sigma);
+    validate_rates(r, q);
     if (n_paths < 2) {
         throw std::invalid_argument("n_paths must be >= 2");
     }

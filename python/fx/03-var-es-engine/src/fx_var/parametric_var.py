@@ -29,7 +29,8 @@ import pandas as pd
 from scipy.stats import norm
 
 from .book import Book, Market
-from .common import validate_alpha, validate_horizon, validate_returns, warn_peg_factors
+from .common import (validate_alpha, validate_finite, validate_horizon,
+                     validate_returns, warn_peg_factors)
 from .expected_shortfall import normal_es, normal_var, t_es, t_var
 
 __all__ = [
@@ -83,6 +84,7 @@ def portfolio_sigma(exposures: pd.Series, cov: pd.DataFrame) -> float:
     """1-day portfolio P&L standard deviation ``sqrt(w' Sigma w)``."""
     w = exposures.to_numpy(dtype=float)
     sig = cov.loc[exposures.index, exposures.index].to_numpy(dtype=float)
+    validate_finite(exposures=w, cov=sig)
     var = float(w @ sig @ w)
     if var < -1e-12:
         raise ValueError("covariance matrix is not positive semi-definite")
@@ -222,6 +224,8 @@ def cornish_fisher_var(
     """
     validate_alpha(alpha)
     validate_horizon(horizon_days)
+    validate_finite(sigma=sigma, skew=skew, excess_kurtosis=excess_kurtosis,
+                    mean=mean)
     if sigma < 0:
         raise ValueError("sigma must be >= 0")
     if check_domain and not cornish_fisher_domain_ok(skew, excess_kurtosis):

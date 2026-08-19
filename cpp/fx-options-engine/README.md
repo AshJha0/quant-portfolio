@@ -48,7 +48,7 @@ fx-options-engine/
 ```sh
 cmake -S . -B build
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # 79 tests, all green
+ctest --test-dir build --output-on-failure   # 86 tests, all green
 ./build/fxopt_bench
 ```
 

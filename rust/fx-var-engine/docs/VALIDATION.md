@@ -3,8 +3,8 @@
 How the Rust engine was validated: analytic identities, cross-language
 golden constants against the Python reference, statistical/ordering
 tests, benchmarks, and known failure modes. Every claim below is enforced
-by the test suite (`cargo test --release`): **83 tests + 1 doctest, all
-passing under `RUSTFLAGS="-D warnings"`** (zero warnings, zero clippy
+by the test suite (`cargo test --release`): **91 tests + 2 doctests — 93 in
+total — all passing under `RUSTFLAGS="-D warnings"`** (zero warnings, zero clippy
 lint suppressions beyond documented `#[allow(...)]` on the two functions
 that legitimately need more than the default argument-count lint allows).
 
@@ -114,7 +114,83 @@ print(var_covar(w, cov, .99), var_covar(w, cov, .99, dist="t", df=5.),
 print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
 ```
 
+## 3b. Input-validation contract (edge cases, CONVENTIONS item 6)
+
+| Edge case | Behaviour | Test |
+| --- | --- | --- |
+| NaN / `+inf` / `-inf` in a **market** spot or rate | `FxVarError::Invalid` at `Market::new` | `edge_cases::non_finite_market_and_book_inputs_are_rejected` |
+| NaN / Inf in a **position** notional, cash amount, entry rate, strike or expiry | `FxVarError::Invalid` at `Book::new` | same |
+| NaN / Inf anywhere in a **return history** | rejected by `validate_returns`, `sample_cov`, `ewma_cov`, `ewma_volatility`, `historical_var`, `parametric_var` | `edge_cases::non_finite_returns_covariances_and_scalars_are_rejected` |
+| NaN / Inf in a **covariance** or **exposure** vector | rejected by `portfolio_sigma`, `Matrix::cholesky(_with_jitter)`, `reverse_stress_*` | same |
+| NaN / Inf in `sigma`, `mean`, `df`, `alpha`, `horizon_days` of the closed forms | rejected by `normal_var/es`, `student_t_var/es`, `var_covar` | same |
+| NaN / Inf in an empirical **P&L sample** or its **weights** | rejected by `empirical_var/es` | same |
+| NaN / Inf in a **backtest** P&L or VaR-forecast series | rejected by `evaluate_var_backtest` | same |
+| **Negative** VaR forecast in a backtest | rejected (positive-loss convention) | same |
+| `simple_to_log` at or below −100 % | `FxVarError::Invalid` instead of `-inf` / `NaN` | `edge_cases::simple_to_log_rejects_its_domain_boundary` |
+| Boundary confidence levels `alpha` in {0, 1} and outside `(0, 1)` | rejected at every entry point, never clamped | `edge_cases::boundary_alpha_and_tiny_samples` |
+| 1- and 2-observation samples | `empirical_var/es` exact; `sample_cov` / `ewma_volatility` need 2 rows; the backtest needs 2 days | same |
+| Single-currency book (USD cash in USD, EUR cash in EUR) | carries no FX factor and is exactly flat to any shock; the same EUR cash reported in USD is fully exposed | `edge_cases::single_currency_book_has_no_fx_risk` |
+| Identity triangulation (`CCYUSD`, `CCYCCY`, reciprocals, `forward(T=0)`) | `CCYUSD` is exactly the USD leg; every cross is the exact ratio of two USD legs and its reciprocal to 1e-14; identical-leg pairs are **rejected**, not vacuously priced at 1 | `edge_cases::identity_triangulation_is_exact` |
+| Large-notional book (P&L covariance entries ~1e22) | scale-relative symmetry and PSD gates accept it; VaR scales exactly with sigma | `edge_cases::large_notional_books_are_not_rejected_by_absolute_tolerances` |
+| Rank-1 / pegged covariance block | repaired at the first jitter rung, jitter reported | `edge_cases::jitter_repairs_pegged_blocks_but_refuses_indefinite_covariances` |
+| Materially indefinite covariance (correlation > 1) | `FxVarError::Numerical` naming the materiality cap; never silently repaired | same |
+
 ## 4. Failure modes (mirrored from the Python/C++ references)
+
+- **F0 — NaN is the failure mode a naive guard misses.** A validation
+  written as `if x <= 0.0 { return Err(...) }` silently **accepts** NaN,
+  because every IEEE-754 comparison against NaN is false. Rust does not
+  help: `f64::NAN < 0.0` is `false` exactly as in C and C++. Worse,
+  `f64::max` propagates the *other* operand, so `NaN.max(0.0)` is `0.0`.
+  Five concrete holes were closed in the hardening pass, each of which
+  turned corrupt input into a *plausible-looking* number rather than an
+  error:
+
+  1. `portfolio_sigma` computed `w' Sigma w`, tested it with
+     `var < -tol` (false for NaN) and returned `var.max(0.0).sqrt()` — so
+     a single NaN covariance entry reported a portfolio sigma, VaR and ES
+     of exactly **zero**. A broken feed looked like a flat book.
+  2. `Matrix::cholesky` tested its pivot with `s <= 0.0` (false for NaN),
+     so a NaN covariance factorised into an all-NaN `L` and every Monte
+     Carlo scenario and VaR downstream was NaN with no diagnostic.
+     `is_symmetric` had the same shape of hole (`|NaN - NaN| > atol` is
+     false, i.e. a NaN matrix counted as symmetric).
+  3. `evaluate_var_backtest` screened with `is_nan()` only, so `+/-inf`
+     passed. The exception test is `-p > v`; with a non-finite value on
+     either side it is false, so the day was scored as "no exception" —
+     a model whose VaR feed had broken recorded **zero breaches** and
+     passed Kupiec, Christoffersen and the Basel traffic light green.
+  4. `validate_returns` and the empirical estimators screened with
+     `is_nan()` only, letting an infinite return into the covariance.
+  5. `Market::new` validated spots but not **rates**, and the position
+     validators checked neither notionals nor (for NaN) entry rates,
+     strikes and expiries — `fw.expiry < 0.0` is false for NaN.
+
+  All validation is now written with `is_finite()` rather than an ordering
+  comparison, and the contract is pinned by the two `edge_cases` tests
+  listed in section 3b.
+- **F0b — Absolute tolerances do not survive a change of units.** The
+  Cholesky pre-check used an **absolute** symmetry tolerance of 1e-12.
+  That is correct for a covariance of daily returns (entries ~1e-5) and
+  badly wrong for a covariance expressed in currency units: a 50bn book's
+  P&L covariance has entries ~1e22, where one ulp is ~1e6 — eighteen
+  orders of magnitude above the gate, so a *perfectly symmetric* matrix
+  whose two triangles were accumulated in different orders was rejected as
+  "not symmetric". The gate is now scale-relative
+  (`Matrix::is_symmetric_rel`, `rtol * max(1, max|a|)`); the absolute
+  `Matrix::is_symmetric(atol)` remains available for callers who know
+  their units. The PSD gate in `portfolio_sigma` was already
+  scale-relative (`1e-10 * max|w|^2`) and is unchanged.
+- **F0c — The jitter ladder repairs rounding noise, not indefiniteness.**
+  `cholesky_with_jitter` escalated by 10x per attempt from `1e-12 *
+  mean(diag)` with no upper bound other than `max_tries`, so a caller
+  passing a generous `max_tries` could have a materially indefinite
+  matrix "repaired" by a jitter comparable to the variances themselves —
+  returning a factor that simulates a different book, with no diagnostic.
+  The escalation now stops at `matrix::MAX_RELATIVE_JITTER` (1e-6 x mean
+  diagonal) and returns `FxVarError::Numerical` naming the cap. Pegged /
+  rank-deficient blocks are repaired at the first rung and are
+  unaffected.
 
 - **F1 — Peg blindness (the headline).** A pegged currency contributes
   ~zero historical scenarios; HS and var-covar report ~=0 VaR while the

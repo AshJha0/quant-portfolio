@@ -22,6 +22,7 @@ from typing import Sequence
 
 import pandas as pd
 
+from ._validation import require_finite
 from .fxforward import FXForward, MarketState, forward_points, market_forward
 from .risk import Position, book_value
 
@@ -46,6 +47,14 @@ class Scenario:
     foreign_bp: float = 0.0
     basis_bp: float = 0.0
     description: str = ""
+
+    def __post_init__(self) -> None:
+        require_finite(spot_pct=self.spot_pct, domestic_bp=self.domestic_bp,
+                       foreign_bp=self.foreign_bp, basis_bp=self.basis_bp)
+        if self.spot_pct <= -100.0:
+            raise ValueError(
+                f"spot_pct must be > -100% (spot stays positive), got {self.spot_pct}"
+            )
 
 
 def apply_scenario(market: MarketState, scenario: Scenario) -> MarketState:
@@ -147,6 +156,7 @@ def forward_carry(
     Returns a dict with carry P&L (quote ccy), the points roll, and the
     start/end forwards.
     """
+    require_finite(horizon=horizon)
     if not (0.0 < horizon < position.expiry):
         raise ValueError(
             f"horizon must be in (0, expiry={position.expiry}), got {horizon}"

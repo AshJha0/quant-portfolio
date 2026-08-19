@@ -204,6 +204,8 @@ def mc_digital_price(S: float, K: float, T: float, r_d: float, r_f: float,
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T <= 0.0:
         raise ValueError("mc_digital_price requires T > 0")
+    if not isinstance(n_paths, int) or n_paths < 2:
+        raise ValueError(f"n_paths must be an integer >= 2, got {n_paths!r}")
     if payout_currency not in ("domestic", "foreign"):
         raise ValueError(
             f"payout_currency must be 'domestic' or 'foreign', "

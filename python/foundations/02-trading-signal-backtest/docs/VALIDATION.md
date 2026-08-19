@@ -2,7 +2,7 @@
 
 How the implementation was validated (contract items 3, 4, 6). All numbers
 below are reproduced by `python examples/run_pipeline.py` (seeded, offline,
-~3 s) and the test suite (`pytest -q`, 64 tests, ~2 s, offline).
+~3 s) and the test suite (`pytest -q`, 99 tests, ~3 s, offline).
 
 ---
 
@@ -98,75 +98,115 @@ independent direct call to `run_backtest` for the same `(fast, slow)`.
   window, or if the formation history leaked into the trading return
   computation, this would diverge.
 - A too-short sample raises an informative `ValueError` ("too short")
-  rather than silently returning an empty or ambiguous result.
+  rather than silently returning an empty or ambiguous result, and the
+  message names the offending sizes (`test_error_message_names_the_offending_sizes`).
+  `TestWalkForwardWindowsLargerThanData` covers the whole family:
+  formation alone longer than the sample, trading alone longer, the two
+  together overshooting by one observation, and the exact boundary where
+  `formation + trading == n` fits precisely one window while one fewer
+  observation fits none.
+- **Stitching is compounding, not splicing**
+  (`TestWalkForwardStitching`): the stitched out-of-sample index is
+  unique, monotonic and exactly `trading * n_windows` days long (every
+  out-of-sample day counted once, none dropped), and the final equity
+  equals the running product of each window's own gross return to
+  `rel=1e-12`. A naive splice of per-window equity curves — each
+  restarting at 1.0 — would fail this.
+- **The formation window can be too short to select anything.** If no
+  candidate `(fast, slow)` pair warms up inside the formation window,
+  every grid cell is a flat, zero-variance strategy with a `NaN` Sharpe.
+  `select_best_params` raises rather than "selecting" an arbitrary corner
+  of an all-`NaN` grid
+  (`test_formation_window_too_short_for_the_slow_ma_fails_loudly`).
 
-## 6. Headline numbers: bundled synthetic data, seed=2 (`examples/run_pipeline.py`)
+## 6. Headline numbers: bundled synthetic data, seed=32 (`examples/run_pipeline.py`)
 
 10 years of synthetic daily closes (2016-12-19 .. 2026-08-14, two-regime
-generator, seed 2), 70/30 train/test split, grid search
-`fast ∈ {10,...,70}`, `slow ∈ {100,...,250}`, `cost_bps=5`:
+generator, seed 32), 70/30 train/test split, grid search
+`fast ∈ {10,...,70}`, `slow ∈ {100,...,250}`, `cost_bps=5`.
 
-Parameters selected on the training window: **fast=20, slow=200**.
+**About the bundled data.** The generator's regime parameters are set so
+its *stationary* behaviour looks like a single large-cap equity — ~8%/yr
+long-run drift, ~21% annualised volatility, ~17% of days in a stressed
+regime, and 30-50% peak drawdowns — rather than a trend-follower's dream.
+The seed matters more than one might like: 10-year paths from this model
+run from about -14% to +28% CAGR depending on the draw, so seed 32 was
+picked because its path sits near the model's central case (buy & hold:
++8.66% CAGR, 21.1% vol, Sharpe 0.50, -46.9% max drawdown), not because it
+flatters the strategy. It does not.
+
+Parameters selected on the training window: **fast=10, slow=125**.
 
 | | strategy | buy & hold |
 |---|---:|---:|
-| In-sample CAGR / Sharpe / maxDD | +7.12% / 0.70 / -11.74% | +7.92% / 0.62 / -26.68% |
-| **Out-of-sample** CAGR / Sharpe / maxDD | **+6.20% / 0.64 / -9.77%** | +4.21% / 0.37 / -27.11% |
-| Full-period CAGR / Sharpe / maxDD (10 trades) | +8.70% / 0.81 / -11.74% | — |
-| Full-period, zero costs | +8.75% / 0.81 / -11.74% | — |
+| In-sample CAGR / Sharpe / maxDD | +12.39% / 0.87 / -30.06% | +15.73% / 0.82 / -46.57% |
+| **Out-of-sample** CAGR / Sharpe / maxDD | **-2.27% / -0.12 / -26.50%** | -7.25% / -0.21 / -46.93% |
+| Full-period CAGR / Sharpe / maxDD (32 trades) | +7.39% / 0.54 / -34.06% | +8.66% / 0.50 / -46.93% |
+| Full-period, zero costs | +7.57% / 0.55 / -33.67% | — |
 
 **Key number 1 — why the in-sample Sharpe should be distrusted.**
-In-sample Sharpe 0.70 → out-of-sample Sharpe 0.64: a **~9% relative
-decay**, i.e. the honest number retains ~91% of the in-sample estimate on
-this run. This is a *moderate* decay by the project's own
-`Sharpe_oos < 0.5 * Sharpe_is` threshold for "substantial decay" (see
-`run_pipeline.py`'s printed "honest read"), and moderate decay from a
-single split is still weak evidence on its own — which is exactly why
-walk-forward validation (below) exists.
+In-sample Sharpe **0.87** → out-of-sample Sharpe **-0.12**. That is not
+decay, it is disappearance: the strategy that looked like a 0.87-Sharpe
+trend follower on the window its parameters were chosen from lost money
+on the window they weren't. By the pipeline's own printed threshold
+(`Sharpe_oos < 0.5 * Sharpe_is` → "substantial decay"), this is the
+unambiguous case, and it is what a working evaluation harness is supposed
+to produce when handed a strategy without a real edge.
 
-**Key number 2 — strategy vs. buy & hold, drawdowns not just CAGR.** The
-strategy's full-period max drawdown (**-11.74%**) is well under half of
-buy & hold's (**-26.68% to -27.11%**) across every reported window, while
-CAGR is close to or below buy & hold's. This is the textbook trend-
-following signature described in `docs/METHODOLOGY.md`: the strategy earns
-its keep by avoiding the worst of the drawdown, not by out-compounding a
-rising market.
+A reviewer should read this as the project's *result*, not its
+embarrassment. The alternative — a bundled dataset tuned until the
+strategy worked — would demonstrate nothing except that synthetic data can
+be made to say anything.
 
-**Key number 3 — transaction cost drag.** At the selected (slow-turnover,
-10-trade) parameters, cost drag is small: full-period CAGR falls from
-8.75% (zero cost) to 8.70% (5 bps) — a **0.05 percentage-point** drag.
-This looks reassuring in isolation, but section 7 below shows it is
-parameter-dependent: faster pairs pay far more.
+**Key number 2 — strategy vs. buy & hold: drawdowns, not returns.** The
+one property that reproduces in both windows is drawdown control: -30.06%
+(in-sample) and -26.50% (out-of-sample) against buy & hold's -46.57% and
+-46.93%. Out-of-sample, over a period when the asset itself lost 7.25%/yr,
+the strategy lost only 2.27%/yr and had the better (less negative) Sharpe
+of the two. That is the textbook trend-following signature described in
+`docs/METHODOLOGY.md` — step aside during sustained declines — and it
+survives out-of-sample even though the alpha does not. It is also not, on
+its own, a reason to trade the strategy: a cash allocation delivers
+drawdown control more cheaply and more reliably.
+
+**Key number 3 — transaction cost drag.** At the selected parameters
+(32 trades over 10 years) the drag is small: full-period CAGR falls from
+7.57% (zero cost) to 7.39% (5 bps), **0.17 percentage points**. Section 7
+shows how quickly that grows with turnover.
 
 **Walk-forward, 7 rolling windows (formation 756d / trading 252d):**
 
 | metric | walk-forward stitched OOS | buy & hold (same dates) |
 |---|---:|---:|
-| CAGR | +8.05% | +10.56% |
-| Sharpe | 0.69 | 0.79 |
-| Max drawdown | -18.53% | -27.11% |
-| Trades | 22 | — |
+| CAGR | -2.26% | +0.73% |
+| Sharpe | -0.06 | 0.15 |
+| Max drawdown | -43.93% | -46.93% |
+| Trades | 30 | — |
 
-Per-window selected parameters and realised Sharpe swing considerably
-(e.g. window 4: fast=10, slow=250, Sharpe **-0.09**; window 5: fast=20,
-slow=175, Sharpe **+2.11**) — a reminder that "the strategy" is really a
-sequence of seven different re-fitted strategies here, and any one
-window's result is noisy. The **stitched** out-of-sample Sharpe (0.69) is
-the number that best answers "what would an investor who mechanically
-re-optimised every year actually have earned", and it sits close to (in
-this run, slightly below) the single-split out-of-sample Sharpe (0.64),
-which is a mild reassurance that the single-split result is not a fluke
-of that particular boundary — but seven correlated, overlapping-regime
-windows on one simulated history is still evidence, not proof (Assumption
-A6/A7 in `docs/METHODOLOGY.md`).
+Per-window selected parameters and realised Sharpe swing violently — the
+seven windows produced Sharpes of -0.61, +1.76, +0.54, -1.55, +0.48,
+-0.57 and -0.91, with the selected `slow` window jumping between 100 and
+250 as the formation data changed. "The strategy" is really seven
+different re-fitted strategies, four of which lost money in their trading
+window. The stitched out-of-sample Sharpe (-0.06) is the number that best
+answers "what would an investor who mechanically re-optimised every year
+actually have earned", and it agrees with the single-split out-of-sample
+result (-0.12) rather than rescuing it. Two independent evaluation
+protocols reaching the same negative conclusion is considerably stronger
+evidence than either alone (Assumption A6/A7 in `docs/METHODOLOGY.md`).
 
-**Key number 4 — parameter sensitivity.** In-sample grid Sharpe ranges
-from 0.16 to 0.70; **37% of grid cells sit within 25% of the best Sharpe**
-— a broad plateau, not a lone spike. Consistent with a real, if modest,
-trend-following effect on this data rather than a curve-fit accident: a
-genuinely overfit result typically looks like a single green cell in a
-red sea (compare `output/figures/backtest_overview.png`, bottom-right
-panel).
+**Key number 4 — parameter sensitivity, and why a plateau proves less
+than it looks.** In-sample grid Sharpe ranges from 0.19 to 0.87, and
+**39% of grid cells sit within 25% of the best Sharpe** — a broad plateau,
+which is conventionally read as evidence *against* curve-fitting (a
+genuinely overfit result is supposed to look like one green cell in a red
+sea). Here that reading would be wrong: the plateau is real and the
+out-of-sample Sharpe is still negative. A plateau says the in-sample
+result does not depend on one lucky parameter cell; it says nothing about
+whether the whole neighbourhood is fitted to the same noise. The pipeline
+prints this reconciliation in its own output rather than leaving the
+heatmap to imply robustness it cannot support (see
+`output/figures/backtest_overview.png`, bottom-right panel).
 
 ## 7. Cost sensitivity: unrealistically low vs. realistic
 
@@ -175,28 +215,46 @@ sharply as the windows shorten):
 
 | (fast, slow) | trades (10y) | Sharpe @ 0bps | Sharpe @ 5bps | Sharpe @ 20bps | CAGR @ 0bps | CAGR @ 5bps | CAGR @ 20bps |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| (10, 50)  | 76 | 0.368 | 0.331 | 0.222 | 3.36% | 2.96% | 1.79% |
-| (10, 100) | 44 | 0.449 | 0.428 | 0.365 | 4.29% | 4.06% | 3.37% |
-| **(20, 200) — selected** | **10** | **0.813** | **0.809** | **0.795** | **8.75%** | **8.70%** | **8.53%** |
-| (60, 250) | 8  | 0.639 | 0.635 | 0.625 | 6.75% | 6.70% | 6.58% |
+| (10, 50)  | 55 | 0.719 | 0.702 | 0.648 | 10.54% | 10.24% | 9.33% |
+| (10, 100) | 40 | 0.587 | 0.574 | 0.535 | 8.11% | 7.89% | 7.25% |
+| **(10, 125) — selected** | **32** | **0.550** | **0.540** | **0.509** | **7.57%** | **7.39%** | **6.88%** |
+| (60, 250) | 12 | 0.078 | 0.074 | 0.063 | 0.01% | -0.05% | -0.23% |
 
-The lesson the legacy README called out is reproduced exactly: **at
-`cost_bps=0` the fast (10, 50) pair (Sharpe 0.368) already trails the
-selected (20, 200) pair (Sharpe 0.813)**, and the gap widens further as
-costs rise to a realistic 5-20 bps, because 76 round-trip-adjacent trades
-over 10 years pay costs far more often than 10. Setting `cost_bps` to an
-unrealistically low value (0-1 bp) would make the fast pair look
-competitive with the selected one; at realistic costs it is not close.
-This is why `parameter_grid`/`select_best_params` always run *with*
-`cost_bps` set (default 5.0), never cost-free — a cost-free grid search
-would systematically favour over-trading parameter pairs.
+Two things to read off this table, and they pull in opposite directions —
+which is the honest version of the story:
+
+1. **Cost drag scales with turnover, exactly as expected.** Going from 0
+   to 20 bps costs the 55-trade (10, 50) pair **1.21 percentage points**
+   of CAGR and 0.071 of Sharpe; it costs the 12-trade (60, 250) pair
+   0.24pp and 0.015. A backtest run at `cost_bps=0` overstates a fast
+   pair's edge by roughly five times as much as a slow pair's, and the
+   error is systematic, not noise: it always favours over-trading.
+2. **On this data, costs do not reverse the ranking.** The fastest pair
+   (10, 50) has the highest Sharpe at every cost level tested, including
+   20 bps. The selection step still did not choose it, because
+   `select_best_params` searches the *training* window only, where a
+   different pair won. That is a useful illustration in itself: which
+   parameters look best is not stable across sub-samples, which is the
+   same instability the walk-forward windows show and the same
+   instability that produces the negative out-of-sample result.
+
+The general lesson stands and is why `parameter_grid`/`select_best_params`
+always run *with* `cost_bps` set (default 5.0), never cost-free: a
+cost-free grid search is biased toward over-trading parameter pairs, and
+whether that bias happens to flip the winner on one particular sample is
+luck, not a reason to omit costs. On the choppy path in §8, where turnover
+is much higher relative to the moves captured, the same 5 bps is the
+difference between -8.38% and -8.59% CAGR — still not the deciding factor
+there either, because that failure is a signal failure, not a cost
+failure.
 
 ## 8. Failure mode: choppy / range-bound regime (whipsaw losses)
 
 The synthetic generator in `data/synthetic.py` is regime-switching
-between a calm uptrend and a stressed downtrend, so its default output is
-directional enough that a trend-following signal has something to catch
-(§6 above). To reproduce the failure mode this strategy class is
+between an uptrend and a drawdown regime, so its default output has
+persistent directional moves in it — enough that a trend-following signal
+has something to aim at, even though on this seed it fails to convert
+that into out-of-sample performance (§6 above). To reproduce the failure mode this strategy class is
 documented to have — **choppy, range-bound markets, where every crossover
 is a whipsaw that pays costs and captures no move** — a genuinely
 mean-reverting synthetic path is needed instead. `tests/test_edge_cases.py::TestChoppyRegimeFailureMode`
@@ -225,22 +283,75 @@ an exact seeded example, the regime-dependence statement in
 
 ## 9. Failure modes summary (contract item 4)
 
+- **Selection bias in the grid search (§6, quantified):** the in-sample
+  Sharpe is optimistic — on this data, entirely so (0.87 in-sample,
+  -0.12 out-of-sample). Walk-forward re-selection does not eliminate the
+  bias, it re-applies it every window (Assumption A5), and reaches the
+  same negative conclusion.
+- **A plateau in the parameter grid is weaker evidence than it looks
+  (§6):** 39% of cells within 25% of the best Sharpe, and still no
+  out-of-sample edge. Plateau vs. spike distinguishes "one lucky cell"
+  from "a lucky neighbourhood"; it cannot distinguish either from
+  "the whole surface is fitted to the same noise".
 - **Regime dependence (§8, tested):** loses in range-bound/mean-reverting
   regimes; the same mechanism that limits drawdown in a bear market
   (stepping aside) produces repeated small losses in a choppy one.
 - **Cost sensitivity (§7, tested via `TestTransactionCosts`):** fast
-  parameter pairs are cost-fragile; an unrealistic zero-cost assumption
-  masks this and would select the wrong parameters.
-- **Selection bias in the grid search (§6, quantified):** the in-sample
-  Sharpe is optimistic; walk-forward re-selection does not eliminate this,
-  it re-applies it every window (Assumption A5).
+  parameter pairs are cost-fragile — 20 bps costs the fastest grid pair
+  1.21pp of CAGR against 0.24pp for the slowest — and a zero-cost
+  assumption is systematically biased toward over-trading.
 - **Single asset, single simulated history (Assumption A7):** every
   number above describes one seed's synthetic path (or, via `data/live.py`,
-  one real ticker's one realised history). None of it is evidence the
-  effect generalises across assets.
-- **Degenerate numeric edges (all unit-tested):** an all-flat signal
-  produces exactly zero trades and a constant equity curve
-  (`TestAllFlatSignal`); zero-variance returns give `NaN` Sharpe, never 0
-  or ±inf; a single-observation series does not crash `run_backtest` or
-  `ma_crossover_signal` (`TestSingleDaySeries`); `cost_bps=0` with an
-  always-on signal reproduces buy & hold bit-for-bit.
+  one real ticker's one realised history). None of it is evidence about
+  how the effect behaves across assets — and the seed dispersion noted in
+  §6 (-14% to +28% CAGR across draws) is a direct measure of how little a
+  single path can tell you.
+
+## 10. Data-quality and degenerate-input guards (contract item 6)
+
+The engine used to accept several kinds of bad input and return a
+plausible-looking number. Each is now rejected at the door, and each
+rejection is a test in `tests/test_edge_cases.py`:
+
+| Input | Old behaviour | Now |
+|---|---|---|
+| `NaN` in prices | `pct_change().fillna(0.0)` recorded the gap as a **flat day**, silently swallowing the move across it | `ValueError`, message explains the gap must be resolved deliberately (`TestNonFinitePrices`) |
+| `inf` in prices | propagated into `NaN` equity | `ValueError` |
+| A price of exactly `0.0` | next day's `pct_change` is `inf`; equity `NaN` from that point on, with only a `RuntimeWarning` | `ValueError` ("strictly positive") |
+| Negative price | drawdown/return arithmetic silently meaningless | `ValueError` |
+| Signal index ≠ price index | pandas outer-joined them into `NaN` positions and reported a wrong curve | `ValueError` ("share the exact index") |
+| Signal containing `NaN` | `NaN` positions, `NaN` equity | `ValueError` |
+| Signal of `0.5` / `-1.0` / `2.0` | multiplied straight through, as if fractional sizing and shorting were supported and costed | `ValueError` (long/flat only) |
+| `cost_bps` negative or `NaN` | negative costs *paid* the strategy to trade | `ValueError` |
+| `fast`/`slow` below 1, or non-integer | pandas' own rolling-window error, or silent nonsense | `ValueError` naming the window |
+
+**Extreme transaction costs** get their own class
+(`TestExtremeTransactionCosts`) because the old failure was quantitative
+rather than categorical. With a one-way cost above 100% of traded value
+(`cost_bps > 10_000`), the daily strategy return fell below -100%, so
+`(1 + r)` went negative: the equity curve flipped sign on every subsequent
+trade and produced a **finite, recovered-looking CAGR** out of what should
+have been a total loss. The engine now floors the daily strategy return at
+-1.0, so:
+
+- a 200%-per-leg cost wipes equity to exactly zero, and zero is absorbing
+  (`test_zero_is_an_absorbing_state`) — no later gain resurrects it;
+- a 50%-per-leg cost (100% round trip) is survivable and merely brutal:
+  equity stays strictly positive and decays geometrically;
+- final equity is monotonically non-increasing in `cost_bps` across
+  0 → 5 → 50 → 500 → 5,000 → 20,000 bps
+  (`test_costs_are_monotonically_worse`).
+
+**Windows longer than the sample** are *not* an error: both moving
+averages are `NaN` throughout, `NaN > NaN` is `False`, so the signal is
+flat everywhere, the strategy never trades and equity stays at 1.0
+(`test_windows_longer_than_the_sample_give_an_all_flat_signal`). A
+strategy that never warms up simply never trades, which is the correct
+answer rather than an exception.
+
+**Other degenerate edges (all unit-tested):** an all-flat signal produces
+exactly zero trades and a constant equity curve (`TestAllFlatSignal`);
+zero-variance returns give `NaN` Sharpe, never 0 or ±inf; a
+single-observation series does not crash `run_backtest` or
+`ma_crossover_signal` (`TestSingleDaySeries`); `cost_bps=0` with an
+always-on signal reproduces buy & hold bit-for-bit.

@@ -30,6 +30,7 @@ Conventions
 from __future__ import annotations
 
 import itertools
+import math
 from dataclasses import dataclass
 
 import pandas as pd
@@ -93,10 +94,10 @@ class FXTrade:
     def __post_init__(self) -> None:
         if len(self.pair) != 6:
             raise ValueError(f"pair must be 6 letters BASE/QUOTE, got {self.pair!r}")
-        if self.notional_base < 0:
-            raise ValueError("notional_base must be >= 0")
-        if self.rate <= 0:
-            raise ValueError("rate must be > 0")
+        if not (math.isfinite(self.notional_base) and self.notional_base >= 0):
+            raise ValueError("notional_base must be finite and >= 0")
+        if not (math.isfinite(self.rate) and self.rate > 0):
+            raise ValueError("rate must be finite and > 0")
 
     @property
     def base(self) -> str:
@@ -192,9 +193,12 @@ def time_zone_gap_matrix(currencies: tuple[str, ...] = ("JPY", "EUR", "GBP", "US
 
 def _usd_value(amount: float, ccy: str, usd_rates: dict[str, float]) -> float:
     try:
-        return amount * usd_rates[ccy]
+        rate = usd_rates[ccy]
     except KeyError as exc:
         raise ValueError(f"missing USD rate for {ccy!r}") from exc
+    if not math.isfinite(rate) or rate <= 0:
+        raise ValueError(f"USD rate for {ccy!r} must be finite and > 0, got {rate}")
+    return amount * rate
 
 
 def settlement_exposure(trade: FXTrade, usd_rates: dict[str, float]) -> SettlementExposure:

@@ -184,3 +184,43 @@ TEST(Book, SingleCurrencyBookSpotExposureIsNotional) {
   ASSERT_EQ(w.size(), 1u);
   EXPECT_NEAR(w[0], 10e6 * 1.10, 1e-3);
 }
+
+
+TEST(Market, TriangulationIdentitiesAreExact) {
+  // The USD-pivot factor set makes cross rates consistent by construction:
+  // EURJPY = EURUSD * USDJPY, and a pair times its inverse is 1.
+  const Market m = test_market();
+  EXPECT_NEAR(m.cross("EURJPY"), m.cross("EURUSD") * m.cross("USDJPY"),
+              1e-12 * m.cross("EURJPY"));
+  EXPECT_NEAR(m.cross("EURUSD") * m.cross("USDEUR"), 1.0, 1e-15);
+  EXPECT_NEAR(m.cross("JPYUSD") * m.cross("USDJPY"), 1.0, 1e-15);
+  // Triangulating through a third currency gives the same cross.
+  EXPECT_NEAR(m.cross("EURJPY"),
+              m.cross("EURUSD") / m.cross("JPYUSD"),
+              1e-12 * m.cross("EURJPY"));
+  // Forward triangulation is consistent with CIP through the same pivot.
+  const double t = 1.5;
+  EXPECT_NEAR(m.forward("EURJPY", t),
+              m.cross("EURJPY") *
+                  std::exp((m.rate("JPY") - m.rate("EUR")) * t),
+              1e-10 * m.forward("EURJPY", t));
+}
+
+TEST(Book, SingleCurrencyBookInNonUsdBaseHasNoFxRisk) {
+  // A EUR-base book holding only EUR cash carries no risk at all: its one
+  // factor (FX:EUR) cancels between the position and the reporting ccy.
+  const Market m = test_market();
+  Book book({CashPosition{"EUR", 4.2e6}}, "EUR");
+  const CompiledBook cb(book, m);
+  const auto w = cb.linear_exposures();
+  ASSERT_EQ(w.size(), 1u);
+  EXPECT_NEAR(w[0], 0.0, 1e-3);
+  for (const double shock : {-0.25, -0.01, 0.0, 0.02, 0.30}) {
+    EXPECT_NEAR(cb.pnl(std::map<std::string, double>{{"FX:EUR", shock}}), 0.0,
+                1e-6);
+  }
+  // The same balance held in a USD-base book is fully exposed.
+  Book usd_book({CashPosition{"EUR", 4.2e6}}, "USD");
+  const CompiledBook cb_usd(usd_book, m);
+  EXPECT_NEAR(cb_usd.linear_exposures()[0], 4.2e6 * 1.10, 1e-3);
+}

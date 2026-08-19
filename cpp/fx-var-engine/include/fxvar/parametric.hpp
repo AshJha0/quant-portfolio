@@ -39,8 +39,12 @@ struct VarEs {
 };
 
 /// 1-day portfolio P&L standard deviation sqrt(w' Sigma w).
-/// Throws std::invalid_argument if the quadratic form is materially
-/// negative (covariance not PSD).
+///
+/// Throws std::invalid_argument on non-finite exposures or covariance, or
+/// if the quadratic form is materially negative (covariance not PSD).
+/// "Materially" is measured RELATIVE to |w|^2 max|Sigma|: a hedged book
+/// against a rank-deficient covariance legitimately rounds to a tiny
+/// negative w'Sigma w, which is clamped to zero rather than rejected.
 double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov);
 
 /// Closed-form (VaR, ES) for a linear book: pure function for testing.

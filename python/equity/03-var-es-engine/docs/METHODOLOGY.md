@@ -130,13 +130,29 @@ flags; S=−0.3, K=2 passes — unit-tested). Outside the region the 99 %
 
 Two 10-day estimators, both with documented caveats:
 
-- **√t scaling**: exact for i.i.d. zero-drift returns, understates risk
-  under volatility clustering (variance of a 10-day sum exceeds 10× daily
-  variance when squared returns are autocorrelated) and under trends.
+- **√t scaling**: exact for i.i.d. zero-drift returns. Under volatility
+  clustering the error has **no fixed sign** — which VaR you scale decides
+  the direction, and conflating the two cases is a common desk error:
+  - scaling a *conditional* VaR measured in a **calm** state **understates**
+    risk, because variance mean-reverts upward over the horizon, so the
+    10-day variance exceeds 10× today's (tested:
+    `test_sqrt_time_understates_from_a_calm_conditional_state`);
+  - scaling an *unconditional* VaR estimated on a full fat-tailed sample
+    **overstates** the directly measured 10-day quantile, because temporal
+    aggregation pulls the 10-day distribution toward normality. On the
+    20k-day GARCH sample the excess kurtosis falls from **4.76 (1-day) to
+    1.94 (10-day)**, and √t lands ~8 % above the direct estimate (tested:
+    `test_temporal_aggregation_thins_the_tail_of_garch_returns`,
+    `test_sqrt_time_overstates_the_unconditional_10day_var_under_garch`).
+
+  A non-zero drift adds a further bias in either direction, since the mean
+  scales linearly with `h` while sigma scales with `√h` (tested:
+  `test_nonzero_mean_breaks_pure_sqrt_scaling`).
 - **Overlapping 10-day windows**: model-free but serially dependent —
   effective sample ≈ n/10, so the quantile SE is far larger than the
   nominal count suggests. Pipeline shows 171.6k (√t) vs 140.3k
-  (overlapping) for the same book: the gap *is* the message.
+  (overlapping) for the same book: the gap *is* the message, and its sign
+  is the unconditional-aggregation case above.
 
 ## 7. Backtesting stack
 

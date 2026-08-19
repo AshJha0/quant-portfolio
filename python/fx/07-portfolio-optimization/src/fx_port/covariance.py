@@ -32,6 +32,8 @@ def _validate_returns(returns: pd.DataFrame, min_rows: int = 2) -> None:
         )
     if returns.isna().any().any():
         raise ValueError("returns contain NaNs; clean or trim the panel first")
+    if not np.all(np.isfinite(returns.to_numpy(dtype=float))):
+        raise ValueError("returns contain Inf; clean or trim the panel first")
 
 
 def sample_cov(returns: pd.DataFrame, ddof: int = 1) -> pd.DataFrame:
@@ -178,6 +180,10 @@ def one_factor_cov(returns: pd.DataFrame) -> OneFactorModel:
 def is_psd(sigma: pd.DataFrame | np.ndarray, tol: float = 1e-10) -> bool:
     """True if the (symmetrised) matrix has all eigenvalues >= -tol."""
     a = np.asarray(sigma, dtype=float)
+    if a.ndim != 2 or a.shape[0] != a.shape[1]:
+        raise ValueError(f"sigma must be square, got shape {a.shape}")
+    if not np.all(np.isfinite(a)):
+        raise ValueError("sigma contains NaN/Inf; eigenvalues are undefined")
     a = 0.5 * (a + a.T)
     return bool(np.linalg.eigvalsh(a).min() >= -tol)
 
@@ -207,7 +213,15 @@ def psd_repair(
     """
     if min_eig < 0:
         raise ValueError(f"min_eig must be >= 0, got {min_eig}")
-    a = 0.5 * (sigma.to_numpy(dtype=float) + sigma.to_numpy(dtype=float).T)
+    raw = sigma.to_numpy(dtype=float)
+    if raw.ndim != 2 or raw.shape[0] != raw.shape[1]:
+        raise ValueError(f"sigma must be square, got shape {raw.shape}")
+    if not np.all(np.isfinite(raw)):
+        raise ValueError(
+            "sigma contains NaN/Inf; repair the estimation inputs first "
+            "(a NaN eigen-decomposition returns an all-NaN matrix silently)"
+        )
+    a = 0.5 * (raw + raw.T)
     eigval, eigvec = np.linalg.eigh(a)
     clipped = np.maximum(eigval, min_eig)
     out = (eigvec * clipped) @ eigvec.T

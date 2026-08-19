@@ -37,7 +37,7 @@ USD legs (CCYUSD) ──► crosses = exact ratios ──► candidate pairs of 
 ```bash
 pip install -e .            # numpy, scipy, pandas, statsmodels
 python examples/run_pipeline.py   # full pipeline, seeded synthetic data, ~1 s
-pytest -q                         # 149 tests, offline, ~6 s
+pytest -q                         # 246 tests, offline, ~6 s
 ```
 
 ## Headline numbers (seeded synthetic data, from `run_pipeline.py`)
@@ -72,7 +72,7 @@ pytest -q                         # 149 tests, offline, ~6 s
 │       │                  #   risk-on/off panel, SNB floor-break, carry-flip
 │       └── live.py        # guarded Frankfurter loader (never used in tests)
 ├── examples/run_pipeline.py
-├── tests/                 # 149 tests: identities, cross-checks, scenarios
+├── tests/                 # 246 tests: identities, cross-checks, scenarios
 └── docs/                  # METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```
 

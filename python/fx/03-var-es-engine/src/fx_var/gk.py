@@ -28,6 +28,16 @@ _EPS_V = 1e-12
 
 
 def _validate(strike, expiry, vol) -> None:
+    # Non-finite inputs must be refused rather than absorbed: the degenerate
+    # sigma*sqrt(T) branch below treats a NaN as the *zero-vol* case and would
+    # otherwise return forward intrinsic for a NaN vol -- a silently wrong
+    # price rather than an error.
+    for name, value in (("strike", strike), ("expiry", expiry), ("vol", vol)):
+        if not np.all(np.isfinite(np.asarray(value, dtype=float))):
+            raise ValueError(
+                f"{name} must be finite, got {value!r} "
+                "(NaN policy: refuse, never impute)"
+            )
     if np.any(np.asarray(strike) <= 0):
         raise ValueError("strike must be > 0")
     if np.any(np.asarray(expiry) < 0):

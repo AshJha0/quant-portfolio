@@ -103,3 +103,65 @@ fn deep_wings_still_converge() {
         );
     }
 }
+
+#[test]
+fn vol_above_initial_bracket_top_is_recovered() {
+    // sigma = 15 sits above the initial [1e-9, 10] bracket, forcing the
+    // doubling expansion toward the 1e3 cap before the solve.
+    let price = bs_price(100.0, 100.0, 0.5, 0.02, 15.0, 0.0, OptionType::Call).unwrap();
+    let iv = implied_vol(price, 100.0, 100.0, 0.5, 0.02, 0.0, OptionType::Call).unwrap();
+    assert!((iv - 15.0).abs() < 1e-6, "recovered {iv}");
+}
+
+#[test]
+fn non_finite_price_and_rates_are_rejected() {
+    let ot = OptionType::Call;
+    assert!(implied_vol(f64::INFINITY, 100.0, 100.0, 1.0, 0.05, 0.0, ot).is_err());
+    assert!(implied_vol(5.0, 100.0, 100.0, 1.0, f64::NAN, 0.0, ot).is_err());
+    assert!(implied_vol(5.0, 100.0, 100.0, 1.0, 0.05, f64::INFINITY, ot).is_err());
+}
+
+#[test]
+fn tiny_vol_and_near_expiry_are_recovered() {
+    // vol -> 0 and T -> 0 both push the premium onto the sigma->0
+    // arbitrage floor, where vega collapses and Newton must hand over to
+    // bisection. Anything the solver *accepts* here has to round-trip;
+    // anything it cannot identify has to be a clean ArbitrageBound /
+    // NoConvergence error, never a silent wrong vol.
+    let (s, k, r, q) = (100.0, 100.0, 0.02, 0.0);
+    for &t in &[1.0 / 365.0, 1.0 / 52.0, 0.25, 1.0] {
+        for &sigma in &[1e-3, 1e-2, 0.05] {
+            let price = bs_price(s, k, t, r, sigma, q, OptionType::Call).unwrap();
+            match implied_vol(price, s, k, t, r, q, OptionType::Call) {
+                Ok(iv) => {
+                    // Price tolerance is absolute (1e-10), so the vol
+                    // tolerance it buys scales as 1e-10 / vega.
+                    let vega = eq_options_engine::bs_greeks(s, k, t, r, sigma, q,
+                                                            OptionType::Call)
+                        .unwrap()
+                        .vega;
+                    let vol_tol = (1e-10 / vega).max(1e-12) * 10.0;
+                    assert!(
+                        (iv - sigma).abs() < vol_tol.max(1e-8),
+                        "T={t}, sigma={sigma}: recovered {iv} (tol {vol_tol:.2e})"
+                    );
+                }
+                Err(PricingError::ArbitrageBound(_)) | Err(PricingError::NoConvergence(_)) => {}
+                Err(e) => panic!("T={t}, sigma={sigma}: unexpected error {e}"),
+            }
+        }
+    }
+    // Right at the solver's lower cap the premium is numerically
+    // indistinguishable from the sigma->0 floor: that must be rejected as
+    // an arbitrage bound, not solved to a fictitious vol.
+    let floor = bs_price(s, k, 1.0, r, 0.0, q, OptionType::Call).unwrap();
+    let res = implied_vol(floor, s, k, 1.0, r, q, OptionType::Call);
+    assert!(matches!(res, Err(PricingError::ArbitrageBound(_))), "got {res:?}");
+    // Just inside the floor the solver returns a small positive vol that
+    // reprices back to the quote within the solver's price tolerance.
+    let quote = floor + 1e-6;
+    let iv = implied_vol(quote, s, k, 1.0, r, q, OptionType::Call).unwrap();
+    assert!(iv > 0.0 && iv < 0.05, "expected a small positive vol, got {iv}");
+    let repriced = bs_price(s, k, 1.0, r, iv, q, OptionType::Call).unwrap();
+    assert!((repriced - quote).abs() < 1e-9, "reprice {repriced} vs quote {quote}");
+}

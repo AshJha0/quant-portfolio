@@ -176,7 +176,15 @@ Python/C++ references; A9–A10 are Rust-specific.
   tries, `matrix::Matrix::cholesky_with_jitter`), because singular
   covariances are *routine* FX inputs (two ccys pegged to the same
   anchor), with the jitter surfaced to the caller
-  (`MonteCarloResult::cholesky_warning`).
+  (`MonteCarloResult::cholesky_warning`). The ladder is **capped** at
+  `matrix::MAX_RELATIVE_JITTER` (1e-6·mean(diag)): a pegged or
+  rank-deficient block is repaired at the first rung, but beyond the cap
+  the perturbation stops being a rounding-noise correction and starts
+  simulating a different book, so the engine fails loudly
+  (`FxVarError::Numerical`, naming the cap) instead. Symmetry is checked
+  with a **scale-relative** tolerance for the same reason an absolute one
+  is wrong: a genuinely symmetric P&L covariance for a multi-billion book
+  has entries whose last ulp dwarfs any fixed 1e-12 gate.
 - **Special functions from scratch** (Acklam+Halley inverse normal,
   incomplete gamma/beta, `src/stats.rs`): keeps the crate dependency-free
   and makes accuracy a *tested property* (< 1e-9 on the inverse CDF;

@@ -20,8 +20,11 @@ namespace eqvar {
 enum class Dist { Normal, StudentT };
 
 /// Portfolio P&L standard deviation sqrt(w' Sigma w) (currency units).
-/// Throws std::invalid_argument on empty exposures, shape mismatch, or a
-/// materially negative quadratic form (non-PSD covariance).
+/// Throws std::invalid_argument on empty exposures, shape mismatch, a
+/// non-finite exposure or quadratic form (NaN/Inf covariance), or a
+/// materially negative quadratic form (non-PSD covariance).  A tiny
+/// negative w'Sw (rounding on a rank-deficient but PSD covariance) is
+/// clamped to zero rather than rejected.
 [[nodiscard]] double portfolio_sigma(std::span<const double> exposures, const Matrix& cov);
 
 /// Variance-covariance VaR (positive for a loss):
@@ -44,6 +47,8 @@ enum class Dist { Normal, StudentT };
 /// [-z_range, z_range] — outside this region the fourth-order expansion is
 /// not a quantile function (the implied density goes negative) and CF "VaR"
 /// is nonsense.  |z| <= 3.5 covers alpha >= 0.02 %.
+/// Throws std::invalid_argument unless z_range > 0, n_grid >= 2 and the
+/// moments are finite.
 [[nodiscard]] bool cornish_fisher_domain_ok(double skew, double excess_kurt,
                                             double z_range = 3.5, int n_grid = 2001);
 

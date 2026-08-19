@@ -57,6 +57,10 @@ def realized_vol_forward(
     r = _clean(returns, "returns")
     if window < 2 or window > r.size:
         raise ValueError(f"window must be in [2, {r.size}], got {window}")
+    if not np.isfinite(periods_per_year) or periods_per_year <= 0:
+        raise ValueError(
+            f"periods_per_year must be positive and finite, got {periods_per_year!r}"
+        )
     r2 = r ** 2
     csum = np.concatenate([[0.0], np.cumsum(r2)])
     out = np.full(r.size, np.nan)
@@ -82,7 +86,7 @@ def vol_risk_premium(
     rv = np.asarray(realized_or_forecast_vol, dtype=float)
     if iv.shape != rv.shape or iv.ndim != 1:
         raise ValueError(f"implied and realized must be 1-D and aligned, got {iv.shape} vs {rv.shape}")
-    if np.isfinite(iv).all() is False:
+    if not np.isfinite(iv).all():
         raise ValueError("implied vol contains NaN or infinite values")
     if (iv[np.isfinite(iv)] < 0).any() or (rv[np.isfinite(rv)] < 0).any():
         raise ValueError("volatilities must be non-negative")
@@ -111,6 +115,8 @@ def variance_swap_pnl(
         raise ValueError("implied and realized must be aligned")
     if (iv <= 0).any():
         raise ValueError("implied vol strike must be strictly positive")
+    if not np.isfinite(vega_notional):
+        raise ValueError(f"vega_notional must be finite, got {vega_notional!r}")
     return vega_notional * (iv ** 2 - rv ** 2) / (2.0 * iv)
 
 

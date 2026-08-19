@@ -142,3 +142,21 @@ trading book, and the engine handles it with `Book(base="EUR")`:
   policy (threshold 0.05% daily vol) are versioned constants; the seeded
   test suite is the regression harness — any change that shifts a validated
   number fails a test before it reaches production.
+* **Cross-language contract**: the C++ (`cpp/fx-var-engine`) and Rust
+  (`rust/fx-var-engine`) engines assert constants generated from this
+  package. `tests/test_golden_vectors.py` now pins the same three cases on
+  the Python side, so a refactor here fails *here* rather than surfacing as
+  a mystery failure in another language's CI. Regenerating those constants
+  is a deliberate, signed-off act, not a side effect.
+* **Data-quality gate (why the engine refuses NaN).** Every risk number this
+  desk publishes is consumed by a limit check, a traffic light or a capital
+  multiplier — and **none of those fire on NaN**. `nan > limit` is False, a
+  NaN VaR colours no zone, and a NaN report cell reads like a formatting
+  bug. So the engine's policy is refuse-never-impute at *every* boundary:
+  market snapshots, factor histories, position fields, scenario shocks,
+  distribution parameters and horizons (VALIDATION §4.1). Operationally
+  that means a stale fixing or a failed calibration stops the batch with a
+  named error at 06:00 instead of producing a clean-looking report that
+  silently under-states risk. If a desk ever wants a run to proceed on
+  partial data, the substitution must be made explicitly upstream and
+  recorded — the engine will not do it quietly on their behalf.

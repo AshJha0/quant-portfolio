@@ -55,6 +55,13 @@ def risk_contributions(
     """
     w = np.asarray(weights, dtype=float).ravel()
     s = np.asarray(sigma, dtype=float)
+    if not np.all(np.isfinite(w)) or not np.all(np.isfinite(s)):
+        raise ValueError("weights and sigma must be finite (no NaN/Inf)")
+    if s.ndim != 2 or s.shape[0] != s.shape[1] or s.shape[0] != w.size:
+        raise ValueError(
+            f"sigma must be square and conformable with weights, got "
+            f"{s.shape} vs {w.size}"
+        )
     labels = (
         list(weights.index)
         if isinstance(weights, pd.Series)
@@ -104,6 +111,8 @@ def erc_weights(
     s = np.asarray(sigma, dtype=float)
     n = len(s)
     labels = list(sigma.index) if isinstance(sigma, pd.DataFrame) else list(range(n))
+    if not np.all(np.isfinite(s)):
+        raise ValueError("sigma contains NaN/Inf; clean the covariance estimate first")
     if np.any(np.diag(s) <= 0):
         raise ValueError(
             "sigma diagonal must be strictly positive for ERC "

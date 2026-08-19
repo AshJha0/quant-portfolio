@@ -36,7 +36,7 @@ import pandas as pd
 from scipy.optimize import minimize
 
 from .book import Book, Market
-from .common import fx_factor, vol_factor
+from .common import fx_factor, validate_finite, vol_factor
 
 __all__ = [
     "Scenario",
@@ -140,6 +140,7 @@ def usd_broad_move(ccys: Sequence[str], pct: float) -> Scenario:
     ``pct=+0.10`` = USD +10% (every CCYUSD falls 10% in simple terms);
     ``pct=-0.10`` = USD -10%.  USD itself is skipped.
     """
+    validate_finite(pct=pct)
     if pct <= -1.0:
         raise ValueError("pct must be > -100%")
     shocks = {fx_factor(c): _ln(-pct / (1.0 + pct)) for c in ccys if c.upper() != "USD"}
@@ -176,6 +177,11 @@ def peg_break_scenario(
         Simple-percentage co-moves for other currencies
         (e.g. ``{"SAR": -0.05}``).
     """
+    validate_finite(jump=jump, vol_spike=vol_spike)
+    for _c, _m in (contagion or {}).items():
+        validate_finite(**{f"contagion[{_c}]": _m})
+        if _m <= -1.0:
+            raise ValueError(f"contagion move for {_c} must be > -100%")
     if jump <= -1.0:
         raise ValueError("jump must be > -100%")
     shocks: dict[str, float] = {fx_factor(ccy): _ln(jump)}
@@ -271,11 +277,13 @@ def reverse_stress_linear(
     """
     w = exposures.to_numpy(dtype=float)
     sig = cov.loc[exposures.index, exposures.index].to_numpy(dtype=float)
+    validate_finite(exposures=w, cov=sig)
     sp = float(np.sqrt(max(w @ sig @ w, 0.0)))
     if sp == 0.0:
         raise ValueError("book has zero linear risk; reverse stress undefined")
     if (loss_target is None) == (radius is None):
         raise ValueError("specify exactly one of loss_target or radius")
+    validate_finite(radius=radius, loss_target=loss_target)
     k = float(radius) if radius is not None else float(loss_target) / sp
     if k <= 0:
         raise ValueError("radius / loss_target must be positive")

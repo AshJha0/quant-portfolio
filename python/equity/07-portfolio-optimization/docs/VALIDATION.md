@@ -1,7 +1,7 @@
 # Validation — Equity Portfolio Optimization & Risk Allocation
 
 All numbers below are produced by `python examples/run_pipeline.py`
-(seeded, offline, ~15 s) and the pytest suite (`pytest -q`, 141 tests,
+(seeded, offline, ~15 s) and the pytest suite (`pytest -q`, 150 tests,
 ~3 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
 1e-10–1e-8 (most hold to machine precision), solver-vs-closed-form to
 documented tolerance.
@@ -141,10 +141,24 @@ statistically distinguishable from zero, which is itself Merton's point).
 
 ## 6. Test suite
 
-`pytest -q`: **141 tests, all passing, ~3 s, fully offline, seeded.**
+`pytest -q`: **150 tests, all passing, ~3 s, fully offline, seeded.**
 Coverage: analytic identities (above), SLSQP-vs-closed-form
 cross-checks, property tests (frontier monotonicity, DR ≥ 1, RC Euler),
 no-lookahead and exact cost accounting, and the edge-case contract:
 single asset, two-asset closed forms, perfectly correlated (singular)
 covariances, zero-vol assets, all-negative means under long-only,
 T < N windows, NaN inputs, dimension mismatches.
+
+Hardening additions (`test_infeasible_and_properties.py`):
+
+- **Infeasible constraint sets raise informative `ValueError`s**: target
+  return outside the box-achievable range (pre-checked analytically with
+  the achievable interval reported in the message), per-asset caps that
+  cannot sum to the budget (4 assets × 10% cap vs budget 1), and a vol
+  cap below the constrained minimum-variance vol.
+- **Portfolio invariants as property tests over random SPD inputs**:
+  weight-sum-to-budget across all solvers (min-variance, max-Sharpe,
+  ERC), long-only feasibility, frontier variance exactly quadratic in the
+  target return (constant, positive second differences — the Merton
+  closed form), frontier vol discretely convex, and ERC equal risk
+  contributions + exact Euler identity on random matrices.

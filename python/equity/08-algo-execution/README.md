@@ -26,7 +26,7 @@ against ground truth.
 ```bash
 cd python/equity/08-algo-execution
 pip install -e .[dev]
-pytest -q                     # 145 tests, ~4 s, offline, seeded
+pytest -q                     # 161 tests, ~4 s, offline, seeded
 python examples/run_pipeline.py   # full demo, ~4 s
 ```
 
@@ -83,7 +83,7 @@ decomposition sums exactly by construction (tested to 1e-10).
   (alpha layer); `intraday` / `benchmarks` / `almgren_chriss` / `tca`
   (execution layer); `data/synthetic` (seeded generators), `data/live`
   (import-guarded optional Yahoo loader).
-- `tests/` — 145 tests: point-in-time mutation tests, hand-computed exact
+- `tests/` — 161 tests: point-in-time mutation tests, hand-computed exact
   values, statistical tests on planted alpha, AC optimality recursion,
   IS identities, edge cases.
 - `docs/` — [METHODOLOGY.md](docs/METHODOLOGY.md) (model choices vs

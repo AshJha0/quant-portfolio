@@ -21,7 +21,7 @@ event dummies, EM jumps, pegs, depegs)  · data/live.py (ECB, import-guarded)   
 ```bash
 cd python/fx/02-volatility-modeling
 pip install -e ".[dev]"            # or: PYTHONPATH=src with numpy/scipy/pandas/statsmodels
-python -m pytest tests -q          # 184 tests, offline, ~35 s
+python -m pytest tests -q          # 322 tests, offline, ~35 s
 python examples/run_pipeline.py    # full pipeline, ~30 s, reproduces every number below
 ```
 
@@ -63,7 +63,7 @@ ann_vol = (252 * var_path.mean()) ** 0.5
 ```
 src/fx_vol/            returns · historical · ewma · garch · egarch · gjr ·
                        forecasting · evaluation · vol_premium · data/{synthetic,live}
-tests/                 184 offline seeded tests (incl. arch cross-validation)
+tests/                 227 offline seeded tests (incl. arch cross-validation)
 examples/run_pipeline.py
 docs/                  METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```

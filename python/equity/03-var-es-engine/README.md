@@ -25,7 +25,7 @@ Portfolio ─ factor mapping (prices, index, implied vol)
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest tests -q        # 183 tests, ~35 s, offline
+python -m pytest tests -q        # 264 tests, ~16 s, offline
 python examples/run_pipeline.py  # full demo, ~95 s
 ```
 

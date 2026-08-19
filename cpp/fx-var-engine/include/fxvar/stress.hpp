@@ -50,6 +50,9 @@ struct Scenario {
 };
 
 /// Convert a simple percentage move to a log return: ln(1 + pct).
+/// Throws std::invalid_argument unless `pct` is finite and > -100% (a
+/// -100% move is an infinite log return, which would silently turn a whole
+/// stress report into -inf/NaN).
 double simple_to_log(double pct);
 
 /// Library of calibrated historical FX replay scenarios, keyed

@@ -180,9 +180,25 @@ def main(ticker: str | None = None) -> None:
     else:
         character = "a narrow spike -- consistent with curve-fitting"
     print(f"character: {character}")
+    # A plateau is evidence about the SHAPE of the in-sample surface, not
+    # about out-of-sample performance. Saying so explicitly matters: the
+    # two can, and here do, point in different directions.
+    reconciliation = (
+        "Note: the grid is measured in-sample only. A plateau means the "
+        f"in-sample result is not one lucky cell -- it does NOT mean the "
+        f"effect survives out-of-sample. Here the out-of-sample Sharpe is "
+        f"{oos_sh:.2f} against an in-sample {is_sh:.2f}, so the plateau is "
+        "a plateau of equally over-fitted parameters, not evidence of a "
+        "tradeable edge."
+        if plateau_share > 0.3 and oos_sh < is_sh * 0.5
+        else "Note: the grid is measured in-sample only; read it alongside "
+        "the out-of-sample and walk-forward rows above, never instead of them."
+    )
+    print(reconciliation)
     add("\n--- Parameter sensitivity ---")
     add(f"In-sample grid Sharpe range: [{finite.min():.2f}, {finite.max():.2f}]; "
         f"{plateau_share:.0%} of cells within 25% of the best -> {character}.")
+    add(reconciliation)
     add("Where this class of strategy works: sustained trends (it stays")
     add("invested) and prolonged bear markets (it steps aside).")
     add("Where it fails: choppy, range-bound markets, where every")

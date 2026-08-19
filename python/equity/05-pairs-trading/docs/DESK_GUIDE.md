@@ -127,4 +127,4 @@ number in this repo regenerates from `examples/run_pipeline.py` (seed 7),
 which is the audit trail pattern: no number in the deck that a fresh clone
 cannot reproduce. Overrides (trading through a failed re-test, sizing past a
 cap) require PM + risk sign-off in writing; the test suite is the regression
-gate for any code change (191 tests must stay green).
+gate for any code change (256 tests must stay green).

@@ -26,6 +26,8 @@ __all__ = [
 
 
 def _validate(parent_qty: float, n: int, tradeable: Optional[np.ndarray]) -> np.ndarray:
+    if not np.isfinite(parent_qty):
+        raise ValueError("parent_qty must be finite (no NaN/Inf)")
     if parent_qty == 0:
         raise ValueError("parent_qty must be non-zero")
     if n < 1:
@@ -92,6 +94,8 @@ def liquidity_weighted_schedule(
     """
     depths = np.asarray(depths, dtype=float)
     mask = _validate(parent_qty, len(depths), tradeable)
+    if not np.all(np.isfinite(depths[mask])):
+        raise ValueError("depths must be finite on tradeable buckets (no NaN/Inf)")
     if np.any(depths[mask] <= 0):
         raise ValueError("depths must be > 0 on tradeable buckets")
     w = np.where(mask, depths, 0.0)

@@ -79,19 +79,39 @@ roughly 1% of days. The standard tools are:
 
 - **Kupiec's POF (proportion of failures) test** — a likelihood-ratio
   test on whether the observed exception rate matches the nominal rate.
+  **Implemented**: `eq_risk_metrics.kupiec_pof_test`, with
+  `count_var_exceptions` for the underlying hit sequence (which accepts a
+  *rolling* VaR forecast, not just a static number, so it can score a
+  daily re-estimated model). The daily report prints it for both the
+  historical and the Gaussian VaR at 95% and 99%.
 - **Christoffersen's independence test** — checks that exceptions aren't
   clustered in time (clustered exceptions mean the model is missing a
-  volatility regime shift, not just miscalibrated on average).
+  volatility regime shift, not just miscalibrated on average). **Not
+  implemented here** — see `docs/METHODOLOGY.md` §7 for why, and for the
+  Basel traffic-light and ES-backtest alternatives.
 
-**Neither is implemented in this project** — it is single-shot metric
-computation on a fixed historical window, not a rolling backtest engine.
-This is the single most important "next step" flagged in
-`docs/METHODOLOGY.md` and worth stating plainly: **an unvalidated VaR
-number is a number, not a risk control.** A production desk would not
-accept this library's output as a binding limit without wrapping it in a
-backtest that runs continuously and re-certifies the model periodically
-(commonly quarterly, or immediately after any material market regime
-change).
+So this project now covers the unconditional half of VaR backtesting and
+is explicit about the half it does not cover. Two caveats a reviewer
+should hold on to:
+
+1. **The bundled run is in-sample.** Both estimators are scored on the
+   same window they were fitted to. That is enough to falsify a wrong
+   distributional assumption — the Gaussian 99% VaR is rejected on the
+   bundled data with 60 exceptions against 25.2 expected — but it is not
+   a forecast test. A real control re-estimates VaR on a trailing window
+   and scores the *next* day, continuously.
+2. **Kupiec is weak at the window sizes desks use.** At the standard
+   250-day regulatory window, a 99% VaR running at *twice* its nominal
+   exception rate is not rejected at 5%. A pass is weak evidence; a
+   failure is strong evidence.
+
+Which is to say, with the tool now in the box: **an unvalidated VaR number
+is a number, not a risk control — and a VaR number that has only passed an
+in-sample, unconditional backtest is barely more than that.** A production
+desk would still not accept this library's output as a binding limit
+without a continuously running out-of-sample backtest, an independence
+test, and periodic re-certification (commonly quarterly, or immediately
+after any material market regime change).
 
 **Model sign-off.** Real model governance frameworks (e.g. under
 SR 11-7-style expectations, or FRTB internal-models approval) require:
@@ -99,7 +119,7 @@ independent validation of the methodology (an independent team, not the
 model's author, reviews `docs/METHODOLOGY.md`-equivalent documentation
 and the backtest results); a documented model inventory entry (what it
 does, what its assumptions are — exactly the register in
-`docs/METHODOLOGY.md` §7); periodic re-validation; and a change-control
+`docs/METHODOLOGY.md` §8); periodic re-validation; and a change-control
 process so that switching, say, the default VaR method from historical to
 filtered-historical-simulation is a signed-off model change, not a
 silent code update. This project's test suite (`pytest -q`) is the
@@ -124,8 +144,8 @@ position-sizing bug and gets investigated as one, not risk-managed as one.
 ### 4.2 A volatility regime shift makes yesterday's number stale
 
 This is `docs/VALIDATION.md` §3.4 made operational: on the bundled
-synthetic data, EWMA vol hit 33.4% against a 13.9% full-sample figure on
-2022-03-03 — a 2.4x divergence on a single name. A risk report that only
+synthetic data, EWMA vol hit 41.0% against a 15.6% full-sample figure on
+2018-10-24 — a 2.6x divergence on a single name. A risk report that only
 shows full-sample vol and full-sample-parametrised VaR would have been
 reporting a calm-market risk number *through* a regime that had already
 turned stressed. Desk practice: EOD batch should flag any position where
@@ -177,6 +197,29 @@ a performance summary is a data-quality bug, not investment skill; a
 report generator consuming this library's output should sanity-bound
 Sharpe/Sortino display (e.g. flag anything with `|value| > 100`) rather
 than print it verbatim.
+
+### 4.6 The VaR model fails its backtest
+
+The quarterly model review runs `kupiec_pof_test` over the trailing year
+and reports 11 exceptions on a 99% VaR against 2.5 expected (p < 0.001).
+This is the governance path, not the trading path: the number does not get
+quietly re-tuned. In order — (1) confirm it is not a data or booking
+artefact (were the "exceptions" real P&L, or a stale mark, or a position
+that was closed?); (2) check *when* they happened, since Kupiec cannot —
+if nine of the eleven fall in one week, the model is not uniformly
+miscalibrated, it is blind to a regime shift, and the fix is a conditional
+(EWMA/GARCH-scaled or filtered-historical) VaR rather than a bigger
+window; (3) if the failure is genuine and spread out, the model is
+under-stating risk and the desk runs on a conservative overlay (a
+multiplier on VaR, or a tightened limit) *until* a re-specified model has
+been independently validated. The overlay is the point: the limit stays
+protective while the model is fixed, rather than being suspended because
+the model that feeds it is unreliable.
+
+The mirror case is worth naming too, because it gets ignored: **too few**
+exceptions also fails the test, and means the desk has been running a
+smaller book than its risk budget allows for no reason. That is a real
+cost — it just isn't a loss, so nobody escalates it.
 
 ## 5. Out of scope — see the multi-asset extension
 

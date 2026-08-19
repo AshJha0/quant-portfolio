@@ -11,6 +11,7 @@ in one place.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 __all__ = ["ma_crossover_signal"]
@@ -44,11 +45,25 @@ def ma_crossover_signal(prices: pd.Series, fast: int, slow: int) -> pd.Series:
     Raises
     ------
     ValueError
-        If ``fast >= slow``.
+        If ``fast >= slow``, if either window is not an integer >= 1, or
+        if ``prices`` contains non-finite values (a ``NaN`` close silently
+        blanks ``slow`` days of the moving average and therefore ``slow``
+        days of signal, which looks identical to a genuine flat period).
     """
+    for name, window in (("fast", fast), ("slow", slow)):
+        if isinstance(window, bool) or not isinstance(window, (int, np.integer)):
+            raise ValueError(f"{name} window must be an int, got {window!r}")
+        if window < 1:
+            raise ValueError(f"{name} window must be >= 1, got {window}")
     if fast >= slow:
         raise ValueError(
             f"fast window must be shorter than slow window, got fast={fast}, slow={slow}"
+        )
+    if len(prices) and not np.isfinite(prices.to_numpy(dtype=float)).all():
+        raise ValueError(
+            "ma_crossover_signal: prices contains non-finite values (NaN/inf); "
+            "a missing close blanks the moving averages for `slow` days and "
+            "produces a flat signal that is indistinguishable from a real one"
         )
     fast_ma = prices.rolling(fast).mean()
     slow_ma = prices.rolling(slow).mean()

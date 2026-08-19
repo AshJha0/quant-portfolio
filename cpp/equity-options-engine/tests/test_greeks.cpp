@@ -100,6 +100,18 @@ TEST(Greeks, DegenerateInputsThrow) {
                  std::invalid_argument);
 }
 
+TEST(FdGreeks, TinySigmaThrowsOnVegaBump) {
+    // sigma smaller than the central vega/volga bump must be rejected with a
+    // clear message, not silently priced at negative volatility.
+    EXPECT_THROW(fd_greeks(
+                     [](double S, double K, double T, double r, double sigma,
+                        double q, OptionType type) {
+                         return bs_price(S, K, T, r, sigma, q, type);
+                     },
+                     100.0, 100.0, 1.0, 0.05, 1e-6, 0.0, OptionType::Call),
+                 std::invalid_argument);
+}
+
 TEST(FdGreeks, TinyExpiryThrowsOnThetaBump) {
     // T smaller than the central theta bump must be rejected, not silently
     // priced at negative expiry.

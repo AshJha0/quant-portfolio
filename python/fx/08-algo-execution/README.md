@@ -51,7 +51,7 @@ src/fx_algo/
 
 ```bash
 pip install -e .                   # numpy, scipy, pandas
-python -m pytest tests -q          # 121 tests, ~1 s, offline, seeded
+python -m pytest tests -q          # 152 tests, ~1 s, offline, seeded
 python examples/run_pipeline.py    # full pipeline, ~1 s
 ```
 

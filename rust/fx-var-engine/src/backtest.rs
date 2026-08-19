@@ -198,7 +198,9 @@ pub struct BacktestResult {
 ///
 /// # Errors
 /// [`FxVarError::Invalid`] on a length mismatch, fewer than 2 observations,
-/// or NaNs (NaN policy: refuse).
+/// a negative VaR forecast, or non-finite values in either series (NaN
+/// policy: refuse — see the note below on why `is_nan` alone is not
+/// enough).
 pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> Result<BacktestResult> {
     validate_alpha(alpha)?;
     if pnl.len() != var_forecasts.len() {
@@ -207,8 +209,24 @@ pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> 
     if pnl.len() < 2 {
         return Err(FxVarError::invalid("need at least 2 observations to backtest"));
     }
-    if pnl.iter().chain(var_forecasts.iter()).any(|v| v.is_nan()) {
-        return Err(FxVarError::invalid("backtest inputs contain NaNs (NaN policy: refuse)"));
+    // `is_finite`, not `!is_nan`. The exception test below is `-p > v`:
+    // with a NaN on either side it is FALSE, so the day is silently
+    // counted as "no exception" - a model whose VaR feed has broken to NaN
+    // records ZERO breaches and sails through Kupiec, Christoffersen and
+    // the Basel traffic light in the green zone. `+inf` on either side
+    // does the same thing. Both must be errors.
+    if pnl.iter().chain(var_forecasts.iter()).any(|v| !v.is_finite()) {
+        return Err(FxVarError::invalid(
+            "backtest inputs contain NaN or infinite values; a non-finite day \
+             compares false against any threshold and would be silently scored as \
+             'no exception' (NaN policy: refuse)",
+        ));
+    }
+    if var_forecasts.iter().any(|v| *v < 0.0) {
+        return Err(FxVarError::invalid(
+            "var_forecasts must be non-negative (positive-loss convention); a \
+             negative forecast scores profitable days as exceptions",
+        ));
     }
 
     let exceedances: Vec<i32> =

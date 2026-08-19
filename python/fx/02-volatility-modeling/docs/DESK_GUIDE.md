@@ -132,7 +132,7 @@ buy when below.
   forecast at inception), realized-vs-forecast surprise, and event-day
   P&L (GARCH-X term) — the split makes it visible whether the desk earns
   the premium or is just short the jumps.
-- **Governance artefacts**: METHODOLOGY.md (assumptions register A1–A10 with
+- **Governance artefacts**: METHODOLOGY.md (assumptions register A1–A11 with
   break conditions) and VALIDATION.md (recovery tables, arch cross-check,
   failure modes) are exactly the documents an internal model-validation
   team asks for; the offline deterministic test suite is the regression

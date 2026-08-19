@@ -10,22 +10,32 @@ namespace {
 
 [[noreturn]] void throw_bad_input(const char* name, double value) {
     std::ostringstream oss;
-    oss << name << " must be >= 0 and not NaN, got " << value;
+    oss << name << " must be finite and >= 0, got " << value;
     throw std::invalid_argument(oss.str());
 }
 
 }  // namespace
 
 void validate_inputs(double S, double K, double T, double sigma) {
-    if (std::isnan(S) || S < 0.0) throw_bad_input("S", S);
-    if (std::isnan(K) || K < 0.0) throw_bad_input("K", K);
-    if (std::isnan(T) || T < 0.0) throw_bad_input("T", T);
-    if (std::isnan(sigma) || sigma < 0.0) throw_bad_input("sigma", sigma);
+    if (!std::isfinite(S) || S < 0.0) throw_bad_input("S", S);
+    if (!std::isfinite(K) || K < 0.0) throw_bad_input("K", K);
+    if (!std::isfinite(T) || T < 0.0) throw_bad_input("T", T);
+    if (!std::isfinite(sigma) || sigma < 0.0) throw_bad_input("sigma", sigma);
+}
+
+void validate_rates(double r, double q) {
+    if (!std::isfinite(r) || !std::isfinite(q)) {
+        std::ostringstream oss;
+        oss << "r and q must be finite (NaN/Inf rejected), got r=" << r
+            << ", q=" << q;
+        throw std::invalid_argument(oss.str());
+    }
 }
 
 std::pair<double, double> d1_d2(double S, double K, double T, double r,
                                 double sigma, double q) {
     validate_inputs(S, K, T, sigma);
+    validate_rates(r, q);
     if (S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) {
         std::ostringstream oss;
         oss << "d1/d2 require strictly positive S, K, T and sigma; got S=" << S
@@ -42,6 +52,7 @@ std::pair<double, double> d1_d2(double S, double K, double T, double r,
 double bs_price(double S, double K, double T, double r, double sigma,
                 double q, OptionType type) {
     validate_inputs(S, K, T, sigma);
+    validate_rates(r, q);
     if (T == 0.0) {
         return intrinsic_value(S, K, type);
     }

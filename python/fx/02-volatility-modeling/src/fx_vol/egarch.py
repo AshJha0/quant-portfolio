@@ -39,6 +39,7 @@ from ._mle import (
     hessian_std_errors,
     student_t_abs_moment,
     student_t_loglik,
+    validate_filter_params,
     validate_returns,
 )
 
@@ -76,11 +77,14 @@ def egarch_filter(
         Override the backcast seed (variance units, not log).
     """
     y = np.asarray(returns, dtype=float)
+    validate_filter_params(omega=omega, alpha=alpha, gamma=gamma, beta=beta,
+                           abs_moment=abs_moment,
+                           initial_variance=initial_variance)
     if not abs(beta) < 1.0:
         raise ValueError(f"require |beta| < 1 for log-variance stationarity, got beta={beta}")
     b = backcast(y) if initial_variance is None else float(initial_variance)
-    if b <= 0:
-        raise ValueError("initial variance must be positive")
+    if not b > 0:
+        raise ValueError(f"initial variance must be positive, got {b!r}")
     n = y.size
     sigma2 = np.empty(n)
     ls2 = log(b)

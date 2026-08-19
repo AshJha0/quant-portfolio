@@ -114,7 +114,26 @@ def rolling_volatility(returns: pd.Series, window: int = 21) -> pd.Series:
     pandas.Series
         Annualised rolling volatility, same index as ``returns``; the
         first ``window - 1`` entries are ``NaN`` (insufficient history).
+        If ``window`` exceeds ``len(returns)`` the result is **all**
+        ``NaN`` -- no window is ever full, which is the correct answer
+        rather than an error (a rolling series that has not warmed up
+        yet is a normal state at the start of a backtest).
+
+    Raises
+    ------
+    ValueError
+        If ``window`` is not an integer >= 2. ``window=1`` is rejected
+        rather than silently returning all-``NaN``: the sample standard
+        deviation of a single observation with ``ddof=1`` is ``0/0``, so
+        a 1-day "rolling volatility" is undefined, not zero.
     """
+    if isinstance(window, bool) or not isinstance(window, (int, np.integer)):
+        raise ValueError(f"rolling_volatility: window must be an int, got {window!r}")
+    if window < 2:
+        raise ValueError(
+            f"rolling_volatility: window must be >= 2, got {window} "
+            "(std with ddof=1 needs at least two observations)"
+        )
     return returns.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)
 
 
@@ -142,7 +161,23 @@ def ewma_volatility(returns: pd.Series, lam: float = 0.94) -> pd.Series:
     pandas.Series
         Annualised EWMA volatility, same index and length as
         ``returns`` (no warm-up ``NaN``s, since the recursion is
-        seeded at ``t=0``).
+        seeded at ``t=0``). The first entry is always ``0.0``: with a
+        single observation the exponentially weighted variance is
+        measured against that observation itself.
+
+    Raises
+    ------
+    ValueError
+        If ``lam`` is not strictly inside ``(0, 1)``. ``lam=0`` is
+        rejected because it means "no memory at all", which makes the
+        recursion return an identically-zero variance rather than a
+        maximally reactive estimate -- a silently useless answer;
+        ``lam>=1`` means the estimate never updates.
     """
+    if not np.isfinite(lam) or not 0.0 < lam < 1.0:
+        raise ValueError(
+            f"ewma_volatility: lam must be a finite number strictly between "
+            f"0 and 1 (RiskMetrics daily convention is 0.94), got {lam!r}"
+        )
     var = returns.ewm(alpha=1 - lam, adjust=False).var(bias=True)
     return np.sqrt(var * TRADING_DAYS)

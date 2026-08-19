@@ -107,11 +107,41 @@ def validate_alpha(alpha: float) -> float:
 
 
 def validate_horizon(horizon_days: float) -> float:
-    """Validate a VaR horizon in trading days (must be > 0)."""
+    """Validate a VaR horizon in trading days (must be > 0 and finite).
+
+    The finiteness test is explicit: ``horizon_days <= 0`` alone is False
+    for NaN, so a NaN horizon would flow into the ``sqrt(h)`` time-scaling
+    and produce a NaN VaR with no error raised.
+    """
     horizon_days = float(horizon_days)
-    if horizon_days <= 0:
-        raise ValueError(f"horizon_days must be > 0, got {horizon_days}")
+    if not np.isfinite(horizon_days) or horizon_days <= 0:
+        raise ValueError(
+            f"horizon_days must be > 0 and finite, got {horizon_days!r}"
+        )
     return horizon_days
+
+
+def validate_finite(**values: float) -> None:
+    """Reject non-finite scalar inputs, naming the offending argument.
+
+    Used wherever a bare scalar (sigma, df, jump size, notional, ...) would
+    otherwise slip past an inequality guard: every comparison with NaN is
+    False, so ``if sigma < 0: raise`` silently accepts NaN and yields a NaN
+    risk number instead of an exception.
+
+    Raises
+    ------
+    ValueError
+        Naming the first non-finite value found.
+    """
+    for name, value in values.items():
+        if value is None:
+            continue
+        if not np.all(np.isfinite(np.asarray(value, dtype=float))):
+            raise ValueError(
+                f"{name} must be finite, got {value!r} "
+                "(NaN policy: refuse, never impute)"
+            )
 
 
 def validate_returns(

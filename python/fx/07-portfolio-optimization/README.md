@@ -43,7 +43,7 @@ Return Estimation ──> Covariance Modeling ──> Mean-Variance ──> Effi
 ```bash
 cd python/fx/07-portfolio-optimization
 pip install -e .[dev]     # or just have numpy/scipy/pandas on the path
-pytest -q                 # 139 tests, offline, ~12 s
+pytest -q                 # 172 tests, offline, ~10 s
 python examples/run_pipeline.py   # full pipeline, ~26 s
 ```
 
@@ -78,7 +78,7 @@ Style sleeves (dollar-neutral, gross 2.0, one-day implementation lag):
 ```
 src/fx_port/            returns_est, covariance, mvo, risk_parity,
                         hedging, cvar_opt, backtest, metrics, data/
-tests/                  139 offline seeded tests (identities to 1e-12)
+tests/                  172 offline seeded tests (identities to 1e-12)
 examples/run_pipeline.py
 docs/                   METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```

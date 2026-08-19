@@ -16,7 +16,18 @@
 //!   intrinsic along the deterministic path `S exp((r - q) t_i)`.
 //! * Negative `s`, `k`, `t`, `sigma` and `n_steps == 0` are errors.
 
-use crate::black_scholes::{bs_price, validate_inputs, OptionType, PricingError};
+use crate::black_scholes::{
+    bs_price, validate_inputs, validate_rates, OptionType, PricingError,
+};
+
+/// Largest accepted `n_steps`.
+///
+/// Backward induction costs O(n^2) time and O(n) memory, so 1e7 steps is
+/// already far past any practical accuracy/latency trade-off (the tree
+/// converges to Black-Scholes at O(1/n)). Larger requests are rejected
+/// as [`PricingError::InvalidInput`] instead of being left to hang or to
+/// abort in the allocator.
+pub const MAX_STEPS: usize = 10_000_000;
 
 /// Exercise style of the option.
 ///
@@ -73,11 +84,12 @@ fn deterministic_price(
 /// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type` — as in
 ///   [`bs_price`].
 /// * `exercise` — [`Exercise::European`] or [`Exercise::American`].
-/// * `n_steps` — number of time steps, `>= 1`.
+/// * `n_steps` — number of time steps, in `[1, MAX_STEPS]`.
 ///
 /// # Errors
 ///
-/// [`PricingError::InvalidInput`] on negative/NaN inputs, `n_steps == 0`,
+/// [`PricingError::InvalidInput`] on negative/NaN inputs, `n_steps` outside
+/// `[1, MAX_STEPS]`,
 /// or if the risk-neutral probability falls outside (0, 1) — a sign that
 /// `dt` is too large for the given `r - q` and `sigma`.
 ///
@@ -107,10 +119,17 @@ pub fn crr_price(
     n_steps: usize,
 ) -> Result<f64, PricingError> {
     validate_inputs(s, k, t, sigma)?;
+    validate_rates(r, q)?;
     if n_steps < 1 {
         return Err(PricingError::InvalidInput(
             "n_steps must be >= 1, got 0".into(),
         ));
+    }
+    if n_steps > MAX_STEPS {
+        return Err(PricingError::InvalidInput(format!(
+            "n_steps must be <= {MAX_STEPS}, got {n_steps} \
+             (backward induction is O(n^2) work and O(n) memory)"
+        )));
     }
 
     let sign = option_type.sign();

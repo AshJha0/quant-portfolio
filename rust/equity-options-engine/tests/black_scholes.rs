@@ -181,3 +181,97 @@ fn price_is_monotone_in_vol_and_convex_in_strike() {
         );
     }
 }
+
+#[test]
+fn non_finite_inputs_are_rejected() {
+    use eq_options_engine::black_scholes::{validate_inputs, validate_rates};
+    let inf = f64::INFINITY;
+    // Infinite S, K, T or sigma is rejected just like NaN.
+    for (s, k, t, sigma) in [
+        (inf, 100.0, 1.0, 0.2),
+        (100.0, inf, 1.0, 0.2),
+        (100.0, 100.0, inf, 0.2),
+        (100.0, 100.0, 1.0, inf),
+        (-inf, 100.0, 1.0, 0.2),
+    ] {
+        let res = bs_price(s, k, t, 0.05, sigma, 0.0, OptionType::Call);
+        assert!(
+            matches!(res, Err(PricingError::InvalidInput(_))),
+            "expected InvalidInput for (S={s}, K={k}, T={t}, sigma={sigma}), got {res:?}"
+        );
+        assert!(validate_inputs(s, k, t, sigma).is_err());
+    }
+    // NaN / infinite r or q must not silently produce a NaN price.
+    for (r, q) in [
+        (f64::NAN, 0.0),
+        (0.05, f64::NAN),
+        (inf, 0.0),
+        (0.05, -inf),
+    ] {
+        let res = bs_price(100.0, 100.0, 1.0, r, 0.2, q, OptionType::Call);
+        assert!(
+            matches!(res, Err(PricingError::InvalidInput(_))),
+            "expected InvalidInput for (r={r}, q={q}), got {res:?}"
+        );
+        assert!(validate_rates(r, q).is_err());
+    }
+    assert!(validate_rates(-0.05, -0.02).is_ok()); // negative rates stay legal
+}
+
+#[test]
+fn extreme_moneyness_prices_are_stable() {
+    let (t, r, q, sigma) = (1.0, 0.03, 0.01, 0.2);
+    // Deep ITM call (S/K = 1e4): time value vanishes, price -> parity value
+    // S e^{-qT} - K e^{-rT}, with full relative accuracy (no cancellation).
+    let (s, k) = (1.0e4, 1.0);
+    let c = bs_price(s, k, t, r, sigma, q, OptionType::Call).unwrap();
+    let parity = s * (-q * t).exp() - k * (-r * t).exp();
+    assert_rel_close!(c, parity, 1e-12);
+    // The matching put is worthless but must be a clean non-negative zero.
+    let p = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
+    assert!(p >= 0.0 && p < 1e-100, "deep OTM put should underflow cleanly, got {p}");
+    // Deep OTM call (S/K = 1e-4): worthless, finite, non-negative.
+    let c_otm = bs_price(1.0, 1.0e4, t, r, sigma, q, OptionType::Call).unwrap();
+    assert!(c_otm >= 0.0 && c_otm < 1e-100, "deep OTM call: {c_otm}");
+    // Put-call parity still holds exactly at both extremes.
+    for (s, k) in [(1.0e4, 1.0), (1.0, 1.0e4)] {
+        let c = bs_price(s, k, t, r, sigma, q, OptionType::Call).unwrap();
+        let p = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
+        let rhs = s * (-q * t).exp() - k * (-r * t).exp();
+        assert_rel_close!(c - p, rhs, 1e-12);
+    }
+}
+
+#[test]
+fn very_long_and_very_short_expiries() {
+    let (s, k, r, q, sigma) = (100.0, 100.0, 0.03, 0.01, 0.2);
+    // 30-year option: finite, inside its static no-arbitrage bounds,
+    // and parity-consistent.
+    let t = 30.0;
+    let c = bs_price(s, k, t, r, sigma, q, OptionType::Call).unwrap();
+    let p = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
+    let (df_q, df_r) = ((-q * t).exp(), (-r * t).exp());
+    assert!(c.is_finite() && p.is_finite());
+    assert!(c <= s * df_q + 1e-12 && c >= (s * df_q - k * df_r).max(0.0) - 1e-12);
+    assert_rel_close!(c - p, s * df_q - k * df_r, 1e-12);
+    // T = 1e-6 (~30 seconds): price collapses to intrinsic, but stays at
+    // or above the sigma->0 no-arbitrage floor (the discounted forward
+    // intrinsic — which for a European put with r > 0 sits *below* the
+    // undiscounted intrinsic, so `>= intrinsic` is NOT the right bound).
+    let t = 1e-6;
+    for (s2, ot, intrinsic) in [
+        (105.0, OptionType::Call, 5.0),
+        (95.0, OptionType::Put, 5.0),
+    ] {
+        let v = bs_price(s2, k, t, r, sigma, q, ot).unwrap();
+        let floor = bs_price(s2, k, t, r, 0.0, q, ot).unwrap();
+        assert!(
+            (v - intrinsic).abs() < 1e-3,
+            "near-expiry {ot:?}: {v} vs intrinsic {intrinsic}"
+        );
+        assert!(
+            v >= floor - 1e-12,
+            "near-expiry {ot:?}: {v} below the sigma->0 floor {floor}"
+        );
+    }
+}

@@ -32,7 +32,7 @@ estimators are implemented in the crate and validated in `tests/`.
 
 ```bash
 rm -rf target
-cargo test --release      # 83 tests + 1 doctest, all passing
+cargo test --release      # 91 tests + 2 doctests (93), all passing
 cargo run --release --bin bench
 ```
 
@@ -105,6 +105,41 @@ absolute wall time differs with allocator/codegen, not algorithm.
   to 1e-6.
 - **Peg blindness**: engine flags near-zero-vol FX factors and the
   jump-mixture MC reports the loss HS misses (tested end to end).
+- **Input validation**: NaN and ±infinity are rejected in *every* float
+  argument of *every* public entry point — market spots and rates,
+  position notionals/strikes/expiries, return histories, covariances,
+  exposures, `sigma`/`mean`/`df`/`alpha`/`horizon_days`, empirical P&L
+  samples and their weights, and both backtest series.
+
+### Why the validation is written with `is_finite()`
+
+A guard written as `if x <= 0.0 { return Err(..) }` silently **accepts**
+NaN, because every IEEE-754 comparison against NaN is false — and Rust is
+no different from C here (`f64::NAN < 0.0` is `false`). Worse, `f64::max`
+propagates the *other* operand, so `NaN.max(0.0)` is `0.0`.
+
+For a risk engine that is the worst possible failure mode. A NaN VaR
+breaches no limit and colours no traffic light (`NaN <= limit` is false,
+but so is `NaN > limit`); a NaN that silently becomes **zero** is worse
+still, because zero looks like a perfectly hedged book. Concretely, before
+this hardening pass:
+
+| Where | Symptom |
+|---|---|
+| `portfolio_sigma` | one NaN covariance entry → sigma, VaR and ES of exactly **0.0** |
+| `Matrix::cholesky` | NaN pivot passed `s <= 0.0` → all-NaN factor → NaN Monte Carlo VaR |
+| `evaluate_var_backtest` | `is_nan()`-only screen let `±inf` through; `-p > v` is false, so a broken VaR feed scored **zero breaches** and passed Basel green |
+| `Market::new` | spots validated, **rates** not → NaN forwards → NaN P&L |
+| `simple_to_log(-1.0)` | returned `-inf` silently → infinite stress-scenario shock |
+
+Two related fixes: the Cholesky symmetry pre-check is now **scale-relative**
+(an absolute 1e-12 gate rejects a perfectly symmetric P&L covariance for a
+50bn book, where one ulp is ~1e6), and the Cholesky jitter ladder stops at
+`matrix::MAX_RELATIVE_JITTER` (1e-6 × mean variance) instead of escalating
+until *something* factorises — a pegged/rank-deficient block is still
+repaired at the first rung, but a materially indefinite matrix now returns
+`FxVarError::Numerical` rather than being silently patched into a different
+book.
 
 Full detail: [`docs/VALIDATION.md`](docs/VALIDATION.md). Model choices and
 assumptions: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Desk usage:

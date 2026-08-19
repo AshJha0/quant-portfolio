@@ -51,7 +51,9 @@ pub fn expected_shortfall(pnl: &[f64], alpha: f64) -> Result<f64> {
         ));
     }
     let mut sorted = pnl.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).expect("finite values compare totally"));
+    // `total_cmp` is a total order on every f64, so this sort has no panic
+    // path even though the finiteness check above already rules NaN out.
+    sorted.sort_by(f64::total_cmp);
     let n = sorted.len();
     let an = alpha * n as f64;
     let k = an.floor() as usize;
@@ -72,9 +74,17 @@ pub fn expected_shortfall(pnl: &[f64], alpha: f64) -> Result<f64> {
 /// quadrature of the tail integral to 1e-10.
 pub fn normal_es(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
+    // `!(sigma >= 0.0)` rather than `sigma < 0.0`: the latter is false for
+    // NaN, which would return a NaN Expected Shortfall — a risk number
+    // that breaches no limit because every comparison against it is false.
+    if !(sigma >= 0.0) || !sigma.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
-            "sigma must be >= 0, got {sigma}"
+            "sigma must be finite and >= 0, got {sigma}"
+        )));
+    }
+    if !mean.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "mean must be finite, got {mean}"
         )));
     }
     let z = normal_ppf(alpha)?;
@@ -91,14 +101,19 @@ pub fn normal_es(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
 /// with `q = t_nu^{-1}(alpha)` and `f_nu` the t density.
 pub fn student_t_es(sigma: f64, alpha: f64, df: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
+    if !(sigma >= 0.0) || !sigma.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
-            "sigma must be >= 0, got {sigma}"
+            "sigma must be finite and >= 0, got {sigma}"
         )));
     }
-    if df <= 2.0 {
+    if !mean.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
-            "Student-t df must be > 2 for finite variance, got {df}"
+            "mean must be finite, got {mean}"
+        )));
+    }
+    if !(df > 2.0) || !df.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "Student-t df must be finite and > 2 for finite variance, got {df}"
         )));
     }
     let q = student_t_ppf(alpha, df)?;
@@ -142,6 +157,11 @@ pub fn parametric_es_full(
     mean: f64,
     horizon_days: u32,
 ) -> Result<f64> {
+    if !mean.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "expected daily P&L must be finite, got {mean}"
+        )));
+    }
     if horizon_days < 1 {
         return Err(EqVarError::InvalidInput(format!(
             "horizon_days must be >= 1, got {horizon_days}"

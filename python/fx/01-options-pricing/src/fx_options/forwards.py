@@ -67,8 +67,10 @@ def forward_points(S: float, T: float, r_d: float, r_f: float,
         Forward points in pips; positive when the base currency trades at
         a forward premium.
     """
-    if pip_factor <= 0:
-        raise ValueError(f"pip_factor must be positive, got {pip_factor}")
+    if not math.isfinite(pip_factor) or pip_factor <= 0:
+        raise ValueError(
+            f"pip_factor must be positive and finite, got {pip_factor!r}"
+        )
     return (cip_forward(S, T, r_d, r_f) - S) * pip_factor
 
 

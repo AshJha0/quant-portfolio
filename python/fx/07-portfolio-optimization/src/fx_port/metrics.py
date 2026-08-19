@@ -20,7 +20,25 @@ def _arr(returns: pd.Series | np.ndarray) -> np.ndarray:
     x = np.asarray(returns, dtype=float).ravel()
     if x.size == 0:
         raise ValueError("empty return series")
+    if not np.all(np.isfinite(x)):
+        raise ValueError(
+            "return series contains NaN/Inf; drop or fill missing observations "
+            "before computing metrics (a NaN would silently poison every stat)"
+        )
     return x
+
+
+def _degenerate_scale(x: np.ndarray) -> float:
+    """Absolute tolerance below which a spread counts as numerically zero.
+
+    An exactly-constant series does NOT produce ``std == 0`` in floating
+    point: ``np.full(50, 4e-4).std(ddof=1)`` is ~5e-20, not 0.  An exact
+    ``== 0`` guard therefore lets a constant series through and returns a
+    Sharpe of ~1e17.  We compare against the scale of the data instead;
+    any real FX return series has a standard deviation many orders of
+    magnitude above this threshold.
+    """
+    return 1e-14 * max(1.0, float(np.abs(x).max()))
 
 
 def annualized_return(
@@ -55,7 +73,7 @@ def sharpe_ratio(
     """
     x = _arr(returns) - rf
     sd = x.std(ddof=1)
-    if sd == 0:
+    if sd <= _degenerate_scale(x):
         raise ValueError("zero volatility: Sharpe undefined")
     return float(x.mean() / sd * np.sqrt(periods))
 
@@ -73,7 +91,10 @@ def sharpe_se_lo(
     x = _arr(returns)
     if x.size < 2:
         raise ValueError("need >= 2 observations")
-    sr = x.mean() / x.std(ddof=1)
+    sd = x.std(ddof=1)
+    if sd <= _degenerate_scale(x):
+        raise ValueError("zero volatility: Sharpe standard error undefined")
+    sr = x.mean() / sd
     return float(np.sqrt((1.0 + 0.5 * sr**2) / x.size) * np.sqrt(periods))
 
 
@@ -89,7 +110,7 @@ def sortino_ratio(
     """
     x = _arr(returns) - mar
     downside = np.sqrt(np.mean(np.minimum(x, 0.0) ** 2))
-    if downside == 0:
+    if downside <= _degenerate_scale(x):
         raise ValueError("no downside observations: Sortino undefined")
     return float(x.mean() / downside * np.sqrt(periods))
 
@@ -114,7 +135,7 @@ def skewness(returns: pd.Series | np.ndarray) -> float:
     x = _arr(returns)
     xc = x - x.mean()
     m2 = np.mean(xc**2)
-    if m2 == 0:
+    if m2 <= _degenerate_scale(x) ** 2:
         raise ValueError("zero variance: skewness undefined")
     return float(np.mean(xc**3) / m2**1.5)
 
@@ -124,7 +145,7 @@ def excess_kurtosis(returns: pd.Series | np.ndarray) -> float:
     x = _arr(returns)
     xc = x - x.mean()
     m2 = np.mean(xc**2)
-    if m2 == 0:
+    if m2 <= _degenerate_scale(x) ** 2:
         raise ValueError("zero variance: kurtosis undefined")
     return float(np.mean(xc**4) / m2**2 - 3.0)
 

@@ -36,7 +36,7 @@ settlement.py: time-zone windows, gross vs CLS  (independent block 2)
 ```bash
 cd python/fx/06-credit-risk
 pip install -e .          # or rely on the repo conftest.py path shim
-pytest -q                 # 179 tests, offline, ~6 s
+pytest -q                 # 207 tests, offline, ~8 s
 python examples/run_pipeline.py   # full run, ~2 s
 ```
 
@@ -60,7 +60,7 @@ python examples/run_pipeline.py   # full run, ~2 s
 
 ## Layout
 
-Per portfolio conventions: `src/fx_credit/` (library), `tests/` (179 offline
+Per portfolio conventions: `src/fx_credit/` (library), `tests/` (207 offline
 seeded tests), `examples/run_pipeline.py`, `docs/`
 ([METHODOLOGY](docs/METHODOLOGY.md) — model choice and assumptions register,
 [VALIDATION](docs/VALIDATION.md) — evidence and failure modes,

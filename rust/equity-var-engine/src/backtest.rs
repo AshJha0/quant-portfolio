@@ -24,8 +24,18 @@ fn xlogy(a: f64, b: f64) -> f64 {
 /// Exception indicator per day: `1` iff `pnl_t < -var_t`.
 ///
 /// `var` (positive-loss convention) is scalar-broadcast if it has length 1,
-/// otherwise it must have one entry per day. Errors on a negative VaR or a
-/// size mismatch.
+/// otherwise it must have one entry per day. Errors on a negative VaR, a
+/// non-finite P&L or VaR, or a size mismatch.
+///
+/// # Why non-finite input is rejected rather than skipped
+///
+/// The exception test is `pnl_t < -var_t`. If either side is NaN the
+/// comparison is **false**, so the day is silently counted as "no
+/// exception". A model whose VaR feed has broken to NaN therefore records
+/// **zero breaches** and sails through Kupiec, Christoffersen and the
+/// Basel traffic light in the green zone — the exact opposite of what a
+/// backtest is for. A NaN in either series is an error here, so the
+/// breakage surfaces on the day it happens.
 ///
 /// # Examples
 ///
@@ -44,6 +54,18 @@ pub fn exceptions_from_pnl(pnl: &[f64], var: &[f64]) -> Result<Vec<u8>> {
     if var.len() != 1 && var.len() != pnl.len() {
         return Err(EqVarError::InvalidInput(
             "exceptions_from_pnl: var must be scalar (length 1) or one entry per day"
+                .to_string(),
+        ));
+    }
+    if pnl.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "exceptions_from_pnl: pnl contains NaN or infinite values; a NaN day              compares false against any VaR and would be silently counted as              'no exception'"
+                .to_string(),
+        ));
+    }
+    if var.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "exceptions_from_pnl: VaR contains NaN or infinite values; a NaN VaR              is never breached and would let a broken model pass Kupiec and the              Basel traffic light with zero exceptions"
                 .to_string(),
         ));
     }
@@ -95,6 +117,12 @@ pub fn kupiec_pof(n_obs: i64, n_exceptions: i64, alpha: f64) -> Result<KupiecRes
     if !(alpha > 0.0 && alpha < 1.0) {
         return Err(EqVarError::InvalidInput(format!(
             "kupiec_pof: alpha must be in (0, 1), got {alpha}"
+        )));
+    }
+    if n_obs > (1_i64 << 53) {
+        // Beyond 2^53 the i64 -> f64 conversions below stop being exact.
+        return Err(EqVarError::InvalidInput(format!(
+            "kupiec_pof: n_obs {n_obs} exceeds the exactly-representable range"
         )));
     }
     let t = n_obs as f64;

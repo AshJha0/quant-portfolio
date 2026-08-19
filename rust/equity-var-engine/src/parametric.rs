@@ -14,8 +14,16 @@ use crate::{validate_alpha, EqVarError, Result, TailModel};
 
 /// Portfolio P&L standard deviation `sqrt(w' Sigma w)` (currency units).
 ///
-/// Errors if the covariance shape does not match the exposure count or if
-/// the quadratic form is materially negative (matrix not PSD).
+/// Errors if the covariance shape does not match the exposure count, if any
+/// exposure or covariance entry is non-finite, or if the quadratic form is
+/// materially negative (matrix not PSD).
+///
+/// The finiteness check is load-bearing, not cosmetic. `w' Sigma w` with a
+/// single NaN anywhere evaluates to NaN; the PSD test `var < -tol` is
+/// **false** for NaN, and `f64::max` propagates the *other* operand, so
+/// `NaN.max(0.0).sqrt()` is `0.0`. Without this guard a corrupt covariance
+/// therefore reported a portfolio sigma — and a VaR — of exactly **zero**:
+/// a broken model that looks like a riskless book.
 pub fn portfolio_sigma(exposures: &[f64], cov: &Matrix) -> Result<f64> {
     let n = exposures.len();
     if n == 0 {
@@ -29,6 +37,18 @@ pub fn portfolio_sigma(exposures: &[f64], cov: &Matrix) -> Result<f64> {
             cov.rows(),
             cov.cols()
         )));
+    }
+    if exposures.iter().any(|w| !w.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "exposures must all be finite (NaN or infinite exposures silently              produce a zero portfolio sigma)"
+                .to_string(),
+        ));
+    }
+    if !cov.all_finite() {
+        return Err(EqVarError::InvalidInput(
+            "covariance matrix must be finite (a NaN entry silently produces a              zero portfolio sigma, i.e. a zero VaR)"
+                .to_string(),
+        ));
     }
     let sw = cov.matvec(exposures)?;
     let var: f64 = exposures.iter().zip(sw.iter()).map(|(w, s)| w * s).sum();
@@ -51,9 +71,9 @@ pub fn tail_quantile(alpha: f64, tail: TailModel) -> Result<f64> {
     match tail {
         TailModel::Normal => normal_ppf(alpha),
         TailModel::StudentT { df } => {
-            if df <= 2.0 {
+            if !(df > 2.0) || !df.is_finite() {
                 return Err(EqVarError::InvalidInput(format!(
-                    "Student-t df must be > 2 for finite variance, got {df}"
+                    "Student-t df must be finite and > 2 for finite variance, got {df}"
                 )));
             }
             Ok(student_t_ppf(alpha, df)? * ((df - 2.0) / df).sqrt())
@@ -104,6 +124,11 @@ pub fn parametric_var_full(
             "horizon_days must be >= 1, got {horizon_days}"
         )));
     }
+    if !mean.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "expected daily P&L must be finite, got {mean}"
+        )));
+    }
     let sigma = portfolio_sigma(exposures, cov)? * (horizon_days as f64).sqrt();
     let mu = mean * horizon_days as f64;
     let z = tail_quantile(alpha, tail)?;
@@ -144,6 +169,12 @@ pub fn cornish_fisher_domain_ok(
     z_range: f64,
     n_grid: usize,
 ) -> bool {
+    // NaN moments are never "ok": `deriv <= 0.0` is false for NaN, so a
+    // NaN skew/kurtosis would otherwise be reported as a valid domain and
+    // produce a NaN "VaR".
+    if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
+        return false;
+    }
     let n = n_grid.max(2);
     for i in 0..n {
         let z = -z_range + 2.0 * z_range * i as f64 / (n - 1) as f64;
@@ -172,9 +203,15 @@ pub fn cornish_fisher_var(
     check_domain: bool,
 ) -> Result<f64> {
     validate_alpha(alpha)?;
-    if sigma < 0.0 {
+    if !(sigma >= 0.0) || !sigma.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
-            "sigma must be >= 0, got {sigma}"
+            "sigma must be finite and >= 0, got {sigma}"
+        )));
+    }
+    if !skew.is_finite() || !excess_kurt.is_finite() || !mean.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "skew, excess_kurt and mean must be finite, got skew={skew}, \
+             excess_kurt={excess_kurt}, mean={mean}"
         )));
     }
     if check_domain && !cornish_fisher_domain_ok(skew, excess_kurt, 3.5, 2001) {

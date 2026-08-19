@@ -14,7 +14,7 @@
 //! All rates continuously compounded, annualised; `t` in years (ACT/365F).
 
 use crate::black_scholes::{
-    d1_d2, norm_cdf, norm_pdf, validate_inputs, OptionType, PricingError,
+    d1_d2, norm_cdf, norm_pdf, validate_inputs, validate_rates, OptionType, PricingError,
 };
 
 /// Full Greek set of a European option (units in the module docs).
@@ -137,8 +137,13 @@ pub fn bs_greeks(
 ///
 /// # Errors
 ///
-/// [`PricingError::InvalidInput`] on invalid inputs or if `t` is too small
-/// to bump centrally; any error from the pricer is propagated.
+/// [`PricingError::InvalidInput`] on invalid inputs, or if `t`, `sigma`
+/// or `s` is too small for the down-leg of the central bump to stay
+/// inside the domain (`t - h_t <= 0`, `sigma - h_v2 <= 0`,
+/// `s - h_s2 <= 0`) — this is checked up front so that a pricer closure
+/// which does *not* validate its own arguments can never be evaluated at
+/// a negative volatility or a negative spot. Any error raised by the
+/// pricer itself is propagated unchanged.
 ///
 /// # Examples
 ///
@@ -168,6 +173,7 @@ where
     const REL_BUMP2: f64 = 2e-4;
 
     validate_inputs(s, k, t, sigma)?;
+    validate_rates(r, q)?;
 
     let f = |sv: f64, sig: f64, tv: f64, rv: f64| pricer(sv, k, tv, rv, sig, q, option_type);
 
@@ -180,6 +186,26 @@ where
     if t - h_t <= 0.0 {
         return Err(PricingError::InvalidInput(format!(
             "T={t} too small for a central theta bump of {h_t}"
+        )));
+    }
+    // A central bump must stay inside the domain. Because the bumps are
+    // floored at `rel_bump * 1`, a spot or vol below the bump would be
+    // pushed negative by the down-leg. `bs_price` would reject that, but a
+    // user-supplied pricer closure need not: without this guard the
+    // returned "vega" could be a difference of prices evaluated at a
+    // *negative* volatility, which is silently meaningless. Reject up
+    // front instead. `h_*2 >= h_*`, so guarding the second-order bump
+    // covers the first-order one too.
+    if sigma - h_v2 <= 0.0 {
+        return Err(PricingError::InvalidInput(format!(
+            "sigma={sigma} too small for a central vega/volga bump of {h_v2}; \
+             the down-leg would price at a negative volatility"
+        )));
+    }
+    if s - h_s2 <= 0.0 {
+        return Err(PricingError::InvalidInput(format!(
+            "S={s} too small for a central delta/gamma bump of {h_s2}; \
+             the down-leg would price at a negative spot"
         )));
     }
 

@@ -22,6 +22,7 @@ Taylor P&L approximation for a yield move ``dy``:
 from __future__ import annotations
 
 import datetime as dt
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -38,6 +39,7 @@ from .bond import (
 from .curve import DiscountCurve
 
 __all__ = [
+    "ZeroNetValueWarning",
     "macaulay_duration",
     "modified_duration",
     "convexity",
@@ -51,6 +53,15 @@ __all__ = [
     "portfolio_value",
     "portfolio_risk",
 ]
+
+
+class ZeroNetValueWarning(UserWarning):
+    """Market-value weighting is undefined for a zero-net-value portfolio.
+
+    Emitted by :func:`portfolio_risk` when longs and shorts cancel (a
+    duration-neutral relative-value book). The weighted aggregates are
+    reported as ``NaN``; ``mv`` and ``dv01`` remain exact.
+    """
 
 
 # ------------------------------------------------------------- YTM analytics
@@ -202,6 +213,20 @@ def portfolio_risk(
     market-value-weighted duration/convexity, summed MV and DV01.
 
     Returns an empty DataFrame (documented) for an empty portfolio.
+
+    Zero-net-value books (documented edge case)
+    ------------------------------------------
+    Market-value weighting is undefined when the net market value is zero or
+    negligible relative to the gross — precisely the case for a duration-
+    neutral long/short relative-value book, where the longs and shorts cancel.
+    Rather than silently emitting ``±inf`` weights and ``NaN`` aggregates,
+    this function detects the condition (``|net MV| < 1e-9 * gross MV``),
+    emits a :class:`ZeroNetValueWarning`, and reports ``NaN`` for the weight
+    column and for the weighted ``ytm``/``mod_duration``/``convexity``
+    aggregates.  ``mv`` and ``dv01`` remain exact, because both are plain
+    sums — and **DV01 is the meaningful aggregate for such a book**, which is
+    why the desk risks it off DV01 and key-rate DV01s, not off a weighted
+    duration (see docs/DESK_GUIDE.md).
     """
     cols = ["label", "mv", "weight", "ytm", "mod_duration", "convexity", "dv01"]
     if not positions:
@@ -224,15 +249,34 @@ def portfolio_risk(
             }
         )
     df = pd.DataFrame(rows).set_index("label")
-    total_mv = df["mv"].sum()
-    df["weight"] = df["mv"] / total_mv
+    total_mv = float(df["mv"].sum())
+    gross_mv = float(df["mv"].abs().sum())
+    degenerate = abs(total_mv) < 1e-9 * max(gross_mv, 1.0)
+    if degenerate:
+        warnings.warn(
+            f"net portfolio market value is {total_mv:.6g} against a gross of "
+            f"{gross_mv:.6g}: market-value weights are undefined, so the "
+            "weight column and the weighted ytm/mod_duration/convexity "
+            "aggregates are reported as NaN. Use dv01 (exact, additive) and "
+            "key-rate DV01s to risk a zero-net-value book.",
+            ZeroNetValueWarning,
+            stacklevel=2,
+        )
+        df["weight"] = np.nan
+        weighted = {"ytm": np.nan, "mod_duration": np.nan, "convexity": np.nan}
+        total_weight = np.nan
+    else:
+        df["weight"] = df["mv"] / total_mv
+        weighted = {
+            key: float((df[key] * df["weight"]).sum())
+            for key in ("ytm", "mod_duration", "convexity")
+        }
+        total_weight = 1.0
     total = pd.Series(
         {
             "mv": total_mv,
-            "weight": 1.0,
-            "ytm": float((df["ytm"] * df["weight"]).sum()),
-            "mod_duration": float((df["mod_duration"] * df["weight"]).sum()),
-            "convexity": float((df["convexity"] * df["weight"]).sum()),
+            "weight": total_weight,
+            **weighted,
             "dv01": df["dv01"].sum(),
         },
         name="TOTAL",

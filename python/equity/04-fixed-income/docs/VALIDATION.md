@@ -2,7 +2,7 @@
 
 All numbers below are reproduced by `python examples/run_pipeline.py`
 (seeded, offline, <1s) and enforced by the test suite
-(`python -m pytest tests -q`, 235 tests, ~1s).
+(`python -m pytest tests -q`, 342 tests, ~1s).
 
 ---
 
@@ -30,6 +30,27 @@ and for the coupon-bond bootstrap (round trip through synthetic bond prices
 back to the generating curve's discount factors). Bootstrapping is verified
 **order-independent**: shuffled instrument input reproduces identical pillar
 discount factors to 1e-15.
+
+**The exactness is a property of *local* interpolation, not of the
+bootstrap.** Log-linear DF and linear zero are local — appending a pillar
+cannot move the curve before it — so each instrument stays repriced after
+later pillars are solved. PCHIP is **not** local: the monotone cubic is
+reshaped over earlier segments every time a pillar is appended, so
+already-solved quotes drift. Measured on the same quote set:
+
+| Interpolation | max repricing error (rate terms) | local? |
+|---|---|---|
+| log-linear DF | 2.5e-16 | yes |
+| linear zero | 2.5e-16 | yes |
+| **PCHIP on zeros** | **3.6e-06** | **no** |
+
+3.6e-06 is well inside a basis point and harmless for analytics, but it means
+a spline-curve build **cannot** pass a 1e-10 repricing gate. If your build
+control requires exact quote reproduction (most production risk systems do —
+see DESK_GUIDE.md), use a local scheme, or iterate the spline bootstrap to a
+fixed point. Pinned by
+`test_properties.py::test_local_schemes_reprice_every_instrument_exactly` and
+`::test_pchip_bootstrap_is_only_approximately_exact`.
 
 ### 1.2 Pricing round trips
 
@@ -174,10 +195,39 @@ valid inputs — single-pillar curves, empty portfolios, settlement ==
 maturity (price 0, no cashflows), negative-rate curves (DFs > 1) — are
 tested as *working* paths, not errors.
 
+### 4.7 Zero-net-value books break market-value weighting
+
+A duration-neutral long/short relative-value book (the bread and butter of a
+rates RV desk) has **net market value ≈ 0** while its gross is large. Every
+market-value-weighted aggregate — weighted YTM, weighted modified duration,
+weighted convexity — is then a `0/0` and is genuinely undefined.
+
+`portfolio_risk` used to compute these silently, emitting `±inf` weights and
+`NaN` aggregates with no indication that anything was wrong. It now detects
+the condition (`|net MV| < 1e-9 × gross MV`), raises a
+`ZeroNetValueWarning` naming the problem, and reports `NaN` for the weight
+column and the weighted aggregates **deliberately** rather than accidentally.
+
+`mv` and `dv01` remain exact throughout, because both are plain sums — and
+**DV01 (plus the key-rate ladder) is the correct aggregate for such a book**,
+which is exactly how a desk risks it. Pinned by
+`test_properties.py::test_zero_net_value_book_warns_and_reports_nan_weights`,
+with `::test_normal_book_does_not_warn` guarding against false positives.
+
 ## 5. Suite summary
 
-* 235 tests, 100% pass, ~1s wall clock, fully offline, deterministic
+* 342 tests, 100% pass, ~1s wall clock, fully offline, deterministic
   (seeded `default_rng`).
 * Edge-case contract (portfolio conventions item 6) covered in
   `tests/test_edge_cases.py` and cross-referenced from the assumptions
   register.
+* Structural invariants (`tests/test_properties.py`) pin the *shape* of the
+  library rather than point values: curve identities (P(0)=1, df/zero/forward
+  consistency, pillar exactness, par-rate reprices par to 1e-12), bond
+  monotonicity and convexity in yield, duration ordering in maturity and
+  coupon, Macaulay(ZCB) == maturity, pull-to-par, analytic-vs-numerical
+  duration/convexity across yields from −1% to +12%, FRN par identity at
+  every frequency, annuity linearity, portfolio DV01 additivity, scenario
+  sign/ordering including the three historical episodes, carry + roll-down ==
+  static horizon P&L, and day-count antisymmetry/additivity across all four
+  supported conventions.

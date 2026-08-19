@@ -20,7 +20,7 @@ double-rounding noise between scipy's `norm.cdf` and our `erfc`-based CDF,
 not semantics. This proves the two implementations encode identical
 conventions (BASE/QUOTE, two rates, theta per year, ACT/365F).
 
-## Identity and property tests (79 CTest cases, 146 assertion sites)
+## Identity and property tests (86 CTest cases, ~170 assertion sites)
 
 | Category | Check | Tolerance |
 |---|---|---|
@@ -35,7 +35,12 @@ conventions (BASE/QUOTE, two rates, theta per year, ACT/365F).
 | Tree | CRR → GK convergence (error decays through 50/200/800 steps; 2,000 steps within 5e-6); American ≥ European; strictly positive early-exercise premium for ITM calls when `r_f > r_d` | see left |
 | Monte Carlo | price within 3 SE of analytic; SE(antithetic+CV) < SE(antithetic) < SE(plain); same seed ⇒ bit-identical result; different seed ⇒ different | 3 SE / exact |
 | Implied vol | round trips across the Python reference grid (incl. negative rates, high vol 60%) | 1e-10 |
-| Edge cases | negative rates (both legs), `r_d = r_f`, `T = 0` intrinsic, deep ITM/OTM bounds, `sigma = 0` forward intrinsic, invalid inputs throw `std::invalid_argument` everywhere | various |
+| Edge cases | negative rates (both legs), `r_d = r_f`, zero rates, `T = 0` intrinsic, deep ITM/OTM bounds, `sigma = 0` forward intrinsic, invalid inputs throw `std::invalid_argument` everywhere | various |
+| Extreme moneyness | `S/K = 100x` and `K/S = 100x`: prices pinned on the arbitrage bounds, non-negative, finite, parity to 1e-12 at both wings | 1e-12 |
+| Extreme tenor | `T = 1e-5` (≈5 minutes) collapses towards intrinsic and still equals Black-76 on the forward; `T = 30y` stays inside the bounds with an exact parity and a 1e-8 implied-vol round trip | 1e-15 / 1e-12 / 1e-8 |
+| Vol at the solver cap | `sigma = 10` (top of the Newton bracket) round-trips to 1e-6; at `sigma = 25` the premium *equals* the `sigma -> inf` bound in double precision, and the solver returns a finite vol that reprices the premium to 1e-14 | 1e-6 / 1e-14 |
+| Non-finite rejection | NaN/Inf premium, delta, spot, strike, tenor, either rate or vol rejected by `implied_vol`, `premium_adjust_spot_delta`, `mc_price`, `binomial_price`, `black76_price`, `cip_forward`, `strike_from_delta` | throws |
+| Degenerate MC | a single antithetic pair (`n_paths = 2`) reports `std_error = 0` (unestimable) instead of NaN; two pairs give a strictly positive SE | exact |
 
 ## Known failure modes and numerical limits
 
@@ -54,6 +59,20 @@ conventions (BASE/QUOTE, two rates, theta per year, ACT/365F).
   throws with instructions to increase steps.
 * **d1/d2 undefined at `sigma·sqrt(T) = 0`** — `d1()`/`d2()` throw; the
   pricers switch to the analytic limits instead.
+* **Vol is not identifiable above ~15.** For `sigma·sqrt(T)` large enough
+  that `N(d2)` underflows, the GK premium equals the `sigma -> inf` bound
+  `S e^{-r_f T}` to the last bit, so every vol above that point prices
+  identically. `implied_vol` returns the smallest vol consistent with the
+  observed premium (repricing it to ~1e-14) rather than throwing; treat
+  any implied vol above ~10 as "at the bound", not as a measurement.
+* **Standard errors need at least two independent samples.** With
+  antithetic sampling the independent unit is the *pair*, so `n_paths = 2`
+  yields one sample and no error estimate; the engine reports
+  `std_error = 0` (and a degenerate CI) rather than NaN. Use >= 4
+  antithetic paths whenever the error bar is consumed downstream.
+* **Finite-difference Greeks need a bumpable domain.** `T <= 0`, or a
+  `sigma` smaller than its own central bump, is rejected up front — the
+  down-bumped volatility would be negative.
 
 ## Benchmark table
 

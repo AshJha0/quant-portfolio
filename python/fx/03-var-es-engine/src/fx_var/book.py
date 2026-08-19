@@ -37,7 +37,7 @@ from typing import Mapping, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from .common import fx_factor, ir_factor, split_pair, vol_factor
+from .common import fx_factor, ir_factor, split_pair, validate_finite, vol_factor
 from .gk import gk_delta, gk_gamma, gk_price, gk_vega
 
 __all__ = ["Market", "Cash", "Spot", "Forward", "Option", "Book", "Position"]
@@ -78,9 +78,31 @@ class Market:
         for c, s in spots.items():
             if not np.isfinite(s) or s <= 0:
                 raise ValueError(f"spot_usd[{c!r}] must be a positive number, got {s}")
+        rates = dict(self.rates)
+        for c, r in rates.items():
+            # NaN policy: refuse.  A NaN rate otherwise propagates silently
+            # into a NaN P&L and a NaN VaR.
+            if not np.isfinite(r):
+                raise ValueError(
+                    f"rates[{c!r}] must be a finite number, got {r} "
+                    "(NaN policy: refuse, never impute)"
+                )
+        vols = {k.upper(): v for k, v in self.vols.items()}
+        for p, v in vols.items():
+            # A NaN vol is *especially* dangerous here: the Garman-Kohlhagen
+            # degenerate-limit branch treats a non-finite sigma*sqrt(T) as the
+            # zero-vol case and silently returns forward intrinsic instead of
+            # a price.  Refuse it at the boundary.
+            if not np.isfinite(v):
+                raise ValueError(
+                    f"vols[{p!r}] must be a finite number, got {v} "
+                    "(NaN policy: refuse, never impute)"
+                )
+            if v < 0:
+                raise ValueError(f"vols[{p!r}] must be non-negative, got {v}")
         object.__setattr__(self, "spot_usd", spots)
-        object.__setattr__(self, "rates", dict(self.rates))
-        object.__setattr__(self, "vols", {k.upper(): v for k, v in self.vols.items()})
+        object.__setattr__(self, "rates", rates)
+        object.__setattr__(self, "vols", vols)
 
     def spot(self, ccy: str) -> float:
         """USD price of 1 unit of ``ccy``."""
@@ -124,6 +146,9 @@ class Cash:
     ccy: str
     amount: float
 
+    def __post_init__(self) -> None:
+        validate_finite(amount=self.amount)
+
     def currencies(self) -> set[str]:
         return {self.ccy.upper()}
 
@@ -150,6 +175,7 @@ class Spot:
 
     def __post_init__(self) -> None:
         split_pair(self.pair)  # validate
+        validate_finite(notional=self.notional, entry_rate=self.entry_rate)
         if self.entry_rate is not None and self.entry_rate <= 0:
             raise ValueError("entry_rate must be > 0")
 
@@ -180,6 +206,8 @@ class Forward:
 
     def __post_init__(self) -> None:
         split_pair(self.pair)
+        validate_finite(notional=self.notional, expiry=self.expiry,
+                        strike=self.strike)
         if self.expiry < 0:
             raise ValueError("expiry must be >= 0")
         if self.strike is not None and self.strike <= 0:
@@ -213,6 +241,8 @@ class Option:
 
     def __post_init__(self) -> None:
         split_pair(self.pair)
+        validate_finite(notional=self.notional, strike=self.strike,
+                        expiry=self.expiry)
         if self.strike <= 0:
             raise ValueError("strike must be > 0")
         if self.expiry < 0:
@@ -295,6 +325,15 @@ class Book:
                 "shock to 'FX:USD' is not a valid factor: USD is the pivot "
                 "(its USD price is identically 1). Shock the other leg(s)."
             )
+        # NaN policy: refuse.  A single NaN scenario entry otherwise
+        # propagates to a NaN P&L, a NaN quantile and a NaN VaR without any
+        # exception being raised anywhere on the path.
+        for name, value in out.items():
+            if not np.all(np.isfinite(np.asarray(value, dtype=float))):
+                raise ValueError(
+                    f"shock for factor {name!r} contains NaN or infinite "
+                    "values (NaN policy: refuse, never impute)"
+                )
         return out
 
     def _shocked_curves(
@@ -369,6 +408,13 @@ class Book:
 
         Broadcasts over scenario arrays in ``shocks``; scalar in/scalar out.
         """
+        if option_method not in ("full", "delta_vega", "delta_vega_gamma"):
+            # Validated up front so a typo is caught even on option-free
+            # books (where the per-position branch would never see it).
+            raise ValueError(
+                "option_method must be 'full', 'delta_vega' or "
+                f"'delta_vega_gamma', got {option_method!r}"
+            )
         sh = self._normalise_shocks(shocks)
         spot, rates, vols = self._shocked_curves(market, sh)
         total = 0.0

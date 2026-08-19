@@ -22,7 +22,7 @@ crate's `erfc`-based CDF, not semantics. This proves the two
 implementations encode identical conventions (BASE/QUOTE, two rates, theta
 per year, ACT/365F).
 
-## Identity and property tests (69 integration tests, 19 doctests)
+## Identity and property tests (77 integration tests, 19 doctests — 96 in total)
 
 | Category | Check | Tolerance |
 |---|---|---|
@@ -38,6 +38,13 @@ per year, ACT/365F).
 | Monte Carlo | price within 3 SE of analytic; `SE(antithetic+CV) < 0.5 * SE(plain)`; same seed => bit-identical result (`.to_bits()` equality); different seed => different (`monte_carlo::*`) | 3 SE / exact |
 | Implied vol | round trips across the Python-reference-style grid incl. negative rates and a high-vol wing, to 1e-10; a dedicated short-dated-wing case to 2e-8 (see "Known failure modes" below); zero-time-value degenerate case (`implied_vol::*`) | 1e-9 – 1e-10 |
 | Edge cases | negative rates (both legs), deep ITM/OTM bounds, tiny tenor + high vol stay finite, extreme-moneyness `N(d1)/N(d2)` don't degenerate, RNG stream pinned across releases (`edge_cases::*`) | various |
+| **Non-finite rejection** | NaN, `+inf` and `-inf` in **every** float slot of **every** public entry point — `gk_price`, `d1`, `d2`, `analytic_greeks`, `finite_difference_greeks`, `delta`, `strike_from_delta`, `binomial_price`, `mc_price`, `black76_price`, `black76_from_spot`, `implied_vol` (incl. the premium), `cip_forward`, `forward_points` (incl. `pip_factor`), `synthetic_forward_from_options`, `atm_forward_strike`, `atm_dns_strike`, `premium_adjust_spot_delta`, `spot_to_forward_delta`, `forward_to_spot_delta` (`edge_cases::every_entry_point_rejects_non_finite_inputs`) | exact (must `Err`) |
+| 100x moneyness | `S/K` from 1/100 to 100 x `T` in {1d, 1y, 30y, 100y}: prices finite, non-negative, inside `[0, S e^{-r_f T}]` / `[0, K e^{-r_d T}]`, parity to 1e-13 **relative to notional scale**; all nine Greeks finite and correctly signed | 1e-13 rel |
+| Zero / negative rate regimes | `(r_d, r_f)` in {(0,0), (0,2%), (2%,0), (-0.75%,-0.5%), (-5%,+5%), (+5%,-5%)}: parity holds and implied vol round-trips | 1e-14 / 1e-9 |
+| Boundary deltas | `target_delta` in {0, +/-1, just outside, +/-1e300} rejected for all four conventions; `1e-4` (just inside) still solves and round-trips; a spot delta whose forward equivalent reaches 1 is rejected | exact / 1e-8 |
+| Delta bounds at extremes | at 100x moneyness every convention's delta stays inside its own cap (`e^{-r_f T}`, `1`, `(K/F) e^{-r_f T}`, `K/F`) and never goes NaN; deep-ITM spot delta pins to `e^{-r_f T}` | 1e-12 |
+| Minimum path counts | `n_paths` in {2, 3, 4, 5} x {antithetic, plain} x {CV, no CV}: `std_error` finite and `>= 0`, CI ordered; the single-antithetic-pair case reports `SE = 0` exactly rather than computing `0/0 = NaN` | exact |
+| MC at extremes | 100x moneyness and `T = 30y` within `3 SE + 1e-10 x scale` of analytic GK | 3 SE + rel |
 
 ## Known failure modes and numerical limits
 
@@ -107,6 +114,38 @@ per year, ACT/365F).
   returns `Err` rather than silently returning the wrong branch.
 * **`d1`/`d2` undefined at `sigma * sqrt(T) = 0`** — `d1()`/`d2()` return
   `Err`; the pricers switch to the analytic limits instead.
+* **NaN is the failure mode this engine guards hardest against.** A
+  validation written as `if x <= 0.0 { return Err(...) }` silently
+  *accepts* NaN, because every IEEE-754 comparison against NaN is false.
+  Rust's type system does not help here — `f64::NAN < 0.0` is false
+  exactly as in C and C++. Every public entry point therefore validates
+  with `is_finite()` (via `require_finite`/`validate_inputs`) rather than
+  with an ordering comparison, and the contract is pinned by
+  `edge_cases::every_entry_point_rejects_non_finite_inputs`, which
+  poisons each float slot of each function in turn. The motivation is
+  operational, not aesthetic: a NaN price or a NaN delta breaches no
+  limit and colours no traffic light (`NaN <= limit` is false, but so is
+  `NaN > limit`), so it propagates into an aggregated book number
+  unnoticed. Three concrete holes closed in this pass:
+  `premium_adjust_spot_delta` accepted a NaN premium/delta and returned a
+  NaN hedge ratio; `spot_to_forward_delta`/`forward_to_spot_delta`
+  scaled a NaN delta through unchecked; and `forward_points` accepted
+  `pip_factor = +inf` (`!(inf > 0.0)` is false, so a "must be positive"
+  guard alone lets it through) and returned `inf` points.
+* **Finite-difference Greeks need a live bump.** `finite_difference_greeks`
+  now rejects `T <= 0`, `sigma <= 0` and any `rel_bump` that is not
+  finite and strictly positive. Previously `T = 0` collapsed the theta
+  bump `min(1e-6, T/4)` to exactly zero, making the difference quotient
+  an unreported `0/0 = NaN`, and `rel_bump = 0` did the same for delta
+  and gamma. Analytic `analytic_greeks` was, and remains, the right call
+  in those regimes (it errors cleanly).
+* **Control variates are unbiased, not non-negative.** At single-digit
+  path counts the fitted beta is pure noise and the adjusted estimate
+  `X - beta (C - E[C])` can come out slightly negative even though every
+  raw payoff is non-negative. This is a property of the estimator, not a
+  defect; the minimum-path-count test asserts non-negativity only for the
+  plain estimator, and the desk rule is simply not to run a control
+  variate at trivial path counts.
 
 ## Benchmark table
 

@@ -121,7 +121,7 @@ quantitative version of "alpha pays for firm liquidity".
 ## 5. What a reviewer should run
 
 ```bash
-python -m pytest tests -q          # 121 tests, ~1 s, offline
+python -m pytest tests -q          # 152 tests, ~1 s, offline
 python examples/run_pipeline.py    # full pipeline with the tables above
 ```
 

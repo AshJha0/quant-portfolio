@@ -273,6 +273,12 @@ def es_backtest_acerbi_szekely(
     es = np.asarray(es_forecasts, dtype=float).ravel()
     if not (pnl.size == var.size == es.size):
         raise ValueError("pnl, var_forecasts and es_forecasts must align")
+    if not (np.isfinite(pnl).all() and np.isfinite(var).all()
+            and np.isfinite(es).all()):
+        raise ValueError(
+            "pnl/var_forecasts/es_forecasts contain NaN or infinite values "
+            "(NaN policy: refuse, never impute)"
+        )
     if np.any(es <= 0):
         raise ValueError("es_forecasts must be positive losses")
     n = pnl.size

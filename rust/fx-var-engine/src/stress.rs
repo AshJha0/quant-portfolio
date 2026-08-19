@@ -49,8 +49,41 @@ pub struct Scenario {
 }
 
 /// Convert a simple percentage move to a log return: `ln(1 + pct)`.
-pub fn simple_to_log(pct: f64) -> f64 {
-    pct.ln_1p()
+///
+/// The domain is `pct > -1` (a currency cannot lose more than 100 % of its
+/// value). Outside it the map is not a log return at all: `pct = -1`
+/// returns `ln(0) = -inf` and `pct < -1` returns `NaN`. Both used to be
+/// returned *silently*, so a fat-fingered `-1.0` in a scenario definition
+/// produced an infinite shock, an infinite scenario P&L, and a stress
+/// report whose worst-case row was `-inf` — or, with `NaN`, a report that
+/// sorted arbitrarily and showed the "worst" scenario as harmless. The
+/// function therefore returns a [`Result`] and rejects the boundary.
+///
+/// # Errors
+/// [`FxVarError::Invalid`] unless `pct` is finite and `> -1`.
+///
+/// ```
+/// use fx_var_engine::stress::simple_to_log;
+/// assert!((simple_to_log(0.0).unwrap()).abs() < 1e-15);
+/// assert!((simple_to_log(-0.081).unwrap() - (-0.081f64).ln_1p()).abs() < 1e-15);
+/// assert!(simple_to_log(-1.0).is_err());   // ln(0) = -inf
+/// assert!(simple_to_log(-1.5).is_err());   // NaN
+/// assert!(simple_to_log(f64::NAN).is_err());
+/// ```
+pub fn simple_to_log(pct: f64) -> Result<f64> {
+    if !(pct > -1.0) || !pct.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "simple_to_log: a simple move must be finite and > -100%, got {pct}; \
+             ln(1 + pct) is -inf at -100% and NaN below it"
+        )));
+    }
+    Ok(pct.ln_1p())
+}
+
+/// Internal helper for the *calibrated library constants* below, all of
+/// which are compile-time literals inside the domain.
+fn lit_log(pct: f64) -> f64 {
+    simple_to_log(pct).expect("calibrated scenario constant is inside (-1, inf)")
 }
 
 /// Library of calibrated historical FX replay scenarios, keyed
@@ -62,11 +95,11 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "GBP flash - Brexit referendum (24 Jun 2016)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("GBP").unwrap(), simple_to_log(-0.081)),
-                (fx_factor("EUR").unwrap(), simple_to_log(-0.024)),
-                (fx_factor("JPY").unwrap(), simple_to_log(0.039)),
-                (fx_factor("CHF").unwrap(), simple_to_log(0.015)),
-                (fx_factor("AUD").unwrap(), simple_to_log(-0.019)),
+                (fx_factor("GBP").unwrap(), lit_log(-0.081)),
+                (fx_factor("EUR").unwrap(), lit_log(-0.024)),
+                (fx_factor("JPY").unwrap(), lit_log(0.039)),
+                (fx_factor("CHF").unwrap(), lit_log(0.015)),
+                (fx_factor("AUD").unwrap(), lit_log(-0.019)),
                 (ir_factor("GBP"), -0.0025), // BoE easing repricing
             ]),
             description: "Cable -8.1% in a day; safe havens bid; front-end GBP rates \
@@ -79,9 +112,9 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "CHF depeg - SNB floor removal (15 Jan 2015)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("CHF").unwrap(), simple_to_log(0.149)),
-                (fx_factor("EUR").unwrap(), simple_to_log(-0.014)),
-                (fx_factor("JPY").unwrap(), simple_to_log(0.012)),
+                (fx_factor("CHF").unwrap(), lit_log(0.149)),
+                (fx_factor("EUR").unwrap(), lit_log(-0.014)),
+                (fx_factor("JPY").unwrap(), lit_log(0.012)),
                 (ir_factor("CHF"), -0.0050), // SNB cut to -0.75%
             ]),
             description: "CHF +14.9% vs USD close-to-close (intraday >+30%); the \
@@ -94,10 +127,10 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "JPY carry unwind (7-8 Oct 1998)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("JPY").unwrap(), simple_to_log(0.115)),
-                (fx_factor("AUD").unwrap(), simple_to_log(-0.040)),
-                (fx_factor("NZD").unwrap(), simple_to_log(-0.040)),
-                (fx_factor("CHF").unwrap(), simple_to_log(0.020)),
+                (fx_factor("JPY").unwrap(), lit_log(0.115)),
+                (fx_factor("AUD").unwrap(), lit_log(-0.040)),
+                (fx_factor("NZD").unwrap(), lit_log(-0.040)),
+                (fx_factor("CHF").unwrap(), lit_log(0.020)),
             ]),
             description: "USDJPY 131 -> 117 in two sessions as levered carry unwound."
                 .to_string(),
@@ -113,8 +146,12 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
 /// # Errors
 /// [`FxVarError::Invalid`] for `pct <= -100%`.
 pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
-    if pct <= -1.0 {
-        return Err(FxVarError::invalid("pct must be > -100%"));
+    // `!(pct > -1.0)` rather than `pct <= -1.0`: the latter is false for
+    // NaN, which would produce a NaN shock on every currency in the book.
+    if !(pct > -1.0) || !pct.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "pct must be finite and > -100%, got {pct}"
+        )));
     }
     let name = format!("USD {}{}% broad move", if pct >= 0.0 { "+" } else { "" }, pct * 100.0);
     let mut shocks = HashMap::new();
@@ -124,7 +161,7 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
             continue;
         }
         // USD +pct vs CCY means CCYUSD falls by pct/(1+pct) in simple terms.
-        shocks.insert(fx_factor(&u)?, simple_to_log(-pct / (1.0 + pct)));
+        shocks.insert(fx_factor(&u)?, simple_to_log(-pct / (1.0 + pct))?);
     }
     Ok(Scenario { name, shocks, description: "Uniform USD move against all book currencies.".to_string() })
 }
@@ -139,14 +176,19 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
 /// # Errors
 /// [`FxVarError::Invalid`] for `jump <= -100%`.
 pub fn peg_break_scenario(ccy: &str, jump: f64, contagion: &HashMap<String, f64>) -> Result<Scenario> {
-    if jump <= -1.0 {
-        return Err(FxVarError::invalid("jump must be > -100%"));
+    if !(jump > -1.0) || !jump.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "jump must be finite and > -100%, got {jump}"
+        )));
     }
     let u = ccy.to_uppercase();
     let mut shocks = HashMap::new();
-    shocks.insert(fx_factor(&u)?, simple_to_log(jump));
+    shocks.insert(fx_factor(&u)?, simple_to_log(jump)?);
     for (c, &m) in contagion {
-        shocks.insert(fx_factor(c)?, simple_to_log(m));
+        // Contagion moves are validated too: a -100% contagion entry used
+        // to become a silent -inf shock on a currency the caller was not
+        // even focused on.
+        shocks.insert(fx_factor(c)?, simple_to_log(m)?);
     }
     let direction = if jump < 0.0 { "devaluation" } else { "revaluation" };
     let name = format!("{u} peg break ({}{:.1}% {direction})", if jump >= 0.0 { "+" } else { "" }, jump * 100.0);
@@ -187,7 +229,10 @@ pub fn run_stress(book: &Book, market: &Market, scenarios: &HashMap<String, Scen
         let pnl = compiled.pnl_map(&filtered)?;
         rows.push(StressRow { key: key.clone(), name: sc.name.clone(), pnl, description: sc.description.clone() });
     }
-    rows.sort_by(|a, b| a.pnl.partial_cmp(&b.pnl).expect("finite pnl"));
+    // `total_cmp`: a total order on every f64, so the report cannot panic
+    // on a scenario that revalues to a non-finite P&L (and such a row
+    // sorts deterministically rather than arbitrarily).
+    rows.sort_by(|a, b| a.pnl.total_cmp(&b.pnl));
     Ok(rows)
 }
 
@@ -205,9 +250,17 @@ pub struct ReverseStress {
 }
 
 fn checked_sigma_p(w: &[f64], cov: &Matrix) -> Result<f64> {
+    // Finiteness first: `NaN.max(0.0)` is 0.0, so a NaN quadratic form
+    // would be reported as "zero linear risk" rather than as corrupt data.
+    if w.iter().any(|v| !v.is_finite()) {
+        return Err(FxVarError::invalid("reverse stress: exposures must all be finite"));
+    }
+    if !cov.all_finite() {
+        return Err(FxVarError::invalid("reverse stress: covariance must be finite"));
+    }
     let sp2 = cov.quad_form(w)?;
     let sp = sp2.max(0.0).sqrt();
-    if !(sp > 0.0) {
+    if !(sp > 0.0) || !sp.is_finite() {
         return Err(FxVarError::invalid("book has zero linear risk; reverse stress undefined"));
     }
     Ok(sp)
@@ -222,8 +275,10 @@ fn checked_sigma_p(w: &[f64], cov: &Matrix) -> Result<f64> {
 /// [`FxVarError::Invalid`] if the book has zero linear risk or
 /// `radius <= 0`.
 pub fn reverse_stress_linear(exposures: &[f64], cov: &Matrix, radius: f64) -> Result<ReverseStress> {
-    if !(radius > 0.0) {
-        return Err(FxVarError::invalid("radius / loss_target must be positive"));
+    if !(radius > 0.0) || !radius.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "radius / loss_target must be finite and positive, got {radius}"
+        )));
     }
     let sp = checked_sigma_p(exposures, cov)?;
     let sw = cov.matvec(exposures)?;
@@ -251,8 +306,10 @@ pub fn reverse_stress_for_loss(exposures: &[f64], cov: &Matrix, loss_target: f64
 /// [`FxVarError::Invalid`] if `radius <= 0` or the book has zero linear
 /// risk; [`FxVarError::Numerical`] if the covariance cannot be factorised.
 pub fn reverse_stress_numerical(exposures: &[f64], cov: &Matrix, radius: f64, seed: u64) -> Result<ReverseStress> {
-    if !(radius > 0.0) {
-        return Err(FxVarError::invalid("radius must be positive"));
+    if !(radius > 0.0) || !radius.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "radius must be finite and positive, got {radius}"
+        )));
     }
     checked_sigma_p(exposures, cov)?;
     let n = exposures.len();

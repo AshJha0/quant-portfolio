@@ -207,3 +207,106 @@ class TestWalkForwardBacktest:
         )
         assert "benchmark" in result.stats
         assert "sharpe" in result.stats
+
+
+class TestWalkForwardWindowsLargerThanData:
+    """The whole family of "the window does not fit" cases. Each returns
+    an empty window list (or an informative error at the backtest layer)
+    rather than silently truncating a window and quietly testing on less
+    data than the caller asked for."""
+
+    @pytest.mark.parametrize(
+        "n,formation,trading",
+        [
+            (100, 252, 63),   # formation alone exceeds the sample
+            (100, 50, 500),   # trading alone exceeds the sample
+            (100, 90, 20),    # formation + trading exceeds the sample by 10
+            (10, 6, 5),       # formation + trading exceeds the sample by 1
+            (2, 2, 1),
+        ],
+    )
+    def test_windows_that_do_not_fit_produce_no_windows(self, n, formation, trading):
+        assert walk_forward_windows(n, formation, trading) == []
+
+    def test_one_observation_is_the_difference_between_one_window_and_none(self):
+        """The exact boundary: formation + trading == n fits exactly one
+        window (consuming every observation); one observation fewer fits
+        none. Worth pinning because an off-by-one here would either drop a
+        legitimate window or read past the end of the series."""
+        wins = walk_forward_windows(100, formation=80, trading=20)
+        assert len(wins) == 1
+        assert wins[0].formation_start == 0
+        assert wins[0].trading_end == 99  # last valid 0-based index
+        assert walk_forward_windows(99, formation=80, trading=20) == []
+
+    @pytest.mark.parametrize(
+        "formation,trading",
+        [(252, 63), (2000, 10), (10, 2000)],
+    )
+    def test_backtest_raises_informative_error_when_no_window_fits(
+        self, formation, trading
+    ):
+        prices = _trending_prices(n=300, seed=4)
+        with pytest.raises(ValueError, match="too short"):
+            walk_forward_backtest(
+                prices, range(5, 15, 5), range(20, 40, 10), formation, trading
+            )
+
+    def test_error_message_names_the_offending_sizes(self):
+        prices = _trending_prices(n=300, seed=4)
+        with pytest.raises(ValueError) as exc:
+            walk_forward_backtest(
+                prices, range(5, 15, 5), range(20, 40, 10), formation=252, trading=63
+            )
+        message = str(exc.value)
+        assert "252" in message and "63" in message and "300" in message
+
+    def test_formation_window_too_short_for_the_slow_ma_fails_loudly(self):
+        """A formation window too short for the slow moving average to warm
+        up gives an all-flat signal, a zero-variance return series and a
+        NaN Sharpe for every grid cell -- so selection has nothing to rank
+        and must fail loudly rather than pick an arbitrary corner."""
+        prices = _trending_prices(n=400, seed=6)
+        with pytest.raises(ValueError, match="empty or all-NaN"):
+            walk_forward_backtest(
+                prices,
+                fast_range=range(5, 15, 5),
+                slow_range=range(300, 340, 20),
+                formation=60,
+                trading=20,
+            )
+
+
+class TestWalkForwardStitching:
+    def test_stitched_returns_cover_every_out_of_sample_day_exactly_once(self):
+        """With the default step the trading windows tile the out-of-sample
+        period: no day is counted twice (which would double-count
+        compounding) and none is dropped."""
+        prices = _trending_prices(n=800, seed=11)
+        result = walk_forward_backtest(
+            prices, range(5, 20, 5), range(30, 80, 20), formation=252, trading=63
+        )
+        assert result.equity.index.is_unique
+        assert result.equity.index.is_monotonic_increasing
+        expected_days = 63 * len(walk_forward_windows(len(prices), 252, 63))
+        assert len(result.equity) == expected_days
+
+    def test_stitched_equity_is_the_product_of_window_returns_not_a_splice(self):
+        """The stitched curve compounds through the seams: its final value
+        equals the product of each window's own gross return. A naive
+        splice of per-window equity curves would restart at 1.0 each time
+        and silently lose (or duplicate) the compounding."""
+        prices = _trending_prices(n=800, seed=12)
+        result = walk_forward_backtest(
+            prices, range(5, 20, 5), range(30, 80, 20), formation=252, trading=63,
+            cost_bps=0.0,
+        )
+        windows = walk_forward_windows(len(prices), 252, 63)
+        gross = 1.0
+        for w in windows:
+            start, end = prices.index[w.trading_start], prices.index[w.trading_end]
+            segment = result.equity.loc[start:end]
+            first = result.equity.index.get_loc(start)
+            prior = 1.0 if first == 0 else result.equity.iloc[first - 1]
+            gross *= segment.iloc[-1] / prior
+        assert result.equity.iloc[-1] == pytest.approx(gross, rel=1e-12)

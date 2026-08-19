@@ -21,11 +21,23 @@
 //! Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 //! `t` in years, `sigma` annualised.
 
-use crate::black_scholes::{bs_price, validate_inputs, OptionType, PricingError};
+use crate::black_scholes::{
+    bs_price, validate_inputs, validate_rates, OptionType, PricingError,
+};
 use crate::rng::Xoshiro256PlusPlus;
 
 /// Two-sided 95% normal quantile (matches the Python reference constant).
 const Z95: f64 = 1.959_963_984_540_054;
+
+/// Largest accepted `n_paths`.
+///
+/// The estimator materialises one `f64` per path (two with a control
+/// variate), so 1e9 paths already asks for 8-16 GB. Anything above this
+/// is rejected as [`PricingError::InvalidInput`] rather than being left
+/// to abort the process in the allocator; it also keeps the internal
+/// `2 * n_paths.div_ceil(2)` path count free of overflow on 32-bit
+/// targets.
+pub const MAX_PATHS: usize = 1_000_000_000;
 
 /// Monte Carlo estimate with statistical error bars.
 ///
@@ -103,7 +115,7 @@ fn summary(samples: &[f64], n_paths: usize) -> McResult {
 /// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type` — as in
 ///   [`bs_price`].
 /// * `n_paths` — total number of paths (rounded up to even when
-///   `antithetic`), `>= 2`.
+///   `antithetic`), in `[2, MAX_PATHS]`.
 /// * `antithetic` — use antithetic pairs `(Z, -Z)`.
 /// * `control_variate` — use the discounted terminal stock as a control
 ///   variate with the sample-optimal coefficient.
@@ -114,7 +126,8 @@ fn summary(samples: &[f64], n_paths: usize) -> McResult {
 ///
 /// # Errors
 ///
-/// [`PricingError::InvalidInput`] on invalid inputs or `n_paths < 2`.
+/// [`PricingError::InvalidInput`] on invalid inputs, `n_paths < 2`, or
+/// `n_paths > MAX_PATHS`.
 ///
 /// # Examples
 ///
@@ -141,9 +154,16 @@ pub fn mc_price(
     seed: u64,
 ) -> Result<McResult, PricingError> {
     validate_inputs(s, k, t, sigma)?;
+    validate_rates(r, q)?;
     if n_paths < 2 {
         return Err(PricingError::InvalidInput(format!(
             "n_paths must be >= 2, got {n_paths}"
+        )));
+    }
+    if n_paths > MAX_PATHS {
+        return Err(PricingError::InvalidInput(format!(
+            "n_paths must be <= {MAX_PATHS}, got {n_paths} \
+             (the estimator buffers 8-16 bytes per path)"
         )));
     }
     if t == 0.0 || sigma == 0.0 {

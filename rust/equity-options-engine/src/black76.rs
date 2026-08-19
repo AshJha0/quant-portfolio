@@ -21,7 +21,7 @@
 //! `rho = -T * price`.
 
 use crate::black_scholes::{
-    norm_cdf, norm_pdf, validate_inputs, OptionType, PricingError,
+    norm_cdf, norm_pdf, validate_inputs, validate_rates, OptionType, PricingError,
 };
 
 /// Analytic Black-76 Greeks (with respect to the forward `f`).
@@ -107,6 +107,7 @@ pub fn black76_price(
     option_type: OptionType,
 ) -> Result<f64, PricingError> {
     validate_inputs(f, k, t, sigma)?;
+    validate_rates(r, 0.0)?;
     let sign = option_type.sign();
     if t == 0.0 {
         return Ok((sign * (f - k)).max(0.0));
@@ -144,6 +145,7 @@ pub fn black76_greeks(
     sigma: f64,
     option_type: OptionType,
 ) -> Result<Black76Greeks, PricingError> {
+    validate_rates(r, 0.0)?;
     let (d1, d2) = b76_d1_d2(f, k, t, sigma)?;
     let df = (-r * t).exp();
     let sqrt_t = t.sqrt();

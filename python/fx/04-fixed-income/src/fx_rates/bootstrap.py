@@ -23,6 +23,7 @@ from typing import Sequence
 
 import numpy as np
 
+from ._validation import require_finite
 from .curve import DiscountCurve
 
 __all__ = [
@@ -45,6 +46,7 @@ def df_from_deposit(rate: float, tau: float) -> float:
 
     ``DF = 1 / (1 + r * tau)`` with ``tau`` the accrual fraction in years.
     """
+    require_finite(rate=rate, tau=tau)
     if tau <= 0.0:
         raise ValueError(f"deposit accrual fraction must be > 0, got {tau}")
     df = 1.0 / (1.0 + rate * tau)
@@ -55,6 +57,7 @@ def df_from_deposit(rate: float, tau: float) -> float:
 
 def deposit_rate_from_df(df: float, tau: float) -> float:
     """Simple-interest deposit rate implied by a discount factor."""
+    require_finite(df=df, tau=tau)
     if tau <= 0.0 or df <= 0.0:
         raise ValueError("require tau > 0 and df > 0")
     return (1.0 / df - 1.0) / tau
@@ -181,6 +184,7 @@ def basis_adjusted_curve(
         return foreign_curve
     st = np.asarray([t for t, _ in basis_spreads], dtype=float)
     sv = np.asarray([s for _, s in basis_spreads], dtype=float)
+    require_finite(basis_tenors=st, basis_spreads=sv)
     order = np.argsort(st)
     st, sv = st[order], sv[order]
     if np.any(st <= 0.0):
@@ -206,10 +210,12 @@ def implied_basis_from_forwards(
 
     Returns a list of ``(T, s)`` in decimal, one per forward quote.
     """
+    require_finite(spot=spot)
     if spot <= 0.0:
         raise ValueError(f"spot must be > 0, got {spot}")
     out: list[Quote] = []
     for t, f in sorted(forwards):
+        require_finite(forward_tenor=t, forward_quote=f)
         if t <= 0.0 or f <= 0.0:
             raise ValueError(f"invalid forward quote (T={t}, F={f})")
         cip = spot * foreign_curve.df(t) / domestic_curve.df(t)

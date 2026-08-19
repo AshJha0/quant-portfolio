@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ._validation import require_finite
+
 __all__ = ["CIPQuotes", "CIPArbitrageResult", "no_arb_bounds", "detect_cip_arbitrage"]
 
 
@@ -56,6 +58,15 @@ class CIPQuotes:
     tau: float
 
     def __post_init__(self) -> None:
+        # Finiteness first: with a NaN quote every comparison below is False,
+        # so the detector would report a confident "no arbitrage".
+        require_finite(
+            spot_bid=self.spot_bid, spot_ask=self.spot_ask,
+            fwd_bid=self.fwd_bid, fwd_ask=self.fwd_ask,
+            dom_rate_bid=self.dom_rate_bid, dom_rate_ask=self.dom_rate_ask,
+            for_rate_bid=self.for_rate_bid, for_rate_ask=self.for_rate_ask,
+            tau=self.tau,
+        )
         if self.tau <= 0.0:
             raise ValueError(f"tau must be > 0, got {self.tau}")
         if min(self.spot_bid, self.spot_ask, self.fwd_bid, self.fwd_ask) <= 0.0:
@@ -113,6 +124,7 @@ def detect_cip_arbitrage(q: CIPQuotes, min_pnl: float = 0.0) -> CIPArbitrageResu
         ``min_pnl``, else a no-arbitrage result.  Both directions cannot be
         simultaneously profitable when bid <= ask everywhere.
     """
+    require_finite(min_pnl=min_pnl)
     f_lower, f_upper = no_arb_bounds(q)
     pnl_sell = q.fwd_bid * (1.0 + q.for_rate_bid * q.tau) / q.spot_ask - (
         1.0 + q.dom_rate_ask * q.tau

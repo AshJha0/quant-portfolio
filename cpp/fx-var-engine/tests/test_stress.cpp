@@ -136,3 +136,17 @@ TEST(ReverseStress, ZeroRiskBookIsRejected) {
   EXPECT_THROW(run_stress(Book{}, m, historical_scenarios()),
                std::invalid_argument);
 }
+
+
+TEST(Stress, SimpleToLogRejectsImpossibleMoves) {
+  // A -100% (or worse) move is an infinite log return; refuse it rather
+  // than pushing -inf/NaN through every position in the report.
+  EXPECT_THROW(simple_to_log(-1.0), std::invalid_argument);
+  EXPECT_THROW(simple_to_log(-1.5), std::invalid_argument);
+  EXPECT_THROW(simple_to_log(std::nan("")), std::invalid_argument);
+  EXPECT_THROW(usd_broad_move({"EUR"}, -1.0), std::invalid_argument);
+  EXPECT_THROW(peg_break_scenario("HKD", -1.0), std::invalid_argument);
+  // Legitimate moves still round-trip exactly.
+  EXPECT_DOUBLE_EQ(simple_to_log(0.0), 0.0);
+  EXPECT_NEAR(std::expm1(simple_to_log(-0.30)), -0.30, 1e-15);
+}

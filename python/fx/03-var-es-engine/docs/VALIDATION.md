@@ -2,7 +2,7 @@
 
 Contract items **3** (how it was validated) and **4** (where it fails), with
 the numbers produced by the committed seeds. Reproduce everything with
-`python -m pytest tests -q` (182 tests, ~7s, offline) and
+`python -m pytest tests -q` (365 tests, ~7s, offline) and
 `python examples/run_pipeline.py` (~4s).
 
 ---
@@ -130,7 +130,32 @@ on [−4,4] and **raises** instead of returning a number
 (`test_parametric_var.py::test_cf_domain_check_rejects_extreme_moments`);
 `check_domain=False` is an explicit, documented override.
 
-### F7 — Singular covariance
+### F7 — Non-finite market data was absorbed, not refused (fixed)
+
+The engine's stated NaN policy is *refuse, never impute*, but it was only
+enforced on the factor-**return** history, not on the `Market` snapshot
+itself. Two silent paths existed and are now closed:
+
+* A **NaN interest rate** propagated straight through to a NaN P&L and a
+  NaN VaR — visibly wrong, but only if someone looked.
+* A **NaN implied vol** was far worse: `gk_d1_d2` decides the degenerate
+  branch with `sig_sqrt_t > 1e-12`, and `NaN > 1e-12` is `False`, so a NaN
+  vol was silently treated as the **zero-vol** case. The option priced at
+  forward intrinsic and the book reported a P&L of *exactly 0.0* — a
+  plausible-looking number with no warning attached.
+
+`Market.__post_init__` now rejects non-finite (and negative) rates and vols
+at construction, and `fx_var.gk._validate` rejects non-finite `strike`,
+`expiry` and `vol` directly. Neither change alters any value for finite
+inputs — it converts two silent-wrong-answer paths into `ValueError`s
+(`test_edge_cases_extra.py::TestNonFiniteMarketData`).
+
+A third, smaller gap: `option_method` was only validated inside the
+per-position branch, so a typo (`"delta"` for `"delta_vega"`) was accepted
+silently on any book without options. It is now validated up front in
+`Book.value_usd`.
+
+### F8 — Singular covariance
 
 Two currencies pegged to the same anchor produce a singular covariance;
 plain Cholesky fails. `robust_cholesky` escalates diagonal jitter from
@@ -147,6 +172,107 @@ raises; df≤2 Student-t raises; jump prob outside [0,1] raises; zero-risk book
 reverse stress raises; Basel inputs x>n raise; Kupiec x=0 handled via the
 0·log0 convention; Christoffersen with no exceptions returns LR=0; the
 degenerate symmetric exception sequence (π₀₁=π₁₁) returns LR=0 exactly.
+
+Extended coverage in `tests/test_edge_cases_extra.py`:
+
+* **Non-finite market data** — NaN/Inf rates and vols, negative vols and
+  non-positive spots all raise at `Market` construction; `gk_price` rejects
+  non-finite strike/expiry/vol directly (see F7).
+* **Base-currency duality** — base-ccy cash is riskless in USD, EUR *and*
+  JPY reporting; foreign cash P&L matches `N·S·(e^Δ−1)` to 1e-12; and
+  translating a book's P&L between reporting currencies uses the
+  **post-shock** rate (`PnL_EUR = PnL_USD / (S_EUR·e^{Δ_EUR})`), which is
+  the classic off-by-one-rate error in multi-currency P&L.
+* **Foreign–domestic inversion** — long 1m EUR vs USD and short 1.08m USD
+  vs EUR give identical P&L across a ±3% shock grid.
+* **Cross triangulation** — EURJPY carries no factor of its own, so an
+  equal log move in both USD legs is exactly flat.
+* **CIP consistency** — ATM forwards value to zero at 0.5y/1y/2y across
+  EURUSD, USDJPY and the EURJPY cross; the FX delta of a 1y forward equals
+  `N·e^{−r_f T}·S` to 1e-5; the two IR legs have opposite signs; book-level
+  put–call parity holds at the ATM-forward strike; T=0 options price
+  intrinsic.
+* **Pegged pairs end to end** — `PegBlindnessWarning` fires on band noise,
+  HS 99% VaR comes in under 0.05% of the USD-equivalent leg, the −30%
+  peg-break scenario exceeds it by more than 1000×, an *upward* break flips
+  the sign (the CHF-2015 direction), and `warn_pegs=False` suppresses the
+  warning cleanly.
+* **Tiny samples / degenerate α** — empty P&L samples raise; a single
+  scenario returns itself; α ∈ {0, 1, −0.1, 1.5, 2.0} raise; horizons ≤ 0
+  raise; α = 0.999 on 5 scenarios collapses the tail onto the single worst
+  observation; α = 0.001 averages 99.9% of the mass and correctly reports a
+  *negative* VaR (the boundary atom is the best outcome).
+* **ES coherence, property-style** — ES ≥ VaR over 50 random t(4) samples ×
+  3 confidence levels; the two-peg-jump subadditivity counterexample shows
+  VaR violating subadditivity while ES does not; constant weights reproduce
+  the uniform-weight ES exactly.
+* **Scaling laws** — VaR is monotone in α, scales exactly as √h in the
+  horizon and exactly linearly in notional; t-VaR exceeds normal VaR at 99%
+  at equal σ but agrees within 10% at 90%; full-revaluation MC on a linear
+  spot book matches the closed-form variance-covariance VaR within 4 SE.
+
+### 4.1 Non-finite scalars: the guards that silently accepted NaN
+(`tests/test_nan_guards.py`, 119 tests)
+
+The NaN policy was enforced on *data* (market snapshots, factor-return
+frames) but not on the long tail of bare scalar arguments. Those were
+guarded only by inequalities — `if horizon_days <= 0`, `if sigma < 0`,
+`if df <= 2`, `if strike <= 0`, `if k <= 0` — and **every comparison
+against NaN is False**, so each guard passed NaN straight through and the
+engine returned `nan` as the VaR. That is the worst possible failure mode
+for this number: a NaN does not trip a limit, does not colour a Basel
+traffic light and does not look obviously wrong on a report.
+
+Closed, with a test per path:
+
+| Path | Was | Now |
+|---|---|---|
+| `validate_horizon(nan)` | `sqrt(nan)` scaling → NaN VaR/ES | raises |
+| `normal_var/normal_es/t_var/t_es(sigma=nan)` or `mean=nan` | NaN loss | raises |
+| `t_var/t_es(df=nan)` | `sqrt((df−2)/df)` → NaN | raises (df validated before any t special function) |
+| `portfolio_sigma` / `var_covar` with a NaN covariance entry or exposure | NaN σ → NaN VaR | raises |
+| `cornish_fisher_var(sigma/skew/kurtosis/mean = nan)` | misleading "non-monotone domain" error | raises naming the argument |
+| `robust_cholesky` on a non-finite covariance | NaN Cholesky factor → NaN scenarios | raises |
+| `simulate_factor_returns(dist="t", df=nan)` | NaN scenario matrix | raises |
+| `JumpSpec(mean=…nan, std=…nan)` | NaN jump sizes → NaN VaR | raises |
+| `Cash/Spot/Forward/Option` with a NaN notional, strike, expiry or entry rate | NaN book value | raises at construction |
+| A single NaN cell in a shock mapping or scenario `DataFrame` | NaN P&L vector → NaN quantile | raises naming the factor |
+| `usd_broad_move(pct=nan)`, `peg_break_scenario(jump/vol_spike/contagion = nan)` | NaN scenario shocks | raises |
+| `reverse_stress_linear(radius=nan / loss_target=nan)` | NaN worst-case shock | raises |
+| `es_backtest_acerbi_szekely` with non-finite P&L/VaR/ES | NaN test statistic | raises |
+
+Companion positive tests confirm the guards did not over-reject: √h scaling,
+the closed-form normal VaR constant, jump-overlay variance inflation, shock
+broadcasting over a scenario `DataFrame`, and an end-to-end four-position
+book (cash + spot + forward + option) returning finite `ES ≥ VaR > 0` from
+both historical and parametric methods.
+
+### 4.2 Cross-language golden vectors, now locked from Python
+(`tests/test_golden_vectors.py`)
+
+`cpp/fx-var-engine` and `rust/fx-var-engine` assert hard-coded constants
+generated from this package, but nothing on the Python side pinned them —
+a refactor here would have moved the reference silently, surfacing only as
+a failure in a different language's test suite. The three golden cases are
+now reproduced and asserted in Python at the same tolerances:
+
+* **Case A** — factor enumeration order `[FX:EUR, FX:JPY, IR:JPY, IR:USD]`
+  (the C++/Rust engines index the returns matrix positionally, so the order
+  is part of the contract); single-scenario book P&L 58 177.374 898 100 74;
+  plain HS 99% VaR/ES 61 919.808 905 876 24 / 62 006.120 062 248 47; 97.5%
+  61 237.426 008 895 97 / 61 777.936 082 718 57; BRW age-weighted
+  (λ = 0.995) 61 874.262 685 311 49 / 61 977.524 965 941 09.
+* **Case B** — `var_covar` on fixed exposures/covariance: normal 99% 1-day
+  153 339.504 419 629 17 / 175 675.629 720 028 5; t(5) 99%
+  171 803.123 890 914 05 / 227 327.531 497 414 4; normal 99% 10-day
+  484 902.089 247 483 8 / 555 535.119 299 658 3 (and exactly √10 × the
+  1-day figures).
+* **Case C** — Kupiec LR(8/250, 99%) = 7.733 550 724 494 520 5
+  (p = 0.005 420 405 194 127 799 4); Christoffersen LR on the fixed
+  9-exception pattern = 1.006 361 033 931 412 4 (p = 0.315 776 203 762 249 9);
+  Basel cumulative probabilities 0.892 187 626 903 624 9 (4, green),
+  0.958 816 815 930 151 4 (5, yellow, ×3.40) and 0.999 946 101 370 953
+  (10, red, ×4.00).
 
 ## 5. What is deliberately out of scope
 

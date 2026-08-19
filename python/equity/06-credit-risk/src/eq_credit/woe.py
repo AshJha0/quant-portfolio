@@ -89,6 +89,10 @@ def woe_iv_from_counts(
     n_bad = np.asarray(n_bad, dtype=float)
     if n_good.shape != n_bad.shape:
         raise ValueError("n_good and n_bad must have the same shape")
+    if (~np.isfinite(n_good)).any() or (~np.isfinite(n_bad)).any():
+        raise ValueError("counts must be finite (no NaN/Inf)")
+    if (n_good < 0).any() or (n_bad < 0).any():
+        raise ValueError("counts must be non-negative")
     tot_good, tot_bad = n_good.sum(), n_bad.sum()
     if tot_good <= 0 or tot_bad <= 0:
         raise ValueError(

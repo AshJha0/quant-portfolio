@@ -107,6 +107,24 @@ fn invalid_inputs_return_err() {
     assert!(
         mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 1, true, true, 42).is_err()
     );
+    // Non-finite inputs (including r/q) are rejected before any simulation.
+    assert!(
+        mc_price(100.0, 100.0, 1.0, f64::NAN, 0.2, 0.0, OptionType::Call, 1000, true, true, 42)
+            .is_err()
+    );
+    assert!(
+        mc_price(100.0, 100.0, f64::INFINITY, 0.05, 0.2, 0.0, OptionType::Call, 1000, true,
+                 true, 42)
+            .is_err()
+    );
+    // Path counts that would ask the allocator for tens of GB are
+    // rejected up front rather than aborting the process.
+    use eq_options_engine::monte_carlo::MAX_PATHS;
+    assert!(
+        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, MAX_PATHS + 1, true,
+                 true, 42)
+            .is_err()
+    );
 }
 
 #[test]
@@ -139,4 +157,65 @@ fn rng_stream_is_reproducible_and_well_behaved() {
         (var - 1.0).abs() < 3.0 * (2.0 / n as f64).sqrt(),
         "normal variance {var}"
     );
+}
+
+#[test]
+fn minimum_path_counts_produce_a_finite_standard_error() {
+    // n_paths = 2 with antithetic sampling leaves exactly ONE independent
+    // sample (the single antithetic pair average). The sample-variance
+    // denominator (n - 1) is then 0: a naive estimator computes 0/0 and
+    // reports a NaN standard error, which silently poisons every
+    // downstream confidence check. The estimator must instead report
+    // SE = 0 and a degenerate (point) confidence interval.
+    for &n in &[2usize, 3, 4] {
+        let r = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, n, true, true, 11)
+            .unwrap();
+        assert!(r.price.is_finite(), "n={n}: price {} not finite", r.price);
+        assert!(
+            r.std_error.is_finite() && r.std_error >= 0.0,
+            "n={n}: std_error {} must be a finite non-negative number",
+            r.std_error
+        );
+        assert!(r.ci_low.is_finite() && r.ci_high.is_finite(), "n={n}: CI not finite");
+        assert!(r.ci_low <= r.ci_high, "n={n}: inverted CI");
+        assert!(r.contains(r.price), "n={n}: CI must contain its own point estimate");
+    }
+    // The single-pair case specifically: one sample => SE is exactly 0,
+    // not NaN, and the interval degenerates to the point estimate.
+    let one_pair =
+        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 2, true, false, 11).unwrap();
+    assert_eq!(one_pair.std_error, 0.0);
+    assert_eq!(one_pair.ci_low, one_pair.price);
+    assert_eq!(one_pair.ci_high, one_pair.price);
+    assert_eq!(one_pair.n_paths, 2);
+    // Without antithetic sampling, 2 paths give 2 samples and a genuine
+    // (strictly positive, finite) standard error.
+    let two =
+        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 2, false, false, 11).unwrap();
+    assert!(two.std_error.is_finite());
+    assert!(two.ci_low < two.ci_high || two.std_error == 0.0);
+}
+
+#[test]
+fn extreme_moneyness_and_long_expiry_estimates_are_sane() {
+    // Deep OTM (100x strike) with a long expiry: the estimator must stay
+    // non-negative, finite, and bracket the analytic value within 3 SE.
+    for &(s, k, t) in &[(100.0, 10_000.0, 1.0), (10_000.0, 100.0, 1.0), (100.0, 100.0, 30.0)] {
+        let mc = mc_price(s, k, t, 0.03, 0.2, 0.01, OptionType::Call, 200_000, true, true, 99)
+            .unwrap();
+        let bs = bs_price(s, k, t, 0.03, 0.2, 0.01, OptionType::Call).unwrap();
+        assert!(mc.price.is_finite() && mc.std_error.is_finite(), "S={s}, K={k}, T={t}");
+        assert!(mc.price >= -1e-12, "negative MC price {} at S={s}, K={k}", mc.price);
+        // Tolerance is 3 SE plus a SCALE-RELATIVE floor: deep ITM the
+        // control variate drives the SE to ~1e-11, well below the
+        // floating-point accumulation noise of a 200k-term sum on a
+        // ~1e4-sized price, so an absolute-only tolerance would reject a
+        // perfectly healthy estimate on a large-notional trade.
+        assert!(
+            (mc.price - bs).abs() <= 3.0 * mc.std_error + 1e-9 * bs.abs().max(1.0),
+            "S={s}, K={k}, T={t}: MC {} vs BS {bs} (SE {})",
+            mc.price,
+            mc.std_error
+        );
+    }
 }

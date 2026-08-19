@@ -29,6 +29,7 @@ import numpy as np
 
 __all__ = [
     "FitResult",
+    "validate_filter_params",
     "validate_returns",
     "backcast",
     "gaussian_loglik",
@@ -65,13 +66,49 @@ def validate_returns(returns, min_obs: int = MIN_OBS) -> np.ndarray:
         raise ValueError(
             f"need at least {min_obs} returns for a stable GARCH-family fit, got {arr.size}"
         )
-    if float(np.std(arr)) == 0.0:
+    # Degeneracy test must be *relative*: a series pinned at a constant
+    # non-zero value (repeated fixing, stuck feed) has std ~1e-19 rather than
+    # exactly 0, which would otherwise slip through and yield meaningless
+    # parameter estimates from a flat likelihood.
+    sd = float(np.std(arr))
+    scale = float(np.max(np.abs(arr)))
+    if sd == 0.0 or (scale > 0.0 and sd <= 1e-12 * scale):
         raise ValueError(
             "returns are constant (zero variance): conditional-variance MLE is "
             "degenerate. For hard-pegged currencies use a tiny positive vol floor "
             "or model the peg explicitly (see docs/VALIDATION.md)."
         )
     return arr
+
+
+def validate_filter_params(**params: float) -> None:
+    """Reject non-finite variance-recursion parameters.
+
+    The filters guard their parameters with inequalities such as
+    ``if omega <= 0 or alpha < 0: raise``.  Those tests are False for NaN
+    (every comparison with NaN is False), so a NaN parameter would slip
+    through and produce an all-NaN conditional-variance path -- a silent
+    failure that then propagates into forecasts, VaR and P&L attribution.
+    Call this first so NaN/Inf raise loudly instead.
+
+    Parameters
+    ----------
+    **params
+        Named scalar parameters to check.
+
+    Raises
+    ------
+    ValueError
+        Naming the first non-finite parameter found.
+    """
+    for name, value in params.items():
+        if value is None:
+            continue
+        if not np.isfinite(value):
+            raise ValueError(
+                f"{name} must be finite, got {value!r} "
+                "(NaN/Inf parameters would yield an all-NaN variance path)"
+            )
 
 
 def backcast(y: np.ndarray, decay: float = 0.94, max_obs: int = 75) -> float:

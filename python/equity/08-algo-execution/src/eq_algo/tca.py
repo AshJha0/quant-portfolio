@@ -78,6 +78,8 @@ def is_decomposition(side: int, parent_qty: float, decision_price: float,
     p = np.asarray(fill_price, dtype=float)
     if q.shape != p.shape:
         raise ValueError("fill_qty and fill_price must have the same shape")
+    if not (np.all(np.isfinite(q)) and np.all(np.isfinite(p))):
+        raise ValueError("fill quantities and prices must be finite (no NaN/Inf)")
     if np.any(q < 0):
         raise ValueError("fill quantities must be >= 0")
     filled = float(q.sum())

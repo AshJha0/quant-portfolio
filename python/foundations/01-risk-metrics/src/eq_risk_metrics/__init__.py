@@ -2,7 +2,7 @@
 
 Pipeline: returns -> volatility (3 estimators) -> VaR (3 methods) +
 Expected Shortfall -> drawdown -> Sharpe/Sortino -> normality
-diagnostics.
+diagnostics -> VaR backtest (Kupiec proportion-of-failures).
 
 Conventions (portfolio-wide, see ``CONVENTIONS.md``): 252 trading days
 per year; volatility annualised on log-returns-equivalent scale via
@@ -15,6 +15,7 @@ seed. This is a **single-asset** toolkit -- portfolio-level risk
 multi-asset extension.
 """
 
+from .backtest import KupiecResult, count_var_exceptions, kupiec_pof_test
 from .diagnostics import NormalityReport, normality_report
 from .performance import DrawdownResult, max_drawdown, sharpe_ratio, sortino_ratio
 from .var_es import (
@@ -56,4 +57,8 @@ __all__ = [
     # diagnostics
     "NormalityReport",
     "normality_report",
+    # backtest
+    "KupiecResult",
+    "count_var_exceptions",
+    "kupiec_pof_test",
 ]

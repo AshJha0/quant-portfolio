@@ -122,3 +122,26 @@ control, no-lookahead detector, walk-forward window-integrity tests, and the
 seeded scenario suite (SNB, carry-flip, EM costs). Model changes require the
 full suite green plus a re-run of `examples/run_pipeline.py` with the numbers
 pasted into VALIDATION.md — the same discipline this repository follows.
+
+**Data-quality gate — "the strategy did nothing" is a result that must be
+explained, not accepted.** Two of this book's controls fail *silently* on
+bad data rather than loudly, which is the worst possible direction:
+
+* a non-finite `sigma` on the frozen formation statistics produces an
+  all-NaN z-score, so the state machine never leaves flat and the run
+  reports a tidy zero-P&L, zero-trade day — a broken pipeline that looks
+  like a quiet market;
+* a non-finite `stop` disables the hard stop entirely (`state * z <= -nan`
+  is always False), removing the one control designed to survive a regime
+  break, with no message anywhere;
+* an infinity from a logged zero/missing fixing makes `engle_granger`
+  return **"not cointegrated"** rather than an error, so a data outage is
+  indistinguishable from a genuinely de-selected pair.
+
+All three now raise a named `ValueError` (VALIDATION §6.1). The
+operational rules that follow: (i) a zero-trade day is reconciled against
+the z-score series, never signed off on its own; (ii) the formation-window
+statistics are range-checked before they are frozen for the trading window;
+(iii) pairs that drop out of the funnel are logged with the *reason* —
+"failed ADF" and "failed validation" are different lines in the report and
+only the first is a modelling decision.

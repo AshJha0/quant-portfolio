@@ -22,6 +22,35 @@ replaced by the foreign interest rate.
 * Invalid inputs return `Err(FxError::InvalidInput)` (the mirror of the
   Python `ValueError` contract) — no panics on bad market data.
 
+### Validation contract
+
+Every public entry point rejects **NaN and +/-infinity in every float
+argument** — spot, strike, tenor, both rates, vol, the observed premium
+passed to `implied_vol`, the `pip_factor` of `forward_points`, the
+`rel_bump` of `finite_difference_greeks`, and the delta/premium arguments
+of the delta-conversion helpers. Validation is written with `is_finite()`,
+never with an ordering comparison: `if x <= 0.0 { return Err(..) }`
+silently **accepts** NaN, because every IEEE-754 comparison against NaN is
+false, and Rust is no different from C here (`f64::NAN < 0.0` is `false`).
+That matters operationally rather than aesthetically — a NaN price or a
+NaN delta breaches no limit and colours no traffic light (`NaN <= limit`
+is false, and so is `NaN > limit`), so it aggregates into a book number
+unseen. The contract is pinned by
+`tests/edge_cases.rs::every_entry_point_rejects_non_finite_inputs`, which
+poisons each float slot of each public function in turn.
+
+Two further guards worth knowing about:
+
+* `finite_difference_greeks` requires `T > 0`, `sigma > 0` and a finite
+  positive `rel_bump` — otherwise the theta bump `min(1e-6, T/4)` or the
+  spot bump `S * rel_bump` collapses to exactly zero and the difference
+  quotient becomes an unreported `0/0`.
+* `mc_price` with `n_paths = 2` and antithetic sampling leaves a single
+  independent sample; it reports `std_error = 0.0` and a degenerate
+  confidence interval rather than dividing by `n - 1 = 0` and returning a
+  NaN standard error (which would make every downstream "within 3 SE"
+  check pass silently).
+
 ## Layout
 
 ```
@@ -41,7 +70,7 @@ fx-options-engine/
 │   ├── golden.rs                # GENERATED: 30 cross-language golden vectors
 │   └── bin/bench.rs             # throughput benchmarks
 ├── tools/gen_golden_rs.py      # Python golden JSON -> src/golden.rs
-├── tests/                       # integration test suite (69 cases) + doctests (19)
+├── tests/                       # integration test suite (77 cases) + doctests (19)
 └── docs/                        # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
@@ -49,7 +78,7 @@ fx-options-engine/
 
 ```sh
 cargo build --release
-RUSTFLAGS="-D warnings" cargo test --release   # 69 integration tests + 19 doctests, all green
+RUSTFLAGS="-D warnings" cargo test --release   # 77 integration tests + 19 doctests (96), all green
 cargo run --release --bin bench
 ```
 

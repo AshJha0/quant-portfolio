@@ -112,6 +112,8 @@ class DiscountCurve:
         Scalar in, scalar (float) out; array in, array out.
         """
         arr = np.asarray(t, dtype=float)
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"discount factor requested at non-finite time {t!r}")
         if np.any(arr < 0.0):
             raise ValueError("discount factor requested for negative time")
         out = np.exp(self._interp_logdf(np.atleast_1d(arr)))
@@ -120,6 +122,8 @@ class DiscountCurve:
     def zero_rate(self, t):
         """Continuously compounded annualised zero rate(s) at ``t`` (> 0)."""
         arr = np.asarray(t, dtype=float)
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"zero rate requested at non-finite time {t!r}")
         if np.any(arr <= 0.0):
             raise ValueError("zero rate requires t > 0")
         out = -self._interp_logdf(np.atleast_1d(arr)) / np.atleast_1d(arr)
@@ -141,6 +145,8 @@ class DiscountCurve:
     # ------------------------------------------------------------------ #
     def parallel_shift(self, bp: float) -> "DiscountCurve":
         """New curve with all pillar zero rates shifted by ``bp`` basis points."""
+        if not np.isfinite(bp):
+            raise ValueError(f"parallel shift bp must be finite, got {bp!r}")
         z = self.zero_rates + bp * 1e-4
         return DiscountCurve.from_zero_rates(self.times, z, name=self.name)
 
@@ -153,6 +159,8 @@ class DiscountCurve:
         """
         if not (0 <= index < self.n_pillars):
             raise ValueError(f"pillar index {index} out of range [0, {self.n_pillars})")
+        if not np.isfinite(bp):
+            raise ValueError(f"bump bp must be finite, got {bp!r}")
         z = self.zero_rates
         z[index] += bp * 1e-4
         return DiscountCurve.from_zero_rates(self.times, z, name=self.name)

@@ -188,6 +188,10 @@ class IntradayMarket:
         q = np.asarray(schedule, dtype=float)
         if q.shape != (cfg.n_buckets,):
             raise ValueError(f"schedule must have length n_buckets={cfg.n_buckets}")
+        if not np.all(np.isfinite(q)):
+            # NaN would pass every comparison below (NaN < 0 is False) and
+            # silently produce NaN fill prices and a NaN average price.
+            raise ValueError("schedule contains NaN or infinite quantities")
         if np.any(q < 0):
             raise ValueError("schedule quantities must be >= 0")
         if side not in (1, -1):
@@ -198,6 +202,8 @@ class IntradayMarket:
             volumes = np.asarray(market_volumes, dtype=float)
             if volumes.shape != (cfg.n_buckets,):
                 raise ValueError(f"market_volumes must have length {cfg.n_buckets}")
+            if not np.all(np.isfinite(volumes)):
+                raise ValueError("market_volumes contain NaN or infinite values")
             if np.any(volumes < 0):
                 raise ValueError("market_volumes must be >= 0")
             # still consume the volume-noise draws so the price path matches

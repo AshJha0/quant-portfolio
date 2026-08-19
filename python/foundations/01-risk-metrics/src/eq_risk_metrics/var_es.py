@@ -25,6 +25,60 @@ __all__ = [
 ]
 
 
+def _validated(returns: pd.Series, confidence: float, func: str) -> pd.Series:
+    """Coerce ``returns`` to a Series and validate it against ``confidence``.
+
+    Shared front door for all four estimators, so every one of them fails
+    the same way with the same message rather than surfacing whatever the
+    underlying NumPy/SciPy call happens to raise (or, worse, silently
+    returning ``NaN`` -- which ``scipy.stats.norm.ppf`` does for an
+    out-of-range confidence).
+
+    Parameters
+    ----------
+    returns : pandas.Series or array_like
+        Candidate return sample.
+    confidence : float
+        Candidate confidence level; must be strictly inside ``(0, 1)``.
+    func : str
+        Caller name, used in the error message.
+
+    Returns
+    -------
+    pandas.Series
+        ``returns`` as a Series (a no-op copy-free conversion when it
+        already is one).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is empty or contains a non-finite value, or if
+        ``confidence`` is not a finite number strictly between 0 and 1.
+    """
+    returns = pd.Series(returns)
+    if len(returns) == 0:
+        raise ValueError(
+            f"{func}: cannot compute a quantile from an empty return series "
+            "(need at least 1 observation; a desk-grade estimate needs "
+            "hundreds -- see docs/VALIDATION.md 3.1)"
+        )
+    if not np.isfinite(confidence) or not 0.0 < confidence < 1.0:
+        raise ValueError(
+            f"{func}: confidence must be a finite number strictly between 0 "
+            f"and 1 (e.g. 0.95, 0.99), got {confidence!r}"
+        )
+    if not np.isfinite(returns.to_numpy(dtype=float)).all():
+        n_bad = int((~np.isfinite(returns.to_numpy(dtype=float))).sum())
+        raise ValueError(
+            f"{func}: returns contains {n_bad} non-finite value(s) (NaN/inf). "
+            "A single inf or NaN silently poisons the whole estimate -- "
+            "numpy.percentile and the mean/std path both return NaN -- so it "
+            "is rejected here instead. Clean the series first (a NaN usually "
+            "means a missing price, an inf a zero price in the denominator)."
+        )
+    return returns
+
+
 def var_historical(returns: pd.Series, confidence: float = 0.95) -> float:
     """Historical (empirical) Value at Risk.
 
@@ -47,8 +101,14 @@ def var_historical(returns: pd.Series, confidence: float = 0.95) -> float:
     -------
     float
         VaR as a positive loss fraction (unitless).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is empty or ``confidence`` is outside (0, 1).
     """
-    return -np.percentile(returns, 100 * (1 - confidence))
+    returns = _validated(returns, confidence, "var_historical")
+    return -float(np.percentile(returns, 100 * (1 - confidence)))
 
 
 def var_parametric(returns: pd.Series, confidence: float = 0.95) -> float:
@@ -75,9 +135,17 @@ def var_parametric(returns: pd.Series, confidence: float = 0.95) -> float:
     Returns
     -------
     float
-        VaR as a positive loss fraction (unitless).
+        VaR as a positive loss fraction (unitless). ``NaN`` when the
+        sample has fewer than 2 observations (``std(ddof=1)`` is
+        undefined), which is a genuine "not enough data" answer rather
+        than a misleadingly precise number.
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is empty or ``confidence`` is outside (0, 1).
     """
-    returns = pd.Series(returns)
+    returns = _validated(returns, confidence, "var_parametric")
     mu, sigma = returns.mean(), returns.std(ddof=1)
     z = stats.norm.ppf(1 - confidence)
     return -(mu + sigma * z)
@@ -117,9 +185,16 @@ def var_cornish_fisher(returns: pd.Series, confidence: float = 0.95) -> float:
     Returns
     -------
     float
-        VaR as a positive loss fraction (unitless).
+        VaR as a positive loss fraction (unitless). ``NaN`` for a sample
+        with fewer than 2 observations, or an exactly-constant one (see
+        ``docs/VALIDATION.md`` 3.2).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is empty or ``confidence`` is outside (0, 1).
     """
-    returns = pd.Series(returns)
+    returns = _validated(returns, confidence, "var_cornish_fisher")
     mu, sigma = returns.mean(), returns.std(ddof=1)
     s = stats.skew(returns)
     k = stats.kurtosis(returns)  # excess kurtosis (Fisher definition)
@@ -164,8 +239,13 @@ def expected_shortfall(returns: pd.Series, confidence: float = 0.95) -> float:
         Expected Shortfall as a positive loss fraction (unitless).
         ``NaN`` if no observations fall in the tail (e.g. a degenerate
         or too-short sample).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` is empty or ``confidence`` is outside (0, 1).
     """
-    returns = pd.Series(returns)
+    returns = _validated(returns, confidence, "expected_shortfall")
     var = var_historical(returns, confidence)
     tail = returns[returns <= -var]
     return -tail.mean()

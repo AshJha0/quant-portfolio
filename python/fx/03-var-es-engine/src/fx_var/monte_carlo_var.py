@@ -37,7 +37,8 @@ import pandas as pd
 from scipy.stats import gaussian_kde
 
 from .book import Book, Market
-from .common import NumericalWarning, validate_alpha, validate_horizon
+from .common import (NumericalWarning, validate_alpha, validate_finite,
+                     validate_horizon)
 from .expected_shortfall import empirical_var_es
 
 __all__ = [
@@ -73,7 +74,10 @@ class JumpSpec:
     def __post_init__(self) -> None:
         if not (0.0 <= self.prob <= 1.0):
             raise ValueError(f"jump prob must be in [0, 1], got {self.prob}")
+        for k, v in self.mean.items():
+            validate_finite(**{f"jump mean for {k}": v})
         for k, v in self.std.items():
+            validate_finite(**{f"jump std for {k}": v})
             if v < 0:
                 raise ValueError(f"jump std for {k} must be >= 0, got {v}")
 
@@ -109,6 +113,12 @@ def robust_cholesky(cov: np.ndarray, max_tries: int = 8) -> np.ndarray:
     a = np.asarray(cov, dtype=float)
     if a.ndim != 2 or a.shape[0] != a.shape[1]:
         raise ValueError("cov must be a square matrix")
+    if not np.isfinite(a).all():
+        raise ValueError(
+            "cov contains NaN or infinite entries (NaN policy: refuse, "
+            "never impute); a non-finite covariance would silently yield a "
+            "NaN Cholesky factor and a NaN VaR"
+        )
     if not np.allclose(a, a.T, atol=1e-12):
         raise ValueError("cov must be symmetric")
     try:
@@ -184,6 +194,7 @@ def simulate_factor_returns(
     if dist == "normal":
         pass
     elif dist == "t":
+        validate_finite(df=df)
         if df <= 2:
             raise ValueError("Student-t df must be > 2 for finite variance")
         w = rng.chisquare(df, size=n_scenarios) / df

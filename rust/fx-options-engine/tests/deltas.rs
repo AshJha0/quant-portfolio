@@ -197,3 +197,106 @@ fn atm_forward_strike_is_cip_forward() {
         "ATM-forward strike",
     );
 }
+
+#[test]
+fn boundary_delta_values_are_rejected_not_silently_clamped() {
+    // The attainable open range is (0, 1) in forward-equivalent terms.
+    // The CLOSED boundaries have no finite strike: delta = 0 needs
+    // K = +inf, delta = 1 needs K = 0. Both must be errors, and so must
+    // anything outside. Silently clamping would hand the desk a strike
+    // that does not reprice to the requested delta.
+    let (s, _, t, rd, rf, sig) = MKT;
+    for conv in DeltaConvention::ALL {
+        for &bad in &[0.0, 1.0, 1.0 + 1e-12, 2.0, 1e300] {
+            assert!(
+                strike_from_delta(bad, s, t, rd, rf, sig, OptionType::Call, conv).is_err(),
+                "call delta {bad} under {conv:?} should be rejected"
+            );
+        }
+        for &bad in &[0.0, -1.0, -1.0 - 1e-12, -2.0, -1e300] {
+            assert!(
+                strike_from_delta(bad, s, t, rd, rf, sig, OptionType::Put, conv).is_err(),
+                "put delta {bad} under {conv:?} should be rejected"
+            );
+        }
+        // Just inside the boundary still solves, and round-trips.
+        for &(target, ot) in &[(1e-4, OptionType::Call), (-1e-4, OptionType::Put)] {
+            if let Ok(k) = strike_from_delta(target, s, t, rd, rf, sig, ot, conv) {
+                assert!(k > 0.0 && k.is_finite(), "{conv:?} {ot:?}: strike {k}");
+                let back = delta(s, k, t, rd, rf, sig, ot, conv).unwrap();
+                assert_close(
+                    back,
+                    target,
+                    1e-8,
+                    &format!("near-boundary round trip {conv:?} {ot:?}"),
+                );
+            }
+        }
+    }
+    // Spot-delta targets that are attainable as spot deltas but NOT as
+    // forward-equivalent deltas (|delta e^{r_f T}| >= 1) are rejected
+    // with a message naming the forward-equivalent value.
+    let big = (-rf * t).exp() * 0.999_999;
+    let res = strike_from_delta(big, s, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot);
+    assert!(res.is_ok(), "just-attainable spot delta should solve, got {res:?}");
+    let over = (-rf * t).exp() * 1.000_001;
+    let res = strike_from_delta(over, s, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot);
+    assert!(matches!(res, Err(FxError::InvalidInput(_))), "got {res:?}");
+}
+
+#[test]
+fn delta_stays_inside_its_theoretical_bounds_at_extreme_moneyness() {
+    // 100x moneyness in both directions: every convention's delta must
+    // stay inside its bound and never become NaN. Deep ITM call spot
+    // delta -> e^{-r_f T}; deep OTM -> 0.
+    let (_, _, t, rd, rf, sig) = MKT;
+    let df_f = (-rf * t).exp();
+    for &(s, k) in &[(1.10, 110.0), (110.0, 1.10), (1.10, 1.12)] {
+        let f = cip_forward(s, t, rd, rf).unwrap();
+        for conv in DeltaConvention::ALL {
+            let dc = delta(s, k, t, rd, rf, sig, OptionType::Call, conv).unwrap();
+            let dp = delta(s, k, t, rd, rf, sig, OptionType::Put, conv).unwrap();
+            assert!(dc.is_finite() && dp.is_finite(), "S={s} K={k} {conv:?}");
+            assert!(dc >= 0.0 && dp <= 0.0, "S={s} K={k} {conv:?}: {dc}, {dp}");
+            // Upper bound: unadjusted deltas are capped at the discount
+            // factor (1 for forward deltas); premium-adjusted deltas at
+            // (K/F) times the same factor.
+            let cap = match conv {
+                DeltaConvention::Spot => df_f,
+                DeltaConvention::Forward => 1.0,
+                DeltaConvention::SpotPa => df_f * (k / f),
+                DeltaConvention::ForwardPa => k / f,
+            };
+            assert!(dc <= cap * (1.0 + 1e-12), "S={s} K={k} {conv:?}: {dc} > {cap}");
+            assert!(-dp <= cap * (1.0 + 1e-12), "S={s} K={k} {conv:?}: {dp}");
+        }
+    }
+    // Deep ITM call spot delta pins to e^{-r_f T}; deep OTM to 0.
+    let itm = delta(110.0, 1.10, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
+    assert_close(itm, df_f, 1e-12, "deep ITM spot delta");
+    let otm = delta(1.10, 110.0, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
+    assert!(otm >= 0.0 && otm < 1e-30, "deep OTM spot delta {otm}");
+}
+
+#[test]
+fn premium_adjustment_rejects_corrupt_inputs() {
+    // A NaN premium (a stale/void quote) must not turn a hedge ratio into
+    // a silent NaN: `NaN <= limit` and `NaN > limit` are BOTH false, so a
+    // NaN delta passes every risk check without being seen.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(premium_adjust_spot_delta(bad, 0.02, 1.10).is_err(), "delta {bad}");
+        assert!(premium_adjust_spot_delta(0.5, bad, 1.10).is_err(), "price {bad}");
+        assert!(premium_adjust_spot_delta(0.5, 0.02, bad).is_err(), "spot {bad}");
+        assert!(spot_to_forward_delta(bad, 0.5, 0.02).is_err(), "s2f {bad}");
+        assert!(forward_to_spot_delta(bad, 0.5, 0.02).is_err(), "f2s {bad}");
+    }
+    assert!(premium_adjust_spot_delta(0.5, 0.02, 0.0).is_err());
+    assert!(premium_adjust_spot_delta(0.5, 0.02, -1.0).is_err());
+    // Clean inputs still work and satisfy the defining identity.
+    let (s, k, t, rd, rf, sig) = MKT;
+    let ds = delta(s, k, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
+    let px = gk_price(s, k, t, rd, rf, sig, OptionType::Call).unwrap();
+    let pa = premium_adjust_spot_delta(ds, px, s).unwrap();
+    let direct = delta(s, k, t, rd, rf, sig, OptionType::Call, DeltaConvention::SpotPa).unwrap();
+    assert_close(pa, direct, 1e-14, "premium-adjustment identity");
+}

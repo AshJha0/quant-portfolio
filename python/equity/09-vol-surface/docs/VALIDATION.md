@@ -4,7 +4,7 @@ Contract items 3 and 4: **how the stack was validated** (analytic benchmarks,
 cross-method consistency, convergence/bias studies, recovery tests) and
 **where it fails** (with reproducible numbers). All numbers below are
 produced by `examples/run_pipeline.py` and the scripts referenced in each
-section; everything is offline and seeded. Suite: 118 tests, ~35 s.
+section; everything is offline and seeded. Suite: 141 tests, ~35 s.
 
 ---
 
@@ -174,3 +174,37 @@ DESK_GUIDE.md.
   special-casing by the caller (tested end-to-end).
 * Sub-intrinsic quotes, zero-time-value ITM quotes and numerically-zero OTM
   quotes: `nan` + warning, asserted to never return a number.
+* **Short-end variance floor (bug found and fixed by this test pass).**
+  `VolSurface.total_variance` floored the *total* variance at an absolute
+  `1e-12`. That floor is harmless at normal maturities but destroys the
+  T → 0 limit: at `T = 1e-12` a perfectly legitimate `w = 3e-13` was clamped
+  up to `1e-12`, and `sqrt(w/T)` then reported an ATM implied vol of **1.0
+  (100 vol points)** instead of the flat first-pillar 0.548. Overnight and
+  same-day expiries sit exactly in this regime. The floor is now applied to
+  the *variance*, `w >= 1e-12 · T`, which is a uniform 0.0001-vol-point floor
+  on implied vol and leaves the T → 0 limit intact. Regression-tested from
+  `T = 1e-14` upward (`test_short_end_vol_is_flat_as_T_goes_to_zero`), along
+  with the linear-in-T scaling of `w` at the short end.
+
+## 6. No-arbitrage and wing invariants (property tests)
+
+`tests/test_arbitrage_and_wings.py` turns the documented no-arbitrage story
+into executable invariants rather than spot checks:
+
+| Invariant | Assertion | Test |
+|---|---|---|
+| Butterfly checker actually fires | a kinked (V-shaped) total-variance smile fits with `min g < 0`, `arb_free=False`, and the fitter emits the Durrleman warning | `test_butterfly_checker_fires_on_arbitrage_violating_quotes` |
+| Flat smile is the lognormal reference | `g(k) ≡ 1` to 1e-12 for `b = 0` | `test_durrleman_g_is_one_for_a_flat_smile` |
+| Density non-negativity in *price* space | `C(K)` reconstructed from the fitted surface is convex (`Δ²C ≥ −1e-10`) and strictly decreasing in K over 200 strikes on [0.5F, 1.8F] | `test_call_price_convex_in_strike_for_arb_free_slice` |
+| Calendar checker fires | pillar pair with decreasing total variance ⇒ `is_free=False`, negative worst violation, warning raised | `test_calendar_checker_detects_decreasing_total_variance` |
+| Calendar enforcement is real | after `enforce_calendar=True`, `w` is monotone in T on the grid **and** at query level across 120 maturities × 5 log-moneyness points, including both extrapolation regions | `test_calendar_enforcement_makes_total_variance_monotone_in_T` |
+| Healthy surface is calendar-free everywhere | `w(k,T)` non-decreasing in T over 25 × 100 grid spanning `T ∈ [1e-6, 6]` | `test_arb_free_surface_total_variance_monotone_in_T_everywhere` |
+| Long-end extrapolation cannot manufacture arbitrage | slope floored at 0, so `w(T) ≥ w(T_max)` even when the last two pillars decrease | `test_extrapolated_slope_never_decreases_total_variance` |
+| SVI wings are asymptotically linear | `w'(k) → b(ρ ± 1)` to 1e-6 at `k = ±200`; `w''` decays exactly as `|k|^-3` (8× per doubling) | `test_svi_wings_are_asymptotically_linear_in_k` |
+| Lee slope bound | `\|w'(k)\| ≤ 2` over `k ∈ [−50, 50]`, and `b(1+\|ρ\|) ≤ 2` for the fitted slice | `test_lee_slope_bound_respected_in_wings` |
+| Wings stay finite | `w > 0` and finite at `k = ±500`; surface vols finite for strikes from 1 to 10,000 | `test_deep_wing_total_variance_stays_positive_and_finite`, `test_surface_wing_vols_finite_far_outside_quoted_strikes` |
+| Deep-wing IV refuses to guess | vega < 1e-12 ⇒ `nan`, never a bracket endpoint | `test_deep_wing_implied_vol_returns_nan_not_garbage` |
+| Equity skew sign | vols strictly decreasing in K over the put wing (`ρ < 0`) | `test_vol_monotone_decreasing_in_strike_on_the_downside_skew` |
+| Degenerate pillar sets rejected | duplicate, out-of-order, zero, empty expiries; slice/expiry count mismatch; non-positive spot and strikes | `test_surface_rejects_degenerate_pillar_sets`, `test_surface_rejects_non_positive_strikes` |
+| Single-pillar surface | flat vol at every T from 1e-6 to 30 | `test_single_pillar_surface_is_flat_in_T` |
+| SVI parameter domain | negative `b`, `\|ρ\| ≥ 1`, `σ ≤ 0` and `a + bσ√(1−ρ²) ≤ 0` all raise | `test_svi_params_reject_negative_total_variance` |

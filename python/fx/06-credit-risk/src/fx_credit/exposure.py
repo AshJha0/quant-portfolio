@@ -1,10 +1,10 @@
-"""Counterparty pre-settlement risk on FX forwards: EE/PFE profiles, netting, CVA.
+r"""Counterparty pre-settlement risk on FX forwards: EE/PFE profiles, netting, CVA.
 
 Model
 -----
 Spot follows Garman-Kohlhagen GBM under the domestic (quote-currency) measure:
 
-.. math:: dS_t = (r_d - r_f) S_t\,dt + \\sigma S_t\,dW_t
+.. math:: dS_t = (r_d - r_f) S_t\,dt + \sigma S_t\,dW_t
 
 with pairs quoted BASE/QUOTE (EURUSD = USD per EUR), domestic rate = quote
 rate ``r_d``, foreign = base rate ``r_f`` (portfolio FX conventions).
@@ -23,7 +23,7 @@ empirically on seeded paths.
 
 CVA (unilateral, no wrong-way risk):
 
-.. math:: \\mathrm{CVA} = LGD \\sum_i EE(t_i)\\,[PD(t_i)-PD(t_{i-1})]\\,e^{-r_d t_i}
+.. math:: \mathrm{CVA} = LGD \sum_i EE(t_i)\,[PD(t_i)-PD(t_{i-1})]\,e^{-r_d t_i}
 
 with the PD term structure built from the scorecard's 1-year PD via a **flat
 hazard**: ``h = -ln(1 - PD_{1y})``, ``PD(t) = 1 - e^{-ht}`` — a documented
@@ -75,10 +75,12 @@ class FXForward:
     buy_base: bool = True
 
     def __post_init__(self) -> None:
-        if self.notional_base < 0:
-            raise ValueError("notional_base must be >= 0")
-        if self.strike <= 0:
-            raise ValueError("strike must be > 0")
+        if not (np.isfinite(self.notional_base) and self.notional_base >= 0):
+            raise ValueError("notional_base must be finite and >= 0")
+        if not (np.isfinite(self.strike) and self.strike > 0):
+            raise ValueError("strike must be finite and > 0")
+        if not np.isfinite(self.maturity):
+            raise ValueError("maturity must be finite")
 
 
 @dataclass(frozen=True)
@@ -123,11 +125,13 @@ def simulate_fx_paths(
     -------
     ndarray, shape (n_paths, m)
     """
+    if not (np.isfinite(spot) and np.isfinite(vol) and np.isfinite(r_d) and np.isfinite(r_f)):
+        raise ValueError("spot, vol, r_d, r_f must all be finite")
     if spot <= 0 or vol < 0:
         raise ValueError("spot must be > 0 and vol >= 0")
     t = np.asarray(times, dtype=float)
-    if t.ndim != 1 or np.any(t <= 0) or np.any(np.diff(t) <= 0):
-        raise ValueError("times must be strictly increasing and positive")
+    if t.ndim != 1 or not np.all(np.isfinite(t)) or np.any(t <= 0) or np.any(np.diff(t) <= 0):
+        raise ValueError("times must be finite, strictly increasing and positive")
     rng = np.random.default_rng(seed)
     dt = np.diff(np.r_[0.0, t])
     z = rng.standard_normal((n_paths, t.size))
@@ -299,6 +303,12 @@ def cva(
     q = np.asarray(cum_pd, dtype=float)
     if not (t.shape == e.shape == q.shape):
         raise ValueError("times, ee, cum_pd must share shape")
+    if not (np.all(np.isfinite(t)) and np.all(np.isfinite(e)) and np.all(np.isfinite(q))):
+        raise ValueError("times, ee, cum_pd must be finite (no NaN/Inf)")
+    if np.any(e < 0):
+        raise ValueError("ee must be >= 0 (expected exposure is a positive part)")
+    if np.any((q < 0) | (q >= 1)):
+        raise ValueError("cum_pd must be in [0, 1)")
     if not 0.0 <= lgd <= 1.0:
         raise ValueError("lgd must be in [0,1]")
     if np.any(np.diff(q) < -1e-12):

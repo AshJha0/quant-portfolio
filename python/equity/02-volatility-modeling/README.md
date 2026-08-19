@@ -21,7 +21,7 @@ Historical vol ──► EWMA ──► GARCH(1,1) ──► EGARCH(1,1) ──�
 ```bash
 cd python/equity/02-volatility-modeling
 pip install -e .[test]          # or just run in place — tests need no install
-python -m pytest tests -q      # 149 tests, ~10 s, offline, seeded
+python -m pytest tests -q      # 185 tests, ~4 s, offline, seeded
 python examples/run_pipeline.py # full pipeline, ~10 s
 ```
 
@@ -90,7 +90,7 @@ src/eq_vol/
                    + crisis regime-jump generators)
   data/live.py     optional yfinance loader (import-guarded; never used in tests)
 docs/              METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
-tests/             149 tests: recovery, arch cross-check, forecast identities,
+tests/             185 tests: recovery, arch cross-check, forecast identities,
                    DM size Monte Carlo, edge cases & failure surfacing
 ```
 

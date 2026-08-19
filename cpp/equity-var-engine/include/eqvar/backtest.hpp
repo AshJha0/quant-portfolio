@@ -19,7 +19,9 @@ namespace eqvar {
 
 /// Exception indicator per day: 1 iff pnl_t < -var_t.  `var` (positive-loss
 /// convention) is scalar-broadcast if it has size 1, otherwise one entry per
-/// day.  Throws std::invalid_argument on negative VaR or size mismatch.
+/// day.  Throws std::invalid_argument on negative VaR, a size mismatch, or
+/// any non-finite P&L / VaR value — a NaN would otherwise compare false and
+/// be silently counted as "no exception", flattering the model under test.
 [[nodiscard]] std::vector<std::uint8_t> exceptions_from_pnl(std::span<const double> pnl,
                                                             std::span<const double> var);
 

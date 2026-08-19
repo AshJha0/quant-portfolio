@@ -36,7 +36,11 @@ fn validate_pnl(pnl: &[f64], min_obs: usize) -> Result<()> {
 
 fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
     let mut v = pnl.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).expect("finite values compare totally"));
+    // `total_cmp` is a total order on all f64 bit patterns, so this sort
+    // cannot panic even if a caller reaches it with a NaN (the public
+    // entry points reject NaN first; this removes the panic path entirely
+    // rather than relying on that).
+    v.sort_by(f64::total_cmp);
     v
 }
 
@@ -136,7 +140,7 @@ pub fn age_weighted_var(pnl: &[f64], alpha: f64, lam: f64) -> Result<f64> {
     let w = brw_weights(pnl.len(), lam)?;
     // Stable argsort by P&L ascending (ties keep chronological order).
     let mut order: Vec<usize> = (0..pnl.len()).collect();
-    order.sort_by(|&a, &b| pnl[a].partial_cmp(&pnl[b]).expect("finite values"));
+    order.sort_by(|&a, &b| pnl[a].total_cmp(&pnl[b]));
     let mut cum = 0.0;
     let mut idx = pnl.len() - 1;
     for (rank, &i) in order.iter().enumerate() {
@@ -167,6 +171,11 @@ pub fn ewma_volatility(x: &[f64], lam: f64) -> Result<Vec<f64>> {
     if x.len() < 2 {
         return Err(EqVarError::InvalidInput(
             "need at least 2 observations for EWMA volatility".to_string(),
+        ));
+    }
+    if x.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "ewma_volatility: input contains NaN or infinite values".to_string(),
         ));
     }
     let mut seed = crate::stats::population_variance(x)?;
@@ -213,6 +222,11 @@ pub fn filtered_historical_var(pnl: &[f64], alpha: f64, lam: f64) -> Result<f64>
 /// Valid only for i.i.d. returns with zero drift; understates multi-day
 /// risk under volatility clustering / autocorrelation (docs/VALIDATION.md).
 pub fn scale_var_sqrt_time(var_1d: f64, horizon_days: u32) -> Result<f64> {
+    if !var_1d.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "var_1d must be finite, got {var_1d}"
+        )));
+    }
     if horizon_days < 1 {
         return Err(EqVarError::InvalidInput(format!(
             "horizon_days must be >= 1, got {horizon_days}"

@@ -144,6 +144,7 @@ by ΔAIC ≈ 19.5, γ = +0.046 ± 0.017).
 | A8 | Squared daily return as realized-variance proxy | r² is unbiased but very noisy; QLIKE (Patton-robust) keeps rankings consistent, but power is limited — with 500 OOS days only large model gaps reach significance (VALIDATION §4). Intraday RV would sharpen this. |
 | A9 | No microstructure noise / valid daily marks | ECB reference fixes are once-daily, non-traded; range estimators assume true continuous highs/lows — stale or filtered EM quotes bias range estimators down. |
 | A10 | Weekend gap ignored (Friday→Monday treated as one step) | Monday variance is systematically higher; unmodelled, it fattens residual tails slightly. The day-of-week factor estimator quantifies it; a t-distribution absorbs most of the rest. |
+| A11 | Inputs are finite: no NaN/Inf in returns, regressors *or* model parameters | The package's policy is reject-never-impute. Data-side NaNs already raised; parameter-side NaNs did not — a NaN ω/α/β silently produced an all-NaN variance path because `if omega <= 0` is False for NaN. Now `validate_filter_params` raises. If you disable these guards (e.g. by calling the recursions directly on hand-built arrays), a single bad quote or a failed optimizer step propagates NaN through variance → forecast → VaR without any error surfacing. |
 
 ## 5. Innovation distribution: Gaussian vs Student-t
 

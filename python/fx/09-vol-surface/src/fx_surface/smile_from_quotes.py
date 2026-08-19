@@ -153,6 +153,8 @@ def atm_dns_strike(F: float, sigma: float, T: float, premium_adjusted: bool = Fa
     they cancel iff ``d2 = 0``, i.e. ``K = F exp(-sigma^2 T/2)`` - the pa
     DNS ATM sits *below* the forward.
     """
+    if not all(math.isfinite(v) for v in (F, sigma, T)):
+        raise ValueError(f"F, sigma, T must be finite, got F={F}, sigma={sigma}, T={T}")
     if F <= 0.0 or sigma <= 0.0 or T <= 0.0:
         raise ValueError("F, sigma, T must be positive")
     sign = -1.0 if premium_adjusted else 1.0
@@ -276,8 +278,13 @@ def strike_from_delta(
         )
     if cp not in (+1, -1):
         raise ValueError(f"cp must be +1 or -1, got {cp}")
-    if not 0.0 < delta < 1.0:
+    if not math.isfinite(delta) or not 0.0 < delta < 1.0:
         raise ValueError(f"delta magnitude must be in (0, 1), got {delta}")
+    if not all(math.isfinite(v) for v in (sigma, S, T, r_d, r_f)):
+        raise ValueError(
+            f"sigma, S, T, r_d, r_f must be finite, got sigma={sigma}, S={S}, "
+            f"T={T}, r_d={r_d}, r_f={r_f}"
+        )
     if sigma <= 0.0 or S <= 0.0 or T <= 0.0:
         raise ValueError("sigma, S, T must be positive")
 

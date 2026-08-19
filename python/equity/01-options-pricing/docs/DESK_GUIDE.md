@@ -84,7 +84,7 @@ synthetic chain) run in CI.
   (`tests/golden/golden_vectors.json`) that the C++/Rust production
   engines must reproduce to 1e-10 — the classic
   research-implementation vs production-implementation control.
-- *Change control*: 262 offline deterministic tests are the regression
+- *Change control*: 288 offline deterministic tests are the regression
   gate; convergence tables are re-generated, not hand-maintained.
 - *Known-limitations register*: METHODOLOGY.md §2 (assumptions A1–A8) and
   VALIDATION.md §6 — reviewed when a position pushes into a weak spot

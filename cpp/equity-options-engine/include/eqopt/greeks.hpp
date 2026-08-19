@@ -72,8 +72,9 @@ BSGreeks bs_greeks(double S, double K, double T, double r, double sigma,
 ///                   volga), where round-off scales like `eps / h^2` and
 ///                   needs a larger `h` (optimal `h ~ eps^0.25`).
 /// \return Finite-difference price and Greeks (vanna/volga included).
-/// \throws std::invalid_argument if inputs are invalid, or `T` is too small
-///         to bump centrally.
+/// \throws std::invalid_argument if inputs are invalid, or `T` (resp.
+///         `sigma`) is too small for its central down-bump to stay in the
+///         valid domain.
 template <typename Pricer>
 BSGreeks fd_greeks(Pricer&& pricer, double S, double K, double T, double r,
                    double sigma, double q = 0.0,
@@ -93,6 +94,10 @@ BSGreeks fd_greeks(Pricer&& pricer, double S, double K, double T, double r,
     const double h_v2 = rel_bump2 * std::fmax(std::fabs(sigma), 1.0);
     if (T - h_t <= 0.0) {
         throw std::invalid_argument("T too small for a central theta bump");
+    }
+    if (sigma - std::fmax(h_v, h_v2) <= 0.0) {
+        throw std::invalid_argument(
+            "sigma too small for a central vega/volga bump");
     }
 
     const double price = f(S, sigma, T, r);

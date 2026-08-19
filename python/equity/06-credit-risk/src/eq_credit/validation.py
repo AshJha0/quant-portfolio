@@ -167,6 +167,8 @@ def brier_score(y: np.ndarray, pd_hat: np.ndarray) -> float:
     pa = np.asarray(pd_hat, dtype=float).ravel()
     if len(ya) != len(pa) or len(ya) == 0:
         raise ValueError("y and pd_hat must be same nonzero length")
+    if (~np.isfinite(pa)).any() or ((pa < 0) | (pa > 1)).any():
+        raise ValueError("pd_hat must lie in [0, 1] with no NaN/Inf")
     return float(np.mean((pa - ya) ** 2))
 
 
@@ -182,6 +184,12 @@ def hosmer_lemeshow(
     pa = np.asarray(pd_hat, dtype=float).ravel()
     if len(ya) != len(pa) or len(ya) == 0:
         raise ValueError("y and pd_hat must be same nonzero length")
+    if (~np.isfinite(pa)).any() or ((pa < 0) | (pa > 1)).any():
+        raise ValueError("pd_hat must lie in [0, 1] with no NaN/Inf")
+    if len(ya) < n_groups:
+        raise ValueError(
+            f"need at least n_groups={n_groups} observations, got {len(ya)}"
+        )
     groups = pd.qcut(pd.Series(pa).rank(method="first"), n_groups, labels=False)
     rows = []
     chi2 = 0.0

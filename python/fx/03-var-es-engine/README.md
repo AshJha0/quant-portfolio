@@ -41,7 +41,7 @@ pipeline:  book & market ──► factor history (synthetic G10/EM blocks,
 
 ```bash
 pip install -e .
-python -m pytest tests -q         # 182 tests, offline, ~7s
+python -m pytest tests -q         # 365 tests, offline, ~7s
 python examples/run_pipeline.py   # full demo, ~4s
 ```
 
@@ -83,7 +83,7 @@ src/fx_var/            book, gk, historical_var, parametric_var,
                        stress_testing, common
 src/fx_var/data/       synthetic.py (seeded G10/EM/peg generators, demo book)
                        live.py (guarded Frankfurter/ECB loader — opt-in only)
-tests/                 182 offline, seeded tests
+tests/                 231 offline, seeded tests
 examples/run_pipeline.py
 docs/                  METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```
