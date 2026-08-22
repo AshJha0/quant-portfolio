@@ -183,3 +183,56 @@ TEST(MonteCarlo, InputValidation) {
                std::invalid_argument);
   EXPECT_THROW(var_standard_error({1.0, 2.0}, 0.99), std::invalid_argument);
 }
+
+namespace {
+// Synthetic pnl: 20,000 draws from a fixed Rng stream, standard normal
+// scaled - large enough for the bootstrap and KDE SEs to be sane cross
+// checks of one another at a deep quantile.
+std::vector<double> synthetic_pnl(std::size_t n, std::uint64_t seed) {
+  Rng rng(seed);
+  std::vector<double> pnl(n);
+  for (std::size_t i = 0; i < n; ++i) pnl[i] = 1.5e6 * rng.normal();
+  return pnl;
+}
+}  // namespace
+
+TEST(MonteCarlo, BootstrapSeDeterministic) {
+  const std::vector<double> pnl = synthetic_pnl(5000, 1);
+  const double a = var_standard_error_bootstrap(pnl, 0.99, 200, 42);
+  const double b = var_standard_error_bootstrap(pnl, 0.99, 200, 42);
+  EXPECT_EQ(a, b);  // bitwise, not approximate
+  // A different seed must (almost certainly) change the draw.
+  const double c = var_standard_error_bootstrap(pnl, 0.99, 200, 43);
+  EXPECT_NE(a, c);
+}
+
+TEST(MonteCarlo, BootstrapSeInputValidation) {
+  const std::vector<double> tiny(9, 1.0);
+  EXPECT_THROW(var_standard_error_bootstrap(tiny, 0.99), std::invalid_argument);
+  const std::vector<double> pnl = synthetic_pnl(100, 2);
+  EXPECT_THROW(var_standard_error_bootstrap(pnl, 0.0), std::invalid_argument);
+  EXPECT_THROW(var_standard_error_bootstrap(pnl, 1.0), std::invalid_argument);
+  EXPECT_THROW(var_standard_error_bootstrap(pnl, -0.1), std::invalid_argument);
+}
+
+TEST(MonteCarlo, BootstrapSeAgreesWithKdeWithinSaneMultiple) {
+  // Different estimators of the same sampling SE - not equal, but neither
+  // should be wildly off from the other on a well-behaved large sample.
+  const std::vector<double> pnl = synthetic_pnl(20000, 3);
+  const double kde_se = var_standard_error(pnl, 0.999);
+  const double boot_se = var_standard_error_bootstrap(pnl, 0.999, 500, 7);
+  EXPECT_GT(kde_se, 0.0);
+  EXPECT_GT(boot_se, 0.0);
+  EXPECT_LT(boot_se, 3.0 * kde_se);
+  EXPECT_LT(kde_se, 3.0 * boot_se);
+}
+
+TEST(MonteCarlo, BootstrapSeDegenerateConstantPnlIsFiniteNonNegative) {
+  // All-equal pnl: every resample is the same constant, so every bootstrap
+  // VaR estimate is identical and the SE must be exactly zero, not NaN.
+  const std::vector<double> pnl(500, -1234.5);
+  const double se = var_standard_error_bootstrap(pnl, 0.99, 100, 5);
+  EXPECT_TRUE(std::isfinite(se));
+  EXPECT_GE(se, 0.0);
+  EXPECT_DOUBLE_EQ(se, 0.0);
+}

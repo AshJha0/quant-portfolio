@@ -11,6 +11,24 @@
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
+namespace {
+
+// Type-7 linear-interpolation VaR quantile (positive for a loss) on an
+// ALREADY-SORTED sample. Shared by mc_tail_metrics (point estimate) and
+// mc_bootstrap_se (each bootstrap resample) so both use exactly the same
+// quantile convention.
+double var_from_sorted(const std::vector<double>& sorted, double alpha) {
+    const std::size_t n = sorted.size();
+    const double h = alpha * static_cast<double>(n - 1);
+    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
+    const double frac = h - static_cast<double>(lo);
+    const double q = (lo + 1 < n) ? sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
+                                  : sorted.back();
+    return -q;
+}
+
+}  // namespace
+
 namespace eqvar {
 
 double RandomStream::uniform() {
@@ -103,11 +121,7 @@ MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha) {
 
     // VaR: linear-interpolated (type 7) quantile on the sorted sample.
     const double h = alpha * static_cast<double>(n - 1);
-    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
-    const double frac = h - static_cast<double>(lo);
-    const double q = (lo + 1 < n) ? sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
-                                  : sorted.back();
-    res.var = -q;
+    res.var = var_from_sorted(sorted, alpha);
 
     // ES: exact tail integral of the step CDF (same as expected_shortfall).
     const double an = alpha * static_cast<double>(n);
@@ -134,6 +148,39 @@ MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha) {
         res.var_se = 0.0;  // degenerate (e.g. zero-variance portfolio)
     }
     return res;
+}
+
+double mc_bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
+                       std::uint64_t seed) {
+    validate_alpha(alpha);
+    if (pnl.size() < 10) {
+        throw std::invalid_argument("mc_bootstrap_se: need at least 10 observations, got " +
+                                    std::to_string(pnl.size()));
+    }
+    const std::size_t n = pnl.size();
+    RandomStream rng(seed);
+    std::vector<double> resample(n);
+    std::vector<double> boot_vars(n_boot);
+    for (std::size_t b = 0; b < n_boot; ++b) {
+        for (std::size_t i = 0; i < n; ++i) {
+            const std::size_t idx =
+                std::min(n - 1, static_cast<std::size_t>(rng.uniform() * static_cast<double>(n)));
+            resample[i] = pnl[idx];
+        }
+        std::sort(resample.begin(), resample.end());
+        boot_vars[b] = var_from_sorted(resample, alpha);
+    }
+    // ddof = 1 sample standard deviation of the bootstrap VaR estimates,
+    // matching numpy.std(..., ddof=1) in the Python reference.
+    double sum = 0.0;
+    for (double v : boot_vars) sum += v;
+    const double m = sum / static_cast<double>(n_boot);
+    double ss = 0.0;
+    for (double v : boot_vars) {
+        const double d = v - m;
+        ss += d * d;
+    }
+    return std::sqrt(ss / static_cast<double>(n_boot - 1));
 }
 
 MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix& cov,

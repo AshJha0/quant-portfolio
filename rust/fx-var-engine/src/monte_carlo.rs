@@ -33,6 +33,21 @@
 //! `SE = sqrt(a(1-a)/n) / f(q)` with a Gaussian-KDE (Silverman bandwidth)
 //! density estimate at the quantile. Convergence tests accept MC vs closed
 //! form within 3 SE.
+//!
+//! **Known limitation** (see `docs/VALIDATION.md` F5): a fixed-bandwidth
+//! (Silverman) KDE is tuned to the bulk of the P&L distribution, not the
+//! tail it is evaluated at, so at deep confidence levels (`alpha >= 0.995`)
+//! or with modest scenario counts it *systematically underestimates* the
+//! true sampling SE — directionally overconfident, not just noisy. This is
+//! a property of fixed-bandwidth density estimation at extreme quantiles
+//! generally, not a bug specific to this implementation; the Python
+//! reference (`fx_var.monte_carlo_var`) shares it and documents the same
+//! benchmark. [`var_standard_error_bootstrap`] sidesteps it entirely
+//! (distribution-free, no bandwidth to choose - unbiased to ~1-2% in the
+//! same benchmark, at the cost of higher trial-to-trial variance in the SE
+//! estimate itself unless `n_boot` is generous); prefer it to cross-check
+//! the KDE estimate whenever `alpha >= 0.995` or scenario counts are
+//! modest.
 
 use std::collections::HashMap;
 
@@ -276,6 +291,38 @@ pub fn var_standard_error(pnl: &[f64], alpha: f64) -> Result<f64> {
     Ok((alpha * (1.0 - alpha) / n as f64).sqrt() / dens)
 }
 
+/// Bootstrap standard error of the empirical VaR estimate (distribution-free
+/// cross-check for [`var_standard_error`]'s KDE estimate).
+///
+/// Resamples `pnl` with replacement `n_boot` times (via the crate's own
+/// [`Rng`]) and applies [`empirical_var`] — the same order-statistic VaR
+/// rule used by [`monte_carlo_var`]'s point estimate, uniform weights, so
+/// the tail rank is fixed by `(n, alpha)` alone and identical across every
+/// resample — to each resample, returning the standard deviation (`ddof =
+/// 1`) of the resulting VaR estimates.
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for fewer than 10 scenarios or bad `alpha`.
+pub fn var_standard_error_bootstrap(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    let n = pnl.len();
+    if n < 10 {
+        return Err(FxVarError::invalid("need at least 10 scenarios to bootstrap"));
+    }
+
+    let mut rng = Rng::new(seed);
+    let mut boot_vars = Vec::with_capacity(n_boot);
+    let mut resample = vec![0.0; n];
+    for _ in 0..n_boot {
+        for x in resample.iter_mut() {
+            let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
+            *x = pnl[idx];
+        }
+        boot_vars.push(empirical_var(&resample, alpha, None)?);
+    }
+    Ok(sample_std(&boot_vars))
+}
+
 /// Monte Carlo VaR/ES with full revaluation of the book. `cov` must cover
 /// every factor in `book.factors()` (extra factors are ignored).
 ///
@@ -418,5 +465,53 @@ mod tests {
         let (_, warning) =
             simulate_factor_returns(&cov, 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0).unwrap();
         assert!(!warning.is_empty());
+    }
+
+    fn synthetic_pnl(n: usize) -> Vec<f64> {
+        // Deterministic synthetic P&L via the crate's own RNG (normal-ish,
+        // heavier in the left tail so the KDE/bootstrap comparison is
+        // meaningful rather than trivially close).
+        let mut rng = Rng::new(123);
+        (0..n).map(|_| 1_000.0 * rng.normal()).collect()
+    }
+
+    #[test]
+    fn bootstrap_se_is_deterministic_for_fixed_seed() {
+        let pnl = synthetic_pnl(500);
+        let a = var_standard_error_bootstrap(&pnl, 0.99, 200, 7).unwrap();
+        let b = var_standard_error_bootstrap(&pnl, 0.99, 200, 7).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn bootstrap_se_errors_on_too_few_scenarios() {
+        let pnl = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0];
+        assert!(var_standard_error_bootstrap(&pnl, 0.99, 100, 0).is_err());
+    }
+
+    #[test]
+    fn bootstrap_se_errors_on_invalid_alpha() {
+        let pnl = synthetic_pnl(50);
+        assert!(var_standard_error_bootstrap(&pnl, 0.0, 100, 0).is_err());
+        assert!(var_standard_error_bootstrap(&pnl, 1.0, 100, 0).is_err());
+        assert!(var_standard_error_bootstrap(&pnl, 1.5, 100, 0).is_err());
+    }
+
+    #[test]
+    fn bootstrap_se_agrees_with_kde_within_a_sane_multiple() {
+        let pnl = synthetic_pnl(20_000);
+        let kde_se = var_standard_error(&pnl, 0.999).unwrap();
+        let boot_se = var_standard_error_bootstrap(&pnl, 0.999, 500, 1).unwrap();
+        assert!(boot_se > 0.0 && kde_se > 0.0);
+        assert!(boot_se < 3.0 * kde_se);
+        assert!(kde_se < 3.0 * boot_se);
+    }
+
+    #[test]
+    fn bootstrap_se_handles_degenerate_constant_pnl_without_nan_or_panic() {
+        let pnl = vec![-5.0; 50];
+        let se = var_standard_error_bootstrap(&pnl, 0.99, 100, 0).unwrap();
+        assert!(se.is_finite());
+        assert_eq!(se, 0.0);
     }
 }

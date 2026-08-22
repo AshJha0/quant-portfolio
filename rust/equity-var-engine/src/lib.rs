@@ -149,7 +149,7 @@ pub mod prelude {
     };
     pub use crate::monte_carlo::{
         monte_carlo_es, monte_carlo_pnl, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, var_order_statistic_se,
+        simulate_factor_returns, var_bootstrap_se, var_order_statistic_se,
     };
     pub use crate::parametric::{
         cornish_fisher_domain_ok, cornish_fisher_var, cornish_fisher_z, parametric_var,

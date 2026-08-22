@@ -169,6 +169,34 @@ double var_standard_error(const std::vector<double>& pnl, double alpha) {
   return std::sqrt(alpha * (1.0 - alpha) / static_cast<double>(n)) / dens;
 }
 
+double var_standard_error_bootstrap(const std::vector<double>& pnl,
+                                    double alpha, std::size_t n_boot,
+                                    std::uint64_t seed) {
+  validate_alpha(alpha);
+  const std::size_t n = pnl.size();
+  if (n < 10)
+    throw std::invalid_argument(
+        "need at least 10 scenarios to bootstrap a VaR standard error");
+
+  // Uniform-weight tail rank depends only on (n, alpha), not the data, so
+  // it is identical for the original sample and every resample of the
+  // same length: calling empirical_var per resample reuses that exact
+  // order-statistic rule (see expected_shortfall.cpp's make_tail) rather
+  // than re-deriving it here.
+  Rng rng(seed);
+  std::vector<double> resample(n);
+  std::vector<double> boot_vars(n_boot);
+  for (std::size_t b = 0; b < n_boot; ++b) {
+    for (std::size_t i = 0; i < n; ++i) {
+      const std::size_t idx =
+          static_cast<std::size_t>(rng.uniform() * static_cast<double>(n));
+      resample[i] = pnl[std::min(idx, n - 1)];
+    }
+    boot_vars[b] = empirical_var(resample, alpha);
+  }
+  return sample_std(boot_vars);
+}
+
 // ---------------------------------------------------------------- driver
 MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
                                  const FactorCov& cov,

@@ -144,11 +144,15 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
   distribution, not the tail it is evaluated at, so at deep confidence
   levels (>= 99.5%) or with fewer than ~20,000 scenarios it *systematically
   underestimates* the true sampling SE by 10-20% — directionally
-  overconfident, not just noisy. `fx_var` adds a distribution-free
-  bootstrap cross-check (`var_standard_error_bootstrap`, unbiased to ~1-2%
-  in the same benchmark); this C++ engine does not yet have one (tracked
-  as a follow-up) and should be cross-checked against the Python reference
-  at those confidence levels rather than trusted at face value.
+  overconfident, not just noisy. This engine now carries the same
+  distribution-free cross-check the Python reference does:
+  `var_standard_error_bootstrap` resamples the P&L vector with replacement
+  and applies the identical order-statistic VaR rule to each resample
+  (no bandwidth to choose, so it does not share the KDE's tail bias —
+  unbiased to ~1-2% in the same benchmark, at the cost of higher
+  trial-to-trial variance unless `n_boot` is generous). Prefer it to
+  cross-check `var_standard_error` whenever `alpha >= 0.995` or scenario
+  counts are modest, rather than trusting the KDE figure at face value.
 - **F6 — Scale sensitivity of the numerical guards (fixed).** Two guards
   used *absolute* thresholds and misfired on legitimate large-notional
   books:

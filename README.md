@@ -5,7 +5,7 @@ areas**, each built **twice** (equity and FX as fully separate, self-contained
 projects), in **Python** throughout and with **C++ and Rust performance
 twins** for the four highest-value pricing/risk engines — plus **3 standalone
 foundations projects** that build and validate core techniques from scratch,
-single-asset, single-language. 31 sub-projects and **5,943 passing tests** in
+single-asset, single-language. 31 sub-projects and **5,963 passing tests** in
 total, every one with its own tests, and documentation answering *why this
 model*, *what assumptions it makes*, *how it was validated*, *where it
 fails*, and *how a real desk would use it*.
@@ -139,7 +139,7 @@ for d in rust/*/; do (cd "$d" && RUSTFLAGS="-D warnings" cargo test --release); 
 
 ## Test coverage
 
-**5,943 tests across the portfolio**, all passing, all independently
+**5,963 tests across the portfolio**, all passing, all independently
 reproduced from a clean build (not taken from build logs, not taken from
 agent self-reports — every count below was reproduced by a fresh
 `pip install -e .` + `pytest` / `cmake --build` + `ctest` / `cargo test
@@ -150,9 +150,9 @@ agent self-reports — every count below was reproduced by a fresh
 | Python — equity | 10 | 2,080 |
 | Python — FX | 10 | 2,713 |
 | Python — foundations | 3 | 462 |
-| C++ engines | 4 | 315 |
-| Rust engines | 4 | 373 |
-| **Total** | **31** | **5,943** |
+| C++ engines | 4 | 324 |
+| Rust engines | 4 | 384 |
+| **Total** | **31** | **5,963** |
 
 Per-engine, showing the three-language cross-validation:
 
@@ -160,8 +160,8 @@ Per-engine, showing the three-language cross-validation:
 |---|---|---|---|
 | Equity options/Greeks | `python/equity/01-options-pricing` — 291 | 58 | 88 |
 | FX options/Greeks | `python/fx/01-options-pricing` — 414 | 89 | 99 |
-| Equity VaR/ES | `python/equity/03-var-es-engine` — 266 | 84 | 92 |
-| FX VaR/ES | `python/fx/03-var-es-engine` — 371 | 84 | 94 |
+| Equity VaR/ES | `python/equity/03-var-es-engine` — 266 | 89 | 98 |
+| FX VaR/ES | `python/fx/03-var-es-engine` — 371 | 88 | 99 |
 
 See each project's `docs/VALIDATION.md` for the exact commands, tolerances,
 and the documented failure modes each suite pins.
@@ -212,16 +212,36 @@ algorithm:
 
 Neither fix changed any golden-vector reference value — both are corrections
 to numerical *robustness* (how the solver behaves in the tail of its input
-domain), not to the pricing/risk formulas the golden vectors pin. Two
-narrower, single-engine findings from the same pass: a latent
+domain), not to the pricing/risk formulas the golden vectors pin.
+
+A third defect, found in the equity and FX Monte Carlo VaR engines: the
+standard-error estimate attached to the VaR figure is a local
+density-at-the-quantile estimate (a Gaussian KDE in Python and the FX C++/Rust
+engines, an order-statistic finite-difference estimate in the equity C++/Rust
+engines) — the same defect class as before, just one level removed from the
+price itself. A fixed, bulk-tuned bandwidth under-resolves the tail density,
+so the reported SE systematically underestimates the true sampling
+variability by roughly 9-17% in deep tails or with modest scenario counts —
+directionally overconfident, not just noisy, exactly where a desk would rely
+on it most. All four Monte Carlo VaR engines (Python, C++, and Rust, equity
+and FX) now expose a second, distribution-free bootstrap standard-error
+estimator as a cross-check (`var_standard_error_bootstrap` in Python,
+`mc_bootstrap_se`/`var_standard_error_bootstrap` in C++, `var_bootstrap_se`/
+`var_standard_error_bootstrap` in Rust): resample the scenario P&L with
+replacement, recompute VaR on each resample with the exact same quantile rule
+as the point estimate, and take the standard deviation across resamples. No
+bandwidth to choose, so it doesn't share the local-density estimator's bias
+(at the cost of higher trial-to-trial variance in the SE estimate itself
+unless the bootstrap count is generous) — recommended whenever `alpha >=
+0.995` or scenario counts are modest. This also did not touch any
+golden-pinned value; it adds a second estimator, it does not change the
+first.
+
+One narrower, single-engine finding from the same pass: a latent
 antithetic-pairing bug in the FX vol-surface Heston Monte Carlo (an odd
 `n_paths` could silently break the antithetic invariant and understate the
 reported standard error — now rejected explicitly rather than silently
-mishandled), and a systematic 9-17% underestimate in the FX Monte Carlo VaR
-engine's standard-error estimate in deep tails/small samples (Python now
-cross-checks against a distribution-free bootstrap SE; the C++/Rust MC VaR
-engines share the same estimator and are flagged in their `docs/VALIDATION.md`
-as carrying the same caveat, tracked as a follow-up).
+mishandled).
 
 One statistical caveat was investigated and documented rather than "fixed":
 Kupiec's proportion-of-failures test uses a chi-squared(1) asymptotic

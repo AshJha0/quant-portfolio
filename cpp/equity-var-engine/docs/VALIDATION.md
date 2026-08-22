@@ -1,8 +1,8 @@
 # Validation
 
 How the engine was validated, and where it fails. Everything below is
-enforced by the test suite (`ctest`: 9 suites, 83 tests, ~370 assertions,
-< 1 s, offline, deterministic) — validation claims that are not unit-tested
+enforced by the test suite (`ctest`: 9 suites, 89 tests, ~385 assertions,
+< 3 s, offline, deterministic) — validation claims that are not unit-tested
 do not appear here.
 
 ## 1. Cross-language golden tests (the headline)
@@ -70,6 +70,14 @@ the test header so model validation can re-run it at will.
   standard) and its own inverse-CDF transforms.
 - **RNG health**: uniforms strictly inside (0,1); gaussian sample moments at
   ~4 SE bands; chi² mean/variance vs (df, 2df).
+- **Bootstrap SE cross-check**: `mc_bootstrap_se` resamples the P&L with
+  replacement (via the same `RandomStream`, so it is bitwise deterministic
+  in its own seed) and reports the ddof = 1 stdev of the resampled VaR — a
+  distribution-free companion to `mc_tail_metrics`'s order-statistic
+  `var_se` (see the tail-resolution caveat below). Tested for determinism,
+  input validation, agreement with `var_se` to within a sane multiple on a
+  synthetic sample, and graceful (finite, non-NaN) behaviour on a
+  zero-variance P&L series.
 
 ## 4. Statistical power checks (planted-pathology tests)
 
@@ -122,10 +130,26 @@ the test header so model validation can re-run it at will.
    effect). Below `kMinHistObs = 50` the engine refuses. For alpha < 1/n the
    estimate degrades to the sample minimum — tested, documented, and the
    reason parametric/MC exist.
-2. **sqrt-time scaling understates stressed multi-day risk** (vol
+2. **`mc_tail_metrics`'s `var_se` is a fixed-bandwidth density estimate, and
+   is biased low in deep tails / small n.** It derives the quantile SE from
+   `alpha(1-alpha)/(n f(q)^2)` with `f(q)` estimated by a symmetric
+   order-statistic finite difference of bandwidth `ceil(sqrt(alpha n))`
+   around the quantile rank — the same defect class as a fixed-bandwidth
+   KDE evaluated at an extreme quantile, and it can understate the true
+   sampling SE by roughly 9-17 % at 99%+ confidence or modest scenario
+   counts. `mc_bootstrap_se` is now available as a distribution-free
+   cross-check: it resamples the P&L with replacement and reports the
+   ddof = 1 stdev of the resampled VaR quantile (mirroring
+   `eq_var.monte_carlo_var.var_standard_error_bootstrap` in the Python
+   reference engine, "the desk-standard way to attach error bars to an MC
+   or historical VaR"). Neither estimator is disabled or preferred by
+   default — `var_se` stays in `MonteCarloResult` for the O(n) hot path,
+   and `mc_bootstrap_se` is the O(n_boot · n log n) check to run when a
+   tail estimate is going to drive a limit or a capital number.
+3. **sqrt-time scaling understates stressed multi-day risk** (vol
    clustering): known bias, stated where used; do not feed the 10-day number
    to anything that assumes it is conservative.
-3. **The Cholesky jitter is a rounding repair, not a model fix.** It is
+4. **The Cholesky jitter is a rounding repair, not a model fix.** It is
    capped at 1e-6 x mean(diag); a covariance that needs more than that has a
    genuine negative eigenvalue, and "fixing" it would mean simulating a
    covariance the caller never supplied (in the tested 2x2 example the
@@ -135,7 +159,7 @@ the test header so model validation can re-run it at will.
    log or alert on any perturbation at all. Note this is *stricter* than the
    Python reference's `safe_cholesky`, which keeps escalating; the
    divergence only bites on inputs that are not valid covariance matrices.
-4. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
+5. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
    fails on |z| ≤ 3.5. The engine throws rather than degrades — this is a
    feature; the Python reference behaves identically. The domain check
    itself is exact, not grid-sampled: `dz_cf/dz` is a quadratic in `z`, so
@@ -143,16 +167,19 @@ the test header so model validation can re-run it at will.
    if it falls in range, else an endpoint) rather than by sampling a fixed
    grid, which could otherwise miss a thin non-monotone dip between two
    grid nodes (`CornishFisher.DomainCheckIsExactNotGridResolutionDependent`).
-5. **RNG streams differ from NumPy's**: cross-language MC agreement is
+6. **RNG streams differ from NumPy's**: cross-language MC agreement is
    statistical (within SE bars), never bitwise — the golden tests therefore
    pin the deterministic estimators and closed forms, and MC is validated
-   against closed forms *within* each language.
-6. **EWMA λ is a hyperparameter**, not estimated: λ = 0.94/0.98 are
+   against closed forms *within* each language. `mc_bootstrap_se` is no
+   exception: it reuses this file's `RandomStream`, so its resampling draws
+   (and hence its exact SE value) differ from the Python bootstrap's
+   `numpy.random.Generator` draws even at the same seed.
+7. **EWMA λ is a hyperparameter**, not estimated: λ = 0.94/0.98 are
    RiskMetrics/BRW conventions. A mis-tuned λ shows up as Christoffersen
    clustering failures — that is the monitoring loop, by construction.
-7. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
+8. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
    full revaluation; this engine's scope stops at the delta map.
-8. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
+9. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
    Irrelevant at desk call rates; would matter only inside a per-path loop,
    where it is never called (the MC uses inverse-normal + chi² mixing).
 

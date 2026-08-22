@@ -73,6 +73,28 @@ struct MonteCarloResult {
 /// of bandwidth ceil(sqrt(alpha n)) around the quantile rank.
 [[nodiscard]] MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha);
 
+/// Bootstrap standard error of the empirical VaR quantile.
+///
+/// Resamples `pnl` with replacement `n_boot` times (via this file's own
+/// `RandomStream`, so the result is bitwise deterministic in `seed`),
+/// recomputes the same type-7 linear-interpolation VaR quantile that
+/// `mc_tail_metrics` uses on each resample, and returns the ddof = 1 sample
+/// standard deviation of the resampled VaR values.
+///
+/// Distribution-free: unlike `mc_tail_metrics`'s `var_se` (a fixed-bandwidth
+/// finite-difference density estimate, i.e. the same defect class as a
+/// fixed-bandwidth KDE evaluated at an extreme quantile), the bootstrap does
+/// not need a local density estimate at all, so it does not share that
+/// estimator's ~9-17% low bias in deep tails / small n. Mirrors
+/// `eq_var.monte_carlo_var.var_standard_error_bootstrap`; use it as a
+/// cross-check on `var_se`, not a bitwise-identical replacement (RNG streams
+/// and resampling differ from the Python reference).
+///
+/// Throws std::invalid_argument if `pnl.size() < 10` or `alpha` is outside
+/// (0, 0.5).
+[[nodiscard]] double mc_bootstrap_se(std::span<const double> pnl, double alpha,
+                                     std::size_t n_boot = 500, std::uint64_t seed = 0);
+
 /// Full Monte Carlo VaR + ES on a linear portfolio.  Throws
 /// std::invalid_argument on empty exposures, shape mismatch, alpha outside
 /// (0, 0.5), or df <= 2 for the Student-t model.  Bitwise deterministic in

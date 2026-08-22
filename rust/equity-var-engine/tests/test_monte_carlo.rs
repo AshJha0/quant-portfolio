@@ -147,3 +147,59 @@ fn monte_carlo_validation() {
     let tiny_pnl = vec![0.0; 50];
     assert!(var_order_statistic_se(&tiny_pnl, 0.01).is_err());
 }
+
+#[test]
+fn bootstrap_se_bitwise_seed_determinism() {
+    let cov = demo_cov();
+    let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 5_000, TailModel::Normal, 5).unwrap();
+    let a = var_bootstrap_se(&pnl, 0.01, 200, 99).unwrap();
+    let b = var_bootstrap_se(&pnl, 0.01, 200, 99).unwrap();
+    assert_eq!(a, b); // bitwise, not approximate
+    let c = var_bootstrap_se(&pnl, 0.01, 200, 100).unwrap();
+    assert_ne!(a, c); // a different seed must move the estimate
+}
+
+#[test]
+fn bootstrap_se_errors_below_min_observations() {
+    let tiny = vec![1.0, 2.0, 3.0, 4.0, 5.0]; // < MIN_BOOTSTRAP_OBS (10)
+    assert!(var_bootstrap_se(&tiny, 0.01, 100, 0).is_err());
+    let exactly_min: Vec<f64> = (0..MIN_BOOTSTRAP_OBS).map(|i| -(i as f64)).collect();
+    assert!(var_bootstrap_se(&exactly_min, 0.01, 100, 0).is_ok());
+}
+
+#[test]
+fn bootstrap_se_errors_on_invalid_alpha() {
+    let pnl: Vec<f64> = (0..50).map(|i| -(i as f64)).collect();
+    assert!(var_bootstrap_se(&pnl, 0.0, 100, 0).is_err());
+    assert!(var_bootstrap_se(&pnl, 0.5, 100, 0).is_err());
+    assert!(var_bootstrap_se(&pnl, 1.0, 100, 0).is_err());
+    assert!(var_bootstrap_se(&pnl, -0.01, 100, 0).is_err());
+}
+
+#[test]
+fn bootstrap_se_errors_on_degenerate_n_boot() {
+    let pnl: Vec<f64> = (0..50).map(|i| -(i as f64)).collect();
+    assert!(var_bootstrap_se(&pnl, 0.01, 0, 0).is_err());
+    assert!(var_bootstrap_se(&pnl, 0.01, 1, 0).is_err());
+}
+
+#[test]
+fn bootstrap_se_within_3x_of_order_statistic_se_on_large_sample() {
+    let cov = demo_cov();
+    let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 100_000, TailModel::Normal, 21).unwrap();
+    let se_os = var_order_statistic_se(&pnl, 0.01).unwrap();
+    let se_boot = var_bootstrap_se(&pnl, 0.01, 500, 21).unwrap();
+    assert!(se_boot > 0.0);
+    assert!(
+        se_boot < 3.0 * se_os && se_os < 3.0 * se_boot,
+        "boot={se_boot} os={se_os}"
+    );
+}
+
+#[test]
+fn bootstrap_se_degenerate_constant_pnl_is_zero_not_nan() {
+    let pnl = vec![-100.0; 50];
+    let se = var_bootstrap_se(&pnl, 0.01, 200, 0).unwrap();
+    assert!(se.is_finite());
+    assert_eq!(se, 0.0);
+}

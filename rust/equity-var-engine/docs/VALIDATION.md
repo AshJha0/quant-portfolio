@@ -2,7 +2,7 @@
 
 How the engine was validated, and where it fails. Everything below is
 enforced by the test suite (`RUSTFLAGS="-D warnings" cargo test --release`:
-9 integration-test files, 81 tests, plus 10 rustdoc examples — 91 in total,
+9 integration-test files, 88 tests, plus 10 rustdoc examples — 98 in total,
 all offline and deterministic) — validation claims that are not unit-tested do not appear
 here.
 
@@ -74,6 +74,11 @@ digit-for-digit — i.e. Python, C++ and Rust independently agree.
   caveat below.
 - **RNG health**: uniforms strictly inside (0,1); Box–Muller normal sample
   moments at ~4 SE bands; chi^2 mean/variance vs (df, 2df).
+- **Bootstrap SE cross-check**: `var_bootstrap_se` (distribution-free,
+  resample-with-replacement) agrees with `var_order_statistic_se` within a
+  3x band on a 100k-path sample (`bootstrap_se_within_3x_of_order_statistic_se_on_large_sample`);
+  same-seed calls are bitwise identical, and a constant P&L slice returns an
+  exact `0.0`, never `NaN` (see item 10 below).
 
 All in `tests/test_monte_carlo.rs`.
 
@@ -200,6 +205,30 @@ All in `tests/test_backtest.rs` and `tests/test_historical.rs`.
    Irrelevant at desk call rates; would matter only inside a per-path loop,
    where it is never called (the MC uses Box–Muller normal + chi^2 mixing,
    not `student_t_ppf`).
+10. **`var_order_statistic_se` undersmooths in the deep tail / at modest
+    scenario counts.** Its density estimate is a local finite difference
+    with bandwidth `ceil(sqrt(alpha * n))` around the quantile rank — a
+    window sized for the bulk of the distribution. Deep in the tail (`alpha`
+    at or below 1 %) or with a modest path count, that window is narrow
+    enough that the local finite difference under-resolves the true local
+    density, and the reported SE can understate the true sampling error of
+    the quantile by roughly 10-15 %. It is not wrong in the sense of a bug —
+    the asymptotic formula and the finite-difference density estimate are
+    both textbook — it is a bandwidth trade-off that biases low precisely
+    where callers care most (the risk tail).
+    [`var_bootstrap_se`](../src/monte_carlo.rs) is the fix: it resamples the
+    scenario P&L with replacement and reports the empirical standard
+    deviation of the re-estimated quantile directly, carrying no bandwidth
+    assumption at all (distribution-free), at the cost of `n_boot` extra
+    quantile evaluations. It is the desk-standard way to attach an error bar
+    to an MC or historical VaR precisely because it does not inherit this
+    bias. Running both and comparing (`bootstrap_se_within_3x_of_order_statistic_se_on_large_sample`
+    in `tests/test_monte_carlo.rs`) is the recommended cross-check; a caller
+    who needs a defensible SE deep in the tail or off a small scenario count
+    should prefer the bootstrap number over the order-statistic one. Mirrors
+    the Python reference's `var_standard_error_bootstrap`
+    (`eq_var.monte_carlo_var`), which is the desk-standard estimator there
+    for the same reason.
 
 ## 7. Toolchain hygiene
 

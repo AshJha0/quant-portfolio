@@ -193,8 +193,8 @@ pub mod prelude {
     pub use crate::historical::{historical_var, HistoricalOptions, HistoricalResult, HsMethod};
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
-        monte_carlo_var, simulate_factor_returns, var_standard_error, JumpSpec,
-        MonteCarloOptions, MonteCarloResult,
+        monte_carlo_var, simulate_factor_returns, var_standard_error, var_standard_error_bootstrap,
+        JumpSpec, MonteCarloOptions, MonteCarloResult,
     };
     pub use crate::parametric::{
         cornish_fisher_domain_ok, cornish_fisher_var, cornish_fisher_z, parametric_var,

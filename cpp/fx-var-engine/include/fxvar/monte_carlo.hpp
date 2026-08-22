@@ -32,6 +32,15 @@
 // SE = sqrt(a(1-a)/n) / f(q) with a Gaussian-KDE (Silverman bandwidth)
 // density estimate at the quantile.  Convergence tests accept MC vs
 // closed form within 3 SE.
+//
+// Known limitation (see docs/VALIDATION.md F5): a fixed bandwidth is
+// tuned to the bulk of the P&L distribution, not the tail it is evaluated
+// at, so at deep confidence levels (>= 99.5%) or with modest scenario
+// counts it systematically underestimates the true sampling SE.
+// var_standard_error_bootstrap sidesteps this entirely (distribution-free,
+// no bandwidth to choose) at the cost of higher trial-to-trial variance
+// unless n_boot is generous; use it to cross-check the KDE estimate at
+// those confidence levels.
 
 #pragma once
 
@@ -130,6 +139,23 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
 /// Silverman bandwidth evaluated at the loss quantile.  Requires at least
 /// 10 scenarios.
 double var_standard_error(const std::vector<double>& pnl, double alpha);
+
+/// Bootstrap standard error of the empirical VaR (this module's estimator).
+///
+/// Resamples `pnl` with replacement `n_boot` times and applies the same
+/// order-statistic VaR rule as empirical_var (uniform weights: the rank is
+/// fixed by `alpha` and the sample size, so it is identical for every
+/// resample of the same length) to each resample, returning the ddof=1
+/// standard deviation of the resulting VaR estimates.  Distribution-free
+/// and needs no density estimate, so it does not share var_standard_error's
+/// bandwidth-driven bias at deep tails / modest scenario counts (see the
+/// file-level comment above and docs/VALIDATION.md); the desk-standard
+/// cross-check - prefer it whenever alpha >= 0.995 or scenario counts are
+/// modest.  Draws resample indices from this library's own `Rng` (bitwise
+/// reproducible for a fixed seed).  Requires at least 10 scenarios.
+double var_standard_error_bootstrap(const std::vector<double>& pnl,
+                                    double alpha, std::size_t n_boot = 500,
+                                    std::uint64_t seed = 0);
 
 /// Monte Carlo VaR/ES with full revaluation of the book.  `cov` must
 /// cover every factor in book.factors() (extra factors are ignored).  An

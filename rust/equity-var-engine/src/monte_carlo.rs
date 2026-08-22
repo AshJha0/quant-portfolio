@@ -5,7 +5,8 @@
 //! matrix `cov * (df-2)/df` so the **covariance** matches `cov` exactly while
 //! the tails fatten), revalue the linear portfolio `P&L = w . r`, and read
 //! VaR / ES off the scenario distribution with an order-statistic standard
-//! error.
+//! error ([`var_order_statistic_se`]) cross-checked by a distribution-free
+//! bootstrap standard error ([`var_bootstrap_se`]).
 //!
 //! Determinism: every draw comes from a seeded [`crate::rng::Rng`]
 //! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma) — no
@@ -23,6 +24,12 @@ use crate::{validate_alpha, EqVarError, Result, TailModel};
 /// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off
 /// — mirrors the C++ engine's `mc_tail_metrics` floor.
 pub const MIN_PATHS: usize = 100;
+
+/// Minimum observations for [`var_bootstrap_se`] — mirrors the Python
+/// reference's `var_standard_error_bootstrap` floor. Deliberately lower than
+/// [`MIN_PATHS`]: resampling a standard deviation is meaningful well below
+/// the sample size needed for a raw tail read-off.
+pub const MIN_BOOTSTRAP_OBS: usize = 10;
 
 /// Simulate `n_paths` factor-return scenarios (an `(n_paths, n)` panel) with
 /// target covariance `cov`.
@@ -235,4 +242,67 @@ pub fn var_order_statistic_se(pnl: &[f64], alpha: f64) -> Result<f64> {
     } else {
         Ok(0.0)
     }
+}
+
+fn validate_pnl_bootstrap(pnl: &[f64]) -> Result<()> {
+    if pnl.len() < MIN_BOOTSTRAP_OBS {
+        return Err(EqVarError::InvalidInput(format!(
+            "need at least {MIN_BOOTSTRAP_OBS} observations to bootstrap, got {}",
+            pnl.len()
+        )));
+    }
+    if pnl.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "pnl contains NaN or infinite values".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Bootstrap standard error of the empirical `alpha`-quantile VaR estimate.
+///
+/// Distribution-free cross-check for [`var_order_statistic_se`]: resamples
+/// `pnl` with replacement `n_boot` times using the engine's own
+/// [`crate::rng::Rng`] (seeded once from `seed`), takes the same type-7
+/// linear-interpolated quantile ([`crate::historical::linear_quantile`]) on
+/// each resample to get a re-estimated VaR, and returns the sample standard
+/// deviation (`ddof = 1`) across the `n_boot` re-estimates. Mirrors
+/// `eq_var.monte_carlo_var.var_standard_error_bootstrap` bit for bit in
+/// algorithm (same resampling scheme, same quantile convention) though not
+/// in RNG stream.
+///
+/// [`var_order_statistic_se`]'s local finite-difference bandwidth
+/// (`ceil(sqrt(alpha * n))`) is tuned to resolve the bulk of the
+/// distribution; deep in the tail or at modest scenario counts that
+/// bandwidth undersmooths and the estimate can understate the true sampling
+/// SE by roughly 10-15 %. This estimator carries no such bandwidth
+/// assumption — the price is `n_boot` extra quantile evaluations. Running
+/// both and comparing is the desk-standard cross-check (see
+/// docs/VALIDATION.md).
+///
+/// Requires `pnl.len() >= `[`MIN_BOOTSTRAP_OBS`]`, `alpha` in `(0, 0.5)`, and
+/// `n_boot >= 2` (a standard deviation needs at least two draws).
+pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    validate_pnl_bootstrap(pnl)?;
+    if n_boot < 2 {
+        return Err(EqVarError::InvalidInput(format!(
+            "n_boot must be >= 2 to estimate a standard deviation, got {n_boot}"
+        )));
+    }
+    let n = pnl.len();
+    let mut rng = Rng::new(seed);
+    let mut resample = vec![0.0; n];
+    let mut boot_vars = Vec::with_capacity(n_boot);
+    for _ in 0..n_boot {
+        for slot in resample.iter_mut() {
+            let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
+            *slot = pnl[idx];
+        }
+        let sorted = sorted_copy(&resample);
+        boot_vars.push(-crate::historical::linear_quantile_sorted(&sorted, alpha));
+    }
+    let mean = boot_vars.iter().sum::<f64>() / n_boot as f64;
+    let ss: f64 = boot_vars.iter().map(|v| (v - mean) * (v - mean)).sum();
+    Ok((ss / (n_boot - 1) as f64).sqrt())
 }

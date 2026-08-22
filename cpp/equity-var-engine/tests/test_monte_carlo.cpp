@@ -8,6 +8,7 @@
 #include "eqvar/expected_shortfall.hpp"
 #include "eqvar/monte_carlo.hpp"
 #include "eqvar/parametric.hpp"
+#include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
 using namespace eqvar;
@@ -114,6 +115,54 @@ TEST(RandomStreamTest, ChiSquaredMeanAndVariance) {
     const double m = s / n;
     EXPECT_NEAR(m, df, 0.07);                       // E = df, SE ~ 0.015
     EXPECT_NEAR(s2 / n - m * m, 2.0 * df, 0.5);     // Var = 2 df
+}
+
+TEST(MonteCarlo, BootstrapSeSameSeedIsBitwiseIdentical) {
+    const Matrix cov = demo_cov();
+    const Matrix scen = simulate_factor_returns(cov, 20'000, Dist::Normal, 6.0, 5);
+    const std::vector<double> pnl = portfolio_pnl(scen, kExposures);
+    const double se_a = mc_bootstrap_se(pnl, 0.01, 200, 7);
+    const double se_b = mc_bootstrap_se(pnl, 0.01, 200, 7);
+    EXPECT_EQ(se_a, se_b);  // bitwise, not approximate
+    const double se_c = mc_bootstrap_se(pnl, 0.01, 200, 8);
+    EXPECT_NE(se_a, se_c);  // a different seed must move the estimate
+}
+
+TEST(MonteCarlo, BootstrapSeThrowsOnFewerThan10Scenarios) {
+    const std::vector<double> tiny(9, -1.0);
+    EXPECT_THROW(mc_bootstrap_se(tiny, 0.01), std::invalid_argument);
+    const std::vector<double> ok(10, -1.0);
+    EXPECT_NO_THROW(mc_bootstrap_se(ok, 0.01, 50));
+}
+
+TEST(MonteCarlo, BootstrapSeThrowsOnAlphaOutsideValidRange) {
+    const std::vector<double> pnl(100, -1.0);
+    EXPECT_THROW(mc_bootstrap_se(pnl, 0.0), std::invalid_argument);
+    EXPECT_THROW(mc_bootstrap_se(pnl, 0.5), std::invalid_argument);
+    EXPECT_THROW(mc_bootstrap_se(pnl, -0.1), std::invalid_argument);
+    EXPECT_THROW(mc_bootstrap_se(pnl, 0.6), std::invalid_argument);
+}
+
+TEST(MonteCarlo, BootstrapSeWithinSaneMultipleOfOrderStatisticSe) {
+    const Matrix cov = demo_cov();
+    const Matrix scen = simulate_factor_returns(cov, 50'000, Dist::Normal, 6.0, 21);
+    const std::vector<double> pnl = portfolio_pnl(scen, kExposures);
+    const MonteCarloResult ref = mc_tail_metrics(pnl, 0.01);
+    const double boot_se = mc_bootstrap_se(pnl, 0.01, 300, 3);
+    ASSERT_GT(ref.var_se, 0.0);
+    ASSERT_GT(boot_se, 0.0);
+    // Different estimators, not expected to agree closely; just guard
+    // against wild divergence (the bootstrap is known to run a bit higher
+    // in deep tails, per the order-statistic estimator's low bias there).
+    EXPECT_LT(boot_se, 3.0 * ref.var_se);
+    EXPECT_GT(boot_se, ref.var_se / 3.0);
+}
+
+TEST(MonteCarlo, BootstrapSeHandlesDegenerateZeroVarianceSampleWithoutNaN) {
+    const std::vector<double> flat(200, 42.0);
+    const double se = mc_bootstrap_se(flat, 0.01, 100, 1);
+    EXPECT_TRUE(std::isfinite(se));
+    EXPECT_DOUBLE_EQ(se, 0.0);
 }
 
 TEST(MonteCarlo, Validation) {

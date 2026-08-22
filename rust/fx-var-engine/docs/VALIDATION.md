@@ -3,7 +3,7 @@
 How the Rust engine was validated: analytic identities, cross-language
 golden constants against the Python reference, statistical/ordering
 tests, benchmarks, and known failure modes. Every claim below is enforced
-by the test suite (`cargo test --release`): **91 tests + 2 doctests — 93 in
+by the test suite (`cargo test --release`): **97 tests + 2 doctests — 99 in
 total — all passing under `RUSTFLAGS="-D warnings"`** (zero warnings, zero clippy
 lint suppressions beyond documented `#[allow(...)]` on the two functions
 that legitimately need more than the default argument-count lint allows).
@@ -233,12 +233,19 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
   to the bulk of the P&L distribution, not the tail it is evaluated at, so
   at deep confidence levels (>= 99.5%) or with fewer than ~20,000
   scenarios it *systematically underestimates* the true sampling SE by
-  10-20% — directionally overconfident, not just noisy. `fx_var` adds a
-  distribution-free bootstrap cross-check
-  (`var_standard_error_bootstrap`, unbiased to ~1-2% in the same
-  benchmark); this Rust engine does not yet have one (tracked as a
-  follow-up) and should be cross-checked against the Python reference at
-  those confidence levels rather than trusted at face value.
+  10-20% — directionally overconfident, not just noisy. This is a
+  property of fixed-bandwidth density estimation at extreme quantiles
+  generally, not a bug specific to this implementation; the Python and
+  C++ twins use the same approach (Silverman bandwidth) and share the
+  limitation. `var_standard_error_bootstrap` is available in this Rust
+  engine too (`monte_carlo::var_standard_error_bootstrap`, ported from the
+  Python reference's estimator of the same name) and sidesteps the bias
+  entirely: distribution-free, no bandwidth to choose, unbiased to ~1-2%
+  in the same benchmark, at the cost of higher trial-to-trial variance in
+  the SE estimate itself unless `n_boot` is generous. Prefer it to
+  cross-check the KDE estimate whenever `alpha >= 0.995` or scenario
+  counts are modest
+  (`monte_carlo::tests::bootstrap_se_agrees_with_kde_within_a_sane_multiple`).
 - **F6 — Rust/C++ engines are not bit-identical to each other.** Both
   engines are internally deterministic (fixed seed => fixed stream within
   each crate/library) and both are pinned to the same Python golden
