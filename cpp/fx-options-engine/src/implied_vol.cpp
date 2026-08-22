@@ -75,13 +75,37 @@ double implied_vol(double price, double S, double K, double T, double r_d,
 
     // Brent fallback on an expanding bracket.
     hi = 1.0;
-    while (objective(hi) < 0.0 && hi < 50.0) {
+    double f_hi = objective(hi);
+    while (f_hi < 0.0 && hi < 50.0) {
         hi *= 2.0;
+        f_hi = objective(hi);
     }
-    if (objective(hi) < 0.0) {
+    if (f_hi < 0.0) {
         throw std::invalid_argument("implied vol > " + std::to_string(hi) +
                                     ": price " + std::to_string(price) +
                                     " unattainably high");
+    }
+    if (f_hi == 0.0) {
+        // objective(hi) landed exactly on zero without ever going strictly
+        // positive during expansion: deep ITM + long-dated + high vol drives
+        // |d1|, |d2| large enough that N(d1)/N(d2) saturate to 0 or 1 in
+        // double precision, so gk_price(sigma) is bit-identical to the
+        // sigma -> inf bound for every sigma from the true root up to `hi`
+        // (and beyond -- this is not a bracket, it is a flat plateau). Any
+        // point in that plateau is an equally "valid" root of the floating
+        // point objective, so accepting `hi` (an arbitrary artifact of the
+        // doubling schedule) would silently return a vol that can be wrong
+        // by whole vol points or more with no signal to the caller. This is
+        // the upper-bound mirror of the near-`lower` short-circuit above;
+        // unlike that case there is no finite limiting sigma to fall back
+        // to (sigma -> infinity is not representable), so the honest
+        // answer is that the vol is unrecoverable at this precision.
+        throw std::invalid_argument(
+            "price " + std::to_string(price) +
+            " is within double-precision resolution of the sigma->inf "
+            "bound " + std::to_string(upper) +
+            "; implied volatility is unrecoverably large (vega has "
+            "underflowed to zero in this regime -- see docs/VALIDATION.md)");
     }
     return detail::brentq(objective, lo, hi, tol, 200);
 }

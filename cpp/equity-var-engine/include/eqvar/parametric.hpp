@@ -47,6 +47,10 @@ enum class Dist { Normal, StudentT };
 /// [-z_range, z_range] — outside this region the fourth-order expansion is
 /// not a quantile function (the implied density goes negative) and CF "VaR"
 /// is nonsense.  |z| <= 3.5 covers alpha >= 0.02 %.
+/// Checked exactly via the closed-form minimum of the (quadratic-in-z)
+/// derivative on the interval, not by sampling a grid (see parametric.cpp
+/// for why a grid is unsafe here). `n_grid` is kept for API compatibility
+/// and still validated (>= 2) but no longer affects the result.
 /// Throws std::invalid_argument unless z_range > 0, n_grid >= 2 and the
 /// moments are finite.
 [[nodiscard]] bool cornish_fisher_domain_ok(double skew, double excess_kurt,

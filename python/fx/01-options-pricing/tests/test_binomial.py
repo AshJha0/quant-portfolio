@@ -1,5 +1,6 @@
 """CRR binomial tree: convergence to GK, American exercise economics."""
 
+import numpy as np
 import pytest
 
 from fx_options import binomial_convergence, binomial_price, gk_price
@@ -20,6 +21,28 @@ class TestEuropeanConvergence:
         errors = [r["abs_error"] for r in rows]
         assert errors[2] < errors[0]
         assert errors[2] < 1e-5
+
+    def test_convergence_rate_fitted_exponent(self):
+        """Fit the CRR discretisation-error exponent by log-log regression.
+
+        CRR is a first-order scheme: error(n) ~ C / n, with an odd/even
+        and node-alignment oscillation superposed. A single pair of step
+        counts (as in ``test_error_decreases_with_steps`` above) cannot
+        *prove* the O(1/n) rate -- a two-point ratio can land anywhere in
+        the oscillation. Regressing log|error| on log(n) over a decade of
+        geometrically spaced step counts averages the oscillation out and
+        recovers the leading exponent, which must come out close to the
+        theoretical -1.
+        """
+        steps = tuple(200 * 2**k for k in range(9))  # 200 .. 51200
+        rows = binomial_convergence(**MKT, option_type="call", step_grid=steps)
+        errs = np.array([r["abs_error"] for r in rows])
+        assert np.all(errs > 0.0), "tree exactly matches GK at some n"
+        slope, _ = np.polyfit(np.log(steps), np.log(errs), 1)
+        assert -1.3 < slope < -0.7, (
+            f"fitted CRR convergence exponent {slope:.3f}; theory predicts "
+            "-1 (error ~ C/n)"
+        )
 
     def test_jpy_level_convergence(self):
         # High spot level (pip 0.01) must not degrade accuracy in relative terms.

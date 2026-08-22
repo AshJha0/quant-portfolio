@@ -105,16 +105,38 @@ double cornish_fisher_z(double z, double skew, double excess_kurtosis) {
 
 bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
                               double z_range, int n_grid) {
+  // n_grid is retained for API compatibility; the check below is
+  // closed-form and no longer samples a grid, but n_grid keeps its
+  // validation so a caller-supplied resolution is still sanity-checked.
   if (n_grid < 3) throw std::invalid_argument("n_grid must be >= 3");
-  double prev = cornish_fisher_z(-z_range, skew, excess_kurtosis);
-  for (int i = 1; i < n_grid; ++i) {
-    const double z = -z_range + 2.0 * z_range * static_cast<double>(i) /
-                                    static_cast<double>(n_grid - 1);
-    const double cur = cornish_fisher_z(z, skew, excess_kurtosis);
-    if (!(cur > prev)) return false;
-    prev = cur;
+  if (!(z_range > 0.0) || !std::isfinite(z_range)) {
+    throw std::invalid_argument("z_range must be finite and > 0");
   }
-  return true;
+  // dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36 must stay > 0 on
+  // [-z_range, z_range]. It is a quadratic in z, g(z) = A z^2 + B z + C
+  // with A = K/8 - S^2/6, B = S/3, C = 1 - K/8 + 5 S^2/36, whose exact
+  // minimum on the interval is known in closed form: the vertex -B/(2A)
+  // when g is convex (A > 0) and that point lies in range, else an
+  // interval endpoint (a concave/linear g, A <= 0, always attains its
+  // minimum at an endpoint). This replaces a finite-difference scan over
+  // z_cf values on a fixed grid, which can miss a thin sub-grid dip below
+  // zero: skew=0.122, excess_kurtosis=-0.427 is non-monotone on |z| <= 4
+  // (minimum derivative ~ -9e-4 near z ~ 3.1) but the 801-point grid
+  // previously used here reported it as monotone.
+  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis)) return false;
+  const double a = excess_kurtosis / 8.0 - skew * skew / 6.0;
+  const double b = skew / 3.0;
+  const double c = 1.0 - excess_kurtosis / 8.0 + 5.0 * skew * skew / 36.0;
+  const auto g = [&](double z) { return a * z * z + b * z + c; };
+  double m;
+  if (a > 0.0) {
+    const double z_star = -b / (2.0 * a);
+    m = (z_star >= -z_range && z_star <= z_range) ? g(z_star)
+                                                   : std::min(g(-z_range), g(z_range));
+  } else {
+    m = std::min(g(-z_range), g(z_range));
+  }
+  return m > 0.0;
 }
 
 double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,

@@ -107,3 +107,17 @@ TEST(CornishFisher, DomainCheckRejectsNonMonotoneRegion) {
     });
     EXPECT_THROW(cornish_fisher_var(-1.0, 0.01), std::invalid_argument);
 }
+
+TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
+    // Regression for the closed-form rewrite of cornish_fisher_domain_ok.
+    // (skew, excess_kurt) placed so the derivative's parabola vertex falls
+    // almost exactly between two nodes of the *old* 2001-point grid on
+    // [-3.5, 3.5]: the old grid-sampled derivative check reported this as
+    // monotone (every sampled node was positive) even though the true
+    // minimum of the derivative between those nodes is ~ -1.0e-6
+    // (non-monotone).
+    const double skew = -0.010499946187942602;
+    const double excess_kurt = 8.000105998830488;
+    EXPECT_FALSE(cornish_fisher_domain_ok(skew, excess_kurt));
+    EXPECT_THROW(cornish_fisher_var(1.0, 0.01, skew, excess_kurt), std::invalid_argument);
+}

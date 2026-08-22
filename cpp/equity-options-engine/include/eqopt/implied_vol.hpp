@@ -6,7 +6,20 @@
 /// vega; every step is kept inside a maintained bracket, and whenever Newton
 /// stalls (tiny vega deep ITM/OTM, or a step outside the bracket) the
 /// algorithm falls back to bisection, so it is robust across moneyness
-/// 0.5x–2.0x and expiries from days to years.
+/// 0.5x–2.0x and expiries from days to years. The loop always finishes by
+/// bisecting the maintained bracket down to double-precision width rather
+/// than returning as soon as the *price* residual is within `tol` -- see
+/// the "flat vega" note below.
+///
+/// Known hard regime: very long-dated *and* very high vol (e.g. T > 10y
+/// with sigma > 200%) pushes |d1|, |d2| large enough that
+/// vega ~ S sqrt(T) phi(d1) underflows towards zero and the price sits
+/// within double-precision noise of the `sigma -> inf` arbitrage bound.
+/// There the price-to-vol map is genuinely ill-conditioned (a tiny price
+/// residual corresponds to a large sigma residual): recovered vol is only
+/// accurate to the 1e-4-1e-3 level in that corner rather than the 1e-7
+/// achieved elsewhere, no matter how the residual tolerance is set. This is
+/// a property of the inverse problem itself, not a fixable solver bug.
 
 #ifndef EQOPT_IMPLIED_VOL_HPP
 #define EQOPT_IMPLIED_VOL_HPP

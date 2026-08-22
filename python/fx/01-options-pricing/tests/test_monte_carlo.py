@@ -15,6 +15,35 @@ class TestVanillaMC:
         gk = gk_price(**MKT, option_type=option_type)
         assert abs(res.price - gk) < 3.0 * res.std_error
 
+    def test_std_error_scales_as_inverse_sqrt_n_fitted(self):
+        """Fit the Monte Carlo error-scaling exponent by log-log regression.
+
+        Plain (no variance reduction) MC has statistical error O(1/sqrt(n))
+        by the CLT. Rather than trust the estimator's own reported
+        std_error formula, this measures the *empirical* spread of
+        independent replications of the price at each path count and fits
+        the exponent of empirical_std vs n by regression -- an actual
+        measurement of the realized rate, not a single eyeballed ratio.
+        """
+        path_counts = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000]
+        n_reps = 40
+        empirical_std = []
+        for n in path_counts:
+            reps = [
+                mc_price(
+                    **MKT, option_type="call", n_paths=n,
+                    antithetic=False, control_variate=False,
+                    rng=1_000_003 * n + rep,
+                ).price
+                for rep in range(n_reps)
+            ]
+            empirical_std.append(np.std(reps, ddof=1))
+        slope, _ = np.polyfit(np.log(path_counts), np.log(empirical_std), 1)
+        assert -0.65 < slope < -0.35, (
+            f"fitted MC error-scaling exponent {slope:.3f}; CLT predicts "
+            "-0.5 (std ~ C/sqrt(n))"
+        )
+
     def test_negative_rates_within_three_se(self):
         args = dict(S=1.08, K=1.08, T=1.0, r_d=-0.0075, r_f=-0.005,
                     sigma=0.065)

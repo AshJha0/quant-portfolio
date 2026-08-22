@@ -160,8 +160,19 @@ pub fn cornish_fisher_z(z: f64, skew: f64, excess_kurt: f64) -> f64 {
 ///
 /// `dz_cf/dz = 1 + z S / 3 + (3z^2 - 3) K / 24 - (6z^2 - 5) S^2 / 36`
 ///
-/// is checked on a dense grid (`n_grid` points; the reference uses 2001
-/// points on `|z| <= 3.5`, covering tail probabilities down to 0.02 %).
+/// is itself a quadratic in `z`: `g(z) = A z^2 + B z + C` with
+/// `A = K/8 - S^2/6`, `B = S/3`, `C = 1 - K/8 + 5 S^2/36`. Its minimum on
+/// `[-z_range, z_range]` therefore has a closed form — the vertex
+/// `-B/(2A)` when `g` is convex (`A > 0`) and that point lies in range,
+/// otherwise an interval endpoint (a concave/linear `g`, `A <= 0`, always
+/// attains its minimum on a closed interval at an endpoint) — checked
+/// exactly here rather than by sampling a grid (`n_grid` points; the
+/// previous implementation used 2001 points on `|z| <= 3.5`). A grid can
+/// under-sample a thin non-monotone dip: `skew = 0.122, excess_kurt =
+/// -0.427` is non-monotone on `|z| <= 4` (minimum derivative ~ -9e-4 near
+/// `z ~ 3.1`) but an 801-point grid on that range reports it as monotone.
+/// `n_grid` is retained for API compatibility but no longer affects the
+/// result.
 /// Returns `true` when the expansion is monotone (safe to use).
 pub fn cornish_fisher_domain_ok(
     skew: f64,
@@ -169,22 +180,28 @@ pub fn cornish_fisher_domain_ok(
     z_range: f64,
     n_grid: usize,
 ) -> bool {
-    // NaN moments are never "ok": `deriv <= 0.0` is false for NaN, so a
-    // NaN skew/kurtosis would otherwise be reported as a valid domain and
-    // produce a NaN "VaR".
+    // NaN moments are never "ok": an exact comparison is false for NaN, so
+    // a NaN skew/kurtosis would otherwise be reported as a valid domain
+    // and produce a NaN "VaR".
     if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
         return false;
     }
-    let n = n_grid.max(2);
-    for i in 0..n {
-        let z = -z_range + 2.0 * z_range * i as f64 / (n - 1) as f64;
-        let deriv = 1.0 + z * skew / 3.0 + (3.0 * z * z - 3.0) * excess_kurt / 24.0
-            - (6.0 * z * z - 5.0) * skew * skew / 36.0;
-        if deriv <= 0.0 {
-            return false;
+    let _ = n_grid.max(2); // API compatibility only; unused by the closed-form check.
+    let a = excess_kurt / 8.0 - skew * skew / 6.0;
+    let b = skew / 3.0;
+    let c = 1.0 - excess_kurt / 8.0 + 5.0 * skew * skew / 36.0;
+    let g = |z: f64| a * z * z + b * z + c;
+    let m = if a > 0.0 {
+        let z_star = -b / (2.0 * a);
+        if (-z_range..=z_range).contains(&z_star) {
+            g(z_star)
+        } else {
+            g(-z_range).min(g(z_range))
         }
-    }
-    true
+    } else {
+        g(-z_range).min(g(z_range))
+    };
+    m > 0.0
 }
 
 /// Cornish–Fisher VaR: moment-corrected parametric quantile.

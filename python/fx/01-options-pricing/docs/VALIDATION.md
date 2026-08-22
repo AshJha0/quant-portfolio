@@ -116,7 +116,16 @@ foreign-interest accounting, 2000–4000 GBM paths, seeded:
    at T = 0.05, 15% OTM, the time value (~1e-18) sits below double
    precision resolution of the price (~1e-17 on an ITM premium); the
    solver returns the σ→0 limit rather than noise. Bounds violations raise
-   `ValueError` with the offending bound in the message.
+   `ValueError` with the offending bound in the message. The symmetric
+   corner — deep ITM + long-dated + high vol, where `|d1|`/`|d2|` are large
+   enough that `N(d1)`/`N(d2)` saturate to 0/1 in double precision and the
+   price becomes bit-identical to the σ→∞ bound — used to silently return
+   an arbitrary vol from inside that flat plateau (e.g. 4.0 instead of the
+   true 3.0, a one-third relative error, with no signal to the caller).
+   `implied_vol` now detects the flat plateau during Brent bracket
+   expansion and raises `ValueError` ("unrecoverably large") instead of
+   guessing a point in it; see `TestImpliedVol
+   .test_long_dated_deep_itm_high_vol_flat_plateau_raises`.
 5. **CIP basis.** `cip_forward` is the textbook forward; the tradable
    forward embeds the cross-currency basis (5–50bp post-2008,
    quarter-end spikes). Use market forward points in production.

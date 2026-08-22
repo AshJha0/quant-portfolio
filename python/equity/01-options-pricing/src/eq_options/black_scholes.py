@@ -249,7 +249,19 @@ def implied_vol(
     maintained bracket, and if Newton stalls (tiny vega deep ITM/OTM, or a
     step outside the bracket) the algorithm falls back to bisection /
     Brent's method, so it is robust across moneyness 0.5x-2.0x and
-    expiries from days to years.
+    expiries from days to years. The Newton loop always finishes with a
+    Brent refinement on its final bracket rather than returning as soon as
+    the price residual is within ``tol`` -- see the "flat vega" note below.
+
+    Known hard regime: very long-dated *and* very high vol (e.g. T > 10y
+    with sigma > 200%) pushes ``|d1|``, ``|d2|`` large enough that vega
+    ``~ S sqrt(T) phi(d1)`` underflows towards zero and the price sits
+    within double-precision noise of the ``sigma -> inf`` arbitrage bound.
+    There the price-to-vol map is genuinely ill-conditioned (a tiny price
+    residual corresponds to a large sigma residual): recovered vol is only
+    accurate to the 1e-4-1e-3 level in that corner rather than the 1e-8
+    achieved elsewhere, no matter how the residual tolerance is set. This
+    is a property of the inverse problem itself, not a fixable solver bug.
 
     Parameters
     ----------
@@ -318,7 +330,7 @@ def implied_vol(
     for _ in range(max_iter):
         diff = objective(sigma)
         if abs(diff) < tol:
-            return sigma
+            break
         if diff > 0.0:
             hi = sigma
         else:
@@ -335,5 +347,14 @@ def implied_vol(
             break
         sigma = candidate
 
-    # Final safeguard: Brent on the maintained bracket.
+    # Always finish with Brent on the maintained bracket, even when Newton
+    # exited on the `tol` price-residual check above. That check alone is
+    # not a reliable stopping rule: in a flat-vega region (e.g. very
+    # long-dated + very high vol, where d1/d2 blow up and vega ~ exp(-d1^2/2)
+    # underflows towards the bracket's arbitrage bound) the price can sit
+    # within `tol` of the target while sigma is still off by whole vol
+    # points, because a tiny price residual maps through a tiny vega to a
+    # large sigma residual. Brent on the bracket costs at most a few extra
+    # evaluations in the well-conditioned case and recovers full bracket
+    # precision in the ill-conditioned one.
     return float(brentq(objective, lo, hi, xtol=1e-16, rtol=8.9e-16, maxiter=200))

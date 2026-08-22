@@ -121,9 +121,15 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
   (`cholesky_warning`), tested with an exactly-rank-1 matrix.
 - **F3 — Cornish–Fisher out of domain.** For |S|, K outside the Maillard
   monotonicity region the expansion is not a quantile function (99% "VaR"
-  can undercut 95%). The engine checks the domain on a dense grid and
-  throws; the escape hatch is explicit (`check_domain=false`). Tested at
-  S=2.5.
+  can undercut 95%). The engine checks the domain and throws; the escape
+  hatch is explicit (`check_domain=false`). Tested at S=2.5. The check
+  itself is exact, not grid-sampled: `dz_cf/dz` is a quadratic in `z`, so
+  its minimum on `[-z_range, z_range]` is found in closed form rather than
+  by scanning `z_cf` values on a fixed grid, which could miss a thin
+  non-monotone dip between two grid nodes — confirmed with a constructed
+  counterexample, `(S, K) = (0.122, -0.427)`, that the previous 801-point
+  grid reported as monotone while the true minimum derivative on
+  `[-4, 4]` is ≈ -9.15e-4 (`CornishFisher.DomainCheckIsExactNotGridResolutionDependent`).
 - **F4 — √time scaling on carry books.** Negatively skewed, serially
   correlated unwinds violate i.i.d. aggregation; 10-day figures inherit
   the 1-day tail shape. Documented limitation (assumption A5); the
@@ -132,6 +138,17 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
   P&L distributions (near-degenerate books): the bandwidth floor guards
   the division but the SE is then conservative. MC convergence tests use
   well-spread books; samples below 10 scenarios are refused outright.
+  Separately (see the Python `fx_var` reference, `docs/VALIDATION.md` F9,
+  for the quantified benchmark this engine shares): the fixed-bandwidth
+  (Silverman) KDE density estimate is tuned to the bulk of the P&L
+  distribution, not the tail it is evaluated at, so at deep confidence
+  levels (>= 99.5%) or with fewer than ~20,000 scenarios it *systematically
+  underestimates* the true sampling SE by 10-20% — directionally
+  overconfident, not just noisy. `fx_var` adds a distribution-free
+  bootstrap cross-check (`var_standard_error_bootstrap`, unbiased to ~1-2%
+  in the same benchmark); this C++ engine does not yet have one (tracked
+  as a follow-up) and should be cross-checked against the Python reference
+  at those confidence levels rather than trusted at face value.
 - **F6 — Scale sensitivity of the numerical guards (fixed).** Two guards
   used *absolute* thresholds and misfired on legitimate large-notional
   books:
@@ -153,6 +170,15 @@ print(kupiec_pof(8, 250, .99), basel_traffic_light(5, 250, .99))
   paths now throw `std::invalid_argument` immediately, as does a
   non-finite exposure and a `simple_to_log` move of −100% or worse (which
   would inject −inf into every position of a stress report).
+- **F8 — `kupiec_pof`'s chi2(1) reference is oversized exactly at the
+  regulatory window** (see the Python `fx_var` reference,
+  `docs/VALIDATION.md` F10, for the exact-probability derivation this
+  engine's LR formula shares): at `n_obs=250, alpha=0.99` the expected
+  exception count is only 2.5, and a nominally-5%-size chi2(1) test there
+  has an *exact* rejection probability of ≈9.5% under a correctly
+  calibrated model — falling to ≈5.5% by `n_obs=1000`. The LR formula
+  itself is unchanged (it is what the golden tests pin); read a p-value
+  near 0.05 at the 250-day window with that in mind.
 
 ## 4b. Edge cases (documented **and** tested)
 

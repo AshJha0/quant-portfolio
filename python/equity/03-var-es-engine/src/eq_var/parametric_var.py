@@ -146,25 +146,54 @@ def cornish_fisher_domain_ok(
     function where ``dz_cf/dz > 0``; for large skew/kurtosis the cubic
     polynomial becomes non-monotone and the implied 'density' goes negative,
     producing nonsense VaR (e.g. the 99 % 'quantile' above the 95 % one).
-    We check the analytic derivative
+    The analytic derivative
 
     ``dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36``
 
-    on a dense grid covering the tail probabilities used in practice
-    (|z| <= 3.5 covers alpha >= 0.02 %).
+    is itself a quadratic in ``z``: ``g(z) = A z^2 + B z + C`` with
+    ``A = K/8 - S^2/6``, ``B = S/3``, ``C = 1 - K/8 + 5 S^2/36``.  We check
+    monotonicity **exactly** (a closed-form global minimum of ``g`` on
+    ``[-z_range, z_range]``) rather than by sampling a grid: for a convex
+    ``g`` (``A > 0``) the minimum is at the vertex ``-B/(2A)`` when that
+    falls inside the interval, otherwise at whichever endpoint is closer to
+    the vertex; for concave/linear ``g`` (``A <= 0``) the minimum of a
+    concave function on a closed interval is always at an endpoint.
+
+    A grid search (the previous implementation here, and still the approach
+    in ``fx_var``) can miss a thin dip below zero between sample points —
+    e.g. ``skew=0.122, excess_kurt=-0.427`` is non-monotone on ``|z| <= 4``
+    (minimum derivative ~ -9e-4 near z ~ 3.1) but an 801-point grid on that
+    range reports it as monotone; this closed-form check has no such
+    resolution dependence. ``n_grid`` is retained for API compatibility
+    (validated below) but no longer affects the result.
 
     Returns
     -------
     bool — True when the expansion is monotone (safe to use).
     """
-    z = np.linspace(-z_range, z_range, n_grid)
-    deriv = (
-        1.0
-        + z * skew / 3.0
-        + (3.0 * z**2 - 3.0) * excess_kurt / 24.0
-        - (6.0 * z**2 - 5.0) * skew**2 / 36.0
-    )
-    return bool(np.all(deriv > 0.0))
+    z_range = float(z_range)
+    if not (z_range > 0.0) or not np.isfinite(z_range):
+        raise ValueError(f"z_range must be finite and > 0, got {z_range}")
+    if n_grid < 2:
+        raise ValueError(f"n_grid must be >= 2, got {n_grid}")
+    if not np.isfinite(skew) or not np.isfinite(excess_kurt):
+        return False
+    a = excess_kurt / 8.0 - skew**2 / 6.0
+    b = skew / 3.0
+    c = 1.0 - excess_kurt / 8.0 + 5.0 * skew**2 / 36.0
+
+    def g(z: float) -> float:
+        return a * z * z + b * z + c
+
+    if a > 0.0:
+        z_star = -b / (2.0 * a)
+        if -z_range <= z_star <= z_range:
+            m = g(z_star)
+        else:
+            m = min(g(-z_range), g(z_range))
+    else:
+        m = min(g(-z_range), g(z_range))
+    return bool(m > 0.0)
 
 
 def cornish_fisher_var(

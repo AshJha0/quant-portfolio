@@ -31,6 +31,44 @@ fn european_tree_converges_to_gk() {
 }
 
 #[test]
+fn convergence_rate_fitted_exponent_matches_theoretical_order_one() {
+    // CRR is a first-order scheme: error(n) ~ C / n, with an odd/even
+    // (and node-alignment) oscillation superposed. A two-point ratio (as
+    // in european_tree_converges_to_gk above) cannot *prove* the O(1/n)
+    // rate -- it can land anywhere in the oscillation. Regressing
+    // log|error| on log(n) over a decade of geometrically spaced step
+    // counts averages the oscillation out and recovers the leading
+    // exponent, which must come out close to the theoretical -1.
+    let (s, k, t, rd, rf, sig) = MKT;
+    let exact = gk_price(s, k, t, rd, rf, sig, OptionType::Call).unwrap();
+    let steps: Vec<u32> = (0..9).map(|i| 200u32 * (1 << i)).collect(); // 200..51200
+    let mut log_n = Vec::with_capacity(steps.len());
+    let mut log_err = Vec::with_capacity(steps.len());
+    for &n in &steps {
+        let err = (binomial_price(s, k, t, rd, rf, sig, OptionType::Call, n, Exercise::European)
+            .unwrap()
+            - exact)
+            .abs();
+        assert!(err > 0.0, "tree exactly matches GK at n={n}");
+        log_n.push((n as f64).ln());
+        log_err.push(err.ln());
+    }
+    let mean_x = log_n.iter().sum::<f64>() / log_n.len() as f64;
+    let mean_y = log_err.iter().sum::<f64>() / log_err.len() as f64;
+    let num: f64 = log_n
+        .iter()
+        .zip(&log_err)
+        .map(|(x, y)| (x - mean_x) * (y - mean_y))
+        .sum();
+    let den: f64 = log_n.iter().map(|x| (x - mean_x).powi(2)).sum();
+    let slope = num / den;
+    assert!(
+        (-1.3..-0.7).contains(&slope),
+        "fitted CRR exponent {slope:.3}; theory predicts -1 (error ~ C/n)"
+    );
+}
+
+#[test]
 fn american_at_least_european_everywhere() {
     let (s, _, t, _, _, sig) = MKT;
     for &k in &[0.95, 1.10, 1.25] {

@@ -51,6 +51,16 @@ conventions (BASE/QUOTE, two rates, theta per year, ACT/365F).
   options have time value near machine epsilon — the price→vol map is a
   plateau there and *any* solver's answer is ill-conditioned; quote vol
   from the OTM wing instead (as desks do).
+* **Vol unrecoverable near the sigma→∞ bound (symmetric corner).** Deep
+  ITM + long-dated + high vol drives `|d1|`/`|d2|` large enough that
+  `N(d1)`/`N(d2)` saturate to 0/1 in double precision, so the price becomes
+  bit-identical to the sigma→∞ bound for every sigma from the true root up
+  to infinity — a flat plateau, not a resolvable root. `implied_vol` throws
+  `std::invalid_argument` there rather than returning an arbitrary point
+  from inside the plateau (previously it did the latter, silently, and
+  could be off by whole vol points — fixed; see `EdgeCases
+  .VolNearSolverCapSaturatesAtTheArbitrageBound` and
+  `ImpliedVol.LongDatedDeepItmHighVolFlatPlateauThrows`).
 * **PA call delta above the fold.** The premium-adjusted call delta has a
   maximum in strike; targets above it have no solution and throw rather
   than silently returning the wrong branch.

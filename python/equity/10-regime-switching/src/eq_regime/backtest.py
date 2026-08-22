@@ -193,8 +193,9 @@ def walk_forward_backtest(
         n_pca=n_pca,
         **(detect_kwargs or {}),
     )
-    log_ret = np.log(prices / prices.shift(1)).iloc[1:].mean(axis=1)
-    simple_ret = np.exp(np.log(prices / prices.shift(1)).iloc[1:]).mean(axis=1) - 1.0
+    asset_log_ret = np.log(prices / prices.shift(1)).iloc[1:]
+    log_ret = asset_log_ret.mean(axis=1)
+    simple_ret = np.expm1(asset_log_ret).mean(axis=1)
 
     weights = build_weights(
         detection,

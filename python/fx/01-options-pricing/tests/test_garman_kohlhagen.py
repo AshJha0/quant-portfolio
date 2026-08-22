@@ -150,6 +150,22 @@ class TestImpliedVol:
         with pytest.raises(ValueError, match="T > 0"):
             implied_vol(0.05, 1.1, 1.1, 0.0, 0.03, 0.01, "call")
 
+    def test_long_dated_deep_itm_high_vol_flat_plateau_raises(self):
+        """Regression: deep ITM + long-dated + high vol drives |d1|, |d2|
+        large enough that N(d1)/N(d2) saturate to 0/1 in double precision,
+        so gk_price(sigma) is bit-identical to the sigma->inf bound for
+        every sigma from the true root up to whatever `hi` the Brent
+        bracket-expansion loop happens to stop at. Before the fix this
+        silently returned that arbitrary `hi` (e.g. 4.0 when the true vol
+        was 3.0 -- a 33% relative error with no signal to the caller);
+        the solver must now recognise the flat plateau and raise instead
+        of guessing.
+        """
+        S, K, T, r_d, r_f, sigma = 1.0, 0.5, 30.0, 0.03, 0.01, 3.0
+        price = gk_call(S, K, T, r_d, r_f, sigma)
+        with pytest.raises(ValueError, match="unrecoverably large"):
+            implied_vol(price, S, K, T, r_d, r_f, "call")
+
 
 class TestValidation:
     @pytest.mark.parametrize("bad", [

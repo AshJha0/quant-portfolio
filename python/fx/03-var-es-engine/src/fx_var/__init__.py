@@ -46,6 +46,7 @@ from .monte_carlo_var import (
     robust_cholesky,
     simulate_factor_returns,
     var_standard_error,
+    var_standard_error_bootstrap,
 )
 from .parametric_var import (
     ParametricVaRResult,
@@ -86,7 +87,7 @@ __all__ = [
     "cornish_fisher_domain_ok",
     # monte carlo
     "monte_carlo_var", "MonteCarloVaRResult", "simulate_factor_returns",
-    "JumpSpec", "robust_cholesky", "var_standard_error",
+    "JumpSpec", "robust_cholesky", "var_standard_error", "var_standard_error_bootstrap",
     # ES
     "empirical_var", "empirical_es", "empirical_var_es", "normal_var",
     "normal_es", "t_var", "t_es",

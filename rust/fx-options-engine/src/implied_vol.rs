@@ -34,15 +34,21 @@ fn gk_vega(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult<f
 /// 1e-12 (price round trips reproduce the input vol to better than
 /// 1e-10 across the tested strike/vol grid).
 ///
-/// A price whose time value is below double-precision resolution returns
-/// `0.0` (the `sigma -> 0` limit; vol unrecoverable — documented in
-/// docs/VALIDATION.md).
+/// A price whose time value is below double-precision resolution of the
+/// `sigma -> 0` bound returns `0.0` (that limit; vol unrecoverable —
+/// documented in docs/VALIDATION.md). The symmetric corner — deep ITM +
+/// long-dated + high vol, where `N(d1)`/`N(d2)` saturate to 0/1 in double
+/// precision and the price becomes bit-identical to the `sigma -> inf`
+/// bound — is a flat plateau with no unique root, not a single degenerate
+/// point with a natural finite limit, so it errors instead (see below).
 ///
 /// # Errors
 ///
 /// [`crate::FxError::InvalidInput`] if the price violates the
 /// no-arbitrage bounds `[discounted intrinsic on the forward, discounted
-/// forward bound]` or `t = 0`.
+/// forward bound]`, `t = 0`, or the price sits in the flat plateau near
+/// the `sigma -> infinity` bound where vol is genuinely unrecoverable
+/// (docs/VALIDATION.md, failure mode 4).
 ///
 /// ```
 /// use fx_options_engine::{gk_price, implied_vol, OptionType};
@@ -81,6 +87,27 @@ pub fn implied_vol(
         // Time value below double-precision resolution: vol unrecoverable,
         // return the sigma -> 0 limit (documented in docs/VALIDATION.md).
         return Ok(0.0);
+    }
+    if upper - price <= 1e-16 * upper.max(1.0) {
+        // Symmetric corner: deep ITM + long-dated + high vol drives |d1|,
+        // |d2| large enough that N(d1)/N(d2) saturate to 0/1 in double
+        // precision, so gk_price(sigma) is bit-identical to the
+        // sigma -> inf bound for every sigma from the true root up to
+        // infinity -- a flat plateau, not a single degenerate point.
+        // Unlike the `lower` case there is no finite limiting sigma to
+        // fall back to (sigma -> infinity is not representable), and
+        // letting the Newton/Brent search below run would risk it landing
+        // on an arbitrary point inside that plateau (an artifact of
+        // whatever bracket width happened to be probed) rather than the
+        // true root -- silently wrong by whole vol points, with no
+        // signal to the caller. The honest answer is that vol is
+        // unrecoverable at this precision (documented in
+        // docs/VALIDATION.md, failure mode 4).
+        return invalid(format!(
+            "price {price} is within double-precision resolution of the \
+             sigma->inf bound {upper}; implied volatility is unrecoverably \
+             large (vega has underflowed to zero in this regime)"
+        ));
     }
 
     let objective = |sig: f64| -> FxResult<f64> {

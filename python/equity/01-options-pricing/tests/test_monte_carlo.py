@@ -150,3 +150,35 @@ def test_mcresult_contains_helper() -> None:
     res = mc_price(100, 100, 1, 0.05, 0.2, 0.0, "call", n_paths=50_000, seed=8)
     assert res.contains(res.value)
     assert not res.contains(res.value + 10.0)
+
+
+def test_mc_std_error_scales_as_inverse_sqrt_n_fitted() -> None:
+    """Fit the Monte Carlo error-scaling exponent by log-log regression.
+
+    Plain (no variance reduction) MC has statistical error O(1/sqrt(n)) by
+    the CLT. Rather than trust the estimator's *own* reported std_error
+    formula (which would only check that the formula is internally
+    consistent), this measures the *empirical* spread of independent
+    replications of the price estimate at each path count and fits the
+    exponent of empirical_std vs n by regression -- an actual measurement
+    of the realized convergence rate, not a single eyeballed ratio.
+    """
+    S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.0
+    path_counts = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000]
+    n_reps = 40
+    empirical_std = []
+    for n in path_counts:
+        reps = [
+            mc_price(
+                S, K, T, r, sigma, q, "call",
+                n_paths=n, antithetic=False, control_variate=False,
+                seed=1_000_003 * n + rep,
+            ).value
+            for rep in range(n_reps)
+        ]
+        empirical_std.append(np.std(reps, ddof=1))
+    slope, _intercept = np.polyfit(np.log(path_counts), np.log(empirical_std), 1)
+    assert -0.65 < slope < -0.35, (
+        f"fitted MC error-scaling exponent {slope:.3f}; CLT predicts -0.5 "
+        "(std ~ C/sqrt(n))"
+    )

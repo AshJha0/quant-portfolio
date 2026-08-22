@@ -95,3 +95,21 @@ fn t_zero_and_bad_price_err() {
     assert!(implied_vol(0.05, 1.10, 1.05, 0.0, 0.04, 0.02, OptionType::Call).is_err());
     assert!(implied_vol(f64::NAN, 1.10, 1.05, 0.5, 0.04, 0.02, OptionType::Call).is_err());
 }
+
+#[test]
+fn long_dated_deep_itm_high_vol_flat_plateau_errs() {
+    // Regression: deep ITM + long-dated + high vol drives |d1|, |d2| large
+    // enough that N(d1)/N(d2) saturate to 0/1 in double precision, so
+    // gk_price(sigma) is bit-identical to the sigma->inf bound for every
+    // sigma from the true root up to infinity -- a flat plateau, not a
+    // resolvable root. Before the fix the windowed Newton/Brent search
+    // below could land on an arbitrary point inside that plateau (e.g.
+    // 3.84 when the true vol was 3.0 -- a 28% relative error) and return
+    // it silently, since every point in the plateau "reprices exactly".
+    // The solver must recognise the plateau via the symmetric near-`upper`
+    // check and error out instead of guessing.
+    let (s, k, t, rd, rf, sigma) = (1.0, 0.5, 30.0, 0.03, 0.01, 3.0);
+    let price = gk_price(s, k, t, rd, rf, sigma, OptionType::Call).unwrap();
+    let res = implied_vol(price, s, k, t, rd, rf, OptionType::Call);
+    assert!(matches!(res, Err(FxError::InvalidInput(_))), "got {res:?}");
+}

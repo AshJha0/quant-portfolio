@@ -15,6 +15,7 @@ from fx_var import (
     robust_cholesky,
     simulate_factor_returns,
     var_standard_error,
+    var_standard_error_bootstrap,
 )
 from fx_var.data.synthetic import demo_em_book, demo_market, simulate_fx_returns
 
@@ -80,6 +81,69 @@ def test_var_se_shrinks_with_n(cov2):
     large = rng.standard_normal(200_000)
     assert var_standard_error(large, 0.99) < var_standard_error(small, 0.99)
     assert var_standard_error(small, 0.99) > 0
+
+
+class TestVarStandardErrorAccuracy:
+    """Benchmark both SE estimators against the true sampling variability of
+    the empirical VaR quantile (repeated independent draws), quantifying
+    the KDE method's known thin-tail bias documented in the module
+    docstring and docs/VALIDATION.md -- this is what makes that caveat a
+    tested claim, not just prose."""
+
+    @staticmethod
+    def _true_se(alpha: float, n: int, n_rep: int, seed: int) -> float:
+        from fx_var import empirical_var
+
+        rng = np.random.default_rng(seed)
+        ests = np.empty(n_rep)
+        for i in range(n_rep):
+            ests[i] = empirical_var(rng.standard_normal(n), alpha)
+        return float(np.std(ests, ddof=1))
+
+    def test_bootstrap_se_shrinks_with_n(self):
+        rng = np.random.default_rng(1)
+        small = rng.standard_normal(2_000)
+        large = rng.standard_normal(200_000)
+        se_small = var_standard_error_bootstrap(small, 0.99, n_boot=300, seed=1)
+        se_large = var_standard_error_bootstrap(large, 0.99, n_boot=300, seed=1)
+        assert 0.0 < se_large < se_small
+
+    def test_bootstrap_se_matches_true_sampling_se_at_default_scenario_count(self):
+        # alpha=0.99, n=50,000 (this module's default n_scenarios): both
+        # estimators should be close to the true SE here.
+        true_se = self._true_se(0.99, 50_000, n_rep=1200, seed=7)
+        x = np.random.default_rng(11).standard_normal(50_000)
+        se_kde = var_standard_error(x, 0.99)
+        se_boot = var_standard_error_bootstrap(x, 0.99, n_boot=400, seed=2)
+        assert se_kde == pytest.approx(true_se, rel=0.35)
+        assert se_boot == pytest.approx(true_se, rel=0.35)
+
+    def test_kde_se_underestimates_true_se_in_deep_tail_or_small_sample(self):
+        # Averaged over several independent draws (to separate genuine bias
+        # from single-trial noise): at alpha=0.99 with only 2,000
+        # scenarios, the KDE estimate is systematically below the true
+        # sampling SE, i.e. directionally overconfident -- exactly the
+        # regime the module docstring warns about. The bootstrap estimate
+        # does not show the same one-sided bias.
+        alpha, n, n_trials = 0.99, 2_000, 20
+        true_se = self._true_se(alpha, n, n_rep=4000, seed=13)
+        kde_vals = [
+            var_standard_error(np.random.default_rng(100 + t).standard_normal(n), alpha)
+            for t in range(n_trials)
+        ]
+        boot_vals = [
+            var_standard_error_bootstrap(
+                np.random.default_rng(100 + t).standard_normal(n), alpha, n_boot=300, seed=t
+            )
+            for t in range(n_trials)
+        ]
+        kde_mean, boot_mean = float(np.mean(kde_vals)), float(np.mean(boot_vals))
+        assert kde_mean < 0.92 * true_se  # documented underestimation
+        assert boot_mean > 0.9 * true_se  # bootstrap does not share the bias
+
+    def test_too_few_scenarios_rejected(self):
+        with pytest.raises(ValueError, match="at least 10"):
+            var_standard_error_bootstrap(np.zeros(5), 0.99)
 
 
 # ------------------------------------------------------------ fat tails / EM

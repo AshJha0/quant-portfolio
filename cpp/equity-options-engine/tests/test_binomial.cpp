@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -49,6 +50,46 @@ TEST(BinomialConvergence, ErrorShrinksWithSteps) {
     EXPECT_LT(e800, e200);
     EXPECT_LT(e2000, e800);
     EXPECT_LT(e2000, 2e-3);
+}
+
+TEST(BinomialConvergence, FittedExponentMatchesTheoreticalOrderOne) {
+    // CRR is a first-order scheme: error(n) ~ C / n, with an odd/even (and
+    // node-alignment) oscillation superposed on the leading term. A single
+    // pair of step counts (as above) cannot *prove* the O(1/n) rate -- a
+    // two-point ratio can land anywhere in the oscillation. Regressing
+    // log|error| on log(n) over a decade of geometrically spaced step
+    // counts averages the oscillation out and recovers the leading
+    // exponent, which must come out close to the theoretical -1.
+    const double S = 100.0, K = 105.0, T = 1.0, r = 0.04, q = 0.01,
+                 sigma = 0.25;
+    const double bs = bs_price(S, K, T, r, sigma, q, OptionType::Call);
+    const std::vector<int> steps{200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200};
+    std::vector<double> log_n, log_err;
+    for (int n : steps) {
+        const double err = std::abs(crr_price(S, K, T, r, sigma, q,
+                                              OptionType::Call,
+                                              ExerciseStyle::European, n) -
+                                    bs);
+        ASSERT_GT(err, 0.0) << "tree exactly matches BS at n=" << n
+                            << " -- fit is degenerate";
+        log_n.push_back(std::log(static_cast<double>(n)));
+        log_err.push_back(std::log(err));
+    }
+    // Ordinary least squares slope of log_err ~ slope * log_n + intercept.
+    const double mean_x =
+        std::accumulate(log_n.begin(), log_n.end(), 0.0) / log_n.size();
+    const double mean_y =
+        std::accumulate(log_err.begin(), log_err.end(), 0.0) / log_err.size();
+    double num = 0.0, den = 0.0;
+    for (size_t i = 0; i < log_n.size(); ++i) {
+        num += (log_n[i] - mean_x) * (log_err[i] - mean_y);
+        den += (log_n[i] - mean_x) * (log_n[i] - mean_x);
+    }
+    const double slope = num / den;
+    EXPECT_GT(slope, -1.3) << "fitted CRR exponent " << slope
+                           << "; theory predicts -1 (error ~ C/n)";
+    EXPECT_LT(slope, -0.7) << "fitted CRR exponent " << slope
+                           << "; theory predicts -1 (error ~ C/n)";
 }
 
 TEST(BinomialAmerican, AmericanAtLeastEuropeanEverywhere) {

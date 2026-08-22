@@ -58,6 +58,17 @@ per year, ACT/365F).
   (`F = S * df_f / df_d`), because the mathematically-equivalent
   `S * exp((r_d - r_f) * T)` is not bit-identical in floating point and
   the near-intrinsic detection is deliberately a last-ULP check.
+* **Vol unrecoverable near the sigma -> infinity bound (symmetric
+  corner).** Deep ITM + long-dated + high vol drives `|d1|`/`|d2|` large
+  enough that `N(d1)`/`N(d2)` saturate to 0/1 in double precision, so the
+  price becomes bit-identical to the sigma -> infinity bound for every
+  sigma from the true root up to infinity -- a flat plateau, not a
+  resolvable root. `implied_vol` returns `Err(FxError::InvalidInput)`
+  there via a last-ULP check mirroring the `lower`-bound one above, rather
+  than letting the windowed Newton/Brent search land on an arbitrary point
+  inside the plateau (previously it did the latter, silently, and could be
+  off by whole vol points -- fixed; see
+  `implied_vol::long_dated_deep_itm_high_vol_flat_plateau_errs`).
 * **Implied vol precision floor on extreme short-dated wings.** For a very
   short-dated (T ~ 0.02y), meaningfully ITM/OTM strike, the GK call/put
   formula `S e^{-r_f T} N(d1) - K e^{-r_d T} N(d2)` subtracts two O(1)

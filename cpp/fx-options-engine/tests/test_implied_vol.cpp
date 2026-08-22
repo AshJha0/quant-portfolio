@@ -63,6 +63,23 @@ TEST(ImpliedVol, RejectsArbitragePrices) {
                  std::invalid_argument);
 }
 
+TEST(ImpliedVol, LongDatedDeepItmHighVolFlatPlateauThrows) {
+    // Regression: deep ITM + long-dated + high vol drives |d1|, |d2| large
+    // enough that N(d1)/N(d2) saturate to 0/1 in double precision, so
+    // gk_price(sigma) is bit-identical to the sigma->inf bound for every
+    // sigma from the true root up to whatever `hi` the Brent
+    // bracket-expansion loop happens to stop at. Before the fix this
+    // silently returned that arbitrary `hi` (e.g. 4.0 when the true vol
+    // was 3.0 -- a 33% relative error with no signal to the caller); the
+    // solver must now recognise the flat plateau and throw instead of
+    // guessing.
+    const double s = 1.0, k = 0.5, t = 30.0, rd = 0.03, rf = 0.01,
+                sig = 3.0;
+    const double price = gk_price(s, k, t, rd, rf, sig, OptionType::Call);
+    EXPECT_THROW(implied_vol(price, s, k, t, rd, rf, OptionType::Call),
+                 std::invalid_argument);
+}
+
 TEST(ImpliedVol, ZeroTimeValueReturnsZeroVol) {
     // Deep ITM with price exactly at the sigma->0 limit: vol unrecoverable,
     // returns 0 by documented convention (matches the Python reference).

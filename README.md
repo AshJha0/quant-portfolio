@@ -5,7 +5,7 @@ areas**, each built **twice** (equity and FX as fully separate, self-contained
 projects), in **Python** throughout and with **C++ and Rust performance
 twins** for the four highest-value pricing/risk engines — plus **3 standalone
 foundations projects** that build and validate core techniques from scratch,
-single-asset, single-language. 31 sub-projects and **5,913 passing tests** in
+single-asset, single-language. 31 sub-projects and **5,943 passing tests** in
 total, every one with its own tests, and documentation answering *why this
 model*, *what assumptions it makes*, *how it was validated*, *where it
 fails*, and *how a real desk would use it*.
@@ -139,26 +139,29 @@ for d in rust/*/; do (cd "$d" && RUSTFLAGS="-D warnings" cargo test --release); 
 
 ## Test coverage
 
-**5,913 tests across the portfolio**, all passing, all independently
-reproduced from a clean build (not taken from build logs):
+**5,943 tests across the portfolio**, all passing, all independently
+reproduced from a clean build (not taken from build logs, not taken from
+agent self-reports — every count below was reproduced by a fresh
+`pip install -e .` + `pytest` / `cmake --build` + `ctest` / `cargo test
+--release` run):
 
 | Area | Projects | Tests |
 |---|---|---|
-| Python — equity | 10 | 2,075 |
-| Python — FX | 10 | 2,704 |
+| Python — equity | 10 | 2,080 |
+| Python — FX | 10 | 2,713 |
 | Python — foundations | 3 | 462 |
-| C++ engines | 4 | 307 |
-| Rust engines | 4 | 365 |
-| **Total** | **31** | **5,913** |
+| C++ engines | 4 | 315 |
+| Rust engines | 4 | 373 |
+| **Total** | **31** | **5,943** |
 
 Per-engine, showing the three-language cross-validation:
 
 | Engine | Python ref | C++ | Rust |
 |---|---|---|---|
-| Equity options/Greeks | `python/equity/01-options-pricing` — 288 | 55 | 85 |
-| FX options/Greeks | `python/fx/01-options-pricing` — 411 | 86 | 96 |
-| Equity VaR/ES | `python/equity/03-var-es-engine` — 264 | 83 | 91 |
-| FX VaR/ES | `python/fx/03-var-es-engine` — 365 | 83 | 93 |
+| Equity options/Greeks | `python/equity/01-options-pricing` — 291 | 58 | 88 |
+| FX options/Greeks | `python/fx/01-options-pricing` — 414 | 89 | 99 |
+| Equity VaR/ES | `python/equity/03-var-es-engine` — 266 | 84 | 92 |
+| FX VaR/ES | `python/fx/03-var-es-engine` — 371 | 84 | 94 |
 
 See each project's `docs/VALIDATION.md` for the exact commands, tolerances,
 and the documented failure modes each suite pins.
@@ -179,6 +182,56 @@ Kupiec and Basel traffic-light backtests green.
 Every public entry point across the portfolio now validates with explicit
 finiteness checks, and each project's `docs/VALIDATION.md` documents its
 validation contract and what the pre-fix symptom was.
+
+### On numerical robustness
+
+A second, deeper review pass (benchmarked against the standard a top-tier
+options/risk desk would hold a new pricing library to before it touches P&L)
+went past input validation into the solvers' own numerics, and found two
+defect classes repeated across every engine that shared the affected
+algorithm:
+
+- **Implied-vol solver plateau.** All six options-pricing engines (Python,
+  C++, and Rust, equity and FX) used a Newton-Raphson implied-vol solver
+  that exited as soon as the price residual stopped improving. Near a flat
+  region of the price-vs-vol curve (deep ITM/OTM, long-dated, high-vol) this
+  let the solver stop one or more Newton steps early, so the returned
+  implied vol silently lost precision instead of continuing to bisection.
+  In the FX engines this could saturate the solver at the model's
+  no-arbitrage upper bound and return a vol that did not actually reprice
+  the input — a materially wrong, not just imprecise, answer. Fixed in all
+  six engines by adding a bracket-bisection refinement stage that always
+  runs to convergence rather than exiting on stalled Newton progress.
+- **Cornish-Fisher domain-check grid resolution.** All six VaR/ES engines
+  checked the Cornish-Fisher expansion's monotonicity domain by scanning a
+  finite grid of points, which can miss a non-monotone region that falls
+  between two grid nodes and silently accept an invalid quantile. Fixed in
+  all six engines by replacing the grid scan with the exact closed-form
+  location of the expansion's stationary point, which cannot miss a
+  non-monotone region regardless of grid spacing.
+
+Neither fix changed any golden-vector reference value — both are corrections
+to numerical *robustness* (how the solver behaves in the tail of its input
+domain), not to the pricing/risk formulas the golden vectors pin. Two
+narrower, single-engine findings from the same pass: a latent
+antithetic-pairing bug in the FX vol-surface Heston Monte Carlo (an odd
+`n_paths` could silently break the antithetic invariant and understate the
+reported standard error — now rejected explicitly rather than silently
+mishandled), and a systematic 9-17% underestimate in the FX Monte Carlo VaR
+engine's standard-error estimate in deep tails/small samples (Python now
+cross-checks against a distribution-free bootstrap SE; the C++/Rust MC VaR
+engines share the same estimator and are flagged in their `docs/VALIDATION.md`
+as carrying the same caveat, tracked as a follow-up).
+
+One statistical caveat was investigated and documented rather than "fixed":
+Kupiec's proportion-of-failures test uses a chi-squared(1) asymptotic
+reference distribution that is provably oversized at the Basel
+250-day/99% backtesting window (empirically closer to a 9.5% actual
+rejection rate than its nominal 5%), which is a property of the classical
+test itself, not a bug in this portfolio's implementation — pinning an exact
+alternative would trade one textbook convention for a nonstandard one, so
+this is called out explicitly in `docs/VALIDATION.md` wherever Kupiec is
+used instead of silently changed.
 
 ## Data
 

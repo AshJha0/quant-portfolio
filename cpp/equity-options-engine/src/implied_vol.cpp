@@ -79,7 +79,7 @@ double implied_vol(double price, double S, double K, double T, double r,
     for (int i = 0; i < max_iter; ++i) {
         const double diff = objective(sigma);
         if (std::fabs(diff) < tol) {
-            return sigma;
+            break;
         }
         if (diff > 0.0) {
             hi = sigma;
@@ -102,13 +102,20 @@ double implied_vol(double price, double S, double K, double T, double r,
         sigma = candidate;
     }
 
-    // Final safeguard: pure bisection on the maintained bracket.
+    // Final safeguard: pure bisection on the maintained bracket, run to
+    // full bracket precision rather than stopping as soon as the price
+    // residual satisfies `tol`. `tol` alone is not a reliable stopping
+    // rule: in a flat-vega region (very long-dated + very high vol, where
+    // d1/d2 blow up and vega ~ S sqrt(T) phi(d1) underflows towards zero
+    // near the bracket's arbitrage bound) a tiny price residual can map
+    // through that near-zero vega to a sigma residual of whole vol points,
+    // so exiting the moment `|f_mid| < tol` risks returning an
+    // insufficiently refined sigma. Bisecting the bracket itself down to
+    // double-precision width is the only stopping rule that is safe in
+    // that regime too, and costs at most ~50 extra evaluations elsewhere.
     for (int i = 0; i < 200 && hi - lo > 1e-15 * std::fmax(hi, 1.0); ++i) {
         const double mid = 0.5 * (lo + hi);
         const double f_mid = objective(mid);
-        if (std::fabs(f_mid) < tol) {
-            return mid;
-        }
         if (f_mid > 0.0) {
             hi = mid;
         } else {

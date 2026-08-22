@@ -179,15 +179,21 @@ TEST(EdgeCases, VolNearSolverCapSaturatesAtTheArbitrageBound) {
     EXPECT_NEAR(implied_vol(px10, S, K, T, rd, rf, OptionType::Call), 10.0,
                 1e-6);
     // Far above it the premium is numerically identical to the sigma -> inf
-    // bound S e^{-r_f T}: the vol is no longer identifiable from the price.
-    // The solver must still return *a* vol that reprices the premium
-    // exactly, never NaN and never a throw.
+    // bound S e^{-r_f T}: N(d1)/N(d2) have saturated to 1/0 in double
+    // precision, so gk_price(sigma) is bit-identical to that bound for
+    // *every* sigma from the true root up to infinity -- a flat plateau,
+    // not a resolvable root. Previously the solver picked an arbitrary
+    // point in that plateau (whatever `hi` its bracket-expansion doubling
+    // happened to reach) and returned it silently, satisfied because it
+    // "reprices exactly" -- but every other point in the plateau also
+    // reprices exactly, so that check never actually validated the
+    // *vol*, only self-consistency of a number that can be off by whole
+    // vol points. The solver now recognises the plateau and throws
+    // instead of guessing (matches the Python and eq_options references).
     const double px25 = gk_price(S, K, T, rd, rf, 25.0, OptionType::Call);
     EXPECT_DOUBLE_EQ(px25, S * std::exp(-rf * T));
-    const double iv = implied_vol(px25, S, K, T, rd, rf, OptionType::Call);
-    ASSERT_TRUE(std::isfinite(iv));
-    EXPECT_GT(iv, 5.0);
-    EXPECT_NEAR(gk_price(S, K, T, rd, rf, iv, OptionType::Call), px25, 1e-14);
+    EXPECT_THROW(implied_vol(px25, S, K, T, rd, rf, OptionType::Call),
+                 std::invalid_argument);
 }
 
 TEST(EdgeCases, NonFiniteInputsRejectedAcrossTheApi) {

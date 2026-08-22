@@ -93,8 +93,12 @@ ParametricResult parametric_var(const Book& book, const Market& market,
 double cornish_fisher_z(double z, double skew, double excess_kurtosis);
 
 /// True if the CF expansion is monotone increasing on [-z_range, z_range]
-/// (checked on a dense grid) - the validity condition for the expansion to
-/// define a quantile function (Maillard 2012).
+/// - the validity condition for the expansion to define a quantile function
+/// (Maillard 2012). Checked exactly via the closed-form minimum of the
+/// (quadratic-in-z) derivative on the interval, not by sampling a grid: a
+/// grid can under-sample a thin non-monotone dip (see parametric.cpp).
+/// `n_grid` is kept for API compatibility and still validated (>= 3) but no
+/// longer affects the result.
 bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
                               double z_range = 4.0, int n_grid = 801);
 

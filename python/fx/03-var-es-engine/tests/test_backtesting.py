@@ -58,6 +58,42 @@ def test_kupiec_invalid_inputs():
         kupiec_pof(5, 250, 1.0)
 
 
+def _exact_kupiec_test_size(n_obs: int, alpha: float, nominal: float = 0.05) -> float:
+    """Exact rejection probability of the chi2(1) Kupiec test under H0.
+
+    No simulation needed: LR(x) depends only on the exception count x, and
+    x ~ Binomial(n_obs, 1 - alpha) under a correctly calibrated model, so
+    the true test size is the exact binomial probability mass on the
+    rejection region {x : LR(x) > crit}.
+    """
+    from scipy.stats import binom, chi2
+
+    p = 1.0 - alpha
+    crit = chi2.ppf(1.0 - nominal, df=1)
+    xs = np.arange(0, n_obs + 1)
+    lrs = np.array([kupiec_pof(int(x), n_obs, alpha)[0] for x in xs])
+    return float(binom.pmf(xs[lrs > crit], n_obs, p).sum())
+
+
+def test_kupiec_asymptotic_chi2_reference_is_oversized_at_regulatory_window():
+    """The 250-day/99% Basel window is small-sample territory for the
+    chi2(1) asymptotic reference: a nominally 5%-size test actually
+    rejects a *correctly calibrated* model ~9.5% of the time here (the
+    expected exception count is only 2.5). This is a property of the
+    likelihood-ratio chi2 approximation for a rare (low tail-probability)
+    binomial, not a bug in the LR formula -- documented in
+    docs/VALIDATION.md F9 alongside the analogous eq_var finding. It
+    attenuates quickly as the expected count grows: by n_obs=1000
+    (expected count 10) the exact size is within a point of nominal.
+    """
+    size_250 = _exact_kupiec_test_size(250, 0.99)
+    size_1000 = _exact_kupiec_test_size(1000, 0.99)
+    assert size_250 == pytest.approx(0.0948, abs=0.005)
+    assert size_1000 == pytest.approx(0.0551, abs=0.005)
+    assert size_250 > 1.8 * 0.05
+    assert size_1000 < 1.2 * 0.05
+
+
 # ------------------------------------------------------------ Christoffersen
 def test_christoffersen_hand_computed():
     """Sequence 0,1,1,0,1,1,1,0,0,0: transition counts n00=2, n01=2,

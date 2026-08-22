@@ -164,3 +164,17 @@ def test_cf_domain_check_rejects_extreme_moments():
 def test_cf_invalid_sigma():
     with pytest.raises(ValueError):
         cornish_fisher_var(-1.0, 0.0, 0.0, 0.99)
+
+
+def test_domain_check_is_exact_not_grid_resolution_dependent():
+    # Regression for the closed-form rewrite of cornish_fisher_domain_ok.
+    # On this module's default (z_range=4.0, n_grid=801), the previous
+    # finite-difference-of-values grid check reported (skew, excess_kurt) =
+    # (0.122, -0.427) as monotone -- every sampled z_cf value increased --
+    # yet the true minimum of dz_cf/dz on [-4, 4] is ~ -9.15e-4 (near
+    # z ~ 3.1, between two grid nodes), so the expansion is genuinely
+    # non-monotone and the "quantile" it would produce is not a quantile.
+    skew, excess_kurt = 0.122, -0.427
+    assert not cornish_fisher_domain_ok(skew, excess_kurt)
+    with pytest.raises(ValueError, match="non-monotone"):
+        cornish_fisher_var(1.0, skew, excess_kurt, 0.99)

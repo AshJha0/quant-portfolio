@@ -117,4 +117,21 @@ TEST(ImpliedVol, ShortDatedWingsConverge) {
                 1e-7);
 }
 
+TEST(ImpliedVol, LongDatedHighVolFlatVegaRegimeStaysAccurate) {
+    // S=K, T=25y, sigma=300%: |d1| ~ 7.7, so vega ~ exp(-d1^2/2) underflows
+    // towards zero and the price sits within double-precision noise of the
+    // sigma->inf arbitrage bound (K exp(-rT) for the put). A solver that
+    // exits its Newton/bisection loop the moment the *price* residual is
+    // below `tol` can declare convergence while sigma is still off by
+    // whole vol points, because that tiny price residual maps through a
+    // near-zero vega to a large sigma residual. The bracket must be
+    // refined by bisection all the way to double-precision width instead
+    // of trusting the price tolerance alone.
+    const double S = 100.0, K = 100.0, T = 25.0, r = 0.10, q = 0.0;
+    const double sigma = 3.0;
+    const double price = bs_price(S, K, T, r, sigma, q, OptionType::Put);
+    EXPECT_NEAR(implied_vol(price, S, K, T, r, q, OptionType::Put), sigma,
+                2e-4);
+}
+
 }  // namespace

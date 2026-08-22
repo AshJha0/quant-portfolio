@@ -23,6 +23,49 @@ fn price_within_three_standard_errors_of_gk() {
 }
 
 #[test]
+fn std_error_scales_as_inverse_sqrt_n_fitted() {
+    // Plain (no variance reduction) MC has statistical error O(1/sqrt(n))
+    // by the CLT. Rather than trust the estimator's own reported
+    // std_error formula, measure the *empirical* spread of independent
+    // replications of the price at each path count and fit the exponent
+    // of empirical_std vs n by log-log regression -- an actual
+    // measurement of the realized rate, not a single eyeballed ratio.
+    let (s, k, t, rd, rf, sig) = MKT;
+    let path_counts = [2_000u64, 4_000, 8_000, 16_000, 32_000, 64_000];
+    const REPS: u64 = 40;
+    let mut log_n = Vec::with_capacity(path_counts.len());
+    let mut log_std = Vec::with_capacity(path_counts.len());
+    for &n in &path_counts {
+        let reps: Vec<f64> = (0..REPS)
+            .map(|rep| {
+                let seed = 1_000_003u64.wrapping_mul(n).wrapping_add(rep);
+                mc_price(s, k, t, rd, rf, sig, OptionType::Call, n, seed, false, false)
+                    .unwrap()
+                    .price
+            })
+            .collect();
+        let mean = reps.iter().sum::<f64>() / reps.len() as f64;
+        let var =
+            reps.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (reps.len() as f64 - 1.0);
+        log_n.push((n as f64).ln());
+        log_std.push(0.5 * var.ln());
+    }
+    let mean_x = log_n.iter().sum::<f64>() / log_n.len() as f64;
+    let mean_y = log_std.iter().sum::<f64>() / log_std.len() as f64;
+    let num: f64 = log_n
+        .iter()
+        .zip(&log_std)
+        .map(|(x, y)| (x - mean_x) * (y - mean_y))
+        .sum();
+    let den: f64 = log_n.iter().map(|x| (x - mean_x).powi(2)).sum();
+    let slope = num / den;
+    assert!(
+        (-0.65..-0.35).contains(&slope),
+        "fitted MC exponent {slope:.3}; CLT predicts -0.5 (std ~ C/sqrt(n))"
+    );
+}
+
+#[test]
 fn negative_rates_within_three_standard_errors() {
     let (s, k, t, rd, rf, sig) = (1.08, 1.10, 1.0, -0.0075, -0.0050, 0.07);
     let exact = gk_price(s, k, t, rd, rf, sig, OptionType::Call).unwrap();

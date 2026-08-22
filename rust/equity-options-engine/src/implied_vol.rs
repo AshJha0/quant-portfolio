@@ -39,8 +39,9 @@ fn bs_vega(s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64) -> Result<f64, Pr
 /// * [`PricingError::InvalidInput`] for NaN/negative inputs or `t == 0`.
 /// * [`PricingError::ArbitrageBound`] for sub-intrinsic or above-bound prices.
 /// * [`PricingError::NoConvergence`] if the root cannot be bracketed in
-///   `[1e-9, 1e3]` or the iteration fails to converge (not observed for
-///   admissible inputs).
+///   `[1e-9, 1e3]`. Once bracketed, the solver always terminates (Newton
+///   with a bisection fallback and a final bracket-bisection refinement),
+///   so this is never returned for an admissible, bracketable input.
 ///
 /// # Examples
 ///
@@ -124,11 +125,14 @@ pub fn implied_vol(
 
     // Bracketed Newton: start from the midpoint, never leave [lo, hi];
     // fall back to bisection whenever vega is tiny or the step escapes.
+    // Note this loop only ever `break`s (never returns `sigma` directly):
+    // reaching `|diff| < IV_PRICE_TOL` is not by itself a safe stopping
+    // rule -- see the bisection refinement below.
     let mut sigma = 0.5 * (lo + hi);
     for _ in 0..MAX_ITER {
         let diff = objective(sigma)?;
         if diff.abs() < IV_PRICE_TOL {
-            return Ok(sigma);
+            break;
         }
         if diff > 0.0 {
             hi = sigma;
@@ -145,13 +149,36 @@ pub fn implied_vol(
             candidate = 0.5 * (lo + hi); // bisection fallback
         }
         if (candidate - sigma).abs() < 1e-16 {
-            return Ok(candidate);
+            break;
         }
         sigma = candidate;
     }
 
-    Err(PricingError::NoConvergence(format!(
-        "implied_vol did not reach |price error| < {IV_PRICE_TOL} \
-         in {MAX_ITER} iterations (last sigma = {sigma})"
-    )))
+    // Final safeguard: bisect the maintained bracket down to
+    // double-precision width rather than trusting the `IV_PRICE_TOL` price
+    // residual alone. In a flat-vega region (very long-dated + very high
+    // vol, where d1/d2 blow up and vega ~ s sqrt(t) phi(d1) underflows
+    // towards zero near the bracket's arbitrage bound) a tiny price
+    // residual can map through that near-zero vega to a sigma residual of
+    // whole vol points, so exiting the Newton loop the moment
+    // `|diff| < IV_PRICE_TOL` risks returning an under-refined sigma.
+    // Bisecting the bracket itself down to double-precision width is the
+    // only stopping rule that is safe in that regime too, and costs at
+    // most ~50 extra evaluations elsewhere. A valid bracket always
+    // converges here, so this never fails to produce an answer -- the
+    // `NoConvergence` variant remains reachable only from the earlier
+    // bracket-expansion check.
+    for _ in 0..200 {
+        if hi - lo <= 1e-15 * hi.max(1.0) {
+            break;
+        }
+        let mid = 0.5 * (lo + hi);
+        let f_mid = objective(mid)?;
+        if f_mid > 0.0 {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    Ok(0.5 * (lo + hi))
 }

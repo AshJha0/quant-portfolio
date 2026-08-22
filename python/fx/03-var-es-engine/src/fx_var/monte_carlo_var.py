@@ -24,6 +24,25 @@ Standard error
 ``var_standard_error`` uses the asymptotic order-statistic formula
 ``SE = sqrt(a(1-a)/n) / f(q)`` with a Gaussian-KDE density estimate at the
 quantile.  Convergence tests accept MC vs closed form within 3 SE.
+
+**Known limitation** (see docs/VALIDATION.md): ``gaussian_kde``'s default
+bandwidth (Scott's rule) is tuned to the *bulk* of the P&L distribution, not
+the tail it is evaluated at.  Benchmarked against the true sampling
+variability of the quantile (many independent resamples, averaged over many
+trials to separate bias from trial-to-trial noise): at ``alpha=0.99`` with
+the module default of 50,000 scenarios the KDE estimate is within ~2% of
+the true SE on average, but at ``alpha=0.999`` (50,000 scenarios) or
+``alpha=0.99`` with only 2,000 scenarios it *systematically
+underestimates* the true SE by 9-13% - i.e. it is directionally
+overconfident, not just noisy, exactly where a desk would rely on it most.
+This is a property of fixed-bandwidth density estimation at extreme
+quantiles generally, not a bug specific to this implementation; the C++ and
+Rust twins use the same approach (Silverman bandwidth) and share the
+limitation. ``var_standard_error_bootstrap`` sidesteps it entirely
+(distribution-free, no bandwidth to choose - unbiased to ~1-2% in the same
+benchmark, at the cost of higher trial-to-trial variance in the SE estimate
+itself unless ``n_boot`` is generous); prefer it to cross-check the KDE
+estimate whenever ``alpha >= 0.995`` or scenario counts are modest.
 """
 
 from __future__ import annotations
@@ -39,7 +58,7 @@ from scipy.stats import gaussian_kde
 from .book import Book, Market
 from .common import (NumericalWarning, validate_alpha, validate_finite,
                      validate_horizon)
-from .expected_shortfall import empirical_var_es
+from .expected_shortfall import _tail, empirical_var_es
 
 __all__ = [
     "JumpSpec",
@@ -47,6 +66,7 @@ __all__ = [
     "robust_cholesky",
     "simulate_factor_returns",
     "var_standard_error",
+    "var_standard_error_bootstrap",
     "monte_carlo_var",
 ]
 
@@ -227,6 +247,42 @@ def var_standard_error(pnl: np.ndarray, alpha: float) -> float:
     dens = float(gaussian_kde(pnl)(q)[0])
     dens = max(dens, 1e-300)
     return float(np.sqrt(alpha * (1.0 - alpha) / n) / dens)
+
+
+def var_standard_error_bootstrap(
+    pnl: np.ndarray,
+    alpha: float = 0.99,
+    n_boot: int = 500,
+    seed: int | np.random.Generator = 0,
+) -> float:
+    """Bootstrap standard error of the empirical VaR (this module's estimator).
+
+    Resamples ``pnl`` with replacement ``n_boot`` times and applies the same
+    order-statistic VaR rule as :func:`fx_var.expected_shortfall.empirical_var`
+    (uniform weights: the rank is fixed by ``alpha`` and the sample size, so
+    it is computed once and reused across resamples) to each resample,
+    returning the standard deviation of the resulting VaR estimates.
+    Distribution-free and needs no density estimate, so it does not share
+    :func:`var_standard_error`'s bandwidth-driven bias at deep tails /
+    modest scenario counts (see the module docstring); the desk-standard
+    cross-check.
+    """
+    validate_alpha(alpha)
+    rng = _as_rng(seed)
+    arr = np.asarray(pnl, dtype=float).ravel()
+    if arr.size < 10:
+        raise ValueError(
+            f"need at least 10 scenarios to bootstrap, got {arr.size}"
+        )
+    # Uniform-weight tail rank depends only on (n, alpha), not the data, so
+    # it is identical for the original sample and every resample of the
+    # same size -- computed once via the shared _tail() rank rule.
+    _, _, idx = _tail(arr, alpha, None)
+    boot_idx = rng.integers(0, arr.size, size=(n_boot, arr.size))
+    boot_losses = -arr[boot_idx]
+    boot_losses.sort(axis=1)
+    boot_vars = boot_losses[:, ::-1][:, idx]
+    return float(np.std(boot_vars, ddof=1))
 
 
 def monte_carlo_var(

@@ -62,6 +62,39 @@ class TestKupiec:
         with pytest.raises(ValueError, match="n_exceptions"):
             kupiec_pof(250, 300, 0.01)
 
+    @staticmethod
+    def _exact_test_size(n_obs: int, alpha: float, nominal: float = 0.05) -> float:
+        """Exact rejection probability of the chi2(1) Kupiec test under H0.
+
+        No simulation needed: LR(x) depends only on the exception count
+        ``x``, and ``x ~ Binomial(n_obs, alpha)`` under a correctly
+        calibrated model, so the true test size is the exact binomial
+        probability mass on the rejection region ``{x : LR(x) > crit}``.
+        """
+        from scipy.stats import binom
+
+        crit = chi2.ppf(1.0 - nominal, df=1)
+        xs = np.arange(0, n_obs + 1)
+        lrs = np.array([kupiec_pof(n_obs, int(x), alpha)["lr"] for x in xs])
+        return float(binom.pmf(xs[lrs > crit], n_obs, alpha).sum())
+
+    def test_asymptotic_chi2_reference_is_oversized_at_the_regulatory_window(self):
+        """The 250-day/99% Basel window is small-sample territory for the
+        chi2(1) asymptotic reference: a nominally 5%-size test actually
+        rejects a *correctly calibrated* model ~9.5% of the time here (the
+        expected exception count is only 2.5). This is a property of the
+        likelihood-ratio chi2 approximation for a rare (low-p) binomial,
+        not a bug in the LR formula -- documented in docs/VALIDATION.md.
+        It attenuates quickly as the expected count grows: by n_obs=1000
+        (expected count 10) the exact size is within a point of nominal.
+        """
+        size_250 = self._exact_test_size(250, 0.01)
+        size_1000 = self._exact_test_size(1000, 0.01)
+        assert size_250 == pytest.approx(0.0948, abs=0.005)
+        assert size_1000 == pytest.approx(0.0551, abs=0.005)
+        assert size_250 > 1.8 * 0.05  # materially oversized at the regulatory window
+        assert size_1000 < 1.2 * 0.05  # much closer to nominal at n=1000
+
 
 class TestChristoffersen:
     def test_detects_planted_clustered_exceptions(self):

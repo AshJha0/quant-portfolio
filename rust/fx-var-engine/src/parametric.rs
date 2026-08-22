@@ -251,23 +251,43 @@ pub fn cornish_fisher_z(z: f64, skew: f64, excess_kurtosis: f64) -> f64 {
 }
 
 /// True if the CF expansion is monotone increasing on `[-z_range, z_range]`
-/// (checked on a dense grid) — the validity condition for the expansion to
-/// define a quantile function (Maillard 2012).
+/// — the validity condition for the expansion to define a quantile
+/// function (Maillard 2012). Checked exactly via the closed-form minimum
+/// of the (quadratic-in-`z`) derivative `dz_cf/dz` on the interval, not by
+/// sampling a grid: `dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36 =
+/// A z^2 + B z + C` with `A = K/8 - S^2/6`, `B = S/3`,
+/// `C = 1 - K/8 + 5 S^2/36`, whose minimum on the interval is the vertex
+/// `-B/(2A)` when convex (`A > 0`) and in range, else an endpoint (a
+/// concave/linear `g`, `A <= 0`, always attains its interval minimum at an
+/// endpoint). A finite-difference grid scan of `z_cf` values (the previous
+/// implementation here) can under-sample a thin non-monotone dip:
+/// `skew = 0.122, excess_kurtosis = -0.427` is non-monotone on `|z| <= 4`
+/// (minimum derivative ~ -9e-4 near `z ~ 3.1`) but the 801-point grid
+/// previously used here reported it as monotone. `n_grid` is retained for
+/// API compatibility and still validated but no longer affects the result.
 ///
 /// # Panics
 /// Panics if `n_grid < 3`.
 pub fn cornish_fisher_domain_ok(skew: f64, excess_kurtosis: f64, z_range: f64, n_grid: usize) -> bool {
     assert!(n_grid >= 3, "n_grid must be >= 3");
-    let mut prev = cornish_fisher_z(-z_range, skew, excess_kurtosis);
-    for i in 1..n_grid {
-        let z = -z_range + 2.0 * z_range * i as f64 / (n_grid - 1) as f64;
-        let cur = cornish_fisher_z(z, skew, excess_kurtosis);
-        if !(cur > prev) {
-            return false;
-        }
-        prev = cur;
+    if !skew.is_finite() || !excess_kurtosis.is_finite() || !z_range.is_finite() {
+        return false;
     }
-    true
+    let a = excess_kurtosis / 8.0 - skew * skew / 6.0;
+    let b = skew / 3.0;
+    let c = 1.0 - excess_kurtosis / 8.0 + 5.0 * skew * skew / 36.0;
+    let g = |z: f64| a * z * z + b * z + c;
+    let m = if a > 0.0 {
+        let z_star = -b / (2.0 * a);
+        if (-z_range..=z_range).contains(&z_star) {
+            g(z_star)
+        } else {
+            g(-z_range).min(g(z_range))
+        }
+    } else {
+        g(-z_range).min(g(z_range))
+    };
+    m > 0.0
 }
 
 /// Cornish-Fisher VaR (positive loss) with an explicit domain check.
@@ -369,6 +389,22 @@ mod tests {
         assert!(res.is_err());
         let res2 = cornish_fisher_var(1.0e6, 5.0, 50.0, 0.99, 0.0, 1.0, false);
         assert!(res2.is_ok());
+    }
+
+    #[test]
+    fn cornish_fisher_domain_check_is_exact_not_grid_resolution_dependent() {
+        // Regression for the closed-form rewrite of cornish_fisher_domain_ok.
+        // On this crate's default (z_range=4.0, n_grid=801), the previous
+        // finite-difference-of-values grid check reported (skew,
+        // excess_kurtosis) = (0.122, -0.427) as monotone -- every sampled
+        // z_cf value increased -- yet the true minimum of dz_cf/dz on
+        // [-4, 4] is ~ -9.15e-4 (near z ~ 3.1, between two grid nodes), so
+        // the expansion is genuinely non-monotone.
+        let skew = 0.122;
+        let excess_kurtosis = -0.427;
+        assert!(!cornish_fisher_domain_ok(skew, excess_kurtosis, 4.0, 801));
+        let res = cornish_fisher_var(1.0, skew, excess_kurtosis, 0.99, 0.0, 1.0, true);
+        assert!(res.is_err());
     }
 
     #[test]

@@ -67,6 +67,18 @@ def simulate_terminal(
         raise ValueError("n_paths and n_steps must be positive")
     if scheme not in ("euler_ft", "qe"):
         raise ValueError(f"unknown scheme {scheme!r}; use 'euler_ft' or 'qe'")
+    if antithetic and n_paths % 2 != 0:
+        # An odd n_paths silently breaks pairing: n_base = (n_paths+1)//2
+        # antithetic normals get concatenated [z, -z] and truncated back to
+        # n_paths, so the *last* base draw loses its antithetic mirror while
+        # every other draw keeps one. mc_price's pairwise averaging (which
+        # is what removes the antithetic correlation from the standard-error
+        # estimate) then silently degrades to treating correlated pairs as
+        # independent samples, understating the reported standard error.
+        raise ValueError(
+            f"n_paths must be even when antithetic=True (odd n_paths breaks "
+            f"pairing and silently understates the standard error), got {n_paths}"
+        )
     gen = _rng(seed)
     p = params
     dt = T / n_steps
@@ -175,7 +187,9 @@ def mc_price(
         S, T, r_d, r_f, params, n_paths, n_steps, scheme, seed, antithetic
     )
     payoff = np.maximum(cp * (ST - K), 0.0) * math.exp(-r_d * T)
-    if antithetic and len(payoff) % 2 == 0:
+    if antithetic:
+        # simulate_terminal enforces n_paths even under antithetic=True, so
+        # this split is always a clean pairing of [z, -z] halves.
         half = len(payoff) // 2
         payoff = 0.5 * (payoff[:half] + payoff[half:])
     price = float(np.mean(payoff))

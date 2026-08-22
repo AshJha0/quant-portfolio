@@ -90,3 +90,19 @@ def test_put_upper_bound_raises() -> None:
     upper = K * math.exp(-r * T)
     with pytest.raises(ValueError):
         implied_vol(upper + 0.01, 100.0, K, T, r, 0.0, "put")
+
+
+def test_round_trip_long_dated_high_vol_flat_vega() -> None:
+    """S=K, T=25y, sigma=300%: |d1| ~ 7.7, so vega ~ exp(-d1^2/2) underflows
+    towards zero and the price sits within double-precision noise of the
+    sigma->inf arbitrage bound (K exp(-rT) for the put). This is the
+    solver's hardest legitimate corner: a price-residual-only stopping rule
+    can declare convergence while sigma is still off by whole vol points,
+    because the tiny price residual maps through a near-zero vega to a
+    large sigma residual. The solver must fall through to a bracket-based
+    (Brent) refinement rather than trusting the price tolerance alone.
+    """
+    S, K, T, r, q, sigma = 100.0, 100.0, 25.0, 0.10, 0.0, 3.0
+    price = bs_price(S, K, T, r, sigma, q, "put")
+    recovered = implied_vol(price, S, K, T, r, q, "put")
+    assert recovered == pytest.approx(sigma, abs=2e-4)

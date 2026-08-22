@@ -4,7 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <numeric>
 #include <stdexcept>
+#include <vector>
 
 #include "fxopt/binomial.hpp"
 #include "fxopt/garman_kohlhagen.hpp"
@@ -30,6 +32,39 @@ TEST(Binomial, EuropeanConvergesToGarmanKohlhagen) {
                 analytic, 5e-6);
     EXPECT_NEAR(binomial_price(S, K, T, RD, RF, SIG, OptionType::Put, 2000),
                 gk_put(S, K, T, RD, RF, SIG), 5e-6);
+}
+
+TEST(Binomial, ConvergenceRateFittedExponentMatchesTheoreticalOrderOne) {
+    // CRR is a first-order scheme: error(n) ~ C / n, with an odd/even (and
+    // node-alignment) oscillation superposed. A two-point ratio (as in
+    // EuropeanConvergesToGarmanKohlhagen above) cannot *prove* the O(1/n)
+    // rate -- it can land anywhere in the oscillation. Regressing
+    // log|error| on log(n) over a decade of geometrically spaced step
+    // counts averages the oscillation out and recovers the leading
+    // exponent, which must come out close to the theoretical -1.
+    const double analytic = gk_call(S, K, T, RD, RF, SIG);
+    const std::vector<int> steps{200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200};
+    std::vector<double> log_n, log_err;
+    for (int n : steps) {
+        const double err = std::abs(
+            binomial_price(S, K, T, RD, RF, SIG, OptionType::Call, n) -
+            analytic);
+        ASSERT_GT(err, 0.0) << "tree exactly matches GK at n=" << n;
+        log_n.push_back(std::log(static_cast<double>(n)));
+        log_err.push_back(std::log(err));
+    }
+    const double mean_x =
+        std::accumulate(log_n.begin(), log_n.end(), 0.0) / log_n.size();
+    const double mean_y =
+        std::accumulate(log_err.begin(), log_err.end(), 0.0) / log_err.size();
+    double num = 0.0, den = 0.0;
+    for (size_t i = 0; i < log_n.size(); ++i) {
+        num += (log_n[i] - mean_x) * (log_err[i] - mean_y);
+        den += (log_n[i] - mean_x) * (log_n[i] - mean_x);
+    }
+    const double slope = num / den;
+    EXPECT_GT(slope, -1.3) << "fitted CRR exponent " << slope;
+    EXPECT_LT(slope, -0.7) << "fitted CRR exponent " << slope;
 }
 
 TEST(Binomial, AmericanAtLeastEuropean) {

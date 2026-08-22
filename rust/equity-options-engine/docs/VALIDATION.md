@@ -117,6 +117,13 @@ Regenerate after the Python project changes:
    at vega ~ 1e-10 *any* vol in a multi-point band reprices identically.
    The round-trip test encodes exactly this identifiability bound; the
    desk-level answer is to quote wings from OTM options (see DESK_GUIDE).
+   The symmetric long-dated + high-vol corner (T ~ 25y, sigma ~ 300%)
+   pushes `|d1|`/`|d2|` large enough that vega underflows towards zero
+   near the sigma -> infinity bound; the solver now always finishes by
+   bisecting its maintained bracket down to double-precision width rather
+   than stopping as soon as the *price* residual is below `IV_PRICE_TOL`
+   -- exiting early there previously understated recovered-vol error by
+   ~100x (see `long_dated_high_vol_flat_vega_regime_stays_accurate`).
 2. **Tail underflow.** `Phi(x)` underflows to 0 below x ~ -37.5
    (erfc cutoff 26.543 * sqrt 2); far-wing prices below ~1e-300 are not
    representable in f64. Cody's split-exponential keeps *relative*

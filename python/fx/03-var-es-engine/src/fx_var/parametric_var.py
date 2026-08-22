@@ -187,12 +187,48 @@ def cornish_fisher_domain_ok(
     """True if the CF expansion is monotone increasing on ``[-z_range, z_range]``.
 
     Monotonicity of ``z -> z_cf`` is the validity condition for the
-    expansion to define a quantile function (Maillard 2012); it is checked
-    numerically on a dense grid.
+    expansion to define a quantile function (Maillard 2012).  This is
+    checked **exactly**, not by sampling a grid: ``dz_cf/dz`` is a quadratic
+    ``g(z) = A z^2 + B z + C`` in ``z`` with ``A = K/8 - S^2/6``,
+    ``B = S/3``, ``C = 1 - K/8 + 5 S^2/36`` (``S`` = skew, ``K`` = excess
+    kurtosis), so its minimum on ``[-z_range, z_range]`` has a closed form:
+    the vertex ``-B/(2A)`` when ``A > 0`` and that point lies in range,
+    otherwise an endpoint (a concave/linear ``g``, ``A <= 0``, always
+    attains its interval minimum at an endpoint).
+
+    A finite-difference grid check (this function's previous implementation)
+    can under-sample a thin non-monotone dip: e.g. ``skew=0.122,
+    excess_kurtosis=-0.427`` has minimum derivative ~ -9e-4 near ``z ~ 3.1``
+    on ``|z| <= 4`` — genuinely non-monotone — but the 801-point grid used
+    here reports it as monotone, silently letting a non-quantile CF "VaR"
+    through.  The closed-form check has no resolution dependence and always
+    finds the true minimum.  ``n_grid`` is retained for API compatibility
+    (validated below) but no longer affects the result.
     """
-    z = np.linspace(-z_range, z_range, n_grid)
-    zcf = cornish_fisher_z(z, skew, excess_kurtosis)
-    return bool(np.all(np.diff(zcf) > 0))
+    z_range = float(z_range)
+    if n_grid < 3:
+        raise ValueError(f"n_grid must be >= 3, got {n_grid}")
+    if not (z_range > 0.0) or not np.isfinite(z_range):
+        raise ValueError(f"z_range must be finite and > 0, got {z_range}")
+    s, k = float(skew), float(excess_kurtosis)
+    if not np.isfinite(s) or not np.isfinite(k):
+        return False
+    a = k / 8.0 - s**2 / 6.0
+    b = s / 3.0
+    c = 1.0 - k / 8.0 + 5.0 * s**2 / 36.0
+
+    def g(z: float) -> float:
+        return a * z * z + b * z + c
+
+    if a > 0.0:
+        z_star = -b / (2.0 * a)
+        if -z_range <= z_star <= z_range:
+            m = g(z_star)
+        else:
+            m = min(g(-z_range), g(z_range))
+    else:
+        m = min(g(-z_range), g(z_range))
+    return bool(m > 0.0)
 
 
 def cornish_fisher_var(

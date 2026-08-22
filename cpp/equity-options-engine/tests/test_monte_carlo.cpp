@@ -5,8 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
+#include <vector>
 
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/monte_carlo.hpp"
@@ -30,6 +33,52 @@ TEST(MonteCarlo, Within3StandardErrorsOfBlackScholes) {
         EXPECT_NEAR(mc.price, bs, 3.0 * mc.std_error)
             << (type == OptionType::Call ? "call" : "put");
     }
+}
+
+TEST(MonteCarlo, StdErrorScalesAsInverseSqrtNFitted) {
+    // Plain (no variance reduction) MC has statistical error O(1/sqrt(n))
+    // by the CLT. Rather than trust the estimator's own reported
+    // std_error formula, measure the *empirical* spread of independent
+    // replications of the price at each path count and fit the exponent
+    // of empirical_std vs n by log-log regression -- an actual
+    // measurement of the realized rate, not a single eyeballed ratio.
+    const std::vector<std::size_t> path_counts{2000,  4000,  8000,
+                                               16000, 32000, 64000};
+    constexpr int kReps = 40;
+    std::vector<double> log_n, log_std;
+    for (std::size_t n : path_counts) {
+        std::vector<double> reps;
+        reps.reserve(kReps);
+        for (int rep = 0; rep < kReps; ++rep) {
+            const std::uint64_t seed =
+                1000003ULL * static_cast<std::uint64_t>(n) +
+                static_cast<std::uint64_t>(rep);
+            reps.push_back(mc_price(kS, kK, kT, kR, kSigma, kQ,
+                                    OptionType::Call, n, false, false, seed)
+                              .price);
+        }
+        const double mean =
+            std::accumulate(reps.begin(), reps.end(), 0.0) / reps.size();
+        double var = 0.0;
+        for (double v : reps) var += (v - mean) * (v - mean);
+        var /= static_cast<double>(reps.size() - 1);
+        log_n.push_back(std::log(static_cast<double>(n)));
+        log_std.push_back(0.5 * std::log(var));
+    }
+    const double mean_x =
+        std::accumulate(log_n.begin(), log_n.end(), 0.0) / log_n.size();
+    const double mean_y =
+        std::accumulate(log_std.begin(), log_std.end(), 0.0) / log_std.size();
+    double num = 0.0, den = 0.0;
+    for (size_t i = 0; i < log_n.size(); ++i) {
+        num += (log_n[i] - mean_x) * (log_std[i] - mean_y);
+        den += (log_n[i] - mean_x) * (log_n[i] - mean_x);
+    }
+    const double slope = num / den;
+    EXPECT_GT(slope, -0.65) << "fitted MC exponent " << slope
+                            << "; CLT predicts -0.5 (std ~ C/sqrt(n))";
+    EXPECT_LT(slope, -0.35) << "fitted MC exponent " << slope
+                            << "; CLT predicts -0.5 (std ~ C/sqrt(n))";
 }
 
 TEST(MonteCarlo, PlainEstimatorAlsoUnbiased) {

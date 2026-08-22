@@ -177,3 +177,17 @@ TEST(CornishFisher, DegenerateGridRejected) {
   EXPECT_THROW(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 2), std::invalid_argument);
   EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 3));
 }
+
+TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
+  // Regression for the closed-form rewrite of cornish_fisher_domain_ok. On
+  // this engine's default (z_range=4.0, n_grid=801), the previous
+  // finite-difference-of-values grid check reported (skew, excess_kurtosis)
+  // = (0.122, -0.427) as monotone -- every sampled z_cf value increased --
+  // yet the true minimum of dz_cf/dz on [-4, 4] is ~ -9.15e-4 (near
+  // z ~ 3.1, between two grid nodes), so the expansion is genuinely
+  // non-monotone.
+  const double skew = 0.122;
+  const double excess_kurtosis = -0.427;
+  EXPECT_FALSE(cornish_fisher_domain_ok(skew, excess_kurtosis));
+  EXPECT_THROW(cornish_fisher_var(1.0, skew, excess_kurtosis, 0.99), std::invalid_argument);
+}

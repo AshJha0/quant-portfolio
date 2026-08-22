@@ -2,7 +2,7 @@
 
 Contract items **3** (how it was validated) and **4** (where it fails), with
 the numbers produced by the committed seeds. Reproduce everything with
-`python -m pytest tests -q` (365 tests, ~7s, offline) and
+`python -m pytest tests -q` (371 tests, ~20s, offline) and
 `python examples/run_pipeline.py` (~4s).
 
 ---
@@ -125,10 +125,26 @@ floor that the polluted history cannot.
 ### F6 — Cornish–Fisher out of domain
 
 For |skew| beyond the monotonicity domain (e.g. S=−3), the CF expansion's
-"quantile" is non-monotone in α. The engine checks monotonicity numerically
-on [−4,4] and **raises** instead of returning a number
+"quantile" is non-monotone in α. The engine checks monotonicity on [−4,4]
+and **raises** instead of returning a number
 (`test_parametric_var.py::test_cf_domain_check_rejects_extreme_moments`);
 `check_domain=False` is an explicit, documented override.
+
+The check is **exact**, not grid-sampled: `dz_cf/dz` is a quadratic in `z`,
+so its minimum on `[-4, 4]` has a closed form (`cornish_fisher_domain_ok`
+in `parametric_var.py`). The previous implementation sampled `z_cf` on an
+801-point grid and diffed consecutive values, which can miss a thin
+non-monotone dip between two grid nodes — confirmed with a constructed
+counterexample, `(skew, excess_kurtosis) = (0.122, -0.427)`: the 801-point
+grid reported it as monotone (every sampled value increased) while the
+true minimum derivative on `[-4, 4]` is ≈ −9.15e-4 near `z ≈ 3.1`, so the
+expansion is genuinely non-monotone and the old check would have silently
+returned a non-quantile "VaR". Regression test:
+`test_parametric_var.py::test_domain_check_is_exact_not_grid_resolution_dependent`.
+The equity engine had the same class of gap (analytic-derivative grid
+rather than a value diff, but still grid-resolution-dependent) and received
+the same closed-form fix; all six language/asset-class implementations
+(Python, C++, Rust × equity, FX) now use it.
 
 ### F7 — Non-finite market data was absorbed, not refused (fixed)
 
@@ -161,6 +177,61 @@ Two currencies pegged to the same anchor produce a singular covariance;
 plain Cholesky fails. `robust_cholesky` escalates diagonal jitter from
 1e-12·mean(diag) and warns (`NumericalWarning`); the factorisation error and
 the simulated lockstep correlation (>0.999) are tested.
+
+### F9 — Monte Carlo VaR standard error understates its own uncertainty in
+deep tails / modest scenario counts
+
+`var_standard_error` (§2) is the theoretically correct estimator class for
+a *quantile's* sampling error — `SE = √(α(1−α)/n) / f̂(q)` via the density
+at the quantile, not a naive sample-mean SE (which would be wrong here) —
+but `f̂` is a fixed-bandwidth Gaussian KDE (`scipy.stats.gaussian_kde`,
+Scott's rule) tuned to the *bulk* of the P&L distribution, not the tail
+point it is evaluated at. Benchmarked against the true sampling
+variability of the quantile (many independent resamples, averaged over
+many trials to separate bias from single-trial noise,
+`test_monte_carlo.py::TestVarStandardErrorAccuracy`):
+
+* At `alpha=0.99` with the module default of 50,000 scenarios, the KDE
+  estimate is within ~2% of the true SE — safe to use as-is.
+* At `alpha=0.999` (50,000 scenarios) or `alpha=0.99` with only 2,000
+  scenarios, it **systematically underestimates** the true SE by 9–17% —
+  directionally overconfident, not just noisy, and precisely in the
+  regime (extreme confidence levels, or MC runs sped up with fewer paths)
+  a desk is most likely to actually hit.
+
+`var_standard_error_bootstrap` (distribution-free, resamples the P&L
+vector directly, no bandwidth to choose) is unbiased to ~1–2% across the
+same benchmark and is the recommended cross-check whenever `alpha >=
+0.995` or scenario counts are modest; it costs `n_boot` extra order-statistic
+evaluations (cheap: `n_boot=500` on 50k scenarios takes well under a
+second). The C++ and Rust engines use the same Silverman-bandwidth KDE
+approach as the Python `var_standard_error` and share its limitation; they
+do not yet have a bootstrap cross-check (tracked as a follow-up — the
+Python `eq_var` equity engine already has the analogous
+`var_standard_error_bootstrap` for its own MC VaR).
+
+### F10 — Kupiec's chi2(1) reference is oversized exactly at the
+regulatory window
+
+`kupiec_pof`'s LR statistic is asymptotically chi2(1), but at `n_obs=250,
+alpha=0.99` (the Basel backtesting window: tail probability 1%, expected
+exception count 2.5) that asymptotic is a poor approximation for a rare
+binomial: the *exact* rejection probability of a nominally-5%-size test,
+computed by summing the exact `Binomial(250, 0.01)` mass over `{x : LR(x)
+> chi2.ppf(0.95, 1)}`, is **≈9.5%** — a correctly calibrated model is
+flagged "reject at 5%" roughly twice as often as the p-value implies. The
+effect is driven by the expected exception count, not `n_obs` alone: it
+falls to ≈5.5% at `n_obs=1000` (expected count 10), close to nominal. This
+is not a bug in the LR formula (it is the textbook asymptotic reference,
+unchanged, and is what the C++/Rust golden tests pin), but it is an
+unstated caveat that changes how a p-value near 0.05 should be read at the
+regulatory window — documented and made exact (no simulation, no RNG) in
+`test_backtesting.py::
+test_kupiec_asymptotic_chi2_reference_is_oversized_at_regulatory_window`,
+mirroring the equivalent finding and test in the `eq_var` equity engine
+(`docs/VALIDATION.md` item 9 there). Christoffersen's independence and CC
+tests share the same asymptotic chi2 machinery and are subject to the
+same class of caveat at low exception counts.
 
 ## 4. Edge cases (documented **and** unit-tested)
 

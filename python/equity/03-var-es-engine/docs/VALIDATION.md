@@ -3,7 +3,7 @@
 Contract items 3 and 4: **how the engine was validated** (analytic
 benchmarks, convergence, statistical backtests, cross-model consistency)
 and **where it fails** (reproducible failure modes). All numbers below are
-reproduced by `python -m pytest tests -q` (264 tests, ~16 s, offline,
+reproduced by `python -m pytest tests -q` (266 tests, ~16 s, offline,
 seeded) and `python examples/run_pipeline.py` (~95 s).
 
 ## 1. Analytic benchmarks (exact identities)
@@ -136,10 +136,45 @@ the fingerprint of an unconditional model in a clustered-vol world
    (`test_long_gamma_reduces_loss_vs_pure_delta`).
 7. **Cornish-Fisher non-monotonicity.** S=3 or K=10 → the CF "99 %
    quantile" is not a quantile; the engine raises `ValueError` instead of
-   returning it (`test_var_raises_outside_domain`).
+   returning it (`test_var_raises_outside_domain`). The monotonicity check
+   is exact, not grid-sampled: `dz_cf/dz` is a quadratic in `z`, so its
+   minimum on `[-3.5, 3.5]` has a closed form. A fixed-resolution grid (the
+   previous implementation, 2001 points) can miss a thin non-monotone dip
+   between two grid nodes — confirmed with a constructed counterexample,
+   `(skew, excess_kurt) = (-0.0105, 8.0001)`: the grid check reported it as
+   monotone while the true minimum derivative between two adjacent nodes is
+   ≈ -1.0e-6 (non-monotone)
+   (`test_domain_check_is_exact_not_grid_resolution_dependent`). The `fx_var`
+   engine had the same class of gap (a coarser, value-diff grid rather than
+   a derivative grid, with an even easier-to-hit counterexample) and
+   received the same fix; all six language/asset-class implementations
+   (Python, C++, Rust × equity, FX) now use the closed-form check.
 8. **ES estimation uncertainty.** Bootstrap SE of ES₀.₀₁ > SE of ES₀.₁ on
    the same sample (`test_es_se_larger_for_smaller_alpha`): a 250-day
    ES₉₇.₅ averages ~6 points — quote it with error bars.
+9. **Kupiec's chi2(1) reference is oversized exactly at the regulatory
+   window.** `kupiec_pof`'s LR statistic is asymptotically chi2(1), but at
+   `n_obs=250, alpha=0.01` (the Basel backtesting window: expected exception
+   count 2.5) that asymptotic is a poor approximation for a rare binomial:
+   the *exact* rejection probability of a nominally-5%-size test, computed
+   by summing the exact `Binomial(250, 0.01)` mass over `{x : LR(x) >
+   chi2.ppf(0.95, 1)}`, is **≈9.5%** — a correctly calibrated model is
+   flagged "reject at 5%" roughly twice as often as the p-value implies.
+   The effect is driven by the expected count, not `n_obs` alone (verified
+   at several `(n_obs, alpha)` pairs): it falls to ≈7.1% at `n_obs=500`
+   (expected count 5) and ≈5.5% at `n_obs=1000` (expected count 10), close
+   to nominal. This is not a bug in the LR formula — it is the textbook
+   asymptotic reference, unchanged — but it is an unstated caveat that
+   changes how a p-value near 0.05 should be read at the regulatory window;
+   documented and made exact (no simulation, no RNG) in
+   `test_backtesting.py::TestKupiec::
+   test_asymptotic_chi2_reference_is_oversized_at_the_regulatory_window`.
+   The Christoffersen independence and CC tests share the same asymptotic
+   chi2 machinery and are subject to the same caveat at low exception
+   counts; only Kupiec's exact size was computed here because its
+   rejection region depends on a single sufficient statistic (the
+   exception count), making an exact calculation tractable — Christoffersen's
+   depends on the full transition-count triple and would need Monte Carlo.
 
 ## 6. Edge cases (contract item 6 — documented *and* tested)
 

@@ -2,6 +2,7 @@
 
 import math
 
+import numpy as np
 import pytest
 
 from eq_options import bs_price, crr_price, early_exercise_premium
@@ -45,6 +46,35 @@ def test_monotone_convergence_sanity() -> None:
         assert e_fine < e_coarse
     # O(1/n): error at 800 steps should be ~16x smaller than at 50 steps
     assert errs[-1] < errs[0] / 8.0
+
+
+def test_crr_convergence_rate_fitted_exponent() -> None:
+    """Fit the CRR discretisation-error exponent by log-log regression.
+
+    CRR is a first-order scheme: error(n) ~ C / n, with an odd/even (and,
+    away from at-the-money, node-alignment) oscillation superposed on the
+    leading term. A single pair of step counts is not enough to *prove*
+    the O(1/n) rate -- a two-point ratio can land anywhere depending on
+    where each n happens to fall in the oscillation. Fitting a line
+    through log|error| vs log(n) over a decade of geometrically spaced
+    step counts averages the oscillation out and recovers the leading
+    exponent, which must come out close to the theoretical -1.
+    """
+    S, K, T, r, sigma, q = 100.0, 105.0, 1.0, 0.04, 0.25, 0.01
+    bs = bs_price(S, K, T, r, sigma, q, "call")
+    steps = np.array([200 * 2**k for k in range(9)])  # 200 .. 51200
+    errs = np.array(
+        [
+            abs(crr_price(S, K, T, r, sigma, q, "call", "european", int(n)) - bs)
+            for n in steps
+        ]
+    )
+    assert np.all(errs > 0.0), "tree exactly matches BS at some n -- fit is degenerate"
+    slope, _intercept = np.polyfit(np.log(steps), np.log(errs), 1)
+    assert -1.3 < slope < -0.7, (
+        f"fitted CRR convergence exponent {slope:.3f}; theory predicts -1 "
+        "(error ~ C/n) -- this is more than a loose oscillation, investigate"
+    )
 
 
 @pytest.mark.parametrize(("S", "K", "T", "r", "sigma", "q"), CASES)

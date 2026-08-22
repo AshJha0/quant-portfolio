@@ -79,6 +79,13 @@ the test header so model validation can re-run it at will.
 - **Kupiec monotonicity**: LR increases with excess exceptions; 10/250 at
   1 % rejects at 5 %; exact-coverage samples give LR = 0, p = 1; the
   degenerate x = 0 case matches `-2·250·ln(0.99)` analytically.
+  Note (Python reference, `eq_var` `docs/VALIDATION.md` item 9): the
+  chi2(1) asymptotic this LR is compared against is itself oversized at
+  exactly this window — the exact rejection probability of a nominal-5%
+  test at n=250, alpha=0.01 is ≈9.5%, not 5%, because the expected
+  exception count (2.5) is too small for the asymptotic to be accurate.
+  The LR formula is unchanged (it is what the golden tests pin); this is a
+  read-the-p-value caveat, not a bug.
 - **BRW regime response**: a crash on the most recent day moves VaR to the
   full crash size, the same crash 100 days ago does not.
 - **FHS regime response**: damping the last 40 % of the sample cuts FHS VaR
@@ -130,7 +137,12 @@ the test header so model validation can re-run it at will.
    divergence only bites on inputs that are not valid covariance matrices.
 4. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
    fails on |z| ≤ 3.5. The engine throws rather than degrades — this is a
-   feature; the Python reference behaves identically.
+   feature; the Python reference behaves identically. The domain check
+   itself is exact, not grid-sampled: `dz_cf/dz` is a quadratic in `z`, so
+   its minimum on `[-z_range, z_range]` is found in closed form (the vertex
+   if it falls in range, else an endpoint) rather than by sampling a fixed
+   grid, which could otherwise miss a thin non-monotone dip between two
+   grid nodes (`CornishFisher.DomainCheckIsExactNotGridResolutionDependent`).
 5. **RNG streams differ from NumPy's**: cross-language MC agreement is
    statistical (within SE bars), never bitwise — the golden tests therefore
    pin the deterministic estimators and closed forms, and MC is validated

@@ -134,6 +134,18 @@ class TestCornishFisher:
         v = cornish_fisher_var(1.0, 0.01, skew=3.0, excess_kurt=0.0, check_domain=False)
         assert np.isfinite(v)
 
+    def test_domain_check_is_exact_not_grid_resolution_dependent(self):
+        # Regression for the closed-form rewrite of cornish_fisher_domain_ok.
+        # (S, K) placed so the derivative's parabola vertex falls almost
+        # exactly between two nodes of the *old* 2001-point grid on
+        # [-3.5, 3.5]: the old grid-sampled check reported this as monotone
+        # (every sampled node was positive) even though the true minimum of
+        # the derivative between those nodes is -1.0e-6 (non-monotone).
+        skew, excess_kurt = -0.010499946187942602, 8.000105998830488
+        assert not cornish_fisher_domain_ok(skew, excess_kurt)
+        with pytest.raises(ValueError, match="non-monotone"):
+            cornish_fisher_var(1.0, 0.01, skew=skew, excess_kurt=excess_kurt)
+
     def test_cf_z_polynomial_hand_computed(self):
         # z=2, S=0.5, K=1: z + 3*0.5/6 + 2*1/24 - 11*0.25/36
         z = cornish_fisher_z(2.0, 0.5, 1.0)

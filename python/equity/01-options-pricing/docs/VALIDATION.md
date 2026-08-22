@@ -178,6 +178,17 @@ represent (it produces a smooth exercise boundary instead).
   Deep-ITM short-dated quotes lose all vol information in float64 (time
   value underflows); the round-trip domain is |ln(K/F)| ≲ 3σ√T and
   the solver refuses outside it.
+- **Implied vol in the long-dated + high-vol flat-vega corner:** for
+  T ≳ 10y with σ ≳ 200%, `|d1|`/`|d2|` grow large enough that vega
+  `~ S√T φ(d1)` underflows towards zero and the price sits within
+  double-precision noise of the σ→∞ bound; recovered vol there is only
+  accurate to ~1e-4–1e-3 (vs 1e-8 elsewhere) — a property of the inverse
+  problem itself. `implied_vol` always finishes with a Brent refinement
+  on its bracket rather than returning as soon as the *price* residual is
+  within `tol`, since exiting early there previously understated the
+  error by ~300x (1.8e-2 vs 2.4e-5 on the S=K=100, T=25y, σ=300% put) —
+  see `test_round_trip_long_dated_high_vol_flat_vega` and the C++/Rust
+  siblings, which had (and now fix) the identical issue.
 - **No NaNs:** price/Greek sweeps across S∈[1e-3,1e5], T∈[1e-6,10],
   σ∈[1e-6,8], r∈[−5%,10%] are finite (tested); `RuntimeWarning`s are
   promoted to errors in the pytest config so silent overflow cannot creep
