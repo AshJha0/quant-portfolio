@@ -10,10 +10,20 @@ total, every one with its own tests, and documentation answering *why this
 model*, *what assumptions it makes*, *how it was validated*, *where it
 fails*, and *how a real desk would use it*.
 
+**New here?** [`docs/`](docs/README.md) is the portfolio-wide learning and
+reference layer: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
+[`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) for how everything fits together,
+[`docs/LEARN.md`](docs/LEARN.md) for a structured tour of every topic plus a
+481-question self-test bank, [`docs/COOKBOOK.md`](docs/COOKBOOK.md) for
+verified-runnable "how do I..." recipes, and
+[`docs/MARKET_RISK.md`](docs/MARKET_RISK.md) for the VaR/ES/backtesting
+workflow end to end.
+
 ```
 quant-portfolio/
 ├── CONVENTIONS.md        # The engineering & documentation contract every project follows
 ├── README.md              # This file
+├── docs/                  # Portfolio-wide architecture, learning guide, cookbook, market-risk workflow
 ├── python/
 │   ├── equity/01-…10-…    # 10 equity projects
 │   ├── fx/01-…10-…        # 10 FX projects (fully separate from equity)
