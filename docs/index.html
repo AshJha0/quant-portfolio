@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>quant-portfolio — an end-to-end quantitative finance portfolio</title>
+<style>
+:root{--teal:#16697a;--green:#16a085;--ink:#1a1a2e;--muted:#556}
+body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:var(--ink);background:#f7f8fa}
+header{background:var(--teal);color:#fff;padding:3rem 2rem}
+header h1{margin:0 0 .5rem;font-size:2.2rem}
+header p{margin:0;max-width:52rem;opacity:.92;line-height:1.5}
+.wrap{max-width:64rem;margin:0 auto;padding:0 2rem}
+nav{margin-top:1.2rem}
+nav a{display:inline-block;background:var(--green);color:#fff;text-decoration:none;
+  padding:.55rem 1.1rem;margin-right:.6rem;margin-bottom:.5rem;border-radius:4px;font-weight:600}
+nav a.secondary{background:rgba(255,255,255,.15)}
+h2{color:var(--teal);border-bottom:2px solid #e3e8ec;padding-bottom:.3rem;margin-top:2.5rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr));gap:1rem;margin:1.2rem 0}
+.card{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);padding:1rem 1.2rem;border-radius:4px}
+.card h3{margin:.1rem 0 .5rem;font-size:1.02rem;color:var(--teal)}
+.card p{margin:0;font-size:.9rem;color:var(--muted);line-height:1.45}
+.card .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.03em;
+  color:var(--green);text-transform:uppercase;margin-bottom:.3rem}
+pre{background:#10222a;color:#d7e3ea;padding:1rem 1.2rem;border-radius:4px;overflow-x:auto;
+  font-size:.85rem;line-height:1.5}
+.numbers{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);border-radius:4px;
+  padding:1rem 1.4rem;font-family:Consolas,monospace;font-size:.88rem;line-height:1.7}
+footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>quant-portfolio</h1>
+    <p>A flagship, end-to-end quantitative finance portfolio: 10 project areas built
+       twice each — once for equity, once for FX, as fully separate, self-contained
+       codebases — in Python, with C++ and Rust performance twins for the four
+       highest-value pricing and risk engines, plus three standalone foundations
+       projects built from first principles.</p>
+    <nav>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/DIAGRAMS.md">Diagrams</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/LEARN.md">Learn</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/COOKBOOK.md">Cookbook</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/MARKET_RISK.md">Market risk</a>
+      <a class="secondary" href="https://github.com/AshJha0/quant-portfolio">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <h2>Verified, not claimed</h2>
+  <div class="numbers">
+    Sub-projects&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 31 — 10 dual-asset-class areas &times; 2, 3 foundations projects, 4 engines &times; 2 languages<br>
+    Test suite&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 5,963 tests, all passing, independently reproduced from a clean build in every run<br>
+    Cross-language validation&nbsp;&nbsp;&nbsp;&nbsp; golden vectors: Python reference &rarr; C++ (GoogleTest) &rarr; Rust (cargo test), 1e-9 / 1e-6&ndash;1e-8 tolerance<br>
+    Learning guide&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 481 self-test questions across 18 rounds, every answer grounded in the real code<br>
+    Cookbook&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 61 recipes, every snippet actually executed and verified before publishing
+  </div>
+
+  <h2>The 10 project areas</h2>
+  <div class="grid">
+    <div class="card"><span class="tag">01</span><h3>Options Pricing &amp; Greeks</h3>
+      <p>Black-Scholes / Garman-Kohlhagen closed form, analytic and finite-difference
+         Greeks, CRR binomial trees for American exercise, Newton+bisection implied
+         vol, Monte Carlo cross-checks. C++ &amp; Rust twins.</p></div>
+    <div class="card"><span class="tag">02</span><h3>Volatility Modeling</h3>
+      <p>GARCH-family forecasting of realized volatility, clustering and mean
+         reversion, forecast validation against a naive benchmark.</p></div>
+    <div class="card"><span class="tag">03</span><h3>VaR / Expected Shortfall</h3>
+      <p>Historical, age-weighted, parametric (Cornish-Fisher) and Monte Carlo VaR
+         with full book revaluation; Kupiec/Christoffersen backtesting and Basel
+         traffic-light scoring. C++ &amp; Rust twins.</p></div>
+    <div class="card"><span class="tag">04</span><h3>Fixed Income</h3>
+      <p>Bond pricing, yield-to-maturity solving, duration/convexity/DV01, yield
+         curve construction, day-count conventions.</p></div>
+    <div class="card"><span class="tag">05</span><h3>Statistical Pairs Trading</h3>
+      <p>Cointegration testing, hedge-ratio estimation, z-score entry/exit,
+         market-neutral spread construction and backtesting.</p></div>
+    <div class="card"><span class="tag">06</span><h3>Credit Risk</h3>
+      <p>Probability-of-default modeling, discrimination and calibration
+         validation, expected-loss estimation.</p></div>
+    <div class="card"><span class="tag">07</span><h3>Portfolio Optimization</h3>
+      <p>Mean-variance, minimum-variance and risk-parity allocation, constrained
+         optimization, marginal/component risk attribution.</p></div>
+    <div class="card"><span class="tag">08</span><h3>Algorithmic Execution</h3>
+      <p>TWAP/VWAP/participation-rate scheduling, market-impact modeling,
+         implementation-shortfall and transaction-cost analysis.</p></div>
+    <div class="card"><span class="tag">09</span><h3>Volatility Surfaces</h3>
+      <p>Smile/skew surface construction, no-arbitrage checks, Heston stochastic
+         volatility with Monte Carlo pricing.</p></div>
+    <div class="card"><span class="tag">10</span><h3>Regime-Switching Strategies</h3>
+      <p>Regime detection, regime-conditional signals, walk-forward validation
+         against overfitting to hindsight-obvious regimes.</p></div>
+  </div>
+
+  <h2>Foundations &amp; engineering</h2>
+  <div class="grid">
+    <div class="card"><span class="tag">F1&ndash;F3</span><h3>Foundations trilogy</h3>
+      <p>Single-asset risk metrics, strict no-look-ahead backtest discipline, and
+         a zero-scipy from-scratch Black-Scholes rebuild validated by an
+         independent Monte Carlo pricer.</p></div>
+    <div class="card"><span class="tag">C++ / Rust</span><h3>Cross-language engines</h3>
+      <p>Zero-external-dependency C++20 and Rust engines for options/Greeks and
+         VaR/ES, each with its own from-scratch RNG, normal CDF/PPF, and Cholesky
+         factorization — validated against Python golden vectors, not re-derived
+         independently.</p></div>
+    <div class="card"><span class="tag">Discipline</span><h3>The documentation contract</h3>
+      <p>Every project answers, in writing: why this model over the alternatives,
+         what assumptions it makes and what breaks if violated, how it was
+         validated, where it fails with reproducible examples, and how a real
+         desk would use it.</p></div>
+    <div class="card"><span class="tag">Review history</span><h3>Found and fixed, not hidden</h3>
+      <p>Two portfolio-wide review passes found and fixed a NaN-validation defect
+         class, an implied-vol solver plateau bug, a Cornish-Fisher grid-resolution
+         bug, and a Monte Carlo VaR standard-error bias &mdash; all documented as
+         teaching case studies in the learning guide.</p></div>
+  </div>
+
+  <h2>Quick start</h2>
+<pre>git clone https://github.com/AshJha0/quant-portfolio && cd quant-portfolio
+
+# any Python project
+cd python/equity/01-options-pricing
+pip install -e . && pytest -q && python examples/run_pipeline.py
+
+# a C++ engine
+cmake -S cpp/equity-options-engine -B build && cmake --build build -j && ctest --test-dir build
+
+# a Rust engine
+cd rust/equity-var-engine && cargo test --release</pre>
+
+  <footer>quant-portfolio &mdash; 31 sub-projects, 3 languages, one shared engineering
+    and documentation standard (<a href="https://github.com/AshJha0/quant-portfolio/blob/main/CONVENTIONS.md">CONVENTIONS.md</a>).</footer>
+</div>
+</body>
+</html>
