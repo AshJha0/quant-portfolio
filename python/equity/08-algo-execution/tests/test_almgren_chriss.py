@@ -154,3 +154,76 @@ def test_cost_moments_validation():
     bad = np.linspace(P.total_shares, 5.0, P.n_slices + 1)  # doesn't end at 0
     with pytest.raises(ValueError):
         ac_cost_moments(P, bad)
+
+
+class TestClosedFormIsTheDiscreteMinimiser:
+    """TEST-10: ``ac_trajectory`` minimises ``E + lambda V`` over admissible
+    trajectories (``x_0 = X``, ``x_N = 0``).
+
+    Almgren & Chriss (2001) eq. (16)-(18): with ``kappa`` from
+    ``cosh(kappa tau) = 1 + kappa_tilde^2 tau^2 / 2`` the sinh trajectory is
+    the *exact* discrete-time minimiser, not a continuous-time approximation.
+    Random perturbations of the interior holdings must therefore never lower
+    the objective, and the objective's gradient must vanish at the optimum.
+    """
+
+    PARAMS = ACParams(total_shares=250_000.0, n_slices=25, total_time=2.0,
+                      sigma=0.8, eta=2.5e-6, gamma=2.0e-7, epsilon=0.0025)
+
+    @staticmethod
+    def _objective(params, x, lam):
+        e, v = ac_cost_moments(params, x)
+        return e + lam * v
+
+    @pytest.mark.parametrize("lam", [0.0, 1e-9, 1e-7, 1e-6, 1e-5, 1e-3, 1.0])
+    def test_random_perturbations_never_improve(self, lam):
+        params = self.PARAMS
+        x_opt = ac_trajectory(params, lam)
+        j_opt = self._objective(params, x_opt, lam)
+        rng = np.random.default_rng(int(1e6 * lam) + 11)
+        for scale in (1e-4, 1e-2, 0.1, 0.5):
+            for _ in range(20):
+                delta = rng.normal(size=x_opt.size) * scale * params.total_shares
+                delta[0] = delta[-1] = 0.0  # keep the boundary conditions
+                x = x_opt + delta
+                j = self._objective(params, x, lam)
+                assert j >= j_opt - 1e-9 * abs(j_opt), (lam, scale, j, j_opt)
+
+    @pytest.mark.parametrize("lam", [1e-8, 1e-6, 1e-4])
+    def test_first_order_condition_holds(self, lam):
+        # Central-difference gradient w.r.t. each interior holding is ~0
+        # relative to the curvature scale.
+        params = self.PARAMS
+        x_opt = ac_trajectory(params, lam)
+        for k in range(1, x_opt.size - 1):
+            # Keep the perturbed path monotone so the epsilon*|n_k| term
+            # stays on its smooth branch (the kink is *at* the optimum only
+            # when h exceeds the local step).
+            h = 0.1 * min(x_opt[k - 1] - x_opt[k], x_opt[k] - x_opt[k + 1])
+            if h < 1e-6 * params.total_shares:
+                continue
+            up, dn = x_opt.copy(), x_opt.copy()
+            up[k] += h
+            dn[k] -= h
+            grad = (self._objective(params, up, lam) - self._objective(params, dn, lam)) / (2 * h)
+            curv = (self._objective(params, up, lam) - 2 * self._objective(params, x_opt, lam)
+                    + self._objective(params, dn, lam)) / h**2
+            # |grad| should be O(rounding), i.e. far below the curvature times h.
+            assert abs(grad) < 1e-6 * curv * h + 1e-9 * abs(self._objective(params, x_opt, lam)) / h
+
+    def test_front_loading_increases_with_risk_aversion(self):
+        params = self.PARAMS
+        prev = ac_trajectory(params, 0.0)
+        for lam in (1e-8, 1e-7, 1e-6, 1e-5, 1e-4):
+            cur = ac_trajectory(params, lam)
+            # every interior holding is lower (sold sooner) at higher lambda
+            assert np.all(cur[1:-1] <= prev[1:-1] + 1e-9)
+            prev = cur
+        # the large-lambda limit is "sell everything in the first slice"
+        extreme = ac_trajectory(params, 1e3)
+        assert extreme[1] < 1e-6 * params.total_shares
+
+    def test_twap_is_the_zero_risk_aversion_optimum(self):
+        params = self.PARAMS
+        x = ac_trajectory(params, 0.0)
+        np.testing.assert_allclose(-np.diff(x), params.total_shares / params.n_slices, rtol=1e-12)

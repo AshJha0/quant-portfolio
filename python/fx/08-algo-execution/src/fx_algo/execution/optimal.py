@@ -1,6 +1,6 @@
 """Almgren-Chriss optimal execution adapted to FX session liquidity.
 
-Classic Almgren-Chriss (2000) assumes *constant* temporary impact and
+Classic Almgren-Chriss (2001) assumes *constant* temporary impact and
 volatility over the execution horizon.  The FX day is anything but
 constant: depth in the London-NY overlap is ~10x the late-NY session.
 This module solves the discrete mean-variance execution problem with

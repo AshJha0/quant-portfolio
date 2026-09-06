@@ -192,8 +192,10 @@ def evaluate_var_backtest(pnl, var_forecasts, alpha: float = 0.99) -> BacktestRe
         raise ValueError("pnl and var_forecasts must have equal length")
     if pnl.size < 2:
         raise ValueError("need at least 2 observations to backtest")
-    if np.isnan(pnl).any() or np.isnan(var).any():
-        raise ValueError("backtest inputs contain NaNs (NaN policy: refuse)")
+    if not (np.isfinite(pnl).all() and np.isfinite(var).all()):
+        raise ValueError(
+            "backtest inputs contain NaN or infinite values (NaN policy: refuse)"
+        )
     exc = (-pnl > var).astype(int)
     x = int(exc.sum())
     lr_uc, p_uc = kupiec_pof(x, exc.size, alpha)

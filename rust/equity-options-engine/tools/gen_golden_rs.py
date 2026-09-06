@@ -34,9 +34,28 @@ def fmt(x: float) -> str:
     return s if any(c in s for c in ".eE") else s + ".0"
 
 
+
+def _emit(path, text: str, check: bool) -> None:
+    """Write ``text`` to ``path``, or with ``--check`` verify it is already there.
+
+    ``--check`` (used by CI) exits 1 if the committed file is missing or
+    differs from what the JSON would generate, proving provenance without
+    touching the tree.
+    """
+    if check:
+        if not path.exists():
+            raise SystemExit(f"MISSING: {path}")
+        if path.read_text() != text:
+            raise SystemExit(f"STALE: {path} differs from the golden JSON; rerun without --check")
+        print(f"OK: {path} matches the golden JSON")
+        return
+    path.write_text(text)
+
 def main() -> int:
-    json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
-    rs_path = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_RS
+    check = "--check" in sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != "--check"]
+    json_path = Path(args[0]) if len(args) > 0 else DEFAULT_JSON
+    rs_path = Path(args[1]) if len(args) > 1 else DEFAULT_RS
 
     data = json.loads(json_path.read_text())
     cases = data["cases"]
@@ -108,8 +127,9 @@ def main() -> int:
     lines.append("];")
     lines.append("")
 
-    rs_path.write_text("\n".join(lines))
-    print(f"wrote {rs_path} ({len(cases)} cases)")
+    _emit(rs_path, "\n".join(lines), check)
+    if not check:
+        print(f"wrote {rs_path} ({len(cases)} cases)")
     return 0
 
 

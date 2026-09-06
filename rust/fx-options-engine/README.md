@@ -70,7 +70,7 @@ fx-options-engine/
 │   ├── golden.rs                # GENERATED: 30 cross-language golden vectors
 │   └── bin/bench.rs             # throughput benchmarks
 ├── tools/gen_golden_rs.py      # Python golden JSON -> src/golden.rs
-├── tests/                       # integration test suite (77 cases) + doctests (19)
+├── tests/                       # integration test suite (80 cases) + doctests (19)
 └── docs/                        # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
@@ -78,7 +78,7 @@ fx-options-engine/
 
 ```sh
 cargo build --release
-RUSTFLAGS="-D warnings" cargo test --release   # 77 integration tests + 19 doctests (96), all green
+RUSTFLAGS="-D warnings" cargo test --release   # 80 integration tests + 19 doctests (99), all green
 cargo run --release --bin bench
 ```
 

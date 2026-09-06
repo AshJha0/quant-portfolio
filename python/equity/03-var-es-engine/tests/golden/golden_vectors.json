@@ -1,0 +1,87 @@
+{
+  "description": "Golden VaR/ES/backtest vectors for cross-validating the C++/Rust equity-var-engine against the eq_var Python reference. Inputs are closed-form sin/cos series (no RNG); tolerance for consumers: 1e-9 relative + 1e-12 absolute (libm-vs-numpy ulp noise in sin/cos).",
+  "source": "python/equity/03-var-es-engine (eq_var)",
+  "inputs": {
+    "case_a": "pnl[t] = 100 sin(3t + 1) + 0.5 t cos(t), t = 0..99",
+    "case_b": {
+      "exposures": [
+        1000000.0,
+        -500000.0,
+        200000.0
+      ],
+      "vols": [
+        0.01,
+        0.015,
+        0.02
+      ],
+      "corr": [
+        [
+          1.0,
+          0.5,
+          0.25
+        ],
+        [
+          0.5,
+          1.0,
+          0.3
+        ],
+        [
+          0.25,
+          0.3,
+          1.0
+        ]
+      ]
+    },
+    "case_c": {
+      "returns": "r[t, j] = 0.01 sin(t + j) + 0.005 cos(2t - j), t=0..59, j=0..2",
+      "exposures": [
+        2000000.0,
+        -1000000.0,
+        500000.0
+      ],
+      "exceptions": "t % 40 == 0 plus days 100 and 101 (9 in 250)"
+    }
+  },
+  "tolerance": {
+    "rel": 1e-09,
+    "abs": 1e-12
+  },
+  "values": {
+    "a_hist_var_1pct": 122.41292223752643,
+    "a_hist_var_5pct": 104.55228353749273,
+    "a_es_5pct": 122.6373207703405,
+    "a_es_1pct": 141.75681075495305,
+    "a_brw_var_5pct_lam098": 108.2348601407293,
+    "a_fhs_var_5pct_lam094": 109.3777910164513,
+    "a_brw_weights_5_lam098": [
+      0.1920016255921656,
+      0.19592002611445472,
+      0.19991839399434155,
+      0.20399836121871587,
+      0.2081615930803223
+    ],
+    "b_sigma": 9962.429422585637,
+    "b_var_normal_1pct": 23176.07650751402,
+    "b_var_t6_1pct": 25563.37478743866,
+    "b_var_normal_1pct_10d": 73289.18899006478,
+    "b_es_normal_2p5pct": 23290.19532123021,
+    "b_es_t6_2p5pct": 26486.475881703944,
+    "b_cf_var_1pct_skew_m05_kurt_1": 28230.62626871169,
+    "c_sample_cov_00": 6.197010057346647e-05,
+    "c_sample_cov_01": 3.367477490492125e-05,
+    "c_sample_cov_12": 3.643904950084309e-05,
+    "c_ewma_cov_00": 6.0856537940667185e-05,
+    "c_ewma_cov_01": 3.159039791408869e-05,
+    "c_ewma_cov_22": 6.69554835931717e-05,
+    "c_var_normal_1pct": 24030.56180968714,
+    "c_var_t8_5pct": 16635.172157903933,
+    "c_kupiec_lr_250_7": 5.496990447792683,
+    "c_kupiec_p_250_7": 0.019049230890526535,
+    "c_kupiec_lr_250_0": 5.025167926750726,
+    "c_kupiec_p_250_0": 0.02498150305344973,
+    "c_christoffersen_ind_lr": 1.1893563491117192,
+    "c_christoffersen_ind_p": 0.2754594267438438,
+    "c_christoffersen_cc_lr": 11.418386981709475,
+    "c_christoffersen_cc_p": 0.0033153453232678356
+  }
+}

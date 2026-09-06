@@ -173,3 +173,39 @@ def test_es_subadditive_on_random_samples():
     b = 0.5 * a + rng.standard_t(3, size=20_000)
     for alpha in (0.95, 0.99):
         assert empirical_es(a + b, alpha) <= empirical_es(a, alpha) + empirical_es(b, alpha) + 1e-9
+
+
+class TestEsDominatesVarAtBoundary:
+    """TEST-4: ES >= VaR for every alpha, including the Acerbi-Tasche boundary.
+
+    ``_es_from_tail`` puts a fractional weight on the boundary order statistic
+    (the VaR atom).  Check the three regimes where ``(1 - alpha) * n`` is an
+    exact integer, just below and just above one, on fat-tailed samples.
+    """
+
+    @pytest.mark.parametrize("n", [50, 100, 250, 1000])
+    @pytest.mark.parametrize("k", [1, 2, 5, 10])
+    @pytest.mark.parametrize("offset", [0.0, -1e-9, +1e-9, -0.3, +0.3])
+    def test_es_ge_var(self, n, k, offset):
+        tail = (k + offset) / n
+        if not 0.0 < tail < 0.5:
+            pytest.skip("tail probability out of range")
+        alpha = 1.0 - tail
+        rng = np.random.default_rng(1000 * n + k)
+        pnl = rng.standard_t(4, size=n)
+        var, es = empirical_var_es(pnl, alpha)
+        assert es >= var - 1e-12 * max(1.0, abs(var)), (n, k, offset, es, var)
+
+    def test_es_integer_boundary_is_exact_tail_mean(self):
+        rng = np.random.default_rng(3)
+        pnl = rng.normal(size=200)
+        es = empirical_es(pnl, 0.95)  # (1-alpha)*n = 10 exactly
+        assert es == pytest.approx(-np.sort(pnl)[:10].mean(), rel=1e-12)
+
+    def test_es_fractional_weight_interpolates_between_integer_neighbours(self):
+        rng = np.random.default_rng(4)
+        pnl = rng.normal(size=200)
+        es_lo = empirical_es(pnl, 1 - 10 / 200)
+        es_hi = empirical_es(pnl, 1 - 11 / 200)
+        es_mid = empirical_es(pnl, 1 - 10.5 / 200)
+        assert es_hi <= es_mid <= es_lo

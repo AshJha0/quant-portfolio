@@ -117,7 +117,12 @@ EM fixings embed stale prints, onshore/offshore splits (CNY/CNH, official vs
 parallel TRY/ARS rates at times), holiday gaps that differ from G10, and
 managed-float smoothing that understates true vol. Consequences: sample σ
 too low, HS windows too quiet, correlations biased toward zero. Engine
-policy: NaN inputs **raise** (never silently filled — tested), near-zero-vol
+policy: NaN **and ±inf** inputs **raise** (never silently filled — tested;
+the P&L gates in `expected_shortfall._tail` and
+`backtesting.evaluate_var_backtest` are full `np.isfinite` checks, not
+`isnan`-only, so an `inf` loss can no longer yield an `inf` ES or a `+inf`
+P&L day be silently scored as "no exception" — `TestInfinityIsRefusedLikeNaN`),
+near-zero-vol
 factors are flagged (the same machinery as pegs catches over-smoothed EM
 series), and the EM crisis composite scenario + jump MC provide the fat-tail
 floor that the polluted history cannot.

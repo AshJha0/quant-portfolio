@@ -1,7 +1,7 @@
 # Learn: A Structured Guide to This Portfolio
 
 This is the teaching companion to quant-portfolio. [README.md](../README.md)
-tells you what the portfolio contains and proves it works (5,963 passing
+tells you what the portfolio contains and proves it works (6,446 passing
 tests, reproduced from a clean build). [ARCHITECTURE.md](ARCHITECTURE.md) and
 [DIAGRAMS.md](DIAGRAMS.md) tell you how the 31 sub-projects fit together.
 This file teaches the *content* — the quant finance, the numerical methods,
@@ -19,7 +19,7 @@ It is organized in four parts:
 - **Part III — Your learning path.** A suggested order to work through the
   portfolio, by background (quant-first, engineer-first, or starting from
   zero), with what to read and run at each step.
-- **Part IV — The exercise room.** ~450 self-test questions and answers,
+- **Part IV — The exercise room.** 481 self-test questions and answers,
   organized into 18 rounds by topic, grounded in this portfolio's actual code
   and actual documented assumptions — not generic textbook trivia. Use it to
   check your own understanding after working through a project, or to find
@@ -2031,7 +2031,7 @@ It generalizes: `math.isfinite`, `np.isfinite`, `std::isfinite`, and `.is_finite
 
 **Q26. How was this defect class found, according to the README's characterization of the review passes?**
 
-The README frames it as the first of a sequence: "A portfolio-wide hardening pass found the same defect class in project after project" — i.e., a dedicated audit pass looking specifically for input-validation gaps, not something caught by the original per-project test suites during initial buildout. `docs/DIAGRAMS.md` diagram 13 places it as "Hardening pass 1" in the portfolio's review history, distinct from and prior to the later numerical-robustness pass (implied-vol plateau, Cornish-Fisher grid resolution) covered elsewhere in this portfolio's documentation.
+The README frames it as the first of a sequence: "A portfolio-wide hardening pass found the same defect class in project after project" — i.e., a dedicated audit pass looking specifically for input-validation gaps, not something caught by the original per-project test suites during initial buildout. `docs/DIAGRAMS.md` diagram 13 places it as "Hardening pass 1" in the portfolio's review history, distinct from and prior to the later numerical-robustness pass (implied-vol plateau, Cornish-Fisher grid resolution) covered elsewhere in this portfolio's documentation. A third, independent review pass later showed the sweep had *not* been complete: the equity Python VaR backtester (`eq_var.backtesting.exceptions_from_pnl`) — the very reference the golden vectors are generated from — still counted a NaN P&L day as "no exception" while its C++/Rust twins refused it, and the fixed-income YTM stack and the foundations Black-Scholes `_d1_d2` still had the `if x <= 0` hole. Those were closed and pinned in per-project `test_input_hardening.py` suites; the README's "On input validation" section now states the covered scope explicitly rather than claiming "every public entry point".
 
 **Q27. Why didn't the original test suites — which did test invalid inputs like negative numbers — catch this before the hardening pass?**
 

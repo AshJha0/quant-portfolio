@@ -253,3 +253,52 @@ class TestRollingBacktest:
         assert list(table["day"]) == [10, 12, 200]
         assert bool(table["clustered"].iloc[1]) is True  # gap of 2 days
         assert bool(table["clustered"].iloc[2]) is False
+
+
+class TestKupiecExactSize:
+    """TEST-5: the README's "Kupiec is oversized to ~9.5 % at 250/99 %" as a
+    pinned number.
+
+    Summing the Binomial(250, 0.01) pmf over the rejection set of the 5 %
+    chi2(1) Kupiec test gives the *exact* finite-sample size.  It is
+    0.0948, not 0.05, because the chi2(1) asymptotics are poor at an
+    expected count of 2.5 -- and ``x = 0`` is itself a rejection.
+    """
+
+    N, P = 250, 0.01
+
+    def _reject_set(self):
+        crit = chi2.ppf(0.95, df=1)
+        return [x for x in range(self.N + 1) if kupiec_pof(self.N, x, self.P)["lr"] > crit]
+
+    def test_exact_size_is_9_5_percent(self):
+        from scipy.stats import binom
+
+        rej = self._reject_set()
+        size = float(sum(binom.pmf(x, self.N, self.P) for x in rej))
+        assert size == pytest.approx(0.0948, abs=1e-4)
+        assert size == pytest.approx(0.09476, abs=5e-5)
+
+    def test_zero_exceptions_is_a_rejection(self):
+        assert 0 in self._reject_set()
+        assert kupiec_pof(self.N, 0, self.P)["pvalue"] < 0.05
+
+    def test_rejection_set_is_zero_or_upper_tail(self):
+        rej = self._reject_set()
+        # {0} plus a contiguous upper tail starting at 7 exceptions.
+        assert rej[0] == 0
+        assert rej[1:] == list(range(7, self.N + 1))
+        assert kupiec_pof(self.N, 6, self.P)["pvalue"] > 0.05
+
+    def test_basel_zone_uses_probability_for_non_250_windows(self):
+        # MIN-14: 500 days with 8 exceptions is yellow by the raw 5-9 count
+        # but comfortably green by the cumulative binomial probability.
+        r = basel_traffic_light(8, n_obs=500)
+        assert r["zone"] == "green"
+        assert r["cumulative_prob"] < 0.95
+        # Regulatory 250-day table is reproduced exactly.
+        assert basel_traffic_light(4)["zone"] == "green"
+        assert basel_traffic_light(5)["zone"] == "yellow"
+        assert basel_traffic_light(9)["zone"] == "yellow"
+        assert basel_traffic_light(10)["zone"] == "red"
+        assert basel_traffic_light(10)["multiplier"] == 4.0

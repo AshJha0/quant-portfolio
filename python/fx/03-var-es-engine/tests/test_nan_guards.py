@@ -314,3 +314,37 @@ class TestEndToEndNoNanEscapes:
         for r in (hs, pv):
             assert np.isfinite(r.var) and np.isfinite(r.es)
             assert r.es >= r.var > 0.0
+
+
+class TestInfinityIsRefusedLikeNaN:
+    """MIN-12 / MAJ-1: the P&L gates used ``np.isnan`` only, so ``+/-inf``
+    slipped through -- an ``inf`` loss gave an ``inf`` ES, a ``-inf`` P&L
+    counted as an exception while ``+inf`` did not.  The gates are now full
+    finiteness checks, matching the C++/Rust twins.
+    """
+
+    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+    def test_empirical_var_es_refuse_non_finite(self, bad):
+        from fx_var.expected_shortfall import empirical_es, empirical_var, empirical_var_es
+
+        pnl = np.random.default_rng(0).normal(size=300)
+        pnl[42] = bad
+        for fn in (empirical_var, empirical_es, empirical_var_es):
+            with pytest.raises(ValueError, match="NaN or infinite"):
+                fn(pnl, 0.99)
+
+    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+    def test_evaluate_var_backtest_refuses_non_finite_pnl_and_var(self, bad):
+        from fx_var.backtesting import evaluate_var_backtest
+
+        rng = np.random.default_rng(1)
+        pnl = rng.normal(size=250)
+        var = np.full(250, 2.3)
+        bad_pnl = pnl.copy()
+        bad_pnl[7] = bad
+        with pytest.raises(ValueError, match="NaN or infinite"):
+            evaluate_var_backtest(bad_pnl, var, 0.99)
+        bad_var = var.copy()
+        bad_var[200] = bad
+        with pytest.raises(ValueError, match="NaN or infinite"):
+            evaluate_var_backtest(pnl, bad_var, 0.99)

@@ -172,3 +172,53 @@ class TestDetectionTable:
             expanding_fit_detect(small_features, min_train=len(small_features))
         with pytest.raises(ValueError, match="refit_every"):
             expanding_fit_detect(small_features, min_train=300, refit_every=0)
+
+
+class TestRefitBoundary:
+    """TEST-11: mutations strictly after a refit date ``t0`` leave every
+    output up to (and including) the last unmutated day bit-identical.
+
+    The existing mutation test cuts in the middle of a block.  This one pins
+    the refit boundary itself: the model fitted at ``t0`` sees ``[0, t0)``
+    only, and the filtered value on day ``t`` inside the block sees
+    ``[0, t]`` only, so a mutation from ``t0 + k`` onwards may move rows
+    ``t >= t0 + k`` and nothing earlier -- in particular not row ``t0``,
+    which is produced by the *new* model on the boundary day.
+    """
+
+    KW = dict(n_states=3, min_train=300, refit_every=150,
+              seed=0, n_init=1, max_iter=40, n_pca=2)
+
+    @pytest.mark.parametrize("k", [1, 2, 10])
+    def test_mutation_after_refit_date(self, small_features, k):
+        t0 = 450  # second refit: min_train + refit_every
+        t_m = t0 + k
+        base = expanding_fit_detect(small_features, **self.KW)
+        mutated = small_features.copy()
+        mutated.iloc[t_m:] = mutated.iloc[t_m:] * 3.0 + 1.0
+        mut = expanding_fit_detect(mutated, **self.KW)
+        last_clean = small_features.index[t_m - 1]
+        pd.testing.assert_frame_equal(
+            base.loc[:last_clean], mut.loc[:last_clean], check_exact=True
+        )
+        # the boundary row t0 itself is in the untouched set
+        assert small_features.index[t0] in base.loc[:last_clean].index
+        # sanity: the mutated block did change
+        first_dirty = small_features.index[t_m]
+        assert not np.allclose(
+            base.loc[first_dirty:, ["p_bull", "p_transition", "p_bear"]].to_numpy(),
+            mut.loc[first_dirty:, ["p_bull", "p_transition", "p_bear"]].to_numpy(),
+        )
+
+    def test_mutation_on_the_last_training_day_only_moves_the_next_block(self, small_features):
+        # Mutating day t0-1 changes the model fitted at t0 (it is in the
+        # training window) but nothing before it.
+        t0 = 450
+        base = expanding_fit_detect(small_features, **self.KW)
+        mutated = small_features.copy()
+        mutated.iloc[t0 - 1] = mutated.iloc[t0 - 1] * 3.0 + 1.0
+        mut = expanding_fit_detect(mutated, **self.KW)
+        last_clean = small_features.index[t0 - 2]
+        pd.testing.assert_frame_equal(
+            base.loc[:last_clean], mut.loc[:last_clean], check_exact=True
+        )

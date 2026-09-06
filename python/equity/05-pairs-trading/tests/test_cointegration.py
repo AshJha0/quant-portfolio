@@ -190,3 +190,40 @@ class TestEngleGranger:
         eg = engle_granger(df["Y"].to_numpy(), df["X"].to_numpy())
         manual = df["Y"].to_numpy() - eg.beta * df["X"].to_numpy() - eg.alpha
         np.testing.assert_allclose(eg.resid, manual, atol=1e-8)
+
+
+class TestMacKinnonTableLock:
+    """TEST-8: lock the 15 transcribed response-surface rows against
+    statsmodels' ``mackinnoncrit`` (MacKinnon 2010, Table 1 / Table 4).
+
+    statsmodels is *not* a runtime dependency of ``eq_pairs`` -- the whole
+    point of the module is a from-scratch implementation -- so the check is
+    skipped when it is absent, but it runs in the CI environment.
+    """
+
+    @pytest.fixture(scope="class")
+    def sm_crit(self):
+        adfvalues = pytest.importorskip("statsmodels.tsa.adfvalues")
+        return adfvalues.mackinnoncrit
+
+    @pytest.mark.parametrize("n_series, regression",
+                             [(1, "n"), (1, "c"), (1, "ct"), (2, "c"), (2, "ct")])
+    @pytest.mark.parametrize("nobs", [100, 250, float("inf")])
+    def test_rows_match_statsmodels(self, sm_crit, n_series, regression, nobs):
+        import numpy as np
+
+        ours = mackinnon_crit(n_series=n_series, regression=regression, nobs=nobs)
+        theirs = sm_crit(N=n_series, regression=regression, nobs=nobs)
+        for level, ref in zip(("1%", "5%", "10%"), np.asarray(theirs, dtype=float)):
+            # statsmodels stores the asymptotic coefficients to 5 decimals and
+            # the finite-sample terms to 3-4; agreement to 1e-6 absolute
+            # proves the same 15 rows were transcribed.
+            assert ours[level] == pytest.approx(float(ref), abs=1e-6), (
+                n_series, regression, nobs, level)
+
+    def test_finite_sample_values_are_more_negative_than_asymptotic(self):
+        for key in ((1, "c"), (1, "ct"), (2, "c"), (2, "ct")):
+            asym = mackinnon_crit(*key, nobs=float("inf"))
+            fin = mackinnon_crit(*key, nobs=100)
+            for lvl in ("1%", "5%", "10%"):
+                assert fin[lvl] < asym[lvl]

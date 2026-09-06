@@ -29,9 +29,12 @@ independently** — no data files, no serialisation ambiguity:
 
 Tolerance: **1e-9 relative** (+1e-12 absolute floor). The observed residual
 is libm-vs-numpy ulp noise in sin/cos — far below any risk tolerance. The
-constants were regenerated from the live Python stack on 2026-08-18 and
-matched the committed values digit-for-digit; the provenance command sits in
-the test header so model validation can re-run it at will.
+constants are not hand-pasted: `python/equity/03-var-es-engine/tests/golden/generate_golden.py`
+writes `tests/golden/golden_vectors.json` (committed, locked by that
+project's `tests/test_golden_vectors.py`), and `tools/gen_golden_header.py`
+emits the GENERATED `tests/golden_vectors.hpp` this suite includes;
+`tools/gen_golden_header.py --check` (run in CI) fails if the header and the
+JSON ever disagree, so model validation can re-run the whole chain at will.
 
 ## 2. Analytic identities and hand-computed values
 

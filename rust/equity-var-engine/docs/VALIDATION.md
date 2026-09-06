@@ -31,11 +31,13 @@ inputs/constants as `cpp/equity-var-engine/tests/test_cross_language.cpp`:
 
 Tolerance: **1e-9 relative** (+1e-12 absolute floor). The observed residual
 is libm-vs-numpy ulp noise in sin/cos — far below any risk tolerance. The
-constants were regenerated from the live Python stack on 2026-08-18
-(`PYTHONPATH=src python3 -c "..."` against `eq_var.historical_var`,
-`eq_var.expected_shortfall`, `eq_var.parametric_var`, `eq_var.backtesting`)
-and matched the values already committed in the C++ engine's golden test
-digit-for-digit — i.e. Python, C++ and Rust independently agree.
+constants are not hand-pasted: `python/equity/03-var-es-engine/tests/golden/generate_golden.py`
+writes `tests/golden/golden_vectors.json` (committed, locked by that
+project's `tests/test_golden_vectors.py`); `tools/gen_golden_rs.py` emits
+the GENERATED `tests/golden/mod.rs` this suite reads, and the same JSON
+feeds the C++ engine's `tests/golden_vectors.hpp` — i.e. Python, C++ and
+Rust are pinned to literally the same numbers. `tools/gen_golden_rs.py
+--check` (run in CI) fails if the module and the JSON ever disagree.
 
 ## 2. Analytic identities and hand-computed values
 

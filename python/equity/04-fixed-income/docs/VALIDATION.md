@@ -195,6 +195,21 @@ valid inputs — single-pillar curves, empty portfolios, settlement ==
 maturity (price 0, no cashflows), negative-rate curves (DFs > 1) — are
 tested as *working* paths, not errors.
 
+**Non-finite market inputs** (`tests/test_input_hardening.py`). Every
+comparison with NaN is `False`, so the guard `if 1 + ytm/m <= 0: raise`
+silently accepted a NaN yield and `price_from_ytm(b, s, nan)` returned
+`nan`; `FixedRateBond(coupon=nan)` was accepted and `dv01` came back `nan`;
+`macaulay_duration` / `convexity` inherited the same hole, and
+`ytm_from_price(nan)` failed only inside SciPy's `brentq` with SciPy's
+message. All public scalar market inputs — `face`, `coupon`, `ytm`,
+`clean_price`, `z_spread`, `quoted_margin`, `payment` — now go through
+`_require_finite(name, value)` first, so a NaN/±inf raises `ValueError`
+naming the argument before any pricing happens (`TestBondConstruction`,
+`TestYieldAnalytics`). The analytic duration/convexity are also checked
+against finite differences on settlement dates strictly *inside* a coupon
+period (fractional first exponent `0 < w < 1`), not only on coupon dates
+(`TestAnalyticVsNumericalMidPeriod`).
+
 ### 4.7 Zero-net-value books break market-value weighting
 
 A duration-neutral long/short relative-value book (the bread and butter of a

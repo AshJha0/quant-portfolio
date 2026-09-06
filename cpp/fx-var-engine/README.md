@@ -31,7 +31,7 @@ the library and validated in `tests/`.
 ```bash
 cmake -S . -B build
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # 83 tests, ~340 assertions
+ctest --test-dir build --output-on-failure   # 89 tests, ~350 assertions
 ./build/fxvar_bench
 ```
 
@@ -88,7 +88,10 @@ of the C++ twin (see `docs/METHODOLOGY.md`).
 - **Cross-language goldens**: three deterministic cases (historical VaR/ES,
   parametric closed forms, backtest statistics) reproduce the Python
   `fx_var` reference to 1e-6 absolute / 1e-8 relative
-  (`tests/test_golden_python.cpp`, provenance in the file header).
+  (`tests/test_golden_python.cpp` against the GENERATED
+  `tests/golden_vectors.hpp`; regenerate with `tools/gen_golden_header.py`
+  from `python/fx/03-var-es-engine/tests/golden/golden_vectors.json`,
+  `--check` verifies provenance).
 - **MC**: normal MC within 3 SE of the closed form; t and jump-mixture
   strictly fatter at 99%; bitwise seed determinism.
 - **Backtests**: Kupiec/Christoffersen against hand-computed LRs; Basel
@@ -111,7 +114,7 @@ fx-var-engine/
 ├── CMakeLists.txt
 ├── include/fxvar/         # public headers (one per pipeline stage)
 ├── src/                   # implementations
-├── tests/                 # GoogleTest suite (83 tests / ~340 assertions)
+├── tests/                 # GoogleTest suite (89 tests / ~350 assertions)
 ├── bench/bench_main.cpp   # 250x50 book timings
 └── docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```

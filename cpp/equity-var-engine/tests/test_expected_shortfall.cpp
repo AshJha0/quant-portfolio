@@ -2,6 +2,7 @@
 // normal ES identity against numerical quadrature to 1e-10, ES >= VaR.
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -87,4 +88,30 @@ TEST(Es, Validation) {
     EXPECT_THROW(expected_shortfall(pnl, 0.5), std::invalid_argument);
     EXPECT_THROW(normal_es(-1.0, 0.01), std::invalid_argument);
     EXPECT_THROW(student_t_es(1.0, 0.01, 2.0), std::invalid_argument);
+}
+
+// TEST-4: ES >= VaR for every alpha, including the Acerbi-Tasche boundary
+// where alpha*n is exactly an integer, just below one and just above one
+// (the fractional weight on the boundary order statistic vs the type-7
+// interpolated VaR).  Fat-tailed deterministic sample, no ties.
+TEST(EmpiricalEs, DominatesVarAtIntegerBoundaries) {
+    for (int n : {50, 100, 250, 1000}) {
+        std::vector<double> pnl(n);
+        for (int t = 0; t < n; ++t) {
+            const double td = static_cast<double>(t);
+            // heavy tails: cubic in a sinusoid
+            const double s = std::sin(1.7 * td + 0.3) + 0.5 * std::cos(0.11 * td * td);
+            pnl[t] = 100.0 * s * s * s + 7.0 * std::sin(0.9 * td);
+        }
+        for (int k : {1, 2, 5, 10}) {
+            for (double off : {0.0, -1e-9, 1e-9, -0.3, 0.3}) {
+                const double alpha = (k + off) / n;
+                if (!(alpha > 0.0 && alpha < 0.5)) continue;
+                const double es = expected_shortfall(pnl, alpha);
+                const double var = historical_var(pnl, alpha);
+                EXPECT_GE(es, var - 1e-12 * std::max(1.0, std::abs(var)))
+                    << "n=" << n << " k=" << k << " off=" << off;
+            }
+        }
+    }
 }

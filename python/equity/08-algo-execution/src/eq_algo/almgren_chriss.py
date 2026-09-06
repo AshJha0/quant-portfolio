@@ -1,6 +1,7 @@
 """Almgren-Chriss optimal execution, discrete time, from scratch.
 
-Setup (Almgren & Chriss 2000, "Optimal execution of portfolio transactions"):
+Setup (Almgren & Chriss 2001, "Optimal execution of portfolio transactions",
+*Journal of Risk* 3(2), 5-39):
 sell/buy ``X`` shares over ``N`` intervals of length ``tau = T/N``.  Holdings
 ``x_0 = X, ..., x_N = 0``; trades ``n_k = x_{k-1} - x_k``.  Arithmetic price
 dynamics with volatility ``sigma`` (currency / sqrt(time)), **linear

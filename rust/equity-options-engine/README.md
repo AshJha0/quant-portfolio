@@ -36,7 +36,7 @@ Negative `r` and `q` are fully supported.
 ## Build, test, benchmark
 
 ```sh
-RUSTFLAGS="-D warnings" cargo test    # 85 tests (58 integration + 27 doctests), all green
+RUSTFLAGS="-D warnings" cargo test    # 61 tests + 27 doctests (88), all green
 cargo run --release --bin bench
 ```
 

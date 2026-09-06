@@ -78,6 +78,9 @@ def _validate(S: float, K: float, sigma: float, T: float, n_paths: int,
         unit an antithetic estimator can produce; ``n_paths=1`` used to
         yield ``n_paths // 2 == 0`` draws and a silent ``NaN`` price).
     """
+    for name, value in (("S", S), ("K", K), ("sigma", sigma), ("T", T)):
+        if not np.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value}")
     if S <= 0 or K <= 0:
         raise ValueError(f"S and K must be strictly positive (got S={S}, K={K})")
     if sigma <= 0 or T <= 0:
@@ -161,6 +164,8 @@ def mc_call_price(S: float, K: float, r: float, sigma: float, T: float,
         or ``n_paths`` below 1 (below 2 when ``antithetic=True``).
     """
     _validate(S, K, sigma, T, n_paths, antithetic)
+    if not np.isfinite(r):
+        raise ValueError(f"r must be finite, got {r}")
     rng = np.random.default_rng(seed)
     m = n_paths // 2 if antithetic else n_paths
     z = rng.standard_normal(m)

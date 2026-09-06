@@ -321,6 +321,12 @@ numbers.
 
 ## 7. Numerical limits (documented and tested)
 
+- **NaN / ±inf inputs:** `_d1_d2` checks `math.isfinite` on every input
+  *before* the sign guards below. Pre-fix symptom: because `NaN <= 0` is
+  `False`, `call_price(nan, …)` and `call_price(…, sigma=nan, …)` both
+  returned `nan` instead of raising. Now every pricer, Greek, the implied-vol
+  solver and the Monte Carlo pricer raise `ValueError` naming the argument
+  (`tests/test_input_hardening.py`, 92 parametrised cases).
 - **T→0 and sigma→0:** the closed form does *not* silently return NaN
   or a value at these boundaries — `_d1_d2` raises `ValueError` for
   `T<=0` or `sigma<=0` (tested:

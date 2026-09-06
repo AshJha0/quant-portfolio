@@ -53,10 +53,10 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
   <h2>Verified, not claimed</h2>
   <div class="numbers">
     Sub-projects&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 31 — 10 dual-asset-class areas &times; 2, 3 foundations projects, 4 engines &times; 2 languages<br>
-    Test suite&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 5,963 tests, all passing, independently reproduced from a clean build in every run<br>
-    Cross-language validation&nbsp;&nbsp;&nbsp;&nbsp; golden vectors: Python reference &rarr; C++ (GoogleTest) &rarr; Rust (cargo test), 1e-9 / 1e-6&ndash;1e-8 tolerance<br>
+    Test suite&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 6,446 tests, all passing &mdash; Python equity 2,350 / FX 2,830 / foundations 554, C++ 326, Rust 386 &mdash; reproduced from a clean checkout by <a href="https://github.com/AshJha0/quant-portfolio/blob/main/.github/workflows/ci.yml">CI</a> and by <code>tests/test_docs_counts.py</code>, which recounts every number on this page<br>
+    Cross-language validation&nbsp;&nbsp;&nbsp;&nbsp; golden vectors: Python reference &rarr; committed JSON &rarr; C++ (GoogleTest) &rarr; Rust (cargo test), 1e-10 (options) / 1e-9 rel &amp; 1e-6&ndash;1e-8 (VaR/ES) tolerance, provenance re-checked by <code>tools/gen_golden_*.py --check</code> in CI<br>
     Learning guide&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 481 self-test questions across 18 rounds, every answer grounded in the real code<br>
-    Cookbook&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 61 recipes, every snippet actually executed and verified before publishing
+    Cookbook&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 63 recipes, every snippet actually executed and verified before publishing
   </div>
 
   <h2>The 10 project areas</h2>
@@ -88,8 +88,10 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <p>TWAP/VWAP/participation-rate scheduling, market-impact modeling,
          implementation-shortfall and transaction-cost analysis.</p></div>
     <div class="card"><span class="tag">09</span><h3>Volatility Surfaces</h3>
-      <p>Smile/skew surface construction, no-arbitrage checks, Heston stochastic
-         volatility with Monte Carlo pricing.</p></div>
+      <p>Raw-SVI smile/skew surface construction with Durrleman no-arbitrage
+         checks, Heston stochastic volatility (little-trap characteristic
+         function) with Monte Carlo pricing; SABR is discussed as an
+         alternative, not implemented.</p></div>
     <div class="card"><span class="tag">10</span><h3>Regime-Switching Strategies</h3>
       <p>Regime detection, regime-conditional signals, walk-forward validation
          against overfitting to hindsight-obvious regimes.</p></div>
@@ -112,24 +114,31 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
          validated, where it fails with reproducible examples, and how a real
          desk would use it.</p></div>
     <div class="card"><span class="tag">Review history</span><h3>Found and fixed, not hidden</h3>
-      <p>Two portfolio-wide review passes found and fixed a NaN-validation defect
-         class, an implied-vol solver plateau bug, a Cornish-Fisher grid-resolution
-         bug, and a Monte Carlo VaR standard-error bias &mdash; all documented as
-         teaching case studies in the learning guide.</p></div>
+      <p>Three portfolio-wide review passes found and fixed a NaN-validation defect
+         class (including, in the third pass, the equity Python VaR backtester
+         itself), an implied-vol solver plateau bug, a Cornish-Fisher
+         grid-resolution bug, and a Monte Carlo VaR standard-error bias &mdash;
+         all documented as teaching case studies in the learning guide, with the
+         golden-vector generators committed for every engine.</p></div>
   </div>
 
   <h2>Quick start</h2>
+  <p>Each block below starts from the clone directory, so any one of them can be
+     pasted on its own.</p>
 <pre>git clone https://github.com/AshJha0/quant-portfolio && cd quant-portfolio
 
-# any Python project
-cd python/equity/01-options-pricing
-pip install -e . && pytest -q && python examples/run_pipeline.py
+# any Python project (a fresh venv per project is recommended; the 23 projects
+# are separate distributions and pytest works from the project root without
+# an install thanks to pythonpath = ["src"])
+cd python/equity/01-options-pricing && pip install -e . && pytest -q && python examples/run_pipeline.py</pre>
+<pre>cd quant-portfolio
 
-# a C++ engine
-cmake -S cpp/equity-options-engine -B build && cmake --build build -j && ctest --test-dir build
+# a C++ engine (out-of-tree build directory)
+cmake -S cpp/equity-options-engine -B build/equity-options-engine && cmake --build build/equity-options-engine -j2 && ctest --test-dir build/equity-options-engine --output-on-failure</pre>
+<pre>cd quant-portfolio
 
 # a Rust engine
-cd rust/equity-var-engine && cargo test --release</pre>
+cd rust/equity-var-engine && RUSTFLAGS="-D warnings" cargo test --release</pre>
 
   <footer>quant-portfolio &mdash; 31 sub-projects, 3 languages, one shared engineering
     and documentation standard (<a href="https://github.com/AshJha0/quant-portfolio/blob/main/CONVENTIONS.md">CONVENTIONS.md</a>).</footer>

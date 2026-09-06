@@ -47,6 +47,13 @@ def exceptions_from_pnl(pnl: np.ndarray, var: np.ndarray | float) -> np.ndarray:
     """
     p = np.asarray(pnl, dtype=float).ravel()
     v = np.broadcast_to(np.asarray(var, dtype=float), p.shape)
+    # NaN fails every comparison, so an unchecked NaN P&L day or NaN VaR would
+    # silently record *zero* exceptions and make a broken model pass its
+    # Kupiec / Basel backtests green.  Mirrors cpp/equity-var-engine backtest.cpp.
+    if not np.isfinite(p).all():
+        raise ValueError("pnl contains NaN or infinite values")
+    if not np.isfinite(v).all():
+        raise ValueError("VaR must be finite")
     if np.any(v < 0):
         raise ValueError("VaR must be reported as a positive loss")
     return p < -v
@@ -168,6 +175,14 @@ def basel_traffic_light(n_exceptions: int, n_obs: int = 250) -> dict[str, object
     outcomes for a correct model, red has ~0.03 % probability
     (see ``basel_zone_probabilities``).
 
+    For ``n_obs != 250`` the zone is derived from the same cumulative
+    binomial probability the Basel table itself is built on (green
+    ``< 95 %``, yellow ``[95 %, 99.99 %)``, red ``>= 99.99 %``), exactly as
+    the FX twin does, so the zone and ``cumulative_prob`` never disagree; the
+    yellow-zone add-on is then read off the 250-day-equivalent exception
+    count.  On ``n_obs == 250`` this reproduces the regulatory 0-4 / 5-9 /
+    10+ table exactly.
+
     Returns dict with ``zone``, ``multiplier`` (k = 3 + add-on) and the
     cumulative binomial probability of seeing <= n_exceptions under a
     correct model.
@@ -176,15 +191,19 @@ def basel_traffic_light(n_exceptions: int, n_obs: int = 250) -> dict[str, object
         raise ValueError(f"n_exceptions must be >= 0, got {n_exceptions}")
     if n_obs < 1:
         raise ValueError(f"n_obs must be >= 1, got {n_obs}")
-    if n_exceptions <= 4:
-        zone, addon = "green", 0.0
-    elif n_exceptions <= 9:
-        zone, addon = "yellow", _YELLOW_ADDON[n_exceptions]
-    else:
-        zone, addon = "red", 1.0
+    if n_exceptions > n_obs:
+        raise ValueError(f"n_exceptions must be <= n_obs, got {n_exceptions} > {n_obs}")
     from scipy.stats import binom
 
-    cum_p = float(binom.cdf(min(n_exceptions, n_obs), n_obs, 0.01))
+    cum_p = float(binom.cdf(n_exceptions, n_obs, 0.01))
+    if cum_p < 0.95:
+        zone, addon = "green", 0.0
+    elif cum_p < 0.9999:
+        zone = "yellow"
+        scaled = int(round(n_exceptions * 250.0 / n_obs)) if n_obs != 250 else n_exceptions
+        addon = _YELLOW_ADDON[min(max(scaled, 5), 9)]
+    else:
+        zone, addon = "red", 1.0
     return {"zone": zone, "multiplier": 3.0 + addon, "cumulative_prob": cum_p}
 
 
@@ -236,6 +255,10 @@ def acerbi_szekely_z2(
     p = np.asarray(pnl, dtype=float).ravel()
     v = np.broadcast_to(np.asarray(var, dtype=float), p.shape).astype(float)
     e = np.broadcast_to(np.asarray(es, dtype=float), p.shape).astype(float)
+    if p.size == 0:
+        raise ValueError("pnl is empty")
+    if not (np.isfinite(p).all() and np.isfinite(v).all() and np.isfinite(e).all()):
+        raise ValueError("pnl, VaR and ES must all be finite (NaN policy: refuse)")
     if np.any(e <= 0):
         raise ValueError("ES must be reported as a positive loss")
     if np.any(e + 1e-12 < v):
@@ -305,10 +328,16 @@ def rolling_var_backtest(
         Estimation window length in days.
     """
     p = np.asarray(pnl, dtype=float).ravel()
+    if window < 1:
+        raise ValueError(f"window must be >= 1, got {window}")
     if p.size <= window:
         raise ValueError(
             f"need more than window={window} observations to backtest, got {p.size}"
         )
+    # Refuse a poisoned feed *before* any VaR is computed: a single NaN would
+    # otherwise propagate into every trailing-window forecast.
+    if not np.isfinite(p).all():
+        raise ValueError("pnl contains NaN or infinite values")
     n_fore = p.size - window
     var_series = np.empty(n_fore)
     for i in range(n_fore):

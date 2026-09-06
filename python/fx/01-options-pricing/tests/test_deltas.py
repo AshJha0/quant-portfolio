@@ -139,3 +139,65 @@ class TestATMConventions:
         F = atm_forward_strike(MKT["S"], MKT["T"], MKT["r_d"], MKT["r_f"])
         assert atm_dns_strike(**MKT, convention="forward") > F
         assert atm_dns_strike(**MKT, convention="spot_pa") < F
+
+
+class TestPremiumAdjustedCallFold:
+    """TEST-6: the premium-adjusted call delta ``(K/F) N(d2)`` is not
+    injective in ``K`` -- it rises to a peak at ``_pa_peak_strike`` and then
+    decays.  ``strike_from_delta`` must (a) refuse a delta above the peak,
+    (b) return the *larger-strike* root when two strikes share a delta, and
+    (c) reproduce the target to solver precision.
+    """
+
+    @pytest.mark.parametrize("mkt", [MKT, JPY])
+    @pytest.mark.parametrize("conv", ["spot_pa", "forward_pa"])
+    def test_peak_is_a_true_maximum_of_the_pa_delta(self, mkt, conv):
+        from fx_options.deltas import _pa_peak_strike
+
+        F = mkt["S"] * math.exp((mkt["r_d"] - mkt["r_f"]) * mkt["T"])
+        k_peak = _pa_peak_strike(F, mkt["T"], mkt["sigma"])
+        d_peak = _delta(mkt, k_peak, "call", conv)
+        for k in (k_peak * 0.9, k_peak * 0.99, k_peak * 1.01, k_peak * 1.1):
+            assert _delta(mkt, k, "call", conv) < d_peak
+
+    @pytest.mark.parametrize("mkt", [MKT, JPY])
+    @pytest.mark.parametrize("conv", ["spot_pa", "forward_pa"])
+    def test_delta_just_above_peak_raises_just_below_solves(self, mkt, conv):
+        from fx_options.deltas import _pa_peak_strike
+
+        F = mkt["S"] * math.exp((mkt["r_d"] - mkt["r_f"]) * mkt["T"])
+        k_peak = _pa_peak_strike(F, mkt["T"], mkt["sigma"])
+        d_max = _delta(mkt, k_peak, "call", conv)
+        with pytest.raises(ValueError, match="maximum attainable"):
+            strike_from_delta(d_max * (1 + 1e-6), mkt["S"], mkt["T"], mkt["r_d"],
+                              mkt["r_f"], mkt["sigma"], "call", conv)
+        K = strike_from_delta(d_max * (1 - 1e-4), mkt["S"], mkt["T"], mkt["r_d"],
+                              mkt["r_f"], mkt["sigma"], "call", conv)
+        assert K >= k_peak
+        assert _delta(mkt, K, "call", conv) == pytest.approx(d_max * (1 - 1e-4), abs=1e-12)
+
+    @pytest.mark.parametrize("mkt", [MKT, JPY])
+    @pytest.mark.parametrize("conv", ["spot_pa", "forward_pa"])
+    @pytest.mark.parametrize("frac", [0.3, 0.6, 0.9])
+    def test_twice_attainable_delta_returns_larger_strike_root(self, mkt, conv, frac):
+        from scipy.optimize import brentq
+
+        from fx_options.deltas import _pa_peak_strike
+
+        F = mkt["S"] * math.exp((mkt["r_d"] - mkt["r_f"]) * mkt["T"])
+        k_peak = _pa_peak_strike(F, mkt["T"], mkt["sigma"])
+        d_max = _delta(mkt, k_peak, "call", conv)
+        target = frac * d_max
+        K = strike_from_delta(target, mkt["S"], mkt["T"], mkt["r_d"],
+                              mkt["r_f"], mkt["sigma"], "call", conv)
+        # (c) exact round trip on the returned strike ...
+        assert _delta(mkt, K, "call", conv) == pytest.approx(target, abs=1e-12)
+        # (b) ... which lies on the decreasing branch ...
+        assert K >= k_peak
+        # ... while an independent root on the *left* branch also exists and
+        # is not the one returned.
+        v = mkt["sigma"] * math.sqrt(mkt["T"])
+        k_left = brentq(lambda k: _delta(mkt, k, "call", conv) - target,
+                        F * math.exp(-30 * v), k_peak, xtol=1e-14)
+        assert k_left < k_peak < K
+        assert _delta(mkt, k_left, "call", conv) == pytest.approx(target, abs=1e-10)

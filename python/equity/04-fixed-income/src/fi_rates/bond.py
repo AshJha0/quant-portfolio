@@ -51,6 +51,19 @@ __all__ = [
 _CURVE_DCC = "ACT/365F"  # date -> curve-time mapping convention (documented)
 
 
+def _require_finite(name: str, value: float) -> float:
+    """Reject NaN/inf scalars by name.
+
+    Every comparison with NaN is False, so a guard such as
+    ``if 1 + ytm/m <= 0: raise`` silently accepts a NaN yield and returns a
+    NaN price.  All public market-input scalars go through this first.
+    """
+    v = float(value)
+    if not np.isfinite(v):
+        raise ValueError(f"{name} must be finite, got {value}")
+    return v
+
+
 def curve_time(settlement: dt.date, date: dt.date) -> float:
     """Map a calendar date to curve time: ACT/365F years from settlement."""
     return year_fraction(settlement, date, _CURVE_DCC)
@@ -95,6 +108,8 @@ class FixedRateBond:
                 f"maturity {self.maturity} must be after effective "
                 f"{self.effective}"
             )
+        _require_finite("face", self.face)
+        _require_finite("coupon", self.coupon)
         if self.face <= 0:
             raise ValueError(f"face must be > 0, got {self.face}")
         if self.coupon < 0:
@@ -113,6 +128,7 @@ class ZeroCouponBond:
     face: float = 100.0
 
     def __post_init__(self) -> None:
+        _require_finite("face", self.face)
         if self.face <= 0:
             raise ValueError(f"face must be > 0, got {self.face}")
 
@@ -173,6 +189,7 @@ def dirty_price_from_curve(
     z_spread: float = 0.0,
 ) -> float:
     """Dirty price per bond off the curve with a continuous z-spread."""
+    _require_finite("z_spread", z_spread)
     flows = bond_cashflows(bond, settlement)
     if not flows:
         return 0.0
@@ -237,6 +254,7 @@ def price_from_ytm(bond: FixedRateBond, settlement: dt.date, ytm: float) -> floa
 
     Handles negative and very large yields; requires ``1 + y/m > 0``.
     """
+    _require_finite("ytm", ytm)
     m = bond.frequency
     if 1.0 + ytm / m <= 0.0:
         raise ValueError(f"require 1 + ytm/frequency > 0, got ytm={ytm}, m={m}")
@@ -255,6 +273,7 @@ def ytm_from_price(
 
     Round-trips price -> ytm -> price to better than 1e-10 (tested).
     """
+    _require_finite("clean_price", clean_price)
     if clean_price <= 0:
         raise ValueError(f"clean price must be > 0, got {clean_price}")
     dirty_target = clean_price + accrued_interest(bond, settlement)
@@ -291,6 +310,7 @@ def z_spread_from_price(
 
     Solves ``sum cf_i P(t_i) exp(-z t_i) = clean + accrued`` for ``z``.
     """
+    _require_finite("clean_price", clean_price)
     if clean_price <= 0:
         raise ValueError(f"clean price must be > 0, got {clean_price}")
     dirty_target = clean_price + accrued_interest(bond, settlement)
@@ -330,6 +350,10 @@ def frn_price_from_curve(
     ``sum_i (P(t_{i-1}) - P(t_i)) + P(T) = P(t_0) = 1``.
     """
     _check_settlement(settlement, maturity)
+    _require_finite("quoted_margin", quoted_margin)
+    _require_finite("face", face)
+    if face <= 0:
+        raise ValueError(f"face must be > 0, got {face}")
     if settlement == maturity:
         return 0.0
     if frequency not in SUPPORTED_FREQUENCIES:
@@ -358,6 +382,7 @@ def annuity_pv(
     frequency: int = 1,
 ) -> float:
     """PV of a level annuity paying ``payment`` each period until maturity."""
+    _require_finite("payment", payment)
     _check_settlement(settlement, maturity)
     if settlement == maturity:
         return 0.0

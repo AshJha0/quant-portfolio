@@ -1791,7 +1791,7 @@ Every C++ engine is CMake ≥ 3.20, C++20, `-Wall -Wextra -Werror`, GoogleTest,
 `gtest_discover_tests`. Build and test `equity-options-engine` from scratch:
 
 ```bash
-cd /home/claude/quant-portfolio
+cd "$(git rev-parse --show-toplevel)"   # the quant-portfolio checkout
 cmake -S cpp/equity-options-engine -B /tmp/cookbook-build-eqopt -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/cookbook-build-eqopt -j4
 ctest --test-dir /tmp/cookbook-build-eqopt --output-on-failure
@@ -1807,10 +1807,11 @@ engine exactly (58).
 ### How do I build and test one Rust engine with warnings-as-errors?
 
 Rust engines are 2021-edition, zero external dependencies, and the CI
-profile denies warnings; reproduce that locally with `RUSTFLAGS`:
+profile (`.github/workflows/ci.yml`, job `rust`) denies warnings; reproduce
+that locally with `RUSTFLAGS`:
 
 ```bash
-cd /home/claude/quant-portfolio/rust/equity-options-engine
+cd "$(git rev-parse --show-toplevel)/rust/equity-options-engine"
 RUSTFLAGS="-D warnings" cargo test --release
 rm -rf target   # clean up afterwards
 ```
@@ -1835,11 +1836,24 @@ engine's tests. Running all three in sequence for
 `equity-options-engine` reproduces the committed files byte-for-byte:
 
 ```bash
-cd /home/claude/quant-portfolio
+cd "$(git rev-parse --show-toplevel)"   # the quant-portfolio checkout
 PYTHONPATH=python/equity/01-options-pricing/src python3 \
   python/equity/01-options-pricing/tests/golden/generate_golden.py
 python3 cpp/equity-options-engine/tools/gen_golden_header.py
 python3 rust/equity-options-engine/tools/gen_golden_rs.py
+```
+
+The VaR engines use the identical pipeline (`python/{equity,fx}/03-var-es-engine/tests/golden/generate_golden.py`
+→ `cpp/*-var-engine/tools/gen_golden_header.py` → `tests/golden_vectors.hpp`,
+and `rust/*-var-engine/tools/gen_golden_rs.py` → `tests/golden/mod.rs`);
+every generator also accepts `--check`, which exits 1 if the committed
+constants have drifted from the JSON:
+
+```bash
+PYTHONPATH=python/equity/03-var-es-engine/src python3 \
+  python/equity/03-var-es-engine/tests/golden/generate_golden.py
+python3 cpp/equity-var-engine/tools/gen_golden_header.py --check
+python3 rust/equity-var-engine/tools/gen_golden_rs.py --check
 ```
 
 Real output: `wrote 32 golden vectors to
@@ -1879,9 +1893,9 @@ cd python/equity/01-options-pricing && python3 -m pytest
 ```
 
 `291 passed in 6.18s`. Summed across all 23 projects this reproduces the
-README's exact published breakdown: equity `2,080`, FX `2,713`,
-foundations `462`, **total `5,255`** Python tests (which, plus the 324 C++
-and 384 Rust engine tests, is the portfolio's published `5,963`).
+README's exact published breakdown: equity `2,350`, FX `2,830`,
+foundations `554`, **total `5,734`** Python tests (which, plus the 326 C++
+and 386 Rust engine tests, is the portfolio's published `6,446`).
 
 ### How do I add a new project area that's CONVENTIONS.md-compliant?
 

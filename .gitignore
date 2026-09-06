@@ -37,3 +37,12 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+
+# --- CTest / out-of-tree engine builds (README + docs/index.html quick start) ---
+/build/
+Testing/
+*.svg.err
+
+# --- generated mermaid renders / scratch ---
+docs/*.svg
+.hypothesis/

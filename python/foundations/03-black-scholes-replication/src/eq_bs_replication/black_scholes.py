@@ -167,12 +167,18 @@ def _d1_d2(S: float, K: float, r: float, sigma: float, T: float) -> tuple[float,
     Raises
     ------
     ValueError
-        If ``sigma <= 0`` or ``T <= 0``. Both are boundary cases with
+        If any input is NaN/infinite, or if ``sigma <= 0`` or ``T <= 0``.
+        The latter two are boundary cases with
         well-defined economic limits (intrinsic value) that must be
         handled by the caller explicitly rather than silently by
         dividing by zero here -- see ``docs/VALIDATION.md`` edge-case
         section.
     """
+    # Finiteness first: every comparison with NaN is False, so the sign
+    # guards below would silently accept a NaN spot / vol and return NaN.
+    for name, value in (("S", S), ("K", K), ("r", r), ("sigma", sigma), ("T", T)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value}")
     if sigma <= 0 or T <= 0:
         raise ValueError(
             f"sigma and T must be strictly positive (got sigma={sigma}, T={T}); "
@@ -430,6 +436,9 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
         ``K`` or ``T``, and for rate/maturity combinations whose
         discount factor overflows.
     """
+    for name, value in (("price", price), ("S", S), ("K", K), ("r", r), ("T", T)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value}")
     if S <= 0 or K <= 0:
         raise ValueError(f"S and K must be strictly positive (got S={S}, K={K})")
     if T <= 0:

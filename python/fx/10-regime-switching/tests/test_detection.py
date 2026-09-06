@@ -214,3 +214,33 @@ def test_short_series_raises(feats2):
     with pytest.raises(ValueError):
         run_detection(feats2.iloc[:100],
                       DetectionConfig(n_states=2, min_train=252))
+
+
+@pytest.mark.parametrize("k", [1, 2, 10])
+def test_refit_boundary_mutation_after_refit_date(k):
+    """TEST-11: a mutation strictly after refit date t0 leaves every row up
+    to the last unmutated day bit-identical -- including row t0 itself,
+    which the freshly refitted model produces on the boundary day.
+    """
+    panel = generate_roro_panel(700, n_states=2, seed=9)
+    feats = build_features(panel.returns, panel.deposit_rates)
+    cfg = DetectionConfig(n_states=2, min_train=180, refit_every=60)
+    t0 = 180 + 60 * 3  # a refit date well inside the sample (row 360)
+    t_m = t0 + k
+    det1 = run_detection(feats, cfg, seed=0)
+    feats2 = feats.copy()
+    feats2.iloc[t_m:] = -feats2.iloc[t_m:] * 3.0 + 1.0
+    det2 = run_detection(feats2, cfg, seed=0)
+    assert feats.index[t0] in det1.refit_dates
+    last_clean = feats.index[t_m - 1]
+    pd.testing.assert_frame_equal(
+        det1.probs.loc[:last_clean], det2.probs.loc[:last_clean], check_exact=True
+    )
+    pd.testing.assert_series_equal(
+        det1.regimes.loc[:last_clean], det2.regimes.loc[:last_clean]
+    )
+    assert feats.index[t0] in det1.probs.loc[:last_clean].index
+    first_dirty = feats.index[t_m]
+    assert not np.allclose(
+        det1.probs.loc[first_dirty:].to_numpy(), det2.probs.loc[first_dirty:].to_numpy()
+    )

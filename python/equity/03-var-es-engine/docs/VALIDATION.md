@@ -197,6 +197,10 @@ the fingerprint of an unconditional model in a clustered-vol world
 | Exception on exactly `pnl = −VaR` | **not** an exception (strict `<`), pinned so the convention cannot drift | `test_exceptions_definition_is_strict_inequality` |
 | Negative VaR passed to the exception counter | `ValueError` ("positive loss") | `test_exceptions_reject_negative_var` |
 | Basel zone boundaries | exactly 4→green, 5→yellow, 9→yellow, 10→red; multiplier non-decreasing in exception count, 3.0 → 4.0 | `test_basel_zone_boundaries_are_exactly_at_5_and_10` |
+| Basel zone on a non-250-day window | zone derived from the cumulative binomial probability (as the FX twin does), so 8 exceptions in 500 days is **green**, not "yellow by count"; the yellow add-on is read off the 250-day-equivalent count | `test_basel_zone_uses_probability_for_non_250_windows` |
+| **NaN / ±Inf in the backtest** (P&L day, scalar VaR, VaR day, ES) | `ValueError` from `exceptions_from_pnl`, `rolling_var_backtest` (before any VaR is computed) and `acerbi_szekely_z2`. **Pre-fix symptom**: `exceptions_from_pnl(pnl, nan)` returned *zero* exceptions on 250 days and the summary reported `basel_zone_250d: 'green'` — a poisoned feed made a broken model pass Kupiec/Basel. The C++/Rust twins already refused this; the Python reference now does too | `TestNonFiniteBacktesting` (`tests/test_input_hardening.py`) |
+| NaN / ±Inf in a covariance, exposure vector, return panel, `mean`, `df`, or any Cornish-Fisher scalar | `ValueError` naming the argument from `portfolio_sigma`, `parametric_var`, `sample_covariance`, `ewma_covariance`, `cornish_fisher_var`. **Pre-fix symptom**: a NaN covariance returned a NaN "VaR" with no error; `safe_cholesky` reported the same input as "not symmetric" | `TestNonFiniteParametric`, `TestNonFiniteMonteCarlo` |
+| NaN / ±Inf P&L in the bootstrap SE; `n_boot < 2` | `ValueError`; the resampling is chunked (50 resamples at a time) so memory is O(n), not O(n_boot · n) | `TestNonFiniteMonteCarlo` |
 
 ### 6.1 Structural (property-based) invariants
 
@@ -225,6 +229,23 @@ cross-validate against:
 | Bootstrap VaR SE **shrinks with sample size**; order-statistics CI brackets the point estimate and widens for deeper tails | — | `TestEstimationError` |
 | MC VaR converges to the closed form as paths grow | within 2 % at 800k paths | `test_mc_var_converges_to_the_parametric_answer` |
 | **Crisis regime**: a 5× vol burst lifts every family, and the conditional ones (FHS, BRW) react *more* than plain HS | directional | `test_crisis_regime_all_families_reprice_upward` |
+
+## 6.2 Cross-language golden vectors (`tests/golden/`, `tests/test_golden_vectors.py`)
+
+`tests/golden/generate_golden.py` is the single source of the 30 reference
+constants that `cpp/equity-var-engine/tests/test_cross_language.cpp` and
+`rust/equity-var-engine/tests/test_cross_language.rs` assert (via the
+GENERATED `tests/golden_vectors.hpp` / `tests/golden/mod.rs` emitted by each
+engine's `tools/gen_golden_*.py`). It writes `tests/golden/golden_vectors.json`
+from three closed-form (sin/cos) input cases — no RNG, no data files — and
+`tests/test_golden_vectors.py` asserts that (a) the committed JSON is
+bit-identical to what the live package produces and (b) every value agrees
+with the constants the compiled engines pin to 1e-9 relative + 1e-12
+absolute. A refactor that moves a golden number therefore fails *here*
+first, not in a later C++ rebuild. The equity-engine finite-sample size of
+the Kupiec test (`TestKupiecExactSize`: 0.0948 at 250/99 %) and the
+ES ≥ VaR ordering at the Acerbi–Tasche boundary
+(`TestEsDominatesVarAtBoundary`) are pinned alongside.
 
 ## 7. What was *not* validated (honest scope)
 

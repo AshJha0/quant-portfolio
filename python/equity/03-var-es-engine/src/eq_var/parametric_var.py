@@ -31,11 +31,28 @@ def _validate_alpha(alpha: float) -> None:
         raise ValueError(f"alpha must be in (0, 0.5) (tail probability), got {alpha}")
 
 
+def _validate_finite_array(name: str, arr: np.ndarray) -> None:
+    """Reject NaN/inf anywhere in a market-data array.
+
+    Every comparison with NaN is False, so sign/shape guards alone let a NaN
+    covariance or exposure through and the caller receives a NaN "VaR"
+    instead of an error.
+    """
+    if not np.isfinite(arr).all():
+        raise ValueError(f"{name} contains NaN or infinite values")
+
+
+def _validate_finite_scalar(name: str, value: float) -> None:
+    if not np.isfinite(value):
+        raise ValueError(f"{name} must be finite, got {value}")
+
+
 def sample_covariance(returns: np.ndarray) -> np.ndarray:
     """Unbiased sample covariance of a (T, n) factor-return matrix."""
     arr = np.atleast_2d(np.asarray(returns, dtype=float))
     if arr.shape[0] < 2:
         raise ValueError(f"need at least 2 observations for a covariance, got {arr.shape[0]}")
+    _validate_finite_array("returns", arr)
     return np.cov(arr, rowvar=False, ddof=1).reshape(arr.shape[1], arr.shape[1])
 
 
@@ -50,6 +67,7 @@ def ewma_covariance(returns: np.ndarray, lam: float = 0.94) -> np.ndarray:
     arr = np.atleast_2d(np.asarray(returns, dtype=float))
     if arr.shape[0] < 2:
         raise ValueError(f"need at least 2 observations for a covariance, got {arr.shape[0]}")
+    _validate_finite_array("returns", arr)
     cov = sample_covariance(arr)
     for r in arr:
         cov = lam * cov + (1.0 - lam) * np.outer(r, r)
@@ -62,6 +80,8 @@ def portfolio_sigma(exposures: np.ndarray, cov: np.ndarray) -> float:
     sig = np.atleast_2d(np.asarray(cov, dtype=float))
     if sig.shape != (w.size, w.size):
         raise ValueError(f"covariance shape {sig.shape} does not match {w.size} exposures")
+    _validate_finite_array("exposures", w)
+    _validate_finite_array("covariance", sig)
     var = float(w @ sig @ w)
     if var < -1e-10 * max(1.0, float(np.abs(w).max()) ** 2):
         raise ValueError("covariance matrix is not positive semi-definite (w'Sw < 0)")
@@ -105,6 +125,8 @@ def parametric_var(
     _validate_alpha(alpha)
     if horizon_days < 1:
         raise ValueError(f"horizon_days must be >= 1, got {horizon_days}")
+    _validate_finite_scalar("mean", mean)
+    _validate_finite_scalar("df", df)
     sigma = portfolio_sigma(exposures, cov) * np.sqrt(horizon_days)
     mu = mean * horizon_days
     if dist == "normal":
@@ -159,8 +181,8 @@ def cornish_fisher_domain_ok(
     the vertex; for concave/linear ``g`` (``A <= 0``) the minimum of a
     concave function on a closed interval is always at an endpoint.
 
-    A grid search (the previous implementation here, and still the approach
-    in ``fx_var``) can miss a thin dip below zero between sample points —
+    A grid search (the previous implementation here) can miss a thin dip
+    below zero between sample points —
     e.g. ``skew=0.122, excess_kurt=-0.427`` is non-monotone on ``|z| <= 4``
     (minimum derivative ~ -9e-4 near z ~ 3.1) but an 801-point grid on that
     range reports it as monotone; this closed-form check has no such
@@ -212,6 +234,10 @@ def cornish_fisher_var(
     expansion is not a quantile function and the number is not a VaR.
     """
     _validate_alpha(alpha)
+    _validate_finite_scalar("sigma", sigma)
+    _validate_finite_scalar("mean", mean)
+    _validate_finite_scalar("skew", skew)
+    _validate_finite_scalar("excess_kurt", excess_kurt)
     if sigma < 0:
         raise ValueError(f"sigma must be >= 0, got {sigma}")
     if check_domain and not cornish_fisher_domain_ok(skew, excess_kurt):

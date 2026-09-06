@@ -60,12 +60,13 @@ flowchart LR
     subgraph PY["Python reference project"]
         MODEL["black_scholes.py /<br/>garman_kohlhagen.py /<br/>parametric_var.py / ..."]
         GEN["tests/golden/<br/>generate_golden.py"]
+        LOCK["tests/test_golden_vectors.py<br/>(Python-side lock)"]
     end
 
     subgraph GOLD["Golden vector generation"]
-        JSON["golden case list<br/>(inputs + expected outputs)"]
-        HGEN["tools/gen_golden_header.py"]
-        RGEN["tools/gen_golden_rs.py"]
+        JSON["tests/golden/golden_vectors.json<br/>(committed; inputs + expected outputs)"]
+        HGEN["cpp/*/tools/gen_golden_header.py<br/>(--check in CI)"]
+        RGEN["rust/*/tools/gen_golden_rs.py<br/>(--check in CI)"]
     end
 
     subgraph CPPE["C++ engine"]
@@ -74,14 +75,15 @@ flowchart LR
     end
 
     subgraph RUSTE["Rust engine"]
-        GRS["src/golden.rs<br/>(committed)"]
+        GRS["src/golden.rs (options) /<br/>tests/golden/mod.rs (VaR)<br/>(committed)"]
         CT["cargo test<br/>golden module"]
     end
 
     MODEL --> GEN --> JSON
+    JSON -.-> LOCK
     JSON --> HGEN --> HPP --> GT
     JSON --> RGEN --> GRS --> CT
-    GT -->|"1e-9 (options)<br/>1e-6..1e-8 (VaR/ES)"| PASS(["identical result,<br/>3 independent codebases"])
+    GT -->|"1e-10 (options)<br/>1e-9 rel / 1e-6..1e-8 (VaR/ES)"| PASS(["identical result,<br/>3 independent codebases"])
     CT -->|same tolerance| PASS
 
     style PASS fill:#065f46,color:#fff
@@ -247,7 +249,7 @@ flowchart TD
     BAD1["Pricer: NaN price<br/>(visible, at least)"]
     BAD2["max(NaN, 0.0) in Rust/C++<br/>VaR aggregation propagates the<br/>NON-NaN operand"]
     BAD3["Backtest: NaN P&L counted<br/>as zero breaches —<br/>a broken model passes Kupiec green"]
-    FIX["Fix: explicit finiteness checks<br/>(isfinite / is_finite) at every<br/>public entry point, portfolio-wide"]
+    FIX["Fix: explicit finiteness checks<br/>(isfinite / is_finite) at every<br/>VaR/ES/backtest, options, bond/YTM<br/>and Black-Scholes entry point,<br/>pinned by test_input_hardening.py"]
     ZERO["Most dangerous outcome:<br/>portfolio VaR of exactly 0.0 —<br/>MORE dangerous than a visible NaN,<br/>because it looks like a hedged book"]
 
     IN --> GUARD1 --> IEEE --> SILENT
@@ -256,7 +258,7 @@ flowchart TD
     SILENT --> BAD3
     ZERO -.->|found & fixed, review pass 1| FIX
     BAD1 -.-> FIX
-    BAD3 -.-> FIX
+    BAD3 -.->|"equity Python backtester:<br/>closed in review pass 3<br/>(exceptions_from_pnl)"| FIX
 
     style ZERO fill:#7c2d12,color:#fff
     style FIX fill:#065f46,color:#fff
@@ -317,24 +319,28 @@ flowchart LR
 
 ---
 
-## 12. Testing & CI pipeline — how "5,963 tests, all passing" is produced
+## 12. Testing & CI pipeline — how "6,446 tests, all passing" is produced
+
+The pipeline below is what `.github/workflows/ci.yml` runs on every push
+(three jobs: `python`, `cpp`, `rust`), and what the top-level `README.md`
+"Build & test everything" loops reproduce locally.
 
 ```mermaid
 flowchart TD
-    subgraph PYCHECK["Each of 23 Python projects"]
+    subgraph PYCHECK["Each of 23 Python projects (CI job: python)"]
         P1["pip install -e ."] --> P2["pytest<br/>(pyproject addopts=-q)"]
     end
-    subgraph CPPCHECK["Each of 4 C++ engines"]
-        C1["cmake -S . -B build"] --> C2["cmake --build build -j"] --> C3["ctest --test-dir build"]
+    subgraph CPPCHECK["Each of 4 C++ engines (CI job: cpp)"]
+        C0["tools/gen_golden_header.py --check"] --> C1["cmake -S . -B build"] --> C2["cmake --build build -j2"] --> C3["ctest --test-dir build"]
     end
-    subgraph RUSTCHECK["Each of 4 Rust engines"]
-        R1["RUSTFLAGS='-D warnings'"] --> R2["cargo test --release"]
+    subgraph RUSTCHECK["Each of 4 Rust engines (CI job: rust)"]
+        R0["tools/gen_golden_rs.py --check"] --> R1["RUSTFLAGS='-D warnings'"] --> R2["cargo test --release"]
     end
 
     PYCHECK --> SUM["Sum every project's own<br/>reported test count —<br/>never taken from a prior run's<br/>build log or an agent's self-report"]
     CPPCHECK --> SUM
     RUSTCHECK --> SUM
-    SUM --> TOTAL(["5,963 passing tests,<br/>reproduced from a clean build"])
+    SUM --> TOTAL(["6,446 passing tests,<br/>reproduced from a clean build"])
 
     style TOTAL fill:#065f46,color:#fff
 ```
@@ -342,7 +348,10 @@ flowchart TD
 Sequential, not parallel/backgrounded, for the C++ builds specifically — two
 `cmake --build` invocations sharing a build directory (or racing for CPU in a
 resource-constrained CI runner) is its own failure mode independent of the
-code being tested.
+code being tested. A repo-level `tests/test_docs_counts.py` (run by the
+`python` job) recounts the LEARN.md questions, COOKBOOK.md recipes and the
+per-area test totals and diffs them against the numbers quoted in the docs,
+so a stale count fails CI rather than surviving in prose.
 
 ---
 
@@ -353,7 +362,8 @@ flowchart LR
     V1["Initial 20+3-project<br/>buildout"] --> V2["Hardening pass 1:<br/>NaN-guard defect class,<br/>found & fixed portfolio-wide"]
     V2 --> V3["Hardening pass 2:<br/>implied-vol plateau +<br/>Cornish-Fisher grid bugs,<br/>found & fixed in all 12<br/>golden engines"]
     V3 --> V4["Follow-up: MC VaR<br/>standard-error bootstrap<br/>cross-check, ported to<br/>all 4 remaining C++/Rust<br/>MC VaR engines"]
-    V4 --> V5(["Current state:<br/>5,963 tests, independently<br/>reproduced, zero open<br/>follow-ups"])
+    V4 --> V6["Review pass 3: equity Python<br/>backtester NaN gate closed,<br/>golden pipeline committed for<br/>all 4 VaR engines, CI added"]
+    V6 --> V5(["Current state:<br/>6,446 tests, independently<br/>reproduced, zero open<br/>follow-ups"])
 
     style V5 fill:#065f46,color:#fff
 ```

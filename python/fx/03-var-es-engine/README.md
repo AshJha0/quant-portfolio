@@ -41,7 +41,7 @@ pipeline:  book & market ──► factor history (synthetic G10/EM blocks,
 
 ```bash
 pip install -e .
-python -m pytest tests -q         # 365 tests, offline, ~7s
+python -m pytest tests -q         # 465 tests, offline, ~17s
 python examples/run_pipeline.py   # full demo, ~4s
 ```
 

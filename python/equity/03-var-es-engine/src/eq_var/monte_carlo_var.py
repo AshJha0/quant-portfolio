@@ -47,6 +47,10 @@ def safe_cholesky(cov: np.ndarray, jitter: float = 1e-10, max_tries: int = 12) -
     sig = np.atleast_2d(np.asarray(cov, dtype=float))
     if sig.shape[0] != sig.shape[1]:
         raise ValueError(f"covariance must be square, got shape {sig.shape}")
+    # Check finiteness *before* symmetry: allclose(NaN, NaN) is False, so a
+    # NaN matrix would otherwise be reported as "not symmetric".
+    if not np.isfinite(sig).all():
+        raise ValueError("covariance contains NaN or infinite values")
     if not np.allclose(sig, sig.T, atol=1e-12 * max(1.0, np.abs(sig).max())):
         raise ValueError("covariance matrix must be symmetric")
     try:
@@ -160,12 +164,25 @@ def var_standard_error_bootstrap(
     """
     if not 0.0 < alpha < 0.5:
         raise ValueError(f"alpha must be in (0, 0.5), got {alpha}")
+    if n_boot < 2:
+        raise ValueError(f"n_boot must be >= 2, got {n_boot}")
     rng = _as_rng(seed)
     arr = np.asarray(pnl, dtype=float).ravel()
     if arr.size < 10:
         raise ValueError(f"need at least 10 observations to bootstrap, got {arr.size}")
-    idx = rng.integers(0, arr.size, size=(n_boot, arr.size))
-    boot_vars = -np.quantile(arr[idx], alpha, axis=1, method="linear")
+    if not np.isfinite(arr).all():
+        raise ValueError("pnl contains NaN or infinite values")
+    # Resample in chunks so memory stays O(chunk * n) instead of materialising
+    # an (n_boot, n) index matrix plus the gathered floats (~800 MB at the
+    # default 100k paths x 500 resamples).  Cost is identical.
+    chunk = max(1, min(n_boot, 50))
+    boot_vars = np.empty(n_boot)
+    done = 0
+    while done < n_boot:
+        m = min(chunk, n_boot - done)
+        idx = rng.integers(0, arr.size, size=(m, arr.size))
+        boot_vars[done : done + m] = -np.quantile(arr[idx], alpha, axis=1, method="linear")
+        done += m
     return float(np.std(boot_vars, ddof=1))
 
 

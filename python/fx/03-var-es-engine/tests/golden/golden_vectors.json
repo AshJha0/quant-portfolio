@@ -1,0 +1,124 @@
+{
+  "description": "Golden VaR/ES/backtest vectors for cross-validating the C++/Rust fx-var-engine against the fx_var Python reference. Inputs are closed-form sin/cos series (no RNG). Tolerances for consumers: P&L-scale figures 1e-6 absolute (case A) / 1e-8 relative (case B); Kupiec LR 1e-10, p-values 1e-11 (Kupiec) and 1e-10 (Christoffersen); Basel cumulative probabilities 1e-12 absolute.",
+  "source": "python/fx/03-var-es-engine (fx_var)",
+  "inputs": {
+    "case_a": {
+      "market": {
+        "spots": {
+          "EUR": 1.1,
+          "JPY": 0.009,
+          "GBP": 1.27
+        },
+        "rates": {
+          "USD": 0.05,
+          "EUR": 0.03,
+          "JPY": 0.001
+        }
+      },
+      "book": [
+        [
+          "Spot",
+          "EURUSD",
+          10000000.0
+        ],
+        [
+          "Forward",
+          "USDJPY",
+          5000000.0,
+          0.5
+        ],
+        [
+          "Spot",
+          "EURJPY",
+          -3000000.0
+        ]
+      ],
+      "factors": [
+        "FX:EUR",
+        "FX:JPY",
+        "IR:JPY",
+        "IR:USD"
+      ],
+      "returns": "r[t][j] = s_j (sin(0.1 t + j) + 0.5 cos(0.05 t (j+1))), t=0..299",
+      "scales": [
+        0.006,
+        0.007,
+        0.0004,
+        0.0005
+      ]
+    },
+    "case_b": {
+      "exposures": {
+        "FX:EUR": 11000000.0,
+        "FX:JPY": -4500000.0,
+        "IR:USD": -2400000.0
+      },
+      "cov": [
+        [
+          3.6e-05,
+          1.1e-05,
+          -2e-06
+        ],
+        [
+          1.1e-05,
+          4.9e-05,
+          -1e-06
+        ],
+        [
+          -2e-06,
+          -1e-06,
+          2.5e-07
+        ]
+      ]
+    },
+    "case_c": {
+      "kupiec": [
+        8,
+        250,
+        0.99
+      ],
+      "exceptions": "t % 37 == 5 plus days 100 and 101 (9 in 250)",
+      "basel": [
+        4,
+        5,
+        10
+      ]
+    }
+  },
+  "tolerance": {
+    "case_a_abs": 1e-06,
+    "case_b_rel": 1e-08,
+    "kupiec_lr_abs": 1e-10,
+    "kupiec_p_abs": 1e-11,
+    "christoffersen_abs": 1e-10,
+    "basel_cum_prob_abs": 1e-12
+  },
+  "values": {
+    "a_book_pnl_scenario_17": 58177.37489810074,
+    "a_plain_var_99": 61919.80890587624,
+    "a_plain_es_99": 62006.12006224847,
+    "a_plain_var_975": 61237.42600889597,
+    "a_plain_es_975": 61777.93608271857,
+    "a_age_var_99_decay_0995": 61874.26268531149,
+    "a_age_es_99_decay_0995": 61977.52496594109,
+    "b_normal_var_99_1d": 153339.50441962917,
+    "b_normal_es_99_1d": 175675.6297200285,
+    "b_t5_var_99_1d": 171803.12389091405,
+    "b_t5_es_99_1d": 227327.5314974144,
+    "b_normal_var_99_10d": 484902.0892474838,
+    "b_normal_es_99_10d": 555535.1192996583,
+    "c_kupiec_lr_8_250": 7.7335507244945205,
+    "c_kupiec_p_8_250": 0.0054204051941277994,
+    "c_christoffersen_ind_lr": 1.0063610339314124,
+    "c_christoffersen_ind_p": 0.3157762037622499,
+    "c_basel_cum_prob_4": 0.8921876269036249,
+    "c_basel_zone_4": "green",
+    "c_basel_multiplier_4": 3.0,
+    "c_basel_cum_prob_5": 0.9588168159301514,
+    "c_basel_zone_5": "yellow",
+    "c_basel_multiplier_5": 3.4,
+    "c_basel_cum_prob_10": 0.999946101370953,
+    "c_basel_zone_10": "red",
+    "c_basel_multiplier_10": 4.0
+  }
+}

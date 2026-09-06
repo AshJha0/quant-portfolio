@@ -11,7 +11,7 @@ documentation every one of those 31 sub-projects carries in its own
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The project map: what lives where, the package/engine tables, the cross-language golden-vector validation pipeline, and the design invariants worth knowing before you change anything. |
 | [DIAGRAMS.md](DIAGRAMS.md) | The same architecture as Mermaid diagrams — the portfolio shape, the golden-vector pipeline, per-area data flows, and the numerical-robustness bug case studies as pictures. |
 | [LEARN.md](LEARN.md) | The teaching companion: a plain-language tour of all 13 areas (Part I), why the portfolio is engineered the way it is (Part II), a suggested learning path by background (Part III), and a 481-question self-test bank organized into 18 rounds (Part IV). |
-| [COOKBOOK.md](COOKBOOK.md) | 61 copy-pasteable, verified-runnable "how do I..." recipes spanning every project area, from pricing an option to rebuilding a Rust engine from a clean checkout. |
+| [COOKBOOK.md](COOKBOOK.md) | 63 copy-pasteable, verified-runnable "how do I..." recipes spanning every project area, from pricing an option to rebuilding a Rust engine from a clean checkout. |
 | [MARKET_RISK.md](MARKET_RISK.md) | The VaR/ES/backtesting workflow the risk engines are built to support, end to end — the daily cycle, the limit structure, stress testing, and where equity and FX genuinely diverge. |
 
 **Where to start** depends on what you're after:
@@ -25,6 +25,6 @@ documentation every one of those 31 sub-projects carries in its own
   and [DIAGRAMS.md](DIAGRAMS.md).
 
 The top-level [`../README.md`](../README.md) is still the source of truth
-for what the portfolio contains and its verified test counts (5,963 passing
+for what the portfolio contains and its verified test counts (6,446 passing
 tests, reproduced from a clean build); this folder is the map and the
 teaching material layered on top of it.

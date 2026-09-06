@@ -27,7 +27,7 @@ single-asset, single-language, with no compiled twin.
 + 3 foundations projects (equity-only, Python)     =  3 Python projects
 + 4 engines × 2 languages (C++, Rust)              =  8 compiled projects
                                                      ────────────────────
-                                                      31 total, 5,963 tests
+                                                      31 total, 6,446 tests
 ```
 
 Why two fully separate codebases per area instead of one asset-class-agnostic
@@ -77,9 +77,10 @@ Every Python project directory follows the identical internal layout —
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md` — laid out in full in
 `CONVENTIONS.md`. Every C++/Rust engine follows the mirror-image layout:
 `include/<ns>/` or `src/*.rs` for the library, `tests/` (GoogleTest /
-`cargo test`), `bench/` for the latency benchmark, `tools/gen_golden_*.py`
-for the cross-language vector generator, `docs/{METHODOLOGY,VALIDATION,
-DESK_GUIDE}.md`.
+`cargo test`), `bench/` (C++) or `src/bin/bench.rs` (Rust) for the latency
+benchmark, `tools/gen_golden_header.py` (C++) / `tools/gen_golden_rs.py`
+(Rust) for the cross-language vector generator, `docs/{METHODOLOGY,
+VALIDATION,DESK_GUIDE}.md`.
 
 ## The 10 project areas
 
@@ -118,18 +119,22 @@ this argument, and [DIAGRAMS.md](DIAGRAMS.md) diagram 1 for the picture.
 
 | Engine | Language | Public entry point | Key modules | Golden vectors from |
 |---|---|---|---|---|
-| Equity options/Greeks | Python | `eq_options` (`black_scholes.py`, `greeks.py`, `implied_vol.py`, `binomial.py`, `monte_carlo.py`) | Closed-form BS, finite-diff & analytic Greeks, Newton+bisection implied vol, CRR binomial (American), MC pricer | — (reference) |
-| | C++ | `eqopt::` (`include/eqopt/`) | `black_scholes.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
-| | Rust | `eq_options_engine` crate (`src/`) | `black_scholes.rs`, `greeks.rs`, `implied_vol.rs`, `binomial.rs`, `monte_carlo.rs` | `tools/gen_golden_rs.py` → `src/golden.rs` |
-| FX options/Greeks | Python | `fx_options` (`garman_kohlhagen.py`, `greeks.py`, `implied_vol.py`, `binomial.py`, `monte_carlo.py`) | Garman-Kohlhagen (BS with q=r_f), four-delta-convention Greeks, implied vol, binomial, MC | — (reference) |
-| | C++ | `fxopt::` (`include/fxopt/`) | mirrors the Python module set | `tools/gen_golden_header.py` |
-| | Rust | `fx_options_engine` crate | mirrors the Python module set | `tools/gen_golden_rs.py` |
-| Equity VaR/ES | Python | `eq_var` (`historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `portfolio.py`, `stress_testing.py`) | Historical/age-weighted, parametric (delta-normal + Cornish-Fisher), Monte Carlo (normal/t/jump), Kupiec + Basel traffic-light backtesting | — (reference) |
-| | C++ | `eqvar::` (`include/eqvar/`) | `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp` | `tools/gen_golden_header.py` |
-| | Rust | `eq_var_engine` crate | mirrors the Python module set | `tools/gen_golden_rs.py` |
-| FX VaR/ES | Python | `fx_var` (`book.py`, `historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`) | Same methods as equity VaR plus `Book`/`Market` full-revaluation layer (spot, forward, option positions repriced scenario by scenario via Garman-Kohlhagen) | — (reference) |
-| | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` |
-| | Rust | `fx_var_engine` crate | mirrors the Python module set | `tools/gen_golden_rs.py` |
+| Equity options/Greeks | Python | `eq_options` (`black_scholes.py` incl. implied vol, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`, `comparison.py`) | Closed-form BS, finite-diff & analytic Greeks, Newton+bisection implied vol, Black-76, CRR binomial (American), MC pricer | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference) |
+| | C++ | `eqopt::` (`include/eqopt/`) | `black_scholes.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
+| | Rust | `eq_options_engine` crate (`src/`) | `black_scholes.rs`, `black76.rs`, `greeks.rs`, `implied_vol.rs`, `binomial.rs`, `monte_carlo.rs` | `tools/gen_golden_rs.py` → `src/golden.rs` |
+| FX options/Greeks | Python | `fx_options` (`garman_kohlhagen.py` incl. implied vol, `deltas.py`, `forwards.py`, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`) | Garman-Kohlhagen (BS with q=r_f), four delta conventions + strike-from-delta, CIP forwards, implied vol, binomial, MC | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference) |
+| | C++ | `fxopt::` (`include/fxopt/`) | `garman_kohlhagen.hpp`, `deltas.hpp`, `forwards.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
+| | Rust | `fx_options_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `src/golden.rs` |
+| Equity VaR/ES | Python | `eq_var` (`historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `portfolio.py`, `stress_testing.py`) | Historical/age-weighted/FHS, parametric (delta-normal, Student-t, Cornish-Fisher), Monte Carlo (normal/t/jump), Kupiec + Christoffersen + Acerbi-Szekely + Basel traffic-light backtesting | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference; locked by `tests/test_golden_vectors.py`) |
+| | C++ | `eqvar::` (`include/eqvar/`) | `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `matrix.hpp`, `stats.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
+| | Rust | `eq_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `tests/golden/mod.rs` |
+| FX VaR/ES | Python | `fx_var` (`book.py`, `historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `stress_testing.py`) | Same methods as equity VaR plus `Book`/`Market` full-revaluation layer (spot, forward, option positions repriced scenario by scenario via Garman-Kohlhagen) | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference; locked by `tests/test_golden_vectors.py`) |
+| | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
+| | Rust | `fx_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `tests/golden/mod.rs` |
+
+Every `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero
+if the committed header/module no longer matches the Python JSON — the CI
+workflow runs it before building the engines.
 
 ## Data flow at a glance
 
@@ -140,21 +145,28 @@ this argument, and [DIAGRAMS.md](DIAGRAMS.md) diagram 1 for the picture.
                                  src/<pkg>/data/*.py
                                           ▼
    pricing/vol/rates path         risk/backtest path            research path
-   ┌────────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐
-   │ black_scholes.py /  │   │ historical_var.py /   │   │ pairs_trading.py /    │
-   │ garman_kohlhagen.py │   │ parametric_var.py /   │   │ credit_risk.py /      │
-   │ implied_vol.py      │──▶│ monte_carlo_var.py    │   │ portfolio_opt.py /    │
-   │ greeks.py            │   │ expected_shortfall.py │   │ regime_switching.py   │
-   │ vol_surface / GARCH  │   │ backtesting.py        │   │ algo_execution.py     │
-   └────────────────────┘   └───────────────────────┘   └───────────────────────┘
+   ┌────────────────────┐   ┌───────────────────────┐   ┌───────────────────────────┐
+   │ eq_options/         │   │ eq_var/, fx_var/      │   │ eq_pairs/{cointegration,  │
+   │  black_scholes.py   │   │  historical_var.py    │   │   spread,signals,backtest}│
+   │ fx_options/         │──▶│  parametric_var.py    │   │ eq_credit/{model,         │
+   │  garman_kohlhagen.py│   │  monte_carlo_var.py   │   │   validation,portfolio_risk}│
+   │  deltas.py           │   │  expected_shortfall.py│   │ eq_port/{mvo,risk_parity, │
+   │ eq_surface/{smile,   │   │  backtesting.py       │   │   returns_est}            │
+   │   surface,heston}    │   │  (fx_var: book.py)    │   │ eq_algo/{almgren_chriss,  │
+   │ eq_vol/{garch,gjr,   │   │                       │   │   tca,benchmarks}         │
+   │   egarch,ewma}       │   │                       │   │ eq_regime/{hmm,detection, │
+   │ fi_rates/, fx_rates/ │   │                       │   │   strategy}  (+ fx_* twins)│
+   └────────────────────┘   └───────────────────────┘   └───────────────────────────┘
              │                          │                            │
              ▼                          ▼                            ▼
      examples/run_pipeline.py   examples/run_pipeline.py    examples/run_pipeline.py
      (end-to-end: data → model → validation → decision, reproduces the README numbers)
              │
              ▼ (options + VaR/ES only)
-   tests/golden/generate_golden.py  ──▶  tools/gen_golden_header.py  ──▶  cpp/*/tests/golden_vectors.hpp
-                                    └──▶  tools/gen_golden_rs.py     ──▶  rust/*/src/golden.rs
+   tests/golden/generate_golden.py ──▶ tests/golden/golden_vectors.json
+        ├──▶  cpp/*/tools/gen_golden_header.py  ──▶  cpp/*/tests/golden_vectors.hpp
+        └──▶  rust/*/tools/gen_golden_rs.py     ──▶  rust/*-options-engine/src/golden.rs
+                                                     rust/*-var-engine/tests/golden/mod.rs
 ```
 
 The research lane above is read left to right within each area: raw/synthetic
@@ -173,13 +185,15 @@ isolation:
    convergence, martingale checks) and statistical backtests (Kupiec,
    Basel traffic-light).
 2. **C++ engine** — mirrors the Python semantics exactly. A
-   `tests/golden/generate_golden.py` script in the Python project (or, for
-   the VaR engines, direct `PYTHONPATH=src python3` invocation) produces
-   reference values; `tools/gen_golden_header.py` turns them into a
-   `constexpr` C++ header (`tests/golden_vectors.hpp`). GoogleTest validates
-   every case to 1e-9 (options) or 1e-6–1e-8 (VaR/ES) tolerance.
-3. **Rust engine** — the same golden values, generated into `src/golden.rs`
-   by `tools/gen_golden_rs.py`, validated by `cargo test` to the same
+   `tests/golden/generate_golden.py` script in each of the four Python
+   reference projects writes `tests/golden/golden_vectors.json` (committed,
+   and locked from the Python side by `tests/test_golden_vectors.py`);
+   `tools/gen_golden_header.py` turns it into a `constexpr` C++ header
+   (`tests/golden_vectors.hpp`, committed). GoogleTest validates every case
+   to 1e-10 (options) or 1e-9 relative / 1e-6–1e-8 (VaR/ES) tolerance.
+3. **Rust engine** — the same JSON, generated into `src/golden.rs` (options
+   engines) or `tests/golden/mod.rs` (VaR engines) by
+   `tools/gen_golden_rs.py`, validated by `cargo test` to the same
    tolerances.
 
 The result: for every priced option or computed VaR number, you can trace
@@ -216,11 +230,16 @@ mode a real quant-risk team is trying to avoid.
   pinned reference value would be indistinguishable, from the outside, from a
   regression, so every fix in this portfolio's history was verified against
   that constraint before being accepted.
-- **Every public entry point validates its inputs with explicit finiteness
-  checks**, not bare comparisons. `if x <= 0: raise` looks like it rejects bad
-  input, but `NaN <= 0` is `False` in IEEE 754 — the guard silently passes a
-  NaN through. This was found as a portfolio-wide defect class and fixed
-  everywhere; see [LEARN.md](LEARN.md) Round 16 and
+- **Every VaR/ES/backtest, options-pricing, bond/yield and Black-Scholes
+  entry point validates its inputs with explicit finiteness checks**, not
+  bare comparisons. `if x <= 0: raise` looks like it rejects bad input, but
+  `NaN <= 0` is `False` in IEEE 754 — the guard silently passes a NaN
+  through. This was found as a portfolio-wide defect class; the six golden
+  engines, the fixed-income stack and the foundations Black-Scholes rebuild
+  are covered by dedicated `test_input_hardening.py` / `test_nan_guards.py`
+  suites, and the remaining research-lane modules are being swept on the
+  same pattern (the top-level `README.md` §"On input validation" tracks the
+  scope honestly). See [LEARN.md](LEARN.md) Round 16 and
   [DIAGRAMS.md](DIAGRAMS.md) diagram 9 for the full story, including the most
   dangerous manifestation (`max(NaN, 0.0)` silently returning a plausible
   zero VaR instead of propagating the NaN).
@@ -247,7 +266,7 @@ mode a real quant-risk team is trying to avoid.
 
 - [DIAGRAMS.md](DIAGRAMS.md) — the same architecture, as pictures.
 - [LEARN.md](LEARN.md) — a structured curriculum through every topic this
-  portfolio covers, plus an ~450-question self-test bank organized by round.
+  portfolio covers, plus a 481-question self-test bank organized by round.
 - [COOKBOOK.md](COOKBOOK.md) — copy-pasteable recipes for the most common
   "how do I..." tasks across every project area.
 - [MARKET_RISK.md](MARKET_RISK.md) — the VaR/ES/backtesting workflow this

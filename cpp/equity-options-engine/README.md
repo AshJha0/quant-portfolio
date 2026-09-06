@@ -29,7 +29,7 @@ annualised `r`/`q` (ACT/365F), `T` in years, `sigma` annualised; theta per
 
 ```sh
 cmake -S . -B build && cmake --build build -j
-ctest --test-dir build --output-on-failure   # 55 tests, all passing
+ctest --test-dir build --output-on-failure   # 58 tests, all passing
 ./build/eqopt_bench
 ```
 

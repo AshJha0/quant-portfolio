@@ -160,3 +160,52 @@ class TestPortfolio:
             "b", "mod_duration"
         ]
         assert rpt.loc["TOTAL", "mod_duration"] == pytest.approx(expected, abs=1e-12)
+
+
+class TestAnalyticVsNumericalMidPeriod:
+    """TEST-7: the analytic duration / convexity must agree with finite
+    differences on a settlement date strictly *inside* a coupon period.
+
+    On a coupon date the first street-convention exponent ``w`` in
+    ``_period_exponents`` is exactly 1 and the fractional-period machinery is
+    never exercised; the interesting case is ``0 < w < 1``.
+    """
+
+    @pytest.fixture(params=[37, 91, 150, 179])
+    def mid_period(self, request, bond_5y):
+        settle = bond_5y.effective + dt.timedelta(days=request.param)
+        # sanity: strictly inside the first semiannual period
+        assert bond_5y.effective < settle < bond_5y.schedule()[0]
+        return settle
+
+    @pytest.mark.parametrize("y", [0.01, 0.042, 0.09])
+    def test_modified_duration_mid_period(self, bond_5y, mid_period, y):
+        analytic = fr.modified_duration(bond_5y, mid_period, y)
+        numerical = fr.numerical_modified_duration(bond_5y, mid_period, y)
+        assert analytic == pytest.approx(numerical, rel=1e-8)
+
+    @pytest.mark.parametrize("y", [0.01, 0.042, 0.09])
+    def test_convexity_mid_period(self, bond_5y, mid_period, y):
+        analytic = fr.convexity(bond_5y, mid_period, y)
+        # h = 1e-4: the second difference's round-off term eps*P/h^2 is
+        # ~1e-8 there versus ~1e-6 at the default 1e-5.
+        numerical = fr.numerical_convexity(bond_5y, mid_period, y, h=1e-4)
+        assert analytic == pytest.approx(numerical, rel=1e-6)
+
+    def test_fractional_first_exponent_is_actually_fractional(self, bond_5y, mid_period):
+        from fi_rates.bond import _period_exponents
+
+        exps, _ = _period_exponents(bond_5y, mid_period)
+        assert 0.0 < exps[0] < 1.0
+        assert exps[1] == pytest.approx(exps[0] + 1.0)
+
+    def test_duration_steps_up_when_the_coupon_drops(self, bond_5y):
+        # The day before a coupon the imminent cashflow pulls Macaulay
+        # duration down; on the coupon date it has been paid and duration
+        # jumps *up* by (roughly) the dropped coupon's PV weight -- a small
+        # positive step, well under one coupon period.
+        first = bond_5y.schedule()[0]
+        y = 0.042
+        before = fr.macaulay_duration(bond_5y, first - dt.timedelta(days=1), y)
+        on = fr.macaulay_duration(bond_5y, first, y)
+        assert 0.0 < on - before < 0.5

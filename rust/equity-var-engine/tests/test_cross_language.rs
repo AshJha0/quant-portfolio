@@ -1,26 +1,34 @@
 //! Cross-language golden tests against the Python reference implementation.
 //!
-//! Provenance: every expected constant below was produced by the Python
-//! research stack (the conceptual twin of this engine) and independently
-//! re-verified against this Rust engine:
+//! Provenance: every expected constant comes from `golden/mod.rs`, a
+//! GENERATED module emitted by `tools/gen_golden_rs.py` from the JSON
+//! written by the Python research stack (the conceptual twin of this
+//! engine):
 //!
-//!   cd /home/claude/quant-portfolio/python/equity/03-var-es-engine
-//!   PYTHONPATH=src python3 /tmp/gen_golden.py     (numpy, scipy)
+//! ```text
+//! cd python/equity/03-var-es-engine
+//! PYTHONPATH=src python3 tests/golden/generate_golden.py   # -> golden_vectors.json
+//! cd ../../../rust/equity-var-engine
+//! python3 tools/gen_golden_rs.py                           # -> tests/golden/mod.rs
+//! python3 tools/gen_golden_rs.py --check                   # provenance check
+//! ```
 //!
-//! regenerated on 2026-08-18 from `eq_var` (historical_var / parametric_var /
-//! expected_shortfall / backtesting modules). The values are identical to
-//! those committed in `cpp/equity-var-engine/tests/test_cross_language.cpp`
-//! (same Python invocation, same inputs) — all three engines (Python, C++,
-//! Rust) agree to the stated tolerance. Inputs are closed-form (sin/cos
-//! based) deterministic series so every language regenerates them
-//! independently; agreement is required to 1e-9 relative (the residual is
-//! libm-vs-numpy ulp noise in sin/cos, far below any risk tolerance).
+//! The JSON is itself locked by `python/equity/03-var-es-engine/tests/
+//! test_golden_vectors.py`, and the same JSON feeds
+//! `cpp/equity-var-engine/tests/golden_vectors.hpp`, so all three engines
+//! (Python, C++, Rust) assert literally the same numbers. Inputs are
+//! closed-form (sin/cos based) deterministic series so every language
+//! regenerates them independently; agreement is required to 1e-9 relative
+//! + 1e-12 absolute (the residual is libm-vs-numpy ulp noise in sin/cos,
+//! far below any risk tolerance).
+
+mod golden;
 
 use eq_var_engine::prelude::*;
 
 /// Relative tolerance for cross-language agreement.
 fn expect_rel(actual: f64, expected: f64, what: &str) {
-    let tol = 1e-9 * expected.abs() + 1e-12;
+    let tol = golden::TOL_REL * expected.abs() + golden::TOL_ABS;
     assert!(
         (actual - expected).abs() <= tol,
         "{what}: actual={actual} expected={expected} (tol={tol})"
@@ -54,18 +62,18 @@ fn case_c_returns() -> Matrix {
 #[test]
 fn case_a_historical_family() {
     let pnl = case_a_pnl();
-    expect_rel(historical_var(&pnl, 0.01).unwrap(), 1.224129222375264e+02, "A hist VaR 1%");
-    expect_rel(historical_var(&pnl, 0.05).unwrap(), 1.045522835374927e+02, "A hist VaR 5%");
-    expect_rel(expected_shortfall(&pnl, 0.05).unwrap(), 1.226373207703405e+02, "A ES 5%");
-    expect_rel(expected_shortfall(&pnl, 0.01).unwrap(), 1.417568107549531e+02, "A ES 1%");
+    expect_rel(historical_var(&pnl, 0.01).unwrap(), golden::A_HIST_VAR_1PCT, "A hist VaR 1%");
+    expect_rel(historical_var(&pnl, 0.05).unwrap(), golden::A_HIST_VAR_5PCT, "A hist VaR 5%");
+    expect_rel(expected_shortfall(&pnl, 0.05).unwrap(), golden::A_ES_5PCT, "A ES 5%");
+    expect_rel(expected_shortfall(&pnl, 0.01).unwrap(), golden::A_ES_1PCT, "A ES 1%");
     expect_rel(
         age_weighted_var(&pnl, 0.05, 0.98).unwrap(),
-        1.082348601407293e+02,
+        golden::A_BRW_VAR_5PCT_LAM098,
         "A BRW VaR 5%",
     );
     expect_rel(
         filtered_historical_var(&pnl, 0.05, 0.94).unwrap(),
-        1.093777910164513e+02,
+        golden::A_FHS_VAR_5PCT_LAM094,
         "A FHS VaR 5%",
     );
 }
@@ -73,13 +81,7 @@ fn case_a_historical_family() {
 #[test]
 fn case_a_brw_weights() {
     let w = brw_weights(5, 0.98).unwrap();
-    let expected = [
-        1.920016255921656e-01,
-        1.959200261144547e-01,
-        1.999183939943416e-01,
-        2.039983612187159e-01,
-        2.081615930803223e-01,
-    ];
+    let expected = golden::A_BRW_WEIGHTS_5_LAM098;
     assert_eq!(w.len(), expected.len());
     for (a, e) in w.iter().zip(expected.iter()) {
         expect_rel(*a, *e, "A brw weight");
@@ -95,31 +97,31 @@ fn case_b_parametric_family() {
     let corr = Matrix::from_vec(3, 3, vec![1.0, 0.5, 0.25, 0.5, 1.0, 0.3, 0.25, 0.3, 1.0]).unwrap();
     let cov = covariance_from_vols(&vols, &corr).unwrap();
     let sigma = portfolio_sigma(&w, &cov).unwrap();
-    expect_rel(sigma, 9.962429422585637e+03, "B sigma");
+    expect_rel(sigma, golden::B_SIGMA, "B sigma");
     expect_rel(
         parametric_var(&w, &cov, 0.01, TailModel::Normal).unwrap(),
-        2.317607650751402e+04,
+        golden::B_VAR_NORMAL_1PCT,
         "B VaR normal 1%",
     );
     expect_rel(
         parametric_var(&w, &cov, 0.01, TailModel::StudentT { df: 6.0 }).unwrap(),
-        2.556337478743866e+04,
+        golden::B_VAR_T6_1PCT,
         "B VaR t6 1%",
     );
     expect_rel(
         parametric_var_full(&w, &cov, 0.01, TailModel::Normal, 0.0, 10).unwrap(),
-        7.328918899006478e+04,
+        golden::B_VAR_NORMAL_1PCT_10D,
         "B VaR normal 1% 10d",
     );
-    expect_rel(normal_es(sigma, 0.025, 0.0).unwrap(), 2.329019532123021e+04, "B ES normal 2.5%");
+    expect_rel(normal_es(sigma, 0.025, 0.0).unwrap(), golden::B_ES_NORMAL_2P5PCT, "B ES normal 2.5%");
     expect_rel(
         student_t_es(sigma, 0.025, 6.0, 0.0).unwrap(),
-        2.648647588170394e+04,
+        golden::B_ES_T6_2P5PCT,
         "B ES t6 2.5%",
     );
     expect_rel(
         cornish_fisher_var(sigma, 0.01, -0.5, 1.0, 0.0, true).unwrap(),
-        2.823062626871169e+04,
+        golden::B_CF_VAR_1PCT_SKEW_M05_KURT_1,
         "B CF VaR 1%",
     );
 }
@@ -129,22 +131,22 @@ fn case_c_covariance_estimators() {
     let r = case_c_returns();
     let s = sample_covariance(&r).unwrap();
     let e = ewma_covariance(&r, 0.94).unwrap();
-    expect_rel(s.get(0, 0), 6.197010057346647e-05, "C sample cov 00");
-    expect_rel(s.get(0, 1), 3.367477490492125e-05, "C sample cov 01");
-    expect_rel(s.get(1, 2), 3.643904950084309e-05, "C sample cov 12");
-    expect_rel(e.get(0, 0), 6.085653794066718e-05, "C ewma cov 00");
-    expect_rel(e.get(0, 1), 3.159039791408869e-05, "C ewma cov 01");
-    expect_rel(e.get(2, 2), 6.695_548_359_317_17e-5, "C ewma cov 22");
+    expect_rel(s.get(0, 0), golden::C_SAMPLE_COV_00, "C sample cov 00");
+    expect_rel(s.get(0, 1), golden::C_SAMPLE_COV_01, "C sample cov 01");
+    expect_rel(s.get(1, 2), golden::C_SAMPLE_COV_12, "C sample cov 12");
+    expect_rel(e.get(0, 0), golden::C_EWMA_COV_00, "C ewma cov 00");
+    expect_rel(e.get(0, 1), golden::C_EWMA_COV_01, "C ewma cov 01");
+    expect_rel(e.get(2, 2), golden::C_EWMA_COV_22, "C ewma cov 22");
 
     let w = [2.0e6, -1.0e6, 5.0e5];
     expect_rel(
         parametric_var(&w, &s, 0.01, TailModel::Normal).unwrap(),
-        2.403056180968714e+04,
+        golden::C_VAR_NORMAL_1PCT,
         "C VaR normal 1%",
     );
     expect_rel(
         parametric_var(&w, &s, 0.05, TailModel::StudentT { df: 8.0 }).unwrap(),
-        1.663517215790393e+04,
+        golden::C_VAR_T8_5PCT,
         "C VaR t8 5%",
     );
 }
@@ -152,11 +154,11 @@ fn case_c_covariance_estimators() {
 #[test]
 fn case_c_backtest_statistics() {
     let k7 = kupiec_pof(250, 7, 0.01).unwrap();
-    expect_rel(k7.lr, 5.496990447792683e+00, "C kupiec LR (250, 7)");
-    expect_rel(k7.pvalue, 1.904923089052653e-02, "C kupiec p (250, 7)");
+    expect_rel(k7.lr, golden::C_KUPIEC_LR_250_7, "C kupiec LR (250, 7)");
+    expect_rel(k7.pvalue, golden::C_KUPIEC_P_250_7, "C kupiec p (250, 7)");
     let k0 = kupiec_pof(250, 0, 0.01).unwrap();
-    expect_rel(k0.lr, 5.025167926750726e+00, "C kupiec LR (250, 0)");
-    expect_rel(k0.pvalue, 2.498150305344973e-02, "C kupiec p (250, 0)");
+    expect_rel(k0.lr, golden::C_KUPIEC_LR_250_0, "C kupiec LR (250, 0)");
+    expect_rel(k0.pvalue, golden::C_KUPIEC_P_250_0, "C kupiec p (250, 0)");
 
     // Exception pattern: t % 40 == 0, plus days 100 and 101 (9 exceptions).
     let mut ex = vec![0u8; 250];
@@ -171,9 +173,9 @@ fn case_c_backtest_statistics() {
     assert_eq!(count, 9);
 
     let ind = christoffersen_independence(&ex).unwrap();
-    expect_rel(ind.lr, 1.189356349111719e+00, "C christoffersen ind LR");
-    expect_rel(ind.pvalue, 2.754594267438438e-01, "C christoffersen ind p");
+    expect_rel(ind.lr, golden::C_CHRISTOFFERSEN_IND_LR, "C christoffersen ind LR");
+    expect_rel(ind.pvalue, golden::C_CHRISTOFFERSEN_IND_P, "C christoffersen ind p");
     let cc = christoffersen_cc(&ex, 0.01).unwrap();
-    expect_rel(cc.lr, 1.141838698170947e+01, "C christoffersen cc LR");
-    expect_rel(cc.pvalue, 3.315345323267836e-03, "C christoffersen cc p");
+    expect_rel(cc.lr, golden::C_CHRISTOFFERSEN_CC_LR, "C christoffersen cc LR");
+    expect_rel(cc.pvalue, golden::C_CHRISTOFFERSEN_CC_P, "C christoffersen cc p");
 }

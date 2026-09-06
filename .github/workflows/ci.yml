@@ -1,0 +1,106 @@
+# Portfolio-wide CI: the exact loops from README.md "Build & test everything",
+# split into three jobs so a compiled-engine failure never hides a Python one.
+#
+#   python : the 23 Python sub-projects (pip install -e . && pytest) plus the
+#            repo-level docs-count check (tests/test_docs_counts.py)
+#   cpp    : the 4 C++20 engines (golden --check, cmake, ctest), one at a time
+#   rust   : the 4 Rust engines (golden --check, RUSTFLAGS=-D warnings cargo test)
+#
+# Builds run with -j2 and sequentially per engine on purpose: two cmake
+# builds racing for CPU on a small runner is its own failure mode
+# (docs/DIAGRAMS.md diagram 12).
+
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python (23 sub-projects)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install shared test dependencies
+        run: python -m pip install --upgrade pip pytest
+      - name: Run every Python sub-project suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          total=0
+          for d in python/equity/*/ python/fx/*/ python/foundations/*/; do
+            echo "::group::$d"
+            (cd "$d" && pip install -e . -q && python -m pytest -p no:cacheprovider -o addopts="" -q -rN | tee /tmp/last.txt)
+            n=$(grep -Eo '[0-9]+ passed' /tmp/last.txt | tail -1 | grep -Eo '[0-9]+')
+            total=$((total + n))
+            echo "::endgroup::"
+          done
+          echo "Python tests passed: $total"
+          echo "PYTHON_TOTAL=$total" >> "$GITHUB_ENV"
+      - name: Docs counts stay in sync with the code
+        run: python -m pytest -p no:cacheprovider -q tests/test_docs_counts.py
+
+  cpp:
+    name: cpp (4 engines)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++ libgtest-dev
+      - name: Golden-vector provenance (VaR + options engines)
+        run: |
+          for d in cpp/*/; do python3 "$d/tools/gen_golden_header.py" --check; done
+      - name: Configure, build (-j2) and test each engine sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in cpp/*/; do
+            name=$(basename "$d")
+            echo "::group::$name"
+            cmake -S "$d" -B "/tmp/build-$name" -DCMAKE_BUILD_TYPE=Release
+            cmake --build "/tmp/build-$name" -j2
+            ctest --test-dir "/tmp/build-$name" --output-on-failure
+            echo "::endgroup::"
+          done
+
+  rust:
+    name: rust (4 engines)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Golden-vector provenance (VaR + options engines)
+        run: |
+          for d in rust/*/; do python3 "$d/tools/gen_golden_rs.py" --check; done
+      - name: cargo test --release with warnings denied, each engine sequentially
+        shell: bash
+        env:
+          RUSTFLAGS: "-D warnings"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          for d in rust/*/; do
+            echo "::group::$(basename "$d")"
+            (cd "$d" && cargo test --release)
+            echo "::endgroup::"
+          done

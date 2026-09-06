@@ -110,9 +110,10 @@ realized P&L using the same machinery real regulators require:
   is missing a regime" signal distinct from "the model has the wrong
   average."
 - **`basel_traffic_light`** and **`basel_zone_probabilities`** map the
-  250-day exception count onto the regulatory green/amber/red zones and
+  250-day exception count onto the regulatory green/yellow/red zones and
   the corresponding capital multiplier escalation (3.00 at 0-4 exceptions,
-  climbing to 4.00-plus with a presumption of model rejection at 10+). The
+  3.40-3.85 across the yellow zone, capped at 4.00 in the red zone with a
+  presumption of model rejection at 10+). The
   equity desk guide's own worked example is concrete: on a GARCH stress
   period, an unconditional (non-adapting) VaR model lands in the red zone
   (13/250, 11/250 exceptions) while the FHS model that adapts to current

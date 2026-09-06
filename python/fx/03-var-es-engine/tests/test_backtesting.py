@@ -285,3 +285,35 @@ def test_garch_data_parametric_normal_fails_fhs_passes():
     # FHS: conditional coverage acceptable
     assert res_f.cc_p > 0.05
     assert res_f.n_exceptions < res_p.n_exceptions
+
+
+class TestKupiecExactSize:
+    """TEST-5: exact finite-sample size of the 5 % Kupiec test at 250 / 99 %.
+
+    Summing the Binomial(250, 0.01) pmf over the chi2(1) rejection set gives
+    0.0948 -- the test is oversized (the README's "~9.5 %"), and ``x = 0``
+    is itself a rejection.
+    """
+
+    N, ALPHA = 250, 0.99
+
+    def _reject_set(self):
+        crit = chi2.ppf(0.95, df=1)
+        return [x for x in range(self.N + 1) if kupiec_pof(x, self.N, self.ALPHA)[0] > crit]
+
+    def test_exact_size_is_9_5_percent(self):
+        from scipy.stats import binom
+
+        size = float(sum(binom.pmf(x, self.N, 1 - self.ALPHA) for x in self._reject_set()))
+        assert size == pytest.approx(0.0948, abs=1e-4)
+        assert size == pytest.approx(0.09476, abs=5e-5)
+
+    def test_zero_exceptions_is_a_rejection(self):
+        assert 0 in self._reject_set()
+        assert kupiec_pof(0, self.N, self.ALPHA)[1] < 0.05
+
+    def test_rejection_set_is_zero_or_upper_tail(self):
+        rej = self._reject_set()
+        assert rej[0] == 0
+        assert rej[1:] == list(range(7, self.N + 1))
+        assert kupiec_pof(6, self.N, self.ALPHA)[1] > 0.05

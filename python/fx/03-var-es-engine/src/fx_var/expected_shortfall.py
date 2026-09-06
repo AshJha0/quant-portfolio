@@ -56,8 +56,10 @@ def _tail(pnl: np.ndarray, alpha: float, weights: np.ndarray | None):
     pnl = np.asarray(pnl, dtype=float).ravel()
     if pnl.size == 0:
         raise ValueError("pnl sample is empty")
-    if np.isnan(pnl).any():
-        raise ValueError("pnl sample contains NaNs (NaN policy: refuse)")
+    if not np.isfinite(pnl).all():
+        raise ValueError(
+            "pnl sample contains NaN or infinite values (NaN policy: refuse)"
+        )
     losses = -pnl
     if weights is None:
         w = np.full(losses.size, 1.0 / losses.size)

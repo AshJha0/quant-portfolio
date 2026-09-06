@@ -55,8 +55,10 @@ all passing under `-Wall -Wextra -Werror`**.
 ## 3. Cross-language golden constants (Python `fx_var`)
 
 Three fully deterministic cases were run in the Python reference package
-and their outputs embedded as constants in `tests/test_golden_python.cpp`
-(provenance header in the file; repr() 17-digit precision; 2026-08-18):
+and their outputs committed as constants in the GENERATED
+`tests/golden_vectors.hpp` that `tests/test_golden_python.cpp` asserts
+against (provenance header in both files; repr() shortest-round-trip
+precision):
 
 - **Case A — book + historical VaR.** 3-position book (10m EURUSD spot,
   5m USDJPY ATM CIP forward, −3m EURJPY cross) on a 300-day sinusoidal
@@ -73,9 +75,20 @@ and their outputs embedded as constants in `tests/test_golden_python.cpp`
   Basel cumulative binomial probabilities at x = 4, 5, 10 — 1e-10 to
   1e-12.
 
-Regeneration: run the snippet below from
-`python/fx/03-var-es-engine` with `PYTHONPATH=src`; it is the exact
-generator used (also documented in the test header):
+Regeneration is the committed pipeline (the snippet that follows is the
+same computation inlined, kept for readers who want to see the fixture):
+
+```bash
+cd python/fx/03-var-es-engine
+PYTHONPATH=src python3 tests/golden/generate_golden.py   # -> tests/golden/golden_vectors.json
+cd ../../../cpp/fx-var-engine
+python3 tools/gen_golden_header.py --check                # committed constants match the JSON?
+python3 tools/gen_golden_header.py                        # rewrite tests/golden_vectors.hpp after a deliberate change
+```
+
+The JSON is locked from the Python side by
+`python/fx/03-var-es-engine/tests/test_golden_vectors.py`, and the constants
+this suite asserts live in the GENERATED `tests/golden_vectors.hpp`.
 
 ```python
 import numpy as np, pandas as pd

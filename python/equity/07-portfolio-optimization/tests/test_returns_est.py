@@ -190,3 +190,65 @@ def test_bl_validates_inputs(spd_cov):
         black_litterman(pi, spd_cov, tau=0.0)
     with pytest.raises(ValueError, match="mismatch"):
         black_litterman(np.zeros(4), spd_cov)
+
+
+# ------------------------------------------ TEST-9: BL limiting cases, K views
+
+def _three_views(pi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    p = np.zeros((3, 6))
+    p[0, 0], p[0, 1] = 1.0, -1.0          # asset0 beats asset1
+    p[1, 2] = 1.0                          # absolute view on asset2
+    p[2, 3], p[2, 4], p[2, 5] = 0.5, 0.5, -1.0  # basket view
+    q = np.array([0.002, pi[2] + 0.005, -0.001])
+    return p, q
+
+
+def test_bl_perfect_confidence_multiple_views_hold_exactly(spd_cov):
+    pi = implied_equilibrium_returns(spd_cov, np.full(6, 1 / 6))
+    p, q = _three_views(pi)
+    res = black_litterman(pi, spd_cov, p, q, tau=0.05, omega=np.zeros((3, 3)))
+    np.testing.assert_allclose(p @ res.mean, q, atol=1e-12)
+    # With Omega = 0 the posterior has no remaining uncertainty *in the view
+    # directions*: P M P' = 0.
+    np.testing.assert_allclose(p @ res.mean_uncertainty @ p.T, 0.0, atol=1e-12)
+    # ... and both covariances stay symmetric PSD.
+    for c in (res.cov, res.mean_uncertainty):
+        np.testing.assert_allclose(c, c.T, atol=1e-15)
+        assert np.linalg.eigvalsh(c).min() > -1e-12
+    assert np.linalg.eigvalsh(res.cov).min() > 0.0
+
+
+@pytest.mark.parametrize("tau", [1e-2, 1e-4, 1e-6, 1e-8])
+def test_bl_posterior_converges_to_prior_as_tau_to_zero(spd_cov, tau):
+    pi = implied_equilibrium_returns(spd_cov, np.full(6, 1 / 6))
+    p, q = _three_views(pi)
+    # Fixed (tau-independent) view uncertainty: as the prior tightens the
+    # views lose all weight and mu_BL -> pi linearly in tau.
+    omega = np.eye(3) * 1e-4
+    res = black_litterman(pi, spd_cov, p, q, tau=tau, omega=omega)
+    gap = np.linalg.norm(res.mean - pi)
+    # mu_BL - pi = tau Sigma P' (P tau Sigma P' + Omega)^{-1} (Q - P pi) and
+    # (P tau Sigma P' + Omega)^{-1} <= Omega^{-1} in the PSD order, so
+    #   ||mu_BL - pi|| <= tau ||Sigma|| ||P|| ||Q - P pi|| / lambda_min(Omega).
+    bound = (tau * np.linalg.norm(spd_cov, 2) * np.linalg.norm(p, 2)
+             * np.linalg.norm(q - p @ pi) / np.linalg.eigvalsh(omega).min())
+    assert gap <= bound * (1 + 1e-12)
+    # Once the prior term is negligible next to Omega the convergence is
+    # genuinely first order: halving tau halves the gap.
+    prior_term = tau * np.linalg.norm(spd_cov, 2) * np.linalg.norm(p, 2) ** 2
+    if prior_term < 1e-2 * np.linalg.eigvalsh(omega).min():
+        res_half = black_litterman(pi, spd_cov, p, q, tau=tau / 2, omega=omega)
+        ratio = np.linalg.norm(res_half.mean - pi) / gap
+        assert 0.49 < ratio < 0.51
+    np.testing.assert_allclose(res.mean_uncertainty, 0.0, atol=10.0 * tau * np.abs(spd_cov).max())
+    np.testing.assert_allclose(res.cov, spd_cov, atol=10.0 * tau * np.abs(spd_cov).max())
+
+
+def test_bl_default_omega_is_he_litterman_diagonal(spd_cov):
+    pi = implied_equilibrium_returns(spd_cov, np.full(6, 1 / 6))
+    p, q = _three_views(pi)
+    default = black_litterman(pi, spd_cov, p, q, tau=0.05)
+    explicit = black_litterman(pi, spd_cov, p, q, tau=0.05,
+                               omega=np.diag(np.diag(p @ (0.05 * spd_cov) @ p.T)))
+    np.testing.assert_allclose(default.mean, explicit.mean, atol=1e-15)
+    np.testing.assert_allclose(default.cov, explicit.cov, atol=1e-15)

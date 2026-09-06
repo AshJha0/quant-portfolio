@@ -132,3 +132,44 @@ class TestEstimationUncertainty:
         se_deep = es_standard_error_bootstrap(pnl, 0.01, n_boot=300, seed=5)
         se_shallow = es_standard_error_bootstrap(pnl, 0.10, n_boot=300, seed=5)
         assert se_deep > se_shallow
+
+
+class TestEsDominatesVarAtBoundary:
+    """TEST-4: ES >= VaR for every alpha, including the Acerbi-Tasche boundary.
+
+    ``expected_shortfall`` puts a fractional weight ``alpha*n - floor(alpha*n)``
+    on the boundary order statistic while ``historical_var`` uses the type-7
+    linear quantile at position ``(n-1)*alpha``.  The three regimes where
+    they could disagree are ``alpha*n`` exactly integer, just below, and just
+    above an integer; in all of them the coherent ES must dominate VaR.
+    """
+
+    @pytest.mark.parametrize("n", [50, 100, 250, 1000])
+    @pytest.mark.parametrize("k", [1, 2, 5, 10])
+    @pytest.mark.parametrize("offset", [0.0, -1e-9, +1e-9, -0.3, +0.3])
+    def test_es_ge_var(self, n, k, offset):
+        if k >= n * 0.5:
+            pytest.skip("alpha must stay in (0, 0.5)")
+        alpha = (k + offset) / n
+        if not 0.0 < alpha < 0.5:
+            pytest.skip("alpha out of range")
+        rng = np.random.default_rng(1000 * n + k)
+        pnl = rng.standard_t(4, size=n)  # fat tails, no ties
+        es = expected_shortfall(pnl, alpha)
+        var = historical_var(pnl, alpha)
+        assert es >= var - 1e-12 * max(1.0, abs(var)), (n, k, offset, es, var)
+
+    def test_es_integer_boundary_is_exact_tail_mean(self):
+        # alpha*n integer: ES is exactly the mean of the k worst outcomes.
+        rng = np.random.default_rng(3)
+        pnl = rng.normal(size=200)
+        es = expected_shortfall(pnl, 0.05)  # k = 10 exactly
+        assert es == pytest.approx(-np.sort(pnl)[:10].mean(), rel=1e-14)
+
+    def test_es_fractional_weight_interpolates_between_integer_neighbours(self):
+        rng = np.random.default_rng(4)
+        pnl = rng.normal(size=200)
+        es_lo = expected_shortfall(pnl, 10 / 200)   # k = 10, frac = 0
+        es_hi = expected_shortfall(pnl, 11 / 200)   # k = 11, frac = 0
+        es_mid = expected_shortfall(pnl, 10.5 / 200)  # k = 10, frac = 0.5
+        assert es_hi <= es_mid <= es_lo

@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -119,4 +120,27 @@ TEST(EmpiricalVar, SingleAndTwoElementSamples) {
   // ... and the standard-error machinery refuses samples this small.
   EXPECT_THROW(var_standard_error(one, 0.99), std::invalid_argument);
   EXPECT_THROW(var_standard_error(two, 0.99), std::invalid_argument);
+}
+
+// TEST-4: ES >= VaR for every confidence level, including the
+// Acerbi-Tasche boundary where (1-alpha)*n is exactly an integer, just
+// below one and just above one (fractional share of the VaR atom).
+TEST(EmpiricalEs, DominatesVarAtIntegerBoundaries) {
+  for (int n : {50, 100, 250, 1000}) {
+    std::vector<double> pnl(n);
+    for (int t = 0; t < n; ++t) {
+      const double td = static_cast<double>(t);
+      const double s = std::sin(1.7 * td + 0.3) + 0.5 * std::cos(0.11 * td * td);
+      pnl[t] = 100.0 * s * s * s + 7.0 * std::sin(0.9 * td);
+    }
+    for (int k : {1, 2, 5, 10}) {
+      for (double off : {0.0, -1e-9, 1e-9, -0.3, 0.3}) {
+        const double tail = (k + off) / n;
+        if (!(tail > 0.0 && tail < 0.5)) continue;
+        const auto [v, e] = empirical_var_es(pnl, 1.0 - tail);
+        EXPECT_GE(e, v - 1e-12 * std::max(1.0, std::abs(v)))
+            << "n=" << n << " k=" << k << " off=" << off;
+      }
+    }
+  }
 }

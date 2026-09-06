@@ -102,3 +102,34 @@ fn es_validation() {
     assert!(normal_es(-1.0, 0.01, 0.0).is_err());
     assert!(student_t_es(1.0, 0.01, 2.0, 0.0).is_err());
 }
+
+/// TEST-4: ES >= VaR for every alpha, including the Acerbi-Tasche boundary
+/// where `alpha*n` is exactly an integer, just below one and just above one
+/// (the fractional weight on the boundary order statistic vs the type-7
+/// interpolated VaR).  Fat-tailed deterministic sample, no ties.
+#[test]
+fn empirical_es_dominates_var_at_integer_boundaries() {
+    for n in [50usize, 100, 250, 1000] {
+        let pnl: Vec<f64> = (0..n)
+            .map(|t| {
+                let td = t as f64;
+                let s = (1.7 * td + 0.3).sin() + 0.5 * (0.11 * td * td).cos();
+                100.0 * s * s * s + 7.0 * (0.9 * td).sin()
+            })
+            .collect();
+        for k in [1.0, 2.0, 5.0, 10.0] {
+            for off in [0.0, -1e-9, 1e-9, -0.3, 0.3] {
+                let alpha = (k + off) / n as f64;
+                if !(alpha > 0.0 && alpha < 0.5) {
+                    continue;
+                }
+                let es = expected_shortfall(&pnl, alpha).unwrap();
+                let var = historical_var(&pnl, alpha).unwrap();
+                assert!(
+                    es >= var - 1e-12 * var.abs().max(1.0),
+                    "n={n} k={k} off={off}: es={es} var={var}"
+                );
+            }
+        }
+    }
+}

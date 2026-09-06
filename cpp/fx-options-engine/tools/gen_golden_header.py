@@ -76,10 +76,28 @@ def fmt(x: float) -> str:
     return repr(float(x))
 
 
+
+def _emit(path, text: str, check: bool) -> None:
+    """Write ``text`` to ``path``, or with ``--check`` verify it is already there.
+
+    ``--check`` (used by CI) exits 1 if the committed file is missing or
+    differs from what the JSON would generate, proving provenance without
+    touching the tree.
+    """
+    if check:
+        if not path.exists():
+            raise SystemExit(f"MISSING: {path}")
+        if path.read_text() != text:
+            raise SystemExit(f"STALE: {path} differs from the golden JSON; rerun without --check")
+        print(f"OK: {path} matches the golden JSON")
+        return
+    path.write_text(text)
+
 def main() -> None:
-    json_path = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
-    header_path = (pathlib.Path(sys.argv[2]) if len(sys.argv) > 2
-                   else DEFAULT_HEADER)
+    check = "--check" in sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != "--check"]
+    json_path = pathlib.Path(args[0]) if len(args) > 0 else DEFAULT_JSON
+    header_path = pathlib.Path(args[1]) if len(args) > 1 else DEFAULT_HEADER
     data = json.loads(json_path.read_text())
     cases = data["cases"]
     assert len(cases) == data["n_cases"], "case count mismatch in JSON"
@@ -101,12 +119,13 @@ def main() -> None:
                 vega=fmt(o["vega"]), theta=fmt(o["theta"]),
                 rho_d=fmt(o["rho_d"]), rho_f=fmt(o["rho_f"])))
 
-    header_path.write_text(HEADER_TEMPLATE.format(
+    _emit(header_path, HEADER_TEMPLATE.format(
         description=data.get("description", ""),
         tolerance=data.get("tolerance", ""),
         n_cases=len(cases),
-        rows="\n".join(rows)))
-    print(f"Wrote {header_path} ({len(cases)} cases)")
+        rows="\n".join(rows)), check)
+    if not check:
+        print(f"Wrote {header_path} ({len(cases)} cases)")
 
 
 if __name__ == "__main__":

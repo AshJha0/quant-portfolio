@@ -2,19 +2,23 @@
 //!
 //! # Provenance
 //!
-//! Every constant below was produced by the Python reference package
-//! `python/fx/03-var-es-engine` (`fx_var`), running:
+//! Every constant comes from `golden/mod.rs`, a GENERATED module emitted by
+//! `tools/gen_golden_rs.py` from the JSON written by the Python reference
+//! package `python/fx/03-var-es-engine` (`fx_var`):
 //!
 //! ```text
-//! cd /home/claude/quant-portfolio/python/fx/03-var-es-engine
-//! PYTHONPATH=src python3 <golden generator, see docs/VALIDATION.md>
+//! cd python/fx/03-var-es-engine
+//! PYTHONPATH=src python3 tests/golden/generate_golden.py   # -> golden_vectors.json
+//! cd ../../../rust/fx-var-engine
+//! python3 tools/gen_golden_rs.py                           # -> tests/golden/mod.rs
+//! python3 tools/gen_golden_rs.py --check                   # provenance check
 //! ```
 //!
-//! on 2026-08-18 with numpy/scipy doubles, printed via `repr()` (17
-//! significant digits). The same script and fixture were used to generate
-//! the C++ engine's `tests/test_golden_python.cpp` (independently
-//! re-confirmed against a live Python run for this crate). The three cases
-//! are fully deterministic (no RNG):
+//! The JSON is itself locked by `python/fx/03-var-es-engine/tests/
+//! test_golden_vectors.py`, and the same JSON feeds
+//! `cpp/fx-var-engine/tests/golden_vectors.hpp`, so all three engines
+//! assert literally the same numbers. The three cases are fully
+//! deterministic (no RNG):
 //!
 //! * **CASE A** — book revaluation + plain/BRW historical VaR/ES on a
 //!   sinusoidal synthetic history reproduced bit-for-bit here;
@@ -23,11 +27,14 @@
 //! * **CASE C** — Kupiec / Christoffersen / Basel statistics
 //!   (`fx_var.backtesting`).
 //!
-//! Tolerances: the only cross-language differences are libm sin/cos/exp
-//! rounding (~1 ulp per call) and the special-function implementations
-//! (SciPy Cephes vs this crate's), so P&L-scale figures agree to ~1e-6
-//! absolute / ~1e-8 relative and probability-scale figures to ~1e-9
-//! absolute — matching the C++ engine's documented tolerances.
+//! Tolerances (declared in the JSON, re-exported as `golden::TOL_*`): the
+//! only cross-language differences are libm sin/cos/exp rounding (~1 ulp
+//! per call) and the special-function implementations (SciPy Cephes vs
+//! this crate's), so P&L-scale figures agree to ~1e-6 absolute / ~1e-8
+//! relative and probability-scale figures to ~1e-9 absolute — matching the
+//! C++ engine's documented tolerances.
+
+mod golden;
 
 use fx_var_engine::prelude::*;
 
@@ -73,7 +80,7 @@ fn case_a_book_pnl_single_scenario() {
     let cb = CompiledBook::new(&golden_book(), &m).unwrap();
     let rets = golden_returns();
     let got = cb.pnl(rets.data.row(17)).unwrap();
-    assert!((got - 58177.37489810074_f64).abs() < 1e-6, "got {got}");
+    assert!((got - golden::A_BOOK_PNL_SCENARIO_17).abs() < golden::TOL_CASE_A_ABS, "got {got}");
 }
 
 #[test]
@@ -85,12 +92,12 @@ fn case_a_plain_historical_var_es() {
     let rets = golden_returns();
     let o99 = HistoricalOptions { alpha: 0.99, ..Default::default() };
     let r99 = historical_var(&golden_book(), &m, &rets, &o99).unwrap();
-    assert!((r99.var - 61919.80890587624_f64).abs() < 1e-6);
-    assert!((r99.es - 62006.12006224847_f64).abs() < 1e-6);
+    assert!((r99.var - golden::A_PLAIN_VAR_99).abs() < golden::TOL_CASE_A_ABS);
+    assert!((r99.es - golden::A_PLAIN_ES_99).abs() < golden::TOL_CASE_A_ABS);
     let o975 = HistoricalOptions { alpha: 0.975, ..Default::default() };
     let r975 = historical_var(&golden_book(), &m, &rets, &o975).unwrap();
-    assert!((r975.var - 61237.42600889597_f64).abs() < 1e-6);
-    assert!((r975.es - 61777.93608271857_f64).abs() < 1e-6);
+    assert!((r975.var - golden::A_PLAIN_VAR_975).abs() < golden::TOL_CASE_A_ABS);
+    assert!((r975.es - golden::A_PLAIN_ES_975).abs() < golden::TOL_CASE_A_ABS);
 }
 
 #[test]
@@ -100,8 +107,8 @@ fn case_a_age_weighted_historical_var_es() {
     let m = golden_market();
     let o = HistoricalOptions { alpha: 0.99, method: HsMethod::Age, decay: 0.995, ..Default::default() };
     let r = historical_var(&golden_book(), &m, &golden_returns(), &o).unwrap();
-    assert!((r.var - 61874.26268531149_f64).abs() < 1e-6);
-    assert!((r.es - 61977.52496594109_f64).abs() < 1e-6);
+    assert!((r.var - golden::A_AGE_VAR_99_DECAY_0995).abs() < golden::TOL_CASE_A_ABS);
+    assert!((r.es - golden::A_AGE_ES_99_DECAY_0995).abs() < golden::TOL_CASE_A_ABS);
 }
 
 #[test]
@@ -122,14 +129,14 @@ fn case_b_parametric_closed_form() {
     ])
     .unwrap();
     let n1 = var_covar(&w, &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
-    assert!((n1.var - 153339.50441962917_f64).abs() < 1e-8 * n1.var);
-    assert!((n1.es - 175675.6297200285_f64).abs() < 1e-8 * n1.es);
+    assert!((n1.var - golden::B_NORMAL_VAR_99_1D).abs() < golden::TOL_CASE_B_REL * n1.var);
+    assert!((n1.es - golden::B_NORMAL_ES_99_1D).abs() < golden::TOL_CASE_B_REL * n1.es);
     let t5 = var_covar(&w, &cov, 0.99, 1.0, TailDist::StudentT, 5.0, 0.0).unwrap();
-    assert!((t5.var - 171803.12389091405_f64).abs() < 1e-8 * t5.var);
-    assert!((t5.es - 227327.5314974144_f64).abs() < 1e-8 * t5.es);
+    assert!((t5.var - golden::B_T5_VAR_99_1D).abs() < golden::TOL_CASE_B_REL * t5.var);
+    assert!((t5.es - golden::B_T5_ES_99_1D).abs() < golden::TOL_CASE_B_REL * t5.es);
     let n10 = var_covar(&w, &cov, 0.99, 10.0, TailDist::Normal, 6.0, 0.0).unwrap();
-    assert!((n10.var - 484902.0892474838_f64).abs() < 1e-8 * n10.var);
-    assert!((n10.es - 555535.1192996583_f64).abs() < 1e-8 * n10.es);
+    assert!((n10.var - golden::B_NORMAL_VAR_99_10D).abs() < golden::TOL_CASE_B_REL * n10.var);
+    assert!((n10.es - golden::B_NORMAL_ES_99_10D).abs() < golden::TOL_CASE_B_REL * n10.es);
 }
 
 #[test]
@@ -144,8 +151,8 @@ fn case_c_backtest_statistics() {
     //                   P(X<=4)  = 0.8921876269036249  (green,  3.00)
     //                   P(X<=10) = 0.999946101370953   (red,    4.00)
     let k = kupiec_pof(8, 250, 0.99).unwrap();
-    assert!((k.lr - 7.7335507244945205_f64).abs() < 1e-10);
-    assert!((k.p - 0.0054204051941277994_f64).abs() < 1e-11);
+    assert!((k.lr - golden::C_KUPIEC_LR_8_250).abs() < golden::TOL_KUPIEC_LR_ABS);
+    assert!((k.p - golden::C_KUPIEC_P_8_250).abs() < golden::TOL_KUPIEC_P_ABS);
 
     let mut e = vec![0_i32; 250];
     for (t, v) in e.iter_mut().enumerate() {
@@ -158,18 +165,19 @@ fn case_c_backtest_statistics() {
     let count: i32 = e.iter().sum();
     assert_eq!(count, 9); // matches the Python generator's pattern count
     let c = christoffersen_independence(&e).unwrap();
-    assert!((c.lr - 1.0063610339314124_f64).abs() < 1e-10);
-    assert!((c.p - 0.3157762037622499_f64).abs() < 1e-10);
+    assert!((c.lr - golden::C_CHRISTOFFERSEN_IND_LR).abs() < golden::TOL_CHRISTOFFERSEN_ABS);
+    assert!((c.p - golden::C_CHRISTOFFERSEN_IND_P).abs() < golden::TOL_CHRISTOFFERSEN_ABS);
 
     let t5 = basel_traffic_light(5, 250, 0.99).unwrap();
-    assert!((t5.cumulative_prob - 0.9588168159301514_f64).abs() < 1e-12);
+    assert!((t5.cumulative_prob - golden::C_BASEL_CUM_PROB_5).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t5.zone, Zone::Yellow);
-    assert!((t5.multiplier - 3.40_f64).abs() < 1e-12);
+    assert!((t5.multiplier - golden::C_BASEL_MULTIPLIER_5).abs() < 1e-12);
     let t4 = basel_traffic_light(4, 250, 0.99).unwrap();
-    assert!((t4.cumulative_prob - 0.8921876269036249_f64).abs() < 1e-12);
+    assert!((t4.cumulative_prob - golden::C_BASEL_CUM_PROB_4).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t4.zone, Zone::Green);
+    assert!((t4.multiplier - golden::C_BASEL_MULTIPLIER_4).abs() < 1e-12);
     let t10 = basel_traffic_light(10, 250, 0.99).unwrap();
-    assert!((t10.cumulative_prob - 0.999946101370953_f64).abs() < 1e-12);
+    assert!((t10.cumulative_prob - golden::C_BASEL_CUM_PROB_10).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t10.zone, Zone::Red);
-    assert!((t10.multiplier - 4.0_f64).abs() < 1e-12);
+    assert!((t10.multiplier - golden::C_BASEL_MULTIPLIER_10).abs() < 1e-12);
 }

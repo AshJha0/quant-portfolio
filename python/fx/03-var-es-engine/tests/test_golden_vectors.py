@@ -175,3 +175,56 @@ class TestCaseCBacktestStatistics:
         assert tl.cumulative_prob == pytest.approx(cum_prob, abs=1e-12)
         assert tl.zone == zone
         assert tl.multiplier == pytest.approx(mult)
+
+
+# ---------------------------------------------------------------------------
+# The committed ``tests/golden/golden_vectors.json`` (consumed by
+# cpp/fx-var-engine/tools/gen_golden_header.py and
+# rust/fx-var-engine/tools/gen_golden_rs.py) must be exactly what the
+# generator produces from the live package.
+# ---------------------------------------------------------------------------
+import importlib.util
+import json
+from pathlib import Path
+
+_GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
+
+
+def _load_generator():
+    spec = importlib.util.spec_from_file_location(
+        "fx_var_generate_golden", _GOLDEN_DIR / "generate_golden.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestCommittedJsonIsReproducible:
+    @pytest.fixture(scope="class")
+    def committed(self) -> dict:
+        return json.loads((_GOLDEN_DIR / "golden_vectors.json").read_text())
+
+    @pytest.fixture(scope="class")
+    def regenerated(self) -> dict:
+        return _load_generator().build()
+
+    def test_same_keys(self, committed, regenerated):
+        assert list(committed["values"]) == list(regenerated["values"])
+
+    def test_every_value_bit_identical(self, committed, regenerated):
+        for k, v in regenerated["values"].items():
+            assert committed["values"][k] == v, f"{k}: {committed['values'][k]!r} != {v!r}"
+
+    def test_json_matches_the_constants_pinned_above(self, committed):
+        v = committed["values"]
+        assert v["a_book_pnl_scenario_17"] == 58177.37489810074
+        assert v["a_plain_var_99"] == 61919.80890587624
+        assert v["a_age_es_99_decay_0995"] == 61977.52496594109
+        assert v["b_t5_es_99_1d"] == 227327.5314974144
+        assert v["b_normal_var_99_10d"] == 484902.0892474838
+        assert v["c_kupiec_lr_8_250"] == 7.7335507244945205
+        assert v["c_christoffersen_ind_p"] == 0.3157762037622499
+        assert v["c_basel_cum_prob_10"] == 0.999946101370953
+        assert (v["c_basel_zone_4"], v["c_basel_zone_5"], v["c_basel_zone_10"]) == (
+            "green", "yellow", "red")

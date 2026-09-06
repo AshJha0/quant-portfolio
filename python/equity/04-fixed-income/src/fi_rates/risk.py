@@ -31,6 +31,7 @@ import pandas as pd
 from .bond import (
     FixedRateBond,
     _period_exponents,
+    _require_finite,
     accrued_interest,
     dirty_price_from_curve,
     price_from_ytm,
@@ -67,7 +68,10 @@ class ZeroNetValueWarning(UserWarning):
 # ------------------------------------------------------------- YTM analytics
 def macaulay_duration(bond: FixedRateBond, settlement: dt.date, ytm: float) -> float:
     """Macaulay duration in years (weighted average cashflow time)."""
+    _require_finite("ytm", ytm)
     m = bond.frequency
+    if 1.0 + ytm / m <= 0.0:
+        raise ValueError(f"require 1 + ytm/frequency > 0, got ytm={ytm}, m={m}")
     exps, cf = _period_exponents(bond, settlement)
     disc = (1.0 + ytm / m) ** (-exps)
     pv = cf * disc
@@ -82,7 +86,10 @@ def modified_duration(bond: FixedRateBond, settlement: dt.date, ytm: float) -> f
 
 def convexity(bond: FixedRateBond, settlement: dt.date, ytm: float) -> float:
     """Analytic convexity ``(1/P) d2P/dy2`` in 1/yield^2 units."""
+    _require_finite("ytm", ytm)
     m = bond.frequency
+    if 1.0 + ytm / m <= 0.0:
+        raise ValueError(f"require 1 + ytm/frequency > 0, got ytm={ytm}, m={m}")
     exps, cf = _period_exponents(bond, settlement)
     disc = (1.0 + ytm / m) ** (-exps - 2.0)
     price = float(np.sum(cf * (1.0 + ytm / m) ** (-exps)))

@@ -119,7 +119,7 @@ accident (assumption A7).
 
 ## 5. Optimal execution: piecewise Almgren–Chriss
 
-Classic Almgren–Chriss (2000) assumes constant temporary impact `η` and vol
+Classic Almgren–Chriss (2001, *Journal of Risk* 3(2)) assumes constant temporary impact `η` and vol
 `σ`. Over a 24h FX day both vary ~10× across sessions, so we solve the
 discrete mean–variance problem with bucket-specific coefficients:
 

@@ -59,10 +59,9 @@ that legitimately need more than the default argument-count lint allows).
 ## 3. Cross-language golden constants (Python `fx_var`)
 
 Three fully deterministic cases were run in the Python reference package
-and their outputs embedded as constants in `tests/test_golden_python.rs`
-(provenance header in the file; `repr()` 17-digit precision; generated and
-independently re-confirmed against a live `python3` interpreter on
-2026-08-18):
+and their outputs committed as constants in the GENERATED
+`tests/golden/mod.rs` that `tests/test_golden_python.rs` asserts against
+(provenance header in both files; `repr()` shortest-round-trip precision):
 
 - **Case A — book + historical VaR.** 3-position book (10m EURUSD spot,
   5m USDJPY ATM CIP forward, -3m EURJPY cross) on a 300-day sinusoidal
@@ -83,9 +82,20 @@ These are the same three cases committed in the C++ engine's
 `tests/test_golden_python.cpp` (same fixture, same Python generator), so
 all three stacks (Python, C++, Rust) are pinned to one source of truth.
 
-Regeneration: run the snippet below from
-`python/fx/03-var-es-engine` with `PYTHONPATH=src`; it is the exact
-generator used to independently re-confirm the constants in this crate:
+Regeneration is the committed pipeline (the snippet that follows is the
+same computation inlined, kept for readers who want to see the fixture):
+
+```bash
+cd python/fx/03-var-es-engine
+PYTHONPATH=src python3 tests/golden/generate_golden.py   # -> tests/golden/golden_vectors.json
+cd ../../../rust/fx-var-engine
+python3 tools/gen_golden_rs.py --check                              # committed constants match the JSON?
+python3 tools/gen_golden_rs.py                                      # rewrite tests/golden/mod.rs after a deliberate change
+```
+
+The JSON is locked from the Python side by
+`python/fx/03-var-es-engine/tests/test_golden_vectors.py`, and the constants
+this suite asserts live in the GENERATED `tests/golden/mod.rs`.
 
 ```python
 import numpy as np, pandas as pd

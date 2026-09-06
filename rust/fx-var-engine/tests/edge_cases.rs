@@ -692,3 +692,29 @@ fn jitter_repairs_pegged_blocks_but_refuses_indefinite_covariances() {
     assert!(portfolio_sigma(&[1e6, -1e6], &indefinite).is_err());
     assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4);
 }
+
+/// TEST-4: ES >= VaR for every confidence level, including the
+/// Acerbi-Tasche boundary where `(1-alpha)*n` is exactly an integer, just
+/// below one and just above one (fractional share of the VaR atom).
+#[test]
+fn empirical_es_dominates_var_at_integer_boundaries() {
+    for n in [50usize, 100, 250, 1000] {
+        let pnl: Vec<f64> = (0..n)
+            .map(|t| {
+                let td = t as f64;
+                let s = (1.7 * td + 0.3).sin() + 0.5 * (0.11 * td * td).cos();
+                100.0 * s * s * s + 7.0 * (0.9 * td).sin()
+            })
+            .collect();
+        for k in [1.0, 2.0, 5.0, 10.0] {
+            for off in [0.0, -1e-9, 1e-9, -0.3, 0.3] {
+                let tail = (k + off) / n as f64;
+                if !(tail > 0.0 && tail < 0.5) {
+                    continue;
+                }
+                let (v, e) = empirical_var_es(&pnl, 1.0 - tail, None).unwrap();
+                assert!(e >= v - 1e-12 * v.abs().max(1.0), "n={n} k={k} off={off}: es={e} var={v}");
+            }
+        }
+    }
+}
