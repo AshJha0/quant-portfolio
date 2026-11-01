@@ -153,22 +153,26 @@ Regenerate after the golden JSON changes:
    documented in METHODOLOGY.md, validation here is *internal*
    consistency plus cross-implementation agreement, not market fit.
 
-## 5. Benchmarks
+## 5. Latency and allocation
 
-`cargo run --release --bin bench`, WSL2 on an Intel Core 5 120U, Rust
-1.99.1, single run:
+`cargo run --release --bin bench` on an Intel Core 5 120U under WSL2,
+Rust 1.99.1. Numbers from this machine; the full table, method and
+caveats are in the README "Latency" section and in
+`bench/results.json`. Selected p50 / p99 / p99.9 per call (after):
 
-| Kernel | Work | Time | Throughput |
+| Kernel | p50 | p99 | p99.9 |
 |---|---|---|---|
-| Black-Scholes analytic | 1M prices | 57.7 ms | 17.3M prices/sec |
-| Full analytic Greek set | 100k evals | 4.7 ms | 21.3M evals/sec |
-| CRR n=1000 European | 100 trees | 0.09 ms/tree | 10,700 trees/sec |
-| CRR n=1000 American | 100 trees | 0.20 ms/tree | 5,050 trees/sec |
-| MC 1M paths (antithetic + CV) | 1 price + CI | 24.4 ms | 40.9M paths/sec |
-| Implied vol (8 quotes) | 100k solves | 51.3 ms | 513 ns/solve |
+| `bs_price` (16-call average) | 44 ns | 116 ns | 576 ns |
+| `bs_greeks` (16-call average) | 46 ns | 71 ns | 193 ns |
+| `bs_price_batch` per row | 38 ns | 54 ns | 100 ns |
+| `implied_vol` | 507 ns | 1.21 us | 1.75 us |
+| `crr_price` n=1000 American | 396 us | 777 us | 1.42 ms |
+| `mc_price` 1M paths, anti + CV, 1 thread | 16.2 ms | 24.8 ms | 24.8 ms |
+| `try_mc_price` 1M paths, 8 threads | 11.2 ms | 14.9 ms | 14.9 ms |
 
-Before this round's changes the same machine gave 3.66 ms per American
-tree (node spots recomputed with `exp` at every node) and 5,769 ns per
-implied-vol solve (Newton from sigma=5 plus a bisection to 1e-15 width).
-Single runs on a laptop vary by a factor of about 2. No C++ numbers are
-quoted here; see the C++ README for its own table.
+Tests added with the low-latency API:
+
+| Test | What it checks |
+|---|---|
+| `tests/zero_alloc.rs` | Counting global allocator, one test in its own binary. Every fast kernel, the batch pricers, the tree with a sized workspace and single-thread Monte Carlo after warm-up make zero heap allocations. The classic `crr_price` is asserted to allocate, so the counter is live. |
+| `tests/fast_equivalence.rs` | `try_*`, batch and workspace pricers equal the classic API by `to_bits` on 20,000 varied rows including edge and invalid inputs; Monte Carlo gives the same bits across runs and for 1 to 12 threads. |
