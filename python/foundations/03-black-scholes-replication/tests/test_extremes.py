@@ -323,7 +323,7 @@ def test_mc_input_validation_mirrors_the_closed_form(kwargs):
         call_price(**args)
 
 
-def test_mc_antithetic_standard_error_is_honest_about_its_own_accuracy():
+def test_mc_antithetic_standard_error_matches_empirical_dispersion():
     """The reported standard error must match the estimator's ACTUAL
     sampling dispersion. Treating the 2m mirrored payoffs as 2m
     independent observations (the old formula) overstated it by ~33% on

@@ -104,17 +104,13 @@ def test_deep_otm_put_has_delta_near_zero():
     assert g.delta > -1e-6
 
 
-def test_deep_itm_low_vol_round_trip_is_imprecise():
-    # Known, documented limitation (docs/VALIDATION.md numerical-limits
-    # section): deep ITM combined with low vol makes vega tiny, so the
-    # Newton step (diff / vega) is ill-conditioned and the round trip
-    # loses precision -- here to ~1e-2 rather than the ~1e-8 typical
-    # elsewhere. This is expected numerical behaviour, not a bug: the
-    # price in this corner is close to intrinsic value and simply does
-    # not carry much information about sigma.
+def test_deep_itm_low_vol_round_trip_uses_the_otm_side():
+    # Deep ITM at low vol: the call price is almost all intrinsic value.
+    # The solver inverts the parity-equivalent OTM put instead, whose
+    # price is the time value alone, so the round trip is tight.
     price = call_price(100.0, 60.0, r, 0.1, T)
     iv = implied_volatility(price, 100.0, 60.0, r, T)
-    assert abs(iv - 0.1) < 2e-2
+    assert abs(iv - 0.1) < 1e-6
 
 
 def test_implied_vol_refuses_deep_itm_information_free_quote():
