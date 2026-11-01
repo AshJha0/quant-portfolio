@@ -83,6 +83,8 @@ pub enum ErrorCode {
     NonFiniteResult,
     /// Batch input and output slices have different lengths.
     LengthMismatch,
+    /// Monte Carlo: `threads == 0` (the C++ engine's `Errc::BadThreads`).
+    BadThreads,
 }
 
 impl ErrorCode {
@@ -103,6 +105,7 @@ impl ErrorCode {
             ErrorCode::PathOverflow => "a simulated terminal price overflows a double",
             ErrorCode::NonFiniteResult => "the result is not a finite double",
             ErrorCode::LengthMismatch => "batch slices have different lengths",
+            ErrorCode::BadThreads => "threads must be at least 1",
         }
     }
 }
@@ -338,15 +341,16 @@ pub fn try_crr_price(
 /// Monte Carlo price using a caller-owned workspace. Same value as
 /// [`crate::mc_price`] for every `threads`.
 ///
-/// `threads <= 1` runs on the calling thread and does not allocate once
-/// `ws` is sized. `threads > 1` spawns that many scoped threads once for
+/// `threads == 0` is rejected with [`ErrorCode::BadThreads`], as in the
+/// C++ engine. `threads == 1` runs on the calling thread and does not
+/// allocate once `ws` is sized. `threads > 1` spawns that many scoped threads once for
 /// the call (fixed partition, one chunk each); thread start-up allocates,
 /// so use it for large path counts only.
 ///
 /// # Errors
 ///
-/// [`ErrorCode`] for invalid inputs, too few or too many paths, overflow
-/// of a simulated price, or a non-finite estimate.
+/// [`ErrorCode`] for invalid inputs, too few or too many paths,
+/// `threads == 0`, overflow of a simulated price, or a non-finite estimate.
 #[allow(clippy::too_many_arguments)]
 pub fn try_mc_price(
     s: f64,
@@ -373,6 +377,10 @@ pub fn try_mc_price(
     let needed = if control_variate { 3 } else { 2 };
     if units < needed || n_paths > MAX_PATHS {
         return Err(ErrorCode::PathsOutOfRange);
+    }
+    // Checked after the path count, in the C++ engine's order.
+    if threads == 0 {
+        return Err(ErrorCode::BadThreads);
     }
     if t == 0.0 || sigma == 0.0 {
         let exact = finite(bs_price_core(s, k, t, r, sigma, q, option_type))?;
