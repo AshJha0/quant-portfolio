@@ -1,0 +1,26 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.4"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "qp-cpp"
+version = "0.1.0"
+description = "Python bindings (nanobind) for the quant-portfolio C++ option and VaR engines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "hypothesis>=6"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.26"
+cmake.build-type = "Release"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["src/qp_cpp"]
+wheel.py-api = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
