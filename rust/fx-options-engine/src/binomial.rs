@@ -93,14 +93,14 @@ pub fn binomial_price(
         if exercise == Exercise::European {
             return gk_price(s, k, t, r_d, r_f, sigma, option_type);
         }
-        let drift = r_d - r_f;
         let mut best: f64 = 0.0;
         for i in 0..=steps {
             let ti = t * f64::from(i) / f64::from(steps);
-            let value = (-r_d * ti).exp() * (phi * (s * (drift * ti).exp() - k)).max(0.0);
+            // Discounted payoff without forming the forward (overflow-safe).
+            let value = (phi * (s * (-r_f * ti).exp() - k * (-r_d * ti).exp())).max(0.0);
             best = best.max(value);
         }
-        return Ok(best);
+        return crate::finite_result(best, "binomial_price");
     }
 
     let n = steps as usize;
@@ -117,24 +117,20 @@ pub fn binomial_price(
     }
     let disc = (-r_d * dt).exp();
 
-    // Terminal nodes, low -> high: spot_j = S u^{2j - steps}.
-    let mut values: Vec<f64> = (0..=n)
-        .map(|j| {
-            let spot = s * u.powf(2.0 * j as f64 - n as f64);
-            (phi * (spot - k)).max(0.0)
-        })
+    // Node spots S u^m, m = -n..=n, computed once (O(n) powers); step i,
+    // node j sits at m = 2j - i, so backward induction does no powf.
+    let exercise_value: Vec<f64> = (0..=2 * n)
+        .map(|idx| phi * (s * u.powf(idx as f64 - n as f64) - k))
         .collect();
+    let mut values: Vec<f64> = (0..=n).map(|j| exercise_value[2 * j].max(0.0)).collect();
 
+    let american = exercise == Exercise::American;
     for step in (0..n).rev() {
+        let offset = n - step; // index of m = -step
         for j in 0..=step {
-            values[j] = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
-        }
-        if exercise == Exercise::American {
-            for j in 0..=step {
-                let spot = s * u.powf(2.0 * j as f64 - step as f64);
-                values[j] = values[j].max(phi * (spot - k));
-            }
+            let v = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
+            values[j] = if american { v.max(exercise_value[offset + 2 * j]) } else { v };
         }
     }
-    Ok(values[0])
+    crate::finite_result(values[0], "binomial_price")
 }

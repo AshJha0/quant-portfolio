@@ -42,7 +42,7 @@
 
 use crate::garman_kohlhagen::d1 as d1_fn;
 use crate::{
-    brentq, invalid, norm_cdf, norm_pdf, norm_ppf, require_finite, validate_inputs, FxResult,
+    brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs, FxResult,
     OptionType,
 };
 
@@ -229,16 +229,42 @@ pub fn atm_dns_strike(
 /// `K = F exp(-d2 sigma sqrt(T) - sigma^2 T / 2)`.
 fn pa_peak_strike(f: f64, t: f64, sigma: f64) -> FxResult<f64> {
     let v = sigma * t.sqrt();
-    let g = |x: f64| norm_cdf(x) * v - norm_pdf(x);
-    // Bracket: g(x) = n(x) [ (N(x)/n(x)) v - 1 ] and N(x)/n(x) -> 1/|x|
-    // as x -> -inf, so g(x) < 0 once |x| > v. A fixed -20 lower bound
-    // therefore fails to bracket for sigma*sqrt(T) > 20 (a 2000% vol
-    // year, reachable in stress scenarios and in fuzzing). -37 keeps the
-    // sign guaranteed for every v < 37 while staying above the point
-    // where n(x) itself underflows to zero (x ~ -38.5), which would make
-    // g(x) an exact 0 and be mistaken for a root.
-    let root = brentq(g, -37.0, 20.0, 1e-14, 200)?;
-    Ok(f * (-root * v - 0.5 * v * v).exp())
+    let log_v = v.ln();
+    // Solved in log form, ln N(x) + ln v - ln n(x) = 0, so no term
+    // underflows for any v (the direct form needs n(x) > 0, x > -38.5).
+    let h = |x: f64| log_norm_cdf(x) + log_v + 0.5 * x * x + LN_SQRT_2PI;
+    let (x_lo, x_hi) = pa_fold_bracket(v);
+    let root = brentq(h, x_lo, x_hi, 1e-14, 200)?;
+    crate::finite_result(f * (-root * v - 0.5 * v * v).exp(), "PA fold strike")
+}
+
+const LN_SQRT_2PI: f64 = 0.918_938_533_204_672_8;
+
+/// `ln N(x)` without underflow. Direct for `x > -37` (`N(-37)` is still a
+/// normal double); below, the Mills-ratio series
+/// `-x^2/2 - ln(-x) - ln sqrt(2 pi) + ln(1 - 1/x^2 + 3/x^4 - 15/x^6 + 105/x^8)`
+/// has absolute error below `945/x^10 < 2.1e-13`.
+pub(crate) fn log_norm_cdf(x: f64) -> f64 {
+    if x > -37.0 {
+        return norm_cdf(x).ln();
+    }
+    let x2 = 1.0 / (x * x);
+    let series = 1.0 - x2 * (1.0 - x2 * (3.0 - x2 * (15.0 - 105.0 * x2)));
+    -0.5 * x * x - (-x).ln() - LN_SQRT_2PI + series.ln()
+}
+
+/// Bracket for the root of `h(x) = ln N(x) + ln v - ln n(x)`, `v = sigma sqrt(T)`.
+///
+/// `h` is increasing. Lower end: for `x < 0`, `N(x) < n(x)/|x|` (Mills), so
+/// `h(x) < ln(v/|x|) < 0` whenever `|x| > v`; take `x_lo = -(v + 1)`.
+/// Upper end: for `x >= 0`, `N(x) >= 1/2`, so `h(x) > 0` once
+/// `n(x) < v/2`, i.e. `x > sqrt(2 ln(2 / (v sqrt(2 pi))))`; take that
+/// plus 1 (at least 1). Both ends are valid for every `v > 0`.
+pub(crate) fn pa_fold_bracket(v: f64) -> (f64, f64) {
+    let x_lo = -(v + 1.0);
+    let arg = 2.0 / (v * (2.0 * std::f64::consts::PI).sqrt());
+    let x_hi = 1.0 + if arg > 1.0 { (2.0 * arg.ln()).sqrt() } else { 0.0 };
+    (x_lo, x_hi)
 }
 
 /// Invert delta -> strike under any of the four conventions.
@@ -348,7 +374,7 @@ pub fn strike_from_delta(
         }
         let k_max = f * (30.0 * v).exp();
         let mut k_hi = k_peak;
-        while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max {
+        while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && (2.0 * k_hi).is_finite() {
             k_hi *= 2.0;
         }
         return brentq(|k| pa_fwd_delta(k) - fwd_delta, k_peak, k_hi, 1e-14, 200);
@@ -360,10 +386,10 @@ pub fn strike_from_delta(
             "premium-adjusted put forward delta {fwd_delta} outside (-1, 0)"
         ));
     }
-    let k_lo = f * (-30.0 * v).exp();
+    let k_lo = f * (-(30.0 * v).min(700.0)).exp();
     let k_max = f * (30.0 * v).exp();
     let mut k_hi = f;
-    while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max {
+    while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && (2.0 * k_hi).is_finite() {
         k_hi *= 2.0;
     }
     brentq(|k| pa_fwd_delta(k) - fwd_delta, k_lo, k_hi, 1e-14, 200)

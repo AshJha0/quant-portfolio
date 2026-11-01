@@ -275,7 +275,7 @@ fn delta_stays_inside_its_theoretical_bounds_at_extreme_moneyness() {
     let itm = delta(110.0, 1.10, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
     assert_close(itm, df_f, 1e-12, "deep ITM spot delta");
     let otm = delta(1.10, 110.0, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
-    assert!(otm >= 0.0 && otm < 1e-30, "deep OTM spot delta {otm}");
+    assert!((0.0..1e-30).contains(&otm), "deep OTM spot delta {otm}");
 }
 
 #[test]

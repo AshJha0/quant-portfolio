@@ -45,6 +45,10 @@
 //!     .unwrap();
 //! assert!(k25 > 1.10);
 //! ```
+// Pricing signatures take the market inputs positionally, as in the
+// Python reference; `!(x > 0.0)` is used on purpose because it also
+// rejects NaN; rational-approximation coefficients are kept as published.
+#![allow(clippy::too_many_arguments, clippy::neg_cmp_op_on_partial_ord, clippy::excessive_precision)]
 
 #![warn(missing_docs)]
 
@@ -56,6 +60,7 @@ pub mod garman_kohlhagen;
 pub mod golden;
 pub mod greeks;
 pub mod implied_vol;
+pub mod iv_core;
 pub mod monte_carlo;
 pub mod rng;
 
@@ -151,6 +156,18 @@ pub(crate) fn invalid<T>(msg: impl Into<String>) -> FxResult<T> {
     Err(FxError::InvalidInput(msg.into()))
 }
 
+/// Return `value`, or [`FxError::InvalidInput`] when a finite input
+/// produced a non-finite result (a discount factor or forward overflowed).
+pub(crate) fn finite_result(value: f64, what: &str) -> FxResult<f64> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        invalid(format!(
+            "{what}: result is not representable as a finite double              (a discount factor or forward overflows)"
+        ))
+    }
+}
+
 pub(crate) fn require_finite(value: f64, name: &str) -> FxResult<()> {
     if !value.is_finite() {
         return invalid(format!("{name} must be finite, got {value}"));
@@ -222,22 +239,47 @@ pub fn norm_cdf(x: f64) -> f64 {
     0.5 * erfc_cody(-x * std::f64::consts::FRAC_1_SQRT_2)
 }
 
+const CODY_A: [f64; 5] = [
+    3.161_123_743_870_565_6e0,
+    1.138_641_541_510_501_6e2,
+    3.774_852_376_853_020_2e2,
+    3.209_377_589_138_469_5e3,
+    1.857_777_061_846_031_5e-1,
+];
+const CODY_B: [f64; 4] = [
+    2.360_129_095_234_412_1e1,
+    2.440_246_379_344_441_7e2,
+    1.282_616_526_077_372_3e3,
+    2.844_236_833_439_170_6e3,
+];
+
+/// Cody's direct `erf(x) = x P(x^2)/Q(x^2)` for `|x| <= 0.46875`.
+fn erf_small(x: f64) -> f64 {
+    let y = x.abs();
+    let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
+    let mut xnum = CODY_A[4] * ysq;
+    let mut xden = ysq;
+    for i in 0..3 {
+        xnum = (xnum + CODY_A[i]) * ysq;
+        xden = (xden + CODY_B[i]) * ysq;
+    }
+    x * (xnum + CODY_A[3]) / (xden + CODY_B[3])
+}
+
+/// Error function `erf(x)`: Cody's direct rational form for
+/// `|x| <= 0.46875` (full relative precision near zero), `1 - erfc(x)`
+/// beyond, where `erfc(x) <= 0.51` loses nothing.
+pub(crate) fn erf(x: f64) -> f64 {
+    if x.abs() <= 0.46875 {
+        erf_small(x)
+    } else {
+        1.0 - erfc_cody(x)
+    }
+}
+
 /// Complementary error function, W. J. Cody's CALERF rational Chebyshev
 /// approximation (netlib SPECFUN), ~1e-16 relative accuracy.
-fn erfc_cody(x: f64) -> f64 {
-    const A: [f64; 5] = [
-        3.161_123_743_870_565_6e0,
-        1.138_641_541_510_501_6e2,
-        3.774_852_376_853_020_2e2,
-        3.209_377_589_138_469_5e3,
-        1.857_777_061_846_031_5e-1,
-    ];
-    const B: [f64; 4] = [
-        2.360_129_095_234_412_1e1,
-        2.440_246_379_344_441_7e2,
-        1.282_616_526_077_372_3e3,
-        2.844_236_833_439_170_6e3,
-    ];
+pub(crate) fn erfc_cody(x: f64) -> f64 {
     const C: [f64; 9] = [
         5.641_884_969_886_700_9e-1,
         8.883_149_794_388_375_9e0,
@@ -281,14 +323,7 @@ fn erfc_cody(x: f64) -> f64 {
     let y = x.abs();
     if y <= THRESH {
         // erfc(x) = 1 - erf(x) with the erf rational approximation.
-        let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
-        let mut xnum = A[4] * ysq;
-        let mut xden = ysq;
-        for i in 0..3 {
-            xnum = (xnum + A[i]) * ysq;
-            xden = (xden + B[i]) * ysq;
-        }
-        return 1.0 - x * (xnum + A[3]) / (xden + B[3]);
+        return 1.0 - erf_small(x);
     }
     let result = if y <= 4.0 {
         let mut xnum = C[8] * y;

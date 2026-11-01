@@ -82,4 +82,31 @@ fn main() {
             r.method
         );
     }
+    // ---- Implied vol: 8 quotes, 100,000 solves ------------------------------
+    {
+        let cases = [(1.10, 1.10, 1.0, 0.1), (1.10, 1.25, 0.5, 0.12), (1.10, 0.95, 0.25, 0.15), (100.0, 90.0, 0.02, 0.1)];
+        let mut quotes = Vec::new();
+        for &(s0, k, t0, v) in &cases {
+            for ot in [OptionType::Call, OptionType::Put] {
+                quotes.push((gk_price(s0, k, t0, 0.03, 0.01, v, ot).unwrap(), s0, k, t0, ot));
+            }
+        }
+        const N: usize = 100_000;
+        let t0 = Instant::now();
+        let mut acc = 0.0_f64;
+        for i in 0..N {
+            let (p, s0, k, tt, ot) = quotes[i % quotes.len()];
+            acc += fx_options_engine::implied_vol(std::hint::black_box(p), s0, k, tt, 0.03, 0.01, ot).unwrap_or(0.0);
+        }
+        let dt = t0.elapsed().as_secs_f64();
+        println!("Implied vol        : {N} solves in {dt:.3} s -> {:.0} ns/solve (checksum {acc:.6})", dt * 1e9 / N as f64);
+    }
+
+    // ---- CRR American put, 2000 steps ---------------------------------------
+    {
+        let t0 = Instant::now();
+        let p = fx_options_engine::binomial_price(s, 1.12, t, rd, rf, 0.0925, OptionType::Put, 2000, fx_options_engine::Exercise::American).unwrap();
+        let dt = t0.elapsed().as_secs_f64();
+        println!("CRR American 2000  : {:.2} ms (price {p:.10})", dt * 1e3);
+    }
 }
