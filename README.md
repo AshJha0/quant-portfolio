@@ -1,360 +1,183 @@
-# Quant Finance Portfolio
+# quant-portfolio
 
-A flagship, end-to-end quant finance portfolio: **10 dual-asset-class project
-areas**, each built **twice** (equity and FX as fully separate, self-contained
-projects), in **Python** throughout and with **C++ and Rust performance
-twins** for the four highest-value pricing/risk engines — plus **3 standalone
-foundations projects** that build and validate core techniques from scratch,
-single-asset, single-language. 31 sub-projects and **6,446 passing tests** in
-total, every one with its own tests, and documentation answering *why this
-model*, *what assumptions it makes*, *how it was validated*, *where it
-fails*, and *how a real desk would use it*.
+[![ci](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml)
 
-**New here?** [`docs/`](docs/README.md) is the portfolio-wide learning and
-reference layer: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
-[`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) for how everything fits together,
-[`docs/LEARN.md`](docs/LEARN.md) for a structured tour of every topic plus a
-481-question self-test bank, [`docs/COOKBOOK.md`](docs/COOKBOOK.md) for
-verified-runnable "how do I..." recipes, and
-[`docs/MARKET_RISK.md`](docs/MARKET_RISK.md) for the VaR/ES/backtesting
-workflow end to end.
+quant-portfolio is a set of study implementations of standard
+quantitative-finance models: option pricing, volatility forecasting, VaR and
+expected shortfall, fixed income, pairs trading, credit scoring, portfolio
+optimisation, execution scheduling, volatility surfaces and regime detection.
+Each area is written in Python with equity conventions and again with FX
+conventions. The option-pricing and VaR libraries also have C++ and Rust
+ports, tested against the Python code and, for options, against an mpmath
+oracle. All results come from seeded synthetic data unless a page names a
+dataset. The code has not been used on a live book.
+
+The plan has three stages. The repository is at stage one.
+
+| Stage | What it means | Status |
+|---|---|---|
+| 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Planned |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Planned |
+
+**Status.** See the CI badge above. Test counts are not typed into the docs.
+The CI `counts` job writes the executed pass counts to `counts.json` and shows
+them in the run summary.
+
+Further reading in [`docs/`](docs/README.md):
+[ARCHITECTURE](docs/ARCHITECTURE.md) (layout, conventions, test pipeline),
+[DIAGRAMS](docs/DIAGRAMS.md), [LEARN](docs/LEARN.md) (study guide and
+self-test question bank), [COOKBOOK](docs/COOKBOOK.md) (recipes) and
+[MARKET_RISK](docs/MARKET_RISK.md) (the VaR, ES and backtesting workflow).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ```
 quant-portfolio/
-├── CONVENTIONS.md        # The engineering & documentation contract every project follows
-├── README.md              # This file
-├── docs/                  # Portfolio-wide architecture, learning guide, cookbook, market-risk workflow
+├── CONVENTIONS.md     # engineering and documentation rules for every project
+├── CONTRIBUTING.md    # setup, test gate, golden regeneration
+├── CHANGELOG.md
+├── docs/              # architecture, study guide, recipes, market-risk workflow
 ├── python/
 │   ├── equity/01-…10-…    # 10 equity projects
-│   ├── fx/01-…10-…        # 10 FX projects (fully separate from equity)
-│   └── foundations/       # 3 standalone, single-asset foundations projects
-│       ├── 01-risk-metrics/
-│       ├── 02-trading-signal-backtest/
-│       └── 03-black-scholes-replication/
-├── cpp/                   # 4 performance-critical engines, C++20
-│   ├── equity-options-engine/
-│   ├── fx-options-engine/
-│   ├── equity-var-engine/
-│   └── fx-var-engine/
-└── rust/                  # The same 4 engines, Rust 2021, zero dependencies
-    ├── equity-options-engine/
-    ├── fx-options-engine/
-    ├── equity-var-engine/
-    └── fx-var-engine/
+│   ├── fx/01-…10-…        # 10 FX projects (separate code from equity)
+│   └── foundations/       # 3 single-asset projects
+├── cpp/               # 4 engines, C++20, CMake, tests in GoogleTest
+└── rust/              # the same 4 engines, Rust 2021, std only
 ```
 
-## The 10 project areas
+## Areas
+
+31 sub-projects: 23 Python projects, 4 C++ engines and 4 Rust crates.
 
 | # | Area | Equity | FX |
 |---|------|--------|-----|
-| 1 | Options Pricing & Greeks | `python/equity/01-options-pricing` (+ C++/Rust) | `python/fx/01-options-pricing` (+ C++/Rust) |
-| 2 | Volatility Modeling & Forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` |
-| 3 | Market Risk VaR / Expected Shortfall | `python/equity/03-var-es-engine` (+ C++/Rust) | `python/fx/03-var-es-engine` (+ C++/Rust) |
-| 4 | Fixed Income Pricing & Risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` |
-| 5 | Statistical Pairs Trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` |
-| 6 | Credit Risk / PD Modeling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` |
-| 7 | Portfolio Optimization & Risk Allocation | `python/equity/07-portfolio-optimization` | `python/fx/07-portfolio-optimization` |
-| 8 | Algorithmic Trading & Execution | `python/equity/08-algo-execution` | `python/fx/08-algo-execution` |
-| 9 | Volatility Surface & Stochastic Vol | `python/equity/09-vol-surface` | `python/fx/09-vol-surface` |
-| 10 | Regime-Switching Quant Strategy | `python/equity/10-regime-switching` | `python/fx/10-regime-switching` |
+| 1 | Options pricing and Greeks | `python/equity/01-options-pricing` (+ C++/Rust) | `python/fx/01-options-pricing` (+ C++/Rust) |
+| 2 | Volatility modelling and forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` |
+| 3 | Market risk: VaR and expected shortfall | `python/equity/03-var-es-engine` (+ C++/Rust linear-book ports) | `python/fx/03-var-es-engine` (+ C++/Rust linear-book ports) |
+| 4 | Fixed income pricing and risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` |
+| 5 | Statistical pairs trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` |
+| 6 | Credit risk and PD modelling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` |
+| 7 | Portfolio optimisation and risk allocation | `python/equity/07-portfolio-optimization` | `python/fx/07-portfolio-optimization` |
+| 8 | Execution scheduling and TCA | `python/equity/08-algo-execution` | `python/fx/08-algo-execution` |
+| 9 | Volatility surface and stochastic volatility | `python/equity/09-vol-surface` | `python/fx/09-vol-surface` |
+| 10 | Regime switching | `python/equity/10-regime-switching` | `python/fx/10-regime-switching` |
 
-Every project directory follows the same layout (`src/`, `tests/`, `examples/run_pipeline.py`,
-`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`) — see `CONVENTIONS.md` for the
-full contract. Run any project's pipeline end-to-end with:
+Foundations projects are smaller: one asset, Python only, no FX version.
+
+| # | Project | Path | What it is |
+|---|---|---|---|
+| F1 | Risk metrics | `python/foundations/01-risk-metrics` | Single-asset volatility, VaR, ES and Sharpe toolkit on bundled synthetic data. Three VaR methods side by side. No portfolio risk; see `python/equity/03-var-es-engine` for that. |
+| F2 | Trading signal backtest | `python/foundations/02-trading-signal-backtest` | Moving-average crossover with fills modelled at t+1 as p_t + f(p_{t+1} - p_t), f = 0.5, transaction costs, in-sample and out-of-sample splits and walk-forward evaluation. |
+| F3 | Black-Scholes replication | `python/foundations/03-black-scholes-replication` | Black-Scholes-Merton from scratch with `math.erfc` only, N(x) = 0.5 erfc(-x/sqrt 2), checked against a Monte Carlo pricer, analytic identities and finite-difference Greeks. `python/equity/01-options-pricing` is the fuller implementation. |
+
+Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
+`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
+
+## How to run
+
+Use a virtual environment outside the repository, one per project if you want
+to match CI. Full commands for Python, C++ and Rust are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
+python -m venv ~/.venvs/qp && . ~/.venvs/qp/bin/activate
 cd python/equity/01-options-pricing
-pip install -e . && pytest -q && python examples/run_pipeline.py
+python -m pip install -c ../../../requirements/ci-constraints.txt -e ".[dev]"
+python -m pytest -p no:cacheprovider -q
+python examples/run_pipeline.py
 ```
 
-(`pytest -q` also works from any project root *without* the editable
-install — every `pyproject.toml` sets `pythonpath = ["src"]` or ships a root
-`conftest.py` — so the install is only needed for `examples/run_pipeline.py`.)
+A project declares either a `test` or a `dev` extra; install whichever it has.
 
-## Foundations projects
+## How it is tested
 
-Three additional, standalone projects that predate the 10-area buildout above
-and are kept deliberately smaller in scope: single asset (equity), single
-language (Python), no FX twin, no compiled engine. Each still follows the
-full CONVENTIONS.md documentation contract. They exist to demonstrate core
-technique from first principles rather than to duplicate the flagship
-engines above — cross-references to the relevant flagship project are called
-out explicitly in each one's `docs/DESK_GUIDE.md`.
+CI (`.github/workflows/ci.yml`) runs on every push and pull request. The
+single required check is `ci-ok`, which passes only when every job passed.
 
-| # | Project | Path | What it is, and how it differs from the flagship equivalent |
-|---|---|---|---|
-| F1 | Risk Metrics on Real Data | `python/foundations/01-risk-metrics` | Single-asset volatility/VaR/ES/Sharpe toolkit with three VaR methods compared side by side. Single-asset only — no correlation/portfolio risk; see `python/equity/03-var-es-engine` for the multi-asset, backtested extension. |
-| F2 | Trading Signal Backtest | `python/foundations/02-trading-signal-backtest` | A moving-average crossover strategy, backtested with strict no-look-ahead execution, transaction costs, in-sample/out-of-sample and walk-forward evaluation. The point is backtest discipline, not the signal itself. |
-| F3 | Black-Scholes Replication | `python/foundations/03-black-scholes-replication` | A from-scratch, zero-scipy (`math.erf` only) rebuild of Black-Scholes-Merton, validated by an independent Monte Carlo pricer, analytic identities, and Greeks-vs-finite-differences — used as a model-validation reference, not a production pricer. `python/equity/01-options-pricing` (with C++/Rust twins) is the production-grade version. |
+| Job | What it runs |
+|---|---|
+| `python` | pytest for each of the 23 projects, each in its own venv, on Python 3.10 to 3.13 |
+| `goldens --check` | regenerates each C++ golden header and Rust golden module and fails on any difference from the committed JSON |
+| `cpp` | each engine built and tested with GCC and Clang, plus a Clang AddressSanitizer and UBSan build |
+| `rust` | `cargo test --release --locked` with warnings denied |
+| `hygiene` | banned-word check and a voice report |
+| `counts` | sums executed pass counts into `counts.json` and runs `tests/test_docs_counts.py` |
 
-```bash
-cd python/foundations/01-risk-metrics
-pip install -e . && pytest -q && python examples/run_pipeline.py
-```
+### Cross-language tests
 
-## Why C++ and Rust twins, and why only these four
+The C++ and Rust engines are ports of the Python design. They are not
+independent derivations. Two kinds of test tie them together.
 
-Options pricing/Greeks and VaR/ES are the two workloads on a real desk that
-are (a) called millions of times per revaluation cycle (full-book Greeks,
-intraday VaR) and (b) sit on a numerically well-understood, closed-form-or-MC
-core that is worth hand-optimizing once semantics are locked down in Python.
-The other six areas are research/modeling workflows (calibration, backtesting,
-optimization) where iteration speed in Python matters far more than
-microsecond latency, so they stay Python-only. This mirrors how a real quant
-desk actually splits its stack: Python/research on top, a compiled pricing
-kernel underneath for the paths that are actually hot.
+1. **Golden vectors.** For options, `tests/golden/generate_golden.py` computes
+   reference values with an mpmath oracle and stores each output with its own
+   tolerance in `tests/golden/golden_vectors.json`. The Python consumer is
+   `tests/test_golden.py`. For VaR, the generator uses the Python reference
+   with fixed inputs, checked from Python by `tests/test_golden_vectors.py`.
+   `tools/gen_golden_header.py` (C++) and `tools/gen_golden_rs.py` (Rust)
+   turn the JSON into committed source. The CI `goldens --check` job fails
+   if the committed source has drifted from the JSON.
+2. **Differential tests.** The options projects' `tests/test_differential.py`
+   send random inputs to small JSONL shims (Rust `eq_jsonl`/`fx_jsonl`, C++
+   `eqopt_jsonl`/`fxopt_jsonl`, found through `QP_RS_EQ_JSONL`,
+   `QP_RS_FX_JSONL`, `QP_CPP_EQ_JSONL`, `QP_CPP_FX_JSONL`) and compare the
+   answers with Python. The tests skip when the binaries are not built.
 
-## Cross-language validation — the technical backbone
+Monte Carlo results do not match path by path across languages, because each
+language uses its own random number generator. Agreement there is
+statistical, within the tolerance stated in each engine's `docs/VALIDATION.md`.
 
-Each of the four engine pairs is validated **three ways**, not just tested
-in isolation:
+The compiled VaR engines revalue linear books only. Option revaluation in
+those engines is planned for stage three. Only the Python FX VaR engine
+reprices option positions.
 
-1. **Python reference** — the original model, fully tested against analytic
-   identities (put-call parity, Greeks-vs-finite-difference, tree→BS
-   convergence) and statistical backtests.
-2. **C++ engine** — mirrors the Python semantics exactly. A
-   `tests/golden/generate_golden.py` script in each of the four Python
-   reference projects writes `tests/golden/golden_vectors.json` (committed,
-   and locked from the Python side by `tests/test_golden_vectors.py`); the
-   engine's `tools/gen_golden_header.py` turns that JSON into a `constexpr`
-   C++ header (`tests/golden_vectors.hpp`, committed). GoogleTest validates
-   every case to 1e-10 (options) or 1e-9 relative / 1e-6–1e-8 (VaR/ES)
-   tolerance.
-3. **Rust engine** — the same JSON, generated into `src/golden.rs` (options
-   engines) or `tests/golden/mod.rs` (VaR engines) by
-   `tools/gen_golden_rs.py`, validated by `cargo test` to the same
-   tolerances.
+### Engine latency
 
-Every generator accepts `--check`, which fails if the committed constants
-have drifted from the JSON; CI runs all eight checks before building.
+<!-- LATENCY-PLACEHOLDER: the latency pass fills this table from the benchmark
+     binaries, with CPU, compiler, flags, date and command. -->
 
-The result: for every priced option or computed VaR number, you can trace
-identical (to floating-point-noise) results through three independently
-implemented, independently tested codebases. This is the same discipline a
-real market-risk function uses when a new pricing library has to be proven
-against the incumbent before it's allowed to touch P&L.
+| Engine | Language | Operation | Latency | Environment |
+|---|---|---|---|---|
+| equity-options-engine | C++ | pending latency pass | pending latency pass | pending latency pass |
+| equity-options-engine | Rust | pending latency pass | pending latency pass | pending latency pass |
+| fx-options-engine | C++ | pending latency pass | pending latency pass | pending latency pass |
+| fx-options-engine | Rust | pending latency pass | pending latency pass | pending latency pass |
+| equity-var-engine | C++ | pending latency pass | pending latency pass | pending latency pass |
+| equity-var-engine | Rust | pending latency pass | pending latency pass | pending latency pass |
+| fx-var-engine | C++ | pending latency pass | pending latency pass | pending latency pass |
+| fx-var-engine | Rust | pending latency pass | pending latency pass | pending latency pass |
 
-**What the cross-language checks do *not* prove**: Monte Carlo paths are
-never bit-identical across languages (each uses its own RNG — NumPy's PCG64,
-a custom xoshiro256++ in Rust, `std::mt19937_64` in C++), so MC agreement is
-statistical (within a few standard errors), not exact. This is documented
-explicitly in each engine's `docs/VALIDATION.md`.
+## Conventions to know
 
-## Build & test everything
+- `alpha` is the tail probability in (0, 0.5) in every engine: 0.01 means 99%
+  VaR. FX functions used to take a confidence level; passing 0.99 now raises.
+- Historical VaR is the order statistic L(ceil(n alpha)) of the sorted losses.
+  ES is the Acerbi-Tasche estimator with the fractional atom.
+- `kupiec_pof(*, n_obs, n_exceptions, alpha)` takes keywords only.
+- `basel_traffic_light(*, n_obs, n_exceptions, alpha=0.01)` works for any
+  window and tail probability, using the binomial CDF cut-offs 0.95 and 0.9999.
+- The Monte Carlo VaR standard error is a bootstrap estimate. The density
+  (KDE) estimate is a diagnostic only.
+- Backtests in areas 05, 08, 10 and F2 fill at t+1 by default, as in F2 above.
 
-These are the loops `.github/workflows/ci.yml` runs on every push (jobs
-`python`, `cpp`, `rust`; the `python` job also runs the repo-level
-`tests/test_docs_counts.py`, which recounts every number quoted in this
-README and in `docs/` from the tree):
+Old entry points whose signature or convention changed stay for one release
+with a `DeprecationWarning`. CHANGELOG.md lists them.
 
-```bash
-# Python (all 23 projects: 20 dual-asset-class + 3 foundations).
-# The 23 projects are 23 separate distributions installed into one
-# environment here; use a venv per project (or `uv`/`nox`) if you would
-# rather keep them isolated.
-for d in python/equity/*/ python/fx/*/ python/foundations/*/; do (cd "$d" && pip install -e . -q && pytest -q); done
+## Limitations
 
-# Repo-level docs/count consistency check
-python -m pytest -q tests/test_docs_counts.py
-
-# C++ (4 engines; golden provenance check, then build one engine at a time)
-for d in cpp/*/; do
-  python3 "$d/tools/gen_golden_header.py" --check && \
-  cmake -S "$d" -B "/tmp/build-$(basename "$d")" && \
-  cmake --build "/tmp/build-$(basename "$d")" -j2 && \
-  ctest --test-dir "/tmp/build-$(basename "$d")"
-done
-
-# Rust (4 engines)
-for d in rust/*/; do python3 "$d/tools/gen_golden_rs.py" --check && (cd "$d" && RUSTFLAGS="-D warnings" cargo test --release); done
-```
-
-## Test coverage
-
-**6,446 tests across the portfolio**, all passing, all independently
-reproduced from a clean build (not taken from build logs, not taken from
-agent self-reports — every count below was reproduced by a fresh
-`pip install -e .` + `pytest` / `cmake --build` + `ctest` / `cargo test
---release` run, and `tests/test_docs_counts.py` re-derives every number in
-this section from the tree so it cannot go stale silently):
-
-| Area | Projects | Tests |
-|---|---|---|
-| Python — equity | 10 | 2,350 |
-| Python — FX | 10 | 2,830 |
-| Python — foundations | 3 | 554 |
-| C++ engines | 4 | 326 |
-| Rust engines | 4 | 386 |
-| **Total** | **31** | **6,446** |
-
-Per-engine, showing the three-language cross-validation:
-
-| Engine | Python ref | C++ | Rust |
-|---|---|---|---|
-| Equity options/Greeks | `python/equity/01-options-pricing` — 291 | 58 | 88 |
-| FX options/Greeks | `python/fx/01-options-pricing` — 434 | 89 | 99 |
-| Equity VaR/ES | `python/equity/03-var-es-engine` — 442 | 90 | 99 |
-| FX VaR/ES | `python/fx/03-var-es-engine` — 465 | 89 | 100 |
-
-See each project's `docs/VALIDATION.md` for the exact commands, tolerances,
-and the documented failure modes each suite pins.
-
-### On input validation
-
-A portfolio-wide hardening pass found the same defect class in project after
-project, in all three languages: **a guard written as `if x <= 0: raise`
-silently accepts NaN**, because every comparison with NaN is false. The
-consequences were not cosmetic — a NaN spot reaching a pricer returned a NaN
-"price"; a NaN covariance reaching a VaR aggregator returned, in the Rust and
-C++ VaR engines, a portfolio VaR of *exactly zero* (because `max(NaN, 0.0)`
-propagates the non-NaN operand), which is more dangerous than a NaN because it
-is a plausible number for a hedged book; and a NaN in a P&L feed caused
-VaR-exception counters to record zero breaches, so a broken model passed its
-Kupiec and Basel traffic-light backtests green.
-
-Every VaR/ES/backtest and options-pricing entry point in the six golden
-engines, the fixed-income bond/YTM/duration stack and the foundations
-Black–Scholes rebuild now validate with explicit finiteness checks (NaN
-*and* ±inf), pinned by a dedicated `test_input_hardening.py` /
-`test_nan_guards.py` suite in each of those projects, and each project's
-`docs/VALIDATION.md` documents its validation contract and what the
-pre-fix symptom was. Two honest footnotes: the equity Python VaR backtester
-— the reference the golden vectors are generated from — was the last
-engine to receive the P&L gate (a third review pass found
-`exceptions_from_pnl` still counting a NaN day as "no exception" while its
-C++/Rust twins already refused it; fixed and pinned in
-`python/equity/03-var-es-engine/tests/test_input_hardening.py`), and the
-research-lane modules outside those projects (execution, surfaces, regime,
-portfolio) still rely on sign guards plus the NaN-free synthetic data
-contract, so "portfolio-wide" is a direction of travel there, not a
-finished sweep.
-
-### On numerical robustness
-
-A second, deeper review pass (benchmarked against the standard a top-tier
-options/risk desk would hold a new pricing library to before it touches P&L)
-went past input validation into the solvers' own numerics, and found two
-defect classes repeated across every engine that shared the affected
-algorithm:
-
-- **Implied-vol solver plateau.** All six options-pricing engines (Python,
-  C++, and Rust, equity and FX) used a Newton-Raphson implied-vol solver
-  that exited as soon as the price residual stopped improving. Near a flat
-  region of the price-vs-vol curve (deep ITM/OTM, long-dated, high-vol) this
-  let the solver stop one or more Newton steps early, so the returned
-  implied vol silently lost precision instead of continuing to bisection.
-  In the FX engines this could saturate the solver at the model's
-  no-arbitrage upper bound and return a vol that did not actually reprice
-  the input — a materially wrong, not just imprecise, answer. Fixed in all
-  six engines by adding a bracket-bisection refinement stage that always
-  runs to convergence rather than exiting on stalled Newton progress.
-- **Cornish-Fisher domain-check grid resolution.** All six VaR/ES engines
-  checked the Cornish-Fisher expansion's monotonicity domain by scanning a
-  finite grid of points, which can miss a non-monotone region that falls
-  between two grid nodes and silently accept an invalid quantile. Fixed in
-  all six engines by replacing the grid scan with the exact closed-form
-  location of the expansion's stationary point, which cannot miss a
-  non-monotone region regardless of grid spacing.
-
-Neither fix changed any golden-vector reference value — both are corrections
-to numerical *robustness* (how the solver behaves in the tail of its input
-domain), not to the pricing/risk formulas the golden vectors pin.
-
-A third defect, found in the equity and FX Monte Carlo VaR engines: the
-standard-error estimate attached to the VaR figure is a local
-density-at-the-quantile estimate (a Gaussian KDE in Python and the FX C++/Rust
-engines, an order-statistic finite-difference estimate in the equity C++/Rust
-engines) — the same defect class as before, just one level removed from the
-price itself. A fixed, bulk-tuned bandwidth under-resolves the tail density,
-so the reported SE systematically underestimates the true sampling
-variability by roughly 9-17% in deep tails or with modest scenario counts —
-directionally overconfident, not just noisy, exactly where a desk would rely
-on it most. All four Monte Carlo VaR engines (Python, C++, and Rust, equity
-and FX) now expose a second, distribution-free bootstrap standard-error
-estimator as a cross-check (`var_standard_error_bootstrap` in Python,
-`mc_bootstrap_se`/`var_standard_error_bootstrap` in C++, `var_bootstrap_se`/
-`var_standard_error_bootstrap` in Rust): resample the scenario P&L with
-replacement, recompute VaR on each resample with the exact same quantile rule
-as the point estimate, and take the standard deviation across resamples. No
-bandwidth to choose, so it doesn't share the local-density estimator's bias
-(at the cost of higher trial-to-trial variance in the SE estimate itself
-unless the bootstrap count is generous) — recommended whenever `alpha >=
-0.995` or scenario counts are modest. This also did not touch any
-golden-pinned value; it adds a second estimator, it does not change the
-first.
-
-One narrower, single-engine finding from the same pass: a latent
-antithetic-pairing bug in the FX vol-surface Heston Monte Carlo (an odd
-`n_paths` could silently break the antithetic invariant and understate the
-reported standard error — now rejected explicitly rather than silently
-mishandled).
-
-One statistical caveat was investigated and documented rather than "fixed":
-Kupiec's proportion-of-failures test uses a chi-squared(1) asymptotic
-reference distribution that is provably oversized at the Basel
-250-day/99% backtesting window (empirically closer to a 9.5% actual
-rejection rate than its nominal 5%), which is a property of the classical
-test itself, not a bug in this portfolio's implementation — pinning an exact
-alternative would trade one textbook convention for a nonstandard one, so
-this is called out explicitly in `docs/VALIDATION.md` wherever Kupiec is
-used instead of silently changed.
-
-## Real-world usage notes
-
-What a desk would actually do with this code, and where the honest limits
-are (each project's `docs/DESK_GUIDE.md` has the per-area version):
-
-- **Use the Python packages as the reference and the C++/Rust engines as the
-  hot path.** The Python code is where semantics are decided and tested; the
-  compiled twins exist for the two workloads that are called millions of
-  times per revaluation cycle (full-book Greeks, intraday VaR). If you change
-  a formula, change it in Python first, regenerate the golden JSON, and let
-  the `--check` scripts tell you which engine is now out of date.
-- **Treat the golden vectors as the model-validation hand-off.** The
-  `tests/golden/golden_vectors.json` files are what an independent
-  validation function would ask for first: closed-form inputs, `repr()`
-  doubles, committed tolerances. They prove that three implementations agree;
-  they do *not* prove the Python reference is right — that burden is carried
-  by the analytic-identity, convergence and statistical tests in each
-  project.
-- **Backtest inputs are gated, not cleaned.** Every VaR/ES/backtest entry
-  point refuses NaN/±inf rather than imputing. A production feed will contain
-  holes; the intended workflow is to fix or flag them upstream, because a
-  silently skipped day is exactly the failure that made a broken model pass
-  Kupiec and Basel green before the hardening passes.
-- **The FX book backtest is the static-book hypothetical P&L** (today's
-  positions revalued under each historical day's factor returns). That is the
-  right series for Kupiec/Christoffersen; a desk also needs the *actual* P&L
-  with fees and new deals stripped, which you supply to
-  `fx_var.evaluate_var_backtest` / `eq_var.exceptions_from_pnl` as plain
-  arrays.
-- **Kupiec is oversized at 250/99%** (exact finite-sample size 9.5%, pinned in
-  `TestKupiecExactSize` in both VaR engines) and the Basel zone function
-  derives its zone from the cumulative binomial probability, so it is safe on
-  non-250-day windows. Read a Kupiec p-value near 0.05 as "borderline", not as
-  a verdict.
-- **Cornish–Fisher VaR checks its own validity domain** and raises outside
-  it; do not disable `check_domain` to make a number appear.
-- **Not implemented, deliberately**: SABR (area 09 discusses it as a rejected
-  alternative), Merton/KMV structural PD (area 06 is logistic PD + Vasicek
-  IRB), short-rate models (area 04 is curve construction and cash-flow risk).
-  If one of those is the first question you would ask, it is a gap, not an
-  oversight.
-- **Twin APIs differ on purpose.** `eq_var.kupiec_pof(n_obs, n_exceptions,
-  alpha=0.01)` takes a tail probability; `fx_var.kupiec_pof(n_exceptions,
-  n_obs, alpha=0.99)` takes a confidence level (see `CONVENTIONS.md`). Pass
-  by keyword when moving between the equity and FX packages.
-- **Dependencies are lower-bounded, not locked.** The golden constants were
-  produced with NumPy 2.x / SciPy 1.17; a special-function change in a future
-  SciPy could move a `chi2.sf` or `norm.ppf` at the 1e-12 level. CI pins the
-  interpreter matrix (3.11, 3.12) and re-checks the goldens on every run, so a
-  drift would be caught, but a production deployment should add a lock file
-  per project.
+- All strategy results are on synthetic data with planted structure. A
+  strategy that finds the planted signal is a recovery test, not evidence of
+  an edge.
+- The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
+  its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
+- Not implemented: SABR, structural (Merton/KMV) PD, short-rate models, OIS
+  multi-curve, FRTB.
+- The compiled engines have no Python bindings.
+- Python dependencies are pinned for CI only, in
+  `requirements/ci-constraints.txt`.
 
 ## References
 
-The sources each area is built from and validated against. Where the review
-that produced this list re-derived a formula, the implementation matched.
+The sources each area is built from and checked against.
 
 **Options pricing & Greeks (areas 01, F3)**
 
@@ -376,7 +199,7 @@ that produced this list re-derived a formula, the implementation matched.
 13. Bollerslev, T. (1986). "Generalized Autoregressive Conditional Heteroskedasticity." *Journal of Econometrics* 31(3), 307–327.
 14. Glosten, L. R., Jagannathan, R. & Runkle, D. E. (1993). "On the Relation between the Expected Value and the Volatility of the Nominal Excess Return on Stocks." *Journal of Finance* 48(5), 1779–1801.
 15. Nelson, D. B. (1991). "Conditional Heteroskedasticity in Asset Returns: A New Approach." *Econometrica* 59(2), 347–370.
-16. J.P. Morgan / Reuters (1996). *RiskMetrics — Technical Document*, 4th ed. (EWMA λ = 0.94.)
+16. J.P. Morgan / Reuters (1996). *RiskMetrics: Technical Document*, 4th ed. (EWMA λ = 0.94.)
 17. Hansen, P. R. & Lunde, A. (2005). "A Forecast Comparison of Volatility Models: Does Anything Beat a GARCH(1,1)?" *Journal of Applied Econometrics* 20(7), 873–889.
 18. Patton, A. J. (2011). "Volatility Forecast Comparison Using Imperfect Volatility Proxies." *Journal of Econometrics* 160(1), 246–256.
 19. Diebold, F. X. & Mariano, R. S. (1995). "Comparing Predictive Accuracy." *Journal of Business & Economic Statistics* 13(3), 253–263.
@@ -428,7 +251,7 @@ that produced this list re-derived a formula, the implementation matched.
 
 **Credit risk (area 06)**
 
-56. Hosmer, D. W. & Lemeshow, S. (1980). "Goodness of Fit Tests for the Multiple Logistic Regression Model." *Communications in Statistics — Theory and Methods* A9(10), 1043–1069.
+56. Hosmer, D. W. & Lemeshow, S. (1980). "Goodness of Fit Tests for the Multiple Logistic Regression Model." *Communications in Statistics: Theory and Methods* A9(10), 1043–1069.
 57. Hanley, J. A. & McNeil, B. J. (1982). "The Meaning and Use of the Area under a Receiver Operating Characteristic (ROC) Curve." *Radiology* 143(1), 29–36.
 58. Siddiqi, N. (2006). *Credit Risk Scorecards: Developing and Implementing Intelligent Credit Scoring.* Wiley. (WoE/IV, PSI.)
 59. Vasicek, O. (2002). "The Distribution of Loan Portfolio Value." *Risk* 15(12), 160–162.
@@ -471,7 +294,7 @@ that produced this list re-derived a formula, the implementation matched.
 87. Andersen, L. (2008). "Simple and Efficient Simulation of the Heston Stochastic Volatility Model." *Journal of Computational Finance* 11(3), 1–42.
 88. Lord, R., Koekkoek, R. & van Dijk, D. (2010). "A Comparison of Biased Simulation Schemes for Stochastic Volatility Models." *Quantitative Finance* 10(2), 177–194.
 89. Castagna, A. & Mercurio, F. (2007). "The Vanna-Volga Method for Implied Volatilities." *Risk*, January, 106–111.
-90. Hagan, P. S., Kumar, D., Lesniewski, A. S. & Woodward, D. E. (2002). "Managing Smile Risk." *Wilmott*, September, 84–108. (SABR — discussed as an alternative in area 09; not implemented.)
+90. Hagan, P. S., Kumar, D., Lesniewski, A. S. & Woodward, D. E. (2002). "Managing Smile Risk." *Wilmott*, September, 84–108. (SABR: discussed as an alternative in area 09; not implemented.)
 
 **Regime switching (area 10)**
 
@@ -486,26 +309,14 @@ that produced this list re-derived a formula, the implementation matched.
 
 97. Bailey, D. H., Borwein, J. M., López de Prado, M. & Zhu, Q. J. (2014). "Pseudo-Mathematics and Financial Charlatanism: The Effects of Backtest Overfitting on Out-of-Sample Performance." *Notices of the AMS* 61(5), 458–471.
 98. López de Prado, M. (2018). *Advances in Financial Machine Learning.* Wiley, ch. 7, 11–12.
-99. Merton, R. C. (1974). "On the Pricing of Corporate Debt: The Risk Structure of Interest Rates." *Journal of Finance* 29(2), 449–470. (Structural PD — not implemented in area 06; listed for orientation.)
+99. Merton, R. C. (1974). "On the Pricing of Corporate Debt: The Risk Structure of Interest Rates." *Journal of Finance* 29(2), 449–470. (Structural PD: not implemented in area 06; listed for orientation.)
 
 ## Data
 
-All projects use synthetic data (deterministic generators, explicit seeds,
-in `src/*/data/synthetic.py` or equivalent) or free/downloadable public data
-(Yahoo Finance, FRED, ECB — import-guarded, never required for tests to
-pass offline). No paid data dependency anywhere in the portfolio.
-
-## Documentation contract
-
-Every project's `docs/` answers, in writing: why this model was chosen over
-at least two alternatives; a numbered list of assumptions and what breaks if
-each is violated; how it was validated (analytic, convergence, statistical,
-cross-model); where it fails, with reproducible examples; and how a real
-desk would actually use it (daily workflow, controls, governance). See
-`CONVENTIONS.md` for the full contract and asset-class conventions
-(equity: continuous dividend yield, ACT/365F; FX: BASE/QUOTE pairs,
-Garman–Kohlhagen, four delta conventions, CIP forwards).
+Every project uses synthetic data from seeded generators in
+`src/*/data/synthetic.py` or similar. Some projects have optional loaders for
+free public data (Yahoo Finance, FRED, ECB). Tests never need the network.
 
 ## License
 
-MIT License, Copyright (c) 2026 Ashish Jha — see [LICENSE](LICENSE).
+MIT License, Copyright (c) 2026 Ashish Jha. See [LICENSE](LICENSE).

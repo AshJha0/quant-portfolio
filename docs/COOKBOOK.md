@@ -1997,7 +1997,7 @@ desk guide (workflow, controls, P&L attribution). Before it counts as
 validated, where it fails, desk usage, edge cases, with each edge case
 both documented *and* unit-tested), and every public function needs a
 NumPy-style docstring stating units and conventions (ACT/365F equity day
-count; BASE/QUOTE FX pairs with `q = r_f` if it's an FX twin). If the
+count; BASE/QUOTE FX pairs with `q = r_f` for the FX version). If the
 project pairs with a C++/Rust engine later, its golden vectors live under
 `tests/golden/generate_golden.py` in this same Python project, per the
 cross-language validation pipeline shown above.
