@@ -1,8 +1,8 @@
-# Methodology — FX Volatility Modeling & Forecasting
+# Methodology: FX Volatility Modeling & Forecasting
 
 This document answers documentation-contract items 1 (model choice, with
 alternatives and trade-offs) and 2 (assumptions register), and sets out where
-FX volatility genuinely differs from the equity textbook treatment.
+FX volatility differs from the equity textbook treatment.
 
 ---
 
@@ -19,62 +19,80 @@ annualized vol = `sqrt(252 * var_daily)` (see §4 on 252 vs 260).
 | EWMA (RiskMetrics) | `s2_t = λ s2_{t-1} + (1-λ) r_{t-1}^2` | λ (0.94) |
 | GARCH(1,1) | `s2_t = ω + α r_{t-1}^2 + β s2_{t-1}` | ω, α, β (, ν) |
 | GARCH-X | `s2_t = ω + γ_x' x_t + α r_{t-1}^2 + β s2_{t-1}` | + γ_x ≥ 0 |
-| GJR-GARCH | `s2_t = ω + (α + γ 1[r_{t-1}<0]) r_{t-1}^2 + β s2_{t-1}` | + γ ≥ 0 |
+| GJR-GARCH | `s2_t = ω + (α + γ 1[r_{t-1}<0]) r_{t-1}^2 + β s2_{t-1}` | + γ, with α ≥ 0, α + γ ≥ 0 |
 | EGARCH | `ln s2_t = ω + β ln s2_{t-1} + α(|z_{t-1}|-E|z|) + γ z_{t-1}` | γ sign-free |
 
 Estimation is from-scratch maximum likelihood (`arch` is used **only** as a
 cross-validation oracle in the tests):
 
 - **Constraint transforms.** ω = exp(u); stationarity via persistence
-  p = expit(u_p) ∈ (0,1) split into α = p·s, β = p·(1−s) (GARCH), or a
-  softmax split across (α, γ/2, β) (GJR); EGARCH β = tanh(u); ν = 2.05 + exp(u);
-  γ_x = exp(u). The optimizer (multi-start L-BFGS-B) works unconstrained, so
-  no penalty hacks and no infeasible iterates.
+  p = expit(u_p) ∈ (0,1) split into α = p·s, β = p·(1−s) (GARCH); for GJR p
+  is split into the average ARCH load a = α + γ/2 and β, and a into the
+  positive-shock load α = 2aw and the negative-shock load α + γ = 2a(1−w), so
+  γ may be negative; EGARCH β = tanh(u); ν = 2.05 + exp(u); γ_x = exp(u).
+  The optimizer (multi-start L-BFGS-B; BFGS with central-difference
+  gradients for EGARCH) works unconstrained, with no infeasible iterates.
 - **Scaling.** Returns are internally rescaled to unit variance; ω, γ_x and
   σ² map back by the variance scale, the log-likelihood by the
   change-of-variables constant `−n·log(s)`. This makes decimal vs percent
   inputs equivalent (tested against `arch`'s percent convention) and lets the
   same code fit pegged pairs with basis-point vols.
-- **Standard errors** from the numerical Hessian of the negative
-  log-likelihood in *natural* parameter space (central differences, pinv
-  fallback; NaN at boundaries rather than fake precision).
-- **Variance targeting** (optional): ω fixed at `Var(r)(1−α−β)`, one fewer
-  free parameter, unconditional variance matched to sample by construction.
-- **Initialization**: arch-style exponentially weighted backcast (λ=0.94 over
-  the first 75 observations), so cross-checks compare like for like.
+- **Standard errors**, two sets, both in natural parameter space on the
+  rescaled data: classic (inverse numerical Hessian of the negative
+  log-likelihood) and Bollerslev-Wooldridge robust (sandwich
+  `A^-1 B A^-1`, with `B` the outer product of per-observation scores). They
+  are mapped to the caller's units by the delta method. For GARCH/GJR the
+  map is a pure scale. For EGARCH `ω_r = ω_y + (1−β) ln s²` depends on β, so
+  `Var(ω_r) = Var(ω_y) + (ln s²)² Var(β) − 2 ln s² Cov(ω_y, β)`. Fits with
+  persistence above 0.999 or a loading below 1e-6 set
+  `extra["at_boundary"]`; their SEs are not meaningful.
+- **Convergence.** Every fitter raises `ConvergenceError` when the best start
+  did not converge (`raise_on_failure=False` returns `converged=False`
+  instead). The rolling harness keeps the previous parameters after a failed
+  refit and reports `failed_refits` and `boundary_refits`.
+- **Variance targeting** (optional): ω fixed at `mean(r²)(1−α−β)`, one fewer
+  free parameter; the unconditional variance equals the sample second moment.
+  ω's SEs are NaN in this mode.
+- **Initialization**: arch-style exponentially weighted backcast `b` (λ=0.94
+  over the first 75 observations). EGARCH starts one step from the backcast
+  with the pre-sample shock at its expectation, `ln s2_0 = ω + β ln b`, as
+  arch does, so the likelihoods agree to round-off at identical parameters.
 
 Forecasting: GARCH/GJR multi-step forecasts are analytic
 (`E s2_{T+h} = s2_bar + p^{h-1}(s2_{T+1} − s2_bar)`, GJR persistence
-`α + γ/2 + β` under symmetric innovations); EGARCH has no closed form for
-`E[s2]` (expectations of exponentials of |z|), so it is simulated with a
-seeded Generator; EWMA is flat by construction.
+`α + γ/2 + β` under symmetric innovations); EGARCH multi-step forecasts are
+simulated with a seeded Generator; EWMA is flat by construction. The EGARCH
+unconditional variance `E[s2] = exp(ω/(1−β)) Π_i E[exp(β^i g(z))]` is closed
+form for Gaussian z (Nelson 1991) and infinite for Student-t z, whose moment
+generating function does not exist; `exp(ω/(1−β))` is the median-type level
+and is reported as `extra["median_variance"]`.
 
 ## 2. Why this model family (contract item 1)
 
 **Chosen: the GARCH family (GARCH-t as the G10 default, EGARCH/GJR for EM),
 plus EWMA and realized estimators as benchmarks.** Compared against:
 
-**Alternative A — EWMA/RiskMetrics only.** One parameter, no estimation risk,
+**Alternative A: EWMA/RiskMetrics only.** One parameter, no estimation risk,
 industry-legible. But persistence is hard-wired to 1: no mean reversion, so
 *every* multi-step forecast is flat, term vol forecasts are wrong by
 construction, and after a shock the model never de-escalates on its own.
 The 500-day OOS race (VALIDATION §4) shows EWMA is QLIKE-dominated on both
 test pairs. Kept as the benchmark every candidate must beat.
 
-**Alternative B — Stochastic volatility (e.g. Heston-type discrete SV, or
+**Alternative B: Stochastic volatility (e.g. Heston-type discrete SV, or
 realized-vol HAR models).** SV separates the vol shock from the return shock,
 which is more realistic and links directly to options pricing. Costs: the
 likelihood involves an intractable latent-state integral (particle filtering
-or MCMC — an order of magnitude more machinery to validate and to explain to
+or MCMC: an order of magnitude more machinery to validate and to explain to
 model governance), and daily-frequency forecast gains over GARCH-t are small
 and unstable in the literature. HAR needs intraday realized measures we do
 not assume available for all pairs (EM crosses in particular). Trade-off
 taken: GARCH's one-shock structure is a known simplification; we buy exact
 likelihoods, second-long fits, analytic forecasts and easy governance.
 
-**Alternative C — Implied vol from the options market.** Forward-looking and
+**Alternative C: Implied vol from the options market.** Forward-looking and
 incorporates event calendars automatically. But it *contains a risk premium*
-(persistently above subsequent realized — that is the vol-selling business,
+(persistently above subsequent realized: that is the vol-selling business,
 DESK_GUIDE §3), is unavailable or stale for many EM crosses, and cannot be
 used to mark the very premium we want to measure. Used as a *comparator*
 (`fx_vol.vol_premium`), not as the forecaster.
@@ -93,15 +111,15 @@ by ΔAIC ≈ 19.5, γ = +0.046 ± 0.017).
    volatility is invariant (`test_returns.py::TestInversionInvariance`), but
    *asymmetry flips sign*. USDJPY safe-haven behaviour (yen bid in risk-off →
    big *negative* pair returns carry the vol) becomes positive-side asymmetry
-   in JPYUSD. Consequence: GJR's γ ≥ 0 sees asymmetry in only one quote
-   direction — the pipeline shows GJR-t finding γ = 0 on USDMXN but
-   γ = +0.123 ± 0.040 on inverted MXNUSD, while sign-free EGARCH catches it
-   either way. Desk rule: fit the quote direction you trade, and check γ's
-   sign against the economics.
+   in JPYUSD. GJR only needs α ≥ 0 and α + γ ≥ 0, so it estimates
+   asymmetry of either sign: the pipeline shows GJR-t with γ = −0.123 ± 0.040
+   on USDMXN and γ = +0.123 ± 0.040 on inverted MXNUSD, the same model with
+   the same likelihood. Desk rule: fit the quote direction you trade, and
+   check γ's sign against the economics.
 2. **Leverage is weak for G10, strong for EM.** There is no debt-equity
    channel in FX; G10 asymmetry is a risk-appetite effect and is small
    (γ_EGARCH ≈ 0.007 on the G10-style pair vs ≈ 0.046 on EM-style). EM pairs
-   quoted USD/EM have a genuine one-sided depreciation-jump channel.
+   quoted USD/EM have a one-sided depreciation-jump channel.
 3. **Scheduled events dominate the calendar.** FOMC/ECB/BoJ days are known
    years ahead and carry a variance premium. GARCH-X puts the event calendar
    directly in the variance equation with dummy x_t known at t−1; the dummy
@@ -112,12 +130,12 @@ by ΔAIC ≈ 19.5, γ = +0.046 ± 0.017).
 4. **Weekly seasonality and the 24h5d market.** FX trades continuously
    Monday–Friday: no overnight gaps intra-week (range estimators unusually
    effective), but a weekend gap Monday. Day-of-week vol factors (quiet
-   Monday, heavy Wednesday/Friday — FOMC/NFP) are estimable
+   Monday, heavy Wednesday/Friday: FOMC/NFP) are estimable
    (`day_of_week_vol_factors`, recovered within 8% on simulation) and can
    pre-whiten returns before GARCH fitting. Annualization: 252 (default,
    comparable with equity desks and most vendor quotes) vs 260 = 52×5 (FX
    convention counting every weekday); the ratio is a constant
-   sqrt(260/252) ≈ 1.6% of vol — immaterial for dynamics, material when
+   sqrt(260/252) ≈ 1.6% of vol: immaterial for dynamics, material when
    comparing against a counterparty's implied quote. Every function takes
    `periods_per_year` explicitly.
 5. **Triangular consistency.** Cross vols are constrained by
@@ -127,7 +145,7 @@ by ΔAIC ≈ 19.5, γ = +0.046 ± 0.017).
    in-sample identity, tested with positive and negative correlation).
 6. **Pegs and depegs.** Managed floats and hard pegs produce basis-point vols
    and boundary fits; depegs produce 50-sigma days. Both are edge-case tested
-   (VALIDATION §5) — equity models rarely face a "the central bank stopped
+   (VALIDATION §5): equity models rarely face a "the central bank stopped
    defending the price" regime.
 
 ## 4. Assumptions register (contract item 2)
@@ -136,25 +154,25 @@ by ΔAIC ≈ 19.5, γ = +0.046 ± 0.017).
 |---|---|---|
 | A1 | Zero conditional mean of daily returns | Daily FX drift (carry) is ~1–2 bp vs vol ~60 bp, second-order for variance MLE. A large ignored drift (EM with high carry, crawling pegs) biases ω up: variance absorbs mean². Demean or model the mean explicitly if |mean| > ~10% of vol. |
 | A2 | i.i.d. innovations z_t after variance filtering | Remaining serial dependence (intraday seasonality aggregated badly, weekly patterns) invalidates the likelihood factorization; detected by Ljung-Box/ARCH-LM on standardized residuals (both wired in and tested). |
-| A3 | One-regime parameters over the estimation window | Structural breaks (depeg, EM crisis, intervention-regime change) contaminate estimates — the depeg tests show persistence pinning near 1. Use rolling windows (the OOS harness refits every 100–125 days) and the failure modes in VALIDATION §5. |
-| A4 | Symmetric innovation distribution (Gaussian/t) | GJR multi-step persistence uses E1[z<0] = 1/2; skewed innovations (EM jump series) bias multi-step forecasts. EGARCH simulation forecasting uses the same symmetric draw — a skewed-t extension is the natural upgrade. |
+| A3 | One-regime parameters over the estimation window | Structural breaks (depeg, EM crisis, intervention-regime change) contaminate estimates: the depeg tests show persistence pinning near 1. Use rolling windows (the OOS harness refits every 100–125 days) and the failure modes in VALIDATION §5. |
+| A4 | Symmetric innovation distribution (Gaussian/t) | GJR multi-step persistence uses E1[z<0] = 1/2; skewed innovations (EM jump series) bias multi-step forecasts. EGARCH simulation forecasting uses the same symmetric draw: a skewed-t extension is the natural upgrade. |
 | A5 | Finite variance: ν > 2 (enforced ν ≥ 2.05) | Fitted ν → 2 says the sample looks infinite-variance (crisis EM data); estimates remain but unconditional variance and vol targeting lose meaning. Fitted ν is reported so the desk can see it. |
-| A6 | Variance stationarity: persistence < 1 (enforced by transform) | Genuine IGARCH data pins at the boundary — fit is still valid QMLE for 1-step, but unconditional variance → ∞ and long-horizon forecasts are meaningless; flagged via `persistence` and documented (VALIDATION §5). |
-| A7 | Exogenous x_t known at t−1, γ_x ≥ 0 | Wrong for *unscheduled* events (interventions, surprise hikes) — those belong to the innovation, not the dummy. Negative-effect regressors must be recoded (the constraint keeps σ² > 0). |
-| A8 | Squared daily return as realized-variance proxy | r² is unbiased but very noisy; QLIKE (Patton-robust) keeps rankings consistent, but power is limited — with 500 OOS days only large model gaps reach significance (VALIDATION §4). Intraday RV would sharpen this. |
-| A9 | No microstructure noise / valid daily marks | ECB reference fixes are once-daily, non-traded; range estimators assume true continuous highs/lows — stale or filtered EM quotes bias range estimators down. |
+| A6 | Variance stationarity: persistence < 1 (enforced by transform) | IGARCH data pins at the boundary: the fit is still valid QMLE for 1-step, but unconditional variance → ∞ and long-horizon forecasts are meaningless; flagged via `extra["at_boundary"]` (VALIDATION §5). |
+| A7 | Exogenous x_t known at t−1, γ_x ≥ 0 | Wrong for *unscheduled* events (interventions, surprise hikes): those belong to the innovation, not the dummy. Negative-effect regressors must be recoded (the constraint keeps σ² > 0). |
+| A8 | Squared daily return as realized-variance proxy | r² is unbiased but very noisy; QLIKE (Patton-robust) keeps rankings consistent, but power is limited: with 500 OOS days only large model gaps reach significance (VALIDATION §4). Intraday RV would sharpen this. |
+| A9 | No microstructure noise / valid daily marks | ECB reference fixes are once-daily, non-traded; range estimators assume true continuous highs/lows: stale or filtered EM quotes bias range estimators down. |
 | A10 | Weekend gap ignored (Friday→Monday treated as one step) | Monday variance is systematically higher; unmodelled, it fattens residual tails slightly. The day-of-week factor estimator quantifies it; a t-distribution absorbs most of the rest. |
-| A11 | Inputs are finite: no NaN/Inf in returns, regressors *or* model parameters | The package's policy is reject-never-impute. Data-side NaNs already raised; parameter-side NaNs did not — a NaN ω/α/β silently produced an all-NaN variance path because `if omega <= 0` is False for NaN. Now `validate_filter_params` raises. If you disable these guards (e.g. by calling the recursions directly on hand-built arrays), a single bad quote or a failed optimizer step propagates NaN through variance → forecast → VaR without any error surfacing. |
+| A11 | Inputs are finite: no NaN/Inf in returns, regressors *or* model parameters | Policy is reject, never impute. `validate_filter_params` rejects NaN parameters, because `if omega <= 0` is False for NaN and would let a NaN through to an all-NaN variance path. Calling the recursions on hand-built arrays bypasses this guard. |
 
 ## 5. Innovation distribution: Gaussian vs Student-t
 
 Gaussian QMLE is consistent for (ω, α, β) even under fat tails, so *variance
-paths* are roughly right — but (i) efficiency is poor when ν is small (the EM
+paths* are roughly right, and the robust SEs remain valid. But (i) efficiency is poor when ν is small (the EM
 pair fits ν ≈ 3.6), and (ii) anything tail-sensitive (VaR multipliers,
 option wings) is badly wrong: on simulated ν = 6 data the Gaussian fit's
 standardized residuals have a 1% quantile ≈ 13% beyond −2.326 and excess
 kurtosis > 1 (`test_garch.py::TestStudentT`). The t-likelihood also
 *downweights* jump days when estimating dynamics, which is why GARCH-t beats
-Gaussian GARCH out-of-sample on the EM pair (DM p = 0.017, VALIDATION §4).
+Gaussian GARCH out-of-sample on the EM pair (HAC DM p = 0.016, VALIDATION §4).
 On Gaussian data the fitted ν runs to +∞ (tested), so defaulting to t is
 safe: it nests the Gaussian in practice.
