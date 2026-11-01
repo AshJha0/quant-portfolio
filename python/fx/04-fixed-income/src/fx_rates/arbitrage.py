@@ -23,10 +23,10 @@ The implied no-arbitrage band for the forward is::
     F_lower = spot_bid * (1 + r_d_bid tau) / (1 + r_f_ask tau)
     F_upper = spot_ask * (1 + r_d_ask tau) / (1 + r_f_bid tau)
 
-No detection fires while the tradeable forward sits inside the band —
+No detection fires while the tradeable forward sits inside the band , 
 post-2008 the *observed* mid-CIP deviation routinely exceeds bid/ask and
 still is not free money once dealer balance-sheet costs are included
-(Du–Tepper–Verdelhan; see docs/VALIDATION.md).
+(Du-Tepper-Verdelhan; see docs/VALIDATION.md).
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ def detect_cip_arbitrage(q: CIPQuotes, min_pnl: float = 0.0) -> CIPArbitrageResu
     q : CIPQuotes
         Two-sided quotes at one tenor.
     min_pnl : float
-        Minimum P&L per unit domestic notional (at maturity) to flag —
+        Minimum P&L per unit domestic notional (at maturity) to flag , 
         use this to encode residual costs (settlement, capital) beyond
         bid/ask.
 

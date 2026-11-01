@@ -5,7 +5,7 @@ Definitions (all reported in the quote/domestic currency, e.g. USD):
 - **FX delta**: dV/dS * S / 100 would be a percent delta; here we report the
   *cash* delta dV/dS in quote currency per unit of spot (so
   ``fx_delta * dS`` is the P&L of a spot move ``dS``).  For an FX forward
-  the analytic value is ``N * DF_f_adj(T)`` — the base-currency equivalent
+  the analytic value is ``N * DF_f_adj(T)``: the base-currency equivalent
   position (tested).
 - **DV01**: change in PV for a +1 bp *parallel* shift of one currency's
   zero curve, central-difference ``(V(+1bp) - V(-1bp)) / 2``.  Signed

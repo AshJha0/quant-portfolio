@@ -1,6 +1,6 @@
 """Seeded synthetic two-currency market quote sets and sample position books.
 
-Quotes are generated from analytic Nelson–Siegel "true" zero curves, so the
+Quotes are generated from analytic Nelson-Siegel "true" zero curves, so the
 bootstrap can be validated by an exact round trip: par quotes are computed
 *from* the true discount factors, hence bootstrapping the quotes must recover
 the true DFs at every pillar to machine precision.
@@ -10,7 +10,7 @@ Regimes
 - ``normal``       : upward-sloping USD (≈3.5→4.5%) above EUR (≈2.2→2.9%),
                      basis ≈ -12…-30 bp (post-2015 average conditions).
 - ``inverted``     : late-cycle inverted USD curve (≈5.4→4.1%).
-- ``negative_eur`` : 2019-style — EUR front end at ≈-0.5% (negative deposit
+- ``negative_eur`` : 2019-style, EUR front end at ≈-0.5% (negative deposit
                      rates), USD ≈2%, basis ≈-15…-40 bp.
 - ``crisis``       : 2008-style wide basis: front-end basis ≈-180 bp
                      decaying to ≈-55 bp at 10y.
@@ -43,14 +43,14 @@ __all__ = [
 REGIMES = ("normal", "inverted", "negative_eur", "crisis")
 
 # A complete annual par-swap strip (2..10y).  Real markets quote a sparse set
-# (2,3,4,5,7,10) and interpolate the missing par rates — using the complete
+# (2,3,4,5,7,10) and interpolate the missing par rates, using the complete
 # strip here keeps the bootstrap round trip against the true generator curve
 # exact at every pillar, which is what the validation suite asserts.
 DEPOSIT_TENORS = (0.25, 0.5, 1.0)
 SWAP_TENORS = (2, 3, 4, 5, 6, 7, 8, 9, 10)
 FORWARD_TENORS = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
-# Nelson–Siegel parameters (beta0, beta1, beta2, tau_ns) per regime/ccy,
+# Nelson-Siegel parameters (beta0, beta1, beta2, tau_ns) per regime/ccy,
 # and basis spread pillars (T, bp).
 _PARAMS = {
     "normal": {

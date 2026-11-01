@@ -1,4 +1,4 @@
-"""fx_rates — FX-linked fixed income: multi-currency curves, CIP forward
+"""fx_rates: FX-linked fixed income: multi-currency curves, CIP forward
 curves, cross-currency basis, FX forward/swap and cross-currency swap
 pricing and risk.
 

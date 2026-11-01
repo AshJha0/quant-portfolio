@@ -76,7 +76,7 @@ def deposit_rate_from_df(df: float, tau: float) -> float:
 def par_swap_rate(curve: DiscountCurve, maturity_years: int) -> float:
     """Par rate of an annual fixed-for-float swap of integer maturity.
 
-    ``c = (1 - DF(n)) / sum_{i=1..n} DF(i)`` — the single-curve textbook
+    ``c = (1 - DF(n)) / sum_{i=1..n} DF(i)``: the single-curve textbook
     identity (fixed leg PV = floating leg PV = 1 - DF(n)).
     """
     n = int(maturity_years)
@@ -308,7 +308,10 @@ def implied_basis_from_forwards(
     foreign_curve: DiscountCurve,
     forwards: Sequence[Quote],
 ) -> list[Quote]:
-    """Back out the basis spread curve implied by market FX forwards.
+    """Zero-spread-equivalent basis implied by market FX forwards.
+
+    This inverts the zero-spread definition. It differs from the float-float
+    par spread (``basis_swap_par_spread``) by second-order annuity terms.
 
     From ``F_mkt(T) = S * DF_f(T) * exp(-s T) / DF_d(T)``:
     ``s(T) = -(1/T) * ln( F_mkt(T) * DF_d(T) / (S * DF_f(T)) )``.
@@ -339,7 +342,7 @@ def curve_from_fx_forwards(
     Inverts covered interest parity quote by quote:
     ``DF_f_adj(T) = F_mkt(T) * DF_d(T) / S``.
     This is the curve a desk actually discounts foreign FX-linked cashflows
-    on — it embeds the cross-currency basis by construction.
+    on, it embeds the cross-currency basis by construction.
     """
     if spot <= 0.0:
         raise ValueError(f"spot must be > 0, got {spot}")

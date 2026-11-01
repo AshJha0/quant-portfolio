@@ -4,7 +4,7 @@ Conventions implemented
 -----------------------
 - ``ACT/360``  : actual days / 360 (money-market convention, USD/EUR deposits).
 - ``ACT/365F`` : actual days / 365 fixed (common for GBP money market, zero rates).
-- ``30/360``   : US (bond basis) 30/360 — 31sts rolled back to 30 per the
+- ``30/360``   : US (bond basis) 30/360, 31sts rolled back to 30 per the
   standard rule (d1=31 -> 30; d2=31 -> 30 only if d1 >= 30).
 
 Money-market accrual follows :data:`MONEY_MARKET_DAYCOUNT` (ACT/360 for

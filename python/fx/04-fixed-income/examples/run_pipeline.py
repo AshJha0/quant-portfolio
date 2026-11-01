@@ -6,7 +6,7 @@ values a sample book, produces the full risk report (FX delta, per-currency
 DV01/KRD ladders, basis DV01), runs joint scenarios including the 2008-style
 basis blowout, shows forward carry, and runs the CIP arbitrage detector.
 
-Run from the project root:  python examples/run_pipeline.py   (< 5 s)
+Run from the project root:  python examples/run_pipeline.py   
 """
 
 import os

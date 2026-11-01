@@ -71,14 +71,14 @@ class MarketState:
     field would leave that cache stale and every subsequent forward and
     valuation would silently use the old basis curve.  Use :meth:`replace`
     (which builds a fresh instance, and therefore a fresh cache) to make a
-    shocked copy — that is what the risk and scenario modules do.
+    shocked copy, that is what the risk and scenario modules do.
 
     Attributes
     ----------
     spot : float
         Spot rate, quote currency per 1 base currency (e.g. EURUSD 1.0850).
-        Interpreted at t = 0 (the T+2 spot-settlement subtlety is absorbed
-        into the curves — assumption A6).
+        Interpreted at t = 0: curve times run from the valuation date and the
+        spot lag is not discounted separately.
     domestic_curve : DiscountCurve
         Quote-currency discount curve (USD for EURUSD).
     foreign_curve : DiscountCurve
@@ -232,7 +232,7 @@ def forward_points_table(
     """Forward points table: CIP vs market (basis-adjusted) forwards.
 
     Columns: tenor (y), CIP forward, market forward, CIP points, market
-    points, basis effect in points, implied basis spread in bp.
+    points, basis effect in points, forward-implied zero-spread basis in bp (not the float-float par spread).
     """
     if point_factor is None:
         point_factor = _point_factor(market.pair)
@@ -380,7 +380,7 @@ class FXSwap:
         return near, far
 
     def value(self, market: MarketState) -> float:
-        """MTM in quote currency — explicit four-cashflow sum (independent of
+        """MTM in quote currency, explicit four-cashflow sum (independent of
         the two-forward decomposition, which is tested against this)."""
         if market.pair != self.pair:
             raise ValueError(

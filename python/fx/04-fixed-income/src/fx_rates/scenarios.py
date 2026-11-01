@@ -151,7 +151,7 @@ def forward_carry(
         carry = N * [ DF_d(T-h) * (F(T-h) - K) - DF_d(T) * (F(T) - K) ]
 
     A long position in the *low-yielding* base currency (positive points,
-    e.g. long EURUSD forward pre-2022) rolls *down* — negative carry.
+    e.g. long EURUSD forward pre-2022) rolls *down*, negative carry.
 
     Returns a dict with carry P&L (quote ccy), the points roll, and the
     start/end forwards.

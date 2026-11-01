@@ -3,7 +3,7 @@
 Network access is **opt-in**: set the environment variable
 ``FX_RATES_ALLOW_NETWORK=1`` before calling any loader, otherwise a
 ``RuntimeError`` is raised immediately.  Nothing in the library or the test
-suite imports these functions on a code path that executes them — tests are
+suite imports these functions on a code path that executes them, tests are
 fully offline (CONVENTIONS.md).
 
 These loaders return *raw* observations; mapping them into the quote

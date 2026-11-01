@@ -260,7 +260,7 @@ class BasisSwap:
 def solve_par_rate_quote(swap: CrossCurrencySwap, market: MarketState) -> float:
     """Quote-leg fixed rate that makes the (seasoned) swap PV exactly zero.
 
-    Closed form — PV is linear in the coupon:
+    Closed form, PV is linear in the coupon:
     ``c_d* = (S * PV_base - N_d * DF_d(T)) / (N_d * tau * sum DF_d(t_i))``.
     """
     times = swap.payment_times()
