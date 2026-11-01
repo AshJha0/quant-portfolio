@@ -1,112 +1,252 @@
-//! Throughput benchmarks for the FX options engine.
+//! Per-call latency benchmark for the FX options engine.
 //!
-//! 1. 1,000,000 Garman–Kohlhagen vanilla prices (varying strike/vol so
-//!    the compiler cannot hoist the computation).
-//! 2. Strike-from-delta solves across the four quoting conventions
-//!    (analytic for spot/forward, Brent for premium-adjusted).
-//! 3. One 1,000,000-path Monte Carlo price (antithetic + control variate,
-//!    xoshiro256** + inverse-CDF normals, single-threaded).
+//! Each kernel runs a warm-up, then many timed samples over a rotating set
+//! of varied inputs. A sample times `calls_per_sample` back-to-back calls
+//! with `std::time::Instant` and records the per-call time
+//! (sample / calls_per_sample). Kernels far below the timer resolution
+//! (about 20-30 ns) use batches of 64 calls; slow kernels use one call per
+//! sample. Results print as JSON and are written to `bench/results.json`.
 //!
-//! Run: `cargo run --release --bin bench`
+//! Run: `cargo run --release --bin bench`. Set `BENCH_FILTER=<substring>`
+//! to time only the kernels whose name contains it (results.json is then
+//! partial).
 
-use std::time::Instant;
+use std::hint::black_box;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use fx_options_engine::{
-    gk_price, mc_price, strike_from_delta, DeltaConvention, OptionType,
+    analytic_greeks, binomial_price, gk_price, implied_vol, mc_price, strike_from_delta,
+    DeltaConvention, Exercise, OptionType,
 };
+// FAST-BEGIN
+use fx_options_engine::fast::{
+    binomial_price_ws, gk_price_batch, gk_price_k, greeks_batch, greeks_k, implied_vol_k,
+    mc_price_par, mc_price_ws, BinomialWorkspace, GkBatch, GreeksBatchOut, McWorkspace,
+};
+// FAST-END
+
+const NIN: usize = 1024;
+
+struct Inputs {
+    s: Vec<f64>,
+    k: Vec<f64>,
+    t: Vec<f64>,
+    rd: Vec<f64>,
+    rf: Vec<f64>,
+    v: Vec<f64>,
+    ty: Vec<OptionType>,
+    px: Vec<f64>,
+}
+
+fn inputs() -> Inputs {
+    let mut x = 0x2545_F491_4F6C_DD1Du64;
+    let mut u = || {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        (x >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let mut i = Inputs { s: vec![], k: vec![], t: vec![], rd: vec![], rf: vec![], v: vec![], ty: vec![], px: vec![] };
+    for j in 0..NIN {
+        let s = 1.0 + 0.3 * u();
+        let k = s * (0.8 + 0.4 * u());
+        let t = 0.02 + 2.0 * u();
+        let rd = 0.05 * u();
+        let rf = 0.05 * u();
+        let v = 0.05 + 0.25 * u();
+        let ty = if j % 2 == 0 { OptionType::Call } else { OptionType::Put };
+        let px = gk_price(s, k, t, rd, rf, v, ty).unwrap_or(0.0);
+        i.s.push(s);
+        i.k.push(k);
+        i.t.push(t);
+        i.rd.push(rd);
+        i.rf.push(rf);
+        i.v.push(v);
+        i.ty.push(ty);
+        i.px.push(px);
+    }
+    i
+}
+
+struct Row {
+    kernel: &'static str,
+    n_iter: usize,
+    calls_per_sample: usize,
+    q: [f64; 5],
+}
+
+/// Time `samples` samples of `per` calls of `f(idx)` after `warm` warm-up calls.
+fn measure(kernel: &'static str, warm: usize, samples: usize, per: usize, mut f: impl FnMut(usize)) -> Row {
+    if std::env::var("BENCH_FILTER").is_ok_and(|p| !kernel.contains(p.as_str())) {
+        return Row { kernel, n_iter: 0, calls_per_sample: per, q: [0.0; 5] };
+    }
+    for j in 0..warm {
+        f(j % NIN);
+    }
+    let mut ns = Vec::with_capacity(samples);
+    let mut idx = 0usize;
+    for _ in 0..samples {
+        let t0 = Instant::now();
+        for _ in 0..per {
+            f(idx);
+            idx = (idx + 1) % NIN;
+        }
+        ns.push(t0.elapsed().as_nanos() as f64 / per as f64);
+    }
+    ns.sort_by(f64::total_cmp);
+    let pick = |p: f64| ns[((p * (ns.len() - 1) as f64).round() as usize).min(ns.len() - 1)];
+    Row {
+        kernel,
+        n_iter: samples * per,
+        calls_per_sample: per,
+        q: [pick(0.50), pick(0.90), pick(0.99), pick(0.999), ns[ns.len() - 1]],
+    }
+}
+
+fn utc_date() -> String {
+    let days = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400) as i64;
+    // Civil-from-days (H. Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn cpu() -> String {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|c| c.lines().find(|l| l.starts_with("model name")).map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string()))
+        .unwrap_or_else(|| "unknown".into())
+}
+
+fn toolchain() -> String {
+    std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map_or_else(|| "unknown".into(), |s| s.trim().to_string())
+}
 
 fn main() {
-    let (s, t, rd, rf) = (1.10, 0.5, 0.0425, 0.0290);
+    let inp = inputs();
+    let mut rows = Vec::new();
+    let mut sink = 0.0f64;
 
-    // ---- 1M GK prices ---------------------------------------------------
+    rows.push(measure("gk_price", 100_000, 200_000, 64, |j| {
+        sink += gk_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).unwrap_or(0.0);
+    }));
+    rows.push(measure("analytic_greeks", 100_000, 100_000, 64, |j| {
+        sink += analytic_greeks(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).map_or(0.0, |g| g.vega);
+    }));
+    rows.push(measure("implied_vol", 20_000, 50_000, 16, |j| {
+        sink += implied_vol(black_box(inp.px[j]), inp.s[j], inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.ty[j]).unwrap_or(0.0);
+    }));
+    rows.push(measure("strike_from_delta_spot_pa", 5_000, 20_000, 4, |j| {
+        let d = 0.05 + 0.4 * (j % 100) as f64 / 100.0;
+        sink += strike_from_delta(black_box(d), inp.s[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Call, DeltaConvention::SpotPa).unwrap_or(0.0);
+    }));
+    rows.push(measure("binomial_price_american_500", 200, 3_000, 1, |j| {
+        sink += binomial_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Put, 500, Exercise::American).unwrap_or(0.0);
+    }));
+    rows.push(measure("mc_price_100k_anti_cv", 5, 200, 1, |j| {
+        sink += mc_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 100_000, j as u64, true, true).map_or(0.0, |r| r.price);
+    }));
+
+    // FAST-BEGIN
+    rows.push(measure("fast::gk_price_k", 100_000, 200_000, 64, |j| {
+        sink += gk_price_k(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).unwrap_or(0.0);
+    }));
+    rows.push(measure("fast::greeks_k", 100_000, 100_000, 64, |j| {
+        sink += greeks_k(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).map_or(0.0, |g| g.vega);
+    }));
+    rows.push(measure("fast::implied_vol_k", 20_000, 50_000, 16, |j| {
+        sink += implied_vol_k(black_box(inp.px[j]), inp.s[j], inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.ty[j]).unwrap_or(0.0);
+    }));
     {
-        const N: usize = 1_000_000;
-        let mut acc = 0.0;
-        let t0 = Instant::now();
-        for i in 0..N {
-            let k = 0.90 + 0.40 * (i % 1000) as f64 / 1000.0;
-            let sig = 0.06 + 0.10 * (i % 97) as f64 / 97.0;
-            let ty = if i % 2 == 0 {
-                OptionType::Call
-            } else {
-                OptionType::Put
-            };
-            acc += gk_price(s, k, t, rd, rf, sig, ty).unwrap();
+        let b = GkBatch { s: &inp.s, k: &inp.k, t: &inp.t, r_d: &inp.rd, r_f: &inp.rf, sigma: &inp.v, option_type: &inp.ty };
+        let mut out = vec![0.0; NIN];
+        // One sample = one 1024-element batch; reported per element.
+        let mut r = measure("fast::gk_price_batch_per_option", 200, 20_000, 1, |_| {
+            let _ = gk_price_batch(black_box(&b), &mut out);
+            sink += out[0];
+        });
+        for q in &mut r.q {
+            *q /= NIN as f64;
         }
-        let dt = t0.elapsed().as_secs_f64();
-        println!(
-            "GK vanilla pricing : {N} prices in {dt:.3} s -> {:.2} M prices/s (checksum {acc:.6})",
-            N as f64 / dt / 1e6
-        );
-    }
-
-    // ---- strike-from-delta solves ---------------------------------------
-    {
-        const N_PER_CONV: usize = 25_000;
-        let convs = [
-            (DeltaConvention::Spot, "spot"),
-            (DeltaConvention::Forward, "forward"),
-            (DeltaConvention::SpotPa, "spot_pa"),
-            (DeltaConvention::ForwardPa, "forward_pa"),
-        ];
-        for (conv, name) in convs {
-            let mut acc = 0.0;
-            let t0 = Instant::now();
-            for i in 0..N_PER_CONV {
-                let d = 0.05 + 0.40 * (i % 100) as f64 / 100.0;
-                let sig = 0.07 + 0.08 * (i % 53) as f64 / 53.0;
-                acc += strike_from_delta(d, s, t, rd, rf, sig, OptionType::Call, conv).unwrap();
-                acc += strike_from_delta(-d, s, t, rd, rf, sig, OptionType::Put, conv).unwrap();
+        r.calls_per_sample = NIN;
+        r.n_iter *= NIN;
+        rows.push(r);
+        let mut cols = vec![vec![0.0; NIN]; 10];
+        let mut r = measure("fast::greeks_batch_per_option", 200, 10_000, 1, |_| {
+            if let [a0, a1, a2, a3, a4, a5, a6, a7, a8, a9] = &mut cols[..] {
+                let mut o = GreeksBatchOut {
+                    price: a0,
+                    delta_spot: a1,
+                    delta_forward: a2,
+                    gamma: a3,
+                    vega: a4,
+                    theta: a5,
+                    rho_domestic: a6,
+                    rho_foreign: a7,
+                    vanna: a8,
+                    volga: a9,
+                };
+                let _ = greeks_batch(black_box(&b), &mut o);
+                sink += o.vega[0];
             }
-            let dt = t0.elapsed().as_secs_f64();
-            println!(
-                "strike-from-delta  : {name:<10} {} solves in {dt:.3} s -> {:.2} k solves/s (checksum {acc:.4})",
-                2 * N_PER_CONV,
-                (2 * N_PER_CONV) as f64 / dt / 1e3
-            );
+        });
+        for q in &mut r.q {
+            *q /= NIN as f64;
         }
+        r.calls_per_sample = NIN;
+        r.n_iter *= NIN;
+        rows.push(r);
     }
+    let mut bws = BinomialWorkspace::with_steps(500);
+    rows.push(measure("fast::binomial_price_ws_american_500", 200, 3_000, 1, |j| {
+        sink += binomial_price_ws(&mut bws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Put, 500, Exercise::American).unwrap_or(0.0);
+    }));
+    let mut mws = McWorkspace::with_paths(1_000_000);
+    rows.push(measure("fast::mc_price_ws_100k_anti_cv", 5, 200, 1, |j| {
+        sink += mc_price_ws(&mut mws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 100_000, j as u64, true, true).map_or(0.0, |r| r.price);
+    }));
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    rows.push(measure("fast::mc_price_par_1m_anti_cv_all_threads", 3, 60, 1, |j| {
+        sink += mc_price_par(&mut mws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 1_000_000, j as u64, true, true, threads).map_or(0.0, |r| r.price);
+    }));
+    // FAST-END
+    rows.push(measure("mc_price_1m_anti_cv", 2, 30, 1, |j| {
+        sink += mc_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 1_000_000, j as u64, true, true).map_or(0.0, |r| r.price);
+    }));
+    black_box(sink);
 
-    // ---- 1M-path Monte Carlo --------------------------------------------
-    {
-        const N_PATHS: u64 = 1_000_000;
-        let t0 = Instant::now();
-        let r = mc_price(s, 1.12, t, rd, rf, 0.0925, OptionType::Call, N_PATHS, 0, true, true)
-            .unwrap();
-        let dt = t0.elapsed().as_secs_f64();
-        println!(
-            "Monte Carlo        : {N_PATHS} paths in {dt:.3} s -> {:.2} M paths/s (price {:.8}, SE {:.2e}, {})",
-            N_PATHS as f64 / dt / 1e6,
-            r.price,
-            r.std_error,
-            r.method
-        );
+    let (tc, cpu, date) = (toolchain(), cpu(), utc_date());
+    let flags = format!(
+        "release profile opt-level=3 lto=fat codegen-units=1; RUSTFLAGS={}",
+        std::env::var("RUSTFLAGS").unwrap_or_default()
+    );
+    rows.retain(|r| r.n_iter > 0);
+    let mut json = String::from("[\n");
+    for (i, r) in rows.iter().enumerate() {
+        json.push_str(&format!(
+            "  {{\"engine\": \"rust/fx-options-engine\", \"kernel\": \"{}\", \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+            r.kernel, r.n_iter, r.calls_per_sample, r.q[0], r.q[1], r.q[2], r.q[3], r.q[4],
+            if i + 1 < rows.len() { "," } else { "" }
+        ));
     }
-    // ---- Implied vol: 8 quotes, 100,000 solves ------------------------------
-    {
-        let cases = [(1.10, 1.10, 1.0, 0.1), (1.10, 1.25, 0.5, 0.12), (1.10, 0.95, 0.25, 0.15), (100.0, 90.0, 0.02, 0.1)];
-        let mut quotes = Vec::new();
-        for &(s0, k, t0, v) in &cases {
-            for ot in [OptionType::Call, OptionType::Put] {
-                quotes.push((gk_price(s0, k, t0, 0.03, 0.01, v, ot).unwrap(), s0, k, t0, ot));
-            }
+    json.push_str("]\n");
+    print!("{json}");
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/bench");
+    if std::fs::create_dir_all(dir).is_ok() {
+        if let Err(e) = std::fs::write(format!("{dir}/results.json"), &json) {
+            eprintln!("could not write results.json: {e}");
         }
-        const N: usize = 100_000;
-        let t0 = Instant::now();
-        let mut acc = 0.0_f64;
-        for i in 0..N {
-            let (p, s0, k, tt, ot) = quotes[i % quotes.len()];
-            acc += fx_options_engine::implied_vol(std::hint::black_box(p), s0, k, tt, 0.03, 0.01, ot).unwrap_or(0.0);
-        }
-        let dt = t0.elapsed().as_secs_f64();
-        println!("Implied vol        : {N} solves in {dt:.3} s -> {:.0} ns/solve (checksum {acc:.6})", dt * 1e9 / N as f64);
-    }
-
-    // ---- CRR American put, 2000 steps ---------------------------------------
-    {
-        let t0 = Instant::now();
-        let p = fx_options_engine::binomial_price(s, 1.12, t, rd, rf, 0.0925, OptionType::Put, 2000, fx_options_engine::Exercise::American).unwrap();
-        let dt = t0.elapsed().as_secs_f64();
-        println!("CRR American 2000  : {:.2} ms (price {p:.10})", dt * 1e3);
     }
 }
