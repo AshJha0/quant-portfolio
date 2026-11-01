@@ -251,7 +251,7 @@ pub mod prelude {
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
         monte_carlo_var, monte_carlo_var_with_threads, simulate_factor_returns, simulate_factor_returns_jitter,
-        var_standard_error, var_standard_error_bootstrap, JumpSpec, MonteCarloOptions,
+        var_standard_error, var_standard_error_bootstrap, var_standard_error_bootstrap_with_threads, JumpSpec, MonteCarloOptions,
         MonteCarloResult,
     };
     pub use crate::parametric::{

@@ -425,6 +425,8 @@ proptest! {
         check!(!m.all_finite());
         let opts = MonteCarloOptions { alpha: a, n_scenarios: 100, ..Default::default() };
         check!(monte_carlo_var_with_threads(&book(), &market(), &cov(), &opts, 3).is_err());
+        check!(var_standard_error_bootstrap_with_threads(&poison(p.clone(), i, x), 0.05, 50, 1, 4).is_err());
+        check!(var_standard_error_bootstrap_with_threads(&p, a, 50, 1, 4).is_err());
     }
 }
 

@@ -118,3 +118,19 @@ fn workspace_pnl_equals_allocating_pnl() {
         assert_eq!(row.to_bits(), r.to_bits());
     }
 }
+
+#[test]
+fn bootstrap_same_bits_for_any_thread_count() {
+    // Large enough to take the parallel path, plus a small serial case.
+    for (n, n_boot) in [(20_000usize, 120usize), (500, 30)] {
+        let mut r = Rng::new(3);
+        let pnl: Vec<f64> = (0..n).map(|_| 1e5 * r.normal()).collect();
+        let reference = var_standard_error_bootstrap_with_threads(&pnl, 0.01, n_boot, 77, 1).unwrap();
+        for threads in [0, 2, 3, 5, 7, 12, 64, 500] {
+            let got = var_standard_error_bootstrap_with_threads(&pnl, 0.01, n_boot, 77, threads).unwrap();
+            assert_eq!(got.to_bits(), reference.to_bits(), "n={n} threads={threads}");
+        }
+        let default = var_standard_error_bootstrap(&pnl, 0.01, n_boot, 77).unwrap();
+        assert_eq!(default.to_bits(), reference.to_bits());
+    }
+}

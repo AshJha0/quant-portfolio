@@ -108,22 +108,25 @@ bench on the pre-change code (opt-level 3, no LTO), run right after.
 
 | Kernel | Before p50 | After p50 | After p99 | After p99.9 |
 |---|---:|---:|---:|---:|
-| `CompiledBook::pnl`, one scenario | 1.83 us | 1.44 us | 1.74 us | 10.7 us |
-| `portfolio_sigma`, 50 factors | 2.58 us | 2.42 us | 5.4 us | 37 us |
-| `normal_var` (per call, batch of 64) | 281 ns | 195 ns | 347 ns | 4.8 us |
-| `empirical_var_es`, 100k | 240 us | 197 us | 956 us | 1.01 ms |
-| `empirical_var_es_into`, 100k | n/a | 160 us | 716 us | 0.98 ms |
-| `pnl_aligned_into`, 500 scenarios | n/a | 724 us | 1.89 ms | 2.95 ms |
-| `historical_var`, 500 scenarios | 1.25 ms | 1.22 ms | 2.09 ms | 2.62 ms |
-| `parametric_var`, normal | 676 us | 630 us | 1.54 ms | 2.01 ms |
-| `var_standard_error_bootstrap`, 100k x 200 | 90 ms | 139 ms | 262 ms | 262 ms |
-| `monte_carlo_var`, 100k normal | 961 ms | 450 ms | 527 ms | 527 ms |
-| `monte_carlo_var`, 100k t(5) | 943 ms | 350 ms | 460 ms | 460 ms |
+| `CompiledBook::pnl`, one scenario | 1.83 us | 2.03 us | 4.1 us | 10.8 us |
+| `portfolio_sigma`, 50 factors | 2.58 us | 3.09 us | 3.4 us | 17 us |
+| `normal_var` (per call, batch of 64) | 281 ns | 307 ns | 468 ns | 928 ns |
+| `empirical_var_es`, 100k | 240 us | 274 us | 440 us | 570 us |
+| `empirical_var_es_into`, 100k | n/a | 228 us | 466 us | 0.99 ms |
+| `pnl_aligned_into`, 500 scenarios | n/a | 1.17 ms | 3.19 ms | 4.13 ms |
+| `historical_var`, 500 scenarios | 1.25 ms | 1.23 ms | 2.38 ms | 2.71 ms |
+| `parametric_var`, normal | 676 us | 595 us | 695 us | 1.23 ms |
+| `var_standard_error_bootstrap`, 100k x 200 | 90 ms | 54.5 ms | 74 ms | 74 ms |
+| `monte_carlo_var`, 100k normal | 961 ms | 346 ms | 437 ms | 437 ms |
+| `monte_carlo_var`, 100k t(5) | 943 ms | 312 ms | 378 ms | 378 ms |
 
-Monte Carlo is 2.1x (normal) to 2.7x (t) faster at p50. The serial RNG
-pass bounds the gain. The standalone bootstrap is slower in this run:
-its index draws stay serial and it creates one scoped thread per
-replicate per batch, which costs more than the selections it spreads.
+Monte Carlo is 2.8x (normal) to 3.0x (t) faster at p50. The serial RNG
+pass bounds the gain. The bootstrap splits its replicates into one
+contiguous chunk per thread. A serial pass only advances the generator to
+record each chunk's start state, then each thread redraws its own
+indices, so the bits match the serial loop. It stays serial below 2^19
+index draws (measured crossover, see `BOOT_PAR_MIN_DRAWS`). Small kernels
+in this run sit within the run-to-run spread of the before numbers.
 Each MC call is one simulation plus 200 bootstrap resamples and the KDE
 standard error on the same 100k scenarios.
 

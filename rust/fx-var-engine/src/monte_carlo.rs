@@ -379,46 +379,80 @@ pub fn var_standard_error_bootstrap(pnl: &[f64], alpha: f64, n_boot: usize, seed
     bootstrap_se_threads(pnl, alpha, n_boot, seed, crate::par::default_threads())
 }
 
+/// Below this many index draws (`n_boot * n`) the bootstrap runs serially.
+/// Measured (p50 of 30, 200 replicates, 1 vs 12 threads, Core 5 120U under
+/// WSL2): 0.2M draws 2.23 ms vs 2.21 ms (no gain), 1M draws 7.1 ms vs
+/// 4.2 ms, 2M draws 13.7 ms vs 7.0 ms. The cut sits between the first two.
+const BOOT_PAR_MIN_DRAWS: usize = 1 << 19;
+
 /// Bootstrap replicates of the rank-`m` loss, in replicate order.
 ///
-/// The resample indices come from one RNG stream in the reference order:
-/// replicate `b` uses draws `b * n .. (b + 1) * n`. The serial thread
-/// draws the indices for a batch of replicates; the selections then run
-/// in parallel, one replicate per slot. The estimates are the same bits
-/// as the one-thread loop.
+/// Replicate `b` uses draws `b * n .. (b + 1) * n` of one RNG stream, as in
+/// the serial reference. The `n_boot` replicates are split into at most
+/// `threads` contiguous chunks. A cheap serial pass advances a copy of the
+/// generator (raw `next_u64` only) to record the state at each chunk start.
+/// One scoped thread per chunk then regenerates its own draws from that
+/// state, gathers and selects. The estimates are the same bits as the
+/// one-thread loop.
 fn bootstrap_estimates(pnl: &[f64], m: usize, n_boot: usize, seed: u64, threads: usize) -> Vec<f64> {
     let n = pnl.len();
-    let threads = threads.max(1);
-    let mut rng = Rng::new(seed);
     let mut est = vec![0.0; n_boot];
-    let batch = if n >= 4096 { threads } else { 1 };
-    let mut idx = vec![0usize; batch * n];
-    let mut bufs = vec![0.0; batch * n];
-    for est_chunk in est.chunks_mut(batch) {
-        let nb = est_chunk.len();
-        for slot in idx.iter_mut().take(nb * n) {
-            *slot = ((rng.uniform() * n as f64) as usize).min(n - 1);
+    let draws = n_boot.saturating_mul(n);
+    let threads = if draws < BOOT_PAR_MIN_DRAWS { 1 } else { threads.clamp(1, n_boot.max(1)) };
+    let per = n_boot.div_ceil(threads).max(1);
+    // Generator state at the start of each chunk.
+    let mut starts = Vec::with_capacity(threads);
+    let mut rng = Rng::new(seed);
+    for c in 0..n_boot.div_ceil(per) {
+        starts.push(rng.clone());
+        if c + 1 < n_boot.div_ceil(per) {
+            for _ in 0..per * n {
+                rng.next_u64();
+            }
         }
-        let work = |(e, (buf, ix)): (&mut f64, (&mut [f64], &[usize]))| {
-            for (b, &i) in buf.iter_mut().zip(ix) {
+    }
+    let work = |mut rng: Rng, chunk: &mut [f64]| {
+        let mut buf = vec![0.0; n];
+        for e in chunk.iter_mut() {
+            for b in buf.iter_mut() {
+                let i = ((rng.uniform() * n as f64) as usize).min(n - 1);
                 *b = -pnl.get(i).copied().unwrap_or(0.0);
             }
             let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
             *e = *lm;
-        };
-        let jobs = est_chunk.iter_mut().zip(bufs.chunks_exact_mut(n).zip(idx.chunks_exact(n)));
-        if nb == 1 {
-            jobs.for_each(work);
-        } else {
-            let work = &work;
-            std::thread::scope(|sc| {
-                for job in jobs {
-                    sc.spawn(move || work(job));
-                }
-            });
         }
+    };
+    let mut jobs = est.chunks_mut(per).zip(starts);
+    if threads == 1 {
+        jobs.for_each(|(chunk, r)| work(r, chunk));
+    } else {
+        let work = &work;
+        std::thread::scope(|sc| {
+            let first = jobs.next();
+            for (chunk, r) in jobs {
+                sc.spawn(move || work(r, chunk));
+            }
+            if let Some((chunk, r)) = first {
+                work(r, chunk);
+            }
+        });
     }
     est
+}
+
+/// [`var_standard_error_bootstrap`] on at most `threads` threads (0 is
+/// treated as 1). Same bits for every thread count.
+///
+/// # Errors
+/// Same as [`var_standard_error_bootstrap`].
+pub fn var_standard_error_bootstrap_with_threads(
+    pnl: &[f64],
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    threads: usize,
+) -> Result<f64> {
+    bootstrap_se_threads(pnl, alpha, n_boot, seed, threads)
 }
 
 fn bootstrap_se_threads(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64, threads: usize) -> Result<f64> {
