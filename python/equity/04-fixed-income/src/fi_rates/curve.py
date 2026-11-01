@@ -15,7 +15,7 @@ Conventions
 Interpolation schemes
 ---------------------
 ``loglinear_df`` (default)
-    Linear in ``ln P(t)`` — equivalent to piecewise-constant instantaneous
+    Linear in ``ln P(t)``: equivalent to piecewise-constant instantaneous
     forwards.  The desk workhorse: local, always-positive discount factors,
     exact pillar repricing.
 ``linear_zero``
@@ -31,7 +31,7 @@ Interpolation schemes
 Extrapolation policy
 --------------------
 * **Long end** (``t`` beyond the last pillar): flat zero-rate extrapolation,
-  and every such query emits an :class:`ExtrapolationWarning` — extrapolation
+  and every such query emits an :class:`ExtrapolationWarning`: extrapolation
   risk is real and documented in ``docs/VALIDATION.md``.
 * **Short end** (``0 < t`` before the first pillar): silent, because
   discounting short stub cashflows is routine.  ``loglinear_df`` interpolates
@@ -149,7 +149,7 @@ class DiscountCurve:
             with np.errstate(divide="ignore", invalid="ignore"):
                 z = np.where(tc > _TMIN, -lnp / np.maximum(tc, _TMIN), self._zeros[0])
         # Queries at (or numerically at) t = 0 return the first pillar's zero
-        # rate — the flat short-end extrapolation limit.
+        # rate, the flat short-end extrapolation limit.
         out = np.where(t_arr <= _TMIN, self._zeros[0], z)
         return float(out[0]) if np.isscalar(t) or np.ndim(t) == 0 else out
 

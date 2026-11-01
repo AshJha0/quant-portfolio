@@ -18,7 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 live = []          # FRED loader uses only stdlib urllib + pandas; guard is at import time
-dev = ["pytest>=7.4"]
+test = ["pytest>=7.4", "hypothesis>=6.100"]
+dev = ["pytest>=7.4", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

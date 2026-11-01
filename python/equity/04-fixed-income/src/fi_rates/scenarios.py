@@ -4,15 +4,15 @@ A :class:`Scenario` is a vector of zero-rate shifts (in basis points) at
 scenario tenors; the shift applied to each *curve pillar* is linearly
 interpolated in tenor between scenario points and held flat beyond the ends.
 Scenarios are applied to the pillar zero rates and the curve is rebuilt with
-its own interpolation — full revaluation, no Taylor approximation.
+its own interpolation, full revaluation, no Taylor approximation.
 
 Historical episodes (all **approximations** of published moves, encoded as
 net pillar shifts over the episode compressed into a single instantaneous
 shock; see docs/DESK_GUIDE.md for sources and narrative):
 
-* ``taper_tantrum_2013`` — bear steepener, May–Sep 2013: 10y UST roughly
+* ``taper_tantrum_2013``: bear steepener, May-Sep 2013: 10y UST roughly
   +130bp (≈1.6% → ≈2.9%), front end anchored by the Fed.
-* ``hiking_2022`` — bear flattener, calendar 2022: 2y roughly +370bp,
+* ``hiking_2022``: bear flattener, calendar 2022: 2y roughly +370bp,
   10y roughly +235bp as the Fed hiked; curve inverted.
 * ``gfc_2008``: calendar 2008 flight to quality. Year-end 2007 to year-end
   2008 changes in US Treasury constant-maturity yields (FRED series DGS3MO,

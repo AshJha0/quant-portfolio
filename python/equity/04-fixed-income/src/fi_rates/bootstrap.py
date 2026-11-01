@@ -3,32 +3,32 @@
 Instruments (all quote conventions simplified and documented in
 ``docs/METHODOLOGY.md``):
 
-* :class:`Deposit` — simple interest over ``[0, T]``:
+* :class:`Deposit`: simple interest over ``[0, T]``:
   ``P(T) = 1 / (1 + r * T)``.  Closed form.
-* :class:`FRA` — forward simple rate over ``[T1, T2]``:
+* :class:`FRA`: forward simple rate over ``[T1, T2]``:
   ``P(T2) = P(T1) / (1 + r * (T2 - T1))``.  Requires ``P(T1)`` from
   already-bootstrapped pillars (interpolated if T1 is not a pillar).
-* :class:`ParSwap` — par swap with an annual (or semi/quarterly) fixed leg,
+* :class:`ParSwap`: par swap with an annual (or semi/quarterly) fixed leg,
   equal accruals ``1/frequency``:
   ``r * sum_i alpha * P(t_i) + P(T) = 1``.
   Solved by 1-D root search (Brent) on the new pillar's discount factor,
   because intermediate coupon dates are interpolated off the partially built
-  curve — the standard sequential bootstrap.
+  curve, the standard sequential bootstrap.
 
 Bond-curve bootstrap: :func:`bootstrap_bond_curve` solves each maturity
 pillar's discount factor so the quoted coupon bond reprices exactly (dirty
 price), again with intermediate cashflows interpolated.
 
-Round-trip guarantee (interpolation-dependent — measured, not assumed):
+Round-trip guarantee (depends on the interpolation, measured in VALIDATION.md §1.1):
 
 * ``loglinear_df`` and ``linear_zero`` are **local**: appending a pillar
   cannot change the curve before it, so the sequential bootstrap is exact and
   every input instrument reprices to its quote to machine precision
-  (measured max error **2.5e-16** in rate terms).
+  (measured max error 4.0e-16 in rate terms).
 * ``pchip_zero`` is **non-local**: the monotone cubic is reshaped over earlier
   segments each time a pillar is appended, so already-solved instruments are
-  no longer reproduced exactly. The residual is small but real — measured max
-  error **3.6e-6** in rate terms on the standard quote set (well inside a
+  no longer reproduced exactly. Measured max
+  error 2.8e-6 in rate terms on the standard quote set (well inside a
   basis point, but ~10 orders of magnitude worse than the local schemes).
   If exact quote reproduction matters (most production risk systems require
   it), use a local scheme or iterate the bootstrap to a fixed point.
@@ -95,7 +95,7 @@ class FRA:
 class ParSwap:
     """Par swap: fixed leg pays ``rate / frequency`` on a unit notional at
     ``1/frequency, 2/frequency, ..., maturity``; the (implicit) float leg is
-    worth par — single-curve simplification (see METHODOLOGY assumptions)."""
+    worth par, single-curve simplification (see METHODOLOGY assumptions)."""
 
     maturity: float
     rate: float
@@ -176,7 +176,7 @@ def bootstrap_curve(
     ValueError
         On empty input, duplicate pillars, invalid instrument definitions, or
         when no discount factor in ``(1e-8, 20)`` reprices an instrument
-        (unsolvable input — e.g. wildly inconsistent quotes).
+        (unsolvable input, e.g. wildly inconsistent quotes).
     """
     ordered = _validate(instruments)
     times: list[float] = []

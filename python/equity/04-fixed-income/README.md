@@ -1,46 +1,49 @@
-# 04 — Fixed Income Pricing & Risk Analytics (`fi_rates`)
+# 04: Fixed Income Pricing and Risk Analytics (`fi_rates`)
 
-Government/corporate bond pricing and rates risk, built the way a desk
-builds it:
+Government and corporate bond pricing and rates risk:
 
 ```
-Yield Curve Construction → Bootstrapping → Bond Pricing → Duration
-       → Convexity → Key Rate Duration → Scenario Analysis
+Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
+       -> Convexity -> Key-rate duration -> Scenario analysis
 ```
 
-* **Curves** (`curve.py`): discount curve over pillar times with three
-  interpolations — log-linear on discount factors (default; piecewise-constant
-  forwards), linear on zeros (kept to *demonstrate* its forward sawtooth),
-  monotone cubic (PCHIP) on zeros. Zero/forward/par rates derived; flat
-  extrapolation warned.
+* **Curves** (`curve.py`): discount curve with three interpolations:
+  log-linear on discount factors (default, piecewise-constant forwards),
+  linear on zeros (kept to show its forward sawtooth) and PCHIP on zeros
+  (C1 zeros, C0 forwards). Long-end extrapolation is flat and warned.
 * **Bootstrap** (`bootstrap.py`): sequential bootstrap from deposits, FRAs
-  and par swaps (Brent root-solve per pillar), plus a coupon-bond bootstrap.
-  Inputs reprice to **1e-10** (measured ~4e-16), order-independent.
-* **Bonds** (`bond.py`): fixed-coupon (clean/dirty/accrued, street-convention
-  YTM solver), zero-coupon, FRN (== par at reset, exactly), annuities,
+  and par swaps (Brent per pillar), plus a coupon-bond bootstrap. Inputs
+  reprice to 1e-10 (measured 4e-16) under local interpolation.
+* **Dates** (`daycount.py`, `calendars.py`): ACT/365F, ACT/360, 30/360US,
+  ACT/ACT-ISDA, ACT/ACT-ICMA; schedules with the end-of-month rule;
+  partial business-day calendars (weekends plus fixed-date holidays for
+  USD, EUR, GBP, JPY) with following, modified following and preceding.
+* **Bonds** (`bond.py`): fixed coupon (clean, dirty, accrued, street YTM),
+  government bonds on ACT/ACT-ICMA with exact c/f coupons, zero coupon,
+  FRN (par at reset; mid-period with the current fixing), annuities,
   z-spread solver.
-* **Risk** (`risk.py`): Macaulay/modified duration, convexity, DV01 —
-  analytic *and* bump-based, reconciled; Taylor-vs-full-repricing error
-  table; MV-weighted portfolio aggregation.
-* **Key rates** (`keyrates.py`): triangular-bump KRDs at 2/5/10/30y
-  (configurable); ladder sums to parallel DV01 to 5e-8 (tolerance
-  documented).
-* **Scenarios** (`scenarios.py`): parallel/steepener/butterfly + historical
-  episodes (2013 taper tantrum, 2022 hiking cycle, 2008 GFC — approximate
-  published magnitudes), full revaluation vs duration estimate, carry &
-  roll-down with the pull-to-par identity.
-* **Data** (`data/synthetic.py`): seeded deposit+swap quote sets (upward /
-  inverted / flat / negative-rate variants) and a govt+corp sample
-  portfolio; `data/live.py`: optional FRED CMT loader, import-guarded,
-  never touched by tests.
+* **Risk** (`risk.py`): Macaulay and modified duration, convexity, DV01,
+  analytic and bump-based; Taylor error table; portfolio aggregation.
+* **Key rates** (`keyrates.py`): triangular-bump KRDs at 2/5/10/30y.
+* **Scenarios** (`scenarios.py`): parallel, steepener, butterfly and
+  historical episodes (2013 taper, 2022 hiking, 2008 from UST CMT
+  year-end changes); full revaluation vs duration estimate; funded carry
+  with a pull-to-par and curve roll-down split.
+* **Data** (`data/synthetic.py`): seeded synthetic quote sets and a
+  government plus corporate sample book; `data/live.py`: optional FRED CMT
+  loader, never used by tests.
+
+Limitations: single-curve (no OIS discounting or tenor basis), curve
+inputs in year fractions rather than dated instruments, partial holiday
+calendars, KRDs in zero-rate space with no par-rate Jacobian.
 
 ## Quickstart
 
 ```bash
 cd python/equity/04-fixed-income
-pip install -e .[dev]
-python -m pytest tests -q      # 342 tests, ~1s, offline
-python examples/run_pipeline.py
+pip install -e .[test]
+python -m pytest tests -q          # see the table below
+python examples/run_pipeline.py    # writes nothing to disk
 ```
 
 ```python
@@ -51,36 +54,41 @@ from fi_rates.data import market_quotes, sample_portfolio
 curve = fr.bootstrap_curve(market_quotes("upward", seed=42))
 settle = dt.date(2026, 8, 18)
 book = sample_portfolio(settle)
-print(fr.portfolio_risk(book, settle, curve))     # DV01/duration/convexity
-print(fr.krd_report(book, settle, curve))         # 2s/5s/10s/30s ladder
+print(fr.portfolio_risk(book, settle, curve))
+print(fr.krd_report(book, settle, curve))
 print(fr.scenario_pnl_table(book, settle, curve,
                             list(fr.HISTORICAL_SCENARIOS.values())))
 ```
 
-## Headline numbers (seed 42, settlement 2026-08-18)
+| Command | Result |
+|---|---|
+| `python -m pytest tests -q` | 430 passed, about 10 s |
+| `python examples/run_pipeline.py` | about 0.5 s inside the script, 6 s with interpreter start-up |
 
-* Curve: 3.06% (3m) → 4.55% (30y) zeros; all 11 quotes reprice to ≤4e-16.
-* Book: $1.74mm MV, aggregate modified duration 5.42, DV01 $980/bp.
-* KRD ladder 2/5/10/30y: 154 / 278 / 368 / 180 → sum matches parallel DV01
-  to 5.3e-8 relative.
-* Scenarios (full revaluation): 2022 hiking −$228k (−13.1%), 2013 taper
-  −$94k, 2008 GFC +$168k; duration+convexity estimate off by 12–183% on
-  non-parallel moves — the reason the KRD ladder exists.
-* Convexity halves nothing: it cuts the 100bp Taylor error ~30x
-  (−0.401 → −0.014 per 100 face).
-* Carry+roll (1y, static curve): 5y govt earns 4.12 per 100 face; identity
-  carry+roll == pull-to-par P&L holds to 1e-12.
+## Headline numbers
 
-## Docs (portfolio documentation contract)
+`python examples/run_pipeline.py`, synthetic quotes, seed 42, settlement
+2026-08-18:
 
-* [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — bootstrap+local-interp vs
-  Nelson–Siegel/Svensson (who uses which and why); 10-item assumptions
-  register, incl. the **single-curve pre-OIS simplification** and its
-  multi-curve production replacement.
-* [`docs/VALIDATION.md`](docs/VALIDATION.md) — round-trip and
-  analytic-identity evidence, KRD-sum tolerance analysis, failure modes with
-  numbers (forward sawtooth, extrapolation, duration under twists, negative
-  convexity out-of-scope).
-* [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md) — EOD workflow, DV01-ladder
-  hedging, 2s10s curve trades, ALM, auctions/CTD, and the taper-tantrum /
-  gilts-LDI / SVB lessons.
+| Quantity | Value |
+|---|---|
+| Zero curve, 3m to 30y | 3.06% to 4.55% |
+| Max quote repricing error (11 quotes) | 4.0e-16 |
+| Book market value | 1,739,957 |
+| Book modified duration | 5.53 |
+| Book DV01 per bp | 980.2 |
+| KRD ladder 2/5/10/30y | 154 / 278 / 368 / 180 |
+| KRD sum vs parallel DV01 | 5.3e-8 relative |
+| 2022 hiking / 2013 taper / 2008 P&L | -228,406 / -94,037 / +205,552 |
+| 100bp Taylor error, 10y govt, duration vs duration+convexity | -0.401 vs -0.014 per 100 |
+| 1y funded carry + roll, 5y govt, repo 3.10% | 1.02 per 100 |
+
+## Docs
+
+* [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md): bootstrap and
+  interpolation choices, day counts and calendars, conventions,
+  assumptions register.
+* [`docs/VALIDATION.md`](docs/VALIDATION.md): round trips, identities,
+  KRD residuals, failure modes with numbers.
+* [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md): daily workflow, ladder
+  hedging, carry, scenarios, controls.

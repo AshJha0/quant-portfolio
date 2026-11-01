@@ -1,6 +1,6 @@
 """Seeded synthetic market data: deposit/swap quote sets and a bond portfolio.
 
-Everything here is deterministic given ``seed`` and fully offline — this is
+Everything here is deterministic given ``seed`` and fully offline, this is
 the only data source the tests and the example pipeline use.
 
 Curve variants
@@ -92,7 +92,7 @@ def sample_portfolio(settlement: dt.date, seed: int = 42) -> list[Position]:
 
     Governments carry zero z-spread; corporates carry seeded z-spreads in
     roughly the 80-250bp range (spread risk handled as a z-spread over the
-    single discount curve — see METHODOLOGY assumptions register).
+    single discount curve, see METHODOLOGY assumptions register).
 
     Quantities are in bonds (face 100 each).
     """
