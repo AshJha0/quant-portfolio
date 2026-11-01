@@ -1,38 +1,44 @@
-# Validation — Equity Options Pricing & Greeks Engine
+# Validation: Equity Options Pricing and Greeks Engine
 
-This document answers documentation-contract items 3 and 4: **how the
-engine was validated** (analytic benchmarks, convergence studies,
-cross-model consistency) and **where it fails** (failure modes with
-reproducible numbers). Every number below is produced by the committed
-code — `PYTHONPATH=src python examples/run_pipeline.py` regenerates the
-tables; `python -m pytest tests -q` (288 tests, offline, seeded) enforces
-them permanently.
+This document covers how the engine was validated (analytic benchmarks,
+an independent oracle, convergence studies, cross-model and cross-language
+checks) and where it fails. Two commands produce every number below:
+
+- `PYTHONPATH=src python examples/run_pipeline.py` (sections 2, 3, 4, 5).
+- `PYTHONPATH=src python examples/validation_tables.py` (variance
+  reduction, hedging noise, sections 6.1 and 6.3).
+
+`python -m pytest tests -q` runs 2039 offline, seeded tests (most of them
+parametrised grid points; see the README for the breakdown).
 
 Reference contract unless stated otherwise:
 `S=100, K=100, T=1y, r=5%, q=1%, sigma=20%`.
 
 ---
 
-## 1. Analytic benchmarks
+## 1. Benchmarks and oracles
 
 | Check | Result | Test |
 |---|---|---|
-| Put-call parity `C − P = S e^{-qT} − K e^{-rT}` over a 1080-point grid (S, K, T, r∈{−1%,0,5%}, q, σ) | max abs error < 1e-10 | `test_put_call_parity_full_grid_1e10` |
-| Hull textbook: S=42, K=40, T=0.5, r=10%, σ=20% | call 4.7594, put 0.8086 (1e-4) | `test_textbook_values` |
-| Haug generalized-BSM put (b=5% carry): S=75, K=70, T=0.5, r=10%, σ=35% | 4.0870 (1e-4) | `test_textbook_values` |
-| Black-76 with `F = S e^{(r−q)T}` == BSM | abs diff < 1e-10 (8 cases) | `test_black76_equals_bsm_on_model_forward` |
-| Analytic Greeks (delta, gamma, vega, theta, rho, vanna, volga) vs central finite differences | rel err < 1e-4, 10 scenarios × call/put | `test_analytic_vs_finite_difference_all_greeks` |
-| Implied-vol round trip σ → price → σ, moneyness 0.5–2.0, T = 1w–5y, call+put | abs err < 1e-8 (40 cases) | `test_round_trip_sigma_price_sigma` |
-| Golden vectors (32 cases, committed JSON for C++/Rust cross-validation) | reproduce to 1e-10 | `test_golden_vectors_reproduce_to_1e10` |
+| Golden vectors: 456 records from mpmath at 50 digits (BSM price and all Greeks incl. vanna/volga, Black-76, implied vol, CRR European and American, edge limits) | every output within its own tolerance; worst deviation 0.18 of tolerance | `test_golden.py` |
+| Put-call parity over a 1080-point grid | max abs error < 1e-10 | `test_put_call_parity_full_grid_1e10` |
+| Hull: S=42, K=40, T=0.5, r=10%, sigma=20% | call 4.7594, put 0.8086 | `test_textbook_values` |
+| Haug generalised-BSM put: S=75, K=70, T=0.5, r=10%, b=5%, sigma=35% | 4.0870 | `test_textbook_values` |
+| Black-76 with `F = S e^{(r-q)T}` equals BSM | abs diff < 1e-10 | `test_black76_equals_bsm_on_model_forward` |
+| Analytic Greeks vs central finite differences | rel err < 1e-4 | `test_analytic_vs_finite_difference_all_greeks` |
+| Implied vol against mpmath over ln(K/S) in [-5, 5], T in [1e-7, 50], sigma in [1e-4, 5] | within 4 max(eps max(S,K)/vega, 1e-12 sigma), at most 10 evaluations | `test_iv_accuracy.py` |
+| Property tests (hypothesis): parity, monotone in vol and strike, strike convexity, delta bounds, IV round trip | 300 examples each | `test_property_based.py` |
+| Cross-language: Python vs Rust vs C++ on 640 seeded random requests | max abs deviation 1e-13 (prices), 2e-13 (implied vol) | `test_differential.py` |
 
-On the synthetic skewed chain (22 quotes, 2 expiries), the worst
-implied-vol round-trip error is **3.1e-13**.
+The golden tolerances are per output: `64 eps (1 + d1^2)(|v| + max(S, K))`
+for closed forms, `4 max(eps max(S,K)/vega, 1e-12 sigma)` for implied vol
+and `4 n eps max(S, K)` for an n-step tree. The JSON states each rule.
 
-## 2. Convergence: CRR tree → Black-Scholes
+## 2. Convergence: CRR tree to Black-Scholes
 
 European ATM call, reference contract (BS price **9.826298**):
 
-| n_steps | tree price | abs error | error × n |
+| n_steps | tree price | abs error | error x n |
 |---:|---:|---:|---:|
 | 10 | 9.632077 | 0.194221 | 1.94 |
 | 25 | 9.898850 | 0.072552 | 1.81 |
@@ -43,166 +49,133 @@ European ATM call, reference contract (BS price **9.826298**):
 | 1000 | 9.824328 | 0.001970 | 1.97 |
 | 2000 | 9.825313 | 0.000985 | 1.97 |
 
-`error × n` is constant (≈1.97) — clean **O(1/n)** convergence. The
-odd/even oscillation of CRR is visible at low n (n=25 overshoots from
-above). Tests enforce monotone error decay along same-parity doublings and
-agreement with BS at 500+ steps.
+`error x n` is about 1.97 at every n, so convergence is O(1/n). The
+odd/even oscillation shows at low n (n=25 overshoots).
 
-## 3. Convergence: Monte Carlo → Black-Scholes
+## 3. Convergence: Monte Carlo to Black-Scholes
 
-Antithetic + control variate, independent seeds per row:
+Antithetic plus control variate, independent seeds per row:
 
-| n_paths | MC price | abs error | std error | SE × √n |
+| n_paths | MC price | abs error | std error | SE x sqrt(n) |
 |---:|---:|---:|---:|---:|
-| 1,000 | 9.491159 | 0.335138 | 0.241694 | 7.64 |
-| 4,000 | 9.782944 | 0.043354 | 0.124725 | 7.89 |
-| 16,000 | 9.866177 | 0.039879 | 0.062678 | 7.93 |
-| 64,000 | 9.826117 | 0.000181 | 0.031205 | 7.89 |
-| 256,000 | 9.833447 | 0.007149 | 0.015635 | 7.91 |
+| 1,000 | 9.811312 | 0.014986 | 0.080063 | 2.53 |
+| 4,000 | 9.812672 | 0.013626 | 0.042859 | 2.71 |
+| 16,000 | 9.831026 | 0.004728 | 0.022084 | 2.79 |
+| 64,000 | 9.826594 | 0.000296 | 0.011232 | 2.84 |
+| 256,000 | 9.824166 | 0.002132 | 0.005625 | 2.85 |
 
-`SE × √n` constant ≈ 7.9 — the **O(n^{-1/2})** law. Every abs error is
-within 3 SE of zero (tested for 4 contracts at 200k paths, plus CI
-coverage).
+`SE x sqrt(n)` settles near 2.85, the O(n^{-1/2}) law.
 
-Variance reduction at 100k paths (same seed): SE plain **0.0465** →
-antithetic **0.0326** → control variate **0.0177** → both **0.0246**;
-each technique individually reduces SE (tested). Note antithetic and the
-control variate are *not* additive on a convex payoff — the CV alone is
-the best single technique here; the harness reports whatever combination
-you select, with honest error bars.
+Variance reduction at 100k paths (seed 7):
 
-MC Greeks: pathwise and likelihood-ratio delta/vega match analytic values
-within 3 SE (8 tests); pathwise has strictly lower variance than LR for
-vanilla delta (tested), matching theory.
+| estimator | SE |
+|---|---:|
+| plain | 0.0449 |
+| antithetic | 0.0326 |
+| control variate | 0.0179 |
+| antithetic + control variate | 0.0089 |
+
+The control-variate coefficient is fitted on the antithetic pair averages,
+which are the independent samples. Fitting it on the raw draws and pairing
+afterwards mis-sizes the coefficient; that combination gave 0.0247 here,
+worse than the control variate alone. Tests check, over seven seeds, that
+the combined SE is no larger than the control-variate SE.
+
+MC Greeks: pathwise and likelihood-ratio delta and vega match analytic
+values within 3 SE; pathwise has lower variance than LR for vanilla delta.
 
 ## 4. American exercise (CRR)
 
-- American put ≥ European put on every tested contract; premium ≥ 0.
-- American call with q=0 equals European call to 1e-10 (Merton's
-  no-early-exercise theorem) — a sharp implementation test, since the
-  early-exercise branch must fire *never* despite being evaluated at
-  every node.
+- American put >= European put on every tested contract.
+- American call with q=0 equals the European call to 1e-10 (Merton).
 - Reference 1y ATM put (q=1%): American **6.366622**, early-exercise
   premium **0.423350** at 2000 steps.
-- Literature benchmark S=K=100, T=1, r=5%, σ=20%, q=0: American put
-  **6.0896 ± 0.005** at 2000 steps (tested).
-
-Premium convergence (same-tree differencing cancels the O(1/n) error):
-
-| n_steps | American put | premium |
-|---:|---:|---:|
-| 50 | 6.349163 | 0.444201 |
-| 200 | 6.362745 | 0.428331 |
-| 500 | 6.365355 | 0.425037 |
-| 2000 | 6.366622 | 0.423350 |
+- S=K=100, T=1, r=5%, sigma=20%, q=0: American put **6.0896 +/- 0.005**
+  at 2000 steps.
+- S=0 with r<0: the holder waits, value `K e^{-rT}` (> K).
+- Exercise values are precomputed per node level (O(n) exps), so a
+  2000-step American put takes 26 ms instead of 64 ms on the test
+  machine (timing loop around `crr_price`, single run).
 
 ## 5. Hedging validation
 
-Short 3M ATM call (S=100, r=2%, σ=20%), 4000–8000 paths, seeded:
+Short 3M ATM call (S=100, r=2%, sigma=20%), 4000 paths, seeded:
 
-| n_rebalance | P&L std | std × √N |
+| n_rebalance | P&L std | sqrt(pi/4) vega sigma / sqrt(N) |
 |---:|---:|---:|
-| 4 | 1.6134 | 3.23 |
-| 16 | 0.8436 | 3.37 |
-| 64 | 0.4399 | 3.52 |
-| 256 | 0.2232 | 3.57 |
+| 4 | 1.5993 | 1.7590 |
+| 16 | 0.8300 | 0.8795 |
+| 64 | 0.4263 | 0.4397 |
+| 256 | 0.2195 | 0.2199 |
 
-std × √N ≈ constant — the **1/√N** hedging-error law.
+The simulated std follows the Derman-Kamal estimate
+`sqrt(pi/4) vega sigma / sqrt(N)`, the 1/sqrt(N) hedging-error law.
 
-- Hedged at true vol, N=128: mean P&L **+0.0014** (SE 0.0035) — zero
-  within error bars, with and without real-world drift µ=15% (tested).
-- Sold at 25 vol, realized 15 vol: mean P&L **+1.996** vs the
-  gamma-weighted vol-spread formula on the same paths **+1.987**
-  (within 1 SE; tested at 4 SE tolerance).
-- 5bp proportional costs at N=128: mean P&L drops from +0.0014 to
-  **−0.2341** — the cost drag grows with frequency (tested).
+- Hedged at true vol, N=128: mean P&L **+0.0014** (SE 0.0035).
+- Sold at 25 vol, realised 15 vol: mean P&L **+1.996** against the
+  gamma-weighted vol-spread value **+1.987**.
+- 5bp proportional costs at N=128: mean P&L **-0.2341**.
 
-## 6. Failure modes (know where it breaks)
+## 6. Failure modes
 
 ### 6.1 Vol smile contradiction
-BS assumes one σ for all strikes; the market does not. Pricing a 3M chain
-with the (synthetic, mild) skew vs a single ATM vol:
+BS uses one sigma for all strikes. Pricing a 3M put chain at the synthetic
+skew against a single ATM vol (synthetic data, `validation_tables.py`):
 
 | K | skew IV | put @ skew IV | put @ ATM IV | mispricing |
 |---:|---:|---:|---:|---:|
-| 80 | 25.6% | 0.1699 | 0.0344 | −80% of value |
-| 90 | 22.4% | 0.9106 | 0.6426 | −29% |
-| 110 (ITM) | 18.4% | 10.2500 | 10.4691 | +2% |
+| 80 | 25.6% | 0.1703 | 0.0345 | -80% |
+| 90 | 22.5% | 0.9129 | 0.6442 | -29% |
+| 110 (ITM) | 18.4% | 10.2756 | 10.4953 | +2% |
 
-A flat-vol user underprices the 80-strike put by **5×**. Consequence:
-never feed one vol across strikes; mark a surface (DESK_GUIDE.md). The
-engine treats vol as a per-quote input precisely for this reason.
+A flat-vol user underprices the 80-strike put by about 5x on this
+synthetic skew. Vol is a per-quote input for this reason.
 
 ### 6.2 Discrete hedging error
-Even with the *correct* vol, hedging 4× over a 3M option leaves P&L noise
-of std ≈ **$1.61 on a $4.42 premium** (36%). This is not a bug — it is
-the irreducible risk the BS "replication" argument assumes away
-(assumption A2). Budget it: std ≈ 3.5/√N per short ATM call.
+Hedging 4 times over a 3M option leaves a P&L std of about 1.6 on a 4.42
+premium even at the correct vol (section 5). This is the risk the
+replication argument assumes away (assumption A2).
 
-### 6.3 Dividend modeling error
-Continuous yield q smears a discrete dividend across time. Stock pays
-D=3 on ex-date t=0.1y; ATM calls, σ=20%, r=3%:
+### 6.3 Dividend modelling error
+A continuous yield spreads a discrete dividend over time. Stock pays D=3
+at t=0.1y; ATM calls, sigma=20%, r=3% (`validation_tables.py`, escrowed
+model as the reference):
 
-| Expiry | correct (discrete) | smeared q=3% | error |
+| Expiry | escrowed dividend | continuous q=3% | error |
 |---|---:|---:|---:|
-| T=0.08 (before ex-date) | 2.3756 | 2.2510 | **−0.125** (drops a dividend the option never sees) |
-| T=0.12 (after ex-date) | 1.6015 | 2.7535 | **+1.152** (~72% overpricing: only 36% of the drop is applied by expiry) |
+| T=0.08 (before ex-date) | 2.3756 | 2.2510 | -0.125 |
+| T=0.12 (after ex-date) | 1.6015 | 2.7535 | +1.152 |
 
-Rule: continuous q is acceptable for index baskets and long-dated
-single-name options; for short-dated single names around ex-dates use
-escrowed-dividend spot adjustment or a discrete-dividend tree. The
-American-call exercise decision is similarly distorted: real early
-exercise clusters immediately before ex-dates, which continuous q cannot
-represent (it produces a smooth exercise boundary instead).
+Continuous q is acceptable for indices and long-dated single names. Short
+single-name options around ex-dates need an escrowed or discrete-dividend
+model, which this package does not implement.
 
-### 6.4 American pricing via CRR: limitations
+### 6.4 CRR limitations
 - O(1/n) convergence with odd/even oscillation: n=10 misprices the
-  reference call by 0.19 (~2%). Never quote off a coarse tree; use
-  n ≥ 500 and same-parity Richardson if speed matters.
-- Greeks off a tree are noisy (the discrete grid makes bumped prices
-  non-smooth); `fd_greeks` on the tree needs bumps ≥ 1e-3 (tested) and
-  gamma remains rough. A PDE solver is the right upgrade for smooth
-  American Greeks.
-- The risk-neutral probability `p = (e^{(r−q)Δt} − d)/(u − d)` leaves
-  (0,1) when `|r − q|√Δt > σ` — the implementation *raises* rather than
-  silently clamping (tested indirectly via input validation); increase
-  n_steps in extreme carry/low-vol corners.
-- Discrete dividends, term-structure r(t) and σ(t) are not implemented on
-  the tree — constant-parameter CRR only.
+  reference call by 0.19. Use n >= 500.
+- Tree Greeks are noisy; `fd_greeks` on the tree needs bumps >= 1e-3.
+- The tree raises when `p` leaves (0, 1), that is when
+  `|r - q| sqrt(dt) > sigma`.
+- No discrete dividends or term structures on the tree.
 
-### 6.5 Numerical limits (documented + tested)
-- **T=0 / σ=0:** defined limits (intrinsic; discounted forward intrinsic)
-  rather than NaN — tested for all engines.
-- **Implied vol at the arbitrage bound:** price ≤ discounted forward
-  intrinsic or ≥ upper bound raises `ValueError` — no silent garbage vol.
-  Deep-ITM short-dated quotes lose all vol information in float64 (time
-  value underflows); the round-trip domain is |ln(K/F)| ≲ 3σ√T and
-  the solver refuses outside it.
-- **Implied vol in the long-dated + high-vol flat-vega corner:** for
-  T ≳ 10y with σ ≳ 200%, `|d1|`/`|d2|` grow large enough that vega
-  `~ S√T φ(d1)` underflows towards zero and the price sits within
-  double-precision noise of the σ→∞ bound; recovered vol there is only
-  accurate to ~1e-4–1e-3 (vs 1e-8 elsewhere) — a property of the inverse
-  problem itself. `implied_vol` always finishes with a Brent refinement
-  on its bracket rather than returning as soon as the *price* residual is
-  within `tol`, since exiting early there previously understated the
-  error by ~300x (1.8e-2 vs 2.4e-5 on the S=K=100, T=25y, σ=300% put) —
-  see `test_round_trip_long_dated_high_vol_flat_vega` and the C++/Rust
-  siblings, which had (and now fix) the identical issue.
-- **No NaNs:** price/Greek sweeps across S∈[1e-3,1e5], T∈[1e-6,10],
-  σ∈[1e-6,8], r∈[−5%,10%] are finite (tested); `RuntimeWarning`s are
-  promoted to errors in the pytest config so silent overflow cannot creep
-  in.
-- **NaN/Inf inputs:** `validate_inputs` rejects NaN *and* ±Inf in S, K,
-  T, σ with a `ValueError` (`"must be finite"`), for every engine —
-  garbage market data fails loudly at the boundary instead of propagating
-  Inf/NaN into the book (tested in `test_properties.py`).
-- **Shape invariants (property tests):** homogeneity of degree 1 in
-  (S, K) to 1e-12 relative; call/put monotone in σ; call delta monotone
-  in S; butterfly convexity in K for BS, Black-76 and the American tree;
-  American ≥ max(European, intrinsic); implied vol monotone in price;
-  the T→0 and σ→0 limits are continuous (no jump at the documented
-  boundary values).
-- **Negative rates:** fully supported and cross-model consistent
-  (tested), including the r<0 American-call early-exercise premium that
-  surprises people trained on r≥0.
+### 6.5 Numerical limits
+- **T=0, sigma=0:** defined limits. The sigma=0 price is computed as
+  `S e^{-qT} - K e^{-rT}`, so it stays finite when the forward
+  overflows ((r-q)T > 709).
+- **Overflow:** a discount factor or forward that overflows raises
+  `ValueError`, never `OverflowError` or `inf`.
+- **Implied vol near the bounds:** a price at or below the discounted
+  forward intrinsic, or at or above the upper bound, raises `ValueError`.
+- **Implied vol on the in-the-money side:** the solver works on the
+  out-of-the-money time value, but an ITM quote carries less information.
+  With S=100, K=90, T=0.02, sigma=10%, one ulp of the call price
+  (1.8e-15) moves the vol by about 5e-4 (vega 3.5e-12). The solver then
+  returns a vol that reprices the quote to a few ulps; the OTM put at the
+  same strike recovers the vol to 1e-12.
+- **Implied vol accuracy elsewhere:** within
+  `max(eps price / vega, 1e-12 sigma)`; the 1e-12 floor comes from
+  rounding of the normal-CDF argument in the far tail.
+- **NaN/Inf inputs:** rejected with `ValueError` at every public entry
+  point, including r and q.
+- **Monte Carlo:** fewer than two independent samples (three with the
+  control variate) raises; one antithetic pair has no standard error.
