@@ -69,3 +69,24 @@ def test_pchip_forward_is_continuous_but_kinked_at_pillars():
     slope_l = (inst_fwd(5.0 - eps) - inst_fwd(5.0 - 2 * eps)) / eps
     slope_r = (inst_fwd(5.0 + 2 * eps) - inst_fwd(5.0 + eps)) / eps
     assert abs(slope_r - slope_l) > 1e-4              # derivative jumps: not C1
+
+
+class TestFrnCurrentFixing:
+    def test_mid_period_frn_identity(self, settlement, curve):
+        """Zero margin: dirty = P(t1) * face * (1 + fixing * ACT/360)."""
+        mat = D(2031, 10, 1)
+        price = fr.frn_price_from_curve(settlement, mat, curve, 4, current_fixing=0.05)
+        t1 = D(2026, 10, 1)
+        p1 = float(curve.df(fr.curve_time(settlement, t1)))
+        tau = (t1 - D(2026, 7, 1)).days / 360.0
+        assert price == pytest.approx(p1 * 100 * (1 + 0.05 * tau), rel=1e-12)
+
+    def test_without_fixing_unchanged(self, settlement, curve):
+        mat = D(2031, 8, 18)
+        assert fr.frn_price_from_curve(settlement, mat, curve, 4) == pytest.approx(100.0,
+                                                                                   abs=1e-10)
+
+    def test_non_finite_fixing_rejected(self, settlement, curve):
+        with pytest.raises(ValueError, match="current_fixing"):
+            fr.frn_price_from_curve(settlement, D(2031, 10, 1), curve, 4,
+                                    current_fixing=float("nan"))

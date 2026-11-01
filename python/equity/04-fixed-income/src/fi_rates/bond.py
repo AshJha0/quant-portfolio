@@ -385,15 +385,22 @@ def frn_price_from_curve(
     frequency: int = 4,
     quoted_margin: float = 0.0,
     face: float = 100.0,
+    current_fixing: float | None = None,
 ) -> float:
-    """Floating-rate note priced off the (single, self-discounting) curve.
+    """Floating-rate note dirty price off the single, self-discounting curve.
 
-    Assumes a reset **on the settlement date** (start of a coupon period):
+    Without ``current_fixing`` the note resets on the settlement date:
     projected coupons are the curve's simple forwards plus ``quoted_margin``
-    over each period, discounted off the same curve.  With zero margin the
+    over each period, discounted off the same curve. With zero margin the
     telescoping identity gives price == par exactly (tested):
 
     ``sum_i (P(t_{i-1}) - P(t_i)) + P(T) = P(t_0) = 1``.
+
+    With ``current_fixing`` the note is mid-period: the coupon to the next
+    payment date was fixed at the last reset (one period before that date)
+    and accrues ACT/360. Later coupons are projected as above. With zero
+    margin the price is ``P(t_1) * face * (1 + fixing * ACT/360)``.
+    The curve is used for both projection and discounting (no OIS split).
     """
     _check_settlement(settlement, maturity)
     _require_finite("quoted_margin", quoted_margin)
@@ -416,6 +423,11 @@ def frn_price_from_curve(
         p_prev = np.asarray(curve.df(t_prev))
     fwd = (p_prev / p - 1.0) / alpha
     coupons = (fwd + quoted_margin) * alpha * p
+    if current_fixing is not None:
+        _require_finite("current_fixing", current_fixing)
+        last_reset = roll_months(dates[0], -(12 // frequency))
+        tau1 = (dates[0] - last_reset).days / 360.0
+        coupons[0] = (current_fixing + quoted_margin) * tau1 * p[0]
     return face * float(np.sum(coupons) + p[-1])
 
 
