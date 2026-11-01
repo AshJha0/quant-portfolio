@@ -11,8 +11,9 @@ file checks:
   docs equals the count in those files;
 * no hand-typed test total appears in the top-level docs;
 * the golden-vector pipeline exists and reproduces the committed constants;
-* with ``counts.json`` present: every project and engine reported, with no
-  failures or errors. Without it (a local run) those tests skip.
+* with ``counts.json`` present: every project (and ``python/core``), every
+  engine under every CMake preset, every Rust crate (and ``rust/core``) and
+  both binding packages reported, with no failures or errors. Without it (a local run) those tests skip.
 
 Run from the repository root::
 
@@ -41,8 +42,13 @@ PY_AREAS = {
     "fx": sorted((REPO / "python/fx").glob("[0-9][0-9]-*")),
     "foundations": sorted((REPO / "python/foundations").glob("[0-9][0-9]-*")),
 }
-CPP_ENGINES = sorted(p for p in (REPO / "cpp").iterdir() if p.is_dir())
-RUST_ENGINES = sorted(p for p in (REPO / "rust").iterdir() if p.is_dir())
+# Engines are the */*-engine directories. cpp/core and rust/core are shared
+# libraries, not sub-projects; rust/ also holds the workspace Cargo.toml.
+CPP_ENGINES = sorted(p for p in (REPO / "cpp").glob("*-engine") if p.is_dir())
+RUST_ENGINES = sorted(p for p in (REPO / "rust").glob("*-engine") if p.is_dir())
+# CMake presets every engine runs in CI (cpp/<engine>/CMakePresets.json).
+CPP_PRESETS = {"gcc", "clang", "asan", "tsan", "gcc16-cxx26", "msvc"}
+BINDINGS = {"cpp-nanobind", "rust-pyo3"}
 
 
 def _counts_path() -> Path | None:
@@ -194,15 +200,18 @@ class TestExecutedCounts:
 
     def test_every_project_and_engine_reported(self):
         c = executed_counts()
-        want_py = {f"{a}__{p.name}" for a, ps in PY_AREAS.items() for p in ps}
+        want_py = {f"{a}__{p.name}" for a, ps in PY_AREAS.items() for p in ps} | {"core"}
         assert set(c["python"]) == want_py
         assert set(c["cpp"]) == {e.name for e in CPP_ENGINES}
-        assert set(c["rust"]) == {e.name for e in RUST_ENGINES}
+        for e in CPP_ENGINES:
+            assert set(c["cpp_by_compiler"].get(e.name, {})) == CPP_PRESETS, e.name
+        assert set(c["rust"]) == {e.name for e in RUST_ENGINES} | {"core"}
+        assert set(c["bindings"]) == BINDINGS
 
     def test_no_failures_or_errors_anywhere(self):
         c = executed_counts()
         bad = {}
-        for section in ("python_by_version", "cpp_by_compiler"):
+        for section in ("python_by_version", "cpp_by_compiler", "bindings_by_version"):
             for name, per in c[section].items():
                 for variant, r in per.items():
                     if r["failed"] or r["errors"]:
