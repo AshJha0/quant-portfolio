@@ -27,8 +27,8 @@ Measured on the development machine (2026-11-01, Python 3.12, numpy 2.5):
 
 | command | result | wall time |
 |---|---|---|
-| `python -m pytest tests -q` | 350 passed | 165 s |
-| `python examples/run_pipeline.py` | exit 0 | 66 s |
+| `python -m pytest tests -q` | 351 passed | 159 s |
+| `python examples/run_pipeline.py` | exit 0 | 67 s |
 
 Without `arch` installed, `tests/test_arch_crosscheck.py` is skipped and the
 rest of the suite runs. The `[dev]` extra is kept as an alias of `[test]`

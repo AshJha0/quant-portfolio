@@ -210,6 +210,10 @@ def fit_egarch(
 
     def nll_u(u: np.ndarray) -> float:
         omega, alpha, gamma, beta, nu, am = unpack(u)
+        if not abs(beta) < 1.0:
+            # tanh saturates to exactly +-1 in float64 for |u| > ~19; treat
+            # the saturated region as infeasible instead of raising
+            return 1e10
         sigma2 = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
         ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, nu)
         return -ll if np.isfinite(ll) else 1e10

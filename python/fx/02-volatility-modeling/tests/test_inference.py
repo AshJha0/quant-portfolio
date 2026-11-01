@@ -162,3 +162,14 @@ class TestEgarchUnconditional:
             egarch_unconditional_variance(p["omega"], p["alpha"], p["gamma"], p["beta"])
         )
         assert f.unconditional_variance > f.extra["median_variance"]
+
+
+class TestEgarchSaturatedBeta:
+    def test_rolling_egarch_on_jumpy_em_series_does_not_raise(self):
+        # On this USDMXN-like window L-BFGS-B steps into u_beta < -19, where
+        # tanh rounds to exactly -1.0; the objective must treat that as
+        # infeasible rather than let egarch_filter raise.
+        r = syn.simulate_em_series(3000, seed=2025)
+        out = rolling_one_step(r, "egarch", window=1000, refit_every=125, n_oos=500)
+        assert out["failed_refits"] == 0
+        assert np.all(np.isfinite(out["forecast"])) and np.all(out["forecast"] > 0)
