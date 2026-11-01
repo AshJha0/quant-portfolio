@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from eq_regime.backtest import (
+    ExecutionConfig,
     ma_timing_weights,
     run_ledger,
     summary_stats,
@@ -31,13 +32,19 @@ def bt_result(bt_panel):
     return walk_forward_backtest(bt_panel.prices, **BT_KWARGS)
 
 
+# Same-close fill with no auction charge and no financing: the arithmetic of
+# the pre-1.x ledger, kept to pin the cost and compounding cells by hand.
+SAME_CLOSE = dict(execution=ExecutionConfig("close_auction", auction_cost_bp=0.0),
+                  borrow_spread_bps=0.0)
+
+
 class TestLedgerExact:
     def test_hand_computed_scenario(self):
         """3 weights, 4 returns, 10bps: every ledger cell checked by hand."""
         idx = pd.bdate_range("2021-01-01", periods=5)
         rets = pd.Series([0.0, 0.01, -0.02, 0.03, 0.005], index=idx)
         weights = pd.Series([1.0, 0.5, 0.5], index=idx[:3])
-        led = run_ledger(weights, rets, cost_bps=10.0)
+        led = run_ledger(weights, rets, cost_bps=10.0, **SAME_CLOSE)
         c = 10.0 / 1e4
         # day 2: w=1 earns r=0.01, cost = c*|1-0| (entry)
         # day 3: w=0.5 earns r=-0.02, cost = c*0.5
@@ -55,7 +62,7 @@ class TestLedgerExact:
         idx = pd.bdate_range("2021-01-01", periods=4)
         rets = pd.Series([0.0, 0.02, 0.02, 0.02], index=idx)
         weights = pd.Series([1.0, 1.0, 1.0], index=idx[:3])
-        led = run_ledger(weights, rets, cost_bps=0.0)
+        led = run_ledger(weights, rets, cost_bps=0.0, **SAME_CLOSE)
         assert led["equity"].iloc[-1] == pytest.approx(1.02**3)
 
     def test_last_weight_without_next_return_dropped(self):
@@ -102,8 +109,10 @@ class TestBenchmarksAndStats:
         led = bt_result.benchmark
         prices = bt_panel.prices
         simple = np.exp(np.log(prices / prices.shift(1)).iloc[1:]).mean(axis=1) - 1.0
+        # From the second day on the weight is 1 before and after the fill,
+        # so the day's gross return is the index return exactly.
         np.testing.assert_allclose(
-            led["gross_ret"].to_numpy(), simple.loc[led.index].to_numpy(), atol=1e-14
+            led["gross_ret"].to_numpy()[1:], simple.loc[led.index].to_numpy()[1:], atol=1e-14
         )
         ratio = led["equity"].to_numpy() / np.cumprod(1 + led["net_ret"].to_numpy())
         np.testing.assert_allclose(ratio, 1.0, atol=1e-12)

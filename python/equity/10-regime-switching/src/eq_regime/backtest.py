@@ -3,24 +3,29 @@
 Timing convention (no lookahead, test-enforced end to end)
 ----------------------------------------------------------
 * Features at ``t`` use prices up to and including ``t`` (expanding
-  z-scores).
-* The HMM used at ``t`` was last refitted on features strictly BEFORE its
-  refit date and never sees data after ``t``.
-* The filtered probability at ``t`` uses features up to and including ``t``.
-* The weight ``w_t`` decided at the close of ``t`` earns the return from
-  ``t`` to ``t+1`` (``r_{t+1}``).
-* Transaction costs: ``cost_t = cost_bps/1e4 * |w_t - w_{t-1}|``, charged
-  on the day the trade is made.
+  z-scores). The HMM used at ``t`` was last refitted on features strictly
+  before its refit date. The filtered probability at ``t`` uses features up
+  to and including ``t``.
+* Signals use data up to the close of day t. Orders fill at a modelled t+1
+  price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+  variant fills at p_t and pays an auction cost. See :class:`ExecutionConfig`.
+* With index return ``R`` over day ``t+1`` and fill fraction ``f``, the old
+  weight ``w_{t-1}`` earns ``a = f R`` (close ``t`` to the fill) and the new
+  weight ``w_t`` earns ``b = (1 + R) / (1 + f R) - 1`` (fill to close
+  ``t+1``). Gross return of the day is ``(1 + w_{t-1} a)(1 + w_t b) - 1``.
+* Costs: ``cost_bps/1e4 * |w_t - w_{t-1}|`` on the fill day, plus
+  ``auction_cost_bp/1e4 * |w_t - w_{t-1}|`` in close-auction mode.
+* Financing: cash ``1 - w`` earns ``cash_rate``; leverage ``w - 1`` pays
+  ``cash_rate + borrow_spread_bps/1e4``, both ACT/252 per trading day, on the
+  time-weighted weight of the day (``f w_{t-1} + (1 - f) w_t``).
 
-Ledger columns (one row per traded day): ``weight``, ``gross_ret``,
-``cost``, ``net_ret``, ``equity`` with
-``net_ret_t = weight_{t-1} * r_t - cost_t`` and
-``equity_t = equity_{t-1} * (1 + net_ret_t)``.  Simple returns are used for
-compounding; the input panel's log-returns are converted internally.
+Ledger columns (one row per P&L day): ``weight`` (``w_t``), ``prev_weight``,
+``fill_ret`` (``p_fill / p_t - 1``), ``gross_ret``, ``cost``, ``financing``,
+``net_ret``, ``equity`` with ``equity_t = equity_{t-1} (1 + net_ret_t)``.
 
-Benchmarks: buy-and-hold of the equal-weight index, and a classic 200-day
-moving-average timing rule (long above the MA, cash below — decided at
-``t``, applied to ``t+1``).
+Benchmarks: buy-and-hold of the equal-weight index, and a 200-day moving
+average timing rule (long above the MA, cash below), both on the same
+execution and cost model.
 """
 
 from __future__ import annotations
@@ -32,11 +37,52 @@ import pandas as pd
 
 from .detection import expanding_fit_detect
 from .features import build_features
-from .strategy import build_weights
+from .strategy import build_weights, vol_target_scale
 
 TRADING_DAYS: int = 252
 
-__all__ = ["BacktestResult", "run_ledger", "ma_timing_weights", "walk_forward_backtest", "summary_stats"]
+__all__ = [
+    "ExecutionConfig",
+    "BacktestResult",
+    "run_ledger",
+    "ma_timing_weights",
+    "walk_forward_backtest",
+    "backtest_from_detection",
+    "random_timing_weights",
+    "vol_target_weights",
+    "summary_stats",
+]
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """When and at what price an order decided at the close of ``t`` fills.
+
+    mode : ``"next"`` fills at ``p_t + f (p_{t+1} - p_t)``; ``"close_auction"``
+        fills at ``p_t`` and pays ``auction_cost_bp`` per unit traded.
+    fill_fraction : f in (0, 1]; 0.5 by default (a stand-in for a next-open
+        fill when only closes exist), 1.0 is the next close. Ignored in
+        close-auction mode.
+    auction_cost_bp : extra cost in bp of traded notional in close-auction mode.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("next", "close_auction"):
+            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
+        f = float(self.fill_fraction)
+        if not np.isfinite(f) or not (0.0 < f <= 1.0):
+            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
+        a = float(self.auction_cost_bp)
+        if not np.isfinite(a) or a < 0:
+            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
+
+    @property
+    def effective_fraction(self) -> float:
+        return 0.0 if self.mode == "close_auction" else float(self.fill_fraction)
 
 
 @dataclass(frozen=True)
@@ -55,6 +101,12 @@ class BacktestResult:
         Filtered probabilities and regime labels used for trading.
     features : pd.DataFrame
         Point-in-time feature table.
+    random_timing : pd.DataFrame or None
+        Ledger of the same regime weights circularly shifted by a random
+        offset, times the same vol scale, rescaled to the strategy's mean
+        weight (equal average exposure, random timing).
+    vol_target : pd.DataFrame or None
+        Ledger of plain vol targeting (weight 1 times the vol scale).
     """
 
     ledger: pd.DataFrame
@@ -62,6 +114,8 @@ class BacktestResult:
     ma_rule: pd.DataFrame
     detection: pd.DataFrame
     features: pd.DataFrame
+    random_timing: pd.DataFrame | None = None
+    vol_target: pd.DataFrame | None = None
 
 
 def run_ledger(
@@ -69,57 +123,88 @@ def run_ledger(
     simple_returns: pd.Series,
     cost_bps: float = 5.0,
     initial_equity: float = 1.0,
+    execution: ExecutionConfig | None = None,
+    cash_rate: float = 0.0,
+    borrow_spread_bps: float = 50.0,
 ) -> pd.DataFrame:
-    """Exact ledger: ``w_t`` earns ``r_{t+1}``; costs on trade days.
+    """Exact ledger of a weight path under :class:`ExecutionConfig`.
 
     Parameters
     ----------
     weights : pd.Series
-        Weight decided at the close of each date (aligned to dates ``t``).
+        Weight decided at the close of each date ``t``.
     simple_returns : pd.Series
-        SIMPLE daily returns of the traded factor; must cover
-        ``weights.index`` shifted one day forward.
+        Simple daily returns of the traded index; must contain every weight
+        date and the following day.
     cost_bps : float
-        One-way transaction cost in basis points of traded notional.
+        One-way cost in bp of traded notional.
     initial_equity : float
         Starting equity.
+    execution : ExecutionConfig, optional
+        Fill timing; default ``ExecutionConfig()`` (next, f = 0.5).
+    cash_rate : float
+        Annual rate earned on ``1 - w`` when ``w < 1``.
+    borrow_spread_bps : float
+        Annual spread over ``cash_rate`` paid on ``w - 1`` when ``w > 1``.
 
     Returns
     -------
-    pd.DataFrame
-        Indexed by P&L dates (each weight date's NEXT trading day), columns
-        ``weight`` (the weight earning that day's return), ``gross_ret``,
-        ``cost``, ``net_ret``, ``equity``.
+    pd.DataFrame indexed by P&L dates (each weight date's next trading day).
     """
+    ex = execution if execution is not None else ExecutionConfig()
+    for name, v in (("cost_bps", cost_bps), ("initial_equity", initial_equity),
+                    ("cash_rate", cash_rate), ("borrow_spread_bps", borrow_spread_bps)):
+        if not np.isfinite(v):
+            raise ValueError(f"{name} must be finite, got {v}")
     if cost_bps < 0:
         raise ValueError(f"cost_bps must be >= 0, got {cost_bps}")
+    if borrow_spread_bps < 0:
+        raise ValueError(f"borrow_spread_bps must be >= 0, got {borrow_spread_bps}")
+    if initial_equity <= 0:
+        raise ValueError(f"initial_equity must be > 0, got {initial_equity}")
     if len(weights) < 2:
         raise ValueError("need at least 2 weight observations")
     w = weights.astype(float)
-    dw = w.diff()
-    dw.iloc[0] = w.iloc[0]  # entering from flat
-    cost_rate = cost_bps / 1e4
+    if not np.isfinite(w.to_numpy()).all():
+        raise ValueError("weights contain NaN or Inf")
 
     ret_pos = simple_returns.index.get_indexer(w.index)
     if (ret_pos < 0).any():
         raise ValueError("weights index not contained in returns index")
     if ret_pos[-1] + 1 >= len(simple_returns):
-        # last weight has no next-day return: drop it
         w = w.iloc[:-1]
-        dw = dw.iloc[:-1]
         ret_pos = ret_pos[:-1]
-    next_ret = simple_returns.to_numpy()[ret_pos + 1]
+    r = simple_returns.to_numpy(dtype=float)[ret_pos + 1]
+    if not np.isfinite(r).all():
+        raise ValueError("returns contain NaN or Inf on traded dates")
     pnl_dates = simple_returns.index[ret_pos + 1]
 
-    gross = w.to_numpy() * next_ret
-    cost = cost_rate * np.abs(dw.to_numpy())
-    net = gross - cost
+    wn = w.to_numpy()
+    wo = np.concatenate([[0.0], wn[:-1]])  # entering from flat
+    dw = np.abs(wn - wo)
+    f = ex.effective_fraction
+    a = f * r
+    b = (1.0 + r) / (1.0 + a) - 1.0
+    gross = (1.0 + wo * a) * (1.0 + wn * b) - 1.0
+    cost = cost_bps / 1e4 * dw
+    if ex.mode == "close_auction":
+        cost = cost + ex.auction_cost_bp / 1e4 * dw
+    w_avg = f * wo + (1.0 - f) * wn
+    daily_cash = cash_rate / TRADING_DAYS
+    daily_borrow = (cash_rate + borrow_spread_bps / 1e4) / TRADING_DAYS
+    financing = daily_cash * np.clip(1.0 - w_avg, 0.0, None) - daily_borrow * np.clip(
+        w_avg - 1.0, 0.0, None
+    )
+    net = gross - cost + financing
     equity = initial_equity * np.cumprod(1.0 + net)
     return pd.DataFrame(
         {
-            "weight": w.to_numpy(),
+            "weight": wn,
+            "prev_weight": wo,
+            "fill_ret": a,
             "gross_ret": gross,
             "cost": cost,
+            "financing": financing,
             "net_ret": net,
             "equity": equity,
         },
@@ -140,6 +225,102 @@ def ma_timing_weights(prices: pd.DataFrame, ma_window: int = 200) -> pd.Series:
     return (idx > ma).astype(float).rename("weight")
 
 
+def random_timing_weights(
+    weights: pd.Series, seed: int = 0, reference: pd.Series | None = None
+) -> pd.Series:
+    """Circularly shift a weight path by a random offset (random timing).
+
+    The shift keeps the distribution and run lengths of the weights and
+    destroys their alignment with the market. The offset is uniform on
+    ``[n/10, 9n/10]``. When ``reference`` is given the shifted path is
+    rescaled to the reference's mean weight (equal average exposure).
+    """
+    n = len(weights)
+    if n < 10:
+        raise ValueError("need at least 10 weights for random timing")
+    rng = np.random.default_rng(seed)
+    k = int(rng.integers(n // 10, 9 * n // 10 + 1))
+    out = pd.Series(np.roll(weights.to_numpy(dtype=float), k), index=weights.index, name="weight")
+    if reference is not None:
+        m = float(out.mean())
+        if m > 0:
+            out = out * float(reference.mean()) / m
+    return out
+
+
+def vol_target_weights(
+    index_log_returns: pd.Series,
+    dates: pd.Index,
+    target_vol: float = 0.10,
+    window: int = 21,
+    max_leverage: float = 1.5,
+) -> pd.Series:
+    """Plain vol targeting: weight ``min(target / trailing vol, max_leverage)``."""
+    scale = vol_target_scale(
+        index_log_returns, target_vol=target_vol, window=window, max_leverage=max_leverage
+    )
+    return scale.reindex(dates).clip(upper=max_leverage).rename("weight")
+
+
+def backtest_from_detection(
+    prices: pd.DataFrame,
+    detection: pd.DataFrame,
+    features: pd.DataFrame | None = None,
+    cost_bps: float = 5.0,
+    enter: float = 0.70,
+    exit_: float = 0.30,
+    target_vol: float | None = 0.10,
+    min_duration: int = 1,
+    execution: ExecutionConfig | None = None,
+    cash_rate: float = 0.0,
+    borrow_spread_bps: float = 50.0,
+    random_seed: int = 0,
+) -> BacktestResult:
+    """Weights, ledgers and baselines from an existing detection table.
+
+    Lets several weight variants share one (expensive) walk-forward
+    detection. All ledgers use the same dates, execution and cost model.
+    """
+    asset_log_ret = np.log(prices / prices.shift(1)).iloc[1:]
+    log_ret = asset_log_ret.mean(axis=1)
+    simple_ret = np.expm1(asset_log_ret).mean(axis=1)
+    led = dict(cost_bps=cost_bps, execution=execution, cash_rate=cash_rate,
+               borrow_spread_bps=borrow_spread_bps)
+
+    weights = build_weights(detection, log_ret, enter=enter, exit_=exit_,
+                            target_vol=target_vol, min_duration=min_duration)
+    ledger = run_ledger(weights, simple_ret, **led)
+
+    bh_weights = pd.Series(1.0, index=weights.index, name="weight")
+    benchmark = run_ledger(bh_weights, simple_ret, **led)
+    ma_w = ma_timing_weights(prices).reindex(weights.index).fillna(0.0)
+    ma_rule = run_ledger(ma_w, simple_ret, **led)
+
+    base = build_weights(detection, log_ret, enter=enter, exit_=exit_,
+                         target_vol=None, min_duration=min_duration)
+    shifted = random_timing_weights(base, seed=random_seed)
+    if target_vol is not None:
+        scale = vol_target_scale(log_ret, target_vol=target_vol).reindex(weights.index)
+        shifted = (shifted * scale).clip(upper=1.5)
+        vt_w = vol_target_weights(log_ret, weights.index, target_vol=target_vol)
+    else:
+        vt_w = bh_weights
+    if float(shifted.mean()) > 0:
+        shifted = shifted * float(weights.mean()) / float(shifted.mean())
+    random_timing = run_ledger(shifted, simple_ret, **led)
+    vol_target = run_ledger(vt_w, simple_ret, **led)
+
+    return BacktestResult(
+        ledger=ledger,
+        benchmark=benchmark,
+        ma_rule=ma_rule,
+        detection=detection,
+        features=features if features is not None else pd.DataFrame(),
+        random_timing=random_timing,
+        vol_target=vol_target,
+    )
+
+
 def walk_forward_backtest(
     prices: pd.DataFrame,
     n_states: int = 3,
@@ -153,35 +334,33 @@ def walk_forward_backtest(
     n_pca: int | None = 3,
     feature_kwargs: dict | None = None,
     detect_kwargs: dict | None = None,
+    min_duration: int = 1,
+    execution: ExecutionConfig | None = None,
+    cash_rate: float = 0.0,
+    borrow_spread_bps: float = 50.0,
 ) -> BacktestResult:
     """End-to-end walk-forward backtest on a price panel.
 
-    Pipeline: point-in-time features -> expanding-window HMM refits every
-    ``refit_every`` days -> ONLINE filtered probabilities -> hysteresis +
-    vol-targeted weights -> next-day-return ledger net of costs.
-    Benchmarks (buy-and-hold, 200d-MA rule) are run over the SAME dates with
-    the SAME cost model.
+    Pipeline: point-in-time features, expanding-window HMM refits every
+    ``refit_every`` days, online filtered probabilities, hysteresis and
+    vol-targeted weights (optionally with a causal minimum-duration
+    confirmation), then the ledger under ``execution`` net of costs and
+    financing. Buy-and-hold, the 200d-MA rule, random timing at equal
+    exposure and plain vol targeting run over the same dates with the same
+    execution and cost model.
 
     Parameters
     ----------
-    prices : pd.DataFrame
-        (T x N) daily price panel.
-    n_states, min_train, refit_every, seed : detection settings.
-    n_pca : int or None
-        Number of principal components the HMM observes (None = raw
-        features).  PCA is refitted on each expanding training window.
-    cost_bps : float
-        One-way cost in bps for strategy AND benchmarks.
+    prices : (T x N) daily price panel.
+    n_states, min_train, refit_every, seed, n_pca : detection settings.
+    cost_bps : one-way cost in bp for every ledger.
     enter, exit_ : hysteresis band on ``p_bear``.
-    target_vol : float or None
-        Annualised vol target (None disables vol targeting).
-    feature_kwargs, detect_kwargs : dict
-        Overrides forwarded to :func:`build_features` /
+    target_vol : annualised vol target (None disables vol targeting).
+    feature_kwargs, detect_kwargs : overrides for :func:`build_features` and
         :func:`expanding_fit_detect`.
-
-    Returns
-    -------
-    BacktestResult
+    min_duration : a regime change reaches the weights only after the new
+        regime has held for this many consecutive days (1 = off).
+    execution, cash_rate, borrow_spread_bps : see :func:`run_ledger`.
     """
     features = build_features(prices, **(feature_kwargs or {}))
     detection = expanding_fit_detect(
@@ -193,31 +372,10 @@ def walk_forward_backtest(
         n_pca=n_pca,
         **(detect_kwargs or {}),
     )
-    asset_log_ret = np.log(prices / prices.shift(1)).iloc[1:]
-    log_ret = asset_log_ret.mean(axis=1)
-    simple_ret = np.expm1(asset_log_ret).mean(axis=1)
-
-    weights = build_weights(
-        detection,
-        log_ret,
-        enter=enter,
-        exit_=exit_,
-        target_vol=target_vol,
-    )
-    ledger = run_ledger(weights, simple_ret, cost_bps=cost_bps)
-
-    bh_weights = pd.Series(1.0, index=weights.index, name="weight")
-    benchmark = run_ledger(bh_weights, simple_ret, cost_bps=cost_bps)
-
-    ma_w = ma_timing_weights(prices).reindex(weights.index).fillna(0.0)
-    ma_rule = run_ledger(ma_w, simple_ret, cost_bps=cost_bps)
-
-    return BacktestResult(
-        ledger=ledger,
-        benchmark=benchmark,
-        ma_rule=ma_rule,
-        detection=detection,
-        features=features,
+    return backtest_from_detection(
+        prices, detection, features, cost_bps=cost_bps, enter=enter, exit_=exit_,
+        target_vol=target_vol, min_duration=min_duration, execution=execution,
+        cash_rate=cash_rate, borrow_spread_bps=borrow_spread_bps, random_seed=seed,
     )
 
 

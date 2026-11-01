@@ -44,7 +44,7 @@ class TestHysteresis:
         assert turnover(hyst) < 0.2 * turnover(naive)
 
     def test_reduces_turnover_on_regimelike_path(self):
-        """Path that genuinely switches twice plus noise: hysteresis still
+        """Path that switches twice plus noise: hysteresis still
         cuts turnover while capturing both switches."""
         rng = np.random.default_rng(1)
         base = np.concatenate([np.full(100, 0.1), np.full(100, 0.9), np.full(100, 0.1)])

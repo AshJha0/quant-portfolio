@@ -439,6 +439,12 @@ def fit_hmm(
                 dev = x - means[j]
                 covs[j] = (gamma[:, j][:, None] * dev).T @ dev / nk[j]
                 covs[j] += reg_covar * np.eye(d)
+        if not converged:
+            # The loop ended on an M-step: score the parameters actually
+            # returned so log_likelihood belongs to this model (it also
+            # drives the choice between restarts).
+            _, ll = _scaled_forward(_log_emissions(x, means, covs), startprob, transmat)
+            history.append(ll)
         fit = HMMFit(
             startprob=startprob,
             transmat=transmat,

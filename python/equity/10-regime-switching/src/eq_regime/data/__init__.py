@@ -3,6 +3,7 @@
 from .synthetic import (
     RegimePanel,
     default_regime_params,
+    equal_drift_params,
     make_gbm_panel,
     make_regime_panel,
     simulate_markov_chain,
@@ -11,6 +12,7 @@ from .synthetic import (
 __all__ = [
     "RegimePanel",
     "default_regime_params",
+    "equal_drift_params",
     "make_regime_panel",
     "make_gbm_panel",
     "simulate_markov_chain",

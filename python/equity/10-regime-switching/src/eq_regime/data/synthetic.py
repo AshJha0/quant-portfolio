@@ -285,3 +285,18 @@ def make_gbm_panel(
     return make_regime_panel(
         n_states=1, n_assets=n_assets, n_days=n_days, seed=seed, params=params, start=start
     )
+
+
+def equal_drift_params(n_states: int = 3, mu: float = 0.07) -> dict[str, np.ndarray]:
+    """Default regime parameters with the same drift ``mu`` in every state.
+
+    Volatility and correlation still switch with the hidden state, so the
+    returns show volatility clustering, but expected return does not depend
+    on the state. This is the null for regime timing: any Sharpe gain left
+    on it comes from vol timing, not from detecting a negative-drift state.
+    """
+    if not np.isfinite(mu):
+        raise ValueError(f"mu must be finite, got {mu}")
+    p = default_regime_params(n_states)
+    p["mu"] = np.full(n_states, float(mu))
+    return p

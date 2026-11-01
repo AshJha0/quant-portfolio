@@ -1,6 +1,6 @@
 """Regime inference pipeline: fitting, ONLINE filtering, labelling, stability.
 
-FILTERED vs SMOOTHED — the central honesty point of this project
+FILTERED vs SMOOTHED: the central causality point of this project
 =================================================================
 
 * **Filtered** probabilities ``P(s_t | x_{1..t})`` use only data available
@@ -26,6 +26,8 @@ Also provided:
 """
 
 from __future__ import annotations
+
+import warnings
 
 from dataclasses import dataclass
 
@@ -171,7 +173,7 @@ def flip_flop_rate(states: np.ndarray) -> float:
 
 
 def min_duration_filter(states: np.ndarray, min_duration: int) -> np.ndarray:
-    """Remove regime runs shorter than ``min_duration`` days.
+    """Remove regime runs shorter than ``min_duration`` days (offline, not causal).
 
     Scans runs left to right; any run shorter than ``min_duration`` is
     absorbed into the PREVIOUS surviving regime (causal choice — the
@@ -189,6 +191,14 @@ def min_duration_filter(states: np.ndarray, min_duration: int) -> np.ndarray:
     -------
     (T,) filtered path.
     """
+    warnings.warn(
+        "min_duration_filter relabels a run once its end is known, so it is not "
+        "causal and must not feed a backtest; use strategy.causal_min_duration "
+        "(walk_forward_backtest(min_duration=...)). Kept for offline labelling; "
+        "it will be removed in the next release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if min_duration < 1:
         raise ValueError(f"min_duration must be >= 1, got {min_duration}")
     states = np.asarray(states).copy()

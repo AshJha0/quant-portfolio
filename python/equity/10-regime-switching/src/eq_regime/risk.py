@@ -23,11 +23,25 @@ import pandas as pd
 TRADING_DAYS: int = 252
 
 __all__ = [
+    "regimes_known_at_decision",
     "per_regime_stats",
     "transition_attribution",
     "flip_aftermath",
     "regime_runs",
 ]
+
+
+def regimes_known_at_decision(regime: pd.Series, pnl_index: pd.Index) -> pd.Series:
+    """Label each P&L day with the regime known when its position was decided.
+
+    The P&L of day ``t`` comes from a weight decided at the close of ``t-1``,
+    so it is labelled with the regime detected at ``t-1``. The label of day
+    ``t`` itself uses the return of day ``t`` and would condition the
+    attribution on the very return it reports. P&L days with no earlier
+    detection are dropped, never back-filled.
+    """
+    lagged = regime.shift(1).reindex(pnl_index)
+    return lagged.dropna()
 
 
 def _mdd(net: np.ndarray) -> float:
