@@ -81,22 +81,31 @@ def aggregate(art: Path, ref_python: str, ref_cxx: str) -> dict:
         "cpp": {}, "cpp_by_compiler": {},
         "rust": {},
     }
+    def _find(d: Path, fname: str) -> Path:
+        # upload-artifact keeps paths relative to the common ancestor of the
+        # uploaded files, so a file may sit at <artifact>/<file> or deeper
+        # (e.g. <artifact>/junit/junit.xml when two files are uploaded).
+        hits = sorted(d.rglob(fname))
+        if len(hits) != 1:
+            raise FileNotFoundError(f"expected exactly one {fname} under {d}, found {len(hits)}")
+        return hits[0]
+
     for d in sorted(p for p in art.iterdir() if p.is_dir()):
         name = d.name
         if name.startswith("junit-py-"):
             slug, ver = name.removeprefix("junit-py-").rsplit("-", 1)
-            c = parse_junit(d / "junit.xml")
+            c = parse_junit(_find(d, "junit.xml"))
             out["python_by_version"].setdefault(slug, {})[ver] = c
             if ver == ref_python:
                 out["python"][slug] = c
         elif name.startswith("junit-cpp-"):
             engine, cxx = name.removeprefix("junit-cpp-").rsplit("-", 1)
-            c = parse_junit(d / "junit.xml")
+            c = parse_junit(_find(d, "junit.xml"))
             out["cpp_by_compiler"].setdefault(engine, {})[cxx] = c
             if cxx == ref_cxx:
                 out["cpp"][engine] = c
         elif name.startswith("rust-"):
-            out["rust"][name.removeprefix("rust-")] = parse_cargo(d / "cargo-test.log")
+            out["rust"][name.removeprefix("rust-")] = parse_cargo(_find(d, "cargo-test.log"))
     out["totals"] = {k: _total(out[k]) for k in ("python", "cpp", "rust")}
     out["totals"]["all_passed"] = sum(out["totals"][k]["passed"] for k in ("python", "cpp", "rust"))
     return out
