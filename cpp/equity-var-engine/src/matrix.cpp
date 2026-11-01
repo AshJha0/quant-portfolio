@@ -1,5 +1,7 @@
 #include "eqvar/matrix.hpp"
 
+#include "eqvar/kernels.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -48,37 +50,13 @@ void require_finite_matrix(const Matrix& a, const char* who) {
 }  // namespace
 
 std::vector<double> matvec(const Matrix& a, std::span<const double> x) {
-    if (x.size() != a.cols()) {
-        throw std::invalid_argument("matvec: vector size " + std::to_string(x.size()) +
-                                    " does not match " + std::to_string(a.cols()) + " columns");
-    }
-    require_finite_span(x, "matvec");
-    require_finite_matrix(a, "matvec");
-    std::vector<double> y(a.rows(), 0.0);
-    for (std::size_t i = 0; i < a.rows(); ++i) {
-        const double* row = a.data() + i * a.cols();
-        double acc = 0.0;
-        for (std::size_t j = 0; j < a.cols(); ++j) acc += row[j] * x[j];
-        y[i] = acc;
-    }
+    std::vector<double> y(x.size() == a.cols() ? a.rows() : 0);
+    value_or_throw(try_matvec(a, x, y));
     return y;
 }
 
 double quad_form(std::span<const double> w, const Matrix& s) {
-    if (!s.square() || s.rows() != w.size()) {
-        throw std::invalid_argument("quad_form: matrix shape does not match vector size " +
-                                    std::to_string(w.size()));
-    }
-    require_finite_span(w, "quad_form");
-    require_finite_matrix(s, "quad_form");
-    double acc = 0.0;
-    for (std::size_t i = 0; i < w.size(); ++i) {
-        const double* row = s.data() + i * s.cols();
-        double inner = 0.0;
-        for (std::size_t j = 0; j < w.size(); ++j) inner += row[j] * w[j];
-        acc += w[i] * inner;
-    }
-    return acc;
+    return value_or_throw(try_quad_form(w, s));
 }
 
 Matrix covariance_from_vols(std::span<const double> vols, const Matrix& corr) {

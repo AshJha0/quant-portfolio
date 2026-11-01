@@ -24,19 +24,8 @@ and per-factor FHS VaR, parametric normal and t VaR, a 100k-path MC VaR and
 ES with a logged seed, and the backtest update (yesterday's VaR vs today's
 clean P&L).
 
-Measured on a synthetic full-rank 250 x 100 panel (one thread, GCC 15.2
-Release, Intel Core 5 120U, `./build/bench_eqvar`):
-
-| stage | best ms |
-|---|---|
-| covariance (sample + EWMA) | 2.1 |
-| historical family + empirical ES | 0.14 |
-| parametric family + closed-form ES | 0.04 |
-| MC 100k paths, normal, with 200-replicate bootstrap SE | 1574 |
-| MC 100k paths, Student-t(6) | 1993 |
-
-Books are independent, so the batch parallelises across cores. If MC cost
-matters, cut paths or bootstrap replicates and report the larger SE.
+Per-call latency for every kernel (p50 to max, GCC and Clang) is in the
+README Latency table, produced by `./build/bench_eqvar`.
 
 ## 3. Intraday incremental VaR
 
@@ -44,6 +33,23 @@ Parametric VaR on an updated exposure vector costs about 12 microseconds
 (Sigma fixed intraday, only w' Sigma w recomputed). Intraday numbers are
 indicative (yesterday's Sigma, today's w). The number of record is the
 overnight batch.
+
+### Hot-path calls
+
+For per-trade recomputation use `eqvar/kernels.hpp`:
+
+- size the buffers once at start-up: a `std::vector<double>` as long as
+  the largest P&L series for `try_historical_var` / `try_expected_shortfall`,
+  `L` and `scratch` of n x n for `try_cholesky_lower`, and a
+  `McVarWorkspace` reserved for the factor count and scenario count;
+- factor the covariance once per covariance update with
+  `try_cholesky_lower` (or `cholesky(cov, Repair)` when it may need repair)
+  and pass the factor to `try_monte_carlo_var_factored`;
+- check each `Result`; `message(err)` gives the same text the throwing API
+  would have thrown, and is the only call that allocates.
+
+A kernel that receives a buffer that is too small returns
+`Errc::WorkspaceTooSmall` instead of growing it.
 
 ## 4. Who reads what
 
@@ -60,7 +66,7 @@ overnight batch.
 ## 5. Gates (CI)
 
 1. **Build**: GCC and Clang with `-DEQVAR_WERROR=ON`; one ASan/UBSan build.
-2. **Unit**: `ctest`, 115 tests, including the fuzz walk of every public
+2. **Unit**: `ctest`, 123 tests, including the fuzz walk of every public
    function.
 3. **Golden**: `test_cross_language` against the Python-generated header;
    `tools/gen_golden_header.py --check` must pass.
@@ -68,8 +74,8 @@ overnight batch.
    equality for a fixed seed on the build platform. A switch to
    `std::normal_distribution` would break it. Results on another libm may
    differ in the last bits.
-5. **Bench** (nightly): `bench_eqvar` timings against a stored baseline. The
-   checksum line changes when the toolchain or libm changes.
+5. **Bench** (nightly): `bench_eqvar --out` latency percentiles per kernel
+   against a stored baseline, with compiler, flags and CPU in each record.
 
 Operational controls: log the MC seed per run; log and alert on
 `CholeskyResult::jitter_added > 0` and on `repaired`; refresh Kupiec and
