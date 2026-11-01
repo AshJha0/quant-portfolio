@@ -108,10 +108,8 @@ impl std::error::Error for PricingError {}
 /// checked here — see [`validate_rates`] for the finiteness check on
 /// rates).
 ///
-/// Note: the Python reference rejects NaN but lets `inf` flow through
-/// (producing `inf`/NaN outputs); this crate is strictly tighter and
-/// rejects all non-finite inputs so that garbage can never propagate
-/// silently into a risk number.
+/// All non-finite inputs are rejected, as in the Python and C++ engines,
+/// so garbage cannot propagate silently into a risk number.
 ///
 /// # Errors
 ///
@@ -179,8 +177,8 @@ pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
 /// Complementary error function `erfc(x) = 1 - erf(x)`.
 ///
 /// Rust's `std` has no `erfc`, so this is W. J. Cody's rational Chebyshev
-/// approximation (SIAM 1969; the netlib `CALERF` algorithm that underlies
-/// most libm implementations): three regimes (`|x| <= 0.46875`,
+/// approximation (SIAM 1969; the netlib `CALERF` algorithm; glibc and most
+/// libms use a different, fdlibm-derived approximation): three regimes (`|x| <= 0.46875`,
 /// `0.46875 < |x| <= 4`, `|x| > 4`) with the `exp(-x^2)` factor split as
 /// `exp(-y16^2) exp(-(x-y16)(x+y16))` for tail accuracy. Verified against
 /// reference values to better than `2e-15` relative error over

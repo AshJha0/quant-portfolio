@@ -11,12 +11,13 @@
 //!   computed on the *pair averages* (the correct estimator for
 //!   correlated pairs).
 //! * **Control variate**: the discounted terminal stock `exp(-rT) S_T`
-//!   with known mean `S exp(-qT)` (martingale property); the optimal
-//!   coefficient is estimated from the sample covariance.
+//!   with known mean `S exp(-qT)` (martingale property); the coefficient
+//!   is fitted on the antithetic pair averages, the independent samples.
 //!
 //! Every entry point takes an explicit `u64` seed feeding the in-crate
 //! SplitMix64 -> xoshiro256++ generator ([`crate::rng`]). Same seed =>
-//! **bit-identical** result on every platform.
+//! identical result on a given target and toolchain (`f64::exp`/`ln` come
+//! from the platform libm, so other targets can differ in the last bits).
 //!
 //! Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 //! `t` in years, `sigma` annualised.
@@ -118,8 +119,8 @@ fn summary(samples: &[f64], n_paths: usize) -> McResult {
 ///   `antithetic`), in `[2, MAX_PATHS]`.
 /// * `antithetic` — use antithetic pairs `(Z, -Z)`.
 /// * `control_variate` — use the discounted terminal stock as a control
-///   variate with the sample-optimal coefficient.
-/// * `seed` — explicit RNG seed; same seed => bit-identical result.
+///   variate, coefficient fitted on the antithetic pair averages.
+/// * `seed` — explicit RNG seed; same seed => identical result on one target.
 ///
 /// `t == 0` or `sigma == 0` are deterministic; the exact Black-Scholes
 /// value is returned with `std_error = 0`.
