@@ -174,4 +174,10 @@ def test_implied_vol_round_trip_or_refuses(sigma, m, T, cp):
         intrinsic = max(cp * (S * _m.exp(-rf * T) - K * _m.exp(-rd * T)), 0.0)
         assert px - intrinsic < 1e-10
     else:
-        assert iv == pytest.approx(sigma, abs=1e-8)
+        # Conditioning: a price carries absolute round-off of a few ulps of
+        # its own size, which maps to a vol error of that over vega.  Deep
+        # ITM, the price is mostly intrinsic and the bound is what matters.
+        from fx_surface import gk_vega
+
+        tol = 1e-8 + 8.0 * 2.2e-16 * max(px, 1.0) / gk_vega(S, K, T, rd, rf, sigma)
+        assert iv == pytest.approx(sigma, abs=tol)

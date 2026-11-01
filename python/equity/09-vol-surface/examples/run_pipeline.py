@@ -5,7 +5,7 @@ surface (+ calendar check) -> Heston calibration to a KNOWN-parameter surface
 (recovery table) -> digital & variance-swap pricing under calibrated Heston vs
 flat-vol BS -> Greeks table -> MC vs Fourier cross-check.
 
-Run:  python examples/run_pipeline.py     (offline, seeded, < 150 s)
+Run:  python examples/run_pipeline.py     (offline, seeded)
 """
 
 from __future__ import annotations

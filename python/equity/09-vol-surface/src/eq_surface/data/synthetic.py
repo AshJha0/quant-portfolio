@@ -4,7 +4,7 @@ Two generation modes:
 
 * ``mode="heston"`` -- prices generated from a *known* Heston parameter set
   (:data:`DEFAULT_TRUE_HESTON` by default) via the Fourier pricer.  This gives
-  calibration a ground truth to recover, which is the only honest way to
+  calibration a ground truth to recover, which is the only way to
   validate a calibrator.
 * ``mode="svi"`` -- implied vols generated from hand-built arbitrage-free SVI
   slices with a realistic equity shape: mild put skew, smile curvature, skew
