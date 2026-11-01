@@ -23,7 +23,7 @@ using namespace eqvar;
 
 TEST(EdgeCases, EmptyInputsThrow) {
     const std::vector<double> empty;
-    const Matrix cov(1, 1, {1e-4});
+    const Matrix cov(1, 1, std::vector<double>{1e-4});
     EXPECT_THROW(historical_var(empty, 0.01), std::invalid_argument);
     EXPECT_THROW(expected_shortfall(empty, 0.01), std::invalid_argument);
     EXPECT_THROW(quantile_linear(empty, 0.5), std::invalid_argument);
@@ -38,7 +38,7 @@ TEST(EdgeCases, EmptyInputsThrow) {
 TEST(EdgeCases, SingleAssetPortfolioIsExact) {
     // n = 1: parametric, MC and ES must all collapse to the scalar formulas.
     const double vol = 0.02, w0 = 1.0e6;
-    const Matrix cov(1, 1, {vol * vol});
+    const Matrix cov(1, 1, std::vector<double>{vol * vol});
     const std::vector<double> w = {w0};
     const double sigma = w0 * vol;
     EXPECT_NEAR(portfolio_sigma(w, cov), sigma, 1e-9);
@@ -54,7 +54,7 @@ TEST(EdgeCases, SingleAssetPortfolioIsExact) {
 TEST(EdgeCases, AlphaBoundsRejectedEverywhere) {
     std::vector<double> pnl(100);
     for (int t = 0; t < 100; ++t) pnl[t] = std::sin(1.3 * t) * 100.0;
-    const Matrix cov(1, 1, {1e-4});
+    const Matrix cov(1, 1, std::vector<double>{1e-4});
     const std::vector<double> w = {1.0e6};
     for (double bad : {0.0, -0.01, 0.5, 0.75, 1.0}) {
         EXPECT_THROW(historical_var(pnl, bad), std::invalid_argument) << bad;
@@ -152,22 +152,15 @@ TEST(EdgeCases, MinObsGuardExactBoundary) {
 }
 
 TEST(EdgeCases, DeepTailAlphaOnSmallSample) {
-    // alpha far below 1/n: the type-7 quantile interpolates just above the
-    // sample minimum (h = (n-1) alpha < 1) — the tail is unresolvable and the
-    // estimate is pinned to the worst observed loss, never extrapolated
-    // beyond it.  Documented failure mode (docs/VALIDATION.md).
+    // alpha far below 1/n: k = n alpha < 1, m clamps to 1 and VaR is the
+    // worst observed loss, never extrapolated beyond it. ES equals VaR there
+    // (the whole tail mass sits on the single atom L(1)).
     std::vector<double> pnl(100);
     for (int t = 0; t < 100; ++t) pnl[t] = 10.0 * std::sin(2.3 * t) - (t == 50 ? 500.0 : 0.0);
-    const double v = historical_var(pnl, 1e-6);
-    std::vector<double> sorted = pnl;
-    std::sort(sorted.begin(), sorted.end());
-    const double h = 99.0 * 1e-6;  // (n-1) q, entirely inside the first gap
-    const double expected = -(sorted[0] + h * (sorted[1] - sorted[0]));
-    EXPECT_NEAR(v, expected, 1e-12 * std::abs(expected));
-    EXPECT_LE(v, -sorted.front());   // never exceeds the worst observed loss
-    EXPECT_GT(v, -sorted[1]);        // ... but stays pinned to it
+    const double worst = -*std::min_element(pnl.begin(), pnl.end());
+    EXPECT_EQ(historical_var(pnl, 1e-6), worst);
+    EXPECT_EQ(var_es_order_statistic(pnl, 1e-6).es, worst);
 }
-
 
 TEST(EdgeCases, SingleElementAndTwoElementSamples) {
     // One-element arrays: the low-level primitives must degrade gracefully
@@ -193,7 +186,7 @@ TEST(EdgeCases, SingleElementAndTwoElementSamples) {
     EXPECT_DOUBLE_EQ(quantile_linear(two, 1.0), 30.0);
     EXPECT_DOUBLE_EQ(stdev(two), std::sqrt(800.0));
     // A 1x1 covariance is the smallest legal portfolio and stays exact.
-    const Matrix cov1(1, 1, {9.0e-4});
+    const Matrix cov1(1, 1, std::vector<double>{9.0e-4});
     EXPECT_DOUBLE_EQ(portfolio_sigma(std::vector<double>{2.0e6}, cov1), 2.0e6 * 0.03);
 }
 
@@ -286,7 +279,7 @@ TEST(EdgeCases, AlphaExtremesWithinTheOpenInterval) {
     for (int t = 0; t < 500; ++t) {
         pnl[t] = 120.0 * std::sin(0.7 * t) + 45.0 * std::cos(2.9 * t);
     }
-    const Matrix cov(1, 1, {4.0e-4});
+    const Matrix cov(1, 1, std::vector<double>{4.0e-4});
     const std::vector<double> w = {1.0e6};
     for (const double a : {1e-4, 1e-3, 0.4999}) {
         const double hv = historical_var(pnl, a);

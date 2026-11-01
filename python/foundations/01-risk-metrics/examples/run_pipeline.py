@@ -16,14 +16,15 @@ Usage
     python examples/run_pipeline.py --seed 7 --n-days 1500
         # a different synthetic sample
 
-Outputs go to ``output/report.txt`` and ``output/figures/`` (relative
-to the current working directory).
+Outputs go to ``report.txt`` and ``figures/`` under ``--out-dir``, which
+defaults to a folder in the system temp directory, never the repository.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -43,6 +44,16 @@ def load_prices_from_csv(path: str) -> pd.Series:
     return df.set_index("Date")[price_col].astype(float)
 
 
+def _cf_or_none(rets: pd.Series, c: float) -> float | None:
+    """Cornish-Fisher VaR, or None when the sample moments are outside its domain."""
+    try:
+        return rm.var_cornish_fisher(rets, c)
+    except ValueError as exc:
+        if "domain" not in str(exc):
+            raise
+        return None
+
+
 def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
     rets = rm.simple_returns(prices)
 
@@ -54,7 +65,7 @@ def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
         c: {
             "historical": rm.var_historical(rets, c),
             "parametric": rm.var_parametric(rets, c),
-            "cornish_fisher": rm.var_cornish_fisher(rets, c),
+            "cornish_fisher": _cf_or_none(rets, c),
             "expected_shortfall": rm.expected_shortfall(rets, c),
         }
         for c in CONF_LEVELS
@@ -103,7 +114,11 @@ def build_report(prices: pd.Series, source: str) -> tuple[str, dict]:
         add(f"  {c:.0%} confidence:")
         add(f"    Historical VaR      : {v['historical']:.2%}")
         add(f"    Gaussian VaR        : {v['parametric']:.2%}")
-        add(f"    Cornish-Fisher VaR  : {v['cornish_fisher']:.2%}")
+        cf = v["cornish_fisher"]
+        add(
+            f"    Cornish-Fisher VaR  : {cf:.2%}" if cf is not None
+            else "    Cornish-Fisher VaR  : not reported (skew/kurtosis outside the CF domain)"
+        )
         add(f"    Expected Shortfall  : {v['expected_shortfall']:.2%}")
     gap99 = var_table[0.99]["historical"] - var_table[0.99]["parametric"]
     add(f"\nGaussian vs historical gap at 99%: {gap99:+.2%}")
@@ -231,7 +246,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=2, help="Synthetic data seed")
     parser.add_argument("--n-days", type=int, default=2520, help="Synthetic sample length")
     parser.add_argument(
-        "--out-dir", type=str, default="output", help="Output directory for report/figures"
+        "--out-dir",
+        type=str,
+        default=os.path.join(tempfile.gettempdir(), "eq_risk_metrics_output"),
+        help="Output directory for report/figures (default: a folder under the system temp dir)",
     )
     parser.add_argument(
         "--no-plots", action="store_true", help="Skip matplotlib figure generation"

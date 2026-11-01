@@ -26,6 +26,8 @@ namespace fxvar {
 inline constexpr double kPegVolThreshold = 5e-4;
 
 inline constexpr int kTradingDaysPerYear = 252;
+/// EWMA seed window: seed variance = mean r^2 over the first min(30, n) rows.
+inline constexpr std::size_t kEwmaSeedWindow = 30;
 
 /// A labelled factor-return history: rows = days, columns = factors.
 struct ReturnsMatrix {
@@ -53,7 +55,7 @@ struct FactorCov {
 };
 
 /// Validate a history for use by any VaR method: consistent shape, at
-/// least `min_obs` rows, every `required` factor present, no NaNs.
+/// least `min_obs` rows, every `required` factor present, no NaN or inf.
 /// Throws std::invalid_argument with an informative message otherwise.
 void validate_returns(const ReturnsMatrix& returns,
                       const std::vector<std::string>& required,
@@ -69,7 +71,8 @@ FactorCov ewma_cov(const ReturnsMatrix& returns, double lam = 0.94);
 
 /// RiskMetrics EWMA per-factor volatility.
 /// sigma2_t = lam sigma2_{t-1} + (1-lam) r2_{t-1}: sigma_t is the forecast
-/// for day t using data through t-1, seeded with the full-sample variance.
+/// for day t using data through t-1. Zero-mean seed: sigma2_0 = mean r^2 over
+/// the first min(30, n) rows, so sigma_t for t >= 30 has no look-ahead.
 struct EwmaVolatility {
   Matrix sigma;                    ///< per-day forecast vols (n_obs rows)
   std::vector<double> sigma_next;  ///< one-step-ahead forecast per factor

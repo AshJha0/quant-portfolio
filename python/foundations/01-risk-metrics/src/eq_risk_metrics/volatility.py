@@ -16,6 +16,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ._validate import finite_series
+
 TRADING_DAYS = 252
 
 __all__ = [
@@ -31,6 +33,13 @@ __all__ = [
 # ----------------------------------------------------------------------
 # Return construction
 # ----------------------------------------------------------------------
+def _positive_prices(prices, func: str) -> pd.Series:
+    prices = finite_series(prices, func, name="prices", min_len=2)
+    if (prices <= 0).any():
+        raise ValueError(f"{func}: prices must be strictly positive")
+    return prices
+
+
 def simple_returns(prices: pd.Series) -> pd.Series:
     """Simple daily returns ``P_t / P_{t-1} - 1``.
 
@@ -46,7 +55,8 @@ def simple_returns(prices: pd.Series) -> pd.Series:
         shorter than ``prices`` (the first observation has no prior
         price to compare against).
     """
-    return prices.pct_change().dropna()
+    prices = _positive_prices(prices, "simple_returns")
+    return prices.pct_change().iloc[1:]
 
 
 def log_returns(prices: pd.Series) -> pd.Series:
@@ -63,7 +73,8 @@ def log_returns(prices: pd.Series) -> pd.Series:
         Log returns (unitless, fraction not percent), one element
         shorter than ``prices``.
     """
-    return np.log(prices / prices.shift(1)).dropna()
+    prices = _positive_prices(prices, "log_returns")
+    return np.log(prices / prices.shift(1)).iloc[1:]
 
 
 # ----------------------------------------------------------------------
@@ -90,10 +101,15 @@ def annualised_volatility(returns: pd.Series) -> float:
     Returns
     -------
     float
-        Annualised volatility, unitless (e.g. 0.18 = 18%/year). ``NaN``
-        if ``returns`` has fewer than 2 observations.
+        Annualised volatility, unitless (e.g. 0.18 = 18%/year).
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` has fewer than 2 observations or a non-finite value.
     """
-    return returns.std(ddof=1) * np.sqrt(TRADING_DAYS)
+    returns = finite_series(returns, "annualised_volatility", min_len=2)
+    return float(returns.std(ddof=1) * np.sqrt(TRADING_DAYS))
 
 
 def rolling_volatility(returns: pd.Series, window: int = 21) -> pd.Series:
@@ -134,10 +150,13 @@ def rolling_volatility(returns: pd.Series, window: int = 21) -> pd.Series:
             f"rolling_volatility: window must be >= 2, got {window} "
             "(std with ddof=1 needs at least two observations)"
         )
+    returns = finite_series(returns, "rolling_volatility")
     return returns.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)
 
 
-def ewma_volatility(returns: pd.Series, lam: float = 0.94) -> pd.Series:
+def ewma_volatility(
+    returns: pd.Series, lam: float = 0.94, seed_window: int = 30
+) -> pd.Series:
     """RiskMetrics-style exponentially weighted moving average volatility.
 
     ``sigma_t^2 = (1 - lambda) r_t^2 + lambda * sigma_{t-1}^2``, seeded
@@ -155,15 +174,18 @@ def ewma_volatility(returns: pd.Series, lam: float = 0.94) -> pd.Series:
     lam : float
         Decay factor in (0, 1); higher = slower-reacting, smoother
         estimate. RiskMetrics daily convention is 0.94.
+    seed_window : int
+        Number of leading returns whose mean square seeds the recursion.
 
     Returns
     -------
     pandas.Series
         Annualised EWMA volatility, same index and length as
-        ``returns`` (no warm-up ``NaN``s, since the recursion is
-        seeded at ``t=0``). The first entry is always ``0.0``: with a
-        single observation the exponentially weighted variance is
-        measured against that observation itself.
+        ``returns``. Entry ``t`` is the one-step-ahead forecast
+        ``sqrt(252 * s2_t)`` with the zero-mean RiskMetrics recursion
+        ``s2_t = lam * s2_{t-1} + (1 - lam) * r_{t-1}^2``. The seed
+        ``s2_0`` is ``mean(r^2)`` over the first ``min(seed_window, n)``
+        returns, so the seed looks ahead by at most ``seed_window`` days.
 
     Raises
     ------
@@ -179,5 +201,17 @@ def ewma_volatility(returns: pd.Series, lam: float = 0.94) -> pd.Series:
             f"ewma_volatility: lam must be a finite number strictly between "
             f"0 and 1 (RiskMetrics daily convention is 0.94), got {lam!r}"
         )
-    var = returns.ewm(alpha=1 - lam, adjust=False).var(bias=True)
-    return np.sqrt(var * TRADING_DAYS)
+    returns = pd.Series(returns, dtype=float)
+    r = returns.to_numpy()
+    if r.size == 0:
+        raise ValueError("ewma_volatility: returns is empty")
+    if not np.isfinite(r).all():
+        raise ValueError("ewma_volatility: returns contains a non-finite value")
+    if not isinstance(seed_window, (int, np.integer)) or seed_window < 1:
+        raise ValueError(f"ewma_volatility: seed_window must be a positive int, got {seed_window!r}")
+    w = min(int(seed_window), r.size)
+    s2 = np.empty(r.size)
+    s2[0] = float(np.mean(r[:w] ** 2))
+    for t in range(1, r.size):
+        s2[t] = lam * s2[t - 1] + (1.0 - lam) * r[t - 1] ** 2
+    return pd.Series(np.sqrt(s2 * TRADING_DAYS), index=returns.index)

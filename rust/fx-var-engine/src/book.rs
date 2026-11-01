@@ -175,6 +175,11 @@ impl Market {
 
     /// CIP forward: `F = X * exp((r_d - r_f) * T)` (QUOTE per BASE).
     pub fn forward(&self, pair: &str, expiry: f64) -> Result<f64> {
+        if !(expiry >= 0.0) || !expiry.is_finite() {
+            return Err(FxVarError::invalid(format!(
+                "forward expiry must be finite and >= 0 (years), got {expiry}"
+            )));
+        }
         let legs = split_pair(pair)?;
         let x = self.cross(pair)?;
         Ok(x * ((self.rate(&legs.quote)? - self.rate(&legs.base)?) * expiry).exp())
@@ -446,7 +451,7 @@ impl CompiledBook {
     pub fn new(book: &Book, market: &Market) -> Result<Self> {
         if book.is_empty() {
             return Err(FxVarError::invalid(
-                "cannot compile an empty book: add positions before running VaR",
+                "book has no positions: add positions before running VaR",
             ));
         }
         let factors = book.factors()?;
@@ -538,6 +543,9 @@ impl CompiledBook {
                 self.factors.len()
             )));
         }
+        if shocks.iter().any(|v| !v.is_finite()) {
+            return Err(FxVarError::invalid("shock vector contains NaN or infinite values"));
+        }
         let mut total = 0.0;
         for i in 0..self.value0.len() {
             let mut shift = 0.0;
@@ -617,6 +625,9 @@ impl CompiledBook {
             .collect();
         let base_col = if self.base_fx_idx >= 0 { factor_col[self.base_fx_idx as usize] } else { -1 };
 
+        if !scenarios.data.all_finite() {
+            return Err(FxVarError::invalid("scenario matrix contains NaN or infinite values"));
+        }
         let n_scen = scenarios.n_obs();
         let n_legs = self.value0.len();
         let v0_base = self.v0_usd / self.s0_base;

@@ -15,21 +15,42 @@ constexpr double kPi = 3.1415926535897932384626433832795;
 }  // namespace
 
 double validate_alpha(double alpha) {
-  if (!(alpha > 0.0 && alpha < 1.0)) {
+  if (!(alpha > 0.0 && alpha < 0.5)) {
     std::ostringstream msg;
-    msg << "alpha must be in (0, 1), got " << alpha;
+    msg << "alpha is the tail probability (e.g. 0.01 for 99 %); must be in "
+           "(0, 0.5), got "
+        << alpha;
     throw std::invalid_argument(msg.str());
   }
   return alpha;
 }
 
 double validate_horizon(double horizon_days) {
-  if (!(horizon_days > 0.0)) {
+  if (!(horizon_days > 0.0) || !std::isfinite(horizon_days)) {
     std::ostringstream msg;
     msg << "horizon_days must be > 0, got " << horizon_days;
     throw std::invalid_argument(msg.str());
   }
   return horizon_days;
+}
+
+// ------------------------------------------------------------ log-gamma
+// Lanczos (g = 7, n = 9), ~1e-15 relative. Thread-safe: std::lgamma writes
+// glibc's global signgam, so the library never calls it.
+double log_gamma(double x) {
+  if (!(x > 0.0) || !std::isfinite(x))
+    throw std::invalid_argument("log_gamma: x must be finite and > 0");
+  if (x < 0.5) return std::log(kPi / std::sin(kPi * x)) - log_gamma(1.0 - x);
+  static constexpr double c[] = {0.99999999999980993,  676.5203681218851,
+                                 -1259.1392167224028,  771.32342877765313,
+                                 -176.61502916214059,  12.507343278686905,
+                                 -0.13857109526572012, 9.9843695780195716e-6,
+                                 1.5056327351493116e-7};
+  const double z = x - 1.0;
+  double a = c[0];
+  const double t = z + 7.5;
+  for (int i = 1; i < 9; ++i) a += c[i] / (z + static_cast<double>(i));
+  return 0.5 * std::log(2.0 * kPi) + (z + 0.5) * std::log(t) - t + std::log(a);
 }
 
 double norm_pdf(double x) { return kInvSqrt2Pi * std::exp(-0.5 * x * x); }
@@ -90,7 +111,7 @@ double gamma_p_series(double a, double x) {
     sum += del;
     if (std::abs(del) < std::abs(sum) * 1e-16) break;
   }
-  return sum * std::exp(-x + a * std::log(x) - std::lgamma(a));
+  return sum * std::exp(-x + a * std::log(x) - log_gamma(a));
 }
 
 double gamma_q_contfrac(double a, double x) {
@@ -111,28 +132,31 @@ double gamma_q_contfrac(double a, double x) {
     h *= del;
     if (std::abs(del - 1.0) < 1e-16) break;
   }
-  return std::exp(-x + a * std::log(x) - std::lgamma(a)) * h;
+  return std::exp(-x + a * std::log(x) - log_gamma(a)) * h;
 }
 
 }  // namespace
 
 double reg_lower_gamma(double a, double x) {
-  if (a <= 0.0 || x < 0.0)
-    throw std::invalid_argument("reg_lower_gamma: require a > 0 and x >= 0");
+  if (!(a > 0.0) || !(x >= 0.0) || !std::isfinite(a) || !std::isfinite(x))
+    throw std::invalid_argument("reg_lower_gamma: require finite a > 0 and x >= 0");
   if (x == 0.0) return 0.0;
   return (x < a + 1.0) ? gamma_p_series(a, x) : 1.0 - gamma_q_contfrac(a, x);
 }
 
 double reg_upper_gamma(double a, double x) {
-  if (a <= 0.0 || x < 0.0)
-    throw std::invalid_argument("reg_upper_gamma: require a > 0 and x >= 0");
+  if (!(a > 0.0) || !(x >= 0.0) || !std::isfinite(a) || !std::isfinite(x))
+    throw std::invalid_argument("reg_upper_gamma: require finite a > 0 and x >= 0");
   if (x == 0.0) return 1.0;
   return (x < a + 1.0) ? 1.0 - gamma_p_series(a, x) : gamma_q_contfrac(a, x);
 }
 
 double chi2_sf(double x, double df) {
-  if (df <= 0.0) throw std::invalid_argument("chi2_sf: df must be > 0");
+  if (!(df > 0.0) || !std::isfinite(df))
+    throw std::invalid_argument("chi2_sf: df must be finite and > 0");
+  if (std::isnan(x)) throw std::invalid_argument("chi2_sf: x is NaN");
   if (x <= 0.0) return 1.0;
+  if (std::isinf(x)) return 0.0;
   return reg_upper_gamma(0.5 * df, 0.5 * x);
 }
 
@@ -175,13 +199,13 @@ double betacf(double a, double b, double x) {
 }  // namespace
 
 double reg_inc_beta(double a, double b, double x) {
-  if (a <= 0.0 || b <= 0.0)
-    throw std::invalid_argument("reg_inc_beta: require a, b > 0");
-  if (x < 0.0 || x > 1.0)
+  if (!(a > 0.0) || !(b > 0.0) || !std::isfinite(a) || !std::isfinite(b))
+    throw std::invalid_argument("reg_inc_beta: require finite a, b > 0");
+  if (!(x >= 0.0 && x <= 1.0))
     throw std::invalid_argument("reg_inc_beta: x must be in [0, 1]");
   if (x == 0.0) return 0.0;
   if (x == 1.0) return 1.0;
-  const double lnfront = std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
+  const double lnfront = log_gamma(a + b) - log_gamma(a) - log_gamma(b) +
                          a * std::log(x) + b * std::log1p(-x);
   const double front = std::exp(lnfront);
   if (x < (a + 1.0) / (a + b + 2.0)) return front * betacf(a, b, x) / a;
@@ -190,15 +214,18 @@ double reg_inc_beta(double a, double b, double x) {
 
 // ------------------------------------------------------------ Student-t
 double t_pdf(double x, double df) {
-  if (df <= 0.0) throw std::invalid_argument("t_pdf: df must be > 0");
-  const double lognorm = std::lgamma(0.5 * (df + 1.0)) -
-                         std::lgamma(0.5 * df) -
+  if (!(df > 0.0) || !std::isfinite(df) || !std::isfinite(x))
+    throw std::invalid_argument("t_pdf: need finite x and finite df > 0");
+  const double lognorm = log_gamma(0.5 * (df + 1.0)) -
+                         log_gamma(0.5 * df) -
                          0.5 * std::log(df * kPi);
   return std::exp(lognorm - 0.5 * (df + 1.0) * std::log1p(x * x / df));
 }
 
 double t_cdf(double x, double df) {
-  if (df <= 0.0) throw std::invalid_argument("t_cdf: df must be > 0");
+  if (!(df > 0.0) || !std::isfinite(df) || std::isnan(x))
+    throw std::invalid_argument("t_cdf: need non-NaN x and finite df > 0");
+  if (std::isinf(x)) return x > 0.0 ? 1.0 : 0.0;
   if (x == 0.0) return 0.5;
   const double z = df / (df + x * x);
   const double tail = 0.5 * reg_inc_beta(0.5 * df, 0.5, z);
@@ -208,7 +235,8 @@ double t_cdf(double x, double df) {
 double t_ppf(double p, double df) {
   if (!(p > 0.0 && p < 1.0))
     throw std::invalid_argument("t_ppf: p must be in (0, 1)");
-  if (df <= 0.0) throw std::invalid_argument("t_ppf: df must be > 0");
+  if (!(df > 0.0) || !std::isfinite(df))
+    throw std::invalid_argument("t_ppf: df must be finite and > 0");
   if (p == 0.5) return 0.0;
 
   // Start from the normal quantile with a first-order fat-tail correction,
@@ -241,20 +269,21 @@ double t_ppf(double p, double df) {
 
 double binom_cdf(int k, int n, double p) {
   if (n < 0) throw std::invalid_argument("binom_cdf: n must be >= 0");
-  if (p < 0.0 || p > 1.0)
+  if (!(p >= 0.0 && p <= 1.0))
     throw std::invalid_argument("binom_cdf: p must be in [0, 1]");
   if (k < 0) return 0.0;
   if (k >= n) return 1.0;
   if (p == 0.0) return 1.0;
   if (p == 1.0) return 0.0;  // k < n here
-  const double logp = std::log(p);
-  const double log1mp = std::log1p(-p);
-  double cum = 0.0;
-  for (int i = 0; i <= k; ++i) {
-    const double logterm = std::lgamma(n + 1.0) - std::lgamma(i + 1.0) -
-                           std::lgamma(n - i + 1.0) + i * logp +
-                           (n - i) * log1mp;
-    cum += std::exp(logterm);
+  // pmf recursion: pmf(0) = (1-p)^n, pmf(j+1) = pmf(j) (n-j)/(j+1) p/(1-p).
+  double pmf = std::exp(static_cast<double>(n) * std::log1p(-p));
+  if (pmf == 0.0)  // (1-p)^n underflows: P(X <= k) = I_{1-p}(n-k, k+1)
+    return reg_inc_beta(static_cast<double>(n - k), static_cast<double>(k + 1), 1.0 - p);
+  const double odds = p / (1.0 - p);
+  double cum = pmf;
+  for (int j = 0; j < k; ++j) {
+    pmf *= static_cast<double>(n - j) / static_cast<double>(j + 1) * odds;
+    cum += pmf;
   }
   return std::min(cum, 1.0);
 }
@@ -263,6 +292,9 @@ Moments sample_moments(const std::vector<double>& x) {
   const std::size_t n = x.size();
   if (n < 2)
     throw std::invalid_argument("sample_moments: need at least 2 observations");
+  for (double v : x)
+    if (!std::isfinite(v))
+      throw std::invalid_argument("sample_moments: input contains NaN or inf");
   const double dn = static_cast<double>(n);
   double mean = 0.0;
   for (double v : x) mean += v;

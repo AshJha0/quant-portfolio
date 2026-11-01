@@ -44,7 +44,7 @@ pub enum HsMethod {
 /// Options controlling [`historical_var`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoricalOptions {
-    /// Confidence level, e.g. `0.99` for 99 % VaR.
+    /// Tail probability, e.g. `0.01` for 99 % VaR (was a confidence level).
     pub alpha: f64,
     /// Horizon in trading days; `> 1` uses sqrt-time scaling.
     pub horizon_days: f64,
@@ -63,7 +63,7 @@ pub struct HistoricalOptions {
 impl Default for HistoricalOptions {
     fn default() -> Self {
         HistoricalOptions {
-            alpha: 0.99,
+            alpha: 0.01,
             horizon_days: 1.0,
             method: HsMethod::Plain,
             decay: 0.995,
@@ -83,7 +83,7 @@ pub struct HistoricalResult {
     /// Positive ES loss in the book's base currency at the requested
     /// horizon.
     pub es: f64,
-    /// Confidence level used.
+    /// Tail probability used.
     pub alpha: f64,
     /// Horizon in trading days used.
     pub horizon_days: f64,
@@ -144,7 +144,7 @@ pub fn historical_var(
     let mut rets = returns.select(&factors)?;
 
     if opts.warn_pegs {
-        res.flagged_peg_factors = flag_peg_factors(&rets, crate::returns::PEG_VOL_THRESHOLD);
+        res.flagged_peg_factors = flag_peg_factors(&rets, crate::returns::PEG_VOL_THRESHOLD)?;
         for f in &res.flagged_peg_factors {
             res.warnings.push(format!(
                 "peg blindness: factor {f} has daily vol < {} (pegged/managed currency). \

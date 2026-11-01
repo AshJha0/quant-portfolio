@@ -1,20 +1,22 @@
-// eqvar/monte_carlo.hpp — Monte Carlo VaR for a linear (delta) portfolio.
+// eqvar/monte_carlo.hpp: Monte Carlo VaR for a linear (delta) portfolio.
 //
 // Simulate factor returns from a multivariate normal or multivariate
-// Student-t (common-mixing-variable construction Z / sqrt(W/df), scale matrix
-// cov*(df-2)/df so the COVARIANCE matches cov exactly while the tails
-// fatten), revalue the linear portfolio P&L = w . r, and read VaR / ES off
-// the scenario distribution with an order-statistic standard error.
+// Student-t (common mixing variable Z / sqrt(W/df), scale matrix
+// cov*(df-2)/df so the covariance matches cov while the tails fatten),
+// revalue the linear portfolio P&L = w . r, and read VaR / ES off the
+// scenario distribution with the order statistic. The VaR standard error is
+// a bootstrap (primary) plus a KDE value (diagnostic).
 //
-// Determinism: every draw comes from a seeded std::mt19937_64 through our own
+// Determinism: every draw comes from a seeded std::mt19937_64 through an
 // inverse-CDF normal transform (normal_ppf on 53-bit uniforms) and a
-// Marsaglia-Tsang gamma sampler built on the same primitives — NO
-// implementation-defined std::normal_distribution — so results are BITWISE
-// reproducible for a given seed across standard libraries.
+// Marsaglia-Tsang gamma sampler on the same primitives, never
+// std::normal_distribution. Results repeat exactly for a given seed on one
+// platform. Across platforms they can differ in the last bits, because
+// std::log, std::exp and std::erfc are not correctly rounded and differ
+// between glibc, MSVC and Apple libm.
 //
-// Mirrors eq_var.monte_carlo_var semantically (same factor model, same
-// quantile); RNG streams differ from NumPy's, so cross-language agreement is
-// statistical (within order-statistic error bars), not bitwise.
+// RNG streams differ from NumPy, so agreement with the Python engine is
+// statistical (within Monte Carlo error), not exact.
 
 #pragma once
 
@@ -23,6 +25,7 @@
 #include <random>
 #include <span>
 
+#include "eqvar/historical.hpp"
 #include "eqvar/matrix.hpp"
 #include "eqvar/parametric.hpp"
 
@@ -53,56 +56,52 @@ private:
 
 /// Result of a Monte Carlo tail-risk estimation.
 struct MonteCarloResult {
-    double var = 0.0;       ///< VaR, positive for a loss (linear-interp quantile).
+    double var = 0.0;       ///< VaR, positive for a loss (order statistic L(m)).
     double es = 0.0;        ///< Expected Shortfall, positive for a loss.
-    double var_se = 0.0;    ///< Order-statistic standard error of the VaR estimate.
+    double var_se = 0.0;      ///< Bootstrap standard error of the VaR (primary).
+    double var_se_kde = 0.0;  ///< Silverman-KDE asymptotic SE at the reported quantile (diagnostic).
     std::size_t n_paths = 0;
 };
 
 /// Simulate `n_paths` factor-return scenarios ((n_paths x n) panel) with
-/// target covariance `cov`.  dist = StudentT requires df > 2.  Bitwise
-/// deterministic in `seed`.  Throws std::invalid_argument on bad inputs.
+/// target covariance `cov`. dist = StudentT requires finite df > 2. The
+/// factorisation is cholesky(cov, repair). Deterministic in `seed` for a given
+/// platform and libm. Throws std::invalid_argument on bad inputs.
 [[nodiscard]] Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths,
                                              Dist dist = Dist::Normal, double df = 6.0,
-                                             std::uint64_t seed = 0);
+                                             std::uint64_t seed = 0,
+                                             Repair repair = Repair::None);
 
-/// VaR + ES + order-statistic SE from a scenario P&L sample (>= 100 paths).
-///
-/// SE uses the asymptotic quantile variance alpha(1-alpha)/(n f(q)^2) with
-/// the density f estimated by a symmetric order-statistic finite difference
-/// of bandwidth ceil(sqrt(alpha n)) around the quantile rank.
-[[nodiscard]] MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha);
+/// VaR + ES (order statistic, see historical.hpp) + bootstrap SE (primary,
+/// mc_bootstrap_se with n_boot >= 2) + KDE SE (diagnostic) from one scenario
+/// P&L sample of at least 100 finite paths.
+[[nodiscard]] MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha,
+                                               std::size_t n_boot = 200, std::uint64_t seed = 0);
 
-/// Bootstrap standard error of the empirical VaR quantile.
-///
-/// Resamples `pnl` with replacement `n_boot` times (via this file's own
-/// `RandomStream`, so the result is bitwise deterministic in `seed`),
-/// recomputes the same type-7 linear-interpolation VaR quantile that
-/// `mc_tail_metrics` uses on each resample, and returns the ddof = 1 sample
-/// standard deviation of the resampled VaR values.
-///
-/// Distribution-free: unlike `mc_tail_metrics`'s `var_se` (a fixed-bandwidth
-/// finite-difference density estimate, i.e. the same defect class as a
-/// fixed-bandwidth KDE evaluated at an extreme quantile), the bootstrap does
-/// not need a local density estimate at all, so it does not share that
-/// estimator's ~9-17% low bias in deep tails / small n. Mirrors
-/// `eq_var.monte_carlo_var.var_standard_error_bootstrap`; use it as a
-/// cross-check on `var_se`, not a bitwise-identical replacement (RNG streams
-/// and resampling differ from the Python reference).
-///
-/// Throws std::invalid_argument if `pnl.size() < 10` or `alpha` is outside
-/// (0, 0.5).
+/// Asymptotic quantile SE sqrt(alpha(1-alpha)/n) / f(q) with f a Gaussian KDE
+/// (Silverman bandwidth 0.9 min(sd, IQR/1.34) n^{-1/5}) evaluated at the
+/// reported order-statistic quantile q. Diagnostic only. Returns 0 for a
+/// zero-variance sample.
+[[nodiscard]] double kde_var_se(std::span<const double> pnl, double alpha);
+
+/// Bootstrap standard error of the order-statistic VaR: resample `pnl` with
+/// replacement n_boot times, recompute L(m) on each resample with
+/// std::nth_element, return the ddof = 1 standard deviation. Memory is one
+/// resample buffer (never an n_boot x n index matrix). Throws
+/// std::invalid_argument for n < 10, n_boot < 2, non-finite P&L or alpha
+/// outside (0, 0.5).
 [[nodiscard]] double mc_bootstrap_se(std::span<const double> pnl, double alpha,
                                      std::size_t n_boot = 500, std::uint64_t seed = 0);
 
-/// Full Monte Carlo VaR + ES on a linear portfolio.  Throws
-/// std::invalid_argument on empty exposures, shape mismatch, alpha outside
-/// (0, 0.5), or df <= 2 for the Student-t model.  Bitwise deterministic in
-/// `seed`.
+/// Full Monte Carlo VaR + ES on a linear portfolio. Simulates once; VaR, ES
+/// and both SEs come from the same scenarios. Throws std::invalid_argument on
+/// an empty or all-zero book, shape mismatch, alpha outside (0, 0.5), or
+/// df <= 2 for the Student-t model.
 [[nodiscard]] MonteCarloResult monte_carlo_var(std::span<const double> exposures,
                                                const Matrix& cov, double alpha = 0.01,
                                                std::size_t n_paths = 100'000,
                                                Dist dist = Dist::Normal, double df = 6.0,
-                                               std::uint64_t seed = 0);
+                                               std::uint64_t seed = 0, std::size_t n_boot = 200,
+                                               Repair repair = Repair::None);
 
 }  // namespace eqvar

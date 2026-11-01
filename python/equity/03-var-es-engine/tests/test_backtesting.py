@@ -31,36 +31,36 @@ def hand_kupiec(t: int, x: int, p: float) -> float:
 class TestKupiec:
     def test_lr_matches_hand_computed(self):
         for t, x in ((250, 5), (250, 0), (250, 10), (500, 14), (1000, 3)):
-            res = kupiec_pof(t, x, 0.01)
+            res = kupiec_pof(n_obs=t, n_exceptions=x, alpha=0.01)
             assert res["lr"] == pytest.approx(hand_kupiec(t, x, 0.01), abs=1e-10)
 
     def test_zero_exceptions_known_value(self):
         # LR = -2 * 250 * ln(0.99) = 5.02517...
-        res = kupiec_pof(250, 0, 0.01)
+        res = kupiec_pof(n_obs=250, n_exceptions=0, alpha=0.01)
         assert res["lr"] == pytest.approx(-2 * 250 * np.log(0.99), abs=1e-12)
 
     def test_exact_coverage_gives_zero_lr(self):
-        res = kupiec_pof(1000, 10, 0.01)  # observed rate == alpha exactly
+        res = kupiec_pof(n_obs=1000, n_exceptions=10, alpha=0.01)  # observed rate == alpha exactly
         assert res["lr"] == pytest.approx(0.0, abs=1e-12)
         assert res["pvalue"] == pytest.approx(1.0)
 
     def test_pvalue_is_chi2_1df(self):
-        res = kupiec_pof(250, 9, 0.01)
+        res = kupiec_pof(n_obs=250, n_exceptions=9, alpha=0.01)
         assert res["pvalue"] == pytest.approx(float(chi2.sf(res["lr"], 1)), abs=1e-14)
 
     def test_rejects_gross_undercoverage(self):
-        assert kupiec_pof(250, 12, 0.01)["pvalue"] < 0.001
+        assert kupiec_pof(n_obs=250, n_exceptions=12, alpha=0.01)["pvalue"] < 0.001
 
     def test_expected_and_rate_fields(self):
-        res = kupiec_pof(250, 5, 0.01)
+        res = kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
         assert res["expected"] == pytest.approx(2.5)
         assert res["rate"] == pytest.approx(0.02)
 
     def test_invalid_inputs_raise(self):
         with pytest.raises(ValueError, match="n_obs"):
-            kupiec_pof(0, 0, 0.01)
+            kupiec_pof(n_obs=0, n_exceptions=0, alpha=0.01)
         with pytest.raises(ValueError, match="n_exceptions"):
-            kupiec_pof(250, 300, 0.01)
+            kupiec_pof(n_obs=250, n_exceptions=300, alpha=0.01)
 
     @staticmethod
     def _exact_test_size(n_obs: int, alpha: float, nominal: float = 0.05) -> float:
@@ -75,7 +75,7 @@ class TestKupiec:
 
         crit = chi2.ppf(1.0 - nominal, df=1)
         xs = np.arange(0, n_obs + 1)
-        lrs = np.array([kupiec_pof(n_obs, int(x), alpha)["lr"] for x in xs])
+        lrs = np.array([kupiec_pof(n_obs=n_obs, n_exceptions=int(x), alpha=alpha)["lr"] for x in xs])
         return float(binom.pmf(xs[lrs > crit], n_obs, alpha).sum())
 
     def test_asymptotic_chi2_reference_is_oversized_at_the_regulatory_window(self):
@@ -119,7 +119,7 @@ class TestChristoffersen:
     def test_cc_equals_uc_plus_ind(self):
         rng = np.random.default_rng(1)
         ex = rng.random(500) < 0.02
-        uc = kupiec_pof(500, int(ex.sum()), 0.01)
+        uc = kupiec_pof(n_obs=500, n_exceptions=int(ex.sum()), alpha=0.01)
         ind = christoffersen_independence(ex)
         cc = christoffersen_cc(ex, 0.01)
         assert cc["lr"] == pytest.approx(uc["lr"] + ind["lr"], abs=1e-10)
@@ -132,23 +132,23 @@ class TestChristoffersen:
 
 class TestBaselTrafficLight:
     def test_green_yellow_boundary_exact_at_4_5(self):
-        assert basel_traffic_light(4)["zone"] == "green"
-        assert basel_traffic_light(5)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=4)["zone"] == "green"
+        assert basel_traffic_light(n_obs=250, n_exceptions=5)["zone"] == "yellow"
 
     def test_yellow_red_boundary_exact_at_9_10(self):
-        assert basel_traffic_light(9)["zone"] == "yellow"
-        assert basel_traffic_light(10)["zone"] == "red"
+        assert basel_traffic_light(n_obs=250, n_exceptions=9)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=10)["zone"] == "red"
 
     def test_multiplier_schedule(self):
-        assert basel_traffic_light(0)["multiplier"] == pytest.approx(3.0)
-        assert basel_traffic_light(4)["multiplier"] == pytest.approx(3.0)
-        assert basel_traffic_light(5)["multiplier"] == pytest.approx(3.40)
-        assert basel_traffic_light(6)["multiplier"] == pytest.approx(3.50)
-        assert basel_traffic_light(7)["multiplier"] == pytest.approx(3.65)
-        assert basel_traffic_light(8)["multiplier"] == pytest.approx(3.75)
-        assert basel_traffic_light(9)["multiplier"] == pytest.approx(3.85)
-        assert basel_traffic_light(10)["multiplier"] == pytest.approx(4.0)
-        assert basel_traffic_light(25)["multiplier"] == pytest.approx(4.0)
+        assert basel_traffic_light(n_obs=250, n_exceptions=0)["multiplier"] == pytest.approx(3.0)
+        assert basel_traffic_light(n_obs=250, n_exceptions=4)["multiplier"] == pytest.approx(3.0)
+        assert basel_traffic_light(n_obs=250, n_exceptions=5)["multiplier"] == pytest.approx(3.40)
+        assert basel_traffic_light(n_obs=250, n_exceptions=6)["multiplier"] == pytest.approx(3.50)
+        assert basel_traffic_light(n_obs=250, n_exceptions=7)["multiplier"] == pytest.approx(3.65)
+        assert basel_traffic_light(n_obs=250, n_exceptions=8)["multiplier"] == pytest.approx(3.75)
+        assert basel_traffic_light(n_obs=250, n_exceptions=9)["multiplier"] == pytest.approx(3.85)
+        assert basel_traffic_light(n_obs=250, n_exceptions=10)["multiplier"] == pytest.approx(4.0)
+        assert basel_traffic_light(n_obs=250, n_exceptions=25)["multiplier"] == pytest.approx(4.0)
 
     def test_zone_probabilities_binomial(self):
         from scipy.stats import binom
@@ -163,7 +163,7 @@ class TestBaselTrafficLight:
 
     def test_negative_count_raises(self):
         with pytest.raises(ValueError, match="n_exceptions"):
-            basel_traffic_light(-1)
+            basel_traffic_light(n_obs=250, n_exceptions=-1)
 
     def test_calibration_true_var_mostly_green(self):
         """Simulated calibration: correct 99 % VaR on iid data -> ~1 %
@@ -174,7 +174,7 @@ class TestBaselTrafficLight:
         for _ in range(300):
             pnl = rng.standard_normal(250)
             ex = exceptions_from_pnl(pnl, true_var)
-            zones.append(basel_traffic_light(int(ex.sum()))["zone"])
+            zones.append(basel_traffic_light(n_obs=250, n_exceptions=int(ex.sum()))["zone"])
             rates.append(ex.mean())
         green_frac = np.mean([z == "green" for z in zones])
         assert 0.80 < green_frac <= 1.0
@@ -184,13 +184,13 @@ class TestBaselTrafficLight:
 class TestAcerbiSzekely:
     def test_z2_near_zero_under_correct_model(self):
         rng = np.random.default_rng(2)
-        pnl = rng.standard_normal(200_000)
+        pnl = rng.standard_normal(5000)
         alpha = 0.025
         var = float(-norm.ppf(alpha))
         es = normal_es(1.0, alpha)
-        res = acerbi_szekely_z2(pnl, var, es, alpha)
-        assert abs(res["z2"]) < 0.05
-        assert not res["reject"]
+        res = acerbi_szekely_z2(pnl, var, es, alpha=alpha, n_sims=2000)
+        assert abs(res["z2"]) < 0.15
+        assert res["p_value"] > 0.05
 
     def test_z2_negative_when_model_understates_tail(self):
         rng = np.random.default_rng(3)
@@ -198,24 +198,59 @@ class TestAcerbiSzekely:
         alpha = 0.025
         var = float(-norm.ppf(alpha))  # model assumes sigma = 1
         es = normal_es(1.0, alpha)
-        res = acerbi_szekely_z2(pnl, var, es, alpha)
+        res = acerbi_szekely_z2(pnl, var, es, alpha=alpha, n_sims=50)
         # analytic value: E[X 1(X<-1.96)]/(alpha*ES)+1 ~ -3.36
         assert res["z2"] < -2.0
-        assert res["reject"]
+        assert res["p_value"] == 0.0
 
     def test_no_exceptions_gives_plus_one(self):
         pnl = np.zeros(100)
-        res = acerbi_szekely_z2(pnl, 5.0, 6.0, 0.025)
+        res = acerbi_szekely_z2(pnl, 5.0, 6.0, alpha=0.025)
         assert res["z2"] == pytest.approx(1.0)
         assert res["n_exceptions"] == 0
 
     def test_es_below_var_raises(self):
         with pytest.raises(ValueError, match="ES must be >= VaR"):
-            acerbi_szekely_z2(np.zeros(10), 5.0, 4.0, 0.025)
+            acerbi_szekely_z2(np.zeros(10), 5.0, 4.0, alpha=0.025)
 
     def test_nonpositive_es_raises(self):
         with pytest.raises(ValueError, match="positive"):
-            acerbi_szekely_z2(np.zeros(10), 1.0, 0.0, 0.025)
+            acerbi_szekely_z2(np.zeros(10), 1.0, 0.0, alpha=0.025)
+
+    def test_p_value_is_calibrated_under_the_null(self):
+        """Spec S5: under the default normal null the simulated p-value is
+        uniform. Over 200 independent 250-day samples drawn from that null,
+        the 5 % rejection rate must lie within 3 binomial SE of 5 %
+        (SE = sqrt(0.05 * 0.95 / 200) = 1.54 %)."""
+        rng = np.random.default_rng(31)
+        alpha = 0.025
+        var, es = float(-norm.ppf(alpha)), normal_es(1.0, alpha)
+        rej = 0
+        for i in range(200):
+            p = rng.standard_normal(250)
+            rej += acerbi_szekely_z2(p, var, es, alpha=alpha, n_sims=400, seed=i)["p_value"] < 0.05
+        assert abs(rej / 200 - 0.05) < 3 * np.sqrt(0.05 * 0.95 / 200)
+
+    def test_understated_es_rejected_on_250_days(self):
+        """Realised P&L 1.5x the model sigma: the simulated p-value rejects.
+        Old code returned a fixed -0.70 flag with no p-value."""
+        rng = np.random.default_rng(32)
+        alpha = 0.025
+        var, es = float(-norm.ppf(alpha)), normal_es(1.0, alpha)
+        res = acerbi_szekely_z2(1.5 * rng.standard_normal(250), var, es, alpha=alpha, n_sims=2000)
+        assert res["p_value"] < 0.05
+        assert "reject" not in res
+
+    def test_null_sampler_is_used(self):
+        """A null sampler that returns the observed path makes P(Z2_sim <= Z2_obs) = 1."""
+        p = np.random.default_rng(33).standard_normal(100)
+        res = acerbi_szekely_z2(p, 1.9, 2.3, alpha=0.025, n_sims=10,
+                                null_sampler=lambda rng, m, t: np.tile(p, (m, 1)))
+        assert res["p_value"] == 1.0
+
+    def test_positional_alpha_is_deprecated(self):
+        with pytest.deprecated_call():
+            acerbi_szekely_z2(np.zeros(10), 5.0, 6.0, 0.025)
 
 
 class TestRollingBacktest:
@@ -269,7 +304,7 @@ class TestKupiecExactSize:
 
     def _reject_set(self):
         crit = chi2.ppf(0.95, df=1)
-        return [x for x in range(self.N + 1) if kupiec_pof(self.N, x, self.P)["lr"] > crit]
+        return [x for x in range(self.N + 1) if kupiec_pof(n_obs=self.N, n_exceptions=x, alpha=self.P)["lr"] > crit]
 
     def test_exact_size_is_9_5_percent(self):
         from scipy.stats import binom
@@ -281,24 +316,63 @@ class TestKupiecExactSize:
 
     def test_zero_exceptions_is_a_rejection(self):
         assert 0 in self._reject_set()
-        assert kupiec_pof(self.N, 0, self.P)["pvalue"] < 0.05
+        assert kupiec_pof(n_obs=self.N, n_exceptions=0, alpha=self.P)["pvalue"] < 0.05
 
     def test_rejection_set_is_zero_or_upper_tail(self):
         rej = self._reject_set()
         # {0} plus a contiguous upper tail starting at 7 exceptions.
         assert rej[0] == 0
         assert rej[1:] == list(range(7, self.N + 1))
-        assert kupiec_pof(self.N, 6, self.P)["pvalue"] > 0.05
+        assert kupiec_pof(n_obs=self.N, n_exceptions=6, alpha=self.P)["pvalue"] > 0.05
+
+    @pytest.mark.parametrize(
+        "n, x, a, zone, k",
+        [(250, 4, 0.01, "green", 3.0), (250, 5, 0.01, "yellow", 3.40), (250, 9, 0.01, "yellow", 3.85),
+         (250, 10, 0.01, "red", 4.0), (500, 8, 0.01, "green", 3.0), (500, 9, 0.01, "yellow", 3.50),
+         (500, 12, 0.01, "yellow", 3.75), (1000, 15, 0.01, "yellow", 3.40),
+         (250, 12, 0.025, "yellow", 3.65)],
+    )
+    def test_basel_spec_s4_any_window_any_alpha(self, n, x, a, zone, k):
+        """Spec S4 hand-checked: zone from F(x) = Binomial(n, alpha) CDF, plus
+        factor read at the 250-day count with the same F. The old code took
+        the plus factor from round(x * 250 / n): 9/500 gave 3.40 (x_eq 5)
+        instead of 3.50 (F = 0.9689 lies between F250(5) = 0.9588 and
+        F250(6) = 0.9863), and alpha was hard-coded to 0.01."""
+        from scipy.stats import binom
+
+        r = basel_traffic_light(n_obs=n, n_exceptions=x, alpha=a)
+        assert r["zone"] == zone
+        assert r["multiplier"] == pytest.approx(k, abs=1e-15)
+        assert r["cumulative_prob"] == pytest.approx(binom.cdf(x, n, a), rel=1e-13)
+
+    def test_basel_rejects_tail_probability_confusion(self):
+        with pytest.raises(ValueError, match="tail probability"):
+            basel_traffic_light(n_obs=250, n_exceptions=3, alpha=0.99)
+
+    def test_basel_positional_form_is_deprecated_but_same_at_250(self):
+        with pytest.deprecated_call():
+            old = basel_traffic_light(7)
+        assert old == basel_traffic_light(n_obs=250, n_exceptions=7)
+
+    def test_kupiec_rejects_confidence_level_as_alpha(self):
+        """Old code accepted alpha=0.99 and tested a 99 % exception rate."""
+        with pytest.raises(ValueError, match="tail probability"):
+            kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.99)
+
+    def test_kupiec_positional_form_is_deprecated_and_keeps_order(self):
+        with pytest.deprecated_call():
+            old = kupiec_pof(250, 5, 0.01)
+        assert old == kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
 
     def test_basel_zone_uses_probability_for_non_250_windows(self):
         # MIN-14: 500 days with 8 exceptions is yellow by the raw 5-9 count
         # but comfortably green by the cumulative binomial probability.
-        r = basel_traffic_light(8, n_obs=500)
+        r = basel_traffic_light(n_obs=500, n_exceptions=8)
         assert r["zone"] == "green"
         assert r["cumulative_prob"] < 0.95
         # Regulatory 250-day table is reproduced exactly.
-        assert basel_traffic_light(4)["zone"] == "green"
-        assert basel_traffic_light(5)["zone"] == "yellow"
-        assert basel_traffic_light(9)["zone"] == "yellow"
-        assert basel_traffic_light(10)["zone"] == "red"
-        assert basel_traffic_light(10)["multiplier"] == 4.0
+        assert basel_traffic_light(n_obs=250, n_exceptions=4)["zone"] == "green"
+        assert basel_traffic_light(n_obs=250, n_exceptions=5)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=9)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=10)["zone"] == "red"
+        assert basel_traffic_light(n_obs=250, n_exceptions=10)["multiplier"] == 4.0

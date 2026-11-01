@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+#![allow(clippy::needless_range_loop)]
 //! Real-life scenarios and edge cases (CONVENTIONS.md documentation
 //! contract item 6): hand-exact empirical quantiles, peg blindness vs the
 //! jump-mixture Monte Carlo overlay, T -> 0 / zero / negative rates,
@@ -20,20 +22,20 @@ fn market_eur_jpy_hkd() -> Market {
 fn hand_exact_empirical_var_quantiles() {
     // 10 P&Ls; losses sorted desc: 50, 40, 30, 20, 10, 0, -5, -15, -25, -35.
     let pnl = [-50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0];
-    assert_eq!(empirical_var(&pnl, 0.90, None).unwrap(), 50.0); // m=ceil(1)=worst
-    assert_eq!(empirical_var(&pnl, 0.80, None).unwrap(), 40.0); // m=2
-    assert_eq!(empirical_var(&pnl, 0.75, None).unwrap(), 30.0); // m=2.5->3rd
-    assert_eq!(empirical_var(&pnl, 0.99, None).unwrap(), 50.0); // only 10 obs
+    assert_eq!(empirical_var(&pnl, 0.10, None).unwrap(), 50.0); // m=ceil(1)=worst
+    assert_eq!(empirical_var(&pnl, 0.20, None).unwrap(), 40.0); // m=2
+    assert_eq!(empirical_var(&pnl, 0.25, None).unwrap(), 30.0); // m=2.5->3rd
+    assert_eq!(empirical_var(&pnl, 0.01, None).unwrap(), 50.0); // only 10 obs
 }
 
 #[test]
 fn hand_exact_acerbi_tasche_es() {
     let pnl = [-50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0];
-    assert_eq!(empirical_es(&pnl, 0.80, None).unwrap(), 45.0); // 2 worst losses averaged
-    // alpha=0.75: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
-    let es = empirical_es(&pnl, 0.75, None).unwrap();
+    assert_eq!(empirical_es(&pnl, 0.20, None).unwrap(), 45.0); // 2 worst losses averaged
+    // alpha=0.25: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
+    let es = empirical_es(&pnl, 0.25, None).unwrap();
     assert!((es - 42.0).abs() < 1e-9);
-    for a in [0.5, 0.75, 0.9, 0.99] {
+    for a in [0.01, 0.1, 0.25, 0.45] {
         let (v, e) = empirical_var_es(&pnl, a, None).unwrap();
         assert!(e >= v);
     }
@@ -45,24 +47,24 @@ fn weighted_empirical_var_es() {
     let pnl = [-100.0, -10.0, 0.0, -50.0];
     let w = [0.05, 0.15, 0.30, 0.50];
     // Losses desc: 100 (w .05), 50 (w .50), 10 (w .15), 0 (w .30).
-    assert!((empirical_var(&pnl, 0.90, Some(&w)).unwrap() - 50.0).abs() < 1e-12);
-    assert!((empirical_es(&pnl, 0.90, Some(&w)).unwrap() - 75.0).abs() < 1e-12);
+    assert!((empirical_var(&pnl, 0.10, Some(&w)).unwrap() - 50.0).abs() < 1e-12);
+    assert!((empirical_es(&pnl, 0.10, Some(&w)).unwrap() - 75.0).abs() < 1e-12);
 }
 
 #[test]
 fn closed_form_normal_textbook_numbers() {
-    // sigma=1, alpha=0.99: VaR = 2.3263478740, ES = 2.6652142306 (classic).
-    assert!((normal_var(1.0, 0.99, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
-    assert!((normal_es(1.0, 0.99, 0.0).unwrap() - 2.665_214_220_345_808).abs() < 1e-9);
-    assert!(normal_es(1.0, 0.95, 0.0).unwrap() > normal_var(1.0, 0.95, 0.0).unwrap());
+    // sigma=1, alpha=0.01: VaR = 2.3263478740, ES = 2.6652142306 (classic).
+    assert!((normal_var(1.0, 0.01, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
+    assert!((normal_es(1.0, 0.01, 0.0).unwrap() - 2.665_214_220_345_808).abs() < 1e-9);
+    assert!(normal_es(1.0, 0.05, 0.0).unwrap() > normal_var(1.0, 0.05, 0.0).unwrap());
 }
 
 #[test]
 fn student_t_converges_to_normal_as_df_grows() {
     let sigma = 1.0;
-    assert!(student_t_var(sigma, 0.99, 4.0, 0.0).unwrap() > normal_var(sigma, 0.99, 0.0).unwrap());
-    let far = student_t_var(sigma, 0.99, 1.0e7, 0.0).unwrap();
-    let normal = normal_var(sigma, 0.99, 0.0).unwrap();
+    assert!(student_t_var(sigma, 0.01, 4.0, 0.0).unwrap() > normal_var(sigma, 0.01, 0.0).unwrap());
+    let far = student_t_var(sigma, 0.01, 1.0e7, 0.0).unwrap();
+    let normal = normal_var(sigma, 0.01, 0.0).unwrap();
     assert!((far - normal).abs() < 1e-4);
 }
 
@@ -352,18 +354,18 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
         assert!(reverse_stress_numerical(&[1e6, -2e6], &clean, bad, 1).is_err());
 
         // Closed-form tail formulae.
-        assert!(normal_var(bad, 0.99, 0.0).is_err(), "normal_var sigma {bad}");
-        assert!(normal_var(1.0, 0.99, bad).is_err(), "normal_var mean {bad}");
-        assert!(normal_es(bad, 0.99, 0.0).is_err());
-        assert!(normal_es(1.0, 0.99, bad).is_err());
-        assert!(student_t_var(bad, 0.99, 6.0, 0.0).is_err());
-        assert!(student_t_var(1.0, 0.99, bad, 0.0).is_err(), "student_t df {bad}");
-        assert!(student_t_var(1.0, 0.99, 6.0, bad).is_err());
-        assert!(student_t_es(1.0, 0.99, bad, 0.0).is_err());
+        assert!(normal_var(bad, 0.01, 0.0).is_err(), "normal_var sigma {bad}");
+        assert!(normal_var(1.0, 0.01, bad).is_err(), "normal_var mean {bad}");
+        assert!(normal_es(bad, 0.01, 0.0).is_err());
+        assert!(normal_es(1.0, 0.01, bad).is_err());
+        assert!(student_t_var(bad, 0.01, 6.0, 0.0).is_err());
+        assert!(student_t_var(1.0, 0.01, bad, 0.0).is_err(), "student_t df {bad}");
+        assert!(student_t_var(1.0, 0.01, 6.0, bad).is_err());
+        assert!(student_t_es(1.0, 0.01, bad, 0.0).is_err());
         assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-                          0.99, 1.0, TailDist::Normal, 6.0, bad).is_err());
+                          0.01, 1.0, TailDist::Normal, 6.0, bad).is_err());
         assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-                          0.99, bad, TailDist::Normal, 6.0, 0.0).is_err(),
+                          0.01, bad, TailDist::Normal, 6.0, 0.0).is_err(),
                 "horizon {bad}");
         assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
                           bad, 1.0, TailDist::Normal, 6.0, 0.0).is_err(), "alpha {bad}");
@@ -371,22 +373,22 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
         // Empirical estimators and their weights.
         let mut pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
         pnl[11] = bad;
-        assert!(empirical_var(&pnl, 0.99, None).is_err(), "empirical_var {bad}");
-        assert!(empirical_es(&pnl, 0.99, None).is_err(), "empirical_es {bad}");
+        assert!(empirical_var(&pnl, 0.01, None).is_err(), "empirical_var {bad}");
+        assert!(empirical_es(&pnl, 0.01, None).is_err(), "empirical_es {bad}");
         let clean_pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
         let mut w = vec![0.01; 100];
         w[3] = bad;
-        assert!(empirical_var(&clean_pnl, 0.99, Some(&w)).is_err(), "weights {bad}");
+        assert!(empirical_var(&clean_pnl, 0.01, Some(&w)).is_err(), "weights {bad}");
 
         // Backtest series.
         assert!(
-            evaluate_var_backtest(&pnl, &vec![1000.0; 100], 0.99).is_err(),
+            evaluate_var_backtest(&pnl, &vec![1000.0; 100], 0.01).is_err(),
             "backtest pnl {bad}"
         );
         let mut vf = vec![1000.0; 100];
         vf[42] = bad;
         assert!(
-            evaluate_var_backtest(&clean_pnl, &vf, 0.99).is_err(),
+            evaluate_var_backtest(&clean_pnl, &vf, 0.01).is_err(),
             "backtest var forecast {bad}"
         );
 
@@ -407,8 +409,8 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
     let clean_pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
     let mut vf = vec![1000.0; 100];
     vf[9] = -1.0;
-    assert!(evaluate_var_backtest(&clean_pnl, &vf, 0.99).is_err());
-    assert!(evaluate_var_backtest(&clean_pnl, &vec![1000.0; 100], 0.99).is_ok());
+    assert!(evaluate_var_backtest(&clean_pnl, &vf, 0.01).is_err());
+    assert!(evaluate_var_backtest(&clean_pnl, &vec![1000.0; 100], 0.01).is_ok());
 }
 
 #[test]
@@ -425,7 +427,7 @@ fn simple_to_log_rejects_its_domain_boundary() {
     for pct in [-0.999, -0.5, -0.081, 0.0, 0.149, 10.0] {
         let v = simple_to_log(pct).unwrap();
         assert!(v.is_finite(), "pct={pct} gave {v}");
-        assert_eq!(v, (pct as f64).ln_1p());
+        assert_eq!(v, pct.ln_1p());
     }
     // And it round-trips: exp(log) - 1 == pct.
     for pct in [-0.5, -0.081, 0.149] {
@@ -580,13 +582,13 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     let s = portfolio_sigma(&w, &cov).unwrap();
     let expect = (sigma_a * sigma_a + 2.0 * off + sigma_b * sigma_b).sqrt();
     assert!((s - expect).abs() <= 1e-12 * expect, "{s} vs {expect}");
-    let big = var_covar(&w, &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    let big = var_covar(&w, &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
     let small_cov = Matrix::from_rows(&[
         vec![1.0e-6 * sigma_a * sigma_a, 1.0e-6 * off],
         vec![1.0e-6 * off, 1.0e-6 * sigma_b * sigma_b],
     ])
     .unwrap();
-    let small = var_covar(&w, &small_cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    let small = var_covar(&w, &small_cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
     assert!((big.var / small.var - 1.0e3).abs() < 1e-6 * 1.0e3, "VaR must scale with sigma");
 }
 
@@ -597,10 +599,10 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
 #[test]
 fn boundary_alpha_and_tiny_samples() {
     let pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.37 * t as f64).sin()).collect();
-    // alpha is a CONFIDENCE level here (0.99 = 99% VaR), so the open
-    // interval is (0, 1). The closed boundaries and anything outside must
-    // be rejected at every entry point, not clamped.
-    for bad in [0.0, 1.0, -0.01, 1.0 + 1e-12, 2.0, f64::NAN] {
+    // alpha is the TAIL probability (0.01 = 99% VaR) in the open interval
+    // (0, 0.5). A confidence level such as 0.99 is rejected, never silently
+    // reinterpreted, at every entry point.
+    for bad in [0.0, 0.5, 0.95, 0.99, 1.0, -0.01, 2.0, f64::NAN, f64::INFINITY] {
         assert!(empirical_var(&pnl, bad, None).is_err(), "empirical_var alpha={bad}");
         assert!(empirical_es(&pnl, bad, None).is_err(), "empirical_es alpha={bad}");
         assert!(normal_var(1.0, bad, 0.0).is_err(), "normal_var alpha={bad}");
@@ -611,29 +613,28 @@ fn boundary_alpha_and_tiny_samples() {
         );
     }
     // Just inside both ends still works, and VaR is monotone in alpha.
-    let lo = empirical_var(&pnl, 0.01, None).unwrap();
-    let hi = empirical_var(&pnl, 0.999, None).unwrap();
-    assert!(hi >= lo, "VaR must be non-decreasing in the confidence level");
-    assert!(normal_var(1.0, 1e-9, 0.0).unwrap() < normal_var(1.0, 1.0 - 1e-9, 0.0).unwrap());
+    let lo = empirical_var(&pnl, 0.49, None).unwrap();
+    let hi = empirical_var(&pnl, 0.001, None).unwrap();
+    assert!(hi >= lo, "VaR must be non-increasing in the tail probability");
+    assert!(normal_var(1.0, 0.49, 0.0).unwrap() < normal_var(1.0, 1e-9, 0.0).unwrap());
     // Horizon must be finite and positive.
     let cov1 = Matrix::from_rows(&[vec![1e-4]]).unwrap();
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         assert!(
-            var_covar(&[1e6], &cov1, 0.99, bad, TailDist::Normal, 6.0, 0.0).is_err(),
+            var_covar(&[1e6], &cov1, 0.01, bad, TailDist::Normal, 6.0, 0.0).is_err(),
             "horizon={bad}"
         );
     }
 
     // Minimum-size samples: 1 and 2 observations.
-    assert_eq!(empirical_var(&[-42.0], 0.99, None).unwrap(), 42.0);
-    assert_eq!(empirical_es(&[-42.0], 0.99, None).unwrap(), 42.0);
+    assert_eq!(empirical_var(&[-42.0], 0.01, None).unwrap(), 42.0);
+    assert_eq!(empirical_es(&[-42.0], 0.01, None).unwrap(), 42.0);
     let two = [-100.0, 20.0];
-    assert_eq!(empirical_var(&two, 0.99, None).unwrap(), 100.0);
-    // At 40% confidence the tail mass is 0.6, which reaches past the
-    // worst scenario (weight 0.5) onto the second: VaR is -20, i.e. the
-    // book is expected to be UP 20 at that (useless) confidence level.
-    assert_eq!(empirical_var(&two, 0.4, None).unwrap(), -20.0);
-    assert!(empirical_var(&[] as &[f64], 0.99, None).is_err());
+    assert_eq!(empirical_var(&two, 0.01, None).unwrap(), 100.0);
+    // A tail mass of 0.6 (the old "40% confidence") is outside (0, 0.5).
+    assert!(empirical_var(&two, 0.6, None).is_err());
+    assert_eq!(empirical_var(&two, 0.45, None).unwrap(), 100.0);
+    assert!(empirical_var(&[] as &[f64], 0.01, None).is_err());
     // Covariance and EWMA need 2 rows; a single row is refused.
     let one_row = ReturnsMatrix::new(
         vec!["FX:EUR".to_string()],
@@ -650,8 +651,8 @@ fn boundary_alpha_and_tiny_samples() {
     let cov = sample_cov(&two_rows).unwrap();
     assert!((cov.cov.get(0, 0) - 2.0e-4).abs() < 1e-18);
     // The backtest needs at least 2 days.
-    assert!(evaluate_var_backtest(&[-1.0], &[1.0], 0.99).is_err());
-    assert!(evaluate_var_backtest(&[-1.0, 2.0], &[1.0, 1.0], 0.99).is_ok());
+    assert!(evaluate_var_backtest(&[-1.0], &[1.0], 0.01).is_err());
+    assert!(evaluate_var_backtest(&[-1.0, 2.0], &[1.0, 1.0], 0.01).is_ok());
 }
 
 // -----------------------------------------------------------------------
@@ -690,11 +691,11 @@ fn jitter_repairs_pegged_blocks_but_refuses_indefinite_covariances() {
     // The quadratic form catches it too, in the direction that exposes the
     // negative eigenvalue.
     assert!(portfolio_sigma(&[1e6, -1e6], &indefinite).is_err());
-    assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4);
+    const { assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4) };
 }
 
-/// TEST-4: ES >= VaR for every confidence level, including the
-/// Acerbi-Tasche boundary where `(1-alpha)*n` is exactly an integer, just
+/// TEST-4: ES >= VaR for every tail probability, including the
+/// Acerbi-Tasche boundary where `alpha*n` is exactly an integer, just
 /// below one and just above one (fractional share of the VaR atom).
 #[test]
 fn empirical_es_dominates_var_at_integer_boundaries() {
@@ -712,7 +713,7 @@ fn empirical_es_dominates_var_at_integer_boundaries() {
                 if !(tail > 0.0 && tail < 0.5) {
                     continue;
                 }
-                let (v, e) = empirical_var_es(&pnl, 1.0 - tail, None).unwrap();
+                let (v, e) = empirical_var_es(&pnl, tail, None).unwrap();
                 assert!(e >= v - 1e-12 * v.abs().max(1.0), "n={n} k={k} off={off}: es={e} var={v}");
             }
         }

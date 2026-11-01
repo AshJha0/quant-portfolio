@@ -1,4 +1,4 @@
-"""Optional live market-data loader (yfinance) — import-guarded, never used
+"""Optional live market-data loader (yfinance), import-guarded, never used
 by tests or library code paths.
 
 Install with ``pip install eq-var[live]``.

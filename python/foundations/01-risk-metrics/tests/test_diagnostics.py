@@ -52,17 +52,7 @@ def test_normality_report_keys_and_types() -> None:
     assert 0.0 <= report["jarque_bera_pvalue"] <= 1.0
 
 
-def test_normality_report_on_exactly_constant_series_warns_and_returns_nan() -> None:
-    """Degenerate (zero-variance) input: scipy's moment calculation hits
-    catastrophic cancellation and returns NaN with a RuntimeWarning --
-    the pytest config promotes RuntimeWarning to an error, so we must
-    catch it explicitly here to document (and lock in) the behaviour."""
-    returns = pd.Series([0.001] * 50)
-    with pytest.warns(RuntimeWarning):
-        report = normality_report(returns)
-    assert np.isnan(report["skewness"])
-    assert np.isnan(report["excess_kurtosis"])
-    assert np.isnan(report["jarque_bera_pvalue"])
-    # NaN p-value compares False to < 0.05, so this is NOT flagged as a
-    # rejection -- a diagnostic artefact worth knowing about explicitly.
-    assert not report["normality_rejected_at_5pct"]
+def test_normality_report_on_exactly_constant_series_raises() -> None:
+    """Skewness and kurtosis of a constant sample are 0/0."""
+    with pytest.raises(ValueError, match="constant"):
+        normality_report(pd.Series([0.01] * 50))

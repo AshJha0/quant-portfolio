@@ -11,15 +11,8 @@
 
 use crate::{FxVarError, Result};
 
-/// Largest diagonal jitter [`Matrix::cholesky_with_jitter`] will apply, as
-/// a multiple of the mean diagonal (mean variance).
-///
-/// `1e-6` is a part per million of the average variance: enough to repair a
-/// covariance that is only singular or indefinite through accumulated
-/// floating-point noise (a pegged currency, two currencies pegged to the
-/// same anchor, an EWMA update that lost the last bit of positivity), and
-/// far too small to paper over a genuinely indefinite matrix.
-pub const MAX_RELATIVE_JITTER: f64 = 1e-6;
+pub use crate::psd::MAX_RELATIVE_JITTER;
+use crate::psd::{CholeskyFactor, PsdRepair};
 
 /// Dense `rows x cols` matrix of `f64`, row-major storage.
 #[derive(Clone, Debug, PartialEq)]
@@ -185,6 +178,9 @@ impl Matrix {
         if self.rows != self.cols || w.len() != self.cols {
             return Err(FxVarError::invalid("quad_form dimension mismatch"));
         }
+        if !self.all_finite() || w.iter().any(|v| !v.is_finite()) {
+            return Err(FxVarError::invalid("quad_form: matrix and vector must be finite"));
+        }
         let aw = self.matvec(w)?;
         Ok(w.iter().zip(&aw).map(|(a, b)| a * b).sum())
     }
@@ -192,7 +188,7 @@ impl Matrix {
     /// Lower-triangular Cholesky factor `L` with `L L' = A`.
     ///
     /// Fails (like `numpy.linalg.cholesky`) when the matrix is not
-    /// numerically positive definite; use [`Matrix::cholesky_with_jitter`]
+    /// numerically positive definite; use [`Matrix::cholesky_repair`]
     /// for covariance inputs that may be singular.
     pub fn cholesky(&self) -> Result<Matrix> {
         if self.rows != self.cols {
@@ -256,65 +252,36 @@ impl Matrix {
     /// [`FxVarError::Invalid`] for non-square/non-symmetric input;
     /// [`FxVarError::Numerical`] if factorisation still fails at maximum
     /// jitter.
+    ///
+    /// Kept for one release: forwards to [`Matrix::cholesky_repair`] with
+    /// no repair; `max_tries` is ignored (the ladder is fixed by S7).
+    #[deprecated(since = "0.2.0", note = "use cholesky_repair(PsdRepair::None)")]
     pub fn cholesky_with_jitter(&self, max_tries: usize) -> Result<(Matrix, f64)> {
-        if self.rows != self.cols {
-            return Err(FxVarError::invalid("cov must be a square matrix"));
-        }
-        if !self.all_finite() {
-            return Err(FxVarError::invalid(
-                "cov must have finite entries (NaN or infinity present)",
-            ));
-        }
-        // SCALE-RELATIVE symmetry gate. The old absolute 1e-12 rejected a
-        // perfectly symmetric covariance expressed in currency units — a
-        // multi-billion book's P&L covariance has entries ~1e12, where the
-        // last ulp is ~1e-4, eight orders of magnitude above 1e-12.
-        if !self.is_symmetric_rel(1e-12) {
-            return Err(FxVarError::invalid("cov must be symmetric"));
-        }
-        if let Ok(l) = self.cholesky() {
-            return Ok((l, 0.0));
-        }
-        let n = self.rows;
-        let mut base = 0.0;
-        for i in 0..n {
-            base += self.get(i, i);
-        }
-        base /= n.max(1) as f64;
-        if base <= 0.0 {
-            base = 1.0;
-        }
-        let cap = MAX_RELATIVE_JITTER * base;
-        let mut jitter = 1e-12 * base;
-        for _ in 0..max_tries {
-            if jitter > cap {
-                break;
-            }
-            let mut a = self.clone();
-            for i in 0..n {
-                a.set(i, i, a.get(i, i) + jitter);
-            }
-            if let Ok(l) = a.cholesky() {
-                return Ok((l, jitter));
-            }
-            jitter *= 10.0;
-        }
-        Err(FxVarError::numerical(format!(
-            "covariance matrix is not factorisable with a diagonal jitter of up to \
-             {MAX_RELATIVE_JITTER:e} x mean(diag) = {cap:e}; it is materially \
-             indefinite, not merely singular. A larger jitter would inflate the \
-             simulated risk with no diagnostic - fix the covariance instead \
-             (shrinkage, nearest-PSD projection, or dropping the offending factor)."
-        )))
+        let _ = max_tries; // the ladder is fixed: 1e-12 .. 1e-6 x mean(diag)
+        let f = crate::psd::cholesky_repair(self, PsdRepair::None)?;
+        Ok((f.factor, f.jitter))
+    }
+
+    /// Cholesky with jitter and optional PSD repair: see
+    /// [`crate::psd::cholesky_repair`]. The jitter used is in
+    /// [`CholeskyFactor::jitter`].
+    ///
+    /// # Errors
+    /// See [`crate::psd::cholesky_repair`].
+    pub fn cholesky_repair(&self, repair: PsdRepair) -> Result<CholeskyFactor> {
+        crate::psd::cholesky_repair(self, repair)
     }
 
     /// Moore-Penrose-free symmetric linear solve `A x = b` by Cholesky with
     /// jitter (adequate for the reverse-stress ellipsoid projection).
     pub fn solve_spd(&self, b: &[f64]) -> Result<Vec<f64>> {
-        let (l, _) = self.cholesky_with_jitter(8)?;
+        let l = crate::psd::cholesky_repair(self, PsdRepair::None)?.factor;
         let n = self.rows;
         if b.len() != n {
             return Err(FxVarError::invalid("solve dimension mismatch"));
+        }
+        if b.iter().any(|v| !v.is_finite()) {
+            return Err(FxVarError::invalid("solve_spd: right-hand side must be finite"));
         }
         // forward: L y = b
         let mut y = vec![0.0; n];

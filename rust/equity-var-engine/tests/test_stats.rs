@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! Special functions: inverse normal CDF vs known quantiles, chi-squared
 //! p-values via the regularized incomplete gamma, Student-t quantiles via
 //! the incomplete beta, sample moments. Reference values from scipy 1.17.1.

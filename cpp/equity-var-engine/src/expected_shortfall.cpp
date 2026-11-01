@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "eqvar/historical.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
@@ -14,33 +15,34 @@ namespace eqvar {
 double expected_shortfall(std::span<const double> pnl, double alpha) {
     validate_alpha(alpha);
     validate_pnl(pnl, 10);
-    std::vector<double> sorted(pnl.begin(), pnl.end());
-    std::sort(sorted.begin(), sorted.end());
-    const double an = alpha * static_cast<double>(sorted.size());
-    const std::size_t k = static_cast<std::size_t>(std::floor(an));
-    double tail_sum = 0.0;
-    for (std::size_t i = 0; i < k; ++i) tail_sum += sorted[i];
-    const double frac = an - static_cast<double>(k);
-    if (frac > 0.0 && k < sorted.size()) tail_sum += frac * sorted[k];
-    return -tail_sum / an;
+    return var_es_order_statistic(pnl, alpha).es;
 }
+
+namespace {
+
+void check_scale(double sigma, double mean, const char* who) {
+    if (!(sigma >= 0.0) || !std::isfinite(sigma)) {
+        throw std::invalid_argument(std::string(who) + ": sigma must be finite and >= 0, got " +
+                                    std::to_string(sigma));
+    }
+    if (!std::isfinite(mean)) {
+        throw std::invalid_argument(std::string(who) + ": mean must be finite");
+    }
+}
+
+}  // namespace
 
 double normal_es(double sigma, double alpha, double mean) {
     validate_alpha(alpha);
-    if (sigma < 0.0) {
-        throw std::invalid_argument("normal_es: sigma must be >= 0, got " + std::to_string(sigma));
-    }
+    check_scale(sigma, mean, "normal_es");
     const double z = normal_ppf(alpha);
     return sigma * normal_pdf(z) / alpha - mean;
 }
 
 double student_t_es(double sigma, double alpha, double df, double mean) {
     validate_alpha(alpha);
-    if (sigma < 0.0) {
-        throw std::invalid_argument("student_t_es: sigma must be >= 0, got " +
-                                    std::to_string(sigma));
-    }
-    if (df <= 2.0) {
+    check_scale(sigma, mean, "student_t_es");
+    if (!(df > 2.0) || !std::isfinite(df)) {
         throw std::invalid_argument("student_t_es: df must be > 2 for finite variance, got " +
                                     std::to_string(df));
     }

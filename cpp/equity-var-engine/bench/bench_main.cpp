@@ -68,17 +68,19 @@ int main() {
     constexpr std::size_t kPaths = 100'000;
     constexpr double kAlpha = 0.01;
 
-    // Deterministic 250 x 100 daily returns panel: per-asset vol ramps from
-    // 10 bp to ~2 % and phase-shifted sin/cos terms induce rich correlation.
-    eqvar::Matrix panel(kDays, kAssets);
-    for (std::size_t t = 0; t < kDays; ++t) {
-        for (std::size_t j = 0; j < kAssets; ++j) {
-            const double td = static_cast<double>(t), jd = static_cast<double>(j);
-            const double vol = 0.001 + 0.0002 * jd;
-            panel(t, j) = vol * (std::sin(0.7 * td + 0.31 * jd) +
-                                 0.5 * std::cos(1.3 * td - 0.11 * jd));
-        }
-    }
+    // Full-rank target covariance: AR(1) correlation rho^|i-j| (rho = 0.6,
+    // eigenvalues in [(1-rho)/(1+rho), (1+rho)/(1-rho)], all positive) with
+    // per-asset vol ramping from 10 bp to ~2 %. The 250-day panel is drawn
+    // from it with a fixed seed, so the sample covariance is full rank too.
+    std::vector<double> vols(kAssets);
+    for (std::size_t j = 0; j < kAssets; ++j) vols[j] = 0.001 + 0.0002 * static_cast<double>(j);
+    eqvar::Matrix corr(kAssets, kAssets);
+    for (std::size_t i = 0; i < kAssets; ++i)
+        for (std::size_t j = 0; j < kAssets; ++j)
+            corr(i, j) = std::pow(0.6, std::abs(static_cast<double>(i) - static_cast<double>(j)));
+    const eqvar::Matrix true_cov = eqvar::covariance_from_vols(vols, corr);
+    const eqvar::Matrix panel =
+        eqvar::simulate_factor_returns(true_cov, kDays, eqvar::Dist::Normal, 6.0, 7);
     // Long-biased book: exposures alternate long/short, 100k..1.09M per name.
     std::vector<double> w(kAssets);
     for (std::size_t j = 0; j < kAssets; ++j) {
@@ -122,10 +124,10 @@ int main() {
     });
     row("BRW age-weighted VaR 99% (lam = 0.98)", ms_brw, money(v));
     const double ms_fhs = best_of_ms(20, sink, [&] {
-        v = eqvar::filtered_historical_var(pnl, kAlpha, 0.94);
+        v = eqvar::filtered_historical_var_es(panel, w, kAlpha, 0.94).var;
         return v;
     });
-    row("filtered (FHS) VaR 99% (lam = 0.94)", ms_fhs, money(v));
+    row("per-factor FHS VaR 99% (lam = 0.94)", ms_fhs, money(v));
     const double ms_es = best_of_ms(20, sink, [&] {
         v = eqvar::expected_shortfall(pnl, 0.025);
         return v;
@@ -153,9 +155,10 @@ int main() {
     // --- Cholesky (isolated) -------------------------------------------------
     const double ms_chol = best_of_ms(5, sink, [&] {
         const eqvar::CholeskyResult ch = eqvar::cholesky(cov);
-        return ch.lower(0, 0);
+        return ch.lower(0, 0) + ch.jitter_added;
     });
-    row("Cholesky 100 x 100", ms_chol, "");
+    row("Cholesky 100 x 100 (no jitter needed)", ms_chol,
+        eqvar::cholesky(cov).jitter_added == 0.0 ? "jitter 0" : "JITTER USED");
 
     // --- Monte Carlo ---------------------------------------------------------
     eqvar::MonteCarloResult mc;
@@ -163,7 +166,7 @@ int main() {
         mc = eqvar::monte_carlo_var(w, cov, kAlpha, kPaths, eqvar::Dist::Normal, 6.0, 42);
         return mc.var;
     });
-    row("MC VaR 99% normal (100k x 100 paths)", ms_mc_n,
+    row("MC VaR 99% normal (100k paths, 200 boot)", ms_mc_n,
         money(mc.var) + " (SE " + money(mc.var_se) + ")");
     const double mc_var_n = mc.var, mc_es_n = mc.es;
     const double ms_mc_t = best_of_ms(3, sink, [&] {

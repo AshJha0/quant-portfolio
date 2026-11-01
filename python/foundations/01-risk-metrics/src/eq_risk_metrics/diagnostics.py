@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+import numpy as np
 import pandas as pd
 from scipy import stats
+
+from ._validate import finite_series
 
 __all__ = ["NormalityReport", "normality_report"]
 
@@ -41,13 +44,9 @@ def normality_report(returns: pd.Series) -> NormalityReport:
     Parameters
     ----------
     returns : pandas.Series or array_like
-        Simple (or log) daily returns, unitless. Needs at least a
-        handful of observations for the statistic to be meaningful;
-        exactly-constant input has zero variance, so skewness and
-        kurtosis are ``0/0`` and scipy returns ``NaN`` for all four
-        outputs (with a ``RuntimeWarning`` about catastrophic
-        cancellation) -- a diagnostic artefact of a degenerate sample,
-        not evidence of normality.
+        Simple (or log) daily returns, unitless. At least 3
+        observations, all finite and not all equal; otherwise
+        ``ValueError`` (skewness and kurtosis of a constant sample are 0/0).
 
     Returns
     -------
@@ -57,6 +56,12 @@ def normality_report(returns: pd.Series) -> NormalityReport:
         (float, >= 0), ``jarque_bera_pvalue`` (float in [0, 1]), and
         ``normality_rejected_at_5pct`` (bool, ``p < 0.05``).
     """
+    returns = finite_series(returns, "normality_report", min_len=3)
+    if np.ptp(returns.to_numpy()) == 0.0:
+        raise ValueError(
+            "normality_report: the sample is constant, so skewness and "
+            "kurtosis are undefined"
+        )
     jb_stat, jb_p = stats.jarque_bera(returns)
     return {
         "skewness": stats.skew(returns),

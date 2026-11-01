@@ -1,5 +1,6 @@
 #include "eqvar/stats.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -67,6 +68,31 @@ double normal_ppf(double p) {
 }
 
 // --------------------------------------------------------------------------
+// Log-gamma (Lanczos, g = 7, n = 9). Thread-safe: std::lgamma writes the
+// global signgam in glibc, so the library never calls it.
+// --------------------------------------------------------------------------
+
+double log_gamma(double x) {
+    if (!(x > 0.0) || !std::isfinite(x)) {
+        throw std::invalid_argument("log_gamma: x must be finite and > 0");
+    }
+    if (x < 0.5) {
+        // Reflection keeps full relative accuracy near 0.
+        return std::log(kPi / std::sin(kPi * x)) - log_gamma(1.0 - x);
+    }
+    static constexpr double c[] = {0.99999999999980993,  676.5203681218851,
+                                   -1259.1392167224028,  771.32342877765313,
+                                   -176.61502916214059,  12.507343278686905,
+                                   -0.13857109526572012, 9.9843695780195716e-6,
+                                   1.5056327351493116e-7};
+    const double z = x - 1.0;
+    double a = c[0];
+    const double t = z + 7.5;
+    for (int i = 1; i < 9; ++i) a += c[i] / (z + static_cast<double>(i));
+    return 0.5 * std::log(2.0 * kPi) + (z + 0.5) * std::log(t) - t + std::log(a);
+}
+
+// --------------------------------------------------------------------------
 // Regularized incomplete beta (continued fraction, modified Lentz)
 // --------------------------------------------------------------------------
 
@@ -107,15 +133,15 @@ double betacf(double a, double b, double x) {
 }  // namespace
 
 double betainc_reg(double a, double b, double x) {
-    if (!(a > 0.0) || !(b > 0.0)) {
-        throw std::invalid_argument("betainc_reg: a and b must be > 0");
+    if (!(a > 0.0) || !(b > 0.0) || !std::isfinite(a) || !std::isfinite(b)) {
+        throw std::invalid_argument("betainc_reg: a and b must be finite and > 0");
     }
     if (!(x >= 0.0 && x <= 1.0)) {
         throw std::invalid_argument("betainc_reg: x must be in [0, 1], got " + std::to_string(x));
     }
     if (x == 0.0) return 0.0;
     if (x == 1.0) return 1.0;
-    const double ln_front = std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
+    const double ln_front = log_gamma(a + b) - log_gamma(a) - log_gamma(b) +
                             a * std::log(x) + b * std::log1p(-x);
     const double front = std::exp(ln_front);
     if (x < (a + 1.0) / (a + b + 2.0)) {
@@ -143,7 +169,7 @@ double gamma_p_series(double a, double x) {
         sum += del;
         if (std::abs(del) < std::abs(sum) * kEps) break;
     }
-    return sum * std::exp(-x + a * std::log(x) - std::lgamma(a));
+    return sum * std::exp(-x + a * std::log(x) - log_gamma(a));
 }
 
 /// Continued-fraction representation of Q(a, x), valid/fast for x >= a + 1.
@@ -167,28 +193,40 @@ double gamma_q_cf(double a, double x) {
         h *= del;
         if (std::abs(del - 1.0) < kEps) break;
     }
-    return h * std::exp(-x + a * std::log(x) - std::lgamma(a));
+    return h * std::exp(-x + a * std::log(x) - log_gamma(a));
 }
 
 }  // namespace
 
 double regularized_gamma_p(double a, double x) {
-    if (!(a > 0.0)) throw std::invalid_argument("regularized_gamma_p: a must be > 0");
-    if (!(x >= 0.0)) throw std::invalid_argument("regularized_gamma_p: x must be >= 0");
+    if (!(a > 0.0) || !std::isfinite(a)) {
+        throw std::invalid_argument("regularized_gamma_p: a must be finite and > 0");
+    }
+    if (!(x >= 0.0) || !std::isfinite(x)) {
+        throw std::invalid_argument("regularized_gamma_p: x must be finite and >= 0");
+    }
     if (x == 0.0) return 0.0;
     return (x < a + 1.0) ? gamma_p_series(a, x) : 1.0 - gamma_q_cf(a, x);
 }
 
 double regularized_gamma_q(double a, double x) {
-    if (!(a > 0.0)) throw std::invalid_argument("regularized_gamma_q: a must be > 0");
-    if (!(x >= 0.0)) throw std::invalid_argument("regularized_gamma_q: x must be >= 0");
+    if (!(a > 0.0) || !std::isfinite(a)) {
+        throw std::invalid_argument("regularized_gamma_q: a must be finite and > 0");
+    }
+    if (!(x >= 0.0) || !std::isfinite(x)) {
+        throw std::invalid_argument("regularized_gamma_q: x must be finite and >= 0");
+    }
     if (x == 0.0) return 1.0;
     return (x < a + 1.0) ? 1.0 - gamma_p_series(a, x) : gamma_q_cf(a, x);
 }
 
 double chi2_sf(double x, double df) {
-    if (!(df > 0.0)) throw std::invalid_argument("chi2_sf: df must be > 0");
+    if (!(df > 0.0) || !std::isfinite(df)) {
+        throw std::invalid_argument("chi2_sf: df must be finite and > 0");
+    }
+    if (std::isnan(x)) throw std::invalid_argument("chi2_sf: x is NaN");
     if (x <= 0.0) return 1.0;
+    if (std::isinf(x)) return 0.0;
     return regularized_gamma_q(0.5 * df, 0.5 * x);
 }
 
@@ -199,8 +237,21 @@ double binomial_cdf(int k, int n, double p) {
     }
     if (k < 0) return 0.0;
     if (k >= n) return 1.0;
-    // P(X <= k) = I_{1-p}(n - k, k + 1).
-    return betainc_reg(static_cast<double>(n - k), static_cast<double>(k + 1), 1.0 - p);
+    if (p == 0.0) return 1.0;
+    if (p == 1.0) return 0.0;
+    // pmf recursion in double: pmf(0) = (1-p)^n, pmf(j+1) = pmf(j) (n-j)/(j+1) p/(1-p).
+    double pmf = std::exp(static_cast<double>(n) * std::log1p(-p));
+    if (pmf == 0.0) {
+        // pmf(0) underflows (n p >~ 700): use P(X <= k) = I_{1-p}(n - k, k + 1).
+        return betainc_reg(static_cast<double>(n - k), static_cast<double>(k + 1), 1.0 - p);
+    }
+    const double odds = p / (1.0 - p);
+    double cdf = pmf;
+    for (int j = 0; j < k; ++j) {
+        pmf *= static_cast<double>(n - j) / static_cast<double>(j + 1) * odds;
+        cdf += pmf;
+    }
+    return std::min(cdf, 1.0);
 }
 
 // --------------------------------------------------------------------------
@@ -208,15 +259,20 @@ double binomial_cdf(int k, int n, double p) {
 // --------------------------------------------------------------------------
 
 double student_t_pdf(double x, double df) {
-    if (!(df > 0.0)) throw std::invalid_argument("student_t_pdf: df must be > 0");
-    const double ln = std::lgamma(0.5 * (df + 1.0)) - std::lgamma(0.5 * df) -
+    if (!(df > 0.0) || !std::isfinite(df) || !std::isfinite(x)) {
+        throw std::invalid_argument("student_t_pdf: need finite x and finite df > 0");
+    }
+    const double ln = log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) -
                       0.5 * std::log(df * kPi) -
                       0.5 * (df + 1.0) * std::log1p(x * x / df);
     return std::exp(ln);
 }
 
 double student_t_cdf(double x, double df) {
-    if (!(df > 0.0)) throw std::invalid_argument("student_t_cdf: df must be > 0");
+    if (!(df > 0.0) || !std::isfinite(df) || std::isnan(x)) {
+        throw std::invalid_argument("student_t_cdf: need non-NaN x and finite df > 0");
+    }
+    if (std::isinf(x)) return x > 0.0 ? 1.0 : 0.0;
     if (x == 0.0) return 0.5;
     const double half_ib = 0.5 * betainc_reg(0.5 * df, 0.5, df / (df + x * x));
     return (x > 0.0) ? 1.0 - half_ib : half_ib;
@@ -227,7 +283,9 @@ double student_t_ppf(double p, double df) {
         throw std::invalid_argument("student_t_ppf: p must be in (0, 1), got " +
                                     std::to_string(p));
     }
-    if (!(df > 0.0)) throw std::invalid_argument("student_t_ppf: df must be > 0");
+    if (!(df > 0.0) || !std::isfinite(df)) {
+        throw std::invalid_argument("student_t_ppf: df must be finite and > 0");
+    }
     if (p == 0.5) return 0.0;
     // Exploit symmetry: solve for the lower tail and mirror.
     const bool upper = p > 0.5;
@@ -258,6 +316,14 @@ double student_t_ppf(double p, double df) {
 
 namespace {
 
+void require_finite(std::span<const double> x, const char* who) {
+    for (double v : x) {
+        if (!std::isfinite(v)) {
+            throw std::invalid_argument(std::string(who) + ": input contains NaN or inf");
+        }
+    }
+}
+
 void central_moments(std::span<const double> x, double& mu, double& m2, double& m3, double& m4) {
     const double n = static_cast<double>(x.size());
     mu = 0.0;
@@ -280,6 +346,7 @@ void central_moments(std::span<const double> x, double& mu, double& m2, double& 
 
 double mean(std::span<const double> x) {
     if (x.empty()) throw std::invalid_argument("mean: empty input");
+    require_finite(x, "mean");
     double s = 0.0;
     for (double v : x) s += v;
     return s / static_cast<double>(x.size());
@@ -295,6 +362,7 @@ double stdev(std::span<const double> x) {
 
 double skewness(std::span<const double> x) {
     if (x.size() < 3) throw std::invalid_argument("skewness: need at least 3 observations");
+    require_finite(x, "skewness");
     double mu, m2, m3, m4;
     central_moments(x, mu, m2, m3, m4);
     if (m2 <= 0.0) return 0.0;
@@ -303,6 +371,7 @@ double skewness(std::span<const double> x) {
 
 double excess_kurtosis(std::span<const double> x) {
     if (x.size() < 4) throw std::invalid_argument("excess_kurtosis: need at least 4 observations");
+    require_finite(x, "excess_kurtosis");
     double mu, m2, m3, m4;
     central_moments(x, mu, m2, m3, m4);
     if (m2 <= 0.0) return 0.0;

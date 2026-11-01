@@ -1,4 +1,4 @@
-"""eq_var — Equity market risk engine: VaR, Expected Shortfall, backtesting,
+"""eq_var: Equity market risk engine: VaR, Expected Shortfall, backtesting,
 Basel traffic light and stress testing.
 
 Pipeline: portfolio & factor mapping -> historical / parametric / Monte Carlo
@@ -29,12 +29,21 @@ from .historical_var import (
     age_weighted_var,
     brw_weights,
     ewma_volatility,
+    age_weighted_es,
+    ewma_forecast,
+    factor_filtered_historical_var,
+    filtered_historical_scenarios,
     filtered_historical_var,
     historical_var,
     overlapping_horizon_pnl,
     scale_var_sqrt_time,
 )
 from .monte_carlo_var import (
+    cholesky,
+    higham_nearest_correlation,
+    monte_carlo_risk,
+    repair_covariance,
+    var_standard_error_kde,
     monte_carlo_pnl,
     monte_carlo_var,
     safe_cholesky,
@@ -44,6 +53,7 @@ from .monte_carlo_var import (
 )
 from .parametric_var import (
     cornish_fisher_domain_ok,
+    cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
     ewma_covariance,
@@ -85,6 +95,10 @@ __all__ = [
     # historical
     "historical_var",
     "age_weighted_var",
+    "age_weighted_es",
+    "ewma_forecast",
+    "filtered_historical_scenarios",
+    "factor_filtered_historical_var",
     "brw_weights",
     "ewma_volatility",
     "filtered_historical_var",
@@ -96,10 +110,16 @@ __all__ = [
     "portfolio_sigma",
     "parametric_var",
     "cornish_fisher_z",
+    "cornish_fisher_valid",
     "cornish_fisher_domain_ok",
     "cornish_fisher_var",
     # monte carlo
+    "cholesky",
+    "higham_nearest_correlation",
+    "repair_covariance",
     "safe_cholesky",
+    "monte_carlo_risk",
+    "var_standard_error_kde",
     "simulate_factor_returns",
     "monte_carlo_pnl",
     "monte_carlo_var",

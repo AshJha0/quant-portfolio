@@ -11,9 +11,14 @@
 namespace fxvar {
 
 double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov) {
+  if (exposures.empty())
+    throw std::invalid_argument("portfolio_sigma: book has no positions");
+  bool any = false;
+  for (double w : exposures) any = any || w != 0.0;
   for (double w : exposures)
     if (!std::isfinite(w))
       throw std::invalid_argument("portfolio_sigma: exposures must be finite");
+  if (!any) throw std::invalid_argument("portfolio_sigma: book has no positions");
   const double var = quad_form(exposures, cov);
   // NaN loses every ordered comparison, so an unguarded non-finite input
   // would return a NaN sigma and quietly poison the whole VaR report.
@@ -44,6 +49,7 @@ VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov,
                 double mean) {
   validate_alpha(alpha);
   validate_horizon(horizon_days);
+  if (!std::isfinite(mean)) throw std::invalid_argument("mean must be finite");
   const double sig1 = portfolio_sigma(exposures, cov);
   const double scale = std::sqrt(horizon_days);
   const double sig = sig1 * scale;
@@ -97,46 +103,51 @@ ParametricResult parametric_var(const Book& book, const Market& market,
 
 // ------------------------------------------------------- Cornish-Fisher
 double cornish_fisher_z(double z, double skew, double excess_kurtosis) {
+  if (!std::isfinite(z) || !std::isfinite(skew) || !std::isfinite(excess_kurtosis))
+    throw std::invalid_argument("cornish_fisher_z: inputs must be finite");
   const double z2 = z * z;
   const double z3 = z2 * z;
   return z + (z2 - 1.0) * skew / 6.0 + (z3 - 3.0 * z) * excess_kurtosis / 24.0 -
          (2.0 * z3 - 5.0 * z) * skew * skew / 36.0;
 }
 
-bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
-                              double z_range, int n_grid) {
-  // n_grid is retained for API compatibility; the check below is
-  // closed-form and no longer samples a grid, but n_grid keeps its
-  // validation so a caller-supplied resolution is still sanity-checked.
-  if (n_grid < 3) throw std::invalid_argument("n_grid must be >= 3");
-  if (!(z_range > 0.0) || !std::isfinite(z_range)) {
-    throw std::invalid_argument("z_range must be finite and > 0");
-  }
-  // dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36 must stay > 0 on
-  // [-z_range, z_range]. It is a quadratic in z, g(z) = A z^2 + B z + C
-  // with A = K/8 - S^2/6, B = S/3, C = 1 - K/8 + 5 S^2/36, whose exact
-  // minimum on the interval is known in closed form: the vertex -B/(2A)
-  // when g is convex (A > 0) and that point lies in range, else an
-  // interval endpoint (a concave/linear g, A <= 0, always attains its
-  // minimum at an endpoint). This replaces a finite-difference scan over
-  // z_cf values on a fixed grid, which can miss a thin sub-grid dip below
-  // zero: skew=0.122, excess_kurtosis=-0.427 is non-monotone on |z| <= 4
-  // (minimum derivative ~ -9e-4 near z ~ 3.1) but the 801-point grid
-  // previously used here reported it as monotone.
-  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis)) return false;
-  const double a = excess_kurtosis / 8.0 - skew * skew / 6.0;
+namespace {
+
+// Minimum of g'(z) = A z^2 + B z + C on [-r, r] for the CF map, with
+// A = K/8 - S^2/6, B = S/3, C = 1 - K/8 + 5 S^2/36: the vertex -B/(2A) when
+// A > 0 and it lies inside, else an endpoint.
+double cf_min_derivative(double skew, double k, double r) {
+  const double a = k / 8.0 - skew * skew / 6.0;
   const double b = skew / 3.0;
-  const double c = 1.0 - excess_kurtosis / 8.0 + 5.0 * skew * skew / 36.0;
+  const double c = 1.0 - k / 8.0 + 5.0 * skew * skew / 36.0;
   const auto g = [&](double z) { return a * z * z + b * z + c; };
-  double m;
+  double m = std::min(g(-r), g(r));
   if (a > 0.0) {
     const double z_star = -b / (2.0 * a);
-    m = (z_star >= -z_range && z_star <= z_range) ? g(z_star)
-                                                   : std::min(g(-z_range), g(z_range));
-  } else {
-    m = std::min(g(-z_range), g(z_range));
+    if (z_star >= -r && z_star <= r) m = std::min(m, g(z_star));
   }
-  return m > 0.0;
+  return m;
+}
+
+}  // namespace
+
+bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha) {
+  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis) ||
+      !std::isfinite(alpha))
+    throw std::invalid_argument(
+        "cornish_fisher_valid: skew, excess_kurtosis and alpha must be finite");
+  validate_alpha(alpha);
+  return cf_min_derivative(skew, excess_kurtosis, norm_ppf(1.0 - alpha)) > 0.0;
+}
+
+bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
+                              double z_range, int n_grid) {
+  if (n_grid < 3) throw std::invalid_argument("n_grid must be >= 3");
+  if (!(z_range > 0.0) || !std::isfinite(z_range))
+    throw std::invalid_argument("z_range must be finite and > 0");
+  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis))
+    throw std::invalid_argument("skew and excess_kurtosis must be finite");
+  return cf_min_derivative(skew, excess_kurtosis, z_range) > 0.0;
 }
 
 double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
@@ -144,8 +155,11 @@ double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
                           bool check_domain) {
   validate_alpha(alpha);
   validate_horizon(horizon_days);
-  if (sigma < 0.0) throw std::invalid_argument("sigma must be >= 0");
-  if (check_domain && !cornish_fisher_domain_ok(skew, excess_kurtosis)) {
+  if (!(sigma >= 0.0) || !std::isfinite(sigma))
+    throw std::invalid_argument("sigma must be finite and >= 0");
+  if (!std::isfinite(mean)) throw std::invalid_argument("mean must be finite");
+  const bool valid = cornish_fisher_valid(skew, excess_kurtosis, alpha);
+  if (check_domain && !valid) {
     std::ostringstream msg;
     msg << "Cornish-Fisher expansion is non-monotone for skew=" << skew
         << ", excess_kurtosis=" << excess_kurtosis
@@ -154,7 +168,7 @@ double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
     throw std::invalid_argument(msg.str());
   }
   // Loss quantile: lower tail of the P&L distribution.
-  const double z = norm_ppf(1.0 - alpha);
+  const double z = norm_ppf(alpha);  // lower-tail P&L quantile
   const double zcf = cornish_fisher_z(z, skew, excess_kurtosis);
   const double scale = std::sqrt(horizon_days);
   return -(mean * horizon_days) - sigma * scale * zcf;

@@ -13,24 +13,24 @@
 using namespace fxvar;
 
 TEST(Kupiec, HandComputedLikelihoodRatio) {
-  // x=5, n=250, alpha=0.99 -> p=0.01, pi_hat=0.02:
+  // x=5, n=250, alpha=0.01 -> p=0.01, pi_hat=0.02:
   // LR = -2[ (245 ln .99 + 5 ln .01) - (245 ln .98 + 5 ln .02) ].
   const double ll0 = 245.0 * std::log(0.99) + 5.0 * std::log(0.01);
   const double ll1 = 245.0 * std::log(0.98) + 5.0 * std::log(0.02);
   const double lr_hand = -2.0 * (ll0 - ll1);
-  const LrTest t = kupiec_pof(5, 250, 0.99);
+  const LrTest t = kupiec_pof(5, 250, 0.01);
   EXPECT_NEAR(t.lr, lr_hand, 1e-12);
   EXPECT_NEAR(t.p, chi2_sf(lr_hand, 1.0), 1e-14);
   // Exactly the expected count: LR = 0, p = 1 (250 * 0.01 = 2.5 is not
-  // integral, so use n=100, x=1 at alpha=0.99).
-  const LrTest exact = kupiec_pof(1, 100, 0.99);
+  // integral, so use n=100, x=1 at alpha=0.01).
+  const LrTest exact = kupiec_pof(1, 100, 0.01);
   EXPECT_NEAR(exact.lr, 0.0, 1e-12);
   EXPECT_NEAR(exact.p, 1.0, 1e-12);
   // Zero exceptions on a long window is evidence of over-conservatism.
-  const LrTest zero = kupiec_pof(0, 1000, 0.99);
+  const LrTest zero = kupiec_pof(0, 1000, 0.01);
   EXPECT_NEAR(zero.lr, -2.0 * 1000.0 * std::log(0.99), 1e-9);
-  EXPECT_THROW(kupiec_pof(-1, 250, 0.99), std::invalid_argument);
-  EXPECT_THROW(kupiec_pof(5, 0, 0.99), std::invalid_argument);
+  EXPECT_THROW(kupiec_pof(-1, 250, 0.01), std::invalid_argument);
+  EXPECT_THROW(kupiec_pof(5, 0, 0.01), std::invalid_argument);
 }
 
 TEST(Christoffersen, HandComputedMarkovTest) {
@@ -59,9 +59,9 @@ TEST(Christoffersen, HandComputedMarkovTest) {
 
 TEST(ConditionalCoverage, SumsComponents) {
   const std::vector<int> e{0, 0, 1, 1, 0, 0, 1, 1, 0, 0};
-  const LrTest uc = kupiec_pof(4, 10, 0.99);
+  const LrTest uc = kupiec_pof(4, 10, 0.01);
   const LrTest ind = christoffersen_independence(e);
-  const LrTest cc = conditional_coverage(e, 0.99);
+  const LrTest cc = conditional_coverage(e, 0.01);
   EXPECT_NEAR(cc.lr, uc.lr + ind.lr, 1e-12);
   EXPECT_NEAR(cc.p, chi2_sf(cc.lr, 2.0), 1e-14);
 }
@@ -97,17 +97,17 @@ TEST(EvaluateBacktest, EndToEndCountsAndConvention) {
   // Exception iff loss (-pnl) strictly exceeds the VaR forecast.
   const std::vector<double> pnl{-120, 50, -80, -101, 30, -100};
   const std::vector<double> var(6, 100.0);
-  const BacktestResult r = evaluate_var_backtest(pnl, var, 0.99);
+  const BacktestResult r = evaluate_var_backtest(pnl, var, 0.01);
   EXPECT_EQ(r.n_exceptions, 2);  // -120 and -101; -100 is not an exception
   const std::vector<int> expect_exc{1, 0, 0, 1, 0, 0};
   EXPECT_EQ(r.exceedances, expect_exc);
   EXPECT_NEAR(r.exception_rate, 2.0 / 6.0, 1e-15);
   EXPECT_NEAR(r.conditional.lr, r.kupiec.lr + r.independence.lr, 1e-12);
-  EXPECT_THROW(evaluate_var_backtest({1.0}, {1.0}, 0.99),
+  EXPECT_THROW(evaluate_var_backtest({1.0}, {1.0}, 0.01),
                std::invalid_argument);
-  EXPECT_THROW(evaluate_var_backtest({1.0, 2.0}, {1.0}, 0.99),
+  EXPECT_THROW(evaluate_var_backtest({1.0, 2.0}, {1.0}, 0.01),
                std::invalid_argument);
   EXPECT_THROW(
-      evaluate_var_backtest({1.0, std::nan("")}, {1.0, 1.0}, 0.99),
+      evaluate_var_backtest({1.0, std::nan("")}, {1.0, 1.0}, 0.01),
       std::invalid_argument);
 }

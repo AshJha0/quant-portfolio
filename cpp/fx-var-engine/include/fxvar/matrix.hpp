@@ -66,32 +66,47 @@ std::vector<double> matvec(const Matrix& a, const std::vector<double>& x);
 /// w' A w for square A (throws on dimension mismatch).
 double quad_form(const std::vector<double>& w, const Matrix& a);
 
-/// Result of `robust_cholesky`: the lower factor plus a diagnostic of the
-/// jitter that was needed.  The engine surfaces (never hides) numerical
-/// fallbacks - a jittered factorisation on a "clean" covariance is a data
-/// quality signal the desk should see.
+/// Symmetric eigen-decomposition by the cyclic Jacobi method. `values` are
+/// ascending; column k of `vectors` is the unit eigenvector for values[k].
+struct EigenResult {
+  std::vector<double> values;
+  Matrix vectors;
+};
+EigenResult symmetric_eigen(const Matrix& a);
+
+/// PSD repair used when plain Cholesky plus the capped jitter ladder fails.
+///   None   : no repair; a materially indefinite matrix throws.
+///   Clip   : eigenvalues clipped to max(lam, 1e-10 mean(diag)), rebuilt,
+///            rescaled D^{1/2} to keep the original variances.
+///   Higham : Higham (2002) alternating projections with Dykstra correction
+///            on the correlation matrix (unit diagonal + PSD projections),
+///            relative Frobenius tolerance 1e-12, at most 1000 iterations,
+///            rescaled by the original vols.
+enum class Repair { kNone, kClip, kHigham };
+
+/// Repaired copy of `cov` (Repair::kNone returns the validated input).
+Matrix repair_covariance(const Matrix& cov, Repair repair);
+
+/// Result of a Cholesky factorisation.
 struct CholeskyResult {
-  Matrix lower;           ///< L with L L^T = cov (+ jitter I).
+  Matrix lower;           ///< L with L L^T = factored matrix (+ jitter I).
   double jitter = 0.0;    ///< Diagonal jitter actually added (0 if none).
-  bool jittered = false;  ///< True if any jitter was required.
-  std::string warning;    ///< Human-readable diagnostic when jittered.
+  bool jittered = false;  ///< True if any jitter was required (a warning).
+  bool repaired = false;  ///< True if a PSD repair changed the matrix.
+  std::string warning;    ///< Human-readable diagnostic when jittered/repaired.
 };
 
-/// Cholesky factorisation with escalating diagonal jitter.
-///
-/// A covariance containing pegged currencies is routinely singular or
-/// numerically indefinite (near-zero-vol factors, perfectly correlated
-/// pegs to the same anchor).  On failure, jitter 1e-12 * mean(diag) is
-/// added and escalated x10 up to `max_tries` times; the result records
-/// the jitter actually used.  With the default `max_tries = 8` the largest
-/// perturbation is 1e-5 * mean(diag), so a genuinely indefinite matrix
-/// (negative eigenvalue above that) still fails rather than being silently
-/// "repaired" into a different covariance.
-///
-/// Throws std::invalid_argument if `cov` is not square, contains NaN/Inf,
-/// or is not symmetric to 1e-12 * max|entry| (a RELATIVE test: covariances
-/// in large units are only ever symmetric to rounding), and
-/// std::runtime_error if it cannot be factorised at maximum jitter.
+/// Lower-triangular Cholesky factor.
+/// Symmetry |A - A'| <= 1e-10 max|A| (relative); NaN/Inf or a negative
+/// diagonal throws std::invalid_argument. Plain Cholesky first; on failure
+/// add eps I, eps = 1e-12 mean(diag), x10 per try, capped at 1e-6 mean(diag).
+/// Past the cap: Repair::kNone throws std::runtime_error naming the most
+/// negative eigenvalue; otherwise repair and factor the repaired matrix.
+CholeskyResult cholesky(const Matrix& cov, Repair repair = Repair::kNone);
+
+/// Old entry point. It used to escalate the jitter without a cap; it now
+/// forwards to cholesky(cov, Repair::kNone) and `max_tries` is ignored.
+[[deprecated("use cholesky(cov, Repair). Removed next release.")]]
 CholeskyResult robust_cholesky(const Matrix& cov, int max_tries = 8);
 
 }  // namespace fxvar

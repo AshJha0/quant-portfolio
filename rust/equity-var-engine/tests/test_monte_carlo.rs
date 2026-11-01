@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Monte Carlo VaR: convergence to the parametric closed form within 3 SE,
 //! Student-t tail fattening, bitwise seed determinism, moment matching.
 

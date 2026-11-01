@@ -1,8 +1,8 @@
 [package]
 name = "fx-var-engine"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress) - Rust twin of python/fx/03-var-es-engine"
+description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress); linear-book port of python/fx/03-var-es-engine"
 license = "MIT"
 
 [lib]
@@ -19,3 +19,6 @@ path = "src/bin/bench.rs"
 
 [profile.release]
 opt-level = 3
+
+[dev-dependencies]
+proptest = "1"

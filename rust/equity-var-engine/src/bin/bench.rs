@@ -11,10 +11,12 @@
 //!    dominant cost: 100k x 100 correlated draws through the Cholesky
 //!    factor).
 //!
-//! Deterministic inputs (closed-form sin/cos panel, fixed MC seed) so runs
-//! are exactly reproducible; each stage is repeated and the best-of-R wall
-//! time is reported (strips scheduler noise from a single-threaded,
-//! CPU-bound benchmark).
+//! Deterministic inputs: the panel is a one-factor market return plus
+//! idiosyncratic noise drawn from the crate's seeded RNG, so the sample
+//! covariance is full rank (250 days > 100 assets). The Monte Carlo stage
+//! simulates once and derives VaR, ES and the bootstrap SE from the same
+//! scenarios. Each stage is repeated and the best-of-R wall time is
+//! reported (single thread, CPU bound).
 //!
 //! Run with `cargo run --release --bin bench`.
 
@@ -52,11 +54,12 @@ fn main() {
     // Deterministic 250 x 100 daily returns panel: per-asset vol ramps from
     // 10 bp to ~2 %, phase-shifted sin/cos terms induce rich correlation.
     let mut panel = Matrix::zeros(DAYS, ASSETS);
+    let mut rng = Rng::new(20_261_101);
     for t in 0..DAYS {
+        let market = rng.standard_normal();
         for j in 0..ASSETS {
-            let (td, jd) = (t as f64, j as f64);
-            let vol = 0.001 + 0.0002 * jd;
-            let v = vol * ((0.7 * td + 0.31 * jd).sin() + 0.5 * (1.3 * td - 0.11 * jd).cos());
+            let vol = 0.001 + 0.0002 * j as f64;
+            let v = vol * (0.6 * market + 0.8 * rng.standard_normal());
             panel.set(t, j, v);
         }
     }
@@ -107,10 +110,10 @@ fn main() {
     row("BRW age-weighted VaR 99% (lam = 0.98)", ms_brw, &money(v));
 
     let ms_fhs = best_of_ms(20, &mut sink, || {
-        v = filtered_historical_var(&pnl, ALPHA, 0.94).unwrap();
+        v = filtered_historical_var_factors(&panel, &exposures, ALPHA, 0.94).unwrap();
         v
     });
-    row("filtered (FHS) VaR 99% (lam = 0.94)", ms_fhs, &money(v));
+    row("filtered (FHS, per factor) VaR 99%", ms_fhs, &money(v));
 
     let ms_es = best_of_ms(20, &mut sink, || {
         v = expected_shortfall(&pnl, 0.025).unwrap();
@@ -144,58 +147,47 @@ fn main() {
 
     // --- Cholesky (isolated) -------------------------------------------------
     let ms_chol = best_of_ms(5, &mut sink, || {
-        let l = cov.cholesky_jitter(1e-10, 12).unwrap();
-        l.get(0, 0)
+        let l = cov.cholesky_repair(PsdRepair::None).unwrap();
+        assert_eq!(l.jitter, 0.0, "bench covariance must be full rank");
+        l.factor.get(0, 0)
     });
     row("Cholesky 100 x 100", ms_chol, "");
 
     // --- Monte Carlo ---------------------------------------------------------
+    let mut run = None;
     let ms_mc_n = best_of_ms(3, &mut sink, || {
-        v = monte_carlo_var(&exposures, &cov, ALPHA, PATHS, TailModel::Normal, 42).unwrap();
+        let r = monte_carlo_run(&exposures, &cov, ALPHA, PATHS, TailModel::Normal, 42, 200).unwrap();
+        let v = r.var;
+        run = Some(r);
         v
     });
-    let se_n = var_order_statistic_se(
-        &monte_carlo_pnl(&exposures, &cov, PATHS, TailModel::Normal, 42).unwrap(),
-        ALPHA,
-    )
-    .unwrap();
+    let rn = run.take().unwrap();
     row(
-        "MC VaR 99% normal (100k x 100 paths)",
+        "MC VaR+ES+SE normal (100k x 100, 1 sim)",
         ms_mc_n,
-        &format!("{} (SE {})", money(v), money(se_n)),
+        &format!("{} (SE {})", money(rn.var), money(rn.se)),
     );
-    let mc_var_n = v;
-    let mc_es_n = monte_carlo_es(&exposures, &cov, ALPHA, PATHS, TailModel::Normal, 42).unwrap();
-
     let ms_mc_t = best_of_ms(3, &mut sink, || {
-        v = monte_carlo_var(
-            &exposures,
-            &cov,
-            ALPHA,
-            PATHS,
-            TailModel::StudentT { df: 6.0 },
-            42,
-        )
-        .unwrap();
+        let r = monte_carlo_run(&exposures, &cov, ALPHA, PATHS, TailModel::StudentT { df: 6.0 }, 42, 200)
+            .unwrap();
+        let v = r.var;
+        run = Some(r);
         v
     });
-    let se_t = var_order_statistic_se(
-        &monte_carlo_pnl(&exposures, &cov, PATHS, TailModel::StudentT { df: 6.0 }, 42).unwrap(),
-        ALPHA,
-    )
-    .unwrap();
+    let rt = run.take().unwrap();
     row(
-        "MC VaR 99% Student-t df=6 (100k paths)",
+        "MC VaR+ES+SE Student-t df=6 (1 sim)",
         ms_mc_t,
-        &format!("{} (SE {})", money(v), money(se_t)),
+        &format!("{} (SE {})", money(rt.var), money(rt.se)),
     );
+    let (mc_var_n, mc_es_n) = (rn.var, rn.es);
 
     let total = ms_cov + ms_ecov + ms_hist + ms_brw + ms_fhs + ms_es + ms_par_n + ms_par_t + ms_mc_n;
     println!(
         "\nfull daily batch (cov + historical family + parametric + 100k-path MC): {total:.1} ms"
     );
     let exact = parametric_var(&exposures, &cov, ALPHA, TailModel::Normal).unwrap();
-    println!("MC normal vs parametric normal: {} vs {} (agreement within MC error)", money(mc_var_n), money(exact));
+    println!("MC normal vs parametric normal: {} vs {} (MC SE {} bootstrap, {} KDE)", money(mc_var_n), money(exact), money(rn.se), money(rn.se_kde));
     println!(
         "MC normal ES 99%: {}  |  closed-form: {}",
         money(mc_es_n),

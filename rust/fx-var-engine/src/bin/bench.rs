@@ -4,7 +4,10 @@
 //! The book is deterministic: 45 non-USD currencies (45 FX factors),
 //! forwards on 4 currency pairs adding 5 IR factors (incl. IR:USD) for a
 //! 50-factor set; 200 spot positions + 50 forwards = 250 positions. History
-//! is 500 days of sinusoidal factor returns. Mirrors
+//! is 500 days of factor returns: a sinusoid plus noise from the crate's
+//! seeded RNG, so the 50 x 50 sample covariance is full rank (the old pure
+//! sinusoid had rank 2). Monte Carlo simulates once per run and reports
+//! VaR, ES and the bootstrap SE from the same scenarios. Mirrors
 //! `cpp/fx-var-engine/bench/bench_main.cpp` in spirit; run with
 //! `cargo run --release --bin bench`.
 
@@ -47,10 +50,12 @@ fn main() {
     // ---- 500-day deterministic history --------------------------------
     let n_days = 500;
     let mut data = Matrix::zeros(n_days, factors.len());
+    let mut rng = Rng::new(20_261_101);
     for t in 0..n_days {
         for (j, f) in factors.iter().enumerate() {
             let scale = if f.starts_with("FX:") { 0.006 } else { 0.0004 };
-            data.set(t, j, scale * (0.1 * t as f64 + 0.37 * j as f64).sin());
+            let v = scale * (0.5 * (0.1 * t as f64 + 0.37 * j as f64).sin() + rng.normal());
+            data.set(t, j, v);
         }
     }
     let rets = ReturnsMatrix::new(factors.clone(), data).unwrap();
@@ -85,6 +90,8 @@ fn main() {
 
     // ---- Monte Carlo, 100k scenarios, full reval ------------------------
     let cov = sample_cov(&rets).unwrap();
+    let chol = cov.cov.cholesky_repair(PsdRepair::None).unwrap();
+    assert_eq!(chol.jitter, 0.0, "bench covariance must be full rank");
     for (dist, label) in [(McDist::Normal, "normal"), (McDist::StudentT, "t(5)  ")] {
         let opts = MonteCarloOptions { n_scenarios: 100_000, seed: 42, dist, df: 5.0, ..Default::default() };
         let reps = 3;
@@ -95,6 +102,9 @@ fn main() {
         }
         let ms = t0.elapsed().as_secs_f64() * 1000.0 / reps as f64;
         let r = r.unwrap();
-        println!("monte carlo VaR 100k {label}: var={:.0} es={:.0}   {:8.1} ms", r.var, r.es, ms);
+        println!(
+            "monte carlo VaR 100k {label}: var={:.0} es={:.0} se={:.0} (kde {:.0})   {:8.1} ms",
+            r.var, r.es, r.se_var, r.se_var_kde, ms
+        );
     }
 }

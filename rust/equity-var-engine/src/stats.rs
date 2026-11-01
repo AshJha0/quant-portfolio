@@ -28,13 +28,22 @@ use crate::{EqVarError, Result};
 
 const SQRT_2: f64 = std::f64::consts::SQRT_2;
 const INV_SQRT_2PI: f64 = 0.398_942_280_401_432_7; // 1 / sqrt(2 pi)
-const EPS: f64 = 1e-16;
+/// Relative convergence threshold for the series and continued fractions.
+///
+/// One machine epsilon (`2.22e-16`). A term smaller than this relative to
+/// the running value cannot change it in `f64`, so iterating further buys
+/// nothing. The previous value `1e-16` sat below half an ulp at 1.0, so the
+/// test `|del - 1| < EPS` passed only on exact equality and the loops often
+/// ran to `MAX_ITER`.
+const EPS: f64 = f64::EPSILON;
 const MAX_ITER: usize = 500;
 
 // ---------------------------------------------------------------------------
 // Log-gamma (Lanczos, g = 7, 9 coefficients; |rel err| ~ 1e-15)
 // ---------------------------------------------------------------------------
 
+// Published coefficients, kept digit for digit; rustc rounds them to f64.
+#[allow(clippy::excessive_precision)]
 const LANCZOS: [f64; 9] = [
     0.999_999_999_999_809_93,
     676.520_368_121_885_1,
@@ -47,13 +56,27 @@ const LANCZOS: [f64; 9] = [
     1.505_632_735_149_311_6e-7,
 ];
 
-/// Natural log of the Gamma function for `x > 0` (Lanczos approximation,
-/// ~1e-15 relative accuracy; reflection formula for `x < 0.5`).
-pub fn ln_gamma(x: f64) -> f64 {
+/// Natural log of the Gamma function for finite `x > 0` (Lanczos
+/// approximation, ~1e-15 relative accuracy; reflection for `x < 0.5`).
+///
+/// # Errors
+/// [`EqVarError::InvalidInput`] unless `x` is finite and `> 0`, the domain
+/// on which every caller in this crate needs it.
+pub fn ln_gamma(x: f64) -> Result<f64> {
+    if !(x > 0.0) || !x.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "ln_gamma needs a finite x > 0, got {x}"
+        )));
+    }
+    Ok(ln_gamma_pos(x))
+}
+
+/// Lanczos `ln Gamma(x)` for `x > 0` (caller guarantees the domain).
+pub(crate) fn ln_gamma_pos(x: f64) -> f64 {
     if x < 0.5 {
         // Reflection: Gamma(x) Gamma(1-x) = pi / sin(pi x)
         let pi = std::f64::consts::PI;
-        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x);
+        return (pi / (pi * x).sin()).ln() - ln_gamma_pos(1.0 - x);
     }
     let x = x - 1.0;
     let mut acc = LANCZOS[0];
@@ -127,7 +150,7 @@ fn gamma_series(a: f64, x: f64) -> f64 {
             break;
         }
     }
-    sum * (-x + a * x.ln() - ln_gamma(a)).exp()
+    sum * (-x + a * x.ln() - ln_gamma_pos(a)).exp()
 }
 
 /// Continued-fraction representation of Q(a, x) (modified Lentz),
@@ -156,7 +179,7 @@ fn gamma_cf(a: f64, x: f64) -> f64 {
             break;
         }
     }
-    (-x + a * x.ln() - ln_gamma(a)).exp() * h
+    (-x + a * x.ln() - ln_gamma_pos(a)).exp() * h
 }
 
 // ---------------------------------------------------------------------------
@@ -169,24 +192,45 @@ fn gamma_cf(a: f64, x: f64) -> f64 {
 /// `erfc(x) = Q(1/2, x^2)` for `x >= 0` and the reflection
 /// `erfc(-x) = 2 - erfc(x)`. Validated against `math.erfc` reference values
 /// over `[-2.5, 7]` to better than 1e-12 relative (see `tests/test_stats.rs`).
+///
+/// Total function: `erfc(NaN) = NaN`, `erfc(+inf) = 0`, `erfc(-inf) = 2`.
+/// The previous version recursed without end on NaN and panicked on
+/// `+inf`, because `x * x = inf` failed the gamma argument check.
 pub fn erfc(x: f64) -> f64 {
+    if x.is_nan() {
+        return f64::NAN;
+    }
     if x >= 0.0 {
         if x == 0.0 {
             return 1.0;
         }
-        // a = 0.5 > 0 and x^2 > 0: cannot fail.
-        regularized_gamma_q(0.5, x * x).expect("erfc: internal gamma args valid")
+        // erfc(27) ~ 5e-319: below this the value is 0 in f64, and the
+        // argument x^2 stays far from overflow.
+        if x > 27.0 {
+            return 0.0;
+        }
+        let x2 = x * x;
+        if x2 < 1.5 {
+            1.0 - gamma_series(0.5, x2)
+        } else {
+            gamma_cf(0.5, x2)
+        }
     } else {
         2.0 - erfc(-x)
     }
 }
 
 /// Error function `erf(x) = 1 - erfc(x)`.
+///
+/// Total function: `erf(NaN) = NaN`, `erf(+/-inf) = +/-1`.
 pub fn erf(x: f64) -> f64 {
+    if x.is_nan() {
+        return f64::NAN;
+    }
     if x.abs() < 0.5 {
         // For small |x| compute P(1/2, x^2) directly to preserve relative
         // accuracy of the *erf* value (1 - erfc would lose digits).
-        let p = regularized_gamma_p(0.5, x * x).expect("erf: internal gamma args valid");
+        let p = if x == 0.0 { 0.0 } else { gamma_series(0.5, x * x) };
         if x >= 0.0 {
             p
         } else {
@@ -285,7 +329,7 @@ pub fn normal_ppf(p: f64) -> Result<f64> {
 /// `I_x(a, b) = 1 - I_{1-x}(b, a)` applied so the fraction is always in its
 /// fast-convergence region.
 pub fn regularized_beta(a: f64, b: f64, x: f64) -> Result<f64> {
-    if !(a > 0.0) || !(b > 0.0) {
+    if !(a > 0.0) || !(b > 0.0) || !a.is_finite() || !b.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
             "incomplete beta needs a, b > 0, got a={a}, b={b}"
         )));
@@ -302,7 +346,7 @@ pub fn regularized_beta(a: f64, b: f64, x: f64) -> Result<f64> {
         return Ok(1.0);
     }
     let ln_front =
-        ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln();
+        ln_gamma_pos(a + b) - ln_gamma_pos(a) - ln_gamma_pos(b) + a * x.ln() + b * (1.0 - x).ln();
     let front = ln_front.exp();
     if x < (a + 1.0) / (a + b + 2.0) {
         Ok(front * beta_cf(a, b, x) / a)
@@ -362,10 +406,16 @@ fn beta_cf(a: f64, b: f64, x: f64) -> f64 {
 /// Chi-squared survival function `P(X > x)` for `df` degrees of freedom:
 /// `Q(df/2, x/2)`. Used for the Kupiec / Christoffersen LR p-values.
 pub fn chi2_sf(x: f64, df: f64) -> Result<f64> {
-    if !(df > 0.0) {
+    if !(df > 0.0) || !df.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
-            "chi2_sf needs df > 0, got {df}"
+            "chi2_sf needs a finite df > 0, got {df}"
         )));
+    }
+    if x.is_nan() {
+        return Err(EqVarError::InvalidInput("chi2_sf: x is NaN".to_string()));
+    }
+    if x == f64::INFINITY {
+        return Ok(0.0);
     }
     if x < 0.0 {
         return Ok(1.0);
@@ -405,8 +455,11 @@ fn check_df(df: f64) -> Result<()> {
 /// Student-t density with `df > 0` degrees of freedom.
 pub fn student_t_pdf(x: f64, df: f64) -> Result<f64> {
     check_df(df)?;
-    let ln_norm = ln_gamma(0.5 * (df + 1.0))
-        - ln_gamma(0.5 * df)
+    if x.is_nan() {
+        return Err(EqVarError::InvalidInput("student_t_pdf: x is NaN".to_string()));
+    }
+    let ln_norm = ln_gamma_pos(0.5 * (df + 1.0))
+        - ln_gamma_pos(0.5 * df)
         - 0.5 * (df * std::f64::consts::PI).ln();
     Ok((ln_norm - 0.5 * (df + 1.0) * (1.0 + x * x / df).ln()).exp())
 }
@@ -415,6 +468,12 @@ pub fn student_t_pdf(x: f64, df: f64) -> Result<f64> {
 /// for `x <= 0`, `F(x) = I_{df/(df+x^2)}(df/2, 1/2) / 2` (symmetric above).
 pub fn student_t_cdf(x: f64, df: f64) -> Result<f64> {
     check_df(df)?;
+    if x.is_nan() {
+        return Err(EqVarError::InvalidInput("student_t_cdf: x is NaN".to_string()));
+    }
+    if x.is_infinite() {
+        return Ok(if x > 0.0 { 1.0 } else { 0.0 });
+    }
     if x == 0.0 {
         return Ok(0.5);
     }
@@ -476,6 +535,11 @@ pub fn mean(x: &[f64]) -> Result<f64> {
     if x.is_empty() {
         return Err(EqVarError::InvalidInput(
             "mean of an empty slice is undefined".to_string(),
+        ));
+    }
+    if x.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "sample contains NaN or infinite values".to_string(),
         ));
     }
     Ok(x.iter().sum::<f64>() / x.len() as f64)

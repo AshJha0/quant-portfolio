@@ -1,195 +1,133 @@
 # Validation
 
-How the engine was validated, and where it fails. Everything below is
-enforced by the test suite (`ctest`: 9 suites, 89 tests, ~385 assertions,
-< 3 s, offline, deterministic) — validation claims that are not unit-tested
-do not appear here.
+How the engine is validated, and where it fails. Every claim below is
+enforced by the test suite: `ctest` runs 115 tests in 11 executables,
+offline, in about 7 s serial (GCC 15.2, Release). The same suite passes
+under Clang 21.1 and under GCC with `-fsanitize=address,undefined`.
 
-## 1. Cross-language golden tests (the headline)
+## 1. Cross-language golden tests
 
-`tests/test_cross_language.cpp` pins the engine to the Python research
-reference (`eq_var`, numpy 2.4.4 / scipy 1.17.1). Three deterministic cases
-whose inputs are **closed-form (sin/cos) series both languages regenerate
-independently** — no data files, no serialisation ambiguity:
+`tests/test_cross_language.cpp` pins the engine to the Python engine
+(`eq_var`, Python 3.12.10, numpy 2.5.4, scipy 1.18.1). All inputs are
+closed-form series that both languages rebuild, so there are no data files.
 
-- **Case A** — `pnl[t] = 100·sin(3t+1) + 0.5·t·cos(t)`, t = 0..99:
-  historical VaR at 1 % / 5 % (122.4129222375264 / 104.5522835374927),
-  empirical ES at 1 % / 5 % (141.7568107549531 / 122.6373207703405),
-  BRW VaR (108.2348601407293), FHS VaR (109.3777910164513), and the 5-element
-  BRW weight vector.
-- **Case B** — fixed 3-asset book (w = [1e6, -5e5, 2e5], vols
-  [1 %, 1.5 %, 2 %], full correlation matrix): portfolio sigma
-  (9962.429422585637), parametric VaR normal/t(6)/10-day
-  (23176.07650751402 / 25563.37478743866 / 73289.18899006478), closed-form
-  normal and t ES at 2.5 %, Cornish-Fisher VaR (28230.62626871169).
-- **Case C** — deterministic 60×3 returns panel: six sample- and
-  EWMA-covariance entries, parametric VaR off the estimated matrices, Kupiec
-  LR/p at (250, 7) and (250, 0), Christoffersen independence and conditional
-  coverage on a planted 9-exception pattern.
+- **Case A**: pnl[t] = 100 sin(3t + 1) + 0.5 t cos(t), t = 0..99.
+  Historical VaR at 1 % / 5 % (141.75681075495305 / 108.2348601407293),
+  ES at 1 % / 5 % (141.75681075495305 / 122.6373207703405), BRW VaR
+  (108.2348601407293), the deprecated P&L-level FHS VaR (109.3777910164513)
+  and the 5-element BRW weight vector. With n = 100 and alpha = 0.01, k = 1,
+  so VaR and ES at 1 % are the same worst loss.
+- **Case B**: fixed 3-asset book. Portfolio sigma (9962.429422585637),
+  parametric VaR normal / t(6) / 10-day, closed-form ES at 2.5 %,
+  Cornish-Fisher VaR (28230.62626871169).
+- **Case C**: 60 x 3 returns panel. Sample and EWMA covariance entries,
+  parametric VaR on them, Kupiec at (250, 7) and (250, 0), Christoffersen
+  independence and conditional coverage on a planted pattern.
+- **Shared-convention keys (`conv_*`)**, identical in the equity and FX
+  JSONs: VaR and ES at alpha 0.010 / 0.025 / 0.050 on the 250-point sample
+  P; Basel zone, multiplier and CDF on nine (n, x, alpha) windows; Kupiec LR
+  on three windows; Acerbi-Szekely Z2; five Cornish-Fisher validity flags;
+  Higham and clip repairs of [[1, .9, .9], [.9, 1, -.9], [.9, -.9, 1]]; the
+  EWMA one-step vol.
 
-Tolerance: **1e-9 relative** (+1e-12 absolute floor). The observed residual
-is libm-vs-numpy ulp noise in sin/cos — far below any risk tolerance. The
-constants are not hand-pasted: `python/equity/03-var-es-engine/tests/golden/generate_golden.py`
-writes `tests/golden/golden_vectors.json` (committed, locked by that
-project's `tests/test_golden_vectors.py`), and `tools/gen_golden_header.py`
-emits the GENERATED `tests/golden_vectors.hpp` this suite includes;
-`tools/gen_golden_header.py --check` (run in CI) fails if the header and the
-JSON ever disagree, so model validation can re-run the whole chain at will.
+Tolerances: cases A to C use 1e-9 relative plus 1e-12 absolute (libm vs
+numpy differences in sin/cos). The `conv_*` tolerances are stated per key
+in the test: 1e-12 relative for order statistics, partial sums and EWMA,
+1e-12 absolute for the Basel CDF, 1e-10 for Kupiec LR (the two Python
+engines differ by 3e-15 there), 1e-8 for Higham (the spec value). The header
+is generated: `tools/gen_golden_header.py --check` fails when it does not
+match the JSON.
 
 ## 2. Analytic identities and hand-computed values
 
 | check | tolerance | test |
 |---|---|---|
-| `Phi^{-1}(0.975) = 1.959963984540054` | 1e-12 (spec 1e-8) | `NormalPpf.KnownQuantiles` |
-| `Phi(Phi^{-1}(p)) = p`, symmetry across p ∈ [1e-8, 0.9999] | 1e-12 / 1e-9 | `NormalPpf.SymmetryAndRoundTrip` |
-| normal ES identity `ES = sigma·phi(z)/alpha` vs Simpson quadrature | 1e-10 rel | `NormalEs.IdentityVsNumericalQuadratureTo1e10` |
-| parametric closed forms (normal, variance-matched t) | 1e-12 rel | `ParametricVar.*` |
-| Cholesky `A = LLᵀ` reconstruction on SPD input | 1e-12 | `Cholesky.ReconstructsSpdTo1e12` |
-| empirical quantile / ES exact on hand-solved tiny arrays | exact (`EXPECT_DOUBLE_EQ`) | `QuantileLinear.HandExactTinyArrays`, `EmpiricalEs.HandExactTinyArrays` |
-| BRW weights: sum = 1, ratio = 1/λ, monotone in recency | 1e-12 | `BrwWeights.*` |
-| EWMA vol: seed = ddof-0 variance, recursion uses x[t-1] only (no look-ahead) | 1e-14 | `EwmaVolatility.NoLookAhead...` |
-| Kupiec LR from first-principles log-likelihoods (T=250, x∈{0,5}) | 1e-12 | `Kupiec.*` |
-| `chi²(1) sf(3.841458...) = 0.05` | 1e-12 (spec 1e-4) | `IncompleteGamma.Chi2PValues` |
-| Student-t quantiles vs `scipy.stats.t.ppf` | 1e-9 | `StudentT.QuantilesVsScipy` |
-| binomial CDF vs scipy at the Basel boundaries | 1e-12 | `IncompleteBeta.BinomialCdf` |
-| Christoffersen transition counts on a hand-traced pattern | exact | `Christoffersen.TransitionCountsOnTinyPattern` |
-| Basel zones: all boundaries 0/4/5/9/10 and the full add-on ladder | exact | `Basel.ExactZoneBoundariesAt250Obs` |
+| Phi^{-1}(0.975) = 1.959963984540054 | 1e-12 | `NormalPpf.KnownQuantiles` |
+| normal ES identity vs Simpson quadrature | 1e-10 rel | `NormalEs.IdentityVsNumericalQuadratureTo1e10` |
+| order statistic and fractional ES on n = 10 by hand (VaR 8, ES 9.2) | exact / 1e-15 | `OrderStatistic.FractionalAtomByHand` |
+| weighted rule on uniform and concentrated weights | 1e-14 | `OrderStatistic.WeightedMatchesUniformAndHandCase` |
+| historical VaR equals L(m) of the sorted losses | exact | `HistoricalVar.IsOrderStatisticAndIsMonotoneInAlpha` |
+| EWMA seed = mean r^2 over the seed window; recursion uses r[t-1] | 1e-14 | `EwmaVolatility.NoLookAheadAndRiskMetricsRecursion` |
+| Kupiec LR from the log-likelihoods | 1e-12 | `Kupiec.*` |
+| Basel: n = 500, x = 8 green; n = 1000, x = 15 yellow +0.40; 1996 table at n = 250 | exact | `Basel.ZonesByBinomialCdfOnAnyWindow` |
+| Acerbi-Szekely Z2 on a 4-day hand case (-1.25) | 1e-15 | `AcerbiSzekely.Z2ByHand` |
+| Cornish-Fisher validity at alpha 0.01 and 0.001 | exact | `CornishFisher.AlphaAwareValidity` |
+| Jacobi eigenvalues of [[2, 1], [1, 2]] | 1e-15 | `Cholesky.JacobiEigenByHand` |
+| Higham and clip repairs vs numpy | 1e-8 / 1e-12 | `Cholesky.IndefiniteThrowsUnlessRepaired` |
+| log_gamma vs closed forms | 1e-13 | `LogGamma.LanczosMatchesClosedForms` |
+| per-factor FHS: homogeneity and a one-factor hand build | 1e-9 / 1e-12 | `Fhs.*` |
+| chi2(1) sf(3.8415) = 0.05 | 1e-12 | `IncompleteGamma.Chi2PValues` |
+| Student-t quantiles vs scipy | 1e-9 | `StudentT.QuantilesVsScipy` |
 
-## 3. Monte Carlo convergence and determinism
+## 3. Monte Carlo convergence
 
-- **MC → parametric**: 200k-path normal MC VaR within **3 order-statistic
-  SE** of the closed form (SE itself asserted < 2 % of VaR); MC ES within
-  4 SE of the normal-ES identity. The bench run prints the live numbers:
-  68 681 vs 69 002 at SE 401 (0.8 SE).
-- **Student-t fatter at 99 %**: t(5) MC VaR and ES strictly above normal MC
-  on the same seed, and within 3 SE of the variance-matched t closed form.
-- **Moment matching**: the simulated 200k-path covariance matches the target
-  Σ entry-wise (5 % rel on variances, 10 % of sigma_i·sigma_j on
-  covariances) for both normal and t — i.e. the `(nu-2)/nu` scale correction
-  is verified, not assumed.
-- **Bitwise determinism**: same seed → `EXPECT_EQ` (not NEAR) on VaR, ES and
-  SE; different seed → different result. This holds across standard
-  libraries because the engine uses only `mt19937_64` (bit-specified by the
-  standard) and its own inverse-CDF transforms.
-- **RNG health**: uniforms strictly inside (0,1); gaussian sample moments at
-  ~4 SE bands; chi² mean/variance vs (df, 2df).
-- **Bootstrap SE cross-check**: `mc_bootstrap_se` resamples the P&L with
-  replacement (via the same `RandomStream`, so it is bitwise deterministic
-  in its own seed) and reports the ddof = 1 stdev of the resampled VaR — a
-  distribution-free companion to `mc_tail_metrics`'s order-statistic
-  `var_se` (see the tail-resolution caveat below). Tested for determinism,
-  input validation, agreement with `var_se` to within a sane multiple on a
-  synthetic sample, and graceful (finite, non-NaN) behaviour on a
-  zero-variance P&L series.
+- **MC vs parametric**: 200k-path normal MC VaR within 3 SE of the closed
+  form; MC ES within 4 SE of the normal ES identity.
+- **Student-t**: t(5) MC VaR and ES above normal MC at 99 % and within 3 SE
+  of the variance-matched closed form.
+- **Moment matching**: the simulated covariance matches the target for
+  normal and t, which checks the (nu-2)/nu scale.
+- **Standard error**: on N(0, 1) with n = 100k and alpha = 0.01 the
+  bootstrap SE is within 20 % of the asymptotic value
+  sqrt(a(1-a)/n) / phi(z_a) and the KDE value within 10 %
+  (`MonteCarloSe.BootstrapNearAsymptoticAndNeedsTwoReplicates`). The 20 %
+  covers the 3.5 % sampling error of a 400-replicate SE and the small-sample
+  bias of the quantile bootstrap.
+- **Repeatability**: same seed gives `EXPECT_EQ` on VaR, ES and SE; a
+  different seed gives a different result. This holds on one platform. Other
+  libms can change the last bits.
 
-## 4. Statistical power checks (planted-pathology tests)
+## 4. Planted-pathology checks
 
-- **Christoffersen detects planted clustering**: a run of 10 consecutive
-  exceptions in 250 days rejects independence at p < 0.001 while the same 10
-  exceptions spread every 25 days give p > 0.10.
-- **Kupiec monotonicity**: LR increases with excess exceptions; 10/250 at
-  1 % rejects at 5 %; exact-coverage samples give LR = 0, p = 1; the
-  degenerate x = 0 case matches `-2·250·ln(0.99)` analytically.
-  Note (Python reference, `eq_var` `docs/VALIDATION.md` item 9): the
-  chi2(1) asymptotic this LR is compared against is itself oversized at
-  exactly this window — the exact rejection probability of a nominal-5%
-  test at n=250, alpha=0.01 is ≈9.5%, not 5%, because the expected
-  exception count (2.5) is too small for the asymptotic to be accurate.
-  The LR formula is unchanged (it is what the golden tests pin); this is a
-  read-the-p-value caveat, not a bug.
-- **BRW regime response**: a crash on the most recent day moves VaR to the
-  full crash size, the same crash 100 days ago does not.
-- **FHS regime response**: damping the last 40 % of the sample cuts FHS VaR
-  below plain historical VaR (and FHS is exactly positive-homogeneous).
+- Christoffersen rejects 10 consecutive exceptions in 250 days at p < 0.001
+  and accepts the same 10 spread every 25 days (p > 0.10).
+- Kupiec LR grows with excess exceptions; x = 0 matches -2 * 250 ln(0.99).
+  At n = 250 and alpha = 0.01 the chi2(1) approximation is oversized: the
+  exact rejection rate of a nominal 5 % test is about 9.5 %.
+- BRW: a crash on the last day moves VaR to the crash size; the same crash
+  100 days earlier does not.
 
-## 5. Edge cases (documented **and** tested — `tests/test_edge_cases.cpp`)
+## 5. Edge cases (`tests/test_edge_cases.cpp`, `tests/test_fuzz.cpp`)
 
 | edge case | behaviour |
 |---|---|
-| empty inputs (pnl, exposures, prices, panel) | `std::invalid_argument` with informative message, everywhere |
-| alpha ∉ (0, 0.5), incl. 0, 0.5, 1 | throws in every VaR/ES entry point |
-| single-asset portfolio | collapses exactly to scalar formulas; MC within 3 SE; long/short symmetric |
-| zero-variance asset in Σ (singular PSD) | Cholesky jitter path engages (jitter > 0, ≤ 1e-6 of variances), MC still within 3 SE of parametric |
-| all-zero covariance | sigma = 0, parametric VaR = 0, ES = 0 exactly |
-| constant P&L series | VaR = −constant (a gain floor), moments 0 not NaN, FHS floored (no 0/0) |
-| NaN / Inf in P&L | throws — never silently dropped |
-| fewer than 50 obs for historical methods | throws (`kMinHistObs` guard, boundary exact) |
-| alpha ≪ 1/n | estimate pinned to the worst observed loss (type-7 interpolation inside the first gap), never extrapolated |
-| Cornish-Fisher outside monotonicity domain (e.g. S = −0.5, K = 0) | throws with an explanation; `check_domain=false` override exists for diagnostics only |
-| badly indefinite "covariance" | `std::runtime_error` — either the jitter ladder fails outright, or the jitter needed exceeds 1e-6 x mean(diag), i.e. it would silently simulate a *different* covariance; corrupt input is fatal by design |
-| rank-deficient (perfectly correlated) Σ | exact parametric sigma `|w1+w2|·vol`, tiny jitter (< 1e-6 of the variances), MC within 3 SE; a perfect hedge of the two legs gives sigma = 0 |
-| indefinite Σ reaching `portfolio_sigma` | `w'Σw < 0` rejected with `std::invalid_argument` rather than square-rooted |
-| NaN / Inf inside Σ or the exposures | rejected by `cholesky`, `portfolio_sigma`, `parametric_var` and `monte_carlo_var` (previously produced a NaN sigma / a misleading "badly indefinite" error) |
-| NaN / Inf VaR or P&L in the backtest | `exceptions_from_pnl` throws — a NaN compares false and would otherwise be counted as "no exception", flattering a broken model |
-| 1-element and 2-element samples | `quantile_linear`/`mean` degrade gracefully (no out-of-bounds interpolation); `stdev`, `skewness`, `excess_kurtosis`, `ewma_volatility`, `historical_var`, `expected_shortfall` and the Christoffersen test refuse them explicitly |
-| boundary alpha (1e-4, 1e-3, 0.4999) | finite everywhere, ES ≥ VaR preserved, VaR monotone in alpha |
-| degenerate Cornish-Fisher grid (`n_grid = 1`, `z_range = 0`, NaN moments) | throws instead of dividing by zero |
-| non-positive prices in return calc | throws |
+| NaN, +inf or -inf in any input of any public function | `std::invalid_argument` (fuzz test walks every function) |
+| empty inputs, too-short samples, negative where invalid | `std::invalid_argument` |
+| alpha outside (0, 0.5), including 0.99 | throws everywhere |
+| empty or all-zero exposure vector | throws "book has no positions" |
+| `mc_bootstrap_se` with n_boot < 2 | throws |
+| zero-variance asset (singular PSD) | jitter below 1e-6 mean(diag), MC within 3 SE |
+| all-zero covariance | sigma = 0, Cholesky returns L = 0 |
+| constant P&L | VaR = -constant, moments 0, KDE SE 0 |
+| fewer than 50 observations for historical methods | throws |
+| alpha below 1/n | VaR and ES equal the worst observed loss |
+| Cornish-Fisher outside its validity region | throws; non-finite moments always throw |
+| covariance needing more than 1e-6 mean(diag) jitter | `std::runtime_error` naming the most negative eigenvalue, unless `Repair::Clip` or `Repair::Higham` |
+| indefinite matrix reaching `portfolio_sigma` | w' Sigma w < 0 throws |
+| NaN VaR in the backtest | throws; a NaN compares false and would count as no exception |
 
 ## 6. Known failure modes and limits
 
-1. **Tail resolution**: 250 observations put ~2.5 obs in a 1 % tail; the
-   99 % historical VaR SE is large (the MC SE machinery quantifies the same
-   effect). Below `kMinHistObs = 50` the engine refuses. For alpha < 1/n the
-   estimate degrades to the sample minimum — tested, documented, and the
-   reason parametric/MC exist.
-2. **`mc_tail_metrics`'s `var_se` is a fixed-bandwidth density estimate, and
-   is biased low in deep tails / small n.** It derives the quantile SE from
-   `alpha(1-alpha)/(n f(q)^2)` with `f(q)` estimated by a symmetric
-   order-statistic finite difference of bandwidth `ceil(sqrt(alpha n))`
-   around the quantile rank — the same defect class as a fixed-bandwidth
-   KDE evaluated at an extreme quantile, and it can understate the true
-   sampling SE by roughly 9-17 % at 99%+ confidence or modest scenario
-   counts. `mc_bootstrap_se` is now available as a distribution-free
-   cross-check: it resamples the P&L with replacement and reports the
-   ddof = 1 stdev of the resampled VaR quantile (mirroring
-   `eq_var.monte_carlo_var.var_standard_error_bootstrap` in the Python
-   reference engine, "the desk-standard way to attach error bars to an MC
-   or historical VaR"). Neither estimator is disabled or preferred by
-   default — `var_se` stays in `MonteCarloResult` for the O(n) hot path,
-   and `mc_bootstrap_se` is the O(n_boot · n log n) check to run when a
-   tail estimate is going to drive a limit or a capital number.
-3. **sqrt-time scaling understates stressed multi-day risk** (vol
-   clustering): known bias, stated where used; do not feed the 10-day number
-   to anything that assumes it is conservative.
-4. **The Cholesky jitter is a rounding repair, not a model fix.** It is
-   capped at 1e-6 x mean(diag); a covariance that needs more than that has a
-   genuine negative eigenvalue, and "fixing" it would mean simulating a
-   covariance the caller never supplied (in the tested 2x2 example the
-   required jitter is ~10x the variances themselves). The engine throws and
-   asks for an upstream repair (eigenvalue clipping / nearest-PSD
-   projection). `CholeskyResult::jitter_added` is reported so a service can
-   log or alert on any perturbation at all. Note this is *stricter* than the
-   Python reference's `safe_cholesky`, which keeps escalating; the
-   divergence only bites on inputs that are not valid covariance matrices.
-5. **Cornish-Fisher validity region is small**: |S| ≳ 0.3 with K = 0 already
-   fails on |z| ≤ 3.5. The engine throws rather than degrades — this is a
-   feature; the Python reference behaves identically. The domain check
-   itself is exact, not grid-sampled: `dz_cf/dz` is a quadratic in `z`, so
-   its minimum on `[-z_range, z_range]` is found in closed form (the vertex
-   if it falls in range, else an endpoint) rather than by sampling a fixed
-   grid, which could otherwise miss a thin non-monotone dip between two
-   grid nodes (`CornishFisher.DomainCheckIsExactNotGridResolutionDependent`).
-6. **RNG streams differ from NumPy's**: cross-language MC agreement is
-   statistical (within SE bars), never bitwise — the golden tests therefore
-   pin the deterministic estimators and closed forms, and MC is validated
-   against closed forms *within* each language. `mc_bootstrap_se` is no
-   exception: it reuses this file's `RandomStream`, so its resampling draws
-   (and hence its exact SE value) differ from the Python bootstrap's
-   `numpy.random.Generator` draws even at the same seed.
-7. **EWMA λ is a hyperparameter**, not estimated: λ = 0.94/0.98 are
-   RiskMetrics/BRW conventions. A mis-tuned λ shows up as Christoffersen
-   clustering failures — that is the monitoring loop, by construction.
-8. **Linear P&L only**: no gamma/vega. Options books need the Python twin's
-   full revaluation; this engine's scope stops at the delta map.
-9. **Student-t quantile via bisection** costs ~200 CDF evaluations (~µs).
-   Irrelevant at desk call rates; would matter only inside a per-path loop,
-   where it is never called (the MC uses inverse-normal + chi² mixing).
+1. **Tail resolution.** 250 observations put about 2.5 points in a 1 %
+   tail. The engine refuses fewer than 50.
+2. **KDE SE is biased low in deep tails.** It is reported as a diagnostic
+   next to the bootstrap SE.
+3. **Square-root-of-time understates stressed multi-day risk.**
+4. **Jitter is a rounding repair.** Above 1e-6 mean(diag) the engine throws
+   or applies the requested PSD repair. A repaired matrix is a different
+   covariance; `CholeskyResult::repaired` and `warning` say so.
+5. **RNG streams differ from NumPy.** Cross-language MC agreement is
+   statistical. Golden tests pin deterministic estimators only.
+6. **EWMA lambda is a fixed parameter** (0.94 / 0.98), not estimated.
+7. **Linear P&L only.** No gamma or vega.
+8. **Bootstrap cost.** 200 resamples of 100k paths add about 0.4 s to a
+   100k-path run.
 
-## 7. Compiler / toolchain hygiene
+## 7. Toolchain
 
-Built and tested with g++ 13.3, `-Wall -Wextra -Werror -O2`, C++20, cmake
-3.28, GoogleTest 1.14 (system). Test binaries additionally pass
-`-Wno-unused-result` only because `EXPECT_THROW(f(x), …)` legitimately
-discards `[[nodiscard]]` values when asserting that `f` throws; the library
-itself compiles warning-free with the full flag set.
+Built and tested with GCC 15.2 and Clang 21.1, C++20, CMake 4.2,
+GoogleTest 1.15.2, with `-DEQVAR_WERROR=ON` (`-Wall -Wextra -Wpedantic
+-Werror`), plus one GCC build with `-fsanitize=address,undefined`. Test
+binaries add `-Wno-unused-result` (`EXPECT_THROW` discards `[[nodiscard]]`
+values) and `-Wno-deprecated-declarations` (tests call the deprecated
+entry points on purpose).

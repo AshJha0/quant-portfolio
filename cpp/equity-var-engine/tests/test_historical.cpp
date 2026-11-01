@@ -2,6 +2,8 @@
 // weights, EWMA filtering, sqrt-time scaling, input validation.
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <functional>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -44,9 +46,16 @@ TEST(QuantileLinear, Validation) {
     EXPECT_THROW(quantile_linear(x, 1.1), std::invalid_argument);
 }
 
-TEST(HistoricalVar, MatchesQuantileAndIsMonotoneInAlpha) {
+TEST(HistoricalVar, IsOrderStatisticAndIsMonotoneInAlpha) {
     const std::vector<double> pnl = demo_pnl();
-    EXPECT_DOUBLE_EQ(historical_var(pnl, 0.05), -quantile_linear(pnl, 0.05));
+    // Order statistic: losses sorted descending, m = ceil(n alpha) -> L(m).
+    // The old code returned the type-7 interpolant, which is not an order
+    // statistic for non-integer (n-1) alpha, so this assertion failed on it.
+    std::vector<double> loss;
+    for (double v : pnl) loss.push_back(-v);
+    std::sort(loss.begin(), loss.end(), std::greater<double>());
+    const std::size_t m = static_cast<std::size_t>(std::ceil(0.05 * static_cast<double>(pnl.size()) - 1e-9));
+    EXPECT_EQ(historical_var(pnl, 0.05), loss[m - 1]);
     // Deeper tail => larger VaR.
     EXPECT_GE(historical_var(pnl, 0.01), historical_var(pnl, 0.05));
     EXPECT_GE(historical_var(pnl, 0.05), historical_var(pnl, 0.10));
@@ -107,20 +116,24 @@ TEST(AgeWeightedVar, RecentCrashDominatesUnderLowLambda) {
 TEST(EwmaVolatility, NoLookAheadAndRiskMetricsRecursion) {
     const std::vector<double> x = {1.0, -2.0, 3.0, -1.0, 2.0};
     const double lam = 0.94;
-    const std::vector<double> sig = ewma_volatility(x, lam);
+    // Seed window 3: s2_0 = mean(x[0..3)^2) = (1 + 4 + 9) / 3. The old code
+    // seeded with the full-sample variance (look-ahead) and failed here.
+    const std::vector<double> sig = ewma_volatility(x, lam, 3);
     ASSERT_EQ(sig.size(), x.size());
-    // Seed = population variance; recursion uses x[t-1] only (no look-ahead).
-    double mu = 0.0;
-    for (double v : x) mu += v;
-    mu /= 5.0;
-    double s2 = 0.0;
-    for (double v : x) s2 += (v - mu) * (v - mu);
-    s2 /= 5.0;
+    double s2 = 14.0 / 3.0;
     EXPECT_NEAR(sig[0], std::sqrt(s2), 1e-14);
     for (std::size_t t = 1; t < x.size(); ++t) {
         s2 = lam * s2 + (1.0 - lam) * x[t - 1] * x[t - 1];
         EXPECT_NEAR(sig[t], std::sqrt(s2), 1e-14) << "t=" << t;
     }
+    const double next = lam * s2 + (1.0 - lam) * x[4] * x[4];
+    EXPECT_NEAR(ewma_volatility_next(x, lam, 3), std::sqrt(next), 1e-14);
+    // Default seed window min(30, n) = 5 here: mean of all five squares.
+    EXPECT_NEAR(ewma_volatility(x, lam)[0], std::sqrt(19.0 / 5.0), 1e-14);
+    // Changing an observation after the seed window cannot change sigma[0].
+    std::vector<double> y = x;
+    y[4] = 100.0;
+    EXPECT_EQ(ewma_volatility(y, lam, 3)[0], sig[0]);
     EXPECT_THROW(ewma_volatility(std::vector<double>{1.0}, lam), std::invalid_argument);
     EXPECT_THROW(ewma_volatility(x, 0.0), std::invalid_argument);
 }

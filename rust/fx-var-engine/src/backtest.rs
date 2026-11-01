@@ -7,20 +7,22 @@
 //! # Tests
 //!
 //! * **Kupiec POF** (unconditional coverage) — LR test that the exception
-//!   frequency equals `1 - alpha`; `chi2(1)` via the regularised
-//!   incomplete gamma.
+//!   frequency equals the tail probability `alpha`; `chi2(1)` via the
+//!   regularised incomplete gamma.
 //! * **Christoffersen independence** — LR test against first-order Markov
 //!   clustering of exceptions; `chi2(1)`. FX desks care because volatility
 //!   clustering makes an unconditional method (plain HS, sample-cov
 //!   parametric) fail *this* test long before it fails Kupiec.
 //! * **Conditional coverage** — `LR_cc = LR_uc + LR_ind`; `chi2(2)`.
 //! * **Basel traffic light** — zones from the exact cumulative
-//!   `Binomial(n, 1-alpha)` probability of the exception count: green
-//!   `< 95%`, yellow `< 99.99%`, red `>= 99.99%`, which for the regulatory
-//!   250-day 99% window reproduces the table exactly: green 0-4, yellow
-//!   5-9 (add-ons 0.40/0.50/0.65/0.75/0.85), red 10+ (multiplier 4.0).
+//!   `Binomial(n, alpha)` probability `F(x)` of the exception count (pmf
+//!   recursion): green `< 95%`, yellow `< 99.99%`, red `>= 99.99%`. The
+//!   yellow plus factor is read at the equivalent 250-day count. On the
+//!   regulatory 250-day 99% window this reproduces the table: green 0-4,
+//!   yellow 5-9 (0.40/0.50/0.65/0.75/0.85), red 10+ (multiplier 4.0).
+//! * **Acerbi-Szekely Z2** — ES backtest statistic, paper sign.
 
-use crate::stats::{binom_cdf, chi2_sf, validate_alpha};
+use crate::stats::{chi2_sf, validate_alpha};
 use crate::{FxVarError, Result};
 
 fn xlogy(x: f64, y: f64) -> f64 {
@@ -33,13 +35,6 @@ fn xlogy(x: f64, y: f64) -> f64 {
     }
 }
 
-fn check_counts(x: i64, n: i64) -> Result<()> {
-    if n <= 0 || x < 0 || x > n {
-        return Err(FxVarError::invalid(format!("need 0 <= n_exceptions <= n_obs, got x={x}, n={n}")));
-    }
-    Ok(())
-}
-
 /// A likelihood-ratio test outcome.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LrTest {
@@ -49,22 +44,197 @@ pub struct LrTest {
     pub p: f64,
 }
 
-/// Kupiec proportion-of-failures test: `LR_uc ~ chi2(1)` under H0 that the
-/// exception probability is `1 - alpha`.
+/// Kupiec result type (the LR statistic and its chi2(1) p-value).
+pub type KupiecResult = LrTest;
+
+/// Inputs of the coverage tests ([`kupiec_pof`], [`basel_traffic_light`]).
+///
+/// Named fields make the old silent swap of `n_obs` and `n_exceptions`
+/// impossible: `KupiecInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KupiecInput {
+    /// Number of backtest days `T` (`>= 1`).
+    pub n_obs: i64,
+    /// Number of exceptions `x` (`0 <= x <= T`).
+    pub n_exceptions: i64,
+    /// Tail probability of the VaR being tested (e.g. `0.01` for 99 %).
+    pub alpha: f64,
+}
+
+/// Same struct under the name the Basel function reads best with.
+pub type BaselInput = KupiecInput;
+
+fn check_coverage_input(inp: &KupiecInput) -> Result<()> {
+    crate::tail::validate_alpha(inp.alpha)?;
+    if inp.n_obs < 1 {
+        return Err(FxVarError::Invalid(format!("n_obs must be >= 1, got {}", inp.n_obs)));
+    }
+    if inp.n_exceptions < 0 {
+        return Err(FxVarError::Invalid(format!(
+            "n_exceptions must be >= 0, got {}",
+            inp.n_exceptions
+        )));
+    }
+    if inp.n_exceptions > inp.n_obs {
+        return Err(FxVarError::Invalid(format!(
+            "n_exceptions ({}) exceeds n_obs ({})",
+            inp.n_exceptions, inp.n_obs
+        )));
+    }
+    if inp.n_obs > (1_i64 << 53) {
+        return Err(FxVarError::Invalid(format!(
+            "n_obs {} exceeds the exactly representable range",
+            inp.n_obs
+        )));
+    }
+    Ok(())
+}
+
+/// `x ln y` with `0 ln 0 = 0`.
+fn xlny(x: f64, y: f64) -> f64 {
+    if x == 0.0 {
+        0.0
+    } else {
+        x * y.ln()
+    }
+}
+
+/// Kupiec LR statistic for valid inputs:
+/// `LR = -2 ln[(1-a)^(n-x) a^x] + 2 ln[(1-p)^(n-x) p^x]`, `p = x/n`.
+fn kupiec_lr(inp: &KupiecInput) -> f64 {
+    let n = inp.n_obs as f64;
+    let x = inp.n_exceptions as f64;
+    let a = inp.alpha;
+    let p = x / n;
+    let l0 = xlny(n - x, 1.0 - a) + xlny(x, a);
+    let l1 = xlny(n - x, 1.0 - p) + xlny(x, p);
+    (-2.0 * (l0 - l1)).max(0.0)
+}
+
+/// `F(x) = P(X <= x)`, `X ~ Binomial(n, alpha)`, by the pmf recursion
+/// `pmf(0) = exp(n log1p(-alpha))`,
+/// `pmf(j+1) = pmf(j) (n-j)/(j+1) alpha/(1-alpha)`, in `f64`.
+fn binomial_cdf_recursion(x: i64, n: i64, alpha: f64) -> Result<f64> {
+    let nf = n as f64;
+    let mut pmf = (nf * (-alpha).ln_1p()).exp();
+    if !(pmf > 0.0) {
+        return Err(FxVarError::Numerical(format!(
+            "Binomial({n}, {alpha}) pmf(0) underflows; the window is too long \
+             for the pmf recursion"
+        )));
+    }
+    let ratio = alpha / (1.0 - alpha);
+    let mut cdf = pmf;
+    for j in 0..x {
+        pmf *= (nf - j as f64) / (j as f64 + 1.0) * ratio;
+        cdf += pmf;
+    }
+    Ok(cdf.min(1.0))
+}
+
+/// Basel plus factors for the equivalent 250-day exception counts 5..=9.
+const PLUS: [f64; 5] = [0.40, 0.50, 0.65, 0.75, 0.85];
+
+/// Zone, plus factor and `F(x)` for valid inputs (S4 rule).
+fn basel_rule(inp: &KupiecInput) -> Result<(u8, f64, f64)> {
+    let f = binomial_cdf_recursion(inp.n_exceptions, inp.n_obs, inp.alpha)?;
+    if f < 0.95 {
+        return Ok((0, 0.0, f));
+    }
+    if f >= 0.9999 {
+        return Ok((2, 1.0, f));
+    }
+    let mut x_eq = 9usize;
+    for xp in 5..=9 {
+        if binomial_cdf_recursion(xp, 250, 0.01)? >= f - 1e-12 {
+            x_eq = xp as usize;
+            break;
+        }
+    }
+    Ok((1, PLUS[x_eq - 5], f))
+}
+
+/// Acerbi-Szekely (2014) `Z2` statistic for an ES backtest.
+///
+/// `Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1`, `I_t = 1{pnl_t < -VaR_t}`,
+/// with the paper's sign: `Z2 = 0` in expectation under a correct model and
+/// a NEGATIVE value means ES is understated. `var` and `es` are positive
+/// losses, one per day or a single value broadcast to every day. Returns
+/// `Z2` only; the simulated p-value lives in the Python library.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] for invalid counts or `alpha`.
-pub fn kupiec_pof(n_exceptions: i64, n_obs: i64, alpha: f64) -> Result<LrTest> {
-    validate_alpha(alpha)?;
-    check_counts(n_exceptions, n_obs)?;
-    let x = n_exceptions as f64;
-    let n = n_obs as f64;
-    let p = 1.0 - alpha;
-    let pi_hat = x / n;
-    let ll0 = xlogy(n - x, 1.0 - p) + xlogy(x, p);
-    let ll1 = xlogy(n - x, 1.0 - pi_hat) + xlogy(x, pi_hat);
-    let lr = (-2.0 * (ll0 - ll1)).max(0.0);
+/// Invalid `alpha`, an empty or non-finite series, a length mismatch, a
+/// negative VaR, or an ES that is not strictly positive.
+///
+/// # Examples
+///
+/// ```
+/// # use fx_var_engine::backtest::acerbi_szekely_z2;
+/// // Two exceptions out of four days, each exactly at ES: Z2 = 1 - 2/(4 a).
+/// let z2 = acerbi_szekely_z2(&[-2.0, 0.0, -2.0, 1.0], &[1.0], &[2.0], 0.25).unwrap();
+/// assert!((z2 - (1.0 - 2.0)).abs() < 1e-12);
+/// ```
+pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Result<f64> {
+    crate::tail::validate_alpha(alpha)?;
+    let t = pnl.len();
+    if t == 0 {
+        return Err(FxVarError::Invalid("acerbi_szekely_z2: empty pnl".to_string()));
+    }
+    for (name, s) in [("var", var), ("es", es)] {
+        if s.len() != 1 && s.len() != t {
+            return Err(FxVarError::Invalid(format!(
+                "acerbi_szekely_z2: {name} must have length 1 or {t}, got {}",
+                s.len()
+            )));
+        }
+    }
+    if pnl.iter().chain(var).chain(es).any(|v| !v.is_finite()) {
+        return Err(FxVarError::Invalid(
+            "acerbi_szekely_z2: inputs contain NaN or infinite values".to_string(),
+        ));
+    }
+    if var.iter().any(|v| *v < 0.0) {
+        return Err(FxVarError::Invalid("acerbi_szekely_z2: VaR must be >= 0".to_string()));
+    }
+    if es.iter().any(|v| !(*v > 0.0)) {
+        return Err(FxVarError::Invalid("acerbi_szekely_z2: ES must be > 0".to_string()));
+    }
+    let pick = |s: &[f64], i: usize| if s.len() == 1 { s[0] } else { s[i] };
+    let denom = t as f64 * alpha;
+    let mut acc = 0.0;
+    for (i, &p) in pnl.iter().enumerate() {
+        if p < -pick(var, i) {
+            acc += p / (denom * pick(es, i));
+        }
+    }
+    Ok(acc + 1.0)
+}
+
+/// Kupiec proportion-of-failures test (S3): `LR_uc ~ chi2(1)` under H0
+/// that the exception probability is the tail probability `alpha`.
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for `alpha` outside `(0, 0.5)`, `n_obs < 1`,
+/// `n_exceptions < 0` or `n_exceptions > n_obs`.
+///
+/// # Examples
+///
+/// ```
+/// use fx_var_engine::backtest::{kupiec_pof, KupiecInput};
+/// let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 }).unwrap();
+/// assert!(r.p < 0.01);
+/// ```
+pub fn kupiec_pof(input: &KupiecInput) -> Result<KupiecResult> {
+    check_coverage_input(input)?;
+    let lr = kupiec_lr(input);
     Ok(LrTest { lr, p: chi2_sf(lr, 1.0)? })
+}
+
+/// Old Kupiec call `(n_exceptions, n_obs, confidence)`, kept for one
+/// release. `alpha = 1 - confidence`; forwards to [`kupiec_pof`].
+#[deprecated(since = "0.2.0", note = "use kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })")]
+pub fn kupiec_pof_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> Result<LrTest> {
+    kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha: 1.0 - confidence })
 }
 
 /// Christoffersen (1998) independence test on a 0/1 exception series
@@ -86,8 +256,7 @@ pub fn christoffersen_independence(exceedances: &[i32]) -> Result<LrTest> {
             (0, 0) => n00 += 1.0,
             (0, 1) => n01 += 1.0,
             (1, 0) => n10 += 1.0,
-            (1, 1) => n11 += 1.0,
-            _ => unreachable!(),
+            _ => n11 += 1.0, // (1, 1): values were checked to be 0/1 above
         }
     }
     let pi01 = if n00 + n01 > 0.0 { n01 / (n00 + n01) } else { 0.0 };
@@ -106,7 +275,7 @@ pub fn christoffersen_independence(exceedances: &[i32]) -> Result<LrTest> {
 /// Same as [`kupiec_pof`] / [`christoffersen_independence`].
 pub fn conditional_coverage(exceedances: &[i32], alpha: f64) -> Result<LrTest> {
     let x: i64 = exceedances.iter().map(|&e| e as i64).sum();
-    let uc = kupiec_pof(x, exceedances.len() as i64, alpha)?;
+    let uc = kupiec_pof(&KupiecInput { n_obs: exceedances.len() as i64, n_exceptions: x, alpha })?;
     let ind = christoffersen_independence(exceedances)?;
     let lr = uc.lr + ind.lr;
     Ok(LrTest { lr, p: chi2_sf(lr, 2.0)? })
@@ -132,42 +301,58 @@ pub struct TrafficLight {
     pub n_exceptions: i64,
     /// Window length.
     pub n_obs: i64,
-    /// `P(X <= x)` under `Binomial(n, 1-alpha)`.
+    /// `F(x) = P(X <= x)` under `Binomial(n, alpha)`.
     pub cumulative_prob: f64,
-    /// Capital multiplier, `3.0` .. `4.0`.
+    /// Plus factor: 0 in green, 0.40 to 0.85 in yellow, 1 in red.
+    pub plus_factor: f64,
+    /// Capital multiplier `3 + plus_factor`.
     pub multiplier: f64,
 }
 
-/// Basel traffic-light zone and capital multiplier (1996 table add-ons in
-/// the yellow zone; multiplier capped at 4.0 in red).
+/// Basel traffic light for any window and any tail probability (S4).
+///
+/// Zone from `F(x)`: green `< 0.95`, yellow `< 0.9999`, red otherwise. In
+/// yellow the plus factor is the 1996 table entry at the equivalent
+/// 250-day count `x'`, the smallest `x'` in `5..=9` with
+/// `F_250(x') >= F(x) - 1e-12` (`9` if none). The old code took the add-on
+/// from the raw count, so a yellow 500-day window with 8 exceptions got
+/// the 250-day add-on for 8.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] for invalid counts or `alpha`.
-pub fn basel_traffic_light(n_exceptions: i64, n_obs: i64, alpha: f64) -> Result<TrafficLight> {
-    validate_alpha(alpha)?;
-    check_counts(n_exceptions, n_obs)?;
-    let cumulative_prob = binom_cdf(n_exceptions, n_obs, 1.0 - alpha)?;
-    let (zone, multiplier) = if cumulative_prob < 0.95 {
-        (Zone::Green, 3.0)
-    } else if cumulative_prob < 0.9999 {
-        // 1996 Basel yellow-zone add-ons by exception count (250d, 99%):
-        // 5 -> 0.40, 6 -> 0.50, 7 -> 0.65, 8 -> 0.75, 9 -> 0.85. Yellow at
-        // an out-of-table count (non-standard window) takes the nearest
-        // boundary add-on, mirroring the Python reference.
-        let addon = match n_exceptions {
-            5 => 0.40,
-            6 => 0.50,
-            7 => 0.65,
-            8 => 0.75,
-            9 => 0.85,
-            n if n > 9 => 0.85,
-            _ => 0.40,
-        };
-        (Zone::Yellow, 3.0 + addon)
-    } else {
-        (Zone::Red, 4.0)
+/// [`FxVarError::Invalid`] for invalid counts or `alpha`;
+/// [`FxVarError::Numerical`] if `pmf(0)` underflows.
+///
+/// # Examples
+///
+/// ```
+/// use fx_var_engine::backtest::{basel_traffic_light, BaselInput, Zone};
+/// let t = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
+/// assert_eq!(t.zone, Zone::Yellow);
+/// assert!((t.multiplier - 3.40).abs() < 1e-12);
+/// ```
+pub fn basel_traffic_light(input: &BaselInput) -> Result<TrafficLight> {
+    check_coverage_input(input)?;
+    let (z, plus, f) = basel_rule(input)?;
+    let zone = match z {
+        0 => Zone::Green,
+        1 => Zone::Yellow,
+        _ => Zone::Red,
     };
-    Ok(TrafficLight { zone, n_exceptions, n_obs, cumulative_prob, multiplier })
+    Ok(TrafficLight {
+        zone,
+        n_exceptions: input.n_exceptions,
+        n_obs: input.n_obs,
+        cumulative_prob: f,
+        plus_factor: plus,
+        multiplier: 3.0 + plus,
+    })
+}
+
+/// Old call `(n_exceptions, n_obs, confidence)`, kept for one release.
+/// `alpha = 1 - confidence`; forwards to [`basel_traffic_light`].
+#[deprecated(since = "0.2.0", note = "use basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha })")]
+pub fn basel_traffic_light_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> Result<TrafficLight> {
+    basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha: 1.0 - confidence })
 }
 
 /// Full VaR backtest summary over a forecast/realisation window.
@@ -179,7 +364,7 @@ pub struct BacktestResult {
     pub n_exceptions: i64,
     /// Realised exception rate (`n_exceptions / n_obs`).
     pub exception_rate: f64,
-    /// Expected exception rate under H0 (`1 - alpha`).
+    /// Expected exception rate under H0 (`alpha`).
     pub expected_rate: f64,
     /// Kupiec POF test.
     pub kupiec: LrTest,
@@ -234,17 +419,18 @@ pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> 
     let x: i64 = exceedances.iter().map(|&e| e as i64).sum();
     let n = pnl.len();
 
-    let kupiec = kupiec_pof(x, n as i64, alpha)?;
+    let input = KupiecInput { n_obs: n as i64, n_exceptions: x, alpha };
+    let kupiec = kupiec_pof(&input)?;
     let independence = christoffersen_independence(&exceedances)?;
     let lr_cc = kupiec.lr + independence.lr;
     let conditional = LrTest { lr: lr_cc, p: chi2_sf(lr_cc, 2.0)? };
-    let traffic_light = basel_traffic_light(x, n as i64, alpha)?;
+    let traffic_light = basel_traffic_light(&input)?;
 
     Ok(BacktestResult {
         n_obs: n,
         n_exceptions: x,
         exception_rate: x as f64 / n as f64,
-        expected_rate: 1.0 - alpha,
+        expected_rate: alpha,
         kupiec,
         independence,
         conditional,
@@ -261,13 +447,13 @@ mod tests {
     fn kupiec_zero_exceptions_at_nominal_rate() {
         // 2.5 exceptions expected in 250 at 99%; exactly 2 or 3 should not
         // strongly reject.
-        let r = kupiec_pof(3, 250, 0.99).unwrap();
+        let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 3, alpha: 0.01 }).unwrap();
         assert!(r.p > 0.05);
     }
 
     #[test]
     fn kupiec_excess_exceptions_reject() {
-        let r = kupiec_pof(30, 250, 0.99).unwrap();
+        let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 30, alpha: 0.01 }).unwrap();
         assert!(r.p < 0.01);
     }
 
@@ -284,12 +470,12 @@ mod tests {
 
     #[test]
     fn basel_zones_at_boundaries() {
-        let green = basel_traffic_light(4, 250, 0.99).unwrap();
+        let green = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 4, alpha: 0.01 }).unwrap();
         assert_eq!(green.zone, Zone::Green);
-        let yellow = basel_traffic_light(5, 250, 0.99).unwrap();
+        let yellow = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
         assert_eq!(yellow.zone, Zone::Yellow);
         assert!((yellow.multiplier - 3.40).abs() < 1e-12);
-        let red = basel_traffic_light(10, 250, 0.99).unwrap();
+        let red = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap();
         assert_eq!(red.zone, Zone::Red);
         assert!((red.multiplier - 4.0).abs() < 1e-12);
     }
@@ -302,7 +488,7 @@ mod tests {
         for (t, p) in pnl.iter_mut().enumerate() {
             *p = if t % 37 == 5 { -150.0 } else { -10.0 };
         }
-        let r = evaluate_var_backtest(&pnl, &var, 0.99).unwrap();
+        let r = evaluate_var_backtest(&pnl, &var, 0.01).unwrap();
         assert_eq!(r.n_obs, n);
         assert!(r.n_exceptions > 0);
         assert!(r.traffic_light.n_obs == n as i64);
@@ -310,11 +496,11 @@ mod tests {
 
     #[test]
     fn invalid_inputs_error() {
-        assert!(kupiec_pof(-1, 250, 0.99).is_err());
-        assert!(kupiec_pof(251, 250, 0.99).is_err());
+        assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: -1, alpha: 0.01 }).is_err());
+        assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
         assert!(christoffersen_independence(&[0]).is_err());
         assert!(christoffersen_independence(&[0, 2]).is_err());
-        assert!(evaluate_var_backtest(&[1.0], &[1.0, 2.0], 0.99).is_err());
-        assert!(evaluate_var_backtest(&[f64::NAN, 1.0], &[1.0, 1.0], 0.99).is_err());
+        assert!(evaluate_var_backtest(&[1.0], &[1.0, 2.0], 0.01).is_err());
+        assert!(evaluate_var_backtest(&[f64::NAN, 1.0], &[1.0, 1.0], 0.01).is_err());
     }
 }

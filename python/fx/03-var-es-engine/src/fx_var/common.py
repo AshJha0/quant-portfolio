@@ -74,16 +74,22 @@ def split_pair(pair: str) -> tuple[str, str]:
     return base, quote
 
 
+def _ccy(ccy) -> str:
+    if not isinstance(ccy, str) or len(ccy) != 3 or not ccy.isalpha():
+        raise ValueError(f"currency must be a 3-letter code like 'EUR', got {ccy!r}")
+    return ccy.upper()
+
+
 def fx_factor(ccy: str) -> str:
     """Factor name for the log return of CCYUSD (USD price of 1 CCY)."""
-    if ccy.upper() == "USD":
+    if _ccy(ccy) == "USD":
         raise ValueError("USD has no FX factor: its USD price is identically 1")
     return f"FX:{ccy.upper()}"
 
 
 def ir_factor(ccy: str) -> str:
     """Factor name for an absolute shock to CCY's cc zero rate (ACT/365)."""
-    return f"IR:{ccy.upper()}"
+    return f"IR:{_ccy(ccy)}"
 
 
 def vol_factor(pair: str) -> str:
@@ -92,18 +98,62 @@ def vol_factor(pair: str) -> str:
     return f"VOL:{base}{quote}"
 
 
+ALPHA_MESSAGE = "alpha is the tail probability (e.g. 0.01 for 99 %)"
+
+
 def validate_alpha(alpha: float) -> float:
-    """Validate a VaR/ES confidence level, returning it unchanged.
+    """Validate a tail probability ``alpha`` and return it as a float.
+
+    ``alpha`` is the probability mass of the loss tail: 0.01 means 99 %
+    VaR.  Values outside the open interval (0, 0.5) are rejected, so an old
+    confidence level such as 0.99 passed positionally fails loudly instead
+    of being reinterpreted.
 
     Raises
     ------
     ValueError
-        If ``alpha`` is not strictly inside (0, 1).
+        If ``alpha`` is not finite or not strictly inside (0, 0.5).
     """
-    alpha = float(alpha)
-    if not (0.0 < alpha < 1.0):
-        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
-    return alpha
+    try:
+        a = float(alpha)
+    except (TypeError, ValueError):
+        raise ValueError(f"{ALPHA_MESSAGE}; got {alpha!r}") from None
+    if not np.isfinite(a) or not (0.0 < a < 0.5):
+        raise ValueError(f"{ALPHA_MESSAGE}; got {alpha!r}")
+    return a
+
+
+def resolve_alpha(alpha: float | None, confidence: float | None,
+                  default: float = 0.01, stacklevel: int = 3) -> float:
+    """Resolve the ``alpha`` / deprecated ``confidence`` keyword pair.
+
+    ``confidence=`` is the pre-1.1 keyword (0.99 = 99 %).  It still works
+    for one release with a :class:`DeprecationWarning` and maps to
+    ``alpha = 1 - confidence``.
+    """
+    import warnings as _w
+
+    if confidence is not None:
+        if alpha is not None:
+            raise ValueError("pass alpha (tail probability) or the deprecated "
+                             "confidence, not both")
+        _w.warn(
+            "confidence= is deprecated; pass alpha= as the tail probability "
+            "(alpha = 1 - confidence, e.g. 0.01 for 99 %)",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        validate_finite(confidence=confidence)
+        alpha = 1.0 - float(confidence)
+    elif alpha is None:
+        alpha = default
+    return validate_alpha(alpha)
+
+
+def require_positions(book) -> None:
+    """Refuse an empty book: a VaR of zero for no positions hides a bug."""
+    if len(getattr(book, "positions", ())) == 0:
+        raise ValueError("book has no positions")
 
 
 def validate_horizon(horizon_days: float) -> float:

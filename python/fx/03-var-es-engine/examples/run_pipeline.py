@@ -72,7 +72,7 @@ cov = fv.sample_cov(hist)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", fv.PegBlindnessWarning)
     rows = []
-    for alpha in (0.95, 0.99):
+    for alpha in (0.05, 0.01):  # tail probability: 95 % and 99 % VaR
         for h in (1, 10):
             r_hs = fv.historical_var(book, market, hist, alpha, h, warn_pegs=False)
             r_age = fv.historical_var(book, market, hist, alpha, h, method="age",
@@ -96,11 +96,11 @@ with warnings.catch_warnings():
 # check the engine flags the pegged HKD position
 with warnings.catch_warnings(record=True) as wlist:
     warnings.simplefilter("always")
-    flagged = fv.historical_var(book, market, hist, 0.99).flagged_peg_factors
+    flagged = fv.historical_var(book, market, hist, 0.01).flagged_peg_factors
 print(f"\n   PegBlindnessWarning emitted for: {list(flagged)}"
       f"  ->  peg-break stress add-on required (section 5)")
 
-mc99 = fv.monte_carlo_var(book, market, cov, 0.99, n_scenarios=100_000, seed=1)
+mc99 = fv.monte_carlo_var(book, market, cov, 0.01, n_scenarios=100_000, seed=1)
 print(f"   MC 99%/1d VaR standard error: {money(mc99.se_var)}  "
       f"({mc99.se_var / mc99.var:.2%} of VaR)")
 
@@ -110,11 +110,11 @@ em_book = demo_em_book()
 em_cov = simulate_fx_returns(["MXN", "BRL", "TRY", "ZAR"], 1500, seed=21).cov()
 jumps = fv.JumpSpec(prob=0.02, mean={"FX:TRY": -0.15, "FX:BRL": -0.08},
                     std={"FX:TRY": 0.05, "FX:BRL": 0.03})
-mc_n = fv.monte_carlo_var(em_book, market, em_cov, 0.99, n_scenarios=100_000,
+mc_n = fv.monte_carlo_var(em_book, market, em_cov, 0.01, n_scenarios=100_000,
                           dist="normal", seed=7)
-mc_t = fv.monte_carlo_var(em_book, market, em_cov, 0.99, n_scenarios=100_000,
+mc_t = fv.monte_carlo_var(em_book, market, em_cov, 0.01, n_scenarios=100_000,
                           dist="t", df=5, seed=7)
-mc_j = fv.monte_carlo_var(em_book, market, em_cov, 0.99, n_scenarios=100_000,
+mc_j = fv.monte_carlo_var(em_book, market, em_cov, 0.01, n_scenarios=100_000,
                           dist="jump", jumps=jumps, seed=7)
 print(f"   normal MC        VaR {money(mc_n.var)}   ES {money(mc_n.es)}")
 print(f"   Student-t(5) MC  VaR {money(mc_t.var)}   ES {money(mc_t.es)}"
@@ -131,15 +131,15 @@ bt_hist = simulate_history(bt_book, market, 750, seed=29, garch=True,
 
 
 def fn_param(bk, mkt, window):
-    return fv.parametric_var(bk, mkt, window, 0.99, min_obs=50, warn_pegs=False).var
+    return fv.parametric_var(bk, mkt, window, 0.01, min_obs=50, warn_pegs=False).var
 
 
 def fn_hs(bk, mkt, window):
-    return fv.historical_var(bk, mkt, window, 0.99, min_obs=50, warn_pegs=False).var
+    return fv.historical_var(bk, mkt, window, 0.01, min_obs=50, warn_pegs=False).var
 
 
 def fn_fhs(bk, mkt, window):
-    return fv.historical_var(bk, mkt, window, 0.99, method="fhs", min_obs=50,
+    return fv.historical_var(bk, mkt, window, 0.01, method="fhs", min_obs=50,
                              warn_pegs=False).var
 
 
@@ -147,8 +147,9 @@ print("   method            exc/500  Kupiec p  Indep p   CC p     zone (multipli
 results = {}
 for name, fn in (("parametric-N", fn_param), ("plain HS", fn_hs), ("FHS", fn_fhs)):
     bt = fv.rolling_backtest(bt_book, market, bt_hist, fn, window=250)
-    res = fv.evaluate_var_backtest(bt["pnl"], bt["var"], 0.99)
-    tl250 = fv.basel_traffic_light(int(res.exceedances[-250:].sum()), 250)
+    res = fv.evaluate_var_backtest(bt["pnl"], bt["var"], 0.01)
+    tl250 = fv.basel_traffic_light(n_obs=250, n_exceptions=int(res.exceedances[-250:].sum()),
+                                   alpha=0.01)
     results[name] = (bt, res, tl250)
     print(f"   {name:16s}  {res.n_exceptions:>4d}     {res.kupiec_p:7.4f}  "
           f"{res.independence_p:7.4f}  {res.cc_p:7.4f}  {tl250.zone} ({tl250.multiplier:.2f})")
@@ -157,9 +158,10 @@ print("      vol-clustered data; FHS passes.  (GARCH + regime-switch sim)")
 
 # ES backtest on the FHS run
 bt_f, _, _ = results["FHS"]
-es_fc = bt_f["var"] * (fv.normal_es(1.0, 0.99) / fv.normal_var(1.0, 0.99))
-z, p = fv.es_backtest_acerbi_szekely(bt_f["pnl"], bt_f["var"], es_fc, 0.99, seed=0)
-print(f"   Acerbi-Szekely ES backtest (FHS, 99%): Z = {z:+.3f}, p = {p:.3f}")
+es_fc = bt_f["var"] * (fv.normal_es(1.0, 0.01) / fv.normal_var(1.0, 0.01))
+as_res = fv.acerbi_szekely_z2(bt_f["pnl"], bt_f["var"], es_fc, alpha=0.01, seed=0)
+print(f"   Acerbi-Szekely Z2 (FHS, 99%, negative = ES understated): "
+      f"Z2 = {as_res['z2']:+.3f}, p = {as_res['p_value']:.3f}")
 
 # ------------------------------------------------------- 5. stress tests
 hdr("5. STRESS TESTS (full revaluation, USD P&L)")
@@ -171,7 +173,7 @@ scens["hkd_peg_break"] = fv.peg_break_scenario("HKD", jump=-0.30, vol_spike=0.10
                                                vol_pairs=["USDHKD"])
 stress = fv.run_stress(book, market, scens)
 print(stress[["pnl"]].to_string(float_format=lambda v: f"{v:,.0f}"))
-hs99 = fv.historical_var(book, market, hist, 0.99, warn_pegs=False)
+hs99 = fv.historical_var(book, market, hist, 0.01, warn_pegs=False)
 peg_loss = -stress.loc["hkd_peg_break", "pnl"]
 print(f"\n   HS 99% VaR:            {money(hs99.var)}")
 print(f"   HKD peg-break loss:    {money(peg_loss)}  "

@@ -78,18 +78,28 @@ def count_var_exceptions(
     returns = pd.Series(returns)
     if len(returns) == 0:
         raise ValueError("count_var_exceptions: returns is empty")
+    if not np.isfinite(returns.to_numpy(dtype=float)).all():
+        raise ValueError(
+            "count_var_exceptions: returns contains a non-finite value; a NaN "
+            "day can be neither an exception nor a non-exception"
+        )
     if isinstance(var, pd.Series):
         if not returns.index.equals(var.index):
             raise ValueError(
                 "count_var_exceptions: a Series `var` must share the index of "
                 f"`returns` (got {len(var)} VaR values for {len(returns)} returns)"
             )
-        var_values = var
+        var_values = var.astype(float)
+        if not np.isfinite(var_values.to_numpy()).all():
+            raise ValueError(
+                "count_var_exceptions: var contains a non-finite value; drop "
+                "those days from both series before testing"
+            )
     else:
         if not np.isfinite(var):
             raise ValueError(f"count_var_exceptions: var must be finite, got {var!r}")
         var_values = pd.Series(float(var), index=returns.index)
-    if (var_values.dropna() < 0).any():
+    if (var_values < 0).any():
         raise ValueError(
             "count_var_exceptions: VaR must be a POSITIVE loss fraction "
             "(this package's convention); a negative value means the sign "

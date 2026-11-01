@@ -5,8 +5,8 @@ numbers, so they hold for any correct implementation and would immediately
 catch a sign flip, a wrong tail convention, or a broken quantile scheme.
 The properties checked here are the ones a model-validation team asks for:
 
-* coherence — ES subadditivity, positive homogeneity, translation invariance;
-* ordering — ES >= VaR, VaR monotone in alpha, t-tail >= normal tail;
+* coherence: ES subadditivity, positive homogeneity, translation invariance;
+* ordering: ES >= VaR, VaR monotone in alpha, t-tail >= normal tail;
 * scale/shift equivariance of every VaR family;
 * backtest statistics: monotone in exception count, correct degenerate limits;
 * NaN/Inf rejection and crisis-regime (vol-clustering) behaviour.
@@ -97,7 +97,7 @@ class TestOrdering:
         """The other side of variance matching, and a real trap: because the
         two distributions have the *same* variance, the t's fat tail is paid
         for with a thinner shoulder. A t(5) charges LESS than the normal at
-        95 % — so switching to a t model to 'be conservative' can lower a
+        95 %, so switching to a t model to 'be conservative' can lower a
         95 % VaR. The crossover for df=5 sits near alpha = 0.028.
         """
         sigma = 1_000.0
@@ -140,7 +140,7 @@ class TestOrdering:
 class TestCoherence:
     @pytest.mark.parametrize("alpha", [0.01, 0.05])
     def test_es_subadditive_on_random_splits(self, alpha):
-        """ES(X+Y) <= ES(X) + ES(Y) — the property VaR lacks."""
+        """ES(X+Y) <= ES(X) + ES(Y), the property VaR lacks."""
         rng = np.random.default_rng(99)
         for _ in range(25):
             x = rng.standard_t(5, 1000)
@@ -284,11 +284,11 @@ class TestWeightingSchemes:
         """sigma[t] must not depend on x[t] (no look-ahead in the filter)."""
         rng = np.random.default_rng(34)
         x = rng.normal(0, 1.0, 300)
-        sig = ewma_volatility(x, init="first")
+        sig = ewma_volatility(x)
         y = x.copy()
         y[-1] = 500.0  # blow up only the last observation
-        sig_y = ewma_volatility(y, init="first")
-        np.testing.assert_allclose(sig[:-1], sig_y[:-1], rtol=1e-12)
+        sig_y = ewma_volatility(y)
+        np.testing.assert_array_equal(sig, sig_y)
         assert np.all(sig > 0)
 
 
@@ -298,25 +298,25 @@ class TestWeightingSchemes:
 class TestBacktestProperties:
     def test_kupiec_lr_is_zero_at_the_expected_rate_and_grows_away_from_it(self):
         n, alpha = 1000, 0.01
-        assert kupiec_pof(n, 10, alpha)["lr"] == pytest.approx(0.0, abs=1e-9)
-        lrs = [kupiec_pof(n, x, alpha)["lr"] for x in (10, 15, 20, 30, 50)]
+        assert kupiec_pof(n_obs=n, n_exceptions=10, alpha=alpha)["lr"] == pytest.approx(0.0, abs=1e-9)
+        lrs = [kupiec_pof(n_obs=n, n_exceptions=x, alpha=alpha)["lr"] for x in (10, 15, 20, 30, 50)]
         assert all(b > a for a, b in zip(lrs, lrs[1:]))
 
     def test_kupiec_pvalue_decreasing_in_exception_count_above_expectation(self):
         n, alpha = 250, 0.01
-        ps = [kupiec_pof(n, x, alpha)["pvalue"] for x in (3, 6, 10, 15)]
+        ps = [kupiec_pof(n_obs=n, n_exceptions=x, alpha=alpha)["pvalue"] for x in (3, 6, 10, 15)]
         assert all(b < a for a, b in zip(ps, ps[1:]))
 
     def test_kupiec_degenerate_counts_are_finite(self):
         for x in (0, 250):
-            out = kupiec_pof(250, x, 0.01)
+            out = kupiec_pof(n_obs=250, n_exceptions=x, alpha=0.01)
             assert np.isfinite(out["lr"]) and 0.0 <= out["pvalue"] <= 1.0
 
     def test_kupiec_rejects_invalid_counts(self):
         with pytest.raises(ValueError, match="n_exceptions"):
-            kupiec_pof(100, 101, 0.01)
+            kupiec_pof(n_obs=100, n_exceptions=101, alpha=0.01)
         with pytest.raises(ValueError, match="n_exceptions"):
-            kupiec_pof(100, -1, 0.01)
+            kupiec_pof(n_obs=100, n_exceptions=-1, alpha=0.01)
 
     def test_christoffersen_detects_clustering_and_passes_iid(self):
         rng = np.random.default_rng(55)
@@ -333,26 +333,32 @@ class TestBacktestProperties:
         assert 0.0 <= out["pvalue"] <= 1.0
 
     def test_basel_zone_boundaries_are_exactly_at_5_and_10(self):
-        assert basel_traffic_light(4)["zone"] == "green"
-        assert basel_traffic_light(5)["zone"] == "yellow"
-        assert basel_traffic_light(9)["zone"] == "yellow"
-        assert basel_traffic_light(10)["zone"] == "red"
-        mults = [basel_traffic_light(x)["multiplier"] for x in range(0, 12)]
+        assert basel_traffic_light(n_obs=250, n_exceptions=4)["zone"] == "green"
+        assert basel_traffic_light(n_obs=250, n_exceptions=5)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=9)["zone"] == "yellow"
+        assert basel_traffic_light(n_obs=250, n_exceptions=10)["zone"] == "red"
+        mults = [basel_traffic_light(n_obs=250, n_exceptions=x)["multiplier"] for x in range(0, 12)]
         assert all(b >= a for a, b in zip(mults, mults[1:]))  # never decreases
         assert mults[0] == 3.0 and mults[-1] == 4.0
 
     def test_acerbi_szekely_z2_flags_an_understated_es(self):
-        """Feed real tail losses far beyond the model's ES: Z2 must go
-        materially negative and trip the rejection flag."""
+        """The model forecasts N(0, 1) VaR/ES. The realised P&L is Student-t
+        with 3 df scaled so its 2.5 % quantile equals the normal one: the VaR
+        is right (2.5 % exceptions) but the losses beyond it are larger, so
+        the ES is understated. Z2 must be negative and the simulated p-value
+        must reject; the same forecasts on N(0, 1) P&L must not reject."""
+        from scipy.stats import norm as _norm
+        from scipy.stats import t as _t
+
         rng = np.random.default_rng(66)
-        p = rng.normal(0, 1.0, 2000)
-        var = np.full(2000, 2.0)
-        honest_es = np.full(2000, 2.4)
-        good = acerbi_szekely_z2(p, var, honest_es, alpha=0.025)
-        understated_es = np.full(2000, 2.01)
-        bad = acerbi_szekely_z2(p * 4.0, var, understated_es, alpha=0.025)
-        assert bad["z2"] < good["z2"]
-        assert bad["reject"] is True
+        alpha = 0.025
+        var = float(-_norm.ppf(alpha))
+        es = float(_norm.pdf(_norm.ppf(alpha)) / alpha)
+        fat = rng.standard_t(3, 10_000) * var / float(_t.ppf(1 - alpha, 3))
+        good = acerbi_szekely_z2(rng.normal(0, 1.0, 10_000), var, es, alpha=alpha, n_sims=1000)
+        bad = acerbi_szekely_z2(fat, var, es, alpha=alpha, n_sims=1000)
+        assert bad["z2"] < 0.0
+        assert bad["p_value"] < 0.05 < good["p_value"]
 
     def test_acerbi_szekely_rejects_es_below_var(self):
         p = np.random.default_rng(67).normal(size=100)
@@ -401,7 +407,7 @@ class TestNonFiniteRejection:
             overlapping_horizon_pnl(p, 10)
 
     def test_ewma_volatility_rejects_unknown_init(self):
-        with pytest.raises(ValueError, match="init must be"):
+        with pytest.deprecated_call(), pytest.raises(ValueError, match="init must be"):
             ewma_volatility(np.zeros(10), init="backcast")
 
 
@@ -435,7 +441,7 @@ class TestHorizonScaling:
         sqrt(10) lands above the directly estimated 10-day quantile, because
         the 10-day distribution has already lost much of its excess kurtosis.
         (The opposite sign applies to a *conditional* VaR measured in a calm
-        state — see docs/METHODOLOGY.md §6.)"""
+        state, see docs/METHODOLOGY.md §8.)"""
         cov = np.array([[(0.20 / np.sqrt(252)) ** 2]])
         r = syn.simulate_garch_returns(20_000, cov, seed=88)[:, 0]
         var_1d = historical_var(r, 0.01)
@@ -445,20 +451,23 @@ class TestHorizonScaling:
         assert scale_var_sqrt_time(var_1d, 10) < 1.5 * var_10d_direct
 
     def test_sqrt_time_understates_from_a_calm_conditional_state(self):
-        """The conditional case: after a quiet stretch, today's vol is below
-        the long-run level, so variance mean-reverts *upward* and the true
-        10-day risk exceeds sqrt(10) x the current 1-day VaR."""
+        """GARCH(1,1) started at a conditional variance a quarter of its
+        long-run level: the process itself mean-reverts upward, so the
+        simulated 10-day 99 % VaR exceeds sqrt(10) x the conditional 1-day VaR.
+        Nothing in the test sets the later vol by hand."""
+        from scipy.stats import norm as _norm
+
         rng = np.random.default_rng(881)
-        calm = rng.normal(0, 1.0, 500)
-        # 10-day P&L that begins calm but reverts to a higher long-run vol
-        blocks = [
-            np.concatenate([rng.normal(0, 1.0, 2), rng.normal(0, 2.5, 8)]).sum()
-            for _ in range(20_000)
-        ]
-        var_1d_calm = historical_var(calm, 0.01)
-        assert historical_var(np.array(blocks), 0.01) > scale_var_sqrt_time(
-            var_1d_calm, 10
-        )
+        a_g, b_g, n_paths = 0.09, 0.86, 40_000
+        omega = 1.0 - a_g - b_g  # unit long-run variance
+        h = np.full(n_paths, 0.25)
+        total = np.zeros(n_paths)
+        for _ in range(10):
+            r = np.sqrt(h) * rng.standard_normal(n_paths)
+            total += r
+            h = omega + a_g * r**2 + b_g * h
+        var_1d = float(-_norm.ppf(0.01)) * 0.5
+        assert historical_var(total, 0.01) > 1.1 * scale_var_sqrt_time(var_1d, 10)
 
     def test_sqrt_time_is_accurate_for_iid_normal_returns(self):
         """The same scaling is fine when its assumption actually holds."""
@@ -498,11 +507,15 @@ class TestEstimationError:
         assert widths[-1] > widths[0]
 
     def test_mc_var_converges_to_the_parametric_answer(self):
-        """MC with more paths must land closer to the closed form."""
+        """MC with more paths must land closer to the exact answer. Monte
+        Carlo moves are log returns (spec S10), so the exact 99 % VaR of a
+        long stock is -V * expm1(sigma * z_0.01)."""
+        from scipy.stats import norm as _norm
+
         factors = {"A": RiskFactor("A", "equity", 100.0)}
         pf = Portfolio([EquityPosition(name="a", factor="A", shares=1000.0)], factors)
         cov = np.array([[4e-4]])
-        closed = parametric_var(pf.delta_exposures(), cov, 0.01)
+        closed = -1e5 * float(np.expm1(0.02 * _norm.ppf(0.01)))
         errs = [
             abs(monte_carlo_var(pf, cov, 0.01, n_paths=n, seed=5) - closed)
             for n in (2_000, 40_000, 800_000)

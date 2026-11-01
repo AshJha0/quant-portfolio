@@ -1,32 +1,35 @@
-# Equity Market Risk — VaR & Expected Shortfall Engine
+# Equity Market Risk: VaR and Expected Shortfall Engine
 
-Historical, parametric and Monte Carlo VaR + Expected Shortfall for an
-equity book (cash equities, index futures, options with delta-gamma-vega
-*and* full revaluation), with the complete model-validation stack a real
-risk desk runs on top: Kupiec / Christoffersen backtests, the Basel traffic
-light, Acerbi-Székely ES backtesting, historical & hypothetical stress
-scenarios, and closed-form + numerical reverse stress testing.
+Historical, parametric and Monte Carlo VaR and Expected Shortfall for an
+equity book (cash equities, index futures, options with delta-gamma-vega and
+full revaluation). Kupiec and Christoffersen backtests, the Basel traffic
+light for any window, the Acerbi-Szekely ES backtest with a simulated
+p-value, historical and hypothetical stress scenarios, and reverse stress
+testing.
 
 ```
-Portfolio ─ factor mapping (prices, index, implied vol)
-   │
-   ├── Historical VaR ──── plain / age-weighted (BRW) / filtered (FHS)
-   ├── Parametric VaR ──── sample & EWMA Σ · normal / Student-t / Cornish-Fisher
-   ├── Monte Carlo VaR ─── normal & t factor sim · full reval · SE + CI
-   │
-   ├── Expected Shortfall ─ empirical (exact tail integral) / closed forms
-   ├── Backtesting ──────── Kupiec POF · Christoffersen IND/CC · AS Z₂
-   ├── Basel traffic light ─ 0-4 / 5-9 / 10+ → k = 3.0 … 4.0
-   └── Stress testing ───── 1987 / 2008 / 2020 replays · ladders · reverse stress
+Portfolio: factor mapping (prices, index, implied vol)
+   |
+   +-- Historical VaR      plain / age-weighted (BRW) / per-factor FHS
+   +-- Parametric VaR      sample and EWMA covariance, normal / t / Cornish-Fisher
+   +-- Monte Carlo VaR     normal and t factor simulation, full revaluation, SE and CI
+   +-- Expected Shortfall  empirical (S2) / closed forms
+   +-- Backtesting         Kupiec, Christoffersen, Acerbi-Szekely Z2
+   +-- Basel traffic light any window and alpha
+   +-- Stress testing      1987 / 2008 / 2020 replays, ladders, reverse stress
 ```
+
+`alpha` is the tail probability everywhere (0.01 is 99 % VaR). VaR is the
+order statistic `L(ceil(n alpha))` of the losses, with no interpolation. The
+full list of conventions is in [METHODOLOGY.md](docs/METHODOLOGY.md) §2.
 
 ## Quickstart
 
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest tests -q        # 442 tests, ~10 s, offline
-python examples/run_pipeline.py  # full demo, ~95 s
+python -m pytest -p no:cacheprovider -q   # 578 tests, offline
+python examples/run_pipeline.py           # full demo
 ```
 
 ```python
@@ -34,53 +37,70 @@ import eq_var as ev
 from eq_var.data import demo_portfolio, demo_covariance, simulate_returns
 
 pf, cov = demo_portfolio(), demo_covariance()
-pnl = pf.pnl(simulate_returns(1000, cov, dist="t", seed=1))   # scenario P&L
-
-ev.filtered_historical_var(pnl, alpha=0.01)                   # FHS 99% VaR
-ev.parametric_var(pf.delta_exposures(), cov, 0.01, dist="t")  # var-covar
-ev.monte_carlo_var(pf, cov, 0.01, n_paths=100_000, seed=7)    # MC full reval
-ev.expected_shortfall(pnl, 0.025)                             # ES 97.5%
-ev.kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)          # backtest
-ev.basel_traffic_light(5)                                     # zone + multiplier
+rets = simulate_returns(1000, cov, dist="t", seed=1)              # factor history
+ev.factor_filtered_historical_var(pf, rets, alpha=0.01)           # per-factor FHS 99 % VaR
+ev.parametric_var(pf.delta_exposures(), cov, 0.01, dist="t")     # var-covar
+ev.monte_carlo_risk(pf, cov, 0.01, n_paths=100_000, seed=7)       # MC VaR, ES, SE
+ev.expected_shortfall(pf.pnl(rets), 0.025)                        # ES 97.5 %
+ev.kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)              # backtest
+ev.basel_traffic_light(n_obs=250, n_exceptions=5, alpha=0.01)     # zone and multiplier
 ```
 
-## Results highlights (demo book: $1.76m equities + futures hedge + SPX puts)
+## Results on the synthetic demo book
 
-- **Method disagreement is the point**: 99 % 1d VaR spans $39.0k (FHS,
-  quiet current regime) → $46.9k (parametric normal) → $51.7k
-  (parametric-t) → $54.3k (historical on fat-tailed data). Normal-family
-  methods sit ~10 % low at 99 % — the missing kurtosis, visible.
-- **The headline backtest** (500 days, GARCH-t data): unconditional-normal
-  parametric VaR takes **14 exceptions vs 5 expected** (Kupiec p = 0.001,
-  Basel **red** on the stress subwindow, k = 4.0) while **FHS passes green**
-  (6 exceptions, p = 0.66, k = 3.0). Plain HS fails the Christoffersen
-  clustering test (p = 0.02) where FHS passes (p = 0.48).
-- **VaR is not a worst case**: 2020-replay stress loss $254k ≈ 4.7× the
-  99 % VaR; delta-gamma misprices that scenario by $93k (37 %) — full
-  revaluation matters for gap moves.
-- **Reverse stress** names the worst joint 3σ direction (AAPL −4.7 %,
-  JPM −3.6 %, SPX −1.9 %, IV +2.1pts → −$60k), closed form matching the
-  numerical optimiser to 1e-6.
-- Analytic identities to 1e-10 (normal ES φ(z)/α, Kupiec LR, reverse-stress
-  loss = r·σ_p); MC converges to closed form within 3 SE; the classic VaR
-  non-subadditivity counterexample is constructed and ES shown coherent on
-  it.
+Produced by `python examples/run_pipeline.py` (seeded, synthetic t(6) and
+GARCH-t factor data; $1.76m equities, an index future hedge and SPX puts).
+
+| method | 99 % 1-day VaR | 99 % 1-day ES |
+|---|---|---|
+| historical | $54,681 | $67,530 |
+| age-weighted (lam 0.98) | $49,402 | |
+| FHS per factor (lam 0.94) | $41,337 | |
+| parametric normal | $46,864 | $53,690 |
+| parametric t(6) | $51,691 | $66,327 |
+| MC normal (100k paths) | $45,238 | $51,535 |
+| MC t(6) (100k paths) | $49,853 | $63,097 |
+
+| 500-day backtest, 99 % | exceptions (expected 5) | Kupiec p | zone |
+|---|---|---|---|
+| parametric normal | 14 | 0.0009 | yellow |
+| plain historical | 10 | 0.048 | yellow |
+| FHS per factor | 4 | 0.64 | green |
+
+The 2020 replay loses $254k, 4.6 times the historical 99 % VaR, and
+delta-gamma misprices it by $93k. Full revaluation of 100,000 Monte Carlo
+paths on the demo book takes 0.03 s (`monte_carlo_pnl(..., method="full")`).
+
+## Test suite
+
+| Command | Result | Wall time |
+|---|---|---|
+| `python -m pytest -p no:cacheprovider -q` | 578 passed | 28 s alone, 72 s with other jobs on the machine |
+
+`tests/test_fuzz_public_api.py` sends NaN, infinities, empty arrays and
+out-of-domain values to every name in `eq_var.__all__`. Golden vectors for
+the C++ and Rust linear-book ports are in `tests/golden/`.
 
 ## Layout
 
 ```
 src/eq_var/
-├── portfolio.py           # RiskFactor / Position / Portfolio, full & delta-gamma reval
-├── historical_var.py      # plain, BRW age-weighted, FHS; sqrt-time & overlapping 10d
-├── parametric_var.py      # sample/EWMA Σ, normal/t/Cornish-Fisher (+ domain check)
-├── monte_carlo_var.py     # normal/t sim, Cholesky+jitter, VaR SE & order-stat CI
-├── expected_shortfall.py  # empirical (exact), normal/t closed forms, bootstrap SE
-├── backtesting.py         # Kupiec, Christoffersen, Basel zones, AS Z₂, rolling driver
-├── stress_testing.py      # 1987/2008/2020 replays, ladders, reverse stress
-└── data/                  # synthetic.py (seeded normal/t/GARCH, demo book), live.py (guarded)
+  portfolio.py           RiskFactor, positions, Portfolio, vectorised full and delta-gamma revaluation
+  historical_var.py      plain, BRW, per-factor FHS, EWMA (S8), sqrt-time and overlapping 10-day
+  parametric_var.py      sample and EWMA covariance, normal / t / Cornish-Fisher with validity check
+  monte_carlo_var.py     cholesky with capped jitter and Higham / clip repair, simulation, SE, CI
+  expected_shortfall.py  empirical (S2), normal and t closed forms, bootstrap SE
+  backtesting.py         Kupiec, Christoffersen, Basel, Acerbi-Szekely, rolling driver
+  stress_testing.py      replays, ladders, reverse stress
+  _tail.py               the shared S2 quantile and ES estimator
+  _validation.py         shared input checks
+  data/                  seeded synthetic generators and the demo book; live.py (guarded)
 ```
 
-Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (model choice + assumptions
-register), [VALIDATION.md](docs/VALIDATION.md) (evidence + failure modes),
-[DESK_GUIDE.md](docs/DESK_GUIDE.md) (daily workflow, capital link, stress
-committee).
+The C++ and Rust equity engines are linear-book ports: they share the
+conventions and golden vectors but revalue linear exposures only.
+
+Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
+assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
+modes), [DESK_GUIDE.md](docs/DESK_GUIDE.md) (workflow, capital link, stress
+review).

@@ -58,7 +58,11 @@ Market::Market(std::map<std::string, double> spot_usd,
       throw std::invalid_argument("spot_usd['USD'] must be 1.0 (USD per USD)");
   }
   spot_usd_["USD"] = 1.0;
-  for (auto& [c, r] : rates) rates_[upper(c)] = r;
+  for (auto& [c, r] : rates) {
+    if (!std::isfinite(r))
+      throw std::invalid_argument("rate for " + c + " must be finite");
+    rates_[upper(c)] = r;
+  }
 }
 
 double Market::spot(const std::string& ccy) const {
@@ -83,6 +87,8 @@ double Market::cross(const std::string& pair) const {
 }
 
 double Market::forward(const std::string& pair, double expiry) const {
+  if (!(expiry >= 0.0) || !std::isfinite(expiry))
+    throw std::invalid_argument("forward expiry must be finite and >= 0");
   const PairLegs legs = split_pair(pair);
   return cross(pair) * std::exp((rate(legs.quote) - rate(legs.base)) * expiry);
 }
@@ -95,14 +101,21 @@ void validate_position(const Position& p) {
     if (cash->ccy.size() != 3)
       throw std::invalid_argument("cash ccy must be a 3-letter code, got '" +
                                   cash->ccy + "'");
+    if (!std::isfinite(cash->amount))
+      throw std::invalid_argument("cash amount must be finite");
   } else if (const auto* spot = std::get_if<SpotPosition>(&p)) {
     split_pair(spot->pair);
-    if (spot->entry_rate && *spot->entry_rate <= 0.0)
+    if (!std::isfinite(spot->notional))
+      throw std::invalid_argument("spot notional must be finite");
+    if (spot->entry_rate && !(*spot->entry_rate > 0.0 && std::isfinite(*spot->entry_rate)))
       throw std::invalid_argument("entry_rate must be > 0");
   } else if (const auto* fwd = std::get_if<ForwardPosition>(&p)) {
     split_pair(fwd->pair);
-    if (fwd->expiry < 0.0) throw std::invalid_argument("expiry must be >= 0");
-    if (fwd->strike && *fwd->strike <= 0.0)
+    if (!std::isfinite(fwd->notional))
+      throw std::invalid_argument("forward notional must be finite");
+    if (!(fwd->expiry >= 0.0) || !std::isfinite(fwd->expiry))
+      throw std::invalid_argument("expiry must be finite and >= 0");
+    if (fwd->strike && !(*fwd->strike > 0.0 && std::isfinite(*fwd->strike)))
       throw std::invalid_argument("strike must be > 0");
   }
 }
@@ -158,7 +171,7 @@ std::vector<std::string> Book::factors() const {
 CompiledBook::CompiledBook(const Book& book, const Market& market) {
   if (book.empty())
     throw std::invalid_argument(
-        "cannot compile an empty book: add positions before running VaR");
+        "book has no positions: add positions before running VaR");
   factors_ = book.factors();
   base_ = book.base();
   s0_base_ = market.spot(base_);
@@ -220,6 +233,9 @@ double CompiledBook::value_usd(const double* shocks) const {
 }
 
 double CompiledBook::pnl(const double* shocks) const {
+  for (std::size_t j = 0; j < factors_.size(); ++j)
+    if (!std::isfinite(shocks[j]))
+      throw std::invalid_argument("shock for " + factors_[j] + " is not finite");
   const double v1 = value_usd(shocks);
   const double s1_base =
       (base_fx_idx_ >= 0) ? s0_base_ * std::exp(shocks[base_fx_idx_]) : s0_base_;
@@ -254,6 +270,9 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
     for (const auto& f : missing) msg << " " << f;
     throw std::invalid_argument(msg.str());
   }
+  for (double v : scenarios.data.data())
+    if (!std::isfinite(v))
+      throw std::invalid_argument("scenario matrix contains NaN or inf");
   for (std::size_t i = 0; i < value0_.size(); ++i) {
     if (fx_idx_[i] >= 0) fx_col[i] = factor_col[fx_idx_[i]];
     if (ir_idx_[i] >= 0) ir_col[i] = factor_col[ir_idx_[i]];
@@ -281,7 +300,8 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
 }
 
 std::vector<double> CompiledBook::linear_exposures(double bump) const {
-  if (!(bump > 0.0)) throw std::invalid_argument("bump must be > 0");
+  if (!(bump > 0.0) || !std::isfinite(bump))
+    throw std::invalid_argument("bump must be finite and > 0");
   std::vector<double> w(factors_.size(), 0.0);
   std::vector<double> shocks(factors_.size(), 0.0);
   for (std::size_t j = 0; j < factors_.size(); ++j) {
