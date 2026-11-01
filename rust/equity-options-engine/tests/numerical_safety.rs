@@ -82,3 +82,17 @@ fn iv_uses_at_most_ten_evaluations() {
         }
     }
 }
+
+#[test]
+fn root_at_the_inflection_point_converges_fast() {
+    // Total vol equal to s_c = sqrt(2|x|) sits on the branch boundary;
+    // bisecting towards s_c took 12 evaluations, probing it takes 2.
+    let (df, t) = (0.97_f64, 10.0);
+    let k = (-0.05_f64).exp();
+    let r = -df.ln() / t;
+    let price = bs_price(df, k, t, r, 0.1, 0.0, OptionType::Put).unwrap();
+    let mut evals = 0;
+    let iv = black_implied_vol(price, 1.0, k, t, df, false, &mut evals).unwrap();
+    assert!(evals <= 4, "{evals}");
+    assert!((iv - 0.1).abs() <= 1e-13, "{iv}");
+}

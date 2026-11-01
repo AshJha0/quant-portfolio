@@ -125,3 +125,18 @@ def test_no_premature_exit_on_tiny_otm_price() -> None:
     S, K, T, rd, rf, sigma = 100.0, 90.0, 0.02, 0.03, 0.0, 0.10
     put = gk_price(S, K, T, rd, rf, sigma * 1.4, "put")
     assert abs(implied_vol(put, S, K, T, rd, rf, "put") - sigma * 1.4) <= 1e-13
+
+
+def test_root_at_the_inflection_point_converges_fast() -> None:
+    """Total vol equal to s_c = sqrt(2|x|) sits on the lower/upper branch
+    boundary. Bisecting towards s_c took 12 evaluations; probing s_c takes 2.
+    """
+    df, t, sigma = 0.97, 10.0, 0.1
+    k = math.exp(-0.05)
+    r = -math.log(df) / t
+    from fx_options import gk_price as price_fn
+    price = price_fn(df, k, t, r, 0.0, sigma, "put")
+    counter = [0]
+    got = black_implied_vol(price, 1.0, k, t, df, False, counter)
+    assert counter[0] <= 4
+    assert abs(got - sigma) <= 1e-13

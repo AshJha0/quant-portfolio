@@ -101,3 +101,18 @@ def test_old_tuning_keywords_warn() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         implied_vol(price, 100.0, 100.0, 1.0, 0.02, 0.0, "call")
+
+
+def test_root_at_the_inflection_point_converges_fast() -> None:
+    """Total vol equal to s_c = sqrt(2|x|) sits on the lower/upper branch
+    boundary. Bisecting towards s_c took 12 evaluations; probing s_c takes 2.
+    """
+    df, t, sigma = 0.97, 10.0, 0.1
+    k = math.exp(-0.05)
+    r = -math.log(df) / t
+    from eq_options import bs_price as price_fn
+    price = price_fn(df, k, t, r, sigma, 0.0, "put")
+    counter = [0]
+    got = black_implied_vol(price, 1.0, k, t, df, False, counter)
+    assert counter[0] <= 4
+    assert abs(got - sigma) <= 1e-13

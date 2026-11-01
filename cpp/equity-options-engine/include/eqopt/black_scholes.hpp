@@ -121,6 +121,10 @@ std::pair<double, double> d1_d2(double S, double K, double T, double r,
 double bs_price(double S, double K, double T, double r, double sigma,
                 double q = 0.0, OptionType type = OptionType::Call);
 
+/// rief Return `value`, or throw std::invalid_argument naming `what` if it
+/// is not finite (a discount factor or forward overflowed for finite inputs).
+double require_finite_result(double value, const char* what);
+
 }  // namespace eqopt
 
 #endif  // EQOPT_BLACK_SCHOLES_HPP

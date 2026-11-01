@@ -3,6 +3,7 @@
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 namespace eqopt {
 
@@ -56,26 +57,34 @@ double bs_price(double S, double K, double T, double r, double sigma,
     if (T == 0.0) {
         return intrinsic_value(S, K, type);
     }
-    if (K == 0.0) {
-        // Zero-strike call is a (dividend-adjusted) forward on the stock.
-        return type == OptionType::Call ? S * std::exp(-q * T) : 0.0;
-    }
-    if (S == 0.0) {
-        return type == OptionType::Call ? 0.0 : K * std::exp(-r * T);
-    }
-    if (sigma == 0.0) {
-        const double forward = forward_price(S, T, r, q);
-        const double sign = type == OptionType::Call ? 1.0 : -1.0;
-        return std::exp(-r * T) * std::fmax(sign * (forward - K), 0.0);
-    }
-
-    const auto [d1, d2] = d1_d2(S, K, T, r, sigma, q);
     const double disc_s = S * std::exp(-q * T);
     const double disc_k = K * std::exp(-r * T);
-    if (type == OptionType::Call) {
-        return disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2);
+    double value;
+    if (K == 0.0) {
+        // Zero-strike call is a (dividend-adjusted) forward on the stock.
+        value = type == OptionType::Call ? disc_s : 0.0;
+    } else if (S == 0.0) {
+        value = type == OptionType::Call ? 0.0 : disc_k;
+    } else if (sigma == 0.0) {
+        // e^{-rT} max(+-(F - K), 0) as S e^{-qT} - K e^{-rT}: the forward
+        // itself overflows when (r - q) T > 709.
+        const double sign = type == OptionType::Call ? 1.0 : -1.0;
+        value = std::fmax(sign * (disc_s - disc_k), 0.0);
+    } else {
+        const auto [d1, d2] = d1_d2(S, K, T, r, sigma, q);
+        value = type == OptionType::Call ? disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2)
+                                         : disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1);
     }
-    return disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1);
+    return require_finite_result(value, "bs_price");
+}
+
+double require_finite_result(double value, const char* what) {
+    if (!std::isfinite(value)) {
+        throw std::invalid_argument(
+            std::string(what) +
+            ": result is not representable as a finite double (a discount factor or forward overflows)");
+    }
+    return value;
 }
 
 }  // namespace eqopt

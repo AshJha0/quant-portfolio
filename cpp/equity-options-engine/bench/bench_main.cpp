@@ -1,6 +1,6 @@
 // Micro-benchmark for the eqopt engine: prices/sec for analytic
 // Black-Scholes, one 1000-step CRR tree (European + American), and a
-// 1M-path Monte Carlo (single-threaded and 4-thread).
+// 1M-path Monte Carlo (single-threaded and 4-thread), and implied vol.
 //
 // Methodology: simple std::chrono steady_clock timing around hot loops; a
 // volatile accumulator prevents the optimiser from deleting the work.
@@ -14,6 +14,7 @@
 #include "eqopt/binomial.hpp"
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/greeks.hpp"
+#include "eqopt/implied_vol.hpp"
 #include "eqopt/monte_carlo.hpp"
 
 namespace {
@@ -100,13 +101,39 @@ void bench_monte_carlo() {
     }
 }
 
+void bench_implied_vol() {
+    using namespace eqopt;
+    // 8 quotes (ATM, OTM, ITM, 1 week to 1 year), 100,000 solves.
+    struct Quote { double price, S, K, T; OptionType type; };
+    const double cases[4][4] = {
+        {100, 100, 1, 0.2}, {100, 120, 0.5, 0.25}, {100, 80, 0.25, 0.3}, {100, 90, 0.02, 0.1}};
+    std::vector<Quote> quotes;
+    for (const auto& c : cases) {
+        for (OptionType t : {OptionType::Call, OptionType::Put}) {
+            quotes.push_back({bs_price(c[0], c[1], c[2], 0.03, c[3], 0.0, t), c[0], c[1], c[2], t});
+        }
+    }
+    constexpr int n = 100'000;
+    double acc = 0.0;
+    const auto t0 = Clock::now();
+    for (int i = 0; i < n; ++i) {
+        const Quote& q = quotes[static_cast<std::size_t>(i) % quotes.size()];
+        acc += implied_vol(q.price, q.S, q.K, q.T, 0.03, 0.0, q.type);
+    }
+    const double dt = seconds_since(t0);
+    g_sink = acc;
+    std::printf("Implied vol        : %d solves in %7.1f ms  ->  %8.0f ns/solve\n", n, dt * 1e3,
+                dt * 1e9 / n);
+}
+
 }  // namespace
 
 int main() {
-    std::printf("eqopt micro-benchmark (g++ -O2, single run)\n");
+    std::printf("eqopt micro-benchmark (single run, build type as configured)\n");
     std::printf("-------------------------------------------\n");
     bench_black_scholes();
     bench_binomial();
     bench_monte_carlo();
+    bench_implied_vol();
     return 0;
 }

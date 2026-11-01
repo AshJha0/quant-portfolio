@@ -123,6 +123,9 @@ def total_vol(beta, u, x, counter=None):
         s = max(-2.0 * acklam_guess(p), s_c)
         if not s > 0.0:
             s = SQRT_2PI * beta
+    # The bracket ends start as the a-priori bounds (0 or s_c, s_c or inf);
+    # an end is "probed" once the objective has been evaluated there.
+    lo_probed = hi_probed = False
     for _ in range(MAX_ITER):
         if counter is not None:
             counter[0] += 1
@@ -155,8 +158,10 @@ def total_vol(beta, u, x, counter=None):
             fpp = Gp * r2 + Gp * Gp
         if f > 0.0:
             hi = min(hi, s)
+            hi_probed = hi == s
         elif f < 0.0:
             lo = max(lo, s)
+            lo_probed = lo == s
         else:
             return s
         newton = f / fp
@@ -168,6 +173,12 @@ def total_vol(beta, u, x, counter=None):
             s_new = s - newton
             if lo < s_new < hi:
                 tol = 1e-10                        # Newton: next error ~ step^2
+            elif s_new >= hi and math.isfinite(hi) and not hi_probed:
+                s_new = hi                         # root lies next to s_c: probe it
+                tol = 0.0
+            elif s_new <= lo and lo > 0.0 and not lo_probed:
+                s_new = lo
+                tol = 0.0
             else:
                 s_new = 0.5 * (lo + hi) if math.isfinite(hi) else 2.0 * s
                 tol = 0.0

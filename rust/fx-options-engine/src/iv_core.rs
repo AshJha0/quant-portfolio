@@ -173,6 +173,10 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
             s = SQRT_2PI * beta;
         }
     }
+    // The bracket ends start as the a-priori bounds (0 or s_c, s_c or inf);
+    // an end is "probed" once the objective has been evaluated there.
+    let mut lo_probed = false;
+    let mut hi_probed = false;
     for _ in 0..MAX_ITER {
         *evals += 1;
         let d1 = x / s + 0.5 * s;
@@ -208,8 +212,10 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
         }
         if f > 0.0 {
             hi = hi.min(s);
+            hi_probed = hi == s;
         } else if f < 0.0 {
             lo = lo.max(s);
+            lo_probed = lo == s;
         } else {
             return Ok(s);
         }
@@ -223,6 +229,12 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
             s_new = s - newton;
             if lo < s_new && s_new < hi {
                 tol = 1e-10; // Newton: next error ~ step^2
+            } else if s_new >= hi && hi.is_finite() && !hi_probed {
+                s_new = hi; // root lies next to s_c: probe it
+                tol = 0.0;
+            } else if s_new <= lo && lo > 0.0 && !lo_probed {
+                s_new = lo;
+                tol = 0.0;
             } else {
                 s_new = if hi.is_finite() { 0.5 * (lo + hi) } else { 2.0 * s };
                 tol = 0.0;
