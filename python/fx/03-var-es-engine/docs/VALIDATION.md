@@ -1,9 +1,11 @@
-# Validation — FX VaR & Expected Shortfall Engine
+# Validation: FX VaR and Expected Shortfall Engine
 
 Contract items **3** (how it was validated) and **4** (where it fails), with
-the numbers produced by the committed seeds. Reproduce everything with
-`python -m pytest tests -q` (371 tests, ~20s, offline) and
-`python examples/run_pipeline.py` (~4s).
+the numbers produced by the committed seeds on synthetic data. Reproduce
+everything with `python -m pytest -q` (867 tests, about 90 s, offline) and
+`python examples/run_pipeline.py` (about 30 s). Timings: Windows 11,
+Python 3.12.10, numpy 2.5, scipy 1.18. All `alpha` values below are tail
+probabilities (0.01 = 99 %).
 
 ---
 
@@ -15,26 +17,27 @@ the numbers produced by the committed seeds. Reproduce everything with
 | Base-ccy cash carries zero risk; base-change consistency `PnL_EUR·S¹_EUR = PnL_USD` | 1e-9 | `test_book.py` |
 | Forward: engine value = hand-built deposit legs = discounted `(F−K)` under joint FX+IR shocks (CIP) | 1e-6 abs | `test_forwards.py::test_exact_revaluation_equals_deposit_legs` |
 | ATM forward has zero initial value; DV01 = `N·K·T·e^{−rT}·1e-4` | 1e-6 / 1e-4 rel | `test_forwards.py` |
-| GK put–call parity `c − p = S e^{−r_f T} − K e^{−r_d T}` | 1e-10 | `test_gk_options.py` |
+| GK put-call parity `c − p = S e^{−r_f T} − K e^{−r_d T}` | 1e-10 | `test_gk_options.py` |
 | GK delta/gamma/vega vs central finite differences | 1e-7 / 1e-4 | `test_gk_options.py` |
-| Normal ES identity `ES·(1−α) = σφ(z_α)` | **1e-10** | `test_expected_shortfall.py::test_normal_es_identity_1e10` |
+| Normal ES identity `ES alpha = sigma phi(z)`, `z = Phi^{-1}(1 - alpha)` | **1e-10** | `test_expected_shortfall.py::test_normal_es_identity_1e10` |
 | Normal & t ES vs numerical integration of the quantile function | 1e-8 | `test_expected_shortfall.py` |
-| HS quantile = order statistic on known arrays (n=100/250/500, incl. fractional-tail Acerbi–Tasche ES) | exact | `test_expected_shortfall.py`, `test_historical_var.py` |
+| HS quantile = order statistic on known arrays (n=100/250/500, incl. fractional-tail Acerbi-Tasche ES) | exact | `test_expected_shortfall.py`, `test_historical_var.py` |
 | Kupiec LR(n=250, x=5, p=1%) = 1.9568; Christoffersen LR hand sequence = 0.0900139; CC = UC + IND | 1e-12 vs hand formula | `test_backtesting.py` |
-| Basel zones **exactly** green≤4 / yellow 5–9 / red≥10 with multipliers 3.00/3.40/3.50/3.65/3.75/3.85/4.00; binomial cdf(4)=0.8922, cdf(5)=0.9588 | exact / 1e-3 | `test_backtesting.py` |
-| Reverse stress closed form: loss = `k√(w'Σw)`, shock on the ellipsoid boundary; SLSQP numerical optimum matches direction and loss | 1e-12 / 1e-4 | `test_stress_testing.py` |
+| Basel zones at 250 / 1 %: green 0-4, yellow 5-9, red 10+, multipliers 3.00/3.40/3.50/3.65/3.75/3.85/4.00. Off-window cases (500, 1000 days; alpha 0.025) against the 250-day equivalent count and scipy's binomial CDF | exact / 1e-12 | `test_backtesting.py`, `test_conventions.py` |
+| Shared convention vectors `conv_*` (VaR/ES at k = 2.5, 6.25, 12.5; Basel; Kupiec; Z2; CF flags; Higham and clip repair; EWMA) against independent hand computations | exact to 1e-12 | `test_golden_vectors.py::TestConventionVectors` |
+| Reverse stress closed form: loss = `k sqrt(w' Sigma w)`, shock on the ellipsoid boundary. SLSQP in whitened coordinates (success flag and constraint residual checked) matches direction and loss | 1e-12 / 1e-4 | `test_stress_testing.py` |
 | EWMA vol/cov recursions vs hand-computed values | 1e-12 | `test_historical_var.py`, `test_parametric_var.py` |
 
 ## 2. Convergence and statistical validation
 
-* **MC → closed form**: 200k linear-P&L scenarios, 99% VaR within **3 standard
-  errors** of the exact normal quantile (SE via `√(α(1−α)/n)/f̂(q)`, KDE
-  density). Full-revaluation MC on a spot book matches the var-covar closed
+* **MC to closed form**: 200k linear-P&L scenarios, 99 % VaR within **3
+  standard errors** of the exact normal quantile. Full-revaluation MC on a spot book matches the var-covar closed
   form within 3 SE + a 1% convexity allowance (`exp()` P&L is convex in the
-  log shock — a real, measured 0.5–0.6% bias at 99%, not noise).
-  Demo-book MC SE at 100k scenarios: **$3,045 = 0.48% of the $635k VaR**.
+  log shock: a real, measured 0.5-0.6% bias at 99%, not noise).
+  Synthetic demo-book bootstrap SE at 100k scenarios: **3,261 USD, 0.51 % of
+  the 635k USD VaR**.
 * **Variance matching**: the Student-t simulator reproduces the target
-  covariance within 5% at 300k draws — so t-vs-normal VaR differences are
+  covariance within 5% at 300k draws: so t-vs-normal VaR differences are
   pure tail shape.
 * **Calibration replication** (loose tolerance, seeded): simulator sample
   vols within 10% of `ANNUAL_VOLS`; G10 block correlation 0.55 ± 0.10, EM
@@ -47,50 +50,51 @@ the numbers produced by the committed seeds. Reproduce everything with
 * **Method disagreement where it should disagree** (EM fat tails): with a
   common t(3) mixing variable at matched vols, HS 99% VaR exceeds
   parametric-normal by >10% (seeded ratio 1.245) while the 95% ordering
-  *reverses* — exactly the t-tail signature. MC on the demo EM book at equal
-  covariance: normal $1.212m, t(5) $1.356m (+12%), jump-mixture $2.907m
-  (+140%) — **normal MC underestimates the EM 99% tail**.
+  *reverses*: exactly the t-tail signature. MC on the demo EM book at equal
+  covariance (synthetic): normal 1.212m USD, t(5) 1.356m USD (+12 %),
+  compound-Poisson jump mixture 2.888m USD (+138 %). **Normal MC
+  underestimates the EM 99 % tail.**
 * **Backtest engine on itself** (500-day rolling, 99%, GARCH+regime data,
   seed 29): parametric-normal 14 exceptions, Kupiec p=0.0009, independence
   p=0.0002, CC p<1e-4, **Basel red (4.00)**; plain HS 8 exceptions, yellow;
-  **FHS 7 exceptions, all p>0.05, green (3.00)**. The Acerbi–Szekely ES
-  backtest on the FHS run: Z=+0.42, p=0.17 (accepted).
+  **FHS 7 exceptions, all p>0.05, green (3.00)**. Acerbi-Szekely on the
+  synthetic FHS run: Z2 = -0.400, p = 0.185 (not rejected).
 * **ES coherence**: subadditivity counterexample from two independent 0.9%
-  peg-jump assets — VaR₉₉(A)=VaR₉₉(B)=0 but VaR₉₉(A+B)=10 (non-subadditive);
+  peg-jump assets: VaR₉₉(A)=VaR₉₉(B)=0 but VaR₉₉(A+B)=10 (non-subadditive);
   ES₉₉(A)=9.0 each and ES₉₉(A+B)=10.08 ≤ 18 (subadditive, exact hand
   values). ES ≥ VaR verified property-style across distributions and levels.
 
 ## 3. Failure modes (known, reproduced, documented)
 
-### F1 — Peg blindness (the CHF 2015 case study)
+### F1: Peg blindness (the CHF 2015 case study)
 
 On 14 Jan 2015 a 250-day HS window on USDCHF contained **no daily move larger
-than ~1.9%** — the SNB floor had capped realised vol near 2.5% annualised for
+than ~1.9%**: the SNB floor had capped realised vol near 2.5% annualised for
 three years. The next day CHF gapped ~+15% close-to-close (+30% intraday) vs
 EUR: **the 99% HS VaR was off by a factor of >10, and no amount of window
-tuning could have fixed it** — the information was not in the data.
+tuning could have fixed it**: the information was not in the data.
 
 Engine reproduction (seeded): a long-HKD book over 500 band-noise days gets
 HS 99% VaR ≈ $17.6k per $50m notional; the −30% peg-break scenario produces a
-**$15.0m loss — 850× the HS figure** (`test_stress_testing.py::
+**$15.0m loss: 850× the HS figure** (`test_stress_testing.py::
 test_peg_break_supplies_the_loss_hs_missed`). Mitigation is structural, not
 statistical: `PegBlindnessWarning` on any FX factor with daily σ < 0.05%
 (tested), mandatory `peg_break_scenario` add-on, jump-mixture MC for a
 quantile with the break priced in. On the demo book the peg-break loss is
 21.7× the HS 99% VaR.
 
-### F2 — Correlation breakdown in crises
+### F2: Correlation breakdown in crises
 
 Sample covariance from a calm window assumes the calm regime persists. In
 stress, G10/EM correlations jump (0.55→0.75 in the simulator's calibration)
-and JPY's correlation to carry currencies flips negative — a JPY-hedged AUD
+and JPY's correlation to carry currencies flips negative: a JPY-hedged AUD
 book is hedged in the mean regime and doubly exposed in the crisis regime.
 Reproduced: the regime-switching simulator is exactly what makes
 parametric-normal go **Basel red** in §2 while FHS (which rescales but keeps
 the empirical copula) stays green. Parametric users should re-run with
 `default_correlation(regime="stress")` as a stressed-VaR overlay.
 
-### F3 — Delta–vega mapping on short-gamma books
+### F3: Delta-vega mapping on short-gamma books
 
 Measured: delta-only mapping error grows quadratically (ratio ≈ 4.0 when the
 shock doubles, tested with 35% tolerance); for a long option the mapping
@@ -98,77 +102,76 @@ shock doubles, tested with 35% tolerance); for a long option the mapping
 (dangerous). Full revaluation is the default; the mapping exists for speed
 and for exposure reporting.
 
-### F4 — √time scaling with carry trades
+### F4: √time scaling with carry trades
 
 `VaR(10d) = √10·VaR(1d)` is exact only for iid returns. Two documented
-violations: (i) vol clustering — under GARCH, large days follow large days,
+violations: (i) vol clustering: under GARCH, large days follow large days,
 so √time *underestimates* multi-day risk in turbulent states (the same
 mechanism behind F2's backtest failure); (ii) carry books are short a
-negatively skewed risk premium — EM carry P&L "goes up by the stairs and
+negatively skewed risk premium: EM carry P&L "goes up by the stairs and
 down by the elevator", so the 10-day loss tail is fatter than √10 of the
 1-day tail. The engine reports √time numbers because desks and regulators
 expect them, and flags them as scaled (the result object carries
 `horizon_days`); overlapping-window or simulated multi-step MC is the
 upgrade path.
 
-### F5 — EM data quality
+### F5: EM data quality
 
 EM fixings embed stale prints, onshore/offshore splits (CNY/CNH, official vs
 parallel TRY/ARS rates at times), holiday gaps that differ from G10, and
 managed-float smoothing that understates true vol. Consequences: sample σ
 too low, HS windows too quiet, correlations biased toward zero. Engine
-policy: NaN **and ±inf** inputs **raise** (never silently filled — tested;
+policy: NaN **and ±inf** inputs **raise** (never silently filled: tested;
 the P&L gates in `expected_shortfall._tail` and
 `backtesting.evaluate_var_backtest` are full `np.isfinite` checks, not
 `isnan`-only, so an `inf` loss can no longer yield an `inf` ES or a `+inf`
-P&L day be silently scored as "no exception" — `TestInfinityIsRefusedLikeNaN`),
+P&L day be silently scored as "no exception": `TestInfinityIsRefusedLikeNaN`),
 near-zero-vol
 factors are flagged (the same machinery as pegs catches over-smoothed EM
 series), and the EM crisis composite scenario + jump MC provide the fat-tail
 floor that the polluted history cannot.
 
-### F6 — Cornish–Fisher out of domain
+### F6: Cornish-Fisher out of domain
 
-For |skew| beyond the monotonicity domain (e.g. S=−3), the CF expansion's
-"quantile" is non-monotone in α. The engine checks monotonicity on [−4,4]
-and **raises** instead of returning a number
-(`test_parametric_var.py::test_cf_domain_check_rejects_extreme_moments`);
-`check_domain=False` is an explicit, documented override.
+The CF map is a quantile function only where it is increasing. The engine
+checks this on `[-z_a, z_a]`, `z_a = Phi^{-1}(1 - alpha)`, the interval the
+requested VaR actually uses (`cornish_fisher_valid`). The derivative is a
+quadratic in `z`, so the minimum is at an endpoint or the vertex and the
+check is exact. Outside the domain `cornish_fisher_var` raises.
+`check_domain=False` is an explicit override.
 
-The check is **exact**, not grid-sampled: `dz_cf/dz` is a quadratic in `z`,
-so its minimum on `[-4, 4]` has a closed form (`cornish_fisher_domain_ok`
-in `parametric_var.py`). The previous implementation sampled `z_cf` on an
-801-point grid and diffed consecutive values, which can miss a thin
-non-monotone dip between two grid nodes — confirmed with a constructed
-counterexample, `(skew, excess_kurtosis) = (0.122, -0.427)`: the 801-point
-grid reported it as monotone (every sampled value increased) while the
-true minimum derivative on `[-4, 4]` is ≈ −9.15e-4 near `z ≈ 3.1`, so the
-expansion is genuinely non-monotone and the old check would have silently
-returned a non-quantile "VaR". Regression test:
-`test_parametric_var.py::test_domain_check_is_exact_not_grid_resolution_dependent`.
-The equity engine had the same class of gap (analytic-derivative grid
-rather than a value diff, but still grid-resolution-dependent) and received
-the same closed-form fix; all six language/asset-class implementations
-(Python, C++, Rust × equity, FX) now use it.
+| (S, K) | alpha | Valid | Where the derivative is smallest |
+|---|---|---|---|
+| (0.122, -0.427) | 0.01 | yes | left endpoint z = -2.326 |
+| (0.122, -0.427) | 0.001 | yes | left endpoint z = -3.090 |
+| (0.122, -0.427) | fixed \|z\| <= 4 (deprecated predicate) | no | z = -4, derivative -9.15e-4 |
+| (1, 1) | 0.01 | yes | |
+| (1, 1) | 0.001 | no | left endpoint |
+| (-3, 0) | 0.01 | no | |
 
-### F7 — Non-finite market data was absorbed, not refused (fixed)
+The (0.122, -0.427) case is concave, so its minimum is at an endpoint, not
+inside the interval. Tests: `test_parametric_var.py::
+test_cf_counterexample_minimum_is_at_the_endpoint_and_alpha_aware` and
+`::test_cf_valid_tightens_with_smaller_alpha`.
+
+### F7: Non-finite market data was absorbed, not refused (fixed)
 
 The engine's stated NaN policy is *refuse, never impute*, but it was only
 enforced on the factor-**return** history, not on the `Market` snapshot
 itself. Two silent paths existed and are now closed:
 
 * A **NaN interest rate** propagated straight through to a NaN P&L and a
-  NaN VaR — visibly wrong, but only if someone looked.
+  NaN VaR: visibly wrong, but only if someone looked.
 * A **NaN implied vol** was far worse: `gk_d1_d2` decides the degenerate
   branch with `sig_sqrt_t > 1e-12`, and `NaN > 1e-12` is `False`, so a NaN
   vol was silently treated as the **zero-vol** case. The option priced at
-  forward intrinsic and the book reported a P&L of *exactly 0.0* — a
+  forward intrinsic and the book reported a P&L of *exactly 0.0*: a
   plausible-looking number with no warning attached.
 
 `Market.__post_init__` now rejects non-finite (and negative) rates and vols
 at construction, and `fx_var.gk._validate` rejects non-finite `strike`,
 `expiry` and `vol` directly. Neither change alters any value for finite
-inputs — it converts two silent-wrong-answer paths into `ValueError`s
+inputs: it converts two silent-wrong-answer paths into `ValueError`s
 (`test_edge_cases_extra.py::TestNonFiniteMarketData`).
 
 A third, smaller gap: `option_method` was only validated inside the
@@ -176,46 +179,36 @@ per-position branch, so a typo (`"delta"` for `"delta_vega"`) was accepted
 silently on any book without options. It is now validated up front in
 `Book.value_usd`.
 
-### F8 — Singular covariance
+### F8: Singular and indefinite covariance
 
-Two currencies pegged to the same anchor produce a singular covariance;
-plain Cholesky fails. `robust_cholesky` escalates diagonal jitter from
-1e-12·mean(diag) and warns (`NumericalWarning`); the factorisation error and
-the simulated lockstep correlation (>0.999) are tested.
+Two currencies pegged to the same anchor give a singular covariance.
+`robust_cholesky` adds diagonal jitter from 1e-12 to 1e-6 times the mean
+variance and warns (`NumericalWarning`). Past the cap it raises and names the
+most negative eigenvalue. `repair="clip"` (eigenvalue clip, variances kept)
+and `repair="higham"` (nearest correlation matrix, Higham 2002) repair an
+indefinite matrix explicitly and warn. Tests: `test_conventions.py`.
 
-### F9 — Monte Carlo VaR standard error understates its own uncertainty in
-deep tails / modest scenario counts
+### F9: The KDE standard error is biased at deep tails and small samples
 
-`var_standard_error` (§2) is the theoretically correct estimator class for
-a *quantile's* sampling error — `SE = √(α(1−α)/n) / f̂(q)` via the density
-at the quantile, not a naive sample-mean SE (which would be wrong here) —
-but `f̂` is a fixed-bandwidth Gaussian KDE (`scipy.stats.gaussian_kde`,
-Scott's rule) tuned to the *bulk* of the P&L distribution, not the tail
-point it is evaluated at. Benchmarked against the true sampling
-variability of the quantile (many independent resamples, averaged over
-many trials to separate bias from single-trial noise,
-`test_monte_carlo.py::TestVarStandardErrorAccuracy`):
+`var_standard_error` uses `SE = sqrt(alpha (1-alpha) / n) / f(q)` with a
+Silverman-bandwidth Gaussian KDE at the reported quantile. A fixed bandwidth
+smooths the tail. `monte_carlo_var` therefore reports the bootstrap SE
+(`var_standard_error_bootstrap`) and the KDE figure is a diagnostic.
 
-* At `alpha=0.99` with the module default of 50,000 scenarios, the KDE
-  estimate is within ~2% of the true SE — safe to use as-is.
-* At `alpha=0.999` (50,000 scenarios) or `alpha=0.99` with only 2,000
-  scenarios, it **systematically underestimates** the true SE by 9–17% —
-  directionally overconfident, not just noisy, and precisely in the
-  regime (extreme confidence levels, or MC runs sped up with fewer paths)
-  a desk is most likely to actually hit.
+Ratio of the mean estimated SE to the true sampling SE of the VaR (standard
+normal P&L, 20 trials, true SE from 2,000 independent samples, synthetic):
 
-`var_standard_error_bootstrap` (distribution-free, resamples the P&L
-vector directly, no bandwidth to choose) is unbiased to ~1–2% across the
-same benchmark and is the recommended cross-check whenever `alpha >=
-0.995` or scenario counts are modest; it costs `n_boot` extra order-statistic
-evaluations (cheap: `n_boot=500` on 50k scenarios takes well under a
-second). The C++ and Rust engines use the same Silverman-bandwidth KDE
-approach as the Python `var_standard_error` and share its limitation; they
-do not yet have a bootstrap cross-check (tracked as a follow-up — the
-Python `eq_var` equity engine already has the analogous
-`var_standard_error_bootstrap` for its own MC VaR).
+| alpha | Scenarios | KDE / true | Bootstrap / true |
+|---|---|---|---|
+| 0.01 | 2,000 | 0.89 | 1.00 |
+| 0.01 | 50,000 | 0.96 | 0.96 |
+| 0.001 | 50,000 | 1.04 | 1.11 |
 
-### F10 — Kupiec's chi2(1) reference is oversized exactly at the
+The bootstrap SE of an order statistic is discrete and noisy at small `n`.
+It is not a confidence interval. The C++ and Rust ports have both a KDE and
+a bootstrap estimator. Test: `test_monte_carlo.py::TestVarStandardErrorAccuracy`.
+
+### F10: Kupiec's chi2(1) reference is oversized exactly at the
 regulatory window
 
 `kupiec_pof`'s LR statistic is asymptotically chi2(1), but at `n_obs=250,
@@ -223,14 +216,14 @@ alpha=0.99` (the Basel backtesting window: tail probability 1%, expected
 exception count 2.5) that asymptotic is a poor approximation for a rare
 binomial: the *exact* rejection probability of a nominally-5%-size test,
 computed by summing the exact `Binomial(250, 0.01)` mass over `{x : LR(x)
-> chi2.ppf(0.95, 1)}`, is **≈9.5%** — a correctly calibrated model is
+> chi2.ppf(0.95, 1)}`, is **≈9.5%**: a correctly calibrated model is
 flagged "reject at 5%" roughly twice as often as the p-value implies. The
 effect is driven by the expected exception count, not `n_obs` alone: it
 falls to ≈5.5% at `n_obs=1000` (expected count 10), close to nominal. This
 is not a bug in the LR formula (it is the textbook asymptotic reference,
 unchanged, and is what the C++/Rust golden tests pin), but it is an
 unstated caveat that changes how a p-value near 0.05 should be read at the
-regulatory window — documented and made exact (no simulation, no RNG) in
+regulatory window: documented and made exact (no simulation, no RNG) in
 `test_backtesting.py::
 test_kupiec_asymptotic_chi2_reference_is_oversized_at_regulatory_window`,
 mirroring the equivalent finding and test in the `eq_var` equity engine
@@ -240,60 +233,62 @@ same class of caveat at low exception counts.
 
 ## 4. Edge cases (documented **and** unit-tested)
 
-Empty book (VaR=ES=0); single-currency book; base-currency cash (zero risk);
-alpha ∈ {0, 1, <0, >1} raise; insufficient history raises; NaN inputs raise
+Empty book raises; a book with only base-currency cash raises (no risk
+factors); single-currency book; alpha outside (0, 0.5) raises, including an
+old confidence level such as 0.99; insufficient history raises; NaN inputs raise
 everywhere; missing factor columns raise with the factor names; T=0 forwards
-degenerate to spot; T=0 / σ=0 options price intrinsic; negative shocked vol
-raises; df≤2 Student-t raises; jump prob outside [0,1] raises; zero-risk book
+degenerate to spot; T=0 / sigma=0 options price intrinsic; a shocked vol
+below zero is floored at zero with a `NumericalWarning`, so one Monte Carlo
+path cannot abort a run; df <= 2 Student-t raises; jump prob outside [0, 1)
+raises; zero-risk book
 reverse stress raises; Basel inputs x>n raise; Kupiec x=0 handled via the
 0·log0 convention; Christoffersen with no exceptions returns LR=0; the
 degenerate symmetric exception sequence (π₀₁=π₁₁) returns LR=0 exactly.
 
 Extended coverage in `tests/test_edge_cases_extra.py`:
 
-* **Non-finite market data** — NaN/Inf rates and vols, negative vols and
+* **Non-finite market data**: NaN/Inf rates and vols, negative vols and
   non-positive spots all raise at `Market` construction; `gk_price` rejects
   non-finite strike/expiry/vol directly (see F7).
-* **Base-currency duality** — base-ccy cash is riskless in USD, EUR *and*
+* **Base-currency duality**: base-ccy cash is riskless in USD, EUR *and*
   JPY reporting; foreign cash P&L matches `N·S·(e^Δ−1)` to 1e-12; and
   translating a book's P&L between reporting currencies uses the
   **post-shock** rate (`PnL_EUR = PnL_USD / (S_EUR·e^{Δ_EUR})`), which is
   the classic off-by-one-rate error in multi-currency P&L.
-* **Foreign–domestic inversion** — long 1m EUR vs USD and short 1.08m USD
+* **Foreign-domestic inversion**: long 1m EUR vs USD and short 1.08m USD
   vs EUR give identical P&L across a ±3% shock grid.
-* **Cross triangulation** — EURJPY carries no factor of its own, so an
+* **Cross triangulation**: EURJPY carries no factor of its own, so an
   equal log move in both USD legs is exactly flat.
-* **CIP consistency** — ATM forwards value to zero at 0.5y/1y/2y across
+* **CIP consistency**: ATM forwards value to zero at 0.5y/1y/2y across
   EURUSD, USDJPY and the EURJPY cross; the FX delta of a 1y forward equals
   `N·e^{−r_f T}·S` to 1e-5; the two IR legs have opposite signs; book-level
-  put–call parity holds at the ATM-forward strike; T=0 options price
+  put-call parity holds at the ATM-forward strike; T=0 options price
   intrinsic.
-* **Pegged pairs end to end** — `PegBlindnessWarning` fires on band noise,
+* **Pegged pairs end to end**: `PegBlindnessWarning` fires on band noise,
   HS 99% VaR comes in under 0.05% of the USD-equivalent leg, the −30%
   peg-break scenario exceeds it by more than 1000×, an *upward* break flips
   the sign (the CHF-2015 direction), and `warn_pegs=False` suppresses the
   warning cleanly.
-* **Tiny samples / degenerate α** — empty P&L samples raise; a single
-  scenario returns itself; α ∈ {0, 1, −0.1, 1.5, 2.0} raise; horizons ≤ 0
-  raise; α = 0.999 on 5 scenarios collapses the tail onto the single worst
-  observation; α = 0.001 averages 99.9% of the mass and correctly reports a
-  *negative* VaR (the boundary atom is the best outcome).
-* **ES coherence, property-style** — ES ≥ VaR over 50 random t(4) samples ×
+* **Tiny samples and extreme alpha**: empty P&L samples raise; a single
+  scenario returns itself; alpha in {0, 0.5, 0.99, 1, -0.1, 1.5, 2, NaN}
+  raises; horizons <= 0 raise; alpha = 0.001 on 5 scenarios collapses the
+  tail onto the single worst observation.
+* **ES coherence, property-style**: ES ≥ VaR over 50 random t(4) samples ×
   3 confidence levels; the two-peg-jump subadditivity counterexample shows
   VaR violating subadditivity while ES does not; constant weights reproduce
   the uniform-weight ES exactly.
-* **Scaling laws** — VaR is monotone in α, scales exactly as √h in the
+* **Scaling laws**: VaR is monotone in α, scales exactly as √h in the
   horizon and exactly linearly in notional; t-VaR exceeds normal VaR at 99%
   at equal σ but agrees within 10% at 90%; full-revaluation MC on a linear
   spot book matches the closed-form variance-covariance VaR within 4 SE.
 
 ### 4.1 Non-finite scalars: the guards that silently accepted NaN
-(`tests/test_nan_guards.py`, 119 tests)
+(`tests/test_nan_guards.py`, 36 test functions, 125 collected cases)
 
 The NaN policy was enforced on *data* (market snapshots, factor-return
 frames) but not on the long tail of bare scalar arguments. Those were
-guarded only by inequalities — `if horizon_days <= 0`, `if sigma < 0`,
-`if df <= 2`, `if strike <= 0`, `if k <= 0` — and **every comparison
+guarded only by inequalities: `if horizon_days <= 0`, `if sigma < 0`,
+`if df <= 2`, `if strike <= 0`, `if k <= 0`: and **every comparison
 against NaN is False**, so each guard passed NaN straight through and the
 engine returned `nan` as the VaR. That is the worst possible failure mode
 for this number: a NaN does not trip a limit, does not colour a Basel
@@ -315,7 +310,12 @@ Closed, with a test per path:
 | A single NaN cell in a shock mapping or scenario `DataFrame` | NaN P&L vector → NaN quantile | raises naming the factor |
 | `usd_broad_move(pct=nan)`, `peg_break_scenario(jump/vol_spike/contagion = nan)` | NaN scenario shocks | raises |
 | `reverse_stress_linear(radius=nan / loss_target=nan)` | NaN worst-case shock | raises |
-| `es_backtest_acerbi_szekely` with non-finite P&L/VaR/ES | NaN test statistic | raises |
+| `acerbi_szekely_z2` with non-finite P&L/VaR/ES | NaN test statistic | raises |
+
+`tests/test_fuzz_public_api.py` extends this to every name in
+`fx_var.__all__`: a registry gives each public callable one or more
+injection sites, the valid call must succeed, and NaN, +inf and -inf must
+raise. A new public function without a registry entry fails the test.
 
 Companion positive tests confirm the guards did not over-reject: √h scaling,
 the closed-form normal VaR constant, jump-overlay variance inflation, shock
@@ -323,36 +323,28 @@ broadcasting over a scenario `DataFrame`, and an end-to-end four-position
 book (cash + spot + forward + option) returning finite `ES ≥ VaR > 0` from
 both historical and parametric methods.
 
-### 4.2 Cross-language golden vectors, now locked from Python
-(`tests/test_golden_vectors.py`)
+### 4.2 Cross-language golden vectors (`tests/test_golden_vectors.py`)
 
-`cpp/fx-var-engine` and `rust/fx-var-engine` assert hard-coded constants
-generated from this package, but nothing on the Python side pinned them —
-a refactor here would have moved the reference silently, surfacing only as
-a failure in a different language's test suite. The three golden cases are
-now reproduced and asserted in Python at the same tolerances:
+`tests/golden/generate_golden.py` writes `golden_vectors.json`, which the C++
+and Rust linear-book ports assert. The JSON records the Python, numpy and
+scipy versions. The Python test rebuilds the JSON and compares every value
+to 16 ulps of `max(|value|, scale)`. The scale is 2e7 for case A, because
+those values are P&L differences of book values near 1e7 USD and their
+rounding error follows the gross value. Higham repair values are compared
+at 1e-8 absolute (iterative solver, stopped at 1e-12 relative change). The
+`conv_*` keys are shared with the equity engine and are checked against
+hand computations (section 1).
 
-* **Case A** — factor enumeration order `[FX:EUR, FX:JPY, IR:JPY, IR:USD]`
-  (the C++/Rust engines index the returns matrix positionally, so the order
-  is part of the contract); single-scenario book P&L 58 177.374 898 100 74;
-  plain HS 99% VaR/ES 61 919.808 905 876 24 / 62 006.120 062 248 47; 97.5%
-  61 237.426 008 895 97 / 61 777.936 082 718 57; BRW age-weighted
-  (λ = 0.995) 61 874.262 685 311 49 / 61 977.524 965 941 09.
-* **Case B** — `var_covar` on fixed exposures/covariance: normal 99% 1-day
-  153 339.504 419 629 17 / 175 675.629 720 028 5; t(5) 99%
-  171 803.123 890 914 05 / 227 327.531 497 414 4; normal 99% 10-day
-  484 902.089 247 483 8 / 555 535.119 299 658 3 (and exactly √10 × the
-  1-day figures).
-* **Case C** — Kupiec LR(8/250, 99%) = 7.733 550 724 494 520 5
-  (p = 0.005 420 405 194 127 799 4); Christoffersen LR on the fixed
-  9-exception pattern = 1.006 361 033 931 412 4 (p = 0.315 776 203 762 249 9);
-  Basel cumulative probabilities 0.892 187 626 903 624 9 (4, green),
-  0.958 816 815 930 151 4 (5, yellow, ×3.40) and 0.999 946 101 370 953
-  (10, red, ×4.00).
+| Case | Content |
+|---|---|
+| A | factor order `[FX:EUR, FX:JPY, IR:JPY, IR:USD]`, one-scenario book P&L, plain HS 99 % and 97.5 % VaR/ES, BRW (decay 0.995) VaR/ES |
+| B | `var_covar` normal and t(5) at alpha 0.01, 1 and 10 days |
+| C | Kupiec LR (8 of 250), Christoffersen LR, Basel CDF and zone at 4, 5, 10 exceptions |
+| conv | VaR/ES at alpha 0.010/0.025/0.050, nine Basel cases, three Kupiec LRs, Z2, five CF flags, Higham and clip entries, EWMA vol |
 
-## 5. What is deliberately out of scope
+## 5. Out of scope
 
-Smile/skew vol risk (one ATM vol per pair — A5), tenor-bucketed curves (A3),
+Smile/skew vol risk (one ATM vol per pair: A5), tenor-bucketed curves (A3),
 cross-currency basis (A4), intraday VaR, and American/exotic options. Each
 is an extension point, not an accident: the assumptions register in
 METHODOLOGY.md states what breaks and how to add it.
