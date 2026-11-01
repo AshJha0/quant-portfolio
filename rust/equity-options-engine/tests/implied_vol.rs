@@ -5,7 +5,7 @@ mod common;
 use eq_options_engine::{bs_price, implied_vol, OptionType, PricingError};
 
 #[test]
-fn round_trip_recovers_sigma_to_1e8_across_grid() {
+fn round_trip_recovers_sigma_within_condition_bound_across_grid() {
     // price(sigma) -> implied_vol -> sigma, across moneyness 0.5x-2.0x,
     // expiries from ~2 weeks to 2 years, vols 5%-80%.
     for &s in &[100.0] {
@@ -15,16 +15,23 @@ fn round_trip_recovers_sigma_to_1e8_across_grid() {
                     for &(r, q) in &[(0.03, 0.0), (0.0, 0.02), (-0.01, 0.01)] {
                         for ot in [OptionType::Call, OptionType::Put] {
                             let price = bs_price(s, k, t, r, sigma, q, ot).unwrap();
-                            // Identifiability guard: recovering sigma to
-                            // 1e-8 from a price solved to 1e-10 requires
-                            // vega > 1e-10 / 1e-8 = 1e-2. Deep-ITM wings
-                            // below that carry no vol information (the
-                            // Python reference behaves identically at its
-                            // own tolerance floor).
+                            // Accuracy rule: a few ulps of the quote's
+                            // magnitude mapped through vega, plus the
+                            // solver's 1e-12 relative floor. No case is
+                            // skipped; deep-ITM wings get the wide bound
+                            // their information content implies.
                             let vega = eq_options_engine::bs_greeks(s, k, t, r, sigma, q, ot)
                                 .unwrap()
                                 .vega;
-                            if vega < 1e-2 {
+                            let tol = 8.0 * f64::EPSILON * s.max(k) / vega + 2e-12 * sigma;
+                            let lower = bs_price(s, k, t, r, 0.0, q, ot).unwrap();
+                            if price - lower <= 8.0 * f64::EPSILON * price {
+                                // Time value below the quote's rounding: the
+                                // engine may refuse, or return a vol inside
+                                // the quote's own uncertainty.
+                                if let Ok(iv) = implied_vol(price, s, k, t, r, q, ot) {
+                                    assert!((iv - sigma).abs() <= tol);
+                                }
                                 continue;
                             }
                             let iv = implied_vol(price, s, k, t, r, q, ot)
@@ -34,7 +41,7 @@ fn round_trip_recovers_sigma_to_1e8_across_grid() {
                                     )
                                 });
                             assert!(
-                                (iv - sigma).abs() < 1e-8,
+                                (iv - sigma).abs() <= tol,
                                 "round trip (K={k}, T={t}, r={r}, q={q}, {ot:?}): \
                                  {iv} vs {sigma} (diff {:.3e})",
                                 (iv - sigma).abs()

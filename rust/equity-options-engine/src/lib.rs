@@ -58,6 +58,8 @@
 
 #![deny(missing_docs)]
 #![warn(rust_2018_idioms)]
+// Rational-approximation coefficients are kept exactly as published.
+#![allow(clippy::excessive_precision)]
 
 pub mod binomial;
 pub mod black76;
@@ -65,6 +67,7 @@ pub mod black_scholes;
 pub mod golden;
 pub mod greeks;
 pub mod implied_vol;
+pub mod iv_core;
 pub mod monte_carlo;
 pub mod rng;
 

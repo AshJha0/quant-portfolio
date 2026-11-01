@@ -161,7 +161,7 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
             "sigma={sigma}: expected InvalidInput, got {via_bs:?}"
         );
         let via_closure =
-            fd_greeks(&unvalidating, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
+            fd_greeks(unvalidating, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
         assert!(
             matches!(via_closure, Err(PricingError::InvalidInput(_))),
             "sigma={sigma} with a non-validating pricer: expected InvalidInput, \

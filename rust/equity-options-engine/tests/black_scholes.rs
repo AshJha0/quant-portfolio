@@ -1,4 +1,6 @@
 //! Black-Scholes analytic identities, erfc accuracy, and edge cases.
+// Reference values are quoted to more digits than f64 holds.
+#![allow(clippy::excessive_precision)]
 
 mod common;
 
@@ -105,10 +107,13 @@ fn t_zero_returns_intrinsic() {
 fn sigma_zero_returns_discounted_forward_intrinsic() {
     let (s, k, t, r, q) = (100.0, 95.0, 1.0, 0.05, 0.02);
     let f = forward_price(s, t, r, q);
+    // The engine computes S e^{-qT} - K e^{-rT}; the reference rounds F
+    // first. Both round terms of size ~100: allow 4 eps max(S, K).
+    let tol = 4.0 * f64::EPSILON * s.max(k);
     let c = bs_price(s, k, t, r, 0.0, q, OptionType::Call).unwrap();
-    assert_close!(c, (-r * t).exp() * (f - k).max(0.0), 1e-14);
+    assert_close!(c, (-r * t).exp() * (f - k).max(0.0), tol);
     let p = bs_price(s, k, t, r, 0.0, q, OptionType::Put).unwrap();
-    assert_close!(p, (-r * t).exp() * (k - f).max(0.0), 1e-14);
+    assert_close!(p, (-r * t).exp() * (k - f).max(0.0), tol);
 }
 
 #[test]
@@ -229,10 +234,10 @@ fn extreme_moneyness_prices_are_stable() {
     assert_rel_close!(c, parity, 1e-12);
     // The matching put is worthless but must be a clean non-negative zero.
     let p = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
-    assert!(p >= 0.0 && p < 1e-100, "deep OTM put should underflow cleanly, got {p}");
+    assert!((0.0..1e-100).contains(&p), "deep OTM put should underflow cleanly, got {p}");
     // Deep OTM call (S/K = 1e-4): worthless, finite, non-negative.
     let c_otm = bs_price(1.0, 1.0e4, t, r, sigma, q, OptionType::Call).unwrap();
-    assert!(c_otm >= 0.0 && c_otm < 1e-100, "deep OTM call: {c_otm}");
+    assert!((0.0..1e-100).contains(&c_otm), "deep OTM call: {c_otm}");
     // Put-call parity still holds exactly at both extremes.
     for (s, k) in [(1.0e4, 1.0), (1.0, 1.0e4)] {
         let c = bs_price(s, k, t, r, sigma, q, OptionType::Call).unwrap();

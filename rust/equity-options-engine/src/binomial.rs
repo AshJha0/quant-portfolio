@@ -16,7 +16,7 @@
 //!   intrinsic along the deterministic path `S exp((r - q) t_i)`.
 //! * Negative `s`, `k`, `t`, `sigma` and `n_steps == 0` are errors.
 
-use crate::black_scholes::{
+use crate::black_scholes::{finite_result, 
     bs_price, validate_inputs, validate_rates, OptionType, PricingError,
 };
 
@@ -46,6 +46,7 @@ pub enum Exercise {
 }
 
 /// Price under `sigma == 0`: the stock grows deterministically at `r - q`.
+#[allow(clippy::too_many_arguments)]
 fn deterministic_price(
     s: f64,
     k: f64,
@@ -63,11 +64,12 @@ fn deterministic_price(
     let mut best = 0.0_f64;
     for i in 0..=n_steps {
         let ti = t * (i as f64) / (n_steps as f64);
-        let path = s * ((r - q) * ti).exp();
-        let payoff = (sign * (path - k)).max(0.0);
-        best = best.max((-r * ti).exp() * payoff);
+        // e^{-r t_i} max(+-(S e^{(r-q) t_i} - K), 0) without forming the
+        // forward, which overflows when (r - q) t_i > 709.
+        let payoff = (sign * (s * (-q * ti).exp() - k * (-r * ti).exp())).max(0.0);
+        best = best.max(payoff);
     }
-    Ok(best)
+    finite_result(best, "crr_price")
 }
 
 /// Cox-Ross-Rubinstein binomial price of a European or American option.
@@ -139,8 +141,10 @@ pub fn crr_price(
     if s == 0.0 {
         return Ok(match (option_type, exercise) {
             (OptionType::Call, _) => 0.0,
-            (OptionType::Put, Exercise::American) => k,
-            (OptionType::Put, Exercise::European) => k * (-r * t).exp(),
+            // Exercise now pays K; waiting pays K e^{-rT}, which is larger
+            // when r < 0.
+            (OptionType::Put, Exercise::American) => k.max(finite_result(k * (-r * t).exp(), "crr_price")?),
+            (OptionType::Put, Exercise::European) => finite_result(k * (-r * t).exp(), "crr_price")?,
         });
     }
     if k == 0.0 {
@@ -151,7 +155,7 @@ pub fn crr_price(
         if exercise == Exercise::American && q > 0.0 {
             return Ok(s);
         }
-        return Ok(s * (-q * t).exp());
+        return finite_result(s * (-q * t).exp(), "crr_price");
     }
     if sigma == 0.0 {
         return deterministic_price(s, k, t, r, q, option_type, exercise, n_steps);
@@ -172,29 +176,32 @@ pub fn crr_price(
     let disc = (-r * dt).exp();
     let (pu, pd) = (disc * p, disc * (1.0 - p));
 
-    // Terminal stock prices S u^j d^(n-j) = exp(log S + (2j - n) log u),
-    // j = 0..=n, formed in log space for numerical stability.
+    // Every node spot is S u^m for m = -n..=n; form the exercise values
+    // once in log space (O(n) exps) so backward induction does no
+    // transcendental work. Step i, node j sits at m = 2j - i.
     let log_s = s.ln();
-    let n = n_steps as f64;
-    let mut values: Vec<f64> = (0..=n_steps)
-        .map(|j| {
-            let st = (log_s + (2.0 * (j as f64) - n) * log_u).exp();
-            (sign * (st - k)).max(0.0)
+    let exercise_value: Vec<f64> = (0..=2 * n_steps)
+        .map(|idx| {
+            let m = idx as f64 - n_steps as f64;
+            sign * ((log_s + m * log_u).exp() - k)
         })
+        .collect();
+    let mut values: Vec<f64> = (0..=n_steps)
+        .map(|j| exercise_value[2 * j].max(0.0))
         .collect();
 
     let american = exercise == Exercise::American;
     for i in (0..n_steps).rev() {
+        let offset = n_steps - i; // index of m = -i
         for j in 0..=i {
             let mut v = pu * values[j + 1] + pd * values[j];
             if american {
-                let node = (log_s + (2.0 * (j as f64) - (i as f64)) * log_u).exp();
-                v = v.max(sign * (node - k));
+                v = v.max(exercise_value[offset + 2 * j]);
             }
             values[j] = v;
         }
     }
-    Ok(values[0])
+    finite_result(values[0], "crr_price")
 }
 
 /// American-minus-European value on the same CRR tree.
