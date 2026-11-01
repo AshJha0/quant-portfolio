@@ -10,9 +10,8 @@ not, however, what runs inside an FX e-trading stack, for three reasons:
    (spots × strikes × tenors, both sides) on every spot tick and every curve
    or vol update. EURUSD ticks arrive in bursts of hundreds per second; a
    2,000-instrument tile refresh must fit in a fraction of a millisecond so
-   the quote stream never lags the market it is derived from. This engine
-   prices ~13M vanillas/s single-threaded, putting a full tile refresh at
-   ~0.15 ms without any parallelism.
+   the quote stream never lags the market it is derived from. The measured
+   per-call latency of each kernel is in the README Latency table.
 2. **RFQ response budgets.** Multi-dealer platforms effectively rank
    dealers by response time; an RFQ answer that takes tens of milliseconds
    loses flow to one that takes hundreds of microseconds. The pieces of an RFQ path this
@@ -55,11 +54,17 @@ C++ engine gives the same answer within stated tolerances.
 
 * **Pure free functions, no state.** Pricing is `double in -> double out`;
   the only stateful object is the MC RNG, which is constructed per call
-  from an explicit seed. This makes the engine trivially thread-safe for
+  (per chunk) from an explicit seed. This makes the engine thread-safe for
   read-only market data.
-* **Errors are exceptions.** `std::invalid_argument` mirrors the Python
-  `ValueError` contract exactly (same conditions, similar messages), so the
-  two implementations reject the same inputs. Validation is *total* at the
+* **Two error interfaces over one kernel.** Each pricing kernel is a
+  `noexcept` function `try_*` returning `std::expected<T, Error>`. An
+  `Error` holds a code, a static field name and up to three numbers, so
+  neither the success nor the error path allocates; `message()` formats the
+  text only when asked. The throwing functions wrap these and raise
+  `std::invalid_argument` (or `std::runtime_error` for solver
+  non-convergence), mirroring the Python `ValueError` contract (same
+  conditions, similar messages), so the implementations reject the same
+  inputs. Validation is *total* at the
   API boundary: every entry point rejects NaN/Inf in any argument -
   including the two rates and the observed premium, because a single
   non-finite quote propagating through a book-level aggregate is far more
@@ -85,8 +90,25 @@ C++ engine gives the same answer within stated tolerances.
   `sigma·sqrt(T) <= 1e-12` returns discounted forward intrinsic, the same
   constants and branches as the Python module, so the two engines agree even
   at the edges.
-* **`-Wall -Wextra -Werror -O2`**, C++20, no external dependencies beyond
-  GoogleTest for the test binary.
+* **No allocation or thread creation on the hot path.** The tree runs in a
+  caller workspace (`binomial_workspace_size(n) = 3n + 2` doubles), Monte
+  Carlo in an `McWorkspace` reserved once, and chunked Monte Carlo on a
+  persistent `ThreadPool` (threads created in its constructor, a function
+  pointer plus context per job, no `std::function`). Inner loops are
+  instantiated per exercise style and per antithetic/control-variate
+  choice, so they carry no per-node or per-path branch. A test binary with
+  a counting `operator new` pins zero allocations on every kernel success
+  path.
+* **Batch pricing.** `gk_price_batch` and `gk_greeks_batch` take
+  structure-of-arrays spans and call the same inline kernels as the scalar
+  `try_*` functions, so the outputs match bit for bit.
+* **Optimisation never changes a number.** Divisions, the order of sums
+  and every libm call are kept as they were; the only flag added to a
+  source file is `-fno-math-errno` on `batch.cpp`, which changes no
+  returned value. `FXOPT_NATIVE` (`-O3 -march=native`) is off by default
+  because FMA contraction can move last bits.
+* **`-Wall -Wextra -Wpedantic`** (`-Werror` with `FXOPT_WERROR=ON`), C++23,
+  no external dependencies beyond GoogleTest for the test binaries.
 
 ## Assumptions
 

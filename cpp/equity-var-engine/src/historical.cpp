@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "eqvar/kernels.hpp"
 #include "eqvar/returns.hpp"
 
 namespace eqvar {
@@ -52,25 +53,8 @@ double ewma_path(std::span<const double> x, double lam, std::size_t seed_window,
 }  // namespace
 
 TailRisk var_es_order_statistic(std::span<const double> pnl, double alpha) {
-    validate_alpha(alpha);
-    if (pnl.empty()) throw std::invalid_argument("var_es_order_statistic: empty sample");
-    require_finite(pnl, "var_es_order_statistic");
-    const std::size_t n = pnl.size();
-    std::vector<double> loss(n);
-    for (std::size_t i = 0; i < n; ++i) loss[i] = -pnl[i];
-    const double k = static_cast<double>(n) * alpha;
-    const double mc = std::ceil(k - 1e-9);
-    const std::size_t m = mc < 1.0 ? 1 : std::min(n, static_cast<std::size_t>(mc));
-    // Partition so loss[0..m-1) are the m-1 largest and loss[m-1] = L(m).
-    std::nth_element(loss.begin(), loss.begin() + static_cast<std::ptrdiff_t>(m - 1), loss.end(),
-                     std::greater<double>());
-    const double lm = loss[m - 1];
-    double tail = 0.0;
-    for (std::size_t i = 0; i + 1 < m; ++i) tail += loss[i];
-    TailRisk r;
-    r.var = lm;
-    r.es = (tail + (k - static_cast<double>(m - 1)) * lm) / k;
-    return r;
+    std::vector<double> loss(pnl.size());
+    return value_or_throw(try_var_es_order_statistic(pnl, alpha, loss));
 }
 
 TailRisk var_es_weighted(std::span<const double> pnl, std::span<const double> weights,
@@ -115,25 +99,13 @@ TailRisk var_es_weighted(std::span<const double> pnl, std::span<const double> we
 }
 
 double quantile_linear(std::span<const double> x, double q) {
-    if (x.empty()) throw std::invalid_argument("quantile_linear: empty sample");
-    require_finite(x, "quantile_linear");
-    if (!(q >= 0.0 && q <= 1.0)) {
-        throw std::invalid_argument("quantile_linear: q must be in [0, 1], got " +
-                                    std::to_string(q));
-    }
-    std::vector<double> sorted(x.begin(), x.end());
-    std::sort(sorted.begin(), sorted.end());
-    const double h = q * static_cast<double>(sorted.size() - 1);
-    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
-    if (lo + 1 >= sorted.size()) return sorted.back();
-    const double frac = h - static_cast<double>(lo);
-    return sorted[lo] + frac * (sorted[lo + 1] - sorted[lo]);
+    std::vector<double> work(x.size());
+    return value_or_throw(detail::try_quantile_linear(x, q, work));
 }
 
 double historical_var(std::span<const double> pnl, double alpha) {
-    validate_alpha(alpha);
-    validate_pnl(pnl, kMinHistObs);
-    return var_es_order_statistic(pnl, alpha).var;
+    std::vector<double> loss(pnl.size());
+    return value_or_throw(try_historical_var(pnl, alpha, loss));
 }
 
 std::vector<double> brw_weights(std::size_t n, double lam) {

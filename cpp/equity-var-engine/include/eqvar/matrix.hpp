@@ -1,6 +1,6 @@
 // eqvar/matrix.hpp — minimal dense linear algebra for the VaR engine.
 //
-// A deliberately small surface: row-major dense Matrix over std::vector<double>,
+// A small surface: row-major dense Matrix over std::vector<double>,
 // Cholesky with a diagonal-jitter fallback for near-singular PSD matrices,
 // matrix-vector product / quadratic form, and covariance estimators (sample +
 // RiskMetrics EWMA) from a (T x n) returns panel.  Semantics mirror the Python

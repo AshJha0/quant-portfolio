@@ -1,6 +1,6 @@
 // Dense matrix and robust Cholesky factorisation.
 //
-// A deliberately small linear-algebra layer: the engine needs dense
+// A small linear-algebra layer: the engine needs dense
 // row-major storage, products, quadratic forms, and Cholesky with jitter
 // escalation (singular covariances are a legitimate FX input: two
 // currencies pegged to the same anchor are perfectly correlated).  No

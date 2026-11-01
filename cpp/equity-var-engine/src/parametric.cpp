@@ -5,63 +5,20 @@
 #include <stdexcept>
 #include <string>
 
+#include "eqvar/kernels.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
 namespace eqvar {
 
 double portfolio_sigma(std::span<const double> exposures, const Matrix& cov) {
-    validate_exposures(exposures, "portfolio_sigma");
-    if (!cov.square() || cov.rows() != exposures.size()) {
-        throw std::invalid_argument("portfolio_sigma: covariance shape does not match " +
-                                    std::to_string(exposures.size()) + " exposures");
-    }
-    for (double w : exposures) {
-        if (!std::isfinite(w)) {
-            throw std::invalid_argument("portfolio_sigma: exposures must be finite");
-        }
-    }
-    const double var = quad_form(exposures, cov);
-    // NaN fails every ordered comparison below, so a non-finite covariance
-    // would otherwise return a NaN sigma and poison the whole VaR report.
-    if (!std::isfinite(var)) {
-        throw std::invalid_argument(
-            "portfolio_sigma: w'Sw is not finite (covariance contains NaN/Inf "
-            "or overflows)");
-    }
-    double wmax = 0.0;
-    for (double w : exposures) wmax = std::max(wmax, std::abs(w));
-    if (var < -1e-10 * std::max(1.0, wmax * wmax)) {
-        throw std::invalid_argument(
-            "portfolio_sigma: covariance matrix is not positive semi-definite (w'Sw < 0)");
-    }
-    return std::sqrt(std::max(var, 0.0));
+    return value_or_throw(try_portfolio_sigma(exposures, cov));
 }
 
 double parametric_var(std::span<const double> exposures, const Matrix& cov, double alpha,
                       Dist dist, double df, double mean, int horizon_days) {
-    validate_alpha(alpha);
-    if (!std::isfinite(mean)) throw std::invalid_argument("parametric_var: mean must be finite");
-    if (horizon_days < 1) {
-        throw std::invalid_argument("parametric_var: horizon_days must be >= 1, got " +
-                                    std::to_string(horizon_days));
-    }
-    const double sigma =
-        portfolio_sigma(exposures, cov) * std::sqrt(static_cast<double>(horizon_days));
-    const double mu = mean * static_cast<double>(horizon_days);
-    double z;
-    if (dist == Dist::Normal) {
-        z = normal_ppf(alpha);
-    } else {
-        if (!(df > 2.0) || !std::isfinite(df)) {
-            throw std::invalid_argument(
-                "parametric_var: Student-t df must be > 2 for finite variance, got " +
-                std::to_string(df));
-        }
-        // Variance-matched t: quantile rescaled to unit variance.
-        z = student_t_ppf(alpha, df) * std::sqrt((df - 2.0) / df);
-    }
-    return -(mu + z * sigma);
+    return value_or_throw(
+        try_parametric_var(exposures, cov, alpha, dist, df, mean, horizon_days));
 }
 
 double cornish_fisher_z(double z, double skew, double excess_kurt) {

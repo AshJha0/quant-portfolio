@@ -1,5 +1,7 @@
 #include "eqvar/returns.hpp"
 
+#include "eqvar/kernels.hpp"
+
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -52,36 +54,13 @@ std::vector<double> portfolio_pnl(const Matrix& returns, std::span<const double>
 }
 
 void validate_pnl(std::span<const double> pnl, std::size_t min_obs) {
-    if (pnl.size() < min_obs) {
-        throw std::invalid_argument("need at least " + std::to_string(min_obs) +
-                                    " P&L observations, got " + std::to_string(pnl.size()) +
-                                    "; empirical tail quantiles are meaningless on shorter samples");
-    }
-    for (double v : pnl) {
-        if (!std::isfinite(v)) throw std::invalid_argument("pnl contains NaN or infinite values");
-    }
+    value_or_throw(try_validate_pnl(pnl, min_obs));
 }
 
-void validate_alpha(double alpha) {
-    if (!(alpha > 0.0 && alpha < 0.5)) {
-        throw std::invalid_argument(
-            "alpha is the tail probability (e.g. 0.01 for 99 %); must be in (0, 0.5), got " +
-            std::to_string(alpha));
-    }
-}
+void validate_alpha(double alpha) { value_or_throw(try_validate_alpha(alpha)); }
 
 void validate_exposures(std::span<const double> exposures, const char* who) {
-    if (exposures.empty()) {
-        throw std::invalid_argument(std::string(who) + ": book has no positions");
-    }
-    bool any = false;
-    for (double w : exposures) {
-        if (!std::isfinite(w)) {
-            throw std::invalid_argument(std::string(who) + ": exposures must be finite");
-        }
-        any = any || w != 0.0;
-    }
-    if (!any) throw std::invalid_argument(std::string(who) + ": book has no positions");
+    value_or_throw(try_validate_exposures(exposures, who));
 }
 
 }  // namespace eqvar

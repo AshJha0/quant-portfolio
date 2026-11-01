@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "fxvar/expected_shortfall.hpp"
+#include "fxvar/kernels.hpp"
 #include "fxvar/stats.hpp"
 
 namespace fxvar {
@@ -166,37 +167,8 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
 
 // ------------------------------------------------------------ diagnostics
 double var_standard_error(const std::vector<double>& pnl, double alpha) {
-  validate_alpha(alpha);
-  const std::size_t n = pnl.size();
-  if (n < 10)
-    throw std::invalid_argument(
-        "need at least 10 scenarios for a VaR standard error");
-  // Loss quantile q with the same tail convention as empirical_var.
-  const double q = -empirical_var(pnl, alpha);  // validates finiteness
-
-  // Gaussian KDE with Silverman bandwidth h = 0.9 min(sd, IQR/1.34) n^-1/5.
-  const double sd = sample_std(pnl);
-  std::vector<double> sorted(pnl);
-  std::sort(sorted.begin(), sorted.end());
-  const auto quantile_sorted = [&sorted](double p) {
-    const double pos = p * static_cast<double>(sorted.size() - 1);
-    const std::size_t lo = static_cast<std::size_t>(pos);
-    const std::size_t hi = std::min(lo + 1, sorted.size() - 1);
-    const double frac = pos - static_cast<double>(lo);
-    return sorted[lo] * (1.0 - frac) + sorted[hi] * frac;
-  };
-  const double iqr = quantile_sorted(0.75) - quantile_sorted(0.25);
-  double spread = sd;
-  if (iqr > 0.0) spread = std::min(sd, iqr / 1.34);
-  if (!(spread > 0.0)) return 0.0;  // zero-variance sample
-  const double h =
-      0.9 * spread * std::pow(static_cast<double>(n), -0.2);
-
-  double dens = 0.0;
-  for (double x : pnl) dens += norm_pdf((q - x) / h);
-  dens /= static_cast<double>(n) * h;
-  dens = std::max(dens, 1e-300);
-  return std::sqrt(alpha * (1.0 - alpha) / static_cast<double>(n)) / dens;
+  std::vector<double> ws(pnl.size());
+  return value_or_throw(try_var_standard_error(pnl, alpha, ws));
 }
 
 double var_standard_error_bootstrap(const std::vector<double>& pnl,
@@ -219,6 +191,7 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl,
   // than re-deriving it here.
   Rng rng(seed);
   std::vector<double> resample(n);
+  std::vector<double> ws(n);  // selection buffer, reused by every replicate
   std::vector<double> boot_vars(n_boot);
   for (std::size_t b = 0; b < n_boot; ++b) {
     for (std::size_t i = 0; i < n; ++i) {
@@ -226,7 +199,7 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl,
           static_cast<std::size_t>(rng.uniform() * static_cast<double>(n));
       resample[i] = pnl[std::min(idx, n - 1)];
     }
-    boot_vars[b] = empirical_var(resample, alpha);
+    boot_vars[b] = value_or_throw(try_empirical_var_es(resample, alpha, ws)).first;
   }
   return sample_std(boot_vars);
 }

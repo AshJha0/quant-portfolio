@@ -14,17 +14,22 @@
 //
 // Determinism: every run takes an explicit std::mt19937_64 seed, draws
 // normals by inverse-CDF transform of the raw generator output (no
-// implementation-defined std::normal_distribution), and is single-threaded
-// -- identical seeds give identical results on the same toolchain. Across
+// implementation-defined std::normal_distribution), and mc_price() is
+// single-threaded -- identical seeds give identical results on the same
+// toolchain. try_mc_price() can split the draws into `threads` chunks on a
+// persistent ThreadPool; threads = 1 is the legacy stream bit for bit. Across
 // platforms the last bits can differ (libm exp/log are not correctly
 // rounded; compilers may contract to FMA).
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "fxopt/common.hpp"
+#include "fxopt/thread_pool.hpp"
 
 namespace fxopt {
 
@@ -78,5 +83,56 @@ MCResult mc_price(double S, double K, double T, double r_d, double r_f,
                   double sigma, OptionType type, std::int64_t n_paths,
                   std::uint64_t seed, bool antithetic = true,
                   bool control_variate = true) = delete;
+
+/// Monte Carlo estimate without the std::string of MCResult (the method is
+/// a static string), so returning it never allocates.
+struct McEstimate {
+    double price;
+    double std_error;
+    double ci_low;
+    double ci_high;
+    std::int64_t n_paths;
+    const char* method;
+};
+
+/// Reusable path buffers for try_mc_price(). Size it once with reserve()
+/// for the largest run; try_mc_price() then never allocates. One workspace
+/// per concurrent caller.
+class McWorkspace {
+public:
+    /// Make room for `n_paths` paths (and the control column when
+    /// `control_variate`). May allocate; call it outside the hot path.
+    void reserve(std::int64_t n_paths, bool control_variate) {
+        const std::size_t n = static_cast<std::size_t>(n_paths) + 1;  // antithetic rounds up
+        if (discounted_.size() < n) discounted_.resize(n);
+        if (control_variate && control_.size() < n) control_.resize(n);
+    }
+    [[nodiscard]] std::size_t capacity() const noexcept { return discounted_.size(); }
+
+private:
+    friend Result<McEstimate> try_mc_price(double, double, double, double, double, double,
+                                           OptionType, std::int64_t, Seed, bool, bool,
+                                           unsigned, McWorkspace&, ThreadPool*) noexcept;
+    std::vector<double> discounted_;
+    std::vector<double> control_;
+};
+
+/// noexcept Monte Carlo price on caller-owned buffers and pool.
+///
+/// Same checks and arithmetic as mc_price(). With `threads == 1` the draws
+/// come from mt19937_64(seed), the legacy stream, so the result equals
+/// mc_price() bit for bit. With `threads > 1` the draws are split into
+/// `threads` chunks, chunk c seeded with splitmix64(seed + k c); the result
+/// is then fixed for a given (seed, threads) whatever `pool` runs it (null
+/// runs the chunks on the calling thread), and statistically equivalent to,
+/// not bit-equal with, the single stream. `ws` must have been reserved for
+/// `n_paths` (Errc::WorkspaceTooSmall otherwise). No allocation, no thread
+/// creation.
+[[nodiscard]] Result<McEstimate> try_mc_price(double S, double K, double T, double r_d,
+                                              double r_f, double sigma, OptionType type,
+                                              std::int64_t n_paths, Seed seed,
+                                              bool antithetic, bool control_variate,
+                                              unsigned threads, McWorkspace& ws,
+                                              ThreadPool* pool) noexcept;
 
 }  // namespace fxopt

@@ -6,6 +6,8 @@
 #include <string>
 #include <stdexcept>
 
+#include "fxvar/kernels.hpp"
+
 namespace fxvar {
 
 Matrix Matrix::from_rows(const std::vector<std::vector<double>>& rows) {
@@ -58,31 +60,13 @@ Matrix matmul(const Matrix& a, const Matrix& b) {
 std::vector<double> matvec(const Matrix& a, const std::vector<double>& x) {
   if (a.cols() != x.size())
     throw std::invalid_argument("matvec: dimension mismatch");
-  for (double v : x)
-    if (!std::isfinite(v)) throw std::invalid_argument("matvec: x contains NaN or inf");
   std::vector<double> y(a.rows(), 0.0);
-  for (std::size_t i = 0; i < a.rows(); ++i) {
-    const double* arow = a.row(i);
-    double s = 0.0;
-    for (std::size_t j = 0; j < a.cols(); ++j) s += arow[j] * x[j];
-    y[i] = s;
-  }
+  value_or_throw(try_matvec(a, x, y));
   return y;
 }
 
 double quad_form(const std::vector<double>& w, const Matrix& a) {
-  if (a.rows() != a.cols() || a.rows() != w.size())
-    throw std::invalid_argument("quad_form: dimension mismatch");
-  for (double v : w)
-    if (!std::isfinite(v)) throw std::invalid_argument("quad_form: w contains NaN or inf");
-  double total = 0.0;
-  for (std::size_t i = 0; i < a.rows(); ++i) {
-    const double* arow = a.row(i);
-    double s = 0.0;
-    for (std::size_t j = 0; j < a.cols(); ++j) s += arow[j] * w[j];
-    total += w[i] * s;
-  }
-  return total;
+  return value_or_throw(try_quad_form(w, a));
 }
 
 namespace {

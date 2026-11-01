@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(fx_var_engine CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -12,6 +12,28 @@ endif()
 
 option(FXVAR_WERROR "Treat compiler warnings as errors" OFF)
 option(FXVAR_BUILD_BENCH "Build the benchmark executable" ON)
+# FXVAR_NATIVE adds -O3 -march=native to every target: local latency work
+# only, never CI (the binary will not run on older CPUs and FMA contraction
+# can move last bits). FXVAR_LTO turns on CMAKE_INTERPROCEDURAL_OPTIMIZATION.
+# FXVAR_VEC_REPORT prints the vectorisation report for the hot sources.
+# CMAKE_CXX_FLAGS is never modified.
+option(FXVAR_NATIVE "Add -O3 -march=native (local benchmarking only)" OFF)
+option(FXVAR_LTO "Enable link-time optimisation" OFF)
+option(FXVAR_VEC_REPORT "Print the vectorisation report for the hot kernels" OFF)
+
+if(FXVAR_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT _fxvar_ipo OUTPUT _fxvar_ipo_msg)
+  if(_fxvar_ipo)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+  else()
+    message(WARNING "FXVAR_LTO requested but not supported: ${_fxvar_ipo_msg}")
+  endif()
+endif()
+
+add_library(fxvar_tuning INTERFACE)
+target_compile_options(fxvar_tuning INTERFACE
+  $<$<AND:$<BOOL:${FXVAR_NATIVE}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-O3 -march=native>)
 
 # Warnings for GCC/Clang only; MSVC keeps its defaults.
 set(FXVAR_WARNINGS
@@ -32,9 +54,17 @@ add_library(fxvar
   src/monte_carlo.cpp
   src/backtest.cpp
   src/stress.cpp
+  src/kernels.cpp
 )
 target_include_directories(fxvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(fxvar PRIVATE ${FXVAR_WARNINGS})
+target_link_libraries(fxvar PUBLIC fxvar_tuning)
+if(FXVAR_VEC_REPORT)
+  set_property(SOURCE src/kernels.cpp src/book.cpp src/matrix.cpp src/monte_carlo.cpp
+    APPEND PROPERTY COMPILE_OPTIONS
+    "$<$<CXX_COMPILER_ID:GNU>:-fopt-info-vec-all>"
+    "$<$<CXX_COMPILER_ID:Clang,AppleClang>:-Rpass=loop-vectorize;-Rpass-missed=loop-vectorize>")
+endif()
 
 # -------------------------------------------------------------------- tests
 include(CTest)  # defines BUILD_TESTING (default ON)
@@ -64,6 +94,7 @@ if(BUILD_TESTING)
     test_golden_python
     test_conventions
     test_fuzz
+    test_latency_api
   )
   foreach(t IN LISTS FXVAR_TESTS)
     add_executable(${t} tests/${t}.cpp)
@@ -73,6 +104,16 @@ if(BUILD_TESTING)
       $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>)
     gtest_discover_tests(${t})
   endforeach()
+
+  # Replaces global operator new to count allocations, so it is its own
+  # binary. Sanitizer runtimes define operator new themselves (a static
+  # runtime then clashes at link time), so sanitizer builds skip it.
+  if(NOT CMAKE_CXX_FLAGS MATCHES "-fsanitize")
+    add_executable(test_no_alloc tests/test_no_alloc.cpp)
+    target_link_libraries(test_no_alloc PRIVATE fxvar GTest::gtest GTest::gtest_main)
+    target_compile_options(test_no_alloc PRIVATE ${FXVAR_WARNINGS})
+    gtest_discover_tests(test_no_alloc)
+  endif()
 endif()
 
 # ---------------------------------------------------------------- benchmark
@@ -80,4 +121,14 @@ if(FXVAR_BUILD_BENCH)
   add_executable(fxvar_bench bench/bench_main.cpp)
   target_link_libraries(fxvar_bench PRIVATE fxvar)
   target_compile_options(fxvar_bench PRIVATE ${FXVAR_WARNINGS})
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" _fxvar_bt)
+  set(_fxvar_flags "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_fxvar_bt}}")
+  if(FXVAR_NATIVE)
+    string(APPEND _fxvar_flags " -O3 -march=native")
+  endif()
+  if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    string(APPEND _fxvar_flags " LTO")
+  endif()
+  string(STRIP "${_fxvar_flags}" _fxvar_flags)
+  target_compile_definitions(fxvar_bench PRIVATE QP_BENCH_FLAGS="${_fxvar_flags}")
 endif()

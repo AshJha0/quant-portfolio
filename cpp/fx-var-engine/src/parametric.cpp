@@ -6,57 +6,20 @@
 #include <stdexcept>
 
 #include "fxvar/expected_shortfall.hpp"
+#include "fxvar/kernels.hpp"
 #include "fxvar/stats.hpp"
 
 namespace fxvar {
 
 double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov) {
-  if (exposures.empty())
-    throw std::invalid_argument("portfolio_sigma: book has no positions");
-  bool any = false;
-  for (double w : exposures) any = any || w != 0.0;
-  for (double w : exposures)
-    if (!std::isfinite(w))
-      throw std::invalid_argument("portfolio_sigma: exposures must be finite");
-  if (!any) throw std::invalid_argument("portfolio_sigma: book has no positions");
-  const double var = quad_form(exposures, cov);
-  // NaN loses every ordered comparison, so an unguarded non-finite input
-  // would return a NaN sigma and quietly poison the whole VaR report.
-  if (!std::isfinite(var))
-    throw std::invalid_argument(
-        "portfolio_sigma: w'Sw is not finite (covariance contains NaN/Inf or "
-        "the exposures overflow)");
-  // The PSD test must be RELATIVE to the size of the terms being summed.
-  // A hedged multi-billion book against a rank-deficient (single-driver)
-  // covariance has true variance 0 but a quadratic form that rounds to
-  // ~1e-16 of |w|^2 |Sigma| - which an absolute -1e-12 threshold flags as
-  // "not positive semi-definite" on perfectly good market data.
-  double wmax = 0.0;
-  for (double w : exposures) wmax = std::max(wmax, std::abs(w));
-  double cmax = 0.0;
-  for (std::size_t i = 0; i < cov.rows(); ++i)
-    for (std::size_t j = 0; j < cov.cols(); ++j)
-      cmax = std::max(cmax, std::abs(cov(i, j)));
-  const double tol = 1e-10 * std::max(1.0, wmax * wmax * cmax);
-  if (var < -tol)
-    throw std::invalid_argument(
-        "portfolio_sigma: covariance matrix is not positive semi-definite");
-  return std::sqrt(std::max(var, 0.0));
+  return value_or_throw(try_portfolio_sigma(exposures, cov));
 }
 
 VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov,
                 double alpha, double horizon_days, TailDist dist, double df,
                 double mean) {
-  validate_alpha(alpha);
-  validate_horizon(horizon_days);
-  if (!std::isfinite(mean)) throw std::invalid_argument("mean must be finite");
-  const double sig1 = portfolio_sigma(exposures, cov);
-  const double scale = std::sqrt(horizon_days);
-  const double sig = sig1 * scale;
-  const double mu = mean * horizon_days;
-  if (dist == TailDist::kNormal)
-    return {normal_var(sig, alpha, mu), normal_es(sig, alpha, mu)};
-  return {t_var(sig, alpha, df, mu), t_es(sig, alpha, df, mu)};
+  return value_or_throw(
+      try_var_covar(exposures, cov, alpha, horizon_days, dist, df, mean));
 }
 
 ParametricResult parametric_var(const Book& book, const Market& market,

@@ -1,7 +1,7 @@
 # Validation
 
 How the engine is validated, and where it fails. Every claim below is
-enforced by the test suite: `ctest` runs 115 tests in 11 executables,
+enforced by the test suite: `ctest` runs 123 tests in 13 executables,
 offline, in about 7 s serial (GCC 15.2, Release). The same suite passes
 under Clang 21.1 and under GCC with `-fsanitize=address,undefined`.
 
@@ -123,9 +123,23 @@ match the JSON.
 8. **Bootstrap cost.** 200 resamples of 100k paths add about 0.4 s to a
    100k-path run.
 
+## 6a. Hot-path API equivalence
+
+| check | how | test |
+|---|---|---|
+| try_* kernels equal the throwing API bit for bit | historical, ES, parametric, matvec, quad form, Cholesky (incl. jitter ladder) | `NoexceptApi.*` in `tests/test_latency_api.cpp` |
+| fused MC equals `monte_carlo_var` and `simulate_factor_returns` + `portfolio_pnl` | every P&L value and all four metrics, normal and Student-t | `NoexceptApi.FusedMonteCarloEqualsMonteCarloVar` |
+| 4-row matvec equals a per-row left-to-right sum | remainders 0 to 3 | `BatchApi.ScenarioPnlMatvecEqualsRowByRowSum` |
+| kernels are noexcept | `static_assert(noexcept(...))` | top of `tests/test_latency_api.cpp` |
+| zero heap allocations on the success path | counting global `operator new` | `tests/test_no_alloc.cpp` (`eqvar_alloc_tests`) |
+| legacy API unchanged | 5,557 results and exception texts in hex-float, old vs new library | identical with GCC 15.2 and Clang 21.1 |
+
+The allocation test is not built under sanitizers: their runtimes define
+`operator new` themselves.
+
 ## 7. Toolchain
 
-Built and tested with GCC 15.2 and Clang 21.1, C++20, CMake 4.2,
+Built and tested with GCC 15.2 and Clang 21.1, C++23, CMake 4.2,
 GoogleTest 1.15.2, with `-DEQVAR_WERROR=ON` (`-Wall -Wextra -Wpedantic
 -Werror`), plus one GCC build with `-fsanitize=address,undefined`. Test
 binaries add `-Wno-unused-result` (`EXPECT_THROW` discards `[[nodiscard]]`

@@ -157,7 +157,7 @@ TEST(PortfolioSigma, HedgedBillionDollarBookAgainstRankDeficientCovariance) {
   const VarEs ve = var_covar(w, cov, 0.01, 1.0);
   EXPECT_DOUBLE_EQ(ve.var, 0.0);
   EXPECT_DOUBLE_EQ(ve.es, 0.0);
-  // A genuinely indefinite covariance is still rejected at any scale.
+  // An indefinite covariance is still rejected at any scale.
   const Matrix indefinite = Matrix::from_rows({{1e-4, 2e-4}, {2e-4, 1e-4}});
   EXPECT_THROW(portfolio_sigma({1e6, -1e6}, indefinite), std::invalid_argument);
 }

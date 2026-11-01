@@ -13,19 +13,23 @@ this one, and how such an engine is governed.
 The desk's risk view ("what is my delta/gamma/vega *right now*") is a
 long-running service that re-prices the whole position set on every
 meaningful underlier/vol tick. Order of magnitude: 100k–1M option positions
-x full Greek set, refreshed every few seconds. At ~12M Greek-set
-evaluations/sec/core (benchmarked), a full book sweep is tens of
-milliseconds on a handful of cores, fast enough that traders see risk
-move *with* the market, not 30 seconds behind it. The Python package in the
+x full Greek set, refreshed every few seconds. At the per-call cost in the
+README latency table (about 0.1 µs for a full Greek set), a full book sweep
+is tens of milliseconds on a handful of cores, fast enough that traders see
+risk move *with* the market, not 30 seconds behind it. `bs_greeks_batch`
+takes the book as structure-of-arrays spans and fills one output span per
+Greek. The Python package in the
 same role would be the bottleneck; instead it is the *reference* the
 service is validated against.
 
 ### Quoting / auto-hedging engines
 Market-making systems price two-sided quotes off a marked vol surface and
 re-hedge on fills. The per-event budget is microseconds, allocation-free,
-GC-free, GIL-free. The kernels here fit that shape: a BSM price is ~62 ns,
-an implied vol is a few Newton iterations of the same kernel, and nothing
-on the hot path allocates. (A real quoting stack adds surface
+GC-free, GIL-free. The `try_*` kernels fit that shape: they are `noexcept`,
+return `std::expected<double, Error>`, and make no heap allocation on any
+path (pinned by `eqopt_alloc_tests`). A tree uses a workspace sized once at
+start-up (`crr_workspace_size`); Monte Carlo uses an `McWorkspace` and a
+`ThreadPool` created once, so no thread is started per price. (A real quoting stack adds surface
 interpolation and position caching on top; the pricing kernel is the part
 that must never be the slow link.)
 
@@ -87,12 +91,18 @@ a real P&L restatement.
   `std::normal_distribution`, whose algorithm varies by standard library;
   libm differences in `exp`/`log` still change the last bits across
   platforms.
-- **Input hygiene at the boundary.** The engine throws on negative or
-  non-finite (NaN/Inf) inputs, including non-finite rates, and on
-  sub-intrinsic implied-vol requests instead of returning
-  plausible garbage, upstream data problems (stale quotes, crossed
-  markets, bad dividend feeds) surface as exceptions in the service log,
-  not as silent risk misstatements.
+- **Input hygiene at the boundary.** The engine rejects negative or
+  non-finite (NaN/Inf) inputs, including non-finite rates, and
+  sub-intrinsic implied-vol requests instead of returning a plausible
+  number. The kernels return an `Error` (code, field, values); the
+  throwing API turns it into the same exception text as before. Upstream
+  data problems (stale quotes, crossed markets, bad dividend feeds) surface
+  as errors in the service log, not as silent risk misstatements.
+- **Latency builds.** `-DEQOPT_NATIVE=ON` adds `-O3 -march=native` and
+  `-DEQOPT_LTO=ON` turns on link-time optimisation; both are off by default
+  and never used in CI. `-march=native` can enable FMA contraction, which
+  moves last bits, so the golden and bit-equality tests are the check to
+  run on such a build.
 - **Edge-case policy is part of the interface.** `T=0` intrinsic and
   `sigma=0` discounted-forward-intrinsic limits are documented and tested;
   expiry-day and pinned-strike behaviour therefore matches the reference

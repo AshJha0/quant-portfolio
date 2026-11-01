@@ -45,10 +45,12 @@
 
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "fxvar/error.hpp"
 #include "fxvar/returns.hpp"
 
 namespace fxvar {
@@ -191,6 +193,17 @@ class CompiledBook {
   /// of rate.  These are the mapping weights used by the
   /// variance-covariance method and the reverse-stress closed form.
   std::vector<double> linear_exposures(double bump = 1e-6) const;
+
+  /// noexcept pnl(const double*): `shocks` in factors() order, at least
+  /// factors().size() long. Same value, or the same error, as pnl().
+  [[nodiscard]] Result<double> try_pnl(std::span<const double> shocks) const noexcept;
+
+  /// Batch revaluation: `scenarios` is row-major, n rows of factors().size()
+  /// columns in factors() order; out[s] is the P&L of row s, equal bit for
+  /// bit to pnl(ReturnsMatrix) on the same rows. out.size() sets n. No
+  /// allocation; refuses NaN/Inf anywhere in the block before writing.
+  [[nodiscard]] Result<void> try_pnl_batch(std::span<const double> scenarios,
+                                           std::span<double> out) const noexcept;
 
  private:
   // Struct-of-arrays legs.

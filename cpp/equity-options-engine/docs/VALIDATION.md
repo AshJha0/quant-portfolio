@@ -93,9 +93,26 @@ Model failure modes (smile, discrete dividends, term structure, coarse
 trees) are documented in the Python reference
 [VALIDATION.md](../../../python/equity/01-options-pricing/docs/VALIDATION.md).
 
-## 6. Performance
+## 6. Kernel API, allocation and threading tests
 
-See the README benchmark table (`./build/eqopt_bench`). Precomputing the
-exercise values per tree level took the 1000-step American tree from
-2.3 ms to 0.6 ms and the 2000-step tree from 9.6 ms to 2.0 ms (GCC 15,
-same machine). Implied vol went from 5.9 µs to 0.8 µs per solve.
+| Test | What it pins |
+|---|---|
+| `NoexceptApi.*` (5) | `try_*` equals the throwing API bit for bit over a 1,280-point grid that includes every edge limit; errors carry the same message as the exception |
+| `BatchApi.*` (3) | `bs_price_batch` and `bs_greeks_batch` equal the scalar API bit for bit; a bad element is reported by index and nothing is written |
+| `ThreadPoolMc.*` (2) | `try_mc_price` equals `mc_price` for threads 1, 2, 4, 9 on no pool and on pools of 0, 1, 3, 7 workers, three runs each; workspace size is checked |
+| `ThreadPool.RunsEveryTaskOnceUnderRepeatedUse` | 500 jobs of 64 tasks on 5 workers, every task runs once per job |
+| `eqopt_alloc_tests` (5) | counting `operator new`: zero heap allocations on every kernel success path (analytic, implied vol, CRR with workspace, batch, MC with pool and workspace) and on the kernel error path |
+| `static_assert`s | every kernel entry point is `noexcept`; `Error` is trivially copyable |
+
+The allocation test is a separate binary because it replaces the global
+`operator new`. Sanitizer runtimes define `operator new` themselves, so the
+sanitizer builds skip it.
+
+The latency work changed no result. Evidence: a program that calls only
+the legacy API prints 64,203 results and exception texts in hex-float; the
+output against the library before and after the change is identical with
+GCC 15.2 and with Clang 21.1. The 66 pre-existing tests pass unchanged.
+
+## 7. Performance
+
+See the README latency table (`./build/eqopt_bench`).

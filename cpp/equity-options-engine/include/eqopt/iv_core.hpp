@@ -22,12 +22,12 @@ inline constexpr double kSqrt2Pi = 2.5066282746310002;
 inline constexpr double kEps = std::numeric_limits<double>::epsilon();
 inline constexpr int kMaxIter = 100;
 
-inline double norm_cdf(double d) { return 0.5 * std::erfc(-d / kSqrt2); }
-inline double norm_pdf(double d) { return kInvSqrt2Pi * std::exp(-0.5 * d * d); }
+inline double norm_cdf(double d) noexcept { return 0.5 * std::erfc(-d / kSqrt2); }
+inline double norm_pdf(double d) noexcept { return kInvSqrt2Pi * std::exp(-0.5 * d * d); }
 
 // b(x,s) = e^{x/2} N(x/s+s/2) - e^{-x/2} N(x/s-s/2) for x <= 0, s > 0,
 // written as cosh(x/2) A + sinh(x/2) (N(d1)+N(d2)), A = N(d1) - N(d2).
-inline double normalised_otm_call(double x, double s) {
+inline double normalised_otm_call(double x, double s) noexcept {
     const double h = x / s;
     const double t = 0.5 * s;
     const double d1 = h + t;
@@ -69,14 +69,14 @@ inline double normalised_otm_call(double x, double s) {
 }
 
 // b_max - b = e^{x/2} N(-d1) + e^{-x/2} N(d2): a sum, no cancellation.
-inline double normalised_otm_call_complement(double x, double s) {
+inline double normalised_otm_call_complement(double x, double s) noexcept {
     const double d1 = x / s + 0.5 * s;
     const double d2 = x / s - 0.5 * s;
     return std::exp(0.5 * x) * norm_cdf(-d1) + std::exp(-0.5 * x) * norm_cdf(d2);
 }
 
 // Acklam inverse normal, no refinement: used for the initial guess only.
-inline double acklam_guess(double p) {
+inline double acklam_guess(double p) noexcept {
     constexpr double a[6] = {-3.969683028665376e+01, 2.209460984245205e+02,
                              -2.759285104469687e+02, 1.383577518672690e+02,
                              -3.066479806614716e+01, 2.506628277459239e+00};
@@ -104,10 +104,14 @@ inline double acklam_guess(double p) {
            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0);
 }
 
+// Outcome of the noexcept solver entry points.
+enum class IvStatus { Ok, AtBound, NoConvergence };
+
 // Solve b(x, s) = beta for s. Requires beta > 0, u > 0, x <= 0. `evals` is
-// incremented once per iteration. Throws std::runtime_error on
-// non-convergence.
-inline double total_vol(double beta, double u, double x, int& evals) {
+// incremented once per iteration. noexcept: writes the root to `out` and
+// returns IvStatus::Ok, or returns IvStatus::NoConvergence.
+inline IvStatus total_vol_nx(double beta, double u, double x, int& evals,
+                             double& out) noexcept {
     const double b_max = std::exp(0.5 * x);
     const double s_c = std::sqrt(-2.0 * x);  // inflection point of b in s
     const double b_c = s_c > 0.0 ? normalised_otm_call(x, s_c) : 0.0;
@@ -186,7 +190,8 @@ inline double total_vol(double beta, double u, double x, int& evals) {
             lo = std::max(lo, s);
             lo_probed = lo == s;
         } else {
-            return s;
+            out = s;
+            return IvStatus::Ok;
         }
         const double newton = f / fp;
         const double den = 1.0 - 0.5 * newton * fpp / fp;
@@ -210,27 +215,55 @@ inline double total_vol(double beta, double u, double x, int& evals) {
             }
         }
         if (std::fabs(s_new - s) <= std::max(tol, 4.0 * kEps) * s || (hi - lo) <= 4.0 * kEps * s) {
-            return s_new;
+            out = s_new;
+            return IvStatus::Ok;
         }
         s = s_new;
     }
-    throw std::runtime_error("implied vol: no convergence in 100 iterations");
+    return IvStatus::NoConvergence;
+}
+
+// Throwing form: std::runtime_error on non-convergence.
+inline double total_vol(double beta, double u, double x, int& evals) {
+    double s = 0.0;
+    if (total_vol_nx(beta, u, x, evals, s) != IvStatus::Ok) {
+        throw std::runtime_error("implied vol: no convergence in 100 iterations");
+    }
+    return s;
 }
 
 // Black implied vol from a validated quote with lower < price < upper.
-// Throws std::invalid_argument when the quote is within rounding of a bound.
-inline double black_implied_vol(double price, double F, double K, double T, double df,
-                                bool is_call, int& evals) {
+// noexcept: IvStatus::AtBound when the quote is within rounding of a bound.
+inline IvStatus black_implied_vol_nx(double price, double F, double K, double T, double df,
+                                     bool is_call, int& evals, double& out) noexcept {
     const double lower = df * std::max(is_call ? F - K : K - F, 0.0);
     const double upper = is_call ? df * F : df * K;
     const double norm = df * std::sqrt(F * K);
     const double beta = (price - lower) / norm;
     const double u = (upper - price) / norm;
-    if (!(beta > 0.0 && u > 0.0)) {
-        throw std::invalid_argument("price is within rounding of a no-arbitrage bound");
-    }
+    if (!(beta > 0.0 && u > 0.0)) [[unlikely]] return IvStatus::AtBound;
     const double x = -std::fabs(std::log1p((F - K) / K));  // F-K exact near the money
-    return total_vol(beta, u, x, evals) / std::sqrt(T);
+    double s = 0.0;
+    const IvStatus st = total_vol_nx(beta, u, x, evals, s);
+    if (st != IvStatus::Ok) [[unlikely]] return st;
+    out = s / std::sqrt(T);
+    return IvStatus::Ok;
+}
+
+// Throwing form: std::invalid_argument when the quote is within rounding
+// of a bound, std::runtime_error on non-convergence.
+inline double black_implied_vol(double price, double F, double K, double T, double df,
+                                bool is_call, int& evals) {
+    double out = 0.0;
+    switch (black_implied_vol_nx(price, F, K, T, df, is_call, evals, out)) {
+        case IvStatus::Ok:
+            return out;
+        case IvStatus::AtBound:
+            throw std::invalid_argument("price is within rounding of a no-arbitrage bound");
+        case IvStatus::NoConvergence:
+            break;
+    }
+    throw std::runtime_error("implied vol: no convergence in 100 iterations");
 }
 
 }  // namespace eqopt::iv_core

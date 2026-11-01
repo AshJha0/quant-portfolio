@@ -18,9 +18,15 @@ FX has no single close. A typical schedule:
 
 With the same seed, book and binary on the same platform, the three regions
 get the same MC numbers. On a different libm the last bits can differ, so
-pin the platform for the official run. On the synthetic 250-position
-benchmark book, HS plus parametric costs a few milliseconds and a 100k MC
-with bootstrap SE about 1.2 s on one core.
+pin the platform for the official run. The README lists measured
+per-call latencies on the synthetic 250-position benchmark book.
+
+**Latency-sensitive callers** (pre-trade limit checks, intraday what-if):
+compile the book once (`CompiledBook`), allocate the scenario block, the
+P&L vector and one selection buffer at start-up, then call
+`try_pnl_batch` and `try_empirical_var_es` per request. Neither allocates
+nor throws; a bad input comes back as an `fxvar::Error` whose `message()`
+is the text the throwing API would have used.
 
 **Intraday**: rerun `historical_var` and the stress library on each
 material fill. Rerun the MC when exposures move past a tolerance.

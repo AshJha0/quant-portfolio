@@ -42,6 +42,12 @@ double implied_vol(double price, double S, double K, double T, double r,
                    double q, OptionType type, double tol, int max_iter = 200,
                    double sigma_lo = 1e-9, double sigma_hi = 10.0);
 
+/// \brief noexcept form of implied_vol(): the same root, or the error the
+///        throwing form raises. No allocation.
+[[nodiscard]] Result<double> try_implied_vol(double price, double S, double K, double T,
+                                             double r, double q = 0.0,
+                                             OptionType type = OptionType::Call) noexcept;
+
 }  // namespace eqopt
 
 #endif  // EQOPT_IMPLIED_VOL_HPP

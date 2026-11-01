@@ -7,15 +7,15 @@
 #include <vector>
 
 #include "eqvar/historical.hpp"
+#include "eqvar/kernels.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
 namespace eqvar {
 
 double expected_shortfall(std::span<const double> pnl, double alpha) {
-    validate_alpha(alpha);
-    validate_pnl(pnl, 10);
-    return var_es_order_statistic(pnl, alpha).es;
+    std::vector<double> loss(pnl.size());
+    return value_or_throw(try_expected_shortfall(pnl, alpha, loss));
 }
 
 namespace {

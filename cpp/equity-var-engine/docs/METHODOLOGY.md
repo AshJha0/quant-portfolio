@@ -170,6 +170,37 @@ An exception is a day with pnl < -VaR.
 - Moments: stdev with ddof = 1; skewness and kurtosis as biased moment
   ratios, as the Python engine feeds Cornish-Fisher.
 
+## 9. Hot-path implementation (`eqvar/kernels.hpp`)
+
+The noexcept kernels compute the same numbers as the throwing API, which
+now wraps them. The rules that keep them the same:
+
+- **Selection, not sorting.** The order-statistic VaR / ES partitions the
+  loss vector with `std::nth_element` around rank m: O(n) on average. The
+  tail sum then adds the m - 1 largest losses in the order the partition
+  leaves them, as before. The deprecated `quantile_linear` used a full sort;
+  it now uses `nth_element` for x(lo) and the minimum of the upper part for
+  x(lo + 1), the same two order statistics. `var_es_weighted` (BRW) still
+  sorts, because it needs the cumulative weight in loss order.
+- **Summation order is never changed.** Every dot product and reduction
+  adds terms left to right as before. `try_matvec`, which is also the
+  scenario P&L kernel (pnl = panel x exposures), works on four rows at a
+  time with four accumulators. That adds instruction-level parallelism
+  without reordering any row's sum. Blocking the Cholesky or reordering the
+  covariance loops would change the last bits, so they keep their loop
+  order; all matrices are row-major and the inner loops walk contiguous
+  rows.
+- **Simulate once, store less.** `try_monte_carlo_var_factored` takes the
+  Cholesky factor and maps each simulated return vector to P&L at once, so
+  the n_paths x n scenario panel is never stored. The draws come in the
+  same order as `simulate_factor_returns`, so the P&L vector is the same.
+  VaR, ES, the bootstrap SE and the KDE SE all read that one P&L vector.
+- **No allocation.** Selection buffers, the Cholesky factor and its
+  jittered copy, and the Monte Carlo vectors are caller storage. The
+  bootstrap reuses one resample buffer across replicates.
+- **One thread.** The Monte Carlo is sequential (one `mt19937_64` stream),
+  so there is no thread pool and no generator change in this engine.
+
 ## Assumptions register
 
 Each line states what breaks if the assumption fails.

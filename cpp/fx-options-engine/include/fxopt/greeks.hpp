@@ -61,6 +61,57 @@ double volga(double S, double K, double T, double r_d, double r_f,
 GreeksResult analytic_greeks(double S, double K, double T, double r_d,
                              double r_f, double sigma, OptionType type);
 
+/// Closed-form GK Greeks on inputs the caller has validated: finite, S, K,
+/// T, sigma > 0 and sigma*sqrt(T) > kMinVol.
+inline GreeksResult analytic_greeks_unchecked(double S, double K, double T, double r_d,
+                                              double r_f, double sigma,
+                                              OptionType type) noexcept {
+    const double p = phi(type);
+    const double vol_sqrt_t = sigma * std::sqrt(T);
+    const double d1v = (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
+    const double d2v = d1v - sigma * std::sqrt(T);
+    const double df_f = std::exp(-r_f * T);
+    const double df_d = std::exp(-r_d * T);
+    const double sqrt_t = std::sqrt(T);
+    const double n_d1 = norm_pdf(d1v);
+    const double N_pd1 = norm_cdf(p * d1v);
+    const double N_pd2 = norm_cdf(p * d2v);
+
+    const double price = p * (S * df_f * N_pd1 - K * df_d * N_pd2);
+    const double delta_spot = p * df_f * N_pd1;
+    const double theta = -S * df_f * n_d1 * sigma / (2.0 * sqrt_t) +
+                         p * (r_f * S * df_f * N_pd1 - r_d * K * df_d * N_pd2);
+
+    return GreeksResult{
+        .price = price,
+        .delta_spot = delta_spot,
+        .delta_forward = p * N_pd1,
+        .gamma = df_f * n_d1 / (S * sigma * sqrt_t),
+        .vega = S * df_f * n_d1 * sqrt_t,
+        .theta = theta,
+        .rho_domestic = p * K * T * df_d * N_pd2,
+        .rho_foreign = -p * S * T * df_f * N_pd1,
+        .vanna = -df_f * n_d1 * d2v / sigma,
+        .volga = S * df_f * n_d1 * sqrt_t * d1v * d2v / sigma,
+    };
+}
+
+/// noexcept form of analytic_greeks(): the same values, or the error the
+/// throwing form raises. No allocation.
+[[nodiscard]] inline Result<GreeksResult> try_analytic_greeks(double S, double K, double T,
+                                                              double r_d, double r_f,
+                                                              double sigma,
+                                                              OptionType type) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (T <= 0.0 || sigma <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::GreeksDomain});
+    if (auto d = try_d1(S, K, T, r_d, r_f, sigma); !d) [[unlikely]] {
+        return std::unexpected(d.error());
+    }
+    return analytic_greeks_unchecked(S, K, T, r_d, r_f, sigma, type);
+}
+
 /// Finite-difference Greek set (no price / delta_forward: those are either
 /// the pricer itself or a trivial rescale).
 struct FDGreeks {

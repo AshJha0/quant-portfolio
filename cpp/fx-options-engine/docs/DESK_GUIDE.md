@@ -10,10 +10,15 @@ The engine is the inner loop of the market-making tile. On every spot tick
 or curve/vol update the tile re-prices its ladder, per pair, both sides,
 all quoted tenors and strikes, and republishes. Practical notes:
 
-* At ~13M prices/s a 2,000-instrument tile refresh is ~0.15 ms
-  single-threaded; pairs can simply be sharded across cores because every
-  pricing function is a pure, thread-safe free function over immutable
-  market data.
+* Use the `noexcept` `try_*` kernels in the quote loop: a bad input comes
+  back as an `Error` value, nothing is thrown or allocated, and a tile of
+  quotes can go through `gk_price_batch` / `gk_greeks_batch` in one call.
+  Per-call latency is in the README Latency table. Pairs can be sharded
+  across cores because every pricing function is a pure, thread-safe free
+  function over immutable market data.
+* Size workspaces once at start-up (`binomial_workspace_size`,
+  `McWorkspace::reserve`) and create one `ThreadPool` per process; after
+  that the hot path does no allocation and creates no threads.
 * Quotes are constructed in (delta, vol) space: `strike_from_delta` turns
   the quoted 10d/25d/ATM pillars into strikes, the smile interpolator (out
   of scope here) supplies the vol, `gk_price` the premium, and
@@ -34,8 +39,10 @@ End-of-day and intraday risk runs call the same library, not a reimplementation:
   verify any pricer (tree, MC, or a new payoff) against bump-and-revalue
   with one line, the standard "analytic Greeks lie exactly once" check.
 * Monte Carlo runs are reproducible from the recorded seed on the same toolchain
-  (`mt19937_64` + inverse-CDF normals, single-threaded), so an overnight
-  number can be reproduced to the last bit during a P&L dispute.
+  (`mt19937_64` + inverse-CDF normals), so an overnight number can be
+  reproduced to the last bit during a P&L dispute. Record `threads` with
+  the seed when using chunked `try_mc_price`: the result depends on the
+  chunk count, not on the pool that ran it.
 * Both rhos matter in FX: hedging only `rho_d` and ignoring `rho_f` leaves
   the book exposed to the foreign leg of every cross, the engine returns
   them separately and the tests pin their signs.
