@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 
 from fx_rates import (
+    BasisSwap,
+    position_risk,
     CIPQuotes,
     FXForward,
     Scenario,
@@ -93,12 +95,19 @@ for p in book:
 xccy = book[-1]
 print(f"\nXCCY par USD rate  : {solve_par_rate_quote(xccy, market) * 100:.4f}%  "
       f"(traded {xccy.rate_quote * 100:.4f}%)")
-print(f"XCCY par basis     : {solve_par_basis(xccy, market) * 1e4:+.2f} bp flat shift to current basis curve")
+print(f"XCCY par basis     : {solve_par_basis(xccy, market) * 1e4:+.2f} bp parallel shift of the basis-swap quotes")
 
 # ------------------------------------------------------------------ #
 hr("5. RISK REPORT (USD): FX DELTA, DV01 PER CURRENCY, BASIS DV01")
 report = book_risk_report(book, market)
 print(report.to_string())
+
+hr("5a. PAR 5Y EUR/USD FLOAT-FLOAT BASIS SWAP: BASIS RISK IS NOT RATE RISK")
+s5 = dict(market.basis_spreads)[5.0]
+bswap = BasisSwap(100e6, 100e6 * market.spot, s5, 5.0, include_initial_exchange=True,
+                  label="100m 5y basis swap rec EUR")
+print(pd.DataFrame([position_risk(bswap, market)], index=[bswap.label]).to_string())
+print("A par basis swap carries basis DV01 and no EUR or USD rate DV01.")
 
 hr("5b. KEY-RATE DV01 LADDERS FOR THE BOOK (USD per +1bp per pillar)")
 class _Book:

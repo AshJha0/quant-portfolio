@@ -19,6 +19,8 @@ from .arbitrage import (
 )
 from .bootstrap import (
     basis_adjusted_curve,
+    basis_discount_curve,
+    basis_swap_par_spread,
     bootstrap_curve,
     curve_from_fx_forwards,
     deposit_rate_from_df,
@@ -29,11 +31,16 @@ from .bootstrap import (
     reprice_swaps,
 )
 from .curve import DiscountCurve
+from .calendars import BusinessCalendar, get_calendar, joint_calendar
 from .daycount import (
+    MONEY_MARKET_DAYCOUNT,
     VALID_CONVENTIONS,
     add_calendar_days,
     forward_settlement_date,
+    money_market_year_fraction,
+    pair_calendar,
     spot_date,
+    tenor_dates,
     tenor_to_years,
     year_fraction,
 )
@@ -64,6 +71,7 @@ from .scenarios import (
     scenario_table,
 )
 from .xccy import (
+    BasisSwap,
     CrossCurrencySwap,
     solve_par_basis,
     solve_par_rate_base,
@@ -75,19 +83,23 @@ __version__ = "1.0.0"
 __all__ = [
     # daycount
     "VALID_CONVENTIONS", "year_fraction", "add_calendar_days", "spot_date",
-    "forward_settlement_date", "tenor_to_years",
+    "forward_settlement_date", "tenor_to_years", "tenor_dates",
+    "MONEY_MARKET_DAYCOUNT", "money_market_year_fraction", "pair_calendar",
+    # calendars
+    "BusinessCalendar", "get_calendar", "joint_calendar",
     # curve
     "DiscountCurve",
     # bootstrap
     "df_from_deposit", "deposit_rate_from_df", "par_swap_rate",
     "bootstrap_curve", "reprice_deposits", "reprice_swaps",
-    "basis_adjusted_curve", "implied_basis_from_forwards",
+    "basis_adjusted_curve", "basis_discount_curve", "basis_swap_par_spread",
+    "implied_basis_from_forwards",
     "curve_from_fx_forwards",
     # fx forwards
     "MarketState", "cip_forward", "market_forward", "forward_points",
     "forward_points_table", "FXForward", "FXSwap",
     # xccy
-    "CrossCurrencySwap", "solve_par_rate_quote", "solve_par_rate_base",
+    "BasisSwap", "CrossCurrencySwap", "solve_par_rate_quote", "solve_par_rate_base",
     "solve_par_basis",
     # risk
     "fx_delta", "dv01", "key_rate_dv01", "basis_dv01", "position_risk",

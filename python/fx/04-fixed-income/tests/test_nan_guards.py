@@ -196,8 +196,10 @@ class TestMarketAndForwardGuards:
         # EURUSD basis is negative -> the basis-adjusted foreign curve
         # discounts less -> the market forward sits *above* pure CIP.
         assert f_mkt > f_cip
-        implied = -np.log(f_mkt / f_cip) / 5.0
-        assert implied == pytest.approx(-0.0025, rel=1e-9)
+        from fx_rates.bootstrap import basis_swap_par_spread
+        par = basis_swap_par_spread(market.foreign_curve,
+                                    market.foreign_curve_adjusted, 5.0)
+        assert par == pytest.approx(-0.0025, abs=1e-13)
 
 
 class TestInstrumentConstructionGuards:

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..bootstrap import bootstrap_curve, par_swap_rate
+from ..bootstrap import basis_discount_curve, bootstrap_curve, par_swap_rate
 from ..curve import DiscountCurve
 from ..fxforward import FXForward, FXSwap, MarketState, market_forward
 from ..xccy import CrossCurrencySwap, solve_par_rate_quote
@@ -97,8 +97,10 @@ class SyntheticMarket:
 
     ``true_domestic`` / ``true_foreign`` are the exact generator curves used
     only for round-trip validation; production code sees only the quotes.
-    Basis spreads are decimal; FX forward quotes are basis-consistent:
-    ``F_mkt(T) = spot * DF_f(T) * exp(-s(T) T) / DF_d(T)``.
+    Basis spreads are decimal float-float basis-swap par spreads; FX forward
+    quotes are consistent with them:
+    ``F_mkt(T) = spot * D_EUR(T) / DF_USD(T)`` with ``D_EUR`` bootstrapped
+    from the basis quotes on the true EUR curve.
     """
 
     regime: str
@@ -152,18 +154,9 @@ def generate_market_quotes(regime: str = "normal", seed: int = 0) -> SyntheticMa
     usd_deps, usd_swps = _quotes_from_curve(true_usd)
     eur_deps, eur_swps = _quotes_from_curve(true_eur)
     basis = tuple((t, bp * 1e-4) for t, bp in p["basis_bp"])
-    bt = np.asarray([t for t, _ in basis])
-    bv = np.asarray([s for _, s in basis])
+    eur_disc = basis_discount_curve(true_eur, basis)
     forwards = tuple(
-        (
-            t,
-            float(
-                spot * true_eur.df(t)
-                * np.exp(-np.interp(t, bt, bv) * t)
-                / true_usd.df(t)
-            ),
-        )
-        for t in FORWARD_TENORS
+        (t, float(spot * eur_disc.df(t) / true_usd.df(t))) for t in FORWARD_TENORS
     )
     return SyntheticMarket(
         regime=regime,

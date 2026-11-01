@@ -1,4 +1,8 @@
-"""Fixed-fixed cross-currency swap with notional exchange.
+"""Cross-currency swaps: fixed-fixed with notional exchange, and the
+float-float basis swap that quotes the cross-currency basis.
+
+The basis swap (:class:`BasisSwap`) has constant notionals; the
+mark-to-market resetting variant is not implemented.
 
 Structure (receive_base = True, e.g. receive EUR / pay USD on EURUSD):
 
@@ -32,6 +36,7 @@ from ._validation import require_finite
 from .fxforward import MarketState
 
 __all__ = [
+    "BasisSwap",
     "CrossCurrencySwap",
     "solve_par_rate_quote",
     "solve_par_rate_base",
@@ -141,7 +146,7 @@ class CrossCurrencySwap:
     def leg_pv_quote(self, market: MarketState) -> float:
         """PV of the quote-currency bond leg, in quote currency. Unsigned."""
         times = self.payment_times()
-        dfs = market.domestic_curve.df(times)
+        dfs = market.domestic_curve_adjusted.df(times)
         tau = 1.0 / self.frequency
         pv = self.rate_quote * tau * self.notional_quote * float(np.sum(dfs))
         pv += self.notional_quote * float(dfs[-1])
@@ -161,6 +166,95 @@ class CrossCurrencySwap:
 
 
 # ---------------------------------------------------------------------- #
+# float-float basis swap
+# ---------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class BasisSwap:
+    """Float-float cross-currency basis swap, constant notionals.
+
+    The leg in the market's non-collateral currency (``market.basis_ccy``)
+    pays its floating rate plus ``spread``; the collateral leg pays its
+    floating rate flat. Floating rates are projected off each currency's
+    own curve (``domestic_curve`` / ``foreign_curve``) and discounted on
+    the collateral-consistent curves. Notionals are exchanged at maturity
+    and, when ``include_initial_exchange``, at t = 0.
+
+    Parameters
+    ----------
+    notional_base, notional_quote : float
+        Leg notionals (>= 0), usually ``notional_quote = notional_base * spot``.
+    spread : float
+        Basis spread (decimal) on the non-collateral leg.
+    maturity : float
+        Years; ``maturity * frequency`` must be integral.
+    frequency : int
+        Resets per year on both legs (default 4).
+    receive_base : bool
+        True: receive the base-currency leg, pay the quote leg.
+    """
+
+    notional_base: float
+    notional_quote: float
+    spread: float
+    maturity: float
+    frequency: int = 4
+    receive_base: bool = True
+    include_initial_exchange: bool = False
+    pair: tuple[str, str] = ("EUR", "USD")
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        if self.pair[0] == self.pair[1]:
+            raise ValueError(f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected")
+        require_finite(notional_base=self.notional_base, notional_quote=self.notional_quote,
+                       spread=self.spread, maturity=self.maturity)
+        if self.maturity <= 0.0:
+            raise ValueError(f"maturity must be > 0, got {self.maturity}")
+        if self.frequency < 1 or int(self.frequency) != self.frequency:
+            raise ValueError(f"frequency must be a positive integer, got {self.frequency}")
+        if self.notional_base < 0.0 or self.notional_quote < 0.0:
+            raise ValueError("notionals must be >= 0 (direction is set by receive_base)")
+        n = self.maturity * self.frequency
+        if abs(n - round(n)) > 1e-9:
+            raise ValueError("maturity * frequency must be integral")
+        if not self.label:
+            object.__setattr__(
+                self, "label", f"BASIS {''.join(self.pair)} {self.maturity:g}y"
+            )
+
+    def payment_times(self) -> np.ndarray:
+        n = int(round(self.maturity * self.frequency))
+        return np.arange(1, n + 1, dtype=float) / self.frequency
+
+    def _leg_pv(self, projection, discount, notional: float, spread: float) -> float:
+        t = self.payment_times()
+        tau = 1.0 / self.frequency
+        p = np.asarray(projection.df(t))
+        p_prev = np.concatenate(([1.0], p[:-1]))
+        d = np.asarray(discount.df(t))
+        coupons = float(np.sum((p_prev / p - 1.0 + spread * tau) * d))
+        pv = notional * (coupons + d[-1])
+        if self.include_initial_exchange:
+            pv -= notional
+        return pv
+
+    def value(self, market: MarketState) -> float:
+        """MTM in the quote currency."""
+        if market.pair != self.pair:
+            raise ValueError(
+                f"market pair {market.pair} does not match position pair {self.pair}"
+            )
+        s_base = self.spread if market.basis_ccy == market.base_ccy else 0.0
+        s_quote = self.spread if market.basis_ccy == market.quote_ccy else 0.0
+        pv_base = self._leg_pv(market.foreign_curve, market.foreign_curve_adjusted,
+                               self.notional_base, s_base)
+        pv_quote = self._leg_pv(market.domestic_curve, market.domestic_curve_adjusted,
+                                self.notional_quote, s_quote)
+        sign = 1.0 if self.receive_base else -1.0
+        return sign * (market.spot * pv_base - pv_quote)
+
+
+# ---------------------------------------------------------------------- #
 # par solvers
 # ---------------------------------------------------------------------- #
 def solve_par_rate_quote(swap: CrossCurrencySwap, market: MarketState) -> float:
@@ -170,7 +264,7 @@ def solve_par_rate_quote(swap: CrossCurrencySwap, market: MarketState) -> float:
     ``c_d* = (S * PV_base - N_d * DF_d(T)) / (N_d * tau * sum DF_d(t_i))``.
     """
     times = swap.payment_times()
-    dfs = market.domestic_curve.df(times)
+    dfs = market.domestic_curve_adjusted.df(times)
     tau = 1.0 / swap.frequency
     annuity = swap.notional_quote * tau * float(np.sum(dfs))
     if annuity <= 0.0:
@@ -196,12 +290,15 @@ def solve_par_basis(
     market: MarketState,
     bracket_bp: float = 1000.0,
 ) -> float:
-    """Flat shift (decimal) to the basis spread curve that zeroes the swap PV.
+    """Parallel shift (decimal) of the quoted basis-swap spreads that zeroes the PV.
+
+    This is a shift of the market's basis quotes, not the par spread of the
+    swap itself; use :class:`BasisSwap` for a quoted float-float spread.
 
     Solves ``PV(basis + x) = 0`` with Brent's method to ~1e-14 in ``x``.
     Returns the shift ``x``; the *level* of the par basis at tenor T is the
-    existing spread plus ``x``.  PV is monotone in ``x`` for any swap with a
-    non-zero base leg (all base-leg cashflows scale by ``exp(-x t)``).
+    existing spread plus ``x``. PV is monotone in ``x`` for any swap with a
+    non-zero leg in the basis currency.
     """
     if swap.notional_base == 0.0:
         raise ValueError("par basis undefined for a swap with zero base notional")

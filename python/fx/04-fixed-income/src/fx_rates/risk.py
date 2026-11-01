@@ -12,11 +12,15 @@ Definitions (all reported in the quote/domestic currency, e.g. USD):
   sensitivity (not absolute): a long-base forward has *positive* domestic
   DV01 and *negative* foreign DV01.
 - **Key-rate DV01 (KRD)**: same, bumping one pillar zero rate at a time.
-- **Basis DV01**: change in PV for a +1 bp shift of the entire cross-currency
-  basis spread curve.
+- **Basis DV01**: change in PV for a +1 bp shift of every quoted
+  float-float basis-swap spread.
 
-The foreign-curve bump shifts the *pure* foreign curve; the basis-adjusted
-curve is rebuilt on top, so basis and rate risk are cleanly separated.
+A rate bump on the non-collateral currency shifts its projection curve and
+re-bootstraps its discount curve with the basis quotes held fixed. A basis
+bump moves the quotes with the projection curve held fixed. The two are
+different risk factors: a par basis swap has (near) zero rate DV01 and a
+basis DV01 equal to minus its spread annuity, and an FX forward's basis
+DV01 differs from its foreign-rate DV01 (tests/test_basis_swap.py).
 """
 
 from __future__ import annotations
@@ -67,7 +71,9 @@ def _shift_basis(market: MarketState, bp: float) -> MarketState:
     spreads = market.basis_spreads
     if not spreads:
         # a flat zero-basis curve so the bump is well-defined
-        spreads = ((market.foreign_curve.times[-1], 0.0),)
+        proj = market.foreign_curve if market.basis_ccy == market.base_ccy \
+            else market.domestic_curve
+        spreads = ((float(proj.times[-1]), 0.0),)
     return market.replace(
         basis_spreads=tuple((t, s + bp * 1e-4) for t, s in spreads)
     )

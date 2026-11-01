@@ -45,6 +45,10 @@ class CIPQuotes:
     Rates are simple annualised deposit rates over ``tau`` (years, already
     day-counted, e.g. ACT/360).  Bids must not exceed asks; spot/forward
     quotes must be positive.  Deposit *rates* may be negative (EUR/CHF/JPY).
+
+    ``tau`` is used for both deposits unless ``tau_dom`` / ``tau_for`` give
+    each currency's own accrual (e.g. USD ACT/360 and GBP ACT/365F over the
+    same dates; see ``daycount.money_market_year_fraction``).
     """
 
     spot_bid: float
@@ -56,8 +60,13 @@ class CIPQuotes:
     for_rate_bid: float
     for_rate_ask: float
     tau: float
+    tau_dom: float | None = None
+    tau_for: float | None = None
 
     def __post_init__(self) -> None:
+        for name in ("tau_dom", "tau_for"):
+            if getattr(self, name) is None:
+                object.__setattr__(self, name, self.tau)
         # Finiteness first: with a NaN quote every comparison below is False,
         # so the detector would report a confident "no arbitrage".
         require_finite(
@@ -65,10 +74,10 @@ class CIPQuotes:
             fwd_bid=self.fwd_bid, fwd_ask=self.fwd_ask,
             dom_rate_bid=self.dom_rate_bid, dom_rate_ask=self.dom_rate_ask,
             for_rate_bid=self.for_rate_bid, for_rate_ask=self.for_rate_ask,
-            tau=self.tau,
+            tau=self.tau, tau_dom=self.tau_dom, tau_for=self.tau_for,
         )
-        if self.tau <= 0.0:
-            raise ValueError(f"tau must be > 0, got {self.tau}")
+        if min(self.tau, self.tau_dom, self.tau_for) <= 0.0:
+            raise ValueError(f"tau must be > 0, got {self.tau}, {self.tau_dom}, {self.tau_for}")
         if min(self.spot_bid, self.spot_ask, self.fwd_bid, self.fwd_ask) <= 0.0:
             raise ValueError("spot and forward quotes must be > 0")
         for label, bid, ask in (
@@ -100,8 +109,8 @@ class CIPArbitrageResult:
 
 def no_arb_bounds(q: CIPQuotes) -> tuple[float, float]:
     """No-arbitrage band (F_lower, F_upper) for the tradeable forward."""
-    f_lower = q.spot_bid * (1.0 + q.dom_rate_bid * q.tau) / (1.0 + q.for_rate_ask * q.tau)
-    f_upper = q.spot_ask * (1.0 + q.dom_rate_ask * q.tau) / (1.0 + q.for_rate_bid * q.tau)
+    f_lower = q.spot_bid * (1.0 + q.dom_rate_bid * q.tau_dom) / (1.0 + q.for_rate_ask * q.tau_for)
+    f_upper = q.spot_ask * (1.0 + q.dom_rate_ask * q.tau_dom) / (1.0 + q.for_rate_bid * q.tau_for)
     return f_lower, f_upper
 
 
@@ -126,11 +135,11 @@ def detect_cip_arbitrage(q: CIPQuotes, min_pnl: float = 0.0) -> CIPArbitrageResu
     """
     require_finite(min_pnl=min_pnl)
     f_lower, f_upper = no_arb_bounds(q)
-    pnl_sell = q.fwd_bid * (1.0 + q.for_rate_bid * q.tau) / q.spot_ask - (
-        1.0 + q.dom_rate_ask * q.tau
+    pnl_sell = q.fwd_bid * (1.0 + q.for_rate_bid * q.tau_for) / q.spot_ask - (
+        1.0 + q.dom_rate_ask * q.tau_dom
     )
-    pnl_buy = (1.0 + q.dom_rate_bid * q.tau) - q.fwd_ask * (
-        1.0 + q.for_rate_ask * q.tau
+    pnl_buy = (1.0 + q.dom_rate_bid * q.tau_dom) - q.fwd_ask * (
+        1.0 + q.for_rate_ask * q.tau_for
     ) / q.spot_bid
     best_pnl, direction = max((pnl_sell, "sell_forward"), (pnl_buy, "buy_forward"))
     if best_pnl > min_pnl:

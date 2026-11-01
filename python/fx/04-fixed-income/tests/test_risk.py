@@ -111,12 +111,10 @@ class TestBasisDV01:
             0.0, abs=1e-9
         )
 
-    def test_basis_dv01_matches_foreign_zero_shift(self, market, long_fwd):
-        # shifting the basis by 1bp is economically identical to shifting the
-        # adjusted foreign zeros by 1bp => equals foreign-curve DV01
-        assert basis_dv01(long_fwd, market) == pytest.approx(
-            dv01(long_fwd, market, "EUR"), rel=1e-9
-        )
+    def test_basis_dv01_differs_from_foreign_rate_dv01(self, market, long_fwd):
+        # under the old zero-spread model these were identical to 1e-9
+        b, r = basis_dv01(long_fwd, market), dv01(long_fwd, market, "EUR")
+        assert abs(b / r - 1.0) > 0.005
 
 
 class TestBookAggregation:
