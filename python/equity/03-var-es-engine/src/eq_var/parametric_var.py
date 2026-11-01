@@ -12,8 +12,12 @@ from __future__ import annotations
 
 from typing import Literal
 
+import warnings
+
 import numpy as np
 from scipy.stats import norm, t as student_t
+
+from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
     "sample_covariance",
@@ -21,14 +25,14 @@ __all__ = [
     "portfolio_sigma",
     "parametric_var",
     "cornish_fisher_z",
+    "cornish_fisher_valid",
     "cornish_fisher_domain_ok",
     "cornish_fisher_var",
 ]
 
 
-def _validate_alpha(alpha: float) -> None:
-    if not 0.0 < alpha < 0.5:
-        raise ValueError(f"alpha must be in (0, 0.5) (tail probability), got {alpha}")
+def _validate_alpha(alpha: float) -> float:
+    return validate_alpha(alpha)
 
 
 def _validate_finite_array(name: str, arr: np.ndarray) -> None:
@@ -43,8 +47,7 @@ def _validate_finite_array(name: str, arr: np.ndarray) -> None:
 
 
 def _validate_finite_scalar(name: str, value: float) -> None:
-    if not np.isfinite(value):
-        raise ValueError(f"{name} must be finite, got {value}")
+    finite_scalar(name, value)
 
 
 def sample_covariance(returns: np.ndarray) -> np.ndarray:
@@ -62,6 +65,7 @@ def ewma_covariance(returns: np.ndarray, lam: float = 0.94) -> np.ndarray:
     ``Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'``, seeded with the
     sample covariance.  Zero-mean returns assumed (standard at daily horizon).
     """
+    lam = finite_scalar("lam", lam)
     if not 0.0 < lam < 1.0:
         raise ValueError(f"decay lam must be in (0, 1), got {lam}")
     arr = np.atleast_2d(np.asarray(returns, dtype=float))
@@ -76,8 +80,8 @@ def ewma_covariance(returns: np.ndarray, lam: float = 0.94) -> np.ndarray:
 
 def portfolio_sigma(exposures: np.ndarray, cov: np.ndarray) -> float:
     """Portfolio P&L standard deviation ``sqrt(w' Sigma w)`` (currency units)."""
-    w = np.asarray(exposures, dtype=float).ravel()
-    sig = np.atleast_2d(np.asarray(cov, dtype=float))
+    w = finite_array("exposures", exposures, ndim=1, min_size=1)
+    sig = finite_array("covariance", cov, ndim=2, min_size=1)
     if sig.shape != (w.size, w.size):
         raise ValueError(f"covariance shape {sig.shape} does not match {w.size} exposures")
     _validate_finite_array("exposures", w)
@@ -122,9 +126,8 @@ def parametric_var(
     -------
     float — VaR as a positive loss.
     """
-    _validate_alpha(alpha)
-    if horizon_days < 1:
-        raise ValueError(f"horizon_days must be >= 1, got {horizon_days}")
+    alpha = _validate_alpha(alpha)
+    horizon_days = integer("horizon_days", horizon_days, min_value=1)
     _validate_finite_scalar("mean", mean)
     _validate_finite_scalar("df", df)
     sigma = portfolio_sigma(exposures, cov) * np.sqrt(horizon_days)
@@ -149,7 +152,9 @@ def cornish_fisher_z(z: np.ndarray | float, skew: float, excess_kurt: float) -> 
     ``z_cf = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36`` with skewness
     ``S`` and *excess* kurtosis ``K``.  Reduces to ``z`` when S = K = 0.
     """
-    z = np.asarray(z, dtype=float)
+    z = finite_array("z", z, min_size=1)
+    skew = finite_scalar("skew", skew)
+    excess_kurt = finite_scalar("excess_kurt", excess_kurt)
     out = (
         z
         + (z**2 - 1.0) * skew / 6.0
@@ -159,47 +164,14 @@ def cornish_fisher_z(z: np.ndarray | float, skew: float, excess_kurt: float) -> 
     return float(out) if out.ndim == 0 else out
 
 
-def cornish_fisher_domain_ok(
-    skew: float, excess_kurt: float, z_range: float = 3.5, n_grid: int = 2001
-) -> bool:
-    """Check that the CF quantile map is monotone on ``[-z_range, z_range]``.
+def _cf_min_derivative(skew: float, excess_kurt: float, z_lo: float, z_hi: float) -> float:
+    """Exact minimum of ``g'(z)`` on the closed interval ``[z_lo, z_hi]``.
 
-    The fourth-order Cornish-Fisher expansion is only a valid quantile
-    function where ``dz_cf/dz > 0``; for large skew/kurtosis the cubic
-    polynomial becomes non-monotone and the implied 'density' goes negative,
-    producing nonsense VaR (e.g. the 99 % 'quantile' above the 95 % one).
-    The analytic derivative
-
-    ``dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36``
-
-    is itself a quadratic in ``z``: ``g(z) = A z^2 + B z + C`` with
-    ``A = K/8 - S^2/6``, ``B = S/3``, ``C = 1 - K/8 + 5 S^2/36``.  We check
-    monotonicity **exactly** (a closed-form global minimum of ``g`` on
-    ``[-z_range, z_range]``) rather than by sampling a grid: for a convex
-    ``g`` (``A > 0``) the minimum is at the vertex ``-B/(2A)`` when that
-    falls inside the interval, otherwise at whichever endpoint is closer to
-    the vertex; for concave/linear ``g`` (``A <= 0``) the minimum of a
-    concave function on a closed interval is always at an endpoint.
-
-    A grid search (the previous implementation here) can miss a thin dip
-    below zero between sample points —
-    e.g. ``skew=0.122, excess_kurt=-0.427`` is non-monotone on ``|z| <= 4``
-    (minimum derivative ~ -9e-4 near z ~ 3.1) but an 801-point grid on that
-    range reports it as monotone; this closed-form check has no such
-    resolution dependence. ``n_grid`` is retained for API compatibility
-    (validated below) but no longer affects the result.
-
-    Returns
-    -------
-    bool — True when the expansion is monotone (safe to use).
+    ``g'(z) = A z^2 + B z + C`` with ``A = K/8 - S^2/6``, ``B = S/3``,
+    ``C = 1 - K/8 + 5 S^2/36``. The minimum of a quadratic on a closed
+    interval is at an endpoint or, when ``A > 0``, at the vertex ``-B/(2A)``
+    if the vertex is inside.
     """
-    z_range = float(z_range)
-    if not (z_range > 0.0) or not np.isfinite(z_range):
-        raise ValueError(f"z_range must be finite and > 0, got {z_range}")
-    if n_grid < 2:
-        raise ValueError(f"n_grid must be >= 2, got {n_grid}")
-    if not np.isfinite(skew) or not np.isfinite(excess_kurt):
-        return False
     a = excess_kurt / 8.0 - skew**2 / 6.0
     b = skew / 3.0
     c = 1.0 - excess_kurt / 8.0 + 5.0 * skew**2 / 36.0
@@ -207,15 +179,49 @@ def cornish_fisher_domain_ok(
     def g(z: float) -> float:
         return a * z * z + b * z + c
 
+    m = min(g(z_lo), g(z_hi))
     if a > 0.0:
         z_star = -b / (2.0 * a)
-        if -z_range <= z_star <= z_range:
-            m = g(z_star)
-        else:
-            m = min(g(-z_range), g(z_range))
-    else:
-        m = min(g(-z_range), g(z_range))
-    return bool(m > 0.0)
+        if z_lo <= z_star <= z_hi:
+            m = min(m, g(z_star))
+    return m
+
+
+def cornish_fisher_valid(skew: float, excess_kurt: float, alpha: float) -> bool:
+    """True iff the CF map is increasing on ``[-z_a, z_a]``, ``z_a = Phi^{-1}(1 - alpha)`` (spec S6).
+
+    The check is exact (closed-form minimum of the quadratic derivative), and
+    it depends on alpha: a dip in ``g'`` beyond ``z_a`` does not affect the
+    quantile at ``alpha``. Example: ``(S, K) = (0.122, -0.427)`` has its
+    minimum derivative at ``z = -4`` (an endpoint of the old fixed interval),
+    so it is valid at ``alpha = 0.01``. Non-finite inputs raise ``ValueError``.
+    """
+    alpha = validate_alpha(alpha)
+    skew = finite_scalar("skew", skew)
+    excess_kurt = finite_scalar("excess_kurt", excess_kurt)
+    z_a = float(norm.ppf(1.0 - alpha))
+    return bool(_cf_min_derivative(skew, excess_kurt, -z_a, z_a) > 0.0)
+
+
+def cornish_fisher_domain_ok(
+    skew: float, excess_kurt: float, z_range: float = 3.5, n_grid: int = 2001
+) -> bool:
+    """Deprecated: use ``cornish_fisher_valid(skew, excess_kurt, alpha)``.
+
+    Kept for one release with its old meaning: monotonicity on the fixed
+    interval ``[-z_range, z_range]`` regardless of alpha. ``n_grid`` is unused.
+    """
+    warnings.warn(
+        "cornish_fisher_domain_ok is deprecated; use cornish_fisher_valid(skew, excess_kurt, alpha), "
+        "which checks the interval implied by alpha",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    z_range = finite_scalar("z_range", z_range, min_value=0.0, strict=True)
+    integer("n_grid", n_grid, min_value=2)
+    skew = finite_scalar("skew", skew)
+    excess_kurt = finite_scalar("excess_kurt", excess_kurt)
+    return bool(_cf_min_derivative(skew, excess_kurt, -z_range, z_range) > 0.0)
 
 
 def cornish_fisher_var(
@@ -233,14 +239,14 @@ def cornish_fisher_var(
     (skew, excess_kurt) lie outside the monotonicity region — outside it the
     expansion is not a quantile function and the number is not a VaR.
     """
-    _validate_alpha(alpha)
+    alpha = validate_alpha(alpha)
     _validate_finite_scalar("sigma", sigma)
     _validate_finite_scalar("mean", mean)
     _validate_finite_scalar("skew", skew)
     _validate_finite_scalar("excess_kurt", excess_kurt)
     if sigma < 0:
         raise ValueError(f"sigma must be >= 0, got {sigma}")
-    if check_domain and not cornish_fisher_domain_ok(skew, excess_kurt):
+    if check_domain and not cornish_fisher_valid(skew, excess_kurt, alpha):
         raise ValueError(
             f"Cornish-Fisher expansion is non-monotone for skew={skew}, "
             f"excess_kurt={excess_kurt}; outside its validity region the "

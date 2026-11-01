@@ -10,7 +10,9 @@ from typing import Literal
 
 import numpy as np
 
-from ..monte_carlo_var import safe_cholesky, simulate_factor_returns
+import warnings
+
+from ..monte_carlo_var import cholesky, simulate_factor_returns
 from ..portfolio import (
     EquityPosition,
     FuturePosition,
@@ -72,7 +74,7 @@ def simulate_returns(
 def simulate_garch_returns(
     n_days: int,
     cov: np.ndarray,
-    omega_frac: float = 0.05,
+    omega_frac: object = None,
     alpha_g: float = 0.09,
     beta_g: float = 0.86,
     innovations: Literal["normal", "t"] = "t",
@@ -87,10 +89,13 @@ def simulate_garch_returns(
     equals ``cov[i, i]``; cross-sectional correlation comes from correlated
     innovations (Cholesky of the correlation matrix); ``innovations="t"``
     (default, df=7) adds conditional fat tails on top of the clustering.
-    ``omega_frac`` is unused when alpha+beta parametrisation is given but kept
-    for signature stability.  A ``burn_in`` period removes the influence of
+    ``omega_frac`` is deprecated and ignored (omega is fixed by the
+    unconditional variance). A ``burn_in`` period removes the influence of
     the initial variance.
     """
+    if omega_frac is not None:
+        warnings.warn("simulate_garch_returns(omega_frac=...) is ignored and deprecated",
+                      DeprecationWarning, stacklevel=2)
     if n_days < 1:
         raise ValueError(f"n_days must be >= 1, got {n_days}")
     if not 0.0 < alpha_g + beta_g < 1.0:
@@ -102,7 +107,7 @@ def simulate_garch_returns(
     denom = np.outer(vols, vols)
     corr = sig / denom
     np.fill_diagonal(corr, 1.0)
-    chol = safe_cholesky(corr)
+    chol = cholesky(corr)
     total = n_days + burn_in
     z = rng.standard_normal((total, n)) @ chol.T
     if innovations == "t":

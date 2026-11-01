@@ -9,22 +9,23 @@ Tests implemented
   coverage), chi-squared with 1 df.
 * Christoffersen (1998) independence LR (first-order Markov alternative) and
   the joint conditional-coverage LR (2 df).
-* Basel traffic light: 250-day, 99 % VaR exception count mapped to
-  green (0-4) / yellow (5-9) / red (10+) with the regulatory multiplier
-  add-on schedule; the binomial exceedance probabilities behind the zone
-  boundaries are exposed for documentation.
-* ES backtest: Acerbi-Szekely (2014) unconditional Z2 statistic (chosen over
-  the severity z-test because it uses every exception's magnitude relative
-  to the ex-ante ES and needs no normality assumption; see METHODOLOGY.md).
+* Basel traffic light (spec S4): zone from the cumulative binomial
+  probability for any window and alpha. On 250 days at 99 % it is the
+  regulatory green (0-4) / yellow (5-9) / red (10+) table.
+* ES backtest: Acerbi-Szekely (2014) unconditional Z2 with a simulated
+  one-sided p-value (spec S5).
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2
+
+from ._validation import finite_array, integer, validate_alpha
 
 __all__ = [
     "exceptions_from_pnl",
@@ -45,7 +46,7 @@ def exceptions_from_pnl(pnl: np.ndarray, var: np.ndarray | float) -> np.ndarray:
 
     ``var`` is the ex-ante VaR (positive for a loss), scalar or per-day array.
     """
-    p = np.asarray(pnl, dtype=float).ravel()
+    p = finite_array("pnl", pnl, ndim=1, min_size=1)
     v = np.broadcast_to(np.asarray(var, dtype=float), p.shape)
     # NaN fails every comparison, so an unchecked NaN P&L day or NaN VaR would
     # silently record *zero* exceptions and make a broken model pass its
@@ -59,50 +60,73 @@ def exceptions_from_pnl(pnl: np.ndarray, var: np.ndarray | float) -> np.ndarray:
     return p < -v
 
 
+def _exceptions(exceptions: object) -> np.ndarray:
+    """Exception indicators as bool. Refuses NaN/inf and values other than 0/1."""
+    arr = np.asarray(exceptions)
+    if arr.dtype != bool:
+        arr = finite_array("exceptions", arr, ndim=1, min_size=0)
+        if not np.isin(arr, (0.0, 1.0)).all():
+            raise ValueError("exceptions must be 0/1 or boolean")
+    return arr.astype(bool).ravel()
+
+
 def _lr_pvalue(lr: float, df: int) -> float:
     return float(chi2.sf(lr, df))
 
 
-def kupiec_pof(n_obs: int, n_exceptions: int, alpha: float = 0.01) -> dict[str, float]:
-    """Kupiec proportion-of-failures test (unconditional coverage).
+def _counts(n_obs: object, n_exceptions: object, alpha: object) -> tuple[int, int, float]:
+    n = integer("n_obs", n_obs, min_value=1)
+    x = integer("n_exceptions", n_exceptions, min_value=0)
+    if x > n:
+        raise ValueError(f"n_exceptions must be <= n_obs, got {x} > {n}")
+    return n, x, validate_alpha(alpha)
 
-    ``LR_uc = -2 ln[ (1-p)^{T-x} p^x / ((1-x/T)^{T-x} (x/T)^x) ]`` with
-    ``p = alpha``, ``T = n_obs``, ``x = n_exceptions``; asymptotically
-    chi2(1) under H0 (exception probability = alpha).  ``x = 0`` and
-    ``x = T`` are handled by the ``0 * ln 0 = 0`` convention.
 
-    Returns
-    -------
-    dict with ``lr`` (statistic), ``pvalue``, ``expected`` exceptions and the
-    observed exception ``rate``.
+def kupiec_pof(*args: object, n_obs: int | None = None, n_exceptions: int | None = None,
+               alpha: float | None = None) -> dict[str, float]:
+    """Kupiec proportion-of-failures test (unconditional coverage), spec S3.
+
+    Call as ``kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)``.
+    ``LR = -2 ln[(1-a)^(n-x) a^x] + 2 ln[(1-p)^(n-x) p^x]`` with ``p = x/n``
+    and ``0 ln 0 = 0``. The p-value is the chi2(1) upper tail. At 250 days
+    and 99 % the asymptotic test rejects a correct model about 9.5 % of the
+    time at the nominal 5 % level (docs/VALIDATION.md).
+
+    The positional form ``kupiec_pof(n_obs, n_exceptions, alpha=0.01)`` is
+    deprecated and still accepted for one release.
     """
-    if n_obs < 1:
-        raise ValueError(f"n_obs must be >= 1, got {n_obs}")
-    if not 0 <= n_exceptions <= n_obs:
-        raise ValueError(f"n_exceptions must be in [0, {n_obs}], got {n_exceptions}")
-    if not 0.0 < alpha < 1.0:
-        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
-    t, x = float(n_obs), float(n_exceptions)
-    pihat = x / t
+    if args:
+        if len(args) > 3 or n_obs is not None or n_exceptions is not None:
+            raise TypeError("kupiec_pof takes keyword arguments n_obs, n_exceptions, alpha")
+        warnings.warn(
+            "positional kupiec_pof(n_obs, n_exceptions, alpha) is deprecated; "
+            "call kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        n_obs = args[0]
+        n_exceptions = args[1] if len(args) > 1 else None
+        if len(args) > 2:
+            if alpha is not None:
+                raise TypeError("alpha given twice")
+            alpha = args[2]
+        if alpha is None:
+            alpha = 0.01
+    if n_obs is None or n_exceptions is None or alpha is None:
+        raise TypeError("kupiec_pof requires n_obs, n_exceptions and alpha")
+    n, x, a = _counts(n_obs, n_exceptions, alpha)
+    p = x / n
 
-    def _ll(p: float) -> float:
+    def _ll(q: float) -> float:
         out = 0.0
-        if t - x > 0:
-            out += (t - x) * np.log(1.0 - p)
-        if x > 0:
-            out += x * np.log(p)
+        if n - x > 0 and q < 1.0:
+            out += (n - x) * np.log1p(-q)
+        if x > 0 and q > 0.0:
+            out += x * np.log(q)
         return out
 
-    lr = -2.0 * (_ll(alpha) - _ll(pihat)) if pihat not in (0.0, 1.0) else -2.0 * (
-        _ll(alpha) - 0.0
-    )
-    lr = max(float(lr), 0.0)
-    return {
-        "lr": lr,
-        "pvalue": _lr_pvalue(lr, 1),
-        "expected": alpha * t,
-        "rate": pihat,
-    }
+    lr = max(-2.0 * _ll(a) + 2.0 * _ll(p), 0.0)
+    return {"lr": float(lr), "pvalue": _lr_pvalue(lr, 1), "expected": a * n, "rate": p}
 
 
 def christoffersen_independence(exceptions: np.ndarray) -> dict[str, float]:
@@ -115,7 +139,7 @@ def christoffersen_independence(exceptions: np.ndarray) -> dict[str, float]:
     reject.  Degenerate series (no exceptions, or no state transitions of a
     given kind) use the ``0 ln 0 = 0`` convention.
     """
-    ex = np.asarray(exceptions).astype(bool).ravel()
+    ex = _exceptions(exceptions)
     if ex.size < 2:
         raise ValueError(f"need at least 2 observations, got {ex.size}")
     prev, curr = ex[:-1], ex[1:]
@@ -152,8 +176,8 @@ def christoffersen_cc(exceptions: np.ndarray, alpha: float = 0.01) -> dict[str, 
 
     Joint test of correct exception rate *and* independence, chi2(2).
     """
-    ex = np.asarray(exceptions).astype(bool).ravel()
-    uc = kupiec_pof(ex.size, int(ex.sum()), alpha)
+    ex = _exceptions(exceptions)
+    uc = kupiec_pof(n_obs=ex.size, n_exceptions=int(ex.sum()), alpha=alpha)
     ind = christoffersen_independence(ex)
     lr = uc["lr"] + ind["lr"]
     return {"lr": float(lr), "pvalue": _lr_pvalue(lr, 2), "lr_uc": uc["lr"], "lr_ind": ind["lr"]}
@@ -165,63 +189,82 @@ def christoffersen_cc(exceptions: np.ndarray, alpha: float = 0.01) -> dict[str, 
 _YELLOW_ADDON = {5: 0.40, 6: 0.50, 7: 0.65, 8: 0.75, 9: 0.85}
 
 
-def basel_traffic_light(n_exceptions: int, n_obs: int = 250) -> dict[str, object]:
-    """Basel (1996 supervisory framework) traffic-light zone for 99 % VaR.
+def _binom_cdf(x: int, n: int, alpha: float) -> float:
+    """``P(X <= x)``, ``X ~ Binomial(n, alpha)``, by pmf recursion in double (S4)."""
+    pmf = float(np.exp(n * np.log1p(-alpha)))
+    total = pmf
+    ratio = alpha / (1.0 - alpha)
+    for j in range(x):
+        pmf *= (n - j) / (j + 1) * ratio
+        total += pmf
+    return min(total, 1.0)
 
-    On the standard 250-day window: 0-4 exceptions = green (multiplier 3.0),
-    5-9 = yellow (add-ons 0.40/0.50/0.65/0.75/0.85), 10+ = red (add-on 1.0,
-    multiplier 4.0, presumption of a flawed model).  The zone boundaries come
-    from the exact Binomial(250, 0.01) distribution: green covers ~89 % of
-    outcomes for a correct model, red has ~0.03 % probability
-    (see ``basel_zone_probabilities``).
 
-    For ``n_obs != 250`` the zone is derived from the same cumulative
-    binomial probability the Basel table itself is built on (green
-    ``< 95 %``, yellow ``[95 %, 99.99 %)``, red ``>= 99.99 %``), exactly as
-    the FX twin does, so the zone and ``cumulative_prob`` never disagree; the
-    yellow-zone add-on is then read off the 250-day-equivalent exception
-    count.  On ``n_obs == 250`` this reproduces the regulatory 0-4 / 5-9 /
-    10+ table exactly.
-
-    Returns dict with ``zone``, ``multiplier`` (k = 3 + add-on) and the
-    cumulative binomial probability of seeing <= n_exceptions under a
-    correct model.
-    """
-    if n_exceptions < 0:
-        raise ValueError(f"n_exceptions must be >= 0, got {n_exceptions}")
-    if n_obs < 1:
-        raise ValueError(f"n_obs must be >= 1, got {n_obs}")
-    if n_exceptions > n_obs:
-        raise ValueError(f"n_exceptions must be <= n_obs, got {n_exceptions} > {n_obs}")
-    from scipy.stats import binom
-
-    cum_p = float(binom.cdf(n_exceptions, n_obs, 0.01))
+def _basel(n: int, x: int, a: float) -> dict[str, object]:
+    cum_p = _binom_cdf(x, n, a)
     if cum_p < 0.95:
-        zone, addon = "green", 0.0
+        zone, plus = "green", 0.0
     elif cum_p < 0.9999:
         zone = "yellow"
-        scaled = int(round(n_exceptions * 250.0 / n_obs)) if n_obs != 250 else n_exceptions
-        addon = _YELLOW_ADDON[min(max(scaled, 5), 9)]
+        x_eq = next((c for c in range(5, 10) if _binom_cdf(c, 250, 0.01) >= cum_p - 1e-12), 9)
+        plus = _YELLOW_ADDON[x_eq]
     else:
-        zone, addon = "red", 1.0
-    return {"zone": zone, "multiplier": 3.0 + addon, "cumulative_prob": cum_p}
+        zone, plus = "red", 1.0
+    return {"zone": zone, "multiplier": 3.0 + plus, "plus_factor": plus, "cumulative_prob": cum_p}
+
+
+def basel_traffic_light(*args: object, n_obs: int | None = None, n_exceptions: int | None = None,
+                        alpha: float = 0.01) -> dict[str, object]:
+    """Basel (1996) traffic light for any window and any alpha (spec S4).
+
+    ``F(x) = P(X <= x)``, ``X ~ Binomial(n_obs, alpha)``. The zone is green
+    if ``F < 0.95``, yellow if ``F < 0.9999`` and red otherwise. The yellow
+    plus factor is read at the 250-day 99 % count ``x_eq`` in 5..9 with the
+    same cumulative probability (smallest ``x'`` with ``F250(x') >= F(x)``,
+    else 9). On 250 days at 99 % this is the regulatory table: 0-4 green
+    (k = 3), 5-9 yellow (k = 3.40 / 3.50 / 3.65 / 3.75 / 3.85), 10+ red (k = 4).
+
+    Returns ``zone``, ``multiplier`` (k = 3 + plus), ``plus_factor`` and
+    ``cumulative_prob``. The positional form ``basel_traffic_light(n_exceptions,
+    n_obs=250)`` is deprecated and still accepted for one release.
+    """
+    if args:
+        if len(args) > 2 or n_exceptions is not None:
+            raise TypeError("basel_traffic_light takes keyword arguments n_obs, n_exceptions, alpha")
+        warnings.warn(
+            "positional basel_traffic_light(n_exceptions, n_obs) is deprecated; call "
+            "basel_traffic_light(n_obs=..., n_exceptions=..., alpha=...)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        n_exceptions = args[0]
+        if len(args) > 1:
+            if n_obs is not None:
+                raise TypeError("n_obs given twice")
+            n_obs = args[1]
+        if n_obs is None:
+            n_obs = 250
+    if n_obs is None or n_exceptions is None:
+        raise TypeError("basel_traffic_light requires n_obs and n_exceptions")
+    return _basel(*_counts(n_obs, n_exceptions, alpha))
 
 
 def basel_zone_probabilities(n_obs: int = 250, alpha: float = 0.01) -> pd.DataFrame:
-    """Exact binomial probabilities of each exception count / zone boundary."""
+    """Exact binomial probabilities of each exception count 0..15 and its zone."""
     from scipy.stats import binom
 
-    counts = np.arange(0, 16)
+    n_obs = integer("n_obs", n_obs, min_value=1)
+    alpha = validate_alpha(alpha)
     rows = []
-    for c in counts:
-        tl = basel_traffic_light(int(c), n_obs)
+    for c in range(0, min(15, n_obs) + 1):
+        tl = basel_traffic_light(n_obs=n_obs, n_exceptions=c, alpha=alpha)
         rows.append(
             {
-                "exceptions": int(c),
+                "exceptions": c,
                 "zone": tl["zone"],
                 "multiplier": tl["multiplier"],
                 "prob_exact": float(binom.pmf(c, n_obs, alpha)),
-                "prob_cumulative": float(binom.cdf(c, n_obs, alpha)),
+                "prob_cumulative": tl["cumulative_prob"],
             }
         )
     return pd.DataFrame(rows)
@@ -230,42 +273,78 @@ def basel_zone_probabilities(n_obs: int = 250, alpha: float = 0.01) -> pd.DataFr
 # --------------------------------------------------------------------------- #
 # ES backtest (Acerbi-Szekely Z2, unconditional)
 # --------------------------------------------------------------------------- #
+def _z2(p: np.ndarray, v: np.ndarray, e: np.ndarray, alpha: float) -> np.ndarray:
+    """Z2 along the last axis: ``sum_t pnl_t I_t / (T alpha ES_t) + 1``."""
+    hits = p < -v
+    return np.sum(np.where(hits, p / e, 0.0), axis=-1) / (alpha * p.shape[-1]) + 1.0
+
+
 def acerbi_szekely_z2(
     pnl: np.ndarray,
-    var: np.ndarray,
-    es: np.ndarray,
-    alpha: float = 0.025,
+    var: np.ndarray | float,
+    es: np.ndarray | float,
+    *args: object,
+    alpha: float | None = None,
+    n_sims: int = 10_000,
+    seed: int | np.random.Generator | None = 0,
+    null_sampler=None,
 ) -> dict[str, float]:
-    """Acerbi-Szekely (2014) unconditional ES backtest statistic Z2.
+    """Acerbi-Szekely (2014) unconditional ES backtest Z2 with a simulated p-value (spec S5).
 
-    ``Z2 = (1/T) * sum_t [ pnl_t * I(pnl_t < -VaR_t) / (alpha * ES_t) ] + 1``
+    ``Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1``, ``I_t = 1{pnl_t < -VaR_t}``.
+    ``E[Z2] = 0`` under the null. A NEGATIVE value means realised tail losses
+    exceed the forecast ES (ES understated).
 
-    Under H0 (P&L drawn from the model's distribution) ``E[Z2] = 0``; a
-    materially **negative** Z2 means realised tail losses exceed the model
-    ES — the model understates tail risk.  Acerbi-Szekely report that the
-    5 % critical value is ~ -0.70 across realistic P&L distributions, so we
-    flag ``reject = Z2 < -0.70`` (documented approximation; an exact p-value
-    requires simulating under the model, docs/METHODOLOGY.md).
+    The p-value is one-sided, ``P(Z2_sim <= Z2_obs)``, from ``n_sims`` paths
+    simulated under the null with the same ``VaR_t`` and ``ES_t``. The default
+    null is ``pnl_t ~ Normal(0, sigma_t)`` with ``sigma_t = ES_t * alpha /
+    phi(z)``, ``z = Phi^{-1}(1 - alpha)``. Pass ``null_sampler(rng, n_sims, T)``
+    returning an ``(n_sims, T)`` array to use the model's own distribution.
 
-    Chosen over the exception-severity z-test because it uses full exception
-    magnitudes without assuming normal tails.
+    Returns ``z2``, ``p_value`` and ``n_exceptions``. Passing ``alpha``
+    positionally is deprecated. ``alpha`` defaults to 0.025.
     """
-    if not 0.0 < alpha < 0.5:
-        raise ValueError(f"alpha must be in (0, 0.5), got {alpha}")
-    p = np.asarray(pnl, dtype=float).ravel()
-    v = np.broadcast_to(np.asarray(var, dtype=float), p.shape).astype(float)
-    e = np.broadcast_to(np.asarray(es, dtype=float), p.shape).astype(float)
-    if p.size == 0:
-        raise ValueError("pnl is empty")
-    if not (np.isfinite(p).all() and np.isfinite(v).all() and np.isfinite(e).all()):
-        raise ValueError("pnl, VaR and ES must all be finite (NaN policy: refuse)")
+    from scipy.stats import norm
+
+    if args:
+        if len(args) > 1 or alpha is not None:
+            raise TypeError("acerbi_szekely_z2 takes alpha as a keyword argument")
+        warnings.warn(
+            "positional alpha in acerbi_szekely_z2 is deprecated; pass alpha=...",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        alpha = args[0]
+    if alpha is None:
+        alpha = 0.025
+    alpha = validate_alpha(alpha)
+    n_sims = integer("n_sims", n_sims, min_value=1)
+    p = finite_array("pnl", pnl, ndim=1, min_size=1)
+    v = np.broadcast_to(finite_array("VaR", var, min_size=1), p.shape).astype(float)
+    e = np.broadcast_to(finite_array("ES", es, min_size=1), p.shape).astype(float)
+    if np.any(v < 0):
+        raise ValueError("VaR must be reported as a positive loss")
     if np.any(e <= 0):
         raise ValueError("ES must be reported as a positive loss")
-    if np.any(e + 1e-12 < v):
+    if np.any(e + 1e-12 * np.maximum(1.0, np.abs(e)) < v):
         raise ValueError("ES must be >= VaR on every day")
-    hits = p < -v
-    z2 = float(np.sum(p[hits] / e[hits]) / (alpha * p.size) + 1.0) if hits.any() else 1.0
-    return {"z2": z2, "n_exceptions": int(hits.sum()), "reject": bool(z2 < -0.70)}
+    z2 = float(_z2(p, v, e, alpha))
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+    t = p.size
+    sigma = e * alpha / norm.pdf(norm.ppf(1.0 - alpha))
+    chunk = max(1, min(n_sims, 2_000_000 // t))
+    count, done = 0, 0
+    while done < n_sims:
+        m = min(chunk, n_sims - done)
+        if null_sampler is None:
+            sims = rng.standard_normal((m, t)) * sigma
+        else:
+            sims = np.asarray(null_sampler(rng, m, t), dtype=float)
+            if sims.shape != (m, t) or not np.isfinite(sims).all():
+                raise ValueError(f"null_sampler must return a finite ({m}, {t}) array")
+        count += int(np.sum(_z2(sims, v, e, alpha) <= z2))
+        done += m
+    return {"z2": z2, "p_value": count / n_sims, "n_exceptions": int(np.sum(p < -v))}
 
 
 # --------------------------------------------------------------------------- #
@@ -290,7 +369,7 @@ class BacktestResult:
         return int(self.exceptions.sum())
 
     def summary(self) -> dict[str, object]:
-        uc = kupiec_pof(self.n_obs, self.n_exceptions, self.alpha)
+        uc = kupiec_pof(n_obs=self.n_obs, n_exceptions=self.n_exceptions, alpha=self.alpha)
         ind = christoffersen_independence(self.exceptions)
         cc = christoffersen_cc(self.exceptions, self.alpha)
         out: dict[str, object] = {
@@ -303,9 +382,9 @@ class BacktestResult:
             "indep_p": ind["pvalue"],
             "cc_p": cc["pvalue"],
         }
-        if self.alpha == 0.01:
-            scaled = int(round(self.n_exceptions * 250 / max(self.n_obs, 1)))
-            out["basel_zone_250d"] = basel_traffic_light(scaled)["zone"]
+        out["basel_zone"] = basel_traffic_light(
+            n_obs=self.n_obs, n_exceptions=self.n_exceptions, alpha=self.alpha
+        )["zone"]
         return out
 
 
@@ -327,9 +406,9 @@ def rolling_var_backtest(
     window : int
         Estimation window length in days.
     """
-    p = np.asarray(pnl, dtype=float).ravel()
-    if window < 1:
-        raise ValueError(f"window must be >= 1, got {window}")
+    p = finite_array("pnl", pnl, ndim=1, min_size=1)
+    window = integer("window", window, min_value=1)
+    alpha = validate_alpha(alpha)
     if p.size <= window:
         raise ValueError(
             f"need more than window={window} observations to backtest, got {p.size}"
@@ -355,15 +434,8 @@ def exception_cluster_table(exceptions: np.ndarray) -> pd.DataFrame:
     model at 99 %, gaps are geometric with mean ~100 days; a run of small
     gaps is the visual signature Christoffersen's LR formalises.
     """
-    ex = np.asarray(exceptions).astype(bool).ravel()
+    ex = _exceptions(exceptions)
     days = np.flatnonzero(ex)
-    gaps = np.diff(days, prepend=days[0] if days.size else 0)
-    if days.size:
-        gaps[0] = days[0] + 1  # distance from start of window
-    return pd.DataFrame(
-        {
-            "day": days,
-            "gap_days": gaps,
-            "clustered": np.concatenate([[False], np.diff(days) <= 5]) if days.size else [],
-        }
-    )
+    gaps = np.diff(days, prepend=-1)  # first gap: distance from the start of the window
+    clustered = np.concatenate([[False], np.diff(days) <= 5]) if days.size else np.zeros(0, bool)
+    return pd.DataFrame({"day": days, "gap_days": gaps, "clustered": clustered})

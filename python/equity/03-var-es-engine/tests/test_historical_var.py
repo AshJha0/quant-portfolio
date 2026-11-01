@@ -14,21 +14,26 @@ from eq_var import (
     rolling_var_backtest,
     scale_var_sqrt_time,
 )
+from eq_var import ewma_forecast, factor_filtered_historical_var, filtered_historical_scenarios
 from eq_var.data import demo_covariance, demo_portfolio, simulate_garch_returns
 
 
 class TestPlainHistorical:
     def test_exact_quantile_known_array(self):
-        # pnl = -100, -99, ..., -1 (n=100).  Type-7 quantile at alpha=0.05:
-        # h = 99*0.05 = 4.95 -> between sorted[4]=-96 and sorted[5]=-95:
-        # q = -96 + 0.95*(1) = -95.05 -> VaR = 95.05
+        # pnl = -100, -99, ..., -1 (n=100). Spec S2: losses 100, 99, ...;
+        # k = 100 * 0.05 = 5, m = 5, VaR = L(5) = 96 (type-7 gave 95.05).
         pnl = np.arange(-100.0, 0.0)
-        assert historical_var(pnl, 0.05) == pytest.approx(95.05, abs=1e-12)
+        assert historical_var(pnl, 0.05) == 96.0
 
     def test_exact_quantile_alpha_01(self):
         pnl = np.arange(-100.0, 0.0)
-        # h = 99*0.01 = 0.99 -> -100 + 0.99 = -99.01 -> VaR = 99.01
-        assert historical_var(pnl, 0.01) == pytest.approx(99.01, abs=1e-12)
+        # k = 1, m = 1: the largest loss (type-7 gave 99.01).
+        assert historical_var(pnl, 0.01) == 100.0
+
+    def test_fractional_k_takes_the_ceiling_rank(self):
+        # n = 250, alpha = 0.01: k = 2.5, m = 3, VaR = third largest loss.
+        pnl = -np.arange(1.0, 251.0)
+        assert historical_var(pnl, 0.01) == 248.0
 
     def test_order_invariance(self):
         rng = np.random.default_rng(3)
@@ -72,10 +77,10 @@ class TestAgeWeighted:
         v = age_weighted_var(pnl, 0.05, lam=1 - 1e-9)
         # equal-weight step-CDF inversion: cumulative weight of the 5 worst
         # is 0.05 - eps (oldest weights are smallest), so the inverse CDF
-        # lands on the 6th-worst = -95 -> VaR 95; within one order statistic
-        # of plain (interpolated) HS at 95.05.
+        # lands on the 6th-worst = -95 -> VaR 95; one order statistic from
+        # plain HS, which is L(5) = 96 under spec S2.
         assert v == pytest.approx(95.0, abs=1e-6)
-        assert abs(v - historical_var(pnl, 0.05)) < 1.0
+        assert abs(v - historical_var(pnl, 0.05)) <= 1.0
 
     def test_recent_losses_dominate(self):
         # same P&L values, but big losses either old or recent
@@ -106,9 +111,25 @@ class TestEwmaVolatility:
         sig = ewma_volatility(x, lam=0.94)
         x2 = x.copy()
         x2[-1] = 100.0  # changing today's return must not change today's forecast
-        sig2 = ewma_volatility(x2, lam=0.94, init="first")
-        sig1 = ewma_volatility(x, lam=0.94, init="first")
-        np.testing.assert_allclose(sig1, sig2)
+        sig2 = ewma_volatility(x2, lam=0.94)
+        np.testing.assert_array_equal(sig, sig2)
+
+    def test_seed_is_mean_square_of_first_30(self):
+        """Spec S8: the seed uses the first min(30, n) observations only.
+        The old default seeded with the full-sample variance (look-ahead):
+        changing a late observation moved sigma[0]."""
+        x = np.random.default_rng(12).normal(0, 1, 100)
+        sig = ewma_volatility(x, lam=0.94)
+        assert sig[0] == pytest.approx(np.sqrt(np.mean(x[:30] ** 2)), rel=1e-15)
+        x2 = x.copy()
+        x2[80] = 50.0
+        assert ewma_volatility(x2, lam=0.94)[0] == sig[0]
+
+    def test_init_argument_is_deprecated(self):
+        x = np.random.default_rng(13).normal(0, 1, 50)
+        with pytest.deprecated_call():
+            old = ewma_volatility(x, lam=0.94, init="sample")
+        assert old[0] == pytest.approx(np.std(x), rel=1e-15)
 
     def test_vol_rises_after_large_returns(self):
         x = np.concatenate([np.full(100, 0.1), np.full(20, 5.0)])
@@ -144,20 +165,32 @@ class TestFilteredHistorical:
         pnl = np.concatenate([high, low])
         assert filtered_historical_var(pnl, 0.01) < historical_var(pnl, 0.01)
 
-    def test_hs_fails_clustering_test_while_fhs_passes_on_garch(self):
-        # Statistical test, fixed seed (verified): plain HS exceptions cluster
-        # on GARCH data (Christoffersen independence rejects at 5 %), FHS
-        # de-clusters them.
+    def test_factor_fhs_reacts_to_a_vol_spike_and_hs_does_not(self):
+        """Spec S9: per-factor filtering. Tripling every factor move over the
+        last 10 of 250 days roughly triples the per-factor FHS VaR of the
+        demo book (the EWMA forecast tracks the new vol), while plain HS on
+        the same revalued history moves by less than half."""
         pf = demo_portfolio()
-        cov = demo_covariance()
-        rets = simulate_garch_returns(750, cov, alpha_g=0.13, beta_g=0.85, df=5.0, seed=10)
-        pnl = pf.pnl(rets, method="delta_gamma")
-        bt_hs = rolling_var_backtest(pnl, historical_var, window=250, alpha=0.01, name="hs")
-        bt_fhs = rolling_var_backtest(pnl, filtered_historical_var, window=250, alpha=0.01, name="fhs")
-        p_hs = christoffersen_independence(bt_hs.exceptions)["pvalue"]
-        p_fhs = christoffersen_independence(bt_fhs.exceptions)["pvalue"]
-        assert p_hs < 0.05
-        assert p_fhs > 0.10
+        rets = simulate_garch_returns(250, demo_covariance(), seed=10)
+        spiked = rets.copy()
+        spiked[-10:] *= 3.0
+        fhs_ratio = factor_filtered_historical_var(pf, spiked, 0.01) / factor_filtered_historical_var(pf, rets, 0.01)
+        hs_ratio = historical_var(pf.pnl(spiked), 0.01) / historical_var(pf.pnl(rets), 0.01)
+        assert fhs_ratio > 2.5
+        assert hs_ratio < 1.5
+
+    def test_factor_scenarios_are_rescaled_per_factor(self):
+        """r*_{t,j} = r_{t,j} / sigma_{t,j} * sigma_{T+1,j}, each column on its own."""
+        r = np.random.default_rng(14).normal(0, [0.01, 0.03], size=(120, 2))
+        scen = filtered_historical_scenarios(r, 0.94)
+        for j in range(2):
+            sig = ewma_volatility(r[:, j], 0.94)
+            nxt = ewma_forecast(r[:, j], 0.94)
+            np.testing.assert_allclose(scen[:, j], r[:, j] / sig * nxt, rtol=1e-14)
+
+    def test_pnl_level_fhs_is_deprecated(self):
+        with pytest.deprecated_call():
+            filtered_historical_var(np.random.default_rng(15).normal(size=300), 0.01)
 
 
 class TestHorizonScaling:

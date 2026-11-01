@@ -1,27 +1,31 @@
-"""Python-side lock on the cross-language golden vectors (TEST-3).
+"""Python-side lock on the cross-language golden vectors.
 
 ``cpp/equity-var-engine/tests/test_cross_language.cpp`` and
-``rust/equity-var-engine/tests/test_cross_language.rs`` assert constants
-generated from *this* package by ``tests/golden/generate_golden.py`` and
-committed to ``tests/golden/golden_vectors.json``.  Until now nothing on
-the Python side pinned those numbers, so a refactor of ``eq_var`` could
-silently move the reference and the only symptom would be a C++/Rust build
-failing in a different directory.
+``rust/equity-var-engine/tests/test_cross_language.rs`` assert values that
+``tests/golden/generate_golden.py`` computes from this package and commits to
+``tests/golden/golden_vectors.json``. The C++ header and the Rust module
+``tests/golden/mod.rs`` are generated from that JSON by the tools in each
+engine. This file checks the JSON against a live run of the generator and
+checks the convention keys against independent hand computations. It holds
+no hand-copied constants.
 
-Two things are checked here:
+Regenerate after a deliberate change::
 
-1. the committed JSON is exactly what the generator produces from the
-   current package (``build()`` is a pure function of ``eq_var``); and
-2. the reference values are what the C++/Rust sources hard-code, to the
-   tolerance both engines use (1e-9 relative + 1e-12 absolute).
+    PYTHONPATH=src python tests/golden/generate_golden.py
+    python ../../../cpp/equity-var-engine/tools/gen_golden_header.py
+    python ../../../rust/equity-var-engine/tools/gen_golden_rs.py
 
-If a deliberate change to ``eq_var`` moves a number, regenerate with::
-
-    PYTHONPATH=src python3 tests/golden/generate_golden.py
-    python3 ../../../cpp/equity-var-engine/tools/gen_golden_header.py
-    python3 ../../../rust/equity-var-engine/tools/gen_golden_rs.py
-
-and commit all three outputs together.
+Tolerance of the live-vs-committed check: 64 ulps
+---------------------------------------------------
+The JSON is written with ``repr`` and round-trips exactly, but numpy and
+scipy are not bit-stable across releases (numpy 2.5.4 moved ``c_ewma_cov_22``
+by 1 ulp). The longest floating-point chain behind any key is an EWMA
+recursion: with decay 0.94 each step contracts earlier rounding error, so the
+accumulated error is bounded by about ``1 / (1 - 0.94) ~ 17`` roundings, plus
+up to 4 ulps from a different libm ``sin``/``cos`` in the inputs, amplified at
+most a few times by the Kupiec / chi2 tail (condition number < 4 on these
+inputs). 64 ulps covers that with margin and is still five orders of
+magnitude below the 1e-9 relative tolerance the compiled engines use.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 HERE = Path(__file__).resolve().parent
@@ -38,12 +43,11 @@ GOLDEN_DIR = HERE / "golden"
 GOLDEN_JSON = GOLDEN_DIR / "golden_vectors.json"
 
 REL, ABS = 1e-9, 1e-12
+MAX_ULPS = 64
 
 
 def _load_generator():
-    spec = importlib.util.spec_from_file_location(
-        "eq_var_generate_golden", GOLDEN_DIR / "generate_golden.py"
-    )
+    spec = importlib.util.spec_from_file_location("eq_var_generate_golden", GOLDEN_DIR / "generate_golden.py")
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(mod)
@@ -56,27 +60,50 @@ def committed() -> dict:
 
 
 @pytest.fixture(scope="module")
-def regenerated() -> dict:
-    return _load_generator().build()
+def generator():
+    return _load_generator()
 
 
-def _close(a: float, b: float) -> bool:
-    return math.isclose(a, b, rel_tol=REL, abs_tol=ABS)
+@pytest.fixture(scope="module")
+def regenerated(generator) -> dict:
+    return generator.build()
+
+
+def ulp_distance(a: float, b: float) -> int:
+    """Number of representable doubles between ``a`` and ``b`` (same sign assumed)."""
+    if a == b:
+        return 0
+    if math.copysign(1.0, a) != math.copysign(1.0, b):
+        return 2**62
+    ia = int(np.array(abs(a)).view(np.int64))
+    ib = int(np.array(abs(b)).view(np.int64))
+    return abs(ia - ib)
+
+
+class TestUlpDistance:
+    def test_adjacent_doubles(self):
+        assert ulp_distance(1.0, math.nextafter(1.0, 2.0)) == 1
+
+    def test_sign_change_is_far(self):
+        assert ulp_distance(1e-300, -1e-300) > MAX_ULPS
 
 
 class TestCommittedJsonIsReproducible:
     def test_same_keys(self, committed, regenerated):
         assert list(committed["values"]) == list(regenerated["values"])
 
-    def test_every_value_bit_identical(self, committed, regenerated):
-        # ``repr()`` round-trips doubles exactly, so the committed file must
-        # match the live package to the bit, not merely to tolerance.
+    def test_every_value_within_ulp_bound(self, committed, regenerated):
         for k, v in regenerated["values"].items():
             c = committed["values"][k]
             if isinstance(v, list):
-                assert c == v, k
+                assert len(c) == len(v), k
+                for ci, vi in zip(c, v):
+                    assert ulp_distance(ci, vi) <= MAX_ULPS, k
             else:
-                assert c == v, f"{k}: committed {c!r} != regenerated {v!r}"
+                assert ulp_distance(c, v) <= MAX_ULPS, f"{k}: committed {c!r} vs regenerated {v!r}"
+
+    def test_versions_recorded(self, committed):
+        assert set(committed["versions"]) == {"python", "numpy", "scipy"}
 
     def test_tolerance_is_the_one_the_engines_use(self, committed):
         assert committed["tolerance"] == {"rel": REL, "abs": ABS}
@@ -84,63 +111,70 @@ class TestCommittedJsonIsReproducible:
     def test_inputs_documented(self, committed):
         assert "sin(3t + 1)" in committed["inputs"]["case_a"]
         assert committed["inputs"]["case_b"]["exposures"] == [1.0e6, -5.0e5, 2.0e5]
+        assert "floor(x * 100 + 0.5)" in committed["inputs"]["conv"]["pnl"]
 
 
-# The constants exactly as they appear in test_cross_language.cpp / .rs.
-CPP_RUST_CONSTANTS = {
-    "a_hist_var_1pct": 1.224129222375264e02,
-    "a_hist_var_5pct": 1.045522835374927e02,
-    "a_es_5pct": 1.226373207703405e02,
-    "a_es_1pct": 1.417568107549531e02,
-    "a_brw_var_5pct_lam098": 1.082348601407293e02,
-    "a_fhs_var_5pct_lam094": 1.093777910164513e02,
-    "b_sigma": 9.962429422585637e03,
-    "b_var_normal_1pct": 2.317607650751402e04,
-    "b_var_t6_1pct": 2.556337478743866e04,
-    "b_var_normal_1pct_10d": 7.328918899006478e04,
-    "b_es_normal_2p5pct": 2.329019532123021e04,
-    "b_es_t6_2p5pct": 2.648647588170394e04,
-    "b_cf_var_1pct_skew_m05_kurt_1": 2.823062626871169e04,
-    "c_sample_cov_00": 6.197010057346647e-05,
-    "c_sample_cov_01": 3.367477490492125e-05,
-    "c_sample_cov_12": 3.643904950084309e-05,
-    "c_ewma_cov_00": 6.085653794066718e-05,
-    "c_ewma_cov_01": 3.159039791408869e-05,
-    "c_ewma_cov_22": 6.695548359317170e-05,
-    "c_var_normal_1pct": 2.403056180968714e04,
-    "c_var_t8_5pct": 1.663517215790393e04,
-    "c_kupiec_lr_250_7": 5.496990447792683e00,
-    "c_kupiec_p_250_7": 1.904923089052653e-02,
-    "c_kupiec_lr_250_0": 5.025167926750726e00,
-    "c_kupiec_p_250_0": 2.498150305344973e-02,
-    "c_christoffersen_ind_lr": 1.189356349111719e00,
-    "c_christoffersen_ind_p": 2.754594267438438e-01,
-    "c_christoffersen_cc_lr": 1.141838698170947e01,
-    "c_christoffersen_cc_p": 3.315345323267836e-03,
-}
-CPP_RUST_BRW_WEIGHTS = [
-    1.920016255921656e-01,
-    1.959200261144547e-01,
-    1.999183939943416e-01,
-    2.039983612187159e-01,
-    2.081615930803223e-01,
-]
+SPEC_S13_KEYS = (
+    [f"conv_{m}_{a}" for a in ("a010", "a025", "a050") for m in ("var", "es")]
+    + [f"conv_basel_{f}_n{n}_x{x}_a{a}" for (n, x, a) in
+       [(250, 4, "010"), (250, 5, "010"), (250, 9, "010"), (250, 10, "010"), (500, 8, "010"),
+        (500, 9, "010"), (500, 12, "010"), (1000, 15, "010"), (250, 12, "025")]
+       for f in ("zone", "k", "cdf")]
+    + ["conv_kupiec_lr_n250_x5", "conv_kupiec_lr_n500_x9", "conv_kupiec_lr_n250_x0", "conv_as_z2",
+       "conv_cf_valid_s0122_km0427", "conv_cf_valid_s00_k00", "conv_cf_valid_s10_k10",
+       "conv_cf_valid_sm0105_k80001", "conv_cf_valid_a001_s0122_km0427"]
+    + [f"conv_{m}_a{ij}" for m in ("higham", "clip") for ij in ("01", "02", "12")]
+    + ["conv_ewma_sigma_last"]
+)
 
 
-class TestPythonMatchesCompiledEngines:
-    @pytest.mark.parametrize("key", sorted(CPP_RUST_CONSTANTS))
-    def test_scalar(self, regenerated, key):
-        assert _close(regenerated["values"][key], CPP_RUST_CONSTANTS[key]), key
+class TestConventionKeysAgainstHandComputation:
+    """Spec S13 keys checked against plain-Python computations that share no
+    code with eq_var, so a change in the package cannot move both sides."""
 
-    def test_brw_weights(self, regenerated):
-        got = regenerated["values"]["a_brw_weights_5_lam098"]
-        assert len(got) == 5
-        for g, e in zip(got, CPP_RUST_BRW_WEIGHTS):
-            assert _close(g, e)
-        assert sum(got) == pytest.approx(1.0, abs=1e-15)
+    def test_every_spec_key_present(self, committed):
+        conv = {k for k in committed["values"] if k.startswith("conv_")}
+        assert conv == set(SPEC_S13_KEYS)
 
-    def test_no_constant_is_orphaned(self, regenerated):
-        # Every scalar the compiled engines pin must exist in the JSON, and
-        # vice versa (except the one vector-valued entry).
-        json_scalars = {k for k, v in regenerated["values"].items() if not isinstance(v, list)}
-        assert json_scalars == set(CPP_RUST_CONSTANTS)
+    @pytest.fixture()
+    def losses(self):
+        p = [math.floor(1000.0 * math.sin(0.37 * i + 0.1) * (1.0 + 0.5 * math.cos(0.11 * i)) * 100.0 + 0.5) / 100.0
+             for i in range(250)]
+        return sorted((-x for x in p), reverse=True)
+
+    @pytest.mark.parametrize("alpha, tag", [(0.010, "a010"), (0.025, "a025"), (0.050, "a050")])
+    def test_var_es(self, committed, losses, alpha, tag):
+        k = 250 * alpha
+        m = math.ceil(k - 1e-9)
+        var = losses[m - 1]
+        es = (sum(losses[: m - 1]) + (k - (m - 1)) * var) / k
+        assert committed["values"][f"conv_var_{tag}"] == var
+        assert committed["values"][f"conv_es_{tag}"] == pytest.approx(es, rel=1e-14)
+
+    def test_kupiec(self, committed):
+        def lr(n, x, a=0.01):
+            ll = lambda q: (n - x) * math.log(1 - q) + (x * math.log(q) if x else 0.0)  # noqa: E731
+            return -2 * ll(a) + (2 * ll(x / n) if x else 0.0)
+
+        for n, x in ((250, 5), (500, 9), (250, 0)):
+            assert committed["values"][f"conv_kupiec_lr_n{n}_x{x}"] == pytest.approx(lr(n, x), rel=1e-12)
+
+    def test_as_z2(self, committed, losses):
+        # VaR 1500 exceeds every loss in P (max 1434.40): no exception, Z2 = 1.
+        assert losses[0] < 1500.0
+        assert committed["values"]["conv_as_z2"] == 1.0
+
+    def test_higham_and_clip(self, committed):
+        # The nearest correlation matrix to A keeps the signs and puts 0.5 off the diagonal.
+        for ij, sign in (("01", 1), ("02", 1), ("12", -1)):
+            assert committed["values"][f"conv_higham_a{ij}"] == pytest.approx(sign * 0.5, abs=1e-8)
+            assert committed["values"][f"conv_clip_a{ij}"] == pytest.approx(sign * 0.5, abs=1e-9)
+
+    def test_ewma(self, committed):
+        p = [math.floor(1000.0 * math.sin(0.37 * i + 0.1) * (1.0 + 0.5 * math.cos(0.11 * i)) * 100.0 + 0.5) / 100.0
+             for i in range(250)]
+        r = [x / 1e5 for x in p]
+        s2 = sum(x * x for x in r[:30]) / 30
+        for x in r:
+            s2 = 0.94 * s2 + 0.06 * x * x
+        assert committed["values"]["conv_ewma_sigma_last"] == pytest.approx(math.sqrt(s2), rel=1e-13)

@@ -12,11 +12,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .monte_carlo_var import safe_cholesky
+from ._validation import finite_array, finite_scalar, integer
+from .monte_carlo_var import cholesky
 from .portfolio import Portfolio
 
 __all__ = [
@@ -44,6 +47,10 @@ class StressScenario:
     description: str
     shocks_by_kind: dict[str, float] = field(default_factory=dict)
     shocks_by_name: dict[str, float] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for k, v in {**self.shocks_by_kind, **self.shocks_by_name}.items():
+            finite_scalar(f"scenario {self.name!r} shock {k!r}", v)
 
 
 #: Approximate factor moves in famous stress episodes.  Sources (approximate,
@@ -166,10 +173,7 @@ def reverse_stress_delta(
     Returns dict with ``shock`` (factor-move vector), ``loss`` (> 0) and
     ``radius``.
     """
-    if radius <= 0:
-        raise ValueError(f"radius must be > 0, got {radius}")
-    w = np.asarray(exposures, dtype=float).ravel()
-    sig = np.atleast_2d(np.asarray(cov, dtype=float))
+    w, sig, radius = _reverse_inputs(exposures, cov, radius)
     sw = sig @ w
     sigma_p = float(np.sqrt(max(w @ sw, 0.0)))
     if sigma_p == 0.0:
@@ -189,21 +193,25 @@ def reverse_stress_delta_gamma(
     """Numerical worst-case direction for a delta-gamma portfolio.
 
     Minimise quadratic P&L ``w'x + 0.5 x'G x`` on the Mahalanobis sphere
-    ``x' Sigma^{-1} x = r^2``.  Parameterise ``x = r * L u / |u|`` with
-    ``L`` the Cholesky factor of Sigma, which turns the constrained problem
-    into an unconstrained one on the unit sphere; multi-start BFGS guards
-    against local minima (the objective on the sphere can have several).
+    ``x' Sigma^{-1} x = r^2``. The parameterisation ``x = r * L u / |u|``
+    (``L`` the Cholesky factor of Sigma) makes the problem unconstrained on
+    the unit sphere. Multi-start BFGS guards against local minima.
 
-    Setting ``gamma = 0`` recovers the closed-form delta solution
-    (unit-tested against ``reverse_stress_delta``).
+    Only starts where BFGS reports success (or the gradient is stationary
+    to 1e-6 relative) and the constraint residual
+    ``|x' Sigma^{-1} x / r^2 - 1|`` is below 1e-8 are accepted. If none is
+    accepted, the result falls back to the closed-form delta direction
+    (a feasible point, so its loss is a lower bound on the worst loss) and a
+    ``RuntimeWarning`` is emitted. ``converged`` in the result says which.
+    ``gamma = 0`` recovers ``reverse_stress_delta``.
     """
-    if radius <= 0:
-        raise ValueError(f"radius must be > 0, got {radius}")
-    w = np.asarray(exposures, dtype=float).ravel()
-    g = np.atleast_2d(np.asarray(gamma, dtype=float))
-    sig = np.atleast_2d(np.asarray(cov, dtype=float))
+    w, sig, radius = _reverse_inputs(exposures, cov, radius)
     n = w.size
-    chol = safe_cholesky(sig)
+    g = finite_array("gamma", gamma, ndim=2, min_size=1)
+    if g.shape != (n, n):
+        raise ValueError(f"gamma shape {g.shape} does not match {n} exposures")
+    n_starts = integer("n_starts", n_starts, min_value=1)
+    chol = cholesky(sig)
     rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
 
     def x_of(u: np.ndarray) -> np.ndarray:
@@ -212,19 +220,49 @@ def reverse_stress_delta_gamma(
             norm_u = 1.0
         return radius * (chol @ u) / norm_u
 
-    def objective(u: np.ndarray) -> float:
-        x = x_of(u)
-        return float(w @ x + 0.5 * x @ g @ x)  # P&L; minimise = worst loss
+    def pnl_of(x: np.ndarray) -> float:
+        return float(w @ x + 0.5 * x @ g @ x)
+
+    def residual(x: np.ndarray) -> float:
+        y = np.linalg.solve(chol, x)
+        return abs(float(y @ y) / radius**2 - 1.0)
 
     starts = [rng.standard_normal(n) for _ in range(n_starts)]
-    # include the delta closed-form direction as a warm start
     delta_dir = reverse_stress_delta(w, sig, radius)["shock"]
     if np.linalg.norm(delta_dir) > 0:
         starts.append(np.linalg.solve(chol, delta_dir))
-    best_x, best_pnl = np.zeros(n), np.inf
+    best_x, best_pnl = None, np.inf
     for u0 in starts:
-        res = minimize(objective, u0, method="BFGS")
+        res = minimize(lambda u: pnl_of(x_of(u)), u0, method="BFGS")
+        if not np.isfinite(res.fun):
+            continue
+        # BFGS often stops with "precision loss" at a true optimum on this
+        # scale-invariant objective, so accept a start when it reports success
+        # OR the gradient is stationary relative to the objective.
+        stationary = np.linalg.norm(res.jac) * np.linalg.norm(res.x) <= 1e-6 * max(1.0, abs(res.fun))
+        if not (res.success or stationary):
+            continue
+        x = x_of(res.x)
+        if residual(x) > 1e-8:
+            continue
         if res.fun < best_pnl:
-            best_pnl = float(res.fun)
-            best_x = x_of(res.x)
-    return {"shock": best_x, "loss": float(-best_pnl), "radius": radius}
+            best_pnl, best_x = float(res.fun), x
+    if best_x is None:
+        warnings.warn(
+            "reverse_stress_delta_gamma: no optimiser start converged to a feasible point; "
+            "returning the closed-form delta direction (a lower bound on the worst loss)",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return {"shock": delta_dir, "loss": -pnl_of(delta_dir), "radius": radius,
+                "converged": False}
+    return {"shock": best_x, "loss": -best_pnl, "radius": radius, "converged": True}
+
+
+def _reverse_inputs(exposures: object, cov: object, radius: object):
+    radius = finite_scalar("radius", radius, min_value=0.0, strict=True)
+    w = finite_array("exposures", exposures, ndim=1, min_size=1)
+    sig = finite_array("covariance", cov, ndim=2, min_size=1)
+    if sig.shape != (w.size, w.size):
+        raise ValueError(f"covariance shape {sig.shape} does not match {w.size} exposures")
+    return w, sig, radius

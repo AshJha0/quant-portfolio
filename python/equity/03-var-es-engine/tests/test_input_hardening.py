@@ -27,7 +27,7 @@ from eq_var import (
     parametric_var,
     portfolio_sigma,
     rolling_var_backtest,
-    safe_cholesky,
+    cholesky,
     sample_covariance,
     var_standard_error_bootstrap,
 )
@@ -108,7 +108,7 @@ class TestNonFiniteBacktesting:
             acerbi_szekely_z2(clean_pnl, 2.0, bad, alpha=0.025)
 
     def test_acerbi_szekely_refuses_empty(self):
-        with pytest.raises(ValueError, match="empty"):
+        with pytest.raises(ValueError, match="at least 1"):
             acerbi_szekely_z2(np.array([]), 2.0, 2.5, alpha=0.025)
 
 
@@ -182,7 +182,7 @@ class TestNonFiniteMonteCarlo:
         cov = cov3.copy()
         cov[0, 0] = np.nan  # still symmetric -- the old message was misleading
         with pytest.raises(ValueError, match="NaN or infinite"):
-            safe_cholesky(cov)
+            cholesky(cov)
 
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_bootstrap_se_rejects_non_finite_pnl(self, clean_pnl, bad):
@@ -192,17 +192,17 @@ class TestNonFiniteMonteCarlo:
             var_standard_error_bootstrap(pnl, 0.05, n_boot=20, seed=0)
 
     def test_bootstrap_se_is_chunk_invariant(self, clean_pnl):
-        # Chunking is a memory optimisation only: the stream of draws (and so
-        # the estimate) must not depend on the chunk boundary.  n_boot = 50
-        # is exactly one chunk; n_boot = 120 spans three.
-        se_one = var_standard_error_bootstrap(clean_pnl, 0.05, n_boot=50, seed=3)
-        se_three = var_standard_error_bootstrap(clean_pnl, 0.05, n_boot=120, seed=3)
-        assert np.isfinite(se_one) and np.isfinite(se_three)
-        assert se_one > 0 and se_three > 0
-        # Same seed, same first 50 resamples: the estimates differ only
-        # because n_boot differs, and both sit within a factor of 2 of each
-        # other on 250 observations.
-        assert 0.5 < se_one / se_three < 2.0
+        """Chunking is a memory optimisation only. n_boot = 120 spans three
+        chunks; the result must equal an unchunked reference that draws the
+        whole (n_boot, n) index matrix from the same seed and takes the S2
+        order statistic of every resample."""
+        se = var_standard_error_bootstrap(clean_pnl, 0.05, n_boot=120, seed=3)
+        rng = np.random.default_rng(3)
+        idx = rng.integers(0, clean_pnl.size, size=(120, clean_pnl.size))
+        n = clean_pnl.size
+        m = int(np.ceil(n * 0.05 - 1e-9))
+        ref = [np.sort(-clean_pnl[row])[::-1][m - 1] for row in idx]
+        assert se == np.std(ref, ddof=1)
 
     def test_bootstrap_se_rejects_too_few_resamples(self, clean_pnl):
         with pytest.raises(ValueError, match="n_boot"):
