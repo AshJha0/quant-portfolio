@@ -105,7 +105,7 @@ impl Xoshiro256PlusPlus {
     /// Uniform draw in the **open** interval (0, 1) with 53-bit resolution.
     ///
     /// Uses the top 53 bits of [`next_u64`](Self::next_u64) mapped to the
-    /// midpoints `(m + 0.5) * 2^-53`, so 0 and 1 are unattainable — safe
+    /// midpoints `(m + 0.5) * 2^-53`, so 0 and 1 are unattainable: safe
     /// to pass straight into `ln` for Box-Muller.
     #[inline]
     pub fn next_uniform(&mut self) -> f64 {
@@ -115,7 +115,7 @@ impl Xoshiro256PlusPlus {
     /// Standard normal draw N(0, 1) via trigonometric Box-Muller.
     ///
     /// Generates variates in pairs `(R cos(theta), R sin(theta))` with
-    /// `R = sqrt(-2 ln u1)`, `theta = 2 pi u2`, caching the second — so
+    /// `R = sqrt(-2 ln u1)`, `theta = 2 pi u2`, caching the second: so
     /// two calls consume exactly two `u64` draws.
     #[inline]
     pub fn standard_normal(&mut self) -> f64 {

@@ -310,7 +310,7 @@ pub fn filtered_historical_var_factors(
     crate::tail::empirical_var(&pnl, alpha)
 }
 
-/// Filtered historical simulation (FHS) VaR — the industry workhorse.
+/// Filtered historical simulation (FHS) VaR: the industry workhorse.
 ///
 /// Barone-Adesi et al. / Hull–White devolatilisation:
 ///

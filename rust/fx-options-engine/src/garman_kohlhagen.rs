@@ -32,10 +32,10 @@ pub(crate) const MIN_VOL: f64 = 1e-12;
 ///
 /// # Arguments
 ///
-/// * `s`, `k` — spot (domestic per foreign) and strike, both `> 0`.
-/// * `t` — time to expiry in years, `> 0`.
-/// * `r_d`, `r_f` — domestic / foreign continuously compounded rates.
-/// * `sigma` — annualised volatility, `> 0`.
+/// * `s`, `k`: spot (domestic per foreign) and strike, both `> 0`.
+/// * `t`: time to expiry in years, `> 0`.
+/// * `r_d`, `r_f`: domestic / foreign continuously compounded rates.
+/// * `sigma`: annualised volatility, `> 0`.
 ///
 /// # Errors
 ///
@@ -76,14 +76,14 @@ pub fn d2(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult<f6
 ///
 /// # Arguments
 ///
-/// * `s` — spot FX rate, domestic per unit foreign, `> 0`.
-/// * `k` — strike in the same quotation, `> 0`.
-/// * `t` — time to expiry in years, `>= 0` (`t = 0` returns intrinsic).
-/// * `r_d` — domestic (quote-currency) continuously compounded rate.
-/// * `r_f` — foreign (base-currency) continuously compounded rate.
-/// * `sigma` — annualised volatility, `>= 0` (`sigma = 0` returns
+/// * `s`: spot FX rate, domestic per unit foreign, `> 0`.
+/// * `k`: strike in the same quotation, `> 0`.
+/// * `t`: time to expiry in years, `>= 0` (`t = 0` returns intrinsic).
+/// * `r_d`: domestic (quote-currency) continuously compounded rate.
+/// * `r_f`: foreign (base-currency) continuously compounded rate.
+/// * `sigma`: annualised volatility, `>= 0` (`sigma = 0` returns
 ///   discounted forward intrinsic).
-/// * `option_type` — [`OptionType::Call`] (call on the base currency) or
+/// * `option_type`: [`OptionType::Call`] (call on the base currency) or
 ///   [`OptionType::Put`].
 ///
 /// # Errors

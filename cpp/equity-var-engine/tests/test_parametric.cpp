@@ -85,7 +85,7 @@ TEST(CornishFisher, ReducesToNormalAtZeroMoments) {
 
 TEST(CornishFisher, LeftSkewAndFatTailsRaiseVar) {
     // Moment pairs chosen inside the CF validity domain (S = -0.5, K = 0 is
-    // already non-monotone on |z| <= 3.5 — in the Python reference too).
+    // already non-monotone on |z| <= 3.5: in the Python reference too).
     const double base = cornish_fisher_var(1.0e4, 0.01, 0.0, 0.0);
     EXPECT_GT(cornish_fisher_var(1.0e4, 0.01, -0.2, 0.0), base);  // left skew
     EXPECT_GT(cornish_fisher_var(1.0e4, 0.01, 0.0, 1.0), base);   // excess kurt

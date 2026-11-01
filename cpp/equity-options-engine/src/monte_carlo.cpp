@@ -51,7 +51,7 @@ double inv_norm_cdf_acklam(double p) noexcept {
            ((((d[0] * t + d[1]) * t + d[2]) * t + d[3]) * t + 1.0);
 }
 
-/// splitmix64 mix step — derives statistically independent per-thread seeds
+/// splitmix64 mix step: derives statistically independent per-thread seeds
 /// from (base seed, chunk index) deterministically.
 std::uint64_t splitmix64(std::uint64_t x) noexcept {
     x += 0x9e3779b97f4a7c15ULL;

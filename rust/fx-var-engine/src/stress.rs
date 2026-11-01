@@ -1,10 +1,10 @@
 //! FX stress testing: historical replays, hypothetical scenarios, peg
 //! breaks, and reverse stress (mirrors Python `fx_var.stress_testing` / C++
-//! `fxvar::stress`, spot/forward factor set — no vol factors here).
+//! `fxvar::stress`, spot/forward factor set: no vol factors here).
 //!
 //! Stress is the complement to VaR, not a substitute: HS and var-covar are
 //! *blind* to risks absent from the estimation window (a pegged currency
-//! has no history of breaking — until it does). Every scenario is a joint
+//! has no history of breaking until it does). Every scenario is a joint
 //! factor-shock map {per-ccy spot shocks (log returns), rate shifts
 //! (absolute)} applied through full revaluation, so forwards feel their
 //! rate legs.
@@ -12,10 +12,10 @@
 //! Historical replay calibrations (close-to-close one-day moves vs USD,
 //! sources in `docs/METHODOLOGY.md`):
 //!
-//! * **GBP flash** — Brexit referendum, 24 Jun 2016: GBPUSD -8.1% (1.4877
+//! * **GBP flash**: Brexit referendum, 24 Jun 2016: GBPUSD -8.1% (1.4877
 //!   -> 1.3679), EURUSD -2.4%, JPY +3.9% (safe haven), and a BoE-easing
 //!   rate shift.
-//! * **CHF depeg** — SNB floor removal, 15 Jan 2015: CHFUSD +14.9%
+//! * **CHF depeg**: SNB floor removal, 15 Jan 2015: CHFUSD +14.9%
 //!   close-to-close (intraday +30%+), EURUSD -1.4%. The canonical peg
 //!   break: the prior 250 days of USDCHF had no daily move over 1.9%.
 //! * **JPY carry unwind**, 7-8 Oct 1998: JPYUSD +11.5% over two days as
@@ -23,7 +23,7 @@
 //!
 //! Reverse stress: for a linearised book with exposures `w` and factor
 //! covariance `Sigma`, the most damaging shock at Mahalanobis radius `k` is
-//! `dx* = -k Sigma w / sqrt(w' Sigma w)`, `loss = k sqrt(w' Sigma w)` —
+//! `dx* = -k Sigma w / sqrt(w' Sigma w)`, `loss = k sqrt(w' Sigma w)`:
 //! closed form, verified against an independent numerical search in tests
 //! (tolerance `1e-6`).
 
@@ -55,7 +55,7 @@ pub struct Scenario {
 /// returns `ln(0) = -inf` and `pct < -1` returns `NaN`. Both used to be
 /// returned *silently*, so a fat-fingered `-1.0` in a scenario definition
 /// produced an infinite shock, an infinite scenario P&L, and a stress
-/// report whose worst-case row was `-inf` — or, with `NaN`, a report that
+/// report whose worst-case row was `-inf`: or, with `NaN`, a report that
 /// sorted arbitrarily and showed the "worst" scenario as harmless. The
 /// function therefore returns a [`Result`] and rejects the boundary.
 ///
@@ -175,7 +175,7 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
     Ok(Scenario { name, shocks, description: "Uniform USD move against all book currencies.".to_string() })
 }
 
-/// Peg-break stress add-on for a pegged/managed currency — the mandatory
+/// Peg-break stress add-on for a pegged/managed currency: the mandatory
 /// companion to any HS/parametric VaR on a book holding pegged currencies
 /// (the engine's peg-blindness warnings point here). `jump` is the simple
 /// revaluation vs USD (`-0.30` = 30% devaluation; positive models a
@@ -308,7 +308,7 @@ pub fn reverse_stress_for_loss(exposures: &[f64], cov: &Matrix, loss_target: f64
 /// Independent numerical check of the closed form: maximises the linear
 /// loss over the Mahalanobis ellipsoid by projected gradient ascent in
 /// whitened coordinates (`dx = L y`, `|y| = radius`) from a seeded random
-/// start — it never assumes the analytic optimum. Used in tests to confirm
+/// start: it never assumes the analytic optimum. Used in tests to confirm
 /// [`reverse_stress_linear`] to `1e-6`.
 ///
 /// # Errors

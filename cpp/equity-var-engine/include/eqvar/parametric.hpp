@@ -1,4 +1,4 @@
-// eqvar/parametric.hpp — variance-covariance VaR.
+// eqvar/parametric.hpp: variance-covariance VaR.
 //
 // Portfolio sigma from dollar exposures w and factor-return covariance Sigma:
 // sigma_p = sqrt(w' Sigma w).  Quantiles from the normal, the variance-matched

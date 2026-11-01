@@ -1,10 +1,10 @@
-// eqvar/backtest.hpp — VaR backtesting: Kupiec POF, Christoffersen
+// eqvar/backtest.hpp: VaR backtesting: Kupiec POF, Christoffersen
 // independence / conditional coverage, Basel traffic light.
 //
 // A backtest compares ex-ante VaR forecasts against realised P&L: an
 // EXCEPTION is a day with pnl < -VaR.  LR statistics are asymptotically
 // chi-squared under H0; p-values come from the regularized upper incomplete
-// gamma (stats.hpp — no external deps), and the Basel zone probabilities
+// gamma (stats.hpp: no external deps), and the Basel zone probabilities
 // from the exact binomial CDF via the regularized incomplete beta.
 // Mirrors eq_var.backtesting.
 
@@ -20,7 +20,7 @@ namespace eqvar {
 /// Exception indicator per day: 1 iff pnl_t < -var_t.  `var` (positive-loss
 /// convention) is scalar-broadcast if it has size 1, otherwise one entry per
 /// day.  Throws std::invalid_argument on negative VaR, a size mismatch, or
-/// any non-finite P&L / VaR value — a NaN would otherwise compare false and
+/// any non-finite P&L / VaR value: a NaN would otherwise compare false and
 /// be silently counted as "no exception", flattering the model under test.
 [[nodiscard]] std::vector<std::uint8_t> exceptions_from_pnl(std::span<const double> pnl,
                                                             std::span<const double> var);
@@ -67,7 +67,7 @@ struct ChristoffersenResult {
 [[nodiscard]] ChristoffersenResult christoffersen_independence(
     std::span<const std::uint8_t> exceptions);
 
-/// Conditional-coverage joint test: LR_cc = LR_uc + LR_ind ~ chi2(2) —
+/// Conditional-coverage joint test: LR_cc = LR_uc + LR_ind ~ chi2(2):
 /// correct exception rate AND independence together.
 struct ConditionalCoverageResult {
     double lr = 0.0;

@@ -113,7 +113,7 @@ impl Matrix {
         self.data.iter().all(|v| v.is_finite())
     }
 
-    /// Largest absolute entry (0 for an empty matrix) — the natural scale
+    /// Largest absolute entry (0 for an empty matrix): the natural scale
     /// for relative tolerances.
     pub fn max_abs(&self) -> f64 {
         self.data.iter().fold(0.0_f64, |m, v| m.max(v.abs()))
@@ -128,8 +128,8 @@ impl Matrix {
     /// `atol` is an **absolute** tolerance, which is the right thing for
     /// the caller who knows the units. Callers that receive a matrix of
     /// unknown scale (e.g. a P&L covariance for a multi-billion book,
-    /// whose entries are ~1e12) should scale it — see
-    /// [`Matrix::is_symmetric_rel`] — because a fixed absolute tolerance
+    /// whose entries are ~1e12) should scale it: see
+    /// [`Matrix::is_symmetric_rel`]: because a fixed absolute tolerance
     /// spuriously rejects a perfectly symmetric large-notional matrix
     /// whose two triangles were accumulated in different orders.
     pub fn is_symmetric(&self, atol: f64) -> bool {
@@ -156,7 +156,7 @@ impl Matrix {
     /// absolute tolerance, a symmetric covariance expressed in
     /// currency units (entries ~1e12 for a multi-billion book) is rejected
     /// purely because its two triangles were summed in different orders and
-    /// differ in the last ulp — roughly 1e-4 in absolute terms at that
+    /// differ in the last ulp: roughly 1e-4 in absolute terms at that
     /// scale, i.e. eight orders of magnitude above a 1e-12 absolute gate.
     pub fn is_symmetric_rel(&self, rtol: f64) -> bool {
         self.is_symmetric(rtol * self.max_abs().max(1.0))
@@ -257,7 +257,7 @@ impl Matrix {
     /// [`MAX_RELATIVE_JITTER`] times the mean diagonal, and returns
     /// [`FxVarError::Numerical`] naming that cap. Without it the ladder
     /// `1e-12 * 10^k` reaches a *multiple* of the mean variance for the
-    /// `max_tries` values used in this crate — at which point the factor
+    /// `max_tries` values used in this crate: at which point the factor
     /// no longer describes the caller's covariance and the simulated risk
     /// is materially inflated with no diagnostic. Singular-but-PSD
     /// covariances (pegged currencies, perfectly correlated factors) are

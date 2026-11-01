@@ -2,7 +2,7 @@
 //!
 //! The terminal stock price is simulated exactly:
 //! `S_T = S exp((r - q - sigma^2/2) T + sigma sqrt(T) Z)`, `Z ~ N(0, 1)`,
-//! so there is *no* time-discretisation bias — only statistical error,
+//! so there is *no* time-discretisation bias: only statistical error,
 //! which is reported as a standard error and 95% confidence interval.
 //!
 //! # Variance reduction (semantics mirror the Python reference)
@@ -114,14 +114,14 @@ fn summary(samples: &[f64], n_paths: usize) -> McResult {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type` — as in
+/// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type`: as in
 ///   [`bs_price`].
-/// * `n_paths` — total number of paths (rounded up to even when
+/// * `n_paths`: total number of paths (rounded up to even when
 ///   `antithetic`), in `[2, MAX_PATHS]`.
-/// * `antithetic` — use antithetic pairs `(Z, -Z)`.
-/// * `control_variate` — use the discounted terminal stock as a control
+/// * `antithetic`: use antithetic pairs `(Z, -Z)`.
+/// * `control_variate`: use the discounted terminal stock as a control
 ///   variate, coefficient fitted on the antithetic pair averages.
-/// * `seed` — explicit RNG seed; same seed => identical result on one target.
+/// * `seed`: explicit RNG seed; same seed => identical result on one target.
 ///
 /// `t == 0` or `sigma == 0` are deterministic; the exact Black-Scholes
 /// value is returned with `std_error = 0`.

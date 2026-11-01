@@ -1,4 +1,4 @@
-//! # eq_var_engine — equity market-risk engine (VaR / ES / backtesting)
+//! # eq_var_engine: equity market-risk engine (VaR / ES / backtesting)
 //!
 //! Linear-book port of the Python research library
 //! `python/equity/03-var-es-engine` (package `eq_var`), alongside the C++
@@ -33,11 +33,11 @@
 //!
 //! ## Design
 //!
-//! * **Zero external dependencies** — `std` only. The deterministic RNG,
+//! * **Zero external dependencies**: `std` only. The deterministic RNG,
 //!   the special functions (`erfc`, inverse normal CDF, regularized
 //!   incomplete beta/gamma) and the dense linear algebra are implemented
 //!   in-crate and validated to documented tolerances ([`stats`]).
-//! * **`Result` everywhere** — invalid inputs return
+//! * **`Result` everywhere**: invalid inputs return
 //!   [`EqVarError::InvalidInput`] instead of panicking; numerical failures
 //!   (e.g. an indefinite covariance that defeats the Cholesky jitter
 //!   fallback) return [`EqVarError::Numerical`]. Library code never panics
@@ -89,11 +89,11 @@ use std::fmt;
 
 /// Errors returned by the engine.
 ///
-/// * [`EqVarError::InvalidInput`] — the caller passed something the model
+/// * [`EqVarError::InvalidInput`]: the caller passed something the model
 ///   cannot accept (empty P&L, `alpha` outside `(0, 0.5)`, dimension
 ///   mismatch, `df <= 2`, …). The message states what was wrong and what
 ///   was received, mirroring the `ValueError`s of the Python reference.
-/// * [`EqVarError::Numerical`] — the inputs were well-formed but a numerical
+/// * [`EqVarError::Numerical`]: the inputs were well-formed but a numerical
 ///   procedure failed (e.g. Cholesky on an indefinite matrix even after the
 ///   jitter escalation).
 #[derive(Debug, Clone, PartialEq)]

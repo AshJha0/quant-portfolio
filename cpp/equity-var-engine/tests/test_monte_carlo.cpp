@@ -76,7 +76,7 @@ TEST(SimulateFactorReturns, MatchesTargetCovarianceNormalAndT) {
         const Matrix scen = simulate_factor_returns(cov, 200'000, dist, 6.0, 3);
         const Matrix hat = sample_covariance(scen);
         // Variances within 5 % relative, covariances within 10 %: ~ 3-4 MC SE
-        // at 200k paths (t moments converge slower — same target covariance).
+        // at 200k paths (t moments converge slower: same target covariance).
         for (std::size_t i = 0; i < 3; ++i) {
             EXPECT_NEAR(hat(i, i) / cov(i, i), 1.0, 0.05) << "i=" << i;
             for (std::size_t j = 0; j < 3; ++j) {

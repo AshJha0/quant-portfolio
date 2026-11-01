@@ -39,7 +39,7 @@ public:
     /// 53-bit uniform on the open interval (0, 1).
     [[nodiscard]] double uniform();
 
-    /// Standard normal via Phi^{-1}(uniform()) — one draw per variate,
+    /// Standard normal via Phi^{-1}(uniform()): one draw per variate,
     /// platform-independent (unlike std::normal_distribution).
     [[nodiscard]] double gaussian();
 

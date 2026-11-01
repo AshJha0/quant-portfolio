@@ -22,7 +22,7 @@ use crate::{validate_alpha, EqVarError, Result, TailModel};
 /// single NaN anywhere evaluates to NaN; the PSD test `var < -tol` is
 /// **false** for NaN, and `f64::max` propagates the *other* operand, so
 /// `NaN.max(0.0).sqrt()` is `0.0`. Without this guard a corrupt covariance
-/// therefore reported a portfolio sigma — and a VaR — of exactly **zero**:
+/// therefore reported a portfolio sigma, and a VaR, of exactly **zero**:
 /// a broken model that looks like a riskless book.
 pub fn portfolio_sigma(exposures: &[f64], cov: &Matrix) -> Result<f64> {
     let n = exposures.len();

@@ -12,9 +12,9 @@
 //!
 //! Variance reduction:
 //!
-//! * **Antithetic variates** — pairs `(Z, -Z)`, estimator averaged per
+//! * **Antithetic variates**: pairs `(Z, -Z)`, estimator averaged per
 //!   pair (standard error computed from independent pair averages).
-//! * **Control variate** — the discounted terminal spot `e^{-r_d T} S_T`
+//! * **Control variate**: the discounted terminal spot `e^{-r_d T} S_T`
 //!   is a martingale-adjusted quantity with known mean `S e^{-r_f T}`
 //!   (the value today of one unit of foreign currency delivered at `T`);
 //!   the optimal coefficient is estimated from the sample covariance.
@@ -29,7 +29,7 @@
 //!
 //! Determinism: draws come from the crate's own
 //! [`Xoshiro256StarStar`] seeded with an
-//! explicit `u64`, and normals are produced by inverse-CDF transform —
+//! explicit `u64`, and normals are produced by inverse-CDF transform:
 //! the same seed gives identical results on a given target and toolchain
 //! (asserted in the test suite). Across targets the last bits can differ:
 //! `f64::exp`/`ln` come from the platform libm.
@@ -72,15 +72,15 @@ fn mean_of(x: &[f64]) -> f64 {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`];
 ///   requires `t > 0`.
-/// * `option_type` — call or put on the base currency.
-/// * `n_paths` — number of terminal draws, in `[2, MAX_PATHS]` (rounded
+/// * `option_type`: call or put on the base currency.
+/// * `n_paths`: number of terminal draws, in `[2, MAX_PATHS]` (rounded
 ///   up to even when antithetic). At least two independent samples are
 ///   required (an antithetic pair is one), three with the control
 ///   variate; fewer return `InvalidInput`.
-/// * `seed` — explicit RNG seed; the same seed repeats on one target.
-/// * `antithetic`, `control_variate` — variance-reduction switches.
+/// * `seed`: explicit RNG seed; the same seed repeats on one target.
+/// * `antithetic`, `control_variate`: variance-reduction switches.
 ///
 /// # Errors
 ///
@@ -190,7 +190,7 @@ pub fn mc_price(
     // pairing already reshapes the payoff/control covariance structure.
     // Fitting beta on individual draws and pairing afterwards (as an
     // earlier version of this function did) under-uses the control
-    // variate once antithetic is also on — the combined SE could end up
+    // variate once antithetic is also on: the combined SE could end up
     // *worse* than control-variate alone.
     let mut samples: Vec<f64> = if antithetic {
         (0..half)

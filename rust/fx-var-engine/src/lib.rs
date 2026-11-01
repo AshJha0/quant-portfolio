@@ -1,4 +1,4 @@
-//! # fx_var_engine — multi-currency FX market-risk engine (VaR / ES / stress)
+//! # fx_var_engine: multi-currency FX market-risk engine (VaR / ES / stress)
 //!
 //! Linear-book port of the Python research package
 //! `python/fx/03-var-es-engine` (package `fx_var`), alongside the C++ engine
@@ -42,16 +42,16 @@
 //!
 //! ## Design
 //!
-//! * **Zero external dependencies** — `std` only. The deterministic RNG
+//! * **Zero external dependencies**: `std` only. The deterministic RNG
 //!   ([`rng`]), special functions and dense linear algebra ([`matrix`],
 //!   [`stats`]) are implemented in-crate and validated to documented
 //!   tolerances.
-//! * **`Result` everywhere** — invalid caller input returns
+//! * **`Result` everywhere**: invalid caller input returns
 //!   [`FxVarError::Invalid`]; well-formed input that defeats a numerical
 //!   procedure (e.g. a covariance that resists Cholesky even with jitter)
 //!   returns [`FxVarError::Numerical`]. Library code never panics on user
 //!   input.
-//! * **NaN policy: refuse** — every history/backtest input that could
+//! * **NaN policy: refuse**: every history/backtest input that could
 //!   silently corrupt a quantile is checked for NaN and rejected with an
 //!   informative message rather than dropped or imputed.
 //!
@@ -121,12 +121,12 @@ use std::fmt;
 
 /// Errors returned by the engine.
 ///
-/// * [`FxVarError::Invalid`] — the caller passed something the model
+/// * [`FxVarError::Invalid`]: the caller passed something the model
 ///   cannot accept (empty book, `alpha` outside `(0, 0.5)`, dimension
 ///   mismatch, missing factor columns, NaNs, …). The message states what
 ///   was wrong, mirroring the `ValueError`s of the Python reference and the
 ///   `std::invalid_argument`s of the C++ engine.
-/// * [`FxVarError::Numerical`] — the inputs were well-formed but a
+/// * [`FxVarError::Numerical`]: the inputs were well-formed but a
 ///   numerical procedure failed (e.g. Cholesky on an indefinite matrix even
 ///   after the jitter escalation).
 #[derive(Debug, Clone, PartialEq)]
@@ -211,7 +211,7 @@ impl From<KernelError> for FxVarError {
 pub enum TailDist {
     /// Gaussian tails (RiskMetrics classic).
     Normal,
-    /// Standardised (unit-variance) Student-t tails — fatter than normal at
+    /// Standardised (unit-variance) Student-t tails: fatter than normal at
     /// equal sigma; the `df` parameter is supplied where used (must be > 2
     /// for finite variance).
     StudentT,

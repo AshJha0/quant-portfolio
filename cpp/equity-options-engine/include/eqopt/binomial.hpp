@@ -5,8 +5,8 @@
 /// `eq_options/binomial.py`): continuously compounded annualised `r` and `q`
 /// (ACT/365F), `T` in years, `sigma` annualised.
 ///
-/// The backward induction runs in a single reused vector — O(n) memory,
-/// O(n^2) time — updated in place from the terminal payoff slice.
+/// The backward induction runs in a single reused vector: O(n) memory,
+/// O(n^2) time: updated in place from the terminal payoff slice.
 ///
 /// Edge-case policy (matches Python):
 ///  - `T == 0` -> intrinsic value;
@@ -51,7 +51,7 @@ enum class ExerciseStyle { European, American };
 ///                Black–Scholes is O(1/n) with an oscillating odd/even term.
 /// \return Present value in currency units.
 /// \throws std::invalid_argument on negative/NaN inputs, `n_steps < 1`, or
-///         if the risk-neutral probability falls outside (0, 1) — a sign
+///         if the risk-neutral probability falls outside (0, 1): a sign
 ///         that `dt` is too large for the given `r - q` and `sigma`.
 double crr_price(double S, double K, double T, double r, double sigma,
                  double q = 0.0, OptionType type = OptionType::Call,

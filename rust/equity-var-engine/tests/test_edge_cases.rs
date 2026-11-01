@@ -151,11 +151,11 @@ fn deep_tail_alpha_on_small_sample() {
 ///
 /// This is the single most dangerous failure mode in a risk system. Guards
 /// written as `if x < 0.0 { return Err(..) }` silently accept NaN, because
-/// every IEEE-754 comparison against NaN is false — Rust is no different
+/// every IEEE-754 comparison against NaN is false: Rust is no different
 /// from C here (`f64::NAN < 0.0` is `false`). Worse, `f64::max` propagates
 /// the *other* operand, so `NaN.max(0.0)` is `0.0`: before this guard, a
-/// NaN covariance entry made `portfolio_sigma` — and therefore the whole
-/// parametric VaR/ES family — report exactly **zero risk**.
+/// NaN covariance entry made `portfolio_sigma` (and therefore the whole
+/// parametric VaR/ES family) report exactly **zero risk**.
 #[test]
 fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
     use eq_var_engine::expected_shortfall::{normal_es, parametric_es, student_t_es};
@@ -237,7 +237,7 @@ fn backtests_reject_non_finite_series_instead_of_scoring_them_green() {
     use eq_var_engine::backtest::{basel_traffic_light, exceptions_from_pnl, BaselInput, BaselZone};
 
     let mut pnl: Vec<f64> = (0..250).map(|t| 50.0 * (0.7 * t as f64).sin()).collect();
-    // A genuinely broken model: losses far beyond the VaR every day.
+    // A broken model: losses far beyond the VaR every day.
     let breached: Vec<f64> = vec![-1000.0; 250];
     let ex = exceptions_from_pnl(&breached, &[100.0]).unwrap();
     assert_eq!(ex.iter().map(|&e| e as i64).sum::<i64>(), 250);
@@ -245,7 +245,7 @@ fn backtests_reject_non_finite_series_instead_of_scoring_them_green() {
 
     // Now poison the VaR feed. `pnl < -NaN` is false on every day, so a
     // naive implementation reports ZERO exceptions and the traffic light
-    // goes green — a broken model certified as sound.
+    // goes green: a broken model certified as sound.
     for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert!(
             exceptions_from_pnl(&breached, &[bad]).is_err(),
@@ -313,10 +313,10 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
     let mc = monte_carlo_var(&w, &rd, 0.01, 50_000, TailModel::Normal, 3).unwrap();
     assert!((mc - var).abs() < 0.1 * var, "MC {mc} vs parametric {var} on a singular cov");
 
-    // (c) Materially indefinite: a genuinely negative eigenvalue, an order
+    // (c) Materially indefinite: a negative eigenvalue, an order
     //     of magnitude larger than the materiality cap. Repairing it would
     //     require inflating the diagonal by ~1e-2 of the mean variance,
-    //     which changes the risk number — so it must be an error.
+    //     which changes the risk number: so it must be an error.
     //     Sigma = [[1, 0], [0, 1]] * 1e-4 with an off-diagonal of 1.1e-4
     //     has eigenvalues 2.1e-4 and -0.1e-4.
     let indef = Matrix::from_vec(2, 2, vec![1.0e-4, 1.1e-4, 1.1e-4, 1.0e-4]).unwrap();

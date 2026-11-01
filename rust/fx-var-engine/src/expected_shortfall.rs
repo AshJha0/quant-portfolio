@@ -93,7 +93,7 @@ fn t_scale(df: f64) -> Result<f64> {
 ///
 /// Written with `is_finite` and `!(sigma >= 0.0)` rather than
 /// `sigma < 0.0`: every comparison against NaN is false, so the naive form
-/// accepts a NaN sigma and returns a NaN "VaR" — a risk number that
+/// accepts a NaN sigma and returns a NaN "VaR": a risk number that
 /// breaches no limit, because `NaN <= limit` and `NaN > limit` are both
 /// false.
 fn check_sigma_mean(sigma: f64, mean: f64) -> Result<()> {

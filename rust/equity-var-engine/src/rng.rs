@@ -2,7 +2,7 @@
 //!
 //! [`Rng`] is a xoshiro256++ generator (Blackman & Vigna, 2019) seeded via
 //! SplitMix64 from a single explicit `u64` seed. On a given platform a
-//! fixed seed reproduces the **exact bit pattern** of every draw — the
+//! fixed seed reproduces the **exact bit pattern** of every draw: the
 //! property the Monte Carlo module relies on for regression-testable VaR
 //! (`tests/test_monte_carlo.rs` asserts bitwise equality across runs).
 //!

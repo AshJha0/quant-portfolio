@@ -263,7 +263,7 @@ fn shocking_fx_usd_is_always_rejected() {
 // A validation guard written as `if x <= 0.0 { return Err(..) }` silently
 // ACCEPTS NaN, because every IEEE-754 comparison against NaN is false, and
 // Rust is no different from C here (`f64::NAN < 0.0` is `false`). Worse,
-// `f64::max` propagates the *other* operand, so `NaN.max(0.0)` is `0.0` —
+// `f64::max` propagates the *other* operand, so `NaN.max(0.0)` is `0.0`:
 // which turned a corrupt covariance into a portfolio sigma, VaR and ES of
 // exactly ZERO. A NaN risk number breaches no limit and colours no traffic
 // light (`NaN <= limit` is false, and so is `NaN > limit`); a zero one
@@ -544,7 +544,7 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     // A 50bn-notional book produces a P&L covariance with entries ~1e14.
     // Symmetry and PSD gates written with ABSOLUTE tolerances reject such
     // a matrix purely because its two triangles were accumulated in
-    // different orders and differ in the last ulp — which at that scale is
+    // different orders and differ in the last ulp: which at that scale is
     // ~1e-2, ten orders of magnitude above a 1e-12 absolute gate. Both
     // gates in this engine are scale-relative; this pins that.
     let sigma_a = 5.0e11_f64; // P&L std of leg A, currency units
@@ -570,7 +570,7 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     );
     assert!(
         !cov.is_symmetric(1e-12),
-        "the absolute gate is the one that (wrongly) rejects it — kept for callers who know their units"
+        "the absolute gate is the one that (wrongly) rejects it: kept for callers who know their units"
     );
     let (l, jitter) = cov.cholesky_with_jitter(8).unwrap();
     assert_eq!(jitter, 0.0, "a healthy large-notional covariance needs no jitter");

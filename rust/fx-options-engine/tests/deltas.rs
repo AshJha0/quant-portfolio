@@ -95,7 +95,7 @@ fn strike_from_delta_round_trips_all_four_conventions_to_1e8() {
 #[test]
 fn pa_call_takes_the_larger_strike_branch() {
     // Market convention: the 25d PA call strike sits on the decreasing
-    // (high-strike, OTM) branch — above the PA delta-neutral ATM strike.
+    // (high-strike, OTM) branch: above the PA delta-neutral ATM strike.
     let (s, _, t, rd, rf, sig) = MKT;
     let k25 = strike_from_delta(
         0.25,

@@ -3,21 +3,21 @@
 //! Self-contained implementations of the distribution machinery the VaR
 //! engine needs, with validated accuracy:
 //!
-//! * [`erfc`] — via the regularized incomplete gamma function
+//! * [`erfc`]: via the regularized incomplete gamma function
 //!   `erfc(x) = Q(1/2, x^2)`; validated against `math.erfc` reference
 //!   values to better than 1e-12 relative;
-//! * [`normal_pdf`] / [`normal_cdf`] — erfc-based,
+//! * [`normal_pdf`] / [`normal_cdf`]: erfc-based,
 //!   `Phi(x) = erfc(-x / sqrt(2)) / 2`;
-//! * [`normal_ppf`] — Acklam's rational approximation (|rel err| < 1.15e-9)
+//! * [`normal_ppf`]: Acklam's rational approximation (|rel err| < 1.15e-9)
 //!   refined by one Halley step with the high-accuracy CDF, giving
 //!   near-machine-precision quantiles (tested to 1e-9 absolute and better);
-//! * [`regularized_beta`] — continued fraction (modified Lentz), powering
+//! * [`regularized_beta`]: continued fraction (modified Lentz), powering
 //!   the Student-t CDF and the exact binomial CDF for the Basel zones;
-//! * [`regularized_gamma_p`] / [`regularized_gamma_q`] — series +
+//! * [`regularized_gamma_p`] / [`regularized_gamma_q`]: series +
 //!   continued fraction (Numerical Recipes `gser`/`gcf` scheme), powering
 //!   `erfc` and the chi-squared p-values of the backtests;
-//! * [`student_t_ppf`] — bisection on the incomplete-beta CDF;
-//! * moments — mean, sample stdev (`ddof = 1`), skewness and **excess**
+//! * [`student_t_ppf`]: bisection on the incomplete-beta CDF;
+//! * moments: mean, sample stdev (`ddof = 1`), skewness and **excess**
 //!   kurtosis as biased moment ratios (matching `scipy.stats` with
 //!   `bias=True`, which the Python reference uses).
 //!

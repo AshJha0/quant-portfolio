@@ -14,8 +14,8 @@
 //! library.
 //!
 //! Determinism: every draw comes from a seeded [`crate::rng::Rng`]
-//! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma) — no
-//! platform-dependent RNG — so results repeat exactly for a given seed on
+//! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma). There is no
+//! platform-dependent RNG, so results repeat exactly for a given seed on
 //! the same build and platform. Mirrors `eq_var.monte_carlo_var` semantically (same
 //! factor model, same quantile convention); the RNG stream differs from
 //! NumPy's and from the C++ engine's `std::mt19937_64` stream, so
@@ -27,8 +27,8 @@ use crate::psd::PsdRepair;
 use crate::rng::Rng;
 use crate::{validate_alpha, EqVarError, Result, TailModel};
 
-/// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off
-/// — mirrors the C++ engine's `mc_tail_metrics` floor.
+/// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off.
+/// It mirrors the C++ engine's `mc_tail_metrics` floor.
 pub const MIN_PATHS: usize = 100;
 
 /// Minimum observations for [`var_bootstrap_se`] and [`var_kde_se`]. Lower

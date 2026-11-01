@@ -261,7 +261,7 @@ fn very_long_and_very_short_expiries() {
     assert_rel_close!(c - p, s * df_q - k * df_r, 1e-12);
     // T = 1e-6 (~30 seconds): price collapses to intrinsic, but stays at
     // or above the sigma->0 no-arbitrage floor (the discounted forward
-    // intrinsic — which for a European put with r > 0 sits *below* the
+    // intrinsic: which for a European put with r > 0 sits *below* the
     // undiscounted intrinsic, so `>= intrinsic` is NOT the right bound).
     let t = 1e-6;
     for (s2, ot, intrinsic) in [

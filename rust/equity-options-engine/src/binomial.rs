@@ -4,7 +4,7 @@
 //! annualised `r` and `q` (ACT/365F), `t` in years, `sigma` annualised.
 //!
 //! The backward induction runs in a **single reusable vector** (O(n)
-//! memory) with one pass per time slice — no 2-D tree is ever
+//! memory) with one pass per time slice: no 2-D tree is ever
 //! materialised.
 //!
 //! # Edge-case policy (identical to the Python reference)
@@ -104,16 +104,16 @@ pub(crate) fn deterministic_american(
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type` — as in
+/// * `s`, `k`, `t`, `r`, `sigma`, `q`, `option_type`: as in
 ///   [`bs_price`].
-/// * `exercise` — [`Exercise::European`] or [`Exercise::American`].
-/// * `n_steps` — number of time steps, in `[1, MAX_STEPS]`.
+/// * `exercise`: [`Exercise::European`] or [`Exercise::American`].
+/// * `n_steps`: number of time steps, in `[1, MAX_STEPS]`.
 ///
 /// # Errors
 ///
 /// [`PricingError::InvalidInput`] on negative/NaN inputs, `n_steps` outside
 /// `[1, MAX_STEPS]`,
-/// or if the risk-neutral probability falls outside (0, 1) — a sign that
+/// or if the risk-neutral probability falls outside (0, 1): a sign that
 /// `dt` is too large for the given `r - q` and `sigma`.
 ///
 /// # Examples

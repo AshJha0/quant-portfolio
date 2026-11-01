@@ -157,7 +157,7 @@ pub(crate) fn bs_greeks_core(
 /// [`PricingError::InvalidInput`] on invalid inputs, or if `t`, `sigma`
 /// or `s` is too small for the down-leg of the central bump to stay
 /// inside the domain (`t - h_t <= 0`, `sigma - h_v2 <= 0`,
-/// `s - h_s2 <= 0`) — this is checked up front so that a pricer closure
+/// `s - h_s2 <= 0`): this is checked up front so that a pricer closure
 /// which does *not* validate its own arguments can never be evaluated at
 /// a negative volatility or a negative spot. Any error raised by the
 /// pricer itself is propagated unchanged.

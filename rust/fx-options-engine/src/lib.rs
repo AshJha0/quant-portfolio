@@ -20,7 +20,7 @@
 //! * Theta is per year; vega per unit of vol.
 //!
 //! Invalid inputs return [`FxError::InvalidInput`] (the mirror of the
-//! Python `ValueError` contract) — no panics on bad market data.
+//! Python `ValueError` contract): no panics on bad market data.
 //!
 //! # Quick example
 //!
@@ -81,7 +81,7 @@ use std::fmt;
 
 /// Option type; `phi(Call) = +1`, `phi(Put) = -1`.
 ///
-/// A "call" is a call on the base (foreign) currency — the right to buy
+/// A "call" is a call on the base (foreign) currency: the right to buy
 /// one unit of base currency paying `K` units of quote currency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OptionType {
@@ -126,7 +126,7 @@ impl fmt::Display for OptionType {
     }
 }
 
-/// Error type for the engine — the mirror of the Python `ValueError`
+/// Error type for the engine: the mirror of the Python `ValueError`
 /// contract (invalid inputs) plus explicit numerical-failure reporting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FxError {

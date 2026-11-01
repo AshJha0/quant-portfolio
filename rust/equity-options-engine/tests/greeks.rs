@@ -185,7 +185,7 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
 
 /// Minimal erf, only accurate enough for the non-validating test pricer above.
 fn libm_erf_stub(x: f64) -> f64 {
-    // Abramowitz & Stegun 7.1.26 — 1e-7 absolute, plenty for a test stub.
+    // Abramowitz & Stegun 7.1.26: 1e-7 absolute, plenty for a test stub.
     let sign = if x < 0.0 { -1.0 } else { 1.0 };
     let x = x.abs();
     let t = 1.0 / (1.0 + 0.327_591_1 * x);

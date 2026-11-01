@@ -2,7 +2,7 @@
 name = "fx-options-engine"
 version = "1.0.0"
 edition = "2021"
-description = "Zero-dependency FX options pricing engine (Garman-Kohlhagen) — Rust twin of the Python reference project python/fx/01-options-pricing"
+description = "Zero-dependency FX options pricing engine (Garman-Kohlhagen): Rust twin of the Python reference project python/fx/01-options-pricing"
 license = "MIT"
 publish = false
 

@@ -8,21 +8,21 @@
 //!
 //! Every currency is represented by its USD factor: `"FX:CCY"` is the daily
 //! log return of the USD price of 1 unit of CCY (the log return of
-//! CCYUSD). USD has no FX factor — its USD price is identically 1. A
+//! CCYUSD). USD has no FX factor: its USD price is identically 1. A
 //! position in a *cross* pair (EURJPY) is decomposed into its two USD legs
-//! — long EUR, short JPY — so cross risk is triangulated by construction
+//! (long EUR, short JPY), so cross risk is triangulated by construction
 //! and the factor set is arbitrage-consistent. `"IR:CCY"` is an absolute
 //! shock (decimal p.a.) to the continuously compounded ACT/365 zero rate
 //! (flat curve per currency).
 //!
 //! # Position types
 //!
-//! * [`CashPosition`] — a currency balance; riskless when denominated in
+//! * [`CashPosition`]: a currency balance; riskless when denominated in
 //!   the book's base currency.
-//! * [`SpotPosition`] — long `notional` of the pair's base ccy vs the
+//! * [`SpotPosition`]: long `notional` of the pair's base ccy vs the
 //!   quote ccy at `entry_rate` (defaults to the reference market's cross
 //!   rate = zero initial value).
-//! * [`ForwardPosition`] — outright forward as spot + two deposit legs
+//! * [`ForwardPosition`]: outright forward as spot + two deposit legs
 //!   (CIP): value in USD is `N e^{-r_f T} S_base - N K e^{-r_d T} S_quote`,
 //!   so forward points expose the position to both currencies'
 //!   interest-rate factors.
@@ -653,7 +653,7 @@ impl CompiledBook {
     /// library serves every book).
     ///
     /// # Errors
-    /// [`FxVarError::Invalid`] if `shocks` contains `"FX:USD"` — USD is the
+    /// [`FxVarError::Invalid`] if `shocks` contains `"FX:USD"`: USD is the
     /// pivot, shock the other leg(s).
     pub fn pnl_map(&self, shocks: &HashMap<String, f64>) -> Result<f64> {
         if shocks.contains_key("FX:USD") {
@@ -725,7 +725,7 @@ impl CompiledBook {
 
     /// Delta exposures `dPnL/dfactor` by central finite differences,
     /// aligned with [`CompiledBook::factors`]. Units: base-ccy P&L per unit
-    /// factor move — for `FX:*` per unit log return (base-ccy notional
+    /// factor move: for `FX:*` per unit log return (base-ccy notional
     /// exposure), for `IR:*` per 1.00 of rate. These are the mapping
     /// weights used by the variance-covariance method and the
     /// reverse-stress closed form.

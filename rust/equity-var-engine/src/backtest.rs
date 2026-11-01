@@ -34,7 +34,7 @@ fn xlogy(a: f64, b: f64) -> f64 {
 /// comparison is **false**, so the day is silently counted as "no
 /// exception". A model whose VaR feed has broken to NaN therefore records
 /// **zero breaches** and sails through Kupiec, Christoffersen and the
-/// Basel traffic light in the green zone — the exact opposite of what a
+/// Basel traffic light in the green zone: the exact opposite of what a
 /// backtest is for. A NaN in either series is an error here, so the
 /// breakage surfaces on the day it happens.
 ///
@@ -372,7 +372,7 @@ pub struct ConditionalCoverageResult {
     pub lr_ind: f64,
 }
 
-/// Conditional-coverage joint test: `LR_cc = LR_uc + LR_ind ~ chi2(2)` —
+/// Conditional-coverage joint test: `LR_cc = LR_uc + LR_ind ~ chi2(2)`:
 /// correct exception rate **and** independence together.
 pub fn christoffersen_cc(exceptions: &[u8], alpha: f64) -> Result<ConditionalCoverageResult> {
     let count: i64 = exceptions.iter().map(|&e| i64::from(e != 0)).sum();

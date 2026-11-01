@@ -44,7 +44,7 @@ fn cholesky_reconstructs_spd() {
 
 #[test]
 fn cholesky_jitter_path_on_singular_matrix() {
-    // Perfectly correlated 2x2 — exactly singular, plain Cholesky must fail
+    // Perfectly correlated 2x2: exactly singular, plain Cholesky must fail
     // and the diagonal-jitter fallback must engage.
     let a = Matrix::from_vec(2, 2, vec![1.0, 1.0, 1.0, 1.0]).unwrap();
     assert!(a.cholesky().is_err());

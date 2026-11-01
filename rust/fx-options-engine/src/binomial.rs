@@ -13,7 +13,7 @@
 //! high-yielding foreign currency (`r_f > r_d`): the foreign carry lost
 //! by holding the option instead of the currency makes early exercise
 //! optimal, giving the American call a strictly positive premium over
-//! European — mirroring the dividend-yield story for equities.
+//! European: mirroring the dividend-yield story for equities.
 
 use crate::garman_kohlhagen::gk_price;
 use crate::{invalid, validate_inputs, FxResult, OptionType};
@@ -40,10 +40,10 @@ pub enum Exercise {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`].
-/// * `option_type` — call or put on the base currency.
-/// * `steps` — number of tree steps, in `[1, MAX_STEPS]`.
-/// * `exercise` — [`Exercise::European`] or [`Exercise::American`].
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`].
+/// * `option_type`: call or put on the base currency.
+/// * `steps`: number of tree steps, in `[1, MAX_STEPS]`.
+/// * `exercise`: [`Exercise::European`] or [`Exercise::American`].
 ///
 /// Returns the price in domestic currency per unit foreign notional.
 ///

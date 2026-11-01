@@ -1,19 +1,19 @@
 //! Parametric (variance-covariance) VaR: normal, Student-t, Cornish-Fisher.
 //!
 //! The book is linearised into factor exposures `w`
-//! ([`crate::book::CompiledBook::linear_exposures`] — forwards enter via
+//! ([`crate::book::CompiledBook::linear_exposures`]: forwards enter via
 //! their deposit legs), and the portfolio P&L variance is `w' Sigma w` with
 //! `Sigma` a sample or EWMA covariance of daily factor returns (mirrors
 //! Python `fx_var.parametric_var` / C++ `fxvar::parametric_var`).
 //!
 //! Distributional overlays on the same sigma:
 //!
-//! * **normal** — RiskMetrics classic; underestimates FX tails.
-//! * **Student-t** — standardised (unit-variance) t captures the fat tails
+//! * **normal**: RiskMetrics classic; underestimates FX tails.
+//! * **Student-t**: standardised (unit-variance) t captures the fat tails
 //!   of EM currency returns at equal sigma.
-//! * **Cornish-Fisher** — moment-corrected quantile from the portfolio's
+//! * **Cornish-Fisher**: moment-corrected quantile from the portfolio's
 //!   empirical skew/kurtosis; only valid inside the monotonicity domain of
-//!   the expansion, which is checked explicitly (Maillard 2012 — outside
+//!   the expansion, which is checked explicitly (Maillard 2012: outside
 //!   the domain the "quantile" is not a quantile).
 //!
 //! Multi-day horizon: sigma scales by `sqrt(h)` (i.i.d. assumption).

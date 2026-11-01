@@ -70,7 +70,7 @@ impl fmt::Display for OptionType {
 ///
 /// This mirrors the Python reference, where the same conditions raise
 /// `ValueError` (and the C++ engine, where they throw
-/// `std::invalid_argument`) — Rust surfaces them as a `Result` instead of
+/// `std::invalid_argument`): Rust surfaces them as a `Result` instead of
 /// unwinding.
 ///
 /// # Examples
@@ -107,7 +107,7 @@ impl std::error::Error for PricingError {}
 ///
 /// Requires `s >= 0`, `k >= 0`, `t >= 0`, `sigma >= 0`, all finite (no
 /// NaN, no infinity); negative `r`/`q` are allowed (and therefore not
-/// checked here — see [`validate_rates`] for the finiteness check on
+/// checked here: see [`validate_rates`] for the finiteness check on
 /// rates).
 ///
 /// All non-finite inputs are rejected, as in the Python and C++ engines,
@@ -332,7 +332,7 @@ pub fn erf(x: f64) -> f64 {
 
 /// Standard normal cumulative distribution function `Phi(x)`.
 ///
-/// Computed as `0.5 * erfc(-x / sqrt(2))` — the erfc route keeps full
+/// Computed as `0.5 * erfc(-x / sqrt(2))`: the erfc route keeps full
 /// relative accuracy deep in the lower tail, where the naive
 /// `0.5 (1 + erf)` form suffers catastrophic cancellation.
 ///
@@ -432,14 +432,14 @@ pub fn d1_d2(
 ///
 /// # Arguments
 ///
-/// * `s` — spot price (currency units), `s >= 0`.
-/// * `k` — strike price (currency units), `k >= 0`.
-/// * `t` — time to expiry in years (ACT/365F), `t >= 0`.
-/// * `r` — continuously compounded annualised risk-free rate; negative
+/// * `s`: spot price (currency units), `s >= 0`.
+/// * `k`: strike price (currency units), `k >= 0`.
+/// * `t`: time to expiry in years (ACT/365F), `t >= 0`.
+/// * `r`: continuously compounded annualised risk-free rate; negative
 ///   rates are supported.
-/// * `sigma` — annualised log-return volatility, `sigma >= 0`.
-/// * `q` — continuously compounded annualised dividend yield.
-/// * `option_type` — call or put.
+/// * `sigma`: annualised log-return volatility, `sigma >= 0`.
+/// * `q`: continuously compounded annualised dividend yield.
+/// * `option_type`: call or put.
 ///
 /// # Errors
 ///

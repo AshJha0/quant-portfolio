@@ -1,5 +1,5 @@
 //! Real-life edge cases: deep ITM/OTM, negative rates, tiny tenors,
-//! wide vols — each documented in docs/VALIDATION.md and pinned here.
+//! wide vols: each documented in docs/VALIDATION.md and pinned here.
 
 mod common;
 use common::assert_close;
@@ -66,7 +66,7 @@ fn extreme_moneyness_probabilities_do_not_degenerate() {
 fn rng_stream_is_pinned_across_releases() {
     // Regression pin: xoshiro256** seeded via SplitMix64(42).  If these
     // values ever change, previously priced MC books are no longer
-    // bit-reproducible — treat as a breaking change.
+    // bit-reproducible: treat as a breaking change.
     let mut rng = Xoshiro256StarStar::new(42);
     assert_eq!(rng.next_u64(), 1546998764402558742);
     assert_eq!(rng.next_u64(), 6990951692964543102);
@@ -84,7 +84,7 @@ fn rng_stream_is_pinned_across_releases() {
 ///
 /// This is the single highest-value guard in the crate. A validation
 /// written as `if x <= 0.0 { return Err(..) }` silently *accepts* NaN,
-/// because every comparison against NaN is false — so a corrupt rate or
+/// because every comparison against NaN is false: so a corrupt rate or
 /// spot flows straight through the pricer and comes back as a NaN
 /// "price". A NaN breaches no limit, colours no traffic light and
 /// aggregates into a NaN book P&L, which is strictly worse than a loud

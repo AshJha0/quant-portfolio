@@ -7,8 +7,8 @@
 //! 1. **Spot vs forward hedge**: hedge with spot (delta includes the
 //!    foreign discount factor) or with an outright forward.
 //! 2. **Premium adjustment**: if the premium is paid in the *base*
-//!    (foreign) currency — standard for USDJPY and most EM/non-EURUSD
-//!    pairs — the premium itself is a position in the underlying and must
+//!    (foreign) currency: standard for USDJPY and most EM/non-EURUSD
+//!    pairs: the premium itself is a position in the underlying and must
 //!    be subtracted from the hedge.
 //!
 //! With `phi` = +1 call / -1 put and `F = S e^{(r_d - r_f)T}`:
@@ -28,7 +28,7 @@
 //! rises then falls; `(K/F)N(d2) -> 0` both as K -> 0 and K -> inf), so
 //! the equation has zero, one, or two solutions.  Market convention takes
 //! the solution on the *right* (decreasing) branch, i.e. the larger
-//! strike — implemented here by locating the peak of `K N(d2)` and
+//! strike: implemented here by locating the peak of `K N(d2)` and
 //! Brent-solving on `[K_peak, K_max]`.  Premium-adjusted put deltas are
 //! monotone in K and Brent-solve directly.
 //!
@@ -79,10 +79,10 @@ impl DeltaConvention {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`];
 ///   requires `t > 0` and `sigma > 0`.
-/// * `option_type` — call or put on the base currency.
-/// * `convention` — one of the four [`DeltaConvention`]s.
+/// * `option_type`: call or put on the base currency.
+/// * `convention`: one of the four [`DeltaConvention`]s.
 ///   Premium-adjusted deltas assume the premium is paid in the base
 ///   (foreign) currency.
 ///
@@ -164,7 +164,7 @@ pub fn forward_to_spot_delta(delta_forward: f64, t: f64, r_f: f64) -> FxResult<f
 /// or if `delta_spot` or `price` is NaN/infinite. The last check matters:
 /// a corrupt premium would otherwise turn the hedge ratio into a silent
 /// NaN, and a NaN delta breaches no limit and shows up in no traffic
-/// light — `NaN <= limit` is false, but so is `NaN > limit`.
+/// light: `NaN <= limit` is false, but so is `NaN > limit`.
 pub fn premium_adjust_spot_delta(delta_spot: f64, price: f64, s: f64) -> FxResult<f64> {
     if !(s > 0.0) || !s.is_finite() {
         return invalid(format!("Spot S must be positive and finite, got {s}"));
@@ -221,7 +221,7 @@ pub fn atm_dns_strike(
     Ok(f * (sign * 0.5 * sigma * sigma * t).exp())
 }
 
-/// Strike maximising `K*N(d2(K))` — the fold point of the PA call delta.
+/// Strike maximising `K*N(d2(K))`: the fold point of the PA call delta.
 ///
 /// Setting `d/dK [K N(d2)] = 0` gives `N(d2) sigma sqrt(T) = n(d2)`, a
 /// one-dimensional root in d2 (unique: LHS increasing, RHS log-concave
@@ -282,12 +282,12 @@ pub(crate) fn pa_fold_bracket(v: f64) -> (f64, f64) {
 ///
 /// # Arguments
 ///
-/// * `target_delta` — desired delta, signed (calls in `(0, upper)`, puts
+/// * `target_delta`: desired delta, signed (calls in `(0, upper)`, puts
 ///   in `(lower, 0)`).
-/// * `s`, `t`, `r_d`, `r_f`, `sigma` — market inputs; requires `t > 0`,
+/// * `s`, `t`, `r_d`, `r_f`, `sigma`: market inputs; requires `t > 0`,
 ///   `sigma > 0`.
-/// * `option_type` — call or put.
-/// * `convention` — one of the four [`DeltaConvention`]s.
+/// * `option_type`: call or put.
+/// * `convention`: one of the four [`DeltaConvention`]s.
 ///
 /// # Errors
 ///

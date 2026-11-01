@@ -5,18 +5,18 @@
 //! historical factor-return scenarios (mirrors Python `fx_var.historical_var`
 //! / C++ `fxvar::historical_var`):
 //!
-//! * **Plain** — each of the last T days is an equally weighted scenario.
-//! * **Age** — Boudoukh-Richardson-Whitelaw exponential age weights
+//! * **Plain**: each of the last T days is an equally weighted scenario.
+//! * **Age**: Boudoukh-Richardson-Whitelaw exponential age weights
 //!   `w_t ~ lambda^age`: recent days dominate, so the VaR reacts faster
 //!   after a regime change.
-//! * **Filtered** — Filtered Historical Simulation (Barone-Adesi et al.):
+//! * **Filtered**: Filtered Historical Simulation (Barone-Adesi et al.):
 //!   returns are devolatilised by a per-factor EWMA sigma and rescaled to
 //!   today's sigma forecast, preserving the empirical cross-sectional
 //!   dependence while making the scenario set conditionally
 //!   heteroscedastic.
 //!
 //! Multi-day horizons use sqrt-time scaling of the 1-day figure (documented
-//! limitation for carry books with negative skew — `docs/VALIDATION.md`).
+//! limitation for carry books with negative skew: `docs/VALIDATION.md`).
 //!
 //! **Peg blindness**: HS sees only what is in the window. A pegged
 //! currency contributes ~zero scenarios, so the engine surfaces a warnings

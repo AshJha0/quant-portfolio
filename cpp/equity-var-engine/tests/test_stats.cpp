@@ -11,7 +11,7 @@
 using namespace eqvar;
 
 TEST(NormalPpf, KnownQuantiles) {
-    // Phi^{-1}(0.975) — the canonical 1.96; spec requires 1e-8, we hold 1e-12.
+    // Phi^{-1}(0.975): the canonical 1.96; spec requires 1e-8, we hold 1e-12.
     EXPECT_NEAR(normal_ppf(0.975), 1.959963984540054, 1e-12);
     EXPECT_NEAR(normal_ppf(0.01), -2.3263478740408408, 1e-12);
     EXPECT_NEAR(normal_ppf(0.995), 2.5758293035489004, 1e-12);
@@ -59,7 +59,7 @@ TEST(IncompleteGamma, PPlusQIsOne) {
 }
 
 TEST(IncompleteBeta, BinomialCdf) {
-    // scipy binom.cdf(4, 250, 0.01) and binom.cdf(9, 250, 0.01) — the Basel
+    // scipy binom.cdf(4, 250, 0.01) and binom.cdf(9, 250, 0.01): the Basel
     // green / yellow boundary probabilities.
     EXPECT_NEAR(binomial_cdf(4, 250, 0.01), 0.89218762690362508, 1e-12);
     EXPECT_NEAR(binomial_cdf(9, 250, 0.01), 0.99974980993125950, 1e-12);

@@ -1,4 +1,4 @@
-// eqvar/matrix.hpp — minimal dense linear algebra for the VaR engine.
+// eqvar/matrix.hpp: minimal dense linear algebra for the VaR engine.
 //
 // A small surface: row-major dense Matrix over std::vector<double>,
 // Cholesky with a diagonal-jitter fallback for near-singular PSD matrices,

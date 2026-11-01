@@ -1,20 +1,20 @@
 //! Monte Carlo VaR: multivariate normal / Student-t / jump-mixture factors.
 //!
 //! Factor returns are simulated from a daily covariance (Cholesky with
-//! jitter escalation — two perfectly correlated pegged currencies are a
+//! jitter escalation: two perfectly correlated pegged currencies are a
 //! legitimate FX input) and the book is fully revalued scenario by
 //! scenario through [`crate::book::CompiledBook`] (mirrors Python
 //! `fx_var.monte_carlo_var` / C++ `fxvar::monte_carlo_var`).
 //!
 //! # Distributions
 //!
-//! * [`crate::McDist::Normal`] — `MVN(0, Sigma h)`.
-//! * [`crate::McDist::StudentT`] — multivariate Student-t scaled to match
+//! * [`crate::McDist::Normal`]: `MVN(0, Sigma h)`.
+//! * [`crate::McDist::StudentT`]: multivariate Student-t scaled to match
 //!   `Sigma` exactly (`X = Z sqrt((df-2)/df) / sqrt(W/df)`), so the
 //!   comparison with normal MC is at equal covariance: any 99% VaR
 //!   difference is pure tail shape. EM currency returns are the textbook
 //!   case (df 4-6).
-//! * [`crate::McDist::Jump`] — normal diffusion plus a common Poisson jump
+//! * [`crate::McDist::Jump`]: normal diffusion plus a common Poisson jump
 //!   count: the per-day probability `p` gives the intensity
 //!   `lam = -ln(1 - p)`, the count over the horizon is
 //!   `N ~ Poisson(lam h)`, and each listed factor moves by the sum of `N`

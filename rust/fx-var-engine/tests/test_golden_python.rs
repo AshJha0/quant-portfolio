@@ -22,18 +22,18 @@
 //! assert literally the same numbers. The three cases are fully
 //! deterministic (no RNG):
 //!
-//! * **CASE A** — book revaluation + plain/BRW historical VaR/ES on a
+//! * **CASE A**: book revaluation + plain/BRW historical VaR/ES on a
 //!   sinusoidal synthetic history reproduced bit-for-bit here;
-//! * **CASE B** — parametric closed-form normal / Student-t VaR & ES from
+//! * **CASE B**: parametric closed-form normal / Student-t VaR & ES from
 //!   fixed exposures and covariance (`fx_var.parametric_var.var_covar`);
-//! * **CASE C** — Kupiec / Christoffersen / Basel statistics
+//! * **CASE C**: Kupiec / Christoffersen / Basel statistics
 //!   (`fx_var.backtesting`).
 //!
 //! Tolerances (declared in the JSON, re-exported as `golden::TOL_*`): the
 //! only cross-language differences are libm sin/cos/exp rounding (~1 ulp
 //! per call) and the special-function implementations (SciPy Cephes vs
 //! this crate's), so P&L-scale figures agree to ~1e-6 absolute / ~1e-8
-//! relative and probability-scale figures to ~1e-9 absolute — matching the
+//! relative and probability-scale figures to ~1e-9 absolute: matching the
 //! C++ engine's documented tolerances.
 
 mod golden;
@@ -59,7 +59,7 @@ fn golden_book() -> Book {
 
 /// Deterministic history: factors sorted as the book enumerates them
 /// (FX:EUR, FX:JPY, IR:JPY, IR:USD), `r[t][j] = s_j (sin(0.1 t + j) + 0.5
-/// cos(0.05 t (j+1)))` — identical formula in the Python generator.
+/// cos(0.05 t (j+1)))`: identical formula in the Python generator.
 fn golden_returns() -> ReturnsMatrix {
     let factors = vec!["FX:EUR".to_string(), "FX:JPY".to_string(), "IR:JPY".to_string(), "IR:USD".to_string()];
     let scales = [0.006, 0.007, 0.0004, 0.0005];

@@ -8,14 +8,14 @@
 //!   continuously compounded ACT/365 zero rate.
 //!
 //! NaN policy: the engine refuses NaNs outright ([`FxVarError::Invalid`])
-//! rather than silently dropping or filling — missing FX fixings must be
+//! rather than silently dropping or filling: missing FX fixings must be
 //! handled upstream (holiday calendars differ across time zones).
 
 use crate::matrix::Matrix;
 use crate::{FxVarError, Result};
 
 /// Daily log-return standard deviation below which an FX factor is treated
-/// as "peg-like" (~0.8% annualised — an order of magnitude below any free
+/// as "peg-like" (~0.8% annualised: an order of magnitude below any free
 /// float; HKD inside its band realises roughly this level).
 pub const PEG_VOL_THRESHOLD: f64 = 5e-4;
 
@@ -310,7 +310,7 @@ pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatili
 /// Screen `FX:*` factors for near-zero realised vol (pegged/managed ccys).
 ///
 /// Returns the flagged factor names (empty if none). Only FX factors are
-/// screened — rate factors are legitimately quiet. Historical and
+/// screened: rate factors are legitimately quiet. Historical and
 /// parametric VaR are blind to peg-break risk; the caller must surface the
 /// returned list as a warning and add the peg-break stress add-on
 /// ([`crate::stress::peg_break_scenario`]).

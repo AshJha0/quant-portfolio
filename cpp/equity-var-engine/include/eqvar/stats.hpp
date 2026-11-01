@@ -1,20 +1,20 @@
-// eqvar/stats.hpp — special functions and moment statistics.
+// eqvar/stats.hpp: special functions and moment statistics.
 //
 // Self-contained (no external deps) implementations of the distribution
 // machinery the VaR engine needs:
 //
-//   * normal pdf / cdf             — erfc-based, accurate to ~1e-15;
-//   * inverse normal cdf           — Acklam rational approximation refined by
+//   * normal pdf / cdf            : erfc-based, accurate to ~1e-15;
+//   * inverse normal cdf          : Acklam rational approximation refined by
 //                                    one Halley step (|abs err| ~1e-13,
 //                                    unit-tested against known quantiles);
-//   * regularized incomplete beta  — continued fraction (modified Lentz);
+//   * regularized incomplete beta : continued fraction (modified Lentz);
 //                                    powers the Student-t CDF and the exact
 //                                    binomial CDF for the Basel zones;
-//   * Student-t pdf/cdf/quantile   — quantile by bisection on the CDF;
-//   * regularized incomplete gamma — series + continued fraction; powers the
+//   * Student-t pdf/cdf/quantile  : quantile by bisection on the CDF;
+//   * regularized incomplete gamma: series + continued fraction; powers the
 //                                    chi-squared survival function used by
 //                                    the backtest LR tests;
-//   * mean / std / skew / kurtosis — sample moments (std with ddof = 1,
+//   * mean / std / skew / kurtosis: sample moments (std with ddof = 1,
 //                                    skew/kurtosis are the biased moment
 //                                    ratios, matching scipy bias=True).
 //

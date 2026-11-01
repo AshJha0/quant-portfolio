@@ -6,21 +6,21 @@
 //!
 //! # Tests
 //!
-//! * **Kupiec POF** (unconditional coverage) — LR test that the exception
+//! * **Kupiec POF** (unconditional coverage): LR test that the exception
 //!   frequency equals the tail probability `alpha`; `chi2(1)` via the
 //!   regularised incomplete gamma.
-//! * **Christoffersen independence** — LR test against first-order Markov
+//! * **Christoffersen independence**: LR test against first-order Markov
 //!   clustering of exceptions; `chi2(1)`. FX desks care because volatility
 //!   clustering makes an unconditional method (plain HS, sample-cov
 //!   parametric) fail *this* test long before it fails Kupiec.
-//! * **Conditional coverage** — `LR_cc = LR_uc + LR_ind`; `chi2(2)`.
-//! * **Basel traffic light** — zones from the exact cumulative
+//! * **Conditional coverage**: `LR_cc = LR_uc + LR_ind`; `chi2(2)`.
+//! * **Basel traffic light**: zones from the exact cumulative
 //!   `Binomial(n, alpha)` probability `F(x)` of the exception count (pmf
 //!   recursion): green `< 95%`, yellow `< 99.99%`, red `>= 99.99%`. The
 //!   yellow plus factor is read at the equivalent 250-day count. On the
 //!   regulatory 250-day 99% window this reproduces the table: green 0-4,
 //!   yellow 5-9 (0.40/0.50/0.65/0.75/0.85), red 10+ (multiplier 4.0).
-//! * **Acerbi-Szekely Z2** — ES backtest statistic, paper sign.
+//! * **Acerbi-Szekely Z2**: ES backtest statistic, paper sign.
 
 use crate::stats::{chi2_sf, validate_alpha};
 use crate::{FxVarError, Result};
@@ -384,7 +384,7 @@ pub struct BacktestResult {
 /// # Errors
 /// [`FxVarError::Invalid`] on a length mismatch, fewer than 2 observations,
 /// a negative VaR forecast, or non-finite values in either series (NaN
-/// policy: refuse — see the note below on why `is_nan` alone is not
+/// policy: refuse; see the note below on why `is_nan` alone is not
 /// enough).
 pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> Result<BacktestResult> {
     validate_alpha(alpha)?;

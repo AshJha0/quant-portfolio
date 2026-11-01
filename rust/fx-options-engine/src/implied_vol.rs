@@ -14,10 +14,10 @@ use crate::{finite_result, invalid, require_finite, validate_inputs, FxError, Fx
 ///
 /// # Arguments
 ///
-/// * `price` — observed premium, domestic ccy per unit foreign notional.
-/// * `s`, `k`, `t`, `r_d`, `r_f` — as in [`crate::gk_price`]; requires
+/// * `price`: observed premium, domestic ccy per unit foreign notional.
+/// * `s`, `k`, `t`, `r_d`, `r_f`: as in [`crate::gk_price`]; requires
 ///   `t > 0`.
-/// * `option_type` — call or put.
+/// * `option_type`: call or put.
 ///
 /// Accuracy: within `max(eps * price / vega, 1e-12 * sigma)` of the true
 /// root, in at most 10 evaluations (typically 2-4).

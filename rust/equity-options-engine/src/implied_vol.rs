@@ -25,9 +25,9 @@ pub const IV_PRICE_TOL: f64 = 1e-10;
 ///
 /// # Arguments
 ///
-/// * `price` — observed option premium, currency units; must lie strictly
+/// * `price`: observed option premium, currency units; must lie strictly
 ///   between the no-arbitrage bounds.
-/// * `s`, `k`, `t`, `r`, `q`, `option_type` — as in [`bs_price`];
+/// * `s`, `k`, `t`, `r`, `q`, `option_type`: as in [`bs_price`];
 ///   `t`, `s`, `k` must be strictly positive.
 ///
 /// # Errors

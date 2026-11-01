@@ -118,7 +118,7 @@ std::pair<double, double> d1_d2(double S, double K, double T, double r,
 /// \throws std::invalid_argument if `S`, `K`, `T` or `sigma` is negative
 ///         or NaN.
 /// \note `T == 0` returns intrinsic; `sigma == 0` returns the discounted
-///       intrinsic on the forward `exp(-rT) max(±(F - K), 0)` — identical
+///       intrinsic on the forward `exp(-rT) max(±(F - K), 0)`: identical
 ///       to the Python reference edge-case policy.
 double bs_price(double S, double K, double T, double r, double sigma,
                 double q = 0.0, OptionType type = OptionType::Call);
