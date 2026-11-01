@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+#![allow(clippy::needless_range_loop)]
 //! Cross-language golden tests against the Python reference engine.
 //!
 //! # Provenance
@@ -90,11 +92,11 @@ fn case_a_plain_historical_var_es() {
     //   var975 = 61237.42600889597   es975 = 61777.93608271857
     let m = golden_market();
     let rets = golden_returns();
-    let o99 = HistoricalOptions { alpha: 0.99, ..Default::default() };
+    let o99 = HistoricalOptions { alpha: 0.01, ..Default::default() };
     let r99 = historical_var(&golden_book(), &m, &rets, &o99).unwrap();
     assert!((r99.var - golden::A_PLAIN_VAR_99).abs() < golden::TOL_CASE_A_ABS);
     assert!((r99.es - golden::A_PLAIN_ES_99).abs() < golden::TOL_CASE_A_ABS);
-    let o975 = HistoricalOptions { alpha: 0.975, ..Default::default() };
+    let o975 = HistoricalOptions { alpha: 0.025, ..Default::default() };
     let r975 = historical_var(&golden_book(), &m, &rets, &o975).unwrap();
     assert!((r975.var - golden::A_PLAIN_VAR_975).abs() < golden::TOL_CASE_A_ABS);
     assert!((r975.es - golden::A_PLAIN_ES_975).abs() < golden::TOL_CASE_A_ABS);
@@ -105,7 +107,7 @@ fn case_a_age_weighted_historical_var_es() {
     // Python fx_var.historical_var(..., method="age", decay=0.995):
     //   var99 = 61874.26268531149   es99 = 61977.52496594109
     let m = golden_market();
-    let o = HistoricalOptions { alpha: 0.99, method: HsMethod::Age, decay: 0.995, ..Default::default() };
+    let o = HistoricalOptions { alpha: 0.01, method: HsMethod::Age, decay: 0.995, ..Default::default() };
     let r = historical_var(&golden_book(), &m, &golden_returns(), &o).unwrap();
     assert!((r.var - golden::A_AGE_VAR_99_DECAY_0995).abs() < golden::TOL_CASE_A_ABS);
     assert!((r.es - golden::A_AGE_ES_99_DECAY_0995).abs() < golden::TOL_CASE_A_ABS);
@@ -128,13 +130,13 @@ fn case_b_parametric_closed_form() {
         vec![-2.0e-6, -1.0e-6, 2.5e-7],
     ])
     .unwrap();
-    let n1 = var_covar(&w, &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    let n1 = var_covar(&w, &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
     assert!((n1.var - golden::B_NORMAL_VAR_99_1D).abs() < golden::TOL_CASE_B_REL * n1.var);
     assert!((n1.es - golden::B_NORMAL_ES_99_1D).abs() < golden::TOL_CASE_B_REL * n1.es);
-    let t5 = var_covar(&w, &cov, 0.99, 1.0, TailDist::StudentT, 5.0, 0.0).unwrap();
+    let t5 = var_covar(&w, &cov, 0.01, 1.0, TailDist::StudentT, 5.0, 0.0).unwrap();
     assert!((t5.var - golden::B_T5_VAR_99_1D).abs() < golden::TOL_CASE_B_REL * t5.var);
     assert!((t5.es - golden::B_T5_ES_99_1D).abs() < golden::TOL_CASE_B_REL * t5.es);
-    let n10 = var_covar(&w, &cov, 0.99, 10.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    let n10 = var_covar(&w, &cov, 0.01, 10.0, TailDist::Normal, 6.0, 0.0).unwrap();
     assert!((n10.var - golden::B_NORMAL_VAR_99_10D).abs() < golden::TOL_CASE_B_REL * n10.var);
     assert!((n10.es - golden::B_NORMAL_ES_99_10D).abs() < golden::TOL_CASE_B_REL * n10.es);
 }
@@ -142,7 +144,7 @@ fn case_b_parametric_closed_form() {
 #[test]
 fn case_c_backtest_statistics() {
     // Python fx_var.backtesting:
-    //   kupiec_pof(8, 250, 0.99)   -> LR = 7.7335507244945205
+    //   kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 })   -> LR = 7.7335507244945205
     //                                 p  = 0.0054204051941277994
     //   christoffersen on the fixed pattern (t % 37 == 5, plus 100,101;
     //   9 exceptions in 250)       -> LR = 1.0063610339314124
@@ -150,7 +152,7 @@ fn case_c_backtest_statistics() {
     //   basel cum prob: P(X<=5)  = 0.9588168159301514  (yellow, 3.40)
     //                   P(X<=4)  = 0.8921876269036249  (green,  3.00)
     //                   P(X<=10) = 0.999946101370953   (red,    4.00)
-    let k = kupiec_pof(8, 250, 0.99).unwrap();
+    let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 }).unwrap();
     assert!((k.lr - golden::C_KUPIEC_LR_8_250).abs() < golden::TOL_KUPIEC_LR_ABS);
     assert!((k.p - golden::C_KUPIEC_P_8_250).abs() < golden::TOL_KUPIEC_P_ABS);
 
@@ -168,15 +170,15 @@ fn case_c_backtest_statistics() {
     assert!((c.lr - golden::C_CHRISTOFFERSEN_IND_LR).abs() < golden::TOL_CHRISTOFFERSEN_ABS);
     assert!((c.p - golden::C_CHRISTOFFERSEN_IND_P).abs() < golden::TOL_CHRISTOFFERSEN_ABS);
 
-    let t5 = basel_traffic_light(5, 250, 0.99).unwrap();
+    let t5 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
     assert!((t5.cumulative_prob - golden::C_BASEL_CUM_PROB_5).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t5.zone, Zone::Yellow);
     assert!((t5.multiplier - golden::C_BASEL_MULTIPLIER_5).abs() < 1e-12);
-    let t4 = basel_traffic_light(4, 250, 0.99).unwrap();
+    let t4 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 4, alpha: 0.01 }).unwrap();
     assert!((t4.cumulative_prob - golden::C_BASEL_CUM_PROB_4).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t4.zone, Zone::Green);
     assert!((t4.multiplier - golden::C_BASEL_MULTIPLIER_4).abs() < 1e-12);
-    let t10 = basel_traffic_light(10, 250, 0.99).unwrap();
+    let t10 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap();
     assert!((t10.cumulative_prob - golden::C_BASEL_CUM_PROB_10).abs() < golden::TOL_BASEL_CUM_PROB_ABS);
     assert_eq!(t10.zone, Zone::Red);
     assert!((t10.multiplier - golden::C_BASEL_MULTIPLIER_10).abs() < 1e-12);

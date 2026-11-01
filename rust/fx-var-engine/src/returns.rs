@@ -254,9 +254,14 @@ pub struct EwmaVolatility {
     pub sigma_next: Vec<f64>,
 }
 
+/// EWMA variance seed window (observations), spec S8.
+pub const SEED_WINDOW: usize = 30;
+
 /// Compute [`EwmaVolatility`]: `sigma2[t] = lam * sigma2[t-1] + (1 - lam) *
-/// r[t-1]^2`, seeded with the full-sample ddof=1 variance (floored at
-/// `1e-18`).
+/// r[t-1]^2` (zero mean), seeded with the mean of `r^2` over the first
+/// `min(30, n)` observations ([`SEED_WINDOW`]); a zero seed is floored at
+/// `1e-300`. The old seed was the full-sample ddof=1 variance, a look-ahead
+/// over the whole history.
 ///
 /// # Errors
 /// [`FxVarError::Invalid`] unless `0 < lam < 1`, or fewer than 2
@@ -275,24 +280,19 @@ pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatili
             "ewma_volatility: returns contain NaN or infinite values",
         ));
     }
-    let mut mean = vec![0.0; k];
-    for i in 0..n {
-        for j in 0..k {
-            mean[j] += returns.data.get(i, j);
-        }
-    }
-    for m in mean.iter_mut() {
-        *m /= n as f64;
-    }
+    // S8 seed: zero-mean RiskMetrics, s2_0 = mean of r^2 over the first
+    // min(30, n) observations. No full-sample seed: only that window is
+    // seen before it is used.
+    let w = SEED_WINDOW.min(n);
     let mut sig2 = vec![0.0; k];
-    for i in 0..n {
+    for i in 0..w {
         for j in 0..k {
-            let d = returns.data.get(i, j) - mean[j];
-            sig2[j] += d * d;
+            let r = returns.data.get(i, j);
+            sig2[j] += r * r;
         }
     }
     for s in sig2.iter_mut() {
-        *s = (*s / (n as f64 - 1.0)).max(1e-18);
+        *s = (*s / w as f64).max(1e-300);
     }
 
     let mut sigma = Matrix::zeros(n, k);
@@ -314,11 +314,23 @@ pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatili
 /// parametric VaR are blind to peg-break risk; the caller must surface the
 /// returned list as a warning and add the peg-break stress add-on
 /// ([`crate::stress::peg_break_scenario`]).
-pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Vec<String> {
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for a NaN / infinite / negative threshold or
+/// non-finite returns (a NaN threshold used to flag nothing, silently).
+pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Result<Vec<String>> {
+    if !(threshold >= 0.0) || !threshold.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "peg threshold must be finite and >= 0, got {threshold}"
+        )));
+    }
+    if !returns.data.all_finite() {
+        return Err(FxVarError::invalid("flag_peg_factors: returns contain NaN or infinite values"));
+    }
     let mut flagged = Vec::new();
     let n = returns.n_obs();
     if n < 2 {
-        return flagged;
+        return Ok(flagged);
     }
     for j in 0..returns.n_factors() {
         let f = &returns.factors[j];
@@ -340,7 +352,7 @@ pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Vec<String> 
             flagged.push(f.clone());
         }
     }
-    flagged
+    Ok(flagged)
 }
 
 #[cfg(test)]
@@ -413,7 +425,7 @@ mod tests {
         }
         let r =
             ReturnsMatrix::new(vec!["FX:HKD".to_string(), "FX:EUR".to_string()], data).unwrap();
-        let flagged = flag_peg_factors(&r, PEG_VOL_THRESHOLD);
+        let flagged = flag_peg_factors(&r, PEG_VOL_THRESHOLD).unwrap();
         assert_eq!(flagged, vec!["FX:HKD".to_string()]);
     }
 }

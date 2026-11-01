@@ -82,8 +82,14 @@ pub fn simple_to_log(pct: f64) -> Result<f64> {
 
 /// Internal helper for the *calibrated library constants* below, all of
 /// which are compile-time literals inside the domain.
+/// `ln(1 + pct)` directly: no `expect`, so no panic path in library code.
 fn lit_log(pct: f64) -> f64 {
-    simple_to_log(pct).expect("calibrated scenario constant is inside (-1, inf)")
+    pct.ln_1p()
+}
+
+/// `"FX:CCY"` for a literal three-letter code (no `unwrap` needed).
+fn lit_fx(ccy: &str) -> String {
+    format!("FX:{ccy}")
 }
 
 /// Library of calibrated historical FX replay scenarios, keyed
@@ -95,11 +101,11 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "GBP flash - Brexit referendum (24 Jun 2016)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("GBP").unwrap(), lit_log(-0.081)),
-                (fx_factor("EUR").unwrap(), lit_log(-0.024)),
-                (fx_factor("JPY").unwrap(), lit_log(0.039)),
-                (fx_factor("CHF").unwrap(), lit_log(0.015)),
-                (fx_factor("AUD").unwrap(), lit_log(-0.019)),
+                (lit_fx("GBP"), lit_log(-0.081)),
+                (lit_fx("EUR"), lit_log(-0.024)),
+                (lit_fx("JPY"), lit_log(0.039)),
+                (lit_fx("CHF"), lit_log(0.015)),
+                (lit_fx("AUD"), lit_log(-0.019)),
                 (ir_factor("GBP"), -0.0025), // BoE easing repricing
             ]),
             description: "Cable -8.1% in a day; safe havens bid; front-end GBP rates \
@@ -112,9 +118,9 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "CHF depeg - SNB floor removal (15 Jan 2015)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("CHF").unwrap(), lit_log(0.149)),
-                (fx_factor("EUR").unwrap(), lit_log(-0.014)),
-                (fx_factor("JPY").unwrap(), lit_log(0.012)),
+                (lit_fx("CHF"), lit_log(0.149)),
+                (lit_fx("EUR"), lit_log(-0.014)),
+                (lit_fx("JPY"), lit_log(0.012)),
                 (ir_factor("CHF"), -0.0050), // SNB cut to -0.75%
             ]),
             description: "CHF +14.9% vs USD close-to-close (intraday >+30%); the \
@@ -127,10 +133,10 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
         Scenario {
             name: "JPY carry unwind (7-8 Oct 1998)".to_string(),
             shocks: HashMap::from([
-                (fx_factor("JPY").unwrap(), lit_log(0.115)),
-                (fx_factor("AUD").unwrap(), lit_log(-0.040)),
-                (fx_factor("NZD").unwrap(), lit_log(-0.040)),
-                (fx_factor("CHF").unwrap(), lit_log(0.020)),
+                (lit_fx("JPY"), lit_log(0.115)),
+                (lit_fx("AUD"), lit_log(-0.040)),
+                (lit_fx("NZD"), lit_log(-0.040)),
+                (lit_fx("CHF"), lit_log(0.020)),
             ]),
             description: "USDJPY 131 -> 117 in two sessions as levered carry unwound."
                 .to_string(),
@@ -152,6 +158,9 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
         return Err(FxVarError::invalid(format!(
             "pct must be finite and > -100%, got {pct}"
         )));
+    }
+    if ccys.is_empty() {
+        return Err(FxVarError::invalid("usd_broad_move: currency list is empty"));
     }
     let name = format!("USD {}{}% broad move", if pct >= 0.0 { "+" } else { "" }, pct * 100.0);
     let mut shocks = HashMap::new();
@@ -314,7 +323,7 @@ pub fn reverse_stress_numerical(exposures: &[f64], cov: &Matrix, radius: f64, se
     checked_sigma_p(exposures, cov)?;
     let n = exposures.len();
 
-    let (lower, _) = cov.cholesky_with_jitter(8)?;
+    let lower = cov.cholesky_repair(crate::psd::PsdRepair::None)?.factor;
 
     let loss_of = |y: &[f64]| -> f64 {
         let mut loss = 0.0;
