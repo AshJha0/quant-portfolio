@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "bench"
 path = "src/bin/bench.rs"
 
+[[bin]]
+name = "eq_jsonl"
+path = "src/bin/eq_jsonl.rs"
+
 # No runtime dependencies (determinism and auditability). proptest is a
 # test-only dependency.
 # RNG (SplitMix64 -> xoshiro256++) and the normal CDF (Cody's erfc) are
