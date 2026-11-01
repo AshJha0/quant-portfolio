@@ -17,7 +17,7 @@ PFE_q(t) its q-quantile.
 
 Exposure shape for a single forward: there are **no intermediate cashflows**,
 so uncertainty accumulates all the way to maturity and the exposure profile
-*grows to maturity* like ``sqrt(t)`` (concave, monotone increasing) — unlike
+*grows to maturity* like ``sqrt(t)`` (concave, monotone increasing): unlike
 an interest-rate swap, whose amortising remaining cashflows create the famous
 mid-life hump.  Both the monotone growth and the concavity are unit-tested
 empirically on seeded paths.
@@ -227,7 +227,7 @@ def netting_set_profile(
     each trade defaults severally: ``sum_i max(V_i, 0)``.  Netting therefore
     always weakly reduces exposure path-by-path, with equality iff all trade
     MTMs share the same sign on every path (e.g. identical same-direction
-    trades) — both bounds unit-tested.  All trades share the driving spot
+    trades): both bounds unit-tested.  All trades share the driving spot
     paths (same pair, same seed): the comparison is apples-to-apples.
     """
     if not forwards:
@@ -307,7 +307,7 @@ def expected_exposure_loss(
     Notes
     -----
     Uses the end-of-interval EE (defaults within (t_{i-1}, t_i] valued at
-    t_i) — a conservative, standard discretisation.  Independence of
+    t_i): a conservative, standard discretisation.  Independence of
     exposure and default is assumed (no wrong-way risk); VALIDATION.md
     quantifies how badly that understates the loss for an EM sovereign whose
     default coincides with its currency crashing.

@@ -43,7 +43,7 @@ def test_carry_uses_previous_day_rates():
     carry = carry_log_returns(rates, ["AUD"], base="USD")
     # row for day 1 (second date) uses day-0 rates: (0.04-0.02)*dt
     assert carry.iloc[0]["AUD"] == pytest.approx(0.02 * DT, abs=1e-15)
-    # day 2 uses day-1 rates: (0.08-0.02)*dt — the jump arrives with a lag
+    # day 2 uses day-1 rates: (0.08-0.02)*dt: the jump arrives with a lag
     assert carry.iloc[1]["AUD"] == pytest.approx(0.06 * DT, abs=1e-15)
 
 

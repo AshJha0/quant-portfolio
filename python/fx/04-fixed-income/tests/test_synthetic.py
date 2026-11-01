@@ -44,7 +44,7 @@ class TestRegimeProperties:
 
     def test_negative_eur_regime_has_negative_front_end(self, negative_eur_market):
         assert negative_eur_market.foreign_curve.zero_rate(0.25) < 0.0
-        # DF above one at the front end — the curve machinery supports it
+        # DF above one at the front end: the curve machinery supports it
         assert negative_eur_market.foreign_curve.df(0.25) > 1.0
 
     def test_crisis_regime_basis_wider_than_150bp(self, crisis_market):

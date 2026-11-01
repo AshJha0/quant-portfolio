@@ -71,7 +71,7 @@ def test_custom_budget_respected() -> None:
 
 
 def test_analytic_frontier_variance_is_quadratic_in_target() -> None:
-    # Merton: sigma^2(m) = (A m^2 - 2 B m + C)/D — second differences of the
+    # Merton: sigma^2(m) = (A m^2 - 2 B m + C)/D: second differences of the
     # variance on an equally spaced target grid must be constant.
     mu, cov = _spd(5, seed=11)
     fr = efficient_frontier(mu, cov, n_points=30)

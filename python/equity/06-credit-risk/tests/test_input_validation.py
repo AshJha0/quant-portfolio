@@ -32,7 +32,7 @@ def test_fit_logistic_rejects_nan_and_inf_features() -> None:
 
 
 def test_expected_loss_rejects_nan_pd() -> None:
-    # NaN passes naive range checks (NaN < 0 is False) — must be caught.
+    # NaN passes naive range checks (NaN < 0 is False): must be caught.
     with pytest.raises(ValueError, match="finite"):
         expected_loss(np.array([0.02, np.nan]), 0.4, 100.0)
     with pytest.raises(ValueError, match="finite"):

@@ -1,4 +1,4 @@
-"""Regime-detection tests — the online (filtered) causality test is the
+"""Regime-detection tests: the online (filtered) causality test is the
 critical one for the whole project."""
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class TestCriticalCausality:
     def test_smoothed_does_change_with_future(self, small_features, hmm2_fit,
                                               index_returns2):
         """Sanity contrast: smoothed posteriors at t DO change when the
-        future changes — which is exactly why they are not tradeable."""
+        future changes, which is exactly why they are not tradeable."""
         x = index_returns2[:800].copy()
         t = 400
         base = smoothed_probabilities(hmm2_fit, x)[t]

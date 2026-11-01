@@ -6,7 +6,7 @@ per-period covariance matrices. Multiply by 252 to annualise daily.
 
 Why shrinkage: with N assets and T observations the sample covariance has
 N(N+1)/2 free parameters; when T is not >> N it is ill-conditioned (or
-singular for T <= N), and Sigma^{-1} — the object MVO actually uses —
+singular for T <= N), and Sigma^{-1}: the object MVO actually uses:
 amplifies the smallest, worst-estimated eigenvalues. Ledoit-Wolf (2004,
 "Honey, I Shrunk the Sample Covariance Matrix") shrinks the sample matrix
 toward a constant-correlation target with a closed-form, data-driven
@@ -134,17 +134,17 @@ def ledoit_wolf_cc(returns: np.ndarray | pd.DataFrame) -> LedoitWolfResult:
     1. S = X'X / T (MLE sample covariance).
     2. Target F: f_ii = s_ii, f_ij = rbar * sqrt(s_ii s_jj) with rbar the
        average off-diagonal sample correlation.
-    3. pi_hat = sum_ij (1/T) sum_t (x_ti x_tj - s_ij)^2  — asymptotic
+    3. pi_hat = sum_ij (1/T) sum_t (x_ti x_tj - s_ij)^2 : asymptotic
        variance of the sample covariance entries.
     4. rho_hat = sum_i pi_hat_ii + sum_{i != j} (rbar / 2) *
        [ sqrt(s_jj / s_ii) theta_ii,ij + sqrt(s_ii / s_jj) theta_jj,ij ]
-       with theta_ii,ij = (1/T) sum_t (x_ti^2 - s_ii)(x_ti x_tj - s_ij)
-       — asymptotic covariance between target and sample.
+       with theta_ii,ij = (1/T) sum_t (x_ti^2 - s_ii)(x_ti x_tj - s_ij):
+       asymptotic covariance between target and sample.
     5. gamma_hat = ||F - S||_F^2 (squared Frobenius distance).
     6. delta = clip( (pi_hat - rho_hat) / gamma_hat / T, 0, 1 ).
 
     Degenerate case: if S already equals F (gamma ~ 0, e.g. N = 1), the
-    estimator returns S with intensity 0 — shrinkage is a no-op.
+    estimator returns S with intensity 0: shrinkage is a no-op.
 
     Parameters
     ----------

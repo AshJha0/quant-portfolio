@@ -2,12 +2,12 @@
 
 Allocation rule
 ---------------
-* **bull**       — fully long the equity factor (equal-weight index).
-* **bear**       — de-risked to the defensive sleeve (cash; optionally a
+* **bull**      : fully long the equity factor (equal-weight index).
+* **bear**      : de-risked to the defensive sleeve (cash; optionally a
   low-vol proxy via ``defensive_weight``).
-* **transition** — scaled exposure between the two.
+* **transition**: scaled exposure between the two.
 
-Hysteresis band — why it prevents whipsaw
+Hysteresis band: why it prevents whipsaw
 -----------------------------------------
 A naive rule ("bear if ``p_bear > 0.5``") flips every time the filtered
 probability crosses one line.  Near a regime boundary the filtered
@@ -29,7 +29,7 @@ does NOT enter (strict ``>``), at exactly ``p == exit`` it does NOT exit
 Vol targeting
 -------------
 Position size is scaled by ``target_vol / realized_vol`` (clipped to
-``max_leverage``), using trailing realized vol only — the ex-ante forecast
+``max_leverage``), using trailing realized vol only: the ex-ante forecast
 at ``t`` never sees returns after ``t``.
 """
 
@@ -71,7 +71,7 @@ def hysteresis_regime(
 
     Returns
     -------
-    (T,) boolean array — True where the hysteresis state is bear.
+    (T,) boolean array: True where the hysteresis state is bear.
     """
     if not 0.0 <= exit_ < enter <= 1.0:
         raise ValueError(f"need 0 <= exit < enter <= 1, got exit={exit_}, enter={enter}")
@@ -108,8 +108,8 @@ def regime_target_weight(
     True the weight is ``bear_weight`` regardless of the argmax label, so
     de-risking obeys the banded rule rather than raw argmax flips.  When
     the flag is False, an unconfirmed ``bear`` label (probability still
-    inside the band) is treated as ``transition`` — the weight is floored
-    at ``transition_weight`` — so full de-risking happens only through the
+    inside the band) is treated as ``transition``: the weight is floored
+    at ``transition_weight``, so full de-risking happens only through the
     band.
 
     Parameters
@@ -146,7 +146,7 @@ def vol_target_scale(
     """Trailing-vol scaling factor ``target_vol / realized_vol`` (clipped).
 
     The scale at ``t`` uses returns up to and including ``t`` (trailing
-    window) — applied to the position held over ``t+1`` it is ex-ante.
+    window): applied to the position held over ``t+1`` it is ex-ante.
 
     Parameters
     ----------

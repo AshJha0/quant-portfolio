@@ -7,25 +7,25 @@ currency); market pairs and crosses are built from them with
 
 Generators
 ----------
-* :func:`make_cointegrated_pair` — two currency pairs whose log rates share a
+* :func:`make_cointegrated_pair`: two currency pairs whose log rates share a
   random-walk common factor with a known hedge ratio and a known OU spread
   (ground truth returned for recovery tests).
-* :func:`make_correlated_walks` — correlated but *independent* random walks:
+* :func:`make_correlated_walks`: correlated but *independent* random walks:
   high return correlation, no cointegration (the classic spurious-regression
   trap the funnel must reject).
-* :func:`make_two_block_panel` — risk-on/risk-off two-block correlation
+* :func:`make_two_block_panel`: risk-on/risk-off two-block correlation
   structure (AUD/NZD/CAD commodity block vs JPY/CHF safe havens) with
   occasional regime flips where the cross-block correlation turns sharply
   negative.
-* :func:`make_floor_then_break` — SNB-style pegged spread: years of tiny-vol
+* :func:`make_floor_then_break`, SNB-style pegged spread: years of tiny-vol
   mean reversion around a floor, then a single-day catastrophic break and a
   new high-vol regime (EURCHF, 2011-2015).
-* :func:`make_carry_flip_pair` — a pair with a persistent deposit-rate
+* :func:`make_carry_flip_pair`: a pair with a persistent deposit-rate
   differential whose spot spread drifts at the forward premium: a spot-only
   signal is systematically wrong-carry and its P&L flips sign once carry is
   accounted for.
-* :func:`make_deposit_rate_panel` — slowly varying deposit-rate curves.
-* :func:`make_pegged_pair` — a hard peg (zero volatility) for edge-case tests.
+* :func:`make_deposit_rate_panel`: slowly varying deposit-rate curves.
+* :func:`make_pegged_pair`: a hard peg (zero volatility) for edge-case tests.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def make_correlated_walks(
     """Correlated but NOT cointegrated pair: independent unit roots.
 
     Daily log returns are jointly normal with correlation ``rho``, but the
-    levels are two independent random walks — return correlation without any
+    levels are two independent random walks: return correlation without any
     stationary linear combination.  The spurious-regression trap: levels OLS
     will 'fit', but Engle-Granger must (usually) fail to reject no
     cointegration.
@@ -167,7 +167,7 @@ def make_two_block_panel(
     block factor with intra-block return correlation ``rho_intra``.  The two
     block factors have correlation ``rho_cross_calm`` in the calm regime; in
     ``n_flips`` risk-off episodes of ``flip_len`` days (evenly spaced) the
-    factor correlation flips to ``rho_cross_riskoff`` — commodity currencies
+    factor correlation flips to ``rho_cross_riskoff``: commodity currencies
     sell off as safe havens rally.  Implied pairwise cross-block correlation
     is ``rho_intra * rho_cross`` in each regime.
 
@@ -226,12 +226,12 @@ def make_floor_then_break(
 ) -> tuple[pd.Series, pd.Series, dict[str, object]]:
     """SNB-style floor-then-break: a 'perfect' mean reverter that ends in a gap.
 
-    Pre-break (``n_pre`` days): the spread is a tight, fast OU around 0 —
+    Pre-break (``n_pre`` days): the spread is a tight, fast OU around 0:
     exactly what a cointegration scan scores highest (EURCHF under the
     1.20 floor, 2011-2015).  In the final ``dip_len`` pre-break days the
     spread sits at ``dip_z`` stationary standard deviations below the mean, so
     a z-score strategy is *long the spread into the break* (long the pegged
-    currency pair — the crowd's position at the floor).  On the break day the
+    currency pair: the crowd's position at the floor).  On the break day the
     spread gaps by ``jump`` (log units, e.g. -0.15 = -15%), then follows a
     high-vol OU around the new level.
 
@@ -280,14 +280,14 @@ def make_carry_flip_pair(
 
     Pair 1 is a high-yield currency vs USD (deposit rate ``r_high`` vs
     ``r_usd``); pair 2 a low-yielder (``r_low``).  Pair 1's spot depreciates
-    at ``drift_fraction`` times the rate differential — the empirical forward
+    at ``drift_fraction`` times the rate differential: the empirical forward
     premium puzzle: high-yielders depreciate by *less* than the differential
     (UIP fails), so the carry more than compensates the drift.  Its *spot*
     spread vs pair 2 trends down persistently while its *total-return* spread
     (spot + carry) mean-reverts around a mild upward bias.
 
     A spot-only z-score signal keeps seeing the spread 'cheap' vs its
-    formation mean and goes long — losing money on spot as the drift
+    formation mean and goes long: losing money on spot as the drift
     continues, while a long position earns exactly that differential in
     carry.  Hence: spot-only backtest negative, carry-inclusive positive.
     This is the EM/carry trap: on spot alone the mean-reversion signal is

@@ -1,4 +1,4 @@
-"""eq_credit — corporate credit risk / PD modelling (bank-style scorecard).
+"""eq_credit: corporate credit risk / PD modelling (bank-style scorecard).
 
 Pipeline: data cleaning -> WOE/IV binning -> IRLS logistic scorecard -> PD ->
 validation (AUC/KS, Hosmer-Lemeshow, PSI) -> expected loss -> Basel IRB and

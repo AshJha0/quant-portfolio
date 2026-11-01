@@ -6,7 +6,7 @@ An FX trade settles by two *independent* gross payments unless it goes through
 a payment-versus-payment (PvP) system such as CLS.  If we irrevocably pay away
 the currency we sold before we receive, with finality, the currency we bought,
 then for that window we are exposed to the counterparty for the **full
-principal of the bought currency** — not a mark-to-market amount.  This is
+principal of the bought currency**, not a mark-to-market amount.  This is
 Herstatt risk, named after Bankhaus Herstatt (26 June 1974): German banks had
 irrevocably paid DEM legs during the European morning; Herstatt's licence was
 withdrawn at 15:30 CET, before the corresponding USD legs were paid out in New
@@ -232,7 +232,7 @@ def time_zone_gap_matrix(currencies: tuple[str, ...] = ("JPY", "EUR", "GBP", "US
 
     Rows = currency paid away, columns = currency received.  The matrix is
     asymmetric: selling JPY against USD carries a near-full-day window while
-    selling USD against JPY carries none — the essence of the time-zone gap.
+    selling USD against JPY carries none: the essence of the time-zone gap.
     """
     mat = pd.DataFrame(
         [
@@ -327,7 +327,7 @@ def net_settlement_exposure(
     date are netted to a single payable or receivable per currency (bilateral
     payment netting, e.g. under an FXNET-style agreement).  Exposure is then
     the USD value of each net *receivable* whose finality time falls after the
-    earliest net *payable* payment time — i.e. the receivable is still unpaid
+    earliest net *payable* payment time, i.e. the receivable is still unpaid
     while our own money is already out of the door.
 
     Returns
@@ -367,7 +367,7 @@ def book_settlement_report(
     """Per-trade settlement risk report with gross, CLS and window detail.
 
     Returns a DataFrame with one row per trade: legs, at-risk window, gross
-    exposure (0 for CLS-settled trades) — plus the counterfactual exposure
+    exposure (0 for CLS-settled trades): plus the counterfactual exposure
     the trade *would* carry if it were not CLS-settled.
     """
     rows = []

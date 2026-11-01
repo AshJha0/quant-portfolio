@@ -12,21 +12,21 @@ Conventions (see repo CONVENTIONS.md):
 
 Structural features (all first-class, all unit-tested):
 
-1. **Risk-on/off single factor** — every currency's spot return loads on one
+1. **Risk-on/off single factor**: every currency's spot return loads on one
    global risk factor ``f_t``.  AUD/NZD and the EM block load positively
    (risk-on currencies), JPY/CHF load negatively (safe havens).
-2. **Persistent rate differentials** — deposit rates follow slow
+2. **Persistent rate differentials**: deposit rates follow slow
    Ornstein-Uhlenbeck processes around currency-specific long-run means
    (JPY/CHF near zero, EM high), so the carry cross-section is persistent.
-3. **Carry-crash mechanism** — on rare crash days (correlated with a large
+3. **Carry-crash mechanism**: on rare crash days (correlated with a large
    negative risk-factor draw) high-yield currencies suffer an *additional*
    depreciation proportional to their rate differential.  This builds the
    classic negative skew of carry into the data generating process while
    leaving carry profitable on average (empirical UIP failure).
-4. **PPP anchor** — a slow-moving purchasing-power-parity fair-value series
+4. **PPP anchor**: a slow-moving purchasing-power-parity fair-value series
    per currency; spots weakly mean-revert towards it (multi-year half-life),
    giving the value signal genuine but slow content.
-5. **Persistent trends** — a slow AR(1) drift per currency gives the 12-1
+5. **Persistent trends**: a slow AR(1) drift per currency gives the 12-1
    momentum style genuine content without affecting the factor structure.
 6. Optional **pegged currency** (``HKD``-style: near-zero spot vol, fixed
    rate) to exercise zero-vol edge cases.
@@ -113,7 +113,7 @@ def make_panel(
         Subset of the built-in universe (default: G10 ex-USD + MXN/BRL/TRY).
     include_peg : bool
         If True, append a pegged currency ``PEG`` with near-zero spot vol and
-        a deposit rate pinned to USD (zero differential) — exercises zero-vol
+        a deposit rate pinned to USD (zero differential): exercises zero-vol
         edge cases downstream.
     crash_prob : float
         Daily probability of a carry-crash event (default ~1.3 per year).
@@ -121,7 +121,7 @@ def make_panel(
         On a crash day each currency loses an extra
         ``kappa * max(rate - usd_rate, 0) * severity`` in log-spot terms,
         where severity ~ |N(1, 0.3)|.  This ties crash losses to the carry of
-        the currency — the mechanism behind carry's negative skew.
+        the currency: the mechanism behind carry's negative skew.
     start : str
         First business date of the index.
 

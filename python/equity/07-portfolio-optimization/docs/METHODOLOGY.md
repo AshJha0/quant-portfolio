@@ -8,7 +8,7 @@ Everything in this project is organised around one central theme:
 
 > **Markowitz optimization is an estimation-error amplifier.** The maths of
 > mean-variance optimization (MVO) is trivial; the practice is dominated by
-> the fact that its inputs — especially expected returns — cannot be
+> the fact that its inputs, especially expected returns, cannot be
 > estimated to useful precision. Every component here (James-Stein
 > shrinkage, reverse optimization, Black-Litterman, Ledoit-Wolf, risk
 > parity, long-only constraints) is a different answer to that single
@@ -19,12 +19,12 @@ Everything in this project is organised around one central theme:
 ## 1. The estimation-error problem ("error maximization")
 
 **Merton (1980): means are the hard part.** The standard error of a mean
-return estimated over a horizon of `Y` years is `sigma / sqrt(Y)` —
+return estimated over a horizon of `Y` years is `sigma / sqrt(Y)`:
 *independent of sampling frequency*. Sampling daily instead of monthly
 sharpens variance estimates (which improve with the number of
 observations) but does nothing for the mean (which improves only with the
 calendar span). With `sigma ≈ 20%` and one year of data the SE of the
-annual mean is ≈ 20% — an order of magnitude larger than the cross-
+annual mean is ≈ 20%: an order of magnitude larger than the cross-
 sectional spread of true expected returns (our synthetic truth spans
 3%–8%/yr; typical real risk premia differ by less).
 
@@ -32,7 +32,7 @@ sectional spread of true expected returns (our synthetic truth spans
 `w ∝ Σ⁻¹(μ − rf)`: the optimizer takes *differences* of noisy means and
 multiplies them by an inverse covariance that amplifies its smallest,
 worst-estimated eigenvalues. Assets that got lucky in-sample (high
-estimated mean, low estimated vol/correlation) receive extreme weights —
+estimated mean, low estimated vol/correlation) receive extreme weights:
 the optimizer loads up on exactly the estimation errors. Quantified in
 `examples/run_pipeline.py` §2 on 200 synthetic 252-day windows (10
 panels): the raw-mean unconstrained tangency portfolio is undefined
@@ -57,7 +57,7 @@ same Merton problem; (b) *full Bayesian predictive* (e.g. Jorion's
 Bayes-Stein with predictive covariance inflation) adds machinery for a
 second-order effect. James-Stein + BL capture 90% of the practical
 benefit with closed forms we can test to machine precision (no-view
-posterior = prior exactly; `Ω → 0` view honoured exactly — our
+posterior = prior exactly; `Ω → 0` view honoured exactly: our
 implementation never inverts `Ω`, so perfect confidence is handled
 without limits).
 
@@ -84,21 +84,21 @@ Alternatives considered:
   and the matrix rank-deficient for N > effective T; kept as a
   diagnostic, not the optimizer input.
 - **Single-factor (market) model** (implemented): guaranteed PSD, very
-  low variance, but biased — it forces all comovement through one factor
+  low variance, but biased: it forces all comovement through one factor
   and misses sector blocks (our synthetic truth has three).
 - **Ledoit-Wolf to identity / diagonal**: simpler targets, but constant
   correlation is the natural target for a one-market equity universe and
   keeps the (well-estimated) variances untouched.
 - **PSD repair** (eigenvalue clipping at a relative floor) is applied
   after any estimator before inversion; it is a projection, not an
-  estimator — used for numerical hygiene only.
+  estimator: used for numerical hygiene only.
 
 ## 4. Optimizers (`mvo.py`, `risk_parity.py`)
 
 **Closed forms wherever they exist**: unconstrained min-variance
 `Σ⁻¹1/(1'Σ⁻¹1)`, tangency `Σ⁻¹μₑ/(1'Σ⁻¹μₑ)`, and the analytic frontier
 `w(m) = λΣ⁻¹1 + γΣ⁻¹μ` (two-fund theorem: frontier weights are affine in
-the target return — tested as an exact identity).
+the target return: tested as an exact identity).
 
 **Constrained problems: `scipy.optimize` SLSQP, no cvxpy.**
 The problems here are small (N ~ 10-100) and smooth. The module rescales
@@ -124,10 +124,10 @@ fallbacks.
 cyclical coordinate descent on `½y'Σy − Σᵢ bᵢ ln yᵢ` (Griveau-Billion,
 Richard & Roncalli 2013; existence/uniqueness by Spinu 2013), from
 scratch, with the exact coordinate update (positive root of a scalar
-quadratic). ERC needs *no mean estimates at all* and no matrix inversion
-— that is its point: it is the maximally estimation-robust allocation
+quadratic). ERC needs *no mean estimates at all* and no matrix inversion:
+that is its point: it is the maximally estimation-robust allocation
 that still uses correlation structure (unlike naive inverse-vol, to which
-it provably collapses when all correlations are equal — tested).
+it provably collapses when all correlations are equal: tested).
 Because unlevered ERC of a low-vol book runs below equity-like risk,
 real risk-parity funds lever to a vol target: `vol_target_overlay`
 implements `L = σ_target/σ(w)` with an optional leverage cap (the desk
@@ -136,7 +136,7 @@ control; see DESK_GUIDE on the March-2020 deleveraging spiral).
 ## 5. Backtesting (`backtest.py`) and metrics (`metrics.py`)
 
 Walk-forward engine: estimation window `[t−W, t−1]`, trade at `t`
-(strictly no lookahead — enforced by construction and by a cheat-
+(strictly no lookahead: enforced by construction and by a cheat-
 detection test where a return spike on the rebalance day must be
 uncapturable), weights drift between rebalances, two-sided turnover
 `Σ|w_new − w_drift|` charged at `cost_bps`. Exactness of the ledger is
@@ -169,7 +169,7 @@ Each assumption states *what breaks if violated*.
    portfolio risk (all strategies' crisis vol is 2–3x their calm vol).
 2. **Covariance is stable over the holding period (estimate at t, hold
    for a month).** Breaks: vol/correlation spikes make ex-ante vol
-   targets and risk budgets wrong intramonth — exactly when it matters.
+   targets and risk budgets wrong intramonth: exactly when it matters.
    Mitigant: EWMA diagnostics, shorter rebalance, vol-target overlay.
 3. **Quadratic utility / mean-variance sufficiency (no higher
    moments).** Breaks: MVO is indifferent to skew/kurtosis; a short-vol
@@ -183,10 +183,10 @@ Each assumption states *what breaks if violated*.
    race would cost more in practice than the linear ledger shows.
 5. **Leverage is available at the risk-free rate and never recalled.**
    Breaks: the RP vol-target overlay assumes financing at rf; in a
-   funding squeeze (Mar-2020) leverage is cut at the worst prices — see
+   funding squeeze (Mar-2020) leverage is cut at the worst prices: see
    DESK_GUIDE scenario.
 6. **Long-only box constraints reflect the true mandate.** Breaks:
-   constraints act as implicit shrinkage (Jagannathan-Ma 2003) — helpful
+   constraints act as implicit shrinkage (Jagannathan-Ma 2003): helpful
    against noise (raw tangency true Sharpe improves from 0.115 to
    0.279 when long-only is imposed, synthetic study) but they also cap
    the achievable frontier. No long-only portfolio returns more than

@@ -121,7 +121,7 @@ class TestLimits:
 class TestImpliedVol:
     # Note: at T = 0.05 with strikes 15-20% away the time value falls
     # below double-precision resolution of the intrinsic (~1e-17), so the
-    # vol is fundamentally unrecoverable — documented as a failure mode in
+    # vol is fundamentally unrecoverable: documented as a failure mode in
     # docs/VALIDATION.md; the grid below stays inside the recoverable zone.
     @pytest.mark.parametrize("k_mult", [0.85, 0.95, 1.0, 1.05, 1.20])
     @pytest.mark.parametrize("T", [0.25, 0.5, 2.0])

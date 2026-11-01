@@ -10,13 +10,13 @@ different repository directory.
 This module reproduces the three golden cases exactly as the C++ file
 documents them and asserts the same constants to the same tolerances.  If a
 change to `fx_var` moves any number below, the cross-language contract is
-broken and the C++/Rust golden headers must be regenerated deliberately.
+broken and the C++/Rust golden headers must be regenerated on purpose.
 
-Case A — book revaluation and plain/BRW historical VaR & ES on a
+Case A: book revaluation and plain/BRW historical VaR & ES on a
          deterministic sinusoidal factor history (no RNG).
-Case B — closed-form parametric normal / Student-t VaR & ES from fixed
+Case B: closed-form parametric normal / Student-t VaR & ES from fixed
          exposures and covariance.
-Case C — Kupiec / Christoffersen / Basel traffic-light statistics.
+Case C: Kupiec / Christoffersen / Basel traffic-light statistics.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def golden_book() -> Book:
 
 @pytest.fixture(scope="module")
 def golden_returns() -> pd.DataFrame:
-    """r[t][j] = s_j (sin(0.1 t + j) + 0.5 cos(0.05 t (j+1))) — no RNG."""
+    """r[t][j] = s_j (sin(0.1 t + j) + 0.5 cos(0.05 t (j+1))): no RNG."""
     data = np.array([
         [GOLDEN_SCALES[j] * (np.sin(0.1 * t + j)
                              + 0.5 * np.cos(0.05 * t * (j + 1)))

@@ -1,6 +1,6 @@
 """Non-finite inputs must raise, not propagate into curves, forwards and risk.
 
-Almost every guard in `fx_rates` was written as an inequality —
+Almost every guard in `fx_rates` was written as an inequality:
 ``if spot <= 0.0: raise``, ``if tau <= 0.0: raise``,
 ``if bid > ask: raise``, ``if strike <= 0.0: raise``. Every comparison
 against NaN is False, so each of those *accepted* NaN and the NaN then flowed
@@ -329,7 +329,7 @@ class TestScenarioAndRiskGuards:
 
 
 class TestDayCountUnaffected:
-    """The date layer takes no floats, so it needs no NaN guard — verify."""
+    """The date layer takes no floats, so it needs no NaN guard: verify."""
 
     def test_year_fraction_conventions_still_exact(self) -> None:
         from fx_rates import year_fraction

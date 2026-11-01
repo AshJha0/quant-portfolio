@@ -23,7 +23,7 @@ from eq_regime.hmm import (expected_durations, fit_hmm, forward_backward,
 
 def test_single_regime_data_fitted_with_two_states_stays_finite():
     """Fitting K=2 to data that truly has one regime must not produce NaN
-    parameters or a degenerate covariance — the reg_covar ridge is what
+    parameters or a degenerate covariance: the reg_covar ridge is what
     keeps this well posed."""
     rng = np.random.default_rng(0)
     x = rng.standard_normal((600, 2)) * 0.01
@@ -39,7 +39,7 @@ def test_single_regime_data_fitted_with_two_states_stays_finite():
 
 def test_single_regime_states_are_economically_indistinguishable():
     """On one-regime data the two fitted state means must be close relative
-    to the pooled dispersion — the signature of 'there is no second
+    to the pooled dispersion: the signature of 'there is no second
     regime here'."""
     rng = np.random.default_rng(4)
     x = rng.standard_normal((800, 1)) * 0.01
@@ -219,7 +219,7 @@ def test_filtered_and_smoothed_probabilities_are_valid_distributions():
 
 
 def test_filtered_probabilities_are_causal():
-    """Row t of the filter must not change when the future is altered — the
+    """Row t of the filter must not change when the future is altered: the
     property that makes filtered probs tradeable and smoothed probs not."""
     rng = np.random.default_rng(21)
     # OVERLAPPING regimes: with well-separated states the

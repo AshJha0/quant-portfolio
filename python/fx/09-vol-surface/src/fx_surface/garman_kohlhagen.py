@@ -68,7 +68,7 @@ def _validate(S: float, K: float, T: float, sigma: float | None = None) -> None:
 
     Note the explicit ``isfinite`` guards: a bare ``S <= 0`` test is
     silently passed by ``NaN`` (every comparison with NaN is False), so a
-    NaN spot or vol would otherwise propagate into a NaN premium — a
+    NaN spot or vol would otherwise propagate into a NaN premium: a
     price that looks like a number to every downstream consumer.
     """
     if not math.isfinite(S) or S <= 0.0:
@@ -258,7 +258,7 @@ def gk_digital(
 ) -> float:
     """Domestic cash-or-nothing digital (pays 1 domestic unit if ITM).
 
-    Flat-vol (no smile) value ``exp(-r_d T) N(cp * d2)``.  A real desk
+    Flat-vol (no smile) value ``exp(-r_d T) N(cp * d2)``.  A trading desk
     adds the skew correction ``-vega_digital * dsigma/dK``; see
     :func:`fx_surface.smile.smile_digital` for the smile-consistent value.
     """

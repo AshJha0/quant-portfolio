@@ -1,4 +1,4 @@
-"""fx_port — FX portfolio optimization & currency risk allocation.
+"""fx_port: FX portfolio optimization & currency risk allocation.
 
 Pipeline: total-return estimation (spot + carry) → style signals
 (carry/momentum/value) → covariance modelling (LW shrinkage, EWMA,

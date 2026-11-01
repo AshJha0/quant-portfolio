@@ -1,6 +1,6 @@
 """Deterministic synthetic FX data: GBM paths and stylised vol quotes.
 
-Everything here is seeded and offline — this is the only data source the
+Everything here is seeded and offline: this is the only data source the
 test suite touches (see CONVENTIONS.md).
 """
 
@@ -64,8 +64,8 @@ class VolQuote:
     """One tenor of market-style FX vol quotes (all vols annualised).
 
     ``atm`` is the delta-neutral-straddle vol; ``rr25``/``rr10`` are risk
-    reversals (call vol minus put vol at 25/10 delta — skew direction);
-    ``bf25``/``bf10`` are butterflies (average wing vol minus ATM —
+    reversals (call vol minus put vol at 25/10 delta: skew direction);
+    ``bf25``/``bf10`` are butterflies (average wing vol minus ATM:
     smile curvature).  Smile *construction* from these quotes is
     project 9; here they only feed documentation/examples.
     """

@@ -3,8 +3,8 @@
 FX specifics:
 
 * **Two rhos.**  An FX option has rate sensitivity to *both* legs:
-  ``rho_d = dV/dr_d`` (positive for calls — higher domestic rate lifts
-  the forward) and ``rho_f = dV/dr_f`` (negative for calls — higher
+  ``rho_d = dV/dr_d`` (positive for calls: higher domestic rate lifts
+  the forward) and ``rho_f = dV/dr_f`` (negative for calls: higher
   foreign rate is a larger 'dividend' on the base currency).
 * **Vanna and volga.**  FX desks mark smiles with risk reversals and
   butterflies, whose P&L maps directly onto vanna (dDelta/dVol) and

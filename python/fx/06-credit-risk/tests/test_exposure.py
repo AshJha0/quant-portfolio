@@ -1,4 +1,4 @@
-"""EE/PFE simulation for FX forwards, netting sets, CVA — shape and hand checks."""
+"""EE/PFE simulation for FX forwards, netting sets, CVA: shape and hand checks."""
 
 import numpy as np
 import pytest
@@ -87,7 +87,7 @@ def test_zero_notional_zero_profile():
 def test_pfe_monotone_increasing_to_maturity(profile):
     """Single forward: no interim cashflows, so PFE GROWS to maturity (~sqrt t).
 
-    This is the correct shape for an outright forward — the 'mid-life hump'
+    This is the correct shape for an outright forward: the 'mid-life hump'
     belongs to amortising products like swaps, not to a bullet forward.
     """
     assert np.all(np.diff(profile.pfe[0.99]) > 0)

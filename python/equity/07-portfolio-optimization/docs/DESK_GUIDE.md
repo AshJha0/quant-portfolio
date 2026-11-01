@@ -7,7 +7,7 @@ panels in `examples/run_pipeline.py`.
 ## 1. Who consumes these numbers
 
 - **Multi-asset allocation desks / OCIO & wealth platforms**: strategic
-  and tactical asset allocation. Black-Litterman is the house workflow —
+  and tactical asset allocation. Black-Litterman is the house workflow:
   the CIO's views (`P`, `Q`, confidences) are blended into the
   equilibrium prior each month; the long-only constrained MVO output is
   the model portfolio pushed to mandates.
@@ -29,18 +29,18 @@ panels in `examples/run_pipeline.py`.
 
 1. **Estimation** (T-1 close data): Ledoit-Wolf covariance on the
    trailing 252 days; James-Stein or BL means. Sample means are computed
-   but *never* fed to the optimizer directly — they are displayed next
+   but *never* fed to the optimizer directly: they are displayed next
    to their standard errors precisely so nobody is tempted.
 2. **Optimization**: each mandate's optimizer (constrained MVO / ERC)
    with mandate bounds. Diagnostics gate the trade: shrinkage intensity
-   (δ spiking toward 1 means the sample matrix is uninformative —
+   (δ spiking toward 1 means the sample matrix is uninformative:
    investigate), condition number, effective N, ex-ante vol vs target,
    max risk contribution.
 3. **Rebalance decision** (see §3), order generation, cost estimate from
    the turnover ledger before release.
 4. **Ex-post attribution**: realized risk contributions vs budgets;
    turnover and cost accounting reconciled to the ledger the backtester
-   produces (same code path — one source of truth).
+   produces (same code path: one source of truth).
 5. **Model governance**: the walk-forward race (EW benchmark included)
    is rerun quarterly; a strategy that cannot beat equal weight net of
    costs over rolling windows is a candidate for retirement. Equal
@@ -74,22 +74,22 @@ panels in `examples/run_pipeline.py`.
 - Constraints for capacity live naturally in the box bounds (e.g. max
   weight ≤ 5×ADV-days/AUM).
 
-## 5. Leverage for risk parity — and the March-2020 deleveraging spiral
+## 5. Leverage for risk parity, and the March-2020 deleveraging spiral
 
 Unlevered ERC on our 8-asset panel runs at 16.7% vol; a 10%-vol product
 holds 0.60x. On a real stock/bond universe unlevered ERC runs nearer 5%
 and the fund levers **1.5–2.5x** through futures and repo. The overlay
 (`vol_target_overlay`, leverage `L = σ_target/σ(w)`, optional cap) makes
-the mechanics explicit — and the mechanics are the risk:
+the mechanics explicit, and the mechanics are the risk:
 
 **Scenario (March 2020).** Vol estimates triple in two weeks (our crisis
 regime: market factor vol ×3). A constant-vol-target book must cut
-leverage by ~2/3 — selling *both* stocks and bonds into a falling,
+leverage by ~2/3: selling *both* stocks and bonds into a falling,
 illiquid market. Simultaneously: repo/futures financing tightens
 (assumption 5 in METHODOLOGY breaks), correlations jump toward 1 so the
 diversification the leverage was sized against disappears (realized
 0.47 → 0.87 in our panel), and Treasuries briefly sold off *with*
-equities — the risk-parity crowd deleveraging together became its own
+equities: the risk-parity crowd deleveraging together became its own
 correlation event. Desk controls this project supports directly:
 `max_leverage` cap in the overlay, banded (not instantaneous) vol
 targeting, crisis-covariance stress (re-run the optimizer on
@@ -106,7 +106,7 @@ turnover ledger under 5x cost stress.
   covariance, not the calm one.
 - **2020 crash (speed).** 120-day crisis window with −120%/yr drift:
   monthly rebalancing means the book trades at most once inside the
-  crash — vol targeting and risk limits, not the optimizer, determine
+  crash: vol targeting and risk limits, not the optimizer, determine
   the realized drawdown. Weekly monitoring with band triggers is the
   compromise.
 - **2022 stock-bond correlation flip.** Static stock-bond books and risk

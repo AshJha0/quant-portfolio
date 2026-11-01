@@ -41,7 +41,7 @@ def test_matches_sklearn_to_1e6() -> None:
 
 
 def test_standard_errors_match_analytic_fisher() -> None:
-    # SEs must equal sqrt(diag((X'WX)^{-1})) at the MLE — computed
+    # SEs must equal sqrt(diag((X'WX)^{-1})) at the MLE: computed
     # independently here (statsmodels-style analytic covariance).
     beta = np.array([0.5, -0.8])
     X, y = _simulate(20_000, beta, b0=-1.5, seed=8)

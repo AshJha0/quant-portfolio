@@ -1,4 +1,4 @@
-"""FX settlement (Herstatt) risk: windows, gross vs PvP, netting — hand-checked."""
+"""FX settlement (Herstatt) risk: windows, gross vs PvP, netting: hand-checked."""
 
 import numpy as np
 import pytest
@@ -21,7 +21,7 @@ USD_RATES = {"USD": 1.0, "EUR": 1.08, "GBP": 1.27, "JPY": 1.0 / 148.0}
 def test_window_pay_jpy_receive_usd_hand_checked():
     """Pay JPY at Tokyo open 00:00 UTC; USD final at Fedwire close 23:30 UTC.
 
-    At-risk window = 23.5 hours — the classic Herstatt direction.
+    At-risk window = 23.5 hours: the classic Herstatt direction.
     """
     assert at_risk_window_hours("JPY", "USD") == pytest.approx(23.5)
 
@@ -32,7 +32,7 @@ def test_window_pay_usd_receive_jpy_is_zero():
 
 
 def test_window_herstatt_1974_direction():
-    """Pay EUR (06:00 UTC) vs receive USD (23:30 UTC): 17.5h — DEM/USD in 1974."""
+    """Pay EUR (06:00 UTC) vs receive USD (23:30 UTC): 17.5h, as with DEM/USD in 1974."""
     assert at_risk_window_hours("EUR", "USD") == pytest.approx(17.5)
 
 
@@ -80,7 +80,7 @@ def test_exposure_converted_to_usd():
 
 
 def test_receive_before_pay_no_exposure_trade():
-    """Sell USD, buy JPY: we receive JPY before paying USD — zero exposure."""
+    """Sell USD, buy JPY: we receive JPY before paying USD: zero exposure."""
     t = FXTrade("T", "X", "USDJPY", 10e6, 148.0, we_buy_base=False)
     e = settlement_exposure(t, USD_RATES)
     assert e.sold_ccy == "USD" and e.bought_ccy == "JPY"

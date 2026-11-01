@@ -18,7 +18,7 @@ Each coordinate update solves a scalar quadratic exactly, so convergence to
 1e-12 in the contributions takes a handful of sweeps.
 
 Applies both across CURRENCIES (risk-balanced currency basket) and across
-STYLES (carry/momentum/value multi-style book) — the caller just supplies the
+STYLES (carry/momentum/value multi-style book): the caller just supplies the
 relevant covariance.
 """
 
@@ -46,7 +46,7 @@ def risk_contributions(
     normalize : bool
         If True (default) return RC_i / sum RC = w_i(Sigma w)_i / (w'Sigma w);
         if False return the unnormalised ``w_i (Sigma w)_i`` (which sum to the
-        portfolio VARIANCE — the Euler identity, tested).
+        portfolio VARIANCE: the Euler identity, tested).
 
     Returns
     -------
@@ -88,7 +88,7 @@ def erc_weights(
     ----------
     sigma : pd.DataFrame
         Covariance matrix; diagonal must be strictly positive (a zero-vol
-        pegged currency cannot receive a defined risk budget — drop it or
+        pegged currency cannot receive a defined risk budget: drop it or
         floor the covariance with ``psd_repair(min_eig>0)`` first).
     budget : array-like, optional
         Target risk budgets b_i > 0 (normalised internally); default equal.

@@ -15,7 +15,7 @@ This module solves the discrete mean-variance execution problem with
 a strictly convex equality-constrained QP solved *numerically* via its
 KKT system (``scipy.linalg.solve``).  Linear permanent impact is
 excluded from the objective because its cost is (to leading order)
-schedule-independent — see docs/METHODOLOGY.md.
+schedule-independent: see docs/METHODOLOGY.md.
 
 Two verifiable limits anchor the implementation (both unit-tested):
 
@@ -46,7 +46,7 @@ def eta_from_depth(
 ) -> np.ndarray:
     """Quadratic temporary-impact coefficients from a depth profile.
 
-    ``eta_j = k_eta * ref_depth / depth_j`` — trading cost per unit rate
+    ``eta_j = k_eta * ref_depth / depth_j``: trading cost per unit rate
     is inversely proportional to displayed session depth, the quadratic
     (AC-tractable) stand-in for the simulator's sqrt law, calibrated to
     match marginal cost at a reference participation (METHODOLOGY.md).
@@ -98,7 +98,7 @@ def ac_closed_form_schedule(
     eta : float
         Temporary impact coefficient (cost = eta * n^2 / tau per bucket).
     sigma : float
-        Per-sqrt-bucket volatility (pips or price units — must simply be
+        Per-sqrt-bucket volatility (pips or price units: must simply be
         consistent with ``eta`` and ``risk_aversion``).
     risk_aversion : float
         Mean-variance lambda >= 0.

@@ -3,11 +3,11 @@
 Reports:
 
 * per-regime realized return / vol / Sharpe / max drawdown of the strategy
-  and its benchmark — regime day counts PARTITION the sample exactly
+  and its benchmark: regime day counts PARTITION the sample exactly
   (test-enforced);
-* regime-transition P&L attribution — the per-regime P&L contributions sum
+* regime-transition P&L attribution: the per-regime P&L contributions sum
   to the total P&L identically (test-enforced);
-* worst-case ("flip-aftermath") analysis — cumulative strategy P&L in the
+* worst-case ("flip-aftermath") analysis: cumulative strategy P&L in the
   K days after each detected regime flip, quantifying how much a late
   detection costs.
 
@@ -65,7 +65,7 @@ def per_regime_stats(
         Daily simple net returns.
     regimes : pd.Series
         Regime label per day, SAME index as ``net_returns`` (each day
-        belongs to exactly one regime — the counts partition the sample).
+        belongs to exactly one regime: the counts partition the sample).
 
     Returns
     -------

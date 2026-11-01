@@ -1,6 +1,6 @@
 """Transaction-cost analysis for OTC FX executions.
 
-Benchmarks are the FX-native set — **arrival price**, **interval TWAP**
+Benchmarks are the FX-native set: **arrival price**, **interval TWAP**
 and the **WM/R 4pm London fix** (5-minute window TWAP).  There is no
 VWAP benchmark because there is no consolidated FX volume tape.
 
@@ -10,12 +10,12 @@ arrival mid, unit-tested to 1e-10):
 
 ``IS = spread+temporary  +  permanent impact  +  market drift``
 
-* spread+temporary — fill price vs the pre-trade mid of its bucket
+* spread+temporary: fill price vs the pre-trade mid of its bucket
   (quoted half-spread, sqrt temporary impact, and any last-look
   requote/penalty cost);
-* permanent impact — the part of the mid move caused by our own earlier
+* permanent impact: the part of the mid move caused by our own earlier
   child orders;
-* market drift — everything else the mid did between arrival and each
+* market drift: everything else the mid did between arrival and each
   child order (session vol plus any alpha drift: the "cost of waiting").
 """
 
@@ -214,7 +214,7 @@ def venue_comparison(results: dict[str, ExecutionResult]) -> dict[str, dict[str,
         Per venue: ``quoted_half_spread_pips`` (qty-weighted average of
         *first-quote* half spreads), ``temp_impact_pips`` (qty-weighted
         temporary impact), ``effective_cost_pips`` (fills vs the
-        contemporaneous pre-trade mids — the controllable "spread +
+        contemporaneous pre-trade mids: the controllable "spread +
         temporary" cost, which is the venue-attributable part of IS),
         ``rejection_rate``, ``rejection_cost_pips``.  Exact identity
         (tested): ``effective = quoted_half_spread + temp_impact +

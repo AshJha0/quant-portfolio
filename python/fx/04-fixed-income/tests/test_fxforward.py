@@ -44,7 +44,7 @@ class TestCIPIdentities:
 
     def test_triangular_consistency_to_1e12(self, market):
         # EURJPY forward must equal EURUSD forward * USDJPY forward when
-        # spots are triangular-consistent — with the same three curves this
+        # spots are triangular-consistent: with the same three curves this
         # is an exact identity of CIP.
         usd = market.domestic_curve
         eur = market.foreign_curve

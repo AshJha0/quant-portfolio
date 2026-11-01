@@ -18,7 +18,7 @@ def test_implied_vol_round_trip():
 
 def test_implied_vol_round_trip_across_moneyness():
     # Deep ITM combined with low vol (e.g. K=60, sigma=10% at S=100) is
-    # deliberately excluded here: vega is tiny in that corner, so the
+    # excluded on purpose here: vega is tiny in that corner, so the
     # price carries almost no information about sigma and the round
     # trip is imprecise by design, not by bug -- see
     # test_edge_cases.py::test_deep_itm_low_vol_round_trip_is_imprecise

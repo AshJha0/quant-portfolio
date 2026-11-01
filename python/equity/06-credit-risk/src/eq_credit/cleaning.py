@@ -14,7 +14,7 @@ Leakage guard
 ``FORBIDDEN_POST_OUTCOME_FIELDS`` is the documented list of fields that are
 functions of the default outcome (write-offs, recoveries, arrears realised
 after origination).  :func:`check_leakage` refuses any feature list touching
-them — this is a hard control, mirroring SR 11-7-style model risk controls.
+them: this is a hard control, mirroring SR 11-7-style model risk controls.
 """
 
 from __future__ import annotations

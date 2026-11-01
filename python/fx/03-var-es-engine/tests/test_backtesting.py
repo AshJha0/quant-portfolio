@@ -297,7 +297,7 @@ def test_rolling_backtest_shapes_and_window():
 
 
 def test_garch_data_parametric_normal_fails_fhs_passes():
-    """The flagship backtest story: on GARCH-simulated FX data over 500
+    """The main backtest story: on GARCH-simulated FX data over 500
     days, unconditional parametric-normal VaR gets clustered exceptions
     and fails conditional coverage; FHS passes."""
     from fx_var import Book, Spot, historical_var, parametric_var

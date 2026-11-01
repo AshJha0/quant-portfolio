@@ -211,7 +211,7 @@ def _brentq(f, a: float, b: float, xtol: float) -> float:
 
 
 def _pa_peak_strike(F: float, T: float, sigma: float) -> float:
-    """Strike maximising K*N(d2(K)) — the fold point of the PA call delta.
+    """Strike maximising K*N(d2(K)): the fold point of the PA call delta.
 
     Setting d/dK [K N(d2)] = 0 gives ``N(d2) sigma sqrt(T) = n(d2)``,
     a one-dimensional root in d2 (unique: LHS increasing, RHS

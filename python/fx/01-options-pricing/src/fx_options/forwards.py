@@ -4,7 +4,7 @@ Covered interest parity:  ``F = S * exp((r_d - r_f) * T)``.
 A domestic investor can replicate the forward by borrowing domestic cash,
 buying spot foreign currency and depositing it at ``r_f``; absence of
 arbitrage forces the forward to the CIP level (abstracting from the
-cross-currency basis — see docs/METHODOLOGY.md assumption register).
+cross-currency basis: see docs/METHODOLOGY.md assumption register).
 
 Forward points are quoted as ``(F - S)`` scaled by the pair's pip factor
 (1e4 for most pairs, 1e2 for JPY-quoted pairs).

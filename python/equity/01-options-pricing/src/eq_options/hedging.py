@@ -17,7 +17,7 @@ Key facts this module demonstrates (and the tests verify):
                              * S_t^2 * Gamma_hedge(S_t, t) dt
 
   so selling at implied above realized and delta-hedging earns the gamma-
-  weighted vol spread — model risk made visible.
+  weighted vol spread: model risk made visible.
 * Proportional transaction costs drag the mean P&L down and grow with
   rebalancing frequency.
 

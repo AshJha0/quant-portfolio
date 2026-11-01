@@ -11,7 +11,7 @@ State machine
 -------------
 flat -> short spread when ``z >= entry``; flat -> long when ``z <= -entry``;
 exit to flat when the z-score reverts inside ``|z| <= exit``; hard stop when
-the z-score moves further to ``|z| >= stop`` (regime-break protection — see
+the z-score moves further to ``|z| >= stop`` (regime-break protection: see
 the SNB case study in docs/VALIDATION.md); time stop after ``max_holding``
 bars.  After any exit the machine is flat for at least one bar (no same-bar
 reversal), so positions can never jump -1 -> +1 directly.
@@ -119,7 +119,7 @@ def generate_positions(
         Time stop in bars; ``None`` disables.
     allow_long, allow_short : bool arrays, optional
         Per-bar entry permissions (used by the carry filter).  They gate
-        *entries only* — open positions are managed regardless.
+        *entries only*: open positions are managed regardless.
 
     Returns
     -------
@@ -252,16 +252,16 @@ def vol_target_scale(
     ``scale_t = target_vol / realised_ann_vol_t`` where the realised vol is the
     rolling standard deviation of daily spread changes up to and including
     ``t`` (annualised).  The scale applied at ``t`` uses only data through
-    ``t`` — combined with the ``positions[t]`` timing convention this is
+    ``t``: combined with the ``positions[t]`` timing convention this is
     lookahead-free.  Capped at ``max_leverage``: this cap is exactly what a
     vol-targeted book does NOT have when a pegged spread's realised vol
-    collapses — see the SNB floor case study, where uncapped vol targeting
+    collapses: see the SNB floor case study, where uncapped vol targeting
     maximises leverage right before the break.
 
     Returns
     -------
     pandas.Series
-        Scale factor (NaN during warmup — treat as 0 exposure).
+        Scale factor (NaN during warmup: treat as 0 exposure).
     """
     require_finite(target_vol=target_vol, ann_factor=ann_factor,
                    max_leverage=max_leverage)

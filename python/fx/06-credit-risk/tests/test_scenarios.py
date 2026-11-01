@@ -69,7 +69,7 @@ def test_pipeline_discriminates_in_and_out_of_time(pipeline):
 
 def test_reserve_cover_woe_shows_threshold(pipeline):
     """The binned WOE for reserve cover must be riskier in the lowest bin than
-    the highest — recovering the planted below-3-months threshold effect."""
+    the highest: recovering the planted below-3-months threshold effect."""
     _, _, _, tables, _ = pipeline
     t = tables["reserves_import_cover"]
     nums = t.numeric_bins
@@ -79,7 +79,7 @@ def test_reserve_cover_woe_shows_threshold(pipeline):
 
 def test_planted_contagion_year_breaks_calibration(pipeline):
     """2020 (global contagion, planted): observed default rate far exceeds the
-    scorecard's predicted mean PD — contagion breaks calibration out-of-time."""
+    scorecard's predicted mean PD: contagion breaks calibration out-of-time."""
     _, _, test, tables, fit = pipeline
     y2020 = test[test["year"] == 2020]
     pd_hat = predict_pd(fit, _transform(y2020, tables))
@@ -144,7 +144,7 @@ def test_country_holdout_generalisation():
 
 
 def test_low_default_bootstrap_ci_is_wide(pipeline):
-    """Out-of-time window has few events: honest AUC CI is wide (>~5 Gini pts)."""
+    """Out-of-time window has few events: a correct AUC CI is wide (>~5 Gini pts)."""
     _, _, test, tables, fit = pipeline
     pd_te = predict_pd(fit, _transform(test, tables))
     point, lo, hi = bootstrap_auc_ci(test["default"].to_numpy(float), pd_te,

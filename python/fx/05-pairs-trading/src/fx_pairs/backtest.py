@@ -150,11 +150,11 @@ def run_backtest(
     beta : float or pandas.Series
         Hedge ratio (pair-2 units per pair-1 unit).
     pair1, pair2 : str
-        6-letter pair codes — used only for pip size (0.01 for ``...JPY``).
+        6-letter pair codes: used only for pip size (0.01 for ``...JPY``).
     pip_spread_1, pip_spread_2 : float
         Full quoted bid-ask spread in pips; half is paid per side.
     rates : dict, optional
-        ``{"rb1": .., "rq1": .., "rb2": .., "rq2": ..}`` — annualised deposit
+        ``{"rb1": .., "rq1": .., "rb2": .., "rq2": ..}``: annualised deposit
         rates (scalars or Series) for base/quote of each pair.  ``None`` =>
         spot-only backtest (zero carry).
     notional : float
@@ -268,7 +268,7 @@ class WalkForwardWindow:
     """One formation/trading block of the walk-forward.
 
     Index positions are half-open: formation ``[f0, f1)``, trading
-    ``[t0, t1)``, with ``f1 == t0`` (formation strictly precedes trading —
+    ``[t0, t1)``, with ``f1 == t0`` (formation strictly precedes trading:
     no overlap, no lookahead).
     """
 

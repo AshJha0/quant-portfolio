@@ -45,7 +45,7 @@ def fetch_ecb_rates(base: str = "EUR", symbols: tuple[str, ...] = ("USD", "JPY",
     Raises
     ------
     LiveDataUnavailable
-        On any network or parsing failure — callers should degrade to
+        On any network or parsing failure: callers should degrade to
         synthetic data (`fx_options.data.synthetic`).
     """
     url = f"{_API}?base={base}&symbols={','.join(symbols)}"

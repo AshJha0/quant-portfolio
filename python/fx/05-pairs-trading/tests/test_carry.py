@@ -27,7 +27,7 @@ class TestDayCount:
         assert dt[1] == pytest.approx(1.0 / 365.0, abs=1e-15)
 
     def test_weekend_gap_is_three_days(self, bdays):
-        """Fri->Mon accrues 3/365 — our simplification of the real-world
+        """Fri->Mon accrues 3/365: our simplification of the real-world
         Wednesday 3-day swap (T+2 settlement shifts it; total is identical)."""
         dt = day_count_fractions(bdays)
         # index 5 is the Monday after the first Friday

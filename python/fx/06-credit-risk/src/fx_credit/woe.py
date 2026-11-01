@@ -26,7 +26,7 @@ with weak institutions), and silently imputing it would both bias the model
 and hide a data-quality problem.
 
 Leakage red-flag: a single feature with IV above ~1.0 almost never happens
-with honest ex-ante macro data; it is the classic signature of a
+with clean ex-ante macro data; it is the classic signature of a
 post-outcome field.  ``flag_leaky_iv`` encodes that rule.
 """
 
@@ -196,7 +196,7 @@ def woe_table(
             edges = np.array([uniq[0], uniq[0]])
         elif uniq.size <= n_bins:
             # low-cardinality feature (e.g. a 0/1 regime dummy): one bin per
-            # distinct value, split at midpoints — quantile edges would
+            # distinct value, split at midpoints: quantile edges would
             # collapse a dominant value into a single degenerate bin
             edges = np.r_[uniq[0], (uniq[:-1] + uniq[1:]) / 2.0, uniq[-1]]
         else:
@@ -233,7 +233,7 @@ def monotone_merge(table: WOETable) -> WOETable:
     The target direction is the sign of the correlation between bin index
     and WOE on the input table (i.e. the dominant trend).  Adjacent bins
     violating that direction are pooled and WOE/IV recomputed, repeatedly,
-    until monotone.  The missing bin is never merged — missingness has no
+    until monotone.  The missing bin is never merged: missingness has no
     natural order.
 
     Monotone WOE is required for a scorecard: risk managers must be able to
@@ -276,7 +276,7 @@ def monotone_merge(table: WOETable) -> WOETable:
 def woe_transform(x: np.ndarray | pd.Series, table: WOETable) -> np.ndarray:
     """Map raw feature values to their bin WOE.
 
-    NaN maps to the missing-bin WOE (0.0 if the table has no missing bin —
+    NaN maps to the missing-bin WOE (0.0 if the table has no missing bin:
     neutral for unseen missingness).  Out-of-range values are clamped to the
     first/last numeric bin.
     """
@@ -317,7 +317,7 @@ def iv_report(
 
 
 def flag_leaky_iv(iv_by_feature: dict[str, float], threshold: float = 1.0) -> list[str]:
-    """Features whose IV exceeds ``threshold`` — near-certain target leakage.
+    """Features whose IV exceeds ``threshold``: near-certain target leakage.
 
     Empirical rule of thumb: IV of 0.3-0.5 is already "suspiciously strong"
     for macro data; above ~1.0 the 'feature' is effectively an outcome

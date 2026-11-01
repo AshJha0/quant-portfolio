@@ -10,7 +10,7 @@ Supports European and American exercise.  American FX options trade OTC;
 the economically interesting case is an American *call* on a high-yielding
 foreign currency (``r_f > r_d``): the foreign carry lost by holding the
 option instead of the currency makes early exercise optimal, giving the
-American call a strictly positive premium over European — mirroring the
+American call a strictly positive premium over European: mirroring the
 dividend-yield story for equities.
 """
 

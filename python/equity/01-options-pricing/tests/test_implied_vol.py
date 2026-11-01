@@ -39,7 +39,7 @@ def test_round_trip_extreme_vols(sigma: float) -> None:
 
 
 def test_round_trip_deep_itm_low_vega() -> None:
-    """Deep ITM (K = 0.35 S) short-dated: vega is tiny — Newton must fall
+    """Deep ITM (K = 0.35 S) short-dated: vega is tiny: Newton must fall
     back to bisection/Brent gracefully."""
     S, K, T, r, q, sigma = 100.0, 35.0, 0.1, 0.03, 0.0, 1.2
     price = bs_price(S, K, T, r, sigma, q, "call")
