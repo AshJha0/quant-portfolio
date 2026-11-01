@@ -109,7 +109,7 @@ impl Xoshiro256PlusPlus {
     /// to pass straight into `ln` for Box-Muller.
     #[inline]
     pub fn next_uniform(&mut self) -> f64 {
-        ((self.next_u64() >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0) // 2^-53
+        uniform_from_bits(self.next_u64())
     }
 
     /// Standard normal draw N(0, 1) via trigonometric Box-Muller.
@@ -124,10 +124,9 @@ impl Xoshiro256PlusPlus {
         }
         let u1 = self.next_uniform();
         let u2 = self.next_uniform();
-        let radius = (-2.0 * u1.ln()).sqrt();
-        let theta = 2.0 * PI * u2;
-        self.cached_normal = Some(radius * theta.sin());
-        radius * theta.cos()
+        let (z0, z1) = box_muller(u1, u2);
+        self.cached_normal = Some(z1);
+        z0
     }
 
     /// Fill `out` with i.i.d. standard normal draws.
@@ -139,4 +138,32 @@ impl Xoshiro256PlusPlus {
             *z = self.standard_normal();
         }
     }
+
+    /// Fill `out` with raw [`next_u64`](Self::next_u64) outputs.
+    ///
+    /// Used by the multi-threaded Monte Carlo path: the raw stream is
+    /// drawn serially (about 1 ns per value), then Box-Muller runs in
+    /// parallel on fixed chunks. The stream is the one
+    /// [`standard_normal`](Self::standard_normal) would consume.
+    #[inline]
+    pub fn fill_u64(&mut self, out: &mut [u64]) {
+        for x in out.iter_mut() {
+            *x = self.next_u64();
+        }
+    }
+}
+
+/// Map a raw `u64` to the open interval (0, 1), as
+/// [`Xoshiro256PlusPlus::next_uniform`] does.
+#[inline]
+pub(crate) fn uniform_from_bits(x: u64) -> f64 {
+    ((x >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0) // 2^-53
+}
+
+/// Trigonometric Box-Muller: `(R cos(theta), R sin(theta))`.
+#[inline]
+pub(crate) fn box_muller(u1: f64, u2: f64) -> (f64, f64) {
+    let radius = (-2.0 * u1.ln()).sqrt();
+    let theta = 2.0 * PI * u2;
+    (radius * theta.cos(), radius * theta.sin())
 }
