@@ -96,7 +96,7 @@ def erc_weights(
         required for uniqueness; PSD with positive diagonal usually works.
     budget : (N,) array-like, optional
         Strictly positive risk budgets, normalised internally (default
-        equal budgets 1/N — true ERC).
+        equal budgets 1/N: true ERC).
     tol : float
         Convergence tolerance on the max absolute weight change per sweep.
     max_iter : int
@@ -120,7 +120,7 @@ def erc_weights(
     if np.any(diag <= 0.0):
         raise ValueError(
             "cov has non-positive diagonal entries (zero-volatility asset): "
-            "risk contributions are undefined — drop the asset or use "
+            "risk contributions are undefined: drop the asset or use "
             "psd_repair with a positive eigenvalue floor."
         )
     if budget is None:
@@ -213,7 +213,7 @@ def vol_target_overlay(
         Annualisation factor for the covariance frequency.
     max_leverage : float, optional
         Cap on L (gross scaling); breaching it clips L (documented desk
-        control — see DESK_GUIDE on deleveraging spirals).
+        control: see DESK_GUIDE on deleveraging spirals).
 
     Returns
     -------

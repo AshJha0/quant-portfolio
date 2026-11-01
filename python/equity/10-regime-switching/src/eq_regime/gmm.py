@@ -7,7 +7,7 @@ Implements the classic EM algorithm with:
   clusters remain positive-definite;
 * multiple seeded initialisations (k-means-lite + random restarts), keeping
   the best final log-likelihood;
-* per-iteration log-likelihood history — EM guarantees monotone
+* per-iteration log-likelihood history: EM guarantees monotone
   non-decreasing log-likelihood, and the test suite asserts this for EVERY
   iteration;
 * BIC / AIC for selecting the number of components.
@@ -68,7 +68,7 @@ def kmeans_lite(
     """Minimal Lloyd's k-means, returning cluster means (k x D).
 
     Initialises with k distinct random observations; empty clusters are
-    re-seeded from random points.  Used only to initialise EM — a handful of
+    re-seeded from random points.  Used only to initialise EM: a handful of
     iterations is enough.
     """
     t_len = x.shape[0]
@@ -328,7 +328,7 @@ def match_permutation(true_means: np.ndarray, est_means: np.ndarray) -> tuple[in
     """Best label permutation aligning estimated components with truth.
 
     Minimises the total Euclidean distance between ``true_means[i]`` and
-    ``est_means[perm[i]]`` over all permutations (K! search — fine for the
+    ``est_means[perm[i]]`` over all permutations (K! search: fine for the
     small K used in regime models).
 
     Returns

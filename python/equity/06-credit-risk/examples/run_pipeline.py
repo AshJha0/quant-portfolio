@@ -112,7 +112,7 @@ def main() -> None:
 
     print("\n-- Binning table: leverage (monotone, capped true effect) --")
     print(wt.binnings_["leverage"].table.to_string(index=False))
-    print("\n-- Binning table: current_ratio (U-shaped — WOE captures the")
+    print("\n-- Binning table: current_ratio (U-shaped: WOE captures the")
     print("   nonlinearity; a linear logit on the raw ratio misses it) --")
     print(wt.binnings_["current_ratio"].table.to_string(index=False))
 
@@ -126,7 +126,7 @@ def main() -> None:
     fit_woe_cr = fit_logistic(x_woe, train_w[TARGET], feature_names=["woe_cr"])
     auc_raw = roc_auc(train_w[TARGET].to_numpy(), fit_raw.predict_proba(x_raw))
     auc_woe = roc_auc(train_w[TARGET].to_numpy(), fit_woe_cr.predict_proba(x_woe))
-    print(f"\ncurrent_ratio alone — AUC raw linear logit: {auc_raw:.4f}  "
+    print(f"\ncurrent_ratio alone, AUC raw linear logit: {auc_raw:.4f}  "
           f"vs WOE logit: {auc_woe:.4f}")
 
     woe_train = wt.transform(train_w)

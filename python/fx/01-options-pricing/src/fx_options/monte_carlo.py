@@ -9,24 +9,24 @@ so terminal spot is sampled exactly:
 
 Variance reduction:
 
-* **Antithetic variates** — pairs (Z, -Z), estimator averaged per pair.
-* **Control variate** — the discounted terminal spot ``e^{-r_d T} S_T``
+* **Antithetic variates**: pairs (Z, -Z), estimator averaged per pair.
+* **Control variate**: the discounted terminal spot ``e^{-r_d T} S_T``
   is a martingale-adjusted quantity with known mean ``S e^{-r_f T}``
   (the value today of one unit of foreign currency delivered at T);
   the optimal coefficient is estimated from the sample covariance.
 
-Measure care — the digital example
+Measure care: the digital example
 ----------------------------------
 This module prices **cash-or-nothing digitals in either currency** to make
 the measure/numeraire choice explicit:
 
 * a *domestic-cash* digital pays 1 unit of quote ccy if S_T > K:
-  ``e^{-r_d T} N(phi d2)`` — plain expectation under the domestic measure;
+  ``e^{-r_d T} N(phi d2)``: plain expectation under the domestic measure;
 * a *foreign-cash* digital pays 1 unit of base ccy, worth ``S_T`` domestic
   at expiry: ``e^{-r_d T} E^d[S_T 1{...}] = S e^{-r_f T} N(phi d1)``.
   Equivalently, changing numeraire to the foreign money market account
   turns it into ``S e^{-r_f T} N^f(...)`` with the *foreign* risk-neutral
-  drift ``r_f - r_d`` *for the inverted pair* — the N(d1)/N(d2) split IS
+  drift ``r_f - r_d`` *for the inverted pair*: the N(d1)/N(d2) split IS
   the two-measure split.  Getting this wrong (discounting the foreign
   cash at ``e^{-r_f T}`` without converting, or using the wrong drift) is
   the classic quanto-style error; the MC here simulates only under the
@@ -226,7 +226,7 @@ def mc_digital_price(S: float, K: float, T: float, r_d: float, r_f: float,
     """Monte Carlo cash-or-nothing digital under the domestic measure.
 
     The foreign-cash digital's payoff is converted at the simulated
-    ``S_T`` and discounted at ``r_d`` — the numeraire-consistent way to
+    ``S_T`` and discounted at ``r_d``: the numeraire-consistent way to
     value a base-currency cash flow.  See module docstring.
     """
     phi = validate_option_type(option_type)

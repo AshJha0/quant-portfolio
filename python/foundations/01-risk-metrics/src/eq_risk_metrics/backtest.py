@@ -9,7 +9,7 @@ A VaR number that has never been backtested is a number, not a risk control
    handful of stressed weeks? Clustering means the model is missing a
    volatility regime shift even when the average rate looks right. That is
    Christoffersen's test, which is *not* implemented here (see
-   ``docs/METHODOLOGY.md``); this module deliberately covers the
+   ``docs/METHODOLOGY.md``); this module covers the
    unconditional half only, and says so.
 
 Sign convention matches the rest of the package: ``var`` values are

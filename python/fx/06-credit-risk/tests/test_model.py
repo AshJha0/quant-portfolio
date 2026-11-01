@@ -55,7 +55,7 @@ def test_irls_standard_errors_positive_and_sane(fitted):
 
 
 def test_intercept_only_analytic():
-    """Intercept-only MLE: logit(ybar), SE = 1/sqrt(n p (1-p)) — exact identities."""
+    """Intercept-only MLE: logit(ybar), SE = 1/sqrt(n p (1-p)): exact identities."""
     y = np.r_[np.ones(30), np.zeros(70)]
     X = np.empty((100, 0))
     fit = fit_logistic_irls(X, y)

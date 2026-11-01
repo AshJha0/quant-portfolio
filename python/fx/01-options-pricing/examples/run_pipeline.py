@@ -66,7 +66,7 @@ def pricing_section() -> None:
 
 
 def greeks_section() -> None:
-    header("3. GREEKS — both rhos, vanna/volga (EURUSD 6m ATMF call)")
+    header("3. GREEKS: both rhos, vanna/volga (EURUSD 6m ATMF call)")
     K = atm_forward_strike(EURUSD["S"], EURUSD["T"], EURUSD["r_d"],
                            EURUSD["r_f"])
     g = analytic_greeks(EURUSD["S"], K, EURUSD["T"], EURUSD["r_d"],
@@ -78,7 +78,7 @@ def greeks_section() -> None:
 
 
 def delta_conventions_section() -> None:
-    header("4. DELTA CONVENTIONS — same option, four deltas")
+    header("4. DELTA CONVENTIONS: same option, four deltas")
     for name, mkt in (("EURUSD", EURUSD), ("USDJPY", USDJPY)):
         K = atm_forward_strike(mkt["S"], mkt["T"], mkt["r_d"], mkt["r_f"])
         rows = {conv: delta(mkt["S"], K, mkt["T"], mkt["r_d"], mkt["r_f"],
@@ -122,7 +122,7 @@ def implied_vol_section() -> None:
 
 
 def convergence_section() -> None:
-    header("6. CONVERGENCE — binomial and Monte Carlo vs GK (EURUSD)")
+    header("6. CONVERGENCE: binomial and Monte Carlo vs GK (EURUSD)")
     K = atm_forward_strike(EURUSD["S"], EURUSD["T"], EURUSD["r_d"],
                            EURUSD["r_f"])
     args = (EURUSD["S"], K, EURUSD["T"], EURUSD["r_d"], EURUSD["r_f"],
@@ -173,19 +173,19 @@ def hedging_section() -> None:
 
 
 def vol_quotes_section() -> None:
-    header("8. SYNTHETIC VOL QUOTES (RR/BF terminology — smile is project 9)")
+    header("8. SYNTHETIC VOL QUOTES (RR/BF terminology: smile is project 9)")
     for q in synthetic_vol_quotes(base_atm=0.0825, skew=-0.0125,
                                   smile=0.0030, rng=11):
         print(f"  {q.tenor_years * 12:4.1f}m  ATM={q.atm:.4f}  "
               f"25dRR={q.rr25:+.4f}  25dBF={q.bf25:.4f}  "
               f"10dRR={q.rr10:+.4f}  10dBF={q.bf10:.4f}")
-    print("  (RR<0: base-ccy puts bid — EURUSD-style risk-off skew. "
+    print("  (RR<0: base-ccy puts bid: EURUSD-style risk-off skew. "
           "Pricing here is flat-vol GK; smile construction in project 9.)")
 
 
 def main() -> None:
     t0 = time.time()
-    print("FX OPTIONS PRICING & GREEKS ENGINE — pipeline report")
+    print("FX OPTIONS PRICING & GREEKS ENGINE: pipeline report")
     print("Conventions: BASE/QUOTE quotes; r_d = quote ccy, r_f = base ccy.")
     print("USDJPY notes: pips are 0.01; premia conventionally in USD "
           "(base ccy) -> premium-adjusted deltas are standard; Tokyo cut.")

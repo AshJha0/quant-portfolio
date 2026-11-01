@@ -4,19 +4,19 @@ Everything here is deterministic given the ``seed`` and runs fully offline.
 The sovereign panel has a *known ground truth*: a latent logistic
 crisis/default model with
 
-* a **nonlinear reserve-cover effect** — import cover only matters below a
+* a **nonlinear reserve-cover effect**: import cover only matters below a
   threshold (hinge ``max(0, THRESHOLD - cover)``), mirroring the empirical
   early-warning literature (reserves adequacy is a tail protection, not a
   linear driver);
-* **panel structure** — country fixed effects and AR(1) feature dynamics, so
+* **panel structure**: country fixed effects and AR(1) feature dynamics, so
   rows within a country are serially correlated (which is exactly why a
   random row split leaks information; see ``cleaning.time_split``);
-* **contagion years** — regional crisis flags in fixed calendar years
+* **contagion years**: regional crisis flags in fixed calendar years
   (Asia 1997-98, LatAm 2001-02, EMEA 1998/2008) plus a *planted global
   contagion year in 2020* that lands in the out-of-time window and stresses
   calibration;
-* **deliberately leaky post-crisis fields** (``imf_program_next_year``,
-  ``devaluation_next_year_pct``) that are functions of the outcome — used to
+* **planted leaky post-crisis fields** (``imf_program_next_year``,
+  ``devaluation_next_year_pct``) that are functions of the outcome: used to
   demonstrate the leakage guards in ``cleaning`` and the IV red-flag in
   ``woe``.
 """
@@ -70,7 +70,7 @@ FEATURES: tuple[str, ...] = (
     "contagion",
 )
 
-#: Features used by the scorecard.  ``contagion`` is deliberately EXCLUDED:
+#: Features used by the scorecard.  ``contagion`` is EXCLUDED on purpose:
 #: it is flagged contemporaneously with the regional crisis (not observable
 #: ex ante at the annual horizon), so using it would be borderline outcome
 #: leakage; the desk applies contagion as a stress overlay instead.  Its

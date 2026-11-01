@@ -130,7 +130,7 @@ identical samples give exactly 0.
    out-of-sample HL p-value 4.7e-06, realised default rate 4.78% vs 3.81%
    predicted, two grades red. The synthetic OOT stress is a pure intercept
    shift, which the HL test is built to catch.  A PIT scorecard *cannot* see a
-   calibration-level shift coming from features alone — note PSI stayed
+   calibration-level shift coming from features alone: note PSI stayed
    < 0.10 while calibration failed, which is why monitoring must track
    realised-vs-predicted rates, not PSI alone.
 2. **Target leakage.**  Planted demo: `writeoff_flag` (a post-outcome field
@@ -138,7 +138,7 @@ identical samples give exactly 0.
    (`SuspiciousIVWarning`, `test_leaky_feature_triggers_suspicious_iv_warning`)
    and the cleaning-layer deny-list refuses it outright
    (`LeakageError`, demonstrated in the pipeline).  Both controls fire
-   independently — defence in depth.
+   independently: defence in depth.
 3. **Low-default portfolios.**  With zero defaults the WOE, the logit MLE and
    AUC are all undefined; every entry point raises an informative
    `ValueError` (`test_zero_defaults_raises_everywhere`) rather than
@@ -157,7 +157,7 @@ identical samples give exactly 0.
    quantile is extremely sensitive to ρ: at PD 2%, moving ρ from 0.05 to 0.30
    multiplies the 99.9% default-rate quantile several-fold
    (`test_vasicek_higher_rho_fatter_tail`).  A single flat ρ also ignores
-   sector concentration — the model treats a 12%-construction book as fully
+   sector concentration: the model treats a 12%-construction book as fully
    diversified.  Multi-factor or sector-stress overlays are required for
    ICAAP use.
 7. **Basel K non-monotonicity at extreme PDs.**  K peaks near PD ≈ 30% and

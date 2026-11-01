@@ -3,7 +3,7 @@
 Conventions match :mod:`eq_options.black_scholes`: continuously compounded
 annualised ``r`` and ``q`` (ACT/365F), ``T`` in years, ``sigma`` annualised.
 
-The backward induction is vectorised over tree nodes with NumPy — the only
+The backward induction is vectorised over tree nodes with NumPy: the only
 Python-level loop is over the ``n_steps`` time slices.
 
 Edge-case policy
@@ -101,7 +101,7 @@ def crr_price(
     ------
     ValueError
         On negative/NaN inputs, invalid ``option_type``/``exercise``, or if
-        the risk-neutral probability falls outside (0, 1) — a sign that
+        the risk-neutral probability falls outside (0, 1): a sign that
         ``dt`` is too large for the given ``r - q`` and ``sigma``.
     """
     validate_inputs(S, K, T, sigma, option_type)

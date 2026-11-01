@@ -44,7 +44,7 @@ def _check_scores(score: np.ndarray, y: np.ndarray) -> np.ndarray:
     if s.shape != y.shape:
         raise ValueError("score and y must have equal length")
     if not np.all(np.isfinite(s)):
-        raise ValueError("score contains NaN/Inf — clean or drop before validation")
+        raise ValueError("score contains NaN/Inf: clean or drop before validation")
     return s
 
 
@@ -52,7 +52,7 @@ def auc(y: np.ndarray, score: np.ndarray) -> float:
     """ROC AUC via the Mann-Whitney U statistic with average ranks (tie-exact).
 
     ``AUC = (R1 - n1(n1+1)/2) / (n1 n0)`` where ``R1`` is the rank-sum of the
-    positive class using average ranks — identical (to floating point) to
+    positive class using average ranks: identical (to floating point) to
     ``sklearn.metrics.roc_auc_score`` including tied scores.
     """
     y = _check_binary(y)
@@ -119,7 +119,7 @@ def hosmer_lemeshow(
     is deprecated; it warns and keeps the in-sample ``n_groups - 2``.
 
     Low p-value = evidence of *mis-calibration* (predicted PD levels wrong),
-    even when discrimination (AUC) is fine — the typical failure in a
+    even when discrimination (AUC) is fine: the typical failure in a
     contagion year.
     """
     if out_of_sample is None:
@@ -176,7 +176,7 @@ def psi(
     if e.size == 0 or a.size == 0:
         raise ValueError("both samples must be non-empty")
     if not (np.all(np.isfinite(e)) and np.all(np.isfinite(a))):
-        raise ValueError("PSI inputs contain NaN/Inf — clean or drop before comparison")
+        raise ValueError("PSI inputs contain NaN/Inf: clean or drop before comparison")
     if edges is None:
         edges = np.unique(np.quantile(e, np.linspace(0, 1, n_bins + 1)))
     edges = np.asarray(edges, dtype=float)
@@ -197,7 +197,7 @@ def bootstrap_auc_ci(
 ) -> tuple[float, float, float]:
     """Percentile bootstrap CI for AUC (resampling rows with replacement).
 
-    With a low-default portfolio the CI is *wide* — the correct statement of
+    With a low-default portfolio the CI is *wide*: the correct statement of
     how little the default history pins down discrimination (documented and
     demonstrated in VALIDATION.md).
 
@@ -258,7 +258,7 @@ def within_country_autocorrelation(
         warnings.warn(
             f"mean within-country lag-1 autocorrelation of {col!r} is "
             f"{mean_ac:.3f} > {warn_threshold}: panel rows are serially "
-            "dependent — use time/country splits, not random row splits, and "
+            "dependent: use time/country splits, not random row splits, and "
             "treat i.i.d.-based standard errors as anti-conservative.",
             UserWarning,
             stacklevel=2,

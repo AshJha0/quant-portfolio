@@ -1,4 +1,4 @@
-# Validation — Evidence, Cross-Checks, Failure Modes
+# Validation: Evidence, Cross-Checks, Failure Modes
 
 All numbers below are produced by `examples/run_pipeline.py` (seed 42) and
 locked in by the 218-test suite (`pytest -q`, offline, about 30 s). All data are synthetic. Section 6 maps
@@ -99,7 +99,7 @@ the expected sign), but a peg
 suppresses *observed* volatility while devaluation risk accumulates
 (Argentina 2001: cover ratios fine until convertibility died). In the
 generator, pegged countries carry +0.45 latent log-odds; in real data the
-scorecard sees calm macro inputs right up to the break — PD jumps
+scorecard sees calm macro inputs right up to the break: PD jumps
 discontinuously. Control: peg-country limits carry a mandatory qualitative
 overlay (DESK_GUIDE §3).
 
@@ -117,7 +117,7 @@ is the settlement-side cousin (DESK_GUIDE §3).
 ### 4.5 Data staleness
 Panel features are annual; a Guidotti ratio observed at year-end reaches the
 model 6-18 months later in production (A2). Russia's short-term debt build-up
-in 1997-98 was visible in *vintage* data only with a lag — an annual-frequency
+in 1997-98 was visible in *vintage* data only with a lag: an annual-frequency
 scorecard cannot be an early-warning siren; it sets through-the-cycle limits
 while market-based overlays (CDS, reserves drain at weekly frequency) handle
 timing.
@@ -143,7 +143,7 @@ stops at `max_iter`, and the pipeline refuses a non-converged fit.
   carry exposure (`test_bcbs_window_creates_exposure_on_receive_before_pay_trade`). Tests: `test_settlement.py` (hand-checked
   windows, PvP zeroing, same-currency netting, cross-counterparty isolation).
 - Forward PFE (EUR 10m, 1y, 100k paths): 99% PFE 1.68m → 2.41m → 3.00m →
-  3.52m at quarterly points — strictly increasing, decreasing increments
+  3.52m at quarterly points: strictly increasing, decreasing increments
   (concavity), corr(PFE, √t) > 0.99, PFE99 > PFE95 everywhere. Netting:
   offsetting pair 3.54m → 0; identical same-direction trades: netting benefit
   exactly zero (equality bound). Tests: `test_exposure.py`.
@@ -171,6 +171,6 @@ stops at `max_iter`, and the pipeline refuses a non-converged fit.
 | Network access attempted | `test_live_loader_is_network_guarded` |
 | Pegged pair, vol = 0 (deterministic exposure, PFE = EE) | `test_edge_cases_review.py::test_pegged_pair_zero_vol_exposure_pfe_equals_ee` |
 | Distressed sovereign PD → 1 (hazard explodes, K → 0, CVA bounded) | `test_hazard_explodes_as_pd_to_one`, `test_capital_vanishes_at_both_pd_extremes_high_rho`, `test_cva_bounded_by_lgd_times_peak_ee` |
-| NaN/Inf inputs (paths, EL, Vasicek, expected exposure loss, AUC/KS/PSI/HL, USD rates) | `test_edge_cases_review.py` NaN/Inf block — every public entry point raises `ValueError` |
+| NaN/Inf inputs (paths, EL, Vasicek, expected exposure loss, AUC/KS/PSI/HL, USD rates) | `test_edge_cases_review.py` NaN/Inf block: every public entry point raises `ValueError` |
 | Tiny samples (2-row AUC, 2-row WOE), constant scores | `test_auc_minimal_two_row_sample`, `test_woe_single_row_per_class`, `test_auc_constant_score_is_half`, `test_ks_constant_score_is_zero` |
 | Empty / all-CLS settlement book | `test_empty_trade_book_zero_exposure`, `test_netting_all_cls_book_zero_exposure` |

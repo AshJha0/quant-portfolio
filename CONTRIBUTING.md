@@ -81,9 +81,8 @@ These apply to every doc, docstring and commit message.
 
 - Short declarative sentences. No em-dashes: use a full stop, a comma or a
   colon.
-- Do not use these words and phrases: flagship, production-grade,
-  world-class, honest or honestly, deliberately, genuinely, "real desk",
-  "same discipline", "not an oversight", "verified, not claimed".
+- No marketing superlatives and no sincerity or intent markers. The
+  banned word and phrase list is in `.github/scripts/style_report.py`.
 - The hiring-process word that starts with "intervie" must not appear
   anywhere. CI fails if it does.
 - A result from synthetic data says "synthetic" in the same sentence.

@@ -3,10 +3,10 @@
 Model: ``P(default=1 | x) = sigmoid(b0 + x' b)``, fitted by iteratively
 reweighted least squares (exact Newton steps on the log-likelihood).  With
 ``ridge > 0`` an L2 penalty ``(ridge/2)||b||^2`` (intercept unpenalised) is
-added — used for separation control, NOT for the production scorecard.
+added: used for separation control, NOT for the production scorecard.
 
 Standard errors come from the inverse Fisher information ``(X'WX)^{-1}`` at
-the MLE (for ridge > 0, ``(X'WX + λI)^{-1}`` — a common, slightly
+the MLE (for ridge > 0, ``(X'WX + λI)^{-1}``: a common, slightly
 anti-conservative approximation, documented as such).
 
 Scorecard scaling: ``score = offset + factor * ln(odds_good)`` with

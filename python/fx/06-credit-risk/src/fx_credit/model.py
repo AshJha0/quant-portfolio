@@ -2,11 +2,11 @@
 
 The logistic model is fitted by iteratively reweighted least squares
 (Newton-Raphson on the log-likelihood), with standard errors from the
-observed information matrix — no sklearn in the core path.  sklearn is used
+observed information matrix: no sklearn in the core path.  sklearn is used
 only as an external cross-check (see tests: coefficients match to 1e-6).
 
 Separation: with a low-default portfolio and strong features, (quasi-)
-complete separation is a real hazard — the MLE diverges.  ``fit_logistic_irls``
+complete separation is a real hazard: the MLE diverges.  ``fit_logistic_irls``
 detects diverging coefficients and raises ``ValueError`` unless a small ridge
 penalty is supplied (``ridge > 0``), which restores a finite maximiser.
 """
@@ -136,7 +136,7 @@ def fit_logistic_irls(
             delta = np.linalg.solve(H, g)
         except np.linalg.LinAlgError as exc:
             raise ValueError(
-                "singular information matrix — collinear features or separation; "
+                "singular information matrix: collinear features or separation; "
                 "drop collinear columns or set ridge>0"
             ) from exc
         beta = beta + delta

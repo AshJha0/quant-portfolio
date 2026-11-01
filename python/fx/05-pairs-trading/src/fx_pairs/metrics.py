@@ -148,8 +148,8 @@ def turnover(positions: pd.Series | np.ndarray, ann_factor: float = 252.0) -> fl
 def trade_pnls(result) -> list[float]:
     """Per-trade total P&L from a BacktestResult's trade list.
 
-    Trade P&L is the sum of total P&L booked over ``(entry, exit]`` — the bars
-    on which the trade's position was earning returns — plus the entry cost
+    Trade P&L is the sum of total P&L booked over ``(entry, exit]``: the bars
+    on which the trade's position was earning returns: plus the entry cost
     booked at the entry bar.
     """
     total = result.total_pnl.to_numpy()
@@ -164,7 +164,7 @@ def trade_pnls(result) -> list[float]:
 def summarize(result, ann_factor: float = 252.0) -> dict[str, float]:
     """One-line summary of a BacktestResult (used by the pipeline and docs).
 
-    Includes the carry-vs-spot decomposition — the number that tells you
+    Includes the carry-vs-spot decomposition: the number that tells you
     whether the 'mean reversion' P&L was really carry in disguise.
     """
     r = result.total_pnl

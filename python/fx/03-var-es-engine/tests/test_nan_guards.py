@@ -6,7 +6,7 @@ long tail of bare scalar arguments guarded only by an inequality:
 ``if horizon_days <= 0: raise``, ``if sigma < 0: raise``,
 ``if df <= 2: raise``, ``if strike <= 0: raise``, ``if k <= 0: raise``.
 Every comparison against NaN evaluates to False, so each of those guards
-silently accepted NaN and the engine returned ``nan`` as the VaR — the worst
+silently accepted NaN and the engine returned ``nan`` as the VaR: the worst
 possible failure mode for a number that feeds a limit check and a
 regulatory capital multiplier.
 

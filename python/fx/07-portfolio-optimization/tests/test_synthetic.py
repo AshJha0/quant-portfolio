@@ -79,7 +79,7 @@ def test_spots_track_ppp_loosely(panel):
     gap = np.log(panel.spots / panel.ppp)
     # stationary-ish misvaluation: bounded, not a divergent random walk
     # (crash drift can push high-carry currencies persistently below PPP,
-    # so the band is wide — see METHODOLOGY assumptions register)
+    # so the band is wide: see METHODOLOGY assumptions register)
     assert gap.abs().to_numpy().max() < 2.0
     # G10 misvaluations stay in a tighter economic range
     assert gap[["EUR", "GBP", "CHF"]].abs().to_numpy().max() < 1.0

@@ -7,7 +7,7 @@ Mechanics (per day, oldest first; simple returns):
 
 * Day t is a REBALANCE day if ``(t - first) % rebalance_every == 0`` with
   ``first = window`` (the first day with a full estimation history).
-* On a rebalance day the strategy sees ``returns.iloc[t - window : t]`` —
+* On a rebalance day the strategy sees ``returns.iloc[t - window : t]``:
   the window ends at day t-1, STRICTLY before the day whose return the
   new weights earn. No estimate ever uses information from day t onward.
 * Turnover at a rebalance is ``sum_i |w_target_i - w_drift_i|`` where

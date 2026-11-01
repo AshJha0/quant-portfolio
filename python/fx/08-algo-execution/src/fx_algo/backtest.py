@@ -21,7 +21,7 @@ Units
 -----
 * Positions: base-currency notional units (1.0 = 1 unit of base).
 * ``*_quote`` columns: quote-currency P&L per unit base notional.
-* ``*_pips`` columns: quote P&L divided by ``pip_size`` — "pips earned
+* ``*_pips`` columns: quote P&L divided by ``pip_size``: "pips earned
   per unit of position", the desk-standard intraday metric.
 * Base-ccy P&L (CONVENTIONS.md: P&L reported in base ccy where needed)
   is ``net_quote / close`` and provided as ``net_base``.

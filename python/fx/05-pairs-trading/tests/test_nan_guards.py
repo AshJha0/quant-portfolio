@@ -3,13 +3,13 @@
 Two distinct defect patterns are pinned here, both of which produced a
 *plausible-looking* wrong answer rather than an exception.
 
-**Pattern 1 — inequality-only guards.** ``if sigma <= 0: raise``,
+**Pattern 1, inequality-only guards.** ``if sigma <= 0: raise``,
 ``if stop <= entry: raise``, ``if notional <= 0: raise``. Every comparison
 against NaN is False, so NaN passed. The consequences are not cosmetic:
 
 * a NaN ``sigma`` in :func:`fx_pairs.zscore` gives an all-NaN z-score, the
   state machine stays flat for the whole sample and the backtest reports a
-  clean zero-P&L run — a strategy that never traded, reported as a result;
+  clean zero-P&L run: a strategy that never traded, reported as a result;
 * a NaN ``stop`` in :func:`fx_pairs.generate_positions` **disables the hard
   stop**, because ``state * z <= -nan`` is always False. That stop is the
   control that exists to survive a regime break (the SNB floor case study in
@@ -18,13 +18,13 @@ against NaN is False, so NaN passed. The consequences are not cosmetic:
   ``abs(rho) >= min_abs_corr`` False and returns an empty candidate table,
   indistinguishable from "the universe contains no pairs".
 
-**Pattern 2 — ``isnan``-only guards on series.** `adf_test`,
+**Pattern 2: ``isnan``-only guards on series.** `adf_test`,
 `engle_granger`, `_validate_spread` and `run_backtest` all tested
 ``np.isnan(...)`` and therefore accepted **±Inf**. Inf is the realistic
 corruption in this package, not NaN: a zero or missing price becomes
 ``-inf`` the instant it passes through ``log``. Inf then poisons the OLS
 design matrix, `lstsq` returns NaN coefficients, the ADF tau is NaN, and
-``bool(nan < critical_value)`` is False — so `engle_granger` reported
+``bool(nan < critical_value)`` is False, so `engle_granger` reported
 **"not cointegrated"** on data it could not test at all. A false negative
 that looks like a correct one.
 """

@@ -30,7 +30,7 @@ Conventions
 * Day-count fractions come from **actual calendar-day gaps / 365**, so a
   Friday-to-Monday step accrues 3 days.  Real tom-next rolls apply the
   3-day weekend charge on **Wednesday** (spot T+2 settles Monday); we apply
-  it on Monday instead — same total accrual, shifted two business days.
+  it on Monday instead: same total accrual, shifted two business days.
   This T+2 wrinkle (and the triple swap on Wednesdays) is documented in
   docs/METHODOLOGY.md and DESK_GUIDE.md.
 * Accrual timing: the carry earned over ``(t-1, t]`` uses the rates known at
@@ -59,7 +59,7 @@ def day_count_fractions(index: pd.Index, basis: float = 365.0) -> np.ndarray:
     """ACT/basis year fractions between consecutive index dates.
 
     Element 0 is 0 (nothing accrues before the first observation).  A
-    Friday-to-Monday step yields 3/365 (weekend accrual — see module notes on
+    Friday-to-Monday step yields 3/365 (weekend accrual: see module notes on
     the real-world Wednesday T+2 wrinkle).  For a non-datetime index, each
     step is treated as one business day on a 252-step grid (1/252).
 
@@ -210,7 +210,7 @@ def carry_adjusted_log_price(
     quote currency, rolling daily.  Spreads built on carry-adjusted log
     prices measure *total-return* mean reversion; the difference between the
     spot spread and the carry-adjusted spread is exactly the cumulated rate
-    differential — the carry drag/boost of the trade.
+    differential: the carry drag/boost of the trade.
 
     Identity (tested): ``carry_adjusted - log(S)`` equals the cumulative sum
     of :func:`carry_accrual`.

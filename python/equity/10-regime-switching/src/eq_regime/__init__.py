@@ -1,4 +1,4 @@
-"""eq_regime — equity regime-switching quant strategy.
+"""eq_regime: equity regime-switching quant strategy.
 
 Pipeline: feature engineering -> PCA -> HMM / GMM -> regime detection
 (ONLINE filtered probabilities) -> regime-conditional signals -> portfolio

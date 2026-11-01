@@ -10,7 +10,7 @@ Conventions
 The estimation-error problem
 ----------------------------
 Merton (1980): over T periods the standard error of a mean estimate is
-sigma/sqrt(T) *regardless of sampling frequency* — sampling daily instead
+sigma/sqrt(T) *regardless of sampling frequency*: sampling daily instead
 of monthly improves variance estimates but not mean estimates. With
 sigma ~ 16%/yr and 10 years of data the SE of the annual mean is ~5%,
 the same order as the equity risk premium itself. Mean-variance weights
@@ -186,7 +186,7 @@ def implied_equilibrium_returns(
         pi = delta * Sigma @ w_mkt.
 
     Feeding ``pi`` back into the tangency portfolio reproduces
-    ``w_mkt`` exactly (round-trip identity) — this is the
+    ``w_mkt`` exactly (round-trip identity): this is the
     Black-Litterman prior.
 
     Parameters

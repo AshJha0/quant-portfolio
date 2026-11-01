@@ -16,7 +16,7 @@ Conventions
   ``half_life_days = ln 2 / (kappa * dt)``.
 * MLE is the exact Gaussian transition-density likelihood; for an AR(1) with
   intercept the conditional MLE of (c, phi) coincides with OLS, so the two
-  estimators agree closely — the test suite asserts this as a cross-check.
+  estimators agree closely: the test suite asserts this as a cross-check.
 """
 
 from __future__ import annotations

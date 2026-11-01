@@ -2,15 +2,15 @@
 
 Implemented from scratch (numpy only):
 
-* :func:`sample_cov` — unbiased sample covariance.
-* :func:`ewma_cov` — RiskMetrics exponentially weighted covariance.
-* :func:`lw_shrinkage` — Ledoit-Wolf (2004) "well-conditioned" shrinkage to a
+* :func:`sample_cov`: unbiased sample covariance.
+* :func:`ewma_cov`: RiskMetrics exponentially weighted covariance.
+* :func:`lw_shrinkage`: Ledoit-Wolf (2004) "well-conditioned" shrinkage to a
   scaled-identity target, with the analytic optimal intensity in [0, 1].
-* :func:`one_factor_cov` — risk-on/off single-factor model: every currency
+* :func:`one_factor_cov`, risk-on/off single-factor model: every currency
   loads on one global risk factor (estimated as the first principal
   component, sign-oriented so risk-on currencies load positively) plus
   idiosyncratic variance.
-* :func:`psd_repair` — eigenvalue clipping to restore positive
+* :func:`psd_repair`: eigenvalue clipping to restore positive
   (semi-)definiteness.
 
 All returns are daily log returns; covariances are per-day (multiply by 252
@@ -58,7 +58,7 @@ def ewma_cov(
         Decay in (0, 1); 0.94 is the RiskMetrics daily standard.
     init_window : int
         The recursion is seeded with the sample covariance (ddof=0, no mean
-        subtraction — RiskMetrics assumes zero mean) of the first
+        subtraction: RiskMetrics assumes zero mean) of the first
         ``min(init_window, T)`` rows, then run over the remaining rows.
 
     Returns
@@ -126,7 +126,7 @@ class OneFactorModel:
     factor : pd.Series
         Realised factor time series (first PC scores, sign-oriented so the
         factor correlates POSITIVELY with the cross-sectional mean currency
-        return — 'risk-on' means the dollar falls vs the average currency).
+        return: 'risk-on' means the dollar falls vs the average currency).
     factor_var : float
         Factor variance (per day).
     resid_var : pd.Series

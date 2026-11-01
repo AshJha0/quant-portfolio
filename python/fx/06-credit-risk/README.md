@@ -3,17 +3,17 @@
 Three linked risk blocks, specialised for sovereign and FX-counterparty credit
 (not a renamed corporate scorecard):
 
-1. **Sovereign PD scorecard** — seeded synthetic country-year panel with known
+1. **Sovereign PD scorecard**: seeded synthetic country-year panel with known
    ground truth (nonlinear reserve-cover threshold, Guidotti ratio, FX-regime
    dummy, contagion years), panel-aware cleaning with leakage guards, WOE/IV
    binning with missing bin and monotone merge, **from-scratch IRLS logistic**
    (sklearn cross-checked to 1e-6), PDO scorecard scaling and AAA…C rating
    bands with PD midpoints.
-2. **FX settlement (Herstatt) risk** — time-zone payment-window matrix
+2. **FX settlement (Herstatt) risk**: time-zone payment-window matrix
    (JPY/EUR/GBP/USD RTGS hours), full-principal gross exposure vs CLS/PvP,
    bilateral payment netting; Herstatt 1974 encoded as the docs anchor.
-3. **Counterparty pre-settlement risk** — GBM EE/PFE profiles for FX forwards
-   (grows ~ sqrt(t) to maturity — the correct shape for an outright forward),
+3. **Counterparty pre-settlement risk**: GBM EE/PFE profiles for FX forwards
+   (grows ~ sqrt(t) to maturity: the correct shape for an outright forward),
    netting-set comparison, and an expected loss on exposure from a
    real-world PD with a flat hazard (not a CVA: no CDS-implied PD, no
    collateral, no DVA); EL, Basel standardized RW (0% for AAA/AA sovereigns) and Vasicek
@@ -64,9 +64,9 @@ python examples/run_pipeline.py   # full run, about 5 s
 
 Per portfolio conventions: `src/fx_credit/` (library), `tests/` (218 offline
 seeded tests), `examples/run_pipeline.py`, `docs/`
-([METHODOLOGY](docs/METHODOLOGY.md) — model choice and assumptions register,
-[VALIDATION](docs/VALIDATION.md) — evidence and failure modes,
-[DESK_GUIDE](docs/DESK_GUIDE.md) — who uses it and real-life scenarios).
+([METHODOLOGY](docs/METHODOLOGY.md): model choice and assumptions register,
+[VALIDATION](docs/VALIDATION.md): evidence and failure modes,
+[DESK_GUIDE](docs/DESK_GUIDE.md): who uses it and real-life scenarios).
 
 FX conventions: pairs quoted BASE/QUOTE (EURUSD = USD per EUR), domestic rate
 = quote-currency rate; all stochastic components take explicit seeds; no

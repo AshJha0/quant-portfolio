@@ -5,12 +5,12 @@ Implements the full HMM toolkit used by the regime pipeline:
 * scaled forward–backward (Rabiner scaling with per-step log-emission
   shifts, so nothing under/overflows even for extreme outliers);
 * Baum–Welch EM for the transition matrix, state means and full
-  covariances (log-likelihood monotone non-decreasing — test-enforced at
+  covariances (log-likelihood monotone non-decreasing: test-enforced at
   every iteration);
 * Viterbi decoding in log space;
 * the stationary distribution of the fitted chain (``pi P = pi`` to 1e-12);
 * expected regime durations ``1 / (1 - p_ii)``;
-* FILTERED state probabilities ``P(s_t | x_{1..t})`` — the only quantity a
+* FILTERED state probabilities ``P(s_t | x_{1..t})``: the only quantity a
   live trading system may use (see :mod:`eq_regime.detection` for the
   filtered-vs-smoothed distinction);
 * initialisation by k-means-lite plus random restarts.
@@ -54,8 +54,8 @@ def _scaled_forward(
     Returns
     -------
     (alpha_hat, log_likelihood)
-        ``alpha_hat[t, k] = P(s_t = k | x_{1..t})`` — the FILTERED
-        probabilities — and the total log-likelihood ``log P(x_{1..T})``.
+        ``alpha_hat[t, k] = P(s_t = k | x_{1..t})``: the FILTERED
+        probabilities, and the total log-likelihood ``log P(x_{1..T})``.
     """
     t_len, k = log_b.shape
     shift = log_b.max(axis=1)
@@ -147,12 +147,12 @@ class HMMFit:
 
         This is the causal, online quantity: the value at ``t`` depends only
         on observations up to and including ``t``.  Trading signals MUST use
-        this — never the smoothed posteriors.
+        this: never the smoothed posteriors.
         """
         return forward_filter(_as_2d(x), self.startprob, self.transmat, self.means, self.covariances)
 
     def smooth(self, x: np.ndarray) -> np.ndarray:
-        """SMOOTHED posteriors ``P(s_t | x_{1..T})`` — uses the FULL sample.
+        """SMOOTHED posteriors ``P(s_t | x_{1..T})``: uses the FULL sample.
 
         For diagnostics and historical labelling only: the value at ``t``
         depends on future observations, so it is NOT tradeable.
@@ -196,7 +196,7 @@ def forward_filter(
 ) -> tuple[np.ndarray, float]:
     """Forward (filtering) pass: ``P(s_t | x_{1..t})`` and log-likelihood.
 
-    Purely causal — the returned row ``t`` depends only on ``x[:t+1]``.
+    Purely causal: the returned row ``t`` depends only on ``x[:t+1]``.
     """
     x = _as_2d(x)
     log_b = _log_emissions(x, means, covs)
@@ -261,7 +261,7 @@ def stationary_distribution(transmat: np.ndarray) -> np.ndarray:
     """Stationary distribution ``pi`` with ``pi P = pi``, ``sum(pi) = 1``.
 
     Solved as an overdetermined linear system (``P^T - I`` stacked with the
-    normalisation row) by least squares — accurate to ~1e-14 for
+    normalisation row) by least squares: accurate to ~1e-14 for
     well-conditioned chains; tests require ``pi P = pi`` to 1e-12.
 
     Degenerate chains
@@ -270,8 +270,8 @@ def stationary_distribution(transmat: np.ndarray) -> np.ndarray:
     is it.  For a **reducible** chain (an absorbing state, or the identity
     matrix, which EM can approach on single-regime data) the stationary
     distribution is not unique: every distribution supported on the absorbing
-    set is stationary.  Least squares then returns the minimum-norm solution
-    — e.g. uniform ``1/K`` for ``P = I``, and the absorbing point mass for a
+    set is stationary.  Least squares then returns the minimum-norm solution:
+    e.g. uniform ``1/K`` for ``P = I``, and the absorbing point mass for a
     single absorbing state.  Both satisfy ``pi P = pi``, but only the latter
     is economically meaningful; treat a near-identity fitted ``transmat`` as
     a *diagnostic* that the data do not support K regimes (see
@@ -310,7 +310,7 @@ def expected_durations(transmat: np.ndarray) -> np.ndarray:
     ``1 / (1 - p_ii)``.
 
     An absorbing state (``p_ii = 1``) returns ``inf``, which is the correct
-    answer — the chain never leaves — and is the signature of a degenerate
+    answer, the chain never leaves, and is the signature of a degenerate
     fit on single-regime data.
     """
     p = np.asarray(transmat, dtype=float)
@@ -375,7 +375,7 @@ def fit_hmm(
         Number of restarts, >= 1.
     max_iter, tol : EM stopping rule (absolute log-likelihood change).
     reg_covar : float
-        Ridge on covariance diagonals — guards against state collapse on
+        Ridge on covariance diagonals: guards against state collapse on
         (near-)degenerate data.
     min_startprob : float
         Floor on start probabilities (keeps logs finite).

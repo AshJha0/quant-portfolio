@@ -2,7 +2,7 @@
 
 The terminal stock price is simulated exactly:
 ``S_T = S exp((r - q - sigma^2/2) T + sigma sqrt(T) Z)``, ``Z ~ N(0,1)``,
-so there is *no* time-discretisation bias — only statistical error, which
+so there is *no* time-discretisation bias: only statistical error, which
 is reported as a standard error and 95% confidence interval.
 
 Variance reduction

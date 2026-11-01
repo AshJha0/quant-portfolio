@@ -7,14 +7,14 @@ network access in test code paths).  For experimentation with real data,
 :func:`load_credit_csv` maps two standard public schemas onto the column
 names the pipeline expects:
 
-* ``schema="german"`` — the UCI Statlog German Credit data (as CSV with
+* ``schema="german"``: the UCI Statlog German Credit data (as CSV with
   headers); target column ``kredit``/``class`` (1 = good) is mapped to
   ``default`` (1 = bad).
-* ``schema="lendingclub"`` — Lending Club loan exports; ``loan_status`` in
+* ``schema="lendingclub"``: Lending Club loan exports; ``loan_status`` in
   {"Charged Off", "Default"} maps to ``default = 1``, "Fully Paid" to 0
   (other statuses dropped as unresolved).
 
-Both datasets are consumer-credit, not corporate — the WOE/logit pipeline is
+Both datasets are consumer-credit, not corporate: the WOE/logit pipeline is
 identical, but the Basel IRB functions in :mod:`eq_credit.portfolio_risk`
 use the *corporate* correlation formula and would need the retail variants.
 """

@@ -18,7 +18,7 @@ OLS projection with the closed form
 Classic results reproduced and tested here:
 
 * If local (currency-hedged) returns are uncorrelated with FX, then
-  ``Cov(r_fx, r_u) = Cov(r_fx) x`` and ``h* = 1`` — full hedging.
+  ``Cov(r_fx, r_u) = Cov(r_fx) x`` and ``h* = 1``: full hedging.
 * Safe havens (JPY, CHF) are NEGATIVELY correlated with risk assets: their
   unhedged exposure already offsets equity risk, so ``h* < 1`` (underhedge),
   possibly ``h* < 0`` (buy extra safe-haven exposure).  Full hedging is NOT
@@ -186,7 +186,7 @@ def variance_decomposition(
 
     By construction ``var_optimal <= min(var_unhedged, var_full)`` up to
     solver precision (h* minimises variance over ALL hedge ratios, and h=0,
-    h=1 are feasible points) — tested.
+    h=1 are feasible points): tested.
     """
     h_opt = optimal_hedge_ratios(unhedged, fx_returns, exposures)
     v0 = float(unhedged.var(ddof=1))

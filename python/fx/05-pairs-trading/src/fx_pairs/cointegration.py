@@ -3,14 +3,14 @@
 Everything here is built on plain OLS (``numpy.linalg.lstsq``) so it can be
 cross-validated against ``statsmodels`` in the test suite:
 
-* :func:`adf_test` — Augmented Dickey-Fuller regression with fixed lags or
+* :func:`adf_test`: Augmented Dickey-Fuller regression with fixed lags or
   AIC auto-lag selection, replicating the ``statsmodels.tsa.stattools.adfuller``
   construction (same sample trimming, same AIC), so t-statistics match to
   ~1e-8.
-* :func:`engle_granger` — two-step Engle-Granger: OLS cointegrating
+* :func:`engle_granger`, two-step Engle-Granger: OLS cointegrating
   regression with intercept, then ADF (no deterministic terms) on the
   residuals, judged against MacKinnon (2010) **N=2** critical values.  Using
-  plain N=1 ADF critical values on estimated residuals over-rejects — the
+  plain N=1 ADF critical values on estimated residuals over-rejects: the
   test suite asserts the two tables differ.
 * Degenerate-spread detection: an exact-identity spread (e.g. the triangular
   spread ``log EURUSD + log USDJPY - log EURJPY`` which is identically zero
@@ -156,7 +156,7 @@ def _approx_pvalue(stat: float, crit: dict[str, float]) -> float:
 
     Piecewise-linear in the statistic through (cv1%, .01), (cv5%, .05),
     (cv10%, .10), with flat-ish extrapolation clipped to [1e-4, 0.999].
-    Documented as approximate — use critical values for decisions.
+    Documented as approximate: use critical values for decisions.
     """
     xs = np.array([crit["1%"], crit["5%"], crit["10%"]])
     ps = np.array([0.01, 0.05, 0.10])
@@ -209,7 +209,7 @@ def adf_test(
     Regression: ``dy_t = (a) + rho * y_{t-1} + sum_j phi_j dy_{t-j} + e_t``;
     the statistic is the OLS t-ratio on ``rho``.  With ``lags=None`` the lag
     order is chosen by AIC over ``0..max_lags`` on a common trimmed sample and
-    the model is then refit on the longest sample for that lag — the same
+    the model is then refit on the longest sample for that lag: the same
     protocol as ``statsmodels.tsa.stattools.adfuller(autolag="AIC")``, so the
     statistics agree to numerical precision.
 
@@ -361,13 +361,13 @@ def engle_granger(
 
     Step 1: OLS ``y_t = alpha + beta x_t + u_t`` on (log) levels.
     Step 2: ADF on ``u_t`` with **no** deterministic terms, judged against
-    MacKinnon (2010) N=2 critical values — the residuals are estimated, so
+    MacKinnon (2010) N=2 critical values: the residuals are estimated, so
     plain N=1 ADF critical values would over-reject.
 
     Degenerate spreads (std below ``degenerate_abs_tol`` in log units, e.g. a
     triangular identity) are flagged and never reported as cointegrated: the
     ADF regression on a numerically-zero series is meaningless and there is
-    nothing tradable — deviations are inside transaction costs.
+    nothing tradable: deviations are inside transaction costs.
 
     Parameters
     ----------

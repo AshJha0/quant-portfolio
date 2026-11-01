@@ -22,7 +22,7 @@ from fx_rates.data.live import network_allowed
 
 
 class TestNegativeRatesEra:
-    """EUR 2019: r_f < r_d with r_f < 0 — economic sign checks."""
+    """EUR 2019: r_f < r_d with r_f < 0: economic sign checks."""
 
     def test_forward_points_positive_when_foreign_rate_below_domestic(
         self, negative_eur_market

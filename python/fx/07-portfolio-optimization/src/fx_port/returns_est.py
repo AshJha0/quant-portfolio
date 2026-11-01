@@ -11,9 +11,9 @@ Conventions
 
   ``total_t = spot_t + carry_t``,
   ``spot_t = log(S_t / S_{t-1})``,
-  ``carry_t = (i_{t-1} - i_base,{t-1}) * dt``
+  ``carry_t = (i_{t-1} - i_base,{t-1}) * dt``:
 
-  — the carry leg accrues at the rates OBSERVED AT THE PREVIOUS CLOSE, so no
+  the carry leg accrues at the rates OBSERVED AT THE PREVIOUS CLOSE, so no
   same-day rate information leaks into the return (no lookahead).
 * Style signals are formed from information available at *t*; style weights
   are applied to returns from *t+1* onward (the one-day implementation lag is
@@ -145,7 +145,7 @@ def momentum_signal(
     """MOMENTUM signal, 12-1 style: ``log(S_{t-skip} / S_{t-lookback})``.
 
     Skipping the most recent ``skip`` days avoids short-horizon reversal.
-    Uses only data up to ``t - skip`` — strictly backward-looking.
+    Uses only data up to ``t - skip``: strictly backward-looking.
 
     Raises
     ------
@@ -177,7 +177,7 @@ def rank_weights(signal: pd.Series, gross: float = 2.0) -> pd.Series:
     """Cross-sectional dollar-neutral rank weights from one signal snapshot.
 
     Currencies are ranked by signal; ranks are demeaned (so weights sum to
-    ZERO — dollar-neutral long-short) and scaled so gross leverage
+    ZERO: dollar-neutral long-short) and scaled so gross leverage
     ``sum |w| = gross``.  Degenerate cross-sections (fewer than two finite
     signals, or all signals equal) return all-zero weights.
 
@@ -226,7 +226,7 @@ def style_returns(
     targets between days, so drift-induced trades are not counted.
 
     Weights are formed from the signal at *t* and applied to total returns at
-    *t+1* (one-day implementation lag — no lookahead).  Days on which the
+    *t+1* (one-day implementation lag: no lookahead).  Days on which the
     signal is entirely missing (e.g. inside the momentum lookback window)
     carry zero weights.
 
@@ -284,7 +284,7 @@ def shrunk_means(
     ``mu_shrunk = (1 - lam) * mu_sample + lam * grand_mean``,
     ``lam = min(1, ((K - 3) * avg_var / T) / sum((mu_i - grand_mean)^2))``.
 
-    With K <= 3 the data-driven intensity is 0 (no shrinkage) — the JS
+    With K <= 3 the data-driven intensity is 0 (no shrinkage): the JS
     dominance result needs K > 3.  Shrinking means is the single most
     effective defence against estimation error in MVO (means are ~an order of
     magnitude harder to estimate than covariances at these horizons).

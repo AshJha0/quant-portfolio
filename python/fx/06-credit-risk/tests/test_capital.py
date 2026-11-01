@@ -131,7 +131,7 @@ def test_standardized_rw_table():
 
 def test_capital_table_regulatory_wedge():
     """AAA sovereign: standardized capital is exactly 0 while internal economic
-    capital is strictly positive — the documented model-vs-regulation wedge."""
+    capital is strictly positive: the documented model-vs-regulation wedge."""
     tab = capital_table(["AAA", "BB"], [0.0001, 0.02], lgd=0.45, ead=100.0)
     aaa = tab[tab["rating"] == "AAA"].iloc[0]
     assert aaa["std_capital"] == 0.0

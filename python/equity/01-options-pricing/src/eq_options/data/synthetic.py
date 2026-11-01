@@ -1,6 +1,6 @@
 """Deterministic synthetic market data for examples and tests (offline).
 
-Everything here is seeded and reproducible — the test suite never touches
+Everything here is seeded and reproducible: the test suite never touches
 the network. Conventions: annualised continuously compounded rates, ACT/365F
 year fractions, annualised log-return vols.
 """

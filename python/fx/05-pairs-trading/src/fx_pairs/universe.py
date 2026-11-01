@@ -9,7 +9,7 @@ Conventions (see CONVENTIONS.md):
   (``EURUSD``) or its reciprocal (``USDJPY = 1 / JPYUSD``).
 * Cross rates are **exact ratios** of USD legs:
   ``BASEQUOTE = (BASEUSD) / (QUOTEUSD)``.  No-arbitrage (triangular
-  consistency) therefore holds identically in this representation — a fact the
+  consistency) therefore holds identically in this representation: a fact the
   cointegration machinery must recognise as a *degenerate* spread, not a
   tradable one (see :mod:`fx_pairs.cointegration`).
 """
@@ -118,7 +118,7 @@ def _leg(legs: pd.DataFrame, ccy: str) -> pd.Series:
 
 
 def make_cross(legs: pd.DataFrame, base: str, quote: str) -> pd.Series:
-    """Cross rate BASE/QUOTE from USD legs — an exact no-arbitrage ratio.
+    """Cross rate BASE/QUOTE from USD legs: an exact no-arbitrage ratio.
 
     ``BASEQUOTE = BASEUSD / QUOTEUSD`` (units: QUOTE per 1 BASE).
 
@@ -181,7 +181,7 @@ def correlation_screen(
     """Screen candidate pairs of currency pairs on log-return correlation.
 
     Pegged / zero-volatility instruments (e.g. a hard peg) are dropped with a
-    ``UserWarning`` — a z-score is undefined on a zero-variance spread and a
+    ``UserWarning``: a z-score is undefined on a zero-variance spread and a
     peg offers no mean reversion to trade, only event risk.
 
     Parameters

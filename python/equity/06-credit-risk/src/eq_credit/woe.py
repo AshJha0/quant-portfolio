@@ -7,11 +7,11 @@ Conventions (industry standard):
   share of all BADS (defaults).  Positive WOE = safer-than-average bin.
 * ``IV = sum_i (dist_good_i - dist_bad_i) * WOE_i``  (always >= 0).
 * IV strength thresholds (Siddiqi):  < 0.02 useless, 0.02-0.1 weak,
-  0.1-0.3 medium, 0.3-0.5 strong, > 0.5 **suspicious** — flagged as a
+  0.1-0.3 medium, 0.3-0.5 strong, > 0.5 **suspicious**: flagged as a
   possible leakage via :class:`SuspiciousIVWarning`.
 
 Numeric features are pre-binned on quantiles, then adjacent bins are merged
-(smallest chi-square first — i.e. the statistically most similar pair) until
+(smallest chi-square first, i.e. the statistically most similar pair) until
 the bad rate is monotone in the bin order; missing values get their own bin.
 Zero-count cells are smoothed (adds 0.5 to both good and bad counts in that
 bin only) so WOE is never +/-inf; bins with non-zero counts are exact.
@@ -47,7 +47,7 @@ IV_THRESHOLDS: tuple[tuple[float, str], ...] = (
 
 
 class SuspiciousIVWarning(UserWarning):
-    """IV > 0.5: too good to be true — investigate for target leakage."""
+    """IV > 0.5: too good to be true: investigate for target leakage."""
 
 
 def iv_strength(iv: float) -> str:
@@ -253,7 +253,7 @@ def fit_numeric_binning(
         raise ValueError("x and y must have the same length")
     if ys.sum() == 0:
         raise ValueError(
-            f"feature {feature!r}: zero defaults in sample — WOE/IV undefined; "
+            f"feature {feature!r}: zero defaults in sample: WOE/IV undefined; "
             "collect more data or use a low-default-portfolio approach"
         )
     if ys.sum() == len(ys):
@@ -357,7 +357,7 @@ def fit_categorical_binning(
     ys = pd.Series(y).astype(int).reset_index(drop=True)
     if ys.sum() == 0:
         raise ValueError(
-            f"feature {feature!r}: zero defaults in sample — WOE/IV undefined"
+            f"feature {feature!r}: zero defaults in sample: WOE/IV undefined"
         )
     if ys.sum() == len(ys):
         raise ValueError(f"feature {feature!r}: sample contains no goods (all default)")
@@ -416,7 +416,7 @@ def fit_categorical_binning(
 def _warn_if_suspicious(feature: str, iv: float) -> None:
     if iv > 0.5:
         warnings.warn(
-            f"feature {feature!r} has IV = {iv:.3f} > 0.5 — suspiciously high; "
+            f"feature {feature!r} has IV = {iv:.3f} > 0.5: suspiciously high; "
             "investigate for target leakage (post-outcome field?)",
             SuspiciousIVWarning,
             stacklevel=3,

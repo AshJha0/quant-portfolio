@@ -7,7 +7,7 @@ Definitions (losses are NEGATED returns, ``L = -r``):
   At the optimum, z* is a VaR_a and CVaR_a is the expected loss in the
   (1-a) tail.  For an empirical distribution with S scenarios the inner
   minimisation is attained at one of the scenario losses, which is exactly
-  how :func:`empirical_cvar` evaluates it — guaranteeing that the LP
+  how :func:`empirical_cvar` evaluates it: guaranteeing that the LP
   objective at the optimum EQUALS the empirical CVaR of the optimal weights
   (tested to 1e-9).
 
@@ -19,7 +19,7 @@ mean subject to CVaR <= limit" are LINEAR programs in
 
 We solve them with ``scipy.optimize.linprog`` (HiGHS).  To support a
 gross-leverage budget ``sum|w| <= gross`` the weight is split
-``w = w+ - w-`` with ``w+, w- >= 0`` — standard LP linearisation.
+``w = w+ - w-`` with ``w+, w- >= 0``: standard LP linearisation.
 
 Why this matters for FX: mean-variance treats carry's premium as free money
 because variance ignores skew.  The carry-crash tail lives exactly where

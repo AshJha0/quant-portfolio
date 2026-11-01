@@ -11,7 +11,7 @@ min-variance / tangency / frontier via the two-fund theorem) and
 problems. cvxpy is not a dependency: the QPs here are small
 (N ~ 10-100), smooth and well-scaled, SLSQP solves them to ~1e-9 KKT
 tolerance in milliseconds, and every SLSQP solution is cross-checked
-against closed forms in the tests — so a heavyweight conic-solver stack
+against closed forms in the tests, so a heavyweight conic-solver stack
 buys nothing but install weight for this project.
 """
 
@@ -129,7 +129,7 @@ def tangency_weights(mu: np.ndarray, cov: np.ndarray, rf: float = 0.0) -> np.nda
     Raises
     ------
     ValueError
-        If ``1' Sigma^{-1} (mu - rf) <= 0`` — the tangency portfolio is
+        If ``1' Sigma^{-1} (mu - rf) <= 0``: the tangency portfolio is
         then on the inefficient branch and the normalisation flips its
         sign, which is almost always a sign of garbage mean inputs.
     """
@@ -599,7 +599,7 @@ def efficient_frontier(
     * ``bounds=None``: ANALYTIC frontier. With A = 1'S^{-1}1,
       B = 1'S^{-1}mu, C = mu'S^{-1}mu, D = AC - B^2, the min-variance
       portfolio for target m is w(m) = lam * S^{-1}1 + gam * S^{-1}mu with
-      lam = (C - B m)/D, gam = (A m - B)/D. Weights are affine in m —
+      lam = (C - B m)/D, gam = (A m - B)/D. Weights are affine in m:
       the two-fund theorem: every frontier portfolio is a combination of
       any two distinct frontier portfolios.
     * ``bounds`` given: NUMERIC frontier via

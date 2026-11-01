@@ -151,7 +151,7 @@ def pov_schedule(
     if remaining > 1e-9:
         raise ValueError(
             f"POV schedule incomplete: {remaining:.2f}mm unfilled at "
-            f"{participation:.0%} participation — extend the horizon or raise the rate"
+            f"{participation:.0%} participation: extend the horizon or raise the rate"
         )
     return q
 

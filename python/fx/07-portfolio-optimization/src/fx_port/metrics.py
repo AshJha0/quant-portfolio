@@ -68,7 +68,7 @@ def sharpe_ratio(
     Parameters
     ----------
     rf : float
-        Per-period risk-free rate to subtract (0 for already-excess returns —
+        Per-period risk-free rate to subtract (0 for already-excess returns:
         FX long-short P&L is self-financing so excess by construction).
     """
     x = _arr(returns) - rf
@@ -131,7 +131,7 @@ def max_drawdown(returns: pd.Series | np.ndarray, log_returns: bool = True) -> f
 
 
 def skewness(returns: pd.Series | np.ndarray) -> float:
-    """Sample skewness (biased, moment definition — matches scipy default)."""
+    """Sample skewness (biased, moment definition: matches scipy default)."""
     x = _arr(returns)
     xc = x - x.mean()
     m2 = np.mean(xc**2)
@@ -141,7 +141,7 @@ def skewness(returns: pd.Series | np.ndarray) -> float:
 
 
 def excess_kurtosis(returns: pd.Series | np.ndarray) -> float:
-    """Sample excess kurtosis (biased, Fisher definition — scipy default)."""
+    """Sample excess kurtosis (biased, Fisher definition: scipy default)."""
     x = _arr(returns)
     xc = x - x.mean()
     m2 = np.mean(xc**2)
@@ -189,7 +189,7 @@ def style_attribution(
     -------
     pd.DataFrame
         Daily contribution per style plus a ``total`` column equal to their
-        sum (exact additivity — tested).
+        sum (exact additivity: tested).
     """
     if isinstance(weights, pd.Series):
         contrib = style_returns.mul(weights, axis=1)

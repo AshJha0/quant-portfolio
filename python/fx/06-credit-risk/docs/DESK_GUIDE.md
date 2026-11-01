@@ -1,4 +1,4 @@
-# Desk Guide — Who Uses This, How, and What the Limits Look Like
+# Desk Guide: Who Uses This, How, and What the Limits Look Like
 
 ## 1. Consumers and daily workflow
 
@@ -27,16 +27,16 @@ limit breaches, PSI > 0.10, ratings migrating ≥ 2 notches.
   per counterparty. CLS members get economic relief (their PvP legs count
   zero); non-CLS counterparties consume the line at full bought-principal.
   Escalation: line breach blocks release of the outgoing payment, not the
-  trade booking — the payment queue is where Herstatt risk is actually
+  trade booking: the payment queue is where Herstatt risk is actually
   controlled.
 - **PFE limits** (credit): 99% peak PFE per netting set ≤ limit, sized off
   the counterparty band (BB sovereign: limit ~ f(K_sov = 14.1 per 100)).
-  Un-netted counterparties (no ISDA/CSA — common for sovereigns, who resist
+  Un-netted counterparties (no ISDA/CSA: common for sovereigns, who resist
   collateral annexes) are measured gross: the 3.54m-vs-0 netting demo is the
   argument credit officers take into ISDA negotiations.
 - **Escalation ladder**: 85% of any limit → desk head notified; 100% →
   auto-block new risk-additive trades; contagion trigger (regional crisis
-  flag) → all regional limits cut 50% pending committee review — because the
+  flag) → all regional limits cut 50% pending committee review: because the
   model's own validation shows calibration fails 2.6x in contagion years.
 
 ## 3. Realistic scenarios (history, encoded in this project)
@@ -49,23 +49,23 @@ limit breaches, PSI > 0.10, ratings migrating ≥ 2 notches.
    comparison shows PvP eliminating exactly that exposure. CLS itself exists
    because of this event (est. 2002).
 2. **Russia 1998.** A sovereign defaulting on *domestic-currency* debt (GKOs)
-   while Basel weighted it favourably — the reason our capital block refuses
+   while Basel weighted it favourably: the reason our capital block refuses
    the 0% sovereign floor internally (AAA row: standardized 0.00 vs Vasicek
    0.34 per 100). Also a Guidotti-ratio poster child: short-term debt far
    above reserves in vintage data. And a settlement lesson: forward RUB/USD
    hedges failed as Russian banks (counterparties on the hedges) defaulted
-   together with the sovereign — wrong-way risk (VALIDATION §4.4).
+   together with the sovereign: wrong-way risk (VALIDATION §4.4).
 3. **Argentina 2001 / 2019.** 2001: currency-board peg masked risk until it
-   broke (Assumption A4) — scorecard inputs looked stable while devaluation
+   broke (Assumption A4): scorecard inputs looked stable while devaluation
    risk accumulated; the model's peg dummy adds risk but cannot time the
    break ⇒ mandatory overlay on peg countries. 2019: capital controls
-   (cepo) — trades neither defaulted nor settled: convertibility risk means a
+   (cepo), trades neither defaulted nor settled: convertibility risk means a
    solvent counterparty cannot deliver; settlement lines must distinguish
    country-of-currency from country-of-counterparty.
 4. **2022 RUB sanctions.** Settlement failure *without* default: sanctioned
    payment rails meant USD legs could not clear against RUB legs; CLS
    suspended RUB. Model lesson: `PAYMENT_SYSTEM_HOURS_UTC` assumes the rail
-   exists — a sanctions scenario zeroes the receive-side finality, turning
+   exists: a sanctions scenario zeroes the receive-side finality, turning
    every open trade into full-principal exposure regardless of PD. Treasury's
    control is the settlement line + same-day kill-switch on payment release,
    not the PD model.
@@ -81,7 +81,7 @@ real-world PD, so it is a provisioning-style number, not a price. It cannot be
 hedged with sovereign CDS. A priced CVA would need a CDS-implied hazard,
 market LGD, collateral terms and DVA. Country-risk EL feeds loan-loss
 provisioning.
-Settlement risk carries no P&L — it is a pure tail-loss control, which is why
+Settlement risk carries no P&L: it is a pure tail-loss control, which is why
 its limit is a hard block rather than a priced charge.
 
 ## 5. Model governance summary

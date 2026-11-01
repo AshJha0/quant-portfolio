@@ -2,7 +2,7 @@
 
 Discrimination
 --------------
-* ROC/AUC from scratch (threshold sweep + trapezoid — numerically identical
+* ROC/AUC from scratch (threshold sweep + trapezoid: numerically identical
   to sklearn's ``roc_auc_score``), Gini = 2*AUC - 1, KS statistic (exact,
   over all thresholds) and a score-decile KS table.
 * Bootstrap percentile CIs for AUC (seeded).
@@ -90,7 +90,7 @@ _trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
 
 def roc_auc(y: np.ndarray, s: np.ndarray) -> float:
     """AUC from scratch: trapezoid over the ROC curve (ties handled exactly
-    as in sklearn — matches ``roc_auc_score`` to machine precision)."""
+    as in sklearn: matches ``roc_auc_score`` to machine precision)."""
     fpr, tpr = roc_curve_points(y, s)
     return float(_trapezoid(tpr, fpr))
 

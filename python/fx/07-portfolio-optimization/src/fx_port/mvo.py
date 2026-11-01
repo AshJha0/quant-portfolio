@@ -2,10 +2,10 @@
 
 Closed forms (validated to 1e-12 in tests):
 
-* :func:`min_variance_weights` — global minimum-variance, sum(w)=1.
-* :func:`tangency_weights` — maximum-Sharpe, sum(w)=1.
-* :func:`frontier_weights` — minimum variance for a target mean (two-fund).
-* :func:`dollar_neutral_weights` — max utility subject to sum(w)=0, the
+* :func:`min_variance_weights`: global minimum-variance, sum(w)=1.
+* :func:`tangency_weights`: maximum-Sharpe, sum(w)=1.
+* :func:`frontier_weights`: minimum variance for a target mean (two-fund).
+* :func:`dollar_neutral_weights`: max utility subject to sum(w)=0, the
   natural constraint for a long-short currency book.
 
 Numerical (SLSQP) counterparts add the FX-native constraint set: net budget
@@ -355,7 +355,7 @@ def max_utility(
 
         if x0 is None:
             # Warm start from the analytic optimum of the equality-constrained
-            # problem — SLSQP then only has to polish.
+            # problem: SLSQP then only has to polish.
             try:
                 w_free = np.linalg.solve(gamma * s_sc, m_sc)
                 if sum_to is not None:
@@ -404,7 +404,7 @@ def min_variance_slsqp(
 
     With no gross/box constraints this matches :func:`min_variance_weights`
     (or :func:`frontier_weights` when ``target_return`` is set) to high
-    precision — used as a cross-check in the tests.
+    precision: used as a cross-check in the tests.
     """
     m, s, labels = _to_arrays(mu, sigma)
     n = len(s)

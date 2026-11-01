@@ -248,7 +248,7 @@ def basel_k(
 
 
 def risk_weighted_assets(k: np.ndarray | float, ead: np.ndarray | float) -> np.ndarray:
-    """RWA = K * 12.5 * EAD (Basel III — no 1.06 scaling factor)."""
+    """RWA = K * 12.5 * EAD (Basel III: no 1.06 scaling factor)."""
     ka = np.asarray(k, dtype=float)
     ea = np.asarray(ead, dtype=float)
     if (ka < 0).any() or (ea < 0).any():

@@ -94,7 +94,7 @@ docs/                   METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
 
 See `docs/METHODOLOGY.md` for model choices and the assumptions register
-(including why carry returns exist at all — the forward premium puzzle — and
+(including why carry returns exist at all, the forward premium puzzle, and
 why its vol understates its risk), `docs/VALIDATION.md` for every identity
 and failure mode, `docs/DESK_GUIDE.md` for how an FX overlay desk would run
 this.

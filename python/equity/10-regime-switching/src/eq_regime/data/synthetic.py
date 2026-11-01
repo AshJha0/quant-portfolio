@@ -2,12 +2,12 @@
 
 Two generators:
 
-* :func:`make_regime_panel` — a multi-asset daily-return panel driven by a
+* :func:`make_regime_panel`: a multi-asset daily-return panel driven by a
   hidden Markov chain with a KNOWN transition matrix and per-state
   mean / vol / correlation.  The bear state has negative drift, high vol and
   high cross-asset correlation (the classic "correlations go to one" crisis
   stylised fact).  Used for parameter-recovery and detection tests.
-* :func:`make_gbm_panel` — a single-regime GBM null (constant drift/vol/corr).
+* :func:`make_gbm_panel`: a single-regime GBM null (constant drift/vol/corr).
   Used for false-positive tests: on this data a regime model should NOT
   systematically beat buy-and-hold, and BIC should prefer fewer states.
 
@@ -259,7 +259,7 @@ def make_gbm_panel(
 ) -> RegimePanel:
     """Generate a single-regime (no-regime) correlated GBM null panel.
 
-    Constant drift, vol and correlation — there is nothing for a regime
+    Constant drift, vol and correlation: there is nothing for a regime
     model to find.  Returned as a :class:`RegimePanel` with a single state
     so it can flow through the same pipeline; ``states`` is all zeros.
 
