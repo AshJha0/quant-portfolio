@@ -18,7 +18,7 @@ prices, 4.5e-13 on Greeks, 6.8e-13 on strikes and 4.1e-14 on implied vol.
 Agreement holds per target and toolchain within these tolerances, not bit
 for bit.
 
-## Identity and property tests (93 integration tests, 19 doctests)
+## Identity and property tests (100 integration tests, 20 doctests)
 
 | Category | Check | Tolerance |
 |---|---|---|
@@ -107,22 +107,54 @@ for bit.
   plain estimator, and the desk rule is simply not to run a control
   variate at trivial path counts.
 
-## Benchmark table
+## Low-latency API checks
 
-`cargo run --release --bin bench`, WSL2 on an Intel Core 5 120U, Rust
-1.99.1, single run (release profile: `opt-level = 3`, `lto = true`,
-`codegen-units = 1`):
+* `tests/fast_bits.rs`: every `fast::` kernel equals the classic call by
+  `f64::to_bits` on 4,000 seeded random inputs (price, all ten Greeks,
+  implied vol), on the `T = 0` and `sigma = 0` limits, and on 60 inputs
+  times 5 step counts times both exercise styles for the tree. The batch
+  pricers equal the scalar ones on 1,031 inputs. `mc_price_par` equals
+  `mc_price` for all four variance-reduction settings, 5 path counts and
+  1, 2, 3, 4, 7, 12 and 64 threads, and repeats across runs.
+* `tests/fast_zero_alloc.rs`: a counting global allocator sees zero
+  allocations in each kernel call once its workspace is sized. The same
+  test sees the classic tree allocate, so the counter is live.
 
-| Benchmark | Volume | Time | Throughput |
-|---|---|---|---|
-| GK vanilla prices (varying K, sigma, type) | 1,000,000 | 0.059 s | 16.9 M prices/s |
-| strike-from-delta, spot (analytic) | 50,000 | 0.004 s | 13.6 M solves/s |
-| strike-from-delta, forward (analytic) | 50,000 | 0.004 s | 14.0 M solves/s |
-| strike-from-delta, spot_pa (Brent) | 50,000 | 0.045 s | 1.11 M solves/s |
-| strike-from-delta, forward_pa (Brent) | 50,000 | 0.045 s | 1.10 M solves/s |
-| Monte Carlo, antithetic + control variate | 1,000,000 paths | 0.051 s | 19.6 M paths/s (SE 9.4e-6) |
-| Implied vol (8 quotes) | 100,000 | 0.044 s | 442 ns/solve (2,397 ns before the shared core) |
-| CRR American, 2000 steps | 1 tree | 0.99 ms | (27.5 ms before precomputed node spots) |
+## Latency table
 
-Single runs on a laptop; expect variation of a factor of about 2. The
-checksums printed guard against the compiler removing the loops.
+Per-call latency from `cargo run --release --bin bench` (writes
+[bench/results.json](../bench/results.json)). Numbers from this machine: Intel
+Core 5 120U, 12 threads, under WSL2, Rust 1.99.1, release profile
+`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`. Other builds shared the
+machine during the run (load average about 7), so the tails carry
+scheduler jitter. Kernels under 1 us are timed in batches of 64 or 16
+calls and reported per call; the batch rows time one 1,024-option batch
+and report per option.
+
+| Kernel | p50 ns | p99 ns | p99.9 ns |
+|---|---:|---:|---:|
+| `gk_price` | 64 | 72 | 332 |
+| `fast::gk_price_k` | 61 | 146 | 711 |
+| `fast::gk_price_batch`, per option | 59 | 181 | 782 |
+| `analytic_greeks` | 48 | 54 | 221 |
+| `fast::greeks_k` | 30 | 75 | 627 |
+| `fast::greeks_batch`, per option | 67 | 177 | 265 |
+| `implied_vol` | 602 | 1,111 | 2,263 |
+| `fast::implied_vol_k` | 654 | 1,521 | 17,999 |
+| `strike_from_delta`, spot_pa | 1,333 | 1,581 | 6,763 |
+| `binomial_price`, American, 500 steps | 77,507 | 101,014 | 186,863 |
+| `fast::binomial_price_ws`, same tree | 89,060 | 182,541 | 264,781 |
+| `mc_price`, 100k paths, antithetic + CV | 5.79 M | 7.89 M | 7.99 M |
+| `fast::mc_price_ws`, same | 7.27 M | 11.42 M | 12.97 M |
+| `mc_price`, 1M paths | 73.1 M | 174.2 M | 174.2 M |
+| `fast::mc_price_par`, 1M paths, 12 threads | 28.0 M | 35.4 M | 37.9 M |
+
+Read the table this way. The closed-form kernels sit at 30 to 70 ns, and
+`fast::` matches the classic call within the noise of this machine. The
+gain of the `fast::` API is the contract: no heap use, a `Copy` error, and
+caller-owned workspaces. The one large speed-up is the threaded Monte
+Carlo, about 2.6 times on 1M paths. The batch loops do not vectorise:
+`norm_cdf` (Cody erfc, branchy) and the `exp`/`ln` calls into libm block
+it. The validation scan of the batch, the tree's backward induction and
+the antithetic pair averages do vectorise (SSE2, width 2), checked with
+`RUSTFLAGS=-Cremark=loop-vectorize` and the emitted assembly.

@@ -2,7 +2,7 @@
 //!
 //! Every function here returns the same bits as its counterpart in the
 //! classic API ([`crate::gk_price`], [`crate::analytic_greeks`],
-//! [`crate::implied_vol`], [`crate::binomial_price`], [`crate::mc_price`]).
+//! [`crate::implied_vol()`], [`crate::binomial_price`], [`crate::mc_price`]).
 //! The test suite checks this with `f64::to_bits` on varied inputs.
 //!
 //! The differences are in the contract, not the numbers:
@@ -229,7 +229,7 @@ pub fn greeks_k(
 }
 
 /// Implied volatility from a GK premium. Same bits as
-/// [`crate::implied_vol`].
+/// [`crate::implied_vol()`].
 ///
 /// # Errors
 ///

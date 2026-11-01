@@ -66,10 +66,11 @@ fx-options-engine/
 │   ├── binomial.rs             # CRR tree, foreign rate as yield, European + American
 │   ├── monte_carlo.rs          # GBM under domestic measure, xoshiro256**, VR
 │   ├── rng.rs                  # SplitMix64 seed expansion + xoshiro256** + inverse-CDF normal
+│   ├── fast.rs                 # low-latency API: Copy errors, workspaces, SoA batch, threaded MC
 │   ├── golden.rs                # GENERATED: 434 mpmath golden records
-│   └── bin/bench.rs             # throughput benchmarks
+│   └── bin/bench.rs             # per-call latency benchmark -> bench/results.json
 ├── tools/gen_golden_rs.py      # golden JSON -> src/golden.rs (--check)
-├── tests/                       # integration test suite (93 cases) + doctests (19)
+├── tests/                       # integration test suite (100 cases) + doctests (20)
 └── docs/                        # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
@@ -77,7 +78,7 @@ fx-options-engine/
 
 ```sh
 cargo build --release
-RUSTFLAGS="-D warnings" cargo test --release   # 93 integration tests + 19 doctests
+RUSTFLAGS="-D warnings" cargo test --release   # 100 integration tests + 20 doctests
 cargo run --release --bin bench
 ```
 
@@ -125,25 +126,73 @@ dependency surface to review. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 - **Property tests** (proptest) and the identity, convergence and
   non-finite-rejection suites: see [docs/VALIDATION.md](docs/VALIDATION.md).
 
-`cargo test --release` runs 93 integration tests and 19 doctests. On
+`cargo test --release` runs 100 integration tests and 20 doctests. On
 Windows, Application Control may block test executables (os error 4551);
 run them in WSL or Linux.
 
-## Benchmark results
+## Low-latency API
 
-`cargo run --release --bin bench`, WSL2 on an Intel Core 5 120U, Rust
-1.99.1, single run:
+`fx_options_engine::fast` holds the kernels for a hot path. Each returns
+the same bits as its classic counterpart; `tests/fast_bits.rs` checks this
+with `f64::to_bits` on thousands of varied inputs.
 
-| Benchmark | Throughput |
-|---|---|
-| Garman-Kohlhagen vanilla price | 16.9 M prices/s (1M prices in 0.059 s) |
-| Strike-from-delta, spot / forward (analytic `N^-1`) | 13.6 - 14.0 M solves/s |
-| Strike-from-delta, premium-adjusted (Brent, branch-aware) | 1.1 M solves/s |
-| Monte Carlo, antithetic + control variate | 19.6 M paths/s (1M paths in 0.051 s, SE 9.4e-6) |
-| Implied vol (8 quotes) | 442 ns per solve |
-| CRR American, 2000 steps | 0.99 ms |
+* `gk_price_k`, `greeks_k`, `implied_vol_k`: scalar kernels returning
+  `Result<_, KernelError>`. `KernelError` is a one-byte `Copy` enum, so
+  neither the success path nor the error path allocates.
+* `gk_price_batch`, `greeks_batch`: struct-of-arrays batch pricers over
+  slices (`GkBatch` in, `&mut [f64]` or `GreeksBatchOut` out). A
+  branch-free scan validates the batch first; a `BatchError` names the
+  first bad index.
+* `binomial_price_ws`: CRR tree on a reusable `BinomialWorkspace`.
+* `mc_price_ws`, `mc_price_par`: Monte Carlo on a reusable `McWorkspace`.
+  `mc_price_par` splits the path fill over scoped threads with a fixed
+  partition. Each chunk starts its own RNG copy at its offset in the one
+  stream, and the reductions stay sequential, so the result equals
+  `mc_price` for every thread count.
 
-Single runs on a laptop; expect variation of a factor of about 2.
+`tests/fast_zero_alloc.rs` installs a counting global allocator and
+asserts zero allocations for each kernel after its workspace is sized.
+The classic API is unchanged. Its error type carries a `String`, built
+only on the error path.
+
+## Latency
+
+Per-call latency from `cargo run --release --bin bench` (writes
+[bench/results.json](bench/results.json)). Numbers from this machine: Intel
+Core 5 120U, 12 threads, under WSL2, Rust 1.99.1, release profile
+`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`. Other builds shared the
+machine during the run (load average about 7), so the tails carry
+scheduler jitter. Kernels under 1 us are timed in batches of 64 or 16
+calls and reported per call; the batch rows time one 1,024-option batch
+and report per option.
+
+| Kernel | p50 ns | p99 ns | p99.9 ns |
+|---|---:|---:|---:|
+| `gk_price` | 64 | 72 | 332 |
+| `fast::gk_price_k` | 61 | 146 | 711 |
+| `fast::gk_price_batch`, per option | 59 | 181 | 782 |
+| `analytic_greeks` | 48 | 54 | 221 |
+| `fast::greeks_k` | 30 | 75 | 627 |
+| `fast::greeks_batch`, per option | 67 | 177 | 265 |
+| `implied_vol` | 602 | 1,111 | 2,263 |
+| `fast::implied_vol_k` | 654 | 1,521 | 17,999 |
+| `strike_from_delta`, spot_pa | 1,333 | 1,581 | 6,763 |
+| `binomial_price`, American, 500 steps | 77,507 | 101,014 | 186,863 |
+| `fast::binomial_price_ws`, same tree | 89,060 | 182,541 | 264,781 |
+| `mc_price`, 100k paths, antithetic + CV | 5.79 M | 7.89 M | 7.99 M |
+| `fast::mc_price_ws`, same | 7.27 M | 11.42 M | 12.97 M |
+| `mc_price`, 1M paths | 73.1 M | 174.2 M | 174.2 M |
+| `fast::mc_price_par`, 1M paths, 12 threads | 28.0 M | 35.4 M | 37.9 M |
+
+Read the table this way. The closed-form kernels sit at 30 to 70 ns, and
+`fast::` matches the classic call within the noise of this machine. The
+gain of the `fast::` API is the contract: no heap use, a `Copy` error, and
+caller-owned workspaces. The one large speed-up is the threaded Monte
+Carlo, about 2.6 times on 1M paths. The batch loops do not vectorise:
+`norm_cdf` (Cody erfc, branchy) and the `exp`/`ln` calls into libm block
+it. The validation scan of the batch, the tree's backward induction and
+the antithetic pair averages do vectorise (SSE2, width 2), checked with
+`RUSTFLAGS=-Cremark=loop-vectorize` and the emitted assembly.
 
 ## Docs
 
