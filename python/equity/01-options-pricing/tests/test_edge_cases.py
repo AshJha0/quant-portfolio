@@ -35,7 +35,10 @@ def test_sigma_zero_discounted_forward_intrinsic() -> None:
     S, K, T, r, q = 100.0, 95.0, 1.0, 0.05, 0.02
     F = forward_price(S, T, r, q)
     expected = math.exp(-r * T) * max(F - K, 0.0)
-    assert bs_price(S, K, T, r, 0.0, q, "call") == pytest.approx(expected, abs=1e-14)
+    # Both sides round S e^{-qT} and K e^{-rT} (magnitude ~100) before the
+    # subtraction, so they can differ by a few ulps of 100: 4 eps max(S, K).
+    tol = 4 * 2.220446049250313e-16 * max(S, K)
+    assert bs_price(S, K, T, r, 0.0, q, "call") == pytest.approx(expected, abs=tol)
     # OTM-forward call is worthless at zero vol
     assert bs_price(100, 120, 1.0, 0.02, 0.0, 0.0, "call") == 0.0
 

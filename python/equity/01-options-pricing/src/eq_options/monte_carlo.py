@@ -36,7 +36,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .black_scholes import OptionType, bs_price, intrinsic_value, validate_inputs
+from .black_scholes import OptionType, _check_rates, bs_price, intrinsic_value, validate_inputs
 
 __all__ = [
     "MCResult",
@@ -91,6 +91,8 @@ def _summary(samples: np.ndarray, n_paths: int) -> MCResult:
     n = samples.size
     value = float(np.mean(samples))
     se = float(np.std(samples, ddof=1) / math.sqrt(n)) if n > 1 else 0.0
+    if not (math.isfinite(value) and math.isfinite(se)):
+        raise ValueError("Monte Carlo estimate is not finite (simulated prices overflow)")
     return MCResult(
         value=value,
         std_error=se,
@@ -105,14 +107,28 @@ def _terminal(
 ) -> np.ndarray:
     """Exact GBM terminal prices for standard normal draws ``z``."""
     drift = (r - q - 0.5 * sigma * sigma) * T
-    return S * np.exp(drift + sigma * math.sqrt(T) * z)
+    with np.errstate(over="ignore"):
+        s_t = S * np.exp(drift + sigma * math.sqrt(T) * z)
+    if not np.all(np.isfinite(s_t)):
+        raise ValueError("simulated terminal prices overflow a double; drift or vol too large")
+    return s_t
 
 
 def _check_mc_inputs(S: float, K: float, T: float, sigma: float,
-                     option_type: str, n_paths: int) -> None:
+                     option_type: str, n_paths: int, antithetic: bool = False,
+                     control_variate: bool = False) -> None:
     validate_inputs(S, K, T, sigma, option_type)
-    if n_paths < 2:
-        raise ValueError(f"n_paths must be >= 2, got {n_paths!r}")
+    # A standard error needs two independent samples (paths, or antithetic
+    # pairs) left after fitting: three when the control-variate coefficient
+    # is fitted on the same samples, since two points fit a line exactly.
+    units = (n_paths + 1) // 2 if antithetic else n_paths
+    needed = 3 if control_variate else 2
+    if units < needed:
+        raise ValueError(
+            f"n_paths={n_paths!r} gives {units} independent sample(s); at least "
+            f"{needed} are needed for a standard error"
+            f"{' with the control variate' if control_variate else ''}"
+        )
 
 
 def mc_price(
@@ -162,14 +178,16 @@ def mc_price(
     Raises
     ------
     ValueError
-        On invalid inputs or ``n_paths < 2``.
+        On invalid inputs, fewer than two independent samples (three
+        with the control variate; an antithetic pair is one sample), or a drift so large that simulated prices overflow.
 
     Notes
     -----
     ``T == 0`` or ``sigma == 0`` are deterministic; the exact value is
     returned with ``std_error = 0``.
     """
-    _check_mc_inputs(S, K, T, sigma, option_type, n_paths)
+    _check_mc_inputs(S, K, T, sigma, option_type, n_paths, antithetic, control_variate)
+    _check_rates(r=r, q=q)
     if T == 0.0 or sigma == 0.0:
         exact = bs_price(S, K, T, r, sigma, q, option_type)
         return MCResult(exact, 0.0, exact, exact, n_paths)
@@ -190,19 +208,25 @@ def mc_price(
     s_t = _terminal(S, T, r, q, sigma, z)
     payoff = disc * np.maximum(sign * (s_t - K), 0.0)
 
-    if control_variate:
-        control = disc * s_t
-        control_mean = S * math.exp(-q * T)
-        cov = np.cov(payoff, control, ddof=1)
-        var_c = cov[1, 1]
-        beta = cov[0, 1] / var_c if var_c > 0.0 else 0.0
-        payoff = payoff - beta * (control - control_mean)
-
+    # Reduce to one value per independent draw first (the antithetic pair
+    # average when antithetic), then fit the control-variate coefficient on
+    # those same units. The optimal beta for the pair-average estimator is
+    # Cov(pair-avg payoff, pair-avg control) / Var(pair-avg control);
+    # fitting it on raw draws and pairing afterwards mis-sizes it.
     if antithetic:
         half = n_eff // 2
         samples = 0.5 * (payoff[:half] + payoff[half:])
     else:
         samples = payoff
+    if control_variate:
+        control = disc * s_t
+        if antithetic:
+            control = 0.5 * (control[:half] + control[half:])
+        control_mean = S * math.exp(-q * T)
+        dc = control - control.mean()
+        var_c = float(np.dot(dc, dc))
+        beta = float(np.dot(samples - samples.mean(), dc)) / var_c if var_c > 0.0 else 0.0
+        samples = samples - beta * (control - control_mean)
     return _summary(samples, n_eff)
 
 
