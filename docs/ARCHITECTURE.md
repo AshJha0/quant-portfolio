@@ -1,52 +1,54 @@
 # Architecture Reference
 
-One page per question: where does a capability live, what does it depend on, and
-where are its tests. For rendered visual versions of the flows below — the
-directory layout, the cross-language golden-vector validation pipeline, the
-per-area data flows, and the two numerical-robustness bug case studies — see
-**[DIAGRAMS.md](DIAGRAMS.md)** (Mermaid, renders on GitHub).
+This page answers three questions for each capability: where it lives, what it
+depends on, and where its tests are. [DIAGRAMS.md](DIAGRAMS.md) has the same
+material as Mermaid diagrams: the directory layout, the golden-vector pipeline,
+the differential-test pipeline, two per-area data flows and the CI jobs.
 
-Every project's own `docs/METHODOLOGY.md` / `docs/VALIDATION.md` /
-`docs/DESK_GUIDE.md` is the authoritative source for that project's math and
-assumptions — this file and [DIAGRAMS.md](DIAGRAMS.md) are the map that shows
-how the 31 sub-projects fit together, not a replacement for their own docs.
+Each project's own `docs/METHODOLOGY.md`, `docs/VALIDATION.md` and
+`docs/DESK_GUIDE.md` is the source for that project's maths and assumptions.
+This file is the map of how the 31 sub-projects fit together.
+
+## Stage of the repository
+
+The repository is a study portfolio today (Phases 0-3 of the plan). A research
+platform comes later, and a library a desk could use comes after that. All data
+is synthetic unless a page names a real source. None of this code runs on a
+live book.
 
 ## The shape of the portfolio
 
-quant-portfolio is **10 project areas, each built twice** — once for equities,
-once for FX, as two fully independent, non-shared codebases — **in Python
-throughout**, with **C++ and Rust performance twins** for the four areas that
-are actually latency-sensitive on a real desk (options pricing/Greeks, market
-risk VaR/ES). A separate, smaller **3-project foundations tier** predates the
-10-area buildout and demonstrates the same core techniques from scratch,
-single-asset, single-language, with no compiled twin.
+The portfolio has 10 project areas. Each area has an equity project and an FX
+project, written as two separate Python codebases. Two areas, options pricing
+and market-risk VaR/ES, also have C++ and Rust ports of the Python design for
+both asset classes. That makes four compiled engines per language. The VaR
+engines are linear-book ports: they do not yet revalue options. A smaller
+3-project foundations tier predates the 10-area build. It covers the same core
+techniques for a single asset in Python only.
 
 ```
 31 sub-projects
-= 10 areas × 2 asset classes (equity, FX)         = 20 Python projects
+= 10 areas x 2 asset classes (equity, FX)          = 20 Python projects
 + 3 foundations projects (equity-only, Python)     =  3 Python projects
-+ 4 engines × 2 languages (C++, Rust)              =  8 compiled projects
-                                                     ────────────────────
-                                                      31 total, 6,446 tests
++ 4 engines x 2 languages (C++, Rust)              =  8 compiled projects
 ```
 
-Why two fully separate codebases per area instead of one asset-class-agnostic
-engine? Equity and FX are different enough in convention (continuous dividend
-yield vs. domestic/foreign rate differential; single spot vs. BASE/QUOTE pairs
-with four delta conventions; ACT/365F vs. currency-pair-dependent day counts)
-that a shared abstraction would either leak asset-class-specific branches
-everywhere or hide real differences behind a false unification. A real desk
-keeps its equity derivatives and FX derivatives libraries separate for the
-same reason — see each project's `docs/METHODOLOGY.md` §"why not a shared
-abstraction" for the area-specific version of this argument.
+Test counts are not typed here. The CI `counts` job aggregates the executed
+counts from every job into `counts.json`.
+
+Equity and FX conventions differ. Equity uses a continuous dividend yield. FX
+uses a domestic and foreign rate pair, BASE/QUOTE quoting, four delta
+conventions and pair-dependent day counts. The two codebases keep those
+differences explicit instead of sharing one asset-agnostic engine.
 
 ## Directory layout
 
 ```
 quant-portfolio/
-├── CONVENTIONS.md         # The engineering & documentation contract every project follows
-├── README.md              # Portfolio overview, test-coverage tables, how to build/test
-├── docs/                  # THIS folder — portfolio-wide architecture, learning path, cookbook
+├── CONVENTIONS.md         # Engineering and documentation contract for every project
+├── CHANGELOG.md           # Release history and fixes
+├── README.md              # Portfolio overview and build/test instructions
+├── docs/                  # Portfolio-wide architecture, learning path, cookbook
 │   ├── README.md
 │   ├── ARCHITECTURE.md    # This file
 │   ├── DIAGRAMS.md
@@ -55,86 +57,119 @@ quant-portfolio/
 │   └── MARKET_RISK.md
 ├── python/
 │   ├── equity/01-…10-…    # 10 equity projects, src/-layout Python packages
-│   ├── fx/01-…10-…        # 10 FX projects — same structure, independent codebase
-│   └── foundations/       # 3 standalone single-asset, single-language projects
+│   ├── fx/01-…10-…        # 10 FX projects, same layout, separate code
+│   └── foundations/        # 3 single-asset Python projects
 │       ├── 01-risk-metrics/
 │       ├── 02-trading-signal-backtest/
 │       └── 03-black-scholes-replication/
-├── cpp/                   # 4 performance-critical engines, C++20, GoogleTest
+├── cpp/                   # 4 engines, C++20, tests use GoogleTest
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
 │   ├── equity-var-engine/
 │   └── fx-var-engine/
-└── rust/                  # The same 4 engines, Rust 2021, zero external dependencies
+└── rust/                  # The same 4 engines, Rust 2021, std only
     ├── equity-options-engine/
     ├── fx-options-engine/
     ├── equity-var-engine/
     └── fx-var-engine/
 ```
 
-Every Python project directory follows the identical internal layout —
-`src/<package>/`, `tests/`, `examples/run_pipeline.py`,
-`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md` — laid out in full in
-`CONVENTIONS.md`. Every C++/Rust engine follows the mirror-image layout:
-`include/<ns>/` or `src/*.rs` for the library, `tests/` (GoogleTest /
+Every Python project uses the same layout: `src/<package>/`, `tests/`,
+`examples/run_pipeline.py` and `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
+`CONVENTIONS.md` describes it in full. Every C++ and Rust engine uses a matching
+layout: `include/<ns>/` or `src/*.rs` for the library, `tests/` (GoogleTest or
 `cargo test`), `bench/` (C++) or `src/bin/bench.rs` (Rust) for the latency
-benchmark, `tools/gen_golden_header.py` (C++) / `tools/gen_golden_rs.py`
-(Rust) for the cross-language vector generator, `docs/{METHODOLOGY,
-VALIDATION,DESK_GUIDE}.md`.
+benchmark, `tools/gen_golden_header.py` (C++) or `tools/gen_golden_rs.py` (Rust)
+for the golden-vector generator, and `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
+
+The C++ engines set `CMAKE_CXX_STANDARD 20` in each `cpp/*/CMakeLists.txt`.
+They have no runtime dependencies beyond the standard library. Their tests use
+GoogleTest. The Rust crates have an empty `[dependencies]` table.
 
 ## The 10 project areas
 
-| # | Area | Equity | FX | Compiled twin? |
+| # | Area | Equity | FX | C++/Rust port? |
 |---|------|--------|-----|---|
-| 1 | Options Pricing & Greeks | `python/equity/01-options-pricing` | `python/fx/01-options-pricing` | ✅ C++/Rust |
-| 2 | Volatility Modeling & Forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` | — |
-| 3 | Market Risk VaR / Expected Shortfall | `python/equity/03-var-es-engine` | `python/fx/03-var-es-engine` | ✅ C++/Rust |
-| 4 | Fixed Income Pricing & Risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` | — |
-| 5 | Statistical Pairs Trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` | — |
-| 6 | Credit Risk / PD Modeling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` | — |
-| 7 | Portfolio Optimization & Risk Allocation | `python/equity/07-portfolio-optimization` | `python/fx/07-portfolio-optimization` | — |
-| 8 | Algorithmic Trading & Execution | `python/equity/08-algo-execution` | `python/fx/08-algo-execution` | — |
-| 9 | Volatility Surface & Stochastic Vol | `python/equity/09-vol-surface` | `python/fx/09-vol-surface` | — |
-| 10 | Regime-Switching Quant Strategy | `python/equity/10-regime-switching` | `python/fx/10-regime-switching` | — |
+| 1 | Options Pricing & Greeks | `python/equity/01-options-pricing` | `python/fx/01-options-pricing` | yes |
+| 2 | Volatility Modeling & Forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` | no |
+| 3 | Market Risk VaR / Expected Shortfall | `python/equity/03-var-es-engine` | `python/fx/03-var-es-engine` | yes (linear book) |
+| 4 | Fixed Income Pricing & Risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` | no |
+| 5 | Statistical Pairs Trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` | no |
+| 6 | Credit Risk / PD Modeling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` | no |
+| 7 | Portfolio Optimization & Risk Allocation | `python/equity/07-portfolio-optimization` | `python/fx/07-portfolio-optimization` | no |
+| 8 | Algorithmic Trading & Execution | `python/equity/08-algo-execution` | `python/fx/08-algo-execution` | no |
+| 9 | Volatility Surface & Stochastic Vol | `python/equity/09-vol-surface` | `python/fx/09-vol-surface` | no |
+| 10 | Regime-Switching Quant Strategy | `python/equity/10-regime-switching` | `python/fx/10-regime-switching` | no |
 
-**Why only these four get compiled twins**: options pricing/Greeks and VaR/ES
-are the two workloads on a real desk that are (a) called millions of times per
-revaluation cycle (full-book Greeks, intraday VaR) and (b) sit on a
-numerically well-understood, closed-form-or-Monte-Carlo core that is worth
-hand-optimizing once semantics are locked down in Python. The other six areas
-are research/modeling workflows (calibration, backtesting, optimization)
-where Python iteration speed matters more than microsecond latency, so they
-stay Python-only — see [LEARN.md](LEARN.md) Part II for the fuller version of
-this argument, and [DIAGRAMS.md](DIAGRAMS.md) diagram 1 for the picture.
+Options pricing and VaR/ES are the two workloads that run many times per
+revaluation cycle. Both have a closed-form or Monte Carlo core that is worth
+porting once the Python semantics are fixed. The other eight areas are
+calibration, backtesting and optimisation workflows, so they stay in Python.
+[LEARN.md](LEARN.md) Part II has the longer argument. [DIAGRAMS.md](DIAGRAMS.md)
+diagram 1 shows the layout.
+
+## Engine latency
+
+<!-- LATENCY-PLACEHOLDER: filled by the latency pass -->
+
+| Engine | Language | Latency |
+|---|---|---|
+| Equity options/Greeks | C++ | pending latency pass |
+| Equity options/Greeks | Rust | pending latency pass |
+| FX options/Greeks | C++ | pending latency pass |
+| FX options/Greeks | Rust | pending latency pass |
+| Equity VaR/ES | C++ | pending latency pass |
+| Equity VaR/ES | Rust | pending latency pass |
+| FX VaR/ES | C++ | pending latency pass |
+| FX VaR/ES | Rust | pending latency pass |
 
 ## Foundations projects
 
-| # | Project | Path | Relationship to the flagship equivalent |
+| # | Project | Path | Relationship to the 10-area projects |
 |---|---|---|---|
-| F1 | Risk Metrics on Real Data | `python/foundations/01-risk-metrics` | Single-asset vol/VaR/ES/Sharpe toolkit, three VaR methods compared side by side. No correlation/portfolio risk — see `python/equity/03-var-es-engine` for the multi-asset, backtested extension. |
-| F2 | Trading Signal Backtest | `python/foundations/02-trading-signal-backtest` | A moving-average crossover, backtested with strict no-look-ahead execution and transaction costs. Point is backtest discipline, not the signal — see `python/equity/08-algo-execution` and `python/equity/10-regime-switching` for production-grade strategy machinery. |
-| F3 | Black-Scholes Replication | `python/foundations/03-black-scholes-replication` | Zero-scipy (`math.erf` only) rebuild of Black-Scholes, validated against Monte Carlo and finite-difference Greeks. Model-validation reference, not a production pricer — `python/equity/01-options-pricing` (+ C++/Rust) is the production version. |
+| F1 | Risk Metrics | `python/foundations/01-risk-metrics` | Single-asset vol/VaR/ES/Sharpe toolkit on synthetic data. It compares three VaR methods side by side. It has no correlation or portfolio risk. `python/equity/03-var-es-engine` is the multi-asset, backtested version. |
+| F2 | Trading Signal Backtest | `python/foundations/02-trading-signal-backtest` | A moving-average crossover backtest with transaction costs. Fills are modelled at t+1 as p_t + f(p_{t+1} - p_t) with f = 0.5 by default, plus a close-auction variant. The subject is backtest mechanics, not the signal. `python/equity/08-algo-execution` and `python/equity/10-regime-switching` hold the fuller strategy code. |
+| F3 | Black-Scholes Replication | `python/foundations/03-black-scholes-replication` | Black-Scholes rebuilt without scipy. The normal CDF uses `math.erfc`. It is checked against Monte Carlo and finite-difference Greeks. It is a model-validation reference. `python/equity/01-options-pricing` and its C++/Rust ports are the main pricer. |
 
 ## The engine package map
 
 | Engine | Language | Public entry point | Key modules | Golden vectors from |
 |---|---|---|---|---|
-| Equity options/Greeks | Python | `eq_options` (`black_scholes.py` incl. implied vol, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`, `comparison.py`) | Closed-form BS, finite-diff & analytic Greeks, Newton+bisection implied vol, Black-76, CRR binomial (American), MC pricer | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference) |
-| | C++ | `eqopt::` (`include/eqopt/`) | `black_scholes.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
-| | Rust | `eq_options_engine` crate (`src/`) | `black_scholes.rs`, `black76.rs`, `greeks.rs`, `implied_vol.rs`, `binomial.rs`, `monte_carlo.rs` | `tools/gen_golden_rs.py` → `src/golden.rs` |
-| FX options/Greeks | Python | `fx_options` (`garman_kohlhagen.py` incl. implied vol, `deltas.py`, `forwards.py`, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`) | Garman-Kohlhagen (BS with q=r_f), four delta conventions + strike-from-delta, CIP forwards, implied vol, binomial, MC | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference) |
-| | C++ | `fxopt::` (`include/fxopt/`) | `garman_kohlhagen.hpp`, `deltas.hpp`, `forwards.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
-| | Rust | `fx_options_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `src/golden.rs` |
-| Equity VaR/ES | Python | `eq_var` (`historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `portfolio.py`, `stress_testing.py`) | Historical/age-weighted/FHS, parametric (delta-normal, Student-t, Cornish-Fisher), Monte Carlo (normal/t/jump), Kupiec + Christoffersen + Acerbi-Szekely + Basel traffic-light backtesting | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference; locked by `tests/test_golden_vectors.py`) |
-| | C++ | `eqvar::` (`include/eqvar/`) | `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `matrix.hpp`, `stats.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
-| | Rust | `eq_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `tests/golden/mod.rs` |
-| FX VaR/ES | Python | `fx_var` (`book.py`, `historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `stress_testing.py`) | Same methods as equity VaR plus `Book`/`Market` full-revaluation layer (spot, forward, option positions repriced scenario by scenario via Garman-Kohlhagen) | `tests/golden/generate_golden.py` → `tests/golden/golden_vectors.json` (reference; locked by `tests/test_golden_vectors.py`) |
-| | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` → `tests/golden_vectors.hpp` |
-| | Rust | `fx_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` → `tests/golden/mod.rs` |
+| Equity options/Greeks | Python | `eq_options` (`black_scholes.py` incl. implied vol, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`, `comparison.py`) | Closed-form BS, finite-difference and analytic Greeks, Newton plus bisection implied vol, Black-76, CRR binomial (American), MC pricer | `tests/golden/generate_golden.py` -> `tests/golden/golden_vectors.json` |
+| | C++ | `eqopt::` (`include/eqopt/`) | `black_scholes.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
+| | Rust | `eq_options_engine` crate (`src/`) | `black_scholes.rs`, `black76.rs`, `greeks.rs`, `implied_vol.rs`, `binomial.rs`, `monte_carlo.rs` | `tools/gen_golden_rs.py` -> `src/golden.rs` |
+| FX options/Greeks | Python | `fx_options` (`garman_kohlhagen.py` incl. implied vol, `deltas.py`, `forwards.py`, `black76.py`, `greeks.py`, `binomial.py`, `monte_carlo.py`, `hedging.py`) | Garman-Kohlhagen (BS with q = r_f), four delta conventions and strike-from-delta, CIP forwards, implied vol, binomial, MC | `tests/golden/generate_golden.py` -> `tests/golden/golden_vectors.json` |
+| | C++ | `fxopt::` (`include/fxopt/`) | `garman_kohlhagen.hpp`, `deltas.hpp`, `forwards.hpp`, `black76.hpp`, `greeks.hpp`, `implied_vol.hpp`, `binomial.hpp`, `monte_carlo.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
+| | Rust | `fx_options_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` -> `src/golden.rs` |
+| Equity VaR/ES | Python | `eq_var` (`historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `portfolio.py`, `stress_testing.py`) | Historical, age-weighted and FHS; parametric (delta-normal, Student-t, Cornish-Fisher); Monte Carlo (normal, t, jump); Kupiec, Christoffersen, Acerbi-Szekely and Basel traffic-light backtests | `tests/golden/generate_golden.py` -> `tests/golden/golden_vectors.json` (locked by `tests/test_golden_vectors.py`) |
+| | C++ | `eqvar::` (`include/eqvar/`) | `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `matrix.hpp`, `stats.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
+| | Rust | `eq_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` -> `tests/golden/mod.rs` |
+| FX VaR/ES | Python | `fx_var` (`book.py`, `historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `stress_testing.py`) | Same methods as equity VaR plus a `Book`/`Market` full-revaluation layer that reprices spot, forward and option positions per scenario with Garman-Kohlhagen | `tests/golden/generate_golden.py` -> `tests/golden/golden_vectors.json` (locked by `tests/test_golden_vectors.py`) |
+| | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
+| | Rust | `fx_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` -> `tests/golden/mod.rs` |
 
-Every `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero
-if the committed header/module no longer matches the Python JSON — the CI
-workflow runs it before building the engines.
+The C++ headers and Rust golden modules are generated files. Every
+`tools/gen_golden_*.py` script accepts `--check`, which exits non-zero when the
+committed file no longer matches the Python JSON. The CI `goldens --check` job
+runs it for all eight engines.
+
+## Conventions shared by the VaR engines
+
+- `alpha` is the tail probability, in (0, 0.5), in every function and language.
+  A 99% VaR is `alpha=0.01`.
+- Historical VaR is the order statistic L(ceil(n * alpha)), the m-th largest
+  loss with m = ceil(n * alpha). There is no interpolation.
+- Expected Shortfall is the exact Acerbi-Tasche estimator, including the
+  fractional atom at the VaR rank.
+- The Basel traffic light works for any window length and any `alpha`. Zone
+  edges come from the binomial CDF at 0.95 and 0.9999.
+- `kupiec_pof` takes keyword arguments only (`n_obs`, `n_exceptions`, `alpha`).
+- The Monte Carlo VaR standard error is a bootstrap estimate. The KDE
+  density-at-quantile estimate is kept as a diagnostic.
+- EWMA volatility is seeded with the mean of r^2 over the first min(30, n)
+  observations.
+- Cholesky adds a diagonal jitter capped at 1e-6 times the mean diagonal and
+  raises above that cap. Callers can ask for a repair (`clip` or `higham`).
 
 ## Data flow at a glance
 
@@ -155,12 +190,11 @@ workflow runs it before building the engines.
    │   surface,heston}    │   │  (fx_var: book.py)    │   │ eq_algo/{almgren_chriss,  │
    │ eq_vol/{garch,gjr,   │   │                       │   │   tca,benchmarks}         │
    │   egarch,ewma}       │   │                       │   │ eq_regime/{hmm,detection, │
-   │ fi_rates/, fx_rates/ │   │                       │   │   strategy}  (+ fx_* twins)│
+   │ fi_rates/, fx_rates/ │   │                       │   │   strategy}  (+ fx_*)     │
    └────────────────────┘   └───────────────────────┘   └───────────────────────────┘
              │                          │                            │
              ▼                          ▼                            ▼
      examples/run_pipeline.py   examples/run_pipeline.py    examples/run_pipeline.py
-     (end-to-end: data → model → validation → decision, reproduces the README numbers)
              │
              ▼ (options + VaR/ES only)
    tests/golden/generate_golden.py ──▶ tests/golden/golden_vectors.json
@@ -169,110 +203,96 @@ workflow runs it before building the engines.
                                                      rust/*-var-engine/tests/golden/mod.rs
 ```
 
-The research lane above is read left to right within each area: raw/synthetic
-data → model/engine → the area's own validation (analytic identities,
-convergence, statistical backtests) → the desk-facing decision the
-`examples/run_pipeline.py` script prints. The four compiled-twin areas add a
-fourth stage, the golden-vector bridge, described next.
+Each area reads left to right: synthetic data, then the model, then the area's
+own validation, then the summary that `examples/run_pipeline.py` prints. The
+options and VaR/ES areas add the golden-vector step described next.
 
-## Cross-language validation — the technical backbone
+## Cross-language testing
 
-Each of the four engine pairs is validated **three ways**, not just tested in
-isolation:
+The C++ and Rust engines are ports of the Python design. Two mechanisms check
+that they agree with Python.
 
-1. **Python reference** — the original model, fully tested against analytic
-   identities (put-call parity, Greeks-vs-finite-difference, tree→BS
-   convergence, martingale checks) and statistical backtests (Kupiec,
-   Basel traffic-light).
-2. **C++ engine** — mirrors the Python semantics exactly. A
-   `tests/golden/generate_golden.py` script in each of the four Python
-   reference projects writes `tests/golden/golden_vectors.json` (committed,
-   and locked from the Python side by `tests/test_golden_vectors.py`);
-   `tools/gen_golden_header.py` turns it into a `constexpr` C++ header
-   (`tests/golden_vectors.hpp`, committed). GoogleTest validates every case
-   to 1e-10 (options) or 1e-9 relative / 1e-6–1e-8 (VaR/ES) tolerance.
-3. **Rust engine** — the same JSON, generated into `src/golden.rs` (options
-   engines) or `tests/golden/mod.rs` (VaR engines) by
-   `tools/gen_golden_rs.py`, validated by `cargo test` to the same
-   tolerances.
+**Golden vectors.** Each of the four Python reference projects has a
+`tests/golden/generate_golden.py` that writes `tests/golden/golden_vectors.json`
+(committed). `tools/gen_golden_header.py` turns the JSON into a `constexpr` C++
+header and `tools/gen_golden_rs.py` turns it into a Rust module. Both outputs
+are committed and checked by the CI `goldens --check` job.
 
-The result: for every priced option or computed VaR number, you can trace
-identical (to floating-point-noise) results through three independently
-implemented, independently tested codebases — the same discipline a real
-market-risk function uses when a new pricing library has to be proven against
-the incumbent before it is allowed to touch P&L. See
-[DIAGRAMS.md](DIAGRAMS.md) diagram 2 for the pipeline picture, and
-[LEARN.md](LEARN.md) Round 15 for the engineering theory behind why this
-catches bugs that single-language testing does not.
+- Options goldens: inputs are evaluated with an mpmath oracle at high
+  precision. Each output carries its own tolerance, computed by the rules in
+  the JSON's `tolerance_rules` block. There is no single flat tolerance.
+- VaR/ES goldens: expected values come from the Python reference engine
+  through the same JSON generator pipeline. The Python side is locked by
+  `tests/test_golden_vectors.py`.
 
-**What the cross-language checks do *not* prove**: Monte Carlo paths are
-never bit-identical across languages — NumPy's PCG64, a custom xoshiro256++ in
-Rust, `std::mt19937_64` in C++ are three different streams — so MC agreement
-is statistical (within a documented number of standard errors), not exact.
-Determinism *within* a language is still bitwise: a fixed seed reproduces the
-exact same path set on every run of the same engine.
+**Differential tests.** `python/equity/01-options-pricing/tests/test_differential.py`
+and `python/fx/01-options-pricing/tests/test_differential.py` generate input
+grids, send them as JSON lines to a compiled shim, and compare the replies with
+the Python result. The shims are:
 
-## Determinism, by design
+| Engine | Rust bin | C++ target | Env var (Rust) | Env var (C++) |
+|---|---|---|---|---|
+| Equity options | `eq_jsonl` | `eqopt_jsonl` | `QP_RS_EQ_JSONL` | `QP_CPP_EQ_JSONL` |
+| FX options | `fx_jsonl` | `fxopt_jsonl` | `QP_RS_FX_JSONL` | `QP_CPP_FX_JSONL` |
 
-Every stochastic component across all 31 projects takes an explicit seed —
-never an implicit global RNG state. This is a portfolio-wide convention
-(`CONVENTIONS.md` §"Code quality"), not a per-project choice, because a
-non-reproducible test is worse than no test: a flaky Monte Carlo test that
-occasionally fails teaches you to ignore red CI, which is the actual failure
-mode a real quant-risk team is trying to avoid.
+When an env var is unset the test looks for the default build path
+(`rust/*/target/release/<bin>` or `cpp/*/build/<target>`). A missing binary
+skips its test. Set `QP_DIFF_VERBOSE=1` to print the largest deviations.
+[DIAGRAMS.md](DIAGRAMS.md) diagram 3 shows the flow.
 
-## Design invariants worth knowing
+Agreement with Python does not prove Python is right. Each project's analytic
+identity and convergence tests carry that burden. Monte Carlo paths differ
+across languages because the RNGs differ (NumPy PCG64, xoshiro256++ in Rust,
+`std::mt19937_64` in C++). Cross-language MC agreement is statistical, within
+a stated number of standard errors. A fixed seed reproduces the same paths on
+the same engine and platform.
 
-- **No golden-pinned value ever changes silently.** Two portfolio-wide review
-  passes (documented in the top-level `README.md`) hardened input validation
-  and fixed numerical-robustness bugs across every engine without moving a
-  single golden-vector number — a numerics fix that also happened to change a
-  pinned reference value would be indistinguishable, from the outside, from a
-  regression, so every fix in this portfolio's history was verified against
-  that constraint before being accepted.
-- **Every VaR/ES/backtest, options-pricing, bond/yield and Black-Scholes
-  entry point validates its inputs with explicit finiteness checks**, not
-  bare comparisons. `if x <= 0: raise` looks like it rejects bad input, but
-  `NaN <= 0` is `False` in IEEE 754 — the guard silently passes a NaN
-  through. This was found as a portfolio-wide defect class; the six golden
-  engines, the fixed-income stack and the foundations Black-Scholes rebuild
-  are covered by dedicated `test_input_hardening.py` / `test_nan_guards.py`
-  suites, and the remaining research-lane modules are being swept on the
-  same pattern (the top-level `README.md` §"On input validation" tracks the
-  scope honestly). See [LEARN.md](LEARN.md) Round 16 and
-  [DIAGRAMS.md](DIAGRAMS.md) diagram 9 for the full story, including the most
-  dangerous manifestation (`max(NaN, 0.0)` silently returning a plausible
-  zero VaR instead of propagating the NaN).
-- **Two estimators, not one, wherever a single estimator has a known bias
-  regime.** The Monte Carlo VaR standard error is a case in point: a local
-  density-at-the-quantile estimate (Gaussian KDE in Python/FX-C++/FX-Rust, an
-  order-statistic finite difference in equity-C++/equity-Rust) systematically
-  underestimates the true sampling error at deep tails or modest scenario
-  counts. Rather than tune the bandwidth and hope, every Monte Carlo VaR
-  engine now also exposes a distribution-free bootstrap estimator as a
-  cross-check — see [LEARN.md](LEARN.md) Round 18.
-- **Equity and FX share conventions documentation, not code.** Both asset
-  classes' rate/day-count/quoting conventions are written once, in
-  `CONVENTIONS.md`, but every formula that uses them is implemented twice —
-  see "The shape of the portfolio" above.
-- **The C++/Rust engines have zero business-logic dependencies.** The Rust
-  engines in particular take zero external crates by convention — the RNG,
-  the normal-CDF/PPF, the Cholesky factorization, everything is written from
-  first principles in this repository, specifically so that a reviewer never
-  has to trust an opaque dependency's numerics to trust this portfolio's
-  numbers.
+## Continuous integration
+
+`.github/workflows/ci.yml` runs these jobs:
+
+| Job | What it does |
+|---|---|
+| `discover` | Lists the Python projects and their test extra (`.github/scripts/discover_projects.py`). |
+| `python` | One job per project and Python version (3.10, 3.11, 3.12, 3.13). Installs the project in its own venv and runs pytest. Uploads JUnit XML. |
+| `goldens --check` | Runs every `gen_golden_header.py --check` and `gen_golden_rs.py --check`. |
+| `cpp` | Each C++ engine with GCC and with Clang: configure, build, ctest. |
+| `cpp-asan` | Each C++ engine with Clang and AddressSanitizer plus UndefinedBehaviorSanitizer. |
+| `rust` | `cargo test --release` per crate. `cargo fmt --check` and clippy run report-only. |
+| `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). |
+| `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
+| `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
+
+## Determinism
+
+Every stochastic component takes an explicit seed. No code reads a global RNG
+state. This is a portfolio-wide rule in `CONVENTIONS.md` §"Code quality".
+
+## Design invariants
+
+- **Golden values change only through the generator.** A changed expected value
+  needs a regenerated JSON, header and module, and a CHANGELOG entry.
+- **Entry points check finiteness explicitly.** `if x <= 0: raise` lets NaN
+  through, because `NaN <= 0` is false. The VaR/ES, backtest, options, bond and
+  Black-Scholes entry points use `isfinite` checks. `test_input_hardening.py`
+  and `test_nan_guards.py` cover them.
+- **Equity and FX share conventions documentation, not code.** `CONVENTIONS.md`
+  states the rate, day-count and quoting rules once. Each codebase implements
+  them separately.
+- **The compiled engines use only the standard library.** The RNG, normal
+  CDF/PPF and Cholesky factorisation are written in this repository.
+
+Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Further reading
 
-- [DIAGRAMS.md](DIAGRAMS.md) — the same architecture, as pictures.
-- [LEARN.md](LEARN.md) — a structured curriculum through every topic this
-  portfolio covers, plus a 481-question self-test bank organized by round.
-- [COOKBOOK.md](COOKBOOK.md) — copy-pasteable recipes for the most common
-  "how do I..." tasks across every project area.
-- [MARKET_RISK.md](MARKET_RISK.md) — the VaR/ES/backtesting workflow this
-  portfolio's risk engines are built to support, end to end.
-- Each project's own `docs/METHODOLOGY.md`, `docs/VALIDATION.md`, and
-  `docs/DESK_GUIDE.md` for that project's specific math, assumptions, and
-  real-desk usage.
-- `CONVENTIONS.md` at the repository root — the engineering and documentation
-  contract every one of the 31 sub-projects follows.
+- [DIAGRAMS.md](DIAGRAMS.md): the same architecture as diagrams.
+- [LEARN.md](LEARN.md): a curriculum through every topic, with a 481-question
+  self-test bank organised by round.
+- [COOKBOOK.md](COOKBOOK.md): recipes for common tasks in every area.
+- [MARKET_RISK.md](MARKET_RISK.md): the VaR/ES and backtesting workflow the
+  risk engines support.
+- Each project's `docs/METHODOLOGY.md`, `docs/VALIDATION.md` and
+  `docs/DESK_GUIDE.md` for its maths, assumptions and usage notes.
+- `CONVENTIONS.md`: the engineering and documentation contract for all 31
+  sub-projects.
