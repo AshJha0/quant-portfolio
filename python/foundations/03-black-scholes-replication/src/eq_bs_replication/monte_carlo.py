@@ -55,7 +55,7 @@ def _validate(S: float, K: float, sigma: float, T: float, n_paths: int,
 
     The simulation would happily run with ``sigma = 0`` or ``T = 0``
     (the terminal price is then deterministic), but the closed form
-    deliberately refuses those cases so the caller takes the intrinsic
+    refuses those cases so the caller takes the intrinsic
     -value limit explicitly. Accepting them here would make the two
     implementations disagree about what a valid input is, which is
     exactly the kind of silent divergence this project exists to catch.

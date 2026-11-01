@@ -185,25 +185,15 @@ def test_discount_factor_overflow_raises_informative_value_error():
 # ---------------------------------------------------------------------
 # Implied vol at the no-arbitrage boundaries (ill-conditioning)
 # ---------------------------------------------------------------------
-def test_implied_vol_at_exactly_intrinsic_is_ill_conditioned_not_wrong():
-    """A call quoted at exactly its discounted intrinsic value implies a
-    volatility of zero -- but vega there is so small that the routine
-    returns a sigma of order 1e-2 which still reprices to within 1e-8.
-
-    The number is correct to the tolerance it promises and useless as a
-    volatility. This test pins both halves of that statement, because the
-    failure mode on a desk is treating such a quote as a real surface
-    point rather than dropping it."""
+def test_implied_vol_at_exactly_intrinsic_returns_nan_with_warning():
+    """A call quoted at exactly its discounted intrinsic value has zero time
+    value. No vol is identified, so the routine warns and returns nan
+    instead of a sigma that only matches the price to tolerance."""
     S, K, r, T = 100.0, 100.0, 0.05, 1.0
     intrinsic = max(S - K * math.exp(-r * T), 0.0)
-    iv = implied_volatility(intrinsic, S, K, r, T)
-    # It reprices correctly...
-    assert call_price(S, K, r, iv, T) == pytest.approx(intrinsic, abs=1e-7)
-    # ...while being nowhere near the true implied vol of 0.
-    assert 0.0 < iv < 0.05
-    # And vega at that point is negligible: the whole vol range below 5%
-    # is worth less than a cent of price, which is why it is unidentified.
-    assert call_greeks(S, K, r, iv, T).vega < 1.0
+    with pytest.warns(RuntimeWarning, match="not determined"):
+        iv = implied_volatility(intrinsic, S, K, r, T)
+    assert math.isnan(iv)
 
 
 def test_implied_vol_just_below_intrinsic_is_rejected():
@@ -214,15 +204,13 @@ def test_implied_vol_just_below_intrinsic_is_rejected():
         implied_volatility(intrinsic - 0.01, S, K, r, T)
 
 
-def test_implied_vol_at_exactly_the_upper_bound_returns_a_large_finite_number():
-    """``C = S`` implies infinite volatility. The routine cannot return
-    infinity, so it returns the first large finite sigma that reprices to
-    tolerance -- documented, tested, and not to be quoted."""
+def test_implied_vol_at_exactly_the_upper_bound_returns_nan_with_warning():
+    """``C = S`` implies infinite volatility. The routine warns and returns
+    nan instead of the first large finite sigma that matches to tolerance."""
     S, K, r, T = 100.0, 100.0, 0.05, 1.0
-    iv = implied_volatility(S, S, K, r, T)
-    assert math.isfinite(iv)
-    assert iv > 5.0
-    assert call_price(S, K, r, iv, T) == pytest.approx(S, abs=1e-6)
+    with pytest.warns(RuntimeWarning, match="unbounded"):
+        iv = implied_volatility(S, S, K, r, T)
+    assert math.isnan(iv)
 
 
 def test_implied_vol_inverts_a_quote_above_five_hundred_percent():

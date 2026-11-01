@@ -4,10 +4,12 @@ convergence study -> volatility-smile model-breakdown demonstration.
 Reproduces every number quoted in README.md and docs/VALIDATION.md.
 Runs offline, fully seeded:
 
-    python examples/run_pipeline.py
+    python examples/run_pipeline.py                 # report to stdout only
+    python examples/run_pipeline.py --out DIR       # also DIR/report.txt
+    python examples/run_pipeline.py --out DIR --plot  # and DIR/figures/*.png
 
-Outputs: ``output/report.txt``, ``output/figures/*.png`` (relative to
-the project root, regardless of the current working directory).
+Nothing is written unless ``--out`` is given. ``--plot`` needs the
+optional ``[plots]`` extra (matplotlib), which is imported only then.
 
 Pipeline
 --------
@@ -22,21 +24,18 @@ Pipeline
    price back through the (constant-vol, lognormal) Black-Scholes
    implied-vol solver. A flat line would vindicate the constant-vol
    assumption; a smile is direct evidence against it -- and is what
-   real listed-option markets show, persistently, since 1987.
+   listed-option markets have shown since 1987.
 """
 from __future__ import annotations
 
+import argparse
 import math
-import os
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 import eq_bs_replication as bs
@@ -44,10 +43,15 @@ import eq_bs_replication as bs
 S, K, r, sigma, T = 100.0, 105.0, 0.03, 0.25, 0.75
 
 
-def main() -> None:
-    output_dir = PROJECT_ROOT / "output"
-    figures_dir = output_dir / "figures"
-    figures_dir.mkdir(parents=True, exist_ok=True)
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--out", type=Path, default=None,
+                        help="directory for report.txt (and figures/ with --plot)")
+    parser.add_argument("--plot", action="store_true",
+                        help="write figures; needs --out and matplotlib")
+    args = parser.parse_args(argv)
+    if args.plot and args.out is None:
+        parser.error("--plot needs --out")
 
     lines: list[str] = []
     add = lines.append
@@ -76,15 +80,19 @@ def main() -> None:
         f"vega={pg.vega:.4f}")
     add(f"             theta={pg.theta:.4f}/yr  rho={pg.rho:.4f}")
 
+    # First differences use h = 1e-4. The second difference for gamma has
+    # round-off of order eps * C / h^2, so it uses hg = 1e-2: truncation
+    # O(hg^2) and round-off are then both near 1e-10.
     h = 1e-4
+    hg = 1e-2
     delta_fd = (bs.call_price(S + h, K, r, sigma, T)
                 - bs.call_price(S - h, K, r, sigma, T)) / (2 * h)
     vega_fd = (bs.call_price(S, K, r, sigma + h, T)
                - bs.call_price(S, K, r, sigma - h, T)) / (2 * h)
-    gamma_fd = (bs.call_price(S + h, K, r, sigma, T)
+    gamma_fd = (bs.call_price(S + hg, K, r, sigma, T)
                 - 2 * bs.call_price(S, K, r, sigma, T)
-                + bs.call_price(S - h, K, r, sigma, T)) / h**2
-    add(f"\nGreeks vs central finite differences (h={h}):")
+                + bs.call_price(S - hg, K, r, sigma, T)) / hg**2
+    add(f"\nGreeks vs central finite differences (h={h}, gamma h={hg}):")
     add(f"  delta: analytic {cg.delta:.8f}  fd {delta_fd:.8f}  "
         f"|diff| {abs(cg.delta - delta_fd):.2e}")
     add(f"  vega : analytic {cg.vega:.8f}  fd {vega_fd:.8f}  "
@@ -156,13 +164,22 @@ def main() -> None:
     skew_wing = (smile[0] + smile[-1]) / 2 - smile[atm_idx]
     add(f"Average wing-vs-ATM implied vol gap: {skew_wing:.1%} points")
     add("Under fat-tailed returns, deep OTM/ITM options carry higher")
-    add("BS-implied vols than ATM ones. Real markets show exactly this")
+    add("BS-implied vols than ATM ones. Listed markets show this")
     add("smile/skew, which is direct evidence against constant-vol GBM.")
 
     report = "\n".join(lines)
-    with open(output_dir / "report.txt", "w") as f:
-        f.write(report + "\n")
     print(report)
+    if args.out is None:
+        return
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "report.txt").write_text(report + "\n", encoding="utf-8")
+    if not args.plot:
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    figures_dir = args.out / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     # Figures
