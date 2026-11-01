@@ -202,13 +202,35 @@ TailRisk filtered_historical_var_es(const Matrix& factor_returns,
 }
 
 double filtered_historical_var(std::span<const double> pnl, double alpha, double lam) {
+    // Deprecated: kept with its old behaviour for one release (full-sample
+    // population-variance seed, type-7 quantile), matching the Python
+    // reference, so its numbers do not move.
     validate_alpha(alpha);
+    validate_lam(lam, "filtered_historical_var");
     validate_pnl(pnl, kMinHistObs);
-    std::vector<double> sigma;
-    const double next = std::sqrt(ewma_path(pnl, lam, kEwmaSeedWindow, &sigma));
-    std::vector<double> scenarios(pnl.size());
-    for (std::size_t t = 0; t < pnl.size(); ++t) scenarios[t] = pnl[t] / sigma[t] * next;
-    return var_es_order_statistic(scenarios, alpha).var;
+    const std::size_t n = pnl.size();
+    double mu = 0.0;
+    for (double v : pnl) mu += v;
+    mu /= static_cast<double>(n);
+    double s2 = 0.0;
+    for (double v : pnl) s2 += (v - mu) * (v - mu);
+    s2 /= static_cast<double>(n);
+    std::vector<double> sigma(n);
+    for (std::size_t t = 0; t < n; ++t) {
+        if (t > 0) s2 = lam * s2 + (1.0 - lam) * pnl[t - 1] * pnl[t - 1];
+        sigma[t] = std::sqrt(std::max(s2, 1e-32));
+    }
+    const double last = pnl[n - 1];
+    const double next = std::sqrt(lam * sigma[n - 1] * sigma[n - 1] + (1.0 - lam) * last * last);
+    std::vector<double> scenarios(n);
+    for (std::size_t t = 0; t < n; ++t) scenarios[t] = pnl[t] / sigma[t] * next;
+    std::sort(scenarios.begin(), scenarios.end());
+    const double h = alpha * static_cast<double>(n - 1);
+    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
+    const double q = (lo + 1 < n) ? scenarios[lo] + (h - static_cast<double>(lo)) *
+                                                        (scenarios[lo + 1] - scenarios[lo])
+                                  : scenarios[n - 1];
+    return -q;
 }
 
 double scale_var_sqrt_time(double var_1d, int horizon_days) {

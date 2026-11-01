@@ -6,7 +6,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <vector>
 
@@ -188,10 +190,17 @@ TEST(Fhs, PerFactorHomogeneousAndSingleFactorMatchesPnlLevel) {
     const TailRisk a = filtered_historical_var_es(r, w1, 0.01);
     const TailRisk b = filtered_historical_var_es(r, w2, 0.01);
     EXPECT_NEAR(b.var, 2.0 * a.var, 1e-9 * a.var);
-    // One factor: r*/sigma rescaling of w r equals the P&L-level FHS of w r.
+    // One factor by hand: r* = r / sigma_t * sigma_{T+1}, P&L = w r*, then L(m).
+    std::vector<double> col(t_obs);
+    for (std::size_t t = 0; t < t_obs; ++t) col[t] = r(t, 0);
+    const std::vector<double> sig = ewma_volatility(col, 0.94);
+    const double next = ewma_volatility_next(col, 0.94);
     std::vector<double> pnl(t_obs);
-    for (std::size_t t = 0; t < t_obs; ++t) pnl[t] = 1.0e6 * r(t, 0);
-    EXPECT_NEAR(a.var, filtered_historical_var(pnl, 0.01), 1e-9 * a.var);
+    for (std::size_t t = 0; t < t_obs; ++t) pnl[t] = 1.0e6 * (col[t] / sig[t] * next);
+    std::vector<double> loss;
+    for (double v : pnl) loss.push_back(-v);
+    std::sort(loss.begin(), loss.end(), std::greater<double>());
+    EXPECT_NEAR(a.var, loss[2], 1e-12 * a.var);  // n alpha = 3 -> m = 3
     EXPECT_THROW(filtered_historical_var_es(r, std::vector<double>{0.0, 0.0}, 0.01),
                  std::invalid_argument);
 }

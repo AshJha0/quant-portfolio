@@ -94,6 +94,8 @@ struct TailRisk {
 
 /// P&L-level FHS (devolatilises the scalar P&L series). It mixes the vol of
 /// the book with the vol of its factors; use filtered_historical_var_es.
+/// Kept unchanged for one release: full-sample variance seed and type-7
+/// quantile, as before.
 [[deprecated("P&L-level FHS; use filtered_historical_var_es (per factor). Removed next release.")]]
 [[nodiscard]] double filtered_historical_var(std::span<const double> pnl, double alpha = 0.01,
                                              double lam = 0.94);
