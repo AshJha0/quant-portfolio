@@ -103,8 +103,9 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
 
 ## C++ and Rust engines
 
-- C++20, CMake 3.20 or later, GoogleTest for tests. Warnings are errors when
-  the `<ENGINE>_WERROR` option is ON (EQOPT, FXOPT, EQVAR, FXVAR); CI sets it.
+- C++23, CMake 3.20 or later, GoogleTest for tests. Warnings are errors when
+  the opt-in `<ENGINE>_WERROR` option is ON (EQOPT, FXOPT, EQVAR, FXVAR;
+  default OFF). CI turns it on.
   No runtime dependencies beyond the standard library.
 - Rust 2021 edition, standard library only. CI runs
   `cargo test --release --locked` and clippy with warnings denied.

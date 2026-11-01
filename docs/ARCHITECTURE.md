@@ -62,7 +62,7 @@ quant-portfolio/
 │       ├── 01-risk-metrics/
 │       ├── 02-trading-signal-backtest/
 │       └── 03-black-scholes-replication/
-├── cpp/                   # 4 engines, C++20, tests use GoogleTest
+├── cpp/                   # 4 engines, C++23, tests use GoogleTest
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
 │   ├── equity-var-engine/
@@ -110,18 +110,37 @@ diagram 1 shows the layout.
 
 ## Engine latency
 
-<!-- LATENCY-PLACEHOLDER: filled by the latency pass -->
+Indicative numbers from one laptop: Intel Core 5 120U (12 threads) under WSL2 on
+Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
+figures are in each engine README). Rust figures are rustc 1.99.1, release
+profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
+jitter, so read p99 as an upper bound. CI does not produce these numbers.
 
-| Engine | Language | Latency |
-|---|---|---|
-| Equity options/Greeks | C++ | pending latency pass |
-| Equity options/Greeks | Rust | pending latency pass |
-| FX options/Greeks | C++ | pending latency pass |
-| FX options/Greeks | Rust | pending latency pass |
-| Equity VaR/ES | C++ | pending latency pass |
-| Equity VaR/ES | Rust | pending latency pass |
-| FX VaR/ES | C++ | pending latency pass |
-| FX VaR/ES | Rust | pending latency pass |
+C++:
+
+| Engine | Kernel | p50 | p99 |
+|---|---|---|---|
+| [equity-options](../cpp/equity-options-engine/README.md#latency) | `bs_price` | 135 ns | 385 ns |
+| [equity-options](../cpp/equity-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 23.95 ms | 29.75 ms |
+| [fx-options](../cpp/fx-options-engine/README.md#latency) | `gk_price` | 113 ns | 329 ns |
+| [fx-options](../cpp/fx-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 39.60 ms | 46.21 ms |
+| [equity-var](../cpp/equity-var-engine/README.md#latency) | `try_historical_var`, n = 1000 | 4.5 µs | 8.1 µs |
+| [equity-var](../cpp/equity-var-engine/README.md#latency) | `try_matvec`, 10000 x 50 scenario P&L | 376.2 µs | 1.02 ms |
+| [fx-var](../cpp/fx-var-engine/README.md#latency) | `try_pnl`, 1 scenario, 250 positions | 2.0 µs | 2.6 µs |
+| [fx-var](../cpp/fx-var-engine/README.md#latency) | `var_standard_error`, n = 10000 | 317.6 µs | 700.2 µs |
+
+Rust:
+
+| Engine | Kernel | p50 | p99 |
+|---|---|---|---|
+| [equity-options](../rust/equity-options-engine/README.md#latency) | `bs_price` | 44 ns | 116 ns |
+| [equity-options](../rust/equity-options-engine/README.md#latency) | `mc_price`, 1M paths, antithetic + CV | 16.16 ms | 24.82 ms |
+| [fx-options](../rust/fx-options-engine/README.md#latency) | `gk_price` | 64 ns | 72 ns |
+| [fx-options](../rust/fx-options-engine/README.md#latency) | `mc_price`, 100k paths, antithetic + CV | 5.79 ms | 7.89 ms |
+| [equity-var](../rust/equity-var-engine/README.md#latency) | historical VaR (`fast`), n = 250 | 541 ns | 1.79 µs |
+| [equity-var](../rust/equity-var-engine/README.md#latency) | MC run, 20 factors x 10k paths | 7.08 ms | 19.2 ms |
+| [fx-var](../rust/fx-var-engine/README.md#latency) | `CompiledBook::pnl`, one scenario | 2.03 µs | 4.1 µs |
+| [fx-var](../rust/fx-var-engine/README.md#latency) | `monte_carlo_var`, 100k normal | 346 ms | 437 ms |
 
 ## Foundations projects
 

@@ -33,7 +33,7 @@ flowchart TB
 
     subgraph PORTS["C++ and Rust ports of areas 01 and 03"]
         direction LR
-        CPP["C++20 engines<br/>GoogleTest"]
+        CPP["C++23 engines<br/>GoogleTest"]
         RUST["Rust 2021 engines<br/>cargo test, std only"]
     end
 

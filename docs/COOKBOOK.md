@@ -1841,7 +1841,7 @@ of running it rather than reporting one lucky train/test split.
 
 ### How do I build and test one C++ engine from a clean build directory?
 
-Every C++ engine is C++20 with `-Wall -Wextra`, GoogleTest and
+Every C++ engine is C++23 with `-Wall -Wextra`, GoogleTest and
 `gtest_discover_tests`. Warnings become errors when the engine's `*_WERROR`
 option is on (`EQOPT_WERROR` here), as CI sets it. Build and test
 `equity-options-engine` in a scratch build directory outside the checkout

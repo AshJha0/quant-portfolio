@@ -1,6 +1,6 @@
 # Methodology
 
-This engine is the C++20 port of the Python reference package
+This engine is the C++23 port of the Python reference package
 [`eq_options`](../../../python/equity/01-options-pricing/). The *financial*
 methodology, model selection (Black-Scholes-Merton vs CRR vs Monte Carlo,
 and why each earns its place), the full assumptions register with
