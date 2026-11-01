@@ -4,7 +4,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fx_algo import BacktestConfig, IntradayBacktester, build_bars, generate_ticks
+from fx_algo import (
+    BacktestConfig,
+    ExecutionConfig,
+    IntradayBacktester,
+    build_bars,
+    generate_ticks,
+)
+
+# These ledger tests pin the bar accounting (spread by session, carry at the
+# rollover) with the fill at the decision bar's close and no extra cost, so
+# the hand numbers stay simple. The default t+1 fill is pinned in
+# test_execution_convention.py.
+SAME_CLOSE = ExecutionConfig(mode="close_auction", auction_cost_bp=0.0)
 
 PIP = 1e-4
 SPREADS = {"asia": 0.6, "london": 0.4, "overlap": 0.2, "ny": 0.4, "late": 1.0}
@@ -21,7 +33,7 @@ def test_ledger_exact_on_toy_scenario_with_session_spreads():
     bars = toy_bars([8, 9, 10, 11], [1.1000, 1.1010, 1.0990, 1.1005])
     pos = pd.Series([1.0, -2.0, 0.0, 0.0], index=bars.index)
     bt = IntradayBacktester(BacktestConfig(pip_size=PIP, spread_pips_by_session=SPREADS))
-    ledger, summary = bt.run(bars, pos)
+    ledger, summary = bt.run(bars, pos, execution=SAME_CLOSE)
 
     # gross: pos_{t-1} * (close_t - close_{t-1})
     assert np.allclose(ledger["gross_pips"], [0.0, 10.0, 40.0, 0.0])
@@ -39,7 +51,7 @@ def test_session_spread_applied_at_trade_bar_session():
     bars = toy_bars([22, 23], [1.1, 1.1])  # late session: spread 1.0 -> half 0.5
     pos = pd.Series([1.0, 1.0], index=bars.index)
     bt = IntradayBacktester(BacktestConfig(pip_size=PIP, spread_pips_by_session=SPREADS))
-    ledger, _ = bt.run(bars, pos)
+    ledger, _ = bt.run(bars, pos, execution=SAME_CLOSE)
     assert ledger["cost_pips"].iloc[0] == pytest.approx(0.5)
 
 
@@ -50,7 +62,7 @@ def test_carry_accrual_hand_exact():
     cfg = BacktestConfig(
         pip_size=PIP, spread_pips_by_session=SPREADS, r_base=0.03, r_quote=0.01
     )
-    ledger, summary = IntradayBacktester(cfg).run(bars, pos)
+    ledger, summary = IntradayBacktester(cfg).run(bars, pos, execution=SAME_CLOSE)
     expected_quote = 1.0 * 1.1 * 0.02 / 365.0
     assert ledger["carry_quote"].iloc[1] == pytest.approx(expected_quote, abs=1e-15)
     assert ledger["carry_quote"].iloc[0] == 0.0
@@ -62,7 +74,7 @@ def test_negative_carry_costs_short_base_rate_advantage():
     bars = toy_bars([20, 21], [1.1, 1.1])
     pos = pd.Series([-1.0, -1.0], index=bars.index)
     cfg = BacktestConfig(pip_size=PIP, r_base=0.03, r_quote=0.01)
-    ledger, _ = IntradayBacktester(cfg).run(bars, pos)
+    ledger, _ = IntradayBacktester(cfg).run(bars, pos, execution=SAME_CLOSE)
     assert ledger["carry_quote"].iloc[1] == pytest.approx(-1.1 * 0.02 / 365.0)
 
 
@@ -81,11 +93,11 @@ def test_no_lookahead_pnl_uses_lagged_position():
     # "cheating" positions equal to the sign of the SAME bar's return
     cheat = pd.Series(np.sign(np.concatenate([[0.0], np.diff(closes)])), index=bars.index)
     bt = IntradayBacktester(BacktestConfig(pip_size=PIP, spread_pips_by_session=SPREADS))
-    ledger, _ = bt.run(bars, cheat)
-    # engine must produce the honest (lagged) gross, not the cheat gross
-    honest = np.concatenate([[0.0], cheat.to_numpy()[:-1] * np.diff(closes)])
+    ledger, _ = bt.run(bars, cheat, execution=SAME_CLOSE)
+    # engine must produce the lagged gross, not the cheat gross
+    lagged = np.concatenate([[0.0], cheat.to_numpy()[:-1] * np.diff(closes)])
     cheat_gross = np.concatenate([[0.0], cheat.to_numpy()[1:] * np.diff(closes)])
-    assert np.allclose(ledger["gross_quote"], honest, atol=1e-15)
+    assert np.allclose(ledger["gross_quote"], lagged, atol=1e-15)
     assert not np.allclose(ledger["gross_quote"].sum(), cheat_gross.sum())
 
 

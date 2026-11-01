@@ -41,7 +41,7 @@ def test_lambda_zero_gives_liquidity_weighted_twap_analog():
     assert np.allclose(pw, lw, atol=1e-8)
 
 
-def test_dp_solution_sums_exactly_to_parent():
+def test_piecewise_ac_schedule_sums_exactly_to_parent():
     sim = MarketSimulator(EURUSD, dt_minutes=5.0)
     eta = eta_from_depth(sim.depth_bucket, k_eta=0.02)
     for lam in (0.0, 1e-6, 1e-5, 1e-4):

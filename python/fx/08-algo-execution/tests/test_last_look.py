@@ -71,7 +71,7 @@ def test_the_trap_effective_cost_higher_with_adverse_selection():
     ll0, firm0, rej0 = paired_costs(alpha=0.0)
     d0 = ll0 - firm0
     se0 = d0.std(ddof=1) / np.sqrt(len(d0))
-    assert d0.mean() < 0  # uninformed flow: last-look genuinely cheaper
+    assert d0.mean() < 0  # uninformed flow: last-look cheaper
     assert d0.mean() < -3 * se0
 
     ll1, firm1, rej1 = paired_costs(alpha=0.5)
