@@ -132,7 +132,11 @@ TEST(Validation, AlphaAndHorizonBounds) {
   EXPECT_THROW(validate_alpha(0.0), std::invalid_argument);
   EXPECT_THROW(validate_alpha(1.0), std::invalid_argument);
   EXPECT_THROW(validate_alpha(-0.1), std::invalid_argument);
-  EXPECT_DOUBLE_EQ(validate_alpha(0.99), 0.99);
+  // alpha is the tail probability: a confidence level such as 0.99 throws.
+  EXPECT_THROW(validate_alpha(0.99), std::invalid_argument);
+  EXPECT_THROW(validate_alpha(0.5), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(validate_alpha(0.01), 0.01);
+  EXPECT_THROW(validate_horizon(std::numeric_limits<double>::infinity()), std::invalid_argument);
   EXPECT_THROW(validate_horizon(0.0), std::invalid_argument);
   EXPECT_DOUBLE_EQ(validate_horizon(10.0), 10.0);
 }
@@ -149,9 +153,9 @@ TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
   big(1, 0) = 5e11 * (1.0 + 1e-15);  // 5.5e-4 absolute, 1.1e-15 relative
   EXPECT_GT(std::abs(big(1, 0) - big(0, 1)), 1e-12);  // fails an absolute test
   CholeskyResult r;
-  ASSERT_NO_THROW(r = robust_cholesky(big));
+  ASSERT_NO_THROW(r = cholesky(big));
   EXPECT_FALSE(r.jittered);
-  // Genuinely asymmetric input is still rejected.
+  // Asymmetric input is still rejected.
   Matrix asym = big;
   asym(1, 0) = 5e11 * 1.01;
   EXPECT_THROW(robust_cholesky(asym), std::invalid_argument);
@@ -177,9 +181,10 @@ TEST(Cholesky, IndefiniteCovarianceStillFails) {
 }
 
 TEST(Validation, AlphaExtremesInsideTheOpenInterval) {
-  // Boundary-adjacent confidence levels must be accepted and usable.
+  // Boundary-adjacent tail probabilities must be accepted and usable.
   EXPECT_DOUBLE_EQ(validate_alpha(1e-6), 1e-6);
-  EXPECT_DOUBLE_EQ(validate_alpha(1.0 - 1e-12), 1.0 - 1e-12);
+  EXPECT_DOUBLE_EQ(validate_alpha(0.5 - 1e-12), 0.5 - 1e-12);
+  EXPECT_THROW(validate_alpha(1.0 - 1e-12), std::invalid_argument);
   EXPECT_THROW(validate_alpha(std::numeric_limits<double>::quiet_NaN()),
                std::invalid_argument);
   EXPECT_THROW(validate_horizon(std::numeric_limits<double>::quiet_NaN()),

@@ -1,10 +1,15 @@
 // Internal Brent root finder (implementation detail; not part of the public
 // API).  Mirrors scipy.optimize.brentq semantics: given f(a) f(b) <= 0,
-// returns a root to absolute x-tolerance xtol.
+// returns a root to absolute x-tolerance xtol. Throws std::runtime_error
+// when it does not converge in max_iter iterations (it never returns
+// an unconverged iterate). This is a Numerical-Recipes-style zbrent, not
+// scipy's implementation.
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
+#include <format>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -20,8 +25,7 @@ double brentq(F&& f, double a, double b, double xtol = 1e-14,
     if (fb == 0.0) return b;
     if (fa * fb > 0.0) {
         throw std::invalid_argument(
-            "brentq: root not bracketed on [" + std::to_string(a) + ", " +
-            std::to_string(b) + "]");
+            std::format("brentq: root not bracketed on [{}, {}]", a, b));
     }
     double c = a, fc = fa;
     double e = b - a, dstep = e;
@@ -81,7 +85,8 @@ double brentq(F&& f, double a, double b, double xtol = 1e-14,
             dstep = e;
         }
     }
-    return b;
+    throw std::runtime_error(
+        std::format("brentq: no convergence in {} iterations (last iterate {})", max_iter, b));
 }
 
 }  // namespace fxopt::detail

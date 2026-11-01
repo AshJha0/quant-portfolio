@@ -19,6 +19,7 @@ from .backtest import KupiecResult, count_var_exceptions, kupiec_pof_test
 from .diagnostics import NormalityReport, normality_report
 from .performance import DrawdownResult, max_drawdown, sharpe_ratio, sortino_ratio
 from .var_es import (
+    cornish_fisher_valid,
     expected_shortfall,
     var_cornish_fisher,
     var_historical,
@@ -45,6 +46,7 @@ __all__ = [
     "rolling_volatility",
     "ewma_volatility",
     # var_es
+    "cornish_fisher_valid",
     "var_historical",
     "var_parametric",
     "var_cornish_fisher",

@@ -1,152 +1,149 @@
-# Desk Guide — How an Equity Vol Desk Uses This Stack
+# Desk Guide: how an equity vol desk would use this stack
 
-Contract items 5 and 6: daily workflow, who consumes the numbers,
-controls/limits, model governance, and realistic scenarios.
+Daily workflow, consumers of the numbers, controls, and scenarios. All
+numbers quoted here come from `examples/run_pipeline.py` and
+`examples/validation_tables.py` on synthetic data.
 
 ---
 
 ## 1. Daily workflow
 
-### 07:30 — Marking the surface from listed quotes
+### 07:30: marking the surface from listed quotes
 
-1. Pull the listed chain (per underlier, per expiry), de-Americanise if
-   needed, drop crossed/stale quotes.
-2. `implied_vol_vector` on mids. Quotes that come back `nan` (sub-intrinsic,
-   zero time value, dead wings) are *excluded by design* — the warning log is
-   the audit trail of what was refused and why.
-3. `fit_svi` per expiry (seeded restarts → reproducible marks). The fitter
-   flags any slice violating the Durrleman condition: **a flagged slice is a
-   quote problem or an arbitrage, either way a human looks before the mark
-   goes out.**
-4. `VolSurface` build with the calendar check. A calendar flag around an
-   earnings date is usually *real event variance*, not bad quotes — see §4;
-   enforcement (`enforce_calendar=True`) is a conscious override, never a
-   default.
-5. Publish: the surface object is the single source of truth for
-   `vol(K, T)` used by cash desks, structured desks, and risk.
+1. Pull the listed chain per underlier and expiry, de-Americanise if
+   needed, drop crossed or stale quotes.
+2. Run `implied_vol_vector` on mids. Quotes that return `nan`
+   (sub-intrinsic, zero time value, dead wings) are excluded. The warning
+   log records what was refused and why.
+3. Run `fit_svi` per expiry. The fit is constrained to be free of butterfly
+   arbitrage and to respect Lee's wing bound. `active_constraints` lists any
+   constraint that binds. A binding constraint means the quotes asked for
+   an arbitrageable smile: a human looks before the mark goes out.
+4. Build `VolSurface` with the calendar check. A calendar flag around an
+   earnings date is usually event variance, not bad quotes (see section 4).
+   `enforce_calendar=True` is an explicit override. After enforcement the
+   surface re-checks butterfly arbitrage at pillars and midpoints
+   (`butterfly_after_enforcement`).
+5. Publish the surface object as the single source of `vol(K, T)` for cash
+   desks, structured desks and risk.
 
-### 08:30 — Model calibration
+### 08:30: model calibration
 
 `calibrate_heston` against the marked surface (multi-start, seeded). The
-calibration report goes to the model-control log: RMSE per expiry, Feller
-ratio, Jacobian condition number, and parameter deltas vs yesterday. Two
-gates before the calibrated model is released to pricing:
+report goes to the model-control log: RMSE per expiry, Feller ratio,
+Jacobian condition number, and parameter changes against yesterday. Two
+gates before the calibrated model is used for pricing:
 
-* **Fit gate**: RMSE per pillar expiry below threshold (e.g. 0.5 vp beyond
-  1m; the short end is *expected* to miss — VALIDATION.md §5.1 — and exotics
-  inside the first pillar are not priced off Heston).
-* **Stability gate**: parameter jump vs yesterday within band; κ/ξ moves get
-  a wider band than v0/ρ/θ because of the documented ridge (VALIDATION.md
-  §5.2). A big κ/ξ move with an unchanged surface is ridge noise → smooth it
-  (carry yesterday's κ, refit the rest); a big ρ or v0 move is market.
+* Fit gate: RMSE per pillar expiry below a threshold (for example 0.5 vol
+  points beyond 1m). The short end is expected to miss (VALIDATION.md
+  section 5.1), so exotics inside the first pillar are not priced off
+  Heston.
+* Stability gate: parameter change against yesterday within a band. Kappa
+  and xi get a wider band than v0, rho and theta because of the ridge
+  (VALIDATION.md section 5.2). A large kappa/xi move with an unchanged
+  surface is ridge noise: carry yesterday's kappa and refit the rest. A
+  large rho or v0 move is market.
 
 ### Intraday
 
-* Vanilla quoting off the SVI surface (sticky-strike between rebuilds).
-* Exotic pricing off calibrated Heston (Fourier for Europeans/digitals, QE
-  Monte Carlo for path-dependents — 8–32 steps/year is enough, VALIDATION.md
-  §3; **never** Euler on a Feller-violating fit).
+* Vanilla quoting off the SVI surface between rebuilds.
+* Exotic pricing off calibrated Heston: Fourier for Europeans and digitals,
+  QE Monte Carlo (martingale-corrected, antithetic, control variate) for
+  path-dependent payoffs. 8 to 32 steps per year is enough
+  (VALIDATION.md section 3). Do not use Euler on a Feller-violating fit.
+  No path-dependent payoff is implemented in this package.
 * Greeks feed: `heston_greeks` (Richardson FD) for the model book,
-  `bs_equivalent_greeks` for the BS-based firm risk system, and
-  `smile_adjusted_delta` to publish both sticky-strike and sticky-moneyness
-  deltas — the difference (≈ 0.08 delta ATM 6m in the pipeline run) is the
-  hedging decision, and the desk head chooses the regime by market:
-  range-bound → sticky-strike, trending/repricing → sticky-moneyness.
+  `bs_equivalent_greeks` for a BS-based risk system, and
+  `smile_adjusted_delta`, which returns three deltas: sticky-strike,
+  sticky-moneyness and a first-order local-vol rule. In the pipeline run
+  (ATM, 6m) they are 0.538, 0.615 and 0.462, and the Heston delta is 0.616.
 
 ## 2. Who consumes what
 
 | Consumer | Feed | Frequency |
 |---|---|---|
-| Cash/flow desk | `vol(K,T)`, smile slopes | continuous |
+| Cash and flow desk | `vol(K,T)`, smile slopes | continuous |
 | Exotics desk | calibrated `HestonParams`, MC engine | per calibration |
-| Market risk | Greeks + scenario ladders (spot × vol grid) | EOD + intraday snap |
+| Market risk | Greeks and spot x vol scenario ladders | EOD and intraday snap |
 | Product control | calibration report, fit RMSE, parameter history | EOD |
-| Model validation | cross-method diffs, MC-vs-Fourier, recovery tests | monthly / on change |
+| Model validation | cross-method differences, MC against Fourier, recovery tests | monthly or on change |
 
-P&L attribution runs off the Greeks feed: delta/gamma (spot), vega_v0 +
-smile re-mark (vol), theta (carry), with the unexplained residual monitored —
-persistent unexplained P&L on skew products is the symptom of marking
-sticky-strike in a sticky-moneyness market (or vice versa).
+P&L attribution uses the Greeks feed: delta and gamma (spot), vega_v0 plus
+smile re-mark (vol), theta (carry). Persistent unexplained P&L on skew
+products is the symptom of hedging with the wrong smile-dynamics regime.
 
 ## 3. Controls, limits, model governance
 
-* **Arbitrage flags are blocking**: no surface publishes with an unreviewed
+* Arbitrage flags block publication: no surface goes out with an unreviewed
   butterfly or calendar violation.
-* **Parameter-stability monitor**: time series of (v0, κ, θ, ρ, ξ) with the
-  condition number; alert on jumps outside band. The ridge means κ/ξ pairs
-  are monitored *jointly* (e.g. ξ²/κ, which vanillas actually pin) rather
-  than individually.
-* **Model reserve policy for unhedgeable parameters**: κ and ξ cannot be
-  implied stably from vanillas (cond(J) ~ 1e3, day-over-day ±5–10 %).
-  Exotics whose value loads on them individually (forward-starts, cliquets)
-  carry a reserve sized by repricing across the ridge: revalue the trade at
-  the day-1/day-2/day-3 parameter sets of VALIDATION.md §5.2 and reserve the
-  spread. Short-dated skew products carry a separate reserve for the
-  no-jumps assumption (the 2.8 vp 1-week miss of §5.1).
-* **Scheme control**: MC pricing under Feller violation must use QE (or full
-  truncation with ≥ 256 steps and a bias check vs Fourier); this is enforced
-  in code review, and the bias table in VALIDATION.md is the evidence.
-* **Change governance**: any change to pricers must keep the cross-method
-  agreement tests (1e-6) and recovery tests green — they are the regression
-  harness a validator reruns.
+* Parameter-stability monitor: time series of (v0, kappa, theta, rho, xi)
+  with the condition number. Kappa and xi are monitored jointly through
+  xi^2/kappa, which vanillas pin, rather than individually.
+* Model reserve for parameters vanillas cannot pin: kappa and xi move
+  several percent day over day under quote noise with an unchanged surface
+  (VALIDATION.md section 5.2). Exotics whose value loads on them
+  individually (forward starts, cliquets) carry a reserve sized by
+  repricing across the three parameter sets of that table. Short-dated skew
+  products carry a separate reserve for the no-jumps assumption
+  (section 5.1).
+* Scheme control: Monte Carlo under Feller violation uses QE, or full
+  truncation Euler with at least 256 steps and a bias check against
+  Fourier. The bias table in VALIDATION.md section 3 is the evidence.
+* Change control: any pricer change keeps the cross-method agreement tests
+  (1e-6) and the recovery tests green.
 
-## 4. Realistic scenarios
+## 4. Scenarios
 
 ### Earnings gap (single name, print tomorrow)
 
-Tomorrow's expiry embeds one night of event variance: total variance jumps
-between the pre- and post-earnings pillars. In smooth ACT/365F time this can
-*look* like calendar arbitrage (post-event annualised vol far below
-pre-event). **Do not** run `enforce_calendar=True` — the running-max would
-smear event variance across the term structure. Correct handling: strip the
-event (w = w_diffusive + w_event·1{T ≥ t_event}), mark the diffusive surface,
-re-add the event. This stack flags the anomaly (the calendar check fires,
-which is exactly the desired behaviour) and leaves event-time modelling to
-the desk. The T→0 tests guarantee the machinery stays numerically sane at
-overnight expiries.
+Tomorrow's expiry embeds one night of event variance, so total variance
+jumps between the pre- and post-earnings pillars. In smooth ACT/365F time
+this can look like calendar arbitrage. Do not run `enforce_calendar=True`:
+the running maximum would spread event variance across the term structure.
+Strip the event (`w = w_diffusive + w_event * 1{T >= t_event}`), mark the
+diffusive surface, and add the event back. This package flags the anomaly
+and leaves event-time modelling to the desk. The T -> 0 tests keep the
+machinery numerically sane at overnight expiries.
 
-### 2018 "Volmageddon" (Feb 5: short-vol unwind, VIX +115 % in a day)
+### February 2018 short-vol unwind (VIX +115% in a day)
 
-* Marking: weekly wings gap 10+ vol points; many wing quotes go
-  sub-intrinsic or crossed during the cascade — the robust inverter refuses
-  them (`nan` + warning) instead of printing a 300-vol mark, and the SVI
-  restarts keep slices fittable from the surviving body quotes.
-* Calibration: v0 and ξ spike, ρ → −0.9, Feller deeply violated — all
-  *allowed* by the bounds and warned, not rejected: the fit gate widens in
-  crisis rather than the model silently failing. Euler-based risk runs are
-  the hidden danger (bias grows exactly when ξ explodes — 40+ SE at 32
-  steps): the QE requirement is a crisis control, not a nicety.
-* Risk: the vega_v0 and gamma feeds reprice on the intraday snap; scenario
-  ladders (spot −5 %/−10 % × vol +10/+20 pts) come straight from the pricer
-  since parameters, not local slopes, drive the revaluation.
+* Marking: weekly wings gap by 10+ vol points and many wing quotes go
+  sub-intrinsic or crossed. The inverter refuses them (`nan` plus a
+  warning). The SVI fit uses the surviving body quotes.
+* Calibration: v0 and xi spike, rho goes towards -0.9, Feller is deeply
+  violated. The bounds allow this and the code warns. The fit gate widens
+  in a crisis instead of the model failing.
+* Euler-based risk runs are the danger here: Euler bias grows with xi
+  (tens of standard errors at 32 steps on the extreme set,
+  VALIDATION.md section 3). QE is the crisis control.
+* Risk: vega_v0 and gamma reprice on the intraday snap. Scenario ladders
+  (spot -5%/-10% x vol +10/+20 points) come from the pricer.
 
-### Index skew in a crash (sticky what?)
+### Index skew in a sell-off (which delta?)
 
-In a fast sell-off the index smile empirically rides *with* the forward
-(sticky-moneyness-like): realised delta of a call is the
-`delta_sticky_moneyness` number, ~0.08 above sticky-strike ATM in the
-pipeline run. A desk hedged on sticky-strike deltas into a crash is
-under-hedged on the way down by vega × skew-slope / S per option. The dual
-delta feed exists precisely so the hedging regime is an explicit desk
-decision revisited when the regime shifts, with the gap between the two
-deltas as the measured cost of being wrong.
+Empirically, index implied vols at fixed strike rise as spot falls: the
+smile moves against spot, closer to local-vol dynamics than to
+sticky-moneyness. Under negative skew this puts the minimum-variance call
+delta below the sticky-strike BS delta. A desk hedging on the
+sticky-moneyness (or Heston at fixed v0) delta is over-hedged on the way
+down. `delta_local_vol_approx` gives the first-order local-vol number; the
+gap between the three deltas is the size of the regime decision. Heston
+with a fixed v0 is a sticky-moneyness model, so its delta needs the same
+regime adjustment.
 
 ### Dividend risk
 
-The stack assumes continuous yield q. Around ex-div dates of large discrete
-dividends the true forward is a step function: marking with smooth q shifts
-forward moneyness, which shows up as a *spurious* skew/calendar kink at
-expiries straddling the ex-date. Symptoms: butterfly/calendar flags
-clustering at one expiry with clean quotes. Handling: mark those expiries on
-dividend-adjusted forwards upstream (out of scope here, flagged in the
-assumptions register); the sensitivity is quantifiable by bumping q — a 50 bp
-dividend error on a 1y pillar moves the ATM strike's k by 50 bp and the
-marked vol by skew-slope × 0.005 (~0.15 vp at the fitted 6m skew).
+The package assumes a continuous yield q. Around large discrete
+dividends the true forward steps at the ex-date. Marking with a smooth q
+shifts forward moneyness, which shows up as a skew or calendar kink at
+expiries straddling the ex-date. Symptom: butterfly or calendar flags at
+one expiry with clean quotes. Mark those expiries on dividend-adjusted
+forwards upstream (out of scope here). A 50 bp dividend error on a 1y
+pillar moves the ATM log-moneyness by 50 bp and the marked vol by the skew
+slope times 0.005.
 
 ### Illiquid single names
 
-Five good quotes per expiry is the documented hard floor (SVI has 5
-parameters; `fit_svi` refuses fewer, single-strike expiries are rejected
-informatively). Desk practice for thinner names: borrow the index smile shape
-(fix b, ρ, σ from the index slice, fit only a, m) — the module's dataclass
-parameterisation makes that a 5-line wrapper.
+Five valid quotes per expiry is the floor (SVI has five parameters;
+`fit_svi` refuses fewer). For thinner names, borrow the index smile shape
+(fix b, rho and sigma from the index slice and fit a and m only).

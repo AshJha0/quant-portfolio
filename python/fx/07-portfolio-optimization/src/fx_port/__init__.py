@@ -1,4 +1,4 @@
-"""fx_port — FX portfolio optimization & currency risk allocation.
+"""fx_port: FX portfolio optimization & currency risk allocation.
 
 Pipeline: total-return estimation (spot + carry) → style signals
 (carry/momentum/value) → covariance modelling (LW shrinkage, EWMA,
@@ -32,8 +32,12 @@ from .cvar_opt import (
     min_cvar,
 )
 from .hedging import (
+    HedgeInference,
     HedgeReport,
+    OutOfSampleHedge,
+    hedge_ratio_inference,
     hedged_returns,
+    out_of_sample_hedge,
     optimal_hedge_ratios,
     variance_decomposition,
 )
@@ -68,6 +72,7 @@ from .returns_est import (
     shrunk_means,
     signal_weights,
     spot_log_returns,
+    sleeve_turnover,
     style_returns,
     total_log_returns,
     value_signal,
@@ -129,6 +134,11 @@ __all__ = [
     "spot_log_returns",
     "style_attribution",
     "style_returns",
+    "sleeve_turnover",
+    "hedge_ratio_inference",
+    "HedgeInference",
+    "out_of_sample_hedge",
+    "OutOfSampleHedge",
     "summary",
     "tangency_weights",
     "total_log_returns",

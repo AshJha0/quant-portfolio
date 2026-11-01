@@ -97,7 +97,7 @@ def fit_pca(X: pd.DataFrame | np.ndarray, n_components: int | None = None) -> PC
     if t_len <= n_feat:
         raise ValueError(f"need more observations ({t_len}) than features ({n_feat})")
     if np.isnan(arr).any():
-        raise ValueError("X contains NaN — drop warmup rows before PCA")
+        raise ValueError("X contains NaN: drop warmup rows before PCA")
     mean = arr.mean(axis=0)
     std = arr.std(axis=0, ddof=1)
     tol = 1e-13 * (np.abs(mean) + 1.0)
@@ -176,9 +176,9 @@ def rolling_pca(
 
     Refits PCA every ``step`` days on the trailing ``window`` observations and
     projects the CURRENT block of observations with the latest model.  Sign
-    continuity: each new component is aligned with its predecessor — if the
+    continuity: each new component is aligned with its predecessor: if the
     dot product with the previous window's component is negative, the sign is
-    flipped — so factor scores do not jump sign at refit dates.
+    flipped, so factor scores do not jump sign at refit dates.
 
     Parameters
     ----------

@@ -4,8 +4,8 @@ The primary pricers (:mod:`fx_options.garman_kohlhagen`, :mod:`black76`,
 :mod:`binomial`) already funnel every market input through
 :func:`fx_options._common.validate_inputs`, which rejects non-finite values.
 The helpers exercised here take *extra* scalar arguments that bypass that
-funnel — ``pip_factor``, ``pip_size``, ``transaction_cost_pips``, ``mu``,
-``sigma_hedge``, an already-computed ``delta``/``price`` — and a guard
+funnel: ``pip_factor``, ``pip_size``, ``transaction_cost_pips``, ``mu``,
+``sigma_hedge``, an already-computed ``delta``/``price``, and a guard
 written as ``if x <= 0: raise`` silently accepts NaN because every
 comparison with NaN is False.  Each test below pins the fixed behaviour:
 non-finite in, ``ValueError`` out, never a NaN "price".

@@ -3,8 +3,8 @@
 //! # Algorithm choice (documented per the engine conventions)
 //!
 //! * **State generator: xoshiro256++** (Blackman & Vigna, 2019). 256-bit
-//!   state, period 2^256 - 1, passes BigCrush, ~1 ns per `u64` — the same
-//!   family NumPy uses for its default `Generator` bit stream. Chosen over
+//!   state, period 2^256 - 1, passes BigCrush, ~1 ns per `u64`. (NumPy's
+//!   default `Generator` uses PCG64, a different family.) Chosen over
 //!   `std`-only alternatives because Rust's standard library ships **no**
 //!   RNG at all, and over a bare LCG/PCG32 because 64-bit output with a
 //!   large state gives comfortable headroom for 10^6-10^8-path Monte
@@ -23,10 +23,10 @@
 //!   reproducible: consuming exactly two `u64` draws per pair makes the
 //!   stream layout easy to reason about for bit-reproducibility tests.
 //!
-//! Same seed => bit-identical stream, on every platform (no
-//! `std::collections::HashMap` iteration order, no threading, no libm
-//! dispatch in the hot path beyond `ln`/`sqrt`/`sin`/`cos`, which are
-//! correctly-rounded-enough and deterministic on a given target).
+//! Same seed => identical `u64` stream on every platform. The normal
+//! deviates go through `ln`/`sin`/`cos` from the platform libm, which is
+//! deterministic on a given target but not correctly rounded, so normals
+//! can differ in the last bits between targets.
 
 use std::f64::consts::PI;
 
@@ -88,10 +88,7 @@ impl Xoshiro256PlusPlus {
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
         let s = &mut self.state;
-        let result = s[0]
-            .wrapping_add(s[3])
-            .rotate_left(23)
-            .wrapping_add(s[0]);
+        let result = s[0].wrapping_add(s[3]).rotate_left(23).wrapping_add(s[0]);
         let t = s[1] << 17;
         s[2] ^= s[0];
         s[3] ^= s[1];
@@ -105,17 +102,17 @@ impl Xoshiro256PlusPlus {
     /// Uniform draw in the **open** interval (0, 1) with 53-bit resolution.
     ///
     /// Uses the top 53 bits of [`next_u64`](Self::next_u64) mapped to the
-    /// midpoints `(m + 0.5) * 2^-53`, so 0 and 1 are unattainable — safe
+    /// midpoints `(m + 0.5) * 2^-53`, so 0 and 1 are unattainable: safe
     /// to pass straight into `ln` for Box-Muller.
     #[inline]
     pub fn next_uniform(&mut self) -> f64 {
-        ((self.next_u64() >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0) // 2^-53
+        uniform_from_bits(self.next_u64())
     }
 
     /// Standard normal draw N(0, 1) via trigonometric Box-Muller.
     ///
     /// Generates variates in pairs `(R cos(theta), R sin(theta))` with
-    /// `R = sqrt(-2 ln u1)`, `theta = 2 pi u2`, caching the second — so
+    /// `R = sqrt(-2 ln u1)`, `theta = 2 pi u2`, caching the second: so
     /// two calls consume exactly two `u64` draws.
     #[inline]
     pub fn standard_normal(&mut self) -> f64 {
@@ -124,10 +121,9 @@ impl Xoshiro256PlusPlus {
         }
         let u1 = self.next_uniform();
         let u2 = self.next_uniform();
-        let radius = (-2.0 * u1.ln()).sqrt();
-        let theta = 2.0 * PI * u2;
-        self.cached_normal = Some(radius * theta.sin());
-        radius * theta.cos()
+        let (z0, z1) = box_muller(u1, u2);
+        self.cached_normal = Some(z1);
+        z0
     }
 
     /// Fill `out` with i.i.d. standard normal draws.
@@ -139,4 +135,32 @@ impl Xoshiro256PlusPlus {
             *z = self.standard_normal();
         }
     }
+
+    /// Fill `out` with raw [`next_u64`](Self::next_u64) outputs.
+    ///
+    /// Used by the multi-threaded Monte Carlo path: the raw stream is
+    /// drawn serially (about 1 ns per value), then Box-Muller runs in
+    /// parallel on fixed chunks. The stream is the one
+    /// [`standard_normal`](Self::standard_normal) would consume.
+    #[inline]
+    pub fn fill_u64(&mut self, out: &mut [u64]) {
+        for x in out.iter_mut() {
+            *x = self.next_u64();
+        }
+    }
+}
+
+/// Map a raw `u64` to the open interval (0, 1), as
+/// [`Xoshiro256PlusPlus::next_uniform`] does.
+#[inline]
+pub(crate) fn uniform_from_bits(x: u64) -> f64 {
+    ((x >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0) // 2^-53
+}
+
+/// Trigonometric Box-Muller: `(R cos(theta), R sin(theta))`.
+#[inline]
+pub(crate) fn box_muller(u1: f64, u2: f64) -> (f64, f64) {
+    let radius = (-2.0 * u1.ln()).sqrt();
+    let theta = 2.0 * PI * u2;
+    (radius * theta.cos(), radius * theta.sin())
 }

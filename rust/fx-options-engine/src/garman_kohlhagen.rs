@@ -32,10 +32,10 @@ pub(crate) const MIN_VOL: f64 = 1e-12;
 ///
 /// # Arguments
 ///
-/// * `s`, `k` — spot (domestic per foreign) and strike, both `> 0`.
-/// * `t` — time to expiry in years, `> 0`.
-/// * `r_d`, `r_f` — domestic / foreign continuously compounded rates.
-/// * `sigma` — annualised volatility, `> 0`.
+/// * `s`, `k`: spot (domestic per foreign) and strike, both `> 0`.
+/// * `t`: time to expiry in years, `> 0`.
+/// * `r_d`, `r_f`: domestic / foreign continuously compounded rates.
+/// * `sigma`: annualised volatility, `> 0`.
 ///
 /// # Errors
 ///
@@ -76,14 +76,14 @@ pub fn d2(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult<f6
 ///
 /// # Arguments
 ///
-/// * `s` — spot FX rate, domestic per unit foreign, `> 0`.
-/// * `k` — strike in the same quotation, `> 0`.
-/// * `t` — time to expiry in years, `>= 0` (`t = 0` returns intrinsic).
-/// * `r_d` — domestic (quote-currency) continuously compounded rate.
-/// * `r_f` — foreign (base-currency) continuously compounded rate.
-/// * `sigma` — annualised volatility, `>= 0` (`sigma = 0` returns
+/// * `s`: spot FX rate, domestic per unit foreign, `> 0`.
+/// * `k`: strike in the same quotation, `> 0`.
+/// * `t`: time to expiry in years, `>= 0` (`t = 0` returns intrinsic).
+/// * `r_d`: domestic (quote-currency) continuously compounded rate.
+/// * `r_f`: foreign (base-currency) continuously compounded rate.
+/// * `sigma`: annualised volatility, `>= 0` (`sigma = 0` returns
 ///   discounted forward intrinsic).
-/// * `option_type` — [`OptionType::Call`] (call on the base currency) or
+/// * `option_type`: [`OptionType::Call`] (call on the base currency) or
 ///   [`OptionType::Put`].
 ///
 /// # Errors
@@ -113,15 +113,18 @@ pub fn gk_price(
     if t == 0.0 {
         return Ok((phi * (s - k)).max(0.0));
     }
-    if sigma * t.sqrt() <= MIN_VOL {
-        let forward = s * ((r_d - r_f) * t).exp();
-        return Ok((-r_d * t).exp() * (phi * (forward - k)).max(0.0));
-    }
-    let d1v = d1(s, k, t, r_d, r_f, sigma)?;
-    let d2v = d1v - sigma * t.sqrt();
-    Ok(phi
-        * (s * (-r_f * t).exp() * norm_cdf(phi * d1v)
-            - k * (-r_d * t).exp() * norm_cdf(phi * d2v)))
+    let disc_s = s * (-r_f * t).exp();
+    let disc_k = k * (-r_d * t).exp();
+    let value = if sigma * t.sqrt() <= MIN_VOL {
+        // e^{-r_d T} max(phi (F - K), 0) as S e^{-r_f T} - K e^{-r_d T}:
+        // the forward itself overflows when (r_d - r_f) T > 709.
+        (phi * (disc_s - disc_k)).max(0.0)
+    } else {
+        let d1v = d1(s, k, t, r_d, r_f, sigma)?;
+        let d2v = d1v - sigma * t.sqrt();
+        phi * (disc_s * norm_cdf(phi * d1v) - disc_k * norm_cdf(phi * d2v))
+    };
+    crate::finite_result(value, "gk_price")
 }
 
 /// Convenience wrapper: `gk_price(..., OptionType::Call)`.

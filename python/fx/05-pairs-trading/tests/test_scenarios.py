@@ -51,7 +51,7 @@ class TestFloorBreakScenario:
         assert res.total_pnl.iloc[:bi].sum() > 0.0
 
     def test_steady_gains_shape(self, run):
-        """Pre-break equity: high hit-rate grind — most 63-day blocks are up."""
+        """Pre-break equity: high hit-rate grind: most 63-day blocks are up."""
         res, meta = run
         bi = meta["break_idx"]
         pre = res.total_pnl.iloc[252:bi]
@@ -111,7 +111,7 @@ class TestCarryFlipScenario:
 class TestTriangularNullCase:
     """Full-funnel null test: a synthetic cross and its USD-leg replication
     pass the correlation screen with corr ~ 1, then the cointegration stage
-    must declare the spread degenerate — not tradable."""
+    must declare the spread degenerate, not tradable."""
 
     def test_funnel_flags_triangular_pair(self):
         legs, _ = syn.make_two_block_panel(n=600, seed=2)

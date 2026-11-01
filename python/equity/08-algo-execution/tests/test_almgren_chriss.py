@@ -15,7 +15,7 @@ P = ACParams(total_shares=100_000.0, n_slices=20, total_time=1.0,
 
 
 def test_trajectory_satisfies_discrete_optimality_recursion():
-    """x_{j-1} + x_{j+1} = 2*cosh(kappa*tau)*x_j for all interior j —
+    """x_{j-1} + x_{j+1} = 2*cosh(kappa*tau)*x_j for all interior j:
     the discrete Euler-Lagrange condition of the E + lam*V objective."""
     for lam in (1e-7, 5e-6, 1e-4):
         x = ac_trajectory(P, lam)

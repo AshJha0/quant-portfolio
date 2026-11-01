@@ -2,12 +2,12 @@
 
 Two layers:
 
-* **ticks-lite** intraday generator (:func:`generate_ticks`) — a regular
+* **ticks-lite** intraday generator (:func:`generate_ticks`): a regular
   sub-hourly grid of (time, bid, mid, ask) with session-dependent
   volatility and spread and a *planted* hourly momentum alpha
   (AR(1) autocorrelation ``phi`` in hourly log-mid increments).  The bar
   builder and signal layer consume this.
-* **daily panel** (:func:`generate_daily_panel`) — per-day spot and
+* **daily panel** (:func:`generate_daily_panel`): per-day spot and
   base/quote deposit rates for the carry filter and overnight accrual.
 
 All prices follow the CONVENTIONS.md FX quoting rules: BASE/QUOTE,

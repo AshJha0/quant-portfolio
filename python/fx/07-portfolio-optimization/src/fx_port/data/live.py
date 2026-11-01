@@ -4,8 +4,8 @@ Network access lives ONLY here.  Nothing in the library or the test suite
 imports this module's network functions at import time; tests run fully
 offline against :mod:`fx_port.data.synthetic`.
 
-The Frankfurter API (https://frankfurter.dev) serves ECB reference rates —
-spot only, no deposit rates — so live panels support spot/momentum/value work
+The Frankfurter API (https://frankfurter.dev) serves ECB reference rates:
+spot only, no deposit rates, so live panels support spot/momentum/value work
 but carry requires a separate rates source.
 """
 

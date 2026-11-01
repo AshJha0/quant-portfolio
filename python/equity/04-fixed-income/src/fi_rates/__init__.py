@@ -1,4 +1,4 @@
-"""fi_rates — Fixed income pricing & risk analytics.
+"""fi_rates: Fixed income pricing & risk analytics.
 
 Pipeline: yield curve construction -> bootstrapping -> bond pricing ->
 duration -> convexity -> key-rate duration -> scenario analysis.

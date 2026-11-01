@@ -85,3 +85,18 @@ def test_calibration_slices_structure(eurusd):
         assert cal.T == ms.T
         assert cal.strikes.shape == cal.vols.shape == (5,)
         assert np.all(np.diff(cal.strikes) > 0)
+
+
+def test_heston_quotes_priced_independently_of_the_calibrator(monkeypatch):
+    """Calibration prices with COS; ground-truth quotes must come from the
+    Gil-Pelaez quadrature so a COS bug cannot cancel out of the recovery
+    test.  Fails if quote generation calls price_cos."""
+    import fx_surface.data.synthetic as syn
+
+    def boom(*a, **k):
+        raise AssertionError("generator used the calibrator's pricer")
+
+    monkeypatch.setattr(syn, "price_cos", boom, raising=False)
+    params = HestonParams(v0=0.0064, kappa=1.8, theta=0.008, xi=0.45, rho=-0.35)
+    m = market_from_heston(params, tenors=(("3m", 91 / 365),))
+    assert len(m.slices) == 1

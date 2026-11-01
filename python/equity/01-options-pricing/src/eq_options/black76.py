@@ -26,9 +26,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from scipy.stats import norm
 
-from .black_scholes import OptionType, validate_inputs
+
+from .black_scholes import OptionType, _check_rates, _ncdf, validate_inputs
 
 __all__ = ["black76_price", "black76_greeks", "Black76Greeks", "b76_d1_d2"]
 
@@ -138,6 +138,7 @@ def black76_price(
     intrinsic ``exp(-rT) max(±(F - K), 0)``.
     """
     validate_inputs(F, K, T, sigma, option_type)
+    _check_rates(r=r)
     sign = 1.0 if option_type == "call" else -1.0
     if T == 0.0:
         return max(sign * (F - K), 0.0)
@@ -145,7 +146,7 @@ def black76_price(
     if sigma == 0.0 or K == 0.0 or F == 0.0:
         return df * max(sign * (F - K), 0.0)
     d1, d2 = b76_d1_d2(F, K, T, sigma)
-    return df * sign * (F * norm.cdf(sign * d1) - K * norm.cdf(sign * d2))
+    return df * sign * (F * _ncdf(sign * d1) - K * _ncdf(sign * d2))
 
 
 def black76_greeks(
@@ -177,14 +178,16 @@ def black76_greeks(
     ValueError
         If inputs are invalid or not strictly positive.
     """
+    validate_inputs(F, K, T, sigma, option_type)
+    _check_rates(r=r)
     d1, d2 = b76_d1_d2(F, K, T, sigma)
     df = math.exp(-r * T)
     sqrt_t = math.sqrt(T)
     pdf_d1 = math.exp(-0.5 * d1 * d1) / _SQRT_2PI
     sign = 1.0 if option_type == "call" else -1.0
 
-    price = df * sign * (F * norm.cdf(sign * d1) - K * norm.cdf(sign * d2))
-    delta = df * sign * norm.cdf(sign * d1)
+    price = df * sign * (F * _ncdf(sign * d1) - K * _ncdf(sign * d2))
+    delta = df * sign * _ncdf(sign * d1)
     gamma = df * pdf_d1 / (F * sigma * sqrt_t)
     vega = df * F * pdf_d1 * sqrt_t
     # theta = dV/dt at fixed F: r*V - decay of the time value.

@@ -1,202 +1,162 @@
-# Methodology — why these models
+# Methodology: why these models
 
-This project has two layers with different time scales and different model
-choices. This document answers, for each: **why this model**, compared with
-at least two alternatives, and lists the **assumptions register**.
+The project has two layers with different time scales. For each layer this
+note gives the model, at least two alternatives, and an assumptions
+register. All results in this project are on synthetic data; no real-data
+result exists yet.
 
 ---
 
 ## 1. Alpha layer: cross-sectional factor long-short
 
-### Why cross-sectional L/S (and not the alternatives)?
+### Model
 
-The alpha layer ranks a universe of stocks each day on point-in-time
-features (momentum 12-1 and 6-1, 1-month reversal, realised vol, MA
-crossover, RSI, abnormal volume), combines them into a composite z-score,
-and holds the top decile long / bottom decile short, dollar neutral.
+Each day the universe is ranked on point-in-time features (momentum 12-1
+and 6-1, 1-month reversal, realised vol, MA crossover, RSI, abnormal
+volume). Features are combined into a composite z-score with expanding,
+lagged IC weights. The book holds the top decile long and the bottom decile
+short, dollar neutral, with a per-name cap.
 
-**Alternative 1 — time-series (directional) models per stock.** Forecasting
-each stock's *level* of return requires beating the market's own drift and
-exposes the book to beta. Cross-sectional ranking differences out the market
-and all common factors that affect the ranking symmetrically: the L/S book
-is hedged by construction (net exposure = 0, tested to 1e-12), and the
-statistical object — the daily rank IC — has ~n_stocks independent-ish
-observations per day rather than one. A daily IC of 0.03 with 100 names is
-detectable in months; a directional edge of the same size takes decades.
+### Alternatives
 
-**Alternative 2 — full covariance mean-variance optimisation (Markowitz /
-Black-Litterman).** MVO converts forecasts into weights optimally *if* the
-covariance matrix and expected returns are known; in practice it amplifies
-estimation error and produces unstable, concentrated books that need heavy
-regularisation. Decile L/S with per-name caps is the robust special case:
-equal weights within buckets are the minimax choice under ranking
-uncertainty, turnover control is explicit (signal-band freezing), and the
-P&L attribution is transparent. Project 07 (portfolio-optimization) covers
-the MVO machinery; here the focus is the signal -> execution chain.
+1. Time-series (directional) forecasts per stock. These carry market beta
+   and have one observation per day instead of one per name. A daily rank
+   IC of 0.03 on 100 names is detectable in months; a directional edge of
+   the same size takes decades.
+2. Full mean-variance optimisation (Markowitz, Black-Litterman). Optimal if
+   the inputs are known, but it amplifies estimation error and gives
+   concentrated books. Decile long-short with caps is the robust special
+   case. Project 07 covers the optimiser.
+3. Machine-learned rankers. More flexible, with more researcher degrees of
+   freedom and a harder point-in-time audit. A model could be dropped into
+   `signals.py` and would inherit the same tests and costs.
 
-**Alternative 3 — ML rank models (gradient boosting / neural rankers).**
-Strictly more flexible, but they multiply the researcher-degrees-of-freedom
-problem this project explicitly guards against (see deflated Sharpe below),
-and they obscure the PIT audit trail. The pipeline is deliberately linear
-and auditable; an ML signal could be dropped into `signals.py` and would
-inherit the same PIT tests, cost model and evaluation stack.
+### Synthetic data
 
-### Signal evaluation choices
+`generate_daily_panel` draws
+`r_{i,t} = 0.0008 z(mom 12-1)_{i,t-1} - 0.0006 z(ret 21d)_{i,t-1} + sigma_{i,t} eps`,
+with AR(1) log-vol. The features the book combines are the generator's own
+regressors. Every alpha statistic is therefore a recovery test, not a
+discovery. The planted daily IC of about 0.03 is far above real 12-1
+momentum, whose monthly IC is of order 0.02-0.05.
 
-- **Spearman rank IC** rather than Pearson: invariant to monotone feature
-  transforms and robust to outliers; matches `scipy.stats.spearmanr`
-  (test-verified, including ties).
-- **Newey-West t-stats** on IC series: daily ICs are autocorrelated (and
-  multi-day-horizon ICs mechanically so, from overlap); the naive i.i.d. SE
-  understates uncertainty. Bartlett-kernel NW is the standard correction
-  (tested: NW SE > naive by >30% on an AR(1) IC series with rho = 0.6).
-- **Deflated Sharpe ratio (Bailey & Lopez de Prado 2014)** against
-  multiple testing: if N signal variants were tried, the best backtest
-  Sharpe must beat the *expected maximum* of N zero-skill Sharpes,
-  `SR* = sqrt(V)[(1-gamma)z_{1-1/N} + gamma z_{1-1/(Ne)}]`, not zero.
-  DSR = PSR evaluated at SR*; at N=1, SR* = 0 and DSR = PSR (identity,
-  tested). The multiple-testing problem is the dominant failure mode of
-  backtests: with 45 tried variants, pure noise is *expected* to deliver an
-  annualised Sharpe of ~1.15 on this sample length — which is why the demo
-  strategy's SR of 1.35 deflates from PSR 0.995 to DSR 0.65.
+### Execution convention
 
-### Transaction cost model (daily layer)
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost.
 
-`cost = sum_i |dw_i| (linear_bps + k * sigma_i * sqrt(AUM |dw_i| / ADV$_i))`
+With only closes available, f stands for how much of the next day's move
+has happened before the fill. f = 0.5 is a stand-in for a next-open or
+early-session fill; f = 1 fills at the next close. In return terms the old
+weights earn f r_{t+1} and the new weights earn (1 + r_{t+1}) / (1 + f
+r_{t+1}) - 1. The trade and its cost are booked on day t+1. The
+close-auction mode fills at p_t and charges `auction_cost_bp` (default 10
+bp) per unit of turnover on top of the normal costs. On synthetic data the
+auction variant has the lower net Sharpe (section 4 of VALIDATION).
 
-Linear term = spread + fees. The impact term follows the **empirical
-square-root law** — measured meta-analyses (Almgren et al. 2005; Toth et
-al. 2011) consistently find cost ≈ Y·sigma·sqrt(Q/V) with Y of order 0.5-1,
-across venues, horizons and asset classes. Alternatives: a purely linear
-impact overstates cost for large trades and understates it for small ones;
-a 3/5-power law fits marginally better in some studies but adds a free
-parameter with no qualitative change. The same law drives the capacity
-curve: drag grows like sqrt(AUM), so net Sharpe declines monotonically in
-AUM (tested).
+### Signal evaluation
+
+- Spearman rank IC, matching `scipy.stats.spearmanr`.
+- Newey-West t-stats on IC series, which are autocorrelated.
+- `research_stats.py`, identical in every strategy project:
+  - Lo (2002) standard error of the Sharpe ratio by the GMM delta method,
+    with a Newey-West (Bartlett) long-run variance truncated at
+    floor(4 (n/100)^(2/9)) lags.
+  - Deflated Sharpe ratio (Bailey and Lopez de Prado 2014) at the trial
+    count in a `TrialLog`. The pipeline logs every configuration it
+    backtests: seven single features, the combined signal and two execution
+    variants, ten trials.
+  - Probability of backtest overfitting by CSCV (Bailey, Borwein, Lopez de
+    Prado, Zhu 2017) across the signal configurations.
+  - Circular block-bootstrap CIs, block length ceil(n^(1/3)).
+  - Mean, sd and Student-t CI across seeds. Every headline in the README is
+    a 20-seed distribution.
+
+### Transaction costs (daily layer)
+
+`cost = sum_i |dw_i| (linear_bps + Y sigma_i sqrt(AUM |dw_i| / ADV$_i))`
+plus a borrow fee `borrow_bps_annual / 252` per day on the short gross.
+
+The linear term covers spread and fees. The impact term is the empirical
+square-root law: Almgren et al. (2005) and Toth et al. (2011) find cost of
+about Y sigma sqrt(Q/V) with Y of order 0.5-1. The default is Y = 0.7.
+`sigma_i` and `ADV$_i` are trailing 63-day and 21-day estimates known at
+the decision close. Capacity is measured by re-running the full backtest at
+each AUM for Y = 0.3, 0.7 and 1.0 (`capacity_backtest`). The closed-form
+`capacity_curve` remains as a planning approximation.
 
 ---
 
-## 2. Execution layer: Almgren-Chriss with linear/sqrt impact
+## 2. Execution layer: Almgren-Chriss with linear and square-root impact
 
-### The model
+### Model
 
-Sell/buy X shares over N slices, holdings x_0 = X, ..., x_N = 0:
+Trade X shares over N slices with holdings x_0 = X, ..., x_N = 0:
 
-- E[cost] = 0.5·gamma·X² + epsilon·Σ|n_k| + (eta_tilde/tau)·Σ n_k²,
-  eta_tilde = eta − gamma·tau/2
-- V[cost] = sigma²·tau·Σ x_k²
+- E[cost] = 0.5 gamma X^2 + epsilon sum |n_k| + (eta_tilde / tau) sum n_k^2,
+  eta_tilde = eta - gamma tau / 2
+- V[cost] = sigma^2 tau sum x_k^2
 
-Minimising E + lambda·V yields the discrete recursion
-x_{j-1} + x_{j+1} = 2cosh(kappa·tau)·x_j with closed form
-**x_j = X·sinh(kappa(T−t_j))/sinh(kappa·T)**, where
-cosh(kappa·tau) = 1 + kappa_tilde²tau²/2, kappa_tilde² = lambda·sigma²/eta_tilde.
-lambda→0 gives TWAP exactly; lambda→∞ front-loads into the first slice
-(both tested).
+Minimising E + lambda V gives x_{j-1} + x_{j+1} = 2 cosh(kappa tau) x_j and
+x_j = X sinh(kappa (T - t_j)) / sinh(kappa T). lambda = 0 is TWAP; large
+lambda front-loads into the first slice. The ratio of sinh terms is
+evaluated in exponential form so it stays finite for kappa T > 710.
 
-### Why AC (and not the alternatives)?
+### Alternatives
 
-**Alternative 1 — Obizhaeva-Wang (2013) resilience models.** OW models the
-limit-order book as a block that is consumed and *refills at a finite rate*
-(exponential resilience). Its optimal strategy is characteristic: large
-discrete trades at the open and close plus a constant trickle in between.
-It is the right model when trading at horizons comparable to the book's
-resilience time (minutes) and when queue dynamics matter. Trade-off: it
-needs the resilience rate — a parameter that is hard to estimate and
-unstable — and its bucket-level predictions at our half-hour granularity
-are nearly indistinguishable from AC's. AC's two parameters (eta, gamma)
-map directly onto measurable regression coefficients from TCA data.
+1. Obizhaeva-Wang (2013) resilience models. Right when the horizon is
+   comparable to the book's refill time. They need a resilience rate that
+   is hard to estimate, and at half-hour buckets they differ little from AC.
+2. Empirical schedule optimisers on fitted nonlinear impact. Better at the
+   margin, opaque, and without an analytic frontier.
+3. Static schedules (TWAP, VWAP, POV). Special cases: TWAP is AC at
+   lambda = 0.
 
-**Alternative 2 — proprietary/empirical schedule optimisers** (dynamic
-programming on fitted nonlinear impact, e.g. power-law temporary impact
-with p ≈ 0.6, signal-driven adaptive schedules). These beat AC in
-production at the margin but are opaque, data-hungry, and lose the
-closed-form efficient frontier that makes the urgency conversation with a
-PM quantitative ("+3.7 bps expected buys a 35% cut in cost volatility").
-AC is the industry baseline precisely because the frontier is analytic.
+### Simulator
 
-**Alternative 3 — pure static benchmarks (VWAP/TWAP/POV).** These are
-special cases, not competitors: TWAP is AC at lambda = 0; VWAP reshapes
-TWAP by the volume profile; POV caps participation. AC subsumes them and
-prices the risk dimension they ignore.
+- Volume profile `p_j proportional to 1 + c (2 u_j - 1)^2`, U-shaped.
+- Permanent impact `perm = perm_coef sigma (q / V_day) mid`, linear, as
+  Huberman-Stanzl (2004) require for no price manipulation.
+- Temporary impact `temp = temp_coef sigma sqrt(q_j / (n_buckets v_j)) mid`
+  where v_j is the bucket's market volume. With a flat profile this is
+  sqrt(q / V_day). A child order in a thin bucket costs more than the same
+  order in a heavy bucket.
+- Market orders always fill at mid plus side times (half spread +
+  temporary impact). No queues, no partial fills.
+- Per-bucket noise sigma_daily / sqrt(n_buckets).
 
-**Why linear permanent + square-root temporary?** Huberman-Stanzl (2004):
-permanent impact must be *linear* in size or the model admits price
-manipulation (round-trip profits). Temporary impact is where the empirical
-square-root law lives. The simulator therefore implements
-`perm = perm_coef·sigma·(q/V)·mid` (linear) and
-`temp = temp_coef·sigma·sqrt(q/V)·mid` (sqrt); the AC optimiser uses the
-linear-temporary approximation of the classic paper. This deliberate
-mismatch (optimise in a tractable model, evaluate in a richer one) mirrors
-desk reality and is quantified in VALIDATION.md.
-
-### Intraday simulator choices
-
-- **U-shaped volume profile** `p_j ∝ 1 + c(2u_j−1)²`: equity volume is
-  reliably U-shaped (open/close auctions and index flow); the profile sums
-  to 1 exactly and ends > middle (tested).
-- **LOB-lite fill model**: market orders always fill at mid + side·(half
-  spread + temporary impact). No queue position, no partial fills.
-- Per-bucket noise sigma_b = sigma_daily/sqrt(n_buckets); permanent impact
-  is applied *after* the bucket's fill (the trade moves the price for
-  everyone after you).
+The AC optimiser uses linear temporary impact and is evaluated in the
+square-root simulator. Schedules are ranked by the expected IS on the
+zero-noise simulator and by the Monte Carlo std (`evaluate_schedules`).
 
 ---
 
 ## 3. Assumptions register
 
-Each assumption states *what breaks if violated*.
+Each entry states what breaks if it is false.
 
-1. **Impact stationarity.** eta, gamma, and the sqrt-law coefficient are
-   constants. Violated in stress (costs spike exactly when you must trade):
-   realised costs exceed modelled, AC schedules are too aggressive, and the
-   capacity curve is optimistic. Mitigation: re-fit from TCA weekly, stress
-   multipliers (DESK_GUIDE).
-2. **No adverse selection / no alpha in the market during execution.** The
-   simulator's mid is a martingale apart from our own impact. Violated when
-   the parent order's signal is correlated with short-term drift (usual for
-   momentum entries): arrival-slippage is understated; delay cost in the
-   Perold decomposition partially captures it.
-3. **Fill certainty.** Market orders always fill at the modelled price; no
-   halts, no queues, no odd lots. Violated in fast markets: opportunity
-   cost appears (the decomposition's third term exists for exactly this).
-4. **Daily-close alpha vs intraday execution separation.** The alpha layer
-   assumes trades happen at the close at which the signal is formed; the
-   execution layer schedules them across the *next* day's buckets. The
-   cross-term (intraday alpha decay while executing) is delay cost in TCA
-   and is not fed back into the daily backtest.
-5. **Linear permanent impact, sqrt temporary.** If true temporary impact is
-   more concave (p < 0.5), large child orders are cheaper than modelled and
-   optimal schedules concentrate more; if permanent impact is nonlinear the
-   no-manipulation property fails and E[cost] is trajectory-dependent
-   beyond 0.5·gamma·X².
-6. **Universe integrity of the panel**: no survivorship handling needed
-   (synthetic panel has no delistings unless injected); real data requires
-   PIT universe membership. The backtester supports names leaving the
-   universe (NaN prices; tested) but the demo panel does not exercise
-   corporate actions.
-7. **Gaussian-ish daily returns for DSR/PSR moments.** The PSR formula uses
-   sample skew/kurtosis to third order; extreme fat tails make DSR
-   optimistic. Non-normality is partially handled (skew/kurt enter the
-   formula, tested), not fully.
-8. **Costs do not feed back into signals or prices in the daily backtest**
-   (our own trading does not move the close). Reasonable below ~5% ADV
-   participation; the capacity curve is exactly the tool that flags when
-   this assumption dies.
-9. **All inputs are finite and in-domain.** Quantities, volumes, prices and
-   tapes must be finite; every entry point now enforces this. What breaks if
-   violated: `NaN` is *not* caught by ordinary range checks (`NaN < 0` is
-   `False`), so a single NaN child order used to flow straight through the
-   simulator into NaN fills, a NaN average price and a NaN TCA report — a
-   silently wrong number is far worse on an execution desk than a loud
-   failure. Real feeds produce NaNs routinely (missing prints, halted
-   symbols, stale volume forecasts), so this is an operational assumption,
-   not a theoretical one.
-10. **Floating-point representability of the AC schedule.** The closed form
-    `sinh(κ(T−t))/sinh(κT)` is mathematically fine for any κ but the naive
-    evaluation overflows for `κT ≳ 710`. What breaks if violated: the whole
-    trajectory returns `NaN` and the schedule silently disappears. The ratio
-    is now computed in exponential form (VALIDATION.md §7), so the model is
-    valid over the entire representable range of risk aversions rather than
-    the sub-1e12 λ band. Practically, λ beyond ~1e6 is already the
-    "liquidate immediately" corner — the fix makes that corner return the
-    right answer instead of no answer.
+1. Planted alpha. The generator contains the signal. On real data the
+   alpha numbers do not carry over.
+2. Impact stationarity. Y, eta and gamma are constants. In stress they rise
+   and the capacity table is optimistic.
+3. No adverse selection during execution. The simulated mid is a
+   martingale apart from our own impact. If the parent's signal predicts
+   intraday drift, slippage against arrival is understated.
+4. Fill certainty. Market orders always fill. In fast markets opportunity
+   cost appears.
+5. Fill timing. Daily fills are at a price interpolated between two closes.
+   Real fills have an open auction, intraday drift and a schedule; the
+   execution layer models the schedule but does not feed back into the
+   daily backtest.
+6. Square-root temporary and linear permanent impact. If temporary impact
+   is more concave, large child orders cost less than modelled.
+7. Universe integrity. The synthetic panel has no delistings or corporate
+   actions. Names can leave the universe (NaN prices; tested).
+8. Moment-based deflated Sharpe. The PSR formula uses sample skew and
+   kurtosis; heavy tails make it optimistic.
+9. Costs do not move the close. Reasonable below a few percent of ADV;
+   the capacity table reports the 95th-percentile participation to show
+   where this fails.
+10. Inputs are finite and in domain. Every public entry point raises
+    `ValueError` on NaN or Inf rather than returning a number.

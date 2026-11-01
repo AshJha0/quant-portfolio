@@ -1,19 +1,19 @@
 //! Parametric (variance-covariance) VaR: normal, Student-t, Cornish-Fisher.
 //!
 //! The book is linearised into factor exposures `w`
-//! ([`crate::book::CompiledBook::linear_exposures`] — forwards enter via
+//! ([`crate::book::CompiledBook::linear_exposures`]: forwards enter via
 //! their deposit legs), and the portfolio P&L variance is `w' Sigma w` with
 //! `Sigma` a sample or EWMA covariance of daily factor returns (mirrors
 //! Python `fx_var.parametric_var` / C++ `fxvar::parametric_var`).
 //!
 //! Distributional overlays on the same sigma:
 //!
-//! * **normal** — RiskMetrics classic; underestimates FX tails.
-//! * **Student-t** — standardised (unit-variance) t captures the fat tails
+//! * **normal**: RiskMetrics classic; underestimates FX tails.
+//! * **Student-t**: standardised (unit-variance) t captures the fat tails
 //!   of EM currency returns at equal sigma.
-//! * **Cornish-Fisher** — moment-corrected quantile from the portfolio's
+//! * **Cornish-Fisher**: moment-corrected quantile from the portfolio's
 //!   empirical skew/kurtosis; only valid inside the monotonicity domain of
-//!   the expansion, which is checked explicitly (Maillard 2012 — outside
+//!   the expansion, which is checked explicitly (Maillard 2012: outside
 //!   the domain the "quantile" is not a quantile).
 //!
 //! Multi-day horizon: sigma scales by `sqrt(h)` (i.i.d. assumption).
@@ -101,10 +101,14 @@ pub fn var_covar(
     let sig = sig1 * scale;
     let mu = mean * horizon_days;
     match dist {
-        TailDist::Normal => Ok(VarEs { var: normal_var(sig, alpha, mu)?, es: normal_es(sig, alpha, mu)? }),
-        TailDist::StudentT => {
-            Ok(VarEs { var: student_t_var(sig, alpha, df, mu)?, es: student_t_es(sig, alpha, df, mu)? })
-        }
+        TailDist::Normal => Ok(VarEs {
+            var: normal_var(sig, alpha, mu)?,
+            es: normal_es(sig, alpha, mu)?,
+        }),
+        TailDist::StudentT => Ok(VarEs {
+            var: student_t_var(sig, alpha, df, mu)?,
+            es: student_t_es(sig, alpha, df, mu)?,
+        }),
     }
 }
 
@@ -120,7 +124,7 @@ pub enum CovMethod {
 /// Options controlling [`parametric_var`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParametricOptions {
-    /// Confidence level, e.g. `0.99` for 99 % VaR.
+    /// Tail probability, e.g. `0.01` for 99 % VaR (was a confidence level).
     pub alpha: f64,
     /// Horizon in trading days.
     pub horizon_days: f64,
@@ -141,7 +145,7 @@ pub struct ParametricOptions {
 impl Default for ParametricOptions {
     fn default() -> Self {
         ParametricOptions {
-            alpha: 0.99,
+            alpha: 0.01,
             horizon_days: 1.0,
             dist: TailDist::Normal,
             df: 6.0,
@@ -160,7 +164,7 @@ pub struct ParametricResult {
     pub var: f64,
     /// Positive ES loss.
     pub es: f64,
-    /// Confidence level used.
+    /// Tail probability used.
     pub alpha: f64,
     /// Horizon in trading days used.
     pub horizon_days: f64,
@@ -214,7 +218,7 @@ pub fn parametric_var(
     let rets = returns.select(&res.factors)?;
 
     if opts.warn_pegs {
-        res.flagged_peg_factors = flag_peg_factors(&rets, crate::returns::PEG_VOL_THRESHOLD);
+        res.flagged_peg_factors = flag_peg_factors(&rets, crate::returns::PEG_VOL_THRESHOLD)?;
         for f in &res.flagged_peg_factors {
             res.warnings.push(format!(
                 "peg blindness: factor {f} has daily vol < {} (pegged/managed currency). \
@@ -230,7 +234,15 @@ pub fn parametric_var(
         CovMethod::Ewma => ewma_cov(&rets, opts.ewma_lambda)?,
     };
     res.exposures = compiled.linear_exposures(1e-6)?;
-    let ve = var_covar(&res.exposures, &cov.cov, opts.alpha, opts.horizon_days, opts.dist, opts.df, 0.0)?;
+    let ve = var_covar(
+        &res.exposures,
+        &cov.cov,
+        opts.alpha,
+        opts.horizon_days,
+        opts.dist,
+        opts.df,
+        0.0,
+    )?;
     res.var = ve.var;
     res.es = ve.es;
     res.sigma = portfolio_sigma(&res.exposures, &cov.cov)?;
@@ -250,53 +262,77 @@ pub fn cornish_fisher_z(z: f64, skew: f64, excess_kurtosis: f64) -> f64 {
         - (2.0 * z3 - 5.0 * z) * skew * skew / 36.0
 }
 
-/// True if the CF expansion is monotone increasing on `[-z_range, z_range]`
-/// — the validity condition for the expansion to define a quantile
-/// function (Maillard 2012). Checked exactly via the closed-form minimum
-/// of the (quadratic-in-`z`) derivative `dz_cf/dz` on the interval, not by
-/// sampling a grid: `dz_cf/dz = 1 + zS/3 + (3z^2-3)K/24 - (6z^2-5)S^2/36 =
-/// A z^2 + B z + C` with `A = K/8 - S^2/6`, `B = S/3`,
-/// `C = 1 - K/8 + 5 S^2/36`, whose minimum on the interval is the vertex
-/// `-B/(2A)` when convex (`A > 0`) and in range, else an endpoint (a
-/// concave/linear `g`, `A <= 0`, always attains its interval minimum at an
-/// endpoint). A finite-difference grid scan of `z_cf` values (the previous
-/// implementation here) can under-sample a thin non-monotone dip:
-/// `skew = 0.122, excess_kurtosis = -0.427` is non-monotone on `|z| <= 4`
-/// (minimum derivative ~ -9e-4 near `z ~ 3.1`) but the 801-point grid
-/// previously used here reported it as monotone. `n_grid` is retained for
-/// API compatibility and still validated but no longer affects the result.
+/// Cornish-Fisher validity at tail probability `alpha` (S6).
 ///
-/// # Panics
-/// Panics if `n_grid < 3`.
-pub fn cornish_fisher_domain_ok(skew: f64, excess_kurtosis: f64, z_range: f64, n_grid: usize) -> bool {
-    assert!(n_grid >= 3, "n_grid must be >= 3");
+/// With `z_a = Phi^{-1}(1 - alpha)` the CF map
+/// `g(z) = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36` (`K` excess
+/// kurtosis) is a valid quantile transform iff `g'(z) > 0` on the closed
+/// interval `[-z_a, z_a]`. `g'` is the quadratic
+/// `A z^2 + B z + C`, `A = K/8 - S^2/6`, `B = S/3`, `C = 1 - K/8 + 5S^2/36`,
+/// so its minimum on the interval is at the vertex (if `A > 0` and the
+/// vertex is inside) or at an endpoint. The check is exact, not a grid.
+///
+/// The interval follows `alpha`: `(S, K) = (0.122, -0.427)` has its
+/// smallest derivative at the endpoint, is valid at `alpha = 0.01`
+/// (`z_a = 2.33`) and becomes invalid only once `z_a` passes about 4.
+///
+/// # Errors
+/// Non-finite `skew` or `excess_kurt`, or `alpha` outside `(0, 0.5)`.
+pub fn cornish_fisher_valid(skew: f64, excess_kurt: f64, alpha: f64) -> Result<bool> {
+    validate_alpha(alpha)?;
+    if !skew.is_finite() || !excess_kurt.is_finite() {
+        return Err(FxVarError::Invalid(format!(
+            "Cornish-Fisher moments must be finite, got skew={skew}, excess_kurt={excess_kurt}"
+        )));
+    }
+    let z_a = inv_norm_cdf(1.0 - alpha)?;
+    Ok(cf_min_derivative(skew, excess_kurt, z_a) > 0.0)
+}
+
+/// Minimum of `g'(z)` over `[-z_range, z_range]` (closed form).
+fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
+    let a = excess_kurt / 8.0 - skew * skew / 6.0;
+    let b = skew / 3.0;
+    let c = 1.0 - excess_kurt / 8.0 + 5.0 * skew * skew / 36.0;
+    let g = |z: f64| a * z * z + b * z + c;
+    let ends = g(-z_range).min(g(z_range));
+    if a > 0.0 {
+        let z_star = -b / (2.0 * a);
+        if (-z_range..=z_range).contains(&z_star) {
+            return g(z_star).min(ends);
+        }
+    }
+    ends
+}
+
+/// Old fixed-interval check `g'(z) > 0` on `[-z_range, z_range]`, kept for
+/// one release (the old call used `|z| <= 4`). The interval should follow
+/// the VaR level; use [`cornish_fisher_valid`]. Non-finite input returns
+/// `false`; `n_grid` is ignored (the check is closed form).
+#[deprecated(
+    since = "0.2.0",
+    note = "use cornish_fisher_valid(skew, excess_kurtosis, alpha)"
+)]
+pub fn cornish_fisher_domain_ok(
+    skew: f64,
+    excess_kurtosis: f64,
+    z_range: f64,
+    _n_grid: usize,
+) -> bool {
     if !skew.is_finite() || !excess_kurtosis.is_finite() || !z_range.is_finite() {
         return false;
     }
-    let a = excess_kurtosis / 8.0 - skew * skew / 6.0;
-    let b = skew / 3.0;
-    let c = 1.0 - excess_kurtosis / 8.0 + 5.0 * skew * skew / 36.0;
-    let g = |z: f64| a * z * z + b * z + c;
-    let m = if a > 0.0 {
-        let z_star = -b / (2.0 * a);
-        if (-z_range..=z_range).contains(&z_star) {
-            g(z_star)
-        } else {
-            g(-z_range).min(g(z_range))
-        }
-    } else {
-        g(-z_range).min(g(z_range))
-    };
-    m > 0.0
+    cf_min_derivative(skew, excess_kurtosis, z_range) > 0.0
 }
 
-/// Cornish-Fisher VaR (positive loss) with an explicit domain check.
+/// Cornish-Fisher VaR (positive loss) from the P&L sigma, skewness and
+/// excess kurtosis at tail probability `alpha`:
+/// `VaR = -mean h - sigma sqrt(h) z_cf`, `z_cf = cornish_fisher_z(Phi^{-1}(alpha))`.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] when `(skew, excess_kurtosis)` lie outside the
-/// monotonicity domain and `check_domain` is true — a silently
-/// non-monotone CF "quantile" can report 99% VaR below 95% VaR — or when
-/// `alpha`/`horizon_days`/`sigma` are invalid.
+/// [`FxVarError::Invalid`] for invalid `alpha` / horizon, a negative or
+/// non-finite sigma, non-finite moments or mean, or (with
+/// `check_domain`) moments for which [`cornish_fisher_valid`] is false.
 #[allow(clippy::too_many_arguments)]
 pub fn cornish_fisher_var(
     sigma: f64,
@@ -309,10 +345,17 @@ pub fn cornish_fisher_var(
 ) -> Result<f64> {
     validate_alpha(alpha)?;
     validate_horizon(horizon_days)?;
-    if sigma < 0.0 {
-        return Err(FxVarError::invalid("sigma must be >= 0"));
+    if !(sigma >= 0.0) || !sigma.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "sigma must be finite and >= 0, got {sigma}"
+        )));
     }
-    if check_domain && !cornish_fisher_domain_ok(skew, excess_kurtosis, 4.0, 801) {
+    if !skew.is_finite() || !excess_kurtosis.is_finite() || !mean.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "skew, excess_kurtosis and mean must be finite, got {skew}, {excess_kurtosis}, {mean}"
+        )));
+    }
+    if check_domain && !cornish_fisher_valid(skew, excess_kurtosis, alpha)? {
         return Err(FxVarError::invalid(format!(
             "Cornish-Fisher expansion is non-monotone for skew={skew}, \
              excess_kurtosis={excess_kurtosis}: outside validity domain; fall back to \
@@ -320,7 +363,7 @@ pub fn cornish_fisher_var(
         )));
     }
     // Loss quantile: lower tail of the P&L distribution.
-    let z = inv_norm_cdf(1.0 - alpha);
+    let z = inv_norm_cdf(alpha)?;
     let zcf = cornish_fisher_z(z, skew, excess_kurtosis);
     let scale = horizon_days.sqrt();
     Ok(-(mean * horizon_days) - sigma * scale * zcf)
@@ -343,8 +386,8 @@ mod tests {
     #[test]
     fn var_covar_normal_matches_z_score() {
         let cov = Matrix::from_rows(&[vec![0.0001]]).unwrap();
-        let ve = var_covar(&[1.0e6], &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
-        let z = inv_norm_cdf(0.99);
+        let ve = var_covar(&[1.0e6], &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+        let z = inv_norm_cdf(0.99).unwrap();
         let sigma = 1.0e6 * 0.0001_f64.sqrt();
         assert!((ve.var - z * sigma).abs() < 1e-6);
     }
@@ -352,16 +395,16 @@ mod tests {
     #[test]
     fn student_t_var_exceeds_normal_at_equal_sigma() {
         let cov = Matrix::from_rows(&[vec![0.0001]]).unwrap();
-        let n = var_covar(&[1.0e6], &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
-        let t = var_covar(&[1.0e6], &cov, 0.99, 1.0, TailDist::StudentT, 5.0, 0.0).unwrap();
+        let n = var_covar(&[1.0e6], &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+        let t = var_covar(&[1.0e6], &cov, 0.01, 1.0, TailDist::StudentT, 5.0, 0.0).unwrap();
         assert!(t.var > n.var);
     }
 
     #[test]
     fn horizon_scaling_is_sqrt_time() {
         let cov = Matrix::from_rows(&[vec![0.0001]]).unwrap();
-        let v1 = var_covar(&[1.0e6], &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
-        let v10 = var_covar(&[1.0e6], &cov, 0.99, 10.0, TailDist::Normal, 6.0, 0.0).unwrap();
+        let v1 = var_covar(&[1.0e6], &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+        let v10 = var_covar(&[1.0e6], &cov, 0.01, 10.0, TailDist::Normal, 6.0, 0.0).unwrap();
         assert!((v10.var - v1.var * 10f64.sqrt()).abs() < 1e-6 * v10.var);
     }
 
@@ -373,44 +416,48 @@ mod tests {
 
     #[test]
     fn cornish_fisher_reduces_to_normal_at_zero_moments() {
-        let z = inv_norm_cdf(0.95);
+        let z = inv_norm_cdf(0.95).unwrap();
         assert!((cornish_fisher_z(z, 0.0, 0.0) - z).abs() < 1e-12);
     }
 
     #[test]
+    #[allow(deprecated)]
     fn cornish_fisher_domain_rejects_extreme_moments() {
         assert!(!cornish_fisher_domain_ok(5.0, 50.0, 4.0, 801));
         assert!(cornish_fisher_domain_ok(0.1, 0.5, 4.0, 801));
+        assert!(!cornish_fisher_valid(5.0, 50.0, 0.01).unwrap());
+        assert!(cornish_fisher_valid(0.1, 0.5, 0.01).unwrap());
     }
 
     #[test]
     fn cornish_fisher_var_errors_outside_domain() {
-        let res = cornish_fisher_var(1.0e6, 5.0, 50.0, 0.99, 0.0, 1.0, true);
+        let res = cornish_fisher_var(1.0e6, 5.0, 50.0, 0.01, 0.0, 1.0, true);
         assert!(res.is_err());
-        let res2 = cornish_fisher_var(1.0e6, 5.0, 50.0, 0.99, 0.0, 1.0, false);
+        let res2 = cornish_fisher_var(1.0e6, 5.0, 50.0, 0.01, 0.0, 1.0, false);
         assert!(res2.is_ok());
     }
 
     #[test]
-    fn cornish_fisher_domain_check_is_exact_not_grid_resolution_dependent() {
-        // Regression for the closed-form rewrite of cornish_fisher_domain_ok.
-        // On this crate's default (z_range=4.0, n_grid=801), the previous
-        // finite-difference-of-values grid check reported (skew,
-        // excess_kurtosis) = (0.122, -0.427) as monotone -- every sampled
-        // z_cf value increased -- yet the true minimum of dz_cf/dz on
-        // [-4, 4] is ~ -9.15e-4 (near z ~ 3.1, between two grid nodes), so
-        // the expansion is genuinely non-monotone.
-        let skew = 0.122;
-        let excess_kurtosis = -0.427;
-        assert!(!cornish_fisher_domain_ok(skew, excess_kurtosis, 4.0, 801));
-        let res = cornish_fisher_var(1.0, skew, excess_kurtosis, 0.99, 0.0, 1.0, true);
-        assert!(res.is_err());
+    fn cornish_fisher_validity_interval_follows_alpha() {
+        // (0.122, -0.427): g' is concave (A < 0), so its minimum on a closed
+        // interval is at an endpoint. On [-4, 4] the minimum is at z = -4
+        // and is negative; at alpha = 0.01 the interval is [-2.33, 2.33]
+        // and the map is valid. The old fixed |z| <= 4 check rejected it.
+        let (skew, k) = (0.122, -0.427);
+        assert!(cornish_fisher_valid(skew, k, 0.01).unwrap());
+        assert!(cornish_fisher_var(1.0, skew, k, 0.01, 0.0, 1.0, true).is_ok());
+        assert!(!cornish_fisher_valid(skew, k, 1e-5).unwrap());
+        assert!(cornish_fisher_var(1.0, skew, k, 1e-5, 0.0, 1.0, true).is_err());
     }
 
     #[test]
     fn zero_factor_book_reports_zero_parametric_var() {
         let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))],
+            "USD",
+        )
+        .unwrap();
         let mut data = Matrix::zeros(120, 1);
         for t in 0..120 {
             data.set(t, 0, 0.01 * (t as f64).sin());

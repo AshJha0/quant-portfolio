@@ -8,14 +8,14 @@
 //!   continuously compounded ACT/365 zero rate.
 //!
 //! NaN policy: the engine refuses NaNs outright ([`FxVarError::Invalid`])
-//! rather than silently dropping or filling — missing FX fixings must be
+//! rather than silently dropping or filling: missing FX fixings must be
 //! handled upstream (holiday calendars differ across time zones).
 
 use crate::matrix::Matrix;
 use crate::{FxVarError, Result};
 
 /// Daily log-return standard deviation below which an FX factor is treated
-/// as "peg-like" (~0.8% annualised — an order of magnitude below any free
+/// as "peg-like" (~0.8% annualised: an order of magnitude below any free
 /// float; HKD inside its band realises roughly this level).
 pub const PEG_VOL_THRESHOLD: f64 = 5e-4;
 
@@ -85,7 +85,10 @@ impl ReturnsMatrix {
                 data.set(i, j, self.data.get(i, src));
             }
         }
-        Ok(ReturnsMatrix { factors: wanted.to_vec(), data })
+        Ok(ReturnsMatrix {
+            factors: wanted.to_vec(),
+            data,
+        })
     }
 }
 
@@ -124,7 +127,10 @@ impl FactorCov {
                 cov.set(i, j, self.cov.get(ri, rj));
             }
         }
-        Ok(FactorCov { factors: wanted.to_vec(), cov })
+        Ok(FactorCov {
+            factors: wanted.to_vec(),
+            cov,
+        })
     }
 }
 
@@ -150,8 +156,10 @@ pub fn validate_returns(
             returns.n_obs()
         )));
     }
-    let missing: Vec<&String> =
-        required.iter().filter(|f| returns.column_index(f).is_none()).collect();
+    let missing: Vec<&String> = required
+        .iter()
+        .filter(|f| returns.column_index(f).is_none())
+        .collect();
     if !missing.is_empty() {
         return Err(FxVarError::invalid(format!(
             "returns is missing required factor columns: {missing:?}"
@@ -178,7 +186,9 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
     let n = returns.n_obs();
     let k = returns.n_factors();
     if n < 2 {
-        return Err(FxVarError::invalid("sample_cov: need at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "sample_cov: need at least 2 observations",
+        ));
     }
     if !returns.data.all_finite() {
         return Err(FxVarError::invalid(
@@ -214,7 +224,10 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
             cov.set(b, a, v);
         }
     }
-    Ok(FactorCov { factors: returns.factors.clone(), cov })
+    Ok(FactorCov {
+        factors: returns.factors.clone(),
+        cov,
+    })
 }
 
 /// RiskMetrics EWMA covariance forecast after the last observation:
@@ -226,7 +239,9 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
 /// as [`sample_cov`].
 pub fn ewma_cov(returns: &ReturnsMatrix, lam: f64) -> Result<FactorCov> {
     if !(lam > 0.0 && lam < 1.0) {
-        return Err(FxVarError::invalid(format!("lambda must be in (0, 1), got {lam}")));
+        return Err(FxVarError::invalid(format!(
+            "lambda must be in (0, 1), got {lam}"
+        )));
     }
     let mut out = sample_cov(returns)?; // also rejects non-finite input
     let n = returns.n_obs();
@@ -254,45 +269,49 @@ pub struct EwmaVolatility {
     pub sigma_next: Vec<f64>,
 }
 
+/// EWMA variance seed window (observations), spec S8.
+pub const SEED_WINDOW: usize = 30;
+
 /// Compute [`EwmaVolatility`]: `sigma2[t] = lam * sigma2[t-1] + (1 - lam) *
-/// r[t-1]^2`, seeded with the full-sample ddof=1 variance (floored at
-/// `1e-18`).
+/// r[t-1]^2` (zero mean), seeded with the mean of `r^2` over the first
+/// `min(30, n)` observations ([`SEED_WINDOW`]); a zero seed is floored at
+/// `1e-300`. The old seed was the full-sample ddof=1 variance, a look-ahead
+/// over the whole history.
 ///
 /// # Errors
 /// [`FxVarError::Invalid`] unless `0 < lam < 1`, or fewer than 2
 /// observations are given.
 pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatility> {
     if !(lam > 0.0 && lam < 1.0) {
-        return Err(FxVarError::invalid(format!("lambda must be in (0, 1), got {lam}")));
+        return Err(FxVarError::invalid(format!(
+            "lambda must be in (0, 1), got {lam}"
+        )));
     }
     let n = returns.n_obs();
     let k = returns.n_factors();
     if n < 2 {
-        return Err(FxVarError::invalid("ewma_volatility: need at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "ewma_volatility: need at least 2 observations",
+        ));
     }
     if !returns.data.all_finite() {
         return Err(FxVarError::invalid(
             "ewma_volatility: returns contain NaN or infinite values",
         ));
     }
-    let mut mean = vec![0.0; k];
-    for i in 0..n {
-        for j in 0..k {
-            mean[j] += returns.data.get(i, j);
-        }
-    }
-    for m in mean.iter_mut() {
-        *m /= n as f64;
-    }
+    // S8 seed: zero-mean RiskMetrics, s2_0 = mean of r^2 over the first
+    // min(30, n) observations. No full-sample seed: only that window is
+    // seen before it is used.
+    let w = SEED_WINDOW.min(n);
     let mut sig2 = vec![0.0; k];
-    for i in 0..n {
+    for i in 0..w {
         for j in 0..k {
-            let d = returns.data.get(i, j) - mean[j];
-            sig2[j] += d * d;
+            let r = returns.data.get(i, j);
+            sig2[j] += r * r;
         }
     }
     for s in sig2.iter_mut() {
-        *s = (*s / (n as f64 - 1.0)).max(1e-18);
+        *s = (*s / w as f64).max(1e-300);
     }
 
     let mut sigma = Matrix::zeros(n, k);
@@ -310,15 +329,29 @@ pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatili
 /// Screen `FX:*` factors for near-zero realised vol (pegged/managed ccys).
 ///
 /// Returns the flagged factor names (empty if none). Only FX factors are
-/// screened — rate factors are legitimately quiet. Historical and
+/// screened: rate factors are legitimately quiet. Historical and
 /// parametric VaR are blind to peg-break risk; the caller must surface the
 /// returned list as a warning and add the peg-break stress add-on
 /// ([`crate::stress::peg_break_scenario`]).
-pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Vec<String> {
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for a NaN / infinite / negative threshold or
+/// non-finite returns (a NaN threshold used to flag nothing, silently).
+pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Result<Vec<String>> {
+    if !(threshold >= 0.0) || !threshold.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "peg threshold must be finite and >= 0, got {threshold}"
+        )));
+    }
+    if !returns.data.all_finite() {
+        return Err(FxVarError::invalid(
+            "flag_peg_factors: returns contain NaN or infinite values",
+        ));
+    }
     let mut flagged = Vec::new();
     let n = returns.n_obs();
     if n < 2 {
-        return flagged;
+        return Ok(flagged);
     }
     for j in 0..returns.n_factors() {
         let f = &returns.factors[j];
@@ -340,7 +373,7 @@ pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Vec<String> 
             flagged.push(f.clone());
         }
     }
-    flagged
+    Ok(flagged)
 }
 
 #[cfg(test)]
@@ -411,9 +444,8 @@ mod tests {
             data.set(i, 0, 0.00001 * ((i % 3) as f64 - 1.0)); // pegged
             data.set(i, 1, 0.02 * ((i % 5) as f64 - 2.0)); // free float
         }
-        let r =
-            ReturnsMatrix::new(vec!["FX:HKD".to_string(), "FX:EUR".to_string()], data).unwrap();
-        let flagged = flag_peg_factors(&r, PEG_VOL_THRESHOLD);
+        let r = ReturnsMatrix::new(vec!["FX:HKD".to_string(), "FX:EUR".to_string()], data).unwrap();
+        let flagged = flag_peg_factors(&r, PEG_VOL_THRESHOLD).unwrap();
         assert_eq!(flagged, vec!["FX:HKD".to_string()]);
     }
 }

@@ -1,10 +1,12 @@
 """Book, Market, triangulation and base-currency P&L tests."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from fx_var import Book, Cash, Forward, Market, Option, Spot, split_pair
+from fx_var import NumericalWarning, Book, Cash, Forward, Market, Option, Spot, split_pair
 
 
 @pytest.fixture()
@@ -203,7 +205,14 @@ def test_position_validation():
         Option("EURUSD", 1e6, 1.1, 0.25, kind="straddle")
 
 
-def test_negative_shocked_vol_rejected(market):
+def test_negative_shocked_vol_is_floored_not_raised(market):
+    """A vol shock below -vol floors the vol at 0 with a warning: one bad
+    Monte Carlo path must not abort the run (spec S10)."""
     book = Book([Option("EURUSD", 1e6, 1.10, 0.25)])
-    with pytest.raises(ValueError, match="negative"):
-        book.pnl(market, {"VOL:EURUSD": -0.10})
+    with pytest.warns(NumericalWarning, match="floored at 0"):
+        floored = book.pnl(market, {"VOL:EURUSD": -0.50})
+    v0 = market.vol("EURUSD")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        at_zero = book.pnl(market, {"VOL:EURUSD": -v0})
+    assert floored == pytest.approx(at_zero, rel=1e-12, abs=1e-9)

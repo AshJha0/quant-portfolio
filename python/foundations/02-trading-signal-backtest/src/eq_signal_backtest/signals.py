@@ -3,10 +3,9 @@
 A single design decision lives here: the signal is defined purely on
 *closing* prices, using simple (not exponential) moving averages, and it
 is binary (1.0 = bullish / long, 0.0 = everything else / flat). It says
-nothing about *when* that signal is tradeable -- that is the execution
-lag applied in :mod:`eq_signal_backtest.engine`, deliberately kept in a
-different function so the no-look-ahead property is visible and testable
-in one place.
+nothing about when that signal is filled; that is the fill model in
+:mod:`eq_signal_backtest.engine`, kept in a separate function so the fill
+timing is visible and testable in one place.
 """
 
 from __future__ import annotations
@@ -22,8 +21,8 @@ def ma_crossover_signal(prices: pd.Series, fast: int, slow: int) -> pd.Series:
 
     Computed on close prices only (no intraday information). This is the
     *signal*, not the *position* -- see
-    :func:`eq_signal_backtest.engine.run_backtest` for the execution lag
-    that turns a same-day signal into a next-day position.
+    :func:`eq_signal_backtest.engine.run_backtest` for the fill model
+    that fills a decision at close t on day t+1.
 
     Parameters
     ----------
@@ -48,7 +47,7 @@ def ma_crossover_signal(prices: pd.Series, fast: int, slow: int) -> pd.Series:
         If ``fast >= slow``, if either window is not an integer >= 1, or
         if ``prices`` contains non-finite values (a ``NaN`` close silently
         blanks ``slow`` days of the moving average and therefore ``slow``
-        days of signal, which looks identical to a genuine flat period).
+        days of signal, which looks identical to a real flat period).
     """
     for name, window in (("fast", fast), ("slow", slow)):
         if isinstance(window, bool) or not isinstance(window, (int, np.integer)):

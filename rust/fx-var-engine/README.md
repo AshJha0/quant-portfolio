@@ -1,43 +1,53 @@
 # FX VaR & ES Engine (Rust)
 
-Multi-currency FX Value-at-Risk and Expected Shortfall engine — the Rust
-twin of the Python research package
-[`python/fx/03-var-es-engine`](../../python/fx/03-var-es-engine/) (package
-`fx_var`) and the C++ engine
-[`cpp/fx-var-engine`](../../cpp/fx-var-engine/) (namespace `fxvar`),
-mirroring their semantics (factor conventions, estimators, test
-identities) and cross-validated against both with committed golden
-constants.
+A multi-currency FX VaR and ES engine: the linear-book port of the Python
+package [`python/fx/03-var-es-engine`](../../python/fx/03-var-es-engine/)
+(`fx_var`), alongside [`cpp/fx-var-engine`](../../cpp/fx-var-engine/). Books
+hold cash, spot and outright forwards and are revalued in full under factor
+scenarios. FX options are revalued in the Python package only.
 
-Zero external dependencies: the linear algebra, special functions (inverse
-normal CDF, Student-t quantile, incomplete gamma/beta), RNG transforms and
-estimators are implemented in the crate and validated in `tests/`.
+Zero runtime dependencies (`proptest` is a test-only dependency).
+
+## Conventions (changed in 0.2.0)
+
+- **`alpha` is the tail probability** (`0.01` = 99 % VaR), as in every other
+  engine in the repository. Until 0.2.0 this crate took a confidence level.
+  Passing `0.99` now returns `Err` ("alpha is the tail probability (e.g. 0.01
+  for 99 %)"); it is never silently reinterpreted. Defaults are `0.01`.
+- Empirical VaR is the order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`;
+  ES is Acerbi-Tasche with the exact fractional atom; BRW weights use the
+  weighted form of the same rule.
+- Kupiec and Basel take a struct with named fields. The Basel zone comes
+  from the `Binomial(n, alpha)` CDF for any window; the yellow plus factor
+  is read at the equivalent 250-day count.
+- EWMA vol is seeded with the mean of `r^2` over the first `min(30, n)` days.
+- Monte Carlo jumps are a Poisson count over the horizon.
+- Bad input (NaN, infinities, empty, too short, negative where invalid)
+  returns `Err`. No library function panics on user input; a proptest walk
+  over every public function checks this.
 
 ## What it does
 
 | Module | Contents |
 | --- | --- |
-| `src/book.rs` | Multi-currency book vs a base ccy: cash, spot, outright forwards (spot + two deposit legs, CIP-consistent). Cross positions (EURJPY) decompose into USD legs — triangulation by construction. Struct-of-arrays `CompiledBook` hot path: one `exp()` per leg per scenario. |
-| `src/matrix.rs` | Dense matrix, Cholesky with escalating jitter (singular pegged-block covariances are a legitimate input), products/quadratic forms. |
-| `src/returns.rs` | Labelled factor histories, sample + RiskMetrics-EWMA covariance, EWMA volatility, NaN-refusing validation, near-zero-vol **peg screen**. |
-| `src/stats.rs` | Normal pdf/cdf, inverse normal CDF (Acklam + Halley, error < 1e-13), Student-t pdf/cdf/quantile, regularised incomplete gamma/beta, chi-square SF, exact binomial CDF, sample moments. |
-| `src/historical.rs` | Plain HS, BRW age-weighted, filtered (EWMA-devolatilised) HS; sqrt-time horizon scaling; peg-blindness warning list. |
-| `src/parametric.rs` | Variance-covariance VaR/ES (normal + standardised Student-t on the same sigma), Cornish-Fisher with explicit monotonicity-domain check. |
-| `src/monte_carlo.rs` | Multivariate normal, covariance-matched Student-t, and **jump-mixture** (Bernoulli common jump, configurable size per ccy — the peg-break add-on) with full book revaluation; seeded xoshiro256++ + crate-owned inverse-CDF transforms → bit-reproducible; VaR standard error via KDE. |
-| `src/expected_shortfall.rs` | Weighted empirical VaR/ES (coherent Acerbi–Tasche tail splitting), closed-form normal and standardised-t VaR/ES. |
-| `src/backtest.rs` | Kupiec POF, Christoffersen independence, conditional coverage (chi-square p-values via regularised incomplete gamma), exact Basel traffic light with 1996 multiplier add-ons. |
-| `src/stress.rs` | Joint scenarios {per-ccy spot shocks, rate shifts}; canned GBP −8.1% Brexit, CHF +14.9% depeg, JPY carry unwind, broad USD move, peg-break add-on with contagion; reverse stress: closed form for a linear book, verified against an independent numerical search. |
+| `src/book.rs` | Book vs a base currency: cash, spot, CIP forwards. Crosses decompose into USD legs. `CompiledBook` hot path: one `exp()` per leg per scenario. |
+| `src/returns.rs` | Factor histories, sample and EWMA covariance, EWMA vol (seed window 30), peg screen. |
+| `src/tail.rs` | Shared S2 estimator and alpha validation. |
+| `src/psd.rs` | Jacobi eigen, `cholesky_repair(None, Clip, Higham)` with reported jitter. |
+| `src/historical.rs` | Plain, BRW, per-factor filtered HS; sqrt-time scaling; peg warnings. |
+| `src/parametric.rs` | Variance-covariance VaR/ES (normal, standardised t), Cornish-Fisher with the alpha-aware validity check. |
+| `src/monte_carlo.rs` | Normal, covariance-matched t, Poisson jump overlay; one simulation gives VaR, ES, bootstrap SE (primary) and KDE SE (diagnostic). |
+| `src/expected_shortfall.rs` | Empirical VaR/ES (weighted or not), closed forms. |
+| `src/backtest.rs` | Kupiec, Christoffersen, conditional coverage, Basel (any window), Acerbi-Szekely Z2. |
+| `src/stress.rs` | Canned scenarios (Brexit GBP, CHF depeg, JPY 1998), broad USD move, peg break with contagion, reverse stress. |
 
 ## Quickstart
 
 ```bash
-rm -rf target
-cargo test --release      # 98 tests + 2 doctests (100), all passing
+cargo test --release      # 71 unit + 61 integration + 8 doctests
+cargo clippy --all-targets -- -D warnings
 cargo run --release --bin bench
 ```
-
-Toolchain: Rust 2021 edition, `cargo test`, no external crates.
-`#![deny(missing_docs)]` — every public item is documented.
 
 ```rust
 use fx_var_engine::prelude::*;
@@ -48,128 +58,116 @@ let market = Market::new(
 )?;
 let book = Book::new(
     vec![
-        Position::Spot(SpotPosition::new("EURJPY", 5.0e6, None)),          // cross: 2 USD legs
-        Position::Forward(ForwardPosition::new("USDJPY", 10.0e6, 0.5, None)), // CIP fwd, rate legs
+        Position::Spot(SpotPosition::new("EURJPY", 5.0e6, None)),
+        Position::Forward(ForwardPosition::new("USDJPY", 10.0e6, 0.5, None)),
     ],
     "USD",
 )?;
-
-let hs = historical_var(&book, &market, &returns, &HistoricalOptions::default())?;
-// hs.var, hs.es, hs.flagged_peg_factors, hs.warnings
+let hs = historical_var(&book, &market, &returns, &HistoricalOptions::default())?; // alpha 0.01
 
 let mut opts = MonteCarloOptions { dist: McDist::Jump, seed: 42, ..Default::default() };
-opts.jumps.prob = 0.02;
-opts.jumps.mean.insert("FX:JPY".to_string(), -0.10); // peg-break overlay
+opts.jumps.prob = 0.02;                              // per-day jump probability
+opts.jumps.mean.insert("FX:JPY".to_string(), -0.10); // size per jump
 let mc = monte_carlo_var(&book, &market, &sample_cov(&returns)?, &opts)?;
+// mc.var, mc.es, mc.se_var (bootstrap), mc.se_var_kde, mc.jitter
+
+let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 })?;
 ```
+
+## API changes in 0.2.0 (one-release deprecations)
+
+| Old | New |
+|---|---|
+| `alpha` = confidence (0.99) everywhere | `alpha` = tail probability (0.01); 0.99 is an error |
+| `kupiec_pof(x, n, confidence)` | `kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })`; old form `kupiec_pof_confidence` deprecated |
+| `basel_traffic_light(x, n, confidence)`, add-on by raw count | `basel_traffic_light(&BaselInput { .. })`, new `plus_factor` field; old form `basel_traffic_light_confidence` deprecated |
+| `cornish_fisher_domain_ok(s, k, 4.0, grid)` | `cornish_fisher_valid(s, k, alpha) -> Result<bool>`; old predicate deprecated |
+| `Matrix::cholesky_with_jitter(tries)` | `Matrix::cholesky_repair(PsdRepair)`; old method deprecated |
+| Bernoulli jump per scenario | Poisson count over the horizon; `prob` must be in `[0, 1)` |
+| `MonteCarloResult.se_var` = KDE SE | `se_var` = bootstrap SE; `se_var_kde`, `jitter`, `MonteCarloOptions.n_boot` added |
+| `inv_norm_cdf`, `reg_lower_gamma`, `reg_upper_gamma`, `reg_inc_beta`, `ln_gamma`, `student_t_pdf`, `student_t_cdf`, `sample_std`, `flag_peg_factors` returned bare values (some panicked) | return `Result` |
+| EWMA vol seeded with full-sample variance | seed window `min(30, n)` |
+| new | `acerbi_szekely_z2`, `simulate_factor_returns_jitter`, `psd`, `tail` |
 
 ## Benchmark
 
-250-position / 50-factor book (200 spots across 45 currencies + 50
-forwards; 45 FX + 5 IR factors), full revaluation, single thread, release
-build (`cargo run --release --bin bench`):
+250 positions (200 spots across 45 currencies, 50 forwards), 50 factors
+(45 FX, 5 IR), 500-day history (sinusoid plus seeded noise, full-rank
+covariance), full revaluation, release build with `lto = "fat"` and
+`codegen-units = 1`. `cargo run --release --bin bench` times each kernel
+call by call after a warm-up, cycling through varied inputs, and writes
+`bench/results.json` (p50, p90, p99, p99.9, max in ns). The closed-form
+kernel is timed in batches of 64 calls and reported per call
+(`calls_per_sample` in the JSON).
 
-```
-book: 250 positions, 50 factors
-historical  VaR (500 scen): var=62719 es=62727      2.231 ms
-parametric  VaR (normal)  : var=103002 es=118006      1.215 ms
-monte carlo VaR 100k normal: var=103273 es=118005   1445.1 ms
-monte carlo VaR 100k t(5)  : var=115154 es=151195   1465.9 ms
-```
+Numbers from this machine: Intel Core 5 120U (12 threads) under WSL2,
+rustc 1.99.1, 2026-11-01. The run waited for the 1-minute load average to
+fall below 1.5, but other crates were building in the same VM, so the
+tails (p99, p99.9) include scheduler and VM jitter. "Before" is the same
+bench on the pre-change code (opt-level 3, no LTO), run right after.
 
-Monte Carlo normal 99% VaR agrees with the parametric closed form on the
-same book to ~0.3% (103.3k vs 103.0k) — the two paths share no code beyond
-the covariance. Numbers are the same order of magnitude as the C++ twin
-(historical ~2 ms, parametric ~1.2 ms, 100k MC well under 2s single core);
-absolute wall time differs with allocator/codegen, not algorithm.
+| Kernel | Before p50 | After p50 | After p99 | After p99.9 |
+|---|---:|---:|---:|---:|
+| `CompiledBook::pnl`, one scenario | 1.83 us | 2.03 us | 4.1 us | 10.8 us |
+| `portfolio_sigma`, 50 factors | 2.58 us | 3.09 us | 3.4 us | 17 us |
+| `normal_var` (per call, batch of 64) | 281 ns | 307 ns | 468 ns | 928 ns |
+| `empirical_var_es`, 100k | 240 us | 274 us | 440 us | 570 us |
+| `empirical_var_es_into`, 100k | n/a | 228 us | 466 us | 0.99 ms |
+| `pnl_aligned_into`, 500 scenarios | n/a | 1.17 ms | 3.19 ms | 4.13 ms |
+| `historical_var`, 500 scenarios | 1.25 ms | 1.23 ms | 2.38 ms | 2.71 ms |
+| `parametric_var`, normal | 676 us | 595 us | 695 us | 1.23 ms |
+| `var_standard_error_bootstrap`, 100k x 200 | 90 ms | 54.5 ms | 74 ms | 74 ms |
+| `monte_carlo_var`, 100k normal | 961 ms | 346 ms | 437 ms | 437 ms |
+| `monte_carlo_var`, 100k t(5) | 943 ms | 312 ms | 378 ms | 378 ms |
+
+Monte Carlo is 2.8x (normal) to 3.0x (t) faster at p50. The serial RNG
+pass bounds the gain. The bootstrap splits its replicates into one
+contiguous chunk per thread. A serial pass only advances the generator to
+record each chunk's start state, then each thread redraws its own
+indices, so the bits match the serial loop. It stays serial below 2^19
+index draws (measured crossover, see `BOOT_PAR_MIN_DRAWS`). Small kernels
+in this run sit within the run-to-run spread of the before numbers.
+Each MC call is one simulation plus 200 bootstrap resamples and the KDE
+standard error on the same 100k scenarios.
+
+### Where the time goes and what changed
+
+- Monte Carlo draws its one RNG stream serially, in the reference order,
+  into the scenario matrix as raw uniforms. The inverse normal CDF, the
+  Cholesky product, the Student-t scale or jump overlay and the
+  revaluation then run on a fixed contiguous partition of rows inside
+  one `std::thread::scope`. Every row depends only on itself, so the
+  result is the same bits for any thread count
+  (`tests/test_latency_determinism.rs`).
+- The bootstrap draws each batch of resample indices serially, then runs
+  the selections in parallel, one replicate per thread.
+- The KDE standard error uses two selections instead of a full sort.
+- The allocation-free kernels (`empirical_var_es_into`,
+  `empirical_var_into`, `CompiledBook::pnl_row`,
+  `CompiledBook::pnl_aligned_into`) take a caller workspace and return a
+  small `Copy` `KernelError`. `Matrix::quad_form` and so
+  `portfolio_sigma` no longer allocate. `tests/test_latency_alloc.rs`
+  counts heap allocations with a global allocator.
+- No loop in the crate auto-vectorises (`-Cremark=loop-vectorize`). The
+  revaluation loop calls `exp()` and gathers factor columns. The dot
+  products and sums are ordered reductions, and reordering them would
+  change the bits. The inverse CDF calls `ln` and `erfc`. Speed comes
+  from threads, not SIMD.
 
 ## Validation summary
 
-- **Triangulation identity**: EURJPY P&L == EURUSD + USDJPY leg
-  decomposition to 1e-12, scenario by scenario.
-- **Forwards**: zero value at CIP inception; equal to the two discounted
-  deposit legs to 1e-10; rate-leg sensitivities match `∓T·N·e^(−rT)·S`
-  closed form.
-- **Cross-language goldens**: three deterministic cases (historical VaR/ES,
-  parametric closed forms, backtest statistics) reproduce the Python
-  `fx_var` reference to 1e-6 absolute / 1e-8 relative
-  (`tests/test_golden_python.rs` against the GENERATED
-  `tests/golden/mod.rs`; regenerate with `tools/gen_golden_rs.py` from
-  `python/fx/03-var-es-engine/tests/golden/golden_vectors.json`,
-  `--check` verifies provenance).
-- **MC**: normal MC within a few standard errors of the closed form; t and
-  jump-mixture strictly fatter at 99%; seed determinism (bit-reproducible
-  on this platform).
-- **Backtests**: Kupiec/Christoffersen against hand-computed LRs; Basel
-  zones exact at the regulatory boundaries (green 0–4 / yellow 5–9 / red
-  10+ at 250d/99%).
-- **Reverse stress**: closed form vs independent projected-gradient search
-  to 1e-6.
-- **Peg blindness**: engine flags near-zero-vol FX factors and the
-  jump-mixture MC reports the loss HS misses (tested end to end).
-- **Input validation**: NaN and ±infinity are rejected in *every* float
-  argument of *every* public entry point — market spots and rates,
-  position notionals/strikes/expiries, return histories, covariances,
-  exposures, `sigma`/`mean`/`df`/`alpha`/`horizon_days`, empirical P&L
-  samples and their weights, and both backtest series.
+- `tests/test_conv_golden.rs`: every shared `conv_*` key (S2 VaR/ES, nine
+  Basel cases, Kupiec, Z2, Cornish-Fisher flags, Higham and clip repairs,
+  EWMA vol), tolerances argued in ulps.
+- `tests/test_golden_python.rs`: cases A, B, C against the Python `fx_var`
+  reference, now with tail alphas.
+- `tests/test_conventions.rs`: regression tests for 0.2.0; each failed on
+  the old code first.
+- `tests/fuzz_public_api.rs`: NaN, `+/-inf`, empty, length-1 and negative
+  inputs for every public function, with a registry test.
+- Triangulation, CIP forwards, reverse stress against a numerical search,
+  peg-break MC (`tests/edge_cases.rs` and unit tests).
 
-### Why the validation is written with `is_finite()`
-
-A guard written as `if x <= 0.0 { return Err(..) }` silently **accepts**
-NaN, because every IEEE-754 comparison against NaN is false — and Rust is
-no different from C here (`f64::NAN < 0.0` is `false`). Worse, `f64::max`
-propagates the *other* operand, so `NaN.max(0.0)` is `0.0`.
-
-For a risk engine that is the worst possible failure mode. A NaN VaR
-breaches no limit and colours no traffic light (`NaN <= limit` is false,
-but so is `NaN > limit`); a NaN that silently becomes **zero** is worse
-still, because zero looks like a perfectly hedged book. Concretely, before
-this hardening pass:
-
-| Where | Symptom |
-|---|---|
-| `portfolio_sigma` | one NaN covariance entry → sigma, VaR and ES of exactly **0.0** |
-| `Matrix::cholesky` | NaN pivot passed `s <= 0.0` → all-NaN factor → NaN Monte Carlo VaR |
-| `evaluate_var_backtest` | `is_nan()`-only screen let `±inf` through; `-p > v` is false, so a broken VaR feed scored **zero breaches** and passed Basel green |
-| `Market::new` | spots validated, **rates** not → NaN forwards → NaN P&L |
-| `simple_to_log(-1.0)` | returned `-inf` silently → infinite stress-scenario shock |
-
-Two related fixes: the Cholesky symmetry pre-check is now **scale-relative**
-(an absolute 1e-12 gate rejects a perfectly symmetric P&L covariance for a
-50bn book, where one ulp is ~1e6), and the Cholesky jitter ladder stops at
-`matrix::MAX_RELATIVE_JITTER` (1e-6 × mean variance) instead of escalating
-until *something* factorises — a pegged/rank-deficient block is still
-repaired at the first rung, but a materially indefinite matrix now returns
-`FxVarError::Numerical` rather than being silently patched into a different
-book.
-
-Full detail: [`docs/VALIDATION.md`](docs/VALIDATION.md). Model choices and
-assumptions: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Desk usage:
+Full detail: [`docs/VALIDATION.md`](docs/VALIDATION.md). Model choices:
+[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Desk usage:
 [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md).
-
-## Layout
-
-```
-fx-var-engine/
-├── README.md
-├── Cargo.toml
-├── src/
-│   ├── lib.rs              # crate root, FxVarError, TailDist/McDist, prelude
-│   ├── book.rs              # Market, Book, CompiledBook, triangulation
-│   ├── returns.rs           # ReturnsMatrix, FactorCov, covariance estimators, peg screen
-│   ├── matrix.rs             # dense matrix + robust Cholesky
-│   ├── stats.rs               # special functions, sample moments
-│   ├── historical.rs           # plain / age / filtered HS
-│   ├── parametric.rs            # var-covar, Cornish-Fisher
-│   ├── monte_carlo.rs             # normal / t / jump-mixture MC
-│   ├── expected_shortfall.rs       # empirical + closed-form VaR/ES
-│   ├── backtest.rs                  # Kupiec, Christoffersen, Basel
-│   ├── stress.rs                     # canned scenarios, reverse stress
-│   ├── rng.rs                         # xoshiro256++ deterministic RNG
-│   └── bin/bench.rs                    # 250x50 book timings
-├── tests/                                # integration + golden tests
-│   ├── edge_cases.rs
-│   ├── golden/mod.rs                     # GENERATED by tools/gen_golden_rs.py
-│   └── test_golden_python.rs
-└── docs/                                   # METHODOLOGY / VALIDATION / DESK_GUIDE
-```

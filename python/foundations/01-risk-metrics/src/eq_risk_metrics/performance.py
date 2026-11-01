@@ -6,6 +6,8 @@ from typing import TypedDict
 import numpy as np
 import pandas as pd
 
+from ._validate import finite_scalar, finite_series
+
 from .volatility import TRADING_DAYS
 
 __all__ = ["DrawdownResult", "max_drawdown", "sharpe_ratio", "sortino_ratio"]
@@ -102,14 +104,24 @@ def sharpe_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
     Returns
     -------
     float
-        Annualised Sharpe ratio (unitless). ``+/-inf`` or ``NaN`` if
-        excess returns have zero standard deviation (e.g. a constant
-        or single-observation series) -- this is the correct limiting
-        behaviour of the formula, not a bug; callers presenting this
-        number to a report should guard against it explicitly.
+        Annualised Sharpe ratio (unitless).
+
+    Raises
+    ------
+    ValueError
+        On fewer than 2 observations, non-finite input, or constant
+        excess returns (zero standard deviation up to rounding).
     """
+    returns = finite_series(returns, "sharpe_ratio", min_len=2)
+    finite_scalar(rf_annual, "sharpe_ratio", "rf_annual")
     rf_daily = (1 + rf_annual) ** (1 / TRADING_DAYS) - 1
     excess = returns - rf_daily
+    sd = float(excess.std(ddof=1))
+    if not sd > 1e-12 * max(float(excess.abs().max()), np.finfo(float).tiny):
+        raise ValueError(
+            "sharpe_ratio: excess returns are constant (standard deviation is "
+            "zero up to rounding), so the ratio is undefined"
+        )
     return excess.mean() / excess.std(ddof=1) * np.sqrt(TRADING_DAYS)
 
 
@@ -122,10 +134,8 @@ def sortino_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
     vs losses).
 
     Assumptions: same annualisation caveat as :func:`sharpe_ratio`,
-    plus the downside deviation is estimated from a smaller sub-sample
-    (only the negative-excess-return days), so it is noisier than the
-    full-sample Sharpe denominator, especially in short or strongly
-    trending-up samples.
+    plus the downside deviation depends only on the negative days, so it
+    is noisier than the Sharpe denominator in short or trending-up samples.
 
     Parameters
     ----------
@@ -137,13 +147,24 @@ def sortino_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
     Returns
     -------
     float
-        Annualised Sortino ratio (unitless). ``NaN`` if there are no
-        excess-return observations below zero (e.g. an all-positive
-        return series) -- the downside sample is empty so its standard
-        deviation is undefined; callers should treat ``NaN`` here as
-        "downside risk could not be estimated", not "zero risk".
+        Annualised Sortino ratio (unitless). The denominator is the
+        downside deviation ``sqrt(mean(min(excess, 0)^2))`` over all
+        observations.
+
+    Raises
+    ------
+    ValueError
+        On empty or non-finite input, or when no excess return is
+        negative (the downside deviation is zero).
     """
+    returns = finite_series(returns, "sortino_ratio", min_len=1)
+    finite_scalar(rf_annual, "sortino_ratio", "rf_annual")
     rf_daily = (1 + rf_annual) ** (1 / TRADING_DAYS) - 1
     excess = returns - rf_daily
-    downside = excess[excess < 0]
-    return excess.mean() / downside.std(ddof=1) * np.sqrt(TRADING_DAYS)
+    dd = float(np.sqrt(np.mean(np.minimum(excess.to_numpy(dtype=float), 0.0) ** 2)))
+    if dd == 0.0:
+        raise ValueError(
+            "sortino_ratio: no excess return is below zero, so the downside "
+            "deviation is zero and the ratio is undefined"
+        )
+    return float(excess.mean() / dd * np.sqrt(TRADING_DAYS))

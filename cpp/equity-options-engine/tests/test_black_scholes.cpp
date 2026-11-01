@@ -57,9 +57,12 @@ TEST(EdgeCases, ZeroVolReturnsDiscountedForwardIntrinsic) {
     const double S = 100.0, K = 95.0, T = 1.0, r = 0.05, q = 0.02;
     const double fwd = S * std::exp((r - q) * T);
     const double expect_call = std::exp(-r * T) * std::max(fwd - K, 0.0);
-    EXPECT_DOUBLE_EQ(bs_price(S, K, T, r, 0.0, q, OptionType::Call), expect_call);
-    EXPECT_DOUBLE_EQ(bs_price(S, K, T, r, 0.0, q, OptionType::Put),
-                     std::exp(-r * T) * std::max(K - fwd, 0.0));
+    // The engine computes S e^{-qT} - K e^{-rT} (no forward, overflow-safe);
+    // both forms round terms of size ~100: allow 4 eps max(S, K).
+    const double tol = 4.0 * 2.220446049250313e-16 * std::max(S, K);
+    EXPECT_NEAR(bs_price(S, K, T, r, 0.0, q, OptionType::Call), expect_call, tol);
+    EXPECT_NEAR(bs_price(S, K, T, r, 0.0, q, OptionType::Put),
+                std::exp(-r * T) * std::max(K - fwd, 0.0), tol);
 }
 
 TEST(EdgeCases, ZeroStrikeAndZeroSpotLimits) {

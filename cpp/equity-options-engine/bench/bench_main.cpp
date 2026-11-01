@@ -1,112 +1,201 @@
-// Micro-benchmark for the eqopt engine: prices/sec for analytic
-// Black-Scholes, one 1000-step CRR tree (European + American), and a
-// 1M-path Monte Carlo (single-threaded and 4-thread).
+// Per-call latency benchmark for the eqopt engine.
 //
-// Methodology: simple std::chrono steady_clock timing around hot loops; a
-// volatile accumulator prevents the optimiser from deleting the work.
-// Numbers are indicative (single run, shared machine) — rerun locally with
-//   ./build/eqopt_bench
+//   ./eqopt_bench [--out results.json] [--label after] [--quick]
+//
+// Every kernel is timed call by call (see latency.hpp) over inputs drawn
+// from a fixed pseudo-random table, so branch predictors and caches see a
+// realistic mix rather than one repeated quote. Numbers depend on the
+// machine; under WSL2 the hypervisor adds scheduling jitter that shows up in
+// p99.9 and max.
 
-#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <exception>
+#include <span>
 #include <vector>
 
 #include "eqopt/binomial.hpp"
+#include "eqopt/black76.hpp"
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/greeks.hpp"
+#include "eqopt/implied_vol.hpp"
 #include "eqopt/monte_carlo.hpp"
+#include "latency.hpp"
+
+#if __has_include("eqopt/batch.hpp")
+#include "eqopt/batch.hpp"
+#include "eqopt/thread_pool.hpp"
+#define EQOPT_BENCH_NEW_API 1
+#endif
 
 namespace {
 
-using Clock = std::chrono::steady_clock;
+using eqopt::OptionType;
 
-double seconds_since(Clock::time_point t0) {
-    return std::chrono::duration<double>(Clock::now() - t0).count();
-}
+struct Quote {
+    double S, K, T, r, sigma, q;
+    OptionType type;
+};
 
-volatile double g_sink = 0.0;  // defeat dead-code elimination
+constexpr std::size_t kTable = 1 << 14;  // 16384 distinct quotes
 
-void bench_black_scholes() {
-    constexpr int n = 1'000'000;
-    // Pre-generate varied inputs so the loop measures pricing, not caching.
-    std::vector<double> spots(n), vols(n);
-    for (int i = 0; i < n; ++i) {
-        spots[i] = 80.0 + 0.00004 * i;   // 80 .. 120
-        vols[i] = 0.10 + 0.0000003 * i;  // 0.10 .. 0.40
+std::vector<Quote> make_quotes() {
+    qpbench::InputGen g(20261101);
+    std::vector<Quote> v(kTable);
+    for (std::size_t i = 0; i < kTable; ++i) {
+        v[i] = Quote{g.uniform(60.0, 140.0), g.uniform(80.0, 120.0), g.uniform(0.02, 2.0),
+                     g.uniform(-0.01, 0.06), g.uniform(0.08, 0.6), g.uniform(0.0, 0.04),
+                     (i & 1U) != 0 ? OptionType::Put : OptionType::Call};
     }
-    const auto t0 = Clock::now();
-    double acc = 0.0;
-    for (int i = 0; i < n; ++i) {
-        acc += eqopt::bs_price(spots[i], 100.0, 1.0, 0.05, vols[i], 0.02,
-                               eqopt::OptionType::Call);
-    }
-    const double dt = seconds_since(t0);
-    g_sink = acc;
-    std::printf("BS analytic        : %d prices in %7.1f ms  -> %10.0f prices/sec\n",
-                n, dt * 1e3, n / dt);
-
-    const auto t1 = Clock::now();
-    for (int i = 0; i < n / 10; ++i) {
-        const auto g = eqopt::bs_greeks(spots[i], 100.0, 1.0, 0.05, vols[i],
-                                        0.02, eqopt::OptionType::Call);
-        acc += g.delta + g.vega;
-    }
-    const double dt1 = seconds_since(t1);
-    g_sink = acc;
-    std::printf("BS full greeks     : %d evals  in %7.1f ms  -> %10.0f evals/sec\n",
-                n / 10, dt1 * 1e3, (n / 10) / dt1);
-}
-
-void bench_binomial() {
-    constexpr int n_steps = 1000;
-    constexpr int reps = 20;
-    const auto t0 = Clock::now();
-    double acc = 0.0;
-    for (int i = 0; i < reps; ++i) {
-        acc += eqopt::crr_price(100.0 + i * 1e-6, 100.0, 1.0, 0.05, 0.2, 0.02,
-                                eqopt::OptionType::Call,
-                                eqopt::ExerciseStyle::European, n_steps);
-    }
-    const double dt = seconds_since(t0) / reps;
-    g_sink = acc;
-    std::printf("CRR tree, n=1000 EU: 1 tree   in %7.2f ms  -> %10.1f trees/sec\n",
-                dt * 1e3, 1.0 / dt);
-
-    const auto t1 = Clock::now();
-    for (int i = 0; i < reps; ++i) {
-        acc += eqopt::crr_price(100.0 + i * 1e-6, 100.0, 1.0, 0.05, 0.2, 0.02,
-                                eqopt::OptionType::Put,
-                                eqopt::ExerciseStyle::American, n_steps);
-    }
-    const double dt1 = seconds_since(t1) / reps;
-    g_sink = acc;
-    std::printf("CRR tree, n=1000 AM: 1 tree   in %7.2f ms  -> %10.1f trees/sec\n",
-                dt1 * 1e3, 1.0 / dt1);
-}
-
-void bench_monte_carlo() {
-    constexpr std::int64_t n_paths = 1'000'000;
-    for (unsigned threads : {1u, 4u}) {
-        const auto t0 = Clock::now();
-        const auto r = eqopt::mc_price(100.0, 105.0, 1.0, 0.04, 0.25, 0.015,
-                                       eqopt::OptionType::Call, n_paths, true,
-                                       true, 42, threads);
-        const double dt = seconds_since(t0);
-        g_sink = r.price;
-        std::printf(
-            "MC 1M paths (%u thr): price %.4f +/- %.4f in %7.1f ms  -> %10.0f paths/sec\n",
-            threads, r.price, r.std_error, dt * 1e3,
-            static_cast<double>(r.n_paths) / dt);
-    }
+    return v;
 }
 
 }  // namespace
 
-int main() {
-    std::printf("eqopt micro-benchmark (g++ -O2, single run)\n");
-    std::printf("-------------------------------------------\n");
-    bench_black_scholes();
-    bench_binomial();
-    bench_monte_carlo();
+int main(int argc, char** argv) {
+    qpbench::Bench b(argc, argv, "equity-options");
+    const std::vector<Quote> qs = make_quotes();
+    const auto at = [&](std::size_t i) -> const Quote& { return qs[i & (kTable - 1)]; };
+    double acc = 0.0;
+
+    b.run("bs_price", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::bs_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type);
+    }, 100000, 1000000);
+
+    b.run("bs_greeks", [&](std::size_t i) {
+        const Quote& x = at(i);
+        const auto g = eqopt::bs_greeks(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type);
+        acc += g.delta + g.vega;
+    }, 100000, 1000000);
+
+    b.run("black76_price", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::black76_price(x.S, x.K, x.T, x.r, x.sigma, x.type);
+    }, 100000, 1000000);
+
+    // Implied-vol table: quotes whose price is strictly inside the
+    // no-arbitrage bounds (deep OTM short-dated prices round to the bound).
+    std::vector<Quote> ivq;
+    std::vector<double> prices;
+    for (std::size_t i = 0; ivq.size() < kTable; ++i) {
+        const Quote& x = qs[i % kTable];
+        const double p = eqopt::bs_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type);
+        try {
+            (void)eqopt::implied_vol(p, x.S, x.K, x.T, x.r, x.q, x.type);
+        } catch (const std::exception&) {
+            continue;
+        }
+        ivq.push_back(x);
+        prices.push_back(p);
+    }
+    b.run("implied_vol", [&](std::size_t i) {
+        const Quote& x = ivq[i & (kTable - 1)];
+        acc += eqopt::implied_vol(prices[i & (kTable - 1)], x.S, x.K, x.T, x.r, x.q, x.type);
+    }, 20000, 300000);
+
+    b.run("crr_price eu n=1000", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type,
+                                eqopt::ExerciseStyle::European, 1000);
+    }, 200, 3000);
+
+    b.run("crr_price am n=1000", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type,
+                                eqopt::ExerciseStyle::American, 1000);
+    }, 200, 3000);
+
+    b.run("mc_price 10k paths 1 thr", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::mc_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, 10000, true, true,
+                               42 + i, 1).price;
+    }, 50, 2000);
+
+    b.run("mc_price 10k paths 4 thr", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::mc_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, 10000, true, true,
+                               42 + i, 4).price;
+    }, 50, 2000);
+
+    b.run("mc_price 1M paths 4 thr", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::mc_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, 1000000, true,
+                               true, 42 + i, 4).price;
+    }, 3, 40);
+
+#ifdef EQOPT_BENCH_NEW_API
+    b.run("try_bs_price", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::try_bs_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type).value_or(0.0);
+    }, 100000, 1000000);
+
+    b.run("try_bs_greeks", [&](std::size_t i) {
+        const Quote& x = at(i);
+        const auto g = eqopt::try_bs_greeks(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type);
+        acc += g ? g->delta + g->vega : 0.0;
+    }, 100000, 1000000);
+
+    b.run("try_implied_vol", [&](std::size_t i) {
+        const Quote& x = ivq[i & (kTable - 1)];
+        acc += eqopt::try_implied_vol(prices[i & (kTable - 1)], x.S, x.K, x.T, x.r, x.q,
+                                      x.type).value_or(0.0);
+    }, 20000, 300000);
+
+    std::vector<double> tree_ws(eqopt::crr_workspace_size(1000));
+    b.run("try_crr_price am n=1000 (ws)", [&](std::size_t i) {
+        const Quote& x = at(i);
+        acc += eqopt::try_crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type,
+                                    eqopt::ExerciseStyle::American, 1000, tree_ws)
+                   .value_or(0.0);
+    }, 200, 3000);
+
+    eqopt::ThreadPool pool(4);
+    eqopt::McWorkspace mc_ws;
+    mc_ws.reserve(1000000, true);
+    b.run("try_mc_price 10k paths 4 thr (pool)", [&](std::size_t i) {
+        const Quote& x = at(i);
+        const auto r = eqopt::try_mc_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, 10000,
+                                           true, true, 42 + i, 4, mc_ws, &pool);
+        acc += r ? r->price : 0.0;
+    }, 50, 2000);
+    b.run("try_mc_price 1M paths 4 thr (pool)", [&](std::size_t i) {
+        const Quote& x = at(i);
+        const auto r = eqopt::try_mc_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, 1000000,
+                                           true, true, 42 + i, 4, mc_ws, &pool);
+        acc += r ? r->price : 0.0;
+    }, 3, 40);
+
+    // Batch: 1024 quotes per call, structure of arrays.
+    constexpr std::size_t kBatch = 1024;
+    const std::size_t n_batches = kTable / kBatch;
+    std::vector<double> S(kTable), K(kTable), T(kTable), r(kTable), sig(kTable), q(kTable);
+    std::vector<OptionType> ty(kTable);
+    for (std::size_t i = 0; i < kTable; ++i) {
+        S[i] = qs[i].S; K[i] = qs[i].K; T[i] = qs[i].T; r[i] = qs[i].r;
+        sig[i] = qs[i].sigma; q[i] = qs[i].q; ty[i] = qs[i].type;
+    }
+    std::vector<double> out(kBatch), o2(kBatch), o3(kBatch), o4(kBatch), o5(kBatch),
+        o6(kBatch), o7(kBatch), o8(kBatch);
+    auto slice = [&](const auto& v, std::size_t i) {
+        return std::span(v).subspan((i % n_batches) * kBatch, kBatch);
+    };
+    b.run("bs_price_batch x1024", [&](std::size_t i) {
+        const eqopt::BsBatchInputs in{slice(S, i), slice(K, i), slice(T, i),
+                                      slice(r, i), slice(sig, i), slice(q, i), slice(ty, i)};
+        (void)eqopt::bs_price_batch(in, out);
+        acc += out[i & (kBatch - 1)];
+    }, 200, 20000);
+    b.run("bs_greeks_batch x1024", [&](std::size_t i) {
+        const eqopt::BsBatchInputs in{slice(S, i), slice(K, i), slice(T, i),
+                                      slice(r, i), slice(sig, i), slice(q, i), slice(ty, i)};
+        const eqopt::BsGreeksBatchOutputs o{out, o2, o3, o4, o5, o6, o7, o8};
+        (void)eqopt::bs_greeks_batch(in, o);
+        acc += o2[i & (kBatch - 1)];
+    }, 200, 20000);
+#endif
+
+    qpbench::g_sink = acc;
     return 0;
 }

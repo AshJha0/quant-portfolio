@@ -10,6 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from . import research_stats as _rs
+
 __all__ = [
     "sharpe_ratio",
     "sharpe_se_lo",
@@ -25,7 +27,7 @@ __all__ = [
 def _clean(returns: pd.Series | np.ndarray) -> np.ndarray:
     """Drop non-finite entries.
 
-    Metrics deliberately *tolerate* NaN here (unlike the pricing and
+    Metrics *tolerate* NaN here (unlike the pricing and
     signal layers, which reject it): a warmup window legitimately produces
     NaN P&L before the first position exists, and a metric over "the days
     that actually traded" is the desk's intent.  Inf is dropped for the same
@@ -62,44 +64,30 @@ def sharpe_se_lo(
     q: int | None = None,
     ann_factor: float = 252.0,
 ) -> tuple[float, float]:
-    """Sharpe ratio with a Lo (2002)-style autocorrelation-robust standard error.
+    """Sharpe ratio with the Lo (2002) / Newey-West standard error.
 
-    Under iid returns ``Var(SR_hat) ~ (1 + SR^2/2) / T`` (per-period SR).
-    With autocorrelated returns the variance of the sample mean inflates by
-    the Newey-West factor ``g = 1 + 2 * sum_{k=1..q} (1 - k/(q+1)) rho_k``;
-    we report ``SE = sqrt((g + SR^2/2) / T) * sqrt(ann_factor)``.  For iid
-    data ``g ~ 1`` and this collapses to the classical Lo SE.
+    Delegates to :func:`fx_pairs.research_stats.lo_sharpe_se` (GMM delta
+    method, Bartlett-kernel long-run variance truncated at ``q`` lags).
 
     Parameters
     ----------
     q : int, optional
-        Number of autocorrelation lags; default ``floor(T^(1/3))``.
+        Truncation lag; default ``floor(4 (T/100)^(2/9))`` (Newey-West rule).
 
     Returns
     -------
-    (sharpe_annualised, se_annualised)
+    (sharpe_annualised, se_annualised); ``(nan, nan)`` for fewer than 10
+    observations or zero variance.
     """
     _check_ann_factor(ann_factor)
     r = _clean(returns)
     T = len(r)
-    if T < 10:
+    if T < 10 or r.std(ddof=1) == 0.0:
         return float("nan"), float("nan")
-    sd = r.std(ddof=1)
-    if sd == 0.0:
-        return float("nan"), float("nan")
-    sr = r.mean() / sd
-    if q is None:
-        q = int(np.floor(T ** (1.0 / 3.0)))
-    q = max(min(q, T - 2), 0)
-    x = r - r.mean()
-    denom = float(x @ x)
-    g = 1.0
-    for k in range(1, q + 1):
-        rho_k = float(x[k:] @ x[:-k]) / denom
-        g += 2.0 * (1.0 - k / (q + 1.0)) * rho_k
-    g = max(g, 1e-6)
-    se = np.sqrt((g + 0.5 * sr**2) / T)
-    return float(sr * np.sqrt(ann_factor)), float(se * np.sqrt(ann_factor))
+    sr = r.mean() / r.std(ddof=1)
+    lag = None if q is None else max(min(int(q), T - 2), 0)
+    se = _rs.lo_sharpe_se(r, periods_per_year=ann_factor, lag=lag)
+    return float(sr * np.sqrt(ann_factor)), float(se)
 
 
 def sortino_ratio(
@@ -160,8 +148,8 @@ def turnover(positions: pd.Series | np.ndarray, ann_factor: float = 252.0) -> fl
 def trade_pnls(result) -> list[float]:
     """Per-trade total P&L from a BacktestResult's trade list.
 
-    Trade P&L is the sum of total P&L booked over ``(entry, exit]`` — the bars
-    on which the trade's position was earning returns — plus the entry cost
+    Trade P&L is the sum of total P&L booked over ``(entry, exit]``: the bars
+    on which the trade's position was earning returns: plus the entry cost
     booked at the entry bar.
     """
     total = result.total_pnl.to_numpy()
@@ -176,7 +164,7 @@ def trade_pnls(result) -> list[float]:
 def summarize(result, ann_factor: float = 252.0) -> dict[str, float]:
     """One-line summary of a BacktestResult (used by the pipeline and docs).
 
-    Includes the carry-vs-spot decomposition — the number that tells you
+    Includes the carry-vs-spot decomposition: the number that tells you
     whether the 'mean reversion' P&L was really carry in disguise.
     """
     r = result.total_pnl

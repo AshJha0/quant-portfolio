@@ -1,4 +1,4 @@
-"""eq_vol — equity volatility modeling & forecasting.
+"""eq_vol: equity volatility modeling & forecasting.
 
 Pipeline: historical/range estimators -> EWMA -> GARCH(1,1) -> EGARCH(1,1)
 -> GJR-GARCH(1,1) -> multi-step forecasting -> forecast evaluation.
@@ -25,6 +25,7 @@ from .historical import (
     realized_vol,
     rogers_satchell_var,
     window_sensitivity,
+    yang_zhang_var,
 )
 from .garch import (
     fit_garch,
@@ -34,7 +35,7 @@ from .garch import (
     unconditional_variance,
     vol_halflife,
 )
-from .egarch import egarch_recursion, fit_egarch
+from .egarch import egarch_recursion, egarch_unconditional_variance, fit_egarch
 from .egarch import news_impact_curve as egarch_news_impact_curve
 from .gjr import fit_gjr, gjr_persistence, gjr_recursion, gjr_unconditional_variance
 from .gjr import news_impact_curve as gjr_news_impact_curve
@@ -52,6 +53,7 @@ from .evaluation import (
     DMResult,
     MZResult,
     arch_lm_test,
+    default_hac_lags,
     diebold_mariano,
     forecast_race_table,
     ljung_box_squared,
@@ -75,6 +77,7 @@ __all__ = [
     "rogers_satchell_var",
     "range_vol",
     "window_sensitivity",
+    "yang_zhang_var",
     # ewma
     "ewma_variance",
     "ewma_variance_recursive",
@@ -90,6 +93,7 @@ __all__ = [
     "vol_halflife",
     "fit_egarch",
     "egarch_recursion",
+    "egarch_unconditional_variance",
     "egarch_news_impact_curve",
     "fit_gjr",
     "gjr_recursion",
@@ -111,6 +115,7 @@ __all__ = [
     "mincer_zarnowitz",
     "MZResult",
     "diebold_mariano",
+    "default_hac_lags",
     "DMResult",
     "ljung_box_squared",
     "arch_lm_test",

@@ -1,7 +1,9 @@
 //! Deterministic pseudo-random number generation (no external dependencies).
 //!
-//! The engine owns its RNG so that Monte Carlo results are **bit-reproducible**
-//! for a given seed, independent of any third-party crate's version churn:
+//! The engine owns its RNG so that Monte Carlo results repeat exactly for a
+//! given seed on the same build and platform (the integer stream is portable;
+//! the float transforms use the platform libm), independent of any
+//! third-party crate:
 //!
 //! * core stream: xoshiro256++ (Blackman & Vigna 2019), seeded through
 //!   SplitMix64 so that any `u64` seed - including 0 - yields a well-mixed
@@ -17,7 +19,7 @@
 //! Every stochastic component in the crate takes an explicit seed
 //! (portfolio convention: no hidden global RNG state).
 
-use crate::stats::inv_norm_cdf;
+use crate::stats::inv_norm_cdf_unchecked;
 
 /// xoshiro256++ deterministic generator with SplitMix64 seeding.
 ///
@@ -86,7 +88,7 @@ impl Rng {
     /// (see [`crate::stats::inv_norm_cdf`]), far below Monte Carlo noise.
     #[inline]
     pub fn normal(&mut self) -> f64 {
-        inv_norm_cdf(self.uniform_open())
+        inv_norm_cdf_unchecked(self.uniform_open())
     }
 
     /// Gamma(shape, scale=1) draw by Marsaglia-Tsang (2000).
@@ -94,10 +96,13 @@ impl Rng {
     /// Valid for any `shape > 0`; shapes below 1 use the standard boosting
     /// identity `Gamma(a) = Gamma(a+1) * U^{1/a}`.
     ///
-    /// # Panics
-    /// Panics if `shape <= 0` (programming error, not a data error).
+    /// An invalid `shape` (NaN, infinite, or `<= 0`) returns NaN without
+    /// consuming the stream. It used to `assert!` (a panic) on `shape <= 0`
+    /// and to loop forever on NaN.
     pub fn gamma(&mut self, shape: f64) -> f64 {
-        assert!(shape > 0.0, "gamma shape must be > 0");
+        if !(shape > 0.0) || !shape.is_finite() {
+            return f64::NAN;
+        }
         if shape < 1.0 {
             let u = self.uniform_open();
             return self.gamma(shape + 1.0) * u.powf(1.0 / shape);

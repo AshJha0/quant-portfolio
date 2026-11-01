@@ -1,9 +1,10 @@
-//! # fx_var_engine — multi-currency FX market-risk engine (VaR / ES / stress)
+//! # fx_var_engine: multi-currency FX market-risk engine (VaR / ES / stress)
 //!
-//! Rust twin of the Python research package `python/fx/03-var-es-engine`
-//! (package `fx_var`) and the C++ engine `cpp/fx-var-engine` (namespace
-//! `fxvar`). All three stacks share the same semantics and are
-//! cross-validated against the same golden vectors (see
+//! Linear-book port of the Python research package
+//! `python/fx/03-var-es-engine` (package `fx_var`), alongside the C++ engine
+//! `cpp/fx-var-engine` (namespace `fxvar`). Books hold cash, spot and
+//! forwards only; options are revalued in the Python package. The shared
+//! conventions are checked against the same golden vectors (see
 //! `tests/test_golden_python.rs` and `docs/VALIDATION.md`).
 //!
 //! ## Pipeline
@@ -20,10 +21,10 @@
 //! * Pairs are quoted BASE/QUOTE: `EURUSD` = USD per 1 EUR.
 //! * Every currency is mapped to a single **USD factor**: `"FX:CCY"` is the
 //!   daily *log return* of the USD price of 1 unit of CCY (the log return
-//!   of CCYUSD). USD itself has no FX factor — its USD price is identically
-//!   1. Cross pairs (EURJPY) are *triangulated* through their two USD legs,
-//!   so the factor set is arbitrage-consistent by construction — there is
-//!   no separate cross factor.
+//!   of CCYUSD). USD itself has no FX factor: its USD price is identically
+//!   one. Cross pairs (EURJPY) are *triangulated* through their two USD
+//!   legs, so the factor set is arbitrage-consistent by construction and
+//!   there is no separate cross factor.
 //! * `"IR:CCY"` is an *absolute* shock (decimal p.a.) to the continuously
 //!   compounded, ACT/365 zero rate of CCY (flat curve per currency).
 //! * CIP forward: `F = S * exp((r_d - r_f) * T)` with `r_d` the
@@ -31,22 +32,26 @@
 //!   rate.
 //! * P&L arrays are profit (+) / loss (-) in the book's base currency; VaR
 //!   and ES are reported as **positive** loss numbers.
-//! * `alpha` is a **confidence level** (`0.99` = 99 % VaR), matching the
-//!   C++/Python FX engines — note this is the opposite convention from the
-//!   sibling equity engines, which use `alpha` as a tail probability.
+//! * `alpha` is the **tail probability** (`0.01` = 99 % VaR), the same in
+//!   every engine of the repository. Until 0.2.0 this crate took a
+//!   confidence level; passing `0.99` is now an error, never silently
+//!   reinterpreted. Every public function rejects `alpha` outside `(0, 0.5)`.
+//! * Empirical VaR is the order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`,
+//!   of the losses sorted descending; empirical ES is Acerbi-Tasche with
+//!   the exact fractional boundary weight ([`tail`]).
 //!
 //! ## Design
 //!
-//! * **Zero external dependencies** — `std` only. The deterministic RNG
+//! * **Zero external dependencies**: `std` only. The deterministic RNG
 //!   ([`rng`]), special functions and dense linear algebra ([`matrix`],
 //!   [`stats`]) are implemented in-crate and validated to documented
 //!   tolerances.
-//! * **`Result` everywhere** — invalid caller input returns
+//! * **`Result` everywhere**: invalid caller input returns
 //!   [`FxVarError::Invalid`]; well-formed input that defeats a numerical
 //!   procedure (e.g. a covariance that resists Cholesky even with jitter)
 //!   returns [`FxVarError::Numerical`]. Library code never panics on user
 //!   input.
-//! * **NaN policy: refuse** — every history/backtest input that could
+//! * **NaN policy: refuse**: every history/backtest input that could
 //!   silently corrupt a quantile is checked for NaN and rejected with an
 //!   informative message rather than dropped or imputed.
 //!
@@ -90,6 +95,11 @@
 
 #![deny(missing_docs)]
 #![warn(clippy::all)]
+// `!(x > 0.0)` is the NaN-rejecting form on purpose: `x <= 0.0` is false
+// for NaN and would let it through. The lint asks for the opposite.
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+// Index loops mirror the matrix formulas they implement.
+#![allow(clippy::needless_range_loop)]
 
 pub mod backtest;
 pub mod book;
@@ -98,21 +108,25 @@ pub mod historical;
 pub mod matrix;
 pub mod monte_carlo;
 pub mod parametric;
+pub mod psd;
 pub mod returns;
 pub mod rng;
 pub mod stats;
 pub mod stress;
+pub mod tail;
+
+mod par;
 
 use std::fmt;
 
 /// Errors returned by the engine.
 ///
-/// * [`FxVarError::Invalid`] — the caller passed something the model
-///   cannot accept (empty book, `alpha` outside `(0, 1)`, dimension
+/// * [`FxVarError::Invalid`]: the caller passed something the model
+///   cannot accept (empty book, `alpha` outside `(0, 0.5)`, dimension
 ///   mismatch, missing factor columns, NaNs, …). The message states what
 ///   was wrong, mirroring the `ValueError`s of the Python reference and the
 ///   `std::invalid_argument`s of the C++ engine.
-/// * [`FxVarError::Numerical`] — the inputs were well-formed but a
+/// * [`FxVarError::Numerical`]: the inputs were well-formed but a
 ///   numerical procedure failed (e.g. Cholesky on an indefinite matrix even
 ///   after the jitter escalation).
 #[derive(Debug, Clone, PartialEq)]
@@ -150,13 +164,54 @@ impl std::error::Error for FxVarError {}
 /// Crate-wide result alias.
 pub type Result<T> = std::result::Result<T, FxVarError>;
 
+/// Small `Copy` error returned by the allocation-free kernels
+/// ([`tail::empirical_var_es_into`], [`tail::empirical_var_into`],
+/// [`book::CompiledBook::pnl_row`], [`book::CompiledBook::pnl_aligned_into`]).
+///
+/// It carries no message, so building it never allocates. Convert it into
+/// [`FxVarError`] with `?` or `.into()` when a message is wanted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KernelError {
+    /// `alpha` is outside `(0, 0.5)`.
+    BadAlpha,
+    /// The sample is empty.
+    EmptySample,
+    /// An input contains NaN or an infinity.
+    NonFinite,
+    /// Input lengths do not agree (shock vector, matrix width, output).
+    LengthMismatch,
+    /// The caller-supplied workspace is shorter than the sample.
+    ScratchTooSmall,
+}
+
+impl fmt::Display for KernelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg = match self {
+            KernelError::BadAlpha => "alpha must lie in (0, 0.5)",
+            KernelError::EmptySample => "sample is empty",
+            KernelError::NonFinite => "input contains NaN or infinite values",
+            KernelError::LengthMismatch => "input lengths do not agree",
+            KernelError::ScratchTooSmall => "workspace is shorter than the sample",
+        };
+        f.write_str(msg)
+    }
+}
+
+impl std::error::Error for KernelError {}
+
+impl From<KernelError> for FxVarError {
+    fn from(e: KernelError) -> Self {
+        FxVarError::Invalid(e.to_string())
+    }
+}
+
 /// Tail distribution for parametric VaR/ES ([`parametric`],
 /// [`expected_shortfall`]). Mirrors C++ `fxvar::TailDist`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TailDist {
     /// Gaussian tails (RiskMetrics classic).
     Normal,
-    /// Standardised (unit-variance) Student-t tails — fatter than normal at
+    /// Standardised (unit-variance) Student-t tails: fatter than normal at
     /// equal sigma; the `df` parameter is supplied where used (must be > 2
     /// for finite variance).
     StudentT,
@@ -171,16 +226,18 @@ pub enum McDist {
     /// Covariance-matched multivariate Student-t (fat tails at equal
     /// sigma).
     StudentT,
-    /// Normal diffusion plus a Bernoulli common-jump overlay — the
-    /// peg-break / devaluation stress-in-a-distribution.
+    /// Normal diffusion plus a common Poisson jump count over the horizon
+    /// (per-day probability `p`, intensity `-ln(1-p)`): the peg-break /
+    /// devaluation stress-in-a-distribution.
     Jump,
 }
 
 /// Convenience re-exports of the full public API.
 pub mod prelude {
     pub use crate::backtest::{
-        basel_traffic_light, christoffersen_independence, conditional_coverage,
-        evaluate_var_backtest, kupiec_pof, BacktestResult, LrTest, TrafficLight, Zone,
+        acerbi_szekely_z2, basel_traffic_light, christoffersen_independence, conditional_coverage,
+        evaluate_var_backtest, kupiec_pof, BacktestResult, BaselInput, KupiecInput, KupiecResult,
+        LrTest, TrafficLight, Zone,
     };
     pub use crate::book::{
         fx_factor, ir_factor, split_pair, Book, CashPosition, CompiledBook, ForwardPosition,
@@ -193,12 +250,16 @@ pub mod prelude {
     pub use crate::historical::{historical_var, HistoricalOptions, HistoricalResult, HsMethod};
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
-        monte_carlo_var, simulate_factor_returns, var_standard_error, var_standard_error_bootstrap,
-        JumpSpec, MonteCarloOptions, MonteCarloResult,
+        monte_carlo_var, monte_carlo_var_with_threads, simulate_factor_returns,
+        simulate_factor_returns_jitter, var_standard_error, var_standard_error_bootstrap,
+        var_standard_error_bootstrap_with_threads, JumpSpec, MonteCarloOptions, MonteCarloResult,
     };
     pub use crate::parametric::{
-        cornish_fisher_domain_ok, cornish_fisher_var, cornish_fisher_z, parametric_var,
+        cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
         portfolio_sigma, var_covar, CovMethod, ParametricOptions, ParametricResult, VarEs,
+    };
+    pub use crate::psd::{
+        cholesky_repair, clip_psd, higham_nearest, symmetric_eigen, CholeskyFactor, PsdRepair,
     };
     pub use crate::returns::{
         ewma_cov, ewma_volatility, flag_peg_factors, sample_cov, validate_returns, EwmaVolatility,
@@ -206,14 +267,21 @@ pub mod prelude {
     };
     pub use crate::rng::Rng;
     pub use crate::stats::{
-        binom_cdf, chi2_sf, ln_gamma, moments, norm_cdf, norm_pdf, inv_norm_cdf, reg_inc_beta,
+        binom_cdf, chi2_sf, inv_norm_cdf, ln_gamma, moments, norm_cdf, norm_pdf, reg_inc_beta,
         reg_lower_gamma, reg_upper_gamma, sample_std, student_t_cdf, student_t_pdf,
         student_t_quantile, validate_alpha, validate_horizon, Moments,
     };
     pub use crate::stress::{
-        historical_scenarios, peg_break_scenario, reverse_stress_for_loss,
-        reverse_stress_linear, reverse_stress_numerical, run_stress, simple_to_log,
-        usd_broad_move, ReverseStress, Scenario, StressRow,
+        historical_scenarios, peg_break_scenario, reverse_stress_for_loss, reverse_stress_linear,
+        reverse_stress_numerical, run_stress, simple_to_log, usd_broad_move, ReverseStress,
+        Scenario, StressRow,
     };
-    pub use crate::{FxVarError, McDist, TailDist};
+    pub use crate::tail::{empirical_var_es_into, empirical_var_into, tail_rank, weighted_var_es};
+    /// Deprecated entry points, kept in the prelude for one release.
+    #[allow(deprecated)]
+    pub use crate::{
+        backtest::{basel_traffic_light_confidence, kupiec_pof_confidence},
+        parametric::cornish_fisher_domain_ok,
+    };
+    pub use crate::{FxVarError, KernelError, McDist, TailDist};
 }

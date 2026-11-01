@@ -156,3 +156,31 @@ class TestReverseStress:
             reverse_stress_delta(self.W, self.COV, radius=0.0)
         with pytest.raises(ValueError, match="radius"):
             reverse_stress_delta_gamma(self.W, np.zeros((3, 3)), self.COV, radius=-1.0)
+
+
+class TestReverseStressOptimiserChecks:
+    """H-8: the optimiser result is used only when it is feasible and stationary."""
+
+    W = np.array([1.0e6, -4.0e5])
+    COV = np.array([[4e-4, 1e-4], [1e-4, 9e-4]])
+
+    def test_converged_result_is_feasible(self):
+        out = reverse_stress_delta_gamma(self.W, np.diag([-2e6, 1e6]), self.COV, 3.0, seed=1)
+        assert out["converged"] is True
+        x = out["shock"]
+        assert float(x @ np.linalg.solve(self.COV, x)) == pytest.approx(9.0, rel=1e-8)
+
+    def test_failed_optimiser_falls_back_to_closed_form_with_warning(self, monkeypatch):
+        """Old code took the best res.fun of any start, checked nothing."""
+        import types
+
+        import eq_var.stress_testing as st
+
+        def broken(fun, u0, method):
+            return types.SimpleNamespace(success=False, fun=-1.0e3, x=u0, jac=np.full_like(u0, 1e6))
+
+        monkeypatch.setattr(st, "minimize", broken)
+        with pytest.warns(RuntimeWarning, match="closed-form delta"):
+            out = reverse_stress_delta_gamma(self.W, np.zeros((2, 2)), self.COV, 3.0)
+        assert out["converged"] is False
+        assert out["loss"] == pytest.approx(reverse_stress_delta(self.W, self.COV, 3.0)["loss"], rel=1e-12)

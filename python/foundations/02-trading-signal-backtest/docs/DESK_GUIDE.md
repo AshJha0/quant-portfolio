@@ -1,179 +1,100 @@
-# Desk Guide — Running a Systematic Signal Like This One
+# Desk Guide: Running a Systematic Signal Like This One
 
-How a real systematic trading desk actually evaluates a signal of this
-kind day to day: governance, pre-launch checklist, live monitoring, and
-concrete scenarios (contract items 5 and 6).
+How a systematic desk would review and run a signal of this kind. None of
+the monitoring or kill controls below is implemented in this repository;
+they are process, described for a reader who would build them. Every
+number quoted is from synthetic data. No real-data result exists yet
+(Phase 4).
 
 ---
 
-## 1. Who reviews a backtest like this before capital is allocated
+## 1. Review before capital
 
-No systematic signal goes live off the strength of one script's output.
-The typical review chain:
-
-- **Quant researcher** builds and owns the backtest (this project's role):
-  signal definition, cost model, in-sample/out-of-sample split,
-  walk-forward validation, sensitivity map. Presents the equivalent of
-  `docs/VALIDATION.md` — not just headline numbers, but *how* they were
-  produced and what would make them wrong.
-- **Strategy research committee** (senior researchers + desk PMs) reviews
-  the methodology, not just the P&L: is the cost model realistic for the
-  intended instrument and size, is the train/test split honest, does the
-  parameter sensitivity map show a plateau or a spike, has the researcher
-  tried to break it (this is where `docs/VALIDATION.md` §8's choppy-
-  regime stress test earns its keep — a committee will ask "where does
-  this lose money" before "how much does it make").
-- **Risk** independently re-derives the key numbers (or re-runs the code)
-  rather than trusting the researcher's report — model risk sign-off
-  means someone who did not build the model checks it. For this project
-  that means re-running `pytest` and `examples/run_pipeline.py` from a
-  clean checkout and confirming the numbers in `docs/VALIDATION.md`
-  actually reproduce, and independently sanity-checking the cost
-  assumption (5 bps) against the instrument's real quoted spread and
-  average daily volume.
-- **PM / capital allocator** signs off on size relative to the strategy's
-  Sharpe, correlation to the existing book, and capacity — and, at a
-  systematic pod, on the entire *process* by which parameters get
-  re-selected over time (walk-forward cadence, re-fit triggers), not just
-  today's parameter choice.
+- **Researcher** owns the backtest: signal, fill model, costs, split,
+  walk-forward, sensitivity, trial log, multi-seed or multi-asset
+  evidence.
+- **Research committee** reviews the method: is the cost model right for
+  the instrument and size, was the out-of-sample window touched only once,
+  how many configurations were tried, where does it lose money
+  (`docs/VALIDATION.md` §8).
+- **Risk** re-runs `pytest` and `examples/run_pipeline.py` from a clean
+  checkout, confirms the numbers in `docs/VALIDATION.md`, and checks the
+  5 bp cost against the instrument's quoted spread and volume.
+- **PM** signs off on size, correlation to the book, capacity and the
+  re-selection process (walk-forward cadence).
 
 ## 2. Pre-launch checklist
 
-**Gate 0, before any of the below: does the strategy pass its own
-validation?** On the bundled data it does not — in-sample Sharpe 0.87,
-out-of-sample -0.12, walk-forward -0.06 (`docs/VALIDATION.md` §6). The
-correct desk decision there is not "allocate smaller" or "re-tune the
-windows"; it is **do not allocate**, and the checklist stops at this line.
-Everything below describes what a desk does with a signal that *has*
-cleared this gate — and the most valuable thing this project demonstrates
-is a harness that says no.
+**Gate 0: does the strategy pass its own validation?** On the synthetic
+generator it does not. Over 100 synthetic seeds its out-of-sample Sharpe
+minus buy and hold is -0.11 [-0.21, -0.00] and its walk-forward Sharpe
+minus buy and hold is -0.05 [-0.11, 0.00] (`docs/VALIDATION.md` §6). The
+decision there is do not allocate, and the checklist stops.
 
-A note on what re-tuning would cost: every additional parameter
-configuration tried against the out-of-sample window converts it into an
-in-sample window. Once the test set has been consulted a handful of times,
-its verdict is worth nothing, and there is no way to un-consult it. A desk
-that treats "did not pass" as "try again" has quietly deleted its only
-honest measurement.
+Every extra configuration tried against an out-of-sample window turns it
+into an in-sample window. Log every trial (`TrialLog`) so the deflated
+Sharpe uses the true count.
 
-1. **Walk-forward validation, not a single split.** `walk_forward_backtest`
-   is the minimum bar: does the stitched out-of-sample Sharpe survive
-   several independent (as independent as one asset's history allows)
-   re-selections, or does it depend on having picked the lucky 70/30
-   boundary? A signal that only "works" for one particular train/test
-   split does not clear this bar.
-2. **Capacity / liquidity check.** The 5 bps cost assumption
-   (`docs/METHODOLOGY.md` A2) is calibrated for a liquid large-cap ETF at
-   modest size. Before any real allocation: check average daily volume
-   at the intended instrument and holding period, and re-run the backtest
-   with a cost model that scales with size (this project's flat-bps model
-   does not — see `docs/METHODOLOGY.md` §4) if the intended notional is a
-   meaningful fraction of ADV.
-3. **Deflated Sharpe for multiple testing.** The grid search in this
-   project tries `len(fast_range) * len(slow_range)` combinations (up to
-   ~7×7=49 in `run_pipeline.py`); the reported in-sample Sharpe is the max
-   of ~49 noisy estimates, which is optimistic even before out-of-sample
-   decay is measured. A pre-launch checklist item this project does *not*
-   implement (documented in `docs/METHODOLOGY.md` §4) is computing the
-   Bailey & López de Prado deflated Sharpe ratio, which explicitly
-   penalises the number of trials.
-4. **Paper-trading period.** Before real capital: run the signal live,
-   at target size, against live closes, without funding it. What this
-   actually tests that a backtest cannot: does the assumed 5 bps cost
-   match realised slippage, are fills at the close actually achievable in
-   the intended size, does the data feed used in production match the
-   (adjusted) closes the backtest was built on. Promotion criterion: paper
-   P&L within roughly one standard error of the backtest's expected daily
-   P&L over the paper period, not "paper P&L is positive" (a short paper
-   period is itself a small, noisy sample).
-5. **Kill-criteria defined in writing before launch**, not improvised
-   after a drawdown (see §4 below).
+For a signal that clears Gate 0:
 
-## 3. Live monitoring against the backtest
+1. **Walk-forward, not one split.** The stitched out-of-sample Sharpe must
+   hold across re-selections.
+2. **Deflated Sharpe and PBO.** The grid here has 49 pairs. On synthetic
+   seed 32 the deflated Sharpe of the selected in-sample result is 0.892,
+   below the usual 0.95 bar, and PBO is 0.45.
+3. **Capacity.** The flat 5 bp cost (`docs/METHODOLOGY.md` A2) is for a
+   liquid ETF at small size. Re-run with a size-dependent cost model
+   before any size that is a meaningful share of daily volume.
+4. **Fill model.** The backtest assumes a fill at p_t + 0.5 (p_{t+1} - p_t).
+   Paper trading must show which fill is achievable: next open, an
+   early-session VWAP, or the closing auction with its cost.
+5. **Paper trading.** Promotion criterion: paper P&L within about one
+   standard error of the backtest's expected P&L over the paper period.
+6. **Kill criteria written before launch** (§3).
 
-| Signal | What it means | Action |
+## 3. Live monitoring (process, not implemented)
+
+| Signal | Meaning | Action |
 |---|---|---|
-| Live Sharpe well below the walk-forward OOS Sharpe over a rolling window comparable in length to one walk-forward trading window (here, ~1 year) | Either bad luck within the expected dispersion of a strategy whose *validated* Sharpe is around zero, or a regime the backtest didn't cover | Compare live trade-by-trade cost realisation against the 5 bps assumption first (§4, scenario 1) before concluding the *signal* is broken |
-| Live trade count diverging sharply from the backtest's trade count over the same window | The live (fast, slow) parameters may not match what's actually deployed, or live data has gaps/adjustments the backtest data didn't | Reconcile the live signal computation against `ma_crossover_signal` on the exact same price series used in production |
-| Realised max drawdown exceeds the walk-forward stitched OOS max drawdown (-43.93% on the bundled data) by a wide margin | The live regime may be range-bound/choppy — the documented failure mode (`docs/VALIDATION.md` §8) | Check whether recent price action resembles the choppy synthetic case study (frequent small crossovers, no sustained trend); if so, this is the strategy behaving as documented, not a bug — the question is whether to reduce size, not whether to panic |
-| Realised transaction costs consistently above the 5 bps assumption | Slippage assumption was too optimistic for the traded size/liquidity | Re-run the backtest with the realised cost figure; if the edge disappears at realistic costs, the strategy was never viable at this size (§4, scenario 2) |
+| Live Sharpe well below walk-forward Sharpe over about a year | Noise within the expected dispersion, or an uncovered regime | Check realised costs and fills against the assumptions first |
+| Trade count diverging from the backtest | Wrong parameters deployed, or data gaps | Reconcile against `ma_crossover_signal` on the production prices |
+| Drawdown well beyond the walk-forward drawdown | Possibly the choppy regime of `docs/VALIDATION.md` §8 | Decide on size; this is the documented failure mode |
+| Realised costs above 5 bp | Cost assumption too low for the size | Re-run the backtest at the realised cost |
 
-**Tracking error vs. the backtest.** Because this project's engine is a
-pure function of (prices, signal, cost_bps), a live implementation should
-be *reconcilable* day by day: given the same closes the live system saw,
-`run_backtest` should reproduce the live day's position and P&L exactly.
-Any divergence that survives this reconciliation is a live-implementation
-bug (wrong close used, wrong execution time, wrong parameters), not a
-market phenomenon, and should be fixed before drawing any conclusion about
-the signal itself.
+The engine is a pure function of prices, signal, cost and fill model, so a
+live run should reconcile day by day with `run_backtest` on the same
+closes. A divergence that survives reconciliation is an implementation
+bug.
 
-**Regime-change triggers.** A rolling (e.g. 60-day) realised-vs-backtest
-Sharpe gap beyond some multiple of the backtest's own Sharpe standard
-error (Lo, 2002) is a standard trigger for a formal review — not an
-automatic kill, but a forcing function to re-run the walk-forward process
-on the latest data and ask whether the originally-selected parameters are
-still anywhere near the current grid's optimum.
+A rolling realised-vs-backtest Sharpe gap beyond a multiple of the Sharpe
+standard error (`lo_sharpe_se`) is a reasonable review trigger. Example
+kill criteria for a small sleeve: drawdown beyond 1.5 times the
+walk-forward drawdown halves size; beyond 2.5 times goes flat pending a
+review.
 
-**Kill criteria (illustrative, scaled to a small systematic sleeve):**
-drawdown exceeding 1.5× the walk-forward stitched max drawdown ⇒ halve
-size; 2.5× ⇒ flat and formal post-mortem before re-entry. These should sit
-above the backtest's own max drawdown deliberately (as in the `eq_pairs`
-project's risk limits) — hitting them means the live regime is
-meaningfully different from anything validated, not that the strategy had
-a bad week.
+## 4. Scenarios
 
-## 4. Scenario playbook
+**Live underperforms the backtest.** Check in order:
 
-**Scenario: the strategy underperforms its backtest live. First three
-things to check, in order.**
+1. **Costs and fills.** Compare realised fill prices with the modelled t+1
+   price and the 5 bp cost. On synthetic seed 32, moving the (10, 50) pair
+   from 0 to 20 bp lowers its Sharpe from 0.719 to 0.647
+   (`docs/VALIDATION.md` §7).
+2. **Regime.** Count recent crossovers. Frequent small crossovers with no
+   trend match the documented whipsaw failure.
+3. **Implementation drift.** Confirm the deployed parameters are the ones
+   the walk-forward process last selected.
 
-1. **Transaction costs.** Pull the actual fill prices and compare realised
-   slippage to the assumed 5 bps. This is the single most common gap
-   between a backtest and live P&L for a signal this simple — a naive
-   live implementation that market-orders at the open instead of
-   executing at the close the backtest assumed, or that trades a less
-   liquid contract than the one back-tested, can easily realise 15-30 bps
-   instead of 5. §7 of `docs/VALIDATION.md` shows exactly how much this
-   matters: at the fast (10,50) parameters, Sharpe falls from 0.368
-   (0 bps) to 0.222 (20 bps) — a cost miss of this size can turn a
-   marginal signal negative.
-2. **Regime.** Compare recent realised volatility and trendiness (e.g.
-   count of crossovers per unit time) against both the backtest's
-   historical regime and the choppy-regime case study in
-   `docs/VALIDATION.md` §8. If the market has been range-bound, the live
-   underperformance may be the *documented* failure mode operating
-   exactly as expected, not a broken model.
-3. **Implementation drift.** Reconcile the live position series against
-   `ma_crossover_signal`/`run_backtest` run offline on the exact prices
-   the live system saw (see "tracking error" above). Check the parameters
-   actually deployed match the ones the walk-forward process most
-   recently selected — a stale parameter pair from an old fit is a
-   common, boring, and fixable cause of underperformance.
-
-**Scenario: a proposed implementation and a naive implementation get
-materially different costs because of naive slippage assumptions.** A
-naive implementation might assume the historical 5 bps flat cost applies
-regardless of order size — fine at the backtest's implied notional, wrong
-at 50-100x that notional, where price impact (not spread) dominates and
-scales roughly with the square root of participation rate, not linearly.
-The proposed (correct) implementation prices trades using a size-aware
-cost model (spread + impact, e.g. `cost_bps(size) = base_bps + k *
-sqrt(size / ADV)`) and will show materially worse net Sharpe at scale even
-though the *signal* is identical — this is a capacity problem, not a
-signal problem, and the fix is smaller size or slower execution
-(participation-rate-limited orders over the day), not a different signal.
-This project's flat-bps cost model (`docs/METHODOLOGY.md` A2, §4) is the
-naive version by design — it is adequate for illustrating the accounting
-and the cost/Sharpe trade-off, but a real capacity study before sizing up
-must replace it.
+**A flat cost at size.** At many times the backtest notional, impact
+dominates the spread and grows roughly with the square root of
+participation. A size-aware cost such as
+`base_bps + k sqrt(size / ADV)` lowers net Sharpe at scale with the same
+signal. That is a capacity limit; the fix is smaller size or slower
+execution. This project's flat cost does not model it.
 
 ## 5. Model governance
 
 Every number in `docs/VALIDATION.md` regenerates from
-`examples/run_pipeline.py` on a fixed seed — the audit trail is "clone the
-repo, run the script, get the same numbers", not a static report that can
-drift from the code. Any change to the signal, cost model, or split logic
-is a new run archived with its seed and diffed against the previous
-numbers; the test suite (`pytest -q`, 99 tests) is the regression gate —
-it must stay green for any change, and a change that alters a documented
-number (e.g. the walk-forward Sharpe) requires updating
-`docs/VALIDATION.md` in the same change, not as a follow-up.
+`examples/run_pipeline.py` and `examples/validation_tables.py`. The test
+suite (133 tests) is the regression gate. A change that alters a
+documented number updates `docs/VALIDATION.md` in the same change.

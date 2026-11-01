@@ -21,7 +21,7 @@ from fx_credit.data.synthetic import (
     generate_fx_trade_book,
     generate_sovereign_panel,
 )
-from fx_credit.exposure import FXForward, cva_for_forward
+from fx_credit.exposure import FXForward, expected_exposure_loss_for_forward
 from fx_credit.model import (
     RATING_ORDER,
     assign_rating,
@@ -69,17 +69,17 @@ def test_pipeline_discriminates_in_and_out_of_time(pipeline):
 
 def test_reserve_cover_woe_shows_threshold(pipeline):
     """The binned WOE for reserve cover must be riskier in the lowest bin than
-    the highest — recovering the planted below-3-months threshold effect."""
+    the highest: recovering the planted below-3-months threshold effect."""
     _, _, _, tables, _ = pipeline
     t = tables["reserves_import_cover"]
     nums = t.numeric_bins
-    assert nums[0].woe > nums[-1].woe  # low cover = high risk
-    assert nums[0].woe > 0 > nums[-1].woe
+    assert nums[0].woe < nums[-1].woe  # low cover = high risk (good/bad WOE)
+    assert nums[0].woe < 0 < nums[-1].woe
 
 
 def test_planted_contagion_year_breaks_calibration(pipeline):
     """2020 (global contagion, planted): observed default rate far exceeds the
-    scorecard's predicted mean PD — contagion breaks calibration out-of-time."""
+    scorecard's predicted mean PD: contagion breaks calibration out-of-time."""
     _, _, test, tables, fit = pipeline
     y2020 = test[test["year"] == 2020]
     pd_hat = predict_pd(fit, _transform(y2020, tables))
@@ -144,7 +144,7 @@ def test_country_holdout_generalisation():
 
 
 def test_low_default_bootstrap_ci_is_wide(pipeline):
-    """Out-of-time window has few events: honest AUC CI is wide (>~5 Gini pts)."""
+    """Out-of-time window has few events: a correct AUC CI is wide (>~5 Gini pts)."""
     _, _, test, tables, fit = pipeline
     pd_te = predict_pd(fit, _transform(test, tables))
     point, lo, hi = bootstrap_auc_ci(test["default"].to_numpy(float), pd_te,
@@ -163,10 +163,10 @@ def test_zero_notional_trade_in_book_is_harmless():
 
 def test_cva_edge_cases_matured_and_riskless():
     matured = FXForward("EURUSD", 10e6, 1.08, 0.0, True)
-    v1, _ = cva_for_forward(matured, 1.08, 0.12, 0.03, 0.02, pd_1y=0.02, lgd=0.6,
+    v1, _ = expected_exposure_loss_for_forward(matured, 1.08, 0.12, 0.03, 0.02, pd_1y=0.02, lgd=0.6,
                             n_steps=4, n_paths=500, seed=0)
     live = FXForward("EURUSD", 10e6, 1.08, 1.0, True)
-    v2, _ = cva_for_forward(live, 1.08, 0.12, 0.03, 0.02, pd_1y=0.0, lgd=0.6,
+    v2, _ = expected_exposure_loss_for_forward(live, 1.08, 0.12, 0.03, 0.02, pd_1y=0.0, lgd=0.6,
                             n_steps=4, n_paths=500, seed=0)
     assert v1 == 0.0 and v2 == 0.0
 

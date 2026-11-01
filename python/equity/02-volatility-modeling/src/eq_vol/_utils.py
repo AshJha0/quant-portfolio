@@ -45,7 +45,7 @@ def validate_returns(
 
     Policy (documented + tested):
 
-    * NaN / inf values **raise** ``ValueError`` — silent dropping reorders the
+    * NaN / inf values **raise** ``ValueError``: silent dropping reorders the
       time series and corrupts recursions, so cleaning is the caller's job.
     * Series shorter than ``min_obs`` raise an informative ``ValueError``.
 
@@ -96,16 +96,31 @@ def checked_sample_variance(returns: np.ndarray, model_name: str) -> float:
     return var
 
 
+def _fd_steps(x: np.ndarray, rel_step: float, floor: np.ndarray | float | None) -> np.ndarray:
+    """Per-parameter finite-difference steps ``rel_step * max(|x_i|, floor_i)``.
+
+    ``floor`` is the parameter's natural scale. Without it a parameter that
+    sits near zero (GJR gamma, a small alpha) gets a step of ~1e-12 and its
+    Hessian diagonal is round-off. Fitters pass the scale of each parameter
+    (omega's own magnitude, 1e-2 for the dimensionless ones).
+    """
+    if floor is None:
+        floor = 1e-8
+    return rel_step * np.maximum(np.abs(x), np.asarray(floor, dtype=float))
+
+
 def numerical_hessian(
     func: Callable[[np.ndarray], float],
     x: np.ndarray,
     rel_step: float = 1e-4,
+    floor: np.ndarray | float | None = None,
 ) -> np.ndarray:
     """Numerical Hessian of ``func`` at ``x`` via central finite differences.
 
-    Uses per-parameter relative steps ``h_i = rel_step * max(|x_i|, 1e-8)`` so
-    that parameters living on very different scales (e.g. ``omega ~ 1e-6`` vs
-    ``beta ~ 0.9`` for decimal returns) are each perturbed proportionally.
+    Uses per-parameter steps ``h_i = rel_step * max(|x_i|, floor_i)`` so
+    that parameters on very different scales (``omega ~ 1e-6`` vs
+    ``beta ~ 0.9`` for decimal returns) are each perturbed proportionally,
+    and parameters near zero are still perturbed by a usable amount.
 
     Returns
     -------
@@ -114,7 +129,7 @@ def numerical_hessian(
     """
     x = np.asarray(x, dtype=float)
     k = x.size
-    h = rel_step * np.maximum(np.abs(x), 1e-8)
+    h = _fd_steps(x, rel_step, floor)
     hess = np.empty((k, k))
     f0 = func(x)
     for i in range(k):
@@ -133,19 +148,70 @@ def numerical_hessian(
     return 0.5 * (hess + hess.T)
 
 
+def numerical_scores(
+    loglik_obs: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    rel_step: float = 1e-4,
+    floor: np.ndarray | float | None = None,
+) -> np.ndarray:
+    """Per-observation score matrix ``S[t, i] = d l_t / d x_i`` (central differences)."""
+    x = np.asarray(x, dtype=float)
+    h = _fd_steps(x, rel_step, floor)
+    cols = []
+    for i in range(x.size):
+        e = np.zeros(x.size)
+        e[i] = h[i]
+        cols.append((loglik_obs(x + e) - loglik_obs(x - e)) / (2.0 * h[i]))
+    return np.column_stack(cols)
+
+
+def _inverse(hess: np.ndarray) -> np.ndarray:
+    try:
+        return np.linalg.inv(hess)
+    except np.linalg.LinAlgError:
+        return np.linalg.pinv(hess)
+
+
+def _se_from_cov(cov: np.ndarray) -> np.ndarray:
+    diag = np.diag(cov).copy()
+    with np.errstate(invalid="ignore"):
+        return np.where(diag > 0, np.sqrt(np.abs(diag)), np.nan)
+
+
 def std_errors_from_hessian(hess: np.ndarray) -> np.ndarray:
     """Standard errors as sqrt of the diagonal of the inverse Hessian of the
     negative log-likelihood. Falls back to the pseudo-inverse if the Hessian
-    is numerically singular; non-positive diagonal entries yield ``nan``
-    (surfaced, not hidden)."""
-    try:
-        cov = np.linalg.inv(hess)
-    except np.linalg.LinAlgError:
-        cov = np.linalg.pinv(hess)
-    diag = np.diag(cov).copy()
-    with np.errstate(invalid="ignore"):
-        se = np.where(diag > 0, np.sqrt(np.abs(diag)), np.nan)
-    return se
+    is numerically singular; non-positive diagonal entries yield ``nan``."""
+    return _se_from_cov(_inverse(hess))
+
+
+def mle_std_errors(
+    nll: Callable[[np.ndarray], float],
+    loglik_obs: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    floor: np.ndarray | float | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Classic and Bollerslev-Wooldridge (1992) robust standard errors.
+
+    With ``A`` the Hessian of the negative log-likelihood and ``B = S'S``
+    the outer product of the per-observation scores, the classic covariance
+    is ``A^-1`` and the robust (sandwich) covariance is ``A^-1 B A^-1``.
+    The classic form is valid only if the innovation density is correctly
+    specified. The sandwich form stays valid for Gaussian QMLE when the true
+    innovations are fat-tailed, which is the usual case for daily returns.
+
+    Returns
+    -------
+    (classic_se, robust_se) : tuple of numpy.ndarray
+        NaN where the corresponding variance is not positive.
+    """
+    x = np.asarray(x, dtype=float)
+    a_inv = _inverse(numerical_hessian(nll, x, floor=floor))
+    scores = numerical_scores(loglik_obs, x, floor=floor)
+    if not np.all(np.isfinite(scores)):
+        return _se_from_cov(a_inv), np.full(x.size, np.nan)
+    b = scores.T @ scores
+    return _se_from_cov(a_inv), _se_from_cov(a_inv @ b @ a_inv)
 
 
 def arch_style_backcast(returns: np.ndarray, decay: float = 0.94, tau_max: int = 75) -> float:
@@ -168,9 +234,9 @@ def initial_variance(returns: np.ndarray, method: str = "backcast") -> float:
     Parameters
     ----------
     method : {"backcast", "sample"}
-        ``"backcast"`` — arch-compatible exponentially weighted backcast
+        ``"backcast"``: arch-compatible exponentially weighted backcast
         (default, robust to early-sample outliers);
-        ``"sample"`` — full-sample mean of squared returns.
+        ``"sample"``: full-sample mean of squared returns.
     """
     if method == "backcast":
         return arch_style_backcast(returns)

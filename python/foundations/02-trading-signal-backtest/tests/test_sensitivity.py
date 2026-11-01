@@ -36,7 +36,7 @@ def test_grid_excludes_fast_ge_slow_combinations():
     # fast=10 has NO valid slow in slow_range (10 >= both 5 and 10), so the
     # whole row is absent from the pivoted grid rather than all-NaN.
     assert 10 not in grid.index
-    # a genuinely valid combination must be present and numeric
+    # a valid combination must be present and numeric
     assert pd.notna(grid.loc[3, 5])
     assert pd.notna(grid.loc[5, 10])
 

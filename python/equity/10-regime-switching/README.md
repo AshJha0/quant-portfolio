@@ -1,90 +1,100 @@
-# 10 — Equity Regime-Switching Strategy
+# 10. Equity regime-switching overlay
 
-Regime detection for equities with a **from-scratch Gaussian HMM, GMM and
-PCA** (cross-checked against `hmmlearn` / `scikit-learn`), traded through a
-hysteresis-banded, vol-targeted allocation and validated with a strictly
-causal walk-forward backtest.
+Regime detection for equities with a from-scratch Gaussian HMM, GMM and PCA
+(cross-checked against `hmmlearn` and `scikit-learn`), traded through a
+hysteresis-banded, vol-targeted allocation in a causal walk-forward backtest.
+
+All results below come from synthetic data. The generator plants a bear state
+with a -30% a year drift, and the strategy profits mainly from that planted
+drift. No real-data result exists yet; a real-data study is Phase 4 of the
+remediation plan.
 
 ```
 multi-asset panel
-      │
-      ▼
-features.py      realized vol (10/21/63d) · dispersion · avg pairwise corr ·
-                 drawdown · trend vs 200d MA · credit proxy · term proxy
-                 (all EXPANDING-window z-scored → no lookahead, test-enforced)
-      │
-      ▼
-pca.py           correlation-matrix eigendecomposition, sign-fixed loadings,
-                 rolling PCA with sign continuity  (vs sklearn to 1e-8)
-      │
-      ▼
-hmm.py / gmm.py  scaled forward-backward · Baum-Welch EM (monotone, tested
-                 every iteration) · Viterbi · stationary dist · durations ·
-                 BIC k-selection  (vs hmmlearn / sklearn log-likelihood)
-      │
-      ▼
-detection.py     expanding-window refits · ONLINE FILTERED probabilities
-                 (never smoothed — the central honesty point) · economic
-                 labels bull/transition/bear · flip-flop diagnostics
-      │
-      ▼
-strategy.py      bull 1.0 / transition 0.5 / bear 0.0 · hysteresis band
-                 enter p>0.70 exit p<0.30 (−67…−82% turnover) · 10% vol target
-      │
-      ▼
-backtest.py      walk-forward, w_t earns r_{t+1}, 5 bps costs, exact ledger,
-                 full-pipeline no-lookahead mutation test · benchmarks:
-                 buy-and-hold and 200d-MA timing
-      │
-      ▼
-risk.py          per-regime stats · transition P&L attribution (exact
-                 identity) · flip-aftermath worst-case analysis
+  -> features.py    realized vol (10/21/63d), dispersion, average pairwise
+                    correlation, drawdown, trend vs 200d MA, credit and term
+                    proxies, all expanding-window z-scored (causal)
+  -> pca.py         correlation-matrix eigendecomposition, sign-fixed loadings
+  -> hmm.py/gmm.py  scaled forward-backward, Baum-Welch EM, Viterbi,
+                    stationary distribution, durations, BIC
+  -> detection.py   expanding-window refits, online filtered probabilities,
+                    economic labels bull / transition / bear
+  -> strategy.py    bull 1.0 / transition 0.5 / bear 0.0, hysteresis band
+                    0.70 / 0.30, 10% vol target, optional causal
+                    minimum-duration confirmation
+  -> backtest.py    exact ledger, execution model, costs and financing,
+                    baselines: buy-and-hold, 200d MA, random timing at equal
+                    exposure, plain vol targeting
+  -> risk.py        per-regime statistics on the regime known at t-1,
+                    transition attribution, flip aftermath
+  -> research_stats.py  Lo / Newey-West Sharpe SE, deflated Sharpe, PBO,
+                    block bootstrap, multi-seed summaries
 ```
+
+## Execution convention
+
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost. Costs are 5 bp per unit traded.
+Leverage above 1.0 pays the cash rate plus 50 bp a year; cash earns the cash
+rate (0 by default).
 
 ## Quickstart
 
 ```bash
 cd python/equity/10-regime-switching
-pip install -e .[dev]          # numpy/scipy/pandas + sklearn/hmmlearn for cross-checks
-pytest -q                      # 152 tests, ~20 s, offline, seeded
-python examples/run_pipeline.py   # full pipeline, ~55 s
+pip install -e .[dev]
+pytest -q                              # 195 tests, about 5 minutes
+python examples/run_pipeline.py        # about 18 minutes with 10 workers
 ```
 
-## Headline results (seeded 3-state synthetic panel, 2 520 days, net of 5 bps)
+The pipeline prints only; it writes nothing to disk.
 
-| | strategy | buy & hold | 200d-MA rule |
-|---|---|---|---|
-| CAGR | **10.6%** | 1.6% | 1.6% |
-| ann. vol | 8.5% | 15.1% | 11.0% |
-| Sharpe | **1.22** | 0.18 | 0.20 |
-| max drawdown | **10.2%** | 44.4% | 19.2% |
+## Headline results (synthetic)
 
-Where the edge comes from (per detected regime, annualised net):
-strategy vs buy-and-hold is **+0.9% vs −15.8% in bears** (drawdown 7% vs
-50%) — the overlay wins by not losing in bear markets, as designed.
+Command: `python examples/run_pipeline.py`. 20 fresh seeds per arm (101 to
+120), 2,520 days, 8 assets, net of costs and financing. Each cell is the mean
+annualised Sharpe ratio across seeds with a 95% confidence interval for that
+mean. Planted arm: default generator (bear drift -30% a year). Equal-drift
+arm: the same generator with 7% a year drift in every state, so only vol and
+correlation switch.
 
-Model validation highlights (see `docs/VALIDATION.md` for tables):
+| synthetic, Sharpe | planted drifts | equal drift |
+|---|---|---|
+| regime strategy | 0.96 [0.73, 1.19] | 0.45 [0.27, 0.63] |
+| buy and hold | 0.11 [-0.10, 0.31] | 0.28 [0.12, 0.44] |
+| 200d MA rule | 0.23 [0.04, 0.42] | 0.20 [-0.00, 0.40] |
+| random timing, equal exposure | 0.50 [0.24, 0.75] | 0.33 [0.14, 0.51] |
+| plain vol targeting | 0.69 [0.47, 0.91] | 0.47 [0.30, 0.64] |
 
-* BIC recovers the true state count (k=3) on regime data and k=1 on
-  no-regime GBM null data; on null data the strategy does **not** beat
-  buy-and-hold (mean excess CAGR −5.0% over seeds) — no spurious alpha.
-* HMM recovers the true transition matrix (diagonal within 0.01) and state
-  vols; Viterbi accuracy ≈ 99% on well-separated states.
-* Filtered-vs-smoothed table around a real transition: the smoothed
-  posterior is 74% bear the day *before* the flip (it sees the future);
-  trading uses filtered probabilities only, enforced by mutation tests at
-  the filter, detection and full-ledger level.
-* Measured detection lag ~1.5 days on synthetic transitions — regime models
-  are late by construction; `risk.flip_aftermath` keeps that cost visible.
+Where the synthetic edge comes from (paired differences across the same
+seeds, mean [95% CI]):
+
+| synthetic, Sharpe difference | planted drifts | equal drift |
+|---|---|---|
+| strategy minus buy and hold | 0.86 [0.66, 1.05] | 0.17 [-0.02, 0.37] |
+| strategy minus plain vol targeting | 0.27 [0.16, 0.38] | -0.02 [-0.14, 0.10] |
+| plain vol targeting minus buy and hold | 0.58 [0.48, 0.69] | 0.19 [0.09, 0.29] |
+
+* Of the 0.86 Sharpe gain over buy-and-hold on synthetic data, 0.68
+  [0.60, 0.76] disappears when the bear drift is removed. That part is the
+  planted drift.
+* With equal drifts the strategy does no better than plain vol targeting on
+  synthetic data (-0.02 [-0.14, 0.10]). What remains of the edge there is vol
+  timing.
+* On one synthetic path (seed 101) the strategy Sharpe is 0.47 with a
+  Lo / Newey-West SE of 0.41, and the deflated Sharpe at the 4 logged trials
+  is 0.58, well short of 0.95.
 
 ## Layout
 
 ```
-src/eq_regime/          features · pca · gmm · hmm · detection · strategy ·
-                        backtest · risk · data/synthetic (seeded generators)
-tests/                  152 offline tests incl. causality mutation tests,
-                        EM monotonicity, sklearn/hmmlearn cross-checks,
-                        null-data guard, edge cases
-examples/run_pipeline.py  reproduces every number above
-docs/                   METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
+src/eq_regime/            features, pca, gmm, hmm, detection, strategy,
+                          backtest, risk, research_stats, data/synthetic
+tests/                    195 offline tests: causality mutation tests,
+                          execution-convention tests, EM monotonicity,
+                          sklearn / hmmlearn cross-checks, null guards
+examples/run_pipeline.py  reproduces every number in this README and in
+                          docs/VALIDATION.md
+docs/                     METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```

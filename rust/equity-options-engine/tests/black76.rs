@@ -81,7 +81,7 @@ fn black76_edge_cases_and_errors() {
     let c = black76_price(100.0, 100.0, 1.0, 0.0, 0.2, OptionType::Call).unwrap();
     let p = black76_price(100.0, 100.0, 1.0, 0.0, 0.2, OptionType::Put).unwrap();
     assert_close!(c, p, 1e-12); // ATM-forward call == put when r = 0
-    // Invalid inputs:
+                                // Invalid inputs:
     assert!(black76_price(-1.0, 100.0, 1.0, 0.05, 0.2, OptionType::Call).is_err());
     assert!(b76_d1_d2(100.0, 100.0, 0.0, 0.2).is_err());
     assert!(black76_greeks(100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Call).is_err());

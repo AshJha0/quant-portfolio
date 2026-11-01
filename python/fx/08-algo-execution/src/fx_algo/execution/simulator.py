@@ -2,20 +2,20 @@
 
 Market-structure model (see docs/METHODOLOGY.md for the full register):
 
-* **Session profiles** — spread, depth and vol are step functions of the
+* **Session profiles**: spread, depth and vol are step functions of the
   hour-of-day (Asia / London / London-NY overlap / NY / late), taken from
   a :class:`~fx_algo.sessions.PairProfile`.  The London-NY overlap is the
   deepest and tightest window of the FX day.
-* **Impact** — executing ``q`` (mm base) in a bucket with depth ``D``
+* **Impact**: executing ``q`` (mm base) in a bucket with depth ``D``
   (mm base absorbed per bucket) and vol ``sigma`` (pips per bucket):
 
   - temporary (fill-only, fully decays next bucket):
-    ``k_temp * sigma * sqrt(|q| / D)`` pips — the empirical square-root
+    ``k_temp * sigma * sqrt(|q| / D)`` pips: the empirical square-root
     law, scaled by session depth;
   - permanent (shifts all later mids): ``k_perm * sigma * (|q| / D)``
-    pips — linear, so the no-dynamic-arbitrage condition holds.
+    pips: linear, so the no-dynamic-arbitrage condition holds.
 
-* **Venues** — a *firm-liquidity ECN* fills every order at the quoted
+* **Venues**: a *firm-liquidity ECN* fills every order at the quoted
   price; a *last-look dealer* shows a tighter spread but holds the order
   and rejects with probability increasing in the price move against the
   dealer during the hold window (the post-GFC controversy codified in
@@ -63,7 +63,7 @@ def last_look_reject_prob(
 
     monotonically increasing in the adverse move: symmetric last-look
     would reject on |move|, but observed dealer behaviour (and the
-    reason for the controversy) is asymmetric — moves in the dealer's
+    reason for the controversy) is asymmetric: moves in the dealer's
     favour are filled happily.
 
     Parameters
@@ -101,7 +101,7 @@ class LastLookVenue:
     Attributes
     ----------
     spread_mult : float
-        Quoted half-spread as a fraction of the firm venue's (< 1 — the
+        Quoted half-spread as a fraction of the firm venue's (< 1: the
         lure of last-look liquidity).
     threshold_pips, sharpness_pips : float
         Parameters of :func:`last_look_reject_prob`.
@@ -110,7 +110,7 @@ class LastLookVenue:
         the window is the bucket innovation scaled by
         ``sqrt(hold_seconds / bucket_seconds)``; the client's *per-bucket
         alpha* (if any) is assumed to realise immediately after arrival,
-        so informed flow is fully visible to the dealer inside the hold —
+        so informed flow is fully visible to the dealer inside the hold:
         this is the adverse-selection markout that makes flow "toxic".
     resubmit_penalty_pips : float
         Extra pips paid on the resubmitted order (crossing a fresh
@@ -152,6 +152,8 @@ class ExecutionResult:
     arrival_mid: float
     final_mid: float
     venue: str
+    sigma_bucket_pips: Optional[np.ndarray] = None
+    perm_total_pips: float = 0.0
 
     @property
     def total_qty(self) -> float:
@@ -320,7 +322,7 @@ class MarketSimulator:
             t = int(np.argmax(over))
             raise ValueError(
                 f"child order {abs(q[t]):.1f}mm in bucket {t} exceeds the depth cap "
-                f"{cap[t]:.1f}mm ({self.max_participation:.0%} of session depth) — "
+                f"{cap[t]:.1f}mm ({self.max_participation:.0%} of session depth): "
                 "split the parent across more buckets or sessions"
             )
 
@@ -381,4 +383,6 @@ class MarketSimulator:
             arrival_mid=float(self.profile.s0),
             final_mid=final_mid,
             venue=getattr(venue, "name", "unknown"),
+            sigma_bucket_pips=self.sigma_bucket_pips.copy(),
+            perm_total_pips=float(np.sum(perm_pips)),
         )

@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "fxvar/expected_shortfall.hpp"
+#include "fxvar/kernels.hpp"
 #include "fxvar/stats.hpp"
 
 namespace fxvar {
@@ -21,7 +22,8 @@ double Rng::uniform() {
 double Rng::normal() { return norm_ppf(uniform()); }
 
 double Rng::gamma(double shape) {
-  if (!(shape > 0.0)) throw std::invalid_argument("gamma: shape must be > 0");
+  if (!(shape > 0.0) || !std::isfinite(shape))
+    throw std::invalid_argument("gamma: shape must be finite and > 0");
   if (shape < 1.0) {
     // Boost: Gamma(a) = Gamma(a + 1) * U^(1/a).
     const double u = uniform();
@@ -44,8 +46,31 @@ double Rng::gamma(double shape) {
   }
 }
 
+long Rng::poisson(double mu) {
+  if (!(mu >= 0.0) || !std::isfinite(mu))
+    throw std::invalid_argument("poisson: mean must be finite and >= 0");
+  long total = 0;
+  while (mu > 30.0) {
+    total += poisson(30.0);
+    mu -= 30.0;
+  }
+  if (mu == 0.0) return total;
+  const double u = uniform();
+  double pmf = std::exp(-mu);
+  double cdf = pmf;
+  long k = 0;
+  while (u > cdf && k < 10000) {
+    ++k;
+    pmf *= mu / static_cast<double>(k);
+    cdf += pmf;
+    if (pmf == 0.0) break;  // cdf has converged to 1 in double
+  }
+  return total + k;
+}
+
 double Rng::chisq(double df) {
-  if (!(df > 0.0)) throw std::invalid_argument("chisq: df must be > 0");
+  if (!(df > 0.0) || !std::isfinite(df))
+    throw std::invalid_argument("chisq: df must be finite and > 0");
   return 2.0 * gamma(0.5 * df);
 }
 
@@ -54,7 +79,7 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
                                       std::size_t n_scenarios, McDist dist,
                                       double df, const JumpSpec& jumps,
                                       std::uint64_t seed, double horizon_days,
-                                      CholeskyResult* diag) {
+                                      CholeskyResult* diag, Repair repair) {
   validate_horizon(horizon_days);
   if (n_scenarios < 1)
     throw std::invalid_argument("n_scenarios must be >= 1");
@@ -62,23 +87,27 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
   if (cov.cov.rows() != k || cov.cov.cols() != k)
     throw std::invalid_argument(
         "simulate_factor_returns: cov labels do not match matrix shape");
-  if (dist == McDist::kStudentT && df <= 2.0)
-    throw std::invalid_argument("Student-t df must be > 2 for finite variance");
+  if (dist == McDist::kStudentT && (!(df > 2.0) || !std::isfinite(df)))
+    throw std::invalid_argument(
+        "Student-t df must be finite and > 2 for finite variance");
   if (dist == McDist::kJump) {
-    if (!(jumps.prob >= 0.0 && jumps.prob <= 1.0)) {
+    if (!(jumps.prob >= 0.0 && jumps.prob < 1.0)) {
       std::ostringstream msg;
-      msg << "jump prob must be in [0, 1], got " << jumps.prob;
+      msg << "jump prob (per day) must be in [0, 1), got " << jumps.prob;
       throw std::invalid_argument(msg.str());
     }
+    for (const auto& [f, m] : jumps.mean)
+      if (!std::isfinite(m))
+        throw std::invalid_argument("jump mean for " + f + " must be finite");
     for (const auto& [f, s] : jumps.stdev)
-      if (s < 0.0)
-        throw std::invalid_argument("jump stdev for " + f + " must be >= 0");
+      if (!(s >= 0.0) || !std::isfinite(s))
+        throw std::invalid_argument("jump stdev for " + f + " must be finite and >= 0");
   }
 
   Matrix a = cov.cov;
   for (std::size_t i = 0; i < k; ++i)
     for (std::size_t j = 0; j < k; ++j) a(i, j) *= horizon_days;
-  CholeskyResult chol = robust_cholesky(a);
+  CholeskyResult chol = cholesky(a, repair);
   if (diag) *diag = chol;
 
   Rng rng(seed);
@@ -103,6 +132,9 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
   }
 
   std::vector<double> z(k);
+  // Poisson jump count over the horizon: lam = -ln(1 - p) per day.
+  const double jump_mu =
+      (dist == McDist::kJump) ? -std::log1p(-jumps.prob) * horizon_days : 0.0;
   const double t_scale = (dist == McDist::kStudentT)
                              ? std::sqrt((df - 2.0) / df)
                              : 1.0;
@@ -121,13 +153,12 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
       const double m = t_scale / std::sqrt(w);
       for (std::size_t i = 0; i < k; ++i) row[i] *= m;
     } else if (dist == McDist::kJump) {
-      const bool hit = rng.uniform() < jumps.prob;
-      // Draw the jump normals unconditionally so the scenario count, not
-      // the hit pattern, fixes the random stream (variance-reduction-
-      // friendly and easier to reason about for reproducibility).
-      for (std::size_t j = 0; j < jump_col.size(); ++j) {
-        const double zj = (jump_std[j] > 0.0) ? rng.normal() : 0.0;
-        if (hit) row[jump_col[j]] += jump_mean[j] + jump_std[j] * zj;
+      const long n_jumps = rng.poisson(jump_mu);
+      for (long q = 0; q < n_jumps; ++q) {
+        for (std::size_t j = 0; j < jump_col.size(); ++j) {
+          const double zj = (jump_std[j] > 0.0) ? rng.normal() : 0.0;
+          row[jump_col[j]] += jump_mean[j] + jump_std[j] * zj;
+        }
       }
     }
   }
@@ -136,37 +167,8 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
 
 // ------------------------------------------------------------ diagnostics
 double var_standard_error(const std::vector<double>& pnl, double alpha) {
-  validate_alpha(alpha);
-  const std::size_t n = pnl.size();
-  if (n < 10)
-    throw std::invalid_argument(
-        "need at least 10 scenarios for a VaR standard error");
-  // Loss quantile q with the same tail convention as empirical_var.
-  const double q = -empirical_var(pnl, alpha);
-
-  // Gaussian KDE with Silverman bandwidth h = 0.9 min(sd, IQR/1.34) n^-1/5.
-  const double sd = sample_std(pnl);
-  std::vector<double> sorted(pnl);
-  std::sort(sorted.begin(), sorted.end());
-  const auto quantile_sorted = [&sorted](double p) {
-    const double pos = p * static_cast<double>(sorted.size() - 1);
-    const std::size_t lo = static_cast<std::size_t>(pos);
-    const std::size_t hi = std::min(lo + 1, sorted.size() - 1);
-    const double frac = pos - static_cast<double>(lo);
-    return sorted[lo] * (1.0 - frac) + sorted[hi] * frac;
-  };
-  const double iqr = quantile_sorted(0.75) - quantile_sorted(0.25);
-  double spread = sd;
-  if (iqr > 0.0) spread = std::min(sd, iqr / 1.34);
-  if (!(spread > 0.0)) spread = 1e-300;
-  const double h =
-      0.9 * spread * std::pow(static_cast<double>(n), -0.2);
-
-  double dens = 0.0;
-  for (double x : pnl) dens += norm_pdf((q - x) / h);
-  dens /= static_cast<double>(n) * h;
-  dens = std::max(dens, 1e-300);
-  return std::sqrt(alpha * (1.0 - alpha) / static_cast<double>(n)) / dens;
+  std::vector<double> ws(pnl.size());
+  return value_or_throw(try_var_standard_error(pnl, alpha, ws));
 }
 
 double var_standard_error_bootstrap(const std::vector<double>& pnl,
@@ -177,6 +179,10 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl,
   if (n < 10)
     throw std::invalid_argument(
         "need at least 10 scenarios to bootstrap a VaR standard error");
+  if (n_boot < 2) throw std::invalid_argument("n_boot must be >= 2");
+  for (double v : pnl)
+    if (!std::isfinite(v))
+      throw std::invalid_argument("pnl contains NaN or inf");
 
   // Uniform-weight tail rank depends only on (n, alpha), not the data, so
   // it is identical for the original sample and every resample of the
@@ -185,6 +191,7 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl,
   // than re-deriving it here.
   Rng rng(seed);
   std::vector<double> resample(n);
+  std::vector<double> ws(n);  // selection buffer, reused by every replicate
   std::vector<double> boot_vars(n_boot);
   for (std::size_t b = 0; b < n_boot; ++b) {
     for (std::size_t i = 0; i < n; ++i) {
@@ -192,7 +199,7 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl,
           static_cast<std::size_t>(rng.uniform() * static_cast<double>(n));
       resample[i] = pnl[std::min(idx, n - 1)];
     }
-    boot_vars[b] = empirical_var(resample, alpha);
+    boot_vars[b] = value_or_throw(try_empirical_var_es(resample, alpha, ws)).first;
   }
   return sample_std(boot_vars);
 }
@@ -203,6 +210,7 @@ MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
                                  const MonteCarloOptions& opts) {
   validate_alpha(opts.alpha);
   validate_horizon(opts.horizon_days);
+  if (opts.n_boot < 2) throw std::invalid_argument("n_boot must be >= 2");
   const CompiledBook compiled(book, market);  // throws on empty book
 
   MonteCarloResult res;
@@ -219,13 +227,17 @@ MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
   CholeskyResult diag;
   const ReturnsMatrix scen =
       simulate_factor_returns(sub, opts.n_scenarios, opts.dist, opts.df,
-                              opts.jumps, opts.seed, opts.horizon_days, &diag);
+                              opts.jumps, opts.seed, opts.horizon_days, &diag,
+                              opts.repair);
   res.cholesky_warning = diag.warning;
   res.pnl = compiled.pnl(scen);
   const auto [var, es] = empirical_var_es(res.pnl, opts.alpha);
   res.var = var;
   res.es = es;
-  res.se_var = var_standard_error(res.pnl, opts.alpha);
+  // Simulated once: VaR, ES and both SEs use the same scenarios.
+  res.se_var = var_standard_error_bootstrap(res.pnl, opts.alpha, opts.n_boot,
+                                            opts.seed ^ 0x9E3779B97F4A7C15ULL);
+  res.se_var_kde = var_standard_error(res.pnl, opts.alpha);
   return res;
 }
 

@@ -143,9 +143,25 @@ class TestSchedule:
         assert len(dates) == 12
         assert dates[0] == D(2024, 4, 15)
 
-    def test_annual_month_end_clamp(self):
-        dates = generate_schedule(D(2023, 2, 28), D(2026, 2, 28), 1)
+    def test_annual_month_end_clamp_without_eom(self):
+        dates = generate_schedule(D(2023, 2, 28), D(2026, 2, 28), 1, eom=False)
         assert dates == [D(2024, 2, 28), D(2025, 2, 28), D(2026, 2, 28)]
+
+    def test_eom_rule_keeps_month_ends(self):
+        # 28-Feb-2025 is a month end: semiannual coupons land on 31 Aug
+        # (the old clamping code produced 28 Aug).
+        dates = generate_schedule(D(2023, 2, 28), D(2025, 2, 28), 2)
+        assert dates == [D(2023, 8, 31), D(2024, 2, 29), D(2024, 8, 31), D(2025, 2, 28)]
+
+    def test_eom_rule_ignored_for_mid_month_maturity(self):
+        dates = generate_schedule(D(2024, 1, 15), D(2025, 1, 15), 2)
+        assert dates == [D(2024, 7, 15), D(2025, 1, 15)]
+
+    def test_adjust_with_holiday_calendar(self):
+        # 2027-01-01 is a Friday holiday in USD: modified following -> 4 Jan
+        dates = generate_schedule(D(2026, 1, 1), D(2027, 1, 1), 1, adjust=True,
+                                  calendar="USD")
+        assert dates == [D(2027, 1, 4)]
 
     def test_adjusted_payment_dates_are_weekdays(self):
         dates = generate_schedule(D(2024, 1, 15), D(2030, 1, 15), 2, adjust=True)

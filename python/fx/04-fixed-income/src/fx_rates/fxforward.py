@@ -9,11 +9,15 @@ currency is the *base* currency (EUR).  Covered interest parity (CIP):
 
     F(T) = S * DF_f(T) / DF_d(T)
 
-Market forwards embed the cross-currency basis; with the basis spread
-``s(T)`` (decimal, negative for EURUSD post-2008):
+Market forwards embed the cross-currency basis. Cashflows are discounted
+on collateral-consistent curves: the collateral currency (USD by default)
+on its own curve, the other currency on the curve bootstrapped from
+float-float basis-swap quotes (``bootstrap.basis_discount_curve``):
 
-    F_mkt(T) = S * DF_f(T) * exp(-s(T) * T) / DF_d(T)
-             = S * DF_f_adj(T) / DF_d(T).
+    F_mkt(T) = S * D_base(T) / D_quote(T).
+
+For EURUSD the EUR curve carries the basis; for USDJPY it is the JPY
+(quote) curve, not the USD one.
 
 All position values are expressed in the **quote (domestic) currency**.
 A positive ``notional_base`` means long the base currency forward
@@ -30,7 +34,9 @@ import numpy as np
 import pandas as pd
 
 from ._validation import require_finite
-from .bootstrap import basis_adjusted_curve
+import warnings
+
+from .bootstrap import basis_adjusted_curve, basis_discount_curve
 from .curve import DiscountCurve
 
 __all__ = [
@@ -47,6 +53,14 @@ POINT_FACTORS = {"EURUSD": 1e4, "USDJPY": 1e2, "EURJPY": 1e2}
 _DEFAULT_POINT_FACTOR = 1e4
 
 
+def _point_factor(pair: tuple[str, str]) -> float:
+    """Pip factor: 1e2 for JPY-quoted pairs, 1e4 otherwise, unless listed."""
+    key = "".join(pair)
+    if key in POINT_FACTORS:
+        return POINT_FACTORS[key]
+    return 1e2 if pair[1] == "JPY" else _DEFAULT_POINT_FACTOR
+
+
 @dataclass(eq=False, frozen=True)
 class MarketState:
     """Market snapshot for one currency pair.
@@ -57,14 +71,14 @@ class MarketState:
     field would leave that cache stale and every subsequent forward and
     valuation would silently use the old basis curve.  Use :meth:`replace`
     (which builds a fresh instance, and therefore a fresh cache) to make a
-    shocked copy — that is what the risk and scenario modules do.
+    shocked copy, that is what the risk and scenario modules do.
 
     Attributes
     ----------
     spot : float
         Spot rate, quote currency per 1 base currency (e.g. EURUSD 1.0850).
-        Interpreted at t = 0 (the T+2 spot-settlement subtlety is absorbed
-        into the curves — assumption A6).
+        Interpreted at t = 0: curve times run from the valuation date and the
+        spot lag is not discounted separately.
     domestic_curve : DiscountCurve
         Quote-currency discount curve (USD for EURUSD).
     foreign_curve : DiscountCurve
@@ -75,6 +89,17 @@ class MarketState:
         Empty tuple = pure CIP pricing.
     pair : (base, quote)
         Currency codes, e.g. ("EUR", "USD").  Must differ.
+    collateral_ccy : str, optional
+        Currency of the collateral. Its curve discounts its own cashflows
+        unchanged; the other currency's discount curve is bootstrapped from
+        the basis quotes. Default: USD when in the pair, else the quote
+        currency.
+    basis_model : str
+        ``"float_float"`` (default): ``basis_spreads`` are par spreads of
+        float-float basis swaps. ``"zero_spread"``: the old shortcut
+        ``z_adj = z_f + s`` on the base curve (deprecated).
+    basis_frequency : int
+        Resets per year of the quoted basis swaps (default 4).
     """
 
     spot: float
@@ -82,6 +107,9 @@ class MarketState:
     foreign_curve: DiscountCurve
     basis_spreads: tuple[tuple[float, float], ...] = ()
     pair: tuple[str, str] = ("EUR", "USD")
+    collateral_ccy: str | None = None
+    basis_model: str = "float_float"
+    basis_frequency: int = 4
 
     def __post_init__(self) -> None:
         require_finite(spot=self.spot)
@@ -99,11 +127,47 @@ class MarketState:
             "basis_spreads",
             tuple((float(t), float(s)) for t, s in self.basis_spreads),
         )
+        if self.collateral_ccy is None:
+            object.__setattr__(
+                self, "collateral_ccy", "USD" if "USD" in self.pair else quote
+            )
+        if self.collateral_ccy not in self.pair:
+            raise ValueError(
+                f"collateral_ccy {self.collateral_ccy!r} must be one of {self.pair}"
+            )
+        if self.basis_model not in ("float_float", "zero_spread"):
+            raise ValueError(f"unknown basis_model {self.basis_model!r}")
+        if self.basis_model == "zero_spread":
+            warnings.warn(
+                "basis_model='zero_spread' is deprecated: it makes basis risk "
+                "identical to base-curve rate risk. Use 'float_float'.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
+    @property
+    def basis_ccy(self) -> str:
+        """The non-collateral currency, whose discount curve carries the basis."""
+        return self.pair[1] if self.collateral_ccy == self.pair[0] else self.pair[0]
+
+    def _discount(self, projection: DiscountCurve, ccy: str) -> DiscountCurve:
+        if self.basis_model == "zero_spread":
+            if ccy != self.base_ccy:
+                return projection
+            return basis_adjusted_curve(projection, self.basis_spreads)
+        if ccy != self.basis_ccy:
+            return projection
+        return basis_discount_curve(projection, self.basis_spreads, self.basis_frequency)
 
     @cached_property
     def foreign_curve_adjusted(self) -> DiscountCurve:
-        """Basis-adjusted foreign discount curve (== foreign_curve if no basis)."""
-        return basis_adjusted_curve(self.foreign_curve, self.basis_spreads)
+        """Discount curve for base-currency cashflows."""
+        return self._discount(self.foreign_curve, self.base_ccy)
+
+    @cached_property
+    def domestic_curve_adjusted(self) -> DiscountCurve:
+        """Discount curve for quote-currency cashflows."""
+        return self._discount(self.domestic_curve, self.quote_ccy)
 
     def replace(self, **kwargs) -> "MarketState":
         """Return a copy with fields replaced (cached curve is rebuilt)."""
@@ -141,9 +205,9 @@ def cip_forward(
 
 
 def market_forward(market: MarketState, expiry) -> float:
-    """Basis-consistent market forward ``S * DF_f_adj(T) / DF_d(T)``."""
+    """Basis-consistent market forward ``S * D_base(T) / D_quote(T)``."""
     return cip_forward(
-        market.spot, market.domestic_curve, market.foreign_curve_adjusted, expiry
+        market.spot, market.domestic_curve_adjusted, market.foreign_curve_adjusted, expiry
     )
 
 
@@ -152,7 +216,7 @@ def forward_points(
 ):
     """Forward points ``(F_mkt - S) * factor`` (factor 1e4 for EURUSD pips)."""
     if point_factor is None:
-        point_factor = POINT_FACTORS.get("".join(market.pair), _DEFAULT_POINT_FACTOR)
+        point_factor = _point_factor(market.pair)
     require_finite(point_factor=point_factor)
     if point_factor <= 0.0:
         raise ValueError(f"point_factor must be > 0, got {point_factor}")
@@ -168,10 +232,10 @@ def forward_points_table(
     """Forward points table: CIP vs market (basis-adjusted) forwards.
 
     Columns: tenor (y), CIP forward, market forward, CIP points, market
-    points, basis effect in points, implied basis spread in bp.
+    points, basis effect in points, forward-implied zero-spread basis in bp (not the float-float par spread).
     """
     if point_factor is None:
-        point_factor = POINT_FACTORS.get("".join(market.pair), _DEFAULT_POINT_FACTOR)
+        point_factor = _point_factor(market.pair)
     rows = []
     for t in tenors:
         f_cip = cip_forward(market.spot, market.domestic_curve, market.foreign_curve, t)
@@ -251,7 +315,7 @@ class FXForward:
         """Mark-to-market in the quote (domestic) currency."""
         self._check_pair(market)
         n, k, t = self.notional_base, self.strike, self.expiry
-        df_d = market.domestic_curve.df(t)
+        df_d = market.domestic_curve_adjusted.df(t)
         df_f = market.foreign_curve_adjusted.df(t)
         if method == "cashflows":
             return n * market.spot * df_f - n * k * df_d
@@ -316,7 +380,7 @@ class FXSwap:
         return near, far
 
     def value(self, market: MarketState) -> float:
-        """MTM in quote currency — explicit four-cashflow sum (independent of
+        """MTM in quote currency, explicit four-cashflow sum (independent of
         the two-forward decomposition, which is tested against this)."""
         if market.pair != self.pair:
             raise ValueError(
@@ -324,7 +388,7 @@ class FXSwap:
             )
         n = self.notional_base
         s = market.spot
-        dfd, dff = market.domestic_curve.df, market.foreign_curve_adjusted.df
+        dfd, dff = market.domestic_curve_adjusted.df, market.foreign_curve_adjusted.df
         v = 0.0
         v += n * s * dff(self.near_expiry)                     # receive base near
         v -= n * self.near_strike * dfd(self.near_expiry)      # pay quote near

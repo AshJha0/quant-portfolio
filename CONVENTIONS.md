@@ -1,97 +1,124 @@
-# Engineering & Documentation Conventions (all projects)
+# Engineering and documentation conventions
 
-Every project in this portfolio — Python, C++, or Rust — follows these conventions.
-They exist so a reviewer (or interviewer) can open any project and find the same
-structure, the same quality bar, and the same set of desk-level explanations.
+Every project in this repository, Python, C++ or Rust, follows these rules.
+They give every project the same layout and the same set of questions
+answered in writing.
 
 ## Directory layout (Python projects)
 
 ```
 <NN>-<project-name>/
-├── README.md              # Overview, quickstart, results summary, pipeline diagram
-├── pyproject.toml         # Installable package, pinned minimum deps
+├── README.md              # Overview, quickstart, results summary
+├── pyproject.toml         # Installable package, minimum dependency versions, test extra
 ├── src/<package_name>/    # Library code (import <package_name>)
 │   ├── __init__.py        # Public API re-exports with __all__
 │   └── *.py               # One module per pipeline stage
-├── tests/                 # pytest suite — must pass offline, deterministic seeds
+├── tests/                 # pytest suite: offline, seeded
 │   └── test_*.py
-├── examples/              # Runnable scripts reproducing the README results
-│   └── run_pipeline.py    # End-to-end: data → model → validation → decision
+├── examples/              # Scripts that reproduce the README results
+│   └── run_pipeline.py    # Data, model, validation, decision; writes to a temp dir or --out
 └── docs/
-    ├── METHODOLOGY.md     # The maths + WHY this model (vs alternatives)
-    ├── VALIDATION.md      # How it was validated, incl. failure modes & edge cases
-    └── DESK_GUIDE.md      # How a real desk would use it; real-life scenarios
+    ├── METHODOLOGY.md     # The maths and why this model was chosen over alternatives
+    ├── VALIDATION.md      # How it was validated, failure modes, edge cases
+    └── DESK_GUIDE.md      # Intended use, inputs, outputs, limitations
 ```
 
-## Documentation contract — every project MUST answer, in writing:
+## Documentation contract
 
-1. **Why did you choose the model?** — compared against at least two alternatives,
-   with the trade-offs stated (docs/METHODOLOGY.md).
-2. **What assumptions did you make?** — an explicit, numbered assumptions register,
-   each with "what breaks if violated" (docs/METHODOLOGY.md).
-3. **How did you validate it?** — analytic benchmarks, convergence studies,
-   statistical backtests, cross-model consistency checks (docs/VALIDATION.md).
-4. **Where does it fail?** — known failure modes, regime dependence, numerical
-   limits, with reproducible examples where possible (docs/VALIDATION.md).
-5. **How would it be used on a real quant desk?** — daily workflow, who consumes
-   the numbers, controls/limits, P&L attribution, model governance
-   (docs/DESK_GUIDE.md).
-6. **Real-life scenarios & edge cases** — deep ITM/OTM, T→0, zero/negative rates,
-   vol→0 and vol→∞, illiquid data, missing data, crisis regimes, etc. Each edge
-   case is BOTH documented and unit-tested.
+Every project answers these in writing:
+
+1. Why this model. Compare it with at least two alternatives and state the
+   trade-offs (METHODOLOGY.md).
+2. What it assumes. A numbered assumptions register, each with what breaks if
+   it is violated (METHODOLOGY.md).
+3. How it was validated: analytic benchmarks, convergence studies,
+   statistical backtests, cross-model checks (VALIDATION.md).
+4. Where it fails: known failure modes, regime dependence, numerical limits,
+   with reproducible examples (VALIDATION.md).
+5. How it is meant to be used: inputs, outputs, controls and limitations
+   (DESK_GUIDE.md). Claims about market practice cite a source.
+6. Edge cases: deep ITM/OTM, T to 0, zero and negative rates, vol to 0 and to
+   infinity, missing data, crisis regimes. An edge case that the docs mention
+   has a unit test.
+
+Writing rules: short declarative sentences, no em-dashes, numbers in tables
+with the command that produced them, every result from synthetic data says
+"synthetic" in the same sentence, no narration of review history (that goes in
+CHANGELOG.md). CONTRIBUTING.md has the full list.
 
 ## Code quality
 
-- Type hints everywhere; NumPy-style docstrings on every public function, stating
-  units and conventions (e.g. rates are continuously compounded, annualised, ACT/365).
-- Pure functions for pricing/maths; classes only where state is real (calibrated
-  models, backtest engines).
-- No network access in library code paths used by tests. Market-data loaders that
-  hit the internet (Yahoo/FRED/ECB) live in `data/live.py` and are import-guarded;
-  tests use deterministic synthetic generators in `data/synthetic.py`.
-- Every stochastic component takes an explicit `seed` / `numpy.random.Generator`.
-- Validated numerical tolerances: analytic identities to 1e-10 – 1e-8, Monte Carlo
-  to 3 standard errors, model-vs-model to documented tolerance.
+- Type hints on public functions; NumPy-style docstrings stating units and
+  conventions (for example, rates continuously compounded, annualised).
+- Pure functions for pricing and maths; classes only where there is real
+  state (calibrated models, backtest engines).
+- No network access in code paths used by tests. Loaders for public data
+  (Yahoo, FRED, ECB) live in `data/live.py` and are import-guarded. Tests use
+  seeded generators in `data/synthetic.py`.
+- Every stochastic component takes an explicit `seed` or
+  `numpy.random.Generator`.
+- Every public entry point checks its inputs for finiteness and raises
+  `ValueError` (Python), returns `Err` (Rust) or throws
+  `std::invalid_argument` (C++). Bad input never produces a number.
+- Tolerances: a tolerance in a test states why it is the right size (ulps,
+  condition number or Monte Carlo standard errors).
 
 ## Testing contract
 
-- `pytest -q` passes offline from the project root (every `pyproject.toml`
-  sets `[tool.pytest.ini_options] pythonpath = ["src"]` or ships a root
-  `conftest.py` that inserts `src`, so no editable install is required).
-- Coverage of: happy paths, edge cases (see contract item 6), analytic identities
-  (put-call parity, Greeks vs finite differences, martingale checks), convergence
-  (tree → BS, MC → BS), and failure behaviour (invalid inputs raise `ValueError`
-  with informative messages).
-- Property-based checks where natural (monotonicity in vol, convexity in strike).
+- `python -m pytest -q` passes offline from the project root with the
+  project's test extra installed. Every `pyproject.toml` sets
+  `pythonpath = ["src"]` or ships a root `conftest.py`.
+- Tests cover happy paths, edge cases, analytic identities (put-call parity,
+  Greeks against finite differences, martingale checks), convergence (tree to
+  Black-Scholes, Monte Carlo to Black-Scholes) and failure behaviour.
+- Property tests use `hypothesis` (Python) or `proptest` (Rust) where the
+  property is natural.
+- A bug fix comes with a regression test that fails on the old code.
 
 ## Asset-class conventions
 
 - **Equity**: continuous dividend yield q; day count ACT/365F; vol quoted on
-  log-returns, annualised.
-- **FX**: pairs quoted BASE/QUOTE (e.g. EURUSD = USD per 1 EUR). Domestic rate =
-  quote-currency rate r_d, foreign = base-currency rate r_f. Garman–Kohlhagen is
-  Black–Scholes with q = r_f. Delta conventions (spot/forward, premium-adjusted)
-  and ATM/RR/BF quoting documented wherever used.
+  log returns, annualised.
+- **FX**: pairs quoted BASE/QUOTE (EURUSD = USD per 1 EUR). Domestic rate r_d
+  is the quote-currency rate, foreign rate r_f is the base-currency rate.
+  Garman-Kohlhagen is Black-Scholes with q = r_f. Spot settles on business
+  days. Delta conventions (spot, forward, premium-adjusted) and ATM/RR/BF
+  quoting are documented where used; the FX surface uses each pair's native
+  convention by default.
 
-## C++ / Rust engines
+## Risk conventions (all VaR engines)
 
-- C++20, CMake ≥ 3.20, GoogleTest; warnings-as-errors (-Wall -Wextra -Werror).
-- Rust 2021 edition, `cargo test`; the CI profile (`.github/workflows/ci.yml`,
-  job `rust`) runs `RUSTFLAGS="-D warnings" cargo test --release`, so every
-  warning is an error there; rustdoc on all public items (`#![deny(missing_docs)]`).
-- Engines mirror the Python reference implementations and are cross-validated
-  against them. The golden pipeline is the same for all four engine pairs: the
-  Python project's `tests/golden/generate_golden.py` writes
-  `tests/golden/golden_vectors.json` (committed, locked by
-  `tests/test_golden_vectors.py`); the engine's `tools/gen_golden_header.py`
-  (C++ → `tests/golden_vectors.hpp`) / `tools/gen_golden_rs.py` (Rust →
-  `src/golden.rs` for options, `tests/golden/mod.rs` for VaR) emit the
-  committed constants, and `--check` on either script fails if they drift
-  from the JSON. CI runs the `--check` before building.
-- Twin-API note: `eq_options.bs_price(S, K, T, r, sigma, q, option_type)` vs
-  `fx_options.gk_price(S, K, T, r_d, r_f, sigma, option_type)`, and
-  `eq_var.kupiec_pof(n_obs, n_exceptions, alpha=0.01)` (``alpha`` = tail
-  probability) vs `fx_var.kupiec_pof(n_exceptions, n_obs, alpha=0.99)`
-  (``alpha`` = confidence level). The two packages are deliberately
-  independent, so the argument orders differ; pass everything after the
-  market inputs by keyword when moving between them.
+- `alpha` is the tail probability in (0, 0.5): 0.01 means 99% VaR. Values
+  outside that interval raise.
+- Historical VaR is the order statistic L(ceil(n alpha)) of the sorted
+  losses. ES is the Acerbi-Tasche estimator with the fractional atom.
+- `kupiec_pof(*, n_obs, n_exceptions, alpha)` takes keywords only in both
+  packages (Rust: `KupiecInput`, C++: `KupiecInput` struct).
+- `basel_traffic_light(*, n_obs, n_exceptions, alpha=0.01)` works for any
+  window and alpha.
+- EWMA variance is seeded with the mean squared return of the first
+  min(30, n) observations.
+- Cholesky adds jitter up to 1e-6 times the mean diagonal, warns when it does,
+  and raises above that unless `repair="clip"` or `repair="higham"` is passed.
+
+## C++ and Rust engines
+
+- C++23, CMake 3.20 or later, GoogleTest for tests. Warnings are errors when
+  the opt-in `<ENGINE>_WERROR` option is ON (EQOPT, FXOPT, EQVAR, FXVAR;
+  default OFF). CI turns it on.
+  No runtime dependencies beyond the standard library.
+- Rust 2021 edition, standard library only. CI runs
+  `cargo test --release --locked` and clippy with warnings denied.
+- The engines are ports of the Python design. The golden pipeline: the Python
+  project's `tests/golden/generate_golden.py` writes
+  `tests/golden/golden_vectors.json`. For options the reference values come
+  from an mpmath oracle with a tolerance per output, consumed in Python by
+  `tests/test_golden.py`. For VaR they come from the Python reference and are
+  checked by `tests/test_golden_vectors.py`. The engine's
+  `tools/gen_golden_header.py` (C++) and `tools/gen_golden_rs.py` (Rust) emit
+  the committed constants; `--check` fails if they drift from the JSON. The CI
+  `goldens --check` job runs all of them.
+- Equity and FX packages are separate code, so argument orders differ
+  (`eq_options.bs_price(S, K, T, r, sigma, q, option_type)` against
+  `fx_options.gk_price(S, K, T, r_d, r_f, sigma, option_type)`). Pass
+  everything after the market inputs by keyword.

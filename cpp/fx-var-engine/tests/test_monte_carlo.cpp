@@ -63,7 +63,7 @@ TEST(MonteCarlo, NormalMcMatchesParametricWithin3SE) {
   // convexity).
   const CompiledBook cb(book, m);
   const FactorCov sub = cov.select(cb.factors());
-  const VarEs closed = var_covar(cb.linear_exposures(), sub.cov, 0.99, 1.0);
+  const VarEs closed = var_covar(cb.linear_exposures(), sub.cov, 0.01, 1.0);
   EXPECT_GT(mc.se_var, 0.0);
   EXPECT_NEAR(mc.var, closed.var, 3.0 * mc.se_var);
   EXPECT_GE(mc.es, mc.var);
@@ -181,7 +181,7 @@ TEST(MonteCarlo, InputValidation) {
   bad_std.stdev = {{"FX:EUR", -0.2}};
   EXPECT_THROW(simulate_factor_returns(cov, 10, McDist::kJump, 6.0, bad_std),
                std::invalid_argument);
-  EXPECT_THROW(var_standard_error({1.0, 2.0}, 0.99), std::invalid_argument);
+  EXPECT_THROW(var_standard_error({1.0, 2.0}, 0.01), std::invalid_argument);
 }
 
 namespace {
@@ -198,17 +198,17 @@ std::vector<double> synthetic_pnl(std::size_t n, std::uint64_t seed) {
 
 TEST(MonteCarlo, BootstrapSeDeterministic) {
   const std::vector<double> pnl = synthetic_pnl(5000, 1);
-  const double a = var_standard_error_bootstrap(pnl, 0.99, 200, 42);
-  const double b = var_standard_error_bootstrap(pnl, 0.99, 200, 42);
+  const double a = var_standard_error_bootstrap(pnl, 0.01, 200, 42);
+  const double b = var_standard_error_bootstrap(pnl, 0.01, 200, 42);
   EXPECT_EQ(a, b);  // bitwise, not approximate
   // A different seed must (almost certainly) change the draw.
-  const double c = var_standard_error_bootstrap(pnl, 0.99, 200, 43);
+  const double c = var_standard_error_bootstrap(pnl, 0.01, 200, 43);
   EXPECT_NE(a, c);
 }
 
 TEST(MonteCarlo, BootstrapSeInputValidation) {
   const std::vector<double> tiny(9, 1.0);
-  EXPECT_THROW(var_standard_error_bootstrap(tiny, 0.99), std::invalid_argument);
+  EXPECT_THROW(var_standard_error_bootstrap(tiny, 0.01), std::invalid_argument);
   const std::vector<double> pnl = synthetic_pnl(100, 2);
   EXPECT_THROW(var_standard_error_bootstrap(pnl, 0.0), std::invalid_argument);
   EXPECT_THROW(var_standard_error_bootstrap(pnl, 1.0), std::invalid_argument);
@@ -219,8 +219,8 @@ TEST(MonteCarlo, BootstrapSeAgreesWithKdeWithinSaneMultiple) {
   // Different estimators of the same sampling SE - not equal, but neither
   // should be wildly off from the other on a well-behaved large sample.
   const std::vector<double> pnl = synthetic_pnl(20000, 3);
-  const double kde_se = var_standard_error(pnl, 0.999);
-  const double boot_se = var_standard_error_bootstrap(pnl, 0.999, 500, 7);
+  const double kde_se = var_standard_error(pnl, 0.001);
+  const double boot_se = var_standard_error_bootstrap(pnl, 0.001, 500, 7);
   EXPECT_GT(kde_se, 0.0);
   EXPECT_GT(boot_se, 0.0);
   EXPECT_LT(boot_se, 3.0 * kde_se);
@@ -231,7 +231,7 @@ TEST(MonteCarlo, BootstrapSeDegenerateConstantPnlIsFiniteNonNegative) {
   // All-equal pnl: every resample is the same constant, so every bootstrap
   // VaR estimate is identical and the SE must be exactly zero, not NaN.
   const std::vector<double> pnl(500, -1234.5);
-  const double se = var_standard_error_bootstrap(pnl, 0.99, 100, 5);
+  const double se = var_standard_error_bootstrap(pnl, 0.01, 100, 5);
   EXPECT_TRUE(std::isfinite(se));
   EXPECT_GE(se, 0.0);
   EXPECT_DOUBLE_EQ(se, 0.0);

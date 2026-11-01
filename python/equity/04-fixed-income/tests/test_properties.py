@@ -4,7 +4,7 @@ These pin the *shape* of the pricing functions rather than individual values,
 so they hold for any correct implementation and catch sign errors, wrong
 compounding, or broken interpolation immediately:
 
-* curve identities — P(0)=1, forward/zero/df consistency, pillar exactness,
+* curve identities: P(0)=1, forward/zero/df consistency, pillar exactness,
   par-rate reprices par, partition-of-unity of the key-rate triangles;
 * bond monotonicity and convexity in yield, pull-to-par, duration ordering;
 * analytic vs numerical duration/convexity;
@@ -272,7 +272,7 @@ class TestRiskConsistency:
 
     def test_curve_dv01_close_to_ytm_dv01_on_a_flat_curve(self, settlement, flat_curve):
         """Flat continuous 4% curve: the two DV01 definitions must broadly
-        agree. They are *not* identical — the curve DV01 bumps a continuously
+        agree. They are *not* identical: the curve DV01 bumps a continuously
         compounded zero while the YTM DV01 bumps a semiannual street yield, so
         a ~2% gap at 10y is expected and is a convention difference, not an
         error. Anything much larger would signal a real bug."""
@@ -341,7 +341,7 @@ class TestKeyRateProperties:
     def test_krdv01_additivity_is_looser_under_pchip(self, settlement):
         """PCHIP is non-local: a pillar bump reshapes neighbouring segments, so
         the key-rate bumps no longer compose into an exact parallel bump. The
-        residual is ~2e-4 relative — three orders of magnitude worse than the
+        residual is ~2e-4 relative: three orders of magnitude worse than the
         local schemes, and the reason the desk convention is a local
         interpolator for risk production (docs/METHODOLOGY.md)."""
         c = fr.DiscountCurve.from_zero_rates(
@@ -386,7 +386,7 @@ class TestBootstrapProperties:
         """PCHIP is *non-local*: appending a pillar reshapes the spline over
         earlier segments, so the sequential bootstrap no longer reprices the
         already-solved instruments exactly. The residual is small but real
-        (~4e-6 in rate terms here) — documented in the bootstrap module rather
+        (~4e-6 in rate terms here): documented in the bootstrap module rather
         than papered over, because a desk quoting off a spline curve needs to
         know its own quotes are not reproduced to machine precision."""
         from fi_rates.data import market_quotes
@@ -430,7 +430,7 @@ class TestBootstrapProperties:
 class TestFRNAndAnnuity:
     @pytest.mark.parametrize("freq", [1, 2, 4])
     def test_zero_margin_frn_prices_at_par(self, settlement, curve, freq):
-        """Telescoping identity — independent of the curve's shape."""
+        """Telescoping identity: independent of the curve's shape."""
         p = fr.frn_price_from_curve(
             settlement, D(2031, 8, 18), curve, frequency=freq, quoted_margin=0.0
         )
@@ -491,7 +491,7 @@ class TestPortfolioAggregation:
         """Regression test: a duration-neutral long/short book used to emit
         silent ±inf weights and NaN aggregates. It must now warn explicitly,
         report NaN for the undefined weighted quantities, and keep mv/dv01
-        exact — DV01 is the aggregate that actually means something here."""
+        exact: DV01 is the aggregate that actually means something here."""
         b1 = fr.FixedRateBond(settlement, D(2031, 8, 18), 0.05, 2)
         b2 = fr.FixedRateBond(settlement, D(2036, 8, 18), 0.04, 2)
         v1 = fr.portfolio_value([fr.Position(b1, 1.0)], settlement, curve)
@@ -595,26 +595,26 @@ class TestScenarioProperties:
 class TestDayCountProperties:
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_zero_on_identical_dates(self, conv):
-        assert fr.year_fraction(D(2026, 3, 15), D(2026, 3, 15), conv) == 0.0
+        assert _yf(D(2026, 3, 15), D(2026, 3, 15), conv) == 0.0
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_antisymmetric(self, conv):
         a, b = D(2025, 2, 10), D(2026, 7, 4)
-        assert fr.year_fraction(a, b, conv) == pytest.approx(
-            -fr.year_fraction(b, a, conv), rel=1e-12
+        assert _yf(a, b, conv) == pytest.approx(
+            -_yf(b, a, conv), rel=1e-12
         )
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_additive_across_a_split_date(self, conv):
         a, mid, b = D(2025, 2, 10), D(2025, 9, 30), D(2026, 7, 4)
-        assert fr.year_fraction(a, b, conv) == pytest.approx(
-            fr.year_fraction(a, mid, conv) + fr.year_fraction(mid, b, conv), rel=1e-12
+        assert _yf(a, b, conv) == pytest.approx(
+            _yf(a, mid, conv) + _yf(mid, b, conv), rel=1e-12
         )
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_increases_with_the_end_date(self, conv):
         a = D(2025, 1, 1)
-        fracs = [fr.year_fraction(a, D(2025 + k, 1, 1), conv) for k in (1, 2, 5, 10)]
+        fracs = [_yf(a, D(2025 + k, 1, 1), conv) for k in (1, 2, 5, 10)]
         assert all(b > a_ for a_, b in zip(fracs, fracs[1:]))
 
     def test_act365f_exact_day_counts(self):
@@ -668,3 +668,11 @@ class TestDayCountProperties:
             fr.generate_schedule(D(2025, 1, 1), D(2030, 1, 1), 3)
         with pytest.raises(ValueError, match="after"):
             fr.generate_schedule(D(2030, 1, 1), D(2025, 1, 1), 2)
+
+
+def _yf(a, b, conv):
+    """year_fraction with a fixed reference period for ACT/ACT-ICMA."""
+    if conv == "ACT/ACT-ICMA":
+        return fr.year_fraction(a, b, conv, ref_start=D(2025, 1, 1),
+                                ref_end=D(2025, 7, 1), frequency=2)
+    return fr.year_fraction(a, b, conv)

@@ -16,7 +16,7 @@ Conventions
   ``half_life_days = ln 2 / (kappa * dt)``.
 * MLE is the exact Gaussian transition-density likelihood; for an AR(1) with
   intercept the conditional MLE of (c, phi) coincides with OLS, so the two
-  estimators agree closely — the test suite asserts this as a cross-check.
+  estimators agree closely: the test suite asserts this as a cross-check.
 """
 
 from __future__ import annotations
@@ -114,15 +114,22 @@ class OUFit:
 
 
 def _ou_from_ar1(c: float, phi: float, eps_std: float, dt: float, method: str) -> OUFit:
-    if phi <= 0.0 or phi >= 1.0:
-        # No (or explosive) mean reversion at this sample: report kappa<=0
-        kappa = -np.log(phi) / dt if phi > 0 else float("inf")
+    if not phi > 0.0:
+        # phi <= 0 is an oscillating (or white-noise) series. It has no OU
+        # representation; reporting kappa = inf and half-life 0 would rank it
+        # as the fastest possible mean reverter. Reject it instead.
+        raise ValueError(
+            f"AR(1) coefficient phi={phi:.4f} <= 0: the spread oscillates and "
+            "has no OU half-life"
+        )
+    if phi >= 1.0:
+        # Unit root or explosive at this sample: no mean reversion, kappa <= 0
+        kappa = -np.log(phi) / dt
         theta = c / (1.0 - phi) if phi != 1.0 else float("nan")
         sigma = eps_std / np.sqrt(dt)  # RW-limit scaling
         return OUFit(kappa=float(kappa), theta=float(theta), sigma=float(sigma),
-                     half_life=half_life_days(kappa, dt) if np.isfinite(kappa) else 0.0,
-                     phi=float(phi), c=float(c), eps_std=float(eps_std),
-                     dt=dt, method=method)
+                     half_life=half_life_days(kappa, dt), phi=float(phi), c=float(c),
+                     eps_std=float(eps_std), dt=dt, method=method)
     kappa = -np.log(phi) / dt
     theta = c / (1.0 - phi)
     sigma = eps_std * np.sqrt(2.0 * kappa / (1.0 - phi**2))

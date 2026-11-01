@@ -5,7 +5,7 @@ Regulatory context (documented, and why internal models differ)
 ---------------------------------------------------------------
 Under the Basel standardized approach, sovereign exposures rated AAA to AA-
 carry a **0% risk weight**, and national discretion allows 0% for domestic-
-currency sovereign debt regardless of rating — a political legacy (sovereigns
+currency sovereign debt regardless of rating: a political legacy (sovereigns
 were assumed risk-free in their own currency).  Russia 1998 (domestic GKO
 default) and Greece 2012 show that assumption failing.  Internal/economic
 capital models therefore assign sovereigns a *positive* PD from an internal
@@ -129,7 +129,7 @@ def vasicek_capital(
 
     ``x_alpha = Phi^{-1}(alpha)``; at alpha=0.999 this is the Basel-style
     99.9% one-year solvency standard.  K(pd=0) = 0 and K(pd=1) = 0 (a sure
-    default is all expected loss, no unexpected loss) — both unit-tested.
+    default is all expected loss, no unexpected loss): both unit-tested.
     """
     if not 0.5 <= alpha < 1.0:
         raise ValueError("alpha must be in [0.5, 1)")

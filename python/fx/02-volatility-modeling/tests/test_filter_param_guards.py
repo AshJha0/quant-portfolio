@@ -7,7 +7,7 @@ their coefficients with inequalities like ``if omega <= 0 or alpha < 0 or
 beta < 0 or beta >= 1: raise``.  Every comparison against NaN is False, so a
 NaN ``omega`` sailed straight through and ``garch_filter`` returned an
 array of NaNs.  Downstream that becomes a NaN conditional variance, a NaN
-volatility forecast and a NaN VaR — with no exception anywhere on the path.
+volatility forecast and a NaN VaR: with no exception anywhere on the path.
 
 Each test below feeds a non-finite parameter to a filter or estimator and
 asserts a ``ValueError`` names the offending parameter, plus companion

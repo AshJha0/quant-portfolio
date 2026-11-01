@@ -1,5 +1,7 @@
 #include "eqvar/returns.hpp"
 
+#include "eqvar/kernels.hpp"
+
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -37,34 +39,28 @@ std::vector<double> simple_returns(std::span<const double> prices) {
 }
 
 std::vector<double> portfolio_pnl(const Matrix& returns, std::span<const double> exposures) {
-    if (exposures.empty()) {
-        throw std::invalid_argument(
-            "portfolio_pnl: empty portfolio (no exposures); nothing to revalue");
-    }
+    validate_exposures(exposures, "portfolio_pnl");
     if (returns.cols() != exposures.size()) {
         throw std::invalid_argument("portfolio_pnl: panel has " + std::to_string(returns.cols()) +
                                     " factors, portfolio has " + std::to_string(exposures.size()) +
                                     " exposures");
     }
+    for (std::size_t i = 0; i < returns.size(); ++i) {
+        if (!std::isfinite(returns.data()[i])) {
+            throw std::invalid_argument("portfolio_pnl: returns contain NaN or inf");
+        }
+    }
     return matvec(returns, exposures);
 }
 
 void validate_pnl(std::span<const double> pnl, std::size_t min_obs) {
-    if (pnl.size() < min_obs) {
-        throw std::invalid_argument("need at least " + std::to_string(min_obs) +
-                                    " P&L observations, got " + std::to_string(pnl.size()) +
-                                    "; empirical tail quantiles are meaningless on shorter samples");
-    }
-    for (double v : pnl) {
-        if (!std::isfinite(v)) throw std::invalid_argument("pnl contains NaN or infinite values");
-    }
+    value_or_throw(try_validate_pnl(pnl, min_obs));
 }
 
-void validate_alpha(double alpha) {
-    if (!(alpha > 0.0 && alpha < 0.5)) {
-        throw std::invalid_argument("alpha must be in (0, 0.5) (tail probability), got " +
-                                    std::to_string(alpha));
-    }
+void validate_alpha(double alpha) { value_or_throw(try_validate_alpha(alpha)); }
+
+void validate_exposures(std::span<const double> exposures, const char* who) {
+    value_or_throw(try_validate_exposures(exposures, who));
 }
 
 }  // namespace eqvar

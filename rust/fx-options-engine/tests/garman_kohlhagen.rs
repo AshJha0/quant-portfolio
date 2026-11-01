@@ -65,7 +65,12 @@ fn sigma_zero_returns_discounted_forward_intrinsic() {
         1e-15,
         "sigma=0 call",
     );
-    assert_close(gk_put(s, k, t, rd, rf, 0.0).unwrap(), 0.0, 1e-15, "sigma=0 put");
+    assert_close(
+        gk_put(s, k, t, rd, rf, 0.0).unwrap(),
+        0.0,
+        1e-15,
+        "sigma=0 put",
+    );
 }
 
 #[test]
@@ -85,7 +90,10 @@ fn call_price_within_no_arbitrage_bounds() {
     let c = gk_call(s, k, t, rd, rf, sig).unwrap();
     let lower = (s * (-rf * t).exp() - k * (-rd * t).exp()).max(0.0);
     let upper = s * (-rf * t).exp();
-    assert!(c >= lower && c <= upper, "call {c} outside [{lower}, {upper}]");
+    assert!(
+        c >= lower && c <= upper,
+        "call {c} outside [{lower}, {upper}]"
+    );
 }
 
 #[test]
@@ -104,12 +112,12 @@ fn gk_price_matches_call_put_wrappers() {
 #[test]
 fn invalid_inputs_return_err() {
     let cases: [(f64, f64, f64, f64, f64, f64); 7] = [
-        (-1.0, 1.0, 1.0, 0.0, 0.0, 0.1),      // S <= 0
-        (0.0, 1.0, 1.0, 0.0, 0.0, 0.1),       // S == 0
-        (1.0, -1.0, 1.0, 0.0, 0.0, 0.1),      // K <= 0
-        (1.0, 1.0, -0.5, 0.0, 0.0, 0.1),      // T < 0
-        (1.0, 1.0, 1.0, 0.0, 0.0, -0.1),      // sigma < 0
-        (f64::NAN, 1.0, 1.0, 0.0, 0.0, 0.1),  // NaN spot
+        (-1.0, 1.0, 1.0, 0.0, 0.0, 0.1),          // S <= 0
+        (0.0, 1.0, 1.0, 0.0, 0.0, 0.1),           // S == 0
+        (1.0, -1.0, 1.0, 0.0, 0.0, 0.1),          // K <= 0
+        (1.0, 1.0, -0.5, 0.0, 0.0, 0.1),          // T < 0
+        (1.0, 1.0, 1.0, 0.0, 0.0, -0.1),          // sigma < 0
+        (f64::NAN, 1.0, 1.0, 0.0, 0.0, 0.1),      // NaN spot
         (1.0, 1.0, 1.0, f64::INFINITY, 0.0, 0.1), // infinite rate
     ];
     for (s, k, t, rd, rf, sig) in cases {

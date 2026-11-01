@@ -14,7 +14,7 @@ Leakage guard
 ``FORBIDDEN_POST_OUTCOME_FIELDS`` is the documented list of fields that are
 functions of the default outcome (write-offs, recoveries, arrears realised
 after origination).  :func:`check_leakage` refuses any feature list touching
-them — this is a hard control, mirroring SR 11-7-style model risk controls.
+them: this is a hard control, mirroring SR 11-7-style model risk controls.
 """
 
 from __future__ import annotations
@@ -191,6 +191,7 @@ def train_oot_split(
             f"train/OOT split at {cutoff_ts.date()} leaves an empty side "
             f"(train={len(train)}, oot={len(oot)})"
         )
-    assert pd.to_datetime(train[date_col]).max() < cutoff_ts
-    assert pd.to_datetime(oot[date_col]).min() >= cutoff_ts
+    if not (pd.to_datetime(train[date_col]).max() < cutoff_ts
+            and pd.to_datetime(oot[date_col]).min() >= cutoff_ts):
+        raise ValueError("train/OOT split integrity check failed")  # survives python -O
     return train, oot

@@ -1,173 +1,109 @@
-# Desk Guide — Black-Scholes Replication
+# Desk Guide: Black-Scholes Replication
 
-Documentation-contract items 5 and 6. Read this first sentence twice:
-**this project is not a production pricing library, and it is not meant
-to be one.** No trading desk should point live risk at
-`eq_bs_replication`. If you need a pricing kernel for real books —
-vectorised, multi-model (Black-Scholes, CRR binomial for American
-exercise, Black-76 for forwards, Monte Carlo with variance reduction),
-with C++/Rust performance twins — that is
-`python/equity/01-options-pricing` (`eq_options`), the flagship pricing
-project in this portfolio. This document is about what
-`eq_bs_replication` actually *is* useful for on a real desk, which is a
-narrower and different thing than pricing.
+This project is not a pricing library. No desk should point live risk
+at `eq_bs_replication`. The vectorised, multi-model pricing engine
+(Black-Scholes, CRR for American exercise, Black-76, Monte Carlo with
+variance reduction, C++ and Rust twins) is
+`python/equity/01-options-pricing` (`eq_options`). This guide covers
+what `eq_bs_replication` is useful for, which is model validation and
+teaching.
 
 ---
 
 ## 1. What this project is for: a model-validation reference
 
-Every pricing model that goes live on a desk — vendor-purchased,
-built in-house, or a new version of an existing one — has to pass some
-form of independent validation before it is trusted with real risk.
-That validation is not "does it look reasonable"; it is a specific,
-repeatable set of checks against theory and against at least one
-independently-built alternative. This project *is* that checklist, run
-against the simplest possible model, built to be small enough to read
-end to end in one sitting:
+Every pricing model that goes live, whether bought, built in-house or a
+new version of an existing one, must pass independent validation. That
+validation is a repeatable set of checks against theory and against at
+least one independently built alternative. This project runs that
+checklist on the simplest model, small enough to read in one sitting:
 
-1. **Model-free identities hold exactly** (put-call parity to
-   float64 precision — §1, `docs/VALIDATION.md`).
-2. **An independently-built second implementation of the same model
-   agrees** (Monte Carlo vs closed form, converging at the correct
-   theoretical rate — §2).
-3. **Analytic sensitivities match numerical ones** (Greeks vs central
-   finite differences — §3).
-4. **The model inverts correctly** (implied-vol round trips — §4).
-5. **The model's own stated failure modes are demonstrated, not just
-   asserted** (the volatility-smile experiment — §5).
-6. **The boundaries of the parameter space are probed deliberately**
-   (30-year maturities, strikes spanning 20 orders of magnitude,
-   discount factors that overflow, quotes sitting exactly on a
-   no-arbitrage bound, the smallest legal Monte Carlo sample — §7). This
-   is the check most commonly skipped and the one that most often catches
-   something: a pricer that is correct in the middle of its domain and
-   returns a silent `NaN` at the edge will pass every check above and
-   still put a wrong number on a risk report the first time someone
-   prices a LEAP or a distressed name.
+1. Model-free identities hold (put-call parity to float64 precision,
+   `docs/VALIDATION.md` §1).
+2. An independently built second implementation agrees (Monte Carlo vs
+   closed form, converging at the theoretical rate, §2).
+3. Analytic sensitivities match numerical ones (Greeks vs central
+   finite differences, §3).
+4. The model inverts correctly (implied-vol round trips, §4).
+5. The model's stated failure modes are demonstrated (the smile
+   experiment, §5).
+6. The edges of the parameter space are probed: 30-year maturities,
+   strikes over 20 orders of magnitude, overflowing discount factors,
+   quotes on a no-arbitrage bound, the smallest legal Monte Carlo
+   sample (§7). A pricer that is right in the middle of its domain and
+   returns a silent `NaN` at the edge passes checks 1 to 5 and still
+   puts a wrong number on a risk report.
 
-The logic new-hire training and model-governance reviews both lean on
-is: *if an implementation cannot reproduce Black-Scholes cleanly from
-theory — the simplest, most textbook model in the entire field — it
-cannot be trusted with anything harder.* This project is a worked,
-runnable example of exactly that bar, deliberately kept small enough
-that every check in it can be read, understood and reproduced by a new
-quant in an afternoon.
+If an implementation cannot reproduce Black-Scholes from theory, it
+cannot be trusted with a harder model.
 
-## 2. Concrete real-life scenario: onboarding a new pricer
+## 2. Scenario: onboarding a new pricer
 
-A desk is bringing a new options pricer into production — perhaps a
-vendor library replacing an old one, perhaps an in-house rewrite for
-performance, perhaps a new model going live for the first time. Before
-it is allowed anywhere near real risk, model validation (often a
-function or committee independent of the desk that built or bought the
-model) runs it through a checklist that is, in substance, this
-project's five sections:
+A desk brings in a new options pricer: a vendor library, an in-house
+rewrite or a new model. Before it touches risk, model validation runs
+it through a checklist that matches this project's sections:
 
-1. **Reproduce known values.** Feed the new pricer the same textbook
-   contract this project uses as its reference (`S=100, K=105, r=3%,
-   sigma=25%, T=0.75y`) and check the call/put prices and Greeks match
-   a trusted independent source to a tight tolerance. This project's
-   `call_price`/`put_price`/`call_greeks`/`put_greeks`, validated
-   line-by-line against theory rather than against any other pricing
-   library, is exactly the kind of *independent* trusted source that
-   validation teams want — it was not built by copying the code under
-   review, and it does not share any bugs the new pricer might have.
+1. **Reproduce known values.** Price the reference contract (`S=100,
+   K=105, r=3%, sigma=25%, T=0.75y`) and compare prices and Greeks with
+   an independent source. This project's functions were checked against
+   theory, not copied from the code under review, so they do not share
+   its bugs.
 2. **Check the identities.** Put-call parity must hold to numerical
-   precision on the new pricer's own outputs, at every strike/expiry
-   the book will trade. If it does not, stop — this is a model-free
-   check, so a failure here means an implementation bug, not a modeling
-   choice.
-3. **Cross-validate against a second method.** Price the same contracts
-   by Monte Carlo (either the new pricer's own MC mode, if it has one,
-   or an independent one like the one in this project) and confirm
-   agreement within statistical error, at more than one sample size, so
-   the convergence *rate* — not just one lucky agreement — is checked.
-4. **Check the Greeks, not just the price.** Bump each input and
-   compare the pricer's analytic Greeks to a finite-difference estimate
-   of the *same pricer's* price function. A pricer that gets prices
-   right but Greeks wrong will misprice hedges and misreport risk long
-   before it misprices a trade ticket — this is a common and dangerous
-   failure mode because it is invisible in a simple price-comparison
-   test.
-5. **Check the inverse direction.** If the new pricer offers implied
-   vol, round-trip price → vol → price across the strikes/expiries the
-   desk actually trades, including deep ITM/OTM where vega is small and
-   precision genuinely degrades (this project documents and tests that
-   exact degradation — `docs/VALIDATION.md` §4 — rather than pretending
-   it doesn't happen).
-6. **Understand where it will be wrong, on purpose.** No model is
-   right everywhere; validation isn't about proving the new pricer is
-   perfect, it's about documenting precisely where its assumptions
-   break so risk limits and P&L attribution can account for it. This
-   project's volatility-smile experiment (`docs/VALIDATION.md` §5) is a
-   template for that kind of demonstration: show, with actual numbers,
-   what happens when the model's core assumption (constant vol) is
-   violated, rather than leaving it as an unquantified caveat in a
-   README.
+   precision at every strike and expiry the book trades. Parity is
+   model-free, so a failure is an implementation bug.
+3. **Cross-validate against a second method.** Price by Monte Carlo and
+   confirm agreement within statistical error at several sample sizes,
+   so the convergence rate is checked, not one lucky agreement.
+4. **Check the Greeks.** Compare analytic Greeks with finite
+   differences of the same pricer. Wrong Greeks with right prices
+   misstate hedges and risk while passing a price comparison.
+5. **Check the inverse.** Round-trip price to vol to price across the
+   traded strikes, including deep ITM and OTM where vega is small
+   (`docs/VALIDATION.md` §4).
+6. **Document where it will be wrong.** Show with numbers what happens
+   when the core assumption fails, as the smile experiment does
+   (`docs/VALIDATION.md` §5).
 
-Only after a new pricer clears all six does it get trusted with real
-risk. This project is small enough to *be* the training example a new
-quant runs through by hand before they are asked to build or review
-that checklist for something bigger.
+## 3. Teaching use: what a new quant should take from this project
 
-## 3. Teaching use: what a new quant hire should take from this project
+- **Read the derivation.** The module docstring in
+  `src/eq_bs_replication/black_scholes.py` goes from the replicating
+  portfolio to the closed form and states what `N(d1)` and `N(d2)` mean.
+  A new hire should be able to explain both numbers, not only call the
+  function.
+- **Understand the normal CDF choice.** The CDF is written with
+  `math.erfc` instead of imported from scipy (`docs/METHODOLOGY.md`
+  §1.4). The `erfc` form keeps relative accuracy in the left tail,
+  where the `erf` form cancels to zero below x = -8.3.
+- **Treat the six checks in §1 as the minimum bar** for any pricing
+  code. Know why put-call parity is model-free while a Greeks-vs-price
+  check is not (`docs/METHODOLOGY.md` §1.2).
+- **Check your own error bars.** The Monte Carlo standard error was once
+  computed by treating antithetic pairs as independent draws, which
+  overstated it by about a third (`docs/VALIDATION.md` §2.1). Every
+  "within 3 standard errors" test still passed. A tolerance expressed in
+  units of your own error estimate cannot detect an error in that
+  estimate, so compare it at least once with the empirical dispersion.
+- **Know where a number stops meaning anything.** A call quoted at its
+  discounted intrinsic value has zero time value, so no vol is
+  identified. The solver warns and returns `nan` instead of a sigma
+  that matches the price only to tolerance (`docs/VALIDATION.md` §4.1).
+  A surface fit should drop strikes whose vega is below a floor.
+- **See a model fail.** The smile experiment (`docs/VALIDATION.md` §5)
+  shows, with generated synthetic numbers, why option markets quote a
+  smile.
+- **Then read `python/equity/01-options-pricing`.** Its vectorisation,
+  American exercise, Black-76, variance-reduced Monte Carlo Greeks and
+  discrete-hedging simulator then read as extensions of a known model.
 
-- **Read the derivation, not just the formula.** The module docstring
-  in `src/eq_bs_replication/black_scholes.py` walks from the replicating-
-  portfolio argument to the closed form and states what `N(d1)` and
-  `N(d2)` mean economically. A new hire should be able to explain both
-  numbers in an interview, not just type `bs_price(...)`.
-- **Understand why `math.erf` and not `scipy.stats.norm.cdf`.** This is
-  not a style choice — see `docs/METHODOLOGY.md` §1.4. It is a forcing
-  function for understanding that the normal CDF *is* the model's
-  economic content (exercise probability, hedge ratio), not an
-  incidental library call.
-- **Internalise the six-part validation discipline** (§1 above) as the
-  minimum bar for trusting *any* pricing code, not just this one. A new
-  hire who can explain why put-call parity is model-free while a
-  Greeks-vs-price self-consistency check is not (§1.2,
-  `docs/METHODOLOGY.md`) understands something that generalises well
-  beyond Black-Scholes.
-- **Learn to distrust your own error bars.** The Monte Carlo standard
-  error in this project was, at one point, computed by treating
-  antithetic pairs as independent draws — which overstated it by about a
-  third (`docs/VALIDATION.md` §2.1). Nothing failed: every "agrees within
-  3 standard errors" test kept passing, against a bar that was simply too
-  generous. A validation suite whose tolerances are expressed in units of
-  its own error estimate cannot detect an error *in* that estimate. The
-  general habit worth forming: at least once, check a computed error bar
-  against the empirical dispersion of the thing it claims to describe.
-- **Learn where a number stops meaning anything.** Ask a new hire for
-  the implied volatility of a call quoted at exactly its intrinsic value.
-  The solver returns 0.0092, reprices to within 1e-8, and is wrong — the
-  true answer is zero, and no algorithm can do better, because vega there
-  is so small that every vol below 5% produces the same price to within a
-  cent (`docs/VALIDATION.md` §4.1). The lesson is not about
-  Newton-Raphson; it is that a surface fit must *drop* strikes whose vega
-  is below a floor rather than fit them with a wide error bar, because
-  there is no information there to fit.
-- **See a model fail on purpose.** The volatility-smile experiment
-  (`docs/VALIDATION.md` §5) is the single most useful exhibit in this
-  project for a new hire: it is the first time many people see, with
-  their own generated numbers rather than as a stated fact, *why* real
-  options markets quote a smile instead of one flat vol.
-- **Then go read `python/equity/01-options-pricing`.** Once the from-
-  scratch version is understood, the production version's extra
-  machinery (vectorisation, American exercise, Black-76, variance-
-  reduced Monte Carlo Greeks, the discrete-hedging P&L simulator) reads
-  as an extension of a model already understood, not as a black box.
+## 4. What this project does not provide
 
-## 4. What this project deliberately does not provide
-
-- No American exercise, no dividends, no term structure of rates or
-  vol, no vectorised chain pricing, no C++/Rust performance twin, no
-  market-data connectivity. All of these exist in
-  `python/equity/01-options-pricing` and should be used for anything
-  resembling real desk risk.
-- No FX variant (Garman-Kohlhagen). The single-asset equity scope here
-  is deliberate — see the top of `docs/METHODOLOGY.md`.
-- No governance/limits framework of its own. If this project's
-  validation checklist is adapted for an actual onboarding review, the
-  limits, sign-off process and change-control record are the reviewing
-  desk's / model-risk function's responsibility, not something this
-  code provides.
+- No American exercise, dividends, rate or vol term structure,
+  vectorised chain pricing, C++/Rust twin or market data. These exist in
+  `python/equity/01-options-pricing`.
+- No FX variant (Garman-Kohlhagen). The scope is a single equity asset.
+- No control variate in the Monte Carlo pricer: it uses antithetic
+  variates only.
+- No governance or limits framework. If the checklist is used in a real
+  onboarding review, limits, sign-off and change control belong to the
+  model-risk function.

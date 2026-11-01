@@ -1,20 +1,20 @@
-# Desk Guide — where a Rust engine sits on an FX options desk
+# Desk Guide, where a Rust engine sits on an FX options desk
 
 The Python twin's DESK_GUIDE covers the daily *model* workflow (marking,
 P&L attribution, governance). This guide covers what is specific to the
-**Rust engine**: the production roles it plays and the operational traps —
+**Rust engine**: the production roles it plays and the operational traps -
 the same roles the C++ engine plays, with the differences called out where
 they matter.
 
 ## Role 1: pricing tiles and streaming quotes
 
 The engine is the inner loop of the market-making tile. On every spot tick
-or curve/vol update the tile re-prices its ladder — per pair, both sides,
-all quoted tenors and strikes — and republishes. Practical notes:
+or curve/vol update the tile re-prices its ladder, per pair, both sides,
+all quoted tenors and strikes, and republishes. Practical notes:
 
-* At ~8.4M prices/s a 2,000-instrument tile refresh is well under a
+* At about 60 ns per price at p50 (bench, test machine) a 2,000-instrument tile refresh is well under a
   millisecond single-threaded; pairs can be sharded across cores because
-  every pricing function is a pure function over immutable market data —
+  every pricing function is a pure function over immutable market data -
   and here that is a *compiler-checked* claim, not a code-review
   convention: nothing in this crate uses interior mutability (`Cell`,
   `RefCell`, `Mutex`, raw pointers), so every public type is `Send + Sync`
@@ -25,13 +25,13 @@ all quoted tenors and strikes — and republishes. Practical notes:
   of scope here) supplies the vol, `gk_price` the premium, and
   `analytic_greeks` the hedge ratios published alongside.
 * The DNS ATM strike (`atm_dns_strike`) is what "ATM" means for most pairs
-  — note it is *convention-dependent* (`F e^{+sigma^2 T/2}` unadjusted vs
+ , note it is *convention-dependent* (`F e^{+sigma^2 T/2}` unadjusted vs
   `F e^{-sigma^2 T/2}` premium-adjusted), which is the first place a
   mis-configured pair bites.
 
 ## Role 2: risk service
 
-End-of-day and intraday risk runs call the same library — not a
+End-of-day and intraday risk runs call the same library, not a
 reimplementation:
 
 * `analytic_greeks` gives the full ladder (both rhos, vanna, volga) per
@@ -39,19 +39,19 @@ reimplementation:
   (butterflies) directly.
 * The generic `finite_difference_greeks` comparator lets risk control
   verify any pricer (tree, MC, or a new payoff) against bump-and-revalue
-  with one call — the standard "analytic Greeks lie exactly once" check.
-* Monte Carlo runs are bit-reproducible from the recorded seed
+  with one call, the standard "analytic Greeks lie exactly once" check.
+* Monte Carlo runs are reproducible from the recorded seed on the same target
   (xoshiro256** + inverse-CDF normals, single-threaded, no OS entropy, no
   platform-dependent float reduction order), so an overnight number can be
-  reproduced to the last bit during a P&L dispute — `mc_price` even has a
+  reproduced to the last bit during a P&L dispute, `mc_price` even has a
   dedicated test (`same_seed_is_bitwise_reproducible`) asserting
   `.to_bits()` equality, not just closeness.
 * Both rhos matter in FX: hedging only `rho_domestic` and ignoring
-  `rho_foreign` leaves the book exposed to the foreign leg of every cross —
+  `rho_foreign` leaves the book exposed to the foreign leg of every cross -
   the engine returns them separately and the tests pin their signs.
 * Errors surface as `Result<T, FxError>`, never a panic on bad market data
   (a stale/garbled feed produces a strike of `-1.0` or a vol of `NaN`
-  sometimes — the engine rejects it with a message, it does not abort the
+  sometimes, the engine rejects it with a message, it does not abort the
   process it's embedded in).
 
 ## Delta-convention pitfalls across counterparties
@@ -67,7 +67,7 @@ choose the right one:
 | Premium-adjusted vs unadjusted (premium paid in base ccy: USDJPY, most EM; unadjusted: EURUSD-style) | hedge off by `V/S`; strike breaks on the call wing | `SpotPa`/`ForwardPa` conventions; `premium_adjust_spot_delta` |
 | PA call branch ambiguity (two strikes share one PA delta) | counterparty confirms the *other* strike | solver returns the market-standard high-strike branch; unattainable deltas return `Err` instead of guessing |
 | ATM definition (ATM-forward vs DNS, and DNS itself flips with premium adjustment) | ATM strike off by `F sigma^2 T` | `atm_forward_strike` vs `atm_dns_strike(convention)` |
-| Which currency's notional / premium | prices per unit *foreign* notional in *domestic* ccy — flipping the pair flips both | foreign–domestic symmetry identity is unit-tested; use it to re-express |
+| Which currency's notional / premium | prices per unit *foreign* notional in *domestic* ccy, flipping the pair flips both | foreign–domestic symmetry identity is unit-tested; use it to re-express |
 
 Rule of thumb encoded in the tests: for every quote confirm **(1) spot or
 forward, (2) premium-adjusted or not, (3) which ATM** before touching a
@@ -76,16 +76,15 @@ through `delta(...)` and see which convention reproduces it.
 
 ## A wing-vol trap specific to this engine's implied-vol solver
 
-`docs/VALIDATION.md` documents a genuine IEEE-754 precision floor
-(`~1e-8`) for implied vol recovered from a very short-dated, meaningfully
-ITM/OTM premium. On a live desk this maps directly onto the well-known
+`docs/VALIDATION.md` documents the information limit (about 3e-8 in the
+tested case) for implied vol recovered from a very short-dated ITM premium. On a live desk this maps directly onto the well-known
 "don't quote implied vol from the ITM wing" rule: a short-dated deep-ITM
 premium is dominated by intrinsic value and carries almost no information
 about vol (vega near zero), so both this engine and a human trader should
 back vol out from the *liquid, near-the-money or OTM* side of the market
 instead. If a downstream vol-surface builder ever needs an ITM-wing vol
 anyway (e.g. to sanity-check a quote), treat anything from `implied_vol` on
-such an input as accurate to `~1e-8`, not the usual `1e-10`, and do not
+such an input as accurate to `ULP(price) / vega`, not the usual 1e-12, and do not
 feed it into a calibration that assumes source-tolerance-level precision.
 
 ## Golden regression as the release gate
@@ -93,20 +92,17 @@ feed it into a calibration that assumes source-tolerance-level precision.
 The golden-vector suite is not just a development aid; it is the release
 control:
 
-1. The Python reference is the model authority. Any intended behaviour
-   change lands there first, is reviewed, and regenerates
-   `tests/golden/golden_vectors.json`.
-2. `tools/gen_golden_rs.py` refreshes `src/golden.rs`; the diff of that
-   generated module *is* the reviewable surface of the model change on the
-   Rust side.
-3. CI runs `RUSTFLAGS="-D warnings" cargo test --release`. A Rust change
-   that moves any golden number by more than 1e-9 fails the build — so an
-   "optimisation" can never silently change a price. An intentional model
-   change without a regenerated golden module fails too, which forces the
-   Python, C++ and Rust engines to move in lockstep.
-4. Release artefacts record the golden-file hash; production incident
-   triage starts by confirming the running binary passed the golden gate
-   for the model version risk signed off.
+1. The golden values come from mpmath (`generate_golden.py` in the Python
+   project), not from any engine; each output carries a tolerance.
+2. `tools/gen_golden_rs.py` refreshes `src/golden.rs` (`--check` verifies
+   it); the diff of that generated module is the reviewable surface of a
+   contract change on the Rust side.
+3. CI runs `RUSTFLAGS="-D warnings" cargo test --release --locked`. A
+   change that moves a golden number outside its tolerance fails the
+   build. The differential test checks the Python, Rust and C++ engines
+   against each other on seeded random inputs.
+4. Nothing in this repository records the golden-file hash in release
+   artefacts yet; a release process should.
 
 This is the cross-language analogue of a model-validation sign-off: fast
 code is only trusted because, case by case, it is provably the slow,

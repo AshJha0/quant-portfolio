@@ -9,7 +9,7 @@ Conventions (see CONVENTIONS.md):
   (``EURUSD``) or its reciprocal (``USDJPY = 1 / JPYUSD``).
 * Cross rates are **exact ratios** of USD legs:
   ``BASEQUOTE = (BASEUSD) / (QUOTEUSD)``.  No-arbitrage (triangular
-  consistency) therefore holds identically in this representation — a fact the
+  consistency) therefore holds identically in this representation: a fact the
   cointegration machinery must recognise as a *degenerate* spread, not a
   tradable one (see :mod:`fx_pairs.cointegration`).
 """
@@ -32,6 +32,7 @@ __all__ = [
     "market_pair",
     "pip_size",
     "pip_spread",
+    "cointegration_funnel",
     "make_cross",
     "market_price_from_legs",
     "triangular_spread",
@@ -117,7 +118,7 @@ def _leg(legs: pd.DataFrame, ccy: str) -> pd.Series:
 
 
 def make_cross(legs: pd.DataFrame, base: str, quote: str) -> pd.Series:
-    """Cross rate BASE/QUOTE from USD legs — an exact no-arbitrage ratio.
+    """Cross rate BASE/QUOTE from USD legs: an exact no-arbitrage ratio.
 
     ``BASEQUOTE = BASEUSD / QUOTEUSD`` (units: QUOTE per 1 BASE).
 
@@ -180,7 +181,7 @@ def correlation_screen(
     """Screen candidate pairs of currency pairs on log-return correlation.
 
     Pegged / zero-volatility instruments (e.g. a hard peg) are dropped with a
-    ``UserWarning`` — a z-score is undefined on a zero-variance spread and a
+    ``UserWarning``: a z-score is undefined on a zero-variance spread and a
     peg offers no mean reversion to trade, only event risk.
 
     Parameters
@@ -226,3 +227,40 @@ def correlation_screen(
         out = out.reindex(out["corr"].abs().sort_values(ascending=False).index)
         out = out.reset_index(drop=True)
     return out
+
+
+def cointegration_funnel(
+    prices: pd.DataFrame,
+    min_abs_corr: float = 0.60,
+    level: str = "5%",
+) -> pd.DataFrame:
+    """Correlation screen, then Engle-Granger on every screened candidate.
+
+    Each candidate is regressed as ``log pair_1`` on ``log pair_2`` in the
+    order :func:`correlation_screen` returns it, which follows the input
+    column order. The orientation therefore uses neither the data nor any
+    ground truth. Engle-Granger is direction dependent, so a caller who wants
+    orientation-free results should test both directions and count both
+    tests in the trial log.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``["pair_1", "pair_2", "corr", "eg_stat", "crit", "passed"]``,
+        one row per screened candidate (so the number of tests run is the
+        number of rows).
+    """
+    from .cointegration import engle_granger  # local: avoid import cycle
+
+    scr = correlation_screen(prices, min_abs_corr=min_abs_corr)
+    rows = []
+    for a, b, rho in scr[["pair_1", "pair_2", "corr"]].itertuples(index=False):
+        eg = engle_granger(np.log(prices[a].to_numpy(dtype=float)),
+                           np.log(prices[b].to_numpy(dtype=float)))
+        if level not in eg.crit_values:
+            raise ValueError(f"level must be one of {sorted(eg.crit_values)}")
+        crit = float(eg.crit_values[level])
+        rows.append((a, b, rho, float(eg.stat), crit,
+                     bool((not eg.degenerate) and eg.stat < crit)))
+    return pd.DataFrame(rows, columns=["pair_1", "pair_2", "corr", "eg_stat",
+                                       "crit", "passed"])

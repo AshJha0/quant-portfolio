@@ -3,11 +3,11 @@
 Reports:
 
 * per-regime realized return / vol / Sharpe / max drawdown of the strategy
-  and its benchmark — regime day counts PARTITION the sample exactly
+  and its benchmark: regime day counts PARTITION the sample exactly
   (test-enforced);
-* regime-transition P&L attribution — the per-regime P&L contributions sum
+* regime-transition P&L attribution: the per-regime P&L contributions sum
   to the total P&L identically (test-enforced);
-* worst-case ("flip-aftermath") analysis — cumulative strategy P&L in the
+* worst-case ("flip-aftermath") analysis: cumulative strategy P&L in the
   K days after each detected regime flip, quantifying how much a late
   detection costs.
 
@@ -23,11 +23,25 @@ import pandas as pd
 TRADING_DAYS: int = 252
 
 __all__ = [
+    "regimes_known_at_decision",
     "per_regime_stats",
     "transition_attribution",
     "flip_aftermath",
     "regime_runs",
 ]
+
+
+def regimes_known_at_decision(regime: pd.Series, pnl_index: pd.Index) -> pd.Series:
+    """Label each P&L day with the regime known when its position was decided.
+
+    The P&L of day ``t`` comes from a weight decided at the close of ``t-1``,
+    so it is labelled with the regime detected at ``t-1``. The label of day
+    ``t`` itself uses the return of day ``t`` and would condition the
+    attribution on the very return it reports. P&L days with no earlier
+    detection are dropped, never back-filled.
+    """
+    lagged = regime.shift(1).reindex(pnl_index)
+    return lagged.dropna()
 
 
 def _mdd(net: np.ndarray) -> float:
@@ -51,7 +65,7 @@ def per_regime_stats(
         Daily simple net returns.
     regimes : pd.Series
         Regime label per day, SAME index as ``net_returns`` (each day
-        belongs to exactly one regime — the counts partition the sample).
+        belongs to exactly one regime: the counts partition the sample).
 
     Returns
     -------

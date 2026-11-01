@@ -11,9 +11,9 @@ Conventions
 
   ``total_t = spot_t + carry_t``,
   ``spot_t = log(S_t / S_{t-1})``,
-  ``carry_t = (i_{t-1} - i_base,{t-1}) * dt``
+  ``carry_t = (i_{t-1} - i_base,{t-1}) * dt``:
 
-  — the carry leg accrues at the rates OBSERVED AT THE PREVIOUS CLOSE, so no
+  the carry leg accrues at the rates OBSERVED AT THE PREVIOUS CLOSE, so no
   same-day rate information leaks into the return (no lookahead).
 * Style signals are formed from information available at *t*; style weights
   are applied to returns from *t+1* onward (the one-day implementation lag is
@@ -145,7 +145,7 @@ def momentum_signal(
     """MOMENTUM signal, 12-1 style: ``log(S_{t-skip} / S_{t-lookback})``.
 
     Skipping the most recent ``skip`` days avoids short-horizon reversal.
-    Uses only data up to ``t - skip`` — strictly backward-looking.
+    Uses only data up to ``t - skip``: strictly backward-looking.
 
     Raises
     ------
@@ -177,7 +177,7 @@ def rank_weights(signal: pd.Series, gross: float = 2.0) -> pd.Series:
     """Cross-sectional dollar-neutral rank weights from one signal snapshot.
 
     Currencies are ranked by signal; ranks are demeaned (so weights sum to
-    ZERO — dollar-neutral long-short) and scaled so gross leverage
+    ZERO: dollar-neutral long-short) and scaled so gross leverage
     ``sum |w| = gross``.  Degenerate cross-sections (fewer than two finite
     signals, or all signals equal) return all-zero weights.
 
@@ -215,11 +215,18 @@ def style_returns(
     total_returns: pd.DataFrame,
     signal_panel: pd.DataFrame,
     gross: float = 2.0,
+    cost_bps: float = 0.0,
 ) -> tuple[pd.Series, pd.DataFrame]:
     """Daily returns of a dollar-neutral style portfolio built from a signal.
 
+    The sleeve is re-formed every day at the currency level. With
+    ``cost_bps > 0`` each day's return is charged
+    ``cost_bps * 1e-4 * sum_i |w_i,t - w_i,t-1|`` on the as-applied
+    weights (see :func:`sleeve_turnover`). The weights are held at their
+    targets between days, so drift-induced trades are not counted.
+
     Weights are formed from the signal at *t* and applied to total returns at
-    *t+1* (one-day implementation lag — no lookahead).  Days on which the
+    *t+1* (one-day implementation lag: no lookahead).  Days on which the
     signal is entirely missing (e.g. inside the momentum lookback window)
     carry zero weights.
 
@@ -231,19 +238,40 @@ def style_returns(
         Signal values per day and currency, same columns as ``total_returns``.
     gross : float
         Gross-leverage budget passed to :func:`rank_weights`.
+    cost_bps : float
+        Proportional cost per unit of currency-level turnover, in basis
+        points (>= 0). The default 0 gives gross returns.
 
     Returns
     -------
     (pd.Series, pd.DataFrame)
-        Style return series and the (lagged, i.e. as-applied) weight panel,
-        both indexed like ``total_returns``.
+        Style return series (net of ``cost_bps``) and the (lagged, i.e.
+        as-applied) weight panel, both indexed like ``total_returns``.
     """
     if list(total_returns.columns) != list(signal_panel.columns):
         raise ValueError("total_returns and signal_panel must share columns")
+    if not (np.isfinite(cost_bps) and cost_bps >= 0):
+        raise ValueError(f"cost_bps must be finite and >= 0, got {cost_bps}")
     weights = signal_weights(signal_panel, gross=gross)
     applied = weights.shift(1).reindex(total_returns.index).fillna(0.0)
     ret = (applied * total_returns).sum(axis=1)
+    if cost_bps > 0:
+        ret = ret - cost_bps * 1e-4 * sleeve_turnover(applied)
     return ret, applied
+
+
+def sleeve_turnover(applied_weights: pd.DataFrame) -> pd.Series:
+    """Daily currency-level turnover ``sum_i |w_i,t - w_i,t-1|`` of a sleeve.
+
+    The first row is measured against a flat (all-zero) book, so building
+    the initial position counts as turnover.
+    """
+    w = applied_weights.to_numpy(dtype=float)
+    if not np.all(np.isfinite(w)):
+        raise ValueError("applied weights contain NaN/Inf")
+    prev = np.vstack([np.zeros((1, w.shape[1])), w[:-1]])
+    return pd.Series(np.abs(w - prev).sum(axis=1), index=applied_weights.index,
+                     name="turnover")
 
 
 def shrunk_means(
@@ -256,7 +284,7 @@ def shrunk_means(
     ``mu_shrunk = (1 - lam) * mu_sample + lam * grand_mean``,
     ``lam = min(1, ((K - 3) * avg_var / T) / sum((mu_i - grand_mean)^2))``.
 
-    With K <= 3 the data-driven intensity is 0 (no shrinkage) — the JS
+    With K <= 3 the data-driven intensity is 0 (no shrinkage): the JS
     dominance result needs K > 3.  Shrinking means is the single most
     effective defence against estimation error in MVO (means are ~an order of
     magnitude harder to estimate than covariances at these horizons).

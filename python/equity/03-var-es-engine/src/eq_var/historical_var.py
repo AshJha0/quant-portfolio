@@ -3,218 +3,257 @@
 Conventions
 -----------
 * ``pnl`` arrays are P&L in currency units, loss < 0.
-* ``alpha`` is the tail probability: ``alpha=0.01`` -> 99 % VaR.
-* VaR is reported as a **positive** number for a loss:
-  ``VaR_alpha = -Q_alpha(pnl)``.
-* Quantile interpolation: plain historical VaR uses NumPy's ``"linear"``
-  (type-7) interpolation between order statistics.  This is the most common
-  desk choice; alternatives (lower/higher order statistic) differ by O(1/n)
-  and are documented in docs/METHODOLOGY.md.  Weighted quantiles (BRW)
-  use the standard step-function inversion of the weighted empirical CDF.
+* ``alpha`` is the tail probability: ``alpha=0.01`` gives 99 % VaR.
+* VaR is a positive number for a loss.
+* Quantile: the order statistic ``L(m)`` of the losses with
+  ``m = ceil(n * alpha)`` (spec S2, ``eq_var._tail``). No interpolation.
+  Weighted (BRW) VaR inverts the weighted step CDF with the same rule.
+* EWMA volatility (spec S8): zero-mean RiskMetrics recursion seeded with the
+  mean of ``x**2`` over the first ``seed_window = min(30, n)`` observations.
+  The seed uses those first observations and nothing later.
 """
 
 from __future__ import annotations
 
-from typing import Literal
+import warnings
 
 import numpy as np
+
+from . import _tail
+from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
     "historical_var",
     "age_weighted_var",
+    "age_weighted_es",
     "brw_weights",
     "ewma_volatility",
+    "ewma_forecast",
+    "filtered_historical_scenarios",
+    "factor_filtered_historical_var",
     "filtered_historical_var",
     "scale_var_sqrt_time",
     "overlapping_horizon_pnl",
 ]
 
 MIN_OBS = 50  # fewer observations than this cannot resolve a 1-5 % tail sensibly
+SEED_WINDOW = 30
+_UNSET = object()
 
 
-def _validate_alpha(alpha: float) -> None:
-    if not 0.0 < alpha < 0.5:
-        raise ValueError(f"alpha must be in (0, 0.5) (tail probability), got {alpha}")
+def _validate_lam(lam: object) -> float:
+    lam = finite_scalar("lam", lam)
+    if not 0.0 < lam < 1.0:
+        raise ValueError(f"decay lam must be in (0, 1), got {lam}")
+    return lam
 
 
-def _validate_pnl(pnl: np.ndarray, min_obs: int = MIN_OBS) -> np.ndarray:
-    arr = np.asarray(pnl, dtype=float).ravel()
+def _validate_pnl(pnl: object, alpha: float, min_obs: int = MIN_OBS) -> np.ndarray:
+    arr = finite_array("pnl", pnl, ndim=1, min_size=0)
     if arr.size < min_obs:
         raise ValueError(
             f"need at least {min_obs} P&L observations for historical VaR, got {arr.size}; "
             "empirical tail quantiles are meaningless on shorter samples"
         )
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("pnl contains NaN or infinite values")
     return arr
 
 
 def historical_var(pnl: np.ndarray, alpha: float = 0.01) -> float:
     """Plain historical-simulation VaR (equal weights).
 
-    Parameters
-    ----------
-    pnl : array
-        Historical scenario P&L (currency units, loss < 0).
-    alpha : float
-        Tail probability (0.01 -> 99 % VaR).
-
-    Returns
-    -------
-    float
-        VaR as a positive loss: ``-quantile_alpha(pnl)`` with linear (type-7)
-        interpolation between order statistics.
+    Returns ``L(m)``, the ``m``-th largest loss with ``m = ceil(n * alpha)``
+    (spec S2). Raises when ``n < 50``. If ``n * alpha < 1`` the rank is
+    clamped to 1 and the VaR is the largest loss in the sample.
     """
-    _validate_alpha(alpha)
-    arr = _validate_pnl(pnl)
-    return float(-np.quantile(arr, alpha, method="linear"))
+    alpha = validate_alpha(alpha)
+    arr = _validate_pnl(pnl, alpha)
+    return _tail.var_es(arr, alpha)[0]
 
 
 def brw_weights(n: int, lam: float = 0.98) -> np.ndarray:
     """Boudoukh-Richardson-Whitelaw exponential age weights.
 
     Observation ``i`` (0 = oldest, n-1 = most recent) gets weight proportional
-    to ``lam**(n-1-i)``; weights sum to 1 exactly.
+    to ``lam**(n-1-i)``. The weights sum to 1.
     """
-    if not 0.0 < lam < 1.0:
-        raise ValueError(f"decay lam must be in (0, 1), got {lam}")
-    if n < 1:
-        raise ValueError("n must be >= 1")
+    lam = _validate_lam(lam)
+    n = integer("n", n, min_value=1)
     ages = np.arange(n - 1, -1, -1, dtype=float)  # age of each obs, oldest first
-    w = (1.0 - lam) * lam**ages / (1.0 - lam**n)
-    return w
+    return (1.0 - lam) * lam**ages / (1.0 - lam**n)
+
+
+def _age_weighted(pnl: object, alpha: object, lam: object) -> tuple[float, float]:
+    alpha = validate_alpha(alpha)
+    lam = _validate_lam(lam)
+    arr = finite_array("pnl", pnl, ndim=1, min_size=0)
+    if arr.size < MIN_OBS:
+        raise ValueError(f"need at least {MIN_OBS} P&L observations, got {arr.size}")
+    return _tail.weighted_var_es(arr, brw_weights(arr.size, lam), alpha)
 
 
 def age_weighted_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.98) -> float:
-    """Age-weighted (BRW) historical VaR.
+    """Age-weighted (BRW) historical VaR: the weighted S2 order statistic.
 
-    Recent observations receive exponentially larger weight
-    (``w_t ~ lam**age``).  The weighted empirical CDF is inverted at
-    ``alpha``: VaR is minus the smallest P&L whose cumulative weight
-    (ascending P&L order) reaches ``alpha``.
-
-    Notes
-    -----
-    ``lam -> 1`` recovers plain historical simulation (up to the
-    interpolation-scheme difference: BRW uses the step-CDF inversion).
+    ``lam -> 1`` recovers plain historical simulation up to the 1e-12
+    tolerance in the rank rule.
     """
-    _validate_alpha(alpha)
-    arr = _validate_pnl(pnl)
-    w = brw_weights(arr.size, lam)
-    order = np.argsort(arr, kind="stable")
-    sorted_pnl = arr[order]
-    cum_w = np.cumsum(w[order])
-    idx = int(np.searchsorted(cum_w, alpha, side="left"))
-    idx = min(idx, arr.size - 1)
-    return float(-sorted_pnl[idx])
+    return _age_weighted(pnl, alpha, lam)[0]
 
 
-def ewma_volatility(x: np.ndarray, lam: float = 0.94, init: Literal["sample", "first"] = "sample") -> np.ndarray:
+def age_weighted_es(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.98) -> float:
+    """Age-weighted (BRW) Expected Shortfall with the fractional boundary atom (S2)."""
+    return _age_weighted(pnl, alpha, lam)[1]
+
+
+def _ewma_var_path(arr: np.ndarray, lam: float, seed: float) -> np.ndarray:
+    """Variance forecasts ``s2[0..n]``; ``s2[n]`` is the forecast after the sample."""
+    s2 = np.empty(arr.size + 1)
+    s2[0] = max(seed, 1e-16)  # zero-variance series: avoid division by zero downstream
+    for t in range(1, arr.size + 1):
+        s2[t] = lam * s2[t - 1] + (1.0 - lam) * arr[t - 1] ** 2
+    return s2
+
+
+def _window_seed(arr: np.ndarray, seed_window: int) -> float:
+    w = min(seed_window, arr.size)
+    return float(np.mean(arr[:w] ** 2))
+
+
+def ewma_volatility(
+    x: np.ndarray, lam: float = 0.94, init: object = _UNSET, *, seed_window: int = SEED_WINDOW
+) -> np.ndarray:
     """One-step-ahead EWMA (RiskMetrics) volatility forecasts.
 
-    ``sigma2[t] = lam * sigma2[t-1] + (1 - lam) * x[t-1]**2`` — i.e.
-    ``sigma[t]`` is the forecast for day ``t`` made with information up to
-    ``t-1``, so standardising ``x[t] / sigma[t]`` uses no look-ahead.
+    ``sigma2[t] = lam * sigma2[t-1] + (1 - lam) * x[t-1]**2`` with
+    ``sigma2[0] = mean(x[:w]**2)``, ``w = min(seed_window, n)`` (spec S8).
+    ``sigma[t]`` is the forecast for day ``t``. Apart from the seed window it
+    uses information up to ``t-1`` only.
 
-    Parameters
-    ----------
-    x : array
-        Return or P&L series (mean assumed ~0 at daily horizon).
-    lam : float
-        Decay, RiskMetrics default 0.94 for daily data.
-    init : {"sample", "first"}
-        Seed variance: full-sample variance (default, stabler) or ``x[0]**2``.
+    ``init`` is deprecated: ``"sample"`` (full-sample variance, a look-ahead)
+    and ``"first"`` (``x[0]**2``) keep their old meaning for one release.
 
-    Returns
-    -------
-    ndarray, same length as ``x``, of vol forecasts ``sigma[t] > 0``.
-
-    Raises
-    ------
-    ValueError
-        If ``lam`` is outside (0, 1), fewer than 2 observations are supplied,
-        ``init`` is unknown, or ``x`` contains NaN/infinite values.  The
-        recursion is multiplicative in its own past, so a single non-finite
-        input would poison every subsequent forecast; it is rejected up front
-        rather than propagated.
+    Returns an array of the same length as ``x``.
     """
-    if not 0.0 < lam < 1.0:
-        raise ValueError(f"decay lam must be in (0, 1), got {lam}")
-    if init not in ("sample", "first"):
-        raise ValueError(f"init must be 'sample' or 'first', got {init!r}")
-    arr = np.asarray(x, dtype=float).ravel()
+    lam = _validate_lam(lam)
+    arr = finite_array("x", x, ndim=1, min_size=0)
     if arr.size < 2:
         raise ValueError("need at least 2 observations for EWMA volatility")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("x contains NaN or infinite values")
-    sig2 = np.empty(arr.size)
-    seed = float(np.var(arr)) if init == "sample" else float(arr[0] ** 2)
-    if seed <= 0.0:
-        seed = 1e-16  # zero-variance series: avoid division by zero downstream
-    sig2[0] = seed
-    for t in range(1, arr.size):
-        sig2[t] = lam * sig2[t - 1] + (1.0 - lam) * arr[t - 1] ** 2
-    return np.sqrt(np.maximum(sig2, 1e-32))
+    seed_window = integer("seed_window", seed_window, min_value=1)
+    if init is _UNSET:
+        seed = _window_seed(arr, seed_window)
+    else:
+        warnings.warn(
+            "ewma_volatility(init=...) is deprecated; the seed is now the mean of x**2 "
+            "over the first seed_window observations",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if init == "sample":
+            seed = float(np.var(arr))
+        elif init == "first":
+            seed = float(arr[0] ** 2)
+        else:
+            raise ValueError(f"init must be 'sample' or 'first', got {init!r}")
+    return np.sqrt(np.maximum(_ewma_var_path(arr, lam, seed)[:-1], 1e-32))
 
 
-def filtered_historical_var(
-    pnl: np.ndarray,
+def ewma_forecast(x: np.ndarray, lam: float = 0.94, *, seed_window: int = SEED_WINDOW) -> float:
+    """EWMA volatility forecast for the day after the sample, ``sigma_{n}`` (S8)."""
+    lam = _validate_lam(lam)
+    arr = finite_array("x", x, ndim=1, min_size=0)
+    if arr.size < 2:
+        raise ValueError("need at least 2 observations for EWMA volatility")
+    seed_window = integer("seed_window", seed_window, min_value=1)
+    return float(np.sqrt(max(_ewma_var_path(arr, lam, _window_seed(arr, seed_window))[-1], 1e-32)))
+
+
+def filtered_historical_scenarios(
+    factor_returns: np.ndarray, lam: float = 0.94, *, seed_window: int = SEED_WINDOW
+) -> np.ndarray:
+    """Per-factor filtered scenarios (spec S9).
+
+    For every factor ``j``: EWMA vol ``sigma_{t,j}`` (S8), standardised
+    ``z_{t,j} = r_{t,j} / sigma_{t,j}``, rescaled ``r*_{t,j} = z_{t,j} *
+    sigma_{T+1,j}`` with ``sigma_{T+1,j}`` the forecast for the day after the
+    sample. Returns an array of the same shape as ``factor_returns`` (T, n).
+    """
+    lam = _validate_lam(lam)
+    seed_window = integer("seed_window", seed_window, min_value=1)
+    r = finite_array("factor_returns", factor_returns, ndim=2, min_size=1)
+    if r.shape[0] < 2:
+        raise ValueError(f"need at least 2 days of factor returns, got {r.shape[0]}")
+    out = np.empty_like(r)
+    for j in range(r.shape[1]):
+        col = r[:, j]
+        sig = np.sqrt(np.maximum(_ewma_var_path(col, lam, _window_seed(col, seed_window)), 1e-32))
+        out[:, j] = col / sig[:-1] * sig[-1]
+    return out
+
+
+def factor_filtered_historical_var(
+    portfolio,
+    factor_returns: np.ndarray,
     alpha: float = 0.01,
     lam: float = 0.94,
+    *,
+    seed_window: int = SEED_WINDOW,
+    method: str = "full",
 ) -> float:
-    """Filtered historical simulation (FHS) VaR — the industry workhorse.
+    """Filtered historical simulation VaR with per-factor filtering (spec S9).
 
-    Procedure (Barone-Adesi et al. / Hull-White devolatilisation):
-
-    1. compute one-step-ahead EWMA vol forecasts ``sigma_t`` for each day;
-    2. standardise: ``z_t = pnl_t / sigma_t`` (i.i.d.-ish innovations);
-    3. rescale every innovation to *tomorrow's* vol forecast
-       ``sigma_{T+1}^2 = lam * sigma_T^2 + (1-lam) * pnl_T^2``;
-    4. take the empirical ``alpha`` quantile of the rescaled scenarios.
-
-    This makes VaR respond to the current vol regime while keeping the
-    empirical (fat-tailed, skewed) shape of the standardised innovations.
+    Builds ``filtered_historical_scenarios`` and fully revalues the book under
+    each one (``method="full"``), then takes the S2 order statistic. Option
+    convexity is kept because the book is revalued, not the P&L rescaled.
     """
-    _validate_alpha(alpha)
-    arr = _validate_pnl(pnl)
-    sigma = ewma_volatility(arr, lam)
+    alpha = validate_alpha(alpha)
+    scen = filtered_historical_scenarios(factor_returns, lam, seed_window=seed_window)
+    pnl = portfolio.pnl(scen, method=method)
+    return historical_var(pnl, alpha)
+
+
+def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.94) -> float:
+    """Deprecated P&L-level FHS. Use ``factor_filtered_historical_var``.
+
+    Kept for one release with its old arithmetic unchanged (full-sample EWMA
+    seed, type-7 interpolated quantile) so existing numbers do not move.
+    Filtering portfolio P&L ignores option convexity and mixes position
+    changes with market volatility.
+    """
+    warnings.warn(
+        "filtered_historical_var(pnl, ...) filters portfolio P&L and is deprecated; "
+        "use factor_filtered_historical_var(portfolio, factor_returns, ...)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    alpha = validate_alpha(alpha)
+    lam = _validate_lam(lam)
+    arr = _validate_pnl(pnl, alpha)
+    sigma = np.sqrt(np.maximum(_ewma_var_path(arr, lam, float(np.var(arr)))[:-1], 1e-32))
     z = arr / sigma
     sigma_next = np.sqrt(lam * sigma[-1] ** 2 + (1.0 - lam) * arr[-1] ** 2)
-    scenarios = z * sigma_next
-    return float(-np.quantile(scenarios, alpha, method="linear"))
+    return float(-np.quantile(z * sigma_next, alpha, method="linear"))
 
 
 def scale_var_sqrt_time(var_1d: float, horizon_days: int) -> float:
     """Square-root-of-time scaling: ``VaR_h = VaR_1 * sqrt(h)``.
 
-    Valid only for i.i.d. returns with zero drift; understates multi-day risk
-    under volatility clustering / autocorrelation (see docs/VALIDATION.md).
+    Valid only for i.i.d. returns with zero drift. It understates multi-day
+    risk under volatility clustering (docs/VALIDATION.md). ``var_1d`` must be
+    finite and ``>= 0``.
     """
-    if horizon_days < 1:
-        raise ValueError(f"horizon_days must be >= 1, got {horizon_days}")
-    return float(var_1d) * float(np.sqrt(horizon_days))
+    var_1d = finite_scalar("var_1d", var_1d, min_value=0.0)
+    horizon_days = integer("horizon_days", horizon_days, min_value=1)
+    return var_1d * float(np.sqrt(horizon_days))
 
 
 def overlapping_horizon_pnl(pnl: np.ndarray, horizon_days: int) -> np.ndarray:
-    """Overlapping h-day P&L sums for direct multi-day historical VaR.
+    """Overlapping h-day P&L sums ``sum(pnl[t:t+h])`` for ``t = 0..n-h``.
 
-    Returns the rolling sums ``sum(pnl[t:t+h])`` for
-    ``t = 0..n-h``.  Caveat: overlapping sums are serially dependent, so the
-    effective sample size is ~``n/h`` and quantile standard errors are much
-    larger than the nominal count suggests (documented in METHODOLOGY.md).
-
-    Raises
-    ------
-    ValueError
-        If ``horizon_days < 1``, the series is too short, or ``pnl`` contains
-        NaN/infinite values (one bad day would contaminate ``horizon_days``
-        overlapping windows, so it is rejected rather than propagated).
+    Overlapping sums are serially dependent, so the effective sample size is
+    about ``n/h``.
     """
-    arr = np.asarray(pnl, dtype=float).ravel()
-    if horizon_days < 1:
-        raise ValueError(f"horizon_days must be >= 1, got {horizon_days}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("pnl contains NaN or infinite values")
+    horizon_days = integer("horizon_days", horizon_days, min_value=1)
+    arr = finite_array("pnl", pnl, ndim=1, min_size=0)
     if arr.size < horizon_days + MIN_OBS:
         raise ValueError(
             f"need at least {horizon_days + MIN_OBS} observations for {horizon_days}-day "

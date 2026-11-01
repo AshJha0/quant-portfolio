@@ -52,12 +52,12 @@ double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov);
 /// factor covariance in the same order; `df` is used for kStudentT;
 /// `mean` is the expected 1-day P&L (usually 0 at daily horizon).
 VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov,
-                double alpha = 0.99, double horizon_days = 1.0,
+                double alpha = 0.01, double horizon_days = 1.0,
                 TailDist dist = TailDist::kNormal, double df = 6.0,
                 double mean = 0.0);
 
 struct ParametricOptions {
-  double alpha = 0.99;
+  double alpha = 0.01;  ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;
   TailDist dist = TailDist::kNormal;
   double df = 6.0;
@@ -71,7 +71,7 @@ struct ParametricOptions {
 struct ParametricResult {
   double var = 0.0;
   double es = 0.0;
-  double alpha = 0.99;
+  double alpha = 0.01;  ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;
   TailDist dist = TailDist::kNormal;
   double sigma = 0.0;  ///< 1-day portfolio P&L std in base ccy
@@ -92,22 +92,27 @@ ParametricResult parametric_var(const Book& book, const Market& market,
 /// z_cf = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36.
 double cornish_fisher_z(double z, double skew, double excess_kurtosis);
 
-/// True if the CF expansion is monotone increasing on [-z_range, z_range]
-/// - the validity condition for the expansion to define a quantile function
-/// (Maillard 2012). Checked exactly via the closed-form minimum of the
-/// (quadratic-in-z) derivative on the interval, not by sampling a grid: a
-/// grid can under-sample a thin non-monotone dip (see parametric.cpp).
-/// `n_grid` is kept for API compatibility and still validated (>= 3) but no
-/// longer affects the result.
+/// Cornish-Fisher validity at tail probability alpha: the CF map is
+/// monotone (g' > 0) on the closed interval [-z_a, z_a],
+/// z_a = Phi^{-1}(1 - alpha), checked in closed form (g' is quadratic in z).
+/// Non-finite skew, kurtosis or alpha throws (never returns false).
+/// Example: (0.122, -0.427) has its smallest g' at the endpoint -z_a; it is
+/// valid at alpha = 0.01 and 0.001 and fails only once z_a nears 4.
+bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha);
+
+/// Old predicate on the fixed interval [-z_range, z_range]. Non-finite
+/// moments now throw instead of returning false.
+[[deprecated("ignores alpha; use cornish_fisher_valid(skew, excess_kurtosis, alpha). "
+             "Removed next release.")]]
 bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
                               double z_range = 4.0, int n_grid = 801);
 
-/// Cornish-Fisher VaR (positive loss) with an explicit domain check:
-/// throws std::invalid_argument when (S, K) are outside the monotonicity
-/// domain and `check_domain` is true - a silently non-monotone CF
-/// "quantile" can report 99% VaR below 95% VaR.
+/// Cornish-Fisher VaR (positive loss) at tail probability alpha. Throws
+/// std::invalid_argument when check_domain is true and
+/// cornish_fisher_valid(skew, excess_kurtosis, alpha) is false. Non-finite
+/// moments, sigma or mean always throw.
 double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
-                          double alpha = 0.99, double mean = 0.0,
+                          double alpha = 0.01, double mean = 0.0,
                           double horizon_days = 1.0, bool check_domain = true);
 
 }  // namespace fxvar

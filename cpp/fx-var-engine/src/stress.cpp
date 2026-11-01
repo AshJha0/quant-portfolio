@@ -58,7 +58,8 @@ std::map<std::string, Scenario> historical_scenarios() {
 }
 
 Scenario usd_broad_move(const std::vector<std::string>& ccys, double pct) {
-  if (pct <= -1.0) throw std::invalid_argument("pct must be > -100%");
+  if (!(pct > -1.0) || !std::isfinite(pct))
+    throw std::invalid_argument("pct must be finite and > -100%");
   Scenario sc;
   {
     std::ostringstream name;
@@ -79,7 +80,8 @@ Scenario usd_broad_move(const std::vector<std::string>& ccys, double pct) {
 
 Scenario peg_break_scenario(const std::string& ccy, double jump,
                             const std::map<std::string, double>& contagion) {
-  if (jump <= -1.0) throw std::invalid_argument("jump must be > -100%");
+  if (!(jump > -1.0) || !std::isfinite(jump))
+    throw std::invalid_argument("jump must be finite and > -100%");
   Scenario sc;
   sc.shocks[fx_factor(ccy)] = simple_to_log(jump);
   for (const auto& [c, m] : contagion) sc.shocks[fx_factor(c)] = simple_to_log(m);
@@ -139,8 +141,8 @@ double checked_sigma_p(const std::vector<double>& w, const Matrix& cov) {
 
 ReverseStress reverse_stress_linear(const std::vector<double>& exposures,
                                     const Matrix& cov, double radius) {
-  if (!(radius > 0.0))
-    throw std::invalid_argument("radius / loss_target must be positive");
+  if (!(radius > 0.0) || !std::isfinite(radius))
+    throw std::invalid_argument("radius / loss_target must be finite and positive");
   const double sp = checked_sigma_p(exposures, cov);
   const std::vector<double> sw = matvec(cov, exposures);
   ReverseStress out;
@@ -160,7 +162,8 @@ ReverseStress reverse_stress_for_loss(const std::vector<double>& exposures,
 ReverseStress reverse_stress_numerical(const std::vector<double>& exposures,
                                        const Matrix& cov, double radius,
                                        std::uint64_t seed) {
-  if (!(radius > 0.0)) throw std::invalid_argument("radius must be positive");
+  if (!(radius > 0.0) || !std::isfinite(radius))
+    throw std::invalid_argument("radius must be finite and positive");
   checked_sigma_p(exposures, cov);
   const std::size_t n = exposures.size();
 
@@ -169,7 +172,7 @@ ReverseStress reverse_stress_numerical(const std::vector<double>& exposures,
   // |y| <= k.  Maximise loss(y) = -w' L y by projected gradient ascent
   // with finite-difference gradients from a seeded random start - an
   // independent check that never assumes the analytic optimum.
-  const CholeskyResult chol = robust_cholesky(cov);
+  const CholeskyResult chol = cholesky(cov);
   const Matrix& lower = chol.lower;
 
   const auto loss_of = [&](const std::vector<double>& y) {

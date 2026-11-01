@@ -1,186 +1,165 @@
-// bench_main.cpp — end-to-end timings for the eqvar engine on a realistic
-// desk-sized problem: a 250-day x 100-asset returns panel (one year of
-// history, 100 risk factors).
+// Per-call latency benchmark for the eqvar engine.
 //
-// Measured stages
-//   1. sample + EWMA covariance estimation from the panel (100 x 100);
-//   2. historical VaR family (plain / BRW / FHS) on the portfolio P&L;
-//   3. parametric VaR (normal + Student-t) incl. Cholesky-free sigma;
-//   4. Monte Carlo VaR + ES, 100'000 paths, normal and Student-t (the
-//      dominant cost: 100k x 100 correlated draws through the Cholesky
-//      factor = 10M gaussians + 1G multiply-adds for the triangular product).
+//   ./bench_eqvar [--out results.json] [--label after] [--quick]
 //
-// Deterministic inputs (closed-form sin/cos panel, fixed MC seed) so runs are
-// exactly reproducible; each stage is repeated and the best-of-R wall time is
-// reported (best-of is the standard way to strip scheduler noise from a
-// single-threaded CPU-bound benchmark).
-//
-// Build: part of the default CMake target set; run ./bench_eqvar from the
-// build directory.  Results are quoted in README.md and docs/DESK_GUIDE.md.
+// Every kernel is timed call by call (see latency.hpp). Inputs vary per
+// call: P&L samples rotate through a table of synthetic series and alpha
+// steps through 0.5 % to 5 %, so selection and branch predictors see a
+// realistic mix. Sizes: 1,000 and 10,000-observation P&L, a 50-asset book,
+// 50 x 50 and 200 x 200 covariance matrices, 10,000 Monte Carlo scenarios.
+// Numbers depend on the machine; under WSL2 the hypervisor adds scheduling
+// jitter that shows up in p99.9 and max. All data is synthetic.
 
-#include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
-#include <string>
 #include <vector>
 
+#include "eqvar/backtest.hpp"
 #include "eqvar/expected_shortfall.hpp"
 #include "eqvar/historical.hpp"
 #include "eqvar/matrix.hpp"
 #include "eqvar/monte_carlo.hpp"
 #include "eqvar/parametric.hpp"
 #include "eqvar/returns.hpp"
+#include "latency.hpp"
+
+#if __has_include("eqvar/kernels.hpp")
+#include "eqvar/kernels.hpp"
+#define EQVAR_BENCH_NEW_API 1
+#endif
 
 namespace {
 
-using Clock = std::chrono::steady_clock;
+using namespace eqvar;
 
-/// Best-of-`reps` wall time (ms) of `fn()`; the result of the last call is
-/// accumulated into `sink` so the optimiser cannot elide the work.
-template <typename F>
-double best_of_ms(int reps, double& sink, F&& fn) {
-    double best = 1e300;
-    for (int r = 0; r < reps; ++r) {
-        const auto t0 = Clock::now();
-        sink += fn();
-        const auto t1 = Clock::now();
-        const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        if (ms < best) best = ms;
+constexpr std::size_t kSeries = 16;
+
+std::vector<std::vector<double>> pnl_table(std::size_t n, std::uint64_t seed) {
+    qpbench::InputGen g(seed);
+    std::vector<std::vector<double>> t(kSeries, std::vector<double>(n));
+    for (auto& s : t) {
+        for (auto& v : s) {
+            // Fat-ish tails: a normal-ish body plus occasional large moves.
+            const double body = g.uniform(-1.0, 1.0) + g.uniform(-1.0, 1.0) + g.uniform(-1.0, 1.0);
+            v = 1e4 * body * (g.uniform(0.0, 1.0) < 0.03 ? 4.0 : 1.0);
+        }
     }
-    return best;
+    return t;
 }
 
-void row(const char* stage, double ms, const std::string& result) {
-    std::printf("| %-42s | %10.3f | %-28s |\n", stage, ms, result.c_str());
+Matrix make_cov(std::size_t n, double rho) {
+    Matrix c(n, n);
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = 0; j < n; ++j) {
+            const double vi = 0.01 + 0.0002 * static_cast<double>(i);
+            const double vj = 0.01 + 0.0002 * static_cast<double>(j);
+            c(i, j) = vi * vj * (i == j ? 1.0 : rho);
+        }
+    return c;
 }
 
-std::string money(double v) {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.0f", v);
-    return std::string(buf);
-}
+double alpha_of(std::size_t i) { return 0.005 + 0.005 * static_cast<double>(i % 10); }
 
 }  // namespace
 
-int main() {
-    constexpr std::size_t kDays = 250;
-    constexpr std::size_t kAssets = 100;
-    constexpr std::size_t kPaths = 100'000;
-    constexpr double kAlpha = 0.01;
-
-    // Deterministic 250 x 100 daily returns panel: per-asset vol ramps from
-    // 10 bp to ~2 % and phase-shifted sin/cos terms induce rich correlation.
-    eqvar::Matrix panel(kDays, kAssets);
-    for (std::size_t t = 0; t < kDays; ++t) {
-        for (std::size_t j = 0; j < kAssets; ++j) {
-            const double td = static_cast<double>(t), jd = static_cast<double>(j);
-            const double vol = 0.001 + 0.0002 * jd;
-            panel(t, j) = vol * (std::sin(0.7 * td + 0.31 * jd) +
-                                 0.5 * std::cos(1.3 * td - 0.11 * jd));
-        }
+int main(int argc, char** argv) {
+    qpbench::Bench b(argc, argv, "equity-var");
+    double acc = 0.0;
+    const auto p1k = pnl_table(1000, 1);
+    const auto p10k = pnl_table(10000, 2);
+    const std::size_t n_assets = 50;
+    const Matrix cov50 = make_cov(50, 0.35);
+    const Matrix cov200 = make_cov(200, 0.35);
+    std::vector<std::vector<double>> books(kSeries, std::vector<double>(n_assets));
+    {
+        qpbench::InputGen g(3);
+        for (auto& w : books)
+            for (auto& v : w) v = g.uniform(-2e6, 2e6);
     }
-    // Long-biased book: exposures alternate long/short, 100k..1.09M per name.
-    std::vector<double> w(kAssets);
-    for (std::size_t j = 0; j < kAssets; ++j) {
-        w[j] = (j % 3 == 2 ? -1.0 : 1.0) * (1.0e5 + 1.0e4 * static_cast<double>(j));
+    Matrix panel(10000, n_assets);
+    {
+        qpbench::InputGen g(4);
+        for (std::size_t k = 0; k < panel.size(); ++k) panel.data()[k] = g.uniform(-0.03, 0.03);
     }
 
-    std::printf("eqvar benchmark — %zu-day x %zu-asset panel, alpha = %.2f, "
-                "%zu MC paths, single thread\n\n",
-                kDays, kAssets, kAlpha, kPaths);
-    std::printf("| %-42s | %10s | %-28s |\n", "stage", "best ms", "result");
-    std::printf("|%s|%s|%s|\n", std::string(44, '-').c_str(), std::string(12, '-').c_str(),
-                std::string(30, '-').c_str());
+    b.run("historical_var n=1000", [&](std::size_t i) {
+        acc += historical_var(p1k[i % kSeries], alpha_of(i));
+    }, 2000, 100000);
+    b.run("historical_var n=10000", [&](std::size_t i) {
+        acc += historical_var(p10k[i % kSeries], alpha_of(i));
+    }, 200, 20000);
+    b.run("expected_shortfall n=10000", [&](std::size_t i) {
+        acc += expected_shortfall(p10k[i % kSeries], alpha_of(i));
+    }, 200, 20000);
+    b.run("age_weighted_var n=1000", [&](std::size_t i) {
+        acc += age_weighted_var(p1k[i % kSeries], alpha_of(i), 0.98);
+    }, 200, 20000);
+    b.run("parametric_var normal 50 assets", [&](std::size_t i) {
+        acc += parametric_var(books[i % kSeries], cov50, alpha_of(i));
+    }, 2000, 200000);
+    b.run("parametric_var student-t 50 assets", [&](std::size_t i) {
+        acc += parametric_var(books[i % kSeries], cov50, alpha_of(i), Dist::StudentT, 5.0);
+    }, 500, 50000);
+    b.run("cholesky 50x50", [&](std::size_t) {
+        acc += cholesky(cov50).lower(49, 49);
+    }, 200, 20000);
+    b.run("cholesky 200x200", [&](std::size_t) {
+        acc += cholesky(cov200).lower(199, 199);
+    }, 20, 2000);
+    b.run("portfolio_pnl 10000x50", [&](std::size_t i) {
+        acc += portfolio_pnl(panel, books[i % kSeries])[i % 10000];
+    }, 50, 5000);
+    b.run("monte_carlo_var 10k scen 50 assets", [&](std::size_t i) {
+        acc += monte_carlo_var(books[i % kSeries], cov50, 0.01, 10000, Dist::Normal, 6.0, i, 50)
+                   .var;
+    }, 3, 100);
+    {
+        std::vector<std::uint8_t> exc(1000);
+        b.run("kupiec + christoffersen n=1000", [&](std::size_t i) {
+            for (std::size_t t = 0; t < exc.size(); ++t) {
+                exc[t] = static_cast<std::uint8_t>(((t * 2654435761U + i) % 97) < 2);
+            }
+            const auto cc = christoffersen_cc(exc, 0.01);
+            const auto k = kupiec_pof(KupiecInput{1000, static_cast<int>(i % 30), 0.01});
+            acc += cc.lr + k.lr;
+        }, 1000, 100000);
+    }
 
-    double sink = 0.0;
+#ifdef EQVAR_BENCH_NEW_API
+    std::vector<double> ws(10000);
+    b.run("try_historical_var n=1000 (ws)", [&](std::size_t i) {
+        acc += try_historical_var(p1k[i % kSeries], alpha_of(i), ws).value_or(0.0);
+    }, 2000, 100000);
+    b.run("try_historical_var n=10000 (ws)", [&](std::size_t i) {
+        acc += try_historical_var(p10k[i % kSeries], alpha_of(i), ws).value_or(0.0);
+    }, 200, 20000);
+    b.run("try_parametric_var normal 50 assets", [&](std::size_t i) {
+        acc += try_parametric_var(books[i % kSeries], cov50, alpha_of(i)).value_or(0.0);
+    }, 2000, 200000);
+    std::vector<double> l50(50 * 50), s50(50 * 50), l200(200 * 200), s200(200 * 200);
+    b.run("try_cholesky_lower 50x50 (ws)", [&](std::size_t) {
+        acc += try_cholesky_lower(cov50, l50, s50).value_or(0.0) + l50.back();
+    }, 200, 20000);
+    b.run("try_cholesky_lower 200x200 (ws)", [&](std::size_t) {
+        acc += try_cholesky_lower(cov200, l200, s200).value_or(0.0) + l200.back();
+    }, 20, 2000);
+    std::vector<double> y(10000);
+    b.run("try_matvec scenario pnl 10000x50", [&](std::size_t i) {
+        (void)try_matvec(panel, books[i % kSeries], y);
+        acc += y[i % 10000];
+    }, 50, 5000);
+    McVarWorkspace mws;
+    mws.reserve(n_assets, 10000);
+    (void)try_cholesky_lower(cov50, l50, s50);
+    b.run("try_monte_carlo_var_factored 10k 50", [&](std::size_t i) {
+        const auto r = try_monte_carlo_var_factored(books[i % kSeries], l50, 0.01, 10000,
+                                                    Dist::Normal, 6.0, i, 50, mws);
+        acc += r ? r->var : 0.0;
+    }, 3, 100);
+#endif
 
-    // --- covariance estimation ---------------------------------------------
-    eqvar::Matrix cov;
-    const double ms_cov = best_of_ms(5, sink, [&] {
-        cov = eqvar::sample_covariance(panel);
-        return cov(0, 0);
-    });
-    row("sample covariance (250 x 100 -> 100 x 100)", ms_cov, "");
-    eqvar::Matrix ecov;
-    const double ms_ecov = best_of_ms(5, sink, [&] {
-        ecov = eqvar::ewma_covariance(panel, 0.94);
-        return ecov(0, 0);
-    });
-    row("EWMA covariance (lam = 0.94)", ms_ecov, "");
-
-    // --- historical family --------------------------------------------------
-    const std::vector<double> pnl = eqvar::portfolio_pnl(panel, w);
-    double v = 0.0;
-    const double ms_hist = best_of_ms(20, sink, [&] {
-        v = eqvar::historical_var(pnl, kAlpha);
-        return v;
-    });
-    row("historical VaR 99% (250 scenarios)", ms_hist, money(v));
-    const double ms_brw = best_of_ms(20, sink, [&] {
-        v = eqvar::age_weighted_var(pnl, kAlpha, 0.98);
-        return v;
-    });
-    row("BRW age-weighted VaR 99% (lam = 0.98)", ms_brw, money(v));
-    const double ms_fhs = best_of_ms(20, sink, [&] {
-        v = eqvar::filtered_historical_var(pnl, kAlpha, 0.94);
-        return v;
-    });
-    row("filtered (FHS) VaR 99% (lam = 0.94)", ms_fhs, money(v));
-    const double ms_es = best_of_ms(20, sink, [&] {
-        v = eqvar::expected_shortfall(pnl, 0.025);
-        return v;
-    });
-    row("empirical ES 97.5%", ms_es, money(v));
-
-    // --- parametric ----------------------------------------------------------
-    const double ms_par_n = best_of_ms(20, sink, [&] {
-        v = eqvar::parametric_var(w, cov, kAlpha);
-        return v;
-    });
-    row("parametric VaR 99% (normal)", ms_par_n, money(v));
-    const double ms_par_t = best_of_ms(20, sink, [&] {
-        v = eqvar::parametric_var(w, cov, kAlpha, eqvar::Dist::StudentT, 6.0);
-        return v;
-    });
-    row("parametric VaR 99% (Student-t, df = 6)", ms_par_t, money(v));
-    const double sigma = eqvar::portfolio_sigma(w, cov);
-    const double ms_nes = best_of_ms(20, sink, [&] {
-        v = eqvar::normal_es(sigma, 0.025);
-        return v;
-    });
-    row("closed-form ES 97.5% (normal)", ms_nes, money(v));
-
-    // --- Cholesky (isolated) -------------------------------------------------
-    const double ms_chol = best_of_ms(5, sink, [&] {
-        const eqvar::CholeskyResult ch = eqvar::cholesky(cov);
-        return ch.lower(0, 0);
-    });
-    row("Cholesky 100 x 100", ms_chol, "");
-
-    // --- Monte Carlo ---------------------------------------------------------
-    eqvar::MonteCarloResult mc;
-    const double ms_mc_n = best_of_ms(3, sink, [&] {
-        mc = eqvar::monte_carlo_var(w, cov, kAlpha, kPaths, eqvar::Dist::Normal, 6.0, 42);
-        return mc.var;
-    });
-    row("MC VaR 99% normal (100k x 100 paths)", ms_mc_n,
-        money(mc.var) + " (SE " + money(mc.var_se) + ")");
-    const double mc_var_n = mc.var, mc_es_n = mc.es;
-    const double ms_mc_t = best_of_ms(3, sink, [&] {
-        mc = eqvar::monte_carlo_var(w, cov, kAlpha, kPaths, eqvar::Dist::StudentT, 6.0, 42);
-        return mc.var;
-    });
-    row("MC VaR 99% Student-t df=6 (100k paths)", ms_mc_t,
-        money(mc.var) + " (SE " + money(mc.var_se) + ")");
-
-    const double total =
-        ms_cov + ms_ecov + ms_hist + ms_brw + ms_fhs + ms_es + ms_par_n + ms_par_t + ms_mc_n;
-    std::printf("\nfull daily batch (cov + historical family + parametric + 100k-path MC): "
-                "%.1f ms\n", total);
-    std::printf("MC normal vs parametric normal: %.0f vs %.0f (agreement within MC error)\n",
-                mc_var_n, eqvar::parametric_var(w, cov, kAlpha));
-    std::printf("MC normal ES 99%%: %.0f  |  closed-form: %.0f\n", mc_es_n,
-                eqvar::normal_es(sigma, kAlpha));
-    std::printf("[checksum %.6g]\n", sink);
+    qpbench::g_sink = acc;
     return 0;
 }

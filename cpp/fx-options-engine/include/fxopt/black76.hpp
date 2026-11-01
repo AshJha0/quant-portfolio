@@ -12,7 +12,11 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 #include "fxopt/common.hpp"
+#include "fxopt/garman_kohlhagen.hpp"
 
 namespace fxopt {
 
@@ -26,5 +30,32 @@ double black76_price(double F, double K, double T, double r_d, double sigma,
 /// machine precision.
 double black76_from_spot(double S, double K, double T, double r_d, double r_f,
                          double sigma, OptionType type);
+
+/// noexcept form of black76_price(): the same value or error, no allocation.
+[[nodiscard]] inline Result<double> try_black76_price(double F, double K, double T, double r_d,
+                                                      double sigma, OptionType type) noexcept {
+    const double p = phi(type);
+    if (auto e = try_require_finite(F, "F"); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_require_finite(K, "K"); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_require_finite(T, "T"); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_require_finite(r_d, "r_d"); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (auto e = try_require_finite(sigma, "sigma"); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (F <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::ForwardNonPositive, "F", F});
+    if (K <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::StrikeNonPositive, "K", K});
+    if (T < 0.0) [[unlikely]] return std::unexpected(Error{Errc::NegativeExpiry, "T", T});
+    if (sigma < 0.0) [[unlikely]] {
+        return std::unexpected(Error{Errc::NegativeVol, "sigma", sigma});
+    }
+    const double df = std::exp(-r_d * T);
+    const double v = sigma * std::sqrt(T);
+    if (T == 0.0 || v <= kMinVol) [[unlikely]] return df * std::max(p * (F - K), 0.0);
+    const double d1v = (std::log(F / K) + 0.5 * v * v) / v;
+    const double d2v = d1v - v;
+    return p * df * (F * norm_cdf(p * d1v) - K * norm_cdf(p * d2v));
+}
 
 }  // namespace fxopt

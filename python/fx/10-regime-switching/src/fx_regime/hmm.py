@@ -3,7 +3,7 @@
 Implements the full classical toolkit:
 
 * log-space forward/backward recursions (no underflow at any T),
-* filtered probabilities P(s_t | x_{1..t}) — the ONLY probabilities a
+* filtered probabilities P(s_t | x_{1..t}), the ONLY probabilities a
   live trading system may use,
 * smoothed posteriors P(s_t | x_{1..T}) for research,
 * Baum-Welch EM with monotone log-likelihood and multiple restarts,
@@ -36,7 +36,7 @@ class HMMModel:
     transmat : (k, k) row-stochastic transition matrix.
     means : (k, p) emission means.
     covs : (k, p, p) emission covariances.
-    log_likelihood : float — training log-likelihood at the optimum.
+    log_likelihood : float, training log-likelihood at the optimum.
     log_likelihood_path : per-EM-iteration log-likelihoods (monotone).
     converged : bool
     n_iter : int
@@ -71,8 +71,19 @@ def _validate_model(model: HMMModel) -> None:
         raise ValueError("startprob must sum to 1")
 
 
+def _scaled_emissions(logb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Row-shifted emission densities ``exp(logb - m_t)`` and shifts ``m_t``."""
+    m = logb.max(axis=1)
+    return np.exp(logb - m[:, None]), m
+
+
 def log_forward(model: HMMModel, X: np.ndarray) -> tuple[np.ndarray, float]:
-    """Log-space forward recursion.
+    """Forward recursion, returned in log space.
+
+    Computed as the Rabiner scaled recursion on row-shifted emission
+    densities (each row of ``exp(logb)`` divided by its maximum, the shift
+    added back in log space), which is algebraically the log-space
+    recursion and avoids a logsumexp per step.
 
     Returns
     -------
@@ -82,22 +93,28 @@ def log_forward(model: HMMModel, X: np.ndarray) -> tuple[np.ndarray, float]:
     _validate_model(model)
     logb = model.emission_logprob(X)
     T, k = logb.shape
-    with np.errstate(divide="ignore"):
-        log_pi = np.log(model.startprob)
+    B, m = _scaled_emissions(logb)
     A = model.transmat
-    log_alpha = np.empty((T, k))
-    log_alpha[0] = log_pi + logb[0]
-    for t in range(1, T):
-        c = log_alpha[t - 1].max()
-        with np.errstate(divide="ignore"):
-            log_alpha[t] = (
-                c + np.log(np.exp(log_alpha[t - 1] - c) @ A) + logb[t]
-            )
-    return log_alpha, float(logsumexp(log_alpha[-1]))
+    alpha = np.empty((T, k))
+    scale = np.empty(T)
+    a = model.startprob * B[0]
+    for t in range(T):
+        if t:
+            a = (a @ A) * B[t]
+        c = a.sum()
+        if not c > 0:
+            raise ValueError("forward recursion underflow: observation has zero density")
+        a = a / c
+        alpha[t] = a
+        scale[t] = c
+    log_c = np.cumsum(np.log(scale) + m)
+    with np.errstate(divide="ignore"):
+        log_alpha = np.log(alpha) + log_c[:, None]
+    return log_alpha, float(log_c[-1])
 
 
 def log_backward(model: HMMModel, X: np.ndarray) -> np.ndarray:
-    """Log-space backward recursion.
+    """Backward recursion, returned in log space (scaled, see log_forward).
 
     Returns
     -------
@@ -106,13 +123,23 @@ def log_backward(model: HMMModel, X: np.ndarray) -> np.ndarray:
     _validate_model(model)
     logb = model.emission_logprob(X)
     T, k = logb.shape
+    B, m = _scaled_emissions(logb)
     A = model.transmat
-    log_beta = np.zeros((T, k))
+    beta = np.ones((T, k))
+    logc = np.zeros(T)
+    b = beta[-1]
     for t in range(T - 2, -1, -1):
-        u = logb[t + 1] + log_beta[t + 1]
-        c = u.max()
-        with np.errstate(divide="ignore"):
-            log_beta[t] = c + np.log(A @ np.exp(u - c))
+        b = A @ (B[t + 1] * b)
+        c = b.max()
+        if not c > 0:
+            raise ValueError("backward recursion underflow")
+        b = b / c
+        beta[t] = b
+        logc[t] = c
+    acc = np.zeros(T)
+    acc[:-1] = np.cumsum((np.log(logc[:-1]) + m[1:])[::-1])[::-1]
+    with np.errstate(divide="ignore"):
+        log_beta = np.log(beta) + acc[:, None]
     return log_beta
 
 
@@ -132,7 +159,7 @@ def filtered_probabilities(model: HMMModel, X: np.ndarray) -> np.ndarray:
 
 
 def smoothed_probabilities(model: HMMModel, X: np.ndarray) -> np.ndarray:
-    """Smoothed posteriors P(s_t = j | x_{1..T}) — research only.
+    """Smoothed posteriors P(s_t = j | x_{1..T}), research only.
 
     Uses the full sample (future included); must never drive live
     positions.  Returns (T, k), rows sum to 1.
@@ -303,6 +330,13 @@ def fit_hmm(
                 dev = X - model.means[j]
                 model.covs[j] = (gamma[:, j][:, None] * dev).T @ dev / nk[j]
                 model.covs[j] += reg_covar * np.eye(p)
+        if not converged:
+            # The loop ended on an M-step: the parameters in ``model`` are
+            # newer than the last likelihood in ``path``. Score the model
+            # that is actually returned so restart comparisons and the
+            # reported likelihood refer to the same parameters.
+            _, ll_final = log_forward(model, X)
+            path.append(ll_final)
         model.log_likelihood = path[-1]
         model.log_likelihood_path = path
         model.converged = converged
@@ -339,7 +373,7 @@ def match_states(
     covariances are supplied, the cost is the squared Frobenius
     distance between covariances INSTEAD.  For daily FX returns,
     drifts are tiny relative to estimation noise, so matching on
-    covariances (where regimes really differ — vol and correlation)
+    covariances (where regimes really differ, vol and correlation)
     is far more robust.
 
     Returns

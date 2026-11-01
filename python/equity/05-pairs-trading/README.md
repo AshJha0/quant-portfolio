@@ -1,18 +1,28 @@
-# Equity Statistical Pairs Trading (`eq_pairs`)
+# Equity statistical pairs trading (`eq_pairs`)
 
-Statistical arbitrage pairs pipeline, built from first principles and
-validated against `statsmodels`:
+A pairs-trading research pipeline: candidate pairs, a correlation or SSD
+screen, Engle-Granger cointegration with MacKinnon N=2 critical values, an
+Ornstein-Uhlenbeck spread model, z-score signals, a backtest with a
+modelled next-period fill and a full cost model, walk-forward validation,
+and research statistics (Lo/Newey-West Sharpe SE, deflated Sharpe, PBO,
+block bootstrap, multi-seed distributions).
 
-```
-price panel ──► pair candidates (same sector)
-                  ──► correlation screen (on RETURNS — prices are spuriously correlated)
-                        ──► Engle-Granger two-step (from-scratch ADF, AIC lags,
-                            MacKinnon *EG* critical values — not plain ADF)
-                              ──► OU spread fit (OLS-AR1 + MLE, half-life)
-                                    ──► z-score signals (entry/exit/stop/time-stop)
-                                          ──► event-driven backtest (costs, slippage,
-                                              borrow, strict t-1 execution)
-                                                ──► walk-forward + metrics + attribution
+**Status.** Every result in this project is from synthetic data. The
+generator plants cointegrated pairs with known half-lives, and the
+strategy's P&L is that planted mean reversion. No real-data result exists
+yet; that is Phase 4 of the repository plan.
+
+## Execution convention
+
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost.
+
+```python
+from eq_pairs import ExecutionConfig
+ExecutionConfig()                                         # next, f = 0.5
+ExecutionConfig(fill_fraction=1.0)                        # next close
+ExecutionConfig(mode="close_auction", auction_cost_bp=10) # same close, pays 10 bp
 ```
 
 ## Quickstart
@@ -20,8 +30,8 @@ price panel ──► pair candidates (same sector)
 ```bash
 cd python/equity/05-pairs-trading
 pip install -e .[dev]
-pytest -q                        # 256 tests, offline, ~5 s
-python examples/run_pipeline.py  # every number below, ~5 s
+pytest -q                          # 314 tests, offline
+python examples/run_pipeline.py    # every number below; prints only
 ```
 
 ```python
@@ -31,67 +41,65 @@ from eq_pairs.data import cointegrated_pair
 df, truth = cointegrated_pair(n=1500, beta=1.5, kappa=0.08, sigma=1.0, seed=1)
 eg = ep.engle_granger(df["Y"].to_numpy(), df["X"].to_numpy())
 ou = ep.fit_ou_ols(eg.resid)
-print(eg.beta, eg.stat, eg.crit["5%"], eg.cointegrated())   # hedge ratio + EG test
-print(ou.half_life)                                          # ln 2 / kappa, days
-
 z = ep.zscore_ou(ep.compute_spread(df["Y"], df["X"], eg.beta, eg.alpha), ou)
 target = ep.generate_signals(z, ep.SignalRules(max_holding=30))["position"]
-res = ep.backtest_pair(df["Y"], df["X"], target, beta=eg.beta)   # t-1 signal, t close
+res = ep.backtest_pair(df["Y"], df["X"], target, beta=eg.beta)  # fills at t+1, f = 0.5
 print(res.net_pnl, ep.summary(res.daily, res.trades, res.ledger, 2e6)["sharpe"])
 ```
 
-## Headline results (seeded synthetic panel, 20 names × 1500 days)
+## Headline results (synthetic, 30 seeds)
 
-**The selection funnel catches the classic trap** — 40 same-sector
-candidates → 8 pass the return-correlation screen → **4** pass Engle-Granger
-at 5%. The three correlated-random-walk trap pairs (return ρ ≈ 0.92!) and
-the regime-break pair are exactly the ones rejected; the four truly
-cointegrated pairs are exactly the ones accepted, with β and half-life
-recovered (e.g. true HL 6.9d → est 7.0d; true β 1.718 → est 1.729).
+30 synthetic panels of 20 names x 1500 days, each with 4 planted
+cointegrated pairs, 3 correlated-random-walk traps and 1 regime-break pair.
+Capital $6mm (6 pair slots x $1mm gross). Costs: 5 bp commission, 2 bp
+slippage, square-root impact with Y = 0.7 on an assumed $20mm ADV, 50 bp
+borrow, 50 bp long financing. Mean [95% CI] across seeds, from
+`python examples/run_pipeline.py` section 9.
 
-| metric ($6mm capital, costs 5+2bp/leg, borrow 50bp) | in-sample | walk-forward (OOS) |
-|---|---:|---:|
-| net P&L (5.9y) | $2.92mm | $1.40mm |
-| annualised return | 12.3% | 7.4% |
-| Sharpe (± Lo SE) | 2.42 ± 0.57 | 1.59 ± 0.50 |
-| hit rate | 95.6% | 67.2% |
-| max drawdown | $92k | $128k |
-| turnover / cost drag | 5.7x / 44bp-yr | 6.7x / 51bp-yr |
+| metric (synthetic) | mean [95% CI] |
+|---|---|
+| planted pairs passing Engle-Granger (of 4) | 3.93 [3.84, 4.03] |
+| trap pairs passing Engle-Granger | 0.20 [0.05, 0.35] |
+| in-sample Sharpe (selection on the full sample) | 2.68 [2.54, 2.83] |
+| walk-forward Sharpe | 1.33 [1.14, 1.53] |
+| walk-forward Sharpe, close auction at 10 bp | 0.81 [0.61, 1.00] |
+| walk-forward annual return on capital | 1.4% [1.1%, 1.6%] |
+| walk-forward cost drag per year | 1.2% [1.1%, 1.3%] |
+| regime-break pair after the break, with stops | -$20k [-$26k, -$15k] |
+| regime-break pair after the break, without stops | -$472k [-$540k, -$404k] |
 
-**Regime break (cointegration dies mid-sample):** +$81k pre-break becomes
-−$21k post-break with stops and re-entry arming — and **−$715k without
-stops**. The stop rules are the product.
+On the seed-7 synthetic path, 9 walk-forward configurations were logged;
+the headline configuration has a deflated Sharpe ratio of 0.955 against
+that trial count and the PBO across the nine is 0.27. At impact Y = 0.7 and
+$10mm per pair the seed-7 synthetic walk-forward Sharpe falls to 0.10.
+Details, single-path tables and the cost and timing sensitivities are in
+`docs/VALIDATION.md`.
 
 ## Layout
 
 ```
 src/eq_pairs/
-├── universe.py        # candidates, correlation screen (returns!), SSD screen
-├── cointegration.py   # OLS hedge ratio, from-scratch ADF (AIC lags),
-│                      # MacKinnon N=1/N=2 surfaces, Engle-Granger two-step
-├── spread.py          # spread, OU fit (OLS + MLE), half-life, RLS (Kalman-lite)
-├── signals.py         # z-scores (rolling / OU-stationary), state machine, sizing
-├── backtest.py        # event-driven engine, costs/slippage/borrow, walk-forward
-├── metrics.py         # Sharpe (+ Lo-adjusted SE), Sortino, MDD, turnover, attribution
-└── data/synthetic.py  # seeded: cointegrated / trap / regime-break / mixed panel
-tests/                 # 256 tests incl. the no-lookahead detector
-docs/                  # METHODOLOGY, VALIDATION (all numbers), DESK_GUIDE
+  universe.py        candidates, correlation screen on returns, SSD screen
+  cointegration.py   OLS hedge ratio, ADF with AIC lags, MacKinnon N=1/N=2, Engle-Granger
+  spread.py          spread, OU fit (OLS and MLE), half-life, rolling OLS and RLS hedges
+  signals.py         z-scores (OU-stationary and rolling), state machine, sizing
+  backtest.py        ExecutionConfig, CostModel, pair and portfolio backtest, walk-forward
+  metrics.py         Sharpe with iid and Lo SE, Sortino, drawdown, turnover, cost drag
+  research_stats.py  Lo/Newey-West SE, deflated Sharpe, PBO (CSCV), block bootstrap, seeds
+  data/synthetic.py  seeded cointegrated, trap, regime-break and mixed panels
+tests/               314 tests
+docs/                METHODOLOGY, VALIDATION, DESK_GUIDE
 ```
 
-## The three design decisions worth reading about
+## Limitations
 
-1. **EG critical values, not ADF** (`docs/METHODOLOGY.md`): testing EG
-   residuals against plain ADF critical values (−2.86 instead of −3.34 at
-   5%) more than doubles the false-discovery rate — measured, tested, and
-   the reason `mackinnon_crit` carries both surfaces.
-2. **No-lookahead by construction** (`docs/VALIDATION.md` §5): the engine
-   executes yesterday's decision at today's close and a detector test
-   engineers a spread where cheating is profitable — the engine must lose.
-3. **Correlation ≠ cointegration**: the correlation screen runs on returns
-   and is only a pre-filter; ρ=0.92 pairs still fail the ADF (and would have
-   bled money: the trap pair that slipped into one walk-forward window lost
-   −$11k).
+- All data is synthetic and the edge is planted by the generator.
+- `data/live.py` exists but no test or result uses it.
+- ADV and the impact coefficient are assumptions.
+- Borrow recalls, hard-to-borrow fees and delisting returns are not modelled.
+- Signal thresholds were set globally, not chosen inside the walk-forward.
+- Risk limits and kill switches in `docs/DESK_GUIDE.md` are desk process,
+  not code.
 
-Docs answer the full contract: model choice vs alternatives, assumptions
-with what-breaks, validation evidence, failure modes (quant quake, short
-squeeze, merger break), desk workflow and limits.
+Runtimes measured on the development machine: test suite 110 s,
+pipeline 567 s with 30 seeds (both measured while other test jobs shared the machine).

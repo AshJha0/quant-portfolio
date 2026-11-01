@@ -2,12 +2,12 @@
 
 Two generators:
 
-* :func:`make_regime_panel` — a multi-asset daily-return panel driven by a
+* :func:`make_regime_panel`: a multi-asset daily-return panel driven by a
   hidden Markov chain with a KNOWN transition matrix and per-state
   mean / vol / correlation.  The bear state has negative drift, high vol and
   high cross-asset correlation (the classic "correlations go to one" crisis
   stylised fact).  Used for parameter-recovery and detection tests.
-* :func:`make_gbm_panel` — a single-regime GBM null (constant drift/vol/corr).
+* :func:`make_gbm_panel`: a single-regime GBM null (constant drift/vol/corr).
   Used for false-positive tests: on this data a regime model should NOT
   systematically beat buy-and-hold, and BIC should prefer fewer states.
 
@@ -259,7 +259,7 @@ def make_gbm_panel(
 ) -> RegimePanel:
     """Generate a single-regime (no-regime) correlated GBM null panel.
 
-    Constant drift, vol and correlation — there is nothing for a regime
+    Constant drift, vol and correlation: there is nothing for a regime
     model to find.  Returned as a :class:`RegimePanel` with a single state
     so it can flow through the same pipeline; ``states`` is all zeros.
 
@@ -285,3 +285,18 @@ def make_gbm_panel(
     return make_regime_panel(
         n_states=1, n_assets=n_assets, n_days=n_days, seed=seed, params=params, start=start
     )
+
+
+def equal_drift_params(n_states: int = 3, mu: float = 0.07) -> dict[str, np.ndarray]:
+    """Default regime parameters with the same drift ``mu`` in every state.
+
+    Volatility and correlation still switch with the hidden state, so the
+    returns show volatility clustering, but expected return does not depend
+    on the state. This is the null for regime timing: any Sharpe gain left
+    on it comes from vol timing, not from detecting a negative-drift state.
+    """
+    if not np.isfinite(mu):
+        raise ValueError(f"mu must be finite, got {mu}")
+    p = default_regime_params(n_states)
+    p["mu"] = np.full(n_states, float(mu))
+    return p

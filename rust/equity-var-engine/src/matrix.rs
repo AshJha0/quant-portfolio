@@ -1,27 +1,20 @@
 //! Dense row-major matrices and the covariance estimators.
 //!
-//! [`Matrix`] is a minimal dense `Vec<f64>` matrix — exactly the linear
+//! [`Matrix`] is a minimal dense `Vec<f64>` matrix: exactly the linear
 //! algebra a linear-portfolio VaR engine needs and nothing more:
 //! matrix–vector products, a Cholesky factorization with a diagonal-jitter
 //! fallback for singular covariances, and the two covariance estimators
 //! used desk-side (unbiased sample covariance and RiskMetrics EWMA).
 //!
 //! Conventions match the Python reference (`eq_var.parametric_var`):
-//! return panels are `(T, n)` — one row per day, one column per factor —
+//! return panels are `(T, n)`: one row per day, one column per factor:
 //! and EWMA is seeded with the sample covariance then iterated over every
 //! row: `Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'`.
 
 use crate::{EqVarError, Result};
 
-/// Largest diagonal jitter [`Matrix::cholesky_jitter`] will apply, as a
-/// multiple of the mean diagonal (mean variance).
-///
-/// `1e-6` is roughly a part per million of the average variance: enough to
-/// repair a covariance that is only singular or indefinite by accumulated
-/// floating-point noise (a riskless leg, perfectly correlated factors, an
-/// EWMA update that lost the last bit of positivity), and far too small to
-/// paper over a genuinely indefinite matrix.
-pub const MAX_RELATIVE_JITTER: f64 = 1e-6;
+pub use crate::psd::MAX_RELATIVE_JITTER;
+use crate::psd::{CholeskyFactor, PsdRepair};
 
 /// Dense row-major matrix of `f64`.
 ///
@@ -43,7 +36,11 @@ pub struct Matrix {
 impl Matrix {
     /// Zero-filled `rows x cols` matrix.
     pub fn zeros(rows: usize, cols: usize) -> Self {
-        Matrix { rows, cols, data: vec![0.0; rows * cols] }
+        Matrix {
+            rows,
+            cols,
+            data: vec![0.0; rows * cols],
+        }
     }
 
     /// Build from a row-major buffer; errors if `data.len() != rows * cols`.
@@ -79,7 +76,7 @@ impl Matrix {
         self.cols
     }
 
-    /// Element `(i, j)` (row, column). Panics on out-of-range indices —
+    /// Element `(i, j)` (row, column). Panics on out-of-range indices:
     /// index bugs are programmer errors, not recoverable model inputs.
     #[inline]
     pub fn get(&self, i: usize, j: usize) -> f64 {
@@ -143,8 +140,8 @@ impl Matrix {
         self.data.iter().all(|v| v.is_finite())
     }
 
-    /// Symmetry check with the tolerance used by the Python reference:
-    /// `|a_ij - a_ji| <= 1e-12 * max(1, max|a|)`.
+    /// Relative symmetry check shared by every engine:
+    /// `|a_ij - a_ji| <= 1e-10 * max|a|` ([`crate::psd::check_symmetric`]).
     ///
     /// A matrix containing NaN is **not** symmetric by this definition:
     /// `|NaN - NaN| > tol` is false, so a naive comparison would call it
@@ -156,8 +153,8 @@ impl Matrix {
         if !self.all_finite() {
             return false;
         }
-        let scale = self.data.iter().fold(1.0f64, |m, v| m.max(v.abs()));
-        let tol = 1e-12 * scale;
+        let scale = self.data.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let tol = crate::psd::SYMMETRY_RTOL * scale;
         for i in 0..self.rows {
             for j in (i + 1)..self.cols {
                 if (self.get(i, j) - self.get(j, i)).abs() > tol {
@@ -173,7 +170,7 @@ impl Matrix {
     /// Requires a symmetric **positive-definite** matrix; a non-positive
     /// pivot (indefinite or exactly singular input, e.g. a zero-variance
     /// factor or perfectly correlated factors) returns
-    /// [`EqVarError::Numerical`] — use [`Matrix::cholesky_jitter`] for the
+    /// [`EqVarError::Numerical`]: use [`Matrix::cholesky_jitter`] for the
     /// production fallback.
     pub fn cholesky(&self) -> Result<Matrix> {
         if self.rows != self.cols {
@@ -219,8 +216,19 @@ impl Matrix {
         Ok(l)
     }
 
-    /// Cholesky with diagonal-jitter fallback (the `safe_cholesky` of the
-    /// Python reference).
+    /// Cholesky with jitter and optional PSD repair: see
+    /// [`crate::psd::cholesky_repair`]. The jitter actually used is in the
+    /// returned [`CholeskyFactor::jitter`].
+    ///
+    /// # Errors
+    /// See [`crate::psd::cholesky_repair`].
+    pub fn cholesky_repair(&self, repair: PsdRepair) -> Result<CholeskyFactor> {
+        crate::psd::cholesky_repair(self, repair)
+    }
+
+    /// Old Cholesky with diagonal-jitter fallback, kept for one release.
+    /// It does not report the jitter it used; use
+    /// [`Matrix::cholesky_repair`].
     ///
     /// If plain Cholesky fails, `jitter * mean(diag)` is added to the
     /// diagonal, escalating by 10x up to `max_tries` times. The
@@ -234,7 +242,7 @@ impl Matrix {
     /// [`MAX_RELATIVE_JITTER`] times the mean variance, and a
     /// [`EqVarError::Numerical`] naming the required jitter is returned
     /// instead. Without that cap the ladder `1e-10 * 10^k`, `k < 12`,
-    /// reaches ten *times* the mean variance — at which point the factor
+    /// reaches ten *times* the mean variance: at which point the factor
     /// being returned is no longer a factor of the caller's covariance in
     /// any useful sense, and the simulated risk would be materially
     /// inflated with no diagnostic. A matrix that needs more than a
@@ -242,9 +250,13 @@ impl Matrix {
     /// block, a mis-signed factor loading, a shrinkage step that was
     /// skipped) and must be surfaced, not patched.
     ///
-    /// PSD-but-singular covariances — a riskless leg, two perfectly
-    /// correlated factors — are repaired at the very first rung
+    /// PSD-but-singular covariances (a riskless leg, two perfectly
+    /// correlated factors) are repaired at the very first rung
     /// (`1e-10 * mean(diag)`) and are unaffected.
+    #[deprecated(
+        since = "0.2.0",
+        note = "use cholesky_repair, which reports the jitter"
+    )]
     pub fn cholesky_jitter(&self, jitter: f64, max_tries: usize) -> Result<Matrix> {
         match self.cholesky() {
             Ok(l) => return Ok(l),
@@ -283,7 +295,7 @@ impl Matrix {
             eps *= 10.0;
         }
         Err(EqVarError::Numerical(format!(
-            "Cholesky failed with a diagonal jitter of up to {MAX_RELATIVE_JITTER:e} x              mean(diag) = {cap:e}; the covariance matrix is materially indefinite, not              merely singular. Repairing it with a larger jitter would inflate the              simulated risk without any diagnostic — fix the covariance instead              (shrinkage, nearest-PSD projection, or removing the offending factor)."
+            "Cholesky failed with a diagonal jitter of up to {MAX_RELATIVE_JITTER:e} x              mean(diag) = {cap:e}; the covariance matrix is materially indefinite, not              merely singular. Repairing it with a larger jitter would inflate the              simulated risk without any diagnostic: fix the covariance instead              (shrinkage, nearest-PSD projection, or removing the offending factor)."
         )))
     }
 }
@@ -305,7 +317,7 @@ pub fn sample_covariance(returns: &Matrix) -> Result<Matrix> {
     }
     if !returns.all_finite() {
         return Err(EqVarError::InvalidInput(
-            "return panel contains NaN or infinite values; a single missing              observation would otherwise turn the whole covariance — and every              VaR derived from it — into a silent NaN"
+            "return panel contains NaN or infinite values; a single missing              observation would otherwise turn the whole covariance, and every              VaR derived from it, into a silent NaN"
                 .to_string(),
         ));
     }
@@ -345,7 +357,7 @@ pub fn sample_covariance(returns: &Matrix) -> Result<Matrix> {
 ///
 /// `Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'`, seeded with the
 /// sample covariance and iterated over **every** row of the panel (zero
-/// mean assumed, standard at daily horizon) — identical to the Python
+/// mean assumed, standard at daily horizon): identical to the Python
 /// reference `eq_var.parametric_var.ewma_covariance`.
 pub fn ewma_covariance(returns: &Matrix, lam: f64) -> Result<Matrix> {
     if !(lam > 0.0 && lam < 1.0) {

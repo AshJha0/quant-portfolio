@@ -1,17 +1,27 @@
 """Event-driven intraday FX backtester with session costs and carry.
 
-No-lookahead is structural: the position indexed at bar ``t`` earns the
-``t -> t+1`` close-to-close move, i.e. the P&L booked at bar ``t`` is
-``pos_{t-1} * (close_t - close_{t-1})``.  Trading costs are charged at
-the bar where the position *changes*, at half the session-dependent
-quoted spread.  Carry accrues at the daily rollover (5pm NY = 21:00
-London here) to the position held across it.
+Execution convention (shared by every alpha project in the repository):
+signals use data up to the close of period t. Orders fill at a modelled
+t+1 price, ``p_t + f (p_{t+1} - p_t)`` with ``f = 0.5`` by default; a
+close-auction variant fills at ``p_t`` and pays an auction cost.
+
+In bar terms, with ``d = close_{t+1} - close_t``, the P&L booked at bar
+``t+1`` is ``pos_{t-1} * f * d + pos_t * (1 - f) * d``: the old position
+is still held until the fill, the new one from the fill onwards. The
+trade pays half the session spread of bar ``t+1`` (the bar it fills in).
+In ``close_auction`` mode the P&L is ``pos_t * d`` and the trade, booked
+at bar ``t``, pays half the bar-``t`` spread plus ``auction_cost_bp`` of
+the price. For an hourly FX bar "close auction" means filling at the
+decision bar's close mid with an extra immediacy cost; there is no FX
+auction. Carry accrues at the daily rollover (5pm NY = 21:00 London
+here) to the position held across it, time-weighted by ``f`` when the
+position changes inside the bar.
 
 Units
 -----
 * Positions: base-currency notional units (1.0 = 1 unit of base).
 * ``*_quote`` columns: quote-currency P&L per unit base notional.
-* ``*_pips`` columns: quote P&L divided by ``pip_size`` — "pips earned
+* ``*_pips`` columns: quote P&L divided by ``pip_size``: "pips earned
   per unit of position", the desk-standard intraday metric.
 * Base-ccy P&L (CONVENTIONS.md: P&L reported in base ccy where needed)
   is ``net_quote / close`` and provided as ``net_base``.
@@ -28,7 +38,50 @@ import pandas as pd
 
 from .sessions import session_of_hour
 
-__all__ = ["BacktestConfig", "IntradayBacktester", "information_coefficient"]
+from .research_stats import lo_sharpe_se
+
+__all__ = [
+    "BacktestConfig",
+    "ExecutionConfig",
+    "IntradayBacktester",
+    "information_coefficient",
+    "BARS_PER_YEAR",
+]
+
+#: Hourly bars per year used for annualisation: 24 bars x 261 weekdays.
+#: Session-filtered zero-position bars are included in the count.
+BARS_PER_YEAR = 24.0 * 261.0
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """When and at what price a decision taken at the close of bar t fills.
+
+    Attributes
+    ----------
+    mode : {"next", "close_auction"}
+        ``"next"`` fills at ``p_t + f (p_{t+1} - p_t)``. ``"close_auction"``
+        fills at ``p_t`` and charges ``auction_cost_bp`` extra.
+    fill_fraction : float
+        ``f`` in (0, 1]. 1.0 is the next bar's close.
+    auction_cost_bp : float
+        Extra cost per unit traded notional in ``close_auction`` mode, in
+        basis points of price. 0.5 bp is about 0.55 pips on EURUSD at 1.10.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("next", "close_auction"):
+            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
+        f = float(self.fill_fraction)
+        if not np.isfinite(f) or not (0.0 < f <= 1.0):
+            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
+        c = float(self.auction_cost_bp)
+        if not np.isfinite(c) or c < 0:
+            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
 
 
 @dataclass(frozen=True)
@@ -77,6 +130,7 @@ class IntradayBacktester:
         bars: pd.DataFrame,
         positions: pd.Series,
         carry: pd.Series | None = None,
+        execution: ExecutionConfig | None = None,
     ) -> tuple[pd.DataFrame, dict]:
         """Run the backtest.
 
@@ -91,6 +145,8 @@ class IntradayBacktester:
         carry : pandas.Series, optional
             Per-bar annualised rate differential ``r_base - r_quote``;
             defaults to the constant configured rates.
+        execution : ExecutionConfig, optional
+            Fill convention; default ``ExecutionConfig()`` (next, f = 0.5).
 
         Returns
         -------
@@ -99,7 +155,8 @@ class IntradayBacktester:
             ``cost_quote``, ``carry_quote``, ``net_quote``, ``gross_pips``,
             ``cost_pips``, ``carry_pips``, ``net_pips``, ``net_base``,
             ``cum_net_pips``.  ``summary`` aggregates in pips plus a
-            per-bar Sharpe annualised at ``24*261`` bars/year.
+            per-bar Sharpe annualised at ``BARS_PER_YEAR`` bars/year with
+            its Lo/Newey-West standard error (``sharpe_se``).
 
         Raises
         ------
@@ -116,15 +173,31 @@ class IntradayBacktester:
         hour = bars["hour"].to_numpy(dtype=float) % 24.0
         n = len(bars)
 
-        pos_prev = np.concatenate([[0.0], pos[:-1]])
+        ex = execution if execution is not None else ExecutionConfig()
+        if not np.all(np.isfinite(close)):
+            raise ValueError("bars close contains NaN/inf")
+        pos_prev = np.concatenate([[0.0], pos[:-1]])    # decided at t-1
+        pos_prev2 = np.concatenate([[0.0, 0.0], pos[:-2]])[:n]  # decided at t-2
         dmid = np.concatenate([[0.0], np.diff(close)])
-        gross_q = pos_prev * dmid
+        spread_hs = 0.5 * self._spread_pips(hour) * cfg.pip_size
+        close_prev = np.concatenate([[np.nan], close[:-1]])
 
-        # Trade at the close of bar t when the target changes; pay half the
-        # session spread of the bar-t session.
-        turnover = np.abs(pos - pos_prev)
-        half_spread_price = 0.5 * self._spread_pips(hour) * cfg.pip_size
-        cost_q = turnover * half_spread_price
+        if ex.mode == "next":
+            f = ex.fill_fraction
+            # Bar t books the move close_{t-1} -> close_t. The position
+            # decided at t-1 fills at close_{t-1} + f * dmid_t; until then
+            # the position decided at t-2 is held.
+            held = f * pos_prev2 + (1.0 - f) * pos_prev
+            gross_q = pos_prev2 * f * dmid + pos_prev * (1.0 - f) * dmid
+            turnover = np.abs(pos_prev - pos_prev2)
+            cost_q = turnover * spread_hs
+            fill_price = close_prev + f * dmid
+        else:
+            held = pos_prev
+            gross_q = pos_prev * dmid
+            turnover = np.abs(pos - pos_prev)
+            cost_q = turnover * (spread_hs + ex.auction_cost_bp * 1e-4 * close)
+            fill_price = close.copy()
 
         # Carry accrues at bar t if the holding interval (t-1, t] contains
         # the rollover instant, to the position held over that interval.
@@ -136,9 +209,8 @@ class IntradayBacktester:
             if not bars.index.equals(carry.index):
                 raise ValueError("carry index must equal bars index")
             carry_rate = carry.to_numpy(dtype=float)
-        close_prev = np.concatenate([[np.nan], close[:-1]])
         carry_q = np.where(
-            crossed, pos_prev * close_prev * carry_rate / cfg.days_per_year, 0.0
+            crossed, held * close_prev * carry_rate / cfg.days_per_year, 0.0
         )
         carry_q = np.nan_to_num(carry_q)
 
@@ -148,6 +220,7 @@ class IntradayBacktester:
             {
                 "close": close,
                 "pos": pos,
+                "fill_price": np.where(turnover > 0, fill_price, np.nan),
                 "gross_quote": gross_q,
                 "cost_quote": cost_q,
                 "carry_quote": carry_q,
@@ -172,7 +245,8 @@ class IntradayBacktester:
             "net_base": float(ledger["net_base"].sum()),
             "n_trades": int((turnover > 0).sum()),
             "turnover": float(turnover.sum()),
-            "sharpe_ann": float(net.mean() / sd * np.sqrt(24.0 * 261.0)) if sd > 0 else 0.0,
+            "sharpe_ann": float(net.mean() / sd * np.sqrt(BARS_PER_YEAR)) if sd > 0 else 0.0,
+            "sharpe_se": float(lo_sharpe_se(net, BARS_PER_YEAR)) if sd > 0 and n >= 3 else float("nan"),
             "hit_rate": float((net[net != 0] > 0).mean()) if (net != 0).any() else 0.0,
         }
         return ledger, summary

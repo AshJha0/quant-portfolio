@@ -41,7 +41,7 @@ def test_matches_sklearn_to_1e6() -> None:
 
 
 def test_standard_errors_match_analytic_fisher() -> None:
-    # SEs must equal sqrt(diag((X'WX)^{-1})) at the MLE — computed
+    # SEs must equal sqrt(diag((X'WX)^{-1})) at the MLE: computed
     # independently here (statsmodels-style analytic covariance).
     beta = np.array([0.5, -0.8])
     X, y = _simulate(20_000, beta, b0=-1.5, seed=8)
@@ -207,3 +207,21 @@ def test_points_table_sums_to_score() -> None:
         match = sub.iloc[(sub["woe"] - w).abs().argmin()]
         total += match["points"]
     assert total == pytest.approx(expected_score, abs=1e-6)
+
+
+def test_stepwise_raises_on_non_converged_fit(monkeypatch) -> None:
+    import dataclasses
+
+    import eq_credit.model as m
+
+    real = m.fit_logistic
+
+    def not_converged(*a, **k):
+        return dataclasses.replace(real(*a, **k), converged=False)
+
+    monkeypatch.setattr(m, "fit_logistic", not_converged)
+    rng = np.random.default_rng(0)
+    x = pd.DataFrame({"a": rng.normal(size=500), "b": rng.normal(size=500)})
+    y = (rng.uniform(size=500) < 1 / (1 + np.exp(1.5 - x["a"]))).astype(float)
+    with pytest.raises(ValueError, match="did not converge"):
+        m.stepwise_select(x, y, {"a": 0.3, "b": 0.1})

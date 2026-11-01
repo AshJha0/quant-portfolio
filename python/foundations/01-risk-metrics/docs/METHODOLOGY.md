@@ -1,4 +1,4 @@
-# Methodology — Single-Asset Equity Risk Metrics
+# Methodology: Single-Asset Equity Risk Metrics
 
 This document answers documentation-contract items 1 and 2: **why these
 methods** (against alternatives, with trade-offs) and **what assumptions we
@@ -11,7 +11,7 @@ are reported as **positive numbers representing a loss** at a stated
 confidence level and a 1-day horizon (e.g. "VaR 95% = 2.1%" means "on the
 worst 5% of days you lose at least 2.1% of position value").
 
-The point of this project is not the arithmetic — every metric here is a
+The point of this project is not the arithmetic, every metric here is a
 few lines of NumPy/SciPy. The point is that **different, individually
 reasonable methods give different answers on the same data**, and knowing
 *why* (which assumption each one leans on, and where that assumption
@@ -54,12 +54,12 @@ baseline everything else is compared against; many finance formulas
 (Sharpe, Black-Scholes) are written in terms of "the" volatility and this
 is the estimator implicitly meant when no further qualification is given.
 
-**Alternative:** none needed as a baseline — but note it is *not* a good
+**Alternative:** none needed as a baseline, but note it is *not* a good
 forecast of tomorrow's volatility on its own; see below.
 
 ### 2.2 Rolling window (21-day)
 
-`rolling_volatility(returns, window=21)` — equal-weighted standard
+`rolling_volatility(returns, window=21)`, equal-weighted standard
 deviation over the trailing month.
 
 **Why include it.** Reflects "the current regime" rather than the
@@ -70,20 +70,24 @@ when they say "vol's been running at 15 lately".
 reacts faster but is noisier (fewer degrees of freedom); a longer window
 (63d, one quarter) is smoother but slower to reflect a regime change.
 21 days is a conventional middle ground, not a theoretically derived
-optimum — this is a real, documented arbitrariness in the estimator.
+optimum, this is a real, documented arbitrariness in the estimator.
 
 ### 2.3 EWMA (RiskMetrics, λ = 0.94)
 
-`sigma_t^2 = (1-λ) r_t^2 + λ sigma_{t-1}^2`, seeded at the first
-observation, then annualised.
+RiskMetrics zero-mean recursion:
+`sigma_t^2 = λ sigma_{t-1}^2 + (1-λ) r_{t-1}^2`, so `sigma_t` uses only
+returns up to day `t-1` and is a one-step-ahead forecast. The seed
+`sigma_0^2` is the mean of `r^2` over the first `seed_window = min(30, n)`
+observations. The seed looks ahead by at most those 30 days and no
+further. The result is annualised by `sqrt(252)`. No mean is subtracted.
 
 **Why include it.** All of history matters, but recent history matters
-exponentially more — this is the simplest model that adapts to a
+exponentially more, this is the simplest model that adapts to a
 volatility regime shift without a hard window cutoff, and it is the
 industry-standard convention (RiskMetrics 1994, λ=0.94 daily, λ=0.97
 monthly) that a risk report is expected to at least mention.
 
-**Assumption:** `λ` is fixed, not estimated from data — a genuine GARCH(1,1)
+**Assumption:** `λ` is fixed, not estimated from data, a genuine GARCH(1,1)
 model would estimate the equivalent persistence parameter by maximum
 likelihood. EWMA is GARCH(1,1) with the constant term fixed to zero and
 the persistence hand-set to 0.94; that is a *deliberate* simplification
@@ -102,18 +106,22 @@ reasonably long history) vs EWMA's zero-parameters-to-estimate simplicity.
 
 **When they disagree:** if EWMA/rolling vol diverges sharply from the
 full-sample figure, the unconditional number is describing a market that
-no longer exists — see `docs/VALIDATION.md` for a concrete measured
+no longer exists, see `docs/VALIDATION.md` for a concrete measured
 example on the bundled synthetic data.
 
 ## 3. Value at Risk: three methods
 
 All three answer "what daily loss is exceeded with probability
-`1 - confidence`?" — they differ only in what they assume about the
+`1 - confidence`?", they differ only in what they assume about the
 *shape* of the return distribution.
 
 ### 3.1 Historical (empirical)
 
-`VaR = -percentile(returns, 100*(1-confidence))`.
+Losses `L = -r` are sorted from largest to smallest. With
+`alpha = 1 - confidence`, `k = n * alpha` and `m = ceil(k)` clamped to
+`[1, n]`, `VaR = L(m)`, the m-th largest loss. There is no
+interpolation. Example: `n = 250`, 99 %: `k = 2.5`, `m = 3`, VaR is the
+third largest loss.
 
 **Why include it.** Zero distributional assumption: whatever shape the
 realised returns actually have (fat tails, skew, whatever) is exactly
@@ -123,12 +131,11 @@ can be wrong.
 
 **Assumption A-VaR1: the sample window is representative of the future.**
 *What breaks if violated:* a calm sample understates future risk (this is
-exactly what happened industry-wide going into 2008 — trailing-window
+exactly what happened industry-wide going into 2008, trailing-window
 historical VaR built on the "Great Moderation" understated the risk that
 then materialised); a stressed sample overstates it going forward once
-the regime normalises. It is also a single order statistic (or an
-interpolation between two) at high confidence in a short sample, so it is
-a genuinely noisy estimator when `n` is small — quantified in
+the regime normalises. It is also a single order statistic at high confidence in a short sample, so it is
+a noisy estimator when `n` is small, quantified in
 `docs/VALIDATION.md`.
 
 **Alternative not implemented: filtered historical simulation.** Rescale
@@ -151,19 +158,19 @@ and it requires enough history to fit reliably.
 
 `VaR = -(mu + sigma * z)`, `z = Phi^{-1}(1 - confidence)`.
 
-**Why include it — deliberately, to demonstrate its failure.** It is the
+**Why include it, , to demonstrate its failure.** It is the
 fastest VaR to compute (closed form, trivially extends to portfolios via
 a covariance matrix) and it is what "VaR" meant historically (J.P.
 Morgan's original RiskMetrics). Daily equity returns have excess
 kurtosis, so this method **systematically understates** tail risk at high
-confidence — the whole point of shipping it next to historical VaR is to
+confidence, the whole point of shipping it next to historical VaR is to
 make that gap visible and quantified rather than asserted.
 
 **Assumption A-VaR2: returns ~ Normal(mu, sigma).** *What breaks if
 violated:* every real daily-return sample used in this project's tests
 and examples rejects normality via Jarque-Bera (see §5 below), and the
 Gaussian VaR is measurably below historical VaR at 99% on the bundled
-synthetic data (quantified in `docs/VALIDATION.md`) — precisely because
+synthetic data (quantified in `docs/VALIDATION.md`), precisely because
 the normal distribution assigns too little probability mass to extreme
 days.
 
@@ -185,7 +192,7 @@ excess kurtosis.
 quantile function (fast, extends to portfolios), but corrects the
 Gaussian quantile using the sample's own skew and kurtosis via an
 Edgeworth-style expansion. When `s = k = 0` it collapses **exactly** to
-the Gaussian formula (tested to 1e-12 in `tests/test_var_es.py`) — a
+the Gaussian formula (tested to 1e-12 in `tests/test_var_es.py`), a
 useful sanity check on the implementation and a clean illustration of
 "Cornish-Fisher generalises Gaussian, it doesn't replace it".
 
@@ -196,9 +203,21 @@ with heavily fat-tailed data, the implied quantile function can become
 non-monotonic and the "corrected" VaR can actually be worse than the
 plain Gaussian number. It is also unstable when skew/kurtosis are
 themselves estimated from a small sample (both are higher-moment
-statistics with high sampling variance) — a Cornish-Fisher VaR computed
+statistics with high sampling variance), a Cornish-Fisher VaR computed
 on 30 days of data is dominated by estimation noise in `s` and `k`, not
 signal.
+
+**Domain check.** `var_cornish_fisher` raises `ValueError` unless
+`cornish_fisher_valid(skew, ex_kurt, alpha)` holds, with
+`alpha = 1 - confidence`. The check: with `z_a = Phi^{-1}(1 - alpha)`,
+the map `g(z)` must have `g'(z) > 0` on the closed interval
+`[-z_a, z_a]`. `g'` is a quadratic in `z`, so the minimum is at an
+endpoint or at the vertex when the vertex is inside. Examples: at 99 %
+(`z_a = 2.326`), `(S, K) = (0.122, -0.427)` is valid. Its derivative
+dips below zero only near `z = -4`, which is outside the interval.
+`(S, K) = (1, 1)` is valid at 99 % and invalid at 99.9 %. On the bundled
+synthetic data (`S = -0.51`, `K = 9.28`) the check fails at both 95 % and
+99 %, so the pipeline reports no Cornish-Fisher VaR for that sample.
 
 **Alternative not implemented: full non-parametric extreme value theory
 (EVT / Peaks-over-Threshold with a fitted Generalized Pareto
@@ -210,41 +229,56 @@ extrapolate beyond the observed sample (e.g. 99.9% VaR from 5 years of
 daily data, where the empirical quantile is only 1-2 observations).
 Trade-off: threshold selection is itself a modelling decision with no
 single right answer, and small tail samples make the GPD shape parameter
-noisy — exactly the instability Cornish-Fisher has, but with a much
+noisy, exactly the instability Cornish-Fisher has, but with a much
 larger machinery cost to fix it properly.
 
 ## 4. Expected Shortfall
 
-`ES = -mean(returns | returns <= -VaR_historical(confidence))`.
+Acerbi-Tasche estimator, with the same `L`, `k` and `m` as §3.1:
 
-**Why include it.** VaR answers "where does the tail start"; ES answers
-"how bad is it once you're in the tail". Two portfolios can have
-identical VaR and very different ES (a cliff-edge loss distribution vs a
-long, thin tail) — VaR alone cannot distinguish them, which is precisely
-why post-Basel III/FRTB regulatory capital has shifted from VaR to ES.
+`ES = [ L(1) + ... + L(m-1) + (k - (m-1)) * L(m) ] / k`.
 
-**Why ES is *coherent* and VaR is not.** A risk measure is coherent if it
-is sub-additive: `risk(A+B) <= risk(A) + risk(B)` (diversification never
-increases risk). VaR can violate this for non-elliptical distributions
-(a classic textbook counterexample combines two assets with a small
-probability of a large joint loss); ES is provably sub-additive for any
-distribution. This project is single-asset, so sub-additivity across
-positions is not directly demonstrated here, but it is the standard
-argument for preferring ES over VaR as a portfolio risk *limit* — see
-`docs/DESK_GUIDE.md`.
+It is the average of the worst `k` losses. When `k` is not a whole
+number, the boundary loss `L(m)` gets the fractional weight `k - (m-1)`.
+Example: `n = 250`, 99 %: `k = 2.5`, so
+`ES = (L(1) + L(2) + 0.5 * L(3)) / 2.5`. Because it averages losses that
+are all at least `L(m)`, `ES >= VaR` holds for every sample.
 
-**Assumption:** same representativeness assumption as historical VaR
-(§3.1), plus ES additionally *averages over the tail*, which can be very
-few observations at 99% confidence in a short sample — a 250-day sample
-has only ~2-3 observations beyond the 99% historical VaR threshold, so
-the ES estimate itself is noisy even when VaR looks stable. Property-
-tested in `tests/test_var_es.py` (`ES >= VaR` always holds by
-construction, for any sample).
+**Why include it.** VaR answers "where does the tail start". ES answers
+"how bad is it once you are in the tail". Two portfolios can have the
+same VaR and very different ES (a cliff-edge loss distribution against a
+long thin tail). This is one reason FRTB moved regulatory capital from
+VaR to ES.
+
+**Coherence.** A risk measure `rho` is coherent (Artzner et al., 1999)
+when it is:
+
+- monotone: if `X <= Y` in every state, `rho(X) >= rho(Y)`;
+- translation invariant: `rho(X + c) = rho(X) - c` for cash `c`;
+- positively homogeneous: `rho(lambda X) = lambda rho(X)` for `lambda >= 0`;
+- subadditive: `rho(X + Y) <= rho(X) + rho(Y)`.
+
+ES, as a functional of the distribution, has all four. VaR is not
+subadditive in general. The Acerbi-Tasche formula above is the ES of the
+empirical distribution, so it keeps all four properties for positions
+evaluated on the same scenarios. The older "mean of returns below -VaR"
+estimator does not: with ties at the VaR level it can break
+subadditivity. The estimator is still a sample statistic. Coherence of
+the estimator says nothing about its sampling error. This project is
+single-asset, so subadditivity across positions is not exercised here.
+
+**Assumption:** the same representativeness assumption as historical VaR
+(§3.1). ES also averages over very few points: a 250-day sample at 99 %
+uses 2.5 observations. The ES estimate is noisy even when VaR looks
+stable. `tests/test_conventions.py` checks the formula by hand, including
+the fractional weight and ties.
 
 ## 5. Sharpe and Sortino ratios
 
 `Sharpe = mean(excess) / std(excess) * sqrt(252)`,
-`Sortino = mean(excess) / std(excess[excess<0]) * sqrt(252)`, where
+`Sortino = mean(excess) / DD * sqrt(252)` with downside deviation
+`DD = sqrt(mean(min(excess, 0)^2))` taken over **all** observations
+(target 0), where
 `excess = returns - rf_daily` and `rf_daily = (1+rf_annual)^(1/252) - 1`.
 
 **Why both.** Sharpe penalises all volatility, upside and downside alike;
@@ -272,7 +306,7 @@ Sharpe ratio,** which scales by an effective sample size that accounts
 for serial correlation in returns rather than assuming i.i.d. `sqrt(252)`
 scaling. More correct for autocorrelated return series (e.g. anything
 with stale marks or momentum), at the cost of estimating the
-autocorrelation structure itself — another noisy, small-sample-unstable
+autocorrelation structure itself, another noisy, small-sample-unstable
 input.
 
 ## 6. Jarque-Bera normality test
@@ -284,13 +318,13 @@ kurtosis.
 **Why include it.** It is the standard formal test for "should I trust a
 Gaussian assumption here", and it directly targets the two moments
 (skew, kurtosis) that Gaussian VaR ignores and Cornish-Fisher VaR
-corrects for — it is the diagnostic that justifies (or doesn't) using
+corrects for, it is the diagnostic that justifies (or doesn't) using
 §3.2 over §3.1/§3.3.
 
 **Assumption A-JB1: the chi-squared(2) reference distribution is
 asymptotic.** *What breaks if violated:* in small samples (tens to low
 hundreds of observations) the test has poor size (over-rejects the null
-more often than the nominal 5%) and low power — a rejection on a 40-day
+more often than the nominal 5%) and low power, a rejection on a 40-day
 sample should be treated with real caution, not as decisive evidence.
 
 **Alternative not implemented: Shapiro-Wilk or Anderson-Darling.**
@@ -299,7 +333,7 @@ asymptotic approximation; Anderson-Darling weights the tails more heavily,
 which is arguably more relevant for a VaR/ES use case where the tails are
 exactly what's being measured. Jarque-Bera is used here because it is the
 test conventionally paired with a skewness/kurtosis-based VaR correction
-(Cornish-Fisher) — the diagnostic and the correction share the same two
+(Cornish-Fisher), the diagnostic and the correction share the same two
 input moments, which makes the story in the report self-consistent.
 
 ---
@@ -325,7 +359,7 @@ against the rate the data actually delivered.
 **Why Kupiec first.** It tests the one property the confidence level
 literally promises (unconditional coverage), it needs nothing but a
 sequence of returns and the VaR that was quoted against them, and its
-statistic has a closed form that can be checked by hand — which is exactly
+statistic has a closed form that can be checked by hand, which is exactly
 what `tests/test_backtest.py` does, against an independently computed
 value. On the bundled data it delivers the project's sharpest result: the
 Gaussian 99% VaR is **rejected** (60 exceptions against 25.2 expected)
@@ -335,7 +369,7 @@ optimistic" from an assertion into a measurement.
 **Assumption A-BT1: the chi-squared(1) reference distribution is
 asymptotic.** *What breaks if violated:* on the ~250-day window a desk
 typically uses, a 99% VaR generates only ~2.5 expected exceptions, and the
-test has very low power — it fails to reject models that are badly wrong.
+test has very low power, it fails to reject models that are badly wrong.
 Pinned as a test: at `n=250`, **twice** the nominal exception rate is not
 rejected at 5%. Do not read a Kupiec pass on a one-year window as evidence
 the model is good; read a Kupiec *failure* as strong evidence it is bad.
@@ -343,7 +377,7 @@ the model is good; read a Kupiec *failure* as strong evidence it is bad.
 **Assumption A-BT2: exceptions are independent.** *What breaks if
 violated:* the test counts exceptions and ignores when they happened, so a
 model that produces every one of its exceptions in a single stressed
-fortnight — the signature of a model blind to volatility regimes — passes
+fortnight, the signature of a model blind to volatility regimes, passes
 Kupiec with a perfect score. Demonstrated directly in
 `test_kupiec_is_blind_to_clustering_by_construction`, which shows five
 spread-out and five consecutive exceptions producing an identical
@@ -357,14 +391,14 @@ coverage test combines that with Kupiec's into a single `chi-squared(2)`
 statistic. This is the natural completion of the backtest and the reason
 this module documents itself as covering only half the problem. It is not
 implemented here because it wants a *rolling out-of-sample* VaR forecast to
-be interesting — which is a backtest engine, i.e. the companion
+be interesting, which is a backtest engine, i.e. the companion
 `python/equity/03-var-es-engine` project, not a metrics kernel.
 
 **Alternative not implemented: Basel's traffic-light approach.** Rather
 than a p-value, count exceptions over 250 days and bucket the result into
 green (0-4), amber (5-9) or red (10+), with a capital multiplier attached
-to the bucket. It is a blunt instrument by design — it exists precisely
-because the asymptotic tests have so little power at n=250 — and it is a
+to the bucket. It is a blunt instrument by design, it exists precisely
+because the asymptotic tests have so little power at n=250, and it is a
 supervisory capital rule rather than a statistical test, so it belongs in
 a regulatory-reporting layer, not here.
 
@@ -385,14 +419,14 @@ than VaR: it is the better *risk measure* and the worse *testable* one.
 | # | Assumption | What breaks if violated |
 |---|---|---|
 | A1 | Returns are i.i.d. for `sqrt(T)` scaling (full-sample vol, Sharpe/Sortino annualisation). | Real returns cluster (autocorrelated squared returns) and can be serially correlated in levels; `sqrt(252)` over/understates true annualised risk/return. Directly motivates rolling/EWMA vol (§2) and is the reason a single unconditional vol number is a blunt instrument. |
-| A2 | Historical VaR/ES: the sample window is representative of the future. | Calm sample understates forward risk (pre-2008-style complacency); stressed sample overstates it once the regime normalises. Small samples make the empirical quantile (and especially the ES tail average) noisy — quantified with a 5-day example in `docs/VALIDATION.md`. |
-| A3 | Gaussian VaR: returns are exactly Normal(mu, sigma). | Excess kurtosis (fat tails) in real daily equity returns means Gaussian VaR understates 99%+ tail risk — the gap is measured directly against historical VaR in `docs/VALIDATION.md`. |
-| A4 | Cornish-Fisher VaR: skew/kurtosis corrections are a valid *local* expansion. | Breaks down (non-monotonic implied quantile, worse than plain Gaussian) at extreme confidence or heavy fat tails; unstable when `s`,`k` are estimated from small samples. |
-| A5 | EWMA: `lambda=0.94` is a reasonable fixed decay for this asset — no mean reversion, no fitted persistence. | A true GARCH(1,1) with mean reversion (see companion `02-volatility-modeling` project) would adapt the persistence to the data instead of assuming it; EWMA volatility can drift arbitrarily far from any long-run average since it has no `omega` term pulling it back. |
+| A2 | Historical VaR/ES: the sample window is representative of the future. | Calm sample understates forward risk (pre-2008-style complacency); stressed sample overstates it once the regime normalises. Small samples make the empirical quantile (and especially the ES tail average) noisy, quantified with a 5-day example in `docs/VALIDATION.md`. |
+| A3 | Gaussian VaR: returns are exactly Normal(mu, sigma). | Excess kurtosis (fat tails) in real daily equity returns means Gaussian VaR understates 99%+ tail risk, the gap is measured directly against historical VaR in `docs/VALIDATION.md`. |
+| A4 | Cornish-Fisher VaR: skew/kurtosis corrections are a valid *local* expansion. | Breaks down (non-monotonic implied quantile) at extreme confidence or heavy fat tails; `var_cornish_fisher` raises in that case (§3.3). Unstable when `s`,`k` are estimated from small samples. |
+| A5 | EWMA: `lambda=0.94` is a reasonable fixed decay for this asset, no mean reversion, no fitted persistence. | A true GARCH(1,1) with mean reversion (see companion `02-volatility-modeling` project) would adapt the persistence to the data instead of assuming it; EWMA volatility can drift arbitrarily far from any long-run average since it has no `omega` term pulling it back. |
 | A6 | Constant risk-free rate for Sharpe/Sortino. | A real T-bill series moves; a stale constant misprices excess return, particularly over samples spanning a rate-hiking/cutting cycle. |
-| A7 | Jarque-Bera's chi-squared(2) reference is asymptotically valid. | Poor size/power in small samples (tens to low hundreds of observations) — a rejection (or non-rejection) on a short sample is weaker evidence than the p-value alone suggests. |
-| A8 | Kupiec backtest: chi-squared(1) is asymptotically valid and exceptions are independent. | Very low power at the ~250-day window a desk actually uses (twice the nominal exception rate is not rejected at 5%), and complete blindness to exception clustering — a model that fails only during regime shifts passes. Needs Christoffersen's independence test (§7) to complete. |
-| A9 | Single asset, no portfolio effects. | Real books hold multiple correlated positions; portfolio VaR/ES require a covariance (or copula) model and are *not* simply the sum of single-asset VaRs (in fact ES sub-additivity guarantees the portfolio ES is no worse than the sum — see §4). Out of scope here; see `python/equity/03-var-es-engine`. |
+| A7 | Jarque-Bera's chi-squared(2) reference is asymptotically valid. | Poor size/power in small samples (tens to low hundreds of observations), a rejection (or non-rejection) on a short sample is weaker evidence than the p-value alone suggests. |
+| A8 | Kupiec backtest: chi-squared(1) is asymptotically valid and exceptions are independent. | Very low power at the ~250-day window a desk actually uses (twice the nominal exception rate is not rejected at 5%), and complete blindness to exception clustering, a model that fails only during regime shifts passes. Needs Christoffersen's independence test (§7) to complete. |
+| A9 | Single asset, no portfolio effects. | Real books hold multiple correlated positions; portfolio VaR/ES require a covariance (or copula) model and are *not* simply the sum of single-asset VaRs (in fact ES sub-additivity guarantees the portfolio ES is no worse than the sum, see §4). Out of scope here; see `python/equity/03-var-es-engine`. |
 
 ## 9. Decision rule: which VaR method to trust, when
 
@@ -400,7 +434,7 @@ than VaR: it is the better *risk measure* and the worse *testable* one.
   should roughly agree; use historical as the primary number since it
   makes no shape assumption.
 - **Reporting/limits at 99%+ on daily equity returns:** trust historical
-  or Cornish-Fisher over Gaussian — the fat-tail gap is largest exactly
+  or Cornish-Fisher over Gaussian, the fat-tail gap is largest exactly
   where it matters most for capital.
 - **Very short sample (< ~60 days):** treat all VaR numbers as
   provisional; the historical quantile is a handful of points and
@@ -409,7 +443,7 @@ than VaR: it is the better *risk measure* and the worse *testable* one.
   vol estimate scaled onto a parametric quantile.
 - **Known regime change (EWMA vol far from full-sample vol):** none of
   the three VaR methods here adapts the *quantile shape* to the new
-  regime automatically — only the Gaussian/Cornish-Fisher `sigma` term
+  regime automatically, only the Gaussian/Cornish-Fisher `sigma` term
   does, if you feed it a current (EWMA) volatility rather than the
   full-sample one. This project's `var_parametric`/`var_cornish_fisher`
   take `mu`/`sigma` from the same sample as everything else; a

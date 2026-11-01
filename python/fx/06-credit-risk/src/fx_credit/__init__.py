@@ -8,7 +8,7 @@ Three blocks:
 2. FX settlement (Herstatt) risk: time-zone payment windows, gross vs
    CLS/PvP principal exposure.
 3. Counterparty pre-settlement risk on FX forwards: GBM EE/PFE profiles,
-   netting sets, CVA off the block-1 PD term structure; EL and Basel /
+   netting sets, expected loss on exposure (not a CVA); EL and Basel /
    Vasicek capital.
 """
 
@@ -40,12 +40,15 @@ from .model import (
     RATING_ORDER,
     assign_rating,
     rating_midpoint_pd,
+    ConvergenceWarning,
+    expected_sign_check,
 )
 from .validation import (
     auc,
     gini,
     ks_statistic,
     hosmer_lemeshow,
+    pd_backtest_by_grade,
     HosmerLemeshowResult,
     psi,
     bootstrap_auc_ci,
@@ -56,6 +59,7 @@ from .settlement import (
     FXTrade,
     SettlementExposure,
     at_risk_window_hours,
+    bcbs_window_hours,
     time_zone_gap_matrix,
     settlement_exposure,
     gross_settlement_exposure,
@@ -72,6 +76,8 @@ from .exposure import (
     hazard_from_pd1y,
     pd_term_structure,
     cva,
+    expected_exposure_loss,
+    expected_exposure_loss_for_forward,
     cva_for_forward,
 )
 from .capital import (
@@ -112,11 +118,14 @@ __all__ = [
     "RATING_ORDER",
     "assign_rating",
     "rating_midpoint_pd",
+    "ConvergenceWarning",
+    "expected_sign_check",
     # validation
     "auc",
     "gini",
     "ks_statistic",
     "hosmer_lemeshow",
+    "pd_backtest_by_grade",
     "HosmerLemeshowResult",
     "psi",
     "bootstrap_auc_ci",
@@ -126,6 +135,7 @@ __all__ = [
     "FXTrade",
     "SettlementExposure",
     "at_risk_window_hours",
+    "bcbs_window_hours",
     "time_zone_gap_matrix",
     "settlement_exposure",
     "gross_settlement_exposure",
@@ -141,6 +151,8 @@ __all__ = [
     "hazard_from_pd1y",
     "pd_term_structure",
     "cva",
+    "expected_exposure_loss",
+    "expected_exposure_loss_for_forward",
     "cva_for_forward",
     # capital
     "SOVEREIGN_RHO",

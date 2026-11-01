@@ -4,7 +4,7 @@
 //! investor can replicate the forward by borrowing domestic cash, buying
 //! spot foreign currency and depositing it at `r_f`; absence of arbitrage
 //! forces the forward to the CIP level (abstracting from the
-//! cross-currency basis — see docs/METHODOLOGY.md assumption register).
+//! cross-currency basis: see docs/METHODOLOGY.md assumption register).
 //!
 //! Forward points are quoted as `(F - S)` scaled by the pair's pip factor
 //! (1e4 for most pairs, 1e2 for JPY-quoted pairs).
@@ -24,9 +24,9 @@ pub const PIP_FACTOR_JPY: f64 = 1e2;
 ///
 /// # Arguments
 ///
-/// * `s` — spot rate, domestic per unit foreign, `> 0`.
-/// * `t` — time to delivery in years, `>= 0`.
-/// * `r_d`, `r_f` — domestic / foreign continuously compounded rates
+/// * `s`: spot rate, domestic per unit foreign, `> 0`.
+/// * `t`: time to delivery in years, `>= 0`.
+/// * `r_d`, `r_f`: domestic / foreign continuously compounded rates
 ///   (ACT/365F).
 ///
 /// # Errors
@@ -47,8 +47,8 @@ pub fn cip_forward(s: f64, t: f64, r_d: f64, r_f: f64) -> FxResult<f64> {
 ///
 /// # Arguments
 ///
-/// * `s`, `t`, `r_d`, `r_f` — as in [`cip_forward`].
-/// * `pip_factor` — [`PIP_FACTOR_DEFAULT`] (1e4) for e.g. EURUSD,
+/// * `s`, `t`, `r_d`, `r_f`: as in [`cip_forward`].
+/// * `pip_factor`: [`PIP_FACTOR_DEFAULT`] (1e4) for e.g. EURUSD,
 ///   [`PIP_FACTOR_JPY`] (1e2) for USDJPY.
 ///
 /// Positive when the base currency trades at a forward premium.
@@ -78,11 +78,11 @@ pub fn forward_points(s: f64, t: f64, r_d: f64, r_f: f64, pip_factor: f64) -> Fx
 ///
 /// # Arguments
 ///
-/// * `call_price`, `put_price` — European premiums (domestic ccy per unit
+/// * `call_price`, `put_price`: European premiums (domestic ccy per unit
 ///   foreign) at strike `k`.
-/// * `k` — common strike, `> 0`.
-/// * `t` — time to expiry in years, `>= 0`.
-/// * `r_d` — domestic continuously compounded rate.
+/// * `k`: common strike, `> 0`.
+/// * `t`: time to expiry in years, `>= 0`.
+/// * `r_d`: domestic continuously compounded rate.
 ///
 /// # Errors
 ///

@@ -7,7 +7,9 @@ Conventions
 * A **scenario** is a vector of factor moves, one entry per risk factor, in the
   order of ``Portfolio.factor_names``:
 
-  - price factors: simple (arithmetic) return, e.g. ``-0.05`` = -5 %;
+  - price factors: simple (arithmetic) return, e.g. ``-0.05`` = -5 %
+    (Monte Carlo simulates log returns and converts them, see
+    ``monte_carlo_var``);
   - vol factors: *absolute* change in implied vol, e.g. ``+0.10`` = +10 vol pts.
 
 * P&L is in currency units (dollars); losses are negative P&L.  VaR/ES
@@ -26,6 +28,8 @@ from typing import Literal, Sequence
 
 import numpy as np
 from scipy.stats import norm
+
+from ._validation import finite_array, finite_scalar
 
 __all__ = [
     "RiskFactor",
@@ -60,6 +64,9 @@ class RiskFactor:
     level: float
 
     def __post_init__(self) -> None:
+        finite_scalar(f"factor {self.name!r} level", self.level)
+        if self.kind not in ("equity", "index", "vol"):
+            raise ValueError(f"factor {self.name!r}: kind must be 'equity', 'index' or 'vol'")
         if self.level < 0:
             raise ValueError(f"factor {self.name!r}: level must be >= 0, got {self.level}")
 
@@ -67,6 +74,49 @@ class RiskFactor:
 # --------------------------------------------------------------------------- #
 # Black-Scholes helpers (self-contained, used for option revaluation)
 # --------------------------------------------------------------------------- #
+def _bs_price_array(spot, strike, tau, rate, div_yield, vol, kind) -> np.ndarray:
+    """Vectorised Black-Scholes price over arrays of ``spot`` and ``vol``.
+
+    Same limits as ``bs_price``: intrinsic value at ``tau = 0``, discounted
+    forward intrinsic value when ``vol``, ``spot`` or ``strike`` is zero.
+    """
+    spot = np.atleast_1d(np.asarray(spot, dtype=float))
+    vol = np.atleast_1d(np.asarray(vol, dtype=float))
+    spot, vol = np.broadcast_arrays(spot, vol)
+    sign = 1.0 if kind == "call" else -1.0
+    if tau == 0.0:
+        return np.maximum(sign * (spot - strike), 0.0)
+    disc_r = np.exp(-rate * tau)
+    fwd = spot * np.exp((rate - div_yield) * tau)
+    degenerate = (vol == 0.0) | (spot == 0.0) | (strike == 0.0)
+    out = disc_r * np.maximum(sign * (fwd - strike), 0.0)
+    ok = ~degenerate
+    if ok.any():
+        s_ok, v_ok = spot[ok], vol[ok]
+        sq = v_ok * np.sqrt(tau)
+        d1 = (np.log(s_ok / strike) + (rate - div_yield + 0.5 * v_ok**2) * tau) / sq
+        d2 = d1 - sq
+        out[ok] = sign * (
+            s_ok * np.exp(-div_yield * tau) * norm.cdf(sign * d1)
+            - strike * disc_r * norm.cdf(sign * d2)
+        )
+    return out
+
+
+def _check_bs_inputs(spot, strike, tau, rate, div_yield, vol, kind) -> None:
+    for name, v in (("spot", spot), ("strike", strike), ("tau", tau), ("rate", rate),
+                    ("div_yield", div_yield), ("vol", vol)):
+        finite_scalar(name, v)
+    if spot < 0 or strike < 0:
+        raise ValueError("spot and strike must be non-negative")
+    if tau < 0:
+        raise ValueError(f"tau must be >= 0, got {tau}")
+    if vol < 0:
+        raise ValueError(f"vol must be >= 0, got {vol}")
+    if kind not in ("call", "put"):
+        raise ValueError(f"kind must be 'call' or 'put', got {kind!r}")
+
+
 def bs_price(
     spot: float,
     strike: float,
@@ -79,31 +129,11 @@ def bs_price(
     """Black-Scholes European option price.
 
     Units: ``rate``/``div_yield`` continuously compounded annualised, ``tau``
-    in years (ACT/365F), ``vol`` annualised log-return vol.  Handles the
+    in years (ACT/365F), ``vol`` annualised log-return vol. Handles the
     ``tau -> 0`` and ``vol -> 0`` limits via intrinsic/forward-intrinsic value.
     """
-    if spot < 0 or strike < 0:
-        raise ValueError("spot and strike must be non-negative")
-    if tau < 0:
-        raise ValueError(f"tau must be >= 0, got {tau}")
-    if vol < 0:
-        raise ValueError(f"vol must be >= 0, got {vol}")
-    sign = 1.0 if kind == "call" else -1.0
-    if tau == 0.0:
-        return max(sign * (spot - strike), 0.0)
-    if vol == 0.0 or spot == 0.0 or strike == 0.0:
-        fwd = spot * np.exp((rate - div_yield) * tau)
-        return float(np.exp(-rate * tau) * max(sign * (fwd - strike), 0.0))
-    sq = vol * np.sqrt(tau)
-    d1 = (np.log(spot / strike) + (rate - div_yield + 0.5 * vol**2) * tau) / sq
-    d2 = d1 - sq
-    return float(
-        sign
-        * (
-            spot * np.exp(-div_yield * tau) * norm.cdf(sign * d1)
-            - strike * np.exp(-rate * tau) * norm.cdf(sign * d2)
-        )
-    )
+    _check_bs_inputs(spot, strike, tau, rate, div_yield, vol, kind)
+    return float(_bs_price_array(spot, strike, tau, rate, div_yield, vol, kind)[0])
 
 
 def bs_greeks(
@@ -122,6 +152,7 @@ def bs_greeks(
     dict with keys ``delta`` (dV/dS), ``gamma`` (d2V/dS2) and ``vega``
     (dV/dsigma for sigma in decimals).
     """
+    _check_bs_inputs(spot, strike, tau, rate, div_yield, vol, kind)
     if tau <= 0 or vol <= 0 or spot <= 0:
         # Degenerate: delta is a step function, gamma/vega collapse to 0.
         intrinsic_delta = 0.0
@@ -249,8 +280,12 @@ class OptionPosition(Position):
         # full revaluation
         p0 = self.price(s0, v0)
         spots = s0 + ds
+        if np.any(spots < 0.0):
+            raise ValueError(f"{self.name}: a scenario moves {self.underlier} below zero "
+                             "(simple return < -100 %)")
         vols = np.maximum(v0 + dv, 0.0)  # floor implied vol at zero
-        prices = np.array([self.price(s, v) for s, v in zip(spots, vols)])
+        prices = _bs_price_array(spots, self.strike, self.expiry, self.rate, self.div_yield,
+                                 vols, self.kind)
         return self._scale() * (prices - p0)
 
 
@@ -272,6 +307,18 @@ class Portfolio:
     factors: dict[str, RiskFactor] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not self.positions:
+            raise ValueError("book has no positions")
+        for p in self.positions:
+            for fname in ("shares", "contracts", "multiplier", "strike", "expiry", "rate",
+                          "div_yield"):
+                if hasattr(p, fname):
+                    finite_scalar(f"{p.name}.{fname}", getattr(p, fname))
+            if isinstance(p, OptionPosition):
+                if p.strike < 0 or p.expiry < 0:
+                    raise ValueError(f"{p.name}: strike and expiry must be >= 0")
+                if p.kind not in ("call", "put"):
+                    raise ValueError(f"{p.name}: kind must be 'call' or 'put'")
         missing = [
             f for p in self.positions for f in p.factor_names() if f not in self.factors
         ]
@@ -325,7 +372,7 @@ class Portfolio:
         """
         if method not in ("full", "delta_gamma"):
             raise ValueError(f"method must be 'full' or 'delta_gamma', got {method!r}")
-        scen = np.atleast_2d(np.asarray(scenarios, dtype=float))
+        scen = finite_array("scenarios", scenarios, ndim=2, min_size=1)
         if scen.shape[1] != self.n_factors:
             raise ValueError(
                 f"scenarios have {scen.shape[1]} columns, portfolio has "

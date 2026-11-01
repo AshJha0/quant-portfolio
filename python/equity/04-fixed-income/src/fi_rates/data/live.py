@@ -1,6 +1,6 @@
 """Optional live market-data loader (FRED Treasury CMT yields).
 
-NEVER imported by tests or the example pipeline — network access is
+NEVER imported by tests or the example pipeline, network access is
 import-guarded per the portfolio conventions.  Usage::
 
     from fi_rates.data.live import load_fred_cmt
@@ -9,7 +9,7 @@ import-guarded per the portfolio conventions.  Usage::
 The loader pulls constant-maturity Treasury (CMT) par yields from the FRED
 API (series DGS3MO, DGS6MO, DGS1 ... DGS30).  CMT yields are *par* yields on
 a semiannual bond basis; to build a discount curve from them, treat each as a
-``ParSwap(maturity, rate/100, frequency=2)`` quote and bootstrap — an
+``ParSwap(maturity, rate/100, frequency=2)`` quote and bootstrap, an
 approximation documented in docs/METHODOLOGY.md.
 """
 

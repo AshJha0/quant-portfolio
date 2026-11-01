@@ -34,7 +34,8 @@ import numpy as np
 import pandas as pd
 
 from .book import Book, Market
-from .common import validate_alpha, validate_horizon, validate_returns, warn_peg_factors
+from .common import (require_positions, resolve_alpha, validate_horizon,
+                     validate_returns, warn_peg_factors)
 from .expected_shortfall import empirical_var_es
 
 __all__ = ["HistoricalVaRResult", "historical_var", "ewma_volatility"]
@@ -59,12 +60,15 @@ class HistoricalVaRResult:
     flagged_peg_factors: tuple[str, ...] = ()
 
 
-def ewma_volatility(returns: pd.DataFrame, lam: float = 0.94) -> tuple[pd.DataFrame, pd.Series]:
-    """RiskMetrics EWMA volatility per factor.
+def ewma_volatility(returns: pd.DataFrame, lam: float = 0.94,
+                    seed_window: int = 30) -> tuple[pd.DataFrame, pd.Series]:
+    """RiskMetrics zero-mean EWMA volatility per factor.
 
-    ``sigma2_t = lam * sigma2_{t-1} + (1 - lam) * r2_{t-1}`` - i.e.
-    ``sigma_t`` is the *forecast* for day t using data through t-1, seeded
-    with the full-sample standard deviation.
+    ``sigma2_t = lam * sigma2_{t-1} + (1 - lam) * r_{t-1}^2``, so
+    ``sigma_t`` is the forecast for day t using data through t-1.  The seed
+    ``sigma2_0`` is the mean of ``r^2`` over the first
+    ``min(seed_window, n)`` observations.  No later data enters the seed,
+    so a walk-forward backtest has no look-ahead beyond that window.
 
     Returns
     -------
@@ -75,10 +79,17 @@ def ewma_volatility(returns: pd.DataFrame, lam: float = 0.94) -> tuple[pd.DataFr
     """
     if not (0.0 < lam < 1.0):
         raise ValueError(f"lambda must be in (0, 1), got {lam}")
+    if int(seed_window) != seed_window or seed_window < 1:
+        raise ValueError(f"seed_window must be a positive integer, got {seed_window}")
     r = returns.to_numpy(dtype=float)
+    if r.ndim != 2 or r.shape[0] < 1:
+        raise ValueError("returns must be a non-empty 2-D frame")
+    if not np.isfinite(r).all():
+        raise ValueError("returns contain NaN or infinite values (NaN policy: refuse)")
     n, k = r.shape
     sig2 = np.empty((n + 1, k))
-    sig2[0] = np.maximum(r.var(axis=0, ddof=1), 1e-18)
+    w = min(int(seed_window), n)
+    sig2[0] = np.maximum(np.mean(r[:w] ** 2, axis=0), 1e-18)
     for i in range(n):
         sig2[i + 1] = lam * sig2[i] + (1.0 - lam) * r[i] ** 2
     sigma = pd.DataFrame(np.sqrt(sig2[:-1]), index=returns.index, columns=returns.columns)
@@ -90,7 +101,7 @@ def historical_var(
     book: Book,
     market: Market,
     returns: pd.DataFrame,
-    alpha: float = 0.99,
+    alpha: float | None = None,
     horizon_days: float = 1.0,
     method: str = "plain",
     decay: float = 0.995,
@@ -98,6 +109,8 @@ def historical_var(
     min_obs: int = 60,
     option_method: str = "full",
     warn_pegs: bool = True,
+    *,
+    confidence: float | None = None,
 ) -> HistoricalVaRResult:
     """Historical-simulation VaR/ES for ``book`` at ``market``.
 
@@ -110,7 +123,7 @@ def historical_var(
         absolute changes.  Must contain every factor in
         ``book.factors(market)``; NaNs raise ``ValueError``.
     alpha : float
-        Confidence level in (0, 1).
+        Tail probability in (0, 0.5).  Default 0.01 (99 % VaR).
     horizon_days : float
         VaR horizon; >1 uses sqrt-time scaling of the 1-day figure.
     method : {"plain", "age", "fhs"}
@@ -125,18 +138,24 @@ def historical_var(
         Option revaluation passed to ``Book.pnl``.
     warn_pegs : bool
         Emit :class:`PegBlindnessWarning` for near-zero-vol FX factors.
+    confidence : float, optional
+        Deprecated.  ``alpha = 1 - confidence``.
 
     Returns
     -------
     HistoricalVaRResult
+
+    Raises
+    ------
+    ValueError
+        If the book has no positions or no risk factors.
     """
-    validate_alpha(alpha)
+    alpha = resolve_alpha(alpha, confidence)
     validate_horizon(horizon_days)
+    require_positions(book)
     factors = book.factors(market)
     if not factors:
-        # empty book or base-ccy-cash-only book: zero risk by construction
-        return HistoricalVaRResult(0.0, 0.0, alpha, horizon_days, method,
-                                   np.zeros(len(returns)), np.full(len(returns), 1.0 / max(len(returns), 1)))
+        raise ValueError("book has no risk factors (base-currency cash only)")
     rets = validate_returns(returns, factors, min_obs=min_obs)
     flagged = tuple(warn_peg_factors(rets, factors)) if warn_pegs else ()
 

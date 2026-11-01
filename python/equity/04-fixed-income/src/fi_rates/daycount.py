@@ -8,17 +8,24 @@ Conventions implemented
 ``30/360US``     US (NASD) 30/360 bond basis, without the end-of-February
                  special rule (documented simplification).
 ``ACT/ACT-ISDA`` actual days split by calendar year, leap years / 366,
-                 non-leap years / 365.
+                 non-leap years / 365. Swap and some euro-area
+                 conventions. Not the government-bond convention.
+``ACT/ACT-ICMA`` actual days in the accrual period over (frequency x actual
+                 days in the reference coupon period). Regular coupons are
+                 exactly ``coupon / frequency``. US Treasuries, gilts and
+                 most government bonds use it. It needs the reference
+                 period, so call ``year_fraction`` with ``ref_start``,
+                 ``ref_end`` and ``frequency``.
 
 Schedules
 ---------
-``generate_schedule`` rolls coupon dates *backwards* from maturity in steps of
-``12 / frequency`` months (annual / semiannual / quarterly), producing a short
-front stub if the effective date does not align.  Business-day adjustment is a
-deliberately simple *modified following* over a weekend-only calendar
-(no holiday calendars) and is off by default; accrual is computed on
-unadjusted dates.  Both simplifications are documented in
-``docs/METHODOLOGY.md`` (assumptions register).
+``generate_schedule`` rolls coupon dates backwards from maturity in steps of
+``12 / frequency`` months (annual, semiannual, quarterly), producing a short
+front stub if the effective date does not align. With ``eom=True`` (the
+default) a month-end maturity keeps every coupon date on a month end, so a
+28-Feb-2025 maturity pays on 31 Aug. Payment dates can be rolled with any
+calendar from :mod:`fi_rates.calendars` (``adjust=True``); accrual uses
+unadjusted dates. 30/360US omits the end-of-February rule.
 """
 
 from __future__ import annotations
@@ -32,6 +39,8 @@ __all__ = [
     "year_fraction",
     "add_months",
     "adjust_modified_following",
+    "is_month_end",
+    "roll_months",
     "generate_schedule",
 ]
 
@@ -40,6 +49,7 @@ SUPPORTED_CONVENTIONS: tuple[str, ...] = (
     "ACT/360",
     "30/360US",
     "ACT/ACT-ISDA",
+    "ACT/ACT-ICMA",
 )
 
 #: Coupon frequencies supported everywhere in the package: annual, semiannual,
@@ -81,7 +91,15 @@ def _act_act_isda(start: dt.date, end: dt.date) -> float:
     return frac
 
 
-def year_fraction(start: dt.date, end: dt.date, convention: str = "ACT/365F") -> float:
+def year_fraction(
+    start: dt.date,
+    end: dt.date,
+    convention: str = "ACT/365F",
+    *,
+    ref_start: dt.date | None = None,
+    ref_end: dt.date | None = None,
+    frequency: int | None = None,
+) -> float:
     """Day count fraction between two dates.
 
     Parameters
@@ -91,6 +109,9 @@ def year_fraction(start: dt.date, end: dt.date, convention: str = "ACT/365F") ->
         fraction is then negative (useful for horizon arithmetic).
     convention : str
         One of :data:`SUPPORTED_CONVENTIONS`.
+    ref_start, ref_end, frequency
+        Reference coupon period and coupons per year. Required for
+        ``ACT/ACT-ICMA`` and ignored otherwise.
 
     Returns
     -------
@@ -108,6 +129,18 @@ def year_fraction(start: dt.date, end: dt.date, convention: str = "ACT/365F") ->
         return _days(start, end) / 360.0
     if convention == "30/360US":
         return _thirty360_us(start, end)
+    if convention == "ACT/ACT-ICMA":
+        if ref_start is None or ref_end is None or frequency is None:
+            raise ValueError(
+                "ACT/ACT-ICMA needs ref_start, ref_end and frequency "
+                "(the reference coupon period)"
+            )
+        if frequency not in SUPPORTED_FREQUENCIES:
+            raise ValueError(f"frequency must be one of {SUPPORTED_FREQUENCIES}")
+        ref_days = _days(ref_start, ref_end)
+        if ref_days <= 0:
+            raise ValueError(f"reference period {ref_start}..{ref_end} is empty")
+        return _days(start, end) / (frequency * ref_days)
     return _act_act_isda(start, end)
 
 
@@ -123,21 +156,29 @@ def add_months(date: dt.date, months: int) -> dt.date:
     return dt.date(year, month, day)
 
 
-def adjust_modified_following(date: dt.date) -> dt.date:
-    """Modified-following adjustment over a weekend-only calendar.
+def is_month_end(date: dt.date) -> bool:
+    """True when ``date`` is the last calendar day of its month."""
+    return date.day == calendar.monthrange(date.year, date.month)[1]
 
-    Roll a Saturday/Sunday forward to Monday unless that crosses a month end,
-    in which case roll backward to Friday.  No holiday calendars — documented
-    simplification.
+
+def roll_months(date: dt.date, months: int, eom: bool = False) -> dt.date:
+    """Add months; with ``eom`` a month-end date maps to a month end."""
+    out = add_months(date, months)
+    if eom and is_month_end(date):
+        out = dt.date(out.year, out.month, calendar.monthrange(out.year, out.month)[1])
+    return out
+
+
+def adjust_modified_following(date: dt.date, calendar=None) -> dt.date:
+    """Modified-following roll on ``calendar`` (default: weekends only).
+
+    Roll forward to the next business day unless that crosses a month end,
+    in which case roll backward. ``calendar`` is a name (``"USD"``,
+    ``"EUR+USD"``) or a :class:`fi_rates.calendars.BusinessCalendar`.
     """
-    adjusted = date
-    while adjusted.weekday() >= 5:  # Sat=5, Sun=6
-        adjusted += dt.timedelta(days=1)
-    if adjusted.month != date.month:
-        adjusted = date
-        while adjusted.weekday() >= 5:
-            adjusted -= dt.timedelta(days=1)
-    return adjusted
+    from .calendars import get_calendar
+
+    return get_calendar(calendar).adjust(date, "modified_following")
 
 
 def generate_schedule(
@@ -145,6 +186,8 @@ def generate_schedule(
     maturity: dt.date,
     frequency: int,
     adjust: bool = False,
+    eom: bool = True,
+    calendar=None,
 ) -> list[dt.date]:
     """Generate coupon payment dates by rolling back from maturity.
 
@@ -157,8 +200,13 @@ def generate_schedule(
     frequency : int
         Payments per year: 1 (annual), 2 (semiannual) or 4 (quarterly).
     adjust : bool
-        If True, apply modified-following (weekend-only) to *payment* dates.
+        If True, apply modified-following on ``calendar`` to payment dates.
         Accrual elsewhere in the package always uses unadjusted dates.
+    eom : bool
+        End-of-month rule: when ``maturity`` is a month end, every coupon
+        date is a month end.
+    calendar : str or BusinessCalendar, optional
+        Calendar for ``adjust`` (default weekends only).
 
     Returns
     -------
@@ -181,8 +229,8 @@ def generate_schedule(
     while current > effective:
         dates.append(current)
         k += 1
-        current = add_months(maturity, -step * k)
+        current = roll_months(maturity, -step * k, eom=eom)
     dates.reverse()
     if adjust:
-        dates = [adjust_modified_following(d) for d in dates]
+        dates = [adjust_modified_following(d, calendar) for d in dates]
     return dates

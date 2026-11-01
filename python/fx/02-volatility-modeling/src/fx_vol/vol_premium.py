@@ -10,7 +10,7 @@ sellers of vol earn the premium as compensation for jump/crash risk (and for
 G10 pairs the premium concentrates in the risk-reversal wings). The desk use
 -- sizing a short-vol program, deciding when the premium is rich enough to
 sell, and when a *negative* premium (realized above implied: crisis) says to
-stand down -- is discussed in docs/DESK_GUIDE.md.
+stand down: is discussed in docs/DESK_GUIDE.md.
 
 Units: all vols are **annualized, decimal** (0.10 = 10 vol points... note
 10% = 0.10; "vol points" below means percentage points of annualized vol).
@@ -51,7 +51,7 @@ def realized_vol_forward(
 
     ``rv[t] = sqrt(ppy * mean(r_{t+1}^2 .. r_{t+window}^2))`` (zero-mean
     convention, matching variance-swap settlement). The last ``window``
-    entries are NaN (window incomplete) -- callers must align on valid
+    entries are NaN (window incomplete): callers must align on valid
     entries; :func:`vol_risk_premium` does this for you.
     """
     r = _clean(returns, "returns")
@@ -106,7 +106,7 @@ def variance_swap_pnl(
 
     (the ``2K`` divisor converts variance units to vega/vol-point units, the
     standard market convention). Positive when realized comes in below the
-    implied strike -- harvesting the premium; sharply negative in a depeg or
+    implied strike: harvesting the premium; sharply negative in a depeg or
     crisis (the convexity of the variance payoff works *against* the seller).
     """
     iv = _clean(implied_vol, "implied_vol")
@@ -124,7 +124,7 @@ def premium_summary(premium: Sequence[float] | np.ndarray) -> dict:
     """Summary statistics of a VRP series, ignoring NaNs (incomplete windows).
 
     Returns mean/median/std (vol-point units of the input), the fraction of
-    days with positive premium, and worst drawdown-style minimum -- the
+    days with positive premium, and worst drawdown-style minimum: the
     numbers a desk quotes when pitching or risk-limiting a vol-selling
     program.
     """

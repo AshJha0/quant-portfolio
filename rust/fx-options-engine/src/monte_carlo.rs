@@ -12,9 +12,9 @@
 //!
 //! Variance reduction:
 //!
-//! * **Antithetic variates** — pairs `(Z, -Z)`, estimator averaged per
+//! * **Antithetic variates**: pairs `(Z, -Z)`, estimator averaged per
 //!   pair (standard error computed from independent pair averages).
-//! * **Control variate** — the discounted terminal spot `e^{-r_d T} S_T`
+//! * **Control variate**: the discounted terminal spot `e^{-r_d T} S_T`
 //!   is a martingale-adjusted quantity with known mean `S e^{-r_f T}`
 //!   (the value today of one unit of foreign currency delivered at `T`);
 //!   the optimal coefficient is estimated from the sample covariance.
@@ -28,10 +28,11 @@
 //! than `control_variate` alone on some inputs.
 //!
 //! Determinism: draws come from the crate's own
-//! [`Xoshiro256StarStar`](crate::rng::Xoshiro256StarStar) seeded with an
-//! explicit `u64`, and normals are produced by inverse-CDF transform —
-//! the same seed gives **bit-identical** results on every platform and
-//! release (asserted in the test suite).
+//! [`Xoshiro256StarStar`] seeded with an
+//! explicit `u64`, and normals are produced by inverse-CDF transform:
+//! the same seed gives identical results on a given target and toolchain
+//! (asserted in the test suite). Across targets the last bits can differ:
+//! `f64::exp`/`ln` come from the platform libm.
 
 use crate::rng::Xoshiro256StarStar;
 use crate::{invalid, validate_inputs, FxResult, OptionType};
@@ -71,16 +72,15 @@ fn mean_of(x: &[f64]) -> f64 {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`];
 ///   requires `t > 0`.
-/// * `option_type` — call or put on the base currency.
-/// * `n_paths` — number of terminal draws, in `[2, MAX_PATHS]` (rounded
-///   up to even when antithetic). With `antithetic` and `n_paths = 2`
-///   there is a single independent unit, so `std_error` is reported as
-///   `0.0` (no sample variance exists) and the confidence interval
-///   collapses to the point estimate.
-/// * `seed` — explicit RNG seed; the same seed is bit-reproducible.
-/// * `antithetic`, `control_variate` — variance-reduction switches.
+/// * `option_type`: call or put on the base currency.
+/// * `n_paths`: number of terminal draws, in `[2, MAX_PATHS]` (rounded
+///   up to even when antithetic). At least two independent samples are
+///   required (an antithetic pair is one), three with the control
+///   variate; fewer return `InvalidInput`.
+/// * `seed`: explicit RNG seed; the same seed repeats on one target.
+/// * `antithetic`, `control_variate`: variance-reduction switches.
 ///
 /// # Errors
 ///
@@ -115,8 +115,19 @@ pub fn mc_price(
     if t <= 0.0 {
         return invalid("mc_price requires T > 0");
     }
-    if n_paths < 2 {
-        return invalid(format!("n_paths must be >= 2, got {n_paths}"));
+    // A standard error needs two independent samples (paths, or antithetic
+    // pairs) left after fitting: three with the control variate, since two
+    // points fit the regression line exactly and leave a zero residual.
+    let units = if antithetic {
+        n_paths.div_ceil(2)
+    } else {
+        n_paths
+    };
+    let needed = if control_variate { 3 } else { 2 };
+    if units < needed {
+        return invalid(format!(
+            "n_paths = {n_paths} gives {units} independent sample(s); at least              {needed} are needed for a standard error"
+        ));
     }
     if n_paths > MAX_PATHS {
         return invalid(format!(
@@ -145,9 +156,11 @@ pub fn mc_price(
         Vec::new()
     };
 
+    let mut overflow = false;
     {
         let mut fill = |idx: usize, z: f64| {
             let s_t = s * (drift + vol * z).exp();
+            overflow |= !s_t.is_finite();
             discounted[idx] = df_d * (phi * (s_t - k)).max(0.0);
             if control_variate {
                 control[idx] = df_d * s_t;
@@ -167,6 +180,10 @@ pub fn mc_price(
         }
     }
 
+    if overflow {
+        return invalid("simulated spots overflow a double; drift or vol too large");
+    }
+
     // Reduce to one value per *independent* draw first: the antithetic
     // pair average `0.5 (X(Z) + X(-Z))` when antithetic, the raw path
     // otherwise.  The control variate must then be fitted on these same
@@ -177,7 +194,7 @@ pub fn mc_price(
     // pairing already reshapes the payoff/control covariance structure.
     // Fitting beta on individual draws and pairing afterwards (as an
     // earlier version of this function did) under-uses the control
-    // variate once antithetic is also on — the combined SE could end up
+    // variate once antithetic is also on: the combined SE could end up
     // *worse* than control-variate alone.
     let mut samples: Vec<f64> = if antithetic {
         (0..half)
@@ -217,14 +234,8 @@ pub fn mc_price(
     let price = mean_of(&samples);
     let ss: f64 = samples.iter().map(|v| (v - price) * (v - price)).sum();
     let n = samples.len() as f64;
-    // A single independent unit (n_paths = 2 with antithetic pairing
-    // collapses to one pair average) has no sample variance: report
-    // SE = 0 rather than dividing by n - 1 = 0 and returning NaN.
-    let se = if samples.len() > 1 {
-        (ss / (n - 1.0)).sqrt() / n.sqrt()
-    } else {
-        0.0
-    };
+    // At least two independent units are guaranteed by the check above.
+    let se = (ss / (n - 1.0)).sqrt() / n.sqrt();
 
     let method = match (antithetic, control_variate) {
         (true, true) => "antithetic+control_variate",

@@ -3,7 +3,7 @@
 ///
 /// The terminal stock price is simulated exactly:
 /// `S_T = S exp((r - q - sigma^2/2) T + sigma sqrt(T) Z)`, `Z ~ N(0,1)`,
-/// so there is *no* time-discretisation bias — only statistical error,
+/// so there is *no* time-discretisation bias: only statistical error,
 /// reported as a standard error and 95% confidence interval.
 ///
 /// Variance reduction (mirrors the Python reference `eq_options/monte_carlo.py`):
@@ -17,10 +17,15 @@
 /// deviates are produced by an in-house inverse-CDF transform (Acklam
 /// initial guess + one Halley refinement against the erfc-based CDF) rather
 /// than std::normal_distribution, whose algorithm is implementation-defined.
-/// Same (seed, threads) => bit-identical results, across standard libraries.
-/// Multithreading partitions the paths into per-thread chunks with
+/// Same (seed, threads) => identical results on a given compiler and libm.
+/// Across platforms the last bits can differ (libm exp/log are not
+/// correctly rounded; compilers may contract to FMA).
+/// Multithreading partitions the paths into `threads` chunks with
 /// independently seeded (splitmix64-derived) RNG streams, so the result is
-/// deterministic for a given thread count.
+/// deterministic for a given `threads` value. The chunks run on a persistent
+/// ThreadPool (default_thread_pool() for mc_price(), or the caller's pool
+/// for try_mc_price()); no thread is created per call. Which pool thread
+/// runs a chunk does not change the result.
 ///
 /// Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 /// `T` in years, `sigma` annualised.
@@ -30,8 +35,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "eqopt/black_scholes.hpp"
+#include "eqopt/thread_pool.hpp"
 
 namespace eqopt {
 
@@ -74,17 +81,20 @@ double normal_from_u64(std::uint64_t u64) noexcept;
 ///              `antithetic` is set).
 /// \param antithetic Use antithetic pairs `(Z, -Z)`.
 /// \param control_variate Use the discounted terminal stock as a control
-///              variate with the sample-optimal coefficient.
+///              variate; the coefficient is fitted on the antithetic pair
+///              averages (the independent samples).
 /// \param seed  Explicit std::mt19937_64 seed. Same (seed, threads) =>
-///              bit-identical result.
-/// \param threads Worker threads for draw/payoff generation, `>= 1`.
-///              Each thread owns a disjoint, deterministically assigned
-///              chunk of paths with its own splitmix64-derived RNG stream;
-///              different thread counts use different streams (statistically
-///              equivalent, not bit-equal).
+///              identical result on the same toolchain.
+/// \param threads Number of path chunks, `>= 1`. Each chunk is a
+///              disjoint, deterministically assigned range of paths with its
+///              own splitmix64-derived RNG stream; chunks run in parallel on
+///              default_thread_pool(). Different `threads` values use
+///              different streams (statistically equivalent, not bit-equal).
 /// \return Price estimate with standard error and 95% CI.
-/// \throws std::invalid_argument on invalid inputs, `n_paths < 2`, or
-///         `threads == 0`.
+/// \throws std::invalid_argument on invalid inputs, fewer than two
+///         independent samples (three with the control variate; an
+///         antithetic pair is one sample), `threads == 0`, or simulated
+///         prices that overflow.
 /// \note `T == 0` or `sigma == 0` are deterministic; the exact
 ///       Black–Scholes value is returned with `std_error = 0`.
 MCResult mc_price(double S, double K, double T, double r, double sigma,
@@ -92,6 +102,44 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
                   std::size_t n_paths = 100000, bool antithetic = true,
                   bool control_variate = true, std::uint64_t seed = 42,
                   unsigned threads = 1);
+
+/// \brief Reusable path buffers for try_mc_price().
+///
+/// Size it once with reserve() for the largest run; try_mc_price() then
+/// never allocates. Not thread-safe: one workspace per concurrent caller.
+class McWorkspace {
+public:
+    /// \brief Make room for `n_paths` paths (and the control column when
+    ///        `control_variate`). May allocate; call it outside the hot path.
+    void reserve(std::size_t n_paths, bool control_variate) {
+        const std::size_t n = n_paths + 1;  // antithetic rounds up to even
+        if (payoff_.size() < n) payoff_.resize(n);
+        if (control_variate && control_.size() < n) control_.resize(n);
+    }
+    [[nodiscard]] std::size_t capacity() const noexcept { return payoff_.size(); }
+
+private:
+    friend Result<MCResult> try_mc_price(double, double, double, double, double, double,
+                                         OptionType, std::size_t, bool, bool, std::uint64_t,
+                                         unsigned, McWorkspace&, ThreadPool*) noexcept;
+    std::vector<double> payoff_;
+    std::vector<double> control_;
+};
+
+/// \brief noexcept Monte Carlo price on caller-owned buffers and pool.
+///
+/// Same arguments, draws and arithmetic as mc_price(), so for the same
+/// `(seed, threads)` the result is bit-for-bit the same. `threads` is the
+/// number of deterministic RNG chunks; they run on `pool` (or on the calling
+/// thread when `pool` is null), and the result does not depend on the pool
+/// size. `ws` must have been reserved for `n_paths` (Errc::WorkspaceTooSmall
+/// otherwise). No allocation and no thread creation on any path.
+[[nodiscard]] Result<MCResult> try_mc_price(double S, double K, double T, double r,
+                                            double sigma, double q, OptionType type,
+                                            std::size_t n_paths, bool antithetic,
+                                            bool control_variate, std::uint64_t seed,
+                                            unsigned threads, McWorkspace& ws,
+                                            ThreadPool* pool) noexcept;
 
 }  // namespace eqopt
 

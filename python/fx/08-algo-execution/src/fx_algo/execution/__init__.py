@@ -22,6 +22,8 @@ from .optimal import (
 from .tca import (
     decompose_implementation_shortfall,
     fix_benchmark,
+    fix_print,
+    fix_self_impact_pips,
     rejection_cost_pips,
     slippage_vs_benchmark,
     twap_benchmark,
@@ -45,6 +47,8 @@ __all__ = [
     "decompose_implementation_shortfall",
     "twap_benchmark",
     "fix_benchmark",
+    "fix_print",
+    "fix_self_impact_pips",
     "slippage_vs_benchmark",
     "rejection_cost_pips",
     "venue_comparison",

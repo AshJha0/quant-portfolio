@@ -15,7 +15,7 @@ Curve-based ("effective") measures bump all pillar zero rates in parallel and
 reprice: ``DV01_eff = (P(-h) - P(+h)) / 2`` with ``h = 1bp``.
 
 Taylor P&L approximation for a yield move ``dy``:
-``dP ~ -D_mod P dy + 0.5 C P dy^2`` — compared against full repricing in
+``dP ~ -D_mod P dy + 0.5 C P dy^2``: compared against full repricing in
 :func:`pnl_approximation_table`.
 """
 
@@ -224,14 +224,14 @@ def portfolio_risk(
     Zero-net-value books (documented edge case)
     ------------------------------------------
     Market-value weighting is undefined when the net market value is zero or
-    negligible relative to the gross — precisely the case for a duration-
+    negligible relative to the gross, precisely the case for a duration-
     neutral long/short relative-value book, where the longs and shorts cancel.
     Rather than silently emitting ``±inf`` weights and ``NaN`` aggregates,
     this function detects the condition (``|net MV| < 1e-9 * gross MV``),
     emits a :class:`ZeroNetValueWarning`, and reports ``NaN`` for the weight
     column and for the weighted ``ytm``/``mod_duration``/``convexity``
     aggregates.  ``mv`` and ``dv01`` remain exact, because both are plain
-    sums — and **DV01 is the meaningful aggregate for such a book**, which is
+    sums, and **DV01 is the meaningful aggregate for such a book**, which is
     why the desk risks it off DV01 and key-rate DV01s, not off a weighted
     duration (see docs/DESK_GUIDE.md).
     """

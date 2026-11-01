@@ -14,7 +14,7 @@ Model (per trading day of ``n_buckets`` equal-length buckets):
   ``fill_j = S_j * (1 + side * (half_spread + temp_j))`` with **temporary
   impact** following the empirical square-root law,
   ``temp_j = temp_coef * sigma_daily * sqrt(q_j / V_day)``.
-  Temporary impact affects only the fill price and fully reverts — the next
+  Temporary impact affects only the fill price and fully reverts, the next
   bucket's mid does not carry it (tested).
 
 Why linear-permanent + square-root-temporary: linear permanent impact is the
@@ -24,7 +24,7 @@ law ``cost ~ sigma * sqrt(Q/V)`` (Almgren et al. 2005; Toth et al. 2011).
 See docs/METHODOLOGY.md for alternatives (Obizhaeva-Wang resilience).
 
 Everything stochastic takes an explicit seed / Generator; identical seeds
-give bit-identical days (tested).
+give identical days (tested).
 """
 
 from __future__ import annotations
@@ -74,6 +74,12 @@ class IntradayConfig:
     price_noise: float | None = None
 
     def __post_init__(self) -> None:
+        for name in ("mid0", "day_volume", "sigma_daily", "spread_bps", "temp_coef",
+                     "perm_coef", "vol_noise", "curvature"):
+            if not np.isfinite(float(getattr(self, name))):
+                raise ValueError(f"{name} must be finite")
+        if self.price_noise is not None and not np.isfinite(float(self.price_noise)):
+            raise ValueError("price_noise must be finite")
         if self.mid0 <= 0 or self.day_volume <= 0:
             raise ValueError("mid0 and day_volume must be > 0")
         if self.n_buckets < 1:
@@ -90,7 +96,7 @@ class IntradayConfig:
         """Per-bucket mid-price noise vol; defaults to ``sigma_daily/sqrt(n)``.
 
         Setting ``price_noise=0`` gives a deterministic mid path while
-        keeping impact scales tied to ``sigma_daily`` — used to isolate
+        keeping impact scales tied to ``sigma_daily``, used to isolate
         permanent vs temporary impact in tests.
         """
         if self.price_noise is not None:
@@ -182,7 +188,7 @@ class IntradayMarket:
             On negative quantities, wrong length, an order routed to a
             zero-volume bucket (nothing to trade against), or a child order
             exceeding the bucket's market volume (cannot be more than 100%
-            of the printed volume — split across buckets or days).
+            of the printed volume, split across buckets or days).
         """
         cfg = self.config
         q = np.asarray(schedule, dtype=float)
@@ -234,7 +240,8 @@ class IntradayMarket:
         for j in range(cfg.n_buckets):
             mid = mids[j]
             if q[j] > 0:
-                temp_frac = cfg.temp_coef * cfg.sigma_daily * np.sqrt(q[j] / cfg.day_volume)
+                temp_frac = cfg.temp_coef * cfg.sigma_daily * np.sqrt(
+                    q[j] / (cfg.n_buckets * volumes[j]))
                 fill = mid * (1.0 + side * (half_spread_frac + temp_frac))
                 perm_move = side * cfg.perm_coef * cfg.sigma_daily * (q[j] / cfg.day_volume) * mid
             else:

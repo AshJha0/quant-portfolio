@@ -27,6 +27,15 @@ _EPS_T = 1e-12
 _EPS_V = 1e-12
 
 
+def _validate_market(spot, r_d, r_f) -> None:
+    for name, value in (("spot", spot), ("r_d", r_d), ("r_f", r_f)):
+        if not np.all(np.isfinite(np.asarray(value, dtype=float))):
+            raise ValueError(f"{name} must be finite, got {value!r} "
+                             "(NaN policy: refuse, never impute)")
+    if np.any(np.asarray(spot, dtype=float) <= 0):
+        raise ValueError("spot must be > 0")
+
+
 def _validate(strike, expiry, vol) -> None:
     # Non-finite inputs must be refused rather than absorbed: the degenerate
     # sigma*sqrt(T) branch below treats a NaN as the *zero-vol* case and would
@@ -48,6 +57,8 @@ def _validate(strike, expiry, vol) -> None:
 
 def gk_d1_d2(spot, strike, expiry, r_d, r_f, vol):
     """Return (d1, d2); degenerate T=0 / vol=0 handled via +/-inf limits."""
+    _validate(strike, expiry, vol)
+    _validate_market(spot, r_d, r_f)
     spot = np.asarray(spot, dtype=float)
     sig_sqrt_t = np.maximum(np.sqrt(np.maximum(expiry, 0.0)) * vol, 0.0)
     safe = np.where(sig_sqrt_t > _EPS_V, sig_sqrt_t, 1.0)

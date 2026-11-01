@@ -78,3 +78,36 @@ def test_mc_validation_errors():
         mc_price(S, 1.1, 1.0, RD, RF, PARAMS, cp=2)
     with pytest.raises(ValueError, match="strike"):
         mc_price(S, -1.0, 1.0, RD, RF, PARAMS)
+
+
+# -- QE martingale correction and the antithetic pairing guard ----------
+def _forward_z(martingale_correction, n_steps):
+    from fx_surface import simulate_terminal
+
+    p = HestonParams(v0=0.04, kappa=0.5, theta=0.04, xi=1.5, rho=-0.9)
+    S, T, rd, rf = 100.0, 5.0, 0.03, 0.01
+    ST = simulate_terminal(S, T, rd, rf, p, n_paths=400_000, n_steps=n_steps, seed=1,
+                           martingale_correction=martingale_correction)
+    y = ST * math.exp(-(rd - rf) * T)
+    pair = 0.5 * (y[:200_000] + y[200_000:])
+    return (pair.mean() - S) / (pair.std(ddof=1) / math.sqrt(pair.size))
+
+
+@pytest.mark.parametrize("n_steps", [2, 5])
+def test_qe_martingale_correction_removes_forward_bias(n_steps):
+    """xi=1.5, rho=-0.9, T=5 on 2-5 steps: the uncorrected QE forward is
+    off by 7-13 standard errors; corrected it is within 4 SE (the 4-SE
+    band has a two-sided false-alarm rate of 6e-5 per case)."""
+    assert abs(_forward_z(True, n_steps)) < 4.0
+    assert abs(_forward_z(False, n_steps)) > 5.0
+
+
+def test_odd_n_paths_with_antithetic_raises():
+    from fx_surface import simulate_terminal
+
+    p = HestonParams(v0=0.04, kappa=1.0, theta=0.04, xi=0.5, rho=-0.5)
+    with pytest.raises(ValueError, match="even"):
+        simulate_terminal(1.1, 1.0, 0.03, 0.01, p, n_paths=1001, antithetic=True)
+    # odd counts are fine without antithetics
+    assert simulate_terminal(1.1, 1.0, 0.03, 0.01, p, n_paths=1001, n_steps=4,
+                             antithetic=False).shape == (1001,)

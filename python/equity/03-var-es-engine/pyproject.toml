@@ -14,13 +14,12 @@ dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "pandas>=2.0",
-    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]
 live = ["yfinance>=0.2"]
 plots = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -29,4 +28,10 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
-filterwarnings = ["error::RuntimeWarning"]
+# The legacy-behaviour tests of the two deprecated entry points below stay for
+# one release; their DeprecationWarning is expected there.
+filterwarnings = [
+    "error::RuntimeWarning",
+    'ignore:filtered_historical_var\(pnl:DeprecationWarning',
+    "ignore:cornish_fisher_domain_ok is deprecated:DeprecationWarning",
+]

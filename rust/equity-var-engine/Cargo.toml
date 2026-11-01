@@ -1,8 +1,8 @@
 [package]
 name = "eq-var-engine"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Equity market-risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall and regulatory backtesting. Zero external dependencies (std only); Rust twin of the Python eq_var reference and the C++ eqvar engine."
+description = "Equity market-risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall and regulatory backtesting. Zero runtime dependencies (std only); linear-book port of the Python eq_var library."
 license = "MIT"
 publish = false
 
@@ -21,5 +21,8 @@ path = "src/bin/bench.rs"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"
 codegen-units = 1
+
+[dev-dependencies]
+proptest = "1"

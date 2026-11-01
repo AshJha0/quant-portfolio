@@ -133,7 +133,7 @@ class TestBusinessIndex:
     def test_length_and_freq(self):
         idx = business_index(10)
         assert len(idx) == 10
-        assert idx.dayofweek.max() <= 4  # weekdays only
+        assert idx.day_of_week.max() <= 4  # weekdays only
 
     def test_invalid_n_raises(self):
         with pytest.raises(ValueError, match="n must be positive"):

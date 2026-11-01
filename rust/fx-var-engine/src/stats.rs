@@ -21,6 +21,12 @@
 
 use crate::{FxVarError, Result};
 
+/// Relative convergence threshold of the series and continued fractions:
+/// one machine epsilon. The old literal `1e-16` sat below half an ulp at
+/// 1.0, so `|del - 1| < 1e-16` passed only on exact equality and the loops
+/// ran to their iteration cap more often than needed.
+const EPS: f64 = f64::EPSILON;
+
 /// 1/sqrt(2*pi).
 const INV_SQRT_2PI: f64 = 0.398_942_280_401_432_7;
 
@@ -32,13 +38,21 @@ pub fn norm_pdf(x: f64) -> f64 {
 
 /// Standard normal CDF `Phi(x)`, accurate to ~1e-14.
 ///
+/// Total function: `Phi(NaN) = NaN`, `Phi(+/-inf) = 1 / 0`.
+///
 /// Implemented as `Phi(x) = (1 ± P(1/2, x^2/2)) / 2` through the
 /// regularised incomplete gamma function (no libm `erf` dependency).
 pub fn norm_cdf(x: f64) -> f64 {
+    if x.is_nan() {
+        return f64::NAN;
+    }
     if x == 0.0 {
         return 0.5;
     }
-    let p = reg_lower_gamma(0.5, 0.5 * x * x);
+    if x.abs() > 40.0 {
+        return if x > 0.0 { 1.0 } else { 0.0 };
+    }
+    let p = lower_gamma_unchecked(0.5, 0.5 * x * x);
     if x > 0.0 {
         0.5 * (1.0 + p)
     } else {
@@ -52,11 +66,22 @@ pub fn norm_cdf(x: f64) -> f64 {
 /// the exact [`norm_cdf`]/[`norm_pdf`]. Unit-tested to better than 1e-9
 /// against SciPy reference values.
 ///
-/// # Panics
-/// Panics if `p` is outside `(0, 1)` (guard with
-/// [`crate::validate_alpha`] on user input).
-pub fn inv_norm_cdf(p: f64) -> f64 {
-    assert!(p > 0.0 && p < 1.0, "inv_norm_cdf requires p in (0, 1)");
+/// # Errors
+/// [`FxVarError::Invalid`] unless `p` lies in `(0, 1)`. (This used to be an
+/// `assert!`, a panic reachable from user input.)
+pub fn inv_norm_cdf(p: f64) -> Result<f64> {
+    if !(p > 0.0 && p < 1.0) {
+        return Err(FxVarError::invalid(format!(
+            "inv_norm_cdf requires p in (0, 1), got {p}"
+        )));
+    }
+    Ok(inv_norm_cdf_unchecked(p))
+}
+
+/// Acklam plus one Halley step for `p` already known to be in `(0, 1)`.
+// Published Acklam / Lanczos coefficients are kept digit for digit.
+#[allow(clippy::excessive_precision)]
+pub(crate) fn inv_norm_cdf_unchecked(p: f64) -> f64 {
     // Acklam coefficients.
     const A: [f64; 6] = [
         -3.969_683_028_665_376e+01,
@@ -111,7 +136,21 @@ pub fn inv_norm_cdf(p: f64) -> f64 {
 /// Natural log of the Gamma function (Lanczos, g = 7, 9 coefficients).
 ///
 /// Accurate to ~1e-14 relative for `x > 0`.
-pub fn ln_gamma(x: f64) -> f64 {
+///
+/// # Errors
+/// [`FxVarError::Invalid`] unless `x` is finite and `> 0`.
+pub fn ln_gamma(x: f64) -> Result<f64> {
+    if !(x > 0.0) || !x.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "ln_gamma requires a finite x > 0, got {x}"
+        )));
+    }
+    Ok(ln_gamma_pos(x))
+}
+
+/// Lanczos `ln Gamma(x)` for `x > 0` (domain guaranteed by the caller).
+#[allow(clippy::excessive_precision)]
+pub(crate) fn ln_gamma_pos(x: f64) -> f64 {
     const G: [f64; 9] = [
         0.999_999_999_999_809_93,
         676.520_368_121_885_1,
@@ -126,7 +165,7 @@ pub fn ln_gamma(x: f64) -> f64 {
     if x < 0.5 {
         // Reflection: Gamma(x) Gamma(1-x) = pi / sin(pi x)
         let pi = std::f64::consts::PI;
-        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x);
+        return (pi / (pi * x).sin()).ln() - ln_gamma_pos(1.0 - x);
     }
     let x = x - 1.0;
     let mut a = G[0];
@@ -141,8 +180,25 @@ pub fn ln_gamma(x: f64) -> f64 {
 ///
 /// Series expansion for `x < a + 1`, Lentz continued fraction otherwise
 /// (Numerical Recipes scheme); ~1e-14 accuracy over the tested range.
-pub fn reg_lower_gamma(a: f64, x: f64) -> f64 {
-    assert!(a > 0.0 && x >= 0.0, "reg_lower_gamma requires a > 0, x >= 0");
+///
+/// # Errors
+/// [`FxVarError::Invalid`] unless `a > 0` and `x >= 0` are finite (this
+/// used to be an `assert!`).
+pub fn reg_lower_gamma(a: f64, x: f64) -> Result<f64> {
+    check_gamma(a, x)?;
+    Ok(lower_gamma_unchecked(a, x))
+}
+
+fn check_gamma(a: f64, x: f64) -> Result<()> {
+    if !(a > 0.0) || !a.is_finite() || !(x >= 0.0) || !x.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "incomplete gamma requires finite a > 0 and x >= 0, got a={a}, x={x}"
+        )));
+    }
+    Ok(())
+}
+
+fn lower_gamma_unchecked(a: f64, x: f64) -> f64 {
     if x == 0.0 {
         return 0.0;
     }
@@ -155,24 +211,31 @@ pub fn reg_lower_gamma(a: f64, x: f64) -> f64 {
             ap += 1.0;
             del *= x / ap;
             sum += del;
-            if del.abs() < sum.abs() * 1e-16 {
+            if del.abs() < sum.abs() * EPS {
                 break;
             }
         }
-        sum * (-x + a * x.ln() - ln_gamma(a)).exp()
+        sum * (-x + a * x.ln() - ln_gamma_pos(a)).exp()
     } else {
         1.0 - reg_upper_gamma_cf(a, x)
     }
 }
 
 /// Regularised upper incomplete gamma `Q(a, x) = 1 - P(a, x)`.
-pub fn reg_upper_gamma(a: f64, x: f64) -> f64 {
-    assert!(a > 0.0 && x >= 0.0, "reg_upper_gamma requires a > 0, x >= 0");
+///
+/// # Errors
+/// Same as [`reg_lower_gamma`].
+pub fn reg_upper_gamma(a: f64, x: f64) -> Result<f64> {
+    check_gamma(a, x)?;
+    Ok(upper_gamma_unchecked(a, x))
+}
+
+fn upper_gamma_unchecked(a: f64, x: f64) -> f64 {
     if x == 0.0 {
         return 1.0;
     }
     if x < a + 1.0 {
-        1.0 - reg_lower_gamma(a, x)
+        1.0 - lower_gamma_unchecked(a, x)
     } else {
         reg_upper_gamma_cf(a, x)
     }
@@ -199,11 +262,11 @@ fn reg_upper_gamma_cf(a: f64, x: f64) -> f64 {
         d = 1.0 / d;
         let del = d * c;
         h *= del;
-        if (del - 1.0).abs() < 1e-16 {
+        if (del - 1.0).abs() < EPS {
             break;
         }
     }
-    (-x + a * x.ln() - ln_gamma(a)).exp() * h
+    (-x + a * x.ln() - ln_gamma_pos(a)).exp() * h
 }
 
 /// Chi-square survival function `P(X > x)` with `df` degrees of freedom.
@@ -211,20 +274,44 @@ fn reg_upper_gamma_cf(a: f64, x: f64) -> f64 {
 /// `chi2_sf(x, df) = Q(df/2, x/2)`; used for Kupiec / Christoffersen
 /// p-values. Validated against SciPy to ~1e-12.
 pub fn chi2_sf(x: f64, df: f64) -> Result<f64> {
-    if df <= 0.0 {
-        return Err(FxVarError::invalid("chi-square df must be > 0"));
+    if !(df > 0.0) || !df.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "chi-square df must be finite and > 0, got {df}"
+        )));
+    }
+    if x.is_nan() {
+        return Err(FxVarError::invalid("chi2_sf: x is NaN"));
+    }
+    if x == f64::INFINITY {
+        return Ok(0.0);
     }
     if x <= 0.0 {
         return Ok(1.0);
     }
-    Ok(reg_upper_gamma(0.5 * df, 0.5 * x))
+    Ok(upper_gamma_unchecked(0.5 * df, 0.5 * x))
 }
 
 /// Regularised incomplete beta `I_x(a, b)` (Lentz continued fraction with
 /// the symmetry `I_x(a,b) = 1 - I_{1-x}(b,a)` for fast convergence).
-pub fn reg_inc_beta(a: f64, b: f64, x: f64) -> f64 {
-    assert!(a > 0.0 && b > 0.0, "reg_inc_beta requires a, b > 0");
-    assert!((0.0..=1.0).contains(&x), "reg_inc_beta requires x in [0, 1]");
+///
+/// # Errors
+/// [`FxVarError::Invalid`] unless `a, b > 0` are finite and `x` is in
+/// `[0, 1]` (these were `assert!`s).
+pub fn reg_inc_beta(a: f64, b: f64, x: f64) -> Result<f64> {
+    if !(a > 0.0) || !(b > 0.0) || !a.is_finite() || !b.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "reg_inc_beta requires finite a, b > 0, got {a}, {b}"
+        )));
+    }
+    if !(0.0..=1.0).contains(&x) {
+        return Err(FxVarError::invalid(format!(
+            "reg_inc_beta requires x in [0, 1], got {x}"
+        )));
+    }
+    Ok(inc_beta_unchecked(a, b, x))
+}
+
+fn inc_beta_unchecked(a: f64, b: f64, x: f64) -> f64 {
     if x == 0.0 {
         return 0.0;
     }
@@ -232,7 +319,7 @@ pub fn reg_inc_beta(a: f64, b: f64, x: f64) -> f64 {
         return 1.0;
     }
     let ln_front =
-        ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln();
+        ln_gamma_pos(a + b) - ln_gamma_pos(a) - ln_gamma_pos(b) + a * x.ln() + b * (1.0 - x).ln();
     let front = ln_front.exp();
     if x < (a + 1.0) / (a + b + 2.0) {
         front * beta_cf(a, b, x) / a
@@ -282,27 +369,61 @@ fn beta_cf(a: f64, b: f64, x: f64) -> f64 {
         d = 1.0 / d;
         let del = d * c;
         h *= del;
-        if (del - 1.0).abs() < 1e-16 {
+        if (del - 1.0).abs() < EPS {
             break;
         }
     }
     h
 }
 
+fn check_t_df(df: f64) -> Result<()> {
+    if !(df > 0.0) || !df.is_finite() {
+        return Err(FxVarError::invalid(format!(
+            "Student-t df must be finite and > 0, got {df}"
+        )));
+    }
+    Ok(())
+}
+
 /// Standard Student-t probability density with `df` degrees of freedom.
-pub fn student_t_pdf(x: f64, df: f64) -> f64 {
-    let ln_c = ln_gamma(0.5 * (df + 1.0))
-        - ln_gamma(0.5 * df)
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for NaN `x` or a non-finite / non-positive `df`.
+pub fn student_t_pdf(x: f64, df: f64) -> Result<f64> {
+    check_t_df(df)?;
+    if x.is_nan() {
+        return Err(FxVarError::invalid("student_t_pdf: x is NaN"));
+    }
+    Ok(t_pdf_unchecked(x, df))
+}
+
+pub(crate) fn t_pdf_unchecked(x: f64, df: f64) -> f64 {
+    let ln_c = ln_gamma_pos(0.5 * (df + 1.0))
+        - ln_gamma_pos(0.5 * df)
         - 0.5 * (df * std::f64::consts::PI).ln();
     (ln_c - 0.5 * (df + 1.0) * (1.0 + x * x / df).ln()).exp()
 }
 
 /// Standard Student-t CDF via the regularised incomplete beta.
-pub fn student_t_cdf(x: f64, df: f64) -> f64 {
+///
+/// # Errors
+/// Same as [`student_t_pdf`].
+pub fn student_t_cdf(x: f64, df: f64) -> Result<f64> {
+    check_t_df(df)?;
+    if x.is_nan() {
+        return Err(FxVarError::invalid("student_t_cdf: x is NaN"));
+    }
+    if x.is_infinite() {
+        return Ok(if x > 0.0 { 1.0 } else { 0.0 });
+    }
+    Ok(t_cdf_unchecked(x, df))
+}
+
+fn t_cdf_unchecked(x: f64, df: f64) -> f64 {
     if x == 0.0 {
         return 0.5;
     }
-    let ib = reg_inc_beta(0.5 * df, 0.5, df / (df + x * x));
+    let ib = inc_beta_unchecked(0.5 * df, 0.5, df / (df + x * x));
     if x > 0.0 {
         1.0 - 0.5 * ib
     } else {
@@ -322,9 +443,7 @@ pub fn student_t_quantile(p: f64, df: f64) -> Result<f64> {
     if !(p > 0.0 && p < 1.0) {
         return Err(FxVarError::invalid("t quantile requires p in (0, 1)"));
     }
-    if df <= 0.0 {
-        return Err(FxVarError::invalid("t quantile requires df > 0"));
-    }
+    check_t_df(df)?;
     if p == 0.5 {
         return Ok(0.0);
     }
@@ -333,25 +452,33 @@ pub fn student_t_quantile(p: f64, df: f64) -> Result<f64> {
         return Ok(-student_t_quantile(1.0 - p, df)?);
     }
     // Start from the normal quantile, inflated for fat tails.
-    let z = inv_norm_cdf(p);
-    let mut x = if df > 6.0 { z } else { z * (df / (df - 2.0).max(0.5)).sqrt() };
+    let z = inv_norm_cdf_unchecked(p);
+    let mut x = if df > 6.0 {
+        z
+    } else {
+        z * (df / (df - 2.0).max(0.5)).sqrt()
+    };
     if x <= 0.0 {
         x = 0.5;
     }
     let (mut lo, mut hi) = (0.0_f64, f64::INFINITY);
     for _ in 0..100 {
-        let f = student_t_cdf(x, df) - p;
+        let f = t_cdf_unchecked(x, df) - p;
         if f > 0.0 {
             hi = hi.min(x);
         } else {
             lo = lo.max(x);
         }
-        let d = student_t_pdf(x, df);
+        let d = t_pdf_unchecked(x, df);
         let mut step = f / d;
         // clamp the Newton step inside the bracket
         let mut xn = x - step;
         if !(xn.is_finite()) || xn <= lo || (hi.is_finite() && xn >= hi) {
-            xn = if hi.is_finite() { 0.5 * (lo + hi) } else { 2.0 * x.max(1.0) };
+            xn = if hi.is_finite() {
+                0.5 * (lo + hi)
+            } else {
+                2.0 * x.max(1.0)
+            };
             step = x - xn;
         }
         x = xn;
@@ -383,7 +510,7 @@ pub fn binom_cdf(k: i64, n: i64, p: f64) -> Result<f64> {
     if p == 1.0 {
         return Ok(0.0);
     }
-    Ok(reg_inc_beta((n - k) as f64, (k + 1) as f64, 1.0 - p))
+    Ok(inc_beta_unchecked((n - k) as f64, (k + 1) as f64, 1.0 - p))
 }
 
 /// Sample moments of a data slice.
@@ -403,14 +530,18 @@ pub struct Moments {
 /// Compute [`Moments`] of `x` (requires at least 2 observations).
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] for fewer than 2 points or NaNs (NaN policy:
-/// refuse, never impute).
+/// [`FxVarError::Invalid`] for fewer than 2 points or non-finite values
+/// (NaN policy: refuse, never impute).
 pub fn moments(x: &[f64]) -> Result<Moments> {
     if x.len() < 2 {
-        return Err(FxVarError::invalid("moments requires at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "moments requires at least 2 observations",
+        ));
     }
-    if x.iter().any(|v| v.is_nan()) {
-        return Err(FxVarError::invalid("moments input contains NaNs (NaN policy: refuse)"));
+    if x.iter().any(|v| !v.is_finite()) {
+        return Err(FxVarError::invalid(
+            "moments input contains NaN or infinite values (NaN policy: refuse)",
+        ));
     }
     let n = x.len() as f64;
     let mean = x.iter().sum::<f64>() / n;
@@ -440,18 +571,16 @@ pub fn moments(x: &[f64]) -> Result<Moments> {
     })
 }
 
-/// Validate a VaR/ES confidence level, returning it unchanged.
+/// Validate a VaR/ES tail probability, returning it unchanged.
 ///
-/// `alpha` is a **confidence level** (`0.99` = 99 % VaR), matching the
-/// C++/Python FX engines.
+/// `alpha` is the **tail probability** (`0.01` = 99 % VaR), the convention
+/// of every engine in the repository. It used to be a confidence level in
+/// this crate; `0.99` is now an error, never silently reinterpreted.
 ///
 /// # Errors
-/// [`FxVarError::Invalid`] unless `alpha` is strictly inside `(0, 1)`.
+/// [`FxVarError::Invalid`] unless `alpha` is strictly inside `(0, 0.5)`.
 pub fn validate_alpha(alpha: f64) -> Result<f64> {
-    if !(alpha > 0.0 && alpha < 1.0) {
-        return Err(FxVarError::invalid(format!("alpha must be in (0, 1), got {alpha}")));
-    }
-    Ok(alpha)
+    crate::tail::validate_alpha(alpha)
 }
 
 /// Validate a VaR horizon in trading days, returning it unchanged.
@@ -468,11 +597,26 @@ pub fn validate_horizon(horizon_days: f64) -> Result<f64> {
     Ok(horizon_days)
 }
 
-/// Unbiased (ddof=1) standard deviation of a slice (0 for < 2 points).
-pub fn sample_std(x: &[f64]) -> f64 {
+/// Unbiased (ddof=1) standard deviation of a slice.
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for fewer than 2 points or non-finite values
+/// (it used to return 0 for short input).
+pub fn sample_std(x: &[f64]) -> Result<f64> {
     if x.len() < 2 {
-        return 0.0;
+        return Err(FxVarError::invalid(
+            "sample_std requires at least 2 observations",
+        ));
     }
+    if x.iter().any(|v| !v.is_finite()) {
+        return Err(FxVarError::invalid(
+            "sample_std input contains NaN or infinite values",
+        ));
+    }
+    Ok(sample_std_unchecked(x))
+}
+
+pub(crate) fn sample_std_unchecked(x: &[f64]) -> f64 {
     let n = x.len() as f64;
     let mean = x.iter().sum::<f64>() / n;
     let ss: f64 = x.iter().map(|v| (v - mean) * (v - mean)).sum();

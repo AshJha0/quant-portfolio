@@ -21,6 +21,7 @@ __all__ = [
     "gini",
     "ks_statistic",
     "hosmer_lemeshow",
+    "pd_backtest_by_grade",
     "HosmerLemeshowResult",
     "psi",
     "bootstrap_auc_ci",
@@ -43,7 +44,7 @@ def _check_scores(score: np.ndarray, y: np.ndarray) -> np.ndarray:
     if s.shape != y.shape:
         raise ValueError("score and y must have equal length")
     if not np.all(np.isfinite(s)):
-        raise ValueError("score contains NaN/Inf — clean or drop before validation")
+        raise ValueError("score contains NaN/Inf: clean or drop before validation")
     return s
 
 
@@ -51,7 +52,7 @@ def auc(y: np.ndarray, score: np.ndarray) -> float:
     """ROC AUC via the Mann-Whitney U statistic with average ranks (tie-exact).
 
     ``AUC = (R1 - n1(n1+1)/2) / (n1 n0)`` where ``R1`` is the rank-sum of the
-    positive class using average ranks — identical (to floating point) to
+    positive class using average ranks: identical (to floating point) to
     ``sklearn.metrics.roc_auc_score`` including tied scores.
     """
     y = _check_binary(y)
@@ -102,6 +103,7 @@ def hosmer_lemeshow(
     y: np.ndarray,
     pd_hat: np.ndarray,
     n_groups: int = 10,
+    out_of_sample: bool | None = None,
 ) -> HosmerLemeshowResult:
     """Hosmer-Lemeshow calibration test on ``n_groups`` predicted-PD groups.
 
@@ -109,12 +111,26 @@ def hosmer_lemeshow(
     rows, O_g observed defaults and E_g = sum of predicted PDs:
 
     ``chi2 = sum_g (O_g - E_g)^2 / (E_g (1 - E_g/n_g))``,
-    referred to chi-square with ``n_groups - 2`` degrees of freedom.
+    referred to chi-square with ``n_groups - 2`` degrees of freedom for
+    PDs from a model fitted on these rows (``out_of_sample=False``) and
+    ``n_groups`` degrees of freedom for PDs scored on rows not used in
+    fitting (``out_of_sample=True``: out-of-time years, external PDs;
+    Hosmer and Lemeshow 2000, sec. 5.2.2). Leaving ``out_of_sample`` unset
+    is deprecated; it warns and keeps the in-sample ``n_groups - 2``.
 
     Low p-value = evidence of *mis-calibration* (predicted PD levels wrong),
-    even when discrimination (AUC) is fine — the typical failure in a
+    even when discrimination (AUC) is fine: the typical failure in a
     contagion year.
     """
+    if out_of_sample is None:
+        warnings.warn(
+            "hosmer_lemeshow: pass out_of_sample=True for PDs scored on data "
+            "not used in fitting (dof = n_groups) or False for in-sample PDs "
+            "(dof = n_groups - 2); the implicit in-sample default will be removed",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        out_of_sample = False
     y = _check_binary(y)
     p = _check_scores(pd_hat, y)
     if np.any((p < 0) | (p > 1)):
@@ -136,7 +152,7 @@ def hosmer_lemeshow(
         chi2 += (o - e) ** 2 / max(denom, 1e-12)
         rows.append({"group": g + 1, "n": n_g, "observed": o, "expected": e,
                      "mean_pd": pbar, "obs_rate": o / n_g})
-    dof = n_groups - 2
+    dof = n_groups if out_of_sample else n_groups - 2
     p_value = float(stats.chi2.sf(chi2, dof))
     return HosmerLemeshowResult(float(chi2), p_value, dof, pd.DataFrame(rows))
 
@@ -160,7 +176,7 @@ def psi(
     if e.size == 0 or a.size == 0:
         raise ValueError("both samples must be non-empty")
     if not (np.all(np.isfinite(e)) and np.all(np.isfinite(a))):
-        raise ValueError("PSI inputs contain NaN/Inf — clean or drop before comparison")
+        raise ValueError("PSI inputs contain NaN/Inf: clean or drop before comparison")
     if edges is None:
         edges = np.unique(np.quantile(e, np.linspace(0, 1, n_bins + 1)))
     edges = np.asarray(edges, dtype=float)
@@ -181,7 +197,7 @@ def bootstrap_auc_ci(
 ) -> tuple[float, float, float]:
     """Percentile bootstrap CI for AUC (resampling rows with replacement).
 
-    With a low-default portfolio the CI is *wide* — the honest statement of
+    With a low-default portfolio the CI is *wide*: the correct statement of
     how little the default history pins down discrimination (documented and
     demonstrated in VALIDATION.md).
 
@@ -242,9 +258,58 @@ def within_country_autocorrelation(
         warnings.warn(
             f"mean within-country lag-1 autocorrelation of {col!r} is "
             f"{mean_ac:.3f} > {warn_threshold}: panel rows are serially "
-            "dependent — use time/country splits, not random row splits, and "
+            "dependent: use time/country splits, not random row splits, and "
             "treat i.i.d.-based standard errors as anti-conservative.",
             UserWarning,
             stacklevel=2,
         )
     return ser
+
+
+def _traffic_light(p: float) -> str:
+    """green: p >= 0.05; amber: 0.001 <= p < 0.05; red: p < 0.001."""
+    if p < 0.001:
+        return "red"
+    if p < 0.05:
+        return "amber"
+    return "green"
+
+
+def pd_backtest_by_grade(
+    y: np.ndarray, pd_hat: np.ndarray, grades: np.ndarray | pd.Series
+) -> pd.DataFrame:
+    """Per-grade PD back-test: binomial and Jeffreys tests with a traffic light.
+
+    For a grade with N obligors, D defaults and average PD p: the binomial
+    p-value is P(X >= D) for X ~ Binomial(N, p) (independent defaults;
+    too strict when defaults are correlated, as in a sovereign panel); the
+    Jeffreys p-value is P(theta <= p) under the Beta(D + 1/2, N - D + 1/2)
+    posterior (ECB instructions for IRB validation). The light uses the
+    binomial p-value: green >= 0.05, amber [0.001, 0.05), red < 0.001.
+    """
+    ya = _check_binary(y).astype(float)
+    pa = np.asarray(pd_hat, dtype=float).ravel()
+    ga = pd.Series(np.asarray(grades, dtype=object).ravel())
+    if not (len(ya) == len(pa) == len(ga)) or len(ya) == 0:
+        raise ValueError("y, pd_hat and grades must be same nonzero length")
+    if (~np.isfinite(pa)).any() or ((pa < 0) | (pa > 1)).any():
+        raise ValueError("pd_hat must lie in [0, 1] with no NaN/Inf")
+    if ga.isna().any():
+        raise ValueError("grades contain missing values")
+    rows = []
+    for g in pd.unique(ga):
+        m = (ga == g).to_numpy()
+        n = int(m.sum())
+        d = int(ya[m].sum())
+        p = float(pa[m].mean())
+        p_bin = float(stats.binom.sf(d - 1, n, p)) if d > 0 else 1.0
+        p_jef = float(stats.beta.cdf(p, d + 0.5, n - d + 0.5))
+        rows.append({"grade": g, "n": n, "defaults": d, "mean_pd": p,
+                     "observed_rate": d / n, "binomial_p": p_bin,
+                     "jeffreys_p": p_jef, "light": _traffic_light(p_bin)})
+    out = pd.DataFrame(rows)
+    try:
+        out = out.sort_values("grade", kind="stable")
+    except TypeError:
+        pass
+    return out.reset_index(drop=True)

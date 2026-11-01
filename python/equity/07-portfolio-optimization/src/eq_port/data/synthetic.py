@@ -14,7 +14,7 @@ covariance is known in closed form:
 An optional crisis regime multiplies the market-factor volatility by
 ``crisis_vol_mult`` inside a contiguous crisis window. Because only the
 common factor scales up, pairwise correlations jump toward 1 in the
-crisis — the classic correlation-breakdown stylised fact.
+crisis: the classic correlation-breakdown stylised fact.
 
 Everything is driven by an explicit seed; no network access.
 """
@@ -115,7 +115,7 @@ def generate_panel(
 
     # --- parameters (annualised, then scaled to daily) -------------------
     ppy = 252.0
-    # Annual expected excess returns 3%..8% — deliberately similar across
+    # Annual expected excess returns 3%..8%, chosen to be similar across
     # assets so the cross-sectional dispersion of TRUE means is small
     # relative to estimation noise (the Merton problem is visible).
     ann_mu = np.linspace(0.03, 0.08, n_assets)
@@ -164,7 +164,9 @@ def generate_panel(
     r = mu[None, :] + np.outer(f_mkt, beta) + f_sec @ Gamma.T + eps
 
     names = [f"A{i+1}" for i in range(n_assets)]
-    idx = pd.bdate_range("2015-01-01", periods=n_periods)
+    # Second resolution keeps very long synthetic panels inside the
+    # timestamp range on pandas 2 (nanosecond default overflows ~2262).
+    idx = pd.bdate_range("2015-01-01", periods=n_periods, unit="s")
     returns = pd.DataFrame(r, index=idx, columns=names)
 
     # cap-style market weights: strictly positive, decaying, sum to 1

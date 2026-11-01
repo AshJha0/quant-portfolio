@@ -12,7 +12,7 @@ optimistically biased.  Worse, contagion years straddle the split, so crisis
 information leaks across it.  The correct designs are:
 
 * **out-of-time split** (`time_split`): train on years <= T, test strictly on
-  years > T — this is how the model will actually be used (fit on history,
+  years > T: this is how the model will actually be used (fit on history,
   predict the future); and
 * **country-holdout split** (`country_holdout_split`): entire countries held
   out, testing cross-sectional generalisation to unseen sovereigns.
@@ -37,7 +37,7 @@ __all__ = [
 _REQUIRED = ("country", "year", "default")
 
 #: Physically-impossible value bounds; violations are set to NaN (not clipped,
-#: so the WOE missing bin can pick them up honestly).
+#, so the WOE missing bin can pick them up).
 _VALID_RANGES: dict[str, tuple[float, float]] = {
     "reserves_import_cover": (0.0, 60.0),
     "ext_debt_gdp": (0.0, 1000.0),
@@ -57,7 +57,7 @@ def clean_panel(df: pd.DataFrame) -> pd.DataFrame:
     impossible values per ``_VALID_RANGES``; coerce ``year`` to int and the
     outcome to {0,1}; sort by (country, year).
 
-    Missing values are deliberately *kept* — the WOE layer assigns them an
+    Missing values are *kept*: the WOE layer assigns them an
     explicit missing bin, which is itself informative (data gaps correlate
     with weak institutions).
 
@@ -130,7 +130,7 @@ def time_split(
     -------
     (train, test) : tuple of DataFrame
         Guaranteed: ``train.year.max() < test.year.min()`` (when both are
-        non-empty) — no same-country future row can ever land in train.
+        non-empty): no same-country future row can ever land in train.
     """
     if test_start_year is None:
         test_start_year = train_end_year + 1

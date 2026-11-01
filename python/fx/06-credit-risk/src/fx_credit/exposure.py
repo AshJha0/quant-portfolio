@@ -1,4 +1,5 @@
-r"""Counterparty pre-settlement risk on FX forwards: EE/PFE profiles, netting, CVA.
+r"""Counterparty pre-settlement risk on FX forwards: EE/PFE profiles, netting,
+expected loss on exposure.
 
 Model
 -----
@@ -16,22 +17,30 @@ PFE_q(t) its q-quantile.
 
 Exposure shape for a single forward: there are **no intermediate cashflows**,
 so uncertainty accumulates all the way to maturity and the exposure profile
-*grows to maturity* like ``sqrt(t)`` (concave, monotone increasing) — unlike
+*grows to maturity* like ``sqrt(t)`` (concave, monotone increasing): unlike
 an interest-rate swap, whose amortising remaining cashflows create the famous
 mid-life hump.  Both the monotone growth and the concavity are unit-tested
 empirically on seeded paths.
 
-CVA (unilateral, no wrong-way risk):
+Expected loss on exposure (unilateral, uncollateralised, no wrong-way risk):
 
-.. math:: \mathrm{CVA} = LGD \sum_i EE(t_i)\,[PD(t_i)-PD(t_{i-1})]\,e^{-r_d t_i}
+.. math:: \mathrm{EL_{exp}} = LGD \sum_i EE(t_i)\,[PD(t_i)-PD(t_{i-1})]\,e^{-r_d t_i}
 
-with the PD term structure built from the scorecard's 1-year PD via a **flat
-hazard**: ``h = -ln(1 - PD_{1y})``, ``PD(t) = 1 - e^{-ht}`` — a documented
-simplification (real curves are humped for low-grade sovereigns).
+with the PD term structure built from a real-world (statistical) 1-year PD
+via a flat hazard: ``h = -ln(1 - PD_{1y})``, ``PD(t) = 1 - e^{-ht}``.
+
+This has the shape of the CVA formula but is not a CVA. Accounting (IFRS 13)
+and regulatory (SA-CVA, BA-CVA) CVA need risk-neutral default probabilities
+implied from CDS or proxy spreads and market LGD. There is no collateral
+(CSA, margin period of risk), no DVA, no EEPE or SA-CCR exposure measure,
+and a netting set holds one currency pair. A quantity built on a
+statistical PD cannot be hedged with CDS. The old names ``cva`` and
+``cva_for_forward`` remain as deprecated aliases.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -45,6 +54,8 @@ __all__ = [
     "netting_set_profile",
     "hazard_from_pd1y",
     "pd_term_structure",
+    "expected_exposure_loss",
+    "expected_exposure_loss_for_forward",
     "cva",
     "cva_for_forward",
 ]
@@ -216,7 +227,7 @@ def netting_set_profile(
     each trade defaults severally: ``sum_i max(V_i, 0)``.  Netting therefore
     always weakly reduces exposure path-by-path, with equality iff all trade
     MTMs share the same sign on every path (e.g. identical same-direction
-    trades) — both bounds unit-tested.  All trades share the driving spot
+    trades): both bounds unit-tested.  All trades share the driving spot
     paths (same pair, same seed): the comparison is apples-to-apples.
     """
     if not forwards:
@@ -246,7 +257,7 @@ def netting_set_profile(
 
 
 # ---------------------------------------------------------------------------
-# PD term structure from the scorecard 1y PD, and CVA
+# PD term structure from a 1y PD, and expected loss on exposure
 # ---------------------------------------------------------------------------
 
 def hazard_from_pd1y(pd_1y: float) -> float:
@@ -268,14 +279,17 @@ def pd_term_structure(pd_1y: float, times: np.ndarray) -> np.ndarray:
     return 1.0 - np.exp(-h * t)
 
 
-def cva(
+def expected_exposure_loss(
     times: np.ndarray,
     ee: np.ndarray,
     cum_pd: np.ndarray,
     lgd: float,
     r_d: float = 0.0,
 ) -> float:
-    """Unilateral CVA: ``LGD * sum_i EE(t_i) dPD_i e^{-r_d t_i}``.
+    """Discounted expected loss on exposure: ``LGD * sum_i EE(t_i) dPD_i e^{-r_d t_i}``.
+
+    With a real-world ``cum_pd`` this is an expected credit loss on the
+    exposure profile, not a CVA (see the module docstring).
 
     Parameters
     ----------
@@ -293,9 +307,9 @@ def cva(
     Notes
     -----
     Uses the end-of-interval EE (defaults within (t_{i-1}, t_i] valued at
-    t_i) — a conservative, standard discretisation.  Independence of
+    t_i): a conservative, standard discretisation.  Independence of
     exposure and default is assumed (no wrong-way risk); VALIDATION.md
-    quantifies how badly that understates CVA for an EM sovereign whose
+    quantifies how badly that understates the loss for an EM sovereign whose
     default coincides with its currency crashing.
     """
     t = np.asarray(times, dtype=float)
@@ -320,7 +334,7 @@ def cva(
     return float(lgd * np.sum(e * dpd * disc))
 
 
-def cva_for_forward(
+def expected_exposure_loss_for_forward(
     fwd: FXForward,
     spot: float,
     vol: float,
@@ -332,12 +346,31 @@ def cva_for_forward(
     n_paths: int = 50_000,
     seed: int = 0,
 ) -> tuple[float, ExposureProfile]:
-    """CVA of a single forward against a counterparty with given 1y PD.
+    """Expected loss on the exposure of one forward, given a real-world 1y PD.
 
-    Returns (cva_value, exposure_profile).  ``pd_1y = 0`` gives exactly 0.
+    Returns (loss, exposure_profile).  ``pd_1y = 0`` gives exactly 0.
     """
     prof = exposure_profile(fwd, spot, vol, r_d, r_f, n_steps, n_paths, seed=seed)
     if prof.times.size == 0:
         return 0.0, prof
     q = pd_term_structure(pd_1y, prof.times)
-    return cva(prof.times, prof.ee, q, lgd, r_d), prof
+    return expected_exposure_loss(prof.times, prof.ee, q, lgd, r_d), prof
+
+
+def cva(*args, **kwargs) -> float:
+    """Deprecated alias of :func:`expected_exposure_loss` (not a CVA)."""
+    warnings.warn(
+        "cva() is deprecated: the quantity uses a real-world PD and is an "
+        "expected loss on exposure, not a CVA; use expected_exposure_loss()",
+        DeprecationWarning, stacklevel=2,
+    )
+    return expected_exposure_loss(*args, **kwargs)
+
+
+def cva_for_forward(*args, **kwargs) -> tuple[float, ExposureProfile]:
+    """Deprecated alias of :func:`expected_exposure_loss_for_forward`."""
+    warnings.warn(
+        "cva_for_forward() is deprecated; use expected_exposure_loss_for_forward()",
+        DeprecationWarning, stacklevel=2,
+    )
+    return expected_exposure_loss_for_forward(*args, **kwargs)

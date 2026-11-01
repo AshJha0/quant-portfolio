@@ -1,4 +1,4 @@
-"""eq_credit — corporate credit risk / PD modelling (bank-style scorecard).
+"""eq_credit: corporate credit risk / PD modelling (bank-style scorecard).
 
 Pipeline: data cleaning -> WOE/IV binning -> IRLS logistic scorecard -> PD ->
 validation (AUC/KS, Hosmer-Lemeshow, PSI) -> expected loss -> Basel IRB and
@@ -46,6 +46,7 @@ from eq_credit.validation import (
     decile_table,
     gini,
     hosmer_lemeshow,
+    pd_backtest_by_grade,
     is_monotone,
     ks_statistic,
     ks_table,
@@ -103,6 +104,7 @@ __all__ = [
     "bootstrap_auc_ci",
     "brier_score",
     "hosmer_lemeshow",
+    "pd_backtest_by_grade",
     "calibration_table",
     "psi_from_proportions",
     "psi",

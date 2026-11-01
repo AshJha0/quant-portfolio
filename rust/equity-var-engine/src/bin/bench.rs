@@ -1,205 +1,314 @@
-//! bench — end-to-end timings for the `eq_var_engine` on a realistic
-//! desk-sized problem: a 250-day x 100-asset returns panel (one year of
-//! history, 100 risk factors). Mirrors `cpp/equity-var-engine/bench/bench_main.cpp`
-//! in spirit and stage list.
+//! bench: per-call latency distribution of the `eq_var_engine` kernels.
 //!
-//! Measured stages:
-//! 1. sample + EWMA covariance estimation from the panel (100 x 100);
-//! 2. historical VaR family (plain / BRW / FHS) on the portfolio P&L;
-//! 3. parametric VaR (normal + Student-t);
-//! 4. Monte Carlo VaR + ES, 100'000 paths, normal and Student-t (the
-//!    dominant cost: 100k x 100 correlated draws through the Cholesky
-//!    factor).
+//! Each kernel runs a warm-up, then many timed calls over a rotating set of
+//! inputs (different P&L samples, books and seeds). The tool reports p50,
+//! p90, p99, p99.9 and max in nanoseconds per call.
 //!
-//! Deterministic inputs (closed-form sin/cos panel, fixed MC seed) so runs
-//! are exactly reproducible; each stage is repeated and the best-of-R wall
-//! time is reported (strips scheduler noise from a single-threaded,
-//! CPU-bound benchmark).
+//! Kernels that finish in under a microsecond are timed in batches of
+//! `calls_per_sample` calls and the batch time is divided by that count.
+//! The timer (`std::time::Instant`) resolves about 20-30 ns, so a single
+//! call of that size would read as noise.
 //!
+//! Every kernel runs twice: through the main API (allocating, `String`
+//! errors) and through `eq_var_engine::fast` (no allocation). The main API
+//! code is unchanged by the latency work, so its rows are the "before"
+//! numbers and the `fast` rows are the "after" numbers.
+//!
+//! Output: a table on stdout and `bench/results.json` (crate-relative).
 //! Run with `cargo run --release --bin bench`.
 
+use std::hint::black_box;
 use std::time::Instant;
 
+use eq_var_engine::fast::*;
 use eq_var_engine::prelude::*;
 
-fn best_of_ms<F: FnMut() -> f64>(reps: usize, sink: &mut f64, mut f: F) -> f64 {
-    let mut best = f64::INFINITY;
-    for _ in 0..reps {
+struct Row {
+    kernel: String,
+    n_iter: usize,
+    k: usize,
+    p: [f64; 5],
+}
+
+fn pct(sorted: &[f64], q: f64) -> f64 {
+    let i = ((sorted.len() as f64 - 1.0) * q).round() as usize;
+    sorted[i.min(sorted.len() - 1)]
+}
+
+/// Time `n_iter` samples of `k` calls each after `warm` warm-up calls.
+/// `f(i)` runs call number `i`; it picks its input from `i`.
+fn measure<F: FnMut(usize) -> f64>(
+    kernel: &str,
+    n_iter: usize,
+    k: usize,
+    warm: usize,
+    mut f: F,
+) -> Row {
+    let mut sink = 0.0;
+    for i in 0..warm {
+        sink += f(i);
+    }
+    let mut t = Vec::with_capacity(n_iter);
+    let mut c = 0usize;
+    for _ in 0..n_iter {
         let t0 = Instant::now();
-        *sink += f();
-        let ms = t0.elapsed().as_secs_f64() * 1000.0;
-        if ms < best {
-            best = ms;
+        for _ in 0..k {
+            sink += f(black_box(c));
+            c += 1;
+        }
+        t.push(t0.elapsed().as_nanos() as f64 / k as f64);
+    }
+    black_box(sink);
+    t.sort_by(f64::total_cmp);
+    let p = [
+        pct(&t, 0.5),
+        pct(&t, 0.9),
+        pct(&t, 0.99),
+        pct(&t, 0.999),
+        t[t.len() - 1],
+    ];
+    println!(
+        "| {kernel:<44} | {:>9.0} | {:>9.0} | {:>9.0} | {:>9.0} | {:>10.0} | {k:>3} |",
+        p[0], p[1], p[2], p[3], p[4]
+    );
+    Row {
+        kernel: kernel.to_string(),
+        n_iter,
+        k,
+        p,
+    }
+}
+
+fn cpu_name() -> String {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("model name"))
+                .and_then(|l| l.split(':').nth(1))
+                .map(|v| v.trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn today() -> String {
+    // Days since the Unix epoch to a civil date (Howard Hinnant's algorithm).
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    let z = secs / 86_400 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn book(n: usize, seed: u64) -> (Vec<f64>, Matrix) {
+    let mut rng = Rng::new(seed);
+    let mut cov = Matrix::zeros(n, n);
+    for i in 0..n {
+        for j in 0..n {
+            let vi = 0.001 + 0.0002 * i as f64;
+            let vj = 0.001 + 0.0002 * j as f64;
+            cov.set(i, j, if i == j { vi * vi } else { 0.36 * vi * vj });
         }
     }
-    best
-}
-
-fn row(stage: &str, ms: f64, result: &str) {
-    println!("| {stage:<42} | {ms:>10.3} | {result:<28} |");
-}
-
-fn money(v: f64) -> String {
-    format!("{v:.0}")
+    let w = (0..n)
+        .map(|_| 1.0e5 * (1.0 + rng.uniform()) * if rng.uniform() < 0.3 { -1.0 } else { 1.0 })
+        .collect();
+    (w, cov)
 }
 
 fn main() {
-    const DAYS: usize = 250;
-    const ASSETS: usize = 100;
-    const PATHS: usize = 100_000;
-    const ALPHA: f64 = 0.01;
-
-    // Deterministic 250 x 100 daily returns panel: per-asset vol ramps from
-    // 10 bp to ~2 %, phase-shifted sin/cos terms induce rich correlation.
-    let mut panel = Matrix::zeros(DAYS, ASSETS);
-    for t in 0..DAYS {
-        for j in 0..ASSETS {
-            let (td, jd) = (t as f64, j as f64);
-            let vol = 0.001 + 0.0002 * jd;
-            let v = vol * ((0.7 * td + 0.31 * jd).sin() + 0.5 * (1.3 * td - 0.11 * jd).cos());
-            panel.set(t, j, v);
-        }
-    }
-    // Long-biased book: exposures alternate long/short, 100k..1.09M per name.
-    let exposures: Vec<f64> = (0..ASSETS)
-        .map(|j| {
-            let sign = if j % 3 == 2 { -1.0 } else { 1.0 };
-            sign * (1.0e5 + 1.0e4 * j as f64)
-        })
+    const SETS: usize = 16;
+    // Historical inputs: 16 samples of 250 days (one year) and of 1000 days.
+    let mut rng = Rng::new(20_261_101);
+    let p250: Vec<Vec<f64>> = (0..SETS)
+        .map(|_| (0..250).map(|_| 1.0e4 * rng.standard_normal()).collect())
         .collect();
+    let p1000: Vec<Vec<f64>> = (0..SETS)
+        .map(|_| (0..1000).map(|_| 1.0e4 * rng.standard_normal()).collect())
+        .collect();
+    let mut work = vec![0.0; 1000];
+    let books: Vec<(Vec<f64>, Matrix)> = (0..SETS).map(|s| book(100, s as u64)).collect();
 
+    println!("eq_var_engine per-call latency, ns (single thread)\n");
     println!(
-        "eq_var_engine benchmark - {DAYS}-day x {ASSETS}-asset panel, alpha = {ALPHA:.2}, {PATHS} MC paths, single thread\n"
+        "| {:<44} | {:>9} | {:>9} | {:>9} | {:>9} | {:>10} | {:>3} |",
+        "kernel", "p50", "p90", "p99", "p99.9", "max", "K"
     );
-    println!("| {:<42} | {:>10} | {:<28} |", "stage", "best ms", "result");
-    println!("|{}|{}|{}|", "-".repeat(44), "-".repeat(12), "-".repeat(30));
-
-    let mut sink = 0.0;
-
-    // --- covariance estimation ---------------------------------------------
-    let mut cov = Matrix::zeros(ASSETS, ASSETS);
-    let ms_cov = best_of_ms(5, &mut sink, || {
-        cov = sample_covariance(&panel).unwrap();
-        cov.get(0, 0)
-    });
-    row("sample covariance (250 x 100 -> 100 x 100)", ms_cov, "");
-
-    let mut ecov = Matrix::zeros(ASSETS, ASSETS);
-    let ms_ecov = best_of_ms(5, &mut sink, || {
-        ecov = ewma_covariance(&panel, 0.94).unwrap();
-        ecov.get(0, 0)
-    });
-    row("EWMA covariance (lam = 0.94)", ms_ecov, "");
-
-    // --- historical family --------------------------------------------------
-    let pnl = portfolio_pnl(&panel, &exposures).unwrap();
-    let mut v = 0.0;
-    let ms_hist = best_of_ms(20, &mut sink, || {
-        v = historical_var(&pnl, ALPHA).unwrap();
-        v
-    });
-    row("historical VaR 99% (250 scenarios)", ms_hist, &money(v));
-
-    let ms_brw = best_of_ms(20, &mut sink, || {
-        v = age_weighted_var(&pnl, ALPHA, 0.98).unwrap();
-        v
-    });
-    row("BRW age-weighted VaR 99% (lam = 0.98)", ms_brw, &money(v));
-
-    let ms_fhs = best_of_ms(20, &mut sink, || {
-        v = filtered_historical_var(&pnl, ALPHA, 0.94).unwrap();
-        v
-    });
-    row("filtered (FHS) VaR 99% (lam = 0.94)", ms_fhs, &money(v));
-
-    let ms_es = best_of_ms(20, &mut sink, || {
-        v = expected_shortfall(&pnl, 0.025).unwrap();
-        v
-    });
-    row("empirical ES 97.5%", ms_es, &money(v));
-
-    // --- parametric ----------------------------------------------------------
-    let ms_par_n = best_of_ms(20, &mut sink, || {
-        v = parametric_var(&exposures, &cov, ALPHA, TailModel::Normal).unwrap();
-        v
-    });
-    row("parametric VaR 99% (normal)", ms_par_n, &money(v));
-
-    let ms_par_t = best_of_ms(20, &mut sink, || {
-        v = parametric_var(&exposures, &cov, ALPHA, TailModel::StudentT { df: 6.0 }).unwrap();
-        v
-    });
-    row(
-        "parametric VaR 99% (Student-t, df = 6)",
-        ms_par_t,
-        &money(v),
-    );
-
-    let sigma = portfolio_sigma(&exposures, &cov).unwrap();
-    let ms_nes = best_of_ms(20, &mut sink, || {
-        v = normal_es(sigma, 0.025, 0.0).unwrap();
-        v
-    });
-    row("closed-form ES 97.5% (normal)", ms_nes, &money(v));
-
-    // --- Cholesky (isolated) -------------------------------------------------
-    let ms_chol = best_of_ms(5, &mut sink, || {
-        let l = cov.cholesky_jitter(1e-10, 12).unwrap();
-        l.get(0, 0)
-    });
-    row("Cholesky 100 x 100", ms_chol, "");
-
-    // --- Monte Carlo ---------------------------------------------------------
-    let ms_mc_n = best_of_ms(3, &mut sink, || {
-        v = monte_carlo_var(&exposures, &cov, ALPHA, PATHS, TailModel::Normal, 42).unwrap();
-        v
-    });
-    let se_n = var_order_statistic_se(
-        &monte_carlo_pnl(&exposures, &cov, PATHS, TailModel::Normal, 42).unwrap(),
-        ALPHA,
-    )
-    .unwrap();
-    row(
-        "MC VaR 99% normal (100k x 100 paths)",
-        ms_mc_n,
-        &format!("{} (SE {})", money(v), money(se_n)),
-    );
-    let mc_var_n = v;
-    let mc_es_n = monte_carlo_es(&exposures, &cov, ALPHA, PATHS, TailModel::Normal, 42).unwrap();
-
-    let ms_mc_t = best_of_ms(3, &mut sink, || {
-        v = monte_carlo_var(
-            &exposures,
-            &cov,
-            ALPHA,
-            PATHS,
-            TailModel::StudentT { df: 6.0 },
-            42,
-        )
-        .unwrap();
-        v
-    });
-    let se_t = var_order_statistic_se(
-        &monte_carlo_pnl(&exposures, &cov, PATHS, TailModel::StudentT { df: 6.0 }, 42).unwrap(),
-        ALPHA,
-    )
-    .unwrap();
-    row(
-        "MC VaR 99% Student-t df=6 (100k paths)",
-        ms_mc_t,
-        &format!("{} (SE {})", money(v), money(se_t)),
-    );
-
-    let total = ms_cov + ms_ecov + ms_hist + ms_brw + ms_fhs + ms_es + ms_par_n + ms_par_t + ms_mc_n;
     println!(
-        "\nfull daily batch (cov + historical family + parametric + 100k-path MC): {total:.1} ms"
+        "|{}|{}|{}|{}|{}|{}|{}|",
+        "-".repeat(46),
+        "-".repeat(11),
+        "-".repeat(11),
+        "-".repeat(11),
+        "-".repeat(11),
+        "-".repeat(12),
+        "-".repeat(5)
     );
-    let exact = parametric_var(&exposures, &cov, ALPHA, TailModel::Normal).unwrap();
-    println!("MC normal vs parametric normal: {} vs {} (agreement within MC error)", money(mc_var_n), money(exact));
-    println!(
-        "MC normal ES 99%: {}  |  closed-form: {}",
-        money(mc_es_n),
-        money(normal_es(sigma, ALPHA, 0.0).unwrap())
-    );
-    println!("[checksum {sink:.6}]");
+
+    let mut rows = Vec::new();
+    let n = 20_000;
+    let a = 0.01;
+    rows.push(measure(
+        "historical_var n=250 (main API)",
+        n,
+        8,
+        2000,
+        |i| historical_var(&p250[i % SETS], a).unwrap_or(0.0),
+    ));
+    rows.push(measure("historical_var_ws n=250 (fast)", n, 8, 2000, |i| {
+        historical_var_ws(&p250[i % SETS], a, &mut work).unwrap_or(0.0)
+    }));
+    rows.push(measure(
+        "historical_var n=1000 (main API)",
+        n,
+        2,
+        2000,
+        |i| historical_var(&p1000[i % SETS], a).unwrap_or(0.0),
+    ));
+    rows.push(measure(
+        "historical_var_ws n=1000 (fast)",
+        n,
+        2,
+        2000,
+        |i| historical_var_ws(&p1000[i % SETS], a, &mut work).unwrap_or(0.0),
+    ));
+    rows.push(measure(
+        "expected_shortfall n=250 a=2.5% (main API)",
+        n,
+        8,
+        2000,
+        |i| expected_shortfall(&p250[i % SETS], 0.025).unwrap_or(0.0),
+    ));
+    rows.push(measure(
+        "expected_shortfall_ws n=250 a=2.5% (fast)",
+        n,
+        8,
+        2000,
+        |i| expected_shortfall_ws(&p250[i % SETS], 0.025, &mut work).unwrap_or(0.0),
+    ));
+    rows.push(measure(
+        "parametric_var normal 100 assets (main API)",
+        n,
+        2,
+        2000,
+        |i| {
+            let (w, c) = &books[i % SETS];
+            parametric_var(w, c, a, TailModel::Normal).unwrap_or(0.0)
+        },
+    ));
+    rows.push(measure(
+        "parametric_var_fast normal 100 assets (fast)",
+        n,
+        2,
+        2000,
+        |i| {
+            let (w, c) = &books[i % SETS];
+            parametric_var_fast(w, c, a, TailModel::Normal).unwrap_or(0.0)
+        },
+    ));
+    rows.push(measure(
+        "parametric_var t df=6 100 assets (main API)",
+        n,
+        1,
+        2000,
+        |i| {
+            let (w, c) = &books[i % SETS];
+            parametric_var(w, c, a, TailModel::StudentT { df: 6.0 }).unwrap_or(0.0)
+        },
+    ));
+    rows.push(measure(
+        "parametric_var_fast t df=6 100 assets (fast)",
+        n,
+        1,
+        2000,
+        |i| {
+            let (w, c) = &books[i % SETS];
+            parametric_var_fast(w, c, a, TailModel::StudentT { df: 6.0 }).unwrap_or(0.0)
+        },
+    ));
+    let mut est = vec![0.0; 200];
+    rows.push(measure(
+        "var_bootstrap_se n=250 B=200 (main API)",
+        2000,
+        1,
+        100,
+        |i| var_bootstrap_se(&p250[i % SETS], a, 200, i as u64).unwrap_or(0.0),
+    ));
+    rows.push(measure(
+        "var_bootstrap_se_ws n=250 B=200 (fast)",
+        2000,
+        1,
+        100,
+        |i| {
+            var_bootstrap_se_ws(&p250[i % SETS], a, 200, i as u64, &mut work, &mut est)
+                .unwrap_or(0.0)
+        },
+    ));
+
+    // Monte Carlo: 20-factor book, 10k paths, 50 bootstrap resamples.
+    let (mw, mc) = book(20, 77);
+    let paths = 10_000;
+    rows.push(measure(
+        "monte_carlo_run 20x10k B=50 (main API)",
+        300,
+        1,
+        10,
+        |i| {
+            monte_carlo_run(&mw, &mc, a, paths, TailModel::Normal, i as u64, 50)
+                .map(|r| r.var)
+                .unwrap_or(0.0)
+        },
+    ));
+    let mut ws = McWorkspace::new(20, paths, 50);
+    let _ = ws.prepare(&mc, TailModel::Normal);
+    rows.push(measure(
+        "McWorkspace::run 20x10k B=50 (fast)",
+        300,
+        1,
+        10,
+        |i| {
+            ws.run(&mw, a, paths, i as u64, 50)
+                .map(|r| r.var)
+                .unwrap_or(0.0)
+        },
+    ));
+    rows.push(measure(
+        "monte_carlo_var 20x10k (main API)",
+        300,
+        1,
+        10,
+        |i| monte_carlo_var(&mw, &mc, a, paths, TailModel::Normal, i as u64).unwrap_or(0.0),
+    ));
+    rows.push(measure("McWorkspace::var 20x10k (fast)", 300, 1, 10, |i| {
+        ws.var(&mw, a, paths, i as u64).unwrap_or(0.0)
+    }));
+
+    let cpu = cpu_name();
+    let date = today();
+    let flags = "release: opt-level=3, lto=fat, codegen-units=1; RUSTFLAGS unset";
+    let toolchain = "rustc 1.99.1";
+    let mut json = String::from("[\n");
+    for (i, r) in rows.iter().enumerate() {
+        json.push_str(&format!(
+            "  {{\"engine\": \"rust/equity-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{toolchain}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+            r.kernel, r.n_iter, r.k, r.p[0], r.p[1], r.p[2], r.p[3], r.p[4],
+            if i + 1 < rows.len() { "," } else { "" }
+        ));
+    }
+    json.push_str("]\n");
+    let _ = std::fs::create_dir_all("bench");
+    match std::fs::write("bench/results.json", &json) {
+        Ok(()) => println!("\nwrote bench/results.json"),
+        Err(e) => println!("\ncould not write bench/results.json: {e}"),
+    }
+    println!("{json}");
 }

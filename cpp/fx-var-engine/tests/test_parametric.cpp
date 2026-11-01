@@ -29,7 +29,7 @@ TEST(VarCovar, ClosedFormMatchesHandComputation) {
       Matrix::from_rows({{4e-5, 1e-5}, {1e-5, 9e-5}});
   const double sig2 = 1e12 * 4e-5 - 2.0 * 1e6 * 5e5 * 1e-5 + 2.5e11 * 9e-5;
   const double sig = std::sqrt(sig2);
-  const VarEs ve = var_covar(w, cov, 0.99, 1.0, TailDist::kNormal);
+  const VarEs ve = var_covar(w, cov, 0.01, 1.0, TailDist::kNormal);
   EXPECT_NEAR(ve.var, sig * norm_ppf(0.99), 1e-12 * ve.var);
   EXPECT_NEAR(ve.es, sig * norm_pdf(norm_ppf(0.99)) / 0.01, 1e-12 * ve.es);
   EXPECT_NEAR(portfolio_sigma(w, cov), sig, 1e-12 * sig);
@@ -38,12 +38,12 @@ TEST(VarCovar, ClosedFormMatchesHandComputation) {
 TEST(VarCovar, SqrtTimeAndDistributionOrdering) {
   const std::vector<double> w{1e6};
   const Matrix cov = Matrix::from_rows({{6.4e-5}});
-  const VarEs d1 = var_covar(w, cov, 0.99, 1.0);
-  const VarEs d10 = var_covar(w, cov, 0.99, 10.0);
+  const VarEs d1 = var_covar(w, cov, 0.01, 1.0);
+  const VarEs d10 = var_covar(w, cov, 0.01, 10.0);
   EXPECT_NEAR(d10.var, d1.var * std::sqrt(10.0), 1e-10 * d10.var);
   EXPECT_NEAR(d10.es, d1.es * std::sqrt(10.0), 1e-10 * d10.es);
   // t overlay is fatter at 99% at equal sigma.
-  const VarEs t5 = var_covar(w, cov, 0.99, 1.0, TailDist::kStudentT, 5.0);
+  const VarEs t5 = var_covar(w, cov, 0.01, 1.0, TailDist::kStudentT, 5.0);
   EXPECT_GT(t5.var, d1.var);
   EXPECT_GT(t5.es, d1.es);
 }
@@ -55,7 +55,7 @@ TEST(VarCovar, SingularCovarianceIsHandledPsd) {
   const std::vector<double> w{1e6, -1e6};
   const Matrix cov = Matrix::from_rows({{1e-4, 1e-4}, {1e-4, 1e-4}});
   EXPECT_NEAR(portfolio_sigma(w, cov), 0.0, 1e-12);
-  const VarEs ve = var_covar(w, cov, 0.99, 1.0);
+  const VarEs ve = var_covar(w, cov, 0.01, 1.0);
   EXPECT_DOUBLE_EQ(ve.var, 0.0);
 }
 
@@ -78,7 +78,7 @@ TEST(ParametricVar, FullPipelineMatchesExposureClosedForm) {
   const auto res = parametric_var(book, m, rets, {});
   const CompiledBook cb(book, m);
   const FactorCov cov = sample_cov(rets.select(cb.factors()));
-  const VarEs direct = var_covar(cb.linear_exposures(), cov.cov, 0.99, 1.0);
+  const VarEs direct = var_covar(cb.linear_exposures(), cov.cov, 0.01, 1.0);
   EXPECT_NEAR(res.var, direct.var, 1e-12 * direct.var);
   EXPECT_NEAR(res.es, direct.es, 1e-12 * direct.es);
   ASSERT_EQ(res.exposures.size(), 4u);
@@ -98,14 +98,14 @@ TEST(ParametricVar, EmptyBookThrowsFactorlessIsZero) {
 
 TEST(CornishFisher, ReducesToNormalAtZeroMoments) {
   EXPECT_NEAR(cornish_fisher_z(1.5, 0.0, 0.0), 1.5, 1e-15);
-  const double v = cornish_fisher_var(2e6, 0.0, 0.0, 0.99);
-  EXPECT_NEAR(v, normal_var(2e6, 0.99), 1e-6);
+  const double v = cornish_fisher_var(2e6, 0.0, 0.0, 0.01);
+  EXPECT_NEAR(v, normal_var(2e6, 0.01), 1e-6);
 }
 
 TEST(CornishFisher, NegativeSkewRaisesLossQuantile) {
   // Negative P&L skew (carry-trade profile) must increase VaR.
-  const double v0 = cornish_fisher_var(1e6, 0.0, 0.0, 0.99);
-  const double vneg = cornish_fisher_var(1e6, -0.6, 0.5, 0.99);
+  const double v0 = cornish_fisher_var(1e6, 0.0, 0.0, 0.01);
+  const double vneg = cornish_fisher_var(1e6, -0.6, 0.5, 0.01);
   EXPECT_GT(vneg, v0);
 }
 
@@ -114,9 +114,9 @@ TEST(CornishFisher, DomainCheckRejectsNonMonotone) {
   // non-monotone and must be refused by default.
   EXPECT_FALSE(cornish_fisher_domain_ok(2.5, 0.0));
   EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 1.0));
-  EXPECT_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.99), std::invalid_argument);
+  EXPECT_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.01), std::invalid_argument);
   // Forcing check_domain=false returns a number (documented escape hatch).
-  EXPECT_NO_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.99, 0.0, 1.0, false));
+  EXPECT_NO_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.01, 0.0, 1.0, false));
 }
 
 TEST(ParametricVar, PegFlagSurfacedThroughDriver) {
@@ -154,10 +154,10 @@ TEST(PortfolioSigma, HedgedBillionDollarBookAgainstRankDeficientCovariance) {
   double sigma = -1.0;
   ASSERT_NO_THROW(sigma = portfolio_sigma(w, cov));
   EXPECT_DOUBLE_EQ(sigma, 0.0);
-  const VarEs ve = var_covar(w, cov, 0.99, 1.0);
+  const VarEs ve = var_covar(w, cov, 0.01, 1.0);
   EXPECT_DOUBLE_EQ(ve.var, 0.0);
   EXPECT_DOUBLE_EQ(ve.es, 0.0);
-  // A genuinely indefinite covariance is still rejected at any scale.
+  // An indefinite covariance is still rejected at any scale.
   const Matrix indefinite = Matrix::from_rows({{1e-4, 2e-4}, {2e-4, 1e-4}});
   EXPECT_THROW(portfolio_sigma({1e6, -1e6}, indefinite), std::invalid_argument);
 }
@@ -170,7 +170,7 @@ TEST(PortfolioSigma, RejectsNonFiniteExposuresAndCovariance) {
   EXPECT_THROW(portfolio_sigma({nan, 1e6}, cov), std::invalid_argument);
   EXPECT_THROW(portfolio_sigma({inf, 1e6}, cov), std::invalid_argument);
   EXPECT_THROW(portfolio_sigma({1e6, 1e6}, cov_nan), std::invalid_argument);
-  EXPECT_THROW(var_covar({1e6, 1e6}, cov_nan, 0.99, 1.0), std::invalid_argument);
+  EXPECT_THROW(var_covar({1e6, 1e6}, cov_nan, 0.01, 1.0), std::invalid_argument);
 }
 
 TEST(CornishFisher, DegenerateGridRejected) {
@@ -179,15 +179,15 @@ TEST(CornishFisher, DegenerateGridRejected) {
 }
 
 TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
-  // Regression for the closed-form rewrite of cornish_fisher_domain_ok. On
-  // this engine's default (z_range=4.0, n_grid=801), the previous
-  // finite-difference-of-values grid check reported (skew, excess_kurtosis)
-  // = (0.122, -0.427) as monotone -- every sampled z_cf value increased --
-  // yet the true minimum of dz_cf/dz on [-4, 4] is ~ -9.15e-4 (near
-  // z ~ 3.1, between two grid nodes), so the expansion is genuinely
-  // non-monotone.
+  // (skew, excess_kurtosis) = (0.122, -0.427): dz_cf/dz is concave in z,
+  // so its minimum on [-r, r] is at the endpoint -r. On the old fixed
+  // interval [-4, 4] it is -9.15e-4 at z = -4 (non-monotone). On the
+  // alpha-aware interval [-z_a, z_a] it is positive for alpha = 0.01
+  // (z_a = 2.326) and 0.001 (z_a = 3.090): CF is valid there.
   const double skew = 0.122;
   const double excess_kurtosis = -0.427;
   EXPECT_FALSE(cornish_fisher_domain_ok(skew, excess_kurtosis));
-  EXPECT_THROW(cornish_fisher_var(1.0, skew, excess_kurtosis, 0.99), std::invalid_argument);
+  EXPECT_TRUE(cornish_fisher_valid(skew, excess_kurtosis, 0.01));
+  EXPECT_TRUE(cornish_fisher_valid(skew, excess_kurtosis, 0.001));
+  EXPECT_NO_THROW(cornish_fisher_var(1.0, skew, excess_kurtosis, 0.01));
 }

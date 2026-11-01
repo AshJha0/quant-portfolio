@@ -6,7 +6,7 @@ An FX trade settles by two *independent* gross payments unless it goes through
 a payment-versus-payment (PvP) system such as CLS.  If we irrevocably pay away
 the currency we sold before we receive, with finality, the currency we bought,
 then for that window we are exposed to the counterparty for the **full
-principal of the bought currency** — not a mark-to-market amount.  This is
+principal of the bought currency**, not a mark-to-market amount.  This is
 Herstatt risk, named after Bankhaus Herstatt (26 June 1974): German banks had
 irrevocably paid DEM legs during the European morning; Herstatt's licence was
 withdrawn at 15:30 CET, before the corresponding USD legs were paid out in New
@@ -17,10 +17,24 @@ Conventions
 * All times are hours in UTC on the common value date (fractional hours,
   e.g. ``13.5`` = 13:30 UTC).  A single representative "winter" day is
   encoded; daylight-saving shifts are a documented simplification.
-* We assume the sold currency is paid at the **opening** of its payment
-  system (conservative: earliest irrevocability) and the bought currency is
-  received with finality only at the **close** of its payment system
-  (conservative: latest finality).
+* Two window definitions are available.
+
+  - Operating-hours window (``cancellation_lead_hours = 0``,
+    ``reconciliation_lag_hours = 0``, the default): the sold currency is
+    paid at the opening of its payment system and the bought currency is
+    final at the close of its system. This is a lower bound. It is not
+    conservative.
+  - BCBS (2013) window: exposure runs from the unilateral cancellation
+    deadline of the sold-currency payment, which through correspondent
+    banks is often the previous business day, to confirmed (reconciled)
+    receipt of the bought currency. Pass ``cancellation_lead_hours`` (how
+    long before the sold system opens the payment becomes irrevocable)
+    and ``reconciliation_lag_hours`` (how long after the bought system
+    closes receipt is confirmed); ``extra_days`` adds whole days for
+    weekends or holidays between the two legs. :func:`bcbs_window_hours`
+    gives the window directly.
+* The encoded hours are core RTGS hours. Fedwire Funds actually opens at
+  21:00 ET on the previous calendar day. There is no settlement-fail model.
 * FX pairs are quoted BASE/QUOTE per the portfolio conventions
   (``EURUSD`` = USD per 1 EUR).
 * Exposures are reported in USD using a ``usd_rates`` map: USD per 1 unit of
@@ -40,6 +54,7 @@ __all__ = [
     "FXTrade",
     "SettlementExposure",
     "at_risk_window_hours",
+    "bcbs_window_hours",
     "time_zone_gap_matrix",
     "settlement_exposure",
     "gross_settlement_exposure",
@@ -155,7 +170,9 @@ def at_risk_window_hours(sold_ccy: str, bought_ccy: str) -> float:
     """Hours of principal risk when paying ``sold_ccy`` and receiving ``bought_ccy``.
 
     We pay at the open of the sold currency's system and only obtain finality
-    on the bought currency at the close of its system.  If the bought currency
+    on the bought currency at the close of its system. This operating-hours
+    window is a lower bound on the BCBS (2013) exposure duration; see
+    :func:`bcbs_window_hours`.  If the bought currency
     achieves finality *before* we pay (receive-before-pay), there is no
     Herstatt exposure for us (the counterparty bears it instead).  Same
     currency on both legs is not an FX settlement (zero window).
@@ -172,12 +189,50 @@ def at_risk_window_hours(sold_ccy: str, bought_ccy: str) -> float:
     return max(0.0, recv_close - pay_open)
 
 
+def _check_window_params(lead: float, lag: float, extra_days: int) -> None:
+    for name, v in (("cancellation_lead_hours", lead), ("reconciliation_lag_hours", lag)):
+        if not (math.isfinite(v) and v >= 0):
+            raise ValueError(f"{name} must be finite and >= 0, got {v}")
+    if int(extra_days) != extra_days or extra_days < 0:
+        raise ValueError(f"extra_days must be a non-negative integer, got {extra_days}")
+
+
+def bcbs_window_hours(
+    sold_ccy: str,
+    bought_ccy: str,
+    cancellation_lead_hours: float = 24.0,
+    reconciliation_lag_hours: float = 12.0,
+    extra_days: int = 0,
+) -> float:
+    """Settlement exposure duration as defined in BCBS (2013).
+
+    From the unilateral cancellation deadline of the sold-currency payment
+    (``cancellation_lead_hours`` before the sold system opens) to confirmed
+    receipt of the bought currency (``reconciliation_lag_hours`` after the
+    bought system closes), plus ``24 * extra_days`` for non-business days
+    between the legs:
+
+        max(0, close(bought) + lag + 24 * extra_days - (open(sold) - lead)).
+
+    The defaults (one business day of cancellation lead through a
+    correspondent, reconciliation the next morning) are illustrative. Use
+    the bank's actual deadlines.
+    """
+    _check_window_params(cancellation_lead_hours, reconciliation_lag_hours, extra_days)
+    if sold_ccy == bought_ccy:
+        return 0.0
+    pay_open, _ = _hours(sold_ccy)
+    _, recv_close = _hours(bought_ccy)
+    return max(0.0, recv_close + reconciliation_lag_hours + 24.0 * extra_days
+               - (pay_open - cancellation_lead_hours))
+
+
 def time_zone_gap_matrix(currencies: tuple[str, ...] = ("JPY", "EUR", "GBP", "USD")) -> pd.DataFrame:
     """At-risk window (hours) for every (sold, bought) currency pair.
 
     Rows = currency paid away, columns = currency received.  The matrix is
     asymmetric: selling JPY against USD carries a near-full-day window while
-    selling USD against JPY carries none — the essence of the time-zone gap.
+    selling USD against JPY carries none: the essence of the time-zone gap.
     """
     mat = pd.DataFrame(
         [
@@ -201,8 +256,18 @@ def _usd_value(amount: float, ccy: str, usd_rates: dict[str, float]) -> float:
     return amount * rate
 
 
-def settlement_exposure(trade: FXTrade, usd_rates: dict[str, float]) -> SettlementExposure:
+def settlement_exposure(
+    trade: FXTrade,
+    usd_rates: dict[str, float],
+    cancellation_lead_hours: float = 0.0,
+    reconciliation_lag_hours: float = 0.0,
+    extra_days: int = 0,
+) -> SettlementExposure:
     """Herstatt exposure of a single trade.
+
+    With the default zero lead and lag the window is the operating-hours
+    lower bound; pass the BCBS parameters (see :func:`bcbs_window_hours`)
+    for the supervisory definition.
 
     Exposure is the **full principal of the bought currency** (BCBS 2013
     supervisory guidance definition), converted to USD, whenever the at-risk
@@ -214,9 +279,11 @@ def settlement_exposure(trade: FXTrade, usd_rates: dict[str, float]) -> Settleme
     usd_rates : dict
         USD per 1 unit of currency, must cover both legs.
     """
-    hours = at_risk_window_hours(trade.sold_ccy, trade.bought_ccy)
-    pay_open = _hours(trade.sold_ccy)[0] if trade.sold_ccy in PAYMENT_SYSTEM_HOURS_UTC else 0.0
-    recv_close = _hours(trade.bought_ccy)[1] if trade.bought_ccy in PAYMENT_SYSTEM_HOURS_UTC else 0.0
+    hours = bcbs_window_hours(trade.sold_ccy, trade.bought_ccy, cancellation_lead_hours,
+                              reconciliation_lag_hours, extra_days)
+    pay_open = _hours(trade.sold_ccy)[0] - cancellation_lead_hours
+    recv_close = (_hours(trade.bought_ccy)[1] + reconciliation_lag_hours
+                  + 24.0 * extra_days)
     if trade.sold_ccy == trade.bought_ccy:
         pay_open = recv_close = 0.0
     exposed = (not trade.cls_settled) and hours > 0.0
@@ -234,19 +301,33 @@ def settlement_exposure(trade: FXTrade, usd_rates: dict[str, float]) -> Settleme
     )
 
 
-def gross_settlement_exposure(trades: list[FXTrade], usd_rates: dict[str, float]) -> float:
+def gross_settlement_exposure(
+    trades: list[FXTrade],
+    usd_rates: dict[str, float],
+    cancellation_lead_hours: float = 0.0,
+    reconciliation_lag_hours: float = 0.0,
+    extra_days: int = 0,
+) -> float:
     """Total gross Herstatt exposure (USD): sum of per-trade full principals at risk."""
-    return sum(settlement_exposure(t, usd_rates).exposure_usd for t in trades)
+    return sum(settlement_exposure(t, usd_rates, cancellation_lead_hours,
+                                   reconciliation_lag_hours, extra_days).exposure_usd
+               for t in trades)
 
 
-def net_settlement_exposure(trades: list[FXTrade], usd_rates: dict[str, float]) -> float:
+def net_settlement_exposure(
+    trades: list[FXTrade],
+    usd_rates: dict[str, float],
+    cancellation_lead_hours: float = 0.0,
+    reconciliation_lag_hours: float = 0.0,
+    extra_days: int = 0,
+) -> float:
     """Herstatt exposure with same-counterparty, same-currency payment netting.
 
     For each counterparty, all non-CLS flows in the same currency on the value
     date are netted to a single payable or receivable per currency (bilateral
     payment netting, e.g. under an FXNET-style agreement).  Exposure is then
     the USD value of each net *receivable* whose finality time falls after the
-    earliest net *payable* payment time — i.e. the receivable is still unpaid
+    earliest net *payable* payment time, i.e. the receivable is still unpaid
     while our own money is already out of the door.
 
     Returns
@@ -254,6 +335,7 @@ def net_settlement_exposure(trades: list[FXTrade], usd_rates: dict[str, float]) 
     float
         Total netted exposure in USD across counterparties.
     """
+    _check_window_params(cancellation_lead_hours, reconciliation_lag_hours, extra_days)
     total = 0.0
     key = lambda t: t.counterparty  # noqa: E731
     for _, group in itertools.groupby(sorted(trades, key=key), key=key):
@@ -267,27 +349,35 @@ def net_settlement_exposure(trades: list[FXTrade], usd_rates: dict[str, float]) 
         receivables = {c: a for c, a in flows.items() if a > 0}
         if not payables or not receivables:
             continue
-        earliest_pay = min(_hours(c)[0] for c in payables)
+        earliest_pay = min(_hours(c)[0] for c in payables) - cancellation_lead_hours
         for ccy, amount in receivables.items():
-            if _hours(ccy)[1] > earliest_pay:
+            final = _hours(ccy)[1] + reconciliation_lag_hours + 24.0 * extra_days
+            if final > earliest_pay:
                 total += _usd_value(amount, ccy, usd_rates)
     return total
 
 
-def book_settlement_report(trades: list[FXTrade], usd_rates: dict[str, float]) -> pd.DataFrame:
+def book_settlement_report(
+    trades: list[FXTrade],
+    usd_rates: dict[str, float],
+    cancellation_lead_hours: float = 0.0,
+    reconciliation_lag_hours: float = 0.0,
+    extra_days: int = 0,
+) -> pd.DataFrame:
     """Per-trade settlement risk report with gross, CLS and window detail.
 
     Returns a DataFrame with one row per trade: legs, at-risk window, gross
-    exposure (0 for CLS-settled trades) — plus the counterfactual exposure
+    exposure (0 for CLS-settled trades): plus the counterfactual exposure
     the trade *would* carry if it were not CLS-settled.
     """
     rows = []
     for t in trades:
-        exp = settlement_exposure(t, usd_rates)
+        win = (cancellation_lead_hours, reconciliation_lag_hours, extra_days)
+        exp = settlement_exposure(t, usd_rates, *win)
         counterfactual = settlement_exposure(
             FXTrade(t.trade_id, t.counterparty, t.pair, t.notional_base, t.rate,
                     t.we_buy_base, cls_settled=False),
-            usd_rates,
+            usd_rates, *win,
         )
         rows.append(
             {

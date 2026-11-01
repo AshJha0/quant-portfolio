@@ -32,7 +32,7 @@ def test_fit_logistic_rejects_nan_and_inf_features() -> None:
 
 
 def test_expected_loss_rejects_nan_pd() -> None:
-    # NaN passes naive range checks (NaN < 0 is False) — must be caught.
+    # NaN passes naive range checks (NaN < 0 is False): must be caught.
     with pytest.raises(ValueError, match="finite"):
         expected_loss(np.array([0.02, np.nan]), 0.4, 100.0)
     with pytest.raises(ValueError, match="finite"):
@@ -90,11 +90,11 @@ def test_brier_and_hl_reject_out_of_range_pd() -> None:
     nan_pd = np.full(20, 0.5)
     nan_pd[3] = np.nan
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
-        hosmer_lemeshow(y, nan_pd, n_groups=4)
+        hosmer_lemeshow(y, nan_pd, n_groups=4, out_of_sample=True)
 
 
 def test_hl_tiny_sample_raises_informative() -> None:
     y = np.array([0.0, 1.0, 0.0])
     p = np.array([0.1, 0.6, 0.2])
     with pytest.raises(ValueError, match="n_groups"):
-        hosmer_lemeshow(y, p, n_groups=10)
+        hosmer_lemeshow(y, p, n_groups=10, out_of_sample=True)

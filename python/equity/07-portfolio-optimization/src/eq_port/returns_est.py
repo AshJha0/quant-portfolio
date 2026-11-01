@@ -10,7 +10,7 @@ Conventions
 The estimation-error problem
 ----------------------------
 Merton (1980): over T periods the standard error of a mean estimate is
-sigma/sqrt(T) *regardless of sampling frequency* — sampling daily instead
+sigma/sqrt(T) *regardless of sampling frequency*: sampling daily instead
 of monthly improves variance estimates but not mean estimates. With
 sigma ~ 16%/yr and 10 years of data the SE of the annual mean is ~5%,
 the same order as the equity risk premium itself. Mean-variance weights
@@ -18,7 +18,7 @@ are roughly linear in Sigma^{-1} mu, so this noise is amplified into
 extreme, unstable portfolios ("error maximization", Michaud 1989).
 The estimators below attack that problem:
 
-* James-Stein / Bayes-Stein: shrink the sample mean vector toward the
+* James-Stein (isotropic, grand-mean target): shrink the sample mean vector toward the
   grand mean, trading a little bias for a large variance reduction.
 * Reverse optimization: discard the sample mean entirely and back out
   the returns implied by market-cap weights (the Black-Litterman prior).
@@ -125,6 +125,11 @@ class JamesSteinResult:
 def james_stein_mean(returns: np.ndarray | pd.DataFrame) -> JamesSteinResult:
     """James-Stein estimator: shrink sample means toward the grand mean.
 
+    This is the isotropic (Efron-Morris) form: it uses the average sample
+    variance and ignores the covariance matrix. It is not Jorion's (1986)
+    Bayes-Stein estimator, which shrinks toward the mean of the
+    minimum-variance portfolio using Sigma^-1.
+
     The estimator is the convex combination
 
         mu_JS = phi * m * 1 + (1 - phi) * mu_hat,
@@ -181,7 +186,7 @@ def implied_equilibrium_returns(
         pi = delta * Sigma @ w_mkt.
 
     Feeding ``pi`` back into the tangency portfolio reproduces
-    ``w_mkt`` exactly (round-trip identity) — this is the
+    ``w_mkt`` exactly (round-trip identity): this is the
     Black-Litterman prior.
 
     Parameters

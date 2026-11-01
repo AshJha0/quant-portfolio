@@ -1,160 +1,249 @@
-# Equity VaR Engine (C++20)
+# Equity VaR Engine (C++23)
 
-A dependency-free C++20 production twin of the Python research stack
-[`python/equity/03-var-es-engine`](../../python/equity/03-var-es-engine): the
-full VaR / Expected-Shortfall / backtesting toolchain a market-risk desk runs
-in its overnight batch, re-implemented for the latency and determinism that
-batch and intraday risk require, and **cross-validated against the Python
-reference to 1e-9 relative on committed golden values**.
+A dependency-free C++23 linear-book port of the Python engine
+[`python/equity/03-var-es-engine`](../../python/equity/03-var-es-engine).
+It computes VaR, Expected Shortfall and backtests for a book described by a
+vector of linear factor exposures. It does not revalue options: the Python
+engine does full revaluation, this port does `P&L = w . r`.
 
 ```
-returns panel (T x n) ── sample / EWMA covariance ── Cholesky (jitter fallback)
-   │                              │                        │
-   ├── Historical VaR ─ plain (type-7) / BRW age-weighted / filtered (FHS)
-   ├── Parametric VaR ─ normal / variance-matched Student-t / Cornish-Fisher
-   ├── Monte Carlo VaR ─ MVN & multivariate-t, seeded mt19937_64, VaR+ES+SE
-   │
-   ├── Expected Shortfall ─ empirical exact tail integral / closed forms
-   ├── Backtesting ──────── Kupiec POF · Christoffersen IND/CC · chi2 p-values
-   └── Basel traffic light ─ 0-4 / 5-9 / 10+ → multiplier 3.0 … 4.0
+returns panel (T x n) -- sample / EWMA covariance -- Cholesky (capped jitter, PSD repair)
+   |
+   +-- Historical VaR: order statistic / BRW age-weighted / per-factor FHS
+   +-- Parametric VaR: normal / variance-matched Student-t / Cornish-Fisher
+   +-- Monte Carlo VaR: MVN and multivariate t, seeded mt19937_64, bootstrap SE
+   +-- Expected Shortfall: Acerbi-Tasche with the fractional atom / closed forms
+   +-- Backtesting: Kupiec POF, Christoffersen IND/CC, Acerbi-Szekely Z2
+   +-- Basel traffic light: binomial zones on any window and alpha
 ```
+
+## Conventions
+
+`alpha` is the tail probability everywhere (0.01 = 99 % VaR). Values
+outside (0, 0.5) throw `std::invalid_argument`. VaR and ES are positive
+losses. The empirical VaR is the order statistic L(m) of the losses, with
+m = ceil(n alpha - 1e-9), and ES is the Acerbi-Tasche average with the
+fractional atom. Every public function throws `std::invalid_argument` on
+NaN, infinite, empty or out-of-domain input. `docs/METHODOLOGY.md` states
+each convention in full.
 
 ## Why a C++ engine when the Python stack exists?
 
-- **Overnight batch**: the full daily risk run (covariance estimation +
-  historical family + parametric family + a 100k-path Monte Carlo) on a
-  250-day x 100-asset panel completes in **~1.2 s single-threaded** (see the
-  benchmark below); everything except the Monte Carlo is **sub-5 ms**, so a
-  thousand-book batch fits comfortably inside any overnight SLA without a
-  cluster.
-- **Intraday incremental VaR**: historical / parametric VaR on an updated
-  exposure vector costs **microseconds** (3-29 µs measured), fast enough to
-  recompute a desk's VaR on every trade or limit check rather than on a
-  15-minute snapshot.
-- **Determinism as a control**: every stochastic path draws from a seeded
-  `std::mt19937_64` through the engine's own inverse-CDF transforms — no
-  `std::normal_distribution`, whose algorithm is implementation-defined — so
-  a given seed reproduces VaR **bitwise** across platforms and standard
-  libraries. Regulators and model validation ask for exactly this.
-- **No dependencies**: `<random>`, `<cmath>` and the STL only. The normal
-  inverse CDF, incomplete beta/gamma, Student-t quantile and binomial CDF are
-  implemented in `src/stats.cpp` and unit-tested against scipy references.
+- **Per-call cost.** Historical and parametric VaR on an updated exposure
+  vector cost microseconds (see Latency below), so a desk can recompute on
+  each trade.
+- **Hot-path API.** `eqvar/kernels.hpp` gives noexcept `try_*` kernels that
+  return `std::expected<T, eqvar::Error>`, take their work buffers from the
+  caller and never allocate once those are sized.
+- **Repeatability.** Every draw comes from a seeded `std::mt19937_64`
+  through the engine's own inverse-CDF transforms, never
+  `std::normal_distribution`. A seed repeats exactly on one platform. Across
+  platforms the last bits can differ: `std::log`, `std::exp` and `std::erfc`
+  are not correctly rounded, and glibc, MSVC and Apple libm differ.
+- **No dependencies.** `<random>`, `<cmath>` and the STL only. The normal
+  inverse CDF, log-gamma (Lanczos, thread-safe), incomplete beta and gamma,
+  Student-t quantile, binomial CDF and a Jacobi eigen solver are in `src/`.
 
 ## Layout
 
 ```
 equity-var-engine/
-├── CMakeLists.txt          # C++20, -Wall -Wextra -Werror -O2, GoogleTest
-├── include/eqvar/          # public headers (one per module, doc comments)
-│   ├── matrix.hpp          # dense Matrix, Cholesky+jitter, covariance (sample/EWMA)
-│   ├── stats.hpp           # phi/Phi/Phi^-1, betainc, gammainc, t-dist, moments
-│   ├── returns.hpp         # log/simple returns, linear portfolio P&L, validation
-│   ├── historical.hpp      # plain / BRW / FHS VaR, sqrt-time scaling
-│   ├── parametric.hpp      # sigma_p, normal/t VaR, Cornish-Fisher + domain check
-│   ├── expected_shortfall.hpp  # empirical exact tail integral, normal/t closed forms
-│   ├── monte_carlo.hpp     # seeded RandomStream, MVN/MVt simulation, VaR+ES+SE
-│   └── backtest.hpp        # Kupiec, Christoffersen, Basel traffic light
-├── src/                    # implementations (mirror the headers)
-├── tests/                  # 9 GoogleTest suites, 90 tests, ~380 assertions
-│   ├── golden_vectors.hpp       # GENERATED by tools/gen_golden_header.py from the Python JSON
-│   └── test_cross_language.cpp  # asserts the engine against golden_vectors.hpp
-├── bench/bench_main.cpp    # end-to-end timings on a 250 x 100 panel
-└── docs/                   # METHODOLOGY / VALIDATION / DESK_GUIDE
++-- CMakeLists.txt          # C++23, GoogleTest (system or FetchContent), build options below
++-- include/eqvar/          # public headers, one per module
+|   +-- matrix.hpp          # Matrix, Cholesky + jitter cap + Clip/Higham repair, Jacobi eigen, covariances
+|   +-- stats.hpp           # phi, Phi, Phi^-1, log_gamma, betainc, gammainc, t, binomial, moments
+|   +-- returns.hpp         # returns, linear P&L, input validation
+|   +-- historical.hpp      # order statistic, BRW, per-factor FHS, EWMA vol, sqrt-time
+|   +-- parametric.hpp      # sigma_p, normal/t VaR, Cornish-Fisher + alpha-aware validity
+|   +-- expected_shortfall.hpp  # empirical ES, normal/t closed forms
+|   +-- monte_carlo.hpp     # RandomStream, MVN/MVt simulation, VaR + ES + bootstrap/KDE SE
+|   +-- backtest.hpp        # Kupiec, Christoffersen, Basel, Acerbi-Szekely Z2
+|   +-- error.hpp           # Errc / Error / Result for the noexcept API
+|   +-- kernels.hpp         # noexcept try_* kernels, caller workspaces, McVarWorkspace
++-- src/                    # implementations
++-- tests/                  # 13 GoogleTest executables, 123 tests
+|   +-- golden_vectors.hpp       # GENERATED by tools/gen_golden_header.py
+|   +-- test_cross_language.cpp  # engine vs the Python golden values
+|   +-- test_fuzz.cpp            # every public function with NaN/inf/empty/negative input
++-- bench/                  # per-call latency benchmark (bench_main.cpp, latency.hpp)
++-- docs/                   # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
 ## Quickstart
 
 ```bash
 cd cpp/equity-var-engine
-cmake -S . -B build          # needs g++ >= 13, cmake >= 3.20, system GTest
+cmake -S . -B build                 # GTest from the system, else fetched (v1.15.2)
 cmake --build build -j
-ctest --test-dir build       # 90 tests, < 3 s, offline
-./build/bench_eqvar          # benchmark table below
+ctest --test-dir build              # 123 tests, about 13 s serial with GCC 15 -O3
+./build/bench_eqvar --out /tmp/eqvar_latency.json
 ```
+
+Options:
+
+| option | default | effect |
+|---|---|---|
+| `EQVAR_WERROR` | OFF | warnings are errors (GCC/Clang `-Werror`, MSVC `/WX`) |
+| `BUILD_TESTING` | ON | build the GoogleTest suite |
+| `EQVAR_BUILD_BENCH` | ON | build `bench_eqvar` |
+| `EQVAR_NATIVE` | OFF | `-O3 -march=native` on every target; local latency work only, never in CI |
+| `EQVAR_LTO` | OFF | link-time optimisation through `CMAKE_INTERPROCEDURAL_OPTIMIZATION` |
+| `EQVAR_VEC_REPORT` | OFF | print the compiler's vectorisation report for `kernels.cpp` and `matrix.cpp` |
+
+`CMAKE_CXX_FLAGS` is never modified, so sanitizer flags pass straight
+through. `CMAKE_BUILD_TYPE` defaults to Release. Sanitizer builds skip the
+allocation-counting test binary (121 tests), because the sanitizer runtime
+defines `operator new` itself.
 
 ```cpp
-#include "eqvar/historical.hpp"
-#include "eqvar/parametric.hpp"
-#include "eqvar/monte_carlo.hpp"
 #include "eqvar/backtest.hpp"
+#include "eqvar/historical.hpp"
+#include "eqvar/monte_carlo.hpp"
+#include "eqvar/parametric.hpp"
 
 using namespace eqvar;
-Matrix cov = ewma_covariance(returns_panel, 0.94);        // (T x n) -> (n x n)
-double v_h  = historical_var(pnl, 0.01);                  // 99% 1d, type-7 quantile
-double v_f  = filtered_historical_var(pnl, 0.01, 0.94);   // EWMA-filtered (FHS)
-double v_p  = parametric_var(w, cov, 0.01, Dist::StudentT, 6.0);
+Matrix cov = ewma_covariance(returns_panel, 0.94);              // (T x n) -> (n x n)
+double v_h = historical_var(pnl, 0.01);                         // 99 % 1d, order statistic
+TailRisk f = filtered_historical_var_es(returns_panel, w, 0.01); // per-factor FHS
+double v_p = parametric_var(w, cov, 0.01, Dist::StudentT, 6.0);
 MonteCarloResult mc = monte_carlo_var(w, cov, 0.01, 100'000, Dist::StudentT, 6.0, /*seed=*/42);
-// mc.var, mc.es, mc.var_se — bitwise reproducible for a given seed
-BaselResult tl = basel_traffic_light(/*n_exceptions=*/5); // yellow, k = 3.40
+// mc.var, mc.es, mc.var_se (bootstrap), mc.var_se_kde (diagnostic)
+BaselResult tl = basel_traffic_light({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01});
+// yellow, multiplier 3.40
 ```
 
-## Cross-language validation (the headline)
+Hot path: the same estimators without exceptions or allocation.
 
-`tests/test_cross_language.cpp` pins ~40 quantities to golden constants
-generated by running the Python reference (`eq_var`, numpy 2.4.4 /
-scipy 1.17.1) on closed-form deterministic inputs that both languages
-regenerate independently. Agreement required: **1e-9 relative**; observed
-residual is libm-vs-numpy ulp noise. Highlights:
+```cpp
+#include "eqvar/kernels.hpp"
 
-| quantity (deterministic input) | Python reference | C++ engine |
+std::vector<double> ws(max_scenarios);                  // sized once
+Result<double> v = try_historical_var(pnl, 0.01, ws);   // noexcept
+if (!v) log(message(v.error()));                        // formats only on error
+
+std::vector<double> L(n * n), scratch(n * n);
+Result<double> jitter = try_cholesky_lower(cov, L, scratch);   // start of day
+McVarWorkspace mc;
+mc.reserve(n, 10'000);
+Result<MonteCarloResult> r =
+    try_monte_carlo_var_factored(w, L, 0.01, 10'000, Dist::Normal, 6.0, seed, 200, mc);
+```
+
+Every throwing function is now a thin wrapper over its `try_*` form and
+keeps its exception types and messages. A program that prints 5,557
+legacy-API results and exception texts in hex-float gives identical output
+against the library before and after this change, with GCC 15.2 and
+Clang 21.1.
+
+## Cross-language validation
+
+`tests/test_cross_language.cpp` checks 79 values (scalars and one
+5-element vector) generated by the Python engine (Python 3.12.10, numpy
+2.5.4, scipy 1.18.1) on closed-form inputs that both languages rebuild
+independently. Selected values:
+
+| quantity (input) | Python value | tolerance |
 |---|---|---|
-| historical VaR 99 % (case A)   | 122.4129222375264 | equal to 1e-9 rel |
-| empirical ES 99 % (case A)     | 141.7568107549531 | equal to 1e-9 rel |
-| FHS VaR 95 %, lam=0.94 (A)     | 109.3777910164513 | equal to 1e-9 rel |
-| parametric VaR 99 % normal (B) | 23176.07650751402 | equal to 1e-9 rel |
-| parametric VaR 99 % t(6) (B)   | 25563.37478743866 | equal to 1e-9 rel |
-| Cornish-Fisher VaR 99 % (B)    | 28230.62626871169 | equal to 1e-9 rel |
-| EWMA cov [0,0], lam=0.94 (C)   | 6.085653794066718e-05 | equal to 1e-9 rel |
-| Kupiec LR / p (250 obs, 7 exc) | 5.496990447793 / 0.019049230891 | equal to 1e-9 rel |
-| Christoffersen CC LR / p (9 exc, planted cluster) | 11.41838698 / 3.315345e-03 | equal to 1e-9 rel |
+| historical VaR 99 % (case A) | 141.75681075495305 | 1e-9 rel |
+| FHS VaR 95 %, deprecated P&L-level (case A) | 109.3777910164513 | 1e-9 rel |
+| parametric VaR 99 % normal (case B) | 23176.07650751402 | 1e-9 rel |
+| Cornish-Fisher VaR 99 % (case B) | 28230.62626871169 | 1e-9 rel |
+| Kupiec LR (250 obs, 7 exceptions) | 5.496990447792697 | 1e-9 rel |
+| VaR / ES 99 % on the shared sample P | 1434.4 / 1463.968 | 1e-12 rel |
+| Basel CDF, n = 1000, x = 15 | 0.9521294142420523 | 1e-12 abs |
+| Higham repair, entry (0, 1) | 0.5000000000001574 | 1e-8 abs |
 
-Regenerate the constants any time with the committed pipeline:
+Regenerate:
 
 ```bash
 cd python/equity/03-var-es-engine
-PYTHONPATH=src python3 tests/golden/generate_golden.py     # -> tests/golden/golden_vectors.json
+PYTHONPATH=src python3 tests/golden/generate_golden.py   # -> tests/golden/golden_vectors.json
 cd ../../../cpp/equity-var-engine
-python3 tools/gen_golden_header.py --check                                # 0 = committed constants match the JSON
-python3 tools/gen_golden_header.py                                        # rewrite tests/golden_vectors.hpp after a deliberate change
+python3 tools/gen_golden_header.py --check              # exit 0 = header matches the JSON
+python3 tools/gen_golden_header.py                      # rewrite tests/golden_vectors.hpp
 ```
 
-The constants live in the GENERATED `tests/golden_vectors.hpp` (not hand-pasted in the
-test file), and `python/equity/03-var-es-engine/tests/test_golden_vectors.py`
-locks the JSON from the Python side.
+The Monte Carlo is also checked against the closed forms it should converge
+to (`docs/VALIDATION.md`).
 
-Independently of the golden values, the MC engine is validated **against the
-closed forms it should converge to**: 200k-path normal MC VaR within 3
-order-statistic SE of the parametric answer, Student-t MC against the
-variance-matched t closed form, and simulated covariance against the target
-matrix (see `docs/VALIDATION.md`).
+## Latency
 
-## Benchmark (250-day x 100-asset panel, alpha = 1 %, single thread, -O2)
+Per-call latency, `./build/bench_eqvar --out results.json` (raw records for
+every run, both compilers, before and after, are in
+[bench/results.json](bench/results.json)). Sizes and inputs are in
+`bench/bench_main.cpp`. Inputs are synthetic: P&L samples rotate through 16
+synthetic series and alpha steps through 0.5% to 5%, so no call repeats the
+previous one.
 
-g++ 13.3, best-of-R wall times, deterministic inputs (`bench/bench_main.cpp`):
+| Kernel | Compiler | p50 before | p50 after | p99 before | p99 after | p99.9 after | max after |
+|---|---|---|---|---|---|---|---|
+| `historical_var n=1000` | GCC 15.2 | 5.6 µs | 5.5 µs | 12.3 µs | 12.3 µs | 40.7 µs | 479.5 µs |
+| `historical_var n=1000` | Clang 21.1 | 5.7 µs | 4.2 µs | 18.5 µs | 9.2 µs | 18.8 µs | 504.5 µs |
+| `historical_var n=10000` | GCC 15.2 | 74.8 µs | 70.6 µs | 227.2 µs | 169.9 µs | 258.1 µs | 1.51 ms |
+| `historical_var n=10000` | Clang 21.1 | 70.7 µs | 54.9 µs | 124.6 µs | 160.8 µs | 284.1 µs | 594.8 µs |
+| `expected_shortfall n=10000` | GCC 15.2 | 74.5 µs | 69.3 µs | 147.0 µs | 162.2 µs | 322.4 µs | 591.2 µs |
+| `expected_shortfall n=10000` | Clang 21.1 | 73.0 µs | 52.7 µs | 145.4 µs | 122.2 µs | 275.5 µs | 592.0 µs |
+| `age_weighted_var n=1000` | GCC 15.2 | 62.8 µs | 60.1 µs | 93.2 µs | 101.6 µs | 164.4 µs | 3.45 ms |
+| `age_weighted_var n=1000` | Clang 21.1 | 65.4 µs | 55.6 µs | 102.2 µs | 121.3 µs | 166.1 µs | 312.7 µs |
+| `parametric_var normal 50 assets` | GCC 15.2 | 2.1 µs | 2.1 µs | 3.1 µs | 3.4 µs | 17.4 µs | 280.2 µs |
+| `parametric_var normal 50 assets` | Clang 21.1 | 1.8 µs | 1.8 µs | 3.4 µs | 2.8 µs | 10.5 µs | 507.1 µs |
+| `parametric_var student-t 50 assets` | GCC 15.2 | 13.2 µs | 13.4 µs | 29.0 µs | 25.9 µs | 43.0 µs | 259.3 µs |
+| `parametric_var student-t 50 assets` | Clang 21.1 | 16.0 µs | 15.2 µs | 36.7 µs | 34.4 µs | 49.7 µs | 223.6 µs |
+| `cholesky 50x50` | GCC 15.2 | 9.3 µs | 9.8 µs | 16.0 µs | 17.2 µs | 33.2 µs | 73.3 µs |
+| `cholesky 50x50` | Clang 21.1 | 11.6 µs | 11.4 µs | 26.6 µs | 25.6 µs | 43.2 µs | 251.4 µs |
+| `cholesky 200x200` | GCC 15.2 | 612.0 µs | 607.3 µs | 1.01 ms | 1.68 ms | 2.09 ms | 2.16 ms |
+| `cholesky 200x200` | Clang 21.1 | 625.4 µs | 616.5 µs | 1.40 ms | 866.5 µs | 1.63 ms | 1.80 ms |
+| `portfolio_pnl 10000x50` | GCC 15.2 | 653.6 µs | 652.8 µs | 1.07 ms | 1.61 ms | 2.63 ms | 4.18 ms |
+| `portfolio_pnl 10000x50` | Clang 21.1 | 494.7 µs | 467.1 µs | 1.51 ms | 1.76 ms | 2.12 ms | 2.23 ms |
+| `monte_carlo_var 10k scen 50 assets` | GCC 15.2 | 42.64 ms | 42.72 ms | 54.92 ms | 69.88 ms | 69.88 ms | 75.28 ms |
+| `monte_carlo_var 10k scen 50 assets` | Clang 21.1 | 42.62 ms | 57.49 ms | 83.49 ms | 60.83 ms | 60.83 ms | 116.21 ms |
+| `kupiec + christoffersen n=1000` | GCC 15.2 | 2.7 µs | 2.3 µs | 6.5 µs | 6.7 µs | 12.8 µs | 94.9 µs |
+| `kupiec + christoffersen n=1000` | Clang 21.1 | 2.4 µs | 2.4 µs | 4.7 µs | 3.7 µs | 11.8 µs | 229.5 µs |
+| `try_historical_var n=1000 (ws)` | GCC 15.2 | - | 4.5 µs | - | 8.1 µs | 16.4 µs | 174.1 µs |
+| `try_historical_var n=1000 (ws)` | Clang 21.1 | - | 5.1 µs | - | 9.3 µs | 19.7 µs | 432.3 µs |
+| `try_historical_var n=10000 (ws)` | GCC 15.2 | - | 64.1 µs | - | 147.3 µs | 255.8 µs | 498.0 µs |
+| `try_historical_var n=10000 (ws)` | Clang 21.1 | - | 68.3 µs | - | 121.3 µs | 147.8 µs | 585.1 µs |
+| `try_parametric_var normal 50 assets` | GCC 15.2 | - | 1.9 µs | - | 5.0 µs | 10.7 µs | 100.9 µs |
+| `try_parametric_var normal 50 assets` | Clang 21.1 | - | 1.8 µs | - | 2.9 µs | 10.8 µs | 225.8 µs |
+| `try_cholesky_lower 50x50 (ws)` | GCC 15.2 | - | 9.5 µs | - | 16.4 µs | 31.3 µs | 79.4 µs |
+| `try_cholesky_lower 50x50 (ws)` | Clang 21.1 | - | 11.5 µs | - | 18.0 µs | 34.2 µs | 238.9 µs |
+| `try_cholesky_lower 200x200 (ws)` | GCC 15.2 | - | 606.7 µs | - | 1.14 ms | 1.32 ms | 1.39 ms |
+| `try_cholesky_lower 200x200 (ws)` | Clang 21.1 | - | 616.9 µs | - | 1.44 ms | 1.60 ms | 1.66 ms |
+| `try_matvec scenario pnl 10000x50` | GCC 15.2 | - | 376.2 µs | - | 1.02 ms | 1.28 ms | 1.47 ms |
+| `try_matvec scenario pnl 10000x50` | Clang 21.1 | - | 301.6 µs | - | 522.6 µs | 1.25 ms | 1.43 ms |
+| `try_monte_carlo_var_factored 10k 50` | GCC 15.2 | - | 39.52 ms | - | 57.94 ms | 57.94 ms | 74.16 ms |
+| `try_monte_carlo_var_factored 10k 50` | Clang 21.1 | - | 50.93 ms | - | 70.01 ms | 70.01 ms | 72.67 ms |
 
-| stage | best ms |
-|---|---|
-| sample covariance (250 x 100 → 100 x 100) | 1.81 |
-| EWMA covariance (lam = 0.94) | 3.05 |
-| historical VaR 99 % (250 scenarios) | 0.003 |
-| BRW age-weighted VaR 99 % | 0.012 |
-| filtered (FHS) VaR 99 % | 0.004 |
-| empirical ES 97.5 % | 0.003 |
-| parametric VaR 99 % (normal) | 0.012 |
-| parametric VaR 99 % (Student-t df=6) | 0.029 |
-| Cholesky 100 x 100 | 0.21 |
-| **MC VaR 99 % normal, 100k paths** | **1178** |
-| MC VaR 99 % Student-t df=6, 100k paths | 1197 |
-| **full daily batch (everything above once)** | **~1183** |
+Median of 3 runs per cell; each run times every call separately after a warm-up. Intel Core 5 120U (12 logical CPUs) under WSL2 on a shared laptop, process pinned to logical CPUs 2-9 with `taskset`; timer: rdtscp calibrated against steady_clock, with the median cost of an empty timed call (17-20 ns) subtracted; CMake Release (`-O3 -DNDEBUG`), no `-march=native`; 2026-11-01. "Before" is the previous commit of this engine built with the same benchmark source.
 
-Sanity check inside the bench run: MC normal VaR 68 681 vs parametric 69 002
-(0.8 SE apart at SE = 401); MC ES 79 102 vs closed form 79 053.
+How to read it. WSL2 and a shared machine add scheduling jitter: on
+sub-microsecond kernels, p50 differences below about 20% between "before"
+and "after" are inside run-to-run noise, and `max` is dominated by
+hypervisor preemption, not by the kernel. The selection-based VaR/ES and the Cholesky were already allocation-free in their inner loops and are unchanged within noise. The scenario P&L kernel `try_matvec` (four rows per pass) is about 1.5-1.7x faster than the old `portfolio_pnl`. The Monte Carlo VaR no longer stores the scenario panel (80 MB at 100k paths x 100 assets); at 10k x 50 its time is dominated by the normal draws, and single-run medians range from 33 to 85 ms for both the old and the new code, so the table does not resolve a difference.
+
+Run `./build/bench_eqvar [--out FILE] [--label NAME] [--quick]`. Each kernel
+is timed call by call with the time-stamp counter (calibrated against
+`steady_clock`) after a warm-up, over inputs that change on every call, and
+the median cost of an empty timed call is subtracted. The output gives
+p50, p90, p99, p99.9 and max in nanoseconds and, with `--out`, a JSON record
+per kernel (engine, kernel, compiler, flags, cpu, date, percentiles). Under
+WSL2 the hypervisor adds scheduling jitter that shows up in p99.9 and max.
+
+## Limitations
+
+- Linear exposures only: no option revaluation.
+- The bootstrap SE dominates the Monte Carlo time (n_boot selections over
+  the full scenario set).
+- The Monte Carlo runs on one thread.
+- `try_cholesky_lower` has no PSD repair; repair a covariance with
+  `cholesky(cov, Repair)` or `repair_covariance` before the hot path.
+- `ewma_covariance` still seeds with the full-sample covariance.
 
 ## Documentation
 
-- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — the maths, model choices vs
-  alternatives, and the numbered assumptions register.
-- [`docs/VALIDATION.md`](docs/VALIDATION.md) — analytic identities,
-  convergence studies, cross-language goldens, failure modes with tests.
-- [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md) — batch SLAs, intraday use,
-  regression gates, reconciliation against the Python research stack.
+- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md): conventions, maths, model
+  choices, assumptions register.
+- [`docs/VALIDATION.md`](docs/VALIDATION.md): analytic identities,
+  convergence checks, cross-language goldens, failure modes with tests.
+- [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md): batch use, gates, and
+  reconciliation against the Python engine.

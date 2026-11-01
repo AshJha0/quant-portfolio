@@ -7,11 +7,11 @@ Conventions (industry standard):
   share of all BADS (defaults).  Positive WOE = safer-than-average bin.
 * ``IV = sum_i (dist_good_i - dist_bad_i) * WOE_i``  (always >= 0).
 * IV strength thresholds (Siddiqi):  < 0.02 useless, 0.02-0.1 weak,
-  0.1-0.3 medium, 0.3-0.5 strong, > 0.5 **suspicious** — flagged as a
+  0.1-0.3 medium, 0.3-0.5 strong, > 0.5 **suspicious**: flagged as a
   possible leakage via :class:`SuspiciousIVWarning`.
 
 Numeric features are pre-binned on quantiles, then adjacent bins are merged
-(smallest chi-square first — i.e. the statistically most similar pair) until
+(smallest chi-square first, i.e. the statistically most similar pair) until
 the bad rate is monotone in the bin order; missing values get their own bin.
 Zero-count cells are smoothed (adds 0.5 to both good and bad counts in that
 bin only) so WOE is never +/-inf; bins with non-zero counts are exact.
@@ -47,7 +47,7 @@ IV_THRESHOLDS: tuple[tuple[float, str], ...] = (
 
 
 class SuspiciousIVWarning(UserWarning):
-    """IV > 0.5: too good to be true — investigate for target leakage."""
+    """IV > 0.5: too good to be true: investigate for target leakage."""
 
 
 def iv_strength(iv: float) -> str:
@@ -67,7 +67,8 @@ def woe_iv_from_counts(
 
     ``smoothing`` is added to BOTH counts of a bin only when that bin has a
     zero good or zero bad count, so hand-computed values on tables with no
-    zero cells are exact.
+    zero cells are exact. The good and bad distributions are computed from
+    the smoothed counts, so each sums to exactly 1.
 
     Parameters
     ----------
@@ -104,8 +105,8 @@ def woe_iv_from_counts(
     zero = (g == 0) | (b == 0)
     g[zero] += smoothing
     b[zero] += smoothing
-    dist_good = g / tot_good
-    dist_bad = b / tot_bad
+    dist_good = g / g.sum()
+    dist_bad = b / b.sum()
     woe = np.log(dist_good / dist_bad)
     iv_contrib = (dist_good - dist_bad) * woe
     return woe, iv_contrib, float(iv_contrib.sum())
@@ -148,8 +149,17 @@ class FeatureBinning:
     missing_woe: float = 0.0
     has_missing_bin: bool = False
 
-    def transform(self, x: pd.Series | np.ndarray) -> np.ndarray:
-        """Map raw values to WOE; NaN maps to the missing-bin WOE."""
+    def transform(self, x: pd.Series | np.ndarray, unseen: str = "error") -> np.ndarray:
+        """Map raw values to WOE; NaN maps to the missing-bin WOE.
+
+        NaN maps to the missing-bin WOE, which is 0 (neutral) when no
+        missing values were seen at fit. ``unseen`` controls categorical
+        values not seen at fit: ``"error"`` (default) raises ValueError,
+        ``"missing"`` maps them to the missing-bin WOE, ``"neutral"`` maps
+        them to WOE 0.
+        """
+        if unseen not in ("error", "missing", "neutral"):
+            raise ValueError(f"unseen must be 'error', 'missing' or 'neutral', got {unseen!r}")
         arr = np.asarray(pd.Series(x), dtype=object)
         out = np.empty(len(arr), dtype=float)
         if self.kind == "numeric":
@@ -165,8 +175,17 @@ class FeatureBinning:
             for j, v in enumerate(arr):
                 if v is None or (isinstance(v, float) and np.isnan(v)):
                     out[j] = self.missing_woe
+                elif str(v) in cat_to_bin:
+                    out[j] = self.woes[cat_to_bin[str(v)]]
+                elif unseen == "error":
+                    raise ValueError(
+                        f"feature {self.feature!r}: category {v!r} was not seen at fit; "
+                        "pass unseen='missing' or 'neutral' to map it explicitly"
+                    )
+                elif unseen == "missing":
+                    out[j] = self.missing_woe
                 else:
-                    out[j] = self.woes[cat_to_bin.get(str(v), 0)] if str(v) in cat_to_bin else self.missing_woe
+                    out[j] = 0.0
         return out
 
 
@@ -188,6 +207,17 @@ def _merge_pair(edges: list[float], g: list[float], b: list[float], i: int) -> N
     del g[i + 1], b[i + 1], edges[i]
 
 
+def _violating_pairs(rate: np.ndarray, n: np.ndarray) -> list[int]:
+    """Adjacent pairs (i, i+1) whose bad-rate step opposes the overall trend."""
+    k = np.arange(len(rate), dtype=float)
+    w = n / n.sum()
+    cov = float(np.sum(w * (k - np.sum(w * k)) * (rate - np.sum(w * rate))))
+    direction = -1.0 if cov < 0 else 1.0
+    steps = np.diff(rate) * direction
+    viol = [int(i) for i in np.flatnonzero(steps < 0)]
+    return viol if viol else list(range(len(rate) - 1))
+
+
 def _is_monotone(rate: np.ndarray) -> bool:
     d = np.diff(rate)
     return bool(np.all(d >= 0) or np.all(d <= 0))
@@ -207,7 +237,9 @@ def fit_numeric_binning(
     Algorithm: quantile pre-bins on non-missing values -> merge bins smaller
     than ``min_bin_frac`` of non-missing rows -> while the bad rate is not
     monotone across bins, merge the adjacent pair with the smallest 2x2
-    chi-square (least evidence they differ).  Missing values form their own
+    chi-square among the pairs that violate the overall trend (the sign of
+    the count-weighted correlation between bin order and bad rate; ties
+    count as increasing). Missing values form their own
     bin (excluded from the monotonicity constraint).
 
     Raises
@@ -221,7 +253,7 @@ def fit_numeric_binning(
         raise ValueError("x and y must have the same length")
     if ys.sum() == 0:
         raise ValueError(
-            f"feature {feature!r}: zero defaults in sample — WOE/IV undefined; "
+            f"feature {feature!r}: zero defaults in sample: WOE/IV undefined; "
             "collect more data or use a low-default-portfolio approach"
         )
     if ys.sum() == len(ys):
@@ -263,9 +295,9 @@ def fit_numeric_binning(
             rate = ba / np.maximum(ga + ba, 1.0)
             if _is_monotone(rate):
                 break
-            viol = [i for i in range(len(g) - 1)]
+            viol = _violating_pairs(rate, ga + ba)
             chis = [_chi2_adjacent(ga, ba, i) for i in viol]
-            _merge_pair(edges, g, b, int(np.argmin(chis)))
+            _merge_pair(edges, g, b, viol[int(np.argmin(chis))])
 
     ga, ba = np.array(g), np.array(b)
     n_missing = int(isna.sum())
@@ -325,7 +357,7 @@ def fit_categorical_binning(
     ys = pd.Series(y).astype(int).reset_index(drop=True)
     if ys.sum() == 0:
         raise ValueError(
-            f"feature {feature!r}: zero defaults in sample — WOE/IV undefined"
+            f"feature {feature!r}: zero defaults in sample: WOE/IV undefined"
         )
     if ys.sum() == len(ys):
         raise ValueError(f"feature {feature!r}: sample contains no goods (all default)")
@@ -384,7 +416,7 @@ def fit_categorical_binning(
 def _warn_if_suspicious(feature: str, iv: float) -> None:
     if iv > 0.5:
         warnings.warn(
-            f"feature {feature!r} has IV = {iv:.3f} > 0.5 — suspiciously high; "
+            f"feature {feature!r} has IV = {iv:.3f} > 0.5: suspiciously high; "
             "investigate for target leakage (post-outcome field?)",
             SuspiciousIVWarning,
             stacklevel=3,
@@ -435,13 +467,17 @@ class WOETransformer:
             self.binnings_[f] = fit_categorical_binning(df[f], y, feature=f)
         return self
 
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Return a DataFrame of WOE-transformed features (columns ``woe_<f>``)."""
+    def transform(self, df: pd.DataFrame, unseen: str = "error") -> pd.DataFrame:
+        """Return a DataFrame of WOE-transformed features (columns ``woe_<f>``).
+
+        ``unseen`` is passed to :meth:`FeatureBinning.transform` for
+        categorical features.
+        """
         if not self.binnings_:
             raise ValueError("WOETransformer.transform called before fit")
         out = {}
         for f, fb in self.binnings_.items():
-            out[f"woe_{f}"] = fb.transform(df[f])
+            out[f"woe_{f}"] = fb.transform(df[f], unseen=unseen)
         return pd.DataFrame(out, index=df.index)
 
     def iv_table(self) -> pd.DataFrame:

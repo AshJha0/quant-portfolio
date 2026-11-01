@@ -73,9 +73,7 @@ pub fn b76_d1_d2(f: f64, k: f64, t: f64, sigma: f64) -> Result<(f64, f64), Prici
              got F={f}, K={k}, T={t}, sigma={sigma}"
         )));
     }
-    let sqrt_t = t.sqrt();
-    let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * sqrt_t);
-    Ok((d1, d1 - sigma * sqrt_t))
+    Ok(b76_d1_d2_core(f, k, t, sigma))
 }
 
 /// Black-76 present value of a European option on a forward/futures price.
@@ -108,16 +106,39 @@ pub fn black76_price(
 ) -> Result<f64, PricingError> {
     validate_inputs(f, k, t, sigma)?;
     validate_rates(r, 0.0)?;
+    Ok(black76_price_core(f, k, t, r, sigma, option_type))
+}
+
+/// `d1`, `d2` for validated, strictly positive inputs (same expression as
+/// [`b76_d1_d2`]).
+#[inline]
+pub(crate) fn b76_d1_d2_core(f: f64, k: f64, t: f64, sigma: f64) -> (f64, f64) {
+    let sqrt_t = t.sqrt();
+    let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * sqrt_t);
+    (d1, d1 - sigma * sqrt_t)
+}
+
+/// Black-76 price for validated inputs. Shared by [`black76_price`] and
+/// the non-allocating API.
+#[inline]
+pub(crate) fn black76_price_core(
+    f: f64,
+    k: f64,
+    t: f64,
+    r: f64,
+    sigma: f64,
+    option_type: OptionType,
+) -> f64 {
     let sign = option_type.sign();
     if t == 0.0 {
-        return Ok((sign * (f - k)).max(0.0));
+        return (sign * (f - k)).max(0.0);
     }
     let df = (-r * t).exp();
     if sigma == 0.0 || k == 0.0 || f == 0.0 {
-        return Ok(df * (sign * (f - k)).max(0.0));
+        return df * (sign * (f - k)).max(0.0);
     }
-    let (d1, d2) = b76_d1_d2(f, k, t, sigma)?;
-    Ok(df * sign * (f * norm_cdf(sign * d1) - k * norm_cdf(sign * d2)))
+    let (d1, d2) = b76_d1_d2_core(f, k, t, sigma);
+    df * sign * (f * norm_cdf(sign * d1) - k * norm_cdf(sign * d2))
 }
 
 /// Analytic Black-76 Greeks with respect to the forward.
@@ -147,6 +168,23 @@ pub fn black76_greeks(
 ) -> Result<Black76Greeks, PricingError> {
     validate_rates(r, 0.0)?;
     let (d1, d2) = b76_d1_d2(f, k, t, sigma)?;
+    Ok(black76_greeks_core(f, k, t, r, sigma, option_type, d1, d2))
+}
+
+/// Black-76 Greeks for validated, strictly positive inputs with `d1`,
+/// `d2` already computed.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+pub(crate) fn black76_greeks_core(
+    f: f64,
+    k: f64,
+    t: f64,
+    r: f64,
+    sigma: f64,
+    option_type: OptionType,
+    d1: f64,
+    d2: f64,
+) -> Black76Greeks {
     let df = (-r * t).exp();
     let sqrt_t = t.sqrt();
     let pdf_d1 = norm_pdf(d1);
@@ -159,12 +197,12 @@ pub fn black76_greeks(
     // theta = dV/dt at fixed F: r*V minus decay of the time value.
     let theta = r * price - df * f * pdf_d1 * sigma / (2.0 * sqrt_t);
     let rho = -t * price;
-    Ok(Black76Greeks {
+    Black76Greeks {
         price,
         delta,
         gamma,
         vega,
         theta,
         rho,
-    })
+    }
 }

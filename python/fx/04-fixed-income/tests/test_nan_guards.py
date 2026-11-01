@@ -1,6 +1,6 @@
 """Non-finite inputs must raise, not propagate into curves, forwards and risk.
 
-Almost every guard in `fx_rates` was written as an inequality —
+Almost every guard in `fx_rates` was written as an inequality:
 ``if spot <= 0.0: raise``, ``if tau <= 0.0: raise``,
 ``if bid > ask: raise``, ``if strike <= 0.0: raise``. Every comparison
 against NaN is False, so each of those *accepted* NaN and the NaN then flowed
@@ -196,8 +196,10 @@ class TestMarketAndForwardGuards:
         # EURUSD basis is negative -> the basis-adjusted foreign curve
         # discounts less -> the market forward sits *above* pure CIP.
         assert f_mkt > f_cip
-        implied = -np.log(f_mkt / f_cip) / 5.0
-        assert implied == pytest.approx(-0.0025, rel=1e-9)
+        from fx_rates.bootstrap import basis_swap_par_spread
+        par = basis_swap_par_spread(market.foreign_curve,
+                                    market.foreign_curve_adjusted, 5.0)
+        assert par == pytest.approx(-0.0025, abs=1e-13)
 
 
 class TestInstrumentConstructionGuards:
@@ -327,7 +329,7 @@ class TestScenarioAndRiskGuards:
 
 
 class TestDayCountUnaffected:
-    """The date layer takes no floats, so it needs no NaN guard — verify."""
+    """The date layer takes no floats, so it needs no NaN guard: verify."""
 
     def test_year_fraction_conventions_still_exact(self) -> None:
         from fx_rates import year_fraction

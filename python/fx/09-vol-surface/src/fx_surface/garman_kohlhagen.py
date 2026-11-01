@@ -68,7 +68,7 @@ def _validate(S: float, K: float, T: float, sigma: float | None = None) -> None:
 
     Note the explicit ``isfinite`` guards: a bare ``S <= 0`` test is
     silently passed by ``NaN`` (every comparison with NaN is False), so a
-    NaN spot or vol would otherwise propagate into a NaN premium — a
+    NaN spot or vol would otherwise propagate into a NaN premium: a
     price that looks like a number to every downstream consumer.
     """
     if not math.isfinite(S) or S <= 0.0:
@@ -258,7 +258,7 @@ def gk_digital(
 ) -> float:
     """Domestic cash-or-nothing digital (pays 1 domestic unit if ITM).
 
-    Flat-vol (no smile) value ``exp(-r_d T) N(cp * d2)``.  A real desk
+    Flat-vol (no smile) value ``exp(-r_d T) N(cp * d2)``.  A trading desk
     adds the skew correction ``-vega_digital * dsigma/dK``; see
     :func:`fx_surface.smile.smile_digital` for the smile-consistent value.
     """
@@ -314,15 +314,21 @@ def implied_vol(
         )
     # Clip prices inside the slack band onto the bounds.
     price = min(max(price, lower), upper)
-    if price - lower < 1e-14:  # effectively intrinsic -> vol ~ 0
-        return lo
 
     def objective(sigma: float) -> float:
         return gk_price(S, K, T, r_d, r_f, sigma, cp) - price
 
-    f_lo = objective(lo)
-    if f_lo > 0.0:  # price below the sigma=lo price: vol under the bracket
-        return lo
+    # A price at (or numerically indistinguishable from) intrinsic, or below
+    # the sigma=lo price, has no implied vol inside the bracket.  Returning
+    # the bracket edge would be a plausible-looking wrong number, so the
+    # solver reports failure instead (NaN or ValueError per ``on_fail``).
+    if price - lower < 1e-14 or objective(lo) > 0.0:
+        if on_fail == "nan":
+            return math.nan
+        raise ValueError(
+            f"implied vol below bracket {lo} (price {price} at or within "
+            f"round-off of intrinsic {lower}) for K={K}, T={T}"
+        )
     b = 0.5
     while objective(b) < 0.0:
         b *= 2.0

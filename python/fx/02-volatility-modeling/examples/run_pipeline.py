@@ -3,7 +3,7 @@
 Runs in well under 120 s and reproduces every number quoted in README.md and
 docs/. Two synthetic pairs are studied side by side:
 
-* "EURUSD-like" (G10): symmetric GARCH with Student-t innovations -- fat
+* "EURUSD-like" (G10): symmetric GARCH with Student-t innovations: fat
   tails, no leverage. The claim to verify: GARCH-t is sufficient; asymmetric
   models add nothing.
 * "USDMXN-like" (EM): asymmetric GJR dynamics + fat tails + one-sided
@@ -76,7 +76,7 @@ print("=> strong conditional heteroskedasticity; GARCH-family modelling justifie
 
 ew = fv.ewma_variance(eurusd)
 print(f"EWMA(0.94) terminal ann.vol: {100 * ann_vol(ew[-1]):.2f}% "
-      f"(flat forecast at all horizons -- no mean reversion)")
+      f"(flat forecast at all horizons: no mean reversion)")
 
 # -------------------------------------------- full-sample model races ----
 hr("3. FULL-SAMPLE FITS & IN-SAMPLE RANKING (AIC)")
@@ -104,29 +104,33 @@ for pair, r in [("EURUSD-like", eurusd), ("USDMXN-like", usdmxn)]:
     for aic, name, fit in rows:
         asym = fit.params.get("gamma", float("nan"))
         nu = fit.params.get("nu", float("nan"))
+        flag = "  [at boundary: SEs not meaningful]" if fit.extra.get("at_boundary") else ""
         print(
             f"  {name:<9s} loglik={fit.loglik:10.2f}  dAIC={aic - best_aic:8.2f}  "
-            f"pers={fit.persistence:.4f}  gamma={asym:+.4f}  nu={nu:.1f}"
+            f"pers={fit.persistence:.4f}  gamma={asym:+.4f}  nu={nu:.1f}{flag}"
         )
     sb = fv.sign_bias_test(r, fits[pair]["GARCH"].sigma2)
     print(f"  Engle-Ng sign-bias joint p (on symmetric GARCH fit): {sb['joint_f_p']:.4f}")
 
 # Quote direction matters: USDMXN asymmetry loads on POSITIVE pair returns
-# (EM depreciation), which the gamma >= 0 GJR cannot see in this quote
-# direction (gamma pins at 0). EGARCH's sign-free leverage catches it
-# directly; alternatively, invert the pair (MXNUSD) and refit GJR.
+# (EM depreciation). GJR's constraint is alpha >= 0, alpha + gamma >= 0, so
+# it estimates a negative gamma on USDMXN; inverting the pair flips the sign
+# and leaves the likelihood unchanged. EGARCH's sign-free leverage shows the
+# same effect.
 gjr_inv = fv.fit_gjr(fv.invert_returns(usdmxn), dist="t")
 em_eg = fits["USDMXN-like"]["EGARCH-t"]
 print(f"\nQuote-direction check (EM asymmetry):")
 print(f"  EGARCH-t on USDMXN:      gamma = {em_eg.params['gamma']:+.4f} "
-      f"(se {em_eg.std_errors['gamma']:.4f})  -- positive: depreciation raises vol")
-print(f"  GJR-t on USDMXN:         gamma = {fits['USDMXN-like']['GJR-t'].params['gamma']:+.4f} "
-      f"(pinned at 0: asymmetry is on the other side in this quote direction)")
+      f"(se {em_eg.std_errors['gamma']:.4f}) : positive: EM depreciation raises vol")
+em_gjr = fits["USDMXN-like"]["GJR-t"]
+print(f"  GJR-t on USDMXN:         gamma = {em_gjr.params['gamma']:+.4f} "
+      f"(se {em_gjr.std_errors['gamma']:.4f}) : negative: vol loads on positive pair returns")
 print(f"  GJR-t on inverted MXNUSD: gamma = {gjr_inv.params['gamma']:+.4f} "
-      f"(se {gjr_inv.std_errors['gamma']:.4f})  -- recovered after inversion")
+      f"(se {gjr_inv.std_errors['gamma']:.4f}) : same model, sign flipped "
+      f"(loglik diff {gjr_inv.loglik - em_gjr.loglik:+.4f})")
 g10_eg = fits["EURUSD-like"]["EGARCH-t"]
 print(f"  EGARCH-t on EURUSD:      gamma = {g10_eg.params['gamma']:+.4f} "
-      f"(se {g10_eg.std_errors['gamma']:.4f})  -- G10: no material asymmetry")
+      f"(se {g10_eg.std_errors['gamma']:.4f}) : G10: no material asymmetry")
 print("=> asymmetric terms are dead weight for the G10-style pair, first-order for EM")
 
 # ------------------------------------------------- parameter recovery ----
@@ -136,22 +140,22 @@ rec_r = syn.simulate_garch(20_000, 1e-6, 0.05, 0.92, seed=11)
 rec = fv.fit_garch(rec_r)
 print("GARCH(1,1) gaussian, true (omega, alpha, beta) = (1.0e-06, 0.050, 0.920):")
 for k in ("omega", "alpha", "beta"):
-    print(f"  {k:<6s} = {rec.params[k]:.4g}  (se {rec.std_errors[k]:.2g})")
+    print(f"  {k:<6s} = {rec.params[k]:.4g}  (se {rec.std_errors[k]:.2g}, robust {rec.robust_std_errors[k]:.2g})")
 
 rec_t = fv.fit_garch(syn.simulate_garch(20_000, 1.5e-6, 0.06, 0.90, dist="t", nu=6.0, seed=12), dist="t")
 print("GARCH-t, true (omega, alpha, beta, nu) = (1.5e-06, 0.060, 0.900, 6.0):")
 for k in ("omega", "alpha", "beta", "nu"):
-    print(f"  {k:<6s} = {rec_t.params[k]:.4g}  (se {rec_t.std_errors[k]:.2g})")
+    print(f"  {k:<6s} = {rec_t.params[k]:.4g}  (se {rec_t.std_errors[k]:.2g}, robust {rec_t.robust_std_errors[k]:.2g})")
 
 rec_gjr = fv.fit_gjr(syn.simulate_gjr(20_000, 1e-6, 0.03, 0.10, 0.88, seed=13))
 print("GJR, true (omega, alpha, gamma, beta) = (1.0e-06, 0.030, 0.100, 0.880):")
 for k in ("omega", "alpha", "gamma", "beta"):
-    print(f"  {k:<6s} = {rec_gjr.params[k]:.4g}  (se {rec_gjr.std_errors[k]:.2g})")
+    print(f"  {k:<6s} = {rec_gjr.params[k]:.4g}  (se {rec_gjr.std_errors[k]:.2g}, robust {rec_gjr.robust_std_errors[k]:.2g})")
 
 rec_eg = fv.fit_egarch(syn.simulate_egarch(15_000, -0.50, 0.15, -0.06, 0.95, seed=14))
 print("EGARCH, true (omega, alpha, gamma, beta) = (-0.500, 0.150, -0.060, 0.950):")
 for k in ("omega", "alpha", "gamma", "beta"):
-    print(f"  {k:<6s} = {rec_eg.params[k]:.4g}  (se {rec_eg.std_errors[k]:.2g})")
+    print(f"  {k:<6s} = {rec_eg.params[k]:.4g}  (se {rec_eg.std_errors[k]:.2g}, robust {rec_eg.robust_std_errors[k]:.2g})")
 
 # --------------------------------------------- GARCH-X event dummies ----
 hr("5. GARCH-X: CENTRAL-BANK EVENT DUMMIES IN THE VARIANCE EQUATION")
@@ -182,10 +186,10 @@ rho_hat = np.corrcoef(tri["returns1"], tri["returns2"])[0, 1]
 tri_vol = fv.cross_volatility(s1, s2, rho_hat, "EURUSD", "USDJPY", "EURJPY")
 print(f"leg vols (ann.): EURUSD {100 * s1 * np.sqrt(PPY):.2f}%, USDJPY {100 * s2 * np.sqrt(PPY):.2f}%, "
       f"corr {rho_hat:+.3f}")
-print(f"EURJPY vol -- triangle: {100 * tri_vol * np.sqrt(PPY):.2f}%  "
+print(f"EURJPY vol: triangle: {100 * tri_vol * np.sqrt(PPY):.2f}%  "
       f"direct: {100 * r_cross.std(ddof=1) * np.sqrt(PPY):.2f}%  (identity, exact)")
 inv_vol = fv.close_to_close_vol(fv.invert_returns(r_cross))
-print(f"JPYEUR (inverted pair) ann.vol: {100 * inv_vol:.2f}%  -- inversion-invariant")
+print(f"JPYEUR (inverted pair) ann.vol: {100 * inv_vol:.2f}% : inversion-invariant")
 
 # ------------------------------------------------------- OOS race -------
 hr("7. 500-DAY OUT-OF-SAMPLE RACE (rolling 1-step, refit every 125 days)")
@@ -194,16 +198,21 @@ RACE_MODELS = ["ewma", "garch", "garch_t", "gjr", "egarch"]
 BENCH = "garch_t"
 for pair, r in [("EURUSD-like", eurusd), ("USDMXN-like", usdmxn)]:
     print(f"\n{pair} (QLIKE, lower is better; DM vs {BENCH}, negative favours model):")
-    losses = {}
+    losses, flags = {}, {}
     for m in RACE_MODELS:
         out = fv.rolling_one_step(r, model=m, window=1000, refit_every=125, n_oos=500)
         losses[m] = fv.qlike_loss(out["forecast"], out["realized"])
+        flags[m] = (out["failed_refits"], out["boundary_refits"]) if m != "ewma" else None
     for m in RACE_MODELS:
         if m == BENCH:
             print(f"  {m:<8s} QLIKE {losses[m].mean():9.4f}   (benchmark)")
         else:
             dm = fv.diebold_mariano(losses[m], losses[BENCH])
             print(f"  {m:<8s} QLIKE {losses[m].mean():9.4f}   DM {dm['stat']:+.2f} (p={dm['pvalue']:.3f})")
+    for m, fl in flags.items():
+        if fl and (fl[0] or fl[1]):
+            print(f"  note: {m}: {fl[0]} failed refits, {fl[1]} refits at a parameter boundary")
+    print(f"  (DM: Newey-West lag {fv.default_hac_lags(500)}, HLN correction, t_499)")
 
 # --------------------------------------------------- vol risk premium ---
 hr("8. VOL RISK PREMIUM (synthetic implied vs realized)")
@@ -216,7 +225,7 @@ implied = np.clip(implied, 0.01, None)
 prem = fv.vol_risk_premium(implied, rv_fwd)
 s = fv.premium_summary(prem)
 print(f"premium (implied - subsequent 21d realized): mean {100 * s['mean']:.2f} vol pts, "
-      f"median {100 * s['median']:.2f}, %positive {100 * s['frac_positive']:.0f}%, "
+      f"median {100 * s['median']:.2f}, %positive {100 * s['frac_positive']:.1f}%, "
       f"min {100 * s['min']:.2f}")
 pnl = fv.variance_swap_pnl(implied[valid], rv_fwd[valid], vega_notional=1.0)
 print(f"short-var P&L per unit vega: mean {pnl.mean():+.4f}, worst day {pnl.min():+.4f} "

@@ -7,7 +7,7 @@ Black-76 prices directly off it,
     d1 = [ln(F/K) + sigma^2 T / 2] / (sigma sqrt(T)),   d2 = d1 - sigma sqrt(T).
 
 With the covered-interest-parity forward ``F = S e^{(r_d - r_f) T}``,
-Black-76 is *algebraically identical* to Garman-Kohlhagen — substituting F
+Black-76 is *algebraically identical* to Garman-Kohlhagen: substituting F
 recovers the GK d1/d2 and price exactly.  The practical difference is the
 input: quoting off F removes the need to know the rate *pair*, only the
 domestic discount factor, which is how forward-space market data arrives.
@@ -77,7 +77,7 @@ def black76_from_spot(S: float, K: float, T: float, r_d: float, r_f: float,
     """Black-76 with the forward built from spot via CIP.
 
     Equals :func:`fx_options.garman_kohlhagen.gk_price` to machine
-    precision — tested to 1e-10 in the suite.
+    precision: tested to 1e-10 in the suite.
     """
     F = cip_forward(S, T, r_d, r_f)
     return black76_price(F, K, T, r_d, sigma, option_type)

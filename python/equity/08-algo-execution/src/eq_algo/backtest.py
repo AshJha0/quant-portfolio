@@ -1,25 +1,30 @@
 """Daily cross-sectional long-short backtester with transaction costs.
 
-Timing convention (the single most important line in this module):
+Execution convention (shared by every strategy project in this repository):
 
-    weights decided at close of day t (from a signal using data <= t)
-    earn the return from close t to close t+1;
-    the cost of trading into those weights is booked on day t itself
-    (the spread/impact is paid when the trade is done).
+    Signals use data up to the close of day t. Orders fill at a modelled
+    t+1 price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a
+    close-auction variant fills at p_t and pays an auction cost.
 
-so ``net_t = gross_t - cost_t`` with ``gross_t = sum_i w_{i,t-1} * r_{i,t}``
-and ``cost_t`` the cost of moving from ``w_{t-1}`` to ``w_t``.  There is no
-path by which a return at ``t+1`` can influence the weight at ``t`` —
-enforced by the mutation (no-lookahead) tests.
+In return terms, with ``r = p_{t+1}/p_t - 1`` and the default mode
+``"next"``, the weights held before the trade earn ``f r`` (close t to the
+fill) and the new weights earn ``(1 + r)/(1 + f r) - 1`` (fill to close
+t+1). The trade and its cost are booked in the ledger row of day t+1, the
+day it fills. ``fill_fraction = 1`` fills at the next close. In mode
+``"close_auction"`` the new weights earn the whole of ``r`` and every unit of
+turnover pays ``auction_cost_bp`` on top of the normal cost.
 
 Cost model (fraction of NAV, per rebalance):
 
-    cost_t = sum_i |dw_i| * ( linear_bps * 1e-4
-                              + impact_coef * sigma_i * sqrt(AUM * |dw_i| / ADV$_i) )
+    cost = sum_i |dw_i| * ( linear_bps * 1e-4
+                            + impact_coef * sigma_i * sqrt(AUM * |dw_i| / ADV$_i) )
 
-i.e. a linear bid/ask + fees term and a square-root market-impact term
-(empirical square-root law; see docs/METHODOLOGY.md).  With ``aum=None`` the
-impact term is off and the backtest is AUM-independent.
+a linear spread and fee term plus a square-root market-impact term. The
+default ``impact_coef = 0.7`` sits in the middle of the 0.5-1 range of the
+empirical coefficient Y (Almgren et al. 2005; Toth et al. 2011). ``sigma_i``
+and ``ADV$_i`` are trailing estimates known at the decision close. The short
+book pays a borrow fee ``borrow_bps_annual / 252`` per day on its gross.
+With ``aum=None`` the impact term is off and the backtest is AUM-independent.
 """
 
 from __future__ import annotations
@@ -31,7 +36,43 @@ import pandas as pd
 
 from .signals import freeze_signal
 
-__all__ = ["BacktestConfig", "BacktestResult", "long_short_weights", "run_backtest"]
+__all__ = ["ExecutionConfig", "BacktestConfig", "capacity_backtest", "BacktestResult", "long_short_weights", "run_backtest"]
+
+
+_EXEC_MODES = ("next", "close_auction")
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """When and at what price a decision taken at close t is filled.
+
+    Parameters
+    ----------
+    mode : {"next", "close_auction"}
+        ``"next"`` fills at ``p_t + fill_fraction * (p_{t+1} - p_t)``.
+        ``"close_auction"`` fills at ``p_t`` and charges ``auction_cost_bp``
+        per unit of turnover in addition to the normal costs.
+    fill_fraction : float
+        Share of the next period's move that has happened by the fill, in
+        (0, 1]. 0.5 is a stand-in for a next-open or early-session fill when
+        only closes exist; 1.0 is the next close.
+    auction_cost_bp : float
+        Extra cost per unit of turnover in close-auction mode, in bp.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in _EXEC_MODES:
+            raise ValueError(f"mode must be one of {_EXEC_MODES}, got {self.mode!r}")
+        f = float(self.fill_fraction)
+        if not np.isfinite(f) or not (0.0 < f <= 1.0):
+            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
+        a = float(self.auction_cost_bp)
+        if not np.isfinite(a) or a < 0:
+            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
 
 
 @dataclass(frozen=True)
@@ -51,7 +92,10 @@ class BacktestConfig:
     linear_cost_bps : float
         Linear cost per unit turnover, in basis points.
     impact_coef : float
-        Square-root impact coefficient ``k`` in ``k * sigma * sqrt(Q/ADV)``.
+        Square-root impact coefficient ``Y`` in ``Y * sigma * sqrt(Q/ADV)``.
+        Default 0.7, inside the empirical 0.5-1 range.
+    borrow_bps_annual : float
+        Annual borrow fee on the gross short book, in bp (charged daily /252).
     aum : float | None
         Assets under management in currency units; ``None`` disables impact.
     rebalance_band : float
@@ -65,9 +109,10 @@ class BacktestConfig:
     gross_exposure: float = 2.0
     max_weight: float = 0.05
     linear_cost_bps: float = 5.0
-    impact_coef: float = 0.1
+    impact_coef: float = 0.7
     aum: float | None = None
     rebalance_band: float = 0.0
+    borrow_bps_annual: float = 0.0
 
     def __post_init__(self) -> None:
         if self.n_quantiles < 2:
@@ -76,8 +121,14 @@ class BacktestConfig:
             raise ValueError("gross_exposure must be > 0")
         if self.max_weight <= 0:
             raise ValueError("max_weight must be > 0")
-        if self.linear_cost_bps < 0 or self.impact_coef < 0:
+        for name in ("gross_exposure", "max_weight", "linear_cost_bps", "impact_coef",
+                     "rebalance_band", "borrow_bps_annual"):
+            if not np.isfinite(float(getattr(self, name))):
+                raise ValueError(f"{name} must be finite")
+        if self.linear_cost_bps < 0 or self.impact_coef < 0 or self.borrow_bps_annual < 0:
             raise ValueError("costs must be >= 0")
+        if self.aum is not None and not np.isfinite(float(self.aum)):
+            raise ValueError("aum must be finite")
         if self.aum is not None and self.aum <= 0:
             raise ValueError("aum must be > 0 when provided")
         if self.rebalance_band < 0:
@@ -159,7 +210,8 @@ def _rebalance_cost(dw: np.ndarray, sigma: np.ndarray, adv_dollars: np.ndarray,
 def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
                  config: BacktestConfig | None = None,
                  volumes: pd.DataFrame | None = None,
-                 vol_window: int = 63, adv_window: int = 21) -> BacktestResult:
+                 vol_window: int = 63, adv_window: int = 21,
+                 execution: ExecutionConfig | None = None) -> BacktestResult:
     """Run the daily long-short backtest.
 
     Parameters
@@ -171,24 +223,32 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
     config : BacktestConfig
     volumes : DataFrame, optional
         Share volumes; required if ``config.aum`` is set (impact needs ADV$).
-        ADV$ and daily vol are estimated with trailing windows (PIT).
+        ADV$ and daily vol are trailing estimates up to and including t.
     vol_window, adv_window : int
         Trailing windows (days) for the per-name daily-vol and ADV$ estimates
         used by the impact model.
+    execution : ExecutionConfig, optional
+        Fill convention; default ``ExecutionConfig()`` (fill at
+        ``p_t + 0.5 (p_{t+1} - p_t)``).
 
     Returns
     -------
     BacktestResult
-        Ledger columns: ``gross_ret, cost, net_ret, turnover, gross_exposure,
-        net_exposure, n_long, n_short``.  Row at date ``t``: ``gross_ret`` is
-        the return earned from ``t-1`` close to ``t`` close on the weights
-        held over that interval; ``turnover``/``cost`` describe the trade
-        done at the close of ``t``; ``net_ret = gross_ret - cost``.
+        ``weights`` row t is the target decided at the close of t. Ledger row
+        t: ``gross_ret`` is the return earned over day t (close t-1 to
+        close t) including the split around the fill; ``turnover``, ``cost``
+        (linear + impact + auction) and ``borrow`` describe the trade filled
+        on day t and the short book held after it;
+        ``net_ret = gross_ret - cost - borrow``.
     """
     cfg = config or BacktestConfig()
+    ex = execution or ExecutionConfig()
     signal = signal.reindex(index=prices.index, columns=prices.columns)
     if cfg.aum is not None and volumes is None:
         raise ValueError("volumes are required when aum is set (impact model needs ADV$)")
+    p_np = prices.to_numpy(dtype=float)
+    if np.isinf(p_np).any() or (np.nan_to_num(p_np, nan=1.0) <= 0).any():
+        raise ValueError("prices must be positive and finite (NaN marks untradable)")
 
     tradable = prices.notna()
     sig = signal.where(tradable)
@@ -206,30 +266,101 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
 
     w_np = held.to_numpy(dtype=float)
     r_np = rets.to_numpy(dtype=float)
+    n_names = w_np.shape[1]
+    f = ex.fill_fraction
+    auction = ex.mode == "close_auction"
+    borrow_daily = cfg.borrow_bps_annual * 1e-4 / 252.0
+
+    def trade_cost(i_dec: int, dw: np.ndarray) -> float:
+        if cfg.aum is not None:
+            sig_i = np.nan_to_num(sigma_np[i_dec], nan=0.0)
+            adv_i = np.where(np.isfinite(adv_np[i_dec]) & (adv_np[i_dec] > 0),
+                             adv_np[i_dec], np.inf)
+            c = _rebalance_cost(dw, sig_i, adv_i, cfg)
+        else:
+            c = _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)
+        if auction:
+            c += ex.auction_cost_bp * 1e-4 * float(np.abs(dw).sum())
+        return c
+
     rows = []
-    prev_w = np.zeros(w_np.shape[1])
+    held_w = np.zeros(n_names)      # weights held into day i
     for i in range(n_dates):
         r = np.nan_to_num(r_np[i], nan=0.0)
-        gross_ret = float(prev_w @ r)
-        w_now = w_np[i]
-        dw = w_now - prev_w
-        to = float(np.abs(dw).sum())
-        if cfg.aum is not None:
-            sig_i = np.nan_to_num(sigma_np[i], nan=0.0)
-            adv_i = np.where(np.isfinite(adv_np[i]) & (adv_np[i] > 0), adv_np[i], np.inf)
-            cost = _rebalance_cost(dw, sig_i, adv_i, cfg)
+        if auction:
+            # the target decided at close i fills at close i
+            gross_ret = float(held_w @ r)
+            w_new = w_np[i]
+            dw = w_new - held_w
+            cost = trade_cost(i, dw)
         else:
-            cost = _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)
+            # the target decided at close i-1 fills during day i
+            w_new = w_np[i - 1] if i > 0 else np.zeros(n_names)
+            dw = w_new - held_w
+            r_pre = f * r
+            r_post = (1.0 + r) / (1.0 + f * r) - 1.0
+            gross_ret = float(held_w @ r_pre + w_new @ r_post)
+            cost = trade_cost(i - 1, dw) if i > 0 else 0.0
+        borrow = borrow_daily * float(-w_new[w_new < 0].sum())
         rows.append({
             "gross_ret": gross_ret,
             "cost": cost,
-            "net_ret": gross_ret - cost,
-            "turnover": to,
-            "gross_exposure": float(np.abs(w_now).sum()),
-            "net_exposure": float(w_now.sum()),
-            "n_long": int((w_now > 0).sum()),
-            "n_short": int((w_now < 0).sum()),
+            "borrow": borrow,
+            "net_ret": gross_ret - cost - borrow,
+            "turnover": float(np.abs(dw).sum()),
+            "gross_exposure": float(np.abs(w_new).sum()),
+            "net_exposure": float(w_new.sum()),
+            "n_long": int((w_new > 0).sum()),
+            "n_short": int((w_new < 0).sum()),
         })
-        prev_w = w_now
+        held_w = w_new
     ledger = pd.DataFrame(rows, index=prices.index)
     return BacktestResult(ledger=ledger, weights=held, config=cfg)
+
+
+def capacity_backtest(prices: pd.DataFrame, signal: pd.DataFrame, volumes: pd.DataFrame,
+                      config: BacktestConfig, aum_grid, impact_coefs=(0.3, 0.7, 1.0),
+                      execution: ExecutionConfig | None = None, start: int = 0,
+                      adv_window: int = 21) -> pd.DataFrame:
+    """Capacity by re-running the full backtest at each AUM and impact coefficient.
+
+    Every run uses per-name trailing ADV$ and daily vol known at the decision
+    close, so the cost of each trade reflects that name's liquidity on that
+    day. Rows are ``(impact_coef, aum)``; columns: ``ann_net_return``,
+    ``net_sharpe``, ``drag_bps_per_day`` (mean cost plus borrow),
+    ``p95_participation`` (95th percentile of traded dollars over trailing
+    ADV$ across all name-day trades). ``start`` drops warm-up rows.
+    """
+    if volumes is None:
+        raise ValueError("volumes are required for a capacity run")
+    if start < 0 or start >= len(prices.index) - 2:
+        raise ValueError("start must leave at least two rows")
+    from dataclasses import replace as _replace
+
+    adv = (prices * volumes).rolling(adv_window, min_periods=1).mean().to_numpy(dtype=float)
+    rows = []
+    for y in impact_coefs:
+        if not np.isfinite(y) or y < 0:
+            raise ValueError("impact coefficients must be finite and >= 0")
+        for aum in aum_grid:
+            if not np.isfinite(aum) or aum <= 0:
+                raise ValueError("AUM values must be finite and > 0")
+            cfg = _replace(config, impact_coef=float(y), aum=float(aum))
+            res = run_backtest(prices, signal, cfg, volumes=volumes,
+                               adv_window=adv_window, execution=execution)
+            led = res.ledger.iloc[start:]
+            net = led["net_ret"]
+            dw = res.weights.diff().to_numpy(dtype=float)[start:]
+            a = adv[start:]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                part = np.abs(dw) * aum / a
+            part = part[np.isfinite(part) & (np.abs(dw) > 0)]
+            rows.append({
+                "impact_coef": float(y),
+                "aum": float(aum),
+                "ann_net_return": float(net.mean() * 252.0),
+                "net_sharpe": float(net.mean() / net.std(ddof=1) * np.sqrt(252.0)),
+                "drag_bps_per_day": float((led["cost"] + led["borrow"]).mean() * 1e4),
+                "p95_participation": float(np.quantile(part, 0.95)) if part.size else 0.0,
+            })
+    return pd.DataFrame(rows).set_index(["impact_coef", "aum"])

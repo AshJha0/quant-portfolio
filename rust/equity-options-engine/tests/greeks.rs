@@ -91,7 +91,17 @@ fn greeks_reject_boundary_inputs() {
     assert!(bs_greeks(100.0, 100.0, 1.0, 0.05, 0.0, 0.0, OptionType::Call).is_err());
     assert!(bs_greeks(0.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call).is_err());
     // FD theta bump needs T > h: tiny T is rejected cleanly.
-    assert!(fd_greeks(bs_price, 100.0, 100.0, 1e-6, 0.05, 0.2, 0.0, OptionType::Call).is_err());
+    assert!(fd_greeks(
+        bs_price,
+        100.0,
+        100.0,
+        1e-6,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call
+    )
+    .is_err());
 }
 
 #[test]
@@ -131,7 +141,17 @@ fn greeks_reject_non_finite_inputs() {
     }
     // Negative rates remain legal at both entry points.
     assert!(bs_greeks(100.0, 100.0, 1.0, -0.01, 0.2, -0.02, OptionType::Call).is_ok());
-    assert!(fd_greeks(bs_price, 100.0, 100.0, 1.0, -0.01, 0.2, -0.02, OptionType::Call).is_ok());
+    assert!(fd_greeks(
+        bs_price,
+        100.0,
+        100.0,
+        1.0,
+        -0.01,
+        0.2,
+        -0.02,
+        OptionType::Call
+    )
+    .is_ok());
 }
 
 #[test]
@@ -144,7 +164,7 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
     // up front, by fd_greeks itself.
     let mut called = false;
     let unvalidating = |s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64, ot: OptionType| {
-        // Deliberately no validation: prices at whatever sigma it is given.
+        // No validation on purpose: prices at whatever sigma it is given.
         let sqrt_t = t.sqrt();
         let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
         let d2 = d1 - sigma * sqrt_t;
@@ -155,13 +175,30 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
         })
     };
     for sigma in [1e-6, 1e-5, 1e-4, 2e-4] {
-        let via_bs = fd_greeks(bs_price, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
+        let via_bs = fd_greeks(
+            bs_price,
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            sigma,
+            0.0,
+            OptionType::Call,
+        );
         assert!(
             matches!(via_bs, Err(PricingError::InvalidInput(_))),
             "sigma={sigma}: expected InvalidInput, got {via_bs:?}"
         );
-        let via_closure =
-            fd_greeks(&unvalidating, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
+        let via_closure = fd_greeks(
+            unvalidating,
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            sigma,
+            0.0,
+            OptionType::Call,
+        );
         assert!(
             matches!(via_closure, Err(PricingError::InvalidInput(_))),
             "sigma={sigma} with a non-validating pricer: expected InvalidInput, \
@@ -173,19 +210,32 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
     // Just above the bump the stencil is legal again and agrees with the
     // analytic vega.
     let sigma = 1e-2;
-    let fd = fd_greeks(bs_price, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call).unwrap();
+    let fd = fd_greeks(
+        bs_price,
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        sigma,
+        0.0,
+        OptionType::Call,
+    )
+    .unwrap();
     let an = bs_greeks(100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call).unwrap();
     assert!(fd.vega.is_finite() && an.vega.is_finite());
     assert_close!(fd.vega, an.vega, 1e-4 * an.vega.abs().max(1.0));
     // Symmetric guard on spot: a spot below the delta/gamma bump is
     // rejected rather than differenced across S = 0.
     let tiny_s = fd_greeks(bs_price, 1e-5, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call);
-    assert!(matches!(tiny_s, Err(PricingError::InvalidInput(_))), "got {tiny_s:?}");
+    assert!(
+        matches!(tiny_s, Err(PricingError::InvalidInput(_))),
+        "got {tiny_s:?}"
+    );
 }
 
 /// Minimal erf, only accurate enough for the non-validating test pricer above.
 fn libm_erf_stub(x: f64) -> f64 {
-    // Abramowitz & Stegun 7.1.26 — 1e-7 absolute, plenty for a test stub.
+    // Abramowitz & Stegun 7.1.26: 1e-7 absolute, plenty for a test stub.
     let sign = if x < 0.0 { -1.0 } else { 1.0 };
     let x = x.abs();
     let t = 1.0 / (1.0 + 0.327_591_1 * x);
@@ -216,7 +266,10 @@ fn extreme_moneyness_greeks_stay_finite_and_bounded() {
                 ("vanna", g.vanna),
                 ("volga", g.volga),
             ] {
-                assert!(v.is_finite(), "{name} not finite at S={s}, K={k}, {ot:?}: {v}");
+                assert!(
+                    v.is_finite(),
+                    "{name} not finite at S={s}, K={k}, {ot:?}: {v}"
+                );
             }
             assert!(g.gamma >= 0.0 && g.vega >= 0.0);
             match ot {
@@ -229,5 +282,9 @@ fn extreme_moneyness_greeks_stay_finite_and_bounded() {
     let itm = bs_greeks(10_000.0, 100.0, t, r, sigma, q, OptionType::Call).unwrap();
     assert_close!(itm.delta, df_q, 1e-12);
     let otm = bs_greeks(100.0, 10_000.0, t, r, sigma, q, OptionType::Call).unwrap();
-    assert!(otm.delta < 1e-30 && otm.delta >= 0.0, "deep OTM delta {}", otm.delta);
+    assert!(
+        otm.delta < 1e-30 && otm.delta >= 0.0,
+        "deep OTM delta {}",
+        otm.delta
+    );
 }

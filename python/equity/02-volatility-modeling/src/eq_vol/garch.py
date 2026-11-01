@@ -37,6 +37,7 @@ from ._utils import (
     ConvergenceError,
     checked_sample_variance,
     initial_variance,
+    mle_std_errors,
     numerical_hessian,
     std_errors_from_hessian,
     validate_returns,
@@ -46,6 +47,7 @@ __all__ = [
     "garch_recursion",
     "gaussian_loglik",
     "student_t_loglik",
+    "loglik_obs",
     "garch_loglik",
     "fit_garch",
     "persistence",
@@ -109,6 +111,32 @@ def student_t_loglik(returns: np.ndarray, sigma2: np.ndarray, nu: float) -> floa
     return float(
         np.sum(c - 0.5 * np.log(sigma2) - 0.5 * (nu + 1.0) * np.log1p(z2 / (nu - 2.0)))
     )
+
+
+def loglik_obs(returns: np.ndarray, sigma2: np.ndarray, dist: str = "normal", nu: float = np.nan) -> np.ndarray:
+    """Per-observation log-likelihood contributions ``l_t`` (sum = total log-likelihood).
+
+    Returns an all-NaN array when the variance path or ``nu`` is invalid, so
+    a finite-difference score that steps outside the parameter space is
+    visible as NaN rather than as a large finite number.
+    """
+    r = np.asarray(returns, dtype=float)
+    s2 = np.asarray(sigma2, dtype=float)
+    if np.any(s2 <= 0) or not np.all(np.isfinite(s2)):
+        return np.full(r.size, np.nan)
+    if dist == "normal":
+        return -0.5 * (np.log(2.0 * np.pi) + np.log(s2) + r**2 / s2)
+    if dist == "t":
+        if not nu > 2:
+            return np.full(r.size, np.nan)
+        c = gammaln((nu + 1.0) / 2.0) - gammaln(nu / 2.0) - 0.5 * np.log(np.pi * (nu - 2.0))
+        return c - 0.5 * np.log(s2) - 0.5 * (nu + 1.0) * np.log1p(r**2 / s2 / (nu - 2.0))
+    raise ValueError(f"unknown dist {dist!r}; use 'normal' or 't'")
+
+
+def se_floor(names: list[str], params: dict[str, float]) -> np.ndarray:
+    """Finite-difference scale per parameter: omega's own size, 1e-2 otherwise."""
+    return np.array([abs(params[k]) if k == "omega" else 1e-2 for k in names])
 
 
 def garch_loglik(
@@ -191,8 +219,9 @@ def fit_garch(
         (fat tails; standard for daily equity returns).
     variance_targeting : bool
         If True, omega is not estimated freely but pinned to
-        ``sample_var * (1 - alpha - beta)`` so the model's unconditional
-        variance matches the sample variance exactly. Reduces the parameter
+        ``mean(r^2) * (1 - alpha - beta)`` so the model's unconditional
+        variance equals the sample second moment (the quantity the
+        zero-mean recursion targets). Reduces the parameter
         space (more stable in short samples) at a small efficiency cost;
         omega's standard error is reported as NaN in this mode.
     init_method : {"backcast", "sample"}
@@ -210,7 +239,10 @@ def fit_garch(
         unconditional_vol_annual, halflife_days.
     """
     r = validate_returns(returns, min_obs=_MIN_OBS_FIT)
-    sample_var = checked_sample_variance(r, "GARCH")
+    checked_sample_variance(r, "GARCH")
+    # The recursion runs on raw squared returns (zero-mean model), so the
+    # variance target is the sample second moment mean(r^2), not np.var.
+    sample_var = float(np.mean(r**2))
     if dist not in ("normal", "t"):
         raise ValueError(f"unknown dist {dist!r}; use 'normal' or 't'")
     b = initial_variance(r, init_method)
@@ -262,31 +294,40 @@ def fit_garch(
     sigma2 = garch_recursion(r, omega, alpha, beta, b)
     ll = gaussian_loglik(r, sigma2) if dist == "normal" else student_t_loglik(r, sigma2, theta[3])
 
-    # standard errors: numerical Hessian of NLL in *natural* parameter space
+    # Standard errors in natural parameter space: classic (inverse Hessian)
+    # and Bollerslev-Wooldridge robust (sandwich).
+    def path(th: np.ndarray) -> np.ndarray:
+        return garch_recursion(r, th[0], th[1], th[2], b)
+
+    def ll_obs_nat(th: np.ndarray) -> np.ndarray:
+        return loglik_obs(r, path(th), dist, th[3] if dist == "t" else np.nan)
+
     def nll_nat(th: np.ndarray) -> float:
-        s2 = garch_recursion(r, th[0], th[1], th[2], b)
-        llv = (
-            gaussian_loglik(r, s2) if dist == "normal" else student_t_loglik(r, s2, th[3])
-        )
+        llv = float(np.sum(ll_obs_nat(th)))
         return -llv if np.isfinite(llv) else 1e10
 
     if variance_targeting:
         # free parameters are (alpha, beta[, nu]); omega is derived
-        def nll_vt(th: np.ndarray) -> float:
-            om = sample_var * (1.0 - th[0] - th[1])
-            full = np.concatenate(([om], th))
-            return nll_nat(full)
+        def full(th: np.ndarray) -> np.ndarray:
+            return np.concatenate(([sample_var * (1.0 - th[0] - th[1])], th))
 
         free = np.array([params[k] for k in names[1:]])
-        se = std_errors_from_hessian(numerical_hessian(nll_vt, free))
+        se, rse = mle_std_errors(
+            lambda th: nll_nat(full(th)), lambda th: ll_obs_nat(full(th)), free,
+            floor=se_floor(names[1:], params),
+        )
         std_errors = dict(zip(names[1:], [float(x) for x in se]))
-        std_errors["omega"] = np.nan
+        robust = dict(zip(names[1:], [float(x) for x in rse]))
+        std_errors["omega"] = robust["omega"] = np.nan
     else:
-        se = std_errors_from_hessian(numerical_hessian(nll_nat, np.array(list(theta))))
+        se, rse = mle_std_errors(
+            nll_nat, ll_obs_nat, np.array(list(theta)), floor=se_floor(names, params)
+        )
         std_errors = dict(zip(names, [float(x) for x in se]))
+        robust = dict(zip(names, [float(x) for x in rse]))
 
     pers = persistence(alpha, beta)
-    extra = {"persistence": pers}
+    extra = {"persistence": pers, "at_boundary": float(pers > 0.999 * _PMAX or alpha < 1e-6)}
     if pers < 1:
         uv = unconditional_variance(omega, alpha, beta)
         extra["unconditional_variance"] = uv
@@ -306,6 +347,7 @@ def fit_garch(
         message=str(opt.message),
         init_var=b,
         extra=extra,
+        robust_std_errors=robust,
     )
 
 
@@ -325,7 +367,7 @@ def unconditional_variance(omega: float, alpha: float, beta: float) -> float:
     ------
     ValueError
         If alpha + beta >= 1 (integrated/explosive: the unconditional
-        variance does not exist — do not silently return a negative number).
+        variance does not exist: do not silently return a negative number).
     """
     p = alpha + beta
     if p >= 1.0:

@@ -26,6 +26,7 @@ pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
 
 SETTLEMENT = dt.date(2026, 8, 18)
+REPO = 0.031  # overnight GC repo assumption for funded carry (synthetic)
 
 
 def section(title: str) -> None:
@@ -63,6 +64,10 @@ def main() -> None:
     worst = max(abs(e) for _, e in errs)
     print(f"  max abs repricing error: {worst:.3e}  (tolerance 1e-10: "
           f"{'PASS' if worst < 1e-10 else 'FAIL'})")
+    for interp in fr.INTERPOLATIONS:
+        c_i = fr.bootstrap_curve(quotes, interpolation=interp)
+        w_i = max(abs(e) for _, e in fr.reprice_instruments(quotes, c_i))
+        print(f"  {interp:13s} max abs repricing error: {w_i:.1e}")
 
     # -------------------------------------------------------------- pricing
     section("3. PORTFOLIO PRICING  (govt zero-spread + corp z-spread)")
@@ -104,6 +109,13 @@ def main() -> None:
     print(f"\n  sum of KRDV01s: {krd_sum:,.4f}   parallel DV01: "
           f"{parallel_dv01:,.4f}   diff: {krd_sum - parallel_dv01:+.6f}  "
           f"({abs(krd_sum - parallel_dv01) / parallel_dv01:.2e} relative)")
+    print("\n  KRD-sum residual |sum KRDV01 / parallel DV01 - 1| by interpolation:")
+    quotes = market_quotes("upward", seed=42)
+    for interp in fr.INTERPOLATIONS:
+        c_i = fr.bootstrap_curve(quotes, interpolation=interp)
+        k_i = float(fr.krd_report(positions, SETTLEMENT, c_i).loc["SUM", "key_rate_dv01"])
+        d_i = float(fr.portfolio_risk(positions, SETTLEMENT, c_i).loc["TOTAL", "dv01"])
+        print(f"    {interp:13s} {abs(k_i / d_i - 1.0):.1e}")
 
     # ------------------------------------------------------------ scenarios
     section("6. SCENARIO P&L  (full revaluation vs duration+convexity estimate)")
@@ -126,13 +138,23 @@ def main() -> None:
     print(err_tbl.round(4).to_string())
 
     # ------------------------------------------------------ carry / rolldown
-    section("8. CARRY & ROLL-DOWN  (1y horizon, static curve)")
+    section(f"8. CARRY & ROLL-DOWN  (1y horizon, static curve, repo {REPO:.2%} ACT/360)")
     rows = []
     for pos in positions:
         horizon = SETTLEMENT + dt.timedelta(days=365)
-        cr = fr.carry_rolldown(pos.bond, SETTLEMENT, horizon, curve, pos.z_spread)
+        cr = fr.carry_rolldown(pos.bond, SETTLEMENT, horizon, curve, pos.z_spread,
+                               repo_rate=REPO)
         rows.append({"position": pos.label, **{k: v for k, v in cr.items()}})
     print(pd.DataFrame(rows).set_index("position").round(4).to_string())
+
+    section("9. 6M FORWARDS f(t, t+0.5) (%) NEAR PILLARS BY INTERPOLATION  (sawtooth check)")
+    curves = {i: fr.bootstrap_curve(market_quotes("upward", seed=42), interpolation=i)
+              for i in fr.INTERPOLATIONS}
+    fwd_rows = []
+    for t in (9.0, 9.5, 10.0, 14.5, 15.0, 19.5, 20.0):
+        fwd_rows.append({"t": t, **{i: 100 * c.forward_rate(t, t + 0.5)
+                                    for i, c in curves.items()}})
+    print(pd.DataFrame(fwd_rows).set_index("t").round(4).to_string())
 
     print(f"\npipeline completed in {time.time() - t_start:.2f}s")
 

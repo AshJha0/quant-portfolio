@@ -6,6 +6,7 @@ from scipy.stats import norm
 
 from eq_var import (
     cornish_fisher_domain_ok,
+    cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
     ewma_covariance,
@@ -116,15 +117,44 @@ class TestCornishFisher:
         assert fat > base
 
     def test_domain_ok_for_moderate_moments(self):
-        assert cornish_fisher_domain_ok(0.0, 0.0)
+        assert cornish_fisher_valid(0.0, 0.0, 0.01)
+        assert cornish_fisher_valid(-0.5, 1.0, 0.01)
+        assert cornish_fisher_valid(0.3, 2.0, 0.01)
+
+    def test_old_counterexample_is_valid_at_99(self):
+        """Spec S6: (0.122, -0.427) has its minimum derivative -9.15e-4 at
+        z = -4, an endpoint of the old fixed |z| <= 4 interval. On the
+        interval implied by alpha = 0.01 (|z| <= 2.326) the map is increasing."""
+        assert cornish_fisher_valid(0.122, -0.427, 0.01)
+        assert cornish_fisher_valid(0.122, -0.427, 0.001)
+        a = -0.427 / 8 - 0.122**2 / 6
+        b, c = 0.122 / 3, 1 + 0.427 / 8 + 5 * 0.122**2 / 36
+        assert a * 16 - 4 * b + c == pytest.approx(-9.15e-4, abs=1e-6)
+
+    def test_validity_depends_on_alpha(self):
+        """(S, K) = (0, -2): g'(z) = 1.25 - 0.25 z^2 is positive only for
+        |z| < sqrt(5) = 2.236, so 95 % (z = 1.645) is valid and 99.9 % is not."""
+        assert cornish_fisher_valid(0.0, -2.0, 0.05)
+        assert not cornish_fisher_valid(0.0, -2.0, 0.001)
+
+    def test_validity_rejects_non_finite(self):
+        for bad in (np.nan, np.inf, -np.inf):
+            with pytest.raises(ValueError):
+                cornish_fisher_valid(bad, 0.0, 0.01)
+            with pytest.raises(ValueError):
+                cornish_fisher_valid(0.0, bad, 0.01)
+
+    def test_old_predicate_is_deprecated(self):
+        with pytest.deprecated_call():
+            assert cornish_fisher_domain_ok(0.0, 0.0)
         assert cornish_fisher_domain_ok(-0.5, 1.0)
         assert cornish_fisher_domain_ok(0.3, 2.0)
 
     def test_domain_flags_pathological_inputs(self):
         # skew 3: dz_cf/dz = 1 + z - 1.5 z^2 + 1.25 goes negative near z = 2
-        assert not cornish_fisher_domain_ok(3.0, 0.0)
+        assert not cornish_fisher_valid(3.0, 0.0, 0.01)
         # kurtosis 10: derivative at z=0 is 1 - 30/24 < 0
-        assert not cornish_fisher_domain_ok(0.0, 10.0)
+        assert not cornish_fisher_valid(0.0, 10.0, 0.01)
 
     def test_var_raises_outside_domain(self):
         with pytest.raises(ValueError, match="non-monotone"):
@@ -135,14 +165,11 @@ class TestCornishFisher:
         assert np.isfinite(v)
 
     def test_domain_check_is_exact_not_grid_resolution_dependent(self):
-        # Regression for the closed-form rewrite of cornish_fisher_domain_ok.
-        # (S, K) placed so the derivative's parabola vertex falls almost
-        # exactly between two nodes of the *old* 2001-point grid on
-        # [-3.5, 3.5]: the old grid-sampled check reported this as monotone
-        # (every sampled node was positive) even though the true minimum of
-        # the derivative between those nodes is -1.0e-6 (non-monotone).
+        # (S, K) placed so the derivative's parabola vertex falls between two
+        # nodes of a 2001-point grid on [-3.5, 3.5]. A grid check misses the
+        # dip; the closed form finds it.
         skew, excess_kurt = -0.010499946187942602, 8.000105998830488
-        assert not cornish_fisher_domain_ok(skew, excess_kurt)
+        assert not cornish_fisher_valid(skew, excess_kurt, 0.01)
         with pytest.raises(ValueError, match="non-monotone"):
             cornish_fisher_var(1.0, 0.01, skew=skew, excess_kurt=excess_kurt)
 

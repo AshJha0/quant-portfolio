@@ -1,8 +1,8 @@
-# Validation — `fi_rates`
+# Validation: `fi_rates`
 
-All numbers below are reproduced by `python examples/run_pipeline.py`
-(seeded, offline, <1s) and enforced by the test suite
-(`python -m pytest tests -q`, 342 tests, ~1s).
+Every number below comes from `python examples/run_pipeline.py` (synthetic
+seeded quotes, offline) unless a test is named. The suite runs with
+`python -m pytest tests -q`; counts and runtime are in the README.
 
 ---
 
@@ -10,8 +10,7 @@ All numbers below are reproduced by `python examples/run_pipeline.py`
 
 ### 1.1 Bootstrap repricing (tolerance 1e-10)
 
-Every input instrument repriced off the bootstrapped curve (upward variant,
-seed 42, log-linear DF):
+Pipeline section 2, synthetic upward curve, seed 42, log-linear DF:
 
 ```
 Deposit  T= 0.25y  quote=+3.069820%  model-quote = +4.0e-16
@@ -25,224 +24,182 @@ max abs repricing error: 4.0e-16   (tolerance 1e-10: PASS)
 ```
 
 Tested for log-linear DF and linear-zero interpolation, for all four curve
-variants (upward, inverted, flat, negative), for FRAs, for semiannual swaps,
-and for the coupon-bond bootstrap (round trip through synthetic bond prices
-back to the generating curve's discount factors). Bootstrapping is verified
-**order-independent**: shuffled instrument input reproduces identical pillar
-discount factors to 1e-15.
+variants (upward, inverted, flat, negative), for FRAs, for semiannual
+swaps, and for the coupon-bond bootstrap. Shuffled input reproduces the
+same pillar discount factors to 1e-15.
 
-**The exactness is a property of *local* interpolation, not of the
-bootstrap.** Log-linear DF and linear zero are local — appending a pillar
-cannot move the curve before it — so each instrument stays repriced after
-later pillars are solved. PCHIP is **not** local: the monotone cubic is
-reshaped over earlier segments every time a pillar is appended, so
-already-solved quotes drift. Measured on the same quote set:
+Exact repricing is a property of local interpolation. Appending a pillar
+cannot move a local curve before it, so solved quotes stay solved. PCHIP
+reshapes earlier segments every time a pillar is appended:
 
-| Interpolation | max repricing error (rate terms) | local? |
+| Interpolation | Max repricing error (rate) | Local |
 |---|---|---|
-| log-linear DF | 2.5e-16 | yes |
-| linear zero | 2.5e-16 | yes |
-| **PCHIP on zeros** | **3.6e-06** | **no** |
+| log-linear DF | 4.0e-16 | yes |
+| linear zero | 4.0e-16 | yes |
+| PCHIP on zeros | 2.8e-06 | no |
 
-3.6e-06 is well inside a basis point and harmless for analytics, but it means
-a spline-curve build **cannot** pass a 1e-10 repricing gate. If your build
-control requires exact quote reproduction (most production risk systems do —
-see DESK_GUIDE.md), use a local scheme, or iterate the spline bootstrap to a
-fixed point. Pinned by
-`test_properties.py::test_local_schemes_reprice_every_instrument_exactly` and
-`::test_pchip_bootstrap_is_only_approximately_exact`.
+A PCHIP build cannot pass a 1e-10 repricing gate. Pinned by
+`test_properties.py::test_local_schemes_reprice_every_instrument_exactly`
+and `::test_pchip_bootstrap_is_only_approximately_exact`.
 
 ### 1.2 Pricing round trips
 
 | Round trip | Tolerance | Test |
 |---|---|---|
-| price → YTM → price (on and between coupon dates) | 1e-10 | `test_bond.py::TestYTM` |
-| z-spread → clean price → z-spread (incl. negative spread) | 1e-10 | `test_bond.py::TestZSpread` |
-| YTM at 500% and at −1% recovered | 1e-10 rel | `test_edge_cases.py::TestExtremeYields` |
+| price to YTM to price (on and between coupon dates) | 1e-10 | `test_bond.py::TestYTM` |
+| z-spread to clean price to z-spread (incl. negative spread) | 1e-10 | `test_bond.py::TestZSpread` |
+| YTM at 500% and at -1% recovered | 1e-10 rel | `test_edge_cases.py::TestExtremeYields` |
+| ICMA bond at y = c on any coupon date prices at par (hypothesis) | 1e-9 | `test_icma_calendars.py::test_par_property` |
 
-## 2. Analytic-identity evidence
+## 2. Analytic identities
 
 | Identity | Result |
 |---|---|
-| ZCB price == face × P(T) | exact (float equality) |
-| Coupon bond == Σ of ZCBs on its cashflows | ≤1e-10 |
-| Log-linear DF ⇒ piecewise-constant forwards (all sub-forwards inside a segment equal) | ≤1e-14 |
-| `P(t2) = P(t1)·e^(−f(t1,t2)(t2−t1))` for all interpolations | ≤1e-13 rel |
-| 1y par rate == simple 1y rate `1/P(1)−1` | ≤1e-14 |
-| Par bond YTM == coupon (annual and semiannual, street convention) | ≤1e-12 |
-| dirty = clean + accrued; accrued = coupon·¼ a quarter into a 30/360 semiannual period | ≤1e-12 |
-| FRN price == par at reset (telescoping identity) | ≤1e-10 |
-| Macaulay(ZCB) == maturity; D_mod == D_mac/(1+y/m) | ≤1e-12 / ≤1e-14 |
-| Analytic duration/convexity vs central finite differences | ≤1e-8 / ≤1e-6 rel |
-| carry + roll-down == full static-curve horizon P&L (pull-to-par) | ≤1e-12 |
+| ZCB price == face x P(T) | float equality |
+| Coupon bond == sum of ZCBs on its cashflows | <= 1e-10 |
+| Log-linear DF gives piecewise-constant forwards | <= 1e-14 |
+| `P(t2) = P(t1) exp(-f(t1,t2)(t2-t1))` for all interpolations | <= 1e-13 rel |
+| Par bond YTM == coupon (street convention) | <= 1e-12 |
+| ACT/ACT-ICMA regular coupon == c/f | float equality |
+| ICMA accrued 15-Feb to 15-May on a 4% semiannual: 2 x 89/181 = 0.9834 | <= 1e-15 rel |
+| FRN price == par at reset | <= 1e-10 |
+| Mid-period FRN, zero margin: P(t1) face (1 + fixing tau) | <= 1e-12 rel |
+| Macaulay(ZCB) == maturity; D_mod == D_mac/(1+y/m) | <= 1e-12 / 1e-14 |
+| Analytic duration and convexity vs central differences | <= 1e-8 / 1e-6 rel |
+| carry + roll-down == static-curve horizon P&L net of funding | <= 1e-12 |
+| Funding == dirty x repo x ACT/360 | <= 1e-14 rel |
+| On a flat curve, roll-down is all pull-to-par | <= 1e-9 |
 
-## 3. Key-rate duration: why the sum matches the parallel DV01 only "within tolerance"
+## 3. Key-rate DV01 sum vs parallel DV01
 
-The triangular key-rate bumps form a **partition of unity** over the curve
-pillars (unit-tested to 1e-14), so the *sum of the bumps* is exactly a 1bp
-parallel bump. The *sum of the KRDs* nevertheless differs from the parallel
-DV01 for two reasons:
+The triangular bumps form a partition of unity over the pillars (tested to
+1e-14), so the sum of the bumps is a 1bp parallel bump. The sum of the
+key-rate DV01s still differs from the parallel DV01 for two reasons:
 
-1. **Finite-difference cross terms.** PV is not linear in the pillar zeros;
-   central differences of bump-vectors do not add exactly. The residual is
-   the cross-gamma between key-rate buckets, O(h²) in the 1bp bump.
-2. **Non-local interpolation.** Under PCHIP, bumping the pillars in bucket
-   *k* also reshapes neighbouring segments, so bucket sensitivities overlap
-   slightly.
+1. Finite-difference cross terms. PV is not linear in the pillar zeros, so
+   central differences of bump vectors do not add exactly. The residual is
+   O(h^2) in the 1bp bump.
+2. Non-local interpolation. Under PCHIP a bump in one bucket reshapes the
+   neighbouring segments.
 
-Measured on the sample portfolio (DV01 ≈ 980.3 per 1bp):
+The residual depends on the position and the curve. Pipeline section 5
+(sample book, DV01 980.17 per bp) and the 20y 4% bond used in
+`test_properties.py`:
 
-| Interpolation | \|Σ KRDV01 − parallel DV01\| / DV01 | Test tolerance |
-|---|---|---|
-| log-linear DF | 5.3e-08 | 1e-6 rel |
-| PCHIP on zeros | 5.5e-07 | 1e-4 rel |
+| Interpolation | Sample book | 20y 4% bond | Test tolerance |
+|---|---|---|---|
+| log-linear DF | 5.3e-08 | 3.1e-07 | 1e-6 rel |
+| linear zero | 5.7e-08 | 3.9e-07 | 1e-6 rel |
+| PCHIP on zeros | 5.4e-07 | 2.1e-04 | 1e-3 rel |
 
-Locality is also tested directly: for a 2y bond the 30y key-rate DV01 is
-below 1e-6 of the 2y bucket; a 5y ZCB carries >99.9% of its KRD at the 5y
-key rate.
+The 20y bond column comes from `test_krdv01s_sum_to_the_parallel_dv01_for_local_schemes`
+and `test_krdv01_additivity_is_looser_under_pchip` (measured with the same
+inputs). Locality is also tested: for a 2y bond the 30y key-rate DV01 is
+below 1e-6 of the 2y bucket; a 5y ZCB carries more than 99.9% of its KRD
+at the 5y key rate.
 
 ## 4. Known failure modes
 
-### 4.1 Interpolation artifacts in forwards (the sawtooth) — actual numbers
+### 4.1 Forward sawtooth under linear-on-zeros
 
-6-month forward rates (%) off the same bootstrapped quotes, around the
-10y/15y/20y pillars:
+Pipeline section 9: 6-month forwards `f(t, t+0.5)` in percent near the
+10y, 15y and 20y pillars.
 
-```
-   t     loglinear_df  linear_zero  pchip_zero
-  9.0y      4.5855       4.6779       4.6211
-  9.5y      4.5855       4.7372       4.6206
- 10.0y      4.6862       4.5369  ←    4.6274
- 14.5y      4.6862       4.8479       4.7177
- 15.0y      4.7336       4.6495  ←    4.7214
- 19.5y      4.7336       4.8253       4.7317
- 20.0y      4.7656       4.6697  ←    4.7348
-```
+| t | loglinear_df | linear_zero | pchip_zero |
+|---|---|---|---|
+| 9.0 | 4.5809 | 4.6725 | 4.6135 |
+| 9.5 | 4.5809 | 4.7312 | 4.6169 |
+| 10.0 | 4.6886 | 4.5383 | 4.6278 |
+| 14.5 | 4.6886 | 4.8513 | 4.7123 |
+| 15.0 | 4.7194 | 4.6385 | 4.7107 |
+| 19.5 | 4.7194 | 4.8078 | 4.7328 |
+| 20.0 | 4.7888 | 4.6850 | 4.7412 |
 
-Under **linear-on-zeros** the forward *rises through each segment and then
-drops ~20bp at every pillar* (max adjacent-3m-forward jump measured:
-22.4bp) — the classic sawtooth: zero-rate slope is constant per segment, so
-the forward `z + t·dz/dt` grows with `t` and resets at each pillar. A trader
-quoting forward-starting trades off this curve would systematically misprice
-around pillars. **Log-linear DF** jumps only *at* pillars (piecewise-constant
-forwards — up to 29bp per step here, but flat and unbiased in between), and
-**PCHIP** is continuous (max jump ≈ 2bp from discrete differencing). This is
-the concrete reason the interpolation choice is exposed rather than
-hard-coded.
+Under linear zeros the forward rises through each segment and drops about
+20bp at the pillar: the zero slope is constant per segment, so
+`z + t dz/dt` grows with `t` and resets. Log-linear DF steps only at
+pillars. PCHIP forwards are continuous with kinks at the pillars.
 
-### 4.2 Extrapolation risk
+### 4.2 Extrapolation
 
-Beyond the last pillar the zero rate is held flat and **every query emits an
-`ExtrapolationWarning`**. Discounting a 40y cashflow off a 30y-last-pillar
-curve embeds the arbitrary flatness assumption directly in PV; long-dated
-pension/insurance liabilities are exquisitely sensitive to it (a 10bp long-end
-slope error at 40y ≈ 0.4% of PV). The warning is deliberately not
-suppressible by config — callers must handle it consciously.
+Beyond the last pillar the zero rate is held flat and every query emits an
+`ExtrapolationWarning`. A 10bp long-end slope error at 40y is about 0.4%
+of PV.
 
 ### 4.3 Duration fails for non-parallel moves
 
-From the pipeline scenario table (full revaluation vs duration+convexity
-with the DV01-weighted average shift as the parallel proxy):
+Pipeline section 6. The estimate applies the book's YTM-space modified
+duration and convexity to one parallel-equivalent zero-rate move per
+scenario: the pillar shifts weighted by `P(t) t`, a curve weight, not a
+portfolio weight.
 
-```
-scenario              pnl_full     pnl_dur_conv    error
-parallel_+100bp        -92,993       -88,980       +4,013   (4.3% — pure convexity/KRD structure)
-steepener_50bp          -4,345       -12,296       -7,951   (183% — duration proxy useless)
-flattener_50bp          +5,595       +12,479       +6,884   (123%)
-hiking_2022           -228,401      -197,873      +30,529   (13% — large move + curve twist)
-gfc_2008              +167,996      +148,079      -19,917   (12%)
-```
-
-A single duration number compresses the curve into one factor; for twist
-scenarios the sign of the error is not even stable. The KRD ladder exists
-precisely to fix this — repricing the steepener off the ladder recovers the
-full P&L to within cross-gamma. Also tested: for a 2y+30y barbell under a
-steepener, the duration estimate misses >25% of the true P&L
-(`test_scenarios.py::test_duration_estimate_fails_for_non_parallel`).
-
-### 4.4 Taylor error growth (duration vs duration+convexity)
-
-10y government bond, YTM space (pipeline section 7):
-
-| shock | full repricing | dur-only error | dur+conv error |
+| Scenario | Full revaluation | Duration + convexity | Error |
 |---|---|---|---|
-| −200bp | +17.746 | −1.664 | −0.114 |
-| −100bp | +8.443 | −0.401 | −0.014 |
-| +100bp | −7.667 | −0.374 | +0.013 |
-| +200bp | −14.635 | −1.448 | +0.102 |
+| parallel +100bp | -92,995 | -90,880 | +2,115 (2.3%) |
+| steepener 50bp | -4,345 | -12,556 | -8,211 (189%) |
+| flattener 50bp | +5,595 | +12,742 | +7,147 (128%) |
+| hiking 2022 | -228,406 | -202,179 | +26,228 (11%) |
+| GFC 2008 | +205,552 | +200,578 | -4,974 (2.4%) |
 
-Convexity cuts the 100bp error by ~30x (unit-tested as an inequality, not a
-number). Duration-only *always* understates the price (overstates losses,
-understates gains) for a positive-convexity bond — also tested as an
-inequality across the whole shock grid.
+The parallel error is mostly the mismatch between a continuous zero-rate
+shift and a periodic-yield duration (`dy/dz` is about 1.02 here), not
+convexity. For twists the sign of the error is not stable. The barbell
+test `test_scenarios.py::test_duration_estimate_fails_for_non_parallel`
+shows the duration estimate missing more than 25% of the P&L.
 
-### 4.5 Negative convexity — out of scope
+### 4.4 Taylor error growth
 
-Callable bonds and MBS exhibit **negative convexity** when rates approach
-the call/refinancing region: price appreciation caps out, duration
-*shortens* into a rally. Nothing in `risk.py` models this — applying these
-analytics to callables would overstate upside and misdirect hedges
-(the 30x Taylor improvement above would reverse sign). An OAS model with an
-interest-rate lattice/simulation is required; explicitly out of scope
-(assumption 7 in `METHODOLOGY.md`).
+10y government bond, YTM space (pipeline section 7), per 100 face:
 
-### 4.6 Other bounded behaviours (all raise `ValueError` with informative messages)
+| Shock | Full repricing | Duration-only error | Duration + convexity error |
+|---|---|---|---|
+| -200bp | +17.747 | -1.664 | -0.114 |
+| -100bp | +8.443 | -0.401 | -0.014 |
+| +100bp | -7.667 | -0.374 | +0.013 |
+| +200bp | -14.635 | -1.448 | +0.102 |
 
-Unsolvable bootstrap quotes (deposit rate < −1/T, bond price above max PV);
-settlement after maturity; YTM at `1+y/m ≤ 0`; invalid frequencies; duplicate
-pillars; empty instrument lists; fractional swap maturities. Degenerate but
-valid inputs — single-pillar curves, empty portfolios, settlement ==
-maturity (price 0, no cashflows), negative-rate curves (DFs > 1) — are
-tested as *working* paths, not errors.
+Convexity cuts the 100bp error by about 30x (tested as an inequality).
+Duration-only understates the price of a positive-convexity bond across
+the whole shock grid (tested).
 
-**Non-finite market inputs** (`tests/test_input_hardening.py`). Every
-comparison with NaN is `False`, so the guard `if 1 + ytm/m <= 0: raise`
-silently accepted a NaN yield and `price_from_ytm(b, s, nan)` returned
-`nan`; `FixedRateBond(coupon=nan)` was accepted and `dv01` came back `nan`;
-`macaulay_duration` / `convexity` inherited the same hole, and
-`ytm_from_price(nan)` failed only inside SciPy's `brentq` with SciPy's
-message. All public scalar market inputs — `face`, `coupon`, `ytm`,
-`clean_price`, `z_spread`, `quoted_margin`, `payment` — now go through
-`_require_finite(name, value)` first, so a NaN/±inf raises `ValueError`
-naming the argument before any pricing happens (`TestBondConstruction`,
-`TestYieldAnalytics`). The analytic duration/convexity are also checked
-against finite differences on settlement dates strictly *inside* a coupon
-period (fractional first exponent `0 < w < 1`), not only on coupon dates
-(`TestAnalyticVsNumericalMidPeriod`).
+### 4.5 Negative convexity is out of scope
 
-### 4.7 Zero-net-value books break market-value weighting
+Callable bonds and MBS have negative convexity near the call region. The
+analytics here would overstate their upside. An OAS model on a rate
+lattice is needed.
 
-A duration-neutral long/short relative-value book (the bread and butter of a
-rates RV desk) has **net market value ≈ 0** while its gross is large. Every
-market-value-weighted aggregate — weighted YTM, weighted modified duration,
-weighted convexity — is then a `0/0` and is genuinely undefined.
+### 4.6 Bounded behaviour
 
-`portfolio_risk` used to compute these silently, emitting `±inf` weights and
-`NaN` aggregates with no indication that anything was wrong. It now detects
-the condition (`|net MV| < 1e-9 × gross MV`), raises a
-`ZeroNetValueWarning` naming the problem, and reports `NaN` for the weight
-column and the weighted aggregates **deliberately** rather than accidentally.
+Unsolvable bootstrap quotes, settlement after maturity, `1+y/m <= 0`,
+invalid frequencies, unknown day counts, duplicate pillars, empty
+instrument lists and fractional swap maturities raise `ValueError`.
+Single-pillar curves, empty portfolios, settlement on maturity and
+negative-rate curves are tested as working paths.
 
-`mv` and `dv01` remain exact throughout, because both are plain sums — and
-**DV01 (plus the key-rate ladder) is the correct aggregate for such a book**,
-which is exactly how a desk risks it. Pinned by
-`test_properties.py::test_zero_net_value_book_warns_and_reports_nan_weights`,
-with `::test_normal_book_does_not_warn` guarding against false positives.
+Every public scalar market input (`face`, `coupon`, `ytm`, `clean_price`,
+`z_spread`, `quoted_margin`, `payment`, `current_fixing`, `repo_rate`)
+is checked for finiteness and raises `ValueError` naming the argument
+(`tests/test_input_hardening.py`, `tests/test_carry_curve_claims.py`).
 
-## 5. Suite summary
+### 4.7 Zero-net-value books
 
-* 342 tests, 100% pass, ~1s wall clock, fully offline, deterministic
-  (seeded `default_rng`).
-* Edge-case contract (portfolio conventions item 6) covered in
-  `tests/test_edge_cases.py` and cross-referenced from the assumptions
-  register.
-* Structural invariants (`tests/test_properties.py`) pin the *shape* of the
-  library rather than point values: curve identities (P(0)=1, df/zero/forward
-  consistency, pillar exactness, par-rate reprices par to 1e-12), bond
-  monotonicity and convexity in yield, duration ordering in maturity and
-  coupon, Macaulay(ZCB) == maturity, pull-to-par, analytic-vs-numerical
-  duration/convexity across yields from −1% to +12%, FRN par identity at
-  every frequency, annuity linearity, portfolio DV01 additivity, scenario
-  sign/ordering including the three historical episodes, carry + roll-down ==
-  static horizon P&L, and day-count antisymmetry/additivity across all four
-  supported conventions.
+A duration-neutral long/short book has net market value near 0, so every
+market-value-weighted aggregate is undefined. `portfolio_risk` detects
+`|net MV| < 1e-9 x gross MV`, emits `ZeroNetValueWarning` and reports NaN
+for the weights and weighted aggregates. `mv` and `dv01` are plain sums
+and stay exact; DV01 and the key-rate ladder are the right aggregates for
+such a book. Pinned by
+`test_properties.py::test_zero_net_value_book_warns_and_reports_nan_weights`.
+
+## 5. Test layout
+
+* `test_properties.py`: structural invariants (curve identities, bond
+  monotonicity and convexity, duration ordering, pull-to-par, FRN par
+  identity at every frequency, portfolio DV01 additivity, scenario signs,
+  day-count antisymmetry and additivity for every convention).
+* `test_icma_calendars.py`: ICMA coupons and accrued, the par property,
+  calendars and rolls.
+* `test_carry_curve_claims.py`: funded carry, pull-to-par split, the GFC
+  2008 shock, PCHIP smoothness, mid-period FRN.
+* `test_edge_cases.py`, `test_input_hardening.py`: edge cases and input
+  validation.

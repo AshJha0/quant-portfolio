@@ -177,11 +177,18 @@ class TestWalkForwardBacktest:
         # reconstruction: formation+trading context, frozen params only
         context = prices.loc[row["formation_start"] : row["trading_end"]]
         sig = ma_crossover_signal(context, int(row["fast"]), int(row["slow"]))
-        position = sig.shift(1).fillna(0.0)
-        rets = context.pct_change().fillna(0.0)
-        trades = position.diff().abs().fillna(0.0)
-        costs = trades * cost_bps / 10_000
-        strat_rets = position * rets - costs
+        # default fill: decision at close d-1 fills at p_{d-1} + 0.5 (p_d - p_{d-1})
+        new = sig.shift(1).fillna(0.0).to_numpy()
+        old = sig.shift(2).fillna(0.0).to_numpy()
+        p = context.to_numpy()
+        rets_arr = np.zeros(len(p))
+        for d in range(1, len(p)):
+            p_fill = p[d - 1] + 0.5 * (p[d] - p[d - 1])
+            gross = (1 + old[d] * (p_fill / p[d - 1] - 1)) * (
+                1 + new[d] * (p[d] / p_fill - 1)
+            ) - 1
+            rets_arr[d] = gross - abs(new[d] - old[d]) * cost_bps / 10_000
+        strat_rets = pd.Series(rets_arr, index=context.index)
         recon = strat_rets.loc[row["trading_start"] : row["trading_end"]]
 
         np.testing.assert_allclose(

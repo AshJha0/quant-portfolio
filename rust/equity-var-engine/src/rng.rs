@@ -2,7 +2,7 @@
 //!
 //! [`Rng`] is a xoshiro256++ generator (Blackman & Vigna, 2019) seeded via
 //! SplitMix64 from a single explicit `u64` seed. On a given platform a
-//! fixed seed reproduces the **exact bit pattern** of every draw — the
+//! fixed seed reproduces the **exact bit pattern** of every draw: the
 //! property the Monte Carlo module relies on for regression-testable VaR
 //! (`tests/test_monte_carlo.rs` asserts bitwise equality across runs).
 //!
@@ -67,7 +67,10 @@ impl Rng {
         if state == [0, 0, 0, 0] {
             state[0] = 1; // unreachable in practice; xoshiro forbids all-zero
         }
-        Rng { state, cached_normal: None }
+        Rng {
+            state,
+            cached_normal: None,
+        }
     }
 
     /// Next raw 64-bit output of xoshiro256++.
@@ -115,8 +118,14 @@ impl Rng {
     ///
     /// Marsaglia–Tsang (2000) squeeze-rejection for `shape >= 1`; the
     /// standard boost `Gamma(a) = Gamma(a + 1) * U^{1/a}` for `shape < 1`.
+    ///
+    /// An invalid `shape` (NaN, infinite, or `<= 0`) returns NaN without
+    /// consuming the stream. It never panics and never loops: a NaN shape
+    /// used to make every rejection test false, so the loop never ended.
     pub fn gamma(&mut self, shape: f64) -> f64 {
-        debug_assert!(shape > 0.0, "gamma shape must be > 0");
+        if !(shape > 0.0) || !shape.is_finite() {
+            return f64::NAN;
+        }
         if shape < 1.0 {
             let g = self.gamma(shape + 1.0);
             let u = self.uniform();
@@ -146,7 +155,6 @@ impl Rng {
     /// `chi2(df) = 2 * Gamma(df / 2)`.
     #[inline]
     pub fn chi_square(&mut self, df: f64) -> f64 {
-        debug_assert!(df > 0.0, "chi-square df must be > 0");
         2.0 * self.gamma(0.5 * df)
     }
 }

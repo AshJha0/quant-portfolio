@@ -10,7 +10,7 @@ Supports European and American exercise.  American FX options trade OTC;
 the economically interesting case is an American *call* on a high-yielding
 foreign currency (``r_f > r_d``): the foreign carry lost by holding the
 option instead of the currency makes early exercise optimal, giving the
-American call a strictly positive premium over European — mirroring the
+American call a strictly positive premium over European: mirroring the
 dividend-yield story for equities.
 """
 
@@ -87,15 +87,16 @@ def binomial_price(S: float, K: float, T: float, r_d: float, r_f: float,
         )
     disc = math.exp(-r_d * dt)
 
-    j = np.arange(steps + 1)
-    spot = S * u ** (2.0 * j - steps)          # terminal nodes, low -> high
-    values = np.maximum(phi * (spot - K), 0.0)
-
+    # Node spots S u^m, m = -n..n, computed once (O(n) powers); step i,
+    # node k sits at m = 2k - i, so backward induction does no pow().
+    m = np.arange(-steps, steps + 1)
+    exercise_value = phi * (S * u ** m.astype(float) - K)
+    values = np.maximum(exercise_value[0::2], 0.0)
+    american = exercise == "american"
     for step in range(steps - 1, -1, -1):
         values = disc * (p * values[1:] + (1.0 - p) * values[:-1])
-        if exercise == "american":
-            spot = S * u ** (2.0 * np.arange(step + 1) - step)
-            values = np.maximum(values, phi * (spot - K))
+        if american:
+            values = np.maximum(values, exercise_value[steps - step:steps + step + 1:2])
     return float(values[0])
 
 

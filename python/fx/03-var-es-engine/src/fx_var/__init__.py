@@ -12,6 +12,7 @@ from .backtesting import (
     basel_traffic_light,
     christoffersen_independence,
     conditional_coverage,
+    acerbi_szekely_z2,
     es_backtest_acerbi_szekely,
     evaluate_var_backtest,
     kupiec_pof,
@@ -43,6 +44,7 @@ from .monte_carlo_var import (
     JumpSpec,
     MonteCarloVaRResult,
     monte_carlo_var,
+    nearest_correlation_higham,
     robust_cholesky,
     simulate_factor_returns,
     var_standard_error,
@@ -51,6 +53,7 @@ from .monte_carlo_var import (
 from .parametric_var import (
     ParametricVaRResult,
     cornish_fisher_domain_ok,
+    cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
     ewma_cov,
@@ -69,7 +72,7 @@ from .stress_testing import (
     usd_broad_move,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     # book
@@ -84,10 +87,10 @@ __all__ = [
     # parametric
     "parametric_var", "ParametricVaRResult", "var_covar", "sample_cov",
     "ewma_cov", "cornish_fisher_var", "cornish_fisher_z",
-    "cornish_fisher_domain_ok",
+    "cornish_fisher_domain_ok", "cornish_fisher_valid",
     # monte carlo
     "monte_carlo_var", "MonteCarloVaRResult", "simulate_factor_returns",
-    "JumpSpec", "robust_cholesky", "var_standard_error", "var_standard_error_bootstrap",
+    "JumpSpec", "robust_cholesky", "nearest_correlation_higham", "var_standard_error", "var_standard_error_bootstrap",
     # ES
     "empirical_var", "empirical_es", "empirical_var_es", "normal_var",
     "normal_es", "t_var", "t_es",
@@ -95,6 +98,7 @@ __all__ = [
     "kupiec_pof", "christoffersen_independence", "conditional_coverage",
     "basel_traffic_light", "TrafficLight", "BacktestResult",
     "evaluate_var_backtest", "rolling_backtest", "es_backtest_acerbi_szekely",
+    "acerbi_szekely_z2",
     # stress
     "Scenario", "historical_scenarios", "usd_broad_move",
     "peg_break_scenario", "run_stress", "sensitivity_ladder",

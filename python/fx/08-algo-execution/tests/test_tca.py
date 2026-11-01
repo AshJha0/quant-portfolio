@@ -10,6 +10,8 @@ from fx_algo import (
     MarketSimulator,
     decompose_implementation_shortfall,
     fix_benchmark,
+    fix_print,
+    fix_self_impact_pips,
     fix_schedule,
     liquidity_weighted_schedule,
     make_time_grid,
@@ -103,19 +105,70 @@ def test_fix_benchmark_outside_grid_raises():
         fix_benchmark(r)
 
 
-def test_fix_targeting_tracks_the_fix():
+def test_fix_benchmark_from_own_mids_is_a_tautology():
+    # Documents why fix_benchmark is not used for tracking error: built from
+    # the same mids the schedule trades on, the fix schedule's tracking
+    # error is half-spread plus temporary impact with zero variance.
+    sim = MarketSimulator(EURUSD, start_hour=14.0, horizon_hours=3.0, dt_minutes=1.0)
+    q_fix = fix_schedule(100.0, sim.times_hours, 1.0)
+    te = [slippage_vs_benchmark(r, fix_benchmark(r)) for r in (sim.execute(q_fix, seed=s) for s in range(20))]
+    assert np.std(te) < 1e-9
+
+
+def test_fix_print_tracking_error_has_real_variance():
+    # Against an independent print (intra-bucket market observations from a
+    # separate RNG) the fix schedule's tracking error is random, and the
+    # TWAP schedule's tracking error is still much larger.
     sim = MarketSimulator(EURUSD, start_hour=14.0, horizon_hours=3.0, dt_minutes=1.0)
     q_fix = fix_schedule(100.0, sim.times_hours, 1.0)
     q_twap = twap_schedule(100.0, sim.n_buckets)
     te_fix, te_twap = [], []
-    for s in range(40):
+    for s in range(60):
         rf = sim.execute(q_fix, seed=s)
         rt = sim.execute(q_twap, seed=s)
-        te_fix.append(slippage_vs_benchmark(rf, fix_benchmark(rf)))
-        te_twap.append(slippage_vs_benchmark(rt, fix_benchmark(rt)))
-    # the fix algo's tracking error is essentially deterministic
-    assert np.std(te_fix) < 0.05
-    assert np.std(te_twap) > 10 * np.std(te_fix)
+        te_fix.append(slippage_vs_benchmark(rf, fix_print(rf, seed=1000 + s)))
+        te_twap.append(slippage_vs_benchmark(rt, fix_print(rt, seed=1000 + s)))
+    assert np.std(te_fix) > 0.1
+    assert np.std(te_twap) > 5 * np.std(te_fix)
+
+
+def test_fix_print_zero_vol_is_linear_interpolation_mean():
+    sim = MarketSimulator(EURUSD, start_hour=14.0, horizon_hours=3.0, dt_minutes=1.0, vol_scale=0.0)
+    r = sim.execute(fix_schedule(100.0, sim.times_hours, 1.0), seed=0)
+    mask = make_mask(r)
+    path = r.mids_path
+    m = 10
+    k = np.arange(m) / m
+    expected = np.mean([path[t] + k * (path[t + 1] - path[t]) for t in np.flatnonzero(mask)])
+    assert fix_print(r, seed=5, obs_per_bucket=m) == pytest.approx(expected, abs=1e-12)
+
+
+def test_self_impact_on_print_is_visible_and_vanishes_without_permanent_impact():
+    kw = dict(start_hour=14.0, horizon_hours=3.0, dt_minutes=1.0)
+    sim = MarketSimulator(EURUSD, **kw)
+    r = sim.execute(fix_schedule(100.0, sim.times_hours, 1.0), seed=4)
+    si = fix_self_impact_pips(r, seed=9)
+    assert si > 0.01
+    # unimpacted print is cheaper for a buyer by exactly the self-impact
+    assert slippage_vs_benchmark(r, fix_print(r, 9, include_own_impact=False)) == pytest.approx(
+        slippage_vs_benchmark(r, fix_print(r, 9)) + si, abs=1e-9
+    )
+    sim0 = MarketSimulator(EURUSD, k_perm=0.0, **kw)
+    r0 = sim0.execute(fix_schedule(100.0, sim0.times_hours, 1.0), seed=4)
+    assert fix_self_impact_pips(r0, seed=9) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_fix_print_rejects_bad_obs_count():
+    sim = MarketSimulator(EURUSD, start_hour=14.0, horizon_hours=3.0, dt_minutes=1.0)
+    r = sim.execute(fix_schedule(100.0, sim.times_hours, 1.0), seed=0)
+    with pytest.raises(ValueError):
+        fix_print(r, obs_per_bucket=0)
+
+
+def make_mask(r):
+    from fx_algo.sessions import fix_window_mask
+
+    return fix_window_mask(r.times_hours, r.dt_minutes)
 
 
 def test_venue_attribution_consistent_totals():

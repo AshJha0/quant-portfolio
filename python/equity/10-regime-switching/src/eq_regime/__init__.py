@@ -1,4 +1,4 @@
-"""eq_regime — equity regime-switching quant strategy.
+"""eq_regime: equity regime-switching quant strategy.
 
 Pipeline: feature engineering -> PCA -> HMM / GMM -> regime detection
 (ONLINE filtered probabilities) -> regime-conditional signals -> portfolio
@@ -10,6 +10,10 @@ against scikit-learn / hmmlearn in the test suite.
 
 from .backtest import (
     BacktestResult,
+    ExecutionConfig,
+    backtest_from_detection,
+    random_timing_weights,
+    vol_target_weights,
     ma_timing_weights,
     run_ledger,
     summary_stats,
@@ -47,9 +51,16 @@ from .hmm import (
     viterbi,
 )
 from .pca import PCAModel, fit_pca, project, rolling_pca, scree_table
-from .risk import flip_aftermath, per_regime_stats, regime_runs, transition_attribution
+from .risk import (
+    flip_aftermath,
+    per_regime_stats,
+    regime_runs,
+    regimes_known_at_decision,
+    transition_attribution,
+)
 from .strategy import (
     build_weights,
+    causal_min_duration,
     hysteresis_regime,
     naive_threshold_regime,
     regime_target_weight,
@@ -78,10 +89,11 @@ __all__ = [
     "expanding_fit_detect",
     # strategy
     "hysteresis_regime", "naive_threshold_regime", "regime_target_weight",
-    "vol_target_scale", "build_weights", "turnover",
+    "vol_target_scale", "build_weights", "turnover", "causal_min_duration",
     # backtest
-    "BacktestResult", "run_ledger", "ma_timing_weights",
+    "BacktestResult", "ExecutionConfig", "run_ledger", "ma_timing_weights",
+    "backtest_from_detection", "random_timing_weights", "vol_target_weights",
     "walk_forward_backtest", "summary_stats",
     # risk
-    "per_regime_stats", "transition_attribution", "flip_aftermath", "regime_runs",
+    "regimes_known_at_decision", "per_regime_stats", "transition_attribution", "flip_aftermath", "regime_runs",
 ]

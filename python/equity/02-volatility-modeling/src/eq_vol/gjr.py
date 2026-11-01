@@ -6,12 +6,12 @@ r_t = sigma_t z_t,  z_t ~ iid(0, 1)
 sigma2_t = omega + (alpha + gamma 1[r_{t-1} < 0]) r_{t-1}^2 + beta sigma2_{t-1}
 
 Sign convention (opposite of our EGARCH convention, both tested):
-**gamma > 0 produces the leverage effect** — negative shocks load with
+**gamma > 0 produces the leverage effect**: negative shocks load with
 coefficient alpha + gamma > alpha.
 
 Constraints: omega > 0, alpha >= 0, alpha + gamma >= 0 (positivity of the
-variance; gamma itself may be negative), beta >= 0, and — for symmetric
-innovations where E 1[z<0] = 1/2 — covariance stationarity requires
+variance; gamma itself may be negative), beta >= 0, and: for symmetric
+innovations where E 1[z<0] = 1/2: covariance stationarity requires
 
     alpha + gamma/2 + beta < 1,
 
@@ -36,11 +36,10 @@ from ._utils import (
     ConvergenceError,
     checked_sample_variance,
     initial_variance,
-    numerical_hessian,
-    std_errors_from_hessian,
+    mle_std_errors,
     validate_returns,
 )
-from .garch import _logit, _sigmoid, gaussian_loglik, student_t_loglik
+from .garch import _logit, _sigmoid, gaussian_loglik, loglik_obs, se_floor, student_t_loglik
 
 __all__ = [
     "gjr_recursion",
@@ -181,11 +180,18 @@ def fit_gjr(
         else student_t_loglik(r, sigma2, params["nu"])
     )
 
-    se = std_errors_from_hessian(numerical_hessian(nll_theta, np.array(list(theta))))
+    def ll_obs_theta(th) -> np.ndarray:
+        s2 = gjr_recursion(r, th[0], th[1], th[2], th[3], b)
+        return loglik_obs(r, s2, dist, th[4] if dist == "t" else np.nan)
+
+    se, rse = mle_std_errors(
+        nll_theta, ll_obs_theta, np.array(list(theta)), floor=se_floor(names, params)
+    )
     std_errors = dict(zip(names, [float(x) for x in se]))
+    robust = dict(zip(names, [float(x) for x in rse]))
 
     pers = gjr_persistence(params["alpha"], params["gamma"], params["beta"])
-    extra = {"persistence": pers}
+    extra = {"persistence": pers, "at_boundary": float(pers > 0.999 * _PMAX)}
     if pers < 1:
         uv = gjr_unconditional_variance(params["omega"], params["alpha"], params["gamma"], params["beta"])
         extra["unconditional_variance"] = uv
@@ -205,6 +211,7 @@ def fit_gjr(
         message=str(opt.message),
         init_var=b,
         extra=extra,
+        robust_std_errors=robust,
     )
 
 
@@ -221,7 +228,7 @@ def news_impact_curve(
     sigma2(z) = omega + beta base_var + (alpha + gamma 1[z<0]) base_var z^2,
     anchoring the lagged variance and shock scale at ``base_var`` (default:
     the unconditional variance, Engle-Ng convention). With gamma > 0 the
-    left branch (z < 0) lies above the right branch — the leverage effect.
+    left branch (z < 0) lies above the right branch: the leverage effect.
     """
     if z_grid is None:
         z_grid = np.linspace(-5.0, 5.0, 201)

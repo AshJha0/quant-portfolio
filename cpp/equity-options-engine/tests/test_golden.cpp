@@ -1,68 +1,74 @@
-// Golden-vector cross-language validation: every case produced by the Python
-// reference (eq_options) must be reproduced by the C++ engine to 1e-9 abs/rel
-// for the price and all five first-order Greeks.
-//
-// Unit conventions (checked against the Python greeks module):
-//   theta is dV/dt per YEAR (not per day); vega is per UNIT of vol (not per
-//   vol point); rho is per UNIT of rate. The golden JSON documents the same.
-
+// Golden vectors: the engine must match the mpmath oracle (generated in
+// python/equity/01-options-pricing/tests/golden/) within the per-output
+// absolute tolerance carried by each record. Python and Rust consume the
+// same JSON.
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <string>
 
+#include "eqopt/binomial.hpp"
+#include "eqopt/black76.hpp"
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/greeks.hpp"
+#include "eqopt/implied_vol.hpp"
 #include "golden_vectors.hpp"
 
 namespace {
 
-using eqopt::golden::kCases;
+using eqopt::golden::GoldenRecord;
+using eqopt::golden::kRecords;
 
-// abs/rel tolerance: |a - b| <= tol * max(1, |b|)
-void expect_close(double actual, double expected, double tol,
-                  const char* what, std::size_t idx) {
-    const double bound = tol * std::max(1.0, std::abs(expected));
-    EXPECT_NEAR(actual, expected, bound)
-        << what << " mismatch vs Python golden vector, case " << idx;
-}
-
-constexpr double kTol = 1e-9;
-
-TEST(GoldenVectors, HasAllThirtyTwoCases) {
-    EXPECT_EQ(kCases.size(), 32u);
-}
-
-TEST(GoldenVectors, PriceMatchesPythonReference) {
-    for (std::size_t i = 0; i < kCases.size(); ++i) {
-        const auto& c = kCases[i];
-        const double price =
-            eqopt::bs_price(c.S, c.K, c.T, c.r, c.sigma, c.q, c.type);
-        expect_close(price, c.price, kTol, "price", i);
+std::map<std::string, double> evaluate(const GoldenRecord& r) {
+    const auto& x = r.in;
+    const std::string fn = r.fn;
+    if (fn == "bs") {
+        if (r.n_out == 1) return {{"price", eqopt::bs_price(x[0], x[1], x[2], x[3], x[5], x[4], r.type)}};
+        const auto g = eqopt::bs_greeks(x[0], x[1], x[2], x[3], x[5], x[4], r.type);
+        return {{"price", g.price}, {"delta", g.delta}, {"gamma", g.gamma}, {"vega", g.vega},
+                {"theta", g.theta}, {"rho", g.rho},     {"vanna", g.vanna}, {"volga", g.volga}};
     }
+    if (fn == "iv") {
+        return {{"sigma", eqopt::implied_vol(x[0], x[1], x[2], x[3], x[4], x[5], r.type)}};
+    }
+    if (fn == "crr") {
+        const auto ex = r.flag ? eqopt::ExerciseStyle::American : eqopt::ExerciseStyle::European;
+        return {{"price", eqopt::crr_price(x[0], x[1], x[2], x[3], x[5], x[4], r.type, ex,
+                                           static_cast<int>(x[6]))}};
+    }
+    if (fn == "b76") {
+        const auto g = eqopt::black76_greeks(x[0], x[1], x[2], x[3], x[4], r.type);
+        return {{"price", g.price}, {"delta", g.delta}, {"gamma", g.gamma},
+                {"vega", g.vega},   {"theta", g.theta}, {"rho", g.rho}};
+    }
+    ADD_FAILURE() << "unknown golden fn " << fn;
+    return {};
 }
 
-TEST(GoldenVectors, AllGreeksMatchPythonReference) {
-    for (std::size_t i = 0; i < kCases.size(); ++i) {
-        const auto& c = kCases[i];
-        const auto g = eqopt::bs_greeks(c.S, c.K, c.T, c.r, c.sigma, c.q, c.type);
-        expect_close(g.price, c.price, kTol, "price", i);
-        expect_close(g.delta, c.delta, kTol, "delta", i);
-        expect_close(g.gamma, c.gamma, kTol, "gamma", i);
-        expect_close(g.vega, c.vega, kTol, "vega", i);
-        expect_close(g.theta, c.theta, kTol, "theta", i);
-        expect_close(g.rho, c.rho, kTol, "rho", i);
-    }
+TEST(GoldenVectors, CoverageAndSize) {
+    EXPECT_GE(kRecords.size(), 400u);
 }
 
-// The greeks-path price and the direct bs_price must agree exactly (same
-// formula, same evaluation order) — a guard against the two drifting apart.
-TEST(GoldenVectors, GreeksPriceConsistentWithBsPrice) {
-    for (const auto& c : kCases) {
-        const auto g = eqopt::bs_greeks(c.S, c.K, c.T, c.r, c.sigma, c.q, c.type);
-        const double p = eqopt::bs_price(c.S, c.K, c.T, c.r, c.sigma, c.q, c.type);
-        EXPECT_NEAR(g.price, p, 1e-12 * std::max(1.0, std::abs(p)));
+TEST(GoldenVectors, AllRecordsMatchOracle) {
+    double worst = 0.0;
+    for (std::size_t i = 0; i < kRecords.size(); ++i) {
+        const auto& r = kRecords[i];
+        const auto got = evaluate(r);
+        for (int k = 0; k < r.n_out; ++k) {
+            const auto& o = r.out[static_cast<std::size_t>(k)];
+            const double v = got.at(o.name);
+            EXPECT_LE(std::fabs(v - o.value), o.tol)
+                << "record " << i << " (" << r.fn << ") output " << o.name << ": " << v
+                << " vs " << o.value;
+            worst = std::max(worst, std::fabs(v - o.value) / o.tol);
+        }
     }
+    // Worst deviation as a fraction of its tolerance: a drift towards the
+    // bound shows up here before a record fails.
+    RecordProperty("worst_dev_over_tol", std::to_string(worst));
+    EXPECT_LE(worst, 1.0);
 }
 
 }  // namespace

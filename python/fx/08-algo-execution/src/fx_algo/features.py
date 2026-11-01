@@ -7,12 +7,12 @@ are bit-identical (see tests/test_features.py).
 
 Features (all causal, all in return/pip-free units unless stated):
 
-* ``momentum``      — k-bar past return of bar closes (1h/4h momentum).
-* ``reversion``     — gap of close below the running intraday TWAP mid,
+* ``momentum``     : k-bar past return of bar closes (1h/4h momentum).
+* ``reversion``    : gap of close below the running intraday TWAP mid,
   the OTC-FX analog of "reversion to session VWAP" (there is no
   consolidated volume tape in FX, so a TWAP mid replaces VWAP).
-* ``breakout``      — London-open breakout of the Asia session range.
-* ``carry``         — sign/level of the base-quote rate differential,
+* ``breakout``     : London-open breakout of the Asia session range.
+* ``carry``        : sign/level of the base-quote rate differential,
   used as a *filter* for which direction may be held overnight.
 """
 
@@ -50,7 +50,7 @@ def build_bars(ticks: pd.DataFrame, bar_hours: float = 1.0) -> pd.DataFrame:
     -------
     pandas.DataFrame
         Indexed by bar end time (absolute hours), columns ``open``,
-        ``high``, ``low``, ``close``, ``twap_mid`` (mean tick mid — the
+        ``high``, ``low``, ``close``, ``twap_mid`` (mean tick mid: the
         FX analog of a VWAP bar price), ``n_ticks``, ``hour`` (hour of
         day of bar end, mod 24) and ``day``.
 
@@ -86,7 +86,7 @@ def build_bars(ticks: pd.DataFrame, bar_hours: float = 1.0) -> pd.DataFrame:
 def momentum(bars: pd.DataFrame, lookback_bars: int) -> pd.Series:
     """k-bar momentum: total close-to-close return over the lookback.
 
-    ``momentum_t = close_t / close_{t-k} - 1`` — uses only bars up to and
+    ``momentum_t = close_t / close_{t-k} - 1``: uses only bars up to and
     including ``t`` (point-in-time by construction).
 
     Parameters
@@ -114,7 +114,7 @@ def reversion_to_session_mean(bars: pd.DataFrame) -> pd.Series:
     current trading day: ``(day_twap_t - close_t) / close_t``.  Positive
     when price sits below its day average (expect pull back up).  The
     running TWAP is an expanding mean of ``twap_mid`` within the day up
-    to bar ``t`` — strictly causal.
+    to bar ``t``: strictly causal.
 
     Returns
     -------
@@ -136,7 +136,7 @@ def london_open_breakout(
     ``+1`` if the bar close breaks above the Asia-session high of the same
     day, ``-1`` if below the Asia low, else 0.  Outside the window it is
     0.  Uses only same-day bars that ended at or before ``asia_end_hour``
-    plus the current close — causal.
+    plus the current close: causal.
 
     Returns
     -------
@@ -161,7 +161,7 @@ def carry_feature(bars: pd.DataFrame, daily_panel: pd.DataFrame) -> pd.Series:
 
     Each bar of day ``d`` receives the carry known at the **start** of day
     ``d`` (i.e. the panel row of day ``d``, which is fixed overnight before
-    the day starts) — no forward-looking rate information.
+    the day starts): no forward-looking rate information.
 
     Parameters
     ----------

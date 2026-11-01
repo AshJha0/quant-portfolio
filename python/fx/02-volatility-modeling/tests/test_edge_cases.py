@@ -1,5 +1,5 @@
 """FX edge cases (documentation contract item 6): pegged currencies, depegs,
-constant series, NaN policy, short series -- each documented in
+constant series, NaN policy, short series: each documented in
 docs/VALIDATION.md and unit-tested here."""
 
 from dataclasses import replace
@@ -92,7 +92,7 @@ class TestDepegJump:
     def test_jump_terminated_sample_degenerates_gracefully(self, depeg):
         """If the sample ENDS on the jump day, alpha is unidentified (the jump
         never feeds a later observation) and the MLE may sit at the
-        near-IGARCH boundary -- it must still converge with finite loglik and
+        near-IGARCH boundary: it must still converge with finite loglik and
         positive variances (documented failure mode, docs/VALIDATION.md)."""
         fit = fit_garch(depeg[:1201])
         assert np.isfinite(fit.loglik)

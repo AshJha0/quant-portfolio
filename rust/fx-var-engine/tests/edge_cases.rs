@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+#![allow(clippy::needless_range_loop)]
 //! Real-life scenarios and edge cases (CONVENTIONS.md documentation
 //! contract item 6): hand-exact empirical quantiles, peg blindness vs the
 //! jump-mixture Monte Carlo overlay, T -> 0 / zero / negative rates,
@@ -8,8 +10,11 @@ use fx_var_engine::prelude::*;
 use std::collections::HashMap;
 
 fn market_eur_jpy_hkd() -> Market {
-    Market::new([("EUR", 1.10), ("JPY", 0.0090), ("HKD", 0.1282)], [("USD", 0.050), ("EUR", 0.030), ("JPY", 0.001)])
-        .unwrap()
+    Market::new(
+        [("EUR", 1.10), ("JPY", 0.0090), ("HKD", 0.1282)],
+        [("USD", 0.050), ("EUR", 0.030), ("JPY", 0.001)],
+    )
+    .unwrap()
 }
 
 // -----------------------------------------------------------------------
@@ -19,21 +24,25 @@ fn market_eur_jpy_hkd() -> Market {
 #[test]
 fn hand_exact_empirical_var_quantiles() {
     // 10 P&Ls; losses sorted desc: 50, 40, 30, 20, 10, 0, -5, -15, -25, -35.
-    let pnl = [-50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0];
-    assert_eq!(empirical_var(&pnl, 0.90, None).unwrap(), 50.0); // m=ceil(1)=worst
-    assert_eq!(empirical_var(&pnl, 0.80, None).unwrap(), 40.0); // m=2
-    assert_eq!(empirical_var(&pnl, 0.75, None).unwrap(), 30.0); // m=2.5->3rd
-    assert_eq!(empirical_var(&pnl, 0.99, None).unwrap(), 50.0); // only 10 obs
+    let pnl = [
+        -50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0,
+    ];
+    assert_eq!(empirical_var(&pnl, 0.10, None).unwrap(), 50.0); // m=ceil(1)=worst
+    assert_eq!(empirical_var(&pnl, 0.20, None).unwrap(), 40.0); // m=2
+    assert_eq!(empirical_var(&pnl, 0.25, None).unwrap(), 30.0); // m=2.5->3rd
+    assert_eq!(empirical_var(&pnl, 0.01, None).unwrap(), 50.0); // only 10 obs
 }
 
 #[test]
 fn hand_exact_acerbi_tasche_es() {
-    let pnl = [-50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0];
-    assert_eq!(empirical_es(&pnl, 0.80, None).unwrap(), 45.0); // 2 worst losses averaged
-    // alpha=0.75: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
-    let es = empirical_es(&pnl, 0.75, None).unwrap();
+    let pnl = [
+        -50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0,
+    ];
+    assert_eq!(empirical_es(&pnl, 0.20, None).unwrap(), 45.0); // 2 worst losses averaged
+                                                               // alpha=0.25: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
+    let es = empirical_es(&pnl, 0.25, None).unwrap();
     assert!((es - 42.0).abs() < 1e-9);
-    for a in [0.5, 0.75, 0.9, 0.99] {
+    for a in [0.01, 0.1, 0.25, 0.45] {
         let (v, e) = empirical_var_es(&pnl, a, None).unwrap();
         assert!(e >= v);
     }
@@ -45,24 +54,24 @@ fn weighted_empirical_var_es() {
     let pnl = [-100.0, -10.0, 0.0, -50.0];
     let w = [0.05, 0.15, 0.30, 0.50];
     // Losses desc: 100 (w .05), 50 (w .50), 10 (w .15), 0 (w .30).
-    assert!((empirical_var(&pnl, 0.90, Some(&w)).unwrap() - 50.0).abs() < 1e-12);
-    assert!((empirical_es(&pnl, 0.90, Some(&w)).unwrap() - 75.0).abs() < 1e-12);
+    assert!((empirical_var(&pnl, 0.10, Some(&w)).unwrap() - 50.0).abs() < 1e-12);
+    assert!((empirical_es(&pnl, 0.10, Some(&w)).unwrap() - 75.0).abs() < 1e-12);
 }
 
 #[test]
 fn closed_form_normal_textbook_numbers() {
-    // sigma=1, alpha=0.99: VaR = 2.3263478740, ES = 2.6652142306 (classic).
-    assert!((normal_var(1.0, 0.99, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
-    assert!((normal_es(1.0, 0.99, 0.0).unwrap() - 2.665_214_220_345_808).abs() < 1e-9);
-    assert!(normal_es(1.0, 0.95, 0.0).unwrap() > normal_var(1.0, 0.95, 0.0).unwrap());
+    // sigma=1, alpha=0.01: VaR = 2.3263478740, ES = 2.6652142306 (classic).
+    assert!((normal_var(1.0, 0.01, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
+    assert!((normal_es(1.0, 0.01, 0.0).unwrap() - 2.665_214_220_345_808).abs() < 1e-9);
+    assert!(normal_es(1.0, 0.05, 0.0).unwrap() > normal_var(1.0, 0.05, 0.0).unwrap());
 }
 
 #[test]
 fn student_t_converges_to_normal_as_df_grows() {
     let sigma = 1.0;
-    assert!(student_t_var(sigma, 0.99, 4.0, 0.0).unwrap() > normal_var(sigma, 0.99, 0.0).unwrap());
-    let far = student_t_var(sigma, 0.99, 1.0e7, 0.0).unwrap();
-    let normal = normal_var(sigma, 0.99, 0.0).unwrap();
+    assert!(student_t_var(sigma, 0.01, 4.0, 0.0).unwrap() > normal_var(sigma, 0.01, 0.0).unwrap());
+    let far = student_t_var(sigma, 0.01, 1.0e7, 0.0).unwrap();
+    let normal = normal_var(sigma, 0.01, 0.0).unwrap();
     assert!((far - normal).abs() < 1e-4);
 }
 
@@ -77,15 +86,26 @@ fn forward_at_zero_expiry_collapses_to_spot_difference() {
     // book's factor set (driven by the pair, not the expiry) still lists
     // IR:EUR / IR:USD.
     let m = market_eur_jpy_hkd();
-    let book =
-        Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 5e6, 0.0, Some(1.05)))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Forward(ForwardPosition::new(
+            "EURUSD",
+            5e6,
+            0.0,
+            Some(1.05),
+        ))],
+        "USD",
+    )
+    .unwrap();
     let cb = CompiledBook::new(&book, &m).unwrap();
     let expect = 5e6 * 1.10 - 5e6 * 1.05; // undiscounted spot legs
     assert!((cb.value0_usd() - expect).abs() < 1e-6 * expect.abs());
     let w = cb.linear_exposures(1e-6).unwrap();
     for (f, wi) in cb.factors().iter().zip(&w) {
         if f.starts_with("IR:") {
-            assert!(wi.abs() < 1e-3, "expected zero IR sensitivity at T=0, got {wi} for {f}");
+            assert!(
+                wi.abs() < 1e-3,
+                "expected zero IR sensitivity at T=0, got {wi} for {f}"
+            );
         }
     }
 }
@@ -95,7 +115,13 @@ fn zero_and_negative_rates_are_valid_inputs() {
     // A negative-rate currency (e.g. EUR/JPY in the 2015-2021 era) is a
     // legitimate, non-exceptional market input.
     let m = Market::new([("EUR", 1.10)], [("USD", 0.0), ("EUR", -0.005)]).unwrap();
-    let book = Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 5e6, 1.0, None))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Forward(ForwardPosition::new(
+            "EURUSD", 5e6, 1.0, None,
+        ))],
+        "USD",
+    )
+    .unwrap();
     let cb = CompiledBook::new(&book, &m).unwrap();
     // ATM CIP forward at zero USD rate and negative EUR rate: still prices
     // and revalues cleanly with zero initial value.
@@ -113,7 +139,11 @@ fn peg_break_jump_produces_loss_historical_simulation_misses() {
     // overlay reports a material loss. This is the engine's
     // peg-blindness story end to end.
     let m = market_eur_jpy_hkd();
-    let book = Book::new(vec![Position::Spot(SpotPosition::new("USDHKD", 100e6, None))], "USD").unwrap(); // long USD vs HKD
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("USDHKD", 100e6, None))],
+        "USD",
+    )
+    .unwrap(); // long USD vs HKD
 
     let mut data = Matrix::zeros(250, 1);
     for i in 0..250 {
@@ -124,9 +154,18 @@ fn peg_break_jump_produces_loss_historical_simulation_misses() {
     assert_eq!(hs.flagged_peg_factors.len(), 1); // engine warns
 
     let cov = sample_cov(&rets).unwrap();
-    let mut jumps = JumpSpec { prob: 0.02, ..Default::default() }; // revaluation event
+    let mut jumps = JumpSpec {
+        prob: 0.02,
+        ..Default::default()
+    }; // revaluation event
     jumps.mean.insert("FX:HKD".to_string(), 0.10); // HKD +10% (log) vs USD
-    let opts = MonteCarloOptions { n_scenarios: 50_000, seed: 5, dist: McDist::Jump, jumps, ..Default::default() };
+    let opts = MonteCarloOptions {
+        n_scenarios: 50_000,
+        seed: 5,
+        dist: McDist::Jump,
+        jumps,
+        ..Default::default()
+    };
     let mc = monte_carlo_var(&book, &m, &cov, &opts).unwrap();
     // Short 100m USD of HKD: a +10% HKD reval loses ~10m USD.
     assert!(hs.var < 0.1e6); // HS blind: < 0.1% of notional
@@ -140,7 +179,11 @@ fn peg_break_jump_produces_loss_historical_simulation_misses() {
 
 #[test]
 fn singular_pegged_covariance_runs_with_jitter_end_to_end() {
-    let m = Market::new([("HKD", 0.1282), ("AED", 0.2723)], std::iter::empty::<(&str, f64)>()).unwrap();
+    let m = Market::new(
+        [("HKD", 0.1282), ("AED", 0.2723)],
+        std::iter::empty::<(&str, f64)>(),
+    )
+    .unwrap();
     let book = Book::new(
         vec![
             Position::Spot(SpotPosition::new("USDHKD", 10e6, None)),
@@ -153,7 +196,10 @@ fn singular_pegged_covariance_runs_with_jitter_end_to_end() {
         factors: vec!["FX:AED".to_string(), "FX:HKD".to_string()],
         cov: Matrix::from_rows(&[vec![6.25e-2, 3.125e-2], vec![3.125e-2, 1.5625e-2]]).unwrap(),
     };
-    let opts = MonteCarloOptions { n_scenarios: 1000, ..Default::default() };
+    let opts = MonteCarloOptions {
+        n_scenarios: 1000,
+        ..Default::default()
+    };
     let res = monte_carlo_var(&book, &m, &cov, &opts).unwrap();
     assert!(!res.cholesky_warning.is_empty());
     assert!(res.var >= 0.0);
@@ -166,7 +212,11 @@ fn singular_pegged_covariance_runs_with_jitter_end_to_end() {
 #[test]
 fn nan_history_is_refused_not_dropped() {
     let m = market_eur_jpy_hkd();
-    let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+        "USD",
+    )
+    .unwrap();
     let mut data = Matrix::zeros(120, 1);
     data.set(5, 0, f64::NAN);
     let rets = ReturnsMatrix::new(vec!["FX:EUR".to_string()], data).unwrap();
@@ -176,7 +226,11 @@ fn nan_history_is_refused_not_dropped() {
 #[test]
 fn missing_factor_column_is_reported_not_silently_zeroed() {
     let m = market_eur_jpy_hkd();
-    let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+        "USD",
+    )
+    .unwrap();
     let mut data = Matrix::zeros(120, 1);
     for t in 0..120 {
         data.set(t, 0, 0.001 * (t as f64).sin());
@@ -195,7 +249,13 @@ fn missing_factor_column_is_reported_not_silently_zeroed() {
 fn multi_currency_book_survives_brexit_and_chf_replay() {
     let m = Market::new(
         [("EUR", 1.10), ("GBP", 1.27), ("JPY", 0.0090), ("CHF", 1.12)],
-        [("USD", 0.050), ("EUR", 0.030), ("GBP", 0.045), ("JPY", 0.001), ("CHF", -0.005)],
+        [
+            ("USD", 0.050),
+            ("EUR", 0.030),
+            ("GBP", 0.045),
+            ("JPY", 0.001),
+            ("CHF", -0.005),
+        ],
     )
     .unwrap();
     let book = Book::new(
@@ -248,7 +308,11 @@ fn ewma_covariance_reacts_faster_than_sample_after_regime_shift() {
 #[test]
 fn shocking_fx_usd_is_always_rejected() {
     let m = market_eur_jpy_hkd();
-    let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+        "USD",
+    )
+    .unwrap();
     let cb = CompiledBook::new(&book, &m).unwrap();
     let mut shocks = HashMap::new();
     shocks.insert("FX:USD".to_string(), 0.05);
@@ -261,7 +325,7 @@ fn shocking_fx_usd_is_always_rejected() {
 // A validation guard written as `if x <= 0.0 { return Err(..) }` silently
 // ACCEPTS NaN, because every IEEE-754 comparison against NaN is false, and
 // Rust is no different from C here (`f64::NAN < 0.0` is `false`). Worse,
-// `f64::max` propagates the *other* operand, so `NaN.max(0.0)` is `0.0` —
+// `f64::max` propagates the *other* operand, so `NaN.max(0.0)` is `0.0`:
 // which turned a corrupt covariance into a portfolio sigma, VaR and ES of
 // exactly ZERO. A NaN risk number breaches no limit and colours no traffic
 // light (`NaN <= limit` is false, and so is `NaN > limit`); a zero one
@@ -272,8 +336,14 @@ fn shocking_fx_usd_is_always_rejected() {
 fn non_finite_market_and_book_inputs_are_rejected() {
     for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         // Market: spot and rate.
-        assert!(Market::new([("EUR", bad)], [("USD", 0.05)]).is_err(), "spot {bad}");
-        assert!(Market::new([("EUR", 1.10)], [("USD", bad)]).is_err(), "rate {bad}");
+        assert!(
+            Market::new([("EUR", bad)], [("USD", 0.05)]).is_err(),
+            "spot {bad}"
+        );
+        assert!(
+            Market::new([("EUR", 1.10)], [("USD", bad)]).is_err(),
+            "rate {bad}"
+        );
         // Positions: notionals, entry rates, strikes, expiries.
         let m = market_eur_jpy_hkd();
         let cases: Vec<Position> = vec![
@@ -286,7 +356,10 @@ fn non_finite_market_and_book_inputs_are_rejected() {
         ];
         for (i, p) in cases.into_iter().enumerate() {
             let res = Book::new(vec![p], "USD");
-            assert!(res.is_err(), "position case {i} with {bad} must be rejected");
+            assert!(
+                res.is_err(),
+                "position case {i} with {bad} must be rejected"
+            );
         }
         // A clean book still builds, so the guards are not rejecting all input.
         assert!(Book::new(
@@ -302,8 +375,11 @@ fn non_finite_market_and_book_inputs_are_rejected() {
 fn non_finite_returns_covariances_and_scalars_are_rejected() {
     let bads = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
     let m = market_eur_jpy_hkd();
-    let book =
-        Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))], "USD").unwrap();
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+        "USD",
+    )
+    .unwrap();
 
     for bad in bads {
         // Return history: NaN *and* Inf must both be refused. An
@@ -317,7 +393,11 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
         }
         data.set(37, 1, bad);
         let rets = ReturnsMatrix::new(
-            vec!["FX:EUR".to_string(), "IR:EUR".to_string(), "IR:USD".to_string()],
+            vec![
+                "FX:EUR".to_string(),
+                "IR:EUR".to_string(),
+                "IR:USD".to_string(),
+            ],
             data,
         )
         .unwrap();
@@ -327,7 +407,10 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
         );
         assert!(sample_cov(&rets).is_err(), "sample_cov {bad}");
         assert!(ewma_cov(&rets, 0.94).is_err(), "ewma_cov {bad}");
-        assert!(ewma_volatility(&rets, 0.94).is_err(), "ewma_volatility {bad}");
+        assert!(
+            ewma_volatility(&rets, 0.94).is_err(),
+            "ewma_volatility {bad}"
+        );
         assert!(
             historical_var(&book, &m, &rets, &HistoricalOptions::default()).is_err(),
             "historical_var {bad}"
@@ -339,60 +422,119 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
 
         // Covariance and exposures straight into the linear-algebra layer.
         let cov = Matrix::from_rows(&[vec![1e-4, bad], vec![bad, 4e-4]]).unwrap();
-        assert!(portfolio_sigma(&[1e6, -2e6], &cov).is_err(), "portfolio_sigma cov {bad}");
+        assert!(
+            portfolio_sigma(&[1e6, -2e6], &cov).is_err(),
+            "portfolio_sigma cov {bad}"
+        );
         assert!(cov.cholesky().is_err(), "cholesky {bad}");
-        assert!(cov.cholesky_with_jitter(8).is_err(), "cholesky_with_jitter {bad}");
+        assert!(
+            cov.cholesky_with_jitter(8).is_err(),
+            "cholesky_with_jitter {bad}"
+        );
         assert!(!cov.all_finite());
-        assert!(!cov.is_symmetric(1e-12), "a NaN matrix must not count as symmetric");
+        assert!(
+            !cov.is_symmetric(1e-12),
+            "a NaN matrix must not count as symmetric"
+        );
         let clean = Matrix::from_rows(&[vec![1e-4, 2e-5], vec![2e-5, 4e-4]]).unwrap();
-        assert!(portfolio_sigma(&[1e6, bad], &clean).is_err(), "portfolio_sigma w {bad}");
+        assert!(
+            portfolio_sigma(&[1e6, bad], &clean).is_err(),
+            "portfolio_sigma w {bad}"
+        );
         assert!(reverse_stress_linear(&[1e6, bad], &clean, 3.0).is_err());
         assert!(reverse_stress_linear(&[1e6, -2e6], &clean, bad).is_err());
         assert!(reverse_stress_for_loss(&[1e6, bad], &clean, 1e5).is_err());
         assert!(reverse_stress_numerical(&[1e6, -2e6], &clean, bad, 1).is_err());
 
         // Closed-form tail formulae.
-        assert!(normal_var(bad, 0.99, 0.0).is_err(), "normal_var sigma {bad}");
-        assert!(normal_var(1.0, 0.99, bad).is_err(), "normal_var mean {bad}");
-        assert!(normal_es(bad, 0.99, 0.0).is_err());
-        assert!(normal_es(1.0, 0.99, bad).is_err());
-        assert!(student_t_var(bad, 0.99, 6.0, 0.0).is_err());
-        assert!(student_t_var(1.0, 0.99, bad, 0.0).is_err(), "student_t df {bad}");
-        assert!(student_t_var(1.0, 0.99, 6.0, bad).is_err());
-        assert!(student_t_es(1.0, 0.99, bad, 0.0).is_err());
-        assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-                          0.99, 1.0, TailDist::Normal, 6.0, bad).is_err());
-        assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-                          0.99, bad, TailDist::Normal, 6.0, 0.0).is_err(),
-                "horizon {bad}");
-        assert!(var_covar(&[1e6], &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-                          bad, 1.0, TailDist::Normal, 6.0, 0.0).is_err(), "alpha {bad}");
+        assert!(
+            normal_var(bad, 0.01, 0.0).is_err(),
+            "normal_var sigma {bad}"
+        );
+        assert!(normal_var(1.0, 0.01, bad).is_err(), "normal_var mean {bad}");
+        assert!(normal_es(bad, 0.01, 0.0).is_err());
+        assert!(normal_es(1.0, 0.01, bad).is_err());
+        assert!(student_t_var(bad, 0.01, 6.0, 0.0).is_err());
+        assert!(
+            student_t_var(1.0, 0.01, bad, 0.0).is_err(),
+            "student_t df {bad}"
+        );
+        assert!(student_t_var(1.0, 0.01, 6.0, bad).is_err());
+        assert!(student_t_es(1.0, 0.01, bad, 0.0).is_err());
+        assert!(var_covar(
+            &[1e6],
+            &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+            0.01,
+            1.0,
+            TailDist::Normal,
+            6.0,
+            bad
+        )
+        .is_err());
+        assert!(
+            var_covar(
+                &[1e6],
+                &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+                0.01,
+                bad,
+                TailDist::Normal,
+                6.0,
+                0.0
+            )
+            .is_err(),
+            "horizon {bad}"
+        );
+        assert!(
+            var_covar(
+                &[1e6],
+                &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+                bad,
+                1.0,
+                TailDist::Normal,
+                6.0,
+                0.0
+            )
+            .is_err(),
+            "alpha {bad}"
+        );
 
         // Empirical estimators and their weights.
         let mut pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
         pnl[11] = bad;
-        assert!(empirical_var(&pnl, 0.99, None).is_err(), "empirical_var {bad}");
-        assert!(empirical_es(&pnl, 0.99, None).is_err(), "empirical_es {bad}");
+        assert!(
+            empirical_var(&pnl, 0.01, None).is_err(),
+            "empirical_var {bad}"
+        );
+        assert!(
+            empirical_es(&pnl, 0.01, None).is_err(),
+            "empirical_es {bad}"
+        );
         let clean_pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
         let mut w = vec![0.01; 100];
         w[3] = bad;
-        assert!(empirical_var(&clean_pnl, 0.99, Some(&w)).is_err(), "weights {bad}");
+        assert!(
+            empirical_var(&clean_pnl, 0.01, Some(&w)).is_err(),
+            "weights {bad}"
+        );
 
         // Backtest series.
         assert!(
-            evaluate_var_backtest(&pnl, &vec![1000.0; 100], 0.99).is_err(),
+            evaluate_var_backtest(&pnl, &vec![1000.0; 100], 0.01).is_err(),
             "backtest pnl {bad}"
         );
         let mut vf = vec![1000.0; 100];
         vf[42] = bad;
         assert!(
-            evaluate_var_backtest(&clean_pnl, &vf, 0.99).is_err(),
+            evaluate_var_backtest(&clean_pnl, &vf, 0.01).is_err(),
             "backtest var forecast {bad}"
         );
 
         // Stress scenario construction.
         assert!(simple_to_log(bad).is_err(), "simple_to_log {bad}");
-        assert!(usd_broad_move(&["EUR".to_string()], bad).is_err(), "usd_broad_move {bad}");
+        assert!(
+            usd_broad_move(&["EUR".to_string()], bad).is_err(),
+            "usd_broad_move {bad}"
+        );
         assert!(
             peg_break_scenario("HKD", bad, &HashMap::new()).is_err(),
             "peg_break jump {bad}"
@@ -407,8 +549,8 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
     let clean_pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.3 * t as f64).sin()).collect();
     let mut vf = vec![1000.0; 100];
     vf[9] = -1.0;
-    assert!(evaluate_var_backtest(&clean_pnl, &vf, 0.99).is_err());
-    assert!(evaluate_var_backtest(&clean_pnl, &vec![1000.0; 100], 0.99).is_ok());
+    assert!(evaluate_var_backtest(&clean_pnl, &vf, 0.01).is_err());
+    assert!(evaluate_var_backtest(&clean_pnl, &vec![1000.0; 100], 0.01).is_ok());
 }
 
 #[test]
@@ -416,7 +558,10 @@ fn simple_to_log_rejects_its_domain_boundary() {
     // ln(1 + pct) is -inf at pct = -100% and NaN below it. Returning
     // either silently would put an infinite/NaN shock into a scenario and
     // an infinite/NaN row into the stress report.
-    assert!(simple_to_log(-1.0).is_err(), "-100% must be rejected (ln 0 = -inf)");
+    assert!(
+        simple_to_log(-1.0).is_err(),
+        "-100% must be rejected (ln 0 = -inf)"
+    );
     assert!(simple_to_log(-1.000_001).is_err());
     assert!(simple_to_log(-2.0).is_err());
     assert!(simple_to_log(f64::NAN).is_err());
@@ -425,7 +570,7 @@ fn simple_to_log_rejects_its_domain_boundary() {
     for pct in [-0.999, -0.5, -0.081, 0.0, 0.149, 10.0] {
         let v = simple_to_log(pct).unwrap();
         assert!(v.is_finite(), "pct={pct} gave {v}");
-        assert_eq!(v, (pct as f64).ln_1p());
+        assert_eq!(v, pct.ln_1p());
     }
     // And it round-trips: exp(log) - 1 == pct.
     for pct in [-0.5, -0.081, 0.149] {
@@ -450,8 +595,7 @@ fn single_currency_book_has_no_fx_risk() {
     // rate factor (cash has no discounting leg). Its VaR is exactly zero,
     // and it must not error out on the way there.
     let m = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-    let usd_only =
-        Book::new(vec![Position::Cash(CashPosition::new("USD", 250e6))], "USD").unwrap();
+    let usd_only = Book::new(vec![Position::Cash(CashPosition::new("USD", 250e6))], "USD").unwrap();
     let cb = CompiledBook::new(&usd_only, &m).unwrap();
     assert!(
         cb.factors().iter().all(|f| !f.starts_with("FX:")),
@@ -469,11 +613,13 @@ fn single_currency_book_has_no_fx_risk() {
 
     // A single *foreign* currency book, reported in that same currency,
     // is also flat: EUR cash valued in EUR has no exposure to EURUSD.
-    let eur_book =
-        Book::new(vec![Position::Cash(CashPosition::new("EUR", 100e6))], "EUR").unwrap();
+    let eur_book = Book::new(vec![Position::Cash(CashPosition::new("EUR", 100e6))], "EUR").unwrap();
     let cb_eur = CompiledBook::new(&eur_book, &m).unwrap();
     assert!(
-        cb_eur.pnl_map(&HashMap::from([("FX:EUR".to_string(), 0.10)])).unwrap().abs()
+        cb_eur
+            .pnl_map(&HashMap::from([("FX:EUR".to_string(), 0.10)]))
+            .unwrap()
+            .abs()
             < 1e-6 * 100e6,
         "EUR cash reported in EUR must be FX-flat"
     );
@@ -481,9 +627,14 @@ fn single_currency_book_has_no_fx_risk() {
     let eur_in_usd =
         Book::new(vec![Position::Cash(CashPosition::new("EUR", 100e6))], "USD").unwrap();
     let cb_usd = CompiledBook::new(&eur_in_usd, &m).unwrap();
-    let pnl = cb_usd.pnl_map(&HashMap::from([("FX:EUR".to_string(), 0.10)])).unwrap();
+    let pnl = cb_usd
+        .pnl_map(&HashMap::from([("FX:EUR".to_string(), 0.10)]))
+        .unwrap();
     let expected = 100e6 * 1.10 * ((0.10_f64).exp() - 1.0);
-    assert!((pnl - expected).abs() < 1e-6 * expected.abs(), "{pnl} vs {expected}");
+    assert!(
+        (pnl - expected).abs() < 1e-6 * expected.abs(),
+        "{pnl} vs {expected}"
+    );
 }
 
 #[test]
@@ -493,7 +644,12 @@ fn identity_triangulation_is_exact() {
     // and CCYCCY is 1 for every currency in the market.
     let m = Market::new(
         [("EUR", 1.10), ("JPY", 0.0090), ("GBP", 1.27)],
-        [("USD", 0.050), ("EUR", 0.030), ("JPY", 0.001), ("GBP", 0.045)],
+        [
+            ("USD", 0.050),
+            ("EUR", 0.030),
+            ("JPY", 0.001),
+            ("GBP", 0.045),
+        ],
     )
     .unwrap();
     assert_eq!(m.spot("USD").unwrap(), 1.0);
@@ -509,7 +665,11 @@ fn identity_triangulation_is_exact() {
             "{pair} (identical legs) must be rejected, not triangulated to 1"
         );
         assert!(
-            Book::new(vec![Position::Spot(SpotPosition::new(&pair, 1e6, None))], "USD").is_err(),
+            Book::new(
+                vec![Position::Spot(SpotPosition::new(&pair, 1e6, None))],
+                "USD"
+            )
+            .is_err(),
             "a {pair} position must be rejected"
         );
     }
@@ -525,7 +685,11 @@ fn identity_triangulation_is_exact() {
         );
         // Reciprocal consistency both ways.
         let inverse = m.cross(&format!("{b}{a}")).unwrap();
-        assert!((direct * inverse - 1.0).abs() < 1e-14, "{a}{b} x {b}{a} = {}", direct * inverse);
+        assert!(
+            (direct * inverse - 1.0).abs() < 1e-14,
+            "{a}{b} x {b}{a} = {}",
+            direct * inverse
+        );
     }
     // The forward at T = 0 is the spot cross, exactly.
     for pair in ["EURUSD", "EURJPY", "USDJPY"] {
@@ -542,7 +706,7 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     // A 50bn-notional book produces a P&L covariance with entries ~1e14.
     // Symmetry and PSD gates written with ABSOLUTE tolerances reject such
     // a matrix purely because its two triangles were accumulated in
-    // different orders and differ in the last ulp — which at that scale is
+    // different orders and differ in the last ulp: which at that scale is
     // ~1e-2, ten orders of magnitude above a 1e-12 absolute gate. Both
     // gates in this engine are scale-relative; this pins that.
     let sigma_a = 5.0e11_f64; // P&L std of leg A, currency units
@@ -552,11 +716,8 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     // Perturb one triangle by a single ulp to mimic a different summation
     // order in the estimator.
     let off_b = f64::from_bits(off.to_bits() + 1);
-    let cov = Matrix::from_rows(&[
-        vec![sigma_a * sigma_a, off],
-        vec![off_b, sigma_b * sigma_b],
-    ])
-    .unwrap();
+    let cov =
+        Matrix::from_rows(&[vec![sigma_a * sigma_a, off], vec![off_b, sigma_b * sigma_b]]).unwrap();
     assert_ne!(off, off_b);
     assert!(
         (off - off_b).abs() > 1e-12,
@@ -568,10 +729,13 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     );
     assert!(
         !cov.is_symmetric(1e-12),
-        "the absolute gate is the one that (wrongly) rejects it — kept for callers who know their units"
+        "the absolute gate is the one that (wrongly) rejects it: kept for callers who know their units"
     );
     let (l, jitter) = cov.cholesky_with_jitter(8).unwrap();
-    assert_eq!(jitter, 0.0, "a healthy large-notional covariance needs no jitter");
+    assert_eq!(
+        jitter, 0.0,
+        "a healthy large-notional covariance needs no jitter"
+    );
     assert!(l.get(0, 0) > 0.0);
 
     // Portfolio sigma / VaR on the same scale: finite, positive, and
@@ -580,14 +744,17 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
     let s = portfolio_sigma(&w, &cov).unwrap();
     let expect = (sigma_a * sigma_a + 2.0 * off + sigma_b * sigma_b).sqrt();
     assert!((s - expect).abs() <= 1e-12 * expect, "{s} vs {expect}");
-    let big = var_covar(&w, &cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    let big = var_covar(&w, &cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
     let small_cov = Matrix::from_rows(&[
         vec![1.0e-6 * sigma_a * sigma_a, 1.0e-6 * off],
         vec![1.0e-6 * off, 1.0e-6 * sigma_b * sigma_b],
     ])
     .unwrap();
-    let small = var_covar(&w, &small_cov, 0.99, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
-    assert!((big.var / small.var - 1.0e3).abs() < 1e-6 * 1.0e3, "VaR must scale with sigma");
+    let small = var_covar(&w, &small_cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+    assert!(
+        (big.var / small.var - 1.0e3).abs() < 1e-6 * 1.0e3,
+        "VaR must scale with sigma"
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -597,43 +764,64 @@ fn large_notional_books_are_not_rejected_by_absolute_tolerances() {
 #[test]
 fn boundary_alpha_and_tiny_samples() {
     let pnl: Vec<f64> = (0..100).map(|t| 1000.0 * (0.37 * t as f64).sin()).collect();
-    // alpha is a CONFIDENCE level here (0.99 = 99% VaR), so the open
-    // interval is (0, 1). The closed boundaries and anything outside must
-    // be rejected at every entry point, not clamped.
-    for bad in [0.0, 1.0, -0.01, 1.0 + 1e-12, 2.0, f64::NAN] {
-        assert!(empirical_var(&pnl, bad, None).is_err(), "empirical_var alpha={bad}");
-        assert!(empirical_es(&pnl, bad, None).is_err(), "empirical_es alpha={bad}");
+    // alpha is the TAIL probability (0.01 = 99% VaR) in the open interval
+    // (0, 0.5). A confidence level such as 0.99 is rejected, never silently
+    // reinterpreted, at every entry point.
+    for bad in [
+        0.0,
+        0.5,
+        0.95,
+        0.99,
+        1.0,
+        -0.01,
+        2.0,
+        f64::NAN,
+        f64::INFINITY,
+    ] {
+        assert!(
+            empirical_var(&pnl, bad, None).is_err(),
+            "empirical_var alpha={bad}"
+        );
+        assert!(
+            empirical_es(&pnl, bad, None).is_err(),
+            "empirical_es alpha={bad}"
+        );
         assert!(normal_var(1.0, bad, 0.0).is_err(), "normal_var alpha={bad}");
-        assert!(student_t_es(1.0, bad, 6.0, 0.0).is_err(), "student_t_es alpha={bad}");
+        assert!(
+            student_t_es(1.0, bad, 6.0, 0.0).is_err(),
+            "student_t_es alpha={bad}"
+        );
         assert!(
             evaluate_var_backtest(&pnl, &vec![1000.0; 100], bad).is_err(),
             "backtest alpha={bad}"
         );
     }
     // Just inside both ends still works, and VaR is monotone in alpha.
-    let lo = empirical_var(&pnl, 0.01, None).unwrap();
-    let hi = empirical_var(&pnl, 0.999, None).unwrap();
-    assert!(hi >= lo, "VaR must be non-decreasing in the confidence level");
-    assert!(normal_var(1.0, 1e-9, 0.0).unwrap() < normal_var(1.0, 1.0 - 1e-9, 0.0).unwrap());
+    let lo = empirical_var(&pnl, 0.49, None).unwrap();
+    let hi = empirical_var(&pnl, 0.001, None).unwrap();
+    assert!(
+        hi >= lo,
+        "VaR must be non-increasing in the tail probability"
+    );
+    assert!(normal_var(1.0, 0.49, 0.0).unwrap() < normal_var(1.0, 1e-9, 0.0).unwrap());
     // Horizon must be finite and positive.
     let cov1 = Matrix::from_rows(&[vec![1e-4]]).unwrap();
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         assert!(
-            var_covar(&[1e6], &cov1, 0.99, bad, TailDist::Normal, 6.0, 0.0).is_err(),
+            var_covar(&[1e6], &cov1, 0.01, bad, TailDist::Normal, 6.0, 0.0).is_err(),
             "horizon={bad}"
         );
     }
 
     // Minimum-size samples: 1 and 2 observations.
-    assert_eq!(empirical_var(&[-42.0], 0.99, None).unwrap(), 42.0);
-    assert_eq!(empirical_es(&[-42.0], 0.99, None).unwrap(), 42.0);
+    assert_eq!(empirical_var(&[-42.0], 0.01, None).unwrap(), 42.0);
+    assert_eq!(empirical_es(&[-42.0], 0.01, None).unwrap(), 42.0);
     let two = [-100.0, 20.0];
-    assert_eq!(empirical_var(&two, 0.99, None).unwrap(), 100.0);
-    // At 40% confidence the tail mass is 0.6, which reaches past the
-    // worst scenario (weight 0.5) onto the second: VaR is -20, i.e. the
-    // book is expected to be UP 20 at that (useless) confidence level.
-    assert_eq!(empirical_var(&two, 0.4, None).unwrap(), -20.0);
-    assert!(empirical_var(&[] as &[f64], 0.99, None).is_err());
+    assert_eq!(empirical_var(&two, 0.01, None).unwrap(), 100.0);
+    // A tail mass of 0.6 (the old "40% confidence") is outside (0, 0.5).
+    assert!(empirical_var(&two, 0.6, None).is_err());
+    assert_eq!(empirical_var(&two, 0.45, None).unwrap(), 100.0);
+    assert!(empirical_var(&[] as &[f64], 0.01, None).is_err());
     // Covariance and EWMA need 2 rows; a single row is refused.
     let one_row = ReturnsMatrix::new(
         vec!["FX:EUR".to_string()],
@@ -650,8 +838,8 @@ fn boundary_alpha_and_tiny_samples() {
     let cov = sample_cov(&two_rows).unwrap();
     assert!((cov.cov.get(0, 0) - 2.0e-4).abs() < 1e-18);
     // The backtest needs at least 2 days.
-    assert!(evaluate_var_backtest(&[-1.0], &[1.0], 0.99).is_err());
-    assert!(evaluate_var_backtest(&[-1.0, 2.0], &[1.0, 1.0], 0.99).is_ok());
+    assert!(evaluate_var_backtest(&[-1.0], &[1.0], 0.01).is_err());
+    assert!(evaluate_var_backtest(&[-1.0, 2.0], &[1.0, 1.0], 0.01).is_ok());
 }
 
 // -----------------------------------------------------------------------
@@ -669,7 +857,10 @@ fn jitter_repairs_pegged_blocks_but_refuses_indefinite_covariances() {
     // point rather than one ulp away from it.)
     let v = 2.0_f64.powi(-26);
     let pegged = Matrix::from_rows(&[vec![v, v], vec![v, v]]).unwrap();
-    assert!(pegged.cholesky().is_err(), "an exactly singular block must defeat plain Cholesky");
+    assert!(
+        pegged.cholesky().is_err(),
+        "an exactly singular block must defeat plain Cholesky"
+    );
     let (_l, jitter) = pegged.cholesky_with_jitter(8).unwrap();
     assert!(
         jitter > 0.0 && jitter <= MAX_RELATIVE_JITTER * v,
@@ -690,11 +881,11 @@ fn jitter_repairs_pegged_blocks_but_refuses_indefinite_covariances() {
     // The quadratic form catches it too, in the direction that exposes the
     // negative eigenvalue.
     assert!(portfolio_sigma(&[1e6, -1e6], &indefinite).is_err());
-    assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4);
+    const { assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4) };
 }
 
-/// TEST-4: ES >= VaR for every confidence level, including the
-/// Acerbi-Tasche boundary where `(1-alpha)*n` is exactly an integer, just
+/// TEST-4: ES >= VaR for every tail probability, including the
+/// Acerbi-Tasche boundary where `alpha*n` is exactly an integer, just
 /// below one and just above one (fractional share of the VaR atom).
 #[test]
 fn empirical_es_dominates_var_at_integer_boundaries() {
@@ -712,8 +903,11 @@ fn empirical_es_dominates_var_at_integer_boundaries() {
                 if !(tail > 0.0 && tail < 0.5) {
                     continue;
                 }
-                let (v, e) = empirical_var_es(&pnl, 1.0 - tail, None).unwrap();
-                assert!(e >= v - 1e-12 * v.abs().max(1.0), "n={n} k={k} off={off}: es={e} var={v}");
+                let (v, e) = empirical_var_es(&pnl, tail, None).unwrap();
+                assert!(
+                    e >= v - 1e-12 * v.abs().max(1.0),
+                    "n={n} k={k} off={off}: es={e} var={v}"
+                );
             }
         }
     }

@@ -1,6 +1,6 @@
 """Transaction-cost analysis for OTC FX executions.
 
-Benchmarks are the FX-native set — **arrival price**, **interval TWAP**
+Benchmarks are the FX-native set: **arrival price**, **interval TWAP**
 and the **WM/R 4pm London fix** (5-minute window TWAP).  There is no
 VWAP benchmark because there is no consolidated FX volume tape.
 
@@ -10,12 +10,12 @@ arrival mid, unit-tested to 1e-10):
 
 ``IS = spread+temporary  +  permanent impact  +  market drift``
 
-* spread+temporary — fill price vs the pre-trade mid of its bucket
+* spread+temporary: fill price vs the pre-trade mid of its bucket
   (quoted half-spread, sqrt temporary impact, and any last-look
   requote/penalty cost);
-* permanent impact — the part of the mid move caused by our own earlier
+* permanent impact: the part of the mid move caused by our own earlier
   child orders;
-* market drift — everything else the mid did between arrival and each
+* market drift: everything else the mid did between arrival and each
   child order (session vol plus any alpha drift: the "cost of waiting").
 """
 
@@ -30,6 +30,8 @@ __all__ = [
     "decompose_implementation_shortfall",
     "twap_benchmark",
     "fix_benchmark",
+    "fix_print",
+    "fix_self_impact_pips",
     "slippage_vs_benchmark",
     "rejection_cost_pips",
     "venue_comparison",
@@ -86,6 +88,11 @@ def fix_benchmark(
     5-minute window of (median-filtered) observations; here the print is
     the plain TWAP of simulated mids in the window.
 
+    This print is built from the same mids the schedule trades on, so a
+    schedule that trades flat across the window tracks it with zero variance
+    and never sees its own permanent impact. Use ``fix_print`` for tracking
+    error and ``fix_self_impact_pips`` for self-impact.
+
     Raises
     ------
     ValueError
@@ -95,6 +102,80 @@ def fix_benchmark(
     if not mask.any():
         raise ValueError("execution grid does not cover the fix window")
     return float(result.mids_pre[mask].mean())
+
+
+def _fix_observations(
+    result: ExecutionResult,
+    seed: int,
+    obs_per_bucket: int,
+    include_own_impact: bool,
+    fix_hour: float,
+    window_minutes: float,
+) -> np.ndarray:
+    if obs_per_bucket < 1:
+        raise ValueError(f"obs_per_bucket must be >= 1, got {obs_per_bucket}")
+    if result.sigma_bucket_pips is None:
+        raise ValueError("result has no sigma_bucket_pips; produce it with MarketSimulator.execute")
+    mask = fix_window_mask(result.times_hours, result.dt_minutes, fix_hour, window_minutes)
+    if not mask.any():
+        raise ValueError("execution grid does not cover the fix window")
+    pip = result.pip_size
+    path = result.mids_path
+    if not include_own_impact:
+        perm_end = np.concatenate([result.perm_cum_pips, [result.perm_total_pips]])
+        path = path - pip * perm_end
+    rng = np.random.default_rng(seed)
+    m = obs_per_bucket
+    k = np.arange(m) / m
+    obs = []
+    for t in np.flatnonzero(mask):
+        a, b = path[t], path[t + 1]
+        sig = result.sigma_bucket_pips[t] * pip
+        # Brownian bridge from a to b observed at k/m, k = 0..m-1, drawn
+        # from an RNG that is independent of the execution path.
+        w = np.concatenate([[0.0], np.cumsum(rng.standard_normal(m) * np.sqrt(1.0 / m))])
+        bridge = w[:m] - k * w[m]
+        obs.append(a + k * (b - a) + sig * bridge)
+    return np.concatenate(obs)
+
+
+def fix_print(
+    result: ExecutionResult,
+    seed: int = 0,
+    obs_per_bucket: int = 60,
+    include_own_impact: bool = True,
+    fix_hour: float = FIX_HOUR_LONDON,
+    window_minutes: float = FIX_WINDOW_MINUTES,
+) -> float:
+    """Fix print from intra-bucket observations of the market mid.
+
+    The WM/R print is computed from many snapshots inside the window, not
+    from the instants at which our child orders fill. Between bucket mids
+    the market path is a Brownian bridge with the bucket's vol, drawn from
+    an RNG seeded by ``seed`` and independent of the execution, sampled
+    ``obs_per_bucket`` times per bucket. The print is the mean of those
+    observations, so a schedule that trades at bucket starts does not
+    reproduce it exactly and tracking error has a real variance.
+
+    ``include_own_impact=False`` removes the client's own permanent impact
+    from the path: the print the market would have produced without the
+    order. Slippage against it shows the self-impact that a benchmark built
+    from the impacted mids hides.
+    """
+    return float(
+        _fix_observations(result, seed, obs_per_bucket, include_own_impact, fix_hour, window_minutes).mean()
+    )
+
+
+def fix_self_impact_pips(result: ExecutionResult, seed: int = 0, obs_per_bucket: int = 60) -> float:
+    """How far the client's own permanent impact moved the fix print, in pips.
+
+    Signed into the client's cost direction (positive = the print moved
+    against the client because of its own trading).
+    """
+    with_imp = fix_print(result, seed, obs_per_bucket, include_own_impact=True)
+    without = fix_print(result, seed, obs_per_bucket, include_own_impact=False)
+    return float(result.side * (with_imp - without) / result.pip_size)
 
 
 def slippage_vs_benchmark(result: ExecutionResult, benchmark_price: float) -> float:
@@ -133,7 +214,7 @@ def venue_comparison(results: dict[str, ExecutionResult]) -> dict[str, dict[str,
         Per venue: ``quoted_half_spread_pips`` (qty-weighted average of
         *first-quote* half spreads), ``temp_impact_pips`` (qty-weighted
         temporary impact), ``effective_cost_pips`` (fills vs the
-        contemporaneous pre-trade mids — the controllable "spread +
+        contemporaneous pre-trade mids: the controllable "spread +
         temporary" cost, which is the venue-attributable part of IS),
         ``rejection_rate``, ``rejection_cost_pips``.  Exact identity
         (tested): ``effective = quoted_half_spread + temp_impact +

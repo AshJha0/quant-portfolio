@@ -7,7 +7,7 @@ ln sigma2_t = omega + beta ln sigma2_{t-1}
               + alpha (|z_{t-1}| - E|z|) + gamma z_{t-1}
 
 Sign convention (used consistently in this package and tested):
-**gamma < 0 produces the leverage effect** — a negative standardised shock
+**gamma < 0 produces the leverage effect**: a negative standardised shock
 z < 0 raises next-period log-variance by alpha(|z| - E|z|) - gamma|z|, which
 exceeds the response to +z whenever gamma < 0. (This mirrors the empirical
 finding for equities; note GJR uses the opposite sign convention, gamma > 0.)
@@ -30,23 +30,23 @@ import math
 
 import numpy as np
 from scipy.optimize import minimize
-from scipy.special import gammaln
+from scipy.special import gammaln, log_ndtr
 
 from ._results import VolatilityFitResult
 from ._utils import (
     ConvergenceError,
     checked_sample_variance,
     initial_variance,
-    numerical_hessian,
-    std_errors_from_hessian,
+    mle_std_errors,
     validate_returns,
 )
-from .garch import gaussian_loglik, student_t_loglik
+from .garch import gaussian_loglik, loglik_obs, student_t_loglik
 
 __all__ = [
     "egarch_recursion",
     "fit_egarch",
     "egarch_unconditional_logvar",
+    "egarch_unconditional_variance",
     "news_impact_curve",
     "expected_abs_z",
 ]
@@ -87,9 +87,11 @@ def egarch_recursion(
 ) -> np.ndarray:
     """Conditional variance path of EGARCH(1,1).
 
-    Initialisation: ln sigma2_0 = ln(init_var) (pre-sample variance level;
-    with |beta| < 1 the effect of the initial condition dies off
-    geometrically and is negligible for the sample sizes used here).
+    Initialisation: ln sigma2_{-1} = ln(init_var) with the pre-sample shock
+    at its expectation (g(z_{-1}) = 0), so ln sigma2_0 = omega + beta
+    ln(init_var). This is the same one-step-from-backcast convention as the
+    GARCH recursion and the one the ``arch`` package uses, which makes the
+    likelihoods agree to round-off at identical parameters.
     """
     r = np.asarray(returns, dtype=float)
     if e_abs_z is None:
@@ -97,16 +99,16 @@ def egarch_recursion(
     n = r.size
     out = np.empty(n)
     r_list = r.tolist()
-    ls = math.log(init_var)
+    ls = omega + beta * math.log(init_var)
     exp_, log_, sqrt_ = math.exp, math.log, math.sqrt
     clip = _LOG_CLIP
     for t in range(n):
         if t > 0:
             ls = omega + beta * ls + alpha * (abs(z) - e_abs_z) + gamma * z  # noqa: F821
-            if ls > clip:
-                ls = clip
-            elif ls < -clip:
-                ls = -clip
+        if ls > clip:
+            ls = clip
+        elif ls < -clip:
+            ls = -clip
         s2 = exp_(ls)
         out[t] = s2
         z = r_list[t] / sqrt_(s2)
@@ -126,6 +128,48 @@ def egarch_unconditional_logvar(omega: float, beta: float) -> float:
     return float(omega / (1.0 - beta))
 
 
+def egarch_unconditional_variance(
+    omega: float, alpha: float, gamma: float, beta: float, dist: str = "normal"
+) -> float:
+    """Exact unconditional mean ``E[sigma2]`` of a stationary EGARCH(1,1).
+
+    Writing ``g(z) = alpha (|z| - E|z|) + gamma z``, the stationary solution is
+    ``ln sigma2 = omega/(1-beta) + sum_i beta^i g(z_{-1-i})``, so (Nelson 1991)
+
+        E[sigma2] = exp(omega/(1-beta)) * prod_i E[exp(beta^i g(z))].
+
+    For Gaussian z each factor is closed form with ``a = c alpha``,
+    ``d = c gamma``, ``c = beta^i``:
+    ``E exp(c g(z)) = exp(-a sqrt(2/pi)) [exp((a+d)^2/2) Phi(a+d) + exp((a-d)^2/2) Phi(a-d)]``.
+    The product is truncated once ``|beta|^i < 1e-16``.
+
+    For Student-t innovations ``E exp(c |z|)`` is infinite for every c > 0,
+    so ``E[sigma2]`` does not exist when ``alpha != 0`` or ``gamma != 0``;
+    the function returns ``inf``. ``exp(E ln sigma2)`` (the median-type
+    level, :func:`egarch_unconditional_logvar`) is always finite and is
+    lower than ``E[sigma2]`` by Jensen's inequality.
+    """
+    if abs(beta) >= 1:
+        raise ValueError(f"|beta| = {abs(beta):.6f} >= 1: ln sigma2 is non-stationary")
+    level = omega / (1.0 - beta)
+    if alpha == 0.0 and gamma == 0.0:
+        return float(math.exp(level))
+    if dist == "t":
+        return float("inf")
+    if dist != "normal":
+        raise ValueError(f"unknown dist {dist!r}; use 'normal' or 't'")
+    m = math.sqrt(2.0 / math.pi)
+    log_e = level
+    c = 1.0
+    while abs(c) >= 1e-16:
+        a, d = c * alpha, c * gamma
+        t1 = 0.5 * (a + d) ** 2 + float(log_ndtr(a + d))
+        t2 = 0.5 * (a - d) ** 2 + float(log_ndtr(a - d))
+        log_e += -a * m + float(np.logaddexp(t1, t2))
+        c *= beta
+    return float(math.exp(log_e))
+
+
 def fit_egarch(
     returns: np.ndarray,
     dist: str = "normal",
@@ -136,15 +180,17 @@ def fit_egarch(
     """Fit EGARCH(1,1) by maximum likelihood.
 
     Only |beta| < 1 is enforced (box bound); omega, alpha, gamma are
-    genuinely unconstrained — see module docstring for why positivity needs
+    unconstrained: see module docstring for why positivity needs
     no constraints under the log specification.
 
     Returns
     -------
     VolatilityFitResult
         ``extra``: persistence (= beta), unconditional_logvar,
-        unconditional_vol_annual (from exp of the mean log-variance),
-        halflife_days (of a shock to ln sigma2).
+        median_vol_annual (``sqrt(252 exp(E ln sigma2))``, the median-type
+        level), unconditional_vol_annual (``sqrt(252 E[sigma2])``, exact for
+        Gaussian innovations, ``inf`` for Student-t where the mean does not
+        exist), halflife_days (of a shock to ln sigma2).
     """
     r = validate_returns(returns, min_obs=_MIN_OBS_FIT)
     sample_var = checked_sample_variance(r, "EGARCH")
@@ -219,14 +265,30 @@ def fit_egarch(
     sigma2 = egarch_recursion(r, params["omega"], params["alpha"], params["gamma"], params["beta"], b, eaz)
     ll = gaussian_loglik(r, sigma2) if dist == "normal" else student_t_loglik(r, sigma2, nu)
 
-    se = std_errors_from_hessian(numerical_hessian(nll_theta, np.array(list(theta))))
+    def ll_obs_theta(th) -> np.ndarray:
+        nu_ = th[4] if dist == "t" else np.nan
+        if dist == "t" and nu_ <= 2.05:
+            return np.full(r.size, np.nan)
+        s2 = egarch_recursion(r, th[0], th[1], th[2], th[3], b, expected_abs_z(dist, nu_))
+        return loglik_obs(r, s2, dist, nu_)
+
+    # omega lives on the log scale (|omega| ~ 0.1-1), so its FD scale is its
+    # own size; the others are dimensionless.
+    floor = np.array([max(abs(params["omega"]), 1e-2)] + [1e-2] * (len(names) - 1))
+    se, rse = mle_std_errors(nll_theta, ll_obs_theta, np.array(list(theta)), floor=floor)
     std_errors = dict(zip(names, [float(x) for x in se]))
+    robust = dict(zip(names, [float(x) for x in rse]))
 
     extra: dict[str, float] = {"persistence": params["beta"]}
     if abs(params["beta"]) < 1:
         ulv = egarch_unconditional_logvar(params["omega"], params["beta"])
         extra["unconditional_logvar"] = ulv
-        extra["unconditional_vol_annual"] = float(math.sqrt(math.exp(ulv) * 252.0))
+        extra["median_vol_annual"] = float(math.sqrt(math.exp(ulv) * 252.0))
+        uv = egarch_unconditional_variance(
+            params["omega"], params["alpha"], params["gamma"], params["beta"], dist
+        )
+        extra["unconditional_variance"] = uv
+        extra["unconditional_vol_annual"] = float(math.sqrt(uv * 252.0))
         if 0 < params["beta"] < 1:
             extra["halflife_days"] = float(math.log(0.5) / math.log(params["beta"]))
 
@@ -243,6 +305,7 @@ def fit_egarch(
         message=str(opt.message),
         init_var=b,
         extra=extra,
+        robust_std_errors=robust,
     )
 
 

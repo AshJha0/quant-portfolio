@@ -7,7 +7,7 @@ Definitions (losses are NEGATED returns, ``L = -r``):
   At the optimum, z* is a VaR_a and CVaR_a is the expected loss in the
   (1-a) tail.  For an empirical distribution with S scenarios the inner
   minimisation is attained at one of the scenario losses, which is exactly
-  how :func:`empirical_cvar` evaluates it — guaranteeing that the LP
+  how :func:`empirical_cvar` evaluates it: guaranteeing that the LP
   objective at the optimum EQUALS the empirical CVaR of the optimal weights
   (tested to 1e-9).
 
@@ -19,7 +19,7 @@ mean subject to CVaR <= limit" are LINEAR programs in
 
 We solve them with ``scipy.optimize.linprog`` (HiGHS).  To support a
 gross-leverage budget ``sum|w| <= gross`` the weight is split
-``w = w+ - w-`` with ``w+, w- >= 0`` — standard LP linearisation.
+``w = w+ - w-`` with ``w+, w- >= 0``: standard LP linearisation.
 
 Why this matters for FX: mean-variance treats carry's premium as free money
 because variance ignores skew.  The carry-crash tail lives exactly where
@@ -40,8 +40,10 @@ def empirical_cvar(returns: pd.Series | np.ndarray, alpha: float = 0.95) -> floa
     """Empirical CVaR (expected shortfall) at level ``alpha``, loss units.
 
     Evaluates the Rockafellar-Uryasev functional
-    ``min_z z + mean((L - z)+)/(1-alpha)`` exactly by scanning the scenario
-    losses (the minimiser is attained at a data point).  Positive output =
+    ``min_z z + mean((L - z)+)/(1-alpha)`` exactly. The functional is
+    piecewise linear in z with slope ``1 - #{L > z} / ((1-alpha) S)``, so
+    a minimiser is the j-th smallest loss with ``j = ceil(alpha S)``. One
+    sort gives it in O(S log S) time and O(S) memory.  Positive output =
     expected LOSS in the tail (so a CVaR of 0.02 means -2% average tail
     return).
 
@@ -59,11 +61,12 @@ def empirical_cvar(returns: pd.Series | np.ndarray, alpha: float = 0.95) -> floa
         raise ValueError("empty return sample")
     if not np.all(np.isfinite(losses)):
         raise ValueError("return scenarios contain NaN/Inf; clean the sample first")
-    cand = np.unique(losses)
-    vals = cand + np.maximum(losses[None, :] - cand[:, None], 0.0).mean(axis=1) / (
-        1.0 - alpha
-    )
-    return float(vals.min())
+    srt = np.sort(losses)
+    n = srt.size
+    j = int(np.ceil(alpha * n - 1e-9 * n))  # guard alpha*n = 95.00000000000001
+    j = min(max(j, 1), n)
+    z = srt[j - 1]
+    return float(z + np.sum(srt[j:] - z) / ((1.0 - alpha) * n))
 
 
 def empirical_var(returns: pd.Series | np.ndarray, alpha: float = 0.95) -> float:
@@ -303,6 +306,10 @@ def carry_sizing(
 
         s* = min(max_leverage, cvar_limit / CVaR_alpha(r)) .
 
+    If the sample mean is zero or negative, a larger book only loses more
+    in expectation, so the optimal size is 0 and the function returns
+    ``(0.0, 0.0)``.
+
     Returns
     -------
     (float, float)
@@ -311,6 +318,8 @@ def carry_sizing(
     if max_leverage < 0:
         raise ValueError(f"max_leverage must be >= 0, got {max_leverage}")
     base = empirical_cvar(style_returns, alpha)
+    if not float(np.mean(np.asarray(style_returns, dtype=float))) > 0.0:
+        return 0.0, 0.0
     if base <= 0:  # no tail loss at this level: constraint never binds
         s = max_leverage
     else:

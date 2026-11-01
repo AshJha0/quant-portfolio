@@ -114,3 +114,16 @@ def test_train_oot_split_empty_side_raises() -> None:
     df = generate_loan_book(500, seed=9, start="2019-01-01", end="2019-12-31")
     with pytest.raises(ValueError, match="empty side"):
         train_oot_split(df, cutoff="2030-01-01")
+
+
+def test_german_loader_maps_uci_coding_even_when_bad_is_majority(tmp_path) -> None:
+    from eq_credit.data.live import load_credit_csv
+
+    # 2 = bad is the majority here; the old "not the mode" rule flipped it
+    p = tmp_path / "german.csv"
+    pd.DataFrame({"x": [1, 2, 3, 4], "class": [2, 2, 2, 1]}).to_csv(p, index=False)
+    df = load_credit_csv(p, schema="german")
+    assert df["default"].tolist() == [1, 1, 1, 0]
+    pd.DataFrame({"x": [1, 2], "class": [0, 1]}).to_csv(p, index=False)
+    with pytest.raises(ValueError, match="UCI coding"):
+        load_credit_csv(p, schema="german")

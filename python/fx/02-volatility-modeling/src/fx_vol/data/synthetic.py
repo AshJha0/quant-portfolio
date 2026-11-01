@@ -1,4 +1,4 @@
-"""Seeded synthetic FX data generators -- the test-suite data source.
+"""Seeded synthetic FX data generators: the test-suite data source.
 
 Every generator takes an explicit ``seed`` (or ``numpy.random.Generator``)
 and is fully deterministic given it; no network access anywhere. Burn-in
@@ -179,7 +179,7 @@ def simulate_garch_x(
     Event days (probability ``event_prob``, e.g. ~8 FOMC + ~8 ECB meetings a
     year out of 252 days ~ 0.06) receive an extra ``gamma_x`` of variance:
     ``sigma2_t = omega + gamma_x * x_t + alpha r_{t-1}^2 + beta sigma2_{t-1}``.
-    The calendar is known in advance -- x is drawn once and treated as
+    The calendar is known in advance: x is drawn once and treated as
     deterministic.
 
     Returns
@@ -253,7 +253,7 @@ def simulate_em_series(
     """EM-style pair (think USDMXN/USDTRY): asymmetric GJR + fat t tails + jumps.
 
     The asymmetry loads on *positive* pair returns in USD/EM quote direction
-    -- EM depreciation (pair up) raises vol -- implemented by simulating GJR
+   : EM depreciation (pair up) raises vol: implemented by simulating GJR
     on the *negated* innovation sign and flipping back, plus rare one-sided
     depreciation jumps of typical size ``jump_scale``.
     """
@@ -273,7 +273,7 @@ def simulate_pegged(
 ) -> np.ndarray:
     """Hard-pegged / tightly banded pair (HKD-style): near-zero, non-zero vol.
 
-    Mean-reverting micro-noise inside a band -- daily vol of order 1-3 bp.
+    Mean-reverting micro-noise inside a band: daily vol of order 1-3 bp.
     Models must fit without blowing up (internal rescaling handles the tiny
     scale); persistence often pins near the IGARCH boundary, which is a
     documented behaviour, not a bug (docs/VALIDATION.md).
@@ -297,7 +297,7 @@ def simulate_depeg(
     the return on ``jump_index`` is overwritten with ``jump_return`` (default
     -15%, the EURCHF move of 15 Jan 2015 when the SNB floor was removed).
     Crucially, the injected jump feeds through the GARCH recursion, so
-    post-jump volatility genuinely spikes and then decays -- the structure
+    post-jump volatility spikes and then decays: the structure
     the depeg tests verify fitted models can capture.
     """
     if not 0 < abs(jump_return) < 1:
@@ -330,12 +330,12 @@ def simulate_seasonal_returns(
 
     ``weekday_factors`` maps weekday number (0=Monday .. 4=Friday) to a
     multiplicative vol factor; defaults to a stylized FX week (quiet Monday,
-    busy Wednesday/Friday -- FOMC and NFP days).
+    busy Wednesday/Friday: FOMC and NFP days).
     """
     if weekday_factors is None:
         weekday_factors = {0: 0.85, 1: 0.95, 2: 1.15, 3: 1.0, 4: 1.10}
     rng = as_generator(seed)
     idx = pd.bdate_range(start=start, periods=n)
-    factors = np.array([weekday_factors.get(d, 1.0) for d in idx.dayofweek])
+    factors = np.array([weekday_factors.get(d, 1.0) for d in idx.day_of_week])
     r = base_vol * factors * rng.standard_normal(n)
     return pd.Series(r, index=idx, name="returns")

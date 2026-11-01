@@ -40,6 +40,9 @@ from eq_credit.portfolio_risk import (
     economic_capital,
     el_by_bucket,
     expected_loss,
+    finite_portfolio_quantile,
+    granularity_adjustment,
+    mc_quantile_ci,
     simulate_portfolio_losses,
     vasicek_quantile,
 )
@@ -48,6 +51,7 @@ from eq_credit.validation import (
     brier_score,
     gini,
     hosmer_lemeshow,
+    pd_backtest_by_grade,
     ks_statistic,
     psi,
     psi_report,
@@ -108,7 +112,7 @@ def main() -> None:
 
     print("\n-- Binning table: leverage (monotone, capped true effect) --")
     print(wt.binnings_["leverage"].table.to_string(index=False))
-    print("\n-- Binning table: current_ratio (U-shaped — WOE captures the")
+    print("\n-- Binning table: current_ratio (U-shaped: WOE captures the")
     print("   nonlinearity; a linear logit on the raw ratio misses it) --")
     print(wt.binnings_["current_ratio"].table.to_string(index=False))
 
@@ -122,7 +126,7 @@ def main() -> None:
     fit_woe_cr = fit_logistic(x_woe, train_w[TARGET], feature_names=["woe_cr"])
     auc_raw = roc_auc(train_w[TARGET].to_numpy(), fit_raw.predict_proba(x_raw))
     auc_woe = roc_auc(train_w[TARGET].to_numpy(), fit_woe_cr.predict_proba(x_woe))
-    print(f"\ncurrent_ratio alone — AUC raw linear logit: {auc_raw:.4f}  "
+    print(f"\ncurrent_ratio alone, AUC raw linear logit: {auc_raw:.4f}  "
           f"vs WOE logit: {auc_woe:.4f}")
 
     woe_train = wt.transform(train_w)
@@ -172,8 +176,8 @@ def main() -> None:
     auc_true = roc_auc(y_train, train_w["true_pd"].to_numpy())
     print(f"(theoretical max AUC on train, using true PDs: {auc_true:.4f})")
 
-    chi2_tr, p_tr, _ = hosmer_lemeshow(y_train, pd_train)
-    chi2_oo, p_oo, _ = hosmer_lemeshow(y_oot, pd_oot)
+    chi2_tr, p_tr, _ = hosmer_lemeshow(y_train, pd_train, out_of_sample=False)
+    chi2_oo, p_oo, _ = hosmer_lemeshow(y_oot, pd_oot, out_of_sample=True)
     print(f"\nHosmer-Lemeshow train: chi2={chi2_tr:.2f} (p={p_tr:.3f})   "
           f"OOT: chi2={chi2_oo:.2f} (p={p_oo:.2e})")
     if p_oo < 0.01:
@@ -181,6 +185,13 @@ def main() -> None:
     print(f"Brier train: {brier_score(y_train, pd_train):.5f}   "
           f"OOT: {brier_score(y_oot, pd_oot):.5f}")
     print(f"realised OOT default rate {y_oot.mean():.3%} vs mean predicted {pd_oot.mean():.3%}")
+
+    print("\n-- OOT back-test by PD grade (binomial / Jeffreys, traffic light) --")
+    grade_edges = [-np.inf, 0.005, 0.01, 0.02, 0.05, 0.10, np.inf]
+    grade_names = ["1 (<0.5%)", "2 (0.5-1%)", "3 (1-2%)", "4 (2-5%)", "5 (5-10%)", "6 (>10%)"]
+    oot_grades = pd.cut(pd_oot, grade_edges, labels=grade_names).astype(str)
+    print(pd_backtest_by_grade(y_oot, pd_oot, oot_grades).to_string(
+        index=False, float_format=lambda v: f"{v:.4g}"))
 
     print("\n-- Rank ordering: observed default rate by predicted-PD decile (train) --")
     print(decile_table(y_train, pd_train).to_string(index=False))
@@ -233,26 +244,35 @@ def main() -> None:
                     / port["ead"].sum())
 
     q999_inf = float(vasicek_quantile(0.999, pd_avg, rho)) * lgd_avg
-    print(f"homogeneous reference: PD={pd_avg:.3%}, LGD={lgd_avg:.1%}, rho={rho}")
-    print(f"99.9% loss rate — analytic, infinitely granular:      {q999_inf:.3%}")
-    # Granularity adjustment: same homogeneous portfolio, finite loan counts.
+    print(f"homogeneous reference: PD={pd_avg:.3%}, LGD={lgd_avg:.1%}, rho={rho} "
+          "(rho assumed, not estimated: the synthetic defaults have no systematic factor)")
+    print(f"99.9% loss rate, analytic, infinitely granular: {q999_inf:.3%}")
+    print(f"{'N loans':>8} {'exact (quadrature)':>19} {'Vasicek + GA':>13} "
+          f"{'MC (30k sims) [95% CI]':>30}")
     for n_loans, seed in [(100, 12), (1_000, 13), (10_000, 14)]:
+        exact = finite_portfolio_quantile(0.999, pd_avg, rho, n_loans, lgd=lgd_avg)
+        ga = granularity_adjustment(pd_avg, lgd_avg, 1.0, rho, q=0.999, n_loans=n_loans)
         ls = simulate_portfolio_losses(
             pd_avg, lgd_avg, 1.0, rho, n_sims=30_000, seed=seed, n_loans=n_loans
         )
-        print(f"99.9% loss rate — MC, {n_loans:>6,} equal loans:           "
-              f"{float(np.quantile(ls, 0.999)):.3%}")
-    print("=> finite-portfolio tail >= infinitely granular tail, converging "
-          "from above as N grows (granularity adjustment)")
+        est, lo, hi = mc_quantile_ci(ls, 0.999)
+        print(f"{n_loans:>8,} {exact:>19.3%} {q999_inf + ga:>13.3%} "
+              f"{est:>12.3%} [{lo:.3%}, {hi:.3%}]")
+    print("the granularity adjustment is O(1/N); at 30,000 simulations only 30 "
+          "scenarios lie beyond the 99.9% point, so the MC interval is wider "
+          "than the adjustment for N >= 1,000")
 
     # The actual heterogeneous book (dispersed PDs and LGDs).
     losses_fin = simulate_portfolio_losses(
         port["pd_hat"].to_numpy(), port["lgd"].to_numpy(), port["ead"].to_numpy(),
         rho, n_sims=30_000, seed=11,
     )
-    q999_fin = float(np.quantile(losses_fin, 0.999))
-    print(f"\n99.9% loss rate — MC, actual book ({len(port):,} heterogeneous "
-          f"loans): {q999_fin:.3%}")
+    q999_fin, q_lo, q_hi = mc_quantile_ci(losses_fin, 0.999)
+    ga_book = granularity_adjustment(port["pd_hat"].to_numpy(), port["lgd"].to_numpy(),
+                                     port["ead"].to_numpy(), rho, q=0.999)
+    print(f"\n99.9% loss rate, MC, actual book ({len(port):,} heterogeneous "
+          f"loans): {q999_fin:.3%} [95% CI {q_lo:.3%}, {q_hi:.3%}]")
+    print(f"granularity adjustment for the actual book: {ga_book:.4%}")
     print("(below the homogeneous reference: PD dispersion around the mean "
           "thins the tail relative to a single-PD book at the mean PD)")
 
@@ -262,7 +282,7 @@ def main() -> None:
     print(f"economic capital (99.9% MC quantile - EL): {ec:.3%} of EAD")
     print(f"Basel K (EAD-weighted, actual PDs/LGDs):   {k_port_rate:.3%} of EAD")
     print("(Basel K uses PD-dependent R(PD) ~ 0.19-0.24 vs the flat rho=0.15 "
-          "here, and a maturity add-on — see docs/VALIDATION.md)")
+          "here, and a maturity add-on; see docs/VALIDATION.md)")
 
     print(f"\nTotal runtime: {time.time() - t0:.1f}s")
 

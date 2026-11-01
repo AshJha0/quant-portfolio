@@ -1,123 +1,118 @@
 # Validation
 
-Everything below is enforced by the committed GoogleTest suite
-(`ctest --test-dir build --output-on-failure`, 55 tests, ~150 assertion
-sites, thousands of executed assertions across parameter grids). The build
-is warnings-as-errors (`-Wall -Wextra -Werror`).
+Everything below is enforced by the GoogleTest suite
+(`ctest --test-dir build --output-on-failure`, 66 tests). It passes with
+GCC 15.2, Clang 21.1 and a GCC AddressSanitizer + UndefinedBehaviorSanitizer
+build, all with `-DEQOPT_WERROR=ON`.
 
-## 1. Headline: cross-language golden validation
+## 1. Golden vectors from an independent oracle
 
-The strongest check a twin engine can offer is *identical numbers* against
-its reference implementation.
+- `python/equity/01-options-pricing/tests/golden/generate_golden.py`
+  computes **456 records** in mpmath at 50 significant digits: BSM price,
+  delta, gamma, vega, theta, rho, vanna, volga (51 records, incl. T=1e-6,
+  T=30, sigma=0.001, sigma=3, |d1| > 8); Black-76 (10); implied-vol round
+  trips over ln(K/S) in [-3, 3], T in [1e-5, 50], sigma in [1e-3, 2] (353,
+  incl. the K=90, T=0.02 OTM put at 1e-12); CRR European and American
+  trees run in mpmath with the same recursion (40); and exact limits
+  (sigma=0 with an overflowing forward; American put at S=0 with r<0).
+- Each output carries an absolute tolerance from a stated rule:
+  `64 eps (1 + d1^2)(|v| + max(S, K))` for closed forms,
+  `4 max(eps max(S,K)/vega, 1e-12 sigma)` for implied vol,
+  `4 n eps max(S, K)` for an n-step tree.
+- `tools/gen_golden_header.py` emits `tests/golden_vectors.hpp`
+  (shortest round-trip doubles); `--check` fails if the header and JSON
+  differ. `test_golden.cpp` checks every record and records the worst
+  deviation over tolerance: **0.18**.
 
-- The Python project (`eq_options`) generates and commits
-  `tests/golden/golden_vectors.json`: **32 cases** spanning ATM/ITM/OTM
-  (moneyness 0.5x–2.0x), expiries from ~1 week to 5 years, positive and
-  negative rates, zero and non-zero dividend yields, calls and puts — each
-  with price, delta, gamma, vega, theta, rho computed by the SciPy-backed
-  reference.
-- `tools/gen_golden_header.py` converts the JSON to
-  `tests/golden_vectors.hpp` (a `constexpr` array; doubles emitted via
-  shortest-roundtrip repr, so the header carries the Python values
-  bit-exactly). Both files are committed; the header carries a "do not
-  edit" banner.
-- `test_golden.cpp` asserts every one of the 32 x 6 = 192 numbers to
-  **1e-9 abs/rel**.
+## 2. Cross-language differential test
 
-**Result: the measured worst-case deviation across all 192 numbers is
-5.3e-15** — Python (SciPy `norm.cdf`) and C++ (`erfc`-based CDF) agree to
-within a few ulps of double precision. Unit conventions were verified
-against the Python `greeks` module before comparison: theta per *year*,
-vega per *unit* of vol, rho per *unit* of rate.
+`eqopt_jsonl` (from `tools/jsonl_main.cpp`) answers JSON-lines requests.
+`python/equity/01-options-pricing/tests/test_differential.py` sends 640
+seeded random requests (closed form and Greeks, implied vol, CRR,
+Black-76) to the Python, Rust and C++ engines and compares each answer
+with Python. Largest deviations from Python (GCC 15 build):
 
-This doubles as the release gate: any change to either codebase that moves
-a price or Greek by more than 1e-9 fails CI on the other side.
+| function | output | max abs | max rel |
+|---|---|---:|---:|
+| bs | price | 1.1e-13 | 4.3e-10 (tiny prices) |
+| bs | theta | 3.4e-13 | 2.2e-13 |
+| bs | volga | 4.5e-13 | 6.2e-16 |
+| iv | sigma | 2.1e-13 | 2.2e-13 |
+| crr | price | 0 | 0 |
+| b76 | price | 8.5e-14 | 2.6e-10 (tiny prices) |
 
-## 2. Analytic identities
+Equality is not expected: libm `erfc` and `exp` differ by ulps between
+platforms, and the compilers may contract to FMA. The engines agree per
+target and toolchain, not bit for bit across platforms.
+
+## 3. Analytic identities
 
 | Identity | Grid | Tolerance |
 |---|---|---|
-| Put-call parity `C - P = S e^{-qT} - K e^{-rT}` | 486 combinations (S, K, T, sigma, r, q) | 1e-12 (rel to S) |
+| Put-call parity `C - P = S e^{-qT} - K e^{-rT}` | 486 combinations | 1e-12 (rel to S) |
 | Black-76 == BSM at `F = S e^{(r-q)T}` | 864 combinations x call/put | 1e-12 |
-| Black-76 forward parity `C - P = e^{-rT}(F - K)` | spot check | 1e-12 |
-| `rho_B76 = -T * V` (pure discounting) | both types | 1e-12 |
-| Call/put gamma, vega, vanna, volga identical | spot check | exact (`EXPECT_DOUBLE_EQ`) |
-| `delta_C - delta_P = e^{-qT}`, `rho_C - rho_P = K T e^{-rT}` | spot check | 1e-14 / 1e-10 |
-| Analytic vs central-FD Greeks (all seven) | 5 cases incl. negative rates | 1e-6 rel |
+| `rho_B76 = -T * V` | both types | 1e-12 |
+| Call/put gamma, vega, vanna, volga identical | spot check | exact |
+| Analytic vs central-FD Greeks | 5 cases incl. negative rates | 1e-6 rel |
 
-## 3. Convergence and statistical checks
+## 4. Convergence and statistical checks
 
-- **CRR -> BSM (European):** n=2000 within 2e-3 of the closed form;
-  odd/even-averaged error decreases monotonically across n = 50, 200, 800,
-  2000 (the raw CRR error oscillates; averaging consecutive n kills the
-  oscillating term and exposes the O(1/n) decay).
-- **American ordering:** American >= European across a strike/vol/dividend
-  grid; with `q = 0` the American call equals the European call on the same
-  tree to 1e-12 (early exercise never optimal), and the early-exercise
-  premium is exactly 0; the deep-ITM American put dominates intrinsic and
-  carries a strictly positive premium when `r > q`.
-- **Monte Carlo vs BSM:** 200k paths with antithetic + control variate lands
-  within 3 standard errors of the closed form (call and put); the plain
-  estimator is also unbiased. Variance reduction is *quantified*: the
-  control variate alone must cut the standard error by more than half.
-- **Reproducibility:** same (seed, threads) => bit-identical `MCResult`
-  (field-by-field exact equality); different seeds differ but both stay
-  consistent with BSM; the 4-thread run is deterministic and statistically
-  consistent with the single-thread run.
-- **Implied vol round trip:** sigma -> price -> sigma to **1e-8** across
-  moneyness 0.5x–2.0x, T in {0.05, 0.5, 2.0}, vols {0.1, 0.3, 0.8} (vol
-  floored so the strike stays within ~3 standard deviations of the forward
-  — beyond that the time value underflows double precision and *no* solver
-  can invert the price; that regime is covered by the rejection tests
-  instead). Extreme vol (sigma = 4) recovered to 1e-7; sigma = 15 — above
-  the default bracket top of 10 — recovered via the automatic bracket
-  expansion; short-dated wings (tiny vega) recovered via the bisection
-  fallback.
+- **CRR to BSM:** n=2000 within 2e-3; odd/even-averaged error decreases
+  across n = 50, 200, 800, 2000.
+- **American ordering:** American >= European; with `q = 0` the American
+  call equals the European call to 1e-12.
+- **Monte Carlo:** 200k paths with antithetic + control variate lands
+  within 3 SE of the closed form. The control-variate coefficient is
+  fitted on antithetic pair averages; over seven seeds the combined SE is
+  no larger than the control variate alone and below 0.015 (the raw-draw
+  fit gave 0.0247). Fewer than two independent samples (three with the
+  control variate) throws.
+- **Reproducibility:** same (seed, threads) gives an identical `MCResult`
+  on a given toolchain.
+- **Implied vol:** at most 10 evaluations over a grid of up to 180 points, and
+  within `4 max(eps price / vega, 1e-12 sigma)` of the input vol on that
+  grid. The K=90, T=0.02, sigma=10% OTM put recovers to 1e-12. The ITM
+  call at the same strike carries less information (one ulp of the price
+  moves the vol by about 5e-4), so the test checks that the returned vol
+  reprices the quote to a few ulps.
 
-## 4. Edge cases and failure behaviour
+## 5. Edge cases and failure behaviour
 
-- `T = 0` -> intrinsic; `sigma = 0` -> discounted forward intrinsic;
-  `K = 0` / `S = 0` limits — all byte-matching the Python policy, all
-  `EXPECT_DOUBLE_EQ`-exact.
-- Huge vol (sigma = 50): price finite and pinned just below the
-  no-arbitrage upper bound.
-- Deep wings: erfc-based CDF keeps a K = 100x OTM call finite and
-  >= 0 (< 1e-100), never NaN; 100x moneyness in both directions is pinned
-  to the parity/arbitrage limits to 1e-10, and 30y/100y expiries stay
-  finite and inside their bounds.
-- Negative `S`, `K`, `T`, `sigma` and **NaN or +/-Inf in any input —
-  including `r` and `q`** — throw `std::invalid_argument` (negative
-  *finite* `r`, `q` are supported and tested).
-- Implied vol rejects sub-intrinsic prices (at/below the sigma -> 0 bound),
-  prices at/above the sigma -> infinity bound (including +Inf), non-finite
-  rates, and refuses `T = 0`.
-- Finite-difference Greeks refuse `T` or `sigma` too small for their
-  central down-bump instead of silently pricing at a negative input.
-- Tree rejects `n_steps < 1` and a risk-neutral probability outside (0, 1).
-- **NaN-free domain scan:** 864-point sweep over S, K in [1e-6, 1e6],
-  T in [1e-6, 10], sigma in [1e-8, 3], r in [-0.05, 0.1]: every price
-  finite, non-negative, and inside its no-arbitrage bounds.
+- `T = 0` gives intrinsic; `sigma = 0` gives `max(+-(S e^{-qT} - K e^{-rT}), 0)`,
+  finite even when the forward overflows.
+- Results that overflow (a discount factor `e^{-rT}` beyond double range)
+  throw rather than return `inf` or NaN.
+- American put at `S = 0`: `K` when `r >= 0`, `K e^{-rT}` when `r < 0`.
+- NaN or +/-Inf in any input throws `std::invalid_argument`.
+- Implied vol rejects prices at or outside the no-arbitrage bounds and
+  `T = 0`; non-convergence (not observed) throws `std::runtime_error`.
+- **NaN-free domain scan:** 864-point sweep; every price finite and inside
+  its bounds.
 
-Known failure modes are those of the models themselves (fat tails, discrete
-dividends, non-flat term structure, discretisation at coarse n): they are
-documented with reproducible magnitudes in the Python reference
-[VALIDATION.md](../../../python/equity/01-options-pricing/docs/VALIDATION.md)
-and apply verbatim to this engine since the two produce identical numbers.
+Model failure modes (smile, discrete dividends, term structure, coarse
+trees) are documented in the Python reference
+[VALIDATION.md](../../../python/equity/01-options-pricing/docs/VALIDATION.md).
 
-## 5. Performance (micro-benchmark)
+## 6. Kernel API, allocation and threading tests
 
-`./build/eqopt_bench`, g++ 13 `-O2`, 2-vCPU Linux container, single run:
+| Test | What it pins |
+|---|---|
+| `NoexceptApi.*` (5) | `try_*` equals the throwing API bit for bit over a 1,280-point grid that includes every edge limit; errors carry the same message as the exception |
+| `BatchApi.*` (3) | `bs_price_batch` and `bs_greeks_batch` equal the scalar API bit for bit; a bad element is reported by index and nothing is written |
+| `ThreadPoolMc.*` (2) | `try_mc_price` equals `mc_price` for threads 1, 2, 4, 9 on no pool and on pools of 0, 1, 3, 7 workers, three runs each; workspace size is checked |
+| `ThreadPool.RunsEveryTaskOnceUnderRepeatedUse` | 500 jobs of 64 tasks on 5 workers, every task runs once per job |
+| `eqopt_alloc_tests` (5) | counting `operator new`: zero heap allocations on every kernel success path (analytic, implied vol, CRR with workspace, batch, MC with pool and workspace) and on the kernel error path |
+| `static_assert`s | every kernel entry point is `noexcept`; `Error` is trivially copyable |
 
-| Kernel | Work | Time | Throughput |
-|---|---|---|---|
-| BSM analytic price | 1,000,000 varied contracts | 62.4 ms | 16.0M prices/sec (~62 ns each) |
-| Full analytic Greek set | 100,000 evals | 8.1 ms | 12.3M evals/sec |
-| CRR tree n=1000, European | 1 tree | 0.41 ms | 2,434 trees/sec |
-| CRR tree n=1000, American | 1 tree | 5.25 ms | 191 trees/sec |
-| MC 1M paths, antithetic+CV, 1 thread | price + SE + CI | 65.4 ms | 15.3M paths/sec |
-| MC 1M paths, 4 threads | price + SE + CI | 46.7 ms | 21.4M paths/sec |
+The allocation test is a separate binary because it replaces the global
+`operator new`. Sanitizer runtimes define `operator new` themselves, so the
+sanitizer builds skip it.
 
-The American tree is ~13x the European cost at equal n because every node
-recomputes its spot in log space for the exercise comparison (a deliberate
-choice for large-n stability — see METHODOLOGY.md). The 4-thread MC gain is
-capped by the 2-vCPU host; the path loop itself scales linearly.
+The latency work changed no result. Evidence: a program that calls only
+the legacy API prints 64,203 results and exception texts in hex-float; the
+output against the library before and after the change is identical with
+GCC 15.2 and with Clang 21.1. The 66 pre-existing tests pass unchanged.
+
+## 7. Performance
+
+See the README latency table (`./build/eqopt_bench`).

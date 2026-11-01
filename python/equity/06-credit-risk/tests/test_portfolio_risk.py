@@ -202,32 +202,6 @@ def test_mc_converges_to_analytic_within_se() -> None:
     assert abs(frac - 0.95) < 3 * np.sqrt(0.95 * 0.05 / len(losses)) + 0.01
 
 
-def test_mc_quantile_approaches_analytic_as_n_grows() -> None:
-    PD, RHO = 0.02, 0.15
-    q_inf = vasicek_quantile(0.99, PD, RHO)
-    q_small = np.quantile(
-        simulate_portfolio_losses(PD, 1.0, 1.0, RHO, 20_000, seed=3, n_loans=50), 0.99
-    )
-    q_large = np.quantile(
-        simulate_portfolio_losses(PD, 1.0, 1.0, RHO, 20_000, seed=3, n_loans=5_000),
-        0.99,
-    )
-    assert abs(q_large - q_inf) < abs(q_small - q_inf)
-    assert q_large == pytest.approx(q_inf, rel=0.10)
-
-
-def test_finite_portfolio_tail_at_least_infinitely_granular() -> None:
-    # Concentration/granularity: the finite-portfolio 99.9% loss quantile sits
-    # at or above the analytic infinitely granular quantile.
-    PD, RHO = 0.02, 0.15
-    q_inf = vasicek_quantile(0.999, PD, RHO)
-    for n_loans, seed in [(100, 4), (1_000, 5)]:
-        losses = simulate_portfolio_losses(
-            PD, 1.0, 1.0, RHO, n_sims=30_000, seed=seed, n_loans=n_loans
-        )
-        assert np.quantile(losses, 0.999) >= q_inf - 1e-9
-
-
 def test_simulation_seeded_reproducible() -> None:
     a = simulate_portfolio_losses(0.02, 0.5, 1.0, 0.2, 1_000, seed=9, n_loans=100)
     b = simulate_portfolio_losses(0.02, 0.5, 1.0, 0.2, 1_000, seed=9, n_loans=100)

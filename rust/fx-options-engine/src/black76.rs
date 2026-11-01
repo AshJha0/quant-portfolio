@@ -9,7 +9,7 @@
 //! ```
 //!
 //! With the covered-interest-parity forward `F = S e^{(r_d - r_f) T}`,
-//! Black-76 is *algebraically identical* to Garman–Kohlhagen —
+//! Black-76 is *algebraically identical* to Garman–Kohlhagen:
 //! substituting `F` recovers the GK d1/d2 and price exactly.  The
 //! practical difference is the input: quoting off `F` removes the need to
 //! know the rate *pair*, only the domestic discount factor, which is how
@@ -22,12 +22,12 @@ use crate::{invalid, norm_cdf, require_finite, FxResult, OptionType};
 ///
 /// # Arguments
 ///
-/// * `f` — outright forward rate (domestic per unit foreign), `> 0`.
-/// * `k` — strike, `> 0`.
-/// * `t` — time to expiry in years, `>= 0`.
-/// * `r_d` — domestic continuously compounded rate (discounting only).
-/// * `sigma` — annualised volatility, `>= 0`.
-/// * `option_type` — call or put on the base currency.
+/// * `f`: outright forward rate (domestic per unit foreign), `> 0`.
+/// * `k`: strike, `> 0`.
+/// * `t`: time to expiry in years, `>= 0`.
+/// * `r_d`: domestic continuously compounded rate (discounting only).
+/// * `sigma`: annualised volatility, `>= 0`.
+/// * `option_type`: call or put on the base currency.
 ///
 /// Returns the premium in domestic currency per unit foreign notional.
 ///
@@ -66,7 +66,9 @@ pub fn black76_price(
         return invalid(format!("Time to expiry T must be non-negative, got {t}"));
     }
     if sigma < 0.0 {
-        return invalid(format!("Volatility sigma must be non-negative, got {sigma}"));
+        return invalid(format!(
+            "Volatility sigma must be non-negative, got {sigma}"
+        ));
     }
 
     let df = (-r_d * t).exp();
@@ -81,7 +83,7 @@ pub fn black76_price(
 
 /// Black-76 with the forward built from spot via CIP.
 ///
-/// Equals [`crate::gk_price`] to machine precision — tested to 1e-12 in
+/// Equals [`crate::gk_price`] to machine precision: tested to 1e-12 in
 /// the suite.
 ///
 /// # Errors

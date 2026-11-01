@@ -20,20 +20,15 @@ from eq_var import (
 
 
 class TestEmptyPortfolio:
-    def test_pnl_is_zero(self):
-        pf = Portfolio(positions=[], factors={})
-        pnl = pf.pnl(np.empty((5, 0)))
-        np.testing.assert_array_equal(pnl, np.zeros(5))
+    """Spec S11: an empty book is an error, not a zero VaR."""
 
-    def test_exposures_empty(self):
-        pf = Portfolio(positions=[], factors={})
-        assert pf.delta_exposures().size == 0
-        assert pf.value() == 0.0
+    def test_no_positions_no_factors_raises(self):
+        with pytest.raises(ValueError, match="book has no positions"):
+            Portfolio(positions=[], factors={})
 
-    def test_factors_without_positions(self):
-        pf = Portfolio(positions=[], factors={"A": RiskFactor("A", "equity", 10.0)})
-        np.testing.assert_array_equal(pf.pnl(np.array([[0.5]])), [0.0])
-        np.testing.assert_array_equal(pf.delta_exposures(), [0.0])
+    def test_factors_without_positions_raises(self):
+        with pytest.raises(ValueError, match="book has no positions"):
+            Portfolio(positions=[], factors={"A": RiskFactor("A", "equity", 10.0)})
 
 
 class TestSingleAsset:
@@ -73,7 +68,8 @@ class TestSingularCovariance:
     def test_perfectly_correlated_assets_mc_via_jitter(self):
         s1, s2 = 0.02, 0.03
         cov = np.array([[s1**2, s1 * s2], [s1 * s2, s2**2]])
-        rets = simulate_factor_returns(cov, 200_000, seed=14)
+        with pytest.warns(RuntimeWarning, match="jitter"):
+            rets = simulate_factor_returns(cov, 200_000, seed=14)
         w = np.array([100.0, -50.0])
         pnl = rets @ w
         mc = float(-np.quantile(pnl, 0.01))

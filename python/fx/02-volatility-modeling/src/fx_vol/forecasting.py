@@ -7,11 +7,11 @@
       E[sigma2_{T+h}] = sigma2_bar + p^{h-1} * (sigma2_{T+1} - sigma2_bar)
 
   (GJR uses ``p = alpha + gamma/2 + beta``, valid for symmetric innovations
-  -- both Gaussian and standardized-t are symmetric, so ``P(z<0) = 1/2``.)
+ : both Gaussian and standardized-t are symmetric, so ``P(z<0) = 1/2``.)
 * EGARCH: no closed form for ``E[sigma2_{T+h}]`` (the expectation of the
   exponential of the recursion involves moment-generating functions of |z|),
   so the forecaster is simulation-based with an explicit seeded Generator.
-* EWMA: flat forecast (persistence exactly 1) -- :func:`fx_vol.ewma.ewma_forecast`.
+* EWMA: flat forecast (persistence exactly 1): :func:`fx_vol.ewma.ewma_forecast`.
 
 The rolling harness produces genuine one-step-ahead out-of-sample variance
 forecasts with periodic re-fitting, for the model races in
@@ -25,7 +25,7 @@ from typing import Sequence
 
 import numpy as np
 
-from ._mle import FitResult, student_t_abs_moment
+from ._mle import ConvergenceError, FitResult, student_t_abs_moment
 from .egarch import GAUSSIAN_ABS_MOMENT, egarch_filter
 from .ewma import ewma_variance
 from .garch import fit_garch, garch_filter
@@ -150,7 +150,7 @@ def forecast_variance(
     horizon : int
         Steps ahead (>= 1).
     x_future : array-like, optional
-        Future exogenous regressors, shape (horizon, k) -- e.g. the known
+        Future exogenous regressors, shape (horizon, k): e.g. the known
         FOMC/ECB calendar over the forecast window (GARCH-X only). Defaults
         to zeros (no scheduled events).
     n_paths, rng
@@ -193,7 +193,7 @@ def rolling_one_step(
     ``n_oos`` days), the forecast of Var(r_t | F_{t-1}) uses parameters
     fitted on the rolling window of ``window`` returns ending at the most
     recent refit date (refit every ``refit_every`` days), with the variance
-    state filtered forward daily under those fixed parameters -- the standard
+    state filtered forward daily under those fixed parameters: the standard
     desk setup (daily state update, periodic re-estimation).
 
     Parameters
@@ -216,7 +216,16 @@ def rolling_one_step(
     dict
         ``forecast`` (variance forecasts), ``realized`` (r_t^2 proxy),
         ``returns_oos``, ``start_index``, ``model``, ``refits`` (number of
-        re-estimations performed).
+        re-estimations performed), ``failed_refits`` (refits whose optimiser
+        did not converge; the previous parameters are kept for that block)
+        and ``boundary_refits`` (converged refits with a parameter at its
+        constraint boundary, e.g. persistence above 0.999).
+
+    Raises
+    ------
+    ConvergenceError
+        If the first fit does not converge (there are no previous
+        parameters to fall back on).
     """
     r = np.asarray(returns, dtype=float)
     if not np.isfinite(r).all():
@@ -229,7 +238,8 @@ def rolling_one_step(
     oos_start = window if n_oos is None else max(window, n - n_oos)
 
     forecasts = np.empty(n - oos_start)
-    refits = 0
+    refits = failed = boundary = 0
+    params: dict | None = None
 
     if model == "ewma":
         init = float(np.mean(r[:window] ** 2))
@@ -237,12 +247,12 @@ def rolling_one_step(
         forecasts[:] = sigma2[oos_start:]
     else:
         fitters = {
-            "garch": lambda seg: fit_garch(seg, dist="gaussian"),
-            "garch_t": lambda seg: fit_garch(seg, dist="t"),
-            "gjr": lambda seg: fit_gjr(seg, dist="gaussian"),
-            "gjr_t": lambda seg: fit_gjr(seg, dist="t"),
-            "egarch": lambda seg: fit_egarch(seg, dist="gaussian"),
-            "egarch_t": lambda seg: fit_egarch(seg, dist="t"),
+            "garch": lambda seg: fit_garch(seg, dist="gaussian", raise_on_failure=False),
+            "garch_t": lambda seg: fit_garch(seg, dist="t", raise_on_failure=False),
+            "gjr": lambda seg: fit_gjr(seg, dist="gaussian", raise_on_failure=False),
+            "gjr_t": lambda seg: fit_gjr(seg, dist="t", raise_on_failure=False),
+            "egarch": lambda seg: fit_egarch(seg, dist="gaussian", raise_on_failure=False),
+            "egarch_t": lambda seg: fit_egarch(seg, dist="t", raise_on_failure=False),
         }
         if model not in fitters:
             raise ValueError(f"unknown model {model!r}; choose from {sorted(fitters) + ['ewma']}")
@@ -250,9 +260,17 @@ def rolling_one_step(
             t1 = min(t0 + refit_every, n)
             fit = fitters[model](r[t0 - window : t0])
             refits += 1
-            params = dict(fit.params)
-            if model.startswith("egarch"):
-                params["_abs_moment"] = fit.extra["abs_moment"]
+            if not fit.converged:
+                if params is None:
+                    raise ConvergenceError(
+                        f"first {model} fit (days {t0 - window}..{t0 - 1}) did not converge"
+                    )
+                failed += 1  # keep the previous block's parameters
+            else:
+                boundary += int(bool(fit.extra.get("at_boundary", False)))
+                params = dict(fit.params)
+                if model.startswith("egarch"):
+                    params["_abs_moment"] = fit.extra["abs_moment"]
             # filter over [t0 - window, t1): position window + j is the
             # one-step-ahead variance of day t0 + j given data through t0+j-1
             seg = r[t0 - window : t1]
@@ -266,4 +284,6 @@ def rolling_one_step(
         "start_index": oos_start,
         "model": model,
         "refits": refits,
+        "failed_refits": failed,
+        "boundary_refits": boundary,
     }

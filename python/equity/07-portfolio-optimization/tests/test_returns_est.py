@@ -234,7 +234,7 @@ def test_bl_posterior_converges_to_prior_as_tau_to_zero(spd_cov, tau):
              * np.linalg.norm(q - p @ pi) / np.linalg.eigvalsh(omega).min())
     assert gap <= bound * (1 + 1e-12)
     # Once the prior term is negligible next to Omega the convergence is
-    # genuinely first order: halving tau halves the gap.
+    # first order: halving tau halves the gap.
     prior_term = tau * np.linalg.norm(spd_cov, 2) * np.linalg.norm(p, 2) ** 2
     if prior_term < 1e-2 * np.linalg.eigvalsh(omega).min():
         res_half = black_litterman(pi, spd_cov, p, q, tau=tau / 2, omega=omega)

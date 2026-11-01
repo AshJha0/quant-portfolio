@@ -2,12 +2,12 @@
 
 Allocation rule
 ---------------
-* **bull**       — fully long the equity factor (equal-weight index).
-* **bear**       — de-risked to the defensive sleeve (cash; optionally a
+* **bull**      : fully long the equity factor (equal-weight index).
+* **bear**      : de-risked to the defensive sleeve (cash; optionally a
   low-vol proxy via ``defensive_weight``).
-* **transition** — scaled exposure between the two.
+* **transition**: scaled exposure between the two.
 
-Hysteresis band — why it prevents whipsaw
+Hysteresis band: why it prevents whipsaw
 -----------------------------------------
 A naive rule ("bear if ``p_bear > 0.5``") flips every time the filtered
 probability crosses one line.  Near a regime boundary the filtered
@@ -29,7 +29,7 @@ does NOT enter (strict ``>``), at exactly ``p == exit`` it does NOT exit
 Vol targeting
 -------------
 Position size is scaled by ``target_vol / realized_vol`` (clipped to
-``max_leverage``), using trailing realized vol only — the ex-ante forecast
+``max_leverage``), using trailing realized vol only: the ex-ante forecast
 at ``t`` never sees returns after ``t``.
 """
 
@@ -71,7 +71,7 @@ def hysteresis_regime(
 
     Returns
     -------
-    (T,) boolean array — True where the hysteresis state is bear.
+    (T,) boolean array: True where the hysteresis state is bear.
     """
     if not 0.0 <= exit_ < enter <= 1.0:
         raise ValueError(f"need 0 <= exit < enter <= 1, got exit={exit_}, enter={enter}")
@@ -108,8 +108,8 @@ def regime_target_weight(
     True the weight is ``bear_weight`` regardless of the argmax label, so
     de-risking obeys the banded rule rather than raw argmax flips.  When
     the flag is False, an unconfirmed ``bear`` label (probability still
-    inside the band) is treated as ``transition`` — the weight is floored
-    at ``transition_weight`` — so full de-risking happens only through the
+    inside the band) is treated as ``transition``: the weight is floored
+    at ``transition_weight``, so full de-risking happens only through the
     band.
 
     Parameters
@@ -146,7 +146,7 @@ def vol_target_scale(
     """Trailing-vol scaling factor ``target_vol / realized_vol`` (clipped).
 
     The scale at ``t`` uses returns up to and including ``t`` (trailing
-    window) — applied to the position held over ``t+1`` it is ex-ante.
+    window): applied to the position held over ``t+1`` it is ex-ante.
 
     Parameters
     ----------
@@ -182,6 +182,7 @@ def build_weights(
     target_vol: float | None = 0.10,
     vol_window: int = 21,
     max_leverage: float = 1.5,
+    min_duration: int = 1,
 ) -> pd.Series:
     """Full regime-conditional weight path from a detection table.
 
@@ -198,6 +199,11 @@ def build_weights(
     index_returns : pd.Series
         Daily log-returns of the traded factor, superset of the detection
         index.
+    min_duration : int
+        Causal confirmation: the effective regime (hysteresis bear flag, else
+        the argmax label with an unconfirmed bear read as transition) changes
+        only after the new value has held for ``min_duration`` consecutive
+        days. 1 disables it.
     Other parameters as in the component functions.
 
     Returns
@@ -216,6 +222,10 @@ def build_weights(
         transition_weight=transition_weight,
         bear_weight=bear_weight,
     )
+    if min_duration > 1:
+        eff = np.where(base == bear_weight, 2, np.where(base == bull_weight, 0, 1))
+        eff = causal_min_duration(eff, min_duration)
+        base = np.choose(eff, [bull_weight, transition_weight, bear_weight]).astype(float)
     weights = pd.Series(base, index=detection.index, name="weight")
     if target_vol is not None:
         scale = vol_target_scale(
@@ -231,3 +241,26 @@ def turnover(weights: pd.Series | np.ndarray) -> float:
     if len(w) == 0:
         return 0.0
     return float(np.abs(np.diff(w, prepend=0.0)).sum())
+
+
+def causal_min_duration(states, min_duration: int) -> np.ndarray:
+    """Hold the current state until a new one has persisted ``min_duration`` days.
+
+    Output at ``t`` uses ``states[: t + 1]`` only. A run shorter than
+    ``min_duration`` never appears in the output; a longer run appears
+    ``min_duration - 1`` days after it starts.
+    """
+    if int(min_duration) != min_duration or min_duration < 1:
+        raise ValueError(f"min_duration must be an integer >= 1, got {min_duration}")
+    s = np.asarray(states)
+    out = s.copy()
+    if len(s) == 0 or min_duration == 1:
+        return out
+    current = s[0]
+    run = 1
+    for t in range(1, len(s)):
+        run = run + 1 if s[t] == s[t - 1] else 1
+        if s[t] != current and run >= min_duration:
+            current = s[t]
+        out[t] = current
+    return out

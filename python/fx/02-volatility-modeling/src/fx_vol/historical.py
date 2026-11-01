@@ -5,14 +5,14 @@ Annualization convention
 FX spot trades ~24h a day, 5 days a week. Two daily-count conventions coexist
 on desks:
 
-* ``252`` -- equity-style trading days, the most common default and the one
+* ``252``: equity-style trading days, the most common default and the one
   used throughout this package unless stated otherwise;
-* ``260`` -- 52 weeks x 5 FX trading days, sometimes used for FX because the
+* ``260``: 52 weeks x 5 FX trading days, sometimes used for FX because the
   market takes almost no mid-week holidays (it is open somewhere in the world
   whenever it is a weekday anywhere).
 
 The difference is a constant factor ``sqrt(260/252) ~ 1.0157`` (~1.6% of vol),
-which matters when comparing realized vol to implied vol quotes -- be
+which matters when comparing realized vol to implied vol quotes: be
 consistent with the counterparty's convention. Every function here takes
 ``periods_per_year`` explicitly.
 
@@ -66,7 +66,7 @@ def close_to_close_vol(
     Parameters
     ----------
     returns : array-like
-        Per-period log returns (no NaNs -- ``ValueError`` otherwise).
+        Per-period log returns (no NaNs: ``ValueError`` otherwise).
     periods_per_year : int
         Annualization factor; 252 (default) or 260 for the FX 24h5d convention.
     ddof : int
@@ -121,7 +121,7 @@ def parkinson_vol(
     if (l <= 0).any():
         raise ValueError("low prices must be strictly positive")
     if (h < l).any():
-        raise ValueError("high < low encountered -- corrupt bar data")
+        raise ValueError("high < low encountered: corrupt bar data")
     ppy = _validate_ppy(periods_per_year)
     hl = np.log(h / l)
     var = np.mean(hl ** 2) / (4.0 * np.log(2.0)) * ppy
@@ -153,14 +153,14 @@ def garman_klass_vol(
     if (l <= 0).any() or (o <= 0).any():
         raise ValueError("prices must be strictly positive")
     if (h < l).any():
-        raise ValueError("high < low encountered -- corrupt bar data")
+        raise ValueError("high < low encountered: corrupt bar data")
     ppy = _validate_ppy(periods_per_year)
     hl = np.log(h / l)
     co = np.log(c / o)
     per_day = 0.5 * hl ** 2 - (2.0 * np.log(2.0) - 1.0) * co ** 2
     var = np.mean(per_day) * ppy
     if var < 0:
-        raise ValueError("Garman-Klass variance estimate is negative -- check bar data")
+        raise ValueError("Garman-Klass variance estimate is negative: check bar data")
     return float(np.sqrt(var))
 
 
@@ -194,9 +194,9 @@ def day_of_week_vol_factors(returns: pd.Series, min_obs_per_day: int = 5) -> pd.
     if not isinstance(returns, pd.Series) or not isinstance(returns.index, pd.DatetimeIndex):
         raise ValueError("returns must be a pandas Series with a DatetimeIndex")
     _as_1d_array(returns.to_numpy(), "returns")
-    dow = returns.index.dayofweek
+    dow = returns.index.day_of_week
     if (dow >= 5).any():
-        raise ValueError("weekend timestamps found -- FX daily series should be Mon-Fri only")
+        raise ValueError("weekend timestamps found: FX daily series should be Mon-Fri only")
     names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     stds: dict[str, float] = {}
     for d in sorted(np.unique(dow)):
@@ -208,6 +208,6 @@ def day_of_week_vol_factors(returns: pd.Series, min_obs_per_day: int = 5) -> pd.
         stds[names[d]] = float(sub.std(ddof=1))
     vals = np.array(list(stds.values()))
     if (vals == 0).all():
-        raise ValueError("returns are constant -- day-of-week factors undefined")
+        raise ValueError("returns are constant: day-of-week factors undefined")
     rms = np.sqrt(np.mean(vals ** 2))
     return pd.Series({k: v / rms for k, v in stds.items()}, name="dow_vol_factor")

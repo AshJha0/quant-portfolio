@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from fx_regime import (
+    random_timing_regimes,
     DetectionConfig,
     StrategyConfig,
     build_features,
@@ -178,7 +179,7 @@ def test_comparison_table_alignment(backtests2):
 
 
 def test_oracle_beats_filtered_beats_static_statistically():
-    """The honesty ordering, averaged over seeds (loose tolerances)."""
+    """Oracle >= filtered >= static, averaged over seeds (loose tolerances)."""
     sharpes = {"oracle": [], "filtered": [], "static": []}
     cfg = StrategyConfig()
     for seed in (0, 1, 2, 3):
@@ -212,24 +213,96 @@ def test_oracle_beats_filtered_beats_static_statistically():
     assert mf >= ms - 0.10         # filtered >= static (loose)
 
 
-def test_null_gbm_no_spurious_outperformance():
-    """On a regime-free panel the filter must not fabricate alpha."""
-    panel = generate_null_gbm_panel(900, seed=1)
+def _timing_edge(panel, n_shifts=4):
+    """Sharpe of the filtered book minus the mean Sharpe of its
+    random-timing twins (same labels, same occupancy, shifted in time)."""
     feats = build_features(panel.returns, panel.deposit_rates)
     det = run_detection(
-        feats, DetectionConfig(n_states=2, min_train=252, refit_every=63),
+        feats, DetectionConfig(n_states=2, min_train=252, refit_every=63,
+                               n_init=1, max_iter=30),
         seed=0,
     )
     cfg = StrategyConfig()
     bt_f = run_backtest(panel.returns, panel.deposit_rates, det.regimes, cfg)
-    bt_s = run_backtest(
-        panel.returns, panel.deposit_rates,
-        static_carry_regimes(det.regimes.index), cfg,
-    )
-    tab = comparison_table({"filtered": bt_f.net, "static": bt_s.net})
-    assert (
-        tab.loc["filtered", "sharpe"] <= tab.loc["static", "sharpe"] + 0.75
-    )
+    sh_f = perf_stats(bt_f.net)["sharpe"]
+    sh_r = []
+    for k in range(n_shifts):
+        reg = random_timing_regimes(det.regimes, seed=k)
+        bt_r = run_backtest(panel.returns, panel.deposit_rates, reg, cfg)
+        sh_r.append(perf_stats(bt_r.net.reindex(bt_f.net.index))["sharpe"])
+    return sh_f - float(np.mean(sh_r))
+
+
+NULL_SEEDS = (101, 102, 103, 104, 105, 106)
+
+
+def test_vol_regime_null_no_timing_edge():
+    """Null with vol clustering but ZERO mean link (every state has zero
+    drift; vol and correlation regimes kept). The filter's Sharpe must not
+    beat random timing at equal exposure. Judged on the mean over 6 seeds
+    against its standard error: the guard fails if the mean edge exceeds
+    3 SE (one-sided, about 0.1% false-failure rate under a true null)."""
+    edges = np.array([
+        _timing_edge(generate_roro_panel(900, n_states=2, seed=s, equal_drift=True))
+        for s in NULL_SEEDS
+    ])
+    se = edges.std(ddof=1) / np.sqrt(len(edges))
+    assert edges.mean() < 3 * se, (edges.mean(), se)
+
+
+def _oracle_timing_edge(panel, n_shifts=4):
+    """Same statistic as _timing_edge, with the true states as the signal."""
+    cfg = StrategyConfig()
+    reg = oracle_regimes(panel.returns.index, panel.states,
+                         panel.state_names).iloc[252:]
+    bt = run_backtest(panel.returns, panel.deposit_rates, reg, cfg)
+    sh = perf_stats(bt.net)["sharpe"]
+    sh_r = [
+        perf_stats(run_backtest(panel.returns, panel.deposit_rates,
+                                random_timing_regimes(reg, seed=k), cfg)
+                   .net.reindex(bt.net.index))["sharpe"]
+        for k in range(n_shifts)
+    ]
+    return sh - float(np.mean(sh_r))
+
+
+def test_timing_edge_statistic_has_power():
+    """The guard above must be able to fail. With the true states as the
+    signal, the same statistic on the same seeds detects the planted crash
+    drift (mean > 3 SE) and finds nothing on the zero-drift panels
+    (|mean| < 3 SE). Detector-specific edges are reported, with CIs, by
+    examples/run_pipeline.py on longer panels."""
+    seeds = range(201, 213)  # 12 seeds of 2000 days: per-seed sd about 0.6
+    planted = np.array([_oracle_timing_edge(generate_roro_panel(2000, n_states=2, seed=s))
+                        for s in seeds])
+    se = planted.std(ddof=1) / np.sqrt(len(planted))
+    assert planted.mean() > 3 * se, (planted.mean(), se)
+    null = np.array([
+        _oracle_timing_edge(generate_roro_panel(2000, n_states=2, seed=s, equal_drift=True))
+        for s in seeds
+    ])
+    se0 = null.std(ddof=1) / np.sqrt(len(null))
+    assert abs(null.mean()) < 3 * se0, (null.mean(), se0)
+
+
+def test_equal_drift_panel_keeps_states_and_shocks():
+    a = generate_roro_panel(300, n_states=3, seed=9)
+    b = generate_roro_panel(300, n_states=3, seed=9, equal_drift=True)
+    np.testing.assert_array_equal(a.states, b.states)
+    np.testing.assert_allclose(b.means, 0.0)
+    np.testing.assert_allclose(a.covs, b.covs)
+    # returns differ by exactly the planted drift of each day's state
+    drift = a.means[a.states]
+    np.testing.assert_allclose(a.returns.to_numpy() - b.returns.to_numpy(), drift, atol=1e-15)
+
+
+def test_random_timing_keeps_occupancy():
+    reg = pd.Series(["risk_on"] * 70 + ["risk_off"] * 30)
+    sh = random_timing_regimes(reg, seed=3)
+    assert (sh.value_counts() == reg.value_counts()).all()
+    assert not (sh == reg).all()
+    with pytest.raises(ValueError):
+        random_timing_regimes(reg.iloc[:5])
 
 
 def test_empty_and_invalid_inputs_raise():

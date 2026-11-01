@@ -2,7 +2,7 @@
 name = "fx-options-engine"
 version = "1.0.0"
 edition = "2021"
-description = "Zero-dependency FX options pricing engine (Garman-Kohlhagen) — Rust twin of the Python reference project python/fx/01-options-pricing"
+description = "Zero-dependency FX options pricing engine (Garman-Kohlhagen): Rust twin of the Python reference project python/fx/01-options-pricing"
 license = "MIT"
 publish = false
 
@@ -14,11 +14,18 @@ path = "src/lib.rs"
 name = "bench"
 path = "src/bin/bench.rs"
 
+[[bin]]
+name = "fx_jsonl"
+path = "src/bin/fx_jsonl.rs"
+
 # ZERO external dependencies: std only.  The deterministic RNG, normal
 # distribution functions and root finders are implemented in-crate.
 [dependencies]
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"
 codegen-units = 1
+
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }

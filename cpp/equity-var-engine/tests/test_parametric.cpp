@@ -29,7 +29,7 @@ TEST(PortfolioSigma, DiversificationNeverHurts) {
 
 TEST(ParametricVar, NormalClosedFormTo1e12) {
     // Single asset: VaR = -z_alpha * |w| * vol exactly.
-    const Matrix cov(1, 1, {4.0e-4});  // vol = 2 %
+    const Matrix cov(1, 1, std::vector<double>{4.0e-4});  // vol = 2 %
     const std::vector<double> w = {1.0e6};
     const double sigma = 2.0e4;
     const double expected_99 = -normal_ppf(0.01) * sigma;
@@ -42,7 +42,7 @@ TEST(ParametricVar, NormalClosedFormTo1e12) {
 }
 
 TEST(ParametricVar, StudentTFatterThanNormalAndVarianceMatched) {
-    const Matrix cov(1, 1, {4.0e-4});
+    const Matrix cov(1, 1, std::vector<double>{4.0e-4});
     const std::vector<double> w = {1.0e6};
     const double v_norm = parametric_var(w, cov, 0.01, Dist::Normal);
     const double v_t4 = parametric_var(w, cov, 0.01, Dist::StudentT, 4.0);
@@ -57,7 +57,7 @@ TEST(ParametricVar, StudentTFatterThanNormalAndVarianceMatched) {
 }
 
 TEST(ParametricVar, SqrtTimeHorizonScaling) {
-    const Matrix cov(1, 1, {4.0e-4});
+    const Matrix cov(1, 1, std::vector<double>{4.0e-4});
     const std::vector<double> w = {1.0e6};
     const double v1 = parametric_var(w, cov, 0.01);
     const double v10 = parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 0.0, 10);
@@ -67,7 +67,7 @@ TEST(ParametricVar, SqrtTimeHorizonScaling) {
 }
 
 TEST(ParametricVar, Validation) {
-    const Matrix cov(1, 1, {4.0e-4});
+    const Matrix cov(1, 1, std::vector<double>{4.0e-4});
     const std::vector<double> w = {1.0e6};
     EXPECT_THROW(parametric_var(w, cov, 0.0), std::invalid_argument);
     EXPECT_THROW(parametric_var(w, cov, 0.5), std::invalid_argument);
@@ -85,7 +85,7 @@ TEST(CornishFisher, ReducesToNormalAtZeroMoments) {
 
 TEST(CornishFisher, LeftSkewAndFatTailsRaiseVar) {
     // Moment pairs chosen inside the CF validity domain (S = -0.5, K = 0 is
-    // already non-monotone on |z| <= 3.5 — in the Python reference too).
+    // already non-monotone on |z| <= 3.5: in the Python reference too).
     const double base = cornish_fisher_var(1.0e4, 0.01, 0.0, 0.0);
     EXPECT_GT(cornish_fisher_var(1.0e4, 0.01, -0.2, 0.0), base);  // left skew
     EXPECT_GT(cornish_fisher_var(1.0e4, 0.01, 0.0, 1.0), base);   // excess kurt

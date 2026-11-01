@@ -11,16 +11,16 @@ True log-odds specification (all effects on the 1-year default log-odds)
                + f_roa(roa) + f_size(log_assets) + f_beh(behavioral_score)
                + sector_effect[sector]                     (+ calibration_shift)
 
-with deliberately *nonlinear* components so that WOE binning has something
+with *nonlinear* components so that WOE binning has something
 real to find that a linear logit on raw features misses:
 
-* ``f_lev``  — piecewise-linear, **capped**: risk increases in leverage up to
+* ``f_lev``, piecewise-linear, **capped**: risk increases in leverage up to
   1.0 (debt = assets) and is flat beyond (already distressed).
-* ``f_ic``   — **saturating**: extra interest coverage beyond 6x buys nothing.
-* ``f_cr``   — **U-shaped** in current ratio: both very low (illiquidity) and
+* ``f_ic``  , **saturating**: extra interest coverage beyond 6x buys nothing.
+* ``f_cr``  , **U-shaped** in current ratio: both very low (illiquidity) and
   very high (idle working capital / dying sales) are risky; minimum risk near
   a current ratio of 1.5.
-* ``noise_1``, ``noise_2`` — generated but given ZERO true effect.
+* ``noise_1``, ``noise_2``: generated but given ZERO true effect.
 
 ``b0`` is calibrated by bisection so the population mean PD hits
 ``target_default_rate`` (default 3%).
@@ -30,12 +30,12 @@ Data pathologies (all optional, all seeded):
 * MCAR missingness on ``current_ratio``.
 * **Informative** missingness on ``behavioral_score``: riskier obligors are
   more likely to have no payment history ("thin file"), so missingness itself
-  carries signal — the WOE missing bin should pick this up.
+  carries signal: the WOE missing bin should pick this up.
 * Measurement outliers on ``leverage`` and ``current_ratio`` (injected after
   the true PD is computed, i.e. pure noise).
 * Optional exact duplicate rows (data-entry duplicates).
 * Post-outcome fields (``writeoff_flag``, ``recovery_amount``,
-  ``days_past_due_max``) that are functions of the default outcome — planted
+  ``days_past_due_max``) that are functions of the default outcome: planted
   leakage for the cleaning/WOE guards to catch.
 
 Units and conventions: leverage = total debt / total assets (ratio);
@@ -179,7 +179,7 @@ def generate_loan_book(
         scales interest coverage down and shifts behavioral scores down.
         Use for out-of-time samples.
     calibration_shift : float
-        Additive shift on the true log-odds AFTER intercept calibration —
+        Additive shift on the true log-odds AFTER intercept calibration:
         shifts the realised base rate away from ``target_default_rate``
         (portfolio-level miscalibration, e.g. a downturn year).
     start, end : str
@@ -241,7 +241,7 @@ def generate_loan_book(
     true_pd = _sigmoid(eta)
     default = (rng.uniform(size=n) < true_pd).astype(np.int64)
 
-    # Exposure and loss-given-default (independent of PD by construction —
+    # Exposure and loss-given-default (independent of PD by construction:
     # see the assumptions register in docs/METHODOLOGY.md).
     ead = np.exp(rng.normal(np.log(1_000_000.0), 0.8, n))
     lgd = 0.1 + 0.8 * rng.beta(2.0, 2.0, n)

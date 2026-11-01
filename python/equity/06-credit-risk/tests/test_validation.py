@@ -115,7 +115,7 @@ def test_hosmer_lemeshow_null_distribution() -> None:
     for _ in range(60):
         p = rng.uniform(0.01, 0.3, 2_000)
         y = (rng.uniform(size=2_000) < p).astype(float)
-        chi2, _, _ = hosmer_lemeshow(y, p)
+        chi2, _, _ = hosmer_lemeshow(y, p, out_of_sample=True)
         stats_.append(chi2)
     assert 8.0 < np.mean(stats_) < 12.5
 
@@ -124,7 +124,7 @@ def test_hosmer_lemeshow_detects_miscalibration() -> None:
     rng = np.random.default_rng(7)
     p = rng.uniform(0.01, 0.3, 5_000)
     y = (rng.uniform(size=5_000) < np.clip(2.0 * p, 0, 1)).astype(float)
-    chi2, pval, _ = hosmer_lemeshow(y, p)  # predictions half the true PD
+    chi2, pval, _ = hosmer_lemeshow(y, p, out_of_sample=True)  # half the true PD
     assert pval < 1e-6
 
 
@@ -132,7 +132,7 @@ def test_hl_table_and_calibration_table() -> None:
     rng = np.random.default_rng(8)
     p = rng.uniform(0.01, 0.2, 3_000)
     y = (rng.uniform(size=3_000) < p).astype(float)
-    _, _, tab = hosmer_lemeshow(y, p)
+    _, _, tab = hosmer_lemeshow(y, p, out_of_sample=True)
     assert len(tab) == 10
     assert tab["n"].sum() == 3_000
     cal = calibration_table(y, p)

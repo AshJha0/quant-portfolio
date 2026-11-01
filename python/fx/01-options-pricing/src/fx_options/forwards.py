@@ -4,7 +4,7 @@ Covered interest parity:  ``F = S * exp((r_d - r_f) * T)``.
 A domestic investor can replicate the forward by borrowing domestic cash,
 buying spot foreign currency and depositing it at ``r_f``; absence of
 arbitrage forces the forward to the CIP level (abstracting from the
-cross-currency basis — see docs/METHODOLOGY.md assumption register).
+cross-currency basis: see docs/METHODOLOGY.md assumption register).
 
 Forward points are quoted as ``(F - S)`` scaled by the pair's pip factor
 (1e4 for most pairs, 1e2 for JPY-quoted pairs).
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 
-from ._common import validate_inputs
+from ._common import finite_result, safe_exp, validate_inputs
 
 __all__ = [
     "cip_forward",
@@ -47,7 +47,7 @@ def cip_forward(S: float, T: float, r_d: float, r_f: float) -> float:
         base currency), the classic carry relationship.
     """
     validate_inputs(S, S, T, r_d, r_f, 0.0)
-    return S * math.exp((r_d - r_f) * T)
+    return finite_result(S * safe_exp((r_d - r_f) * T, "cip_forward"), "cip_forward")
 
 
 def forward_points(S: float, T: float, r_d: float, r_f: float,
@@ -71,7 +71,8 @@ def forward_points(S: float, T: float, r_d: float, r_f: float,
         raise ValueError(
             f"pip_factor must be positive and finite, got {pip_factor!r}"
         )
-    return (cip_forward(S, T, r_d, r_f) - S) * pip_factor
+    return finite_result((cip_forward(S, T, r_d, r_f) - S) * pip_factor,
+                         "forward points")
 
 
 def synthetic_forward_from_options(call_price: float, put_price: float,
@@ -104,4 +105,6 @@ def synthetic_forward_from_options(call_price: float, put_price: float,
     for name, p in (("call_price", call_price), ("put_price", put_price)):
         if not math.isfinite(p):
             raise ValueError(f"{name} must be finite, got {p!r}")
-    return K + (call_price - put_price) * math.exp(r_d * T)
+    return finite_result(
+        K + (call_price - put_price) * safe_exp(r_d * T, "synthetic forward"),
+        "synthetic forward")

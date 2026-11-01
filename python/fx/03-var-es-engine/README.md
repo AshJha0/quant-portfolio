@@ -1,49 +1,47 @@
-# FX Market Risk — VaR & Expected Shortfall Engine
+# FX Market Risk: VaR and Expected Shortfall Engine
 
-Market-risk engine for a **multi-currency FX book**: historical, parametric
-and Monte Carlo VaR, coherent Expected Shortfall, Kupiec / Christoffersen /
-Basel-traffic-light backtesting, and an FX-native stress-testing layer with
-peg-break add-ons and reverse stress.
+Market-risk engine for a multi-currency FX book. It computes historical,
+parametric and Monte Carlo VaR with Acerbi-Tasche Expected Shortfall. It
+backtests with Kupiec, Christoffersen, the Basel traffic light and the
+Acerbi-Szekely Z2 test. It stress tests with historical replays, peg breaks
+and reverse stress.
 
-Built FX-first, not equities-renamed:
+FX-specific design:
 
-* **USD triangulation** — every currency is one USD factor; cross positions
-  (EURJPY) decompose into USD legs, so scenario sets are arbitrage-consistent
-  by construction (identity tested to machine precision).
-* **CIP-consistent forwards** — a forward is spot + two deposit legs; forward
-  points expose the book to interest-rate factors (small, present, tested).
-* **Garman–Kohlhagen options** — internal GK pricer; full revaluation or
-  delta–vega(–gamma) mapping, with the mapping error characterised in tests.
-* **Pegged currencies** — near-zero-vol factors trigger a
-  `PegBlindnessWarning`; a peg-break scenario generator and jump-mixture MC
-  supply the loss the historical window cannot contain (CHF 2015 case study
-  in `docs/VALIDATION.md`).
-* **EM fat tails** — variance-matched Student-t and jump-mixture Monte Carlo;
-  normal MC demonstrably underestimates the EM 99% tail (+12% / +140%).
+* **USD triangulation.** Every currency is one USD factor. Cross positions
+  (EURJPY) decompose into USD legs, so every scenario set is
+  arbitrage-consistent. The identity is tested to machine precision.
+* **CIP forwards.** A forward is spot plus two deposit legs, so forward
+  points carry interest-rate risk.
+* **Garman-Kohlhagen options.** Full revaluation by default, or a
+  delta-vega(-gamma) mapping whose error is measured in the tests.
+* **Pegged currencies.** Near-zero-vol factors raise a
+  `PegBlindnessWarning`. A peg-break scenario and a jump-mixture Monte Carlo
+  supply the loss the historical window cannot contain.
+* **EM fat tails.** Variance-matched Student-t and compound-Poisson jump
+  Monte Carlo.
 
-```
-pipeline:  book & market ──► factor history (synthetic G10/EM blocks,
-           GARCH, regimes, pegs; guarded live loader)
-                 │
-                 ▼
-   Historical VaR (plain / BRW age / FHS)     ┐
-   Parametric VaR (sample/EWMA; N, t, C-F)    ├──► ES (Acerbi–Tasche) ──►
-   Monte Carlo VaR (N / t / jump, full reval) ┘
-                 │
-                 ▼
-   Backtesting: Kupiec, Christoffersen, Basel traffic light, A-S ES test
-                 │
-                 ▼
-   Stress: historical replays, USD ±10%, peg breaks, ladders, reverse stress
-```
+## Conventions
+
+* `alpha` is the tail probability: `alpha=0.01` is 99 % VaR. Values outside
+  (0, 0.5) raise `ValueError`. The keyword `confidence=0.99` still works for
+  one release with a `DeprecationWarning`.
+* VaR is the order statistic `L(m)`, `m = ceil(n alpha)`, of losses sorted
+  worst first. ES is the Acerbi-Tasche average over exactly `alpha` of mass.
+* Inputs that are NaN, infinite, empty or out of range raise `ValueError`.
+  An empty book raises. No function returns a number from bad input.
+
+`docs/METHODOLOGY.md` section 0 lists every convention.
 
 ## Quickstart
 
 ```bash
-pip install -e .
-python -m pytest tests -q         # 465 tests, offline, ~17s
-python examples/run_pipeline.py   # full demo, ~4s
+pip install -e .[dev]
+python -m pytest -q               # 867 tests, offline, about 90 s
+python examples/run_pipeline.py   # full demo, about 30 s
 ```
+
+Timings are from Windows 11, Python 3.12.10, numpy 2.5, scipy 1.18.
 
 ```python
 import fx_var as fv
@@ -52,28 +50,36 @@ from fx_var.data.synthetic import demo_market, demo_book, simulate_history
 market, book = demo_market(), demo_book()
 hist = simulate_history(book, market, 1000, seed=42, garch=True)
 
-fv.historical_var(book, market, hist, alpha=0.99, method="fhs")  # headline
-fv.parametric_var(book, market, hist, dist="t", df=5)            # challenger
-fv.monte_carlo_var(book, market, fv.sample_cov(hist), dist="jump",
+fv.historical_var(book, market, hist, alpha=0.01, method="fhs")
+fv.parametric_var(book, market, hist, alpha=0.01, dist="t", df=5)
+fv.monte_carlo_var(book, market, fv.sample_cov(hist), alpha=0.01, dist="jump",
                    jumps=fv.JumpSpec(0.02, {"FX:MXN": -0.10}), seed=1)
 fv.run_stress(book, market, fv.historical_scenarios())
 ```
 
-## Headline results (seeded demo book: G10 spots + 6m forward + 3m option + EM + HKD peg)
+## Demo results on synthetic data
 
-| 99% / 1d | HS | BRW | FHS | Param-N | Param-t5 | MC-N |
+Produced by `python examples/run_pipeline.py` on the seeded synthetic demo
+book (G10 spots, a 6m forward, a 3m option, EM positions, an HKD peg).
+
+| 99 % / 1d, USD | HS | BRW | FHS | Param-N | Param-t5 | MC-N |
 |---|---|---|---|---|---|---|
-| VaR (USD) | 690,889 | 682,957 | 629,121 | 651,515 | 729,964 | 635,368 |
+| VaR | 690,889 | 682,957 | 629,121 | 651,515 | 729,964 | 635,368 |
 
-* **Backtests (500d rolling, GARCH + regime-switching data)**:
-  parametric-normal 14 exceptions → Kupiec p=0.0009, independence p=0.0002,
-  **Basel red (4.00)**; FHS 7 exceptions → all p>0.05, **green (3.00)**.
-* **EM fat tails (long-EM book, equal covariance)**: normal MC $1.21m,
-  t(5) $1.36m, jump-mixture $2.91m at 99%.
-* **Peg blindness**: HS 99% VaR $0.69m vs HKD −30% peg-break loss $15.0m
-  (21.7×) — flagged by the engine, priced by the stress add-on.
-* **Reverse stress**: worst joint move at the 99% radius loses $651k
-  (closed form, confirmed by full revaluation and numerical optimisation).
+| Synthetic 500-day backtest, 99 % | Exceptions | Kupiec p | Indep. p | Basel zone |
+|---|---|---|---|---|
+| Parametric normal | 14 | 0.0009 | 0.0002 | red (4.00) |
+| Plain HS | 8 | 0.2149 | 0.1092 | yellow (3.40) |
+| FHS | 7 | 0.3966 | 0.0790 | green (3.00) |
+
+| Synthetic EM book, 99 % / 1d, USD | VaR | ES |
+|---|---|---|
+| Normal MC | 1,211,798 | 1,389,156 |
+| Student-t(5) MC | 1,356,099 | 1,771,315 |
+| Jump-mixture MC | 2,887,602 | 3,630,371 |
+
+On the synthetic demo book the HKD -30 % peg break loses 15.0m USD, 21.7
+times the 99 % HS VaR.
 
 ## Layout
 
@@ -81,13 +87,14 @@ fv.run_stress(book, market, fv.historical_scenarios())
 src/fx_var/            book, gk, historical_var, parametric_var,
                        monte_carlo_var, expected_shortfall, backtesting,
                        stress_testing, common
-src/fx_var/data/       synthetic.py (seeded G10/EM/peg generators, demo book)
-                       live.py (guarded Frankfurter/ECB loader — opt-in only)
-tests/                 231 offline, seeded tests
+src/fx_var/data/       synthetic.py (seeded generators, demo book)
+                       live.py (opt-in Frankfurter/ECB loader)
+tests/                 867 offline, seeded tests (pytest --co -q)
+tests/golden/          generate_golden.py and golden_vectors.json
 examples/run_pipeline.py
-docs/                  METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
+docs/                  METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
 
-See `docs/METHODOLOGY.md` for model choices vs alternatives and the
-assumptions register, `docs/VALIDATION.md` for evidence and failure modes,
-`docs/DESK_GUIDE.md` for the desk workflow, limits and scenario playbook.
+The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines are
+linear-book ports. They check their results against
+`tests/golden/golden_vectors.json`.

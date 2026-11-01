@@ -52,8 +52,10 @@ def test_zero_cell_smoothing_no_inf() -> None:
     bad = np.array([0.0, 10.0])  # zero-default bin
     woe, _, iv = woe_iv_from_counts(good, bad)
     assert np.isfinite(woe).all() and np.isfinite(iv)
-    # Non-zero bin unaffected by the smoothing of the other bin.
-    assert woe[1] == pytest.approx(np.log((50 / 100) / (10 / 10)), abs=1e-12)
+    # Distributions are renormalised after smoothing so each sums to 1:
+    # good (50.5, 50) / 100.5, bad (0.5, 10) / 10.5.
+    assert woe[1] == pytest.approx(np.log((50 / 100.5) / (10 / 10.5)), abs=1e-12)
+    assert woe[0] == pytest.approx(np.log((50.5 / 100.5) / (0.5 / 10.5)), abs=1e-12)
 
 
 def test_all_one_class_raises() -> None:
@@ -159,8 +161,11 @@ def test_categorical_binning_sector(book: pd.DataFrame) -> None:
 
 def test_categorical_transform_unseen_maps_to_missing_woe(book: pd.DataFrame) -> None:
     fb = fit_categorical_binning(book["sector"], book["default"], "sector")
-    out = fb.transform(pd.Series(["martian_mining"]))
+    out = fb.transform(pd.Series(["martian_mining"]), unseen="missing")
     assert out[0] == pytest.approx(fb.missing_woe)
+    assert fb.transform(pd.Series(["martian_mining"]), unseen="neutral")[0] == 0.0
+    with pytest.raises(ValueError, match="not seen at fit"):
+        fb.transform(pd.Series(["martian_mining"]))
 
 
 def test_transformer_fit_transform_report(book: pd.DataFrame) -> None:
@@ -183,3 +188,35 @@ def test_binning_table_counts_consistent(book: pd.DataFrame) -> None:
     assert fb.table["n"].sum() == len(book)
     assert fb.table["n_bad"].sum() == book["default"].sum()
     assert fb.iv == pytest.approx(fb.table["iv_contrib"].sum(), abs=1e-12)
+
+
+def test_smoothed_distributions_sum_to_one() -> None:
+    good = np.array([30.0, 0.0, 70.0, 5.0])
+    bad = np.array([0.0, 4.0, 6.0, 0.0])
+    woe, ivc, iv = woe_iv_from_counts(good, bad)
+    g = good + np.array([0.5, 0.5, 0.0, 0.5])
+    b = bad + np.array([0.5, 0.5, 0.0, 0.5])
+    dg, db = g / g.sum(), b / b.sum()
+    np.testing.assert_allclose(woe, np.log(dg / db), atol=1e-14)
+    assert iv == pytest.approx(float(np.sum((dg - db) * np.log(dg / db))), abs=1e-14)
+
+
+def test_monotone_merge_only_merges_violating_pairs() -> None:
+    # Six equal-size bins with bad rates 5, 10, 10.1, 20, 15, 30 (%): the
+    # trend is increasing and only the pair (20%, 15%) violates it. The old
+    # rule merged the globally most similar pair (10%, 10.1%) first and
+    # ended with 4 bins; merging only violating pairs leaves 5.
+    from eq_credit.woe import fit_numeric_binning
+
+    n = 10_000
+    rates = [0.05, 0.10, 0.101, 0.20, 0.15, 0.30]
+    xs, ys = [], []
+    for k, r in enumerate(rates):
+        nb = int(round(r * n))
+        xs += [float(k)] * n
+        ys += [1] * nb + [0] * (n - nb)
+    fb = fit_numeric_binning(np.array(xs), np.array(ys), "x", n_prebins=6,
+                             min_bin_frac=0.01, monotone=True)
+    assert len(fb.woes) == 5
+    br = fb.table["bad_rate"].to_numpy()
+    assert np.all(np.diff(br) > 0)

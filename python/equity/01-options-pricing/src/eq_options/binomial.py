@@ -3,7 +3,7 @@
 Conventions match :mod:`eq_options.black_scholes`: continuously compounded
 annualised ``r`` and ``q`` (ACT/365F), ``T`` in years, ``sigma`` annualised.
 
-The backward induction is vectorised over tree nodes with NumPy — the only
+The backward induction is vectorised over tree nodes with NumPy: the only
 Python-level loop is over the ``n_steps`` time slices.
 
 Edge-case policy
@@ -24,7 +24,7 @@ from typing import Literal
 
 import numpy as np
 
-from .black_scholes import OptionType, bs_price, validate_inputs
+from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
 
 ExerciseStyle = Literal["european", "american"]
 
@@ -101,10 +101,11 @@ def crr_price(
     ------
     ValueError
         On negative/NaN inputs, invalid ``option_type``/``exercise``, or if
-        the risk-neutral probability falls outside (0, 1) — a sign that
+        the risk-neutral probability falls outside (0, 1): a sign that
         ``dt`` is too large for the given ``r - q`` and ``sigma``.
     """
     validate_inputs(S, K, T, sigma, option_type)
+    _check_rates(r=r, q=q)
     if exercise not in ("european", "american"):
         raise ValueError(f"exercise must be 'european' or 'american', got {exercise!r}")
     if n_steps < 1:
@@ -116,7 +117,10 @@ def crr_price(
     if S == 0.0:
         if option_type == "call":
             return 0.0
-        return K if exercise == "american" else K * math.exp(-r * T)
+        # American: exercise now (K) if r >= 0; with r < 0 waiting is
+        # worth more and the holder exercises at expiry (K e^{-rT} > K).
+        european = K * math.exp(-r * T)
+        return max(K, european) if exercise == "american" else european
     if K == 0.0:
         if option_type == "put":
             return 0.0
@@ -142,19 +146,19 @@ def crr_price(
     disc = math.exp(-r * dt)
     pu, pd = disc * p, disc * (1.0 - p)
 
-    # Terminal stock prices S * u^j * d^(n-j), j = 0..n, in log space for
-    # numerical stability at large n.
-    j = np.arange(n_steps + 1)
-    log_s = math.log(S) + (2.0 * j - n_steps) * (sigma * math.sqrt(dt))
-    values = np.maximum(sign * (np.exp(log_s) - K), 0.0)
-
+    # Every node spot is S u^m for m = -n..n; precompute them once in log
+    # space (O(n) exps) so the backward induction does no transcendental
+    # work. Step i, node k sits at m = 2k - i.
     american = exercise == "american"
     log_u = sigma * math.sqrt(dt)
+    m = np.arange(-n_steps, n_steps + 1)
+    spots = np.exp(math.log(S) + m * log_u)
+    exercise_value = sign * (spots - K)
+    values = np.maximum(exercise_value[0::2], 0.0)  # m = -n, -n+2, ..., n
     for i in range(n_steps - 1, -1, -1):
         values = pu * values[1:] + pd * values[:-1]
         if american:
-            nodes = np.exp(math.log(S) + (2.0 * np.arange(i + 1) - i) * log_u)
-            np.maximum(values, sign * (nodes - K), out=values)
+            np.maximum(values, exercise_value[n_steps - i:n_steps + i + 1:2], out=values)
     return float(values[0])
 
 

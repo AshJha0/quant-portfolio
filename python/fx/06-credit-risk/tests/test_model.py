@@ -55,7 +55,7 @@ def test_irls_standard_errors_positive_and_sane(fitted):
 
 
 def test_intercept_only_analytic():
-    """Intercept-only MLE: logit(ybar), SE = 1/sqrt(n p (1-p)) — exact identities."""
+    """Intercept-only MLE: logit(ybar), SE = 1/sqrt(n p (1-p)): exact identities."""
     y = np.r_[np.ones(30), np.zeros(70)]
     X = np.empty((100, 0))
     fit = fit_logistic_irls(X, y)
@@ -185,3 +185,40 @@ def test_band_mean_pd_monotone_on_grid():
         means.setdefault(letter, []).append(p)
     ordered = [np.mean(means[r]) for r in RATING_ORDER if r in means]
     assert np.all(np.diff(ordered) > 0)
+
+
+def test_separation_guard_ignores_large_intercept():
+    # An unscaled feature (level ~100) puts the intercept near -103 while
+    # the slope is 1; the old guard counted the intercept and raised.
+    rng = np.random.default_rng(0)
+    x = rng.normal(100.0, 1.0, size=(20_000, 1))
+    y = (rng.random(20_000) < 1 / (1 + np.exp(3.0 - (x[:, 0] - 100.0)))).astype(float)
+    from fx_credit.model import fit_logistic_irls
+
+    fit = fit_logistic_irls(x, y)
+    assert fit.converged
+    assert fit.intercept < -30 and fit.coef[0] == pytest.approx(1.0, abs=0.1)
+
+
+def test_non_convergence_warns():
+    import warnings as _w
+
+    from fx_credit.model import ConvergenceWarning, fit_logistic_irls
+
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=(500, 2))
+    y = (rng.random(500) < 0.2).astype(float)
+    with pytest.warns(ConvergenceWarning):
+        fit = fit_logistic_irls(x, y, max_iter=1)
+    assert not fit.converged
+
+
+def test_expected_sign_check_flags_wrong_sign():
+    from fx_credit.model import LogisticFit, expected_sign_check
+
+    fit = LogisticFit(intercept=-3.0, coef=np.array([-1.0, 0.5]),
+                      se=np.array([0.1, 0.2, 0.5]), cov=np.eye(3), loglik=0.0,
+                      n_iter=5, converged=True, ridge=0.0)
+    t = expected_sign_check(fit, ["a", "b"])
+    assert t["sign_ok"].tolist() == [True, False]
+    assert t["z"].tolist() == pytest.approx([-5.0, 1.0])

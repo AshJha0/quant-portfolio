@@ -81,7 +81,7 @@ def test_hosmer_lemeshow_hand_computed():
     """3 groups of 2, chi2 = sum (O-E)^2 / (E (1 - E/n))."""
     y = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0])
     p = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.7])
-    res = hosmer_lemeshow(y, p, n_groups=3)
+    res = hosmer_lemeshow(y, p, n_groups=3, out_of_sample=False)
     # sorted p groups: (.1,.2) O=0 E=.3; (.3,.4) O=1 E=.7; (.6,.7) O=2 E=1.3
     exp = 0.0
     for o, e, n in [(0, 0.3, 2), (1, 0.7, 2), (2, 1.3, 2)]:
@@ -94,7 +94,7 @@ def test_hosmer_lemeshow_well_calibrated():
     rng = np.random.default_rng(4)
     p = rng.uniform(0.01, 0.3, 20_000)
     y = (rng.random(20_000) < p).astype(float)
-    res = hosmer_lemeshow(y, p)
+    res = hosmer_lemeshow(y, p, out_of_sample=True)
     assert res.p_value > 0.01  # no evidence of miscalibration
 
 
@@ -102,13 +102,13 @@ def test_hosmer_lemeshow_detects_miscalibration():
     rng = np.random.default_rng(5)
     p = rng.uniform(0.01, 0.3, 20_000)
     y = (rng.random(20_000) < p).astype(float)
-    res = hosmer_lemeshow(y, p / 2.0)  # PDs understated 2x
+    res = hosmer_lemeshow(y, p / 2.0, out_of_sample=True)  # PDs understated 2x
     assert res.p_value < 1e-6 and res.chi2 > 100
 
 
 def test_hosmer_lemeshow_invalid_groups():
     with pytest.raises(ValueError, match="n_groups"):
-        hosmer_lemeshow(np.array([0.0, 1.0]), np.array([0.1, 0.2]), n_groups=2)
+        hosmer_lemeshow(np.array([0.0, 1.0]), np.array([0.1, 0.2]), n_groups=2, out_of_sample=True)
 
 
 def test_psi_identical_is_zero():

@@ -40,7 +40,7 @@ def ewma_variance(
     """Vectorised EWMA conditional variance path (scipy ``lfilter``).
 
     The recursion is a first-order linear filter in sigma2, so the whole path
-    is computed in one ``lfilter`` call — O(n) with no Python loop. Bitwise
+    is computed in one ``lfilter`` call: O(n) with no Python loop. Bitwise
     equivalence with the explicit recursion is unit-tested.
 
     Parameters
@@ -134,7 +134,7 @@ def ewma_forecast(
     lam: float = 0.94,
     init_var: float | None = None,
 ) -> np.ndarray:
-    """Multi-step EWMA variance forecast — flat at sigma2_{T+1}.
+    """Multi-step EWMA variance forecast: flat at sigma2_{T+1}.
 
     Why flat: EWMA is IGARCH(1,1) with zero intercept, so
     E_T[sigma2_{T+k}] = E_T[lambda sigma2_{T+k-1} + (1-lambda) r_{T+k-1}^2]

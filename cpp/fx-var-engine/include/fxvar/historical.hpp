@@ -35,7 +35,7 @@ namespace fxvar {
 enum class HsMethod { kPlain, kAge, kFiltered };
 
 struct HistoricalOptions {
-  double alpha = 0.99;
+  double alpha = 0.01;  ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;  ///< > 1 uses sqrt-time scaling
   HsMethod method = HsMethod::kPlain;
   double decay = 0.995;        ///< BRW age-weight decay (method kAge)
@@ -52,7 +52,7 @@ struct HistoricalOptions {
 struct HistoricalResult {
   double var = 0.0;
   double es = 0.0;
-  double alpha = 0.99;
+  double alpha = 0.01;  ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;
   HsMethod method = HsMethod::kPlain;
   std::vector<double> pnl;

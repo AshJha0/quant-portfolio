@@ -13,8 +13,8 @@
 //   * exact binomial CDF (Basel traffic light),
 //   * sample moments (mean, std, skewness, excess kurtosis).
 //
-// Conventions: probabilities in (0, 1); `alpha` is a confidence level
-// (0.99 = 99%); all sample statistics use the ddof=1 unbiased variance.
+// Conventions: probabilities in (0, 1); `alpha` is the tail probability
+// (0.01 = 99 % VaR); all sample statistics use the ddof=1 unbiased variance.
 
 #pragma once
 
@@ -24,6 +24,10 @@
 namespace fxvar {
 
 /// Standard normal density phi(x).
+/// Natural log of Gamma(x), finite x > 0 (Lanczos). Thread-safe replacement
+/// for std::lgamma, which writes glibc's global signgam.
+double log_gamma(double x);
+
 double norm_pdf(double x);
 
 /// Standard normal CDF Phi(x) (via std::erfc, ~1e-16 accurate).
@@ -81,8 +85,9 @@ Moments sample_moments(const std::vector<double>& x);
 /// ddof=1 standard deviation (throws for fewer than 2 points).
 double sample_std(const std::vector<double>& x);
 
-/// Validate a VaR/ES confidence level: throws std::invalid_argument unless
-/// alpha is strictly inside (0, 1).  Returns alpha unchanged.
+/// Validate a VaR/ES tail probability: throws std::invalid_argument unless
+/// alpha is strictly inside (0, 0.5). 0.99 (a confidence level) throws.
+/// Returns alpha unchanged.
 double validate_alpha(double alpha);
 
 /// Validate a VaR horizon in trading days (> 0), returning it unchanged.

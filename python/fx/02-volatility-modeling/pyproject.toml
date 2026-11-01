@@ -17,10 +17,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
+test = [
     "pytest>=7.0",
-    "arch>=6.0",   # cross-validation ONLY -- all models are implemented from scratch
+    "arch>=6.0",   # cross-validation only: all models are implemented from scratch
+    "hypothesis>=6.0",
 ]
+dev = ["fx-vol[test]"]   # kept for one release: old name of the test extra
+live = ["requests>=2.28"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

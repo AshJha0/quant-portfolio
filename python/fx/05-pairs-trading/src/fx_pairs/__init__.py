@@ -18,6 +18,7 @@ from .universe import (
     triangular_spread,
     enumerate_candidate_pairs,
     correlation_screen,
+    cointegration_funnel,
 )
 from .cointegration import (
     ADFResult,
@@ -49,12 +50,14 @@ from .signals import (
     carry_entry_veto,
     generate_positions,
     vol_target_scale,
+    hedged_vol_scale,
     zscore,
 )
 from .backtest import (
     BacktestResult,
     WalkForwardResult,
     WalkForwardWindow,
+    ExecutionConfig,
     run_backtest,
     walk_forward_backtest,
 )
@@ -73,7 +76,7 @@ __all__ = [
     # universe
     "G10_CURRENCIES", "EM_CURRENCIES", "DEFAULT_PIP_SPREADS", "market_pair",
     "pip_size", "pip_spread", "make_cross", "market_price_from_legs",
-    "triangular_spread", "enumerate_candidate_pairs", "correlation_screen",
+    "triangular_spread", "enumerate_candidate_pairs", "correlation_screen", "cointegration_funnel",
     # cointegration
     "ADFResult", "EngleGrangerResult", "adf_test", "engle_granger",
     "mackinnon_crit", "is_degenerate_spread",
@@ -85,11 +88,11 @@ __all__ = [
     "daily_roll_yield", "day_count_fractions", "forward_outright",
     "swap_points",
     # signals
-    "Trade", "carry_entry_veto", "generate_positions", "vol_target_scale",
+    "Trade", "carry_entry_veto", "generate_positions", "vol_target_scale", "hedged_vol_scale",
     "zscore",
     # backtest
     "BacktestResult", "WalkForwardResult", "WalkForwardWindow",
-    "run_backtest", "walk_forward_backtest",
+    "ExecutionConfig", "run_backtest", "walk_forward_backtest",
     # metrics
     "hit_rate", "max_drawdown", "sharpe_ratio", "sharpe_se_lo",
     "sortino_ratio", "summarize", "trade_pnls", "turnover",

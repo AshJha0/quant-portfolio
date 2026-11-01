@@ -1,11 +1,17 @@
 """Calibrate Heston to an FX smile grid (5 pillars x expiries).
 
 The objective is vega-weighted implied-vol residuals: for each pillar
-strike the COS model price is inverted to a Garman-Kohlhagen implied
-vol and compared with the market pillar vol.  Vega weighting is the
-desk standard - it makes the objective approximately price-RMSE while
-keeping the residuals in interpretable vol points, and it naturally
-downweights the illiquid 10-delta wings and the very short expiry.
+strike the COS model price of the out-of-the-money option is inverted
+to a Garman-Kohlhagen implied vol and compared with the market pillar
+vol.  Weighting a vol residual by vega makes it approximately a price
+residual.  Vega grows like sqrt(T), so this weighting puts more weight
+on long expiries and less on the 10-delta wings and the shortest
+expiry.  Pass ``vega_weighted=False`` for equal weight in vol.
+
+When a trial parameter set gives a model price with no implied vol
+(outside the no-arbitrage band), the residual falls back to the price
+error divided by the market vega, which is the first-order value of the
+vol residual and keeps the objective continuous.
 
 Identifiability (the kappa/xi ridge)
 ------------------------------------
@@ -33,7 +39,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import least_squares
 
-from .garman_kohlhagen import gk_vega, implied_vol
+from .garman_kohlhagen import gk_forward, gk_price, gk_vega, implied_vol
 from .heston import HestonParams, price_cos
 
 __all__ = ["CalibrationSlice", "CalibrationResult", "heston_smile_vols", "calibrate_heston"]
@@ -79,22 +85,40 @@ class CalibrationResult:
 
 
 def heston_smile_vols(
-    S: float, sl: CalibrationSlice, params: HestonParams, N: int = 256
+    S: float, sl: CalibrationSlice, params: HestonParams, N: int = 512
 ) -> np.ndarray:
     """Model implied vols at one expiry's strikes (COS price -> GK vol).
 
-    A model price outside the no-arbitrage band (possible for extreme
-    trial parameters mid-optimisation) maps to the bracket edge rather
-    than NaN, so the optimiser sees a smooth, finite residual.
+    The out-of-the-money option is inverted at each strike (put below
+    the forward, call at or above).  A price with no implied vol gives
+    NaN; :func:`calibrate_heston` handles NaN with a continuous
+    price-space fallback.
     """
-    prices = price_cos(S, sl.strikes, sl.T, sl.r_d, sl.r_f, params, cp=-1, N=N)
-    out = np.empty(len(prices))
-    for i, (K, pr) in enumerate(zip(sl.strikes, prices)):
-        iv = implied_vol(pr, S, float(K), sl.T, sl.r_d, sl.r_f, cp=-1, on_fail="nan")
-        if math.isnan(iv):
-            iv = 1e-4 if pr < 1e-12 else 5.0
-        out[i] = iv
+    F = gk_forward(S, sl.T, sl.r_d, sl.r_f)
+    out = np.empty(len(sl.strikes))
+    for i, K in enumerate(sl.strikes):
+        cp = 1 if K >= F else -1
+        pr = float(price_cos(S, float(K), sl.T, sl.r_d, sl.r_f, params, cp=cp, N=N))
+        out[i] = implied_vol(pr, S, float(K), sl.T, sl.r_d, sl.r_f, cp=cp, on_fail="nan")
     return out
+
+
+def _model_residual_vol(S: float, sl: CalibrationSlice, params: HestonParams,
+                        N: int) -> np.ndarray:
+    """Model minus market vol, with a price/vega fallback where the model
+    price has no implied vol."""
+    iv = heston_smile_vols(S, sl, params, N=N)
+    res = iv - sl.vols
+    bad = ~np.isfinite(iv)
+    if np.any(bad):
+        F = gk_forward(S, sl.T, sl.r_d, sl.r_f)
+        for i in np.flatnonzero(bad):
+            K, v = float(sl.strikes[i]), float(sl.vols[i])
+            cp = 1 if K >= F else -1
+            pm = float(price_cos(S, K, sl.T, sl.r_d, sl.r_f, params, cp=cp, N=N))
+            pk = gk_price(S, K, sl.T, sl.r_d, sl.r_f, v, cp)
+            res[i] = (pm - pk) / max(gk_vega(S, K, sl.T, sl.r_d, sl.r_f, v), 1e-12)
+    return res
 
 
 _DEFAULT_BOUNDS = {
@@ -123,8 +147,9 @@ def calibrate_heston(
     x0: np.ndarray | None = None,
     vega_weighted: bool = True,
     bounds: dict | None = None,
-    N: int = 256,
+    N: int = 512,
     max_nfev: int = 400,
+    n_starts: int = 3,
 ) -> CalibrationResult:
     """Least-squares Heston calibration to a pillar-vol grid.
 
@@ -144,7 +169,11 @@ def calibrate_heston(
     N : int
         COS terms per pricing call.
     max_nfev : int
-        Objective-evaluation budget for the optimiser.
+        Objective-evaluation budget for the optimiser, per start.
+    n_starts : int
+        Number of starting points: ``x0`` plus ``n_starts - 1`` fixed
+        alternatives along the kappa/xi ridge.  The best fit is kept.
+        Stops early once the vol RMSE is below 1e-8.
 
     Returns
     -------
@@ -185,21 +214,31 @@ def calibrate_heston(
         nonlocal n_eval
         n_eval += 1
         params = HestonParams(v0=x[0], kappa=x[1], theta=x[2], xi=x[3], rho=x[4])
-        model = np.concatenate(
-            [heston_smile_vols(S, sl, params, N=N) for sl in slices]
-        )
-        return w * (model - mkt)
+        return w * np.concatenate([_model_residual_vol(S, sl, params, N) for sl in slices])
 
-    res = least_squares(
-        residuals,
-        x0,
-        bounds=(lb, ub),
-        x_scale=np.array([0.01, 1.0, 0.01, 0.1, 0.1]),
-        xtol=1e-12,
-        ftol=1e-12,
-        gtol=1e-12,
-        max_nfev=max_nfev,
-    )
+    if n_starts < 1:
+        raise ValueError(f"n_starts must be >= 1, got {n_starts}")
+    starts = [x0]
+    for kappa, xi in ((0.5, 0.3), (6.0, 1.2), (1.0, 0.8), (3.0, 0.4)):
+        alt = x0.copy()
+        alt[1], alt[3] = kappa, xi
+        starts.append(np.clip(alt, lb * 1.0000001, ub * 0.9999999))
+    res = None
+    for start in starts[:n_starts]:
+        r = least_squares(
+            residuals,
+            start,
+            bounds=(lb, ub),
+            x_scale=np.array([0.01, 1.0, 0.01, 0.1, 0.1]),
+            xtol=1e-12,
+            ftol=1e-12,
+            gtol=1e-12,
+            max_nfev=max_nfev,
+        )
+        if res is None or r.cost < res.cost:
+            res = r
+        if math.sqrt(2.0 * res.cost / len(mkt)) < 1e-8:
+            break
     params = HestonParams(v0=res.x[0], kappa=res.x[1], theta=res.x[2],
                           xi=res.x[3], rho=res.x[4])
     model = np.concatenate([heston_smile_vols(S, sl, params, N=N) for sl in slices])

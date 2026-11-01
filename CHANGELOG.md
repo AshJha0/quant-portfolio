@@ -1,0 +1,291 @@
+# Changelog
+
+All notable changes to this repository are recorded here. The format follows
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) and versions
+follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+
+A release is cut by `.github/workflows/release.yml`, which tags a commit only
+when the `ci-ok` check passed on that exact commit. The release notes are the
+section below whose heading matches the version.
+
+## [Unreleased]
+
+One release, v2.0.0, is planned at the end of all phases unless the owner
+decides otherwise. Until then changes collect here. All results quoted below
+come from seeded synthetic data.
+
+### Added
+
+#### Infrastructure
+
+- CI runs every Python project in its own environment on Python 3.10, 3.11,
+  3.12 and 3.13, the four C++ engines with GCC 15 and Clang 21 plus an
+  AddressSanitizer and UBSan build, and the four Rust crates on a pinned
+  toolchain (1.99.1). A final `ci-ok` job is the single required check.
+- `goldens --check` job: regenerated C++ headers and Rust modules must match
+  the committed golden JSON.
+- `counts.json` CI artefact with the executed pass counts per project.
+- `release.yml`: tag-on-green releases with notes taken from this file.
+- `requirements/ci-constraints.txt`: one resolved set of dependency versions
+  for CI, valid on Python 3.10 to 3.13. `mpmath` added for the options oracle.
+- Dependabot for pip, cargo and GitHub Actions. CHANGELOG, SECURITY,
+  CONTRIBUTING, CODEOWNERS, `.editorconfig`, `ruff.toml` (report-only) and a
+  pre-commit configuration.
+- `hypothesis` and `mpmath` (Python) and `proptest` (Rust) as test-only
+  dependencies.
+
+#### Options (equity and FX; Python, C++, Rust)
+
+- Golden vectors from an mpmath oracle: 456 equity and 434 FX records, each
+  output with its own tolerance (records of `[value, tol]`). The Python
+  consumer is `tests/test_golden.py`.
+- Differential tests from Python against the compiled engines through JSONL
+  shims: Rust `eq_jsonl`/`fx_jsonl`, C++ `eqopt_jsonl`/`fxopt_jsonl`, located
+  by `QP_RS_EQ_JSONL`, `QP_RS_FX_JSONL`, `QP_CPP_EQ_JSONL`, `QP_CPP_FX_JSONL`.
+  They skip when the binaries are absent.
+- C++ FX: `Seed` and `McConfig` types for Monte Carlo.
+- CMake options `EQOPT_WERROR`, `FXOPT_WERROR`, `EQVAR_WERROR` and
+  `FXVAR_WERROR`. CI sets them ON.
+
+#### VaR and ES (equity and FX; Python, C++, Rust; foundations risk metrics)
+
+- `cornish_fisher_valid(skew, ex_kurt, alpha)`: closed-form validity check on
+  [-z_a, z_a].
+- `cholesky(cov, repair=None|"clip"|"higham")` with Higham (2002)
+  alternating projections. Jitter is capped at 1e-6 times the mean diagonal.
+- `acerbi_szekely_z2` with the paper's sign and a simulated p-value
+  (Python); z2 only in Rust and C++.
+- `monte_carlo_risk`: one simulation returns P&L, VaR, ES and a bootstrap SE.
+  `se_var_kde` stays as a diagnostic.
+- Per-factor filtered historical simulation
+  (`factor_filtered_historical_var` in equity).
+- `KupiecInput` struct in Rust and C++. The Basel result carries
+  `plus_factor`.
+- 49 `conv_*` golden keys shared by both families, plus a `versions` block.
+- Input fuzz tests over a registry of every public entry point.
+
+#### Volatility, surfaces, rates, replication
+
+- `robust_std_errors`, `default_hac_lags`, `egarch_unconditional_variance`,
+  `yang_zhang_var`.
+- `smile_quotes_from_broker`, `broker_strangle_from_smile`,
+  `butterfly_report`, `delta_calendar_report`.
+- FX rates: `calendars` module, `BasisSwap`, `basis_discount_curve`,
+  `tenor_dates`, `money_market_year_fraction`, `carry_rolldown(repo_rate=)`,
+  `frn_price_from_curve(current_fixing=)`.
+- The Black-Scholes replication pipeline takes `--out` and `--plot`.
+
+#### Alpha research (pairs, execution, regime, foundations backtest)
+
+- `ExecutionConfig(mode="next"|"close_auction", fill_fraction=0.5,
+  auction_cost_bp=...)` in all seven backtests.
+- `research_stats` module in all seven: Lo Newey-West Sharpe SE, deflated
+  Sharpe ratio, PBO by CSCV, block bootstrap.
+- eq_pairs: `CostModel` impact, financing and short-rebate fields;
+  `COST_COLUMNS`.
+- fx_pairs: `cointegration_funnel`, `hedged_vol_scale`.
+- eq_algo: `capacity_backtest`, `DailyPanel.trailing_adv_dollars`, ledger
+  `borrow` column, `BacktestConfig.borrow_bps_annual`, schedule columns
+  `expected_is_bps` and `se_mean_is_bps`.
+- fx_algo: `BARS_PER_YEAR`, `fix_print`, `fix_self_impact_pips`, ledger
+  `fill_price`, summary key `sharpe_se`.
+- eq_regime: `backtest_from_detection`, `random_timing_weights`,
+  `vol_target_weights`, `causal_min_duration`, `regimes_known_at_decision`,
+  `equal_drift_params`.
+- fx_regime: `QUOTES`, `PIP_SIZE`, `half_spreads`, `quote_levels`,
+  `generate_roro_panel(equal_drift=)`, `random_timing_regimes`,
+  `DetectionConfig.cold_restart_every`.
+- Example pipelines write to a temp directory or `--out`, never the tree.
+
+#### Credit and portfolio
+
+- eq_port: `max_sharpe_qp`, `MaxSharpeResult`, `sharpe_difference_test`.
+- fx_port: `sleeve_turnover`, `hedge_ratio_inference`, `out_of_sample_hedge`.
+- eq_credit: `pd_backtest_by_grade`, `finite_portfolio_quantile`,
+  `granularity_adjustment`, `mc_quantile_ci`.
+- fx_credit: `pd_backtest_by_grade`, `bcbs_window_hours`,
+  `expected_sign_check`, `ConvergenceWarning`, `expected_exposure_loss`,
+  `expected_exposure_loss_for_forward`.
+
+#### Docs
+
+- README, CONVENTIONS and the site describe the three-stage plan (study
+  portfolio, research platform, desk library), point at CI for status and
+  carry an engine latency table for the latency pass to fill.
+- ARCHITECTURE and DIAGRAMS describe the differential-test pipeline and the
+  CI jobs.
+
+### Changed
+
+#### VaR and ES (behaviour and golden changes)
+
+- `alpha` is the tail probability in (0, 0.5) everywhere. FX defaults move
+  from 0.99 to 0.01 and from 0.975 to 0.025. A positional 0.99 now raises.
+  Rust and C++ FX functions take the tail probability and return `Err` or
+  throw on 0.99.
+- Quantile: type-7 interpolation is replaced by the order statistic
+  L(ceil(n alpha)). ES is the exact Acerbi-Tasche estimator with the
+  fractional atom. Foundations ES moves from the naive tail mean to
+  Acerbi-Tasche. Golden: `a_hist_var_1pct` 122.4129 to 141.7568,
+  `a_hist_var_5pct` 104.5523 to 108.2349.
+- Kupiec: keyword-only `kupiec_pof(*, n_obs, n_exceptions, alpha)`.
+  `n_exceptions > n_obs` raises. Kupiec and Christoffersen goldens move in
+  the last digits (log1p).
+- Basel traffic light: one rule for any window and alpha (binomial CDF
+  cut-offs 0.95 and 0.9999, plus factor from the 250-day equivalent).
+  `basel_zone_250d` becomes `basel_zone`.
+- Acerbi-Szekely Z2 uses the paper's sign (negative means ES understated) and
+  returns a p-value. Golden `conv_as_z2` is -3.18545 (rounded).
+- EWMA variance is seeded with the mean squared return of the first
+  min(30, n) observations (`seed_window=`).
+- Monte Carlo VaR: Poisson jump counts over the horizon, log-spot shocks,
+  floored vol, bootstrap SE as the primary `se_var`.
+- An empty book raises in every engine.
+- Rust FX functions return `Result`.
+- Equity full revaluation is vectorised (59 s to 0.03 s on the synthetic demo
+  book).
+- Reverse stress: the delta case is closed form. The delta-gamma solver works
+  in whitened coordinates and raises when it finds no feasible point.
+- `statsmodels` is no longer a dependency of eq_var. fx_var is version 1.1.0;
+  the Rust VaR crates are 0.2.0.
+
+#### Options
+
+- All six engines share one out-of-the-money Halley implied-vol core with no
+  bisection stage (mean 2.6 price evaluations, max 10).
+- FX implied vol: a Brent failure throws. The premium-adjusted bracket is
+  derived from the Mills ratio.
+- Antithetic plus control-variate Monte Carlo estimates beta on pair
+  averages (SE 0.0247 to 0.0087 on the test case).
+- CRR trees precompute node spots.
+- Monte Carlo with too few samples raises (3 with a control variate).
+- An S = 0 American put with r < 0 returns K e^{-rT}. Overflow raises. C++ FX
+  sigma = 25 throws.
+
+#### Volatility, surfaces, rates, replication
+
+- fx_vol fitters raise `ConvergenceError` on failure.
+- Diebold-Mariano HAC lag default is max(h-1, floor(4 (n/100)^(2/9))) with
+  the HLN correction. Variance targeting uses the mean squared return.
+- EGARCH initialisation and unconditional-variance semantics corrected. FX
+  GJR allows a negative gamma subject to alpha + gamma >= 0.
+- `FXVolSurface` and `build_surface` default to `delta_convention="native"`.
+- FX `implied_vol` no longer returns a bracket edge. `price_cos` uses L = 24.
+  `calibrate_heston` uses N = 512 and `n_starts=3`.
+- Equity `fit_svi` is constrained by default (`arbitrage_free=False` gives
+  the old fit). The wing bound is b(1 + |rho|) <= 2 on total variance (Lee).
+- Equity Heston QE uses `martingale_correction=True`.
+- Fixed income: `generate_schedule` and `FixedRateBond` default to
+  `eom=True`; government bonds use ACT/ACT-ICMA.
+- FX rates: the spot date counts business days. Basis quotes are basis-swap
+  spreads.
+- Black-Scholes replication: `implied_volatility` takes `option_type` and
+  warns on NaN. The normal CDF uses `math.erfc`.
+
+#### Alpha research
+
+- Default fill timing in all seven backtests moves from the decision close to
+  a t+1 modelled fill p_t + f (p_{t+1} - p_t), f = 0.5. The old timing is
+  `ExecutionConfig("close_auction", auction_cost_bp=0)`.
+- eq_algo: impact coefficient default 0.1 to 0.7 (`BacktestConfig` and
+  `capacity_curve`). Intraday temporary impact uses bucket volume.
+- eq_regime: `run_ledger` charges 50 bp a year on leverage by default.
+- fx_regime: `SPREAD_PIPS` values are in market pips. Spot P&L is on simple
+  returns, carry on ACT/365. `detect_columns` drops `usd_str`.
+- fx_pairs: `fit_ou_ols` and `fit_ou_mle` raise for phi <= 0.
+  `sharpe_se_lo` is the Lo Newey-West value with lag floor(4 (T/100)^(2/9)).
+- `fit_hmm` appends the final likelihood when it stops at `max_iter`.
+- foundations-02: scipy is a runtime dependency.
+
+#### Credit and portfolio
+
+- `max_sharpe_constrained` falls back to minimum variance when max mu <= rf.
+  It used to maximise volatility.
+- `sharpe_lo` uses Newey-West with a T^(1/3) Bartlett lag.
+- FX solvers raise on failure. FX closed forms reject matrices that are not
+  positive definite.
+- `basel_k`: 5 bp PD floor, M clipped to [1, 5], 1.25 multiplier for
+  financial institutions.
+- FX WoE sign is good over bad. Equity categorical WoE raises on unseen
+  categories. WoE smoothing is renormalised.
+- `stepwise_select` raises on non-convergence. `carry_sizing` returns 0 for a
+  non-positive mean.
+
+#### Docs and tests
+
+- `tests/test_docs_counts.py` no longer compares hand-typed test totals. Test
+  counts come from `counts.json` and the docs do not repeat them. The test
+  checks every quoted LEARN question count and COOKBOOK recipe count against
+  the files, and fails on a hand-typed test total.
+- LEARN.md answers and COOKBOOK.md recipes follow the current APIs. The C++
+  and Rust VaR engines are described as linear-book ports.
+
+### Deprecated
+
+Each stays for one release with a `DeprecationWarning` (Python),
+`#[deprecated]` (Rust) or `[[deprecated]]` (C++).
+
+- Options: Python `implied_vol` arguments `tol`, `max_iter`, `sigma_lo`,
+  `sigma_hi` (ignored); `IV_PRICE_TOL`; the old C++ `implied_vol` overloads.
+- VaR: positional `kupiec_pof`; the FX `confidence=` keyword; FX
+  `es_backtest_acerbi_szekely`; the two-argument `cornish_fisher_valid`;
+  `safe_cholesky`, `robust_cholesky` and Rust `cholesky_jitter`; P&L-level
+  FHS; positional equity `basel_traffic_light`; the type-7 quantile helper.
+- Volatility and rates: `calendar_arbitrage_report(deltas=)` (use
+  `delta_calendar_report`); FX rates calendar-day spot; `tenor_to_years` for
+  ON/TN/SN; `basis_model="zero_spread"`.
+- Alpha: eq_algo `DailyPanel.adv_dollars`; eq_regime
+  `detection.min_duration_filter` (not causal); fx_regime `PIP_FRACTION`;
+  `carry_accrual` without `year_fraction`.
+- Credit: `hosmer_lemeshow` without `out_of_sample`; FX `cva` and
+  `cva_for_forward`. Use `expected_exposure_loss` and
+  `expected_exposure_loss_for_forward`: an expected loss on exposure under a
+  real-world PD, not a CVA.
+
+### Removed
+
+- C++ FX `mc_price` overload taking a raw `uint64` seed (breaking). Use
+  `Seed{}` or `McConfig`.
+- The equity Acerbi-Szekely `reject` key and the fixed -0.70 flag.
+- From the docs: hand-typed test totals, "flagship", "twins" for the VaR
+  engines, review-history narration (now only in this file) and the banned
+  hiring-process word in CONVENTIONS.md.
+
+### Fixed
+
+- CI previously stopped at the first failing project and installed no test
+  extras, so 22 of 23 Python projects had never run in CI.
+- Odd `n_paths` with antithetics in FX Heston Monte Carlo now has a test
+  (`test_odd_n_paths_with_antithetic_raises`).
+- The Cornish-Fisher example (skew 0.122, excess kurtosis -0.427) is valid at
+  alpha = 0.01 under the closed-form rule on [-z_a, z_a]. Its minimum
+  derivative is at the endpoint z = -4.
+- Docs contradictions C1 to C19 from the 2026-11-01 review: golden tolerance
+  statements, "independent" codebases, bootstrap SE coverage, stale
+  Cornish-Fisher grid text, dangling references, the "Real Data" title of a
+  synthetic-data project, and the descriptions of CI and the count mechanism.
+
+## [1.1.0] - 2026-09-06
+
+The tag `v1.1.0` was created before CI had run on its commit, and that run
+failed. No GitHub Release was published for it.
+
+### Fixed
+
+Code review between 2026-08-19 and 2026-09-06 found four numerical bugs. None
+of the fixes changed a golden-vector value.
+
+| Bug | Affected engines | Symptom before the fix | Fix | Regression test |
+|---|---|---|---|---|
+| Implied-vol solver stopped when Newton progress stalled | Options, equity and FX, Python/C++/Rust (6) | At S=K=100, T=25y, sigma=300% the vol error was 1.8e-2, not the reported 2.4e-5. The FX solver could return a vol that did not reprice the input. | The solver always finishes with Brent or bisection on its bracket. | `test_round_trip_long_dated_high_vol_flat_vega`, `test_long_dated_deep_itm_high_vol_flat_plateau_raises` |
+| Cornish-Fisher monotonicity checked on a grid | VaR, equity and FX, Python/C++/Rust (6) | An 801-point grid accepted skew 0.122, excess kurtosis -0.427. That expansion is not monotone near z = 3.1. | The check uses the closed-form minimum of the derivative, a quadratic in z. | `test_domain_check_is_exact_not_grid_resolution_dependent` |
+| Monte Carlo VaR standard error biased low | Monte Carlo VaR, all 6 | The density-based SE was 9-17% below the SE measured across replications when alpha >= 0.995 or the scenario count was small. | Added a bootstrap SE (`var_standard_error_bootstrap`). The density-based SE is unchanged. | `test_bootstrap_se_matches_true_sampling_se_at_default_scenario_count` |
+| Odd `n_paths` broke antithetic pairing | FX Heston Monte Carlo | The reported SE was too small. | `antithetic=True` with odd `n_paths` raises `ValueError`. | none in 1.1.0 |
+
+### Known limitations
+
+- The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
+  its actual size is 9.5%, not 5%. Treat p-values near 0.05 as inconclusive.
+
+[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/AshJha0/quant-portfolio/releases/tag/v1.1.0

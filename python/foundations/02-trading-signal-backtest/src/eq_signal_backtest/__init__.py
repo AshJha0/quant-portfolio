@@ -1,21 +1,22 @@
 """eq_signal_backtest -- long/flat moving-average crossover signal backtest.
 
-Pipeline: signal (:func:`ma_crossover_signal`) -> one-day execution lag +
-transaction costs (:func:`run_backtest`) -> summary statistics
+Pipeline: signal (:func:`ma_crossover_signal`) -> modelled t+1 fill +
+transaction costs (:func:`run_backtest`, :class:`ExecutionConfig`) -> summary statistics
 (:func:`performance_stats`) -> parameter sensitivity
 (:func:`parameter_grid`) -> in-sample/out-of-sample and walk-forward
 evaluation discipline (:mod:`eq_signal_backtest.split`).
 
-The strategy is deliberately simple. The point of this project is the
-*evaluation discipline* around it: no-look-ahead execution, explicit
-transaction costs, a train/test split, a walk-forward variant, and a
-parameter-sensitivity map that exposes overfitting -- see
+The strategy is simple on purpose. The project is about the evaluation
+around it: a tested fill convention, explicit transaction costs, a
+train/test split, a walk-forward variant, a parameter-sensitivity map, and
+the statistics in :mod:`eq_signal_backtest.research_stats`. See
 ``docs/METHODOLOGY.md`` and ``docs/VALIDATION.md``.
 """
 
 from .engine import (
     TRADING_DAYS,
     BacktestResult,
+    ExecutionConfig,
     performance_stats,
     run_backtest,
     strategy_returns,
@@ -37,6 +38,7 @@ __version__ = "1.0.0"
 __all__ = [
     "TRADING_DAYS",
     "BacktestResult",
+    "ExecutionConfig",
     "ma_crossover_signal",
     "strategy_returns",
     "run_backtest",

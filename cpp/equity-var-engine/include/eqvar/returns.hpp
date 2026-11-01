@@ -34,4 +34,8 @@ void validate_pnl(std::span<const double> pnl, std::size_t min_obs);
 /// Validate a tail probability alpha in (0, 0.5); throws otherwise.
 void validate_alpha(double alpha);
 
+/// Throws std::invalid_argument("<who>: book has no positions") when the
+/// exposure vector is empty or all zero, and when any entry is not finite.
+void validate_exposures(std::span<const double> exposures, const char* who);
+
 }  // namespace eqvar

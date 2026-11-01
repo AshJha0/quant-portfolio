@@ -15,8 +15,8 @@ from fx_credit import (
     assign_rating,
     auc,
     bootstrap_auc_ci,
-    cva,
-    cva_for_forward,
+    expected_exposure_loss,
+    expected_exposure_loss_for_forward,
     expected_loss,
     exposure_profile,
     gross_settlement_exposure,
@@ -73,7 +73,7 @@ def test_hazard_explodes_as_pd_to_one():
 def test_cva_bounded_by_lgd_times_peak_ee():
     """CVA <= LGD * max EE * total default mass (undiscounted upper bound)."""
     fwd = FXForward("EURUSD", 5e6, strike=1.10, maturity=2.0)
-    value, prof = cva_for_forward(fwd, spot=1.10, vol=0.12, r_d=0.03, r_f=0.02,
+    value, prof = expected_exposure_loss_for_forward(fwd, spot=1.10, vol=0.12, r_d=0.03, r_f=0.02,
                                   pd_1y=0.60, lgd=0.75, n_steps=12, n_paths=20_000, seed=5)
     assert 0.0 < value <= 0.75 * prof.ee.max() * 1.0 + 1e-9
 
@@ -82,7 +82,7 @@ def test_cva_monotone_in_lgd():
     fwd = FXForward("EURUSD", 5e6, strike=1.10, maturity=1.0)
     vals = []
     for lgd in (0.25, 0.50, 0.75):
-        v, _ = cva_for_forward(fwd, 1.10, 0.12, 0.03, 0.02, pd_1y=0.05, lgd=lgd,
+        v, _ = expected_exposure_loss_for_forward(fwd, 1.10, 0.12, 0.03, 0.02, pd_1y=0.05, lgd=lgd,
                                n_steps=8, n_paths=10_000, seed=9)
         vals.append(v)
     assert vals[0] < vals[1] < vals[2]
@@ -165,15 +165,15 @@ def test_vasicek_rejects_nan_pd_and_factor():
 def test_cva_rejects_nonfinite_and_negative_ee():
     t = np.array([1.0])
     with pytest.raises(ValueError):
-        cva(t, np.array([np.nan]), np.array([0.01]), 0.5)
+        expected_exposure_loss(t, np.array([np.nan]), np.array([0.01]), 0.5)
     with pytest.raises(ValueError):
-        cva(t, np.array([np.inf]), np.array([0.01]), 0.5)
+        expected_exposure_loss(t, np.array([np.inf]), np.array([0.01]), 0.5)
     with pytest.raises(ValueError):
-        cva(t, np.array([-1.0]), np.array([0.01]), 0.5)
+        expected_exposure_loss(t, np.array([-1.0]), np.array([0.01]), 0.5)
     with pytest.raises(ValueError):
-        cva(t, np.array([1.0]), np.array([np.nan]), 0.5)
+        expected_exposure_loss(t, np.array([1.0]), np.array([np.nan]), 0.5)
     with pytest.raises(ValueError):
-        cva(t, np.array([1.0]), np.array([1.5]), 0.5)
+        expected_exposure_loss(t, np.array([1.0]), np.array([1.5]), 0.5)
 
 
 def test_auc_ks_reject_nan_scores():
@@ -195,9 +195,9 @@ def test_psi_rejects_nonfinite():
 def test_hosmer_lemeshow_rejects_bad_probabilities():
     y = np.array([0.0, 1.0] * 20)
     with pytest.raises(ValueError):
-        hosmer_lemeshow(y, np.full(40, np.nan))
+        hosmer_lemeshow(y, np.full(40, np.nan), out_of_sample=True)
     with pytest.raises(ValueError):
-        hosmer_lemeshow(y, np.full(40, 1.5))
+        hosmer_lemeshow(y, np.full(40, 1.5), out_of_sample=True)
 
 
 def test_settlement_rejects_nonpositive_usd_rate():

@@ -31,13 +31,15 @@ carries exactly zero risk.
 
 from __future__ import annotations
 
+import warnings as _warnings
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
-from .common import fx_factor, ir_factor, split_pair, validate_finite, vol_factor
+from .common import (NumericalWarning, fx_factor, ir_factor, split_pair,
+                     validate_finite, vol_factor)
 from .gk import gk_delta, gk_gamma, gk_price, gk_vega
 
 __all__ = ["Market", "Cash", "Spot", "Forward", "Option", "Book", "Position"]
@@ -354,13 +356,22 @@ class Book:
             s0 = market.spot(c)
             spot[c] = s0 * np.exp(shocks.get(fx_factor(c), 0.0))
         rates = {c: market.rate(c) + shocks.get(ir_factor(c), 0.0) for c in rate_ccys}
-        vols = {q: market.vol(q) + shocks.get(vol_factor(q), 0.0) for q in pairs}
-        for q, v in vols.items():
-            if np.any(np.asarray(v) < 0):
-                raise ValueError(
-                    f"shocked implied vol for {q} is negative; cap the vol "
-                    "shock or use a floored scenario"
+        vols = {}
+        for q in pairs:
+            v = market.vol(q) + shocks.get(vol_factor(q), 0.0)
+            neg = np.asarray(v) < 0
+            if np.any(neg):
+                # An absolute vol shock larger than the vol itself is floored
+                # at zero (the option then revalues at forward intrinsic).
+                # A single bad Monte Carlo path must not abort the run.
+                _warnings.warn(
+                    f"shocked implied vol for {q} floored at 0 on "
+                    f"{int(np.sum(neg))} scenario(s)",
+                    NumericalWarning,
+                    stacklevel=4,
                 )
+                v = np.maximum(v, 0.0)
+            vols[q] = v
         return spot, rates, vols
 
     def _position_value_usd(self, pos, spot, rates, vols, ref: Market, option_method: str):

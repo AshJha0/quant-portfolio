@@ -1,171 +1,122 @@
 # Methodology
 
-C++20 FX VaR/ES engine, mirroring the Python reference
-`python/fx/03-var-es-engine` (`fx_var`). This document covers **why the
-C++ twin exists**, the model choices (with alternatives and trade-offs),
-and the assumptions register. The mathematical derivations shared with the
-Python package are not repeated in full — the Python
-`docs/METHODOLOGY.md` is the primary reference for the underlying models;
-this file states where the C++ engine follows it and where it deliberately
-differs.
+C++23 FX VaR/ES engine. It is the linear-book port of the Python engine
+`python/fx/03-var-es-engine` (`fx_var`): cash, spot and forwards with full
+revaluation, no options. This file states the conventions, the reasons for
+a compiled engine, the model choices, and the assumptions. The Python
+`docs/METHODOLOGY.md` carries the longer derivations.
 
----
+## 0. Conventions (shared by the Python, Rust and C++ VaR engines)
 
-## 1. Why a C++ engine for FX risk?
+| item | convention |
+|---|---|
+| alpha | Tail probability: 0.01 = 99 % VaR. Values outside (0, 0.5) throw `std::invalid_argument("alpha is the tail probability (e.g. 0.01 for 99 %) ...")`. Until this release the FX engine took a confidence level (0.99). The same parameter now means the tail, and 0.99 throws. Defaults are 0.01. |
+| sign | P&L in base currency, loss negative. VaR and ES are positive losses. |
+| empirical VaR | Losses L = -pnl sorted descending. k = n alpha, m = ceil(k - 1e-9) clamped to [1, n]. VaR = L(m). Uniform weights use `std::nth_element`, no full sort. |
+| empirical ES | ES = [ sum_{i<m} L(i) + (k - (m-1)) L(m) ] / k. |
+| weighted VaR / ES | Weights normalised, stable-sorted with the losses. m = first j with W_j >= alpha - 1e-12. ES = [ sum_{i<m} w_i L(i) + (alpha - W_{m-1}) L(m) ] / alpha. |
+| closed forms | Normal VaR = -mu + sigma z, ES = -mu + sigma phi(z) / alpha, z = Phi^{-1}(1 - alpha). Student-t standardised to unit variance. |
+| Kupiec | `kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha})`. The old `(n_exceptions, n_obs, alpha)` overload is deprecated. |
+| Basel | F(x) by Binomial(n_obs, alpha) pmf recursion. Green F < 0.95, yellow F < 0.9999, red otherwise. Yellow plus factor from the 250-day table at the smallest x' in 5..9 with F250(x') >= F(x) - 1e-12. |
+| Acerbi-Szekely | Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1. Negative means ES is understated. |
+| Cornish-Fisher | Valid iff g'(z) > 0 on [-z_a, z_a], z_a = Phi^{-1}(1 - alpha). Non-finite moments throw. |
+| Cholesky | Symmetry within 1e-10 max abs entry. Jitter 1e-12 to 1e-6 x mean(diag), x10 per step. Past the cap: throw, or repair (`Repair::kClip`, `Repair::kHigham`). |
+| EWMA | s2_0 = mean of r^2 over the first min(30, n) rows; s2_t = lam s2_{t-1} + (1 - lam) r_{t-1}^2. |
+| MC jumps | Per-day jump probability p becomes the intensity lam = -ln(1 - p). Over horizon h the count is N ~ Poisson(lam h). Jump return = sum of N iid N(mu_J, sigma_J). Not compensated: adds drift lam h mu_J. |
+| MC SE | Simulate once. Bootstrap SE (primary, n_boot >= 2), Silverman KDE SE at the reported quantile (diagnostic). |
+| empty book | Throws "book has no positions". A book of base-currency cash only has zero risk and returns 0. |
+| inputs | NaN, +inf, -inf, empty and invalid negative inputs throw `std::invalid_argument`. |
 
-**1.1 Intraday multi-currency books.** An FX desk's book turns over
-continuously: spot fills, forward rolls, cross hedges. Risk that is
-recomputed only in the overnight batch is stale by 08:05. The compiled
-book (struct-of-arrays legs, one `exp()` per leg per scenario) revalues a
-250-position / 50-factor book under 500 historical scenarios in ~2 ms and
-runs a 100k-path full-revaluation Monte Carlo in under a second on one
-core — fast enough to recompute VaR, ES and the full stress library on
-every material fill, not once a day.
+## 1. Why a compiled engine for FX risk
 
-**1.2 Follow-the-sun batch windows.** A global FX risk platform closes
-books in Tokyo, London and New York; the batch window between a region's
-close and its regulatory/limit reporting is short and shared with hundreds
-of other jobs. Deterministic single-binary compute with no interpreter
-startup, no GIL and flat memory (the compiled book is three parallel
-arrays) is what lets thousands of sub-books be swept inside the window and
-lets the same binary produce identical numbers in all three regions.
+- **Intraday books.** The compiled book (struct-of-arrays legs, one `exp()`
+  per leg per scenario) revalues a synthetic 250-position / 50-factor book
+  scenario by scenario; the README carries measured per-call latencies.
+- **Batch windows.** One binary, no interpreter start-up, flat memory.
+- **Executable contract with the Python engine.** Golden values generated
+  by the Python engine are compiled into the tests; any drift fails the
+  build.
 
-**1.3 Regression-gated twin of the research stack.** The Python package is
-where methodology evolves (it also carries the Garman–Kohlhagen options
-layer); the C++ engine is the production-shaped implementation. The
-contract between them is executable: golden constants generated by the
-Python package are committed in `tests/test_golden_python.cpp` and any
-semantic drift breaks the build (see VALIDATION.md §3).
+## 2. Factor model and book
 
-**Alternatives considered.**
-- *Stay in Python/NumPy*: adequate for overnight batch on one book;
-  loses intraday latency, per-fill recompute, and deployment determinism.
-  Kept as the research/reference stack.
-- *Rust*: comparable performance; C++20 chosen for toolchain ubiquity on
-  bank risk grids and header-only integration into existing C++ pricing
-  libraries.
-- *GPU MC*: unnecessary at this factor count — the 100k×50 problem is
-  sub-second on one core; GPU pays off only for path-dependent exotics.
+Same as `fx_var.common` and `fx_var.book`:
 
----
-
-## 2. Factor model and book representation
-
-Identical to the Python reference (`fx_var.common`, `fx_var.book`):
-
-- Pairs are quoted BASE/QUOTE (EURUSD = USD per 1 EUR), per the
-  portfolio-wide FX conventions.
-- Every currency is represented by one **USD factor**: `FX:CCY` is the
-  daily log return of CCYUSD (USD price of 1 unit of CCY). USD has no
-  factor. Cross pairs are **triangulated**: a EURJPY position becomes a
-  long-EUR leg and short-JPY leg. There is no separate cross factor, so
-  the factor set is arbitrage-consistent by construction and cross vol/
-  correlation are consequences of the USD-leg covariance — the identity is
-  tested to 1e-12.
-- `IR:CCY` is an absolute shock (decimal p.a.) to the continuously
-  compounded ACT/365 zero rate, flat curve per currency.
+- Pairs are quoted BASE/QUOTE (EURUSD = USD per 1 EUR).
+- Each currency has one USD factor: `FX:CCY` is the daily log return of
+  CCYUSD. USD has none. A EURJPY position becomes a long-EUR and a short-JPY
+  leg, so cross risk follows from the USD-leg covariance (tested to 1e-12).
+- `IR:CCY` is an absolute shock to the continuously compounded ACT/365 zero
+  rate, flat per currency.
 - **Forwards** are spot plus two deposit legs:
-  `V_usd = N e^{−r_f T} S_f − N K e^{−r_d T} S_d`. Forward points are
-  therefore *derived* from the two rate factors (CIP), not an independent
-  factor; the position responds to both FX and both IR factors. Tested:
-  zero value at CIP inception, equality with the discounted cash legs,
-  closed-form rate sensitivities.
-- **P&L convention**: profit(+)/loss(−) in the book's base currency,
-  `PnL = V1_usd/S1_base − V0_usd/S0_base` with the base currency's own USD
-  price shocked consistently. A base-ccy cash balance has exactly zero
-  risk (tested).
-- **Options are out of scope in the C++ engine** and stay in the Python
-  stack (Garman–Kohlhagen full reval / Greek mapping). This keeps the C++
-  hot path branch-free and log-linear per leg; on the linear subset the
-  engines are exactly comparable, which is what the cross-language golden
-  tests exploit. A vol-factor extension slots into the same compiled-leg
-  design (a fourth factor family), documented here so its absence is a
-  decision, not an accident.
+  V_usd = N e^{-r_f T} S_f - N K e^{-r_d T} S_d.
+- **P&L**: PnL = V1_usd / S1_base - V0_usd / S0_base, with the base
+  currency's own USD price shocked consistently.
+- **Options are out of scope** and stay in the Python engine.
 
-### Hot path
+`CompiledBook` flattens positions into USD legs once: discounted value
+v0 = amount S0 e^{-r0 T}, an FX index, an IR index and -T. A scenario
+revalues a leg as v0 exp(dfx - T dr): spot S exp(r) on log returns.
 
-`CompiledBook` flattens every position into USD legs at construction:
-per-leg unshocked discounted value `v0 = amount · S0 · e^{−r0 T}`, an FX
-factor index, an IR factor index and `−T`. A scenario revalues each leg as
-`v0 · exp(dfx − T·dr)`. Struct-of-arrays layout keeps the scenario loop a
-straight stream over four contiguous arrays: no virtual dispatch, no maps,
-no allocation. Default strikes/entry rates resolve against the reference
-market once, at compile time.
+## 3. VaR methods
 
-## 3. VaR methods (choices and trade-offs)
-
-Same estimator suite as the Python reference; see its METHODOLOGY.md for
-full derivations and citations (BRW 1998; Barone-Adesi et al. 1999;
-Maillard 2012; Acerbi–Tasche 2002).
-
-- **Historical simulation** (plain / BRW age-weighted / filtered): full
-  revaluation under empirical scenarios; FHS devolatilises by per-factor
-  EWMA sigma and rescales to today's forecast — the variant that survives
-  volatility-clustering backtests. Chosen as the primary desk method
-  because it imposes no distributional shape on FX returns.
-- **Parametric var-covar**: finite-difference linearisation + normal or
-  standardised Student-t overlay on the same sigma (so tail comparisons
-  are at equal risk), plus Cornish–Fisher with an explicit monotonicity
-  domain check (outside the domain the expansion is refused, not silently
-  wrong). Chosen for speed and attribution (exposure vector is a
-  by-product); limitation: linear in the factors.
-- **Monte Carlo**: normal / covariance-matched t / jump-mixture with full
-  revaluation. The jump-mixture (common Bernoulli event, per-ccy jump
-  size) is the *peg-break overlay*: it deliberately adds variance the
-  covariance matrix cannot contain. Chosen as the only method that can
-  price risks absent from history.
-- **ES throughout** (Acerbi–Tasche weighted tail-splitting empirical
-  estimator; closed forms for normal/t): coherent, sees tail sizes —
-  the Basel FRTB headline measure, and the right measure for books with
-  jump-to-default-like peg risk.
+- **Historical simulation**: plain, BRW age-weighted, and per-factor
+  filtered (each factor devolatilised by its EWMA sigma and rescaled to the
+  one-step-ahead forecast). Full revaluation under each scenario.
+- **Parametric**: finite-difference exposures, then normal or standardised
+  Student-t on the same sigma, plus Cornish-Fisher with the alpha-aware
+  validity check. Example: (S, K) = (0.122, -0.427) fails on the old fixed
+  interval [-4, 4] (g'(-4) = -9e-4, at the endpoint) and is valid at
+  alpha = 0.01 and 0.001.
+- **Monte Carlo**: normal, covariance-matched t, and the jump mixture
+  (Poisson count over the horizon). The jump overlay adds variance that the
+  covariance cannot contain: the peg-break case.
+- **ES** with every method.
 
 ## 4. Assumptions register
 
-Each assumption states what breaks if violated. A1–A8 mirror the Python
-reference; A9–A10 are C++-specific.
-
 | # | Assumption | What breaks if violated |
 | --- | --- | --- |
-| A1 | USD-factor triangulation: cross risk fully captured by the two USD legs. | If a cross trades away from triangulated parity (capital controls, CNH vs CNY), cross P&L is misstated; add the offshore ccy as a separate factor. |
-| A2 | `FX:*` are daily log returns; scenarios exponentiate. | Using simple returns double-counts convexity; large-shock scenarios become inconsistent (a −50% then +50% log round-trips; simple does not). |
-| A3 | Flat cc zero curve per currency, ACT/365. | Curve-shape risk (FX swap basis, turn-of-year) invisible; forwards priced off a single node misprice long-dated points. Adequate at daily-VaR granularity only. |
-| A4 | CIP holds in revaluation (forward = spot + deposits). | In stressed funding (2008, 2020 quarter-ends) the cross-currency basis widens: forward P&L needs a basis factor per ccy. |
-| A5 | Square-root-of-time scaling to multi-day horizons. | Breaks for negatively skewed carry books (autocorrelated unwinds): 10-day VaR understated; use overlapping-window HS for the ICAAP number. |
-| A6 | Sample/EWMA covariance is estimable and stationary within the window. | Regime breaks (post-peg) make the matrix garbage; EWMA recovers with λ-half-life lag; the peg screen + stress add-on cover the gap. |
-| A7 | i.i.d. scenarios within the HS window (plain). | Volatility clustering ⇒ Christoffersen independence failures; use FHS (implemented) — see VALIDATION.md. |
-| A8 | Pegged currencies: history contains no break. | HS/parametric VaR ≈ 0 on the peg. The engine *flags* (peg screen) and *prices* (jump-mixture, peg-break scenarios) this; ignoring the flag reproduces CHF-2015 blindness. |
-| A9 | Bitwise determinism relies on library-owned RNG transforms (inverse-CDF over `mt19937_64`), never `std::normal_distribution` (implementation-defined stream). | Swapping in std distributions silently breaks cross-platform reproducibility of MC numbers between regions. |
-| A10 | Linear (spot/forward) instruments only; options remain in the Python stack. | Option books need the GK layer: convexity/vega missing here. The compiled-leg design has a documented extension point (vol factor family). |
+| A1 | Cross risk is captured by the two USD legs. | Crosses away from triangulated parity (CNH vs CNY) are misstated; add a separate factor. |
+| A2 | `FX:*` are daily log returns; scenarios exponentiate. | Simple returns would double-count convexity on large shocks. |
+| A3 | Flat zero curve per currency, ACT/365. | Curve-shape risk is invisible; long-dated forwards misprice. |
+| A4 | CIP holds in revaluation. | In stressed funding the cross-currency basis widens; forwards need a basis factor. |
+| A5 | Square-root-of-time to multi-day horizons. | 10-day VaR is understated for books with autocorrelated unwinds. |
+| A6 | Covariance is stationary within the window. | Regime breaks; EWMA recovers with a lag; the peg screen and stress add-on cover the gap. |
+| A7 | i.i.d. scenarios in plain HS. | Christoffersen failures under clustering; use FHS. |
+| A8 | Pegged currencies: history has no break. | HS and parametric VaR near 0 on the peg. The engine flags it and prices it through jumps and peg-break scenarios. |
+| A9 | Repeatability uses library-owned transforms over `mt19937_64`. | `std::normal_distribution` would change streams between standard libraries. Last-bit differences across libms remain. |
+| A10 | Linear instruments only. | Option books need the Python engine. |
+| A11 | Jumps are uncompensated. | With mu_J != 0 the jump overlay shifts the mean by lam h mu_J. |
 
-## 5. Design choices worth defending
+## 5. Design choices
 
-- **Warnings as data, not I/O.** Python uses `warnings.warn`; a C++ risk
-  library must not write to stderr in a batch grid. Diagnostics (peg
-  flags, Cholesky jitter) are returned in result structs and the caller
-  decides — the information is identical, the channel is explicit.
-- **Refuse, never impute.** NaNs in histories, invalid alphas, empty
-  books, non-monotone Cornish–Fisher moments, non-finite covariances or
-  exposures, impossible (≤ −100%) stress moves and unfactorisable
-  covariances all throw with actionable messages. An empty book throws
-  rather than returning 0: a VaR of zero on a misloaded book is the most
-  expensive silent bug in risk IT.
-- **Jitter escalation on Cholesky** (1e-12·mean(diag), ×10 up to 8
-  tries), because singular covariances are *routine* FX inputs (two ccys
-  pegged to the same anchor), with the jitter reported to the caller. The
-  ladder tops out at 1e-5·mean(diag), which is the point of the bound: a
-  matrix with a negative eigenvalue larger than that is not "numerically
-  singular PSD" but genuinely indefinite, and factoring it would simulate
-  a covariance the caller never supplied.
-- **Numerical guards are scale-relative.** Tolerances on the PSD test
-  (`portfolio_sigma`) and the Cholesky symmetry test are measured against
-  the size of the numbers involved (|w|² max|Σ| and max|Σ| respectively),
-  not as absolute constants. FX books are quoted in wildly different
-  units — a JPY notional variance and an EUR log-return variance differ by
-  ~10 orders of magnitude — so an absolute threshold is guaranteed to be
-  simultaneously too tight for one book and too loose for another. Both
-  guards previously misfired on legitimate large-notional books; see
-  VALIDATION.md F6.
-- **Special functions from scratch** (Acklam+Halley inverse normal,
-  incomplete gamma/beta): keeps the engine dependency-free and makes
-  accuracy a *tested property* (< 1e-9 on the inverse CDF; scipy-matched
-  p-values to 1e-10) instead of an import.
+- **Warnings as data.** Peg flags, Cholesky jitter and repair notes are
+  returned in result structs, not written to stderr.
+- **Refuse, never impute.** NaN or infinite inputs, invalid alpha, empty
+  books, invalid Cornish-Fisher moments, indefinite covariances beyond the
+  jitter cap and impossible stress moves all throw.
+- **Capped jitter.** Singular covariances are routine in FX (two currencies
+  pegged to one anchor), so a jitter up to 1e-6 x mean(diag) is applied and
+  reported. Beyond that the matrix has a real negative eigenvalue and the
+  engine throws unless a repair is requested. The deprecated
+  `robust_cholesky` used to escalate to 1e-5 x mean(diag) without this
+  check; it now forwards to `cholesky`.
+- **Scale-relative guards.** The PSD test in `portfolio_sigma` and the
+  Cholesky symmetry test are relative to the magnitudes involved.
+- **Two API layers.** The throwing API validates and throws
+  `std::invalid_argument`. Under it, `fxvar/kernels.hpp` exposes `noexcept`
+  kernels that return `std::expected<T, fxvar::Error>` and work in
+  caller-provided buffers, so a caller on a latency budget sizes its
+  buffers once and never allocates or throws per call. The arithmetic is
+  shared, so both layers return the same bits.
+- **Selection, not sorting.** Uniform-weight VaR/ES and the KDE standard
+  error's interquartile range use `std::nth_element` (O(n)). Only the
+  weighted VaR/ES sorts, because the cumulative weight must be walked in
+  loss order.
+- **Row-major linear algebra.** Matrices are dense row-major. Mat-vec,
+  quadratic form, Cholesky and the scenario product L z read rows
+  contiguously. Summation order is never changed for speed, since that
+  would change results in the last bits.
+- **Special functions in the library.** Acklam plus Halley inverse normal,
+  Lanczos `log_gamma` (thread-safe; `std::lgamma` writes glibc's global
+  `signgam`), incomplete gamma and beta, binomial CDF by pmf recursion.

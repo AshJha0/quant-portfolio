@@ -163,3 +163,52 @@ def test_summary_table_structure():
     assert list(tbl.index) == ["A", "B"]
     for col in ("AnnRet", "AnnVol", "Sharpe", "SharpeSE_Lo", "Sortino", "MaxDD", "Calmar"):
         assert col in tbl.columns
+
+
+def test_lo_sharpe_on_iid_data_is_close_to_iid_scaling():
+    # Regression: with 251 untruncated lags the adjusted/raw ratio on iid
+    # data had a 5-95% range of about 0.76-1.54. With T^(1/3) Bartlett
+    # truncation the ratio's sd is about sqrt(2 L / T) / 2 ~ 0.04 at
+    # T = 2000, so a [0.85, 1.15] band holds the 5-95% range with margin.
+    rng = np.random.default_rng(7)
+    ratios = []
+    for _ in range(200):
+        r = rng.normal(0.0004, 0.01, 2000)
+        res = sharpe_lo(r)
+        ratios.append(res.sharpe_lo / res.sharpe)
+    lo, med, hi = np.percentile(ratios, [5, 50, 95])
+    assert 0.85 < lo and hi < 1.15
+    assert abs(med - 1.0) < 0.03
+
+
+def test_lo_sharpe_rejects_negative_lags():
+    with pytest.raises(ValueError):
+        sharpe_lo(np.random.default_rng(0).normal(size=50), n_lags=-1)
+
+
+def test_sharpe_difference_test_size_under_null():
+    # Two correlated iid normal series with equal true Sharpe: the
+    # rejection rate at 5% should be 5%. With 1000 trials the MC standard
+    # error is sqrt(.05 * .95 / 1000) = 0.0069, so [0.03, 0.07] is a
+    # ~3-sigma band.
+    from eq_port import sharpe_difference_test
+
+    rng = np.random.default_rng(11)
+    cov = np.array([[1.0, 0.6], [0.6, 1.0]]) * 1e-4
+    rej = 0
+    for _ in range(1000):
+        x = rng.multivariate_normal([5e-4, 5e-4], cov, size=500)
+        rej += sharpe_difference_test(x[:, 0], x[:, 1]).p_value < 0.05
+    assert 0.03 <= rej / 1000 <= 0.07
+
+
+def test_sharpe_difference_test_detects_large_gap_and_validates():
+    from eq_port import sharpe_difference_test
+
+    rng = np.random.default_rng(3)
+    a = rng.normal(0.002, 0.01, 2000)
+    b = rng.normal(-0.001, 0.01, 2000)
+    res = sharpe_difference_test(a, b)
+    assert res.p_value < 1e-6 and res.diff > 0
+    with pytest.raises(ValueError):
+        sharpe_difference_test(a, b[:-1])

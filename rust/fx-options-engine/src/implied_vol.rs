@@ -1,61 +1,47 @@
-//! Implied Garman–Kohlhagen volatility from a domestic-currency premium.
+//! Implied Garman-Kohlhagen volatility from a domestic-currency premium.
 //!
-//! Strategy: Newton–Raphson from a moneyness-aware initial guess (fast
-//! quadratic convergence when vega is healthy), falling back to bracketed
-//! Brent (guaranteed convergence) if Newton stalls or wanders outside the
-//! no-arbitrage bracket.  Mirrors the Python
-//! `fx_options.garman_kohlhagen.implied_vol` and the C++ engine exactly:
-//! same bounds checks, same tolerances, same degenerate-price behaviour.
+//! The quote is mapped to normalised Black form and solved on the
+//! out-of-the-money side (an in-the-money quote is converted by parity)
+//! with the shared core in [`crate::iv_core`]: safeguarded Halley
+//! iteration on transformed objectives with a relative stopping rule. The
+//! same algorithm, constants and bounds tolerances run in the Python
+//! `fx_options.implied_vol` and the C++ engine.
 
-use crate::garman_kohlhagen::{d1 as d1_fn, gk_price};
-use crate::{brentq, invalid, norm_pdf, require_finite, validate_inputs, FxResult, OptionType};
+use crate::iv_core::black_implied_vol;
+use crate::{
+    finite_result, invalid, require_finite, validate_inputs, FxError, FxResult, OptionType,
+};
 
-/// Absolute tolerance on the vol root (round trips hold to 1e-10).
-const TOL: f64 = 1e-12;
-/// Newton iteration budget before the Brent fallback.
-const MAX_ITER: usize = 100;
-
-/// GK vega (dV/dsigma), same for calls and puts.
-fn gk_vega(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult<f64> {
-    let d1v = d1_fn(s, k, t, r_d, r_f, sigma)?;
-    Ok(s * (-r_f * t).exp() * norm_pdf(d1v) * t.sqrt())
-}
-
-/// Implied Garman–Kohlhagen volatility from a domestic-currency premium.
+/// Implied Garman-Kohlhagen volatility from a domestic-currency premium.
 ///
 /// # Arguments
 ///
-/// * `price` — observed premium, domestic ccy per unit foreign notional.
-/// * `s`, `k`, `t`, `r_d`, `r_f` — as in [`crate::gk_price`]; requires
+/// * `price`: observed premium, domestic ccy per unit foreign notional.
+/// * `s`, `k`, `t`, `r_d`, `r_f`: as in [`crate::gk_price`]; requires
 ///   `t > 0`.
-/// * `option_type` — call or put.
+/// * `option_type`: call or put.
 ///
-/// Returns the implied volatility (annualised) to absolute tolerance
-/// 1e-12 (price round trips reproduce the input vol to better than
-/// 1e-10 across the tested strike/vol grid).
+/// Accuracy: within `max(eps * price / vega, 1e-12 * sigma)` of the true
+/// root, in at most 10 evaluations (typically 2-4).
 ///
-/// A price whose time value is below double-precision resolution of the
-/// `sigma -> 0` bound returns `0.0` (that limit; vol unrecoverable —
-/// documented in docs/VALIDATION.md). The symmetric corner — deep ITM +
-/// long-dated + high vol, where `N(d1)`/`N(d2)` saturate to 0/1 in double
-/// precision and the price becomes bit-identical to the `sigma -> inf`
-/// bound — is a flat plateau with no unique root, not a single degenerate
-/// point with a natural finite limit, so it errors instead (see below).
+/// Bounds use scale-aware tolerances: `tau_lo = 4 eps df_d max(F, K)` at
+/// the intrinsic bound when the option is in the money (zero otherwise)
+/// and `tau = 4 eps upper` at the `sigma -> inf` bound. A price within
+/// `tau_lo` of the intrinsic bound returns `0.0`; a price within `tau` of
+/// the upper bound is an error, because no finite vol is identifiable.
 ///
 /// # Errors
 ///
-/// [`crate::FxError::InvalidInput`] if the price violates the
-/// no-arbitrage bounds `[discounted intrinsic on the forward, discounted
-/// forward bound]`, `t = 0`, or the price sits in the flat plateau near
-/// the `sigma -> infinity` bound where vol is genuinely unrecoverable
-/// (docs/VALIDATION.md, failure mode 4).
+/// [`crate::FxError::InvalidInput`] if the price lies outside
+/// `(lower - tau_lo, upper - tau)`, if `t = 0` or an input is invalid;
+/// [`crate::FxError::Numerical`] if the solver does not converge.
 ///
 /// ```
 /// use fx_options_engine::{gk_price, implied_vol, OptionType};
 /// let (s, k, t, rd, rf) = (1.10, 1.15, 0.5, 0.0425, 0.0290);
 /// let px = gk_price(s, k, t, rd, rf, 0.0925, OptionType::Call).unwrap();
 /// let iv = implied_vol(px, s, k, t, rd, rf, OptionType::Call).unwrap();
-/// assert!((iv - 0.0925).abs() < 1e-10);
+/// assert!((iv - 0.0925).abs() < 1e-14);
 /// ```
 pub fn implied_vol(
     price: f64,
@@ -73,123 +59,41 @@ pub fn implied_vol(
     }
     require_finite(price, "price")?;
 
-    let df_d = (-r_d * t).exp();
-    let df_f = (-r_f * t).exp();
-    let forward = s * df_f / df_d;
+    let df_d = finite_result((-r_d * t).exp(), "implied_vol")?;
+    let df_f = finite_result((-r_f * t).exp(), "implied_vol")?;
+    let forward = finite_result(s * df_f / df_d, "forward")?;
     let lower = df_d * (phi * (forward - k)).max(0.0); // sigma -> 0 limit
     let upper = if phi > 0.0 { s * df_f } else { k * df_d }; // sigma -> inf
-    if price < lower - 1e-14 || price > upper + 1e-14 {
+                                                             // Rounding of the sigma -> 0 bound df (F - K): a few eps of df max(F, K)
+                                                             // when the option is in the money; exactly zero otherwise.
+    let tau_lo = if lower > 0.0 {
+        4.0 * f64::EPSILON * df_d * forward.max(k)
+    } else {
+        0.0
+    };
+    let tau = 4.0 * f64::EPSILON * upper;
+    if price < lower - tau_lo || price > upper + tau {
         return invalid(format!(
             "price {price} outside no-arbitrage bounds [{lower}, {upper}]"
         ));
     }
-    if price - lower <= 1e-16 * lower.max(1.0) {
-        // Time value below double-precision resolution: vol unrecoverable,
-        // return the sigma -> 0 limit (documented in docs/VALIDATION.md).
+    if price - lower <= tau_lo {
+        // Time value below the rounding of the bound: return the
+        // sigma -> 0 limit (documented in docs/VALIDATION.md).
         return Ok(0.0);
     }
-    if upper - price <= 1e-16 * upper.max(1.0) {
-        // Symmetric corner: deep ITM + long-dated + high vol drives |d1|,
-        // |d2| large enough that N(d1)/N(d2) saturate to 0/1 in double
-        // precision, so gk_price(sigma) is bit-identical to the
-        // sigma -> inf bound for every sigma from the true root up to
-        // infinity -- a flat plateau, not a single degenerate point.
-        // Unlike the `lower` case there is no finite limiting sigma to
-        // fall back to (sigma -> infinity is not representable), and
-        // letting the Newton/Brent search below run would risk it landing
-        // on an arbitrary point inside that plateau (an artifact of
-        // whatever bracket width happened to be probed) rather than the
-        // true root -- silently wrong by whole vol points, with no
-        // signal to the caller. The honest answer is that vol is
-        // unrecoverable at this precision (documented in
-        // docs/VALIDATION.md, failure mode 4).
+    if upper - price <= tau {
         return invalid(format!(
-            "price {price} is within double-precision resolution of the \
-             sigma->inf bound {upper}; implied volatility is unrecoverably \
-             large (vega has underflowed to zero in this regime)"
+            "price {price} is within {tau:e} of the sigma->inf bound {upper}; \
+             no finite implied volatility is identifiable"
         ));
     }
-
-    let objective = |sig: f64| -> FxResult<f64> {
-        Ok(gk_price(s, k, t, r_d, r_f, sig, option_type)? - price)
-    };
-
-    // Newton with a moneyness-aware start (Brenner-Subrahmanyam flavoured).
-    let mut sigma = (2.0 * (forward / k).ln().abs() / t).sqrt().max(0.05);
-    let lo = 1e-10;
-    let hi_cap = 10.0;
-    for _ in 0..MAX_ITER {
-        let diff = objective(sigma)?;
-        let vega = gk_vega(s, k, t, r_d, r_f, sigma)?;
-        if vega < 1e-12 {
-            // Flat objective: an absolute price tolerance here would be
-            // meaningless (a wing option's vega can be ~1e-9, so even a
-            // sub-ULP price residual implies a sigma error orders of
-            // magnitude above `TOL` — this is what let short-dated wing
-            // round trips return early ~1e-7 off).  Only accept if the
-            // price residual is already at the double-precision noise
-            // floor; otherwise hand off to bracketed Brent, which solves
-            // in the sigma domain and is immune to the flat vega.
-            if diff.abs() < 1e-14 {
-                return Ok(sigma);
-            }
-            break;
+    let mut evals = 0;
+    black_implied_vol(price, forward, k, t, df_d, phi > 0.0, &mut evals).map_err(|msg| {
+        if msg.starts_with("price") {
+            FxError::InvalidInput(msg.into())
+        } else {
+            FxError::Numerical(msg.into())
         }
-        let new_sigma = sigma - diff / vega;
-        if !(new_sigma > lo && new_sigma < hi_cap) {
-            break;
-        }
-        if (new_sigma - sigma).abs() < TOL {
-            sigma = new_sigma;
-            break;
-        }
-        sigma = new_sigma;
-    }
-
-    // Brent fallback.  The objective cannot fail inside [lo, hi_cap]:
-    // sigma > 0, t > 0 and the inputs are validated.
-    let obj_infallible = |sig: f64| {
-        gk_price(s, k, t, r_d, r_f, sig, option_type)
-            .map(|p| p - price)
-            .unwrap_or(f64::NAN)
-    };
-
-    // First try a bracket centred tightly on the last Newton iterate and
-    // expand it geometrically.  For flat-vega wings (short-dated, deep
-    // ITM/OTM) the GK call/put formula loses precision to cancellation
-    // (S e^{-r_f T} N(d1) - K e^{-r_d T} N(d2), both O(1), difference
-    // O(price)); the objective is then a *staircase* in sigma with ULP-
-    // sized flats, and Brent converges to the nearest edge of that flat
-    // fastest, and with least residual bias, when seeded from a narrow
-    // window around a value already close to the root — a wide bracket
-    // approaches the same flat from farther away and can settle on the
-    // wrong edge.  Falls back to the old wide search from 1.0 if the
-    // narrow window never straddles a sign change (e.g. Newton broke out
-    // on iteration 0 with a poor start).
-    let mut width = (sigma * 1e-4).max(1e-6);
-    while width < 2.0 {
-        let blo = (sigma - width).max(lo);
-        let bhi = (sigma + width).min(hi_cap);
-        let flo = obj_infallible(blo);
-        let fhi = obj_infallible(bhi);
-        if flo == 0.0 {
-            return Ok(blo);
-        }
-        if fhi == 0.0 {
-            return Ok(bhi);
-        }
-        if flo.is_finite() && fhi.is_finite() && flo * fhi < 0.0 {
-            return brentq(obj_infallible, blo, bhi, TOL, 200);
-        }
-        width *= 8.0;
-    }
-
-    let mut hi = 1.0;
-    while obj_infallible(hi) < 0.0 && hi < 50.0 {
-        hi *= 2.0;
-    }
-    if obj_infallible(hi) < 0.0 {
-        return invalid(format!("implied vol > {hi}: price {price} unattainably high"));
-    }
-    brentq(obj_infallible, lo, hi, TOL, 200)
+    })
 }

@@ -88,7 +88,7 @@ class TestStudentT:
     def test_gaussian_fit_underestimates_tail_risk(self, garch_t_sim):
         """The practical 'vol bias': a Gaussian fit on fat-tailed FX returns
         gets the *variance* roughly right (QMLE) but its VaR multiplier
-        understates the true tail -- the empirical 1% quantile of standardized
+        understates the true tail: the empirical 1% quantile of standardized
         residuals is far beyond the Gaussian 2.326."""
         gauss = fit_garch(garch_t_sim, dist="gaussian")
         z = gauss.std_resid
@@ -132,10 +132,18 @@ class TestGarchX:
 
 
 class TestVarianceTargeting:
-    def test_unconditional_matches_sample_variance(self, garch_sim):
+    def test_unconditional_matches_sample_second_moment(self, garch_sim):
+        # The zero-mean recursion runs on r^2, so the target is mean(r^2).
         r = garch_sim[0][:5000]
         fit = fit_garch(r, variance_targeting=True)
-        assert fit.unconditional_variance == pytest.approx(np.var(r), rel=1e-6)
+        assert fit.unconditional_variance == pytest.approx(np.mean(r**2), rel=1e-6)
+
+    def test_omega_se_is_nan_and_others_finite(self, garch_sim):
+        # omega is not a free parameter under targeting: its SE must not be
+        # reported from a Hessian that treats it as free.
+        fit = fit_garch(garch_sim[0][:5000], variance_targeting=True)
+        assert np.isnan(fit.std_errors["omega"]) and np.isnan(fit.robust_std_errors["omega"])
+        assert fit.std_errors["alpha"] > 0 and fit.robust_std_errors["beta"] > 0
 
     def test_close_to_free_fit(self, garch_sim):
         r = garch_sim[0][:5000]

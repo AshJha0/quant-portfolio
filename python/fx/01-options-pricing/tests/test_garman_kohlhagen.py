@@ -121,7 +121,7 @@ class TestLimits:
 class TestImpliedVol:
     # Note: at T = 0.05 with strikes 15-20% away the time value falls
     # below double-precision resolution of the intrinsic (~1e-17), so the
-    # vol is fundamentally unrecoverable — documented as a failure mode in
+    # vol is fundamentally unrecoverable: documented as a failure mode in
     # docs/VALIDATION.md; the grid below stays inside the recoverable zone.
     @pytest.mark.parametrize("k_mult", [0.85, 0.95, 1.0, 1.05, 1.20])
     @pytest.mark.parametrize("T", [0.25, 0.5, 2.0])
@@ -163,7 +163,7 @@ class TestImpliedVol:
         """
         S, K, T, r_d, r_f, sigma = 1.0, 0.5, 30.0, 0.03, 0.01, 3.0
         price = gk_call(S, K, T, r_d, r_f, sigma)
-        with pytest.raises(ValueError, match="unrecoverably large"):
+        with pytest.raises(ValueError, match="no finite implied volatility"):
             implied_vol(price, S, K, T, r_d, r_f, "call")
 
 

@@ -2,12 +2,17 @@
 
 Objective
 ---------
-Weighted least squares **in implied-vol space** (not price space): residuals
-are ``(model_iv - market_iv) * weight`` with vega-proportional weights.
-Vol-space residuals with vega weights approximate price-space errors while
-keeping every expiry on a comparable scale; pure price-space least squares
-over-weights long-dated ITM options, pure unweighted vol space over-weights
-worthless wings whose quotes carry no information.
+Weighted least squares in implied-vol space: residuals are
+``(model_iv - market_iv) * vega_mkt`` (vega normalised to mean 1).  To first
+order this is a price residual, so it inherits price-space weighting: vega
+grows like sqrt(T), which puts more weight on long expiries and near-ATM
+strikes and little on far wings whose quotes carry little information.
+
+Model implied vols invert the out-of-the-money option at each strike (put
+below the forward, call at or above).  Where a trial parameter set gives a
+model price with no implied vol, the residual falls back to the price error
+``model_price - market_price``, which is the first-order value of the
+vega-weighted vol residual, so the objective stays continuous.
 
 Optimisation
 ------------
@@ -40,7 +45,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import least_squares
 
-from .black_scholes import bs_vega, implied_vol_vector
+from .black_scholes import bs_price, bs_vega, implied_vol_vector
 from .heston import FellerWarning, HestonParams, feller_condition, heston_call_gl
 
 __all__ = ["CalibrationResult", "calibrate_heston", "heston_model_ivs"]
@@ -127,11 +132,24 @@ def heston_model_ivs(
     Returns one array of implied vols per expiry (``nan`` where the model
     price cannot be inverted, e.g. worthless deep wings).
     """
-    out = []
-    for T, Ks in zip(expiries, strikes_by_expiry):
-        prices = np.asarray(heston_call_gl(S, np.asarray(Ks, dtype=float), float(T), r, q, p))
-        out.append(implied_vol_vector(prices, S, np.asarray(Ks, dtype=float), float(T), r, q, "call"))
-    return out
+    return [_otm_model_ivs(S, r, q, float(T), np.asarray(Ks, dtype=float), p)[0]
+            for T, Ks in zip(expiries, strikes_by_expiry)]
+
+
+def _otm_model_ivs(
+    S: float, r: float, q: float, T: float, K: np.ndarray, p: HestonParams
+) -> tuple[np.ndarray, np.ndarray]:
+    """(implied vols, OTM model prices) at strikes K for one expiry."""
+    calls = np.asarray(heston_call_gl(S, K, T, r, q, p), dtype=float)
+    F = S * np.exp((r - q) * T)
+    put_side = K < F
+    prices = np.where(put_side, calls - S * np.exp(-q * T) + K * np.exp(-r * T), calls)
+    iv = np.empty_like(K)
+    if np.any(~put_side):
+        iv[~put_side] = implied_vol_vector(prices[~put_side], S, K[~put_side], T, r, q, "call")
+    if np.any(put_side):
+        iv[put_side] = implied_vol_vector(prices[put_side], S, K[put_side], T, r, q, "put")
+    return iv, prices
 
 
 def _flatten_market(
@@ -211,21 +229,34 @@ def calibrate_heston(
     w_all = w_all / max(w_all.mean(), 1e-12)
     iv_all = np.concatenate(IVs)
 
+    # Market OTM prices for the price-space fallback residual.
+    mkt_prices = []
+    for T, K, iv in zip(expiries, Ks, IVs):
+        F = S * np.exp((r - q) * float(T))
+        mkt_prices.append(np.array([
+            bs_price(S, k, float(T), r, q, v, "put" if k < F else "call")
+            for k, v in zip(K, iv)
+        ]))
+    px_all = np.concatenate(mkt_prices)
+    vega_mean = max(float(np.mean(np.concatenate(wts))), 1e-12)
+
     def residuals(x: np.ndarray) -> np.ndarray:
         v0, kappa, theta, rho, xi = x
         try:
             p = HestonParams(v0, kappa, theta, rho, xi)
         except ValueError:
             return np.full(n_quotes, 10.0)
-        model = []
+        ivs, prices = [], []
         for T, K in zip(expiries, Ks):
-            prices = np.asarray(heston_call_gl(S, K, float(T), r, q, p))
-            model.append(implied_vol_vector(prices, S, K, float(T), r, q, "call"))
-        model_all = np.concatenate(model)
+            iv_k, pr_k = _otm_model_ivs(S, r, q, float(T), K, p)
+            ivs.append(iv_k)
+            prices.append(pr_k)
+        model_all = np.concatenate(ivs)
         res = (model_all - iv_all) * w_all
-        # Unrecoverable model IVs (worthless wings under trial params): a
-        # finite penalty keeps the optimiser away without breaking it.
-        return np.where(np.isfinite(res), res, 1.0)
+        # No implied vol for this trial price: use the price error (scaled by
+        # the same mean-vega normalisation), the first-order equivalent.
+        fallback = (np.concatenate(prices) - px_all) / vega_mean
+        return np.where(np.isfinite(res), res, fallback)
 
     # --- starting points --------------------------------------------------
     rng = np.random.default_rng(seed)

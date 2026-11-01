@@ -6,7 +6,7 @@ still reproducing the stylised facts of real daily equity returns that the
 analysis depends on:
 
 - **fat tails** (excess kurtosis well above 0) -- so historical vs Gaussian
-  VaR genuinely disagree at high confidence;
+  VaR materially disagree at high confidence;
 - **volatility clustering** -- stressed days arrive in runs, so rolling and
   EWMA volatility diverge materially from the full-sample figure;
 - **occasional drawdowns** -- the stressed regime has a negative drift.

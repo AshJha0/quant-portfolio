@@ -12,7 +12,9 @@
 //   * Negative rates are legal (EUR/CHF era); negative T or sigma is not.
 //
 // Invalid inputs throw std::invalid_argument with an informative message,
-// matching the Python reference's ValueError behaviour.
+// matching the Python reference's ValueError behaviour. Every kernel also
+// has a noexcept `try_*` form returning std::expected<T, Error>
+// (fxopt/error.hpp) that never throws or allocates.
 
 #pragma once
 
@@ -20,6 +22,8 @@
 #include <numbers>
 #include <stdexcept>
 #include <string>
+
+#include "fxopt/error.hpp"
 
 namespace fxopt {
 
@@ -51,14 +55,60 @@ inline double norm_cdf(double x) noexcept {
 /// refined with two Halley steps -> ~1e-15 absolute accuracy).
 double norm_ppf(double p);
 
+/// norm_ppf without the domain check; the caller guarantees 0 < p < 1.
+double norm_ppf_unchecked(double p) noexcept;
+
+// ------------------------------------------------------------------------
+// noexcept validation. The throwing helpers below are thin wrappers, so the
+// checks, their order and the messages are the same in both APIs.
+// ------------------------------------------------------------------------
+
+/// Finite check; on failure the error names `field`.
+[[nodiscard]] inline Result<void> try_require_finite(double value, const char* field) noexcept {
+    if (!std::isfinite(value)) [[unlikely]] {
+        return std::unexpected(Error{Errc::NonFinite, field, value});
+    }
+    return {};
+}
+
+/// Finite-result check; on failure the error names the kernel `what`.
+[[nodiscard]] inline Result<double> try_finite_result(double value, const char* what) noexcept {
+    if (!std::isfinite(value)) [[unlikely]] {
+        return std::unexpected(Error{Errc::NonFiniteResult, what});
+    }
+    return value;
+}
+
+/// noexcept form of validate_inputs().
+[[nodiscard]] inline Result<void> try_validate_inputs(double S, double K, double T,
+                                                      double r_d, double r_f,
+                                                      double sigma) noexcept {
+    if (auto e = try_require_finite(S, "S"); !e) [[unlikely]] return e;
+    if (auto e = try_require_finite(K, "K"); !e) [[unlikely]] return e;
+    if (auto e = try_require_finite(T, "T"); !e) [[unlikely]] return e;
+    if (auto e = try_require_finite(r_d, "r_d"); !e) [[unlikely]] return e;
+    if (auto e = try_require_finite(r_f, "r_f"); !e) [[unlikely]] return e;
+    if (auto e = try_require_finite(sigma, "sigma"); !e) [[unlikely]] return e;
+    if (S <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::SpotNonPositive, "S", S});
+    if (K <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::StrikeNonPositive, "K", K});
+    if (T < 0.0) [[unlikely]] return std::unexpected(Error{Errc::NegativeExpiry, "T", T});
+    if (sigma < 0.0) [[unlikely]] {
+        return std::unexpected(Error{Errc::NegativeVol, "sigma", sigma});
+    }
+    return {};
+}
+
 namespace detail {
 
 inline void require_finite(double value, const char* name) {
-    if (!std::isfinite(value)) {
-        throw std::invalid_argument(std::string(name) +
-                                    " must be finite, got " +
-                                    std::to_string(value));
-    }
+    value_or_throw(try_require_finite(value, name));
+}
+
+/// Return `value`, or throw std::invalid_argument naming `what` when a
+/// finite input produced a non-finite result (a discount factor or forward
+/// overflowed).
+inline double finite_result(double value, const char* what) {
+    return value_or_throw(try_finite_result(value, what));
 }
 
 }  // namespace detail
@@ -69,29 +119,7 @@ inline void require_finite(double value, const char* name) {
 /// (negative rates are allowed).
 inline void validate_inputs(double S, double K, double T, double r_d,
                             double r_f, double sigma) {
-    detail::require_finite(S, "S");
-    detail::require_finite(K, "K");
-    detail::require_finite(T, "T");
-    detail::require_finite(r_d, "r_d");
-    detail::require_finite(r_f, "r_f");
-    detail::require_finite(sigma, "sigma");
-    if (S <= 0.0) {
-        throw std::invalid_argument("Spot S must be positive, got " +
-                                    std::to_string(S));
-    }
-    if (K <= 0.0) {
-        throw std::invalid_argument("Strike K must be positive, got " +
-                                    std::to_string(K));
-    }
-    if (T < 0.0) {
-        throw std::invalid_argument(
-            "Time to expiry T must be non-negative, got " + std::to_string(T));
-    }
-    if (sigma < 0.0) {
-        throw std::invalid_argument(
-            "Volatility sigma must be non-negative, got " +
-            std::to_string(sigma));
-    }
+    value_or_throw(try_validate_inputs(S, K, T, r_d, r_f, sigma));
 }
 
 }  // namespace fxopt

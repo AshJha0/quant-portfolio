@@ -139,12 +139,13 @@ def test_deep_wing_implied_vol_returns_nan_not_garbage():
 
 def test_butterfly_checker_fires_on_arbitrage_violating_quotes():
     """A kinked (V-shaped) total-variance smile has a negative density; the
-    Durrleman check must flag it AND the fitter must warn."""
+    unconstrained fitter reproduces it, and the Durrleman check must flag it
+    AND the fitter must warn."""
     k = np.linspace(-0.4, 0.4, 11)
     w_bad = 0.04 + 0.5 * np.abs(k)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        res = fit_svi(k, w_bad, T=1.0)
+        res = fit_svi(k, w_bad, T=1.0, arbitrage_free=False)
     assert res.arb_free is False
     assert res.min_g < 0.0
     assert any("Durrleman" in str(r.message) for r in rec)

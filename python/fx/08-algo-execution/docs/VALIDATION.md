@@ -1,10 +1,11 @@
-# Validation — evidence, numbers, failure modes
+# Validation: evidence, numbers, failure modes
 
-All numbers below are produced by `python examples/run_pipeline.py`
-(seeded, offline, ~1 s) and locked in by the test suite
-(`python -m pytest tests` — 152 tests). Tolerances follow CONVENTIONS.md:
-algebraic identities to 1e-10, model-vs-model to stated tolerance,
-statistical claims over seeded replications with paired seeds.
+Every number below comes from synthetic data, produced by
+`python examples/run_pipeline.py` (seeded, offline, about 25-30 s, writes
+nothing to disk). The signal edge is planted by the generator; no real-data
+result exists yet (Phase 4). The test suite is `python -m pytest tests`
+(185 tests, about 30-45 s). Tolerances: algebraic identities to 1e-10;
+Monte Carlo claims are bounded by their stated standard errors.
 
 ---
 
@@ -12,191 +13,182 @@ statistical claims over seeded replications with paired seeds.
 
 | Check | Result | Test |
 |---|---|---|
-| Piecewise-AC (KKT/QP) vs closed-form AC, constant η,σ | max abs diff < 1e-9 | `test_optimal.py::test_piecewise_reduces_to_closed_form_when_liquidity_constant` |
-| λ → 0 limit = liquidity-weighted TWAP-analog (η ∝ 1/depth) | exact to 1e-8 | `test_lambda_zero_gives_liquidity_weighted_twap_analog` |
-| Schedule sums = parent quantity | exact (1e-10), incl. active-set clamped case | `test_dp_solution_sums_exactly_to_parent` |
-| Liquidity-aware AC ≤ naive (day-average) AC under true time-varying objective | holds for λ ∈ {1e-6, 1e-5, 1e-4}; strictly < 0.99× at λ=1e-5 | `test_liquidity_aware_cost_leq_naive_ac...` |
-| Optimality vs random constraint-preserving perturbations | cost(n*) minimal in 20 perturbations | `test_optimality_against_perturbations` |
-| IS decomposition components sum to total | residual < 1e-10, every venue/seed | `test_tca.py::test_is_components_sum_exactly` |
-| Venue scorecard identity: effective = quoted ½-spread + temp + rejection cost | exact | `test_venue_scorecard_identity_exact` |
-| Backtest ledger vs hand-computed toy scenario (session spreads, 3 trades) | exact | `test_ledger_exact_on_toy_scenario_with_session_spreads` |
-| Carry accrual vs hand value 1.0·1.1·0.02/365 | exact to 1e-15 | `test_carry_accrual_hand_exact` |
-| Zero trade ⇒ zero impact; execute(0) path ≡ simulate_mids path | bitwise equal | `test_zero_trade_zero_impact...` |
-| Temporary impact sqrt-scaling: 4× size ⇒ 2× impact | exact to 1e-12 | `test_sqrt_impact_scaling_with_size` |
-| Permanent persists / temporary decays | post-trade mids shifted by exactly the permanent amount | `test_permanent_impact_persists_temporary_decays` |
-| Point-in-time discipline: mutate future ticks ⇒ features ≤ cutoff bit-identical | exact frame equality | `test_pit_mutation_leaves_past_features_unchanged` |
-| No-lookahead: engine books lagged position; cheat signal earns only lagged P&L | exact | `test_no_lookahead_pnl_uses_lagged_position` |
+| Piecewise AC (KKT/QP) vs closed-form AC, constant eta and sigma | max abs diff < 1e-9 | `test_optimal.py::test_piecewise_reduces_to_closed_form_when_liquidity_constant` |
+| lambda -> 0 limit equals the liquidity-weighted schedule | exact to 1e-8 | `test_lambda_zero_gives_liquidity_weighted_twap_analog` |
+| Schedule sums to the parent quantity | exact (1e-10), including the active-set case | `test_piecewise_ac_schedule_sums_exactly_to_parent` |
+| Liquidity-aware AC cost <= naive AC cost under the time-varying objective | holds for lambda in {1e-6, 1e-5, 1e-4} | `test_liquidity_aware_cost_leq_naive_ac...` |
+| IS components sum to total | residual < 1e-10 | `test_tca.py::test_is_components_sum_exactly` |
+| Venue identity: effective = quoted half-spread + temporary + rejection cost | exact | `test_venue_scorecard_identity_exact` |
+| Fill at the modelled t+1 price `p_t + f (p_{t+1} - p_t)` | exact on a hand ledger | `test_execution_convention.py::test_hand_ledger_fill_at_modelled_next_price` |
+| Perfect-foresight signal `sign(r_{t+1})` with f = 1 | mean gross within 4 SE of zero; a same-close fill earns the full abs(r) | `test_perfect_foresight_does_not_pay_with_next_close_fill` |
+| Close-auction variant charges exactly `auction_cost_bp` per unit traded | exact | `test_close_auction_charges_exact_extra_cost` |
+| Gross P&L equals the position path integral for any f in (0, 1] | hypothesis property, 1e-12 | `test_gross_pnl_equals_position_path_integral` |
+| Same-close ledger vs hand-computed toy scenario (session spreads, 3 trades) | exact | `test_ledger_exact_on_toy_scenario_with_session_spreads` |
+| Carry accrual vs hand value 1.0 x 1.1 x 0.02 / 365 | exact to 1e-15 | `test_carry_accrual_hand_exact` |
+| Temporary impact: 4x size gives 2x impact | exact to 1e-12 | `test_sqrt_impact_scaling_with_size` |
+| Features at and before a cutoff do not change when future ticks change | exact frame equality | `test_pit_mutation_leaves_past_features_unchanged` |
+| Fix print at zero vol equals the mean of the linear interpolation | exact to 1e-12 | `test_fix_print_zero_vol_is_linear_interpolation_mean` |
+| Self-impact on the fix print vanishes with `k_perm = 0` | exact | `test_self_impact_on_print_is_visible_and_vanishes_without_permanent_impact` |
+| Research statistics (Lo/Newey-West SE vs Monte Carlo, deflated Sharpe calibration, PBO, block bootstrap) | see the test file | `test_research_stats.py` |
 
-Signal-layer statistics (60 days, hourly bars):
+## 2. Signal layer (synthetic, planted alpha)
 
-```
-feature        IC     t-stat
-mom_1        0.251     9.83     (planted phi = 0.25 -> recovered)
-mom_4        0.187     7.22
-reversion   -0.145    -5.57     (momentum world: honest negative IC)
-breakout    -0.033    -1.26
-mom_1        0.003     0.12     on phi = 0 noise  -> no false alpha
-```
+Feature ICs against the next 1h return, seed 0, 60 days of synthetic hourly
+bars with planted AR(1) phi = 0.25:
 
-Test-locked: IC > 0.10 with t > 2 on planted alpha; |t| < 2.5 on three noise
-seeds (`test_synthetic.py`).
+| feature | IC | t-stat |
+|---|---:|---:|
+| mom_1 | 0.251 | 9.83 |
+| mom_4 | 0.187 | 7.22 |
+| reversion | -0.145 | -5.57 |
+| breakout | -0.033 | -1.26 |
+| mom_1 on phi = 0 noise | 0.003 | 0.12 |
 
-## 2. Scheduler comparison (500mm EURUSD buy, 200 paired replications)
+Session-filtered vol-targeted mom_1/mom_4 (0.7/0.3) strategy, EURUSD costs
+unless stated, 60 days per seed, 30 synthetic seeds, mean [95% CI] across
+seeds:
 
-Controllable cost = spread + temporary + permanent (deterministic given the
-schedule in this model — std < 1e-12 across seeds); IS std = execution risk
-vs arrival.
+| execution variant | gross pips | net pips | Sharpe (annualised, 6264 bars/yr) |
+|---|---:|---:|---:|
+| next, f = 0.5 (default) | +2232 [+2047, +2418] | +2079 [+1893, +2266] | +9.42 [+8.68, +10.16] |
+| next, f = 1.0 | +964 [+761, +1166] | +803 [+600, +1006] | +3.16 [+2.39, +3.93] |
+| close auction, 0.5 bp | +3501 [+3277, +3725] | +2896 [+2666, +3126] | +10.63 [+9.84, +11.41] |
+| close auction, 0 bp | +3501 [+3277, +3725] | +3374 [+3149, +3600] | +12.48 [+11.73, +13.23] |
+| EM spreads, f = 0.5 | +2232 [+2047, +2418] | -3246 [-3489, -3004] | -13.42 [-14.49, -12.34] |
 
-Full 24h day (288 × 5-min buckets):
+Reading. The planted hourly autocorrelation decays within one bar, so most
+of the synthetic edge sits in the move immediately after the decision. A
+fill one full bar later keeps about a quarter of the same-close gross. The
+same planted signal loses money under EM-style spreads. None of these
+Sharpe ratios is a market claim (assumption A10).
 
-| schedule | ctrl cost (pips) | IS mean | IS std |
-|---|---|---|---|
-| TWAP | 0.578 | 2.13 | 31.23 |
-| liquidity-weighted | **0.517** | 2.10 | 33.46 |
-| POV 5% (analog) | 0.709 | 1.08 | 11.46 |
-| piecewise-AC (λ=1e-5) | 0.733 | 0.88 | **7.71** |
+Seed 0, default variant: Sharpe 11.49, circular block-bootstrap 95% CI
+[6.46, 15.88]. The pipeline logs 9 trials on seed 0 (5 execution and cost
+variants, 4 other weight sets); the deflated Sharpe ratio at 9 trials is
+0.606, and the probability of backtest overfitting over the 5-point weight
+grid (CSCV, 8 blocks) is 0.06. The deflated Sharpe is low because the
+logged trials include the EM-spread variant, whose large negative Sharpe
+widens the null spread.
 
-London-only window 07:00–16:00 (108 buckets):
+Test-locked: IC > 0.10 with t > 2 on planted alpha; abs(t) < 2.5 on three
+noise seeds (`test_synthetic.py`).
 
-| schedule | ctrl cost (pips) | IS mean | IS std |
-|---|---|---|---|
-| TWAP | 0.531 | 1.06 | 24.17 |
-| liquidity-weighted | **0.525** | 1.05 | 25.77 |
-| POV 5% (analog) | 0.686 | 0.54 | 14.31 |
-| piecewise-AC (λ=1e-5) | 0.750 | 0.71 | **9.52** |
+## 3. Scheduler comparison (500mm EURUSD buy, 200 paired synthetic replications)
+
+Controllable cost = spread + temporary + permanent. It is deterministic given
+the schedule in this model. IS mean is controllable cost plus mean-zero drift
+noise, so its CI is wide and the IS mean column does not rank schedules. IS
+sd is execution risk against arrival.
+
+Full 24h day (288 x 5-min buckets):
+
+| schedule | ctrl cost (pips) | IS mean [95% CI] | IS sd |
+|---|---:|---:|---:|
+| TWAP | 0.578 | +2.13 [-2.24, +6.49] | 31.30 |
+| liquidity-weighted | 0.517 | +2.10 [-2.57, +6.78] | 33.54 |
+| POV 5% (analog) | 0.709 | +1.08 [-0.52, +2.68] | 11.49 |
+| piecewise AC (lambda = 1e-5) | 0.733 | +0.88 [-0.20, +1.96] | 7.73 |
+
+London-only window 07:00-16:00 (108 buckets):
+
+| schedule | ctrl cost (pips) | IS mean [95% CI] | IS sd |
+|---|---:|---:|---:|
+| TWAP | 0.531 | +1.06 [-2.31, +4.44] | 24.23 |
+| liquidity-weighted | 0.525 | +1.05 [-2.56, +4.65] | 25.84 |
+| POV 5% (analog) | 0.686 | +0.54 [-1.46, +2.54] | 14.35 |
+| piecewise AC (lambda = 1e-5) | 0.750 | +0.71 [-0.62, +2.04] | 9.55 |
 
 Readings, each test-locked:
 
-- **Liquidity-weighting saves ~11% of controllable cost vs TWAP over the full
-  day** (0.517 vs 0.578 pips ≈ $30k on 500mm at 1e-4 pip) by avoiding the
-  late/Asia spread and impact; the saving shrinks to ~1% inside the already
-  liquid London window — time-of-day awareness matters most when the horizon
-  spans bad hours (`test_liquidity_weighted_beats_twap_controllable_cost`).
-- **The AC frontier is visible**: λ=1e-5 front-loading pays +0.22 pips of
-  controllable cost to cut IS std from ~31 to ~8 pips — the mean–variance
-  trade-off, chosen by client risk preference, not by "cheapest".
-- On 500mm, a single-bucket execution violates the 30%-of-depth cap and
-  raises with a multi-session hint (`test_500mm_parent_requires_multi_session_split`).
+- Liquidity weighting saves about 11% of controllable cost against TWAP over
+  the full synthetic day (0.517 vs 0.578 pips) by avoiding the late and Asia
+  sessions. Inside the London window the saving is about 1%
+  (`test_liquidity_weighted_beats_twap_controllable_cost`).
+- The AC frontier: lambda = 1e-5 front-loading pays 0.22 pips more
+  controllable cost to cut IS sd from about 31 to about 8 pips. The
+  parameters `k_eta = 0.02` and `lambda = 1e-5` are not calibrated.
+- A 500mm single-bucket execution violates the 30%-of-depth cap and raises
+  (`test_500mm_parent_requires_multi_session_split`).
 
-## 3. The last-look trap (200 paired replications, common random numbers)
+## 4. Last look (200 paired synthetic replications, common random numbers)
 
-| flow | venue | quoted ½-spread | effective cost | reject rate | reject cost |
-|---|---|---|---|---|---|
-| uninformed (α=0) | last-look | 0.107 | **0.290** | 9.0% | 0.053 |
+| flow | venue | quoted half-spread | effective cost | reject rate | reject cost |
+|---|---|---:|---:|---:|---:|
+| uninformed (alpha = 0) | last-look | 0.107 | 0.290 | 9.0% | 0.053 |
 | | firm ECN | 0.178 | 0.309 | 0.0% | 0 |
-| informed (α=0.5 pips/bucket) | last-look | 0.107 | **0.584** | 40.8% | 0.347 |
+| informed (alpha = 0.5 pips/bucket) | last-look | 0.107 | 0.584 | 40.8% | 0.347 |
 | | firm ECN | 0.178 | 0.309 | 0.0% | 0 |
 
-Paired differences (LL − firm): **−0.018 pips (SE 0.0010)** uninformed;
-**+0.275 pips (SE 0.0024)** informed. Both sides of the trap are test-locked
-(`test_the_trap_effective_cost_higher_with_adverse_selection`): the tighter
-quote is real for benign flow and a mirage for informed flow, with the gap
-attributable to rejections (rate 9% → 41%, monotone in α). Rejection
-probability is strictly monotone in the adverse move
-(`test_reject_prob_monotone_increasing_in_adverse_move`), firm venues never
-reject, and every rejected child refills strictly worse than its quote.
+Paired differences (last-look minus firm), mean [95% CI]: -0.018 [-0.020,
+-0.016] pips for uninformed flow, +0.275 [+0.271, +0.280] pips for informed
+flow. The informed-flow loss follows from assumption A4 (the dealer sees the
+client's whole per-bucket alpha inside a 2-second hold); it is an assumption,
+not a finding. Tests: `test_the_trap_effective_cost_higher_with_adverse_selection`,
+`test_reject_prob_monotone_increasing_in_adverse_move`.
 
-## 4. Fix benchmark (200 replications, 100mm, 1-min buckets 14:00–17:00)
+## 5. Fix benchmark (200 synthetic replications, 100mm, 1-min buckets 14:00-17:00)
 
-| schedule | TE mean (pips) | TE std (pips) |
-|---|---|---|
-| fix-targeting (5-min window) | 0.512 | **0.000** |
-| TWAP 14:00–17:00 | 0.240 | 9.844 |
+The print is the mean of 60 market observations per minute of the 5-minute
+window, drawn from an RNG independent of the execution. "Unimpacted" strips
+the order's own permanent impact from the path.
 
-The fix algo pays a visible spread+impact cost (0.51 pips at 20mm/min — the
-window is short, participation is high) but tracks the print with essentially
-zero variance; a day-TWAP is *cheaper on average* against the fix but carries
-~10 pips of benchmark risk — useless for a client measured on the fix.
-Test-locked with std ratio > 10× (`test_fix_targeting_tracks_the_fix`).
+| schedule | TE vs print, mean [95% CI] | sd | TE vs unimpacted print | sd |
+|---|---:|---:|---:|---:|
+| fix-targeting (5-min window) | +0.498 [+0.423, +0.573] | 0.537 | +0.576 [+0.501, +0.651] | 0.537 |
+| TWAP 14:00-17:00 | +0.242 [-1.142, +1.625] | 9.921 | +0.346 [-1.037, +1.729] | 9.921 |
 
-## 5. Failure modes & edge cases (documentation contract items 4 & 6)
+The fix schedule's own permanent impact moves the print by 0.078 pips. That
+number has no seed variance in this model, because permanent impact is a
+deterministic function of the schedule. The fix schedule pays about half a
+pip of spread and impact and carries about 0.5 pip of tracking-error sd; a
+3h TWAP is cheaper on average and carries about 10 pips of tracking-error sd.
+Tests: `test_fix_print_tracking_error_has_real_variance`,
+`test_fix_benchmark_from_own_mids_is_a_tautology` (documents why
+`fix_benchmark` is not used for tracking error).
 
-Each is documented here **and** unit-tested.
+## 6. Failure modes and edge cases
 
-1. **Fix gaming / regulatory history.** The mechanics that made the 60-second
-   fix gameable (trading inside the window moves the print) are reproduced by
-   the simulator's impact model; concentrated fix-window flow moves the
-   window mids. The 2013 chat-room scandal, 2014–15 fines and the 5-minute
-   window reform are covered in METHODOLOGY.md §2. Model failure mode: our
-   fix print has no median filter, so single-bucket impact affects it more
-   than the real WM/R methodology (assumption A8).
-2. **Flash events (GBP, 7 Oct 2016).** Sterling dropped ~8% in Asia-hours
-   minutes on thin liquidity and stop cascades. Gaussian session vol cannot
-   produce this (assumption A5); we probe the regime with `vol_scale=5` on
-   GBPUSD: controllable cost > 2×, IS std > 3× calm conditions
-   (`test_flash_vol_regime_multiplies_execution_cost`). Lesson: any schedule
-   optimised on calm profiles understates tail cost in Asia hours for GBP.
-3. **Liquidity mirage / last-look adverse selection.** §3 numbers: venue
-   choice by quoted spread alone selects the venue that is worse for exactly
-   the flow that has alpha. Dealer scorecards must be computed on *effective*
-   cost with rejection attribution (DESK_GUIDE.md).
-4. **EM cost regimes.** Same planted alpha, same positions: net **+3490
-   pips** under EURUSD session spreads vs **−974 pips** under EM-style
-   spreads (10–40 pips) — costs flip profitability
-   (`test_em_wide_spread_flips_strategy_profitability`); USDMXN execution
-   cost is > 20× EURUSD for comparable participation
-   (`test_em_pair_execution_costs_dwarf_major`).
-5. **Weekend gap.** Non-tradeable buckets: schedulers place zero there,
-   the simulator freezes diffusion and raises on any attempted fill
-   (`test_weekend_gap_end_to_end`, `test_weekend_bucket_trading_raises...`).
-6. **Single-bucket execution** returns `[X]` across every scheduler and the
-   AC solver (`test_twap_single_bucket`, `test_single_bucket_and_sell_side`).
-7. **Order bigger than depth cap** ⇒ `ValueError` with a multi-session hint;
-   POV that cannot complete ⇒ `ValueError` (`test_depth_cap_exceeded...`,
-   `test_pov_infeasible_raises`).
-8. **Zero-vol path** ⇒ fully deterministic, seed-independent execution whose
-   IS equals the quantity-weighted half-spread exactly
-   (`test_zero_vol_path_deterministic_cost`, `test_zero_vol_execution_fully_deterministic`).
-9. **Numerical limits.** The KKT solve is dense O(N³): fine to N ≈ 1440
-   (1-min day, <1 s); beyond that use the banded structure. At extreme λ the
-   unconstrained QP sells back in thin buckets — handled by the exact
-   active-set clamp, verified non-negative with exact parent sum
+Each is unit-tested.
+
+1. Fix gaming. Trading inside the window moves the print through permanent
+   impact, which `fix_self_impact_pips` measures. The print model has no
+   median filter (assumption A8).
+2. Flash events (GBP, 7 Oct 2016). Gaussian session vol cannot produce an 8%
+   gap (assumption A5). With `vol_scale = 5` on GBPUSD, controllable cost is
+   more than 2x and IS sd more than 3x calm conditions
+   (`test_flash_vol_regime_multiplies_execution_cost`).
+3. Last-look adverse selection. Choosing a venue by quoted spread alone picks
+   the venue that is worse for flow with alpha (section 4).
+4. EM cost regimes. The same planted signal and positions net a loss under
+   EM-style spreads (`test_em_wide_spread_flips_strategy_profitability`).
+   USDMXN execution cost is more than 20x EURUSD for comparable
+   participation (`test_em_pair_execution_costs_dwarf_major`).
+5. Weekend gap. Schedulers place zero there, the simulator freezes diffusion
+   and raises on any attempted fill (`test_weekend_gap_end_to_end`).
+6. Single-bucket execution returns `[X]` across every scheduler and the AC
+   solver (`test_twap_single_bucket`, `test_single_bucket_and_sell_side`).
+7. An order bigger than the depth cap raises `ValueError`; a POV that cannot
+   complete raises `ValueError` (`test_pov_infeasible_raises`).
+8. Zero-vol path: execution is deterministic and its IS equals the
+   quantity-weighted half-spread (`test_zero_vol_path_deterministic_cost`).
+9. Numerical limits. The KKT solve is dense O(N^3), fine to N of about 1440
+   (a 1-minute day). At extreme lambda the unconstrained QP sells back in
+   thin buckets; the active-set clamp handles it
    (`test_active_set_clamps_thin_buckets_at_high_lambda`).
-10. **Non-finite inputs and degenerate parents (review-pass hardening).**
-    Three silent-corruption paths were found and closed:
-    * `session_of_hour(NaN)` returned the *string* `'None'` as a session
-      label, which then failed downstream with a bare `KeyError` from the
-      `PairProfile` mapping lookup. Non-finite hours now raise an
-      informative `ValueError`
-      (`test_session_lookup_rejects_nonfinite_hours`).
-    * `piecewise_ac_schedule(parent_qty=0)` returned an **all-NaN**
-      schedule: the exact-sum renormalisation `n *= X / n.sum()` divides
-      0 by 0. A zero parent is a legitimate no-op (nothing to trade) and
-      now returns a flat zero schedule
-      (`test_zero_parent_quantity_returns_a_flat_zero_schedule`).
-    * NaN/Inf in `eta`, `sigma`, `depths` or `parent_qty` either produced
-      an all-NaN schedule or surfaced as an opaque LAPACK message
-      ("array must not contain infs or NaNs"). All AC entry points and
-      schedulers now validate up front. Rationale: an execution schedule
-      is consumed by an order router — a NaN child quantity is either a
-      rejected order or, worse, an unbounded one.
+10. Non-finite inputs. `session_of_hour(NaN)` raises `ValueError`;
+    `piecewise_ac_schedule(parent_qty=0)` returns a flat zero schedule;
+    NaN or Inf in `eta`, `sigma`, `depths` or `parent_qty` raises before the
+    solve. `ExecutionConfig` rejects `fill_fraction` outside (0, 1] and
+    non-finite costs (`tests/test_edge_cases_review.py`,
+    `test_fill_fraction_validation`).
+11. Causality guards. Backtest P&L up to a cutoff does not change when later
+    prices change; features do not change under future-tick mutation
+    (`test_backtest.py`, `test_features.py`).
 
-    The review pass added 31 tests in
-    `tests/test_edge_cases_review.py`: illiquid crosses (USDMXN's Asia
-    session is >100x wider and >100x thinner than EURUSD's overlap; the
-    liquidity-weighted schedule must give Asia far less than its
-    time-share of the clock), session-time effects (the five sessions
-    partition [0,24) with no gap or overlap, boundaries are
-    start-inclusive/end-exclusive, hour-of-day wraps correctly on
-    multi-day grids, the fix window is exactly five 1-minute buckets
-    inside the overlap, the weekend gap takes zero quantity while the
-    rest still sums to the parent), one-sided books (a buy parent never
-    sells back even at extreme risk aversion, a sell parent is the exact
-    mirror of the buy, and the sign-constrained schedule can never beat
-    the unconstrained optimum on its own objective), and degenerate
-    parents (zero quantity, single bucket, zero vol, zero risk aversion
-    collapsing to TWAP).
+## 7. Reproducibility
 
-11. **Honest-result guards.** Backtest P&L is invariant to future-price
-    mutation up to the cutoff; feature matrices are bit-identical under
-    future-tick mutation; a same-bar "cheat" signal cannot earn its
-    contemporaneous return (`test_backtest.py`, `test_features.py`).
-
-## 6. Reproducibility
-
-- Every stochastic component takes an explicit seed / `numpy.random.Generator`;
-  identical seeds give bitwise-identical paths and fills
-  (`test_seeded_reproducibility`, `test_ticks_seeded_reproducible`).
-- Venue and scheduler comparisons use common random numbers (same seed ⇒ same
-  exogenous path), so paired differences isolate the decision variable.
-- `pytest -q` runs offline in ~1 s; the pipeline example in ~1 s.
+- Every stochastic component takes an explicit seed or
+  `numpy.random.Generator`; the same seed gives the same paths and fills
+  (`test_seeded_reproducibility`).
+- Venue and scheduler comparisons use common random numbers, so paired
+  differences isolate the decision variable.

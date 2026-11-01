@@ -46,7 +46,7 @@ class TestNoFalsePositives:
 
     def test_wider_spreads_absorb_bigger_deviation(self):
         # a mid-CIP deviation that flags with tight spreads is absorbed by
-        # wide ones — the post-2008 'CIP arbitrage that is not' in miniature
+        # wide ones: the post-2008 'CIP arbitrage that is not' in miniature
         q_mid = make_quotes()
         deviated = q_mid.fwd_ask + 8e-4  # forward 8 pips above CIP mid
         tight = make_quotes(fwd_bid=deviated, fwd_ask=deviated + 1e-4,

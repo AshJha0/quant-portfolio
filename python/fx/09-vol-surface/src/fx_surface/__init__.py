@@ -47,9 +47,17 @@ from .smile_from_quotes import (
     solve_pillar_strikes,
     strike_from_delta,
     strike_from_delta_pa_candidates,
+    broker_strangle_from_smile,
+    smile_quotes_from_broker,
     vols_from_quotes,
 )
-from .surface import FXVolSurface, SmileSlice, build_slice, build_surface
+from .surface import (
+    FXVolSurface,
+    SmileSlice,
+    SurfaceConvergenceError,
+    build_slice,
+    build_surface,
+)
 
 __all__ = [
     "DELTA_CONVENTIONS",
@@ -66,6 +74,7 @@ __all__ = [
     "atm_dns_strike",
     "build_slice",
     "build_surface",
+    "SurfaceConvergenceError",
     "calibrate_heston",
     "durrleman_g",
     "gk_delta",
@@ -97,6 +106,8 @@ __all__ = [
     "strike_from_delta",
     "strike_from_delta_pa_candidates",
     "vols_from_quotes",
+    "broker_strangle_from_smile",
+    "smile_quotes_from_broker",
 ]
 
 __version__ = "1.0.0"

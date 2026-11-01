@@ -22,7 +22,7 @@ use crate::{validate_alpha, EqVarError, Result, TailModel};
 /// single NaN anywhere evaluates to NaN; the PSD test `var < -tol` is
 /// **false** for NaN, and `f64::max` propagates the *other* operand, so
 /// `NaN.max(0.0).sqrt()` is `0.0`. Without this guard a corrupt covariance
-/// therefore reported a portfolio sigma — and a VaR — of exactly **zero**:
+/// therefore reported a portfolio sigma, and a VaR, of exactly **zero**:
 /// a broken model that looks like a riskless book.
 pub fn portfolio_sigma(exposures: &[f64], cov: &Matrix) -> Result<f64> {
     let n = exposures.len();
@@ -96,12 +96,7 @@ pub fn tail_quantile(alpha: f64, tail: TailModel) -> Result<f64> {
 /// let var = parametric_var(&[1.0e6], &cov, 0.01, TailModel::Normal).unwrap();
 /// assert!((var - 23_263.478740408408).abs() < 1e-6); // 2.3263 sigma
 /// ```
-pub fn parametric_var(
-    exposures: &[f64],
-    cov: &Matrix,
-    alpha: f64,
-    tail: TailModel,
-) -> Result<f64> {
+pub fn parametric_var(exposures: &[f64], cov: &Matrix, alpha: f64, tail: TailModel) -> Result<f64> {
     parametric_var_full(exposures, cov, alpha, tail, 0.0, 1)
 }
 
@@ -145,72 +140,73 @@ pub fn parametric_var_full(
 /// with skewness `S` and **excess** kurtosis `K`. Reduces to `z` when
 /// `S = K = 0`.
 pub fn cornish_fisher_z(z: f64, skew: f64, excess_kurt: f64) -> f64 {
-    z + (z * z - 1.0) * skew / 6.0
-        + (z * z * z - 3.0 * z) * excess_kurt / 24.0
+    z + (z * z - 1.0) * skew / 6.0 + (z * z * z - 3.0 * z) * excess_kurt / 24.0
         - (2.0 * z * z * z - 5.0 * z) * skew * skew / 36.0
 }
 
-/// Check that the CF quantile map is monotone on `[-z_range, z_range]`.
+/// Cornish-Fisher validity at tail probability `alpha` (S6).
 ///
-/// The fourth-order Cornish–Fisher expansion is only a valid quantile
-/// function where `dz_cf/dz > 0`; for large skew/kurtosis the cubic becomes
-/// non-monotone and the implied "density" goes negative, producing nonsense
-/// VaR (e.g. the 99 % "quantile" above the 95 % one). The analytic
-/// derivative
+/// With `z_a = Phi^{-1}(1 - alpha)` the CF map
+/// `g(z) = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36` (`K` excess
+/// kurtosis) is a valid quantile transform iff `g'(z) > 0` on the closed
+/// interval `[-z_a, z_a]`. `g'` is the quadratic
+/// `A z^2 + B z + C`, `A = K/8 - S^2/6`, `B = S/3`, `C = 1 - K/8 + 5S^2/36`,
+/// so its minimum on the interval is at the vertex (if `A > 0` and the
+/// vertex is inside) or at an endpoint. The check is exact, not a grid.
 ///
-/// `dz_cf/dz = 1 + z S / 3 + (3z^2 - 3) K / 24 - (6z^2 - 5) S^2 / 36`
+/// The interval follows `alpha`: `(S, K) = (0.122, -0.427)` has its
+/// smallest derivative at the endpoint, is valid at `alpha = 0.01`
+/// (`z_a = 2.33`) and becomes invalid only once `z_a` passes about 4.
 ///
-/// is itself a quadratic in `z`: `g(z) = A z^2 + B z + C` with
-/// `A = K/8 - S^2/6`, `B = S/3`, `C = 1 - K/8 + 5 S^2/36`. Its minimum on
-/// `[-z_range, z_range]` therefore has a closed form — the vertex
-/// `-B/(2A)` when `g` is convex (`A > 0`) and that point lies in range,
-/// otherwise an interval endpoint (a concave/linear `g`, `A <= 0`, always
-/// attains its minimum on a closed interval at an endpoint) — checked
-/// exactly here rather than by sampling a grid (`n_grid` points; the
-/// previous implementation used 2001 points on `|z| <= 3.5`). A grid can
-/// under-sample a thin non-monotone dip: `skew = 0.122, excess_kurt =
-/// -0.427` is non-monotone on `|z| <= 4` (minimum derivative ~ -9e-4 near
-/// `z ~ 3.1`) but an 801-point grid on that range reports it as monotone.
-/// `n_grid` is retained for API compatibility but no longer affects the
-/// result.
-/// Returns `true` when the expansion is monotone (safe to use).
-pub fn cornish_fisher_domain_ok(
-    skew: f64,
-    excess_kurt: f64,
-    z_range: f64,
-    n_grid: usize,
-) -> bool {
-    // NaN moments are never "ok": an exact comparison is false for NaN, so
-    // a NaN skew/kurtosis would otherwise be reported as a valid domain
-    // and produce a NaN "VaR".
-    if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
-        return false;
+/// # Errors
+/// Non-finite `skew` or `excess_kurt`, or `alpha` outside `(0, 0.5)`.
+pub fn cornish_fisher_valid(skew: f64, excess_kurt: f64, alpha: f64) -> Result<bool> {
+    validate_alpha(alpha)?;
+    if !skew.is_finite() || !excess_kurt.is_finite() {
+        return Err(EqVarError::InvalidInput(format!(
+            "Cornish-Fisher moments must be finite, got skew={skew}, excess_kurt={excess_kurt}"
+        )));
     }
-    let _ = n_grid.max(2); // API compatibility only; unused by the closed-form check.
+    let z_a = normal_ppf(1.0 - alpha)?;
+    Ok(cf_min_derivative(skew, excess_kurt, z_a) > 0.0)
+}
+
+/// Minimum of `g'(z)` over `[-z_range, z_range]` (closed form).
+fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
     let a = excess_kurt / 8.0 - skew * skew / 6.0;
     let b = skew / 3.0;
     let c = 1.0 - excess_kurt / 8.0 + 5.0 * skew * skew / 36.0;
     let g = |z: f64| a * z * z + b * z + c;
-    let m = if a > 0.0 {
+    let ends = g(-z_range).min(g(z_range));
+    if a > 0.0 {
         let z_star = -b / (2.0 * a);
         if (-z_range..=z_range).contains(&z_star) {
-            g(z_star)
-        } else {
-            g(-z_range).min(g(z_range))
+            return g(z_star).min(ends);
         }
-    } else {
-        g(-z_range).min(g(z_range))
-    };
-    m > 0.0
+    }
+    ends
+}
+
+/// Old fixed-interval check `g'(z) > 0` on `[-z_range, z_range]`, kept for
+/// one release. The interval should follow the VaR level; use
+/// [`cornish_fisher_valid`]. Non-finite input returns `false`.
+#[deprecated(
+    since = "0.2.0",
+    note = "use cornish_fisher_valid(skew, excess_kurt, alpha)"
+)]
+pub fn cornish_fisher_domain_ok(skew: f64, excess_kurt: f64, z_range: f64, _n_grid: usize) -> bool {
+    if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
+        return false;
+    }
+    cf_min_derivative(skew, excess_kurt, z_range) > 0.0
 }
 
 /// Cornish–Fisher VaR: moment-corrected parametric quantile.
 ///
 /// `VaR = -(mean + z_cf(alpha) * sigma)`. With `check_domain = true`
 /// (recommended) an [`EqVarError::InvalidInput`] is returned when
-/// `(skew, excess_kurt)` lie outside the monotonicity region — outside it
-/// the expansion is not a quantile function and the number is not a VaR;
-/// use historical or Monte Carlo VaR instead.
+/// [`cornish_fisher_valid`] is false at this `alpha`. Outside that region
+/// the expansion is not a quantile function and the number is not a VaR.
 pub fn cornish_fisher_var(
     sigma: f64,
     alpha: f64,
@@ -231,7 +227,7 @@ pub fn cornish_fisher_var(
              excess_kurt={excess_kurt}, mean={mean}"
         )));
     }
-    if check_domain && !cornish_fisher_domain_ok(skew, excess_kurt, 3.5, 2001) {
+    if check_domain && !cornish_fisher_valid(skew, excess_kurt, alpha)? {
         return Err(EqVarError::InvalidInput(format!(
             "Cornish-Fisher expansion is non-monotone for skew={skew}, \
              excess_kurt={excess_kurt}; outside its validity region the 'quantile' \

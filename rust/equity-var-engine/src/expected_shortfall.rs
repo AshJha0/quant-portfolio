@@ -1,6 +1,6 @@
 //! Expected Shortfall (ES / CVaR) for all three VaR families.
 //!
-//! `ES_alpha = -(1/alpha) * integral_0^alpha Q_u(pnl) du` — the average loss
+//! `ES_alpha = -(1/alpha) * integral_0^alpha Q_u(pnl) du`: the average loss
 //! in the worst `alpha` tail. ES `>=` VaR by construction, ES is coherent
 //! (subadditive), and FRTB replaced 99 % VaR with 97.5 % ES as the
 //! market-risk capital measure.
@@ -11,22 +11,23 @@ use crate::stats::{normal_pdf, normal_ppf, student_t_pdf, student_t_ppf};
 use crate::{validate_alpha, EqVarError, Result};
 
 /// Minimum P&L observations for an empirical ES estimate (a 3rd of
-/// [`crate::historical::MIN_OBS`] — ES averages several order statistics, so
+/// [`crate::historical::MIN_OBS`]: ES averages several order statistics, so
 /// it degrades more gracefully than a single quantile on a short sample, but
 /// still needs enough points that `floor(alpha * n)` is meaningful).
 pub const MIN_OBS: usize = 10;
 
-/// Empirical Expected Shortfall — exact tail integral of the step CDF.
+/// Empirical Expected Shortfall: exact tail integral of the step CDF.
 ///
-/// With sorted P&L `x_(1) <= ... <= x_(n)` and `k = floor(alpha * n)`:
+/// Losses `L = -pnl` sorted descending, `k = n alpha`,
+/// `m = ceil(k - 1e-9)`:
 ///
-/// `ES = -(1/(alpha*n)) * [ sum_{i<=k} x_(i) + (alpha*n - k) * x_(k+1) ]`
+/// `ES = [ sum_{i<m} L(i) + (k - (m-1)) L(m) ] / k`
 ///
 /// i.e. the exact integral of the empirical quantile function over
-/// `(0, alpha]`, with a fractional weight on the boundary order statistic.
-/// This estimator is consistent, satisfies `ES >= VaR` (same order-statistic
-/// quantile) and is exact on hand-computable arrays (unit tested). Requires
-/// at least [`MIN_OBS`] finite observations.
+/// `(0, alpha]`, with a fractional weight on the boundary order statistic
+/// ([`crate::tail::empirical_var_es`]). `ES >= VaR` holds for every sample
+/// because VaR is `L(m)`. Requires at least [`MIN_OBS`] finite
+/// observations.
 ///
 /// # Examples
 ///
@@ -50,21 +51,7 @@ pub fn expected_shortfall(pnl: &[f64], alpha: f64) -> Result<f64> {
             "pnl contains NaN or infinite values".to_string(),
         ));
     }
-    let mut sorted = pnl.to_vec();
-    // `total_cmp` is a total order on every f64, so this sort has no panic
-    // path even though the finiteness check above already rules NaN out.
-    sorted.sort_by(f64::total_cmp);
-    let n = sorted.len();
-    let an = alpha * n as f64;
-    let k = an.floor() as usize;
-    let tail_sum: f64 = sorted[..k.min(n)].iter().sum();
-    let frac = an - k as f64;
-    let tail_sum = if frac > 0.0 && k < n {
-        tail_sum + frac * sorted[k]
-    } else {
-        tail_sum
-    };
-    Ok(-tail_sum / an)
+    Ok(crate::tail::empirical_var_es(pnl, alpha)?.1)
 }
 
 /// Closed-form ES for normal P&L: `ES = sigma * phi(z_alpha) / alpha - mean`.
@@ -75,7 +62,7 @@ pub fn expected_shortfall(pnl: &[f64], alpha: f64) -> Result<f64> {
 pub fn normal_es(sigma: f64, alpha: f64, mean: f64) -> Result<f64> {
     validate_alpha(alpha)?;
     // `!(sigma >= 0.0)` rather than `sigma < 0.0`: the latter is false for
-    // NaN, which would return a NaN Expected Shortfall — a risk number
+    // NaN, which would return a NaN Expected Shortfall: a risk number
     // that breaches no limit because every comparison against it is false.
     if !(sigma >= 0.0) || !sigma.is_finite() {
         return Err(EqVarError::InvalidInput(format!(
@@ -121,7 +108,7 @@ pub fn student_t_es(sigma: f64, alpha: f64, df: f64, mean: f64) -> Result<f64> {
     Ok(sigma * es_std * ((df - 2.0) / df).sqrt() - mean)
 }
 
-/// Variance–covariance ES at a 1-day horizon with zero mean — the common
+/// Variance–covariance ES at a 1-day horizon with zero mean: the common
 /// case. See [`parametric_es_full`] for a drift and multi-day horizon.
 ///
 /// # Examples

@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <cstddef>
+#include <span>
+
 #include "fxopt/common.hpp"
 
 namespace fxopt {
@@ -30,5 +33,20 @@ enum class Exercise { European, American };
 double binomial_price(double S, double K, double T, double r_d, double r_f,
                       double sigma, OptionType type, int steps = 500,
                       Exercise exercise = Exercise::European);
+
+/// Doubles of workspace try_binomial_price() needs for `steps`: `3 n + 2`
+/// (2n+1 node exercise values plus n+1 option values).
+constexpr std::size_t binomial_workspace_size(int steps) noexcept {
+    return steps < 1 ? 0 : 3 * static_cast<std::size_t>(steps) + 2;
+}
+
+/// noexcept CRR price in a caller-owned workspace. Same arguments, value
+/// and error policy as binomial_price(); `workspace` must hold at least
+/// binomial_workspace_size(steps) doubles (Errc::WorkspaceTooSmall
+/// otherwise). No allocation.
+[[nodiscard]] Result<double> try_binomial_price(double S, double K, double T, double r_d,
+                                                double r_f, double sigma, OptionType type,
+                                                int steps, Exercise exercise,
+                                                std::span<double> workspace) noexcept;
 
 }  // namespace fxopt

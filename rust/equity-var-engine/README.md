@@ -1,192 +1,185 @@
 # Equity VaR Engine (Rust)
 
-A dependency-free Rust production twin of the Python research stack
-[`python/equity/03-var-es-engine`](../../python/equity/03-var-es-engine) and
-the sibling [`cpp/equity-var-engine`](../../cpp/equity-var-engine): the full
-VaR / Expected-Shortfall / backtesting toolchain a market-risk desk runs in
-its overnight batch, re-implemented in safe Rust (`std` only, zero crates)
-for the memory-safety and determinism guarantees a production risk pipeline
-wants, and **cross-validated against the Python reference to 1e-9 relative on
-committed golden values**.
+A dependency-free Rust port of the linear-book part of the Python library
+[`python/equity/03-var-es-engine`](../../python/equity/03-var-es-engine)
+(`eq_var`), alongside [`cpp/equity-var-engine`](../../cpp/equity-var-engine).
+It computes historical, parametric and Monte Carlo VaR and ES for a book of
+dollar exposures to equity factors, and backtests the forecasts. Option
+revaluation is in the Python library only.
+
+The conventions are shared with every VaR engine in the repository and are
+checked by the shared `conv_*` goldens (see `docs/METHODOLOGY.md` section 0):
+
+- `alpha` is the tail probability (`0.01` = 99 % VaR); `alpha` outside
+  `(0, 0.5)` is an error.
+- Empirical VaR is the order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`,
+  with no interpolation. ES is Acerbi-Tasche with the exact fractional atom.
+- Kupiec and Basel take a struct with named fields; the Basel zone follows
+  the window and `alpha`.
+- Bad input (NaN, infinities, empty, too short, negative where invalid)
+  returns `Err`, never a number. A proptest walk over every public function
+  checks this.
 
 ```
-returns panel (T x n) ── sample / EWMA covariance ── Cholesky (jitter fallback)
-   │                              │                        │
-   ├── Historical VaR ─ plain (type-7) / BRW age-weighted / filtered (FHS)
-   ├── Parametric VaR ─ normal / variance-matched Student-t / Cornish-Fisher
-   ├── Monte Carlo VaR ─ MVN & multivariate-t, seeded xoshiro256++, VaR+ES+SE
-   │
-   ├── Expected Shortfall ─ empirical exact tail integral / closed forms
-   ├── Backtesting ──────── Kupiec POF · Christoffersen IND/CC · chi2 p-values
-   └── Basel traffic light ─ 0-4 / 5-9 / 10+ → multiplier 3.0 … 4.0
-```
-
-## Why a Rust engine when the Python and C++ stacks exist?
-
-- **Memory safety with C++-grade throughput**: the `#![deny(missing_docs)]`,
-  `Result`-everywhere API compiles to the same dense, allocation-light hot
-  loops as the C++ twin (a Cholesky-then-triangular-product Monte Carlo
-  path), but the borrow checker rules out the whole class of aliasing /
-  lifetime bugs that a hand-rolled dense-matrix engine is prone to — with no
-  runtime cost.
-- **`Result`, not exceptions**: every fallible entry point returns
-  [`EqVarError`](src/lib.rs) (`InvalidInput` / `Numerical`) instead of
-  throwing; a validation failure is a value the caller must handle, not a
-  stack unwind that a batch job can silently swallow.
-- **No dependencies**: `std` only. The deterministic RNG (xoshiro256++), the
-  special functions (inverse normal CDF, incomplete beta/gamma, Student-t
-  quantile) and the dense linear algebra are implemented in-crate — `cargo
-  build` needs nothing from crates.io, so the risk numbers of record never
-  depend on an upstream crate's release cadence or transitive dependency
-  tree.
-- **Determinism as a control**: every stochastic path draws from a seeded
-  [`rng::Rng`](src/rng.rs) (xoshiro256++ + Box–Muller + Marsaglia–Tsang) —
-  never the platform thread-RNG — so a given seed reproduces VaR **bitwise**
-  across runs on a given build. Regulators and model validation ask for
-  exactly this.
-
-## Validation contract — why NaN is the enemy
-
-Every fallible entry point validates with `is_finite()`, **never** with an
-ordering comparison. The reason is specific: a guard written as
-`if x < 0.0 { return Err(...) }` silently *accepts* NaN, because every
-IEEE-754 comparison against NaN is false — and Rust is no different from C
-here (`f64::NAN < 0.0` is `false`). Worse, `f64::max` propagates the other
-operand, so `NaN.max(0.0)` is `0.0`.
-
-That is the worst possible failure mode for a risk system. A NaN risk
-number breaches no limit and colours no traffic light (`NaN <= limit` is
-false, but so is `NaN > limit`), so it aggregates into a book-level number
-unnoticed; and a NaN that silently becomes a **zero** is worse still,
-because a zero looks like a perfectly hedged book. Three real instances were
-found and closed in the hardening pass:
-
-| Where | Before | Now |
-|---|---|---|
-| `portfolio_sigma` | a NaN covariance entry passed the PSD test (`var < -tol` is false for NaN) and `NaN.max(0.0).sqrt()` returned **0.0** — zero sigma, zero VaR, zero ES | rejects non-finite exposures and covariances |
-| `Matrix::cholesky` | pivot test `sum <= 0.0` is false for NaN, so a NaN covariance factorised into an all-NaN `L` and every downstream MC VaR was NaN | rejects non-finite entries; pivot test is `!(sum > 0.0)` |
-| `exceptions_from_pnl` | `pnl_t < -var_t` is false when either side is NaN, so a broken VaR feed recorded **zero breaches** and passed Kupiec / Christoffersen / Basel in the green zone | rejects non-finite P&L and VaR series |
-
-Related hardening: the Cholesky **jitter ladder** now stops at
-`matrix::MAX_RELATIVE_JITTER` (1e-6 x mean variance) instead of escalating
-to ten times the mean variance. A PSD-but-singular covariance (riskless leg,
-perfectly correlated factors, rank-deficient factor block) is still repaired
-at the first rung; a materially indefinite one now returns
-`EqVarError::Numerical` naming the cap rather than being silently patched
-into something that simulates a different book.
-
-## Layout
-
-```
-equity-var-engine/
-├── Cargo.toml              # zero deps, [[bin]] bench, release LTO profile
-├── src/
-│   ├── lib.rs               # EqVarError, TailModel, validate_alpha, prelude
-│   ├── matrix.rs            # dense Matrix, Cholesky+jitter, covariance (sample/EWMA)
-│   ├── stats.rs              # phi/Phi/Phi^-1, betainc, gammainc, t-dist, moments
-│   ├── historical.rs         # plain / BRW / FHS VaR, sqrt-time scaling
-│   ├── parametric.rs         # sigma_p, normal/t VaR, Cornish-Fisher + domain check
-│   ├── expected_shortfall.rs # empirical exact tail integral, normal/t closed forms
-│   ├── monte_carlo.rs        # seeded Rng, MVN/MVt simulation, VaR+ES+SE
-│   ├── backtest.rs           # Kupiec, Christoffersen, Basel traffic light
-│   ├── rng.rs                 # xoshiro256++, Box-Muller normals, Marsaglia-Tsang gamma
-│   └── bin/bench.rs          # end-to-end timings on a 250 x 100 panel
-├── tests/                   # 9 integration test files, 89 tests
-│   ├── golden/mod.rs           # GENERATED by tools/gen_golden_rs.py from the Python JSON
-│   └── test_cross_language.rs  # asserts the engine against golden::*
-└── docs/                    # METHODOLOGY / VALIDATION / DESK_GUIDE
+returns panel (T x n) -- sample / EWMA covariance -- cholesky_repair (jitter, Clip, Higham)
+   |
+   +-- Historical VaR -- plain / BRW age-weighted / filtered per factor (S9)
+   +-- Parametric VaR -- normal / variance-matched Student-t / Cornish-Fisher (alpha-aware check)
+   +-- Monte Carlo ----- normal and multivariate t; one simulation gives VaR, ES, bootstrap SE
+   +-- Expected Shortfall -- Acerbi-Tasche / closed forms
+   +-- Backtests ------- Kupiec, Christoffersen, Basel (any window), Acerbi-Szekely Z2
 ```
 
 ## Quickstart
 
 ```bash
 cd rust/equity-var-engine
-RUSTFLAGS="-D warnings" cargo test --release   # 89 tests + 10 doctests (99), offline
-cargo run --release --bin bench                # benchmark table below
+cargo test --release                       # 121 integration tests + 14 doctests
+cargo clippy --all-targets -- -D warnings
+cargo run --release --bin bench
 ```
 
 ```rust
 use eq_var_engine::prelude::*;
 
-let cov = ewma_covariance(&returns_panel, 0.94)?;      // (T x n) -> (n x n)
-let v_h = historical_var(&pnl, 0.01)?;                 // 99% 1d, type-7 quantile
-let v_f = filtered_historical_var(&pnl, 0.01, 0.94)?;  // EWMA-filtered (FHS)
+let v_h = historical_var(&pnl, 0.01)?;                             // order statistic
+let v_f = filtered_historical_var_factors(&panel, &w, 0.01, 0.94)?; // per-factor FHS
 let v_p = parametric_var(&w, &cov, 0.01, TailModel::StudentT { df: 6.0 })?;
-let mc_var = monte_carlo_var(&w, &cov, 0.01, 100_000, TailModel::StudentT { df: 6.0 }, 42)?;
-let mc_es  = monte_carlo_es(&w, &cov, 0.01, 100_000, TailModel::StudentT { df: 6.0 }, 42)?;
-// bitwise reproducible for a given seed on a given build
-let tl = basel_traffic_light(5, 250)?; // yellow, k = 3.40
+let run = monte_carlo_run(&w, &cov, 0.01, 100_000, TailModel::Normal, 42, 200)?;
+// run.var, run.es, run.se (bootstrap), run.se_kde, run.jitter
+let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 })?;
+let tl = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 })?;
+// tl.zone == Yellow, tl.multiplier == 3.40
 ```
 
-## Cross-language validation (the headline)
+## Changes in 0.2.0 (one-release deprecations)
 
-`tests/test_cross_language.rs` pins ~30 quantities to golden constants
-generated by running the Python reference (`eq_var`, numpy / scipy) on
-closed-form deterministic inputs that every language regenerates
-independently — the same inputs and the same constants as
-`cpp/equity-var-engine/tests/test_cross_language.cpp`, so **Python, C++ and
-Rust all agree to the same tolerance**. Agreement required: **1e-9
-relative**; observed residual is libm-vs-numpy ulp noise. Highlights:
+| Old | New |
+|---|---|
+| type-7 `linear_quantile` on VaR paths | order statistic (`tail::empirical_var`); `linear_quantile` deprecated |
+| `kupiec_pof(n_obs, n_exceptions, alpha)` | `kupiec_pof(&KupiecInput { .. })`; old form `kupiec_pof_positional` deprecated |
+| `basel_traffic_light(n_exceptions, n_obs)`, zone by raw count, `x > n` clamped | `basel_traffic_light(&BaselInput { .. })`, zone by `Binomial(n, alpha)` CDF, `x > n` an error, new `plus_factor` field; old form `basel_traffic_light_250` deprecated |
+| `cornish_fisher_domain_ok(skew, kurt, 3.5, grid)` | `cornish_fisher_valid(skew, kurt, alpha) -> Result<bool>`; old predicate deprecated |
+| `Matrix::cholesky_jitter(jitter, tries)` | `Matrix::cholesky_repair(PsdRepair)` returning the jitter; old method deprecated |
+| P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function deprecated, old arithmetic kept |
+| `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function deprecated |
+| EWMA vol seeded with full-sample variance | seeded with mean `r^2` of the first `min(30, n)` points |
+| `ln_gamma(x) -> f64` | `ln_gamma(x) -> Result<f64>` |
+| new | `acerbi_szekely_z2`, `monte_carlo_run`, `psd` module, `tail` module |
 
-| quantity (deterministic input) | Python reference | Rust engine |
-|---|---|---|
-| historical VaR 99 % (case A)   | 122.4129222375264 | equal to 1e-9 rel |
-| empirical ES 99 % (case A)     | 141.7568107549531 | equal to 1e-9 rel |
-| FHS VaR 95 %, lam=0.94 (A)     | 109.3777910164513 | equal to 1e-9 rel |
-| parametric VaR 99 % normal (B) | 23176.07650751402 | equal to 1e-9 rel |
-| parametric VaR 99 % t(6) (B)   | 25563.37478743866 | equal to 1e-9 rel |
-| Cornish-Fisher VaR 99 % (B)    | 28230.62626871169 | equal to 1e-9 rel |
-| EWMA cov [0,0], lam=0.94 (C)   | 6.085653794066718e-05 | equal to 1e-9 rel |
-| Kupiec LR / p (250 obs, 7 exc) | 5.496990447793 / 0.019049230891 | equal to 1e-9 rel |
-| Christoffersen CC LR / p (9 exc, planted cluster) | 11.41838698 / 3.315345e-03 | equal to 1e-9 rel |
+## Validation
 
-Regenerate the constants any time with the committed pipeline:
+- `tests/test_conv_golden.rs` checks every `conv_*` key of the Python golden
+  JSON: VaR/ES at three alphas, nine Basel cases, three Kupiec values, Z2,
+  five Cornish-Fisher flags, Higham and clip repairs, the EWMA vol. The
+  tolerances are argued in ulps in the file header.
+- `tests/test_cross_language.rs` checks the older cases A, B, C to `1e-9`
+  relative. Both read `tests/golden/mod.rs`, generated by
+  `tools/gen_golden_rs.py` from the JSON (`--check` verifies it).
+- `tests/test_conventions.rs` holds the regression tests for this release;
+  each failed on the old code first.
+- `tests/fuzz_public_api.rs` feeds NaN, `+/-inf`, empty, length-1 and
+  negative inputs to every public function and asserts `Err`. A registry
+  test fails if a new `pub fn` has no entry.
+- MC against closed forms: normal MC VaR within SE bars of the
+  parametric VaR, simulated covariance against the target.
+
+Regenerate the goldens:
 
 ```bash
 cd python/equity/03-var-es-engine
-PYTHONPATH=src python3 tests/golden/generate_golden.py     # -> tests/golden/golden_vectors.json
+PYTHONPATH=src python3 tests/golden/generate_golden.py
 cd ../../../rust/equity-var-engine
-python3 tools/gen_golden_rs.py --check                                # 0 = committed constants match the JSON
-python3 tools/gen_golden_rs.py                                        # rewrite tests/golden/mod.rs after a deliberate change
+python3 tools/gen_golden_rs.py && python3 tools/gen_golden_rs.py --check
 ```
 
-The constants live in the GENERATED `tests/golden/mod.rs` (not hand-pasted in the
-test file), and `python/equity/03-var-es-engine/tests/test_golden_vectors.py`
-locks the JSON from the Python side.
+## Allocation-free API (`fast`)
 
-Independently of the golden values, the MC engine is validated **against the
-closed forms it should converge to**: 200k-path normal MC VaR within 3
-order-statistic SE of the parametric answer, Student-t MC against the
-variance-matched t closed form, and simulated covariance against the target
-matrix (see `docs/VALIDATION.md`).
+`eq_var_engine::fast` holds the hot paths for latency-sensitive callers.
+Each function returns the same `f64` bits as its main-API counterpart.
+It allocates nothing on the success path and never panics. Errors are a
+`Copy` enum, `VarFault`, with no `String`.
 
-## Benchmark (250-day x 100-asset panel, alpha = 1 %, single thread, release + LTO)
+| fast function | main API counterpart | scratch |
+|---|---|---|
+| `historical_var_ws` | `historical_var` | `&mut [f64]`, len >= n |
+| `expected_shortfall_ws` | `expected_shortfall` | same |
+| `empirical_var_es_ws` | `tail::empirical_var_es` | same |
+| `var_bootstrap_se_ws` | `var_bootstrap_se` | `buf` len >= n, `est` len >= n_boot |
+| `portfolio_sigma_fast` | `portfolio_sigma` | none |
+| `parametric_var_fast` / `parametric_es_fast` | `parametric_var` / `parametric_es` | none |
+| `McWorkspace::run` / `::var` | `monte_carlo_run` / `monte_carlo_var` | the workspace |
 
-Best-of-R wall times, deterministic inputs (`src/bin/bench.rs`):
+`McWorkspace::new(n, max_paths, max_boot)` sizes the buffers.
+`prepare(cov, tail)` factors the covariance once; this step allocates.
+After that, `run` and `var` allocate nothing. The workspace revalues the
+book path by path and never builds the `n_paths x n` scenario panel.
 
-| stage | best ms |
-|---|---|
-| sample covariance (250 x 100 → 100 x 100) | 0.78 |
-| EWMA covariance (lam = 0.94) | 1.62 |
-| historical VaR 99 % (250 scenarios) | 0.004 |
-| BRW age-weighted VaR 99 % | 0.008 |
-| filtered (FHS) VaR 99 % | 0.006 |
-| empirical ES 97.5 % | 0.004 |
-| parametric VaR 99 % (normal) | 0.010 |
-| parametric VaR 99 % (Student-t df=6) | 0.020 |
-| Cholesky 100 x 100 | 0.21 |
-| **MC VaR 99 % normal, 100k paths** | **764** |
-| MC VaR 99 % Student-t df=6, 100k paths | 776 |
-| **full daily batch (everything above once)** | **~767** |
+`tests/test_fast_equiv.rs` checks bit equality with the main API.
+`tests/test_fast_alloc.rs` counts heap allocations with a global allocator
+and requires zero for every call above.
 
-Sanity check inside the bench run: MC normal VaR 68 584 vs parametric 69 002
-(within 1 SE at SE = 422); MC ES 78 573 vs closed form 79 053.
+The MC draw stays on one thread. The RNG is one serial xoshiro256++
+stream, and splitting it across threads would change the numbers. Books
+are independent, so run one workspace per book per core instead.
 
-## Documentation
+## Latency
 
-- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — the maths, model choices vs
-  alternatives, and the numbered assumptions register.
-- [`docs/VALIDATION.md`](docs/VALIDATION.md) — analytic identities,
-  convergence studies, cross-language goldens, failure modes with tests.
-- [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md) — batch SLAs, intraday use,
-  regression gates, reconciliation against the Python research stack.
+`cargo run --release --bin bench` times each kernel call by call after a
+warm-up, over 16 rotating inputs, and writes `bench/results.json`. Calls
+under a few microseconds are timed in batches of K and divided by K. The
+main-API rows are the "before" numbers (that code is unchanged). The
+`fast` rows are the "after" numbers.
+
+Numbers from this machine: Intel Core 5 120U, WSL2 on Windows 11,
+rustc 1.99.1, release profile (opt-level 3, fat LTO, one codegen unit),
+2026-11-01. WSL2 adds scheduler jitter, so read p99.9 and max as upper
+bounds. Sibling builds shared the machine during the run.
+
+| kernel | before p50 / p99 / p99.9 ns | after p50 / p99 / p99.9 ns |
+|---|---|---|
+| historical VaR, n = 250 | 725 / 2 358 / 6 323 | 541 / 1 786 / 4 139 |
+| historical VaR, n = 1000 | 2 456 / 5 175 / 16 079 | 1 968 / 5 608 / 15 948 |
+| empirical ES 97.5 %, n = 250 | 737 / 2 208 / 7 360 | 581 / 893 / 4 109 |
+| parametric VaR normal, 100 assets | 9 504 / 29 060 / 64 916 | 5 502 / 15 222 / 46 006 |
+| parametric VaR t(6), 100 assets | 16 866 / 47 069 / 111 335 | 13 468 / 31 496 / 66 041 |
+| bootstrap SE, n = 250, B = 200 | 261 361 / 540 601 / 1 449 138 | 226 851 / 506 750 / 900 697 |
+| MC run, 20 factors x 10k paths, B = 50 | 9.59 / 21.5 / 25.6 ms | 7.08 / 19.2 / 24.8 ms |
+| MC VaR only, 20 factors x 10k paths | 5.83 / 9.05 / 9.96 ms | 3.91 / 10.4 / 11.9 ms |
+
+Where the time goes:
+
+- Historical VaR and ES: the gain is the removed loss-vector allocation.
+  The selection itself (`select_nth_unstable`) is the floor.
+- Parametric: `w' S w` runs four matrix rows side by side. Each row keeps
+  its own left-to-right sum, so the bits match `Matrix::matvec`. The
+  finite check over the covariance and the t quantile solve are the rest.
+- MC: the Box-Muller draws (`ln`, `sqrt`, `sin`, `cos`) dominate. The
+  workspace saves the panel allocation and the second pass over it.
+
+Vectorisation (`RUSTFLAGS=-Cremark=loop-vectorize`, LTO off so remarks
+print): the negate-and-copy and finite-check loops vectorise (SSE2, width
+2). The dot products, the `L z` product and the sums do not: LLVM may not
+reorder floating-point adds, and reordering would change the bits.
+Selection and sort loops branch on data and do not vectorise.
+
+## Layout
+
+```
+src/
+  lib.rs                 EqVarError, TailModel, prelude
+  tail.rs                shared S2 estimator, alpha validation
+  historical.rs          plain / BRW / per-factor FHS, EWMA vol, sqrt-time
+  parametric.rs          sigma_p, normal / t VaR, Cornish-Fisher
+  expected_shortfall.rs  empirical and closed-form ES
+  monte_carlo.rs         simulation, monte_carlo_run, bootstrap and KDE SE
+  fast.rs                allocation-free kernels, McWorkspace, VarFault
+  backtest.rs            Kupiec, Christoffersen, Basel, Acerbi-Szekely Z2
+  matrix.rs              dense Matrix, covariance estimators
+  psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
+  stats.rs               special functions, moments
+  rng.rs                 xoshiro256++, Box-Muller, Marsaglia-Tsang
+  bin/bench.rs           per-call latency distribution, writes bench/results.json
+tests/                   14 integration files; golden/mod.rs is generated
+docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE
+```

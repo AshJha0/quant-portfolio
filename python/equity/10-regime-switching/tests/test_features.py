@@ -1,4 +1,4 @@
-"""Feature engineering tests — point-in-time discipline is the core contract."""
+"""Feature engineering tests: point-in-time discipline is the core contract."""
 
 from __future__ import annotations
 

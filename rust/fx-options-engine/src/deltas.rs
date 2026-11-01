@@ -7,8 +7,8 @@
 //! 1. **Spot vs forward hedge**: hedge with spot (delta includes the
 //!    foreign discount factor) or with an outright forward.
 //! 2. **Premium adjustment**: if the premium is paid in the *base*
-//!    (foreign) currency — standard for USDJPY and most EM/non-EURUSD
-//!    pairs — the premium itself is a position in the underlying and must
+//!    (foreign) currency: standard for USDJPY and most EM/non-EURUSD
+//!    pairs: the premium itself is a position in the underlying and must
 //!    be subtracted from the hedge.
 //!
 //! With `phi` = +1 call / -1 put and `F = S e^{(r_d - r_f)T}`:
@@ -28,7 +28,7 @@
 //! rises then falls; `(K/F)N(d2) -> 0` both as K -> 0 and K -> inf), so
 //! the equation has zero, one, or two solutions.  Market convention takes
 //! the solution on the *right* (decreasing) branch, i.e. the larger
-//! strike — implemented here by locating the peak of `K N(d2)` and
+//! strike: implemented here by locating the peak of `K N(d2)` and
 //! Brent-solving on `[K_peak, K_max]`.  Premium-adjusted put deltas are
 //! monotone in K and Brent-solve directly.
 //!
@@ -42,8 +42,7 @@
 
 use crate::garman_kohlhagen::d1 as d1_fn;
 use crate::{
-    brentq, invalid, norm_cdf, norm_pdf, norm_ppf, require_finite, validate_inputs, FxResult,
-    OptionType,
+    brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs, FxResult, OptionType,
 };
 
 /// FX delta quoting convention (see the module docs for the formulae).
@@ -79,10 +78,10 @@ impl DeltaConvention {
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`];
 ///   requires `t > 0` and `sigma > 0`.
-/// * `option_type` — call or put on the base currency.
-/// * `convention` — one of the four [`DeltaConvention`]s.
+/// * `option_type`: call or put on the base currency.
+/// * `convention`: one of the four [`DeltaConvention`]s.
 ///   Premium-adjusted deltas assume the premium is paid in the base
 ///   (foreign) currency.
 ///
@@ -164,7 +163,7 @@ pub fn forward_to_spot_delta(delta_forward: f64, t: f64, r_f: f64) -> FxResult<f
 /// or if `delta_spot` or `price` is NaN/infinite. The last check matters:
 /// a corrupt premium would otherwise turn the hedge ratio into a silent
 /// NaN, and a NaN delta breaches no limit and shows up in no traffic
-/// light — `NaN <= limit` is false, but so is `NaN > limit`.
+/// light: `NaN <= limit` is false, but so is `NaN > limit`.
 pub fn premium_adjust_spot_delta(delta_spot: f64, price: f64, s: f64) -> FxResult<f64> {
     if !(s > 0.0) || !s.is_finite() {
         return invalid(format!("Spot S must be positive and finite, got {s}"));
@@ -221,7 +220,7 @@ pub fn atm_dns_strike(
     Ok(f * (sign * 0.5 * sigma * sigma * t).exp())
 }
 
-/// Strike maximising `K*N(d2(K))` — the fold point of the PA call delta.
+/// Strike maximising `K*N(d2(K))`: the fold point of the PA call delta.
 ///
 /// Setting `d/dK [K N(d2)] = 0` gives `N(d2) sigma sqrt(T) = n(d2)`, a
 /// one-dimensional root in d2 (unique: LHS increasing, RHS log-concave
@@ -229,16 +228,47 @@ pub fn atm_dns_strike(
 /// `K = F exp(-d2 sigma sqrt(T) - sigma^2 T / 2)`.
 fn pa_peak_strike(f: f64, t: f64, sigma: f64) -> FxResult<f64> {
     let v = sigma * t.sqrt();
-    let g = |x: f64| norm_cdf(x) * v - norm_pdf(x);
-    // Bracket: g(x) = n(x) [ (N(x)/n(x)) v - 1 ] and N(x)/n(x) -> 1/|x|
-    // as x -> -inf, so g(x) < 0 once |x| > v. A fixed -20 lower bound
-    // therefore fails to bracket for sigma*sqrt(T) > 20 (a 2000% vol
-    // year, reachable in stress scenarios and in fuzzing). -37 keeps the
-    // sign guaranteed for every v < 37 while staying above the point
-    // where n(x) itself underflows to zero (x ~ -38.5), which would make
-    // g(x) an exact 0 and be mistaken for a root.
-    let root = brentq(g, -37.0, 20.0, 1e-14, 200)?;
-    Ok(f * (-root * v - 0.5 * v * v).exp())
+    let log_v = v.ln();
+    // Solved in log form, ln N(x) + ln v - ln n(x) = 0, so no term
+    // underflows for any v (the direct form needs n(x) > 0, x > -38.5).
+    let h = |x: f64| log_norm_cdf(x) + log_v + 0.5 * x * x + LN_SQRT_2PI;
+    let (x_lo, x_hi) = pa_fold_bracket(v);
+    let root = brentq(h, x_lo, x_hi, 1e-14, 200)?;
+    crate::finite_result(f * (-root * v - 0.5 * v * v).exp(), "PA fold strike")
+}
+
+const LN_SQRT_2PI: f64 = 0.918_938_533_204_672_8;
+
+/// `ln N(x)` without underflow. Direct for `x > -37` (`N(-37)` is still a
+/// normal double); below, the Mills-ratio series
+/// `-x^2/2 - ln(-x) - ln sqrt(2 pi) + ln(1 - 1/x^2 + 3/x^4 - 15/x^6 + 105/x^8)`
+/// has absolute error below `945/x^10 < 2.1e-13`.
+pub(crate) fn log_norm_cdf(x: f64) -> f64 {
+    if x > -37.0 {
+        return norm_cdf(x).ln();
+    }
+    let x2 = 1.0 / (x * x);
+    let series = 1.0 - x2 * (1.0 - x2 * (3.0 - x2 * (15.0 - 105.0 * x2)));
+    -0.5 * x * x - (-x).ln() - LN_SQRT_2PI + series.ln()
+}
+
+/// Bracket for the root of `h(x) = ln N(x) + ln v - ln n(x)`, `v = sigma sqrt(T)`.
+///
+/// `h` is increasing. Lower end: for `x < 0`, `N(x) < n(x)/|x|` (Mills), so
+/// `h(x) < ln(v/|x|) < 0` whenever `|x| > v`; take `x_lo = -(v + 1)`.
+/// Upper end: for `x >= 0`, `N(x) >= 1/2`, so `h(x) > 0` once
+/// `n(x) < v/2`, i.e. `x > sqrt(2 ln(2 / (v sqrt(2 pi))))`; take that
+/// plus 1 (at least 1). Both ends are valid for every `v > 0`.
+pub(crate) fn pa_fold_bracket(v: f64) -> (f64, f64) {
+    let x_lo = -(v + 1.0);
+    let arg = 2.0 / (v * (2.0 * std::f64::consts::PI).sqrt());
+    let x_hi = 1.0
+        + if arg > 1.0 {
+            (2.0 * arg.ln()).sqrt()
+        } else {
+            0.0
+        };
+    (x_lo, x_hi)
 }
 
 /// Invert delta -> strike under any of the four conventions.
@@ -256,12 +286,12 @@ fn pa_peak_strike(f: f64, t: f64, sigma: f64) -> FxResult<f64> {
 ///
 /// # Arguments
 ///
-/// * `target_delta` — desired delta, signed (calls in `(0, upper)`, puts
+/// * `target_delta`: desired delta, signed (calls in `(0, upper)`, puts
 ///   in `(lower, 0)`).
-/// * `s`, `t`, `r_d`, `r_f`, `sigma` — market inputs; requires `t > 0`,
+/// * `s`, `t`, `r_d`, `r_f`, `sigma`: market inputs; requires `t > 0`,
 ///   `sigma > 0`.
-/// * `option_type` — call or put.
-/// * `convention` — one of the four [`DeltaConvention`]s.
+/// * `option_type`: call or put.
+/// * `convention`: one of the four [`DeltaConvention`]s.
 ///
 /// # Errors
 ///
@@ -348,7 +378,7 @@ pub fn strike_from_delta(
         }
         let k_max = f * (30.0 * v).exp();
         let mut k_hi = k_peak;
-        while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max {
+        while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && (2.0 * k_hi).is_finite() {
             k_hi *= 2.0;
         }
         return brentq(|k| pa_fwd_delta(k) - fwd_delta, k_peak, k_hi, 1e-14, 200);
@@ -360,10 +390,10 @@ pub fn strike_from_delta(
             "premium-adjusted put forward delta {fwd_delta} outside (-1, 0)"
         ));
     }
-    let k_lo = f * (-30.0 * v).exp();
+    let k_lo = f * (-(30.0 * v).min(700.0)).exp();
     let k_max = f * (30.0 * v).exp();
     let mut k_hi = f;
-    while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max {
+    while pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && (2.0 * k_hi).is_finite() {
         k_hi *= 2.0;
     }
     brentq(|k| pa_fwd_delta(k) - fwd_delta, k_lo, k_hi, 1e-14, 200)

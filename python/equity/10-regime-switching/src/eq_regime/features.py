@@ -2,26 +2,26 @@
 
 All features are computed point-in-time: the value at date ``t`` uses only
 observations up to and including ``t``.  Standardisation uses an EXPANDING
-window (:func:`expanding_zscore`) — never the full sample — so z-scores are
+window (:func:`expanding_zscore`), never the full sample, so z-scores are
 free of lookahead by construction.  This is test-enforced with a mutation
 test: perturbing future observations must leave all past feature values
 bit-identical.
 
 Feature set (each a column of the feature table):
 
-* ``vol_{w}d``        — annualised realized vol of the equal-weight index,
+* ``vol_{w}d``       : annualised realized vol of the equal-weight index,
                         rolling window ``w`` for several windows.
-* ``dispersion``      — cross-sectional std of daily asset returns (rolling
+* ``dispersion``     : cross-sectional std of daily asset returns (rolling
                         mean-smoothed).
-* ``avg_corr``        — average pairwise correlation over a rolling window.
-* ``drawdown``        — depth of the equal-weight index below its running max
+* ``avg_corr``       : average pairwise correlation over a rolling window.
+* ``drawdown``       : depth of the equal-weight index below its running max
                         (0 at the peak, positive in drawdown).
-* ``trend``           — equal-weight index vs its 200d moving average, in
+* ``trend``          : equal-weight index vs its 200d moving average, in
                         fractional terms (price / MA - 1).
-* ``credit_proxy``    — synthetic credit-spread proxy: short-window vol of the
+* ``credit_proxy``   , synthetic credit-spread proxy: short-window vol of the
                         spread between the high-beta and low-beta halves of
                         the panel (widens in stress, like IG/HY spreads).
-* ``term_proxy``      — synthetic term-structure proxy: long-window minus
+* ``term_proxy``     , synthetic term-structure proxy: long-window minus
                         short-window realized vol (vol backwardation in
                         crises, contango in calm markets).
 
@@ -181,7 +181,7 @@ def drawdown_depth(prices: pd.DataFrame) -> pd.Series:
     """Depth of the equal-weight index below its running maximum.
 
     The index is the equal-weight average of prices normalised to 1.0 at the
-    first date.  Drawdown is ``1 - index / running_max`` — 0 at new highs,
+    first date.  Drawdown is ``1 - index / running_max``: 0 at new highs,
     positive (e.g. 0.25 = 25% below peak) in drawdowns.
 
     Parameters
@@ -230,7 +230,7 @@ def _beta_split(returns: pd.DataFrame, lookback: int = 252) -> tuple[list[str], 
     Deterministic given the panel; used only to construct synthetic factor
     proxies.  Uses the FIRST ``lookback`` days so the split itself does not
     drift (documented simplification: the split is part of the factor
-    definition, computed once on the warmup window — no future data enters
+    definition, computed once on the warmup window: no future data enters
     values at t beyond that fixed membership).
     """
     lookback = min(lookback, len(returns))
@@ -257,7 +257,11 @@ def credit_proxy_spread(returns: pd.DataFrame, window: int = 21, lookback: int =
         raise ValueError(f"window must be >= 2, got {window}")
     hi, lo = _beta_split(returns, lookback)
     spread = returns[hi].mean(axis=1) - returns[lo].mean(axis=1)
-    return (spread.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)).rename("credit_proxy")
+    out = (spread.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)).rename("credit_proxy")
+    # Membership is fixed on the first ``lookback`` rows, so a value before
+    # row ``lookback`` would use later data. Those rows are left NaN.
+    out.iloc[: min(lookback, len(returns)) - 1] = np.nan
+    return out
 
 
 def term_proxy(returns: pd.DataFrame, short_window: int = 21, long_window: int = 126) -> pd.Series:
@@ -265,7 +269,7 @@ def term_proxy(returns: pd.DataFrame, short_window: int = 21, long_window: int =
 
     In calm markets short-dated realized vol sits below long-dated (contango,
     positive value); in crises short-dated vol spikes above (backwardation,
-    negative value) — the same shape as the VIX term structure.
+    negative value): the same shape as the VIX term structure.
 
     Returns
     -------
@@ -293,7 +297,7 @@ def build_features(
     """Build the full regime feature table from a price panel.
 
     Point-in-time by construction; when ``standardize`` is True each raw
-    feature is passed through :func:`expanding_zscore` (expanding window —
+    feature is passed through :func:`expanding_zscore` (expanding window:
     no lookahead).  Rows with any NaN (warmup) are dropped when ``dropna``.
 
     Parameters

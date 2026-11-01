@@ -2,19 +2,19 @@
 
 Design rules (all tested):
 
-* **No lookahead** — the weight function receives history strictly up to and
+* **No lookahead**: the weight function receives history strictly up to and
   including the rebalance date *t*; new weights take effect from *t+1*.
   Carry accrual inside the returns already uses previous-close rates (see
   :mod:`fx_port.returns_est`).
-* **Carry in the P&L** — the ledger splits every day's P&L into a spot leg
+* **Carry in the P&L**: the ledger splits every day's P&L into a spot leg
   and a carry-accrual leg; their sum plus costs is the net return.
-* **Transaction costs in pips** — FX costs quote as a spread in pips;
+* **Transaction costs in pips**: FX costs quote as a spread in pips;
   :func:`pips_to_bps` converts ``pips × pip_size / spot`` into basis points
   of notional.  The engine charges ``cost_rate × turnover`` on the day new
   weights take effect, with turnover = sum |w_new - w_old| (weights are
   treated as reset to target at each rebalance; intra-period drift of
   long-short FX weights is second-order and documented as a simplification).
-* **Base-currency reporting** — helpers convert USD-base log total returns to
+* **Base-currency reporting**: helpers convert USD-base log total returns to
   any base (the GBP option for a London desk).  For LOG returns the change of
   base adds the SAME conversion term to every asset, so a dollar-neutral
   portfolio's log-return series is EXACTLY invariant to the base currency

@@ -58,7 +58,11 @@ Market::Market(std::map<std::string, double> spot_usd,
       throw std::invalid_argument("spot_usd['USD'] must be 1.0 (USD per USD)");
   }
   spot_usd_["USD"] = 1.0;
-  for (auto& [c, r] : rates) rates_[upper(c)] = r;
+  for (auto& [c, r] : rates) {
+    if (!std::isfinite(r))
+      throw std::invalid_argument("rate for " + c + " must be finite");
+    rates_[upper(c)] = r;
+  }
 }
 
 double Market::spot(const std::string& ccy) const {
@@ -83,6 +87,8 @@ double Market::cross(const std::string& pair) const {
 }
 
 double Market::forward(const std::string& pair, double expiry) const {
+  if (!(expiry >= 0.0) || !std::isfinite(expiry))
+    throw std::invalid_argument("forward expiry must be finite and >= 0");
   const PairLegs legs = split_pair(pair);
   return cross(pair) * std::exp((rate(legs.quote) - rate(legs.base)) * expiry);
 }
@@ -95,14 +101,21 @@ void validate_position(const Position& p) {
     if (cash->ccy.size() != 3)
       throw std::invalid_argument("cash ccy must be a 3-letter code, got '" +
                                   cash->ccy + "'");
+    if (!std::isfinite(cash->amount))
+      throw std::invalid_argument("cash amount must be finite");
   } else if (const auto* spot = std::get_if<SpotPosition>(&p)) {
     split_pair(spot->pair);
-    if (spot->entry_rate && *spot->entry_rate <= 0.0)
+    if (!std::isfinite(spot->notional))
+      throw std::invalid_argument("spot notional must be finite");
+    if (spot->entry_rate && !(*spot->entry_rate > 0.0 && std::isfinite(*spot->entry_rate)))
       throw std::invalid_argument("entry_rate must be > 0");
   } else if (const auto* fwd = std::get_if<ForwardPosition>(&p)) {
     split_pair(fwd->pair);
-    if (fwd->expiry < 0.0) throw std::invalid_argument("expiry must be >= 0");
-    if (fwd->strike && *fwd->strike <= 0.0)
+    if (!std::isfinite(fwd->notional))
+      throw std::invalid_argument("forward notional must be finite");
+    if (!(fwd->expiry >= 0.0) || !std::isfinite(fwd->expiry))
+      throw std::invalid_argument("expiry must be finite and >= 0");
+    if (fwd->strike && !(*fwd->strike > 0.0 && std::isfinite(*fwd->strike)))
       throw std::invalid_argument("strike must be > 0");
   }
 }
@@ -158,7 +171,7 @@ std::vector<std::string> Book::factors() const {
 CompiledBook::CompiledBook(const Book& book, const Market& market) {
   if (book.empty())
     throw std::invalid_argument(
-        "cannot compile an empty book: add positions before running VaR");
+        "book has no positions: add positions before running VaR");
   factors_ = book.factors();
   base_ = book.base();
   s0_base_ = market.spot(base_);
@@ -219,11 +232,52 @@ double CompiledBook::value_usd(const double* shocks) const {
   return total;
 }
 
-double CompiledBook::pnl(const double* shocks) const {
-  const double v1 = value_usd(shocks);
+Result<double> CompiledBook::try_pnl(std::span<const double> shocks) const noexcept {
+  if (shocks.size() < factors_.size()) [[unlikely]]
+    return std::unexpected(Error{Errc::kSizeMismatch, "CompiledBook::try_pnl",
+                                 static_cast<double>(shocks.size()),
+                                 static_cast<double>(factors_.size())});
+  for (std::size_t j = 0; j < factors_.size(); ++j)
+    if (!std::isfinite(shocks[j])) [[unlikely]]
+      return std::unexpected(Error{Errc::kShockNonFinite, factors_[j].c_str()});
+  const double v1 = value_usd(shocks.data());
   const double s1_base =
       (base_fx_idx_ >= 0) ? s0_base_ * std::exp(shocks[base_fx_idx_]) : s0_base_;
   return v1 / s1_base - v0_usd_ / s0_base_;
+}
+
+double CompiledBook::pnl(const double* shocks) const {
+  return value_or_throw(try_pnl(std::span<const double>(shocks, factors_.size())));
+}
+
+Result<void> CompiledBook::try_pnl_batch(std::span<const double> scenarios,
+                                         std::span<double> out) const noexcept {
+  const std::size_t k = factors_.size();
+  const std::size_t n_scen = out.size();
+  if (scenarios.size() != n_scen * k) [[unlikely]]
+    return std::unexpected(Error{Errc::kSizeMismatch, "CompiledBook::try_pnl_batch",
+                                 static_cast<double>(scenarios.size()),
+                                 static_cast<double>(n_scen * k)});
+  // Branch-free finiteness count over the whole block (vectorises).
+  std::size_t bad = 0;
+  for (const double v : scenarios) bad += std::fabs(v) <= 1.7976931348623157e308 ? 0U : 1U;
+  if (bad != 0) [[unlikely]] return fail("scenario matrix contains NaN or inf");
+  const std::size_t n_legs = value0_.size();
+  const double v0_base = v0_usd_ / s0_base_;
+  for (std::size_t s = 0; s < n_scen; ++s) {
+    const double* row = scenarios.data() + s * k;
+    double v1 = 0.0;
+    for (std::size_t i = 0; i < n_legs; ++i) {
+      double shift = 0.0;
+      if (fx_idx_[i] >= 0) shift += row[fx_idx_[i]];
+      if (ir_idx_[i] >= 0) shift += neg_expiry_[i] * row[ir_idx_[i]];
+      v1 += (shift == 0.0) ? value0_[i] : value0_[i] * std::exp(shift);
+    }
+    const double s1_base =
+        (base_fx_idx_ >= 0) ? s0_base_ * std::exp(row[base_fx_idx_]) : s0_base_;
+    out[s] = v1 / s1_base - v0_base;
+  }
+  return {};
 }
 
 double CompiledBook::pnl(const std::map<std::string, double>& shocks) const {
@@ -254,6 +308,9 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
     for (const auto& f : missing) msg << " " << f;
     throw std::invalid_argument(msg.str());
   }
+  for (double v : scenarios.data.data())
+    if (!std::isfinite(v))
+      throw std::invalid_argument("scenario matrix contains NaN or inf");
   for (std::size_t i = 0; i < value0_.size(); ++i) {
     if (fx_idx_[i] >= 0) fx_col[i] = factor_col[fx_idx_[i]];
     if (ir_idx_[i] >= 0) ir_col[i] = factor_col[ir_idx_[i]];
@@ -281,7 +338,8 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
 }
 
 std::vector<double> CompiledBook::linear_exposures(double bump) const {
-  if (!(bump > 0.0)) throw std::invalid_argument("bump must be > 0");
+  if (!(bump > 0.0) || !std::isfinite(bump))
+    throw std::invalid_argument("bump must be finite and > 0");
   std::vector<double> w(factors_.size(), 0.0);
   std::vector<double> shocks(factors_.size(), 0.0);
   for (std::size_t j = 0; j < factors_.size(); ++j) {

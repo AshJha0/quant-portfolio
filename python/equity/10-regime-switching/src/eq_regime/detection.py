@@ -1,13 +1,13 @@
 """Regime inference pipeline: fitting, ONLINE filtering, labelling, stability.
 
-FILTERED vs SMOOTHED — the central honesty point of this project
+FILTERED vs SMOOTHED: the central causality point of this project
 =================================================================
 
 * **Filtered** probabilities ``P(s_t | x_{1..t})`` use only data available
   at time ``t``.  They are causal and therefore TRADEABLE.
 * **Smoothed** probabilities ``P(s_t | x_{1..T})`` condition on the FULL
-  sample, including the future.  They look far cleaner in plots — regime
-  edges snap into place — precisely because they peek ahead.  Backtesting a
+  sample, including the future.  They look far cleaner in plots: regime
+  edges snap into place: precisely because they peek ahead.  Backtesting a
   strategy on smoothed probabilities is lookahead bias and will overstate
   performance, typically dramatically around regime turns.
 
@@ -19,13 +19,15 @@ while the smoothed probability at ``t`` must change (sanity contrast).
 Also provided:
 
 * economic labelling of states (``bull`` / ``bear`` / ``transition``) by
-  sorting on state emission means — the highest-vol state is always the
+  sorting on state emission means: the highest-vol state is always the
   bear, the lowest-vol (and highest-trend) state the bull;
 * stability diagnostics: regime flip-flop rate and a minimum-duration
   filter that removes one/two-day flickers.
 """
 
 from __future__ import annotations
+
+import warnings
 
 from dataclasses import dataclass
 
@@ -139,7 +141,7 @@ def labels_from_vol_means(vol_means: np.ndarray) -> RegimeLabels:
 
 
 def filtered_probabilities(fit: HMMFit, x: np.ndarray) -> np.ndarray:
-    """ONLINE filtered probabilities ``P(s_t | x_{1..t})`` — tradeable.
+    """ONLINE filtered probabilities ``P(s_t | x_{1..t})``: tradeable.
 
     Row ``t`` depends only on observations up to and including ``t``
     (mutation-test-enforced).  Use THIS for signals.
@@ -149,7 +151,7 @@ def filtered_probabilities(fit: HMMFit, x: np.ndarray) -> np.ndarray:
 
 
 def smoothed_probabilities(fit: HMMFit, x: np.ndarray) -> np.ndarray:
-    """Smoothed posteriors ``P(s_t | x_{1..T})`` — NOT tradeable.
+    """Smoothed posteriors ``P(s_t | x_{1..T})``: NOT tradeable.
 
     Row ``t`` depends on the whole sample including the future.  Use only
     for historical diagnostics and reporting, never for signals.
@@ -171,10 +173,10 @@ def flip_flop_rate(states: np.ndarray) -> float:
 
 
 def min_duration_filter(states: np.ndarray, min_duration: int) -> np.ndarray:
-    """Remove regime runs shorter than ``min_duration`` days.
+    """Remove regime runs shorter than ``min_duration`` days (offline, not causal).
 
     Scans runs left to right; any run shorter than ``min_duration`` is
-    absorbed into the PREVIOUS surviving regime (causal choice — the
+    absorbed into the PREVIOUS surviving regime (causal choice: the
     alternative, merging into the following regime, would need future
     knowledge of when the run ends beyond the filter horizon).  The first
     run is never removed.
@@ -189,6 +191,14 @@ def min_duration_filter(states: np.ndarray, min_duration: int) -> np.ndarray:
     -------
     (T,) filtered path.
     """
+    warnings.warn(
+        "min_duration_filter relabels a run once its end is known, so it is not "
+        "causal and must not feed a backtest; use strategy.causal_min_duration "
+        "(walk_forward_backtest(min_duration=...)). Kept for offline labelling; "
+        "it will be removed in the next release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if min_duration < 1:
         raise ValueError(f"min_duration must be >= 1, got {min_duration}")
     states = np.asarray(states).copy()
@@ -238,12 +248,12 @@ def expanding_fit_detect(
     ``min_train``), an HMM is fitted on features ``[0, t0)``.  For each
     subsequent day ``t`` until the next refit, the FILTERED probability
     ``P(s_t | x_{1..t})`` is computed with that (frozen) model over data up
-    to ``t`` only.  No future observation ever enters the value at ``t``
-    — neither through the fit window nor through smoothing.
+    to ``t`` only.  No future observation ever enters the value at ``t``:
+    neither through the fit window nor through smoothing.
 
     When ``n_pca`` is set, a PCA (from scratch, :mod:`eq_regime.pca`) is
     fitted on the SAME training window and the HMM operates on the leading
-    ``n_pca`` principal-component scores — still fully causal, since both
+    ``n_pca`` principal-component scores: still fully causal, since both
     the PCA and the HMM only ever see data up to the refit date, and the
     projection of row ``t`` uses only row ``t``.  State labelling then uses
     posterior-weighted means of the ORIGINAL vol feature (highest = bear),
@@ -273,7 +283,7 @@ def expanding_fit_detect(
     -------
     pd.DataFrame
         Indexed by detection dates, columns ``p_bull``, ``p_transition``,
-        ``p_bear``, ``regime`` (argmax label) — all filtered / causal.
+        ``p_bear``, ``regime`` (argmax label): all filtered / causal.
     """
     if len(features) <= min_train:
         raise ValueError(

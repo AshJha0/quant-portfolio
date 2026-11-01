@@ -13,7 +13,7 @@ zero rate at time ``t`` is a triangle::
 
 The first key tenor extends flat to ``t = 0`` and the last extends flat to
 infinity, so the triangle weights across all key tenors sum to exactly 1 at
-every ``t`` — a partition of unity.  KRD_k is the central-difference
+every ``t``: a partition of unity.  KRD_k is the central-difference
 sensitivity of the PV to bumping the *curve pillars* by ``w(t_pillar) * h``.
 
 Because the weights are a partition of unity, the sum of the key-rate bumps
@@ -23,18 +23,19 @@ equals a parallel bump of the pillar zeros, so::
                                          non-additivity of finite differences
                                          under non-linear repricing)
 
-The residual has two distinct sources, and their sizes differ by three orders
-of magnitude (measured at ``h = 1bp``, 20y 4% bond, upward curve):
+The residual has two sources. Local interpolation (``loglinear_df``,
+``linear_zero``) leaves only the second-order cross-gamma of the finite
+differences. PCHIP (``pchip_zero``) is non-local, so a pillar bump also
+moves the neighbouring segments and the key-rate bumps no longer compose
+into a parallel bump. Measured relative residuals (VALIDATION.md §3):
 
-* **Local interpolation** (``loglinear_df``, ``linear_zero``): the only
-  residual is the second-order cross-gamma of the finite differences —
-  **~3-4e-7 relative**, i.e. negligible.
-* **PCHIP** (``pchip_zero``): the monotone cubic is *non-local*, so bumping
-  one pillar also perturbs neighbouring segments and the key-rate bumps no
-  longer compose into an exact parallel bump — **~2e-4 relative**. Still
-  inside any practical risk tolerance, but three orders of magnitude worse,
-  and a reason production risk systems conventionally use a local
-  interpolator.
+=================  ===========  ============
+Interpolation      Sample book  20y 4% bond
+=================  ===========  ============
+loglinear_df       5.3e-08      3.1e-07
+linear_zero        5.7e-08      3.9e-07
+pchip_zero         5.4e-07      2.1e-04
+=================  ===========  ============
 
 Both magnitudes are pinned by tests in ``tests/test_properties.py``
 (``test_krdv01s_sum_to_the_parallel_dv01_for_local_schemes``,

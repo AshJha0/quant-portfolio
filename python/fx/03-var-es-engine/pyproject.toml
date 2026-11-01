@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-var"
-version = "1.0.0"
+version = "1.1.0"
 description = "FX market risk: VaR & Expected Shortfall engine for a multi-currency book (historical, parametric, Monte Carlo, backtesting, Basel traffic light, stress testing)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -28,4 +28,6 @@ pythonpath = ["src"]
 addopts = "-q"
 filterwarnings = [
     "ignore::DeprecationWarning:dateutil.*",
+    # fx_var's own deprecated entry points must only be hit on purpose
+    "error::DeprecationWarning:fx_var.*",
 ]

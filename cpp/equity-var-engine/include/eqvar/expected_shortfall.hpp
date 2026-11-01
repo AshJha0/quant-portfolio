@@ -1,6 +1,6 @@
-// eqvar/expected_shortfall.hpp — Expected Shortfall (ES / CVaR).
+// eqvar/expected_shortfall.hpp: Expected Shortfall (ES / CVaR).
 //
-// ES_alpha = -(1/alpha) * integral_0^alpha Q_u(pnl) du — the average loss in
+// ES_alpha = -(1/alpha) * integral_0^alpha Q_u(pnl) du: the average loss in
 // the worst alpha tail.  ES >= VaR by construction, ES is coherent
 // (subadditive), and FRTB replaced 99 % VaR with 97.5 % ES as the
 // market-risk capital measure.  Mirrors eq_var.expected_shortfall.
@@ -13,7 +13,7 @@
 
 namespace eqvar {
 
-/// Empirical Expected Shortfall — exact tail integral of the step CDF.
+/// Empirical Expected Shortfall: exact tail integral of the step CDF.
 ///
 /// With sorted P&L x_(1) <= ... <= x_(n) and k = floor(alpha n):
 ///   ES = -(1/(alpha n)) [ sum_{i<=k} x_(i) + (alpha n - k) x_(k+1) ]

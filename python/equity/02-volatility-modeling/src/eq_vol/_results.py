@@ -20,9 +20,13 @@ class VolatilityFitResult:
     params : dict[str, float]
         Estimated parameters in natural units (decimal-return scale).
     std_errors : dict[str, float]
-        Asymptotic standard errors from the inverse numerical Hessian of the
-        negative log-likelihood. NaN where the Hessian is not positive
-        definite (surfaced, never hidden).
+        Classic standard errors from the inverse numerical Hessian of the
+        negative log-likelihood. Valid only if the innovation density is
+        correctly specified. NaN where the Hessian is not positive definite.
+    robust_std_errors : dict[str, float]
+        Bollerslev-Wooldridge sandwich standard errors ``A^-1 B A^-1``.
+        Valid under a misspecified density (Gaussian QMLE on fat-tailed
+        returns). Use these for inference and for parameter-stability alerts.
     loglik : float
         Maximised log-likelihood.
     n_obs : int
@@ -51,6 +55,7 @@ class VolatilityFitResult:
     message: str
     init_var: float
     extra: dict[str, float] = field(default_factory=dict)
+    robust_std_errors: dict[str, float] = field(default_factory=dict)
 
     @property
     def n_params(self) -> int:
@@ -73,16 +78,17 @@ class VolatilityFitResult:
         return self.returns / np.sqrt(self.sigma2)
 
     def summary(self) -> str:
-        """Plain-text parameter table with standard errors and t-stats."""
+        """Plain-text parameter table: classic SE, robust SE, robust t-stat."""
         lines = [
             f"{self.model}(1,1) [{self.dist}]  n={self.n_obs}  "
             f"logL={self.loglik:.2f}  AIC={self.aic:.2f}  BIC={self.bic:.2f}",
-            f"{'param':>10} {'estimate':>14} {'std err':>12} {'t-stat':>10}",
+            f"{'param':>10} {'estimate':>14} {'std err':>12} {'robust se':>12} {'t-stat':>10}",
         ]
         for k, v in self.params.items():
             se = self.std_errors.get(k, np.nan)
-            t = v / se if se and np.isfinite(se) and se > 0 else np.nan
-            lines.append(f"{k:>10} {v:>14.6g} {se:>12.4g} {t:>10.2f}")
+            rse = self.robust_std_errors.get(k, np.nan)
+            t = v / rse if rse and np.isfinite(rse) and rse > 0 else np.nan
+            lines.append(f"{k:>10} {v:>14.6g} {se:>12.4g} {rse:>12.4g} {t:>10.2f}")
         for k, v in self.extra.items():
             lines.append(f"{k:>10} {v:>14.6g}")
         return "\n".join(lines)

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Edge cases from the documentation contract: empty inputs, single-asset
 //! portfolios, alpha at the boundaries of (0, 0.5), zero-variance assets,
 //! degenerate P&L series, and returns/pnl-mapping validation. Each case here
@@ -56,7 +58,10 @@ fn alpha_bounds_rejected_everywhere() {
     for bad in [0.0, -0.01, 0.5, 0.75, 1.0] {
         assert!(historical_var(&pnl, bad).is_err(), "{bad}");
         assert!(expected_shortfall(&pnl, bad).is_err(), "{bad}");
-        assert!(parametric_var(&w, &cov, bad, TailModel::Normal).is_err(), "{bad}");
+        assert!(
+            parametric_var(&w, &cov, bad, TailModel::Normal).is_err(),
+            "{bad}"
+        );
     }
     assert!(historical_var(&pnl, 0.499).is_ok());
     assert!(historical_var(&pnl, 0.011).is_ok());
@@ -81,7 +86,10 @@ fn fully_riskless_portfolio() {
     let cov = Matrix::zeros(2, 2);
     let w = [1.0e6, -1.0e6];
     assert_eq!(portfolio_sigma(&w, &cov).unwrap(), 0.0);
-    assert_eq!(parametric_var(&w, &cov, 0.01, TailModel::Normal).unwrap(), 0.0);
+    assert_eq!(
+        parametric_var(&w, &cov, 0.01, TailModel::Normal).unwrap(),
+        0.0
+    );
     assert_eq!(
         eq_var_engine::expected_shortfall::normal_es(0.0, 0.01, 0.0).unwrap(),
         0.0
@@ -132,21 +140,16 @@ fn min_obs_guard_exact_boundary() {
 
 #[test]
 fn deep_tail_alpha_on_small_sample() {
-    // alpha far below 1/n: the type-7 quantile interpolates just above the
-    // sample minimum (h = (n-1) alpha < 1) — the tail is unresolvable and the
-    // estimate is pinned to the worst observed loss, never extrapolated
-    // beyond it. Documented failure mode (docs/VALIDATION.md).
+    // alpha far below 1/n: k = n alpha < 1, so m clamps to 1 and the VaR is
+    // the worst observed loss exactly, never extrapolated beyond it.
+    // Documented failure mode (docs/VALIDATION.md).
     let pnl: Vec<f64> = (0..100)
         .map(|t| 10.0 * (2.3 * t as f64).sin() - if t == 50 { 500.0 } else { 0.0 })
         .collect();
     let v = historical_var(&pnl, 1e-6).unwrap();
     let mut sorted = pnl.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let h = 99.0 * 1e-6;
-    let expected = -(sorted[0] + h * (sorted[1] - sorted[0]));
-    assert!((v - expected).abs() < 1e-12 * expected.abs());
-    assert!(v <= -sorted[0]); // never exceeds the worst observed loss
-    assert!(v > -sorted[1]); // ... but stays pinned to it
+    assert_eq!(v, -sorted[0]); // the worst observed loss, no interpolation
 }
 
 /// A NaN anywhere in the risk pipeline must produce an error, never a
@@ -154,11 +157,11 @@ fn deep_tail_alpha_on_small_sample() {
 ///
 /// This is the single most dangerous failure mode in a risk system. Guards
 /// written as `if x < 0.0 { return Err(..) }` silently accept NaN, because
-/// every IEEE-754 comparison against NaN is false — Rust is no different
+/// every IEEE-754 comparison against NaN is false: Rust is no different
 /// from C here (`f64::NAN < 0.0` is `false`). Worse, `f64::max` propagates
 /// the *other* operand, so `NaN.max(0.0)` is `0.0`: before this guard, a
-/// NaN covariance entry made `portfolio_sigma` — and therefore the whole
-/// parametric VaR/ES family — report exactly **zero risk**.
+/// NaN covariance entry made `portfolio_sigma` (and therefore the whole
+/// parametric VaR/ES family) report exactly **zero risk**.
 #[test]
 fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
     use eq_var_engine::expected_shortfall::{normal_es, parametric_es, student_t_es};
@@ -171,10 +174,19 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
         let cov = Matrix::from_vec(2, 2, vec![4.0e-4, bad, bad, 1.0e-4]).unwrap();
         let w = [1.0e6, -5.0e5];
         assert!(portfolio_sigma(&w, &cov).is_err(), "sigma with cov={bad}");
-        assert!(parametric_var(&w, &cov, 0.01, TailModel::Normal).is_err(), "var cov={bad}");
-        assert!(parametric_es(&w, &cov, 0.025, TailModel::Normal).is_err(), "es cov={bad}");
+        assert!(
+            parametric_var(&w, &cov, 0.01, TailModel::Normal).is_err(),
+            "var cov={bad}"
+        );
+        assert!(
+            parametric_es(&w, &cov, 0.025, TailModel::Normal).is_err(),
+            "es cov={bad}"
+        );
         assert!(cov.cholesky().is_err(), "cholesky cov={bad}");
-        assert!(cov.cholesky_jitter(1e-10, 12).is_err(), "cholesky_jitter cov={bad}");
+        assert!(
+            cov.cholesky_jitter(1e-10, 12).is_err(),
+            "cholesky_jitter cov={bad}"
+        );
         assert!(simulate_factor_returns(&cov, 100, TailModel::Normal, 1).is_err());
         assert!(monte_carlo_var(&w, &cov, 0.01, 1000, TailModel::Normal, 1).is_err());
         assert!(monte_carlo_es(&w, &cov, 0.01, 1000, TailModel::Normal, 1).is_err());
@@ -183,7 +195,10 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
         // Poisoned exposures against a clean covariance.
         let clean = Matrix::from_vec(2, 2, vec![4.0e-4, 1.0e-5, 1.0e-5, 1.0e-4]).unwrap();
         let bad_w = [1.0e6, bad];
-        assert!(portfolio_sigma(&bad_w, &clean).is_err(), "sigma with w={bad}");
+        assert!(
+            portfolio_sigma(&bad_w, &clean).is_err(),
+            "sigma with w={bad}"
+        );
         assert!(parametric_var(&bad_w, &clean, 0.01, TailModel::Normal).is_err());
         assert!(parametric_es(&bad_w, &clean, 0.025, TailModel::Normal).is_err());
 
@@ -191,7 +206,10 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
         assert!(normal_es(bad, 0.025, 0.0).is_err(), "normal_es sigma={bad}");
         assert!(normal_es(1.0, 0.025, bad).is_err(), "normal_es mean={bad}");
         assert!(student_t_es(bad, 0.025, 5.0, 0.0).is_err());
-        assert!(student_t_es(1.0, 0.025, bad, 0.0).is_err(), "student_t_es df={bad}");
+        assert!(
+            student_t_es(1.0, 0.025, bad, 0.0).is_err(),
+            "student_t_es df={bad}"
+        );
         assert!(student_t_es(1.0, 0.025, 5.0, bad).is_err());
         assert!(
             parametric_var(&w, &clean, 0.01, TailModel::StudentT { df: bad }).is_err(),
@@ -213,7 +231,10 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
             panel.set(t, 1, 0.01 * (t as f64).cos());
         }
         panel.set(4, 1, bad);
-        assert!(sample_covariance(&panel).is_err(), "sample_covariance {bad}");
+        assert!(
+            sample_covariance(&panel).is_err(),
+            "sample_covariance {bad}"
+        );
         assert!(
             eq_var_engine::matrix::ewma_covariance(&panel, 0.94).is_err(),
             "ewma_covariance {bad}"
@@ -221,9 +242,15 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
 
         // Poisoned vols / correlations.
         let corr = Matrix::from_vec(2, 2, vec![1.0, bad, bad, 1.0]).unwrap();
-        assert!(covariance_from_vols(&[0.01, 0.02], &corr).is_err(), "corr={bad}");
+        assert!(
+            covariance_from_vols(&[0.01, 0.02], &corr).is_err(),
+            "corr={bad}"
+        );
         let good_corr = Matrix::from_vec(2, 2, vec![1.0, 0.3, 0.3, 1.0]).unwrap();
-        assert!(covariance_from_vols(&[0.01, bad], &good_corr).is_err(), "vol={bad}");
+        assert!(
+            covariance_from_vols(&[0.01, bad], &good_corr).is_err(),
+            "vol={bad}"
+        );
     }
 
     // Sanity: the same calls on clean inputs return strictly positive risk,
@@ -237,18 +264,29 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
 /// A NaN VaR or a NaN P&L must not be counted as "no exception".
 #[test]
 fn backtests_reject_non_finite_series_instead_of_scoring_them_green() {
-    use eq_var_engine::backtest::{basel_traffic_light, exceptions_from_pnl, BaselZone};
+    use eq_var_engine::backtest::{
+        basel_traffic_light, exceptions_from_pnl, BaselInput, BaselZone,
+    };
 
     let mut pnl: Vec<f64> = (0..250).map(|t| 50.0 * (0.7 * t as f64).sin()).collect();
-    // A genuinely broken model: losses far beyond the VaR every day.
+    // A broken model: losses far beyond the VaR every day.
     let breached: Vec<f64> = vec![-1000.0; 250];
     let ex = exceptions_from_pnl(&breached, &[100.0]).unwrap();
     assert_eq!(ex.iter().map(|&e| e as i64).sum::<i64>(), 250);
-    assert_eq!(basel_traffic_light(250, 250).unwrap().zone, BaselZone::Red);
+    assert_eq!(
+        basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 250,
+            alpha: 0.01
+        })
+        .unwrap()
+        .zone,
+        BaselZone::Red
+    );
 
     // Now poison the VaR feed. `pnl < -NaN` is false on every day, so a
     // naive implementation reports ZERO exceptions and the traffic light
-    // goes green — a broken model certified as sound.
+    // goes green: a broken model certified as sound.
     for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert!(
             exceptions_from_pnl(&breached, &[bad]).is_err(),
@@ -291,7 +329,10 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
             recon = recon.max((s - singular.get(i, j)).abs());
         }
     }
-    assert!(recon < 1e-8, "singular repair changed the matrix by {recon:e}");
+    assert!(
+        recon < 1e-8,
+        "singular repair changed the matrix by {recon:e}"
+    );
 
     // (b) Rank-deficient 3x3 (factor 3 = factor 1 + factor 2): still PSD,
     //     still repairable, and the resulting VaR is finite and positive.
@@ -308,18 +349,24 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
         rd.set(2, i, s);
     }
     rd.set(2, 2, base[0][0] + 2.0 * base[0][1] + base[1][1]);
-    assert!(rd.cholesky().is_err(), "rank-deficient matrix should defeat plain Cholesky");
+    assert!(
+        rd.cholesky().is_err(),
+        "rank-deficient matrix should defeat plain Cholesky"
+    );
     assert!(rd.cholesky_jitter(1e-10, 12).is_ok());
     let w = [1.0e6, -2.0e5, 3.0e5];
     let var = parametric_var(&w, &rd, 0.01, TailModel::Normal).unwrap();
     assert!(var > 0.0 && var.is_finite());
     let mc = monte_carlo_var(&w, &rd, 0.01, 50_000, TailModel::Normal, 3).unwrap();
-    assert!((mc - var).abs() < 0.1 * var, "MC {mc} vs parametric {var} on a singular cov");
+    assert!(
+        (mc - var).abs() < 0.1 * var,
+        "MC {mc} vs parametric {var} on a singular cov"
+    );
 
-    // (c) Materially indefinite: a genuinely negative eigenvalue, an order
+    // (c) Materially indefinite: a negative eigenvalue, an order
     //     of magnitude larger than the materiality cap. Repairing it would
     //     require inflating the diagonal by ~1e-2 of the mean variance,
-    //     which changes the risk number — so it must be an error.
+    //     which changes the risk number: so it must be an error.
     //     Sigma = [[1, 0], [0, 1]] * 1e-4 with an off-diagonal of 1.1e-4
     //     has eigenvalues 2.1e-4 and -0.1e-4.
     let indef = Matrix::from_vec(2, 2, vec![1.0e-4, 1.1e-4, 1.1e-4, 1.0e-4]).unwrap();
@@ -338,7 +385,7 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
 
     // (d) The cap is documented and small: a repair must never be a
     //     material fraction of the mean variance.
-    assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4);
+    const { assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4) };
     // A jitter argument that is itself nonsense is rejected up front.
     assert!(singular.cholesky_jitter(0.0, 12).is_err());
     assert!(singular.cholesky_jitter(f64::NAN, 12).is_err());
@@ -385,8 +432,8 @@ fn one_and_two_element_samples_behave_predictably() {
     let two_rows = Matrix::from_vec(2, 1, vec![0.01, -0.01]).unwrap();
     let cov = eq_var_engine::matrix::sample_covariance(&two_rows).unwrap();
     assert!((cov.get(0, 0) - 2.0e-4).abs() < 1e-18); // ((0.02)^2)/2 * ... hand check
-    // A one-element exposure vector against that covariance is a legal,
-    // fully specified single-asset book.
+                                                     // A one-element exposure vector against that covariance is a legal,
+                                                     // fully specified single-asset book.
     let var = parametric_var(&[1.0e6], &cov, 0.01, TailModel::Normal).unwrap();
     assert!(var > 0.0 && var.is_finite());
 }

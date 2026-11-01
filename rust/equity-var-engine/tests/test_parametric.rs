@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Parametric (variance-covariance) VaR: closed-form identities, Student-t
 //! tail behaviour, Cornish-Fisher with validity-domain check.
 
@@ -34,8 +36,7 @@ fn parametric_var_normal_closed_form() {
     let expected_95 = 1.6448536269514722 * sigma;
     let v95 = parametric_var(&w, &cov, 0.05, TailModel::Normal).unwrap();
     assert!((v95 - expected_95).abs() < 1e-8);
-    let shifted =
-        parametric_var_full(&w, &cov, 0.01, TailModel::Normal, 500.0, 1).unwrap();
+    let shifted = parametric_var_full(&w, &cov, 0.01, TailModel::Normal, 500.0, 1).unwrap();
     assert!((shifted - (expected_99 - 500.0)).abs() < 1e-9);
 }
 

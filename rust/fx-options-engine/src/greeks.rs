@@ -3,8 +3,8 @@
 //! FX specifics:
 //!
 //! * **Two rhos.**  An FX option has rate sensitivity to *both* legs:
-//!   `rho_d = dV/dr_d` (positive for calls — higher domestic rate lifts
-//!   the forward) and `rho_f = dV/dr_f` (negative for calls — higher
+//!   `rho_d = dV/dr_d` (positive for calls: higher domestic rate lifts
+//!   the forward) and `rho_f = dV/dr_f` (negative for calls: higher
 //!   foreign rate is a larger "dividend" on the base currency).
 //! * **Vanna and volga.**  FX desks mark smiles with risk reversals and
 //!   butterflies, whose P&L maps directly onto vanna (dDelta/dVol) and
@@ -101,9 +101,9 @@ pub fn volga(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult
 ///
 /// # Arguments
 ///
-/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma` — as in [`crate::gk_price`];
+/// * `s`, `k`, `t`, `r_d`, `r_f`, `sigma`: as in [`crate::gk_price`];
 ///   requires `t > 0` and `sigma > 0`.
-/// * `option_type` — call or put on the base currency.
+/// * `option_type`: call or put on the base currency.
 ///
 /// Returns a [`GreeksResult`] with price, delta_spot, delta_forward,
 /// gamma, vega, theta (per year), rho_domestic, rho_foreign, vanna,
@@ -181,7 +181,7 @@ pub struct FdGreeks {
 }
 
 /// Generic first-order central difference `(f(x+h) - f(x-h)) / 2h` for
-/// any fallible pricing function — the building block of the FD
+/// any fallible pricing function: the building block of the FD
 /// comparator, usable against *any* model function in this crate.
 ///
 /// # Errors
@@ -268,8 +268,14 @@ pub fn finite_difference_greeks(
     // against the O(h^2) truncation error.
     let h_v2 = (sigma * 1e-3).max(1e-5);
     let base = p(s, sigma, r_d, r_f, t)?;
-    let (up_s, dn_s) = (p(s + h_s, sigma, r_d, r_f, t)?, p(s - h_s, sigma, r_d, r_f, t)?);
-    let (up_v, dn_v) = (p(s, sigma + h_v, r_d, r_f, t)?, p(s, sigma - h_v, r_d, r_f, t)?);
+    let (up_s, dn_s) = (
+        p(s + h_s, sigma, r_d, r_f, t)?,
+        p(s - h_s, sigma, r_d, r_f, t)?,
+    );
+    let (up_v, dn_v) = (
+        p(s, sigma + h_v, r_d, r_f, t)?,
+        p(s, sigma - h_v, r_d, r_f, t)?,
+    );
     let (up_v2, dn_v2) = (
         p(s, sigma + h_v2, r_d, r_f, t)?,
         p(s, sigma - h_v2, r_d, r_f, t)?,
@@ -283,7 +289,8 @@ pub fn finite_difference_greeks(
             / (2.0 * h_r),
         rho_foreign: (p(s, sigma, r_d, r_f + h_r, t)? - p(s, sigma, r_d, r_f - h_r, t)?)
             / (2.0 * h_r),
-        vanna: (p(s + h_s, sigma + h_v, r_d, r_f, t)? - p(s + h_s, sigma - h_v, r_d, r_f, t)?
+        vanna: (p(s + h_s, sigma + h_v, r_d, r_f, t)?
+            - p(s + h_s, sigma - h_v, r_d, r_f, t)?
             - p(s - h_s, sigma + h_v, r_d, r_f, t)?
             + p(s - h_s, sigma - h_v, r_d, r_f, t)?)
             / (4.0 * h_s * h_v),

@@ -99,7 +99,7 @@ def test_svi_vs_vanna_volga_agree_near_pillars(eurusd):
 
 
 def test_svi_vs_vv_wings_diverge(eurusd):
-    """Beyond the 10d pillars the two constructions genuinely differ
+    """Beyond the 10d pillars the two constructions differ
     (VV extrapolates the quadratic vol cost, SVI has linear total
     variance) - the divergence is the documented model risk."""
     ms = eurusd.slices[4]  # 1y

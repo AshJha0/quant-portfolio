@@ -64,6 +64,10 @@ class Scenario:
     shocks: Mapping[str, float]
     description: str = ""
 
+    def __post_init__(self) -> None:
+        for f, v in self.shocks.items():
+            validate_finite(**{f"shock {f}": v})
+
 
 def _ln(pct: float) -> float:
     """Convert a simple percentage move to a log return."""
@@ -296,20 +300,51 @@ def reverse_stress_numerical(
 ) -> tuple[pd.Series, float]:
     """Numerical check of :func:`reverse_stress_linear`.
 
-    Maximises the linear loss over the Mahalanobis ellipsoid by SLSQP from
-    a seeded random start; used in tests to confirm the closed form.
+    Maximises the linear loss over the Mahalanobis ellipsoid with SLSQP.
+    The problem is solved in whitened coordinates ``dx = L u`` (``L`` the
+    Cholesky factor of ``Sigma``), where the ellipsoid is the ball
+    ``|u| <= k`` and the objective is scaled to order one.  In the raw
+    coordinates the objective is of order 1e7 and the constraint of order
+    1, and SLSQP stops on a line-search failure at an infeasible point.
+
+    Raises
+    ------
+    ValueError
+        If the optimiser reports failure, or the returned shock lies
+        outside the ellipsoid by more than ``1e-8`` relative.
     """
     w = exposures.to_numpy(dtype=float)
     sig = cov.loc[exposures.index, exposures.index].to_numpy(dtype=float)
-    sig_inv = np.linalg.pinv(sig)
+    validate_finite(exposures=w, cov=sig, radius=radius)
+    k = float(radius)
+    if k <= 0:
+        raise ValueError("radius must be positive")
+    try:
+        chol = np.linalg.cholesky(sig)
+    except np.linalg.LinAlgError:
+        raise ValueError("cov is not positive definite; reverse stress "
+                         "needs a non-singular ellipsoid") from None
+    g = chol.T @ w  # loss = -w' L u = -g' u
+    gn = float(np.linalg.norm(g))
+    if gn == 0.0:
+        raise ValueError("book has zero linear risk; reverse stress undefined")
+    gs = g / gn
 
-    def neg_loss(dx):
-        return float(w @ dx)  # loss = -w'dx; minimise w'dx
-
-    cons = {"type": "ineq", "fun": lambda dx: radius**2 - dx @ sig_inv @ dx}
+    cons = {"type": "ineq", "fun": lambda u: 1.0 - (u @ u) / k**2,
+            "jac": lambda u: -2.0 * u / k**2}
     rng = np.random.default_rng(seed)
-    x0 = rng.standard_normal(w.size) * 1e-4
-    res = minimize(neg_loss, x0, constraints=[cons], method="SLSQP",
-                   options={"maxiter": 500, "ftol": 1e-14})
-    dx = res.x
+    u0 = rng.standard_normal(w.size) * 1e-2
+    res = minimize(lambda u: float(gs @ u), u0, jac=lambda u: gs,
+                   constraints=[cons], method="SLSQP",
+                   options={"maxiter": 500, "ftol": 1e-15})
+    if not res.success:
+        raise ValueError(f"reverse stress optimiser failed: {res.message}")
+    u = res.x
+    excess = float(np.sqrt(u @ u)) / k - 1.0
+    if excess > 1e-8:
+        raise ValueError(
+            f"reverse stress optimiser returned a point outside the ellipsoid "
+            f"(Mahalanobis radius exceeds k by {excess:.2e} relative)"
+        )
+    dx = chol @ u
     return pd.Series(dx, index=exposures.index), float(-w @ dx)

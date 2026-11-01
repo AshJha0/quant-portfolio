@@ -79,7 +79,7 @@ def test_peg_break_supplies_the_loss_hs_missed(market):
     rng = np.random.default_rng(0)
     rets = pd.DataFrame({"FX:HKD": rng.normal(0, 1.2e-4, 500)})  # band noise
     with pytest.warns(PegBlindnessWarning):
-        hs = historical_var(book, market, rets, 0.99)
+        hs = historical_var(book, market, rets, 0.01)
     scen = peg_break_scenario("HKD", jump=-0.30)
     stress = run_stress(book, market, [scen])
     loss = -stress["pnl"].iloc[0]

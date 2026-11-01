@@ -1,10 +1,21 @@
 # Cookbook
 
 Copy-pasteable recipes for the most common "how do I..." tasks across every
-project area in quant-portfolio. Every snippet on this page was actually
-executed against the real, installed packages before being included — none
-of this is illustrative pseudocode. Where a recipe needs a one-time
-`pip install -e .`, that's noted before the first snippet in that project.
+project area in quant-portfolio. The recipes are written against the
+current `main` branch. Outputs are indicative: they come from one run on one
+machine, and nothing in CI executes these snippets, so a last digit can move
+after a code change. Every data set used here is synthetic.
+
+Install each project into a virtual environment created outside the
+repository, as [CONTRIBUTING.md](../CONTRIBUTING.md) describes:
+
+```bash
+python -m venv ~/.venvs/qp
+. ~/.venvs/qp/bin/activate            # Windows: ~/.venvs/qp/Scripts/activate
+python -m pip install -c requirements/ci-constraints.txt -e python/equity/01-options-pricing
+```
+
+Each section names the projects its recipes need.
 
 Recipes are grouped to match [ARCHITECTURE.md](ARCHITECTURE.md)'s area map:
 options pricing/vol/surfaces, market risk (VaR/ES/backtesting), fixed
@@ -18,9 +29,8 @@ the project's own `docs/METHODOLOGY.md`.
 
 Recipes for pricing options and Greeks (equity and FX), solving for implied
 vol, forecasting volatility, and building/querying volatility surfaces
-(including Heston stochastic vol). Every snippet below was actually executed
-against the packages in this repo — see the setup note before each project's
-first recipe.
+(including Heston stochastic vol). The setup note before each project's
+first recipe names the package to install.
 
 ### How do I price a European call/put and get its Greeks (equity)?
 
@@ -28,7 +38,7 @@ first recipe.
 dividend yield `q`; `bs_greeks` returns the full analytic Greek set (delta,
 gamma, vega, theta, rho, vanna, volga) in one call.
 
-Setup once: `cd python/equity/01-options-pricing && pip install -e . --break-system-packages -q`
+Setup once (in your venv): `python -m pip install -e python/equity/01-options-pricing`
 
 ```python
 from eq_options import bs_price, bs_greeks
@@ -46,9 +56,9 @@ Output: `call price: 4.5173`, `delta=0.4297 gamma=0.02514 vega=27.6587 theta=-6.
 
 Garman-Kohlhagen is Black-Scholes with the foreign rate `r_f` playing the role
 of a dividend yield. `fx_options.delta` reports delta under any of the four
-market conventions — spot vs forward hedge, premium-adjusted or not.
+market conventions: spot or forward hedge, premium-adjusted or not.
 
-Setup once: `cd python/fx/01-options-pricing && pip install -e . --break-system-packages -q`
+Setup once (in your venv): `python -m pip install -e python/fx/01-options-pricing`
 
 ```python
 from fx_options import gk_price, delta
@@ -64,13 +74,16 @@ d_fwd = delta(S=1.0850, K=1.10, T=0.25, r_d=0.045, r_f=0.030, sigma=0.08,
 print(f"spot delta: {d_spot:.4f}   forward delta: {d_fwd:.4f}")
 ```
 
-Output: `premium: 0.01240 USD per EUR`, `spot delta: 0.4062   forward delta: 0.4092`. The forward delta is always the larger (in magnitude) of the two — it excludes the foreign discount factor `e^{-r_f T}` that the spot-hedge delta includes.
+Output: `premium: 0.01240 USD per EUR`, `spot delta: 0.4062   forward delta: 0.4092`. The forward delta is always the larger (in magnitude) of the two. It excludes the foreign discount factor `e^{-r_f T}` that the spot-hedge delta includes.
 
 ### How do I solve for implied volatility given a market price?
 
-`implied_vol` uses a bracketed Newton iteration with a Brent-on-bracket
-finish, so it stays robust across moneyness and expiry; it raises
-`ValueError` if the quoted price sits outside the model's no-arbitrage bounds.
+`implied_vol` maps the quote to normalised Black form, works on the
+out-of-the-money side, and solves by safeguarded Halley iteration from an
+asymptotic initial guess (the same algorithm runs in the C++ and Rust
+engines). It raises `ValueError` if the quoted price sits outside the
+model's no-arbitrage bounds. The old solver controls `tol`, `max_iter`,
+`sigma_lo` and `sigma_hi` are still accepted but no longer needed.
 
 ```python
 from eq_options import bs_price, implied_vol
@@ -81,7 +94,7 @@ print(f"market put price: {market_price:.4f}")
 print(f"recovered implied vol: {iv:.6f}")
 ```
 
-Output: `market put price: 6.2715`, `recovered implied vol: 0.250000` — round-trips to full double precision on a well-conditioned (ATM, mid-vol) quote.
+Output: `market put price: 6.2715`, `recovered implied vol: 0.250000`. An at-the-money, mid-vol quote round-trips to full double precision.
 
 ### How do I price an American option via the binomial tree and compare it to the European closed form?
 
@@ -101,7 +114,7 @@ print(f"European tree: {euro_tree:.4f}   European BS closed form: {euro_bs:.4f}"
 print(f"American tree: {amer_tree:.4f}   early-exercise premium: {amer_tree - euro_tree:.4f}")
 ```
 
-Output: `European tree: 8.6582` vs `European BS closed form: 8.6602` (500-step tree, ~2bp of discretisation error); `American tree: 8.7527`, early-exercise premium `0.0945` — a dividend-paying (`q=0.02`) put carries real early-exercise value.
+Output: `European tree: 8.6582` vs `European BS closed form: 8.6602` (500-step tree, about 2bp of discretisation error); `American tree: 8.7527`, early-exercise premium `0.0945`. A dividend-paying (`q=0.02`) put carries real early-exercise value.
 
 ### How do I price an American FX option and see the foreign-carry early-exercise premium?
 
@@ -122,7 +135,7 @@ print(f"GK closed form: {gk:.5f}  European tree: {euro:.5f}  American tree: {ame
 print(f"foreign-carry early-exercise premium (r_f > r_d): {amer - euro:.5f}")
 ```
 
-Output: `GK closed form: 0.04858  European tree: 0.04857  American tree: 0.05314`, premium `0.00457` — the American call is worth strictly more once the foreign rate exceeds the domestic rate.
+Output: `GK closed form: 0.04858  European tree: 0.04857  American tree: 0.05314`, premium `0.00457`. The American call is worth strictly more once the foreign rate exceeds the domestic rate.
 
 ### How do I cross-check an option price with a Monte Carlo simulation?
 
@@ -142,7 +155,7 @@ print(f"MC price: {mc.value:.4f}  stderr={mc.std_error:.5f}  "
 print(f"analytic price inside MC 95% CI: {mc.contains(analytic)}")
 ```
 
-Output: `analytic price: 4.5173`, `MC price: 4.5036  stderr=0.01396  95% CI=(4.4762, 4.5309)`, `inside MC 95% CI: True`.
+Output: `analytic price: 4.5173`, `MC price: 4.5137  stderr=0.00387  95% CI=(4.5062, 4.5213)`, `inside MC 95% CI: True`.
 
 ### How do I forecast next-period volatility with a GARCH(1,1) model?
 
@@ -150,7 +163,7 @@ Output: `analytic price: 4.5173`, `MC price: 4.5036  stderr=0.01396  95% CI=(4.4
 dispatches on the fitted model type to produce a multi-step daily-variance
 path that mean-reverts to the unconditional variance at rate `(alpha+beta)^k`.
 
-Setup once: `cd python/equity/02-volatility-modeling && pip install -e . --break-system-packages -q`
+Setup once (in your venv): `python -m pip install -e python/equity/02-volatility-modeling`
 
 ```python
 import numpy as np
@@ -174,7 +187,7 @@ Output (recovers parameters close to the simulation's `alpha=0.05, beta=0.90` tr
 ### How do I compare EWMA's flat forecast to GARCH's mean-reverting term structure?
 
 EWMA is an IGARCH(1,1) with zero intercept, so `ewma_forecast` is flat at the
-1-step level at every horizon — there is no long-run level to revert to,
+1-step level at every horizon. There is no long-run level to revert to,
 unlike stationary GARCH.
 
 ```python
@@ -200,7 +213,7 @@ Output: EWMA stays pinned at `0.1404` for all 10 days; GARCH climbs from `0.1459
 *total variance* (not vol) across expiries, which is what preserves an
 arbitrage-free (non-decreasing) calendar structure between pillars.
 
-Setup once: `cd python/equity/09-vol-surface && pip install -e . --break-system-packages -q`
+Setup once (in your venv): `python -m pip install -e python/equity/09-vol-surface`
 
 ```python
 import numpy as np
@@ -218,7 +231,7 @@ print("vol at K=90, T=1.0 :", round(surface.vol(90.0, 1.0), 5))
 print("calendar arbitrage free:", surface.calendar.is_free)
 ```
 
-Output: `vol(K=100,T=0.5)=0.20148`, `vol(K=110,T=0.25)=0.19106` (skew — OTM call struck above forward is quoted lower vol), `vol(K=90,T=1.0)=0.21485`, `calendar arbitrage free: True`.
+Output: `vol(K=100,T=0.5)=0.20148`, `vol(K=110,T=0.25)=0.19106` (skew: an OTM call struck above the forward is quoted at a lower vol), `vol(K=90,T=1.0)=0.21485`, `calendar arbitrage free: True`.
 
 ### How do I check a volatility smile for butterfly arbitrage?
 
@@ -236,7 +249,7 @@ is_free, min_g, violations = check_butterfly(slices[0.25])
 print(f"SVI slice (T=0.25) butterfly-arbitrage-free: {is_free}, min Durrleman g = {min_g:.5f}")
 ```
 
-Output: `butterfly-arbitrage-free: True, min Durrleman g = 0.28607` — comfortably positive across the grid.
+Output: `butterfly-arbitrage-free: True, min Durrleman g = 0.28607`, positive across the whole grid.
 
 ### How do I run a Heston Monte Carlo simulation and cross-check it against the Fourier price?
 
@@ -258,16 +271,17 @@ print(f"QE Monte Carlo price: {mc.price:.4f}  stderr={mc.stderr:.4f}")
 print(f"within 3 stderr: {abs(mc.price - fourier) <= 3 * mc.stderr}")
 ```
 
-Output: `Fourier price: 8.6004`, `QE Monte Carlo price: 8.6329  stderr=0.0355`, `within 3 stderr: True`.
+Output: `Fourier price: 8.6004`, `QE Monte Carlo price: 8.6328  stderr=0.0355`, `within 3 stderr: True`.
 
 ### How do I rebuild Black-Scholes from scratch (foundations F3)?
 
 `eq_bs_replication` (foundations project 03) depends on nothing but
-`math.erf` — no scipy, no numpy in the pricing path — so every piece of the
-formula, including the normal CDF, is visible. Put Greeks are derived from
+`math.erfc`, with no scipy or numpy in the pricing path, so every piece of the
+formula is visible. The normal CDF is `N(x) = 0.5 * erfc(-x / sqrt(2))`,
+which keeps full relative precision deep in the left tail. Put Greeks are derived from
 call Greeks via put-call parity rather than a second independent formula.
 
-Setup once: `cd python/foundations/03-black-scholes-replication && pip install -e . --break-system-packages -q`
+Setup once (in your venv): `python -m pip install -e python/foundations/03-black-scholes-replication`
 
 ```python
 import math
@@ -291,8 +305,8 @@ Output: `call: 9.413403  put: 6.457957`, parity check `2.955447` vs `2.955447` (
 
 ### How do I validate the from-scratch Black-Scholes against an independent Monte Carlo pricer?
 
-`mc_call_price` shares no code with `call_price` — it simulates the exact
-terminal GBM distribution and discounts the average payoff — so agreement
+`mc_call_price` shares no code with `call_price`. It simulates the exact
+terminal GBM distribution and discounts the average payoff, so agreement
 between the two is real evidence both are implemented correctly, not just
 internally consistent.
 
@@ -308,7 +322,7 @@ print(f"within 3 stderr: {abs(mc_price - c) <= 3 * mc_se}")
 
 Output: `MC call price: 9.39406 +/- 0.01488 (analytic: 9.41340)`, `within 3 stderr: True`.
 
-### What happens at the edges — T→0, sigma→0, deep ITM/OTM — for the equity pricers?
+### What happens at the edges (T→0, sigma→0, deep ITM/OTM) for the equity pricers?
 
 Every pricer in `eq_options` documents and unit-tests these limits explicitly
 rather than dividing by zero: `T=0` returns intrinsic value, `sigma=0`
@@ -341,9 +355,9 @@ except ValueError as e:
     print("implied_vol below bound raises:", e)
 ```
 
-Output: `T=0 call: 50`, `sigma=0 call: 7.8077` (the discounted forward intrinsic — *not* `max(S-K,0)=5`), `deep OTM short-dated call: 1.198e-54` (converges cleanly, no error, just numerically tiny), `deep ITM crr vs bs: 151.47772332258143 151.47772332257648` (tree and closed form agree to 1e-10 relative), and the implied-vol call raises `ValueError: price 4.9 is at or below the sigma->0 arbitrage bound 7.807674313; implied vol is undefined`.
+Output: `T=0 call: 50`, `sigma=0 call: 7.8077` (the discounted forward intrinsic, *not* `max(S-K,0)=5`), `deep OTM short-dated call: 1.198e-54` (converges cleanly, no error, just numerically tiny), `deep ITM crr vs bs: 151.47772332258143 151.47772332257648` (tree and closed form agree to 1e-10 relative), and the implied-vol call raises `ValueError: price 4.9 is at or below the sigma->0 arbitrage bound 7.807674313; implied vol is undefined`.
 
-### What happens at the edges for Heston — T→0 and vol-of-vol→0?
+### What happens at the edges for Heston: T→0 and vol-of-vol→0?
 
 Heston's Fourier pricer returns exact intrinsic value at `T=0` without going
 near the characteristic-function integral, and as vol-of-vol `xi→0` the model
@@ -362,30 +376,32 @@ p_det = HestonParams(v0=0.04, kappa=1.5, theta=0.04, rho=0.0, xi=1e-8)
 print("near-zero vol-of-vol call:", heston_call(S=100, K=100, T=1.0, r=0.03, q=0.0, p=p_det))
 ```
 
-Output: `T=0 deep ITM: 20.0`, `T=0 OTM: 0.0` (exact intrinsic, both edges clean), `near-zero vol-of-vol call: 8.288295504662065` — converges without error rather than a divide-by-`xi` blow-up, because the characteristic function switches to its closed-form deterministic-variance branch below `xi=1e-12`.
+Output: `T=0 deep ITM: 20.0`, `T=0 OTM: 0.0` (exact intrinsic, both edges clean), `near-zero vol-of-vol call: 8.288295504662065`. It converges without error rather than a divide-by-`xi` blow-up, because the characteristic function switches to its closed-form deterministic-variance branch below `xi=1e-12`.
 
 
 ## Market Risk: VaR, Expected Shortfall & Backtesting
 
-Setup for every snippet below (run once per project you're using):
+Setup for every snippet below (once per project, in your venv):
 
 ```bash
-cd python/equity/03-var-es-engine && pip install -e . --break-system-packages -q
-cd python/fx/03-var-es-engine     && pip install -e . --break-system-packages -q
-cd python/foundations/01-risk-metrics && pip install -e . --break-system-packages -q
+python -m pip install -e python/equity/03-var-es-engine
+python -m pip install -e python/fx/03-var-es-engine
+python -m pip install -e python/foundations/01-risk-metrics
 ```
 
 The equity engine is `eq_var` (multi-asset, `Portfolio` of equity/future/option
 positions). The FX engine is `fx_var` (multi-currency `Book` of
 cash/spot/forward/option positions). The foundations project is
-`eq_risk_metrics` (single-asset, works directly on a returns `Series` — no
-portfolio object at all). All three share the same sign convention: **VaR/ES
-are reported as positive numbers for a loss.**
+`eq_risk_metrics` (single-asset, works directly on a returns `Series` with
+no portfolio object at all). All three report **VaR/ES as positive numbers
+for a loss**. `eq_var` and `fx_var` both take `alpha` as the **tail
+probability** (`alpha=0.01` is 99% VaR). `fx_var` rejects `alpha=0.99`
+with a `ValueError`; its old `confidence=` keyword is deprecated.
 
 ### How do I compute historical VaR and Expected Shortfall on a P&L series?
 
 Plain historical simulation takes the empirical quantile of a portfolio's
-historical scenario P&L — no distributional assumption. `eq_var.historical_var`
+historical scenario P&L, with no distributional assumption. `eq_var.historical_var`
 and `eq_var.expected_shortfall` both take a raw P&L array (currency units,
 loss < 0) and a tail probability `alpha` (0.01 → 99% VaR).
 
@@ -403,8 +419,9 @@ es99 = expected_shortfall(pnl, alpha=0.01)
 print(f"VaR99 = {var99:,.0f}   ES99 = {es99:,.0f}")
 ```
 
-Output: `VaR99 = 50,233   ES99 = 67,368` — ES exceeds VaR by construction (it
-averages the whole tail, not just its boundary).
+Output (synthetic data): `VaR99 = 50,617   ES99 = 67,368`. VaR is an order
+statistic of the sorted P&L, not an interpolated quantile. ES exceeds VaR by
+construction because it averages the whole tail, not just its boundary.
 
 ### How do I compute age-weighted (BRW) historical VaR?
 
@@ -427,22 +444,23 @@ age99 = age_weighted_var(pnl, alpha=0.01, lam=0.98)
 print(f"plain HS VaR99 = {plain99:,.0f}   age-weighted VaR99 = {age99:,.0f}")
 ```
 
-Output: `plain HS VaR99 = 50,233   age-weighted VaR99 = 45,815` — here recent
-scenarios happened to be calmer, so the age-weighted figure sits below plain
-HS; in a volatility spike the ordering flips.
+Output (synthetic data): `plain HS VaR99 = 50,617   age-weighted VaR99 = 45,815`.
+Here the recent scenarios happen to be calmer, so the age-weighted figure sits
+below plain HS. In a volatility spike the ordering flips.
 
 ### How do I compute filtered historical simulation (FHS) VaR?
 
-FHS devolatilises each historical P&L by its EWMA volatility forecast, then
-rescales the standardised innovations to *today's* vol forecast before taking
-the quantile — it keeps the empirical (fat-tailed) shape of returns while
-making VaR responsive to the current vol regime, which is why it survives
-Christoffersen independence backtests that plain HS fails under volatility
-clustering.
+`factor_filtered_historical_var` devolatilises each risk factor's return
+history by its own EWMA volatility, rescales the standardised innovations to
+*today's* vol forecast for that factor, and then fully revalues the book under
+every filtered scenario. It keeps the empirical (fat-tailed) shape of returns,
+makes VaR respond to the current vol regime, and keeps option convexity
+because the book is revalued rather than the P&L rescaled. The older
+P&L-level `filtered_historical_var(pnl, ...)` is deprecated.
 
 ```python
 from eq_var.data.synthetic import demo_portfolio, demo_covariance, simulate_returns
-from eq_var import historical_var, filtered_historical_var
+from eq_var import historical_var, factor_filtered_historical_var
 
 cov = demo_covariance()
 port = demo_portfolio()
@@ -450,13 +468,13 @@ rets = simulate_returns(1500, cov, dist="garch", seed=4)  # GARCH -> vol cluster
 pnl = port.pnl(rets)
 
 plain99 = historical_var(pnl, alpha=0.01)
-fhs99 = filtered_historical_var(pnl, alpha=0.01, lam=0.94)
+fhs99 = factor_filtered_historical_var(port, rets, alpha=0.01, lam=0.94)
 print(f"plain HS VaR99 = {plain99:,.0f}   FHS VaR99 = {fhs99:,.0f}")
 ```
 
-Output: `plain HS VaR99 = 36,762   FHS VaR99 = 31,152` — FHS rescales to the
-*current* (here, calmer-than-average) EWMA vol rather than the unconditional
-sample tail.
+Output (synthetic data): `plain HS VaR99 = 37,975   FHS VaR99 = 30,372`. FHS
+rescales to the *current* EWMA vol, which here is calmer than the sample
+average, rather than to the unconditional sample tail.
 
 ### How do I compute parametric (delta-normal) VaR with a Cornish-Fisher tail correction?
 
@@ -485,33 +503,34 @@ var_cf = cornish_fisher_var(sigma, alpha=0.01, skew=s, excess_kurt=k)
 print(f"delta-normal VaR99 = {var_normal:,.0f}   Cornish-Fisher VaR99 = {var_cf:,.0f}")
 ```
 
-Output: `delta-normal VaR99 = 46,864   Cornish-Fisher VaR99 = 59,962` — this
-portfolio's P&L has positive skew (0.33) and heavy excess kurtosis (4.0) from
+Output (synthetic data): `delta-normal VaR99 = 46,864   Cornish-Fisher VaR99 = 59,962`.
+This portfolio's P&L has positive skew (0.33) and heavy excess kurtosis (4.0) from
 its long-gamma option protection, and Cornish-Fisher picks that up where the
 plain normal quantile cannot.
 
 ### How do I run Monte Carlo VaR with full portfolio revaluation?
 
-`monte_carlo_var` simulates factor returns from a covariance matrix and fully
-revalues every position (options via Black-Scholes, not a Greek
-approximation) scenario by scenario, then takes the empirical quantile of the
-resulting P&L.
+`monte_carlo_risk` simulates factor log returns from a covariance matrix,
+fully revalues every position scenario by scenario (options via
+Black-Scholes, not a Greek approximation), and reports VaR, ES and the
+bootstrap standard error of the VaR, all from the same scenario set.
+`monte_carlo_var` returns the VaR alone.
 
 ```python
 from eq_var.data.synthetic import demo_portfolio, demo_covariance
-from eq_var import monte_carlo_var, monte_carlo_pnl, expected_shortfall
+from eq_var import monte_carlo_risk
 
 cov = demo_covariance()
 port = demo_portfolio()
 
-var99 = monte_carlo_var(port, cov, alpha=0.01, n_paths=100_000, dist="normal",
-                        method="full", seed=1)
-pnl = monte_carlo_pnl(port, cov, n_paths=100_000, dist="normal", method="full", seed=1)
-es99 = expected_shortfall(pnl, alpha=0.01)
-print(f"MC VaR99 (full reval) = {var99:,.0f}   MC ES99 = {es99:,.0f}")
+risk = monte_carlo_risk(port, cov, alpha=0.01, n_paths=100_000, dist="normal",
+                        method="full", seed=1, n_boot=200)
+print(f"MC VaR99 = {risk['var']:,.0f}   MC ES99 = {risk['es']:,.0f}   "
+      f"bootstrap SE = {risk['var_se']:,.0f}")
 ```
 
-Output: `MC VaR99 (full reval) = 45,906   MC ES99 = 52,383`.
+Output (synthetic data): `MC VaR99 = 45,033   MC ES99 = 51,210   bootstrap SE = 223`.
+`risk['pnl']` holds the scenario P&L for further diagnostics.
 
 ### How do I build an FX book (spot + forward + option) and run Monte Carlo VaR against it?
 
@@ -519,7 +538,8 @@ Output: `MC VaR99 (full reval) = 45,906   MC ES99 = 52,383`.
 derives the risk factors it needs (`FX:`, `IR:`, `VOL:` prefixes) directly
 from the positions, so you only have to supply a covariance over those
 factors. `monte_carlo_var` then simulates and fully revalues (Garman-Kohlhagen
-for the option, deposit legs for the forward).
+for the option, deposit legs for the forward). Its result carries VaR, ES and
+the bootstrap standard error from the same scenarios.
 
 ```python
 import numpy as np
@@ -542,21 +562,21 @@ diag = [daily_vol[f] for f in factors]
 cov = pd.DataFrame(np.outer(diag, diag) * np.eye(len(factors)),
                     index=factors, columns=factors)  # uncorrelated toy cov
 
-res = monte_carlo_var(book, market, cov, alpha=0.99, n_scenarios=50_000,
+res = monte_carlo_var(book, market, cov, alpha=0.01, n_scenarios=50_000,
                       dist="normal", seed=1)
-print(f"VaR99 = {res.var:,.0f}   ES99 = {res.es:,.0f}   SE(KDE) = {res.se_var:,.0f}")
+print(f"VaR99 = {res.var:,.0f}   ES99 = {res.es:,.0f}   bootstrap SE = {res.se_var:,.0f}")
 ```
 
-Output: `VaR99 = 204,226   ES99 = 233,301   SE(KDE) = 1,439` (base currency,
-USD). `res.pnl` carries the raw scenario P&L for further diagnostics.
+Output (synthetic book and covariance): `VaR99 = 204,226   ES99 = 233,301   bootstrap SE = 1,585`
+(base currency, USD). `res.pnl` carries the raw scenario P&L for further diagnostics.
 
 ### How do I choose between the normal, Student-t and jump-mixture Monte Carlo distributions?
 
 `simulate_factor_returns` (and `monte_carlo_var`) support three factor
 distributions, all matched to the *same* covariance so any VaR difference is
 pure tail shape: `"normal"`, `"t"` (fatter tails, covariance-matched), and
-`"jump"` (a Bernoulli common-jump overlay via `JumpSpec` — the peg-break /
-devaluation case a covariance matrix alone can't see).
+`"jump"` (a Bernoulli common-jump overlay via `JumpSpec`, for the peg-break
+or devaluation case a covariance matrix alone can't see).
 
 ```python
 import numpy as np
@@ -577,31 +597,31 @@ diag = [daily_vol[f] for f in factors]
 cov = pd.DataFrame(np.outer(diag, diag) * np.eye(len(factors)),
                     index=factors, columns=factors)
 
-res_n = monte_carlo_var(book, market, cov, alpha=0.99, n_scenarios=50_000, dist="normal", seed=1)
-res_t = monte_carlo_var(book, market, cov, alpha=0.99, n_scenarios=50_000, dist="t", df=5, seed=1)
+res_n = monte_carlo_var(book, market, cov, alpha=0.01, n_scenarios=50_000, dist="normal", seed=1)
+res_t = monte_carlo_var(book, market, cov, alpha=0.01, n_scenarios=50_000, dist="t", df=5, seed=1)
 jumps = JumpSpec(prob=0.01, mean={"FX:EUR": -0.05}, std={"FX:EUR": 0.02})  # 1%/day devaluation risk
-res_j = monte_carlo_var(book, market, cov, alpha=0.99, n_scenarios=50_000,
+res_j = monte_carlo_var(book, market, cov, alpha=0.01, n_scenarios=50_000,
                         dist="jump", jumps=jumps, seed=1)
 print(f"normal = {res_n.var:,.0f}   t(5) = {res_t.var:,.0f}   jump = {res_j.var:,.0f}")
 ```
 
-Output: `normal = 204,226   t(5) = 233,699   jump = 292,918` — same covariance,
-same seed, and VaR climbs steadily as the tail model gets fatter.
+Output (synthetic data): `normal = 204,226   t(5) = 233,699   jump = 300,930`.
+Same covariance, same seed, and VaR climbs as the tail model gets fatter.
 
 ### How do I get a bootstrap standard-error cross-check alongside my VaR point estimate?
 
-Every VaR quantile is itself an estimate with sampling noise. `fx_var`
-exposes two independent standard-error estimators: `var_standard_error`
-(asymptotic, Gaussian-KDE density at the quantile — fast but understated at
-extreme alphas / small scenario counts) and `var_standard_error_bootstrap`
-(distribution-free resampling — the desk-standard cross-check, prefer it
-whenever `alpha >= 0.995` or the scenario count is modest). `eq_var` exposes
-the equivalent `var_standard_error_bootstrap` for the equity engine.
+Every VaR quantile is itself an estimate with sampling noise. The bootstrap
+standard error (`var_standard_error_bootstrap`, distribution-free resampling)
+is the primary estimate: `monte_carlo_var` in `fx_var` and `monte_carlo_risk`
+in `eq_var` report it. `var_standard_error` (asymptotic, Gaussian-KDE density
+at the quantile) is kept as a diagnostic. It is fast but understated at deep
+tails and small scenario counts.
 
 ```python
 import numpy as np
 import pandas as pd
-from fx_var import Book, Spot, Forward, Option, monte_carlo_var, var_standard_error_bootstrap
+from fx_var import (Book, Spot, Forward, Option, monte_carlo_var,
+                    var_standard_error, var_standard_error_bootstrap)
 from fx_var.data.synthetic import demo_market
 
 market = demo_market()
@@ -617,22 +637,25 @@ diag = [daily_vol[f] for f in factors]
 cov = pd.DataFrame(np.outer(diag, diag) * np.eye(len(factors)),
                     index=factors, columns=factors)
 
-res = monte_carlo_var(book, market, cov, alpha=0.99, n_scenarios=50_000, dist="normal", seed=1)
-se_boot = var_standard_error_bootstrap(res.pnl, alpha=0.99, n_boot=500, seed=2)
-print(f"VaR99 = {res.var:,.0f}   KDE SE = {res.se_var:,.0f}   bootstrap SE = {se_boot:,.0f}")
+res = monte_carlo_var(book, market, cov, alpha=0.01, n_scenarios=50_000, dist="normal", seed=1)
+se_boot = var_standard_error_bootstrap(res.pnl, alpha=0.01, n_boot=500, seed=2)
+se_kde = var_standard_error(res.pnl, alpha=0.01)
+print(f"VaR99 = {res.var:,.0f}   reported SE = {res.se_var:,.0f}   "
+      f"bootstrap SE (500) = {se_boot:,.0f}   KDE SE = {se_kde:,.0f}")
 ```
 
-Output: `VaR99 = 204,226   KDE SE = 1,439   bootstrap SE = 1,496` — the two
-independent SE estimators agree closely here (50k scenarios, alpha=0.99);
-they diverge more at deeper tails or smaller scenario counts, which is exactly
-when you want the bootstrap number, not just the KDE one.
+Output (synthetic data): `VaR99 = 204,226   reported SE = 1,585   bootstrap SE (500) = 1,496   KDE SE = 1,447`.
+The reported SE is a 200-resample bootstrap, so it differs from a 500-resample
+rerun by resampling noise. The estimators agree closely here (50k scenarios,
+99%). They diverge at deeper tails or smaller scenario counts, which is when
+the bootstrap number matters.
 
 ### How do I compute FX historical VaR directly from a Book (plain, age-weighted, or FHS)?
 
 `fx_var.historical_var` takes the book, a market snapshot, and a factor-return
-history, and does the revaluation for you — no need to build the scenario
-matrix by hand. Passing `method="plain"|"age"|"fhs"` switches the weighting
-scheme exactly as in the equity engine.
+history, and does the revaluation for you, so there is no scenario matrix to
+build by hand. Passing `method="plain"|"age"|"fhs"` switches the weighting
+scheme as in the equity engine.
 
 ```python
 from fx_var import historical_var
@@ -642,17 +665,17 @@ market = demo_market()
 book = demo_book()  # G10 spots, an EURUSD forward+call, EM leg, HKD peg leg
 returns = simulate_history(book, market, n_days=1000, seed=5, garch=True)
 
-plain = historical_var(book, market, returns, alpha=0.99, method="plain")
-fhs = historical_var(book, market, returns, alpha=0.99, method="fhs")
+plain = historical_var(book, market, returns, alpha=0.01, method="plain")
+fhs = historical_var(book, market, returns, alpha=0.01, method="fhs")
 print(f"plain VaR99 = {plain.var:,.0f}   FHS VaR99 = {fhs.var:,.0f}")
 print("flagged peg factors:", plain.flagged_peg_factors)
 ```
 
-Output: `plain VaR99 = 749,952   FHS VaR99 = 1,733,918` (base currency, USD),
-plus a `PegBlindnessWarning` naming `FX:HKD` — the book's HKD peg leg realises
-near-zero historical vol, so HS is structurally blind to a peg break there;
-the warning is the engine telling you to add the peg-break stress add-on
-separately (`fx_var.stress_testing.peg_break_scenario`), not a bug.
+Output (synthetic data): `plain VaR99 = 749,952   FHS VaR99 = 1,733,918`
+(base currency, USD), plus a `PegBlindnessWarning` naming `FX:HKD`. The
+book's HKD peg leg realises near-zero historical vol, so HS cannot see a peg
+break there. The warning tells you to add the peg-break stress add-on
+separately (`fx_var.stress_testing.peg_break_scenario`).
 
 ### How do I compute FX parametric VaR and compare a normal to a Student-t tail?
 
@@ -668,24 +691,26 @@ market = demo_market()
 book = demo_book()
 returns = simulate_history(book, market, n_days=1000, seed=5, garch=True)
 
-res_n = parametric_var(book, market, returns, alpha=0.99, dist="normal", cov_method="sample")
-res_t = parametric_var(book, market, returns, alpha=0.99, dist="t", df=5, cov_method="sample")
+res_n = parametric_var(book, market, returns, alpha=0.01, dist="normal", cov_method="sample")
+res_t = parametric_var(book, market, returns, alpha=0.01, dist="t", df=5, cov_method="sample")
 print(f"1-day sigma = {res_n.sigma:,.0f}")
 print(f"normal VaR/ES = {res_n.var:,.0f} / {res_n.es:,.0f}")
 print(f"t(5)   VaR/ES = {res_t.var:,.0f} / {res_t.es:,.0f}")
 ```
 
-Output: `1-day sigma = 356,859`, `normal VaR/ES = 830,179 / 951,107`,
-`t(5) VaR/ES = 930,141 / 1,230,750` — same sigma, fatter Student-t tail moves
-both VaR and ES up materially.
+Output (synthetic data): `1-day sigma = 356,859`, `normal VaR/ES = 830,179 / 951,107`,
+`t(5) VaR/ES = 930,141 / 1,230,750`. Same sigma; the fatter Student-t tail
+moves both VaR and ES up.
 
 ### How do I backtest a VaR series with Kupiec's POF test?
 
 `rolling_var_backtest` walk-forwards a VaR estimator over a P&L history
-(each day's VaR is forecast from the trailing window only — genuinely
+(each day's VaR is forecast from the trailing window only, so it is
 out-of-sample), and `kupiec_pof` runs the proportion-of-failures
 likelihood-ratio test on the resulting exception count against the nominal
-rate `alpha`.
+rate `alpha`. `kupiec_pof` takes keyword arguments:
+`kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)`. The positional form is
+deprecated.
 
 ```python
 from eq_var.data.synthetic import demo_portfolio, demo_covariance, simulate_returns
@@ -700,48 +725,52 @@ var_fn = lambda hist_pnl, alpha: historical_var(hist_pnl, alpha)
 bt = rolling_var_backtest(pnl, var_fn, window=250, alpha=0.01, name="historical-99")
 print(bt.summary())
 
-kp = kupiec_pof(bt.n_obs, bt.n_exceptions, alpha=0.01)
+kp = kupiec_pof(n_obs=bt.n_obs, n_exceptions=bt.n_exceptions, alpha=0.01)
 print(f"LR = {kp['lr']:.3f}   p = {kp['pvalue']:.3f}   expected = {kp['expected']:.1f}")
 ```
 
-Output: 12 exceptions in 1,250 forecast days (expected 12.5), `LR = 0.020,
-p = 0.886` — not rejected; the model's exception rate matches its stated
-99% confidence level. `bt.summary()` also reports the Christoffersen
+Output (synthetic data): 12 exceptions in 1,250 forecast days (expected 12.5),
+`LR = 0.020, p = 0.886`. Not rejected: the exception rate matches the stated
+99% level. `bt.summary()` also reports the Christoffersen
 independence/conditional-coverage p-values and, at `alpha=0.01`, the 250-day
 Basel zone the exception count scales to.
 
 ### How do I classify a backtest into a Basel traffic-light zone?
 
-`basel_traffic_light` maps a 250-day, 99% VaR exception count to green
-(0-4 exceptions, multiplier 3.0) / yellow (5-9, capital add-on 0.40-0.85) /
-red (10+, multiplier 4.0, "presumption of a flawed model"), derived from the
-exact Binomial(250, 0.01) exceedance probabilities. `basel_zone_probabilities`
-tabulates the full boundary.
+`basel_traffic_light(n_obs=..., n_exceptions=..., alpha=...)` classifies an
+exception count for any window and any tail probability. The zone comes from
+the cumulative Binomial(`n_obs`, `alpha`) probability: green below 0.95,
+yellow below 0.9999, red otherwise. On 250 days at 99% this is the regulatory
+table: 0-4 green (multiplier 3.0), 5-9 yellow (3.40 / 3.50 / 3.65 / 3.75 /
+3.85), 10+ red (4.0). The positional form `basel_traffic_light(n_exceptions)`
+is deprecated. `basel_zone_probabilities` tabulates the boundary.
 
 ```python
 from eq_var import basel_traffic_light, basel_zone_probabilities
 
 for n_exceptions in (3, 7, 11):
-    print(n_exceptions, basel_traffic_light(n_exceptions))
+    tl = basel_traffic_light(n_obs=250, n_exceptions=n_exceptions, alpha=0.01)
+    print(n_exceptions, tl["zone"], tl["multiplier"], round(tl["cumulative_prob"], 5))
 
-print(basel_zone_probabilities().head(11).to_string(index=False))
+print(basel_zone_probabilities(n_obs=250, alpha=0.01).head(11).to_string(index=False))
 ```
 
 Output:
 ```
-3 {'zone': 'green', 'multiplier': 3.0, 'cumulative_prob': 0.758}
-7 {'zone': 'yellow', 'multiplier': 3.65, 'cumulative_prob': 0.996}
-11 {'zone': 'red', 'multiplier': 4.0, 'cumulative_prob': 0.99999}
+3 green 3.0 0.75812
+7 yellow 3.65 0.99597
+11 red 4.0 0.99999
 ```
-The full table shows `cumulative_prob` crossing the 95% (green→yellow) and
-99.99% (yellow→red) boundaries at exactly 4→5 and 9→10 exceptions.
+The result dict also carries `plus_factor`. The full table shows
+`prob_cumulative` crossing the 0.95 (green to yellow) and 0.9999 (yellow to
+red) boundaries at 4 to 5 and 9 to 10 exceptions.
 
 ### How do I run the single-asset foundations risk-metrics toolkit end to end?
 
 `eq_risk_metrics` is the portfolio's single-asset starting point: it works
 directly on a `pandas.Series` of returns (no `Portfolio`/`Book` object), and
 its central finding is that Gaussian VaR understates the tail a fat-tailed
-historical sample actually realises.
+historical sample realises.
 
 ```python
 import eq_risk_metrics as rm
@@ -754,28 +783,35 @@ rets = rm.simple_returns(prices)
 vol = rm.annualised_volatility(rets)
 var_h = rm.var_historical(rets, 0.99)
 var_p = rm.var_parametric(rets, 0.99)
-var_cf = rm.var_cornish_fisher(rets, 0.99)
 es = rm.expected_shortfall(rets, 0.99)
 bt = rm.kupiec_pof_test(rets, var_h, 0.99)
 dd = rm.max_drawdown(prices)
 
 print(f"annualised vol = {vol:.2%}")
-print(f"VaR99: historical={var_h:.2%} parametric={var_p:.2%} cornish-fisher={var_cf:.2%}")
+print(f"VaR99: historical={var_h:.2%} parametric={var_p:.2%}")
 print(f"ES99 = {es:.2%}   max drawdown = {dd['max_drawdown']:.2%}")
 print(f"Kupiec: {bt['n_exceptions']} exceptions / {bt['n_observations']} days, "
       f"p={bt['p_value']:.3f}, reject={bt['reject_at_5pct']}")
+
+try:
+    rm.var_cornish_fisher(rets, 0.99)
+except ValueError as e:
+    print("Cornish-Fisher refuses:", e)
 ```
 
-Output: `annualised vol = 16.21%`; `VaR99: historical=3.04% parametric=2.27%
-cornish-fisher=5.04%`; `ES99 = 4.10%`, `max drawdown = -18.80%`; Kupiec
-`15/1499 exceptions, p=0.998, reject=False` — historical VaR sits well above
-the Gaussian figure precisely because the synthetic sample carries fat tails,
-which is this project's headline point (see `docs/METHODOLOGY.md`).
+Output (synthetic data): `annualised vol = 16.21%`; `VaR99: historical=3.08%
+parametric=2.27%`; `ES99 = 4.10%`, `max drawdown = -18.80%`; Kupiec
+`14 exceptions / 1499 days, p=0.795, reject=False`. Historical VaR sits well
+above the Gaussian figure because the synthetic sample carries fat tails,
+which is this project's headline point (see `docs/METHODOLOGY.md`). The
+Cornish-Fisher call raises `ValueError`: with skew -0.66 and excess kurtosis
+10.24 the expansion is not monotone at 99%, so it is outside its domain and
+the function refuses rather than return a number.
 
 ### How do I confirm NaN/Inf inputs raise cleanly instead of silently producing a wrong number?
 
 Every layer of this portfolio treats NaN/Inf as a defect to reject, never to
-silently propagate or impute — a single bad value would otherwise poison a
+silently propagate or impute. A single bad value would otherwise poison a
 quantile, a covariance, or an entire Monte Carlo run without raising anywhere
 on the path. All three engines below raise `ValueError` immediately, with a
 message naming the offending input.
@@ -816,24 +852,25 @@ eq_var: pnl contains NaN or infinite values
 eq_risk_metrics: var_historical: returns contains 1 non-finite value(s) (NaN/inf). ...
 fx_var: rates['EUR'] must be a finite number, got nan (NaN policy: refuse, never impute)
 ```
-Note the `fx_var` case rejects at `Market` construction — before any VaR
-calculation even runs — because a NaN rate would otherwise flow silently into
+Note the `fx_var` case rejects at `Market` construction, before any VaR
+calculation runs, because a NaN rate would otherwise flow silently into
 a NaN Cholesky factor and a NaN VaR with no exception raised anywhere.
 
 
 ## Fixed Income, Pairs Trading, Credit Risk & Portfolio Optimization
 
 Setup shared by every snippet below: each project is an installable package
-under `python/<asset-class>/<NN>-<project>/`. Install the one you need with
-`pip install -e . --break-system-packages -q` from that project's root, then
-run the snippet with `python3`. All snippets below were executed against the
-actual source in this repository (fixed seeds, fully offline).
+under `python/<asset-class>/<NN>-<project>/`. Install the one you need into
+your venv with `python -m pip install -e python/<asset-class>/<NN>-<project>`,
+then run the snippet with `python`. Every snippet uses fixed seeds and runs
+offline.
 
 ### How do I price a fixed-rate bond and compute its yield to maturity?
 
 `fi_rates` prices bonds from a street-convention YTM (`price_from_ytm`) or
 solves YTM from a clean price by Brent root-find (`ytm_from_price`); dirty
-price minus accrued interest gives the clean price.
+price minus accrued interest gives the clean price. Treasuries and other
+government bonds use the `ACT/ACT-ICMA` day count.
 
 ```python
 import datetime as dt
@@ -844,7 +881,7 @@ bond = FixedRateBond(
     maturity=dt.date(2033, 5, 15),
     coupon=0.045,
     frequency=2,
-    daycount="ACT/ACT-ISDA",
+    daycount="ACT/ACT-ICMA",
 )
 settlement = dt.date(2025, 8, 15)
 
@@ -857,8 +894,8 @@ y = ytm_from_price(bond, settlement, clean_price=clean)
 print(f"round-tripped YTM: {y:.6%}")
 ```
 
-Output: `dirty price: 102.7582`, `clean price: 101.6239`, and the round-tripped
-YTM recovers `4.250000%` exactly (price→YTM→price is tested to 1e-10).
+Output: `dirty price: 102.7552`, `clean price: 101.6302`, and the round-tripped
+YTM recovers `4.250000%` (price to YTM to price is tested to 1e-10).
 
 ### How do I compute a bond's duration and convexity?
 
@@ -876,7 +913,7 @@ bond = FixedRateBond(
     maturity=dt.date(2033, 5, 15),
     coupon=0.045,
     frequency=2,
-    daycount="ACT/ACT-ISDA",
+    daycount="ACT/ACT-ICMA",
 )
 settlement = dt.date(2025, 8, 15)
 ytm = 0.0425
@@ -890,13 +927,13 @@ print(f"Modified duration: {d_mod:.4f} yr")
 print(f"Convexity:         {c:.4f}")
 ```
 
-Output: Macaulay `6.5673` yr, modified `6.4306` yr, convexity `49.1750`.
+Output: Macaulay `6.5681` yr, modified `6.4314` yr, convexity `49.1813`.
 
 ### How do I compute DV01 for a bond?
 
 `dv01` gives the analytic (YTM-space) DV01 in $-per-bp; `dv01_curve` gives
 the "effective" DV01 by bumping every pillar of a `DiscountCurve` by ±1bp and
-repricing — the two agree closely but are not identical, since one holds the
+repricing. The two agree closely but are not identical, since one holds the
 street-convention yield fixed and the other holds the curve shape fixed.
 
 ```python
@@ -907,7 +944,7 @@ from fi_rates import (
 
 bond = FixedRateBond(
     effective=dt.date(2023, 5, 15), maturity=dt.date(2033, 5, 15),
-    coupon=0.045, frequency=2, daycount="ACT/ACT-ISDA",
+    coupon=0.045, frequency=2, daycount="ACT/ACT-ICMA",
 )
 settlement = dt.date(2025, 8, 15)
 
@@ -923,7 +960,7 @@ print(f"analytic DV01 (per bond, YTM=4.25%): {dv01(bond, settlement, 0.0425):.5f
 print(f"effective DV01 off the bootstrapped curve: {dv01_curve(bond, settlement, curve):.5f}")
 ```
 
-Output: analytic `0.06608`, curve-effective `0.06862` per $100 face per 1bp —
+Output: analytic `0.06609`, curve-effective `0.06863` per $100 face per 1bp:
 close but not identical, because the curve's own shape (not a flat yield)
 determines the second number.
 
@@ -955,7 +992,7 @@ print(f"par 5y rate off the curve: {curve.par_rate(5.0, frequency=2):.4%} (quote
 Output shows zeros from `4.28%` (3m) down to `3.90%` (5y) and back up to
 `4.02%` (10y), and the par-rate query reprices the 5y swap quote exactly
 (`3.9500%`). `interpolation` also accepts `"linear_zero"` (sawtooth forwards)
-and `"pchip_zero"` (smooth but not perfectly local — see the edge case below).
+and `"pchip_zero"` (smooth but not perfectly local; see the edge case below).
 
 ### How do I price an FX forward via covered interest parity and see the cross-currency basis?
 
@@ -984,16 +1021,17 @@ print(f"Foreign  (EUR) DV01: {dv01(fwd, market, 'foreign'):,.2f}")
 print(f"Basis DV01:          {basis_dv01(fwd, market):,.2f}")
 ```
 
-Output: spot `1.0866`, CIP forward `1.1719` vs market forward `1.1867`
-(`+147.4` pips of basis), FX delta `~8.9m USD`, domestic DV01 `+4,842.96`
-paired with an equal-and-opposite foreign DV01 (`-4,842.96`) — the classic
-long-base-forward sign pattern the test suite pins as a regression guard.
+Output (synthetic quotes): spot `1.0866`, CIP forward `1.1719` vs market
+forward `1.1867` (`+147.9` pips of basis), FX delta `8,914,135` USD, domestic
+DV01 `+4,843.18` against foreign DV01 `-4,840.99`, and basis DV01 `-4,810.23`.
+The opposite signs of the two rate DV01s are the long-base-forward pattern
+the test suite pins.
 
 ### How do I see fixed-income risk models break down for a non-parallel move?
 
 A single duration number is a *parallel*-shift approximation. `fi_rates`
 ships a scenario engine that full-reprices a portfolio under a steepener and
-compares it against the duration+convexity Taylor estimate — this is the
+compares it against the duration+convexity Taylor estimate. This is the
 documented failure mode in `docs/VALIDATION.md` §4.3.
 
 ```python
@@ -1023,16 +1061,19 @@ scenarios = [parallel_scenario(100), steepener_scenario(bp_short=-50, bp_long=50
 print(scenario_pnl_table(positions, settlement, curve, scenarios))
 ```
 
-Output (a 2y+30y barbell): the +100bp parallel shock has a duration+convexity
-error of only `~2.4%` of the full-repricing P&L, but the steepener's error is
-`~47%` — a single duration number is nearly useless for a curve twist,
-exactly the point `docs/VALIDATION.md` makes with its own barbell example.
+Output (a 2y+30y barbell): a table with `pnl_full`, `pnl_dur_conv`, `error`
+and `avg_shift_bp` per scenario. The +100bp parallel shock has a
+duration+convexity error of about 2.4% of the full-repricing P&L
+(`3,894` on `-162,817`), but the steepener (row `tilt_-50/+50@5y`) has an
+error of about 47% (`25,243` on `-53,291`). A single duration number is
+nearly useless for a curve twist, the point `docs/VALIDATION.md` makes with
+its own barbell example.
 
 ### How do I test two price series for cointegration?
 
 `eq_pairs` implements the Engle-Granger two-step test from scratch, including
 the MacKinnon (2010) N=2 critical-value surface that the residual-based test
-actually requires (plain ADF critical values badly over-reject cointegration
+requires (plain ADF critical values badly over-reject cointegration
 as real).
 
 ```python
@@ -1076,14 +1117,16 @@ print(f"stationary std: {ou.stationary_std:.4f}")
 ```
 
 Output: `beta=1.4586`, OU half-life `22.9` trading days, stationary std
-`5.0097` dollars — the natural scale for entry/exit z-score thresholds.
+`5.0097` dollars, the natural scale for entry/exit z-score thresholds.
 
 ### How do I generate a z-score entry/exit signal and backtest a pairs trade?
 
 `generate_signals` runs an entry/exit/stop state machine over a rolling
-z-score; `backtest_pair` executes it under a strict t-1-signal / t-close
-no-lookahead rule with commission, slippage and borrow costs, and `summary`
-rolls it up into Sharpe, hit rate, drawdown, etc.
+z-score. `backtest_pair` takes the signal at the close of day t and fills at
+the modelled price `p_t + f (p_{t+1} - p_t)` with `f = 0.5` by default
+(`ExecutionConfig`; a close-auction mode fills at `p_t` and pays an auction
+cost). It charges commission, slippage and borrow, and `summary` rolls the
+result up into Sharpe, hit rate, drawdown and so on.
 
 ```python
 from eq_pairs.data.synthetic import cointegrated_pair
@@ -1110,8 +1153,9 @@ print(f"net P&L: ${perf['total_net_pnl']:,.0f}")
 print(f"Sharpe: {perf['sharpe']:.3f}   hit rate: {perf['hit_rate']:.1%}   n_trades: {perf['n_trades']}")
 ```
 
-Output: 15 round trips, `80.0%` hit rate, Sharpe `0.71`, net P&L `~$467k` on
-$1mm gross after 5bp commission + 2bp slippage + 50bp annualised borrow.
+Output (synthetic pair): 15 round trips, `80.0%` hit rate, Sharpe `0.838`,
+net P&L `$546,571` on $1mm gross after 5bp commission, 2bp slippage and 50bp
+annualised borrow, with the default t+1 modelled fill.
 
 ### How do I test an FX pair for cointegration and backtest it?
 
@@ -1141,13 +1185,13 @@ print(f"total P&L: {perf['total_pnl']:.4f}   Sharpe: {perf['sharpe']:.3f}   n_tr
 
 Output: half-life `~8.7` days, ADF stat `-6.96` well past the 5% critical
 value (`cointegrated=True`), and the backtest with no carry input (spot-only)
-turns in Sharpe `1.82` over 23 trades.
+turns in Sharpe `1.88` over 23 trades on this synthetic pair.
 
 ### How do I see the "spurious correlation" trap in pairs trading?
 
 Two independent random walks with correlated *increments* have high return
-correlation by construction but no cointegrating relationship — the classic
-trap `eq_pairs` ships a dedicated generator for.
+correlation by construction but no cointegrating relationship. This is the
+classic trap `eq_pairs` ships a dedicated generator for.
 
 ```python
 import numpy as np
@@ -1165,7 +1209,7 @@ print(f"cointegrated at 5%: {result.cointegrated('5%')}  (correctly NOT cointegr
 
 Output: return correlation `0.9023` (looks like a great pairs candidate on a
 correlation screen), but the EG statistic `-2.6148` fails to beat the 5%
-critical value `-3.3423` — the cointegration test correctly refuses the pair
+critical value `-3.3423`. The cointegration test refuses the pair
 that a naive correlation screen would have flagged as tradeable.
 
 ### How do I estimate a PD model from borrower features?
@@ -1195,7 +1239,7 @@ print(f"AUC: {roc_auc(y, pd_hat):.4f}   KS: {ks_statistic(y, pd_hat):.4f}")
 
 Output: all six features come back significant (p<0.001 except
 `current_ratio`, whose true effect is U-shaped and gets washed out by a
-linear logit — exactly the case WOE binning exists to fix); AUC `0.766`, KS
+linear logit, the case WOE binning exists to fix); AUC `0.766`, KS
 `0.437`, mean predicted PD ties the realised default rate exactly (`2.37%`)
 by construction of MLE.
 
@@ -1227,32 +1271,36 @@ print(f"8% regulatory capital: ${capital.sum():,.0f}  ({capital.sum() / ead.sum(
 ```
 
 Output: EAD `$2.89bn`, EL `$41.8m` (`1.446%` of EAD), RWA `$3.64bn`, 8%
-regulatory capital `$291.2m` (`10.08%` of EAD) — capital sits well above EL,
-which is exactly the point of the unexpected-loss buffer.
+regulatory capital `$291.2m` (`10.08%` of EAD), all on a synthetic loan book.
+Capital sits well above EL, which is the point of the unexpected-loss buffer.
 
-### How do I compute counterparty credit risk (CVA) for an FX forward?
+### How do I compute counterparty exposure and expected loss for an FX forward?
 
 `fx_credit` simulates spot under Garman-Kohlhagen GBM to build an expected
 exposure (EE) / potential future exposure (PFE) profile for an FX forward,
-then integrates EE against a PD term structure (flat hazard from the 1y PD)
-to get unilateral CVA.
+then integrates EE against a PD term structure (flat hazard from the 1y PD).
+`expected_exposure_loss_for_forward` returns the expected loss on exposure
+(real-world PD), not a CVA: a CVA needs risk-neutral default probabilities
+implied from market spreads. The old name `cva_for_forward` is a deprecated
+alias.
 
 ```python
-from fx_credit import FXForward, cva_for_forward
+from fx_credit import FXForward, expected_exposure_loss_for_forward
 
 fwd = FXForward(pair="EURUSD", notional_base=10_000_000.0, strike=1.10, maturity=2.0, buy_base=True)
 
-cva, profile = cva_for_forward(
+loss, profile = expected_exposure_loss_for_forward(
     fwd, spot=1.0866, vol=0.09, r_d=0.041, r_f=0.026,
     pd_1y=0.015, lgd=0.6, n_steps=24, n_paths=20_000, seed=1,
 )
-print(f"CVA: ${cva:,.0f}")
+print(f"expected loss on exposure: ${loss:,.0f}")
 print(f"peak EE: ${profile.ee.max():,.0f}")
 print(f"peak 95% PFE: ${profile.peak_pfe(0.95):,.0f}")
 ```
 
-Output: CVA `~$8,059` on a $10m 2y forward at 1.5% counterparty PD /60% LGD,
-peak expected exposure `~$660k` and peak 95% PFE `~$2.7m` — because a forward
+Output (simulated paths): expected loss on exposure `$8,059` on a $10m 2y
+forward at 1.5% real-world PD and 60% LGD, peak expected exposure `$660,249`
+and peak 95% PFE `$2,694,905`. Because a forward
 has no intermediate cashflows, exposure grows monotonically to maturity
 (`sqrt(t)`-shaped) rather than showing the amortising "mid-life hump" of a
 swap.
@@ -1335,7 +1383,7 @@ print(f"sum(RC) == portfolio variance: {rc.sum():.8f} vs {w_erc @ cov @ w_erc:.8
 ```
 
 Output: ERC weights range `13.2%`–`21.9%` across 6 assets, but every asset's
-risk contribution is exactly `16.667%` (`1/6`) by construction — that's the
+risk contribution is `16.667%` (`1/6`) by construction. That is the
 whole point of ERC versus the naive inverse-vol weights, which only equalize
 risk contribution when correlations happen to be equal.
 
@@ -1371,9 +1419,9 @@ names (MXN, BRL, TRY each still get several percent).
 ### How do I see portfolio optimization break down on a near-singular covariance matrix?
 
 A pegged currency (near-zero spot vol by construction) makes the sample
-covariance matrix numerically singular — `fx_port`'s own edge-case suite
+covariance matrix numerically singular. `fx_port`'s own edge-case suite
 demonstrates the failure and the fix (`psd_repair`), and shows why a peg is
-not actually a free lunch.
+not a free lunch.
 
 ```python
 from fx_port.data.synthetic import make_panel
@@ -1399,27 +1447,25 @@ print(f"after psd_repair, ERC PEG weight:      {w_erc_fixed['PEG']:.4f}")
 Output: PEG variance `~1.0e-12` drives the covariance matrix's condition
 number to `~2.9e8`; unconstrained min-variance responds by piling essentially
 100% of the book into the "riskless" peg, and ERC does the same after
-`psd_repair` stabilizes the matrix (PEG weight `~98%`) — both optimizers are
+`psd_repair` stabilizes the matrix (PEG weight `~98%`). Both optimizers are
 mechanically correct and both produce an off-mandate, undiversified book,
-which is exactly `docs/VALIDATION.md`'s point: "a peg is a policy option, not
-a riskless asset," and desks cap peg weights by policy rather than trusting
-the optimizer.
+which is `docs/VALIDATION.md`'s point: "a peg is a policy option, not
+a riskless asset." Peg weights are capped by policy rather than left to the
+optimizer.
 
 
 ## Execution, Regime Strategies & Building the Engines
 
 Setup shared by every Python snippet below: each project is an installable
 package under `python/<asset-class>/<NN>-<project>/`. Install the one you
-need with `pip install -e . --break-system-packages -q` from that project's
-root, then run the snippet with `python3` from anywhere. All snippets were
-executed against the actual source in this repository (fixed seeds, fully
-offline). The shell recipes (C++/Rust build & test, golden vectors, the
-portfolio-wide test sweep) were run for real from a clean state — build
-directories and `target/` were removed afterwards.
+need into your venv with `python -m pip install -e python/<asset-class>/<NN>-<project>`,
+then run the snippet with `python` from anywhere. Snippets use fixed seeds
+and run offline. The shell recipes follow the commands in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### How do I schedule a TWAP / VWAP / participation-rate execution and see the simulated fills?
 
-`eq_algo` implements all three equity schedulers for real (`twap_schedule`,
+`eq_algo` implements all three equity schedulers (`twap_schedule`,
 `vwap_schedule`, `pov_schedule` in `benchmarks.py`) against a seeded
 intraday simulator (`IntradayMarket`) with U-shaped volume, temporary
 square-root impact and linear permanent impact. `execute()` returns an
@@ -1445,17 +1491,17 @@ for name, sched in schedules.items():
           f"arrival={res.arrival_price:8.4f}  buckets_traded={(res.fills['qty']>0).sum()}")
 ```
 
-Output: `TWAP filled=50,000 avg_price=100.3522 ... buckets_traded=26`, `VWAP
-avg_price=100.2171 buckets_traded=26`, `POV 10% avg_price=100.4659
+Output (synthetic simulator): `TWAP filled=50,000 avg_price=100.3606 ... buckets_traded=26`,
+`VWAP avg_price=100.2134 buckets_traded=26`, `POV 10% avg_price=100.4560
 buckets_traded=13` (POV finishes early because it participates at a capped
-rate of the heaviest-volume buckets first). All three fill the full parent —
+rate of the heaviest-volume buckets first). All three fill the full parent.
 POV would instead raise `ValueError` if the day's capacity at that
 participation rate were insufficient.
 
 ### How do I schedule an FX parent order when there's no consolidated volume tape?
 
 FX has no exchange tape, so `fx_algo` does not implement a VWAP scheduler at
-all — `execution/schedulers.py` gives `twap_schedule`,
+all. `execution/schedulers.py` gives `twap_schedule`,
 `liquidity_weighted_schedule` (the VWAP-analog: proportional to *modeled*
 session depth, not a print) and `pov_schedule` (participation of modeled
 depth), plus `fix_schedule` for targeting the WM/R 4pm London fix window.
@@ -1482,13 +1528,12 @@ for name, sched in {"TWAP": twap, "LiqWeighted": liq, "POV 15%": pov}.items():
           f"IS={r.is_pips:+.2f}pips  buckets_traded={(np.abs(r.qty) > 0).sum()}")
 ```
 
-Output: `TWAP avg_fill=1.09686 IS=-31.44pips buckets_traded=288` (all 288
+Output (synthetic simulator): `TWAP avg_fill=1.09686 IS=-31.44pips buckets_traded=288` (all 288
 5-minute buckets across the 24h day), `LiqWeighted avg_fill=1.09696
 IS=-30.40pips buckets_traded=288`, `POV 15% avg_fill=1.10018 IS=+1.79pips
 buckets_traded=4` (POV concentrates in the deep London-NY overlap and
 finishes in 4 buckets). The large IS swings here are mostly 24h session
-drift, not cost — a real desk would look at the TCA decomposition below to
-separate the two.
+drift, not cost. The TCA decomposition below separates the two.
 
 ### How do I compare a firm-liquidity venue to a last-look FX dealer stream?
 
@@ -1518,10 +1563,10 @@ Output: `firm-ecn {'quoted_half_spread_pips': 0.241, 'temp_impact_pips':
 0.035, 'effective_cost_pips': 0.276, 'rejection_rate': 0.0,
 'rejection_cost_pips': 0.0}` vs `last-look {'quoted_half_spread_pips':
 0.144, ..., 'effective_cost_pips': 0.237, 'rejection_rate': 0.122,
-'rejection_cost_pips': 0.058}` — the last-look quote is 40% tighter, but a
+'rejection_cost_pips': 0.058}` on the synthetic simulator. The last-look quote is 40% tighter, but a
 12.2% reject rate (driven here by 0.05 pips/bucket of client alpha making
 the flow "toxic") claws most of that saving back; `effective =
-quoted_half_spread + temp_impact + rejection_cost` exactly.
+quoted_half_spread + temp_impact + rejection_cost`.
 
 ### How do I compute an Almgren-Chriss optimal execution trajectory and see if it beats TWAP/VWAP?
 
@@ -1555,25 +1600,28 @@ tab = ea.evaluate_schedules(mkt, schedules, side=1, n_reps=200, seed=42)
 print(tab.to_string())
 ```
 
-Output (200 seeded replications, bps):
+Output (200 seeded replications on the synthetic simulator, bps):
 
 ```
-              mean_is_bps  std_is_bps  mean_vs_vwap_bps  mean_vs_twap_bps
-TWAP            29.771168  114.194923         11.991419         11.270580
-VWAP            29.629179  109.585806         11.912422         11.187786
-AC lam=5e-06    25.712008   76.599430          7.550248          6.627987
+              expected_is_bps  mean_is_bps  se_mean_is_bps  std_is_bps  mean_vs_vwap_bps  mean_vs_twap_bps
+TWAP                14.335673    30.563490        8.076130  114.213719         12.782250         12.061332
+VWAP                13.658359    29.107703        7.749112  109.588993         11.391778         10.667148
+AC lam=5e-06        15.096783    25.409703        5.416399   76.599451          7.248477          6.326222
 ```
 
-AC front-loads the schedule (5,770 shares in bucket 0 tapering to 512 in the
-last bucket) and both lowers mean cost and, more sharply, cuts cost
-variance (114 -> 77 bps std) versus TWAP — exactly the risk/cost trade a
-positive `lambda` is supposed to buy.
+AC front-loads the schedule and cuts cost dispersion sharply (114 to 77 bps
+std) versus TWAP, the risk/cost trade a positive `lambda` is meant to buy.
+The gap in mean IS (about 5 bps) is within one standard error of the mean
+(`se_mean_is_bps`), so 200 replications do not show a mean-cost win.
+`expected_is_bps` is the model's own expected cost, and on that measure AC is
+slightly dearer than TWAP.
 
 ### How do I run transaction-cost analysis (implementation-shortfall decomposition) on a completed equity execution?
 
-`tca_report` applies the Perold (1988) decomposition — delay (decision to
-release), trading (spread + impact + intraday drift), opportunity (unfilled
-tail) — which sums to total IS as an algebraic identity, tested to 1e-10.
+`tca_report` applies the Perold (1988) decomposition into delay (decision to
+release), trading (spread + impact + intraday drift) and opportunity
+(unfilled tail). The three sum to total IS as an algebraic identity, tested
+to 1e-10.
 
 ```python
 import eq_algo as ea
@@ -1589,9 +1637,9 @@ for k, v in rep.bps().items():
     print(f"  {k:16s} {v:+8.2f} bps")
 ```
 
-Output: `filled 50,000/50,000 @ avg 100.6283`, then `delay_bps +20.04`,
-`trading_bps +62.95`, `opportunity_bps -0.00`, `total_is_bps +82.99` — the
-82.99 bps of total shortfall is almost entirely the pre-release "decision to
+Output (synthetic simulator): `filled 50,000/50,000 @ avg 100.6303`, then `delay_bps +20.04`,
+`trading_bps +63.15`, `opportunity_bps -0.00`, `total_is_bps +83.19`. The
+83.19 bps of total shortfall is almost entirely the pre-release "decision to
 release" drift (delay) plus spread/impact during trading (trading), with
 zero opportunity cost because the order fully filled.
 
@@ -1615,16 +1663,16 @@ for k, v in decompose_implementation_shortfall(r).items():
     print(f"  {k:18s} {v:+8.2f} pips")
 ```
 
-Output: `total -31.44`, `spread_temporary +0.28`, `permanent_impact +0.02`,
-`market_drift -31.74` (pips) — with a passive TWAP over a full 24h session,
+Output (synthetic simulator): `total -31.44`, `spread_temporary +0.28`, `permanent_impact +0.02`,
+`market_drift -31.74` (pips). With a passive TWAP over a full 24h session,
 market drift (session vol, nothing to do with execution quality) swamps the
-controllable spread/impact cost, which is exactly the point of decomposing
+controllable spread/impact cost, which is the point of decomposing
 IS rather than reading the total in isolation.
 
 ### How do I run the regime-switching backtest end to end and inspect regime-conditional stats?
 
 `walk_forward_backtest` fits a 3-state HMM on an expanding/rolling window,
-detects the regime online (filtered probabilities only — no lookahead),
+detects the regime online (filtered probabilities only, no lookahead),
 sizes a vol-targeted position with hysteresis, and returns ledgers for the
 strategy, buy-and-hold, and a 200-day MA rule. `per_regime_stats` then
 slices realised P&L by the *detected* regime.
@@ -1651,32 +1699,36 @@ regimes = res.detection["regime"].reindex(res.ledger.index).ffill().bfill()
 print(per_regime_stats(res.ledger["net_ret"], regimes))
 ```
 
-Output:
+Output (synthetic panel):
 
 ```
               strategy  buy_and_hold   ma_200d
-cagr          0.105683      0.015568  0.015616
-ann_vol       0.084950      0.151444  0.110336
-sharpe        1.224762      0.177744  0.195501
-max_drawdown  0.102326      0.444398  0.192332
+cagr          0.103917      0.007695  0.001972
+ann_vol       0.084795      0.153366  0.111696
+sharpe        1.207943      0.126681  0.073365
+max_drawdown  0.101201      0.444398  0.208034
+total_cost    0.024259      0.000500  0.026500
+final_equity  2.051022      1.057281  1.014419
 
               days  ann_return   ann_vol    sharpe  max_drawdown  total_pnl
-bull         861.0    0.184313  0.097702  1.886483      0.097563   0.629737
-bear         602.0    0.008974  0.077394  0.115956      0.069550   0.021438
-transition   421.0    0.075825  0.064265  1.179869      0.040415   0.126676
+bull         810.0    0.170324  0.096496  1.765090      0.097510   0.547469
+transition   440.0    0.109828  0.067273  1.632569      0.036959   0.191763
+bear         581.0    0.002168  0.078788  0.027515      0.074976   0.004998
+TOTAL       1831.0    0.102428  0.084795  1.207943      0.101201   0.744230
 ```
 
-The strategy roughly matches buy-and-hold's return in bull regimes but with
-much lower drawdown, and is nearly flat (Sharpe 0.12) in bear regimes rather
-than losing money — the regime-conditional table is the honest way to see
-*why* the headline Sharpe (1.22) beats the benchmark (0.18), not just that
-it does.
+The strategy earns most of its return in bull regimes with much lower
+drawdown than buy-and-hold, and is nearly flat in bear regimes rather than
+losing money. The regime-conditional table shows *why* the headline Sharpe
+beats the benchmark on this synthetic panel, not just that it does. The
+synthetic generator plants the regime drifts, so this tests the machinery and
+is not evidence of an edge.
 
 ### How do I check whether my regime detector is trading on lookahead?
 
 `HMMFit.filter` (online, causal) and `HMMFit.smooth` (full-sample,
 non-causal) are both exposed so you can see the difference directly around
-a real regime flip — trading on smoothed probabilities is a textbook
+a regime flip. Trading on smoothed probabilities is a textbook
 lookahead bug, and this makes it visible rather than theoretical.
 
 ```python
@@ -1698,7 +1750,7 @@ for t in range(t_flip - 3, t_flip + 3):
     print(f"{t - t_flip:+3d}   filtered={filt[t, bear_state]:.3f}  smoothed={smth[t, bear_state]:.3f}")
 ```
 
-Output (true bull->bear flip at `t=320`):
+Output (synthetic panel, true bull-to-bear flip at `t=320`; a sixth row, `+2`, also prints):
 
 ```
  -3   filtered=0.016  smoothed=0.137
@@ -1710,17 +1762,21 @@ Output (true bull->bear flip at `t=320`):
 
 The smoothed probability is already at 0.74 the day *before* the true flip
 (it has seen the future); the filtered probability only crosses 0.5 the day
-*after*. Only `filter`'s output is legitimate for a live-trading strategy —
+*after*. Only `filter`'s output is legitimate for a live-trading strategy.
 `walk_forward_backtest` above uses filtered probabilities exclusively for
 this reason.
 
 ### How do I run the foundations no-look-ahead backtest, and what breaks if I remove `.shift(1)`?
 
-`eq_signal_backtest.engine.strategy_returns` derives the executed position
-as `signal.shift(1).fillna(0.0)` — day *t*'s position is day *t-1*'s signal,
-so the backtest can never trade on a close it hasn't seen yet. Removing the
-shift makes the strategy trade the same day's own signal against that same
-day's return, which structurally cannot happen live.
+`eq_signal_backtest.engine.strategy_returns` takes the signal decided at the
+close of day *t* and fills it during day *t+1* at the modelled price
+`p_t + f (p_{t+1} - p_t)`, with `f = 0.5` by default (`ExecutionConfig`;
+`fill_fraction=1.0` is a next-close fill, and a close-auction mode fills at
+`p_t` and pays an auction cost). The old position earns the move up to the
+fill and the new position earns the rest of the day. The backtest therefore
+never trades on a close it has not seen. Removing the shift makes the
+strategy hold the same day's signal against that same day's return, which
+cannot happen live.
 
 ```python
 from eq_signal_backtest.data.synthetic import generate
@@ -1730,10 +1786,10 @@ from eq_signal_backtest.engine import run_backtest
 prices = generate().set_index("Date")["Adj Close"].astype(float)
 signal = ma_crossover_signal(prices, 20, 100)
 
-res = run_backtest(prices, signal, cost_bps=5.0)  # uses signal.shift(1) internally
+res = run_backtest(prices, signal, cost_bps=5.0)  # t+1 modelled fill, f = 0.5
 print("With .shift(1):", f"sharpe={res.stats['sharpe']:.3f} cagr={res.stats['cagr']:+.2%}")
 
-# Reproduce the engine's arithmetic but WITHOUT the shift (the bug):
+# A hand-written look-ahead version (the bug): hold today's signal on today's return
 rets = prices.pct_change().fillna(0.0)
 position_no_lag = signal                      # <-- no .shift(1): the bug
 trades = position_no_lag.diff().abs().fillna(0.0)
@@ -1745,22 +1801,21 @@ cagr_no_lag = equity_no_lag.iloc[-1] ** (252 / len(prices)) - 1
 print("Without .shift(1):", f"sharpe={sharpe_no_lag:.3f} cagr={cagr_no_lag:+.2%}")
 ```
 
-Output: `With .shift(1): sharpe=0.576 cagr=+8.22%` vs `Without .shift(1):
-sharpe=0.621 cagr=+8.98%`. On this slow 20/100-day-MA signal the inflation
-is modest because the signal barely moves day to day; `docs/METHODOLOGY.md`
-notes the effect scales with signal turnover — a fast/noisy signal that
-happens to be right about *today's* close would show a far larger,
-structurally fake edge. Beyond the numeric inflation, removing the shift
-also breaks the leading-`NaN` handling the engine tests for explicitly
-(`position.shift(1)` produces a `NaN` on day 0 that must be filled to
-`0.0`/flat, not silently defaulted to "long").
+Output (synthetic prices): `With .shift(1): sharpe=0.557 cagr=+7.90%` vs
+`Without .shift(1): sharpe=0.621 cagr=+8.98%`. On this slow 20/100-day-MA
+signal the inflation is modest because the signal barely moves day to day.
+`docs/METHODOLOGY.md` notes the effect scales with signal turnover: a
+fast, noisy signal that happens to be right about *today's* close would show
+a far larger, fake edge. Removing the shift also breaks the leading-`NaN`
+handling the engine tests for (`signal.shift(1)` produces a `NaN` on day 0
+that must be filled to `0.0`, flat, not defaulted to long).
 
 ### How do I walk-forward-validate a signal instead of trusting one in-sample fit?
 
 `walk_forward_backtest` in `eq_signal_backtest.split` re-selects
 `(fast, slow)` by in-sample Sharpe grid search on each formation window,
 then trades the frozen parameters on the following out-of-sample trading
-window, stitching the OOS legs together — this is what actually catches
+window, stitching the OOS legs together. This is what catches
 overfitting that a single train/test split can miss.
 
 ```python
@@ -1777,130 +1832,112 @@ print(f"walk-forward stitched OOS: sharpe={wf.stats['sharpe']:.2f} "
 print(f"walk-forward buy&hold:     sharpe={wf.stats['benchmark']['sharpe']:.2f}")
 ```
 
-Output: 7 walk-forward windows with re-selected `(fast, slow)` each time
-(window Sharpes ranging `-1.55` to `+1.76`), stitching to
-`walk-forward stitched OOS: sharpe=-0.06 cagr=-2.26% (30 trades)` against
-`walk-forward buy&hold: sharpe=0.15` — the strategy's in-sample edge does
-not survive honest walk-forward validation on this synthetic series, which
-is the whole point of running it rather than reporting one lucky
-train/test split.
+Output (synthetic prices): 7 walk-forward windows with re-selected
+`(fast, slow)` each time (window Sharpes ranging `-1.59` to `+1.65`),
+stitching to `walk-forward stitched OOS: sharpe=-0.02 cagr=-1.70% (22 trades)`
+against `walk-forward buy&hold: sharpe=0.15`. The in-sample edge does not
+survive walk-forward validation on this synthetic series, which is the point
+of running it rather than reporting one lucky train/test split.
 
 ### How do I build and test one C++ engine from a clean build directory?
 
-Every C++ engine is CMake ≥ 3.20, C++20, `-Wall -Wextra -Werror`, GoogleTest,
-`gtest_discover_tests`. Build and test `equity-options-engine` from scratch:
+Every C++ engine is C++23 with `-Wall -Wextra`, GoogleTest and
+`gtest_discover_tests`. Warnings become errors when the engine's `*_WERROR`
+option is on (`EQOPT_WERROR` here), as CI sets it. Build and test
+`equity-options-engine` in a scratch build directory outside the checkout
+(the commands follow [CONTRIBUTING.md](../CONTRIBUTING.md)):
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"   # the quant-portfolio checkout
-cmake -S cpp/equity-options-engine -B /tmp/cookbook-build-eqopt -DCMAKE_BUILD_TYPE=Release
-cmake --build /tmp/cookbook-build-eqopt -j4
-ctest --test-dir /tmp/cookbook-build-eqopt --output-on-failure
-rm -rf /tmp/cookbook-build-eqopt   # clean up afterwards
+cmake -S cpp/equity-options-engine -B ~/build/equity-options-engine \
+      -DCMAKE_BUILD_TYPE=Release -DEQOPT_WERROR=ON
+cmake --build ~/build/equity-options-engine -j
+ctest --test-dir ~/build/equity-options-engine --output-on-failure
 ```
 
-Real output: configure finds `GTest 1.14.0` and `Threads`, the build
-compiles `libeqopt.a` plus `eqopt_tests`/`eqopt_bench`, and
-`ctest` reports **`100% tests passed, 0 tests failed out of 58`** in 2.25s —
-matching the README's per-engine count for the equity options/Greeks C++
-engine exactly (58).
+Configure finds GoogleTest and `Threads`, the build compiles the engine
+library plus its test and benchmark executables, and `ctest` runs every
+discovered test. The per-engine test count is in the README table, filled
+from the CI `counts` job.
 
 ### How do I build and test one Rust engine with warnings-as-errors?
 
-Rust engines are 2021-edition, zero external dependencies, and the CI
-profile (`.github/workflows/ci.yml`, job `rust`) denies warnings; reproduce
+Rust engines are 2021-edition with zero external dependencies, and the CI
+profile (`.github/workflows/ci.yml`, job `rust`) denies warnings. Reproduce
 that locally with `RUSTFLAGS`:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)/rust/equity-options-engine"
-RUSTFLAGS="-D warnings" cargo test --release
-rm -rf target   # clean up afterwards
+RUSTFLAGS="-D warnings" cargo test --release --locked
 ```
 
-Real output: 7 integration-test binaries (`black_scholes.rs` 14,
-`implied_vol.rs` 10, `monte_carlo.rs` 10, `binomial.rs` 11, `greeks.rs` 8,
-`black76.rs` 4, `golden.rs` 4 — 61 tests) plus **27 passing rustdoc
-doc-tests** on every public item, for **88 tests total**, 0 failed —
-matching the README's Rust count for this engine exactly (88). Doc-tests
-alone take ~23s (each spins up a fresh doctest binary); the rest run in
-under 3s.
+`cargo test` runs the integration-test binaries under `tests/` and then the
+rustdoc doc-tests on the public items. The doc-tests are the slow part,
+because each one builds a fresh binary. `cargo clean` removes `target/`
+afterwards. The per-engine count is in the README table, filled from the CI
+`counts` job.
 
 ### How do I regenerate golden vectors for an engine, and how does the pipeline work?
 
 The three-language cross-validation pipeline is: a Python
 `tests/golden/generate_golden.py` script calls the Python reference
 implementation at full `double` precision and writes JSON (doubles via
-`repr()`, which round-trips to the bit-identical IEEE-754 value); then
+`repr()`, which round-trips to the same IEEE-754 value); then
 `tools/gen_golden_header.py` (C++) and `tools/gen_golden_rs.py` (Rust) each
 turn that JSON into a `constexpr`/`const` array committed alongside the
 engine's tests. Running all three in sequence for
-`equity-options-engine` reproduces the committed files byte-for-byte:
+`equity-options-engine` should reproduce the committed files:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"   # the quant-portfolio checkout
-PYTHONPATH=python/equity/01-options-pricing/src python3 \
+PYTHONPATH=python/equity/01-options-pricing/src python \
   python/equity/01-options-pricing/tests/golden/generate_golden.py
-python3 cpp/equity-options-engine/tools/gen_golden_header.py
-python3 rust/equity-options-engine/tools/gen_golden_rs.py
+python cpp/equity-options-engine/tools/gen_golden_header.py
+python rust/equity-options-engine/tools/gen_golden_rs.py
 ```
 
 The VaR engines use the identical pipeline (`python/{equity,fx}/03-var-es-engine/tests/golden/generate_golden.py`
 → `cpp/*-var-engine/tools/gen_golden_header.py` → `tests/golden_vectors.hpp`,
-and `rust/*-var-engine/tools/gen_golden_rs.py` → `tests/golden/mod.rs`);
-every generator also accepts `--check`, which exits 1 if the committed
+and `rust/*-var-engine/tools/gen_golden_rs.py` → `tests/golden/mod.rs`).
+Every generator also accepts `--check`, which exits 1 if the committed
 constants have drifted from the JSON:
 
 ```bash
-PYTHONPATH=python/equity/03-var-es-engine/src python3 \
+PYTHONPATH=python/equity/03-var-es-engine/src python \
   python/equity/03-var-es-engine/tests/golden/generate_golden.py
-python3 cpp/equity-var-engine/tools/gen_golden_header.py --check
-python3 rust/equity-var-engine/tools/gen_golden_rs.py --check
+python cpp/equity-var-engine/tools/gen_golden_header.py --check
+python rust/equity-var-engine/tools/gen_golden_rs.py --check
 ```
 
-Real output: `wrote 32 golden vectors to
-.../golden_vectors.json`, `Wrote 32 golden cases to
-.../tests/golden_vectors.hpp`, `wrote .../src/golden.rs (32 cases)` — and a
-byte-for-byte `diff` against the versions already committed in this repo is
-empty for all three files, since the generator is a pure function of a
-fixed `CASES` list and the reference `bs_greeks`. Re-running the C++
-`GoldenVectors.*` GoogleTest suite against the regenerated header still
-passes all 4 golden-specific cases (`HasAllThirtyTwoCases`,
-`PriceMatchesPythonReference`, `AllGreeksMatchPythonReference`,
-`GreeksPriceConsistentWithBsPrice`) to the documented 1e-9 tolerance.
+The generator is a pure function of a fixed `CASES` list and the Python
+reference, so a regenerated file should match the committed one. The CI
+`goldens --check` job runs these checks on every push. Explain every changed
+golden value in the commit message.
 
 ### How do I run the full portfolio's Python test sweep?
 
-The top-level `README.md` loop is:
+Use the commands in [CONTRIBUTING.md](../CONTRIBUTING.md). CI installs each
+project into its own fresh venv against `requirements/ci-constraints.txt` and
+runs pytest there, so repeat this per project to reproduce CI:
 
 ```bash
-for d in python/equity/*/ python/fx/*/ python/foundations/*/; do
-  (cd "$d" && pip install -e . -q && pytest -q)
-done
+python -m venv ~/.venvs/qp-eqopt
+. ~/.venvs/qp-eqopt/bin/activate      # Windows: ~/.venvs/qp-eqopt/Scripts/activate
+cd python/equity/01-options-pricing
+python -m pip install -c ../../../requirements/ci-constraints.txt -e ".[test]" pytest hypothesis
+python -m pytest -p no:cacheprovider -q
 ```
 
-Run for real (23 projects, `pip install -e .` + tests each, clean run, no
-cached `.pytest_cache` reused), this passes cleanly end to end in ~4-6
-minutes with **zero failures or errors across all 23 projects** — but every
-project's `pyproject.toml` already sets `[tool.pytest.ini_options] addopts
-= "-q"`, so the README's explicit `-q` on top of that becomes double-quiet
-in this pytest version (9.1.1) and the final `"N passed"` summary line is
-suppressed entirely; you see only the per-file progress dots
-(`........... [100%]`) with no visible count, which can look like nothing
-ran even though everything passed. Drop the explicit `-q` (bare `pytest`,
-which still gets one `-q` from `addopts`) to see real counts:
-
-```bash
-cd python/equity/01-options-pricing && python3 -m pytest
-```
-
-`291 passed in 6.18s`. Summed across all 23 projects this reproduces the
-README's exact published breakdown: equity `2,350`, FX `2,830`,
-foundations `554`, **total `5,734`** Python tests (which, plus the 326 C++
-and 386 Rust engine tests, is the portfolio's published `6,446`).
+A project that declares `dev` instead of `test` takes `".[dev]"`. A shared
+environment for all projects is faster but can hide a missing dependency.
+The test counts quoted in the docs come from the CI `counts` job, which sums
+the executed pass counts into `counts.json` and then checks the docs against
+it.
 
 ### How do I add a new project area that's CONVENTIONS.md-compliant?
 
 `CONVENTIONS.md` fixes one directory layout for every Python project. The
-minimum skeleton that satisfies it — using a new equity project as an
+minimum skeleton that satisfies it, using a new equity project as an
 example (swap the package name and asset-class conventions for FX):
 
 ```bash
@@ -1934,7 +1971,7 @@ addopts = "-q"
 EOF
 
 cat > src/eq_newproj/__init__.py << 'EOF'
-"""eq_newproj — one-line summary of the pipeline stages."""
+"""eq_newproj: one-line summary of the pipeline stages."""
 __version__ = "1.0.0"
 __all__: list[str] = []
 EOF
@@ -1942,7 +1979,7 @@ EOF
 touch tests/test_placeholder.py examples/run_pipeline.py \
       docs/METHODOLOGY.md docs/VALIDATION.md docs/DESK_GUIDE.md README.md
 
-pip install -e . --break-system-packages -q && python3 -m pytest
+python -m pip install -e ".[dev]" && python -m pytest
 ```
 
 That gives every file `CONVENTIONS.md` names as required: `README.md`,
@@ -1950,17 +1987,17 @@ That gives every file `CONVENTIONS.md` names as required: `README.md`,
 public API with `__all__`, `tests/test_*.py` (pytest, offline, deterministic
 seeds), `examples/run_pipeline.py` (data -> model -> validation -> decision,
 reproducing the README's numbers), and the three-document
-`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md` contract — methodology
+`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md` contract: methodology
 (model choice vs. alternatives + numbered assumptions register), validation
 (analytic/convergence/statistical checks + documented failure modes) and
-desk guide (real workflow, controls, P&L attribution). Before it counts as
+desk guide (workflow, controls, P&L attribution). Before it counts as
 "done" per the documentation contract, `docs/METHODOLOGY.md` and
 `docs/VALIDATION.md` must answer all six numbered questions in
 `CONVENTIONS.md` explicitly (why this model, what assumptions, how
-validated, where it fails, real desk usage, edge cases — each edge case
+validated, where it fails, desk usage, edge cases, with each edge case
 both documented *and* unit-tested), and every public function needs a
 NumPy-style docstring stating units and conventions (ACT/365F equity day
-count; BASE/QUOTE FX pairs with `q = r_f` if it's an FX twin). If the
+count; BASE/QUOTE FX pairs with `q = r_f` for the FX version). If the
 project pairs with a C++/Rust engine later, its golden vectors live under
 `tests/golden/generate_golden.py` in this same Python project, per the
 cross-language validation pipeline shown above.

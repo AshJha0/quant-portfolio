@@ -12,7 +12,7 @@ Signal conventions
 * Re-entry arming: after ANY exit the pair may not re-enter until |z| has
   first come back inside the entry band. Without this, a stop-loss at
   |z| > stop would be followed by an immediate re-entry at |z| > entry on
-  the very next bar — re-fighting the trade the stop just cut.
+  the very next bar: re-fighting the trade the stop just cut.
 
 The state machine emits, for each bar t, the position DECIDED with
 information through t. It says nothing about execution timing: the
@@ -46,7 +46,7 @@ def zscore_rolling(
 ) -> pd.Series:
     """Rolling z-score (s_t - mean_window) / std_window.
 
-    The window at t uses observations up to AND INCLUDING t — the value at t
+    The window at t uses observations up to AND INCLUDING t: the value at t
     is a statistic of data through t, so it may only drive trades at t+1
     (the backtester enforces the lag). Warm-up entries (< min_periods) are
     NaN. Windows with zero variance yield NaN, not inf.
@@ -73,7 +73,7 @@ def zscore_ou(spread: Union[pd.Series, np.ndarray], ou: OUFit) -> Union[pd.Serie
     """Z-score against the fitted OU stationary distribution.
 
     z_t = (s_t - mu) / (sigma / sqrt(2 kappa)). Unlike the rolling z-score
-    this uses the model's stationary variance, so it has no warm-up NaNs —
+    this uses the model's stationary variance, so it has no warm-up NaNs : 
     but it treats (mu, kappa, sigma) as frozen parameters; in walk-forward
     use they must come from the formation window only.
 
@@ -84,7 +84,7 @@ def zscore_ou(spread: Union[pd.Series, np.ndarray], ou: OUFit) -> Union[pd.Serie
     """
     if not ou.mean_reverting:
         raise ValueError(
-            "OU fit is not mean-reverting (kappa ~ 0); z-score undefined — "
+            "OU fit is not mean-reverting (kappa ~ 0); z-score undefined: "
             "do not trade this spread"
         )
     return (spread - ou.mu) / ou.stationary_std
@@ -231,10 +231,10 @@ def size_positions(
     gross : float
         Target gross dollar exposure |q_y| P_y + |q_x| P_x (default $1mm).
     mode : {"dollar", "beta"}
-        "dollar": equal dollars on each leg (long gross/2, short gross/2) —
+        "dollar": equal dollars on each leg (long gross/2, short gross/2) : 
         dollar-neutral at entry, but the hedge deviates from the
         cointegrating ratio. "beta": shares in the cointegrating proportion
-        q_x = -beta q_y, scaled to the same gross — P&L tracks the spread
+        q_x = -beta q_y, scaled to the same gross: P&L tracks the spread
         exactly, but the trade carries a (usually small) net dollar
         exposure.
 

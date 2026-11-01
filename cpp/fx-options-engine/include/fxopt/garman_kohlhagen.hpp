@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 #include "fxopt/common.hpp"
 
 namespace fxopt {
@@ -46,5 +49,53 @@ double gk_call(double S, double K, double T, double r_d, double r_f,
 /// Convenience wrapper: gk_price(..., OptionType::Put).
 double gk_put(double S, double K, double T, double r_d, double r_f,
               double sigma);
+
+// ------------------------------------------------------------------------
+// noexcept kernels. Same arithmetic as the throwing functions above (which
+// wrap these), so the values are bit-for-bit the same.
+// ------------------------------------------------------------------------
+
+/// noexcept form of d1().
+[[nodiscard]] inline Result<double> try_d1(double S, double K, double T, double r_d,
+                                           double r_f, double sigma) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    const double vol_sqrt_t = sigma * std::sqrt(T);
+    if (vol_sqrt_t <= kMinVol) [[unlikely]] {
+        return std::unexpected(Error{Errc::D1Undefined, "", vol_sqrt_t});
+    }
+    return (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
+}
+
+/// GK price on inputs the caller has validated (try_validate_inputs). The
+/// raw value may be non-finite if a discount factor overflows.
+inline double gk_price_unchecked(double S, double K, double T, double r_d, double r_f,
+                                 double sigma, OptionType type) noexcept {
+    const double p = phi(type);
+    if (T == 0.0) [[unlikely]] return std::max(p * (S - K), 0.0);
+    const double sqrt_t = std::sqrt(T);
+    const double vol_sqrt_t = sigma * sqrt_t;
+    const double disc_s = S * std::exp(-r_f * T);
+    const double disc_k = K * std::exp(-r_d * T);
+    if (vol_sqrt_t <= kMinVol) [[unlikely]] return std::max(p * (disc_s - disc_k), 0.0);
+    const double d1v =
+        (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
+    const double d2v = d1v - vol_sqrt_t;
+    return p * (disc_s * norm_cdf(p * d1v) - disc_k * norm_cdf(p * d2v));
+}
+
+/// noexcept form of gk_price(): the same value, or the error the throwing
+/// form raises. No allocation.
+[[nodiscard]] inline Result<double> try_gk_price(double S, double K, double T, double r_d,
+                                                 double r_f, double sigma,
+                                                 OptionType type) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    const double v = gk_price_unchecked(S, K, T, r_d, r_f, sigma, type);
+    if (T == 0.0) return v;  // intrinsic, finite by construction
+    return try_finite_result(v, "gk_price");
+}
 
 }  // namespace fxopt

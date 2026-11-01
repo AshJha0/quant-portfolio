@@ -44,7 +44,7 @@ TEST(Cholesky, ReconstructsSpdTo1e12) {
 }
 
 TEST(Cholesky, JitterPathOnSingularMatrix) {
-    // Perfectly correlated 2x2 — exactly singular, plain Cholesky must fail
+    // Perfectly correlated 2x2: exactly singular, plain Cholesky must fail
     // and the diagonal-jitter fallback must engage.
     const Matrix a(2, 2, {1.0, 1.0, 1.0, 1.0});
     const CholeskyResult res = cholesky(a);
