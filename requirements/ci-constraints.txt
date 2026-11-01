@@ -40,6 +40,8 @@ matplotlib==3.10.9 ; python_full_version < '3.11'
     # via -r requirements/ci-requirements.in
 matplotlib==3.11.2 ; python_full_version >= '3.11'
     # via -r requirements/ci-requirements.in
+mpmath==1.4.1
+    # via -r requirements/ci-requirements.in
 narwhals==2.28.0
     # via
     #   formulaic
