@@ -81,8 +81,8 @@ def test_sortino_ratio_hand_computed() -> None:
     dates = _dates(6)
     returns = pd.Series([0.01, 0.02, -0.01, 0.03, -0.02, 0.015], index=dates)
     rf_annual = 0.0
-    downside = returns[returns < 0]  # rf_daily == 0.0 exactly here
-    expected = returns.mean() / downside.std(ddof=1) * np.sqrt(252)
+    # Downside deviation over all six days: sqrt((0.01^2 + 0.02^2) / 6).
+    expected = returns.mean() / np.sqrt((0.01**2 + 0.02**2) / 6) * np.sqrt(252)
     assert sortino_ratio(returns, rf_annual) == pytest.approx(expected, rel=1e-10)
 
 

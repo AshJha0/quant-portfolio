@@ -95,17 +95,15 @@ def test_rolling_volatility_matches_full_sample_when_window_equals_length() -> N
 # EWMA volatility
 # ---------------------------------------------------------------------
 def test_ewma_volatility_two_points_hand_computed() -> None:
-    # Closed form for n=2, adjust=False, bias=True:
-    # var_1 = alpha * (1 - alpha) * (r1 - r0)^2, with alpha = 1 - lambda.
+    # Zero-mean RiskMetrics recursion seeded with mean(r^2) over min(30, n) = 2 points.
     r0, r1 = 0.01, -0.02
     lam = 0.5
-    alpha = 1 - lam
     returns = pd.Series([r0, r1], index=_dates(2))
     ewma = ewma_volatility(returns, lam=lam)
-    assert ewma.iloc[0] == pytest.approx(0.0, abs=1e-12)
-    expected_var = alpha * (1 - alpha) * (r1 - r0) ** 2
-    expected_vol = np.sqrt(expected_var * TRADING_DAYS)
-    assert ewma.iloc[1] == pytest.approx(expected_vol, rel=1e-10)
+    s0 = (r0**2 + r1**2) / 2
+    s1 = lam * s0 + (1 - lam) * r0**2
+    assert ewma.iloc[0] == pytest.approx(np.sqrt(s0 * TRADING_DAYS), rel=1e-14)
+    assert ewma.iloc[1] == pytest.approx(np.sqrt(s1 * TRADING_DAYS), rel=1e-14)
 
 
 def test_ewma_volatility_no_warmup_nans() -> None:
@@ -128,8 +126,8 @@ def test_ewma_reacts_faster_than_full_sample_to_a_late_shock() -> None:
 
 
 def test_ewma_lambda_near_one_barely_updates() -> None:
-    # lambda -> 1 means alpha -> 0: the EW mean/var barely move from the
-    # seed, so a big late shock has almost no effect on ewma vol.
+    # lambda -> 1: the variance stays at the seed, so a late shock barely moves it.
     returns = pd.Series([0.02, -0.05, 0.10, -0.03], index=_dates(4))
     ewma = ewma_volatility(returns, lam=1 - 1e-9)
-    assert ewma.iloc[-1] < 1e-4
+    seed = np.sqrt(np.mean(returns.to_numpy() ** 2) * TRADING_DAYS)
+    assert ewma.iloc[-1] == pytest.approx(seed, rel=1e-6)

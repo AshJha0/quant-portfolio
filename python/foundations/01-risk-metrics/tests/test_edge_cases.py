@@ -30,21 +30,15 @@ from eq_risk_metrics import (
 # ---------------------------------------------------------------------
 # Empty / too-short series
 # ---------------------------------------------------------------------
-def test_simple_returns_on_single_price_is_empty() -> None:
-    prices = pd.Series([100.0], index=pd.bdate_range("2024-01-02", periods=1))
-    rets = simple_returns(prices)
-    assert len(rets) == 0
+def test_simple_returns_on_single_price_raises() -> None:
+    with pytest.raises(ValueError):
+        simple_returns(pd.Series([100.0]))
 
 
-def test_annualised_volatility_on_empty_series_is_nan() -> None:
-    empty = pd.Series([], dtype=float)
-    assert np.isnan(annualised_volatility(empty))
-
-
-def test_annualised_volatility_on_single_return_is_nan() -> None:
-    # std(ddof=1) of one observation is undefined (0/0).
-    one = pd.Series([0.01])
-    assert np.isnan(annualised_volatility(one))
+@pytest.mark.parametrize("n", [0, 1])
+def test_annualised_volatility_needs_two_observations(n: int) -> None:
+    with pytest.raises(ValueError):
+        annualised_volatility(pd.Series([0.01] * n, dtype=float))
 
 
 @pytest.mark.parametrize(
@@ -98,12 +92,11 @@ def test_var_historical_single_observation_is_that_observation() -> None:
 
 
 @pytest.mark.parametrize("func", [var_parametric, var_cornish_fisher])
-def test_parametric_var_on_single_observation_is_nan_not_zero(func) -> None:
+def test_parametric_var_on_single_observation_raises(func) -> None:
     """``std(ddof=1)`` of one point is undefined, so the moment-based
-    estimators return NaN rather than a falsely confident 0% risk. NaN
-    here means "not enough data", and a report must not coerce it to 0."""
-    result = func(pd.Series([0.01]), 0.95)
-    assert np.isnan(result)
+    estimators refuse rather than return NaN."""
+    with pytest.raises(ValueError):
+        func(pd.Series([0.01]), 0.95)
 
 
 def test_expected_shortfall_on_single_observation_equals_that_observation() -> None:
@@ -180,20 +173,17 @@ def test_constant_returns_zero_full_sample_and_ewma_vol() -> None:
     dates = pd.bdate_range("2024-01-02", periods=30)
     returns = pd.Series([0.002] * 30, index=dates)
     assert annualised_volatility(returns) == pytest.approx(0.0, abs=1e-9)
-    assert ewma_volatility(returns).iloc[-1] == pytest.approx(0.0, abs=1e-9)
+    # RiskMetrics EWMA is zero-mean: a constant 0.2 % return is 0.2 % vol a day.
+    assert ewma_volatility(returns).iloc[-1] == pytest.approx(0.002 * np.sqrt(252), rel=1e-12)
 
 
-def test_constant_returns_sharpe_is_a_huge_finite_number_not_a_crash() -> None:
-    """Constant returns give (numerically) near-zero excess std, so Sharpe
-    is not exactly infinite (floating-point noise from subtracting a
-    tiny risk-free daily rate keeps std a tiny nonzero number) but it is
-    a huge, uninformative value -- callers must not present this as a
-    real Sharpe ratio."""
+def test_constant_returns_sharpe_raises() -> None:
+    """Constant returns have zero excess volatility up to rounding, so the
+    ratio is undefined. The old code returned a finite number above 1e6."""
     dates = pd.bdate_range("2024-01-02", periods=30)
     returns = pd.Series([0.001] * 30, index=dates)
-    sharpe = sharpe_ratio(returns)
-    assert np.isfinite(sharpe)
-    assert abs(sharpe) > 1e6
+    with pytest.raises(ValueError, match="constant"):
+        sharpe_ratio(returns)
 
 
 def test_constant_returns_var_and_es_equal_the_constant() -> None:
@@ -204,16 +194,12 @@ def test_constant_returns_var_and_es_equal_the_constant() -> None:
     assert expected_shortfall(returns, 0.95) == pytest.approx(-0.002, abs=1e-12)
 
 
-def test_constant_returns_cornish_fisher_matches_gaussian() -> None:
-    """Exactly-constant returns have zero variance, so scipy's skew/kurtosis
-    hit catastrophic cancellation (NaN + RuntimeWarning, promoted to an
-    error by the pytest config) rather than cleanly returning 0 -- a
-    documented failure mode, not a Cornish-Fisher-specific bug."""
+def test_constant_returns_cornish_fisher_raises() -> None:
+    """Exactly-constant returns have no defined skewness or kurtosis."""
     dates = pd.bdate_range("2024-01-02", periods=30)
     returns = pd.Series([0.002] * 30, index=dates)
-    with pytest.warns(RuntimeWarning):
-        cf = var_cornish_fisher(returns, 0.95)
-    assert np.isnan(cf)
+    with pytest.raises(ValueError, match="constant"):
+        var_cornish_fisher(returns, 0.95)
 
 
 def test_near_constant_returns_cornish_fisher_matches_gaussian() -> None:
@@ -231,11 +217,10 @@ def test_near_constant_returns_cornish_fisher_matches_gaussian() -> None:
 # ---------------------------------------------------------------------
 # All-positive returns -> Sortino's empty downside array
 # ---------------------------------------------------------------------
-def test_all_positive_returns_sortino_is_nan() -> None:
-    dates = pd.bdate_range("2024-01-02", periods=20)
-    returns = pd.Series(np.linspace(0.001, 0.02, 20), index=dates)
-    sortino = sortino_ratio(returns, rf_annual=0.0)
-    assert np.isnan(sortino)
+def test_all_positive_returns_sortino_raises() -> None:
+    returns = pd.Series([0.01, 0.02, 0.005, 0.03], index=pd.bdate_range("2024-01-02", periods=4))
+    with pytest.raises(ValueError, match="downside"):
+        sortino_ratio(returns, rf_annual=0.0)
 
 
 def test_all_positive_returns_sharpe_is_finite_and_positive() -> None:

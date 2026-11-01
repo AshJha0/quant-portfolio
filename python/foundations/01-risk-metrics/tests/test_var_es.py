@@ -20,16 +20,14 @@ import eq_risk_metrics.var_es as var_es_module
 # ---------------------------------------------------------------------
 def test_var_historical_hand_computed_95() -> None:
     returns = pd.Series([-0.05, -0.03, -0.01, 0.00, 0.01, 0.02, 0.04])
-    # 5th percentile via linear interpolation: index = (n-1)*0.05 = 0.3
-    # value = sorted[0] + 0.3*(sorted[1]-sorted[0]) = -0.05 + 0.3*0.02 = -0.044
-    assert var_historical(returns, 0.95) == pytest.approx(0.044, abs=1e-12)
+    # k = 7 * 0.05 = 0.35, m = ceil(k) = 1: the largest loss, 0.05.
+    assert var_historical(returns, 0.95) == pytest.approx(0.05, abs=1e-15)
 
 
 def test_var_historical_hand_computed_99() -> None:
     returns = pd.Series([-0.05, -0.03, -0.01, 0.00, 0.01, 0.02, 0.04])
-    # 1st percentile: index = 6*0.01 = 0.06
-    # value = -0.05 + 0.06*0.02 = -0.0488
-    assert var_historical(returns, 0.99) == pytest.approx(0.0488, abs=1e-12)
+    # k = 0.07, m = 1: the largest loss.
+    assert var_historical(returns, 0.99) == pytest.approx(0.05, abs=1e-15)
 
 
 def test_var_historical_single_observation_boundary() -> None:
@@ -85,7 +83,8 @@ def test_cornish_fisher_collapses_to_gaussian_when_skew_kurtosis_zero(monkeypatc
 def test_cornish_fisher_differs_from_gaussian_with_real_skew_kurtosis() -> None:
     rng = np.random.default_rng(17)
     # Student-t shocks -> genuine excess kurtosis.
-    returns = pd.Series(rng.standard_t(df=3, size=2000) * 0.01)
+    # Student-t(8) shocks: real excess kurtosis, inside the CF domain at 99 %.
+    returns = pd.Series(rng.standard_t(df=8, size=2000) * 0.01)
     cf99 = var_cornish_fisher(returns, 0.99)
     gauss99 = var_parametric(returns, 0.99)
     assert cf99 != pytest.approx(gauss99, abs=1e-6)
