@@ -13,15 +13,8 @@
 
 use crate::{EqVarError, Result};
 
-/// Largest diagonal jitter [`Matrix::cholesky_jitter`] will apply, as a
-/// multiple of the mean diagonal (mean variance).
-///
-/// `1e-6` is roughly a part per million of the average variance: enough to
-/// repair a covariance that is only singular or indefinite by accumulated
-/// floating-point noise (a riskless leg, perfectly correlated factors, an
-/// EWMA update that lost the last bit of positivity), and far too small to
-/// paper over a genuinely indefinite matrix.
-pub const MAX_RELATIVE_JITTER: f64 = 1e-6;
+pub use crate::psd::MAX_RELATIVE_JITTER;
+use crate::psd::{CholeskyFactor, PsdRepair};
 
 /// Dense row-major matrix of `f64`.
 ///
@@ -143,8 +136,8 @@ impl Matrix {
         self.data.iter().all(|v| v.is_finite())
     }
 
-    /// Symmetry check with the tolerance used by the Python reference:
-    /// `|a_ij - a_ji| <= 1e-12 * max(1, max|a|)`.
+    /// Relative symmetry check shared by every engine:
+    /// `|a_ij - a_ji| <= 1e-10 * max|a|` ([`crate::psd::check_symmetric`]).
     ///
     /// A matrix containing NaN is **not** symmetric by this definition:
     /// `|NaN - NaN| > tol` is false, so a naive comparison would call it
@@ -156,8 +149,8 @@ impl Matrix {
         if !self.all_finite() {
             return false;
         }
-        let scale = self.data.iter().fold(1.0f64, |m, v| m.max(v.abs()));
-        let tol = 1e-12 * scale;
+        let scale = self.data.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let tol = crate::psd::SYMMETRY_RTOL * scale;
         for i in 0..self.rows {
             for j in (i + 1)..self.cols {
                 if (self.get(i, j) - self.get(j, i)).abs() > tol {
@@ -219,8 +212,19 @@ impl Matrix {
         Ok(l)
     }
 
-    /// Cholesky with diagonal-jitter fallback (the `safe_cholesky` of the
-    /// Python reference).
+    /// Cholesky with jitter and optional PSD repair: see
+    /// [`crate::psd::cholesky_repair`]. The jitter actually used is in the
+    /// returned [`CholeskyFactor::jitter`].
+    ///
+    /// # Errors
+    /// See [`crate::psd::cholesky_repair`].
+    pub fn cholesky_repair(&self, repair: PsdRepair) -> Result<CholeskyFactor> {
+        crate::psd::cholesky_repair(self, repair)
+    }
+
+    /// Old Cholesky with diagonal-jitter fallback, kept for one release.
+    /// It does not report the jitter it used; use
+    /// [`Matrix::cholesky_repair`].
     ///
     /// If plain Cholesky fails, `jitter * mean(diag)` is added to the
     /// diagonal, escalating by 10x up to `max_tries` times. The
@@ -245,6 +249,7 @@ impl Matrix {
     /// PSD-but-singular covariances — a riskless leg, two perfectly
     /// correlated factors — are repaired at the very first rung
     /// (`1e-10 * mean(diag)`) and are unaffected.
+    #[deprecated(since = "0.2.0", note = "use cholesky_repair, which reports the jitter")]
     pub fn cholesky_jitter(&self, jitter: f64, max_tries: usize) -> Result<Matrix> {
         match self.cholesky() {
             Ok(l) => return Ok(l),

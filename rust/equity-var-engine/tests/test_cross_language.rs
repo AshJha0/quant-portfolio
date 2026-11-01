@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Cross-language golden tests against the Python reference implementation.
 //!
 //! Provenance: every expected constant comes from `golden/mod.rs`, a
@@ -19,7 +21,7 @@
 //! (Python, C++, Rust) assert literally the same numbers. Inputs are
 //! closed-form (sin/cos based) deterministic series so every language
 //! regenerates them independently; agreement is required to 1e-9 relative
-//! + 1e-12 absolute (the residual is libm-vs-numpy ulp noise in sin/cos,
+//! plus 1e-12 absolute (the residual is libm-vs-numpy ulp noise in sin/cos,
 //! far below any risk tolerance).
 
 mod golden;
@@ -153,10 +155,10 @@ fn case_c_covariance_estimators() {
 
 #[test]
 fn case_c_backtest_statistics() {
-    let k7 = kupiec_pof(250, 7, 0.01).unwrap();
+    let k7 = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 7, alpha: 0.01 }).unwrap();
     expect_rel(k7.lr, golden::C_KUPIEC_LR_250_7, "C kupiec LR (250, 7)");
     expect_rel(k7.pvalue, golden::C_KUPIEC_P_250_7, "C kupiec p (250, 7)");
-    let k0 = kupiec_pof(250, 0, 0.01).unwrap();
+    let k0 = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 0, alpha: 0.01 }).unwrap();
     expect_rel(k0.lr, golden::C_KUPIEC_LR_250_0, "C kupiec LR (250, 0)");
     expect_rel(k0.pvalue, golden::C_KUPIEC_P_250_0, "C kupiec p (250, 0)");
 

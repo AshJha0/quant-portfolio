@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Historical-simulation VaR: hand-exact quantiles on tiny arrays, BRW
 //! weights, EWMA filtering, sqrt-time scaling, input validation.
 
@@ -37,10 +39,11 @@ fn quantile_linear_validation() {
 #[test]
 fn historical_var_matches_quantile_and_monotone_in_alpha() {
     let pnl = demo_pnl();
-    assert!(
-        (historical_var(&pnl, 0.05).unwrap() - (-linear_quantile(&pnl, 0.05).unwrap())).abs()
-            < 1e-12
-    );
+    // S2: the m-th largest loss, m = ceil(n alpha - 1e-9). No interpolation.
+    let mut losses: Vec<f64> = pnl.iter().map(|p| -p).collect();
+    losses.sort_by(|a, b| b.total_cmp(a));
+    let m = ((pnl.len() as f64 * 0.05) - 1e-9).ceil() as usize;
+    assert_eq!(historical_var(&pnl, 0.05).unwrap(), losses[m - 1]);
     assert!(historical_var(&pnl, 0.01).unwrap() >= historical_var(&pnl, 0.05).unwrap());
     assert!(historical_var(&pnl, 0.05).unwrap() >= historical_var(&pnl, 0.10).unwrap());
 }
@@ -101,8 +104,9 @@ fn ewma_volatility_no_lookahead_and_riskmetrics_recursion() {
     let lam = 0.94;
     let sig = ewma_volatility(&x, lam).unwrap();
     assert_eq!(sig.len(), x.len());
-    let mu: f64 = x.iter().sum::<f64>() / 5.0;
-    let mut s2: f64 = x.iter().map(|v| (v - mu) * (v - mu)).sum::<f64>() / 5.0;
+    // S8 seed: zero-mean, mean of x^2 over the first min(30, n) points.
+    let mut s2: f64 = x.iter().map(|v| v * v).sum::<f64>() / 5.0;
+    assert_eq!(s2, 3.8);
     assert!((sig[0] - s2.sqrt()).abs() < 1e-14);
     for t in 1..x.len() {
         s2 = lam * s2 + (1.0 - lam) * x[t - 1] * x[t - 1];

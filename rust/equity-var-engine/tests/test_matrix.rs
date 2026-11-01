@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Matrix, Cholesky (clean + jitter fallback), covariance estimators.
 
 use eq_var_engine::matrix::{covariance_from_vols, ewma_covariance, sample_covariance, Matrix};

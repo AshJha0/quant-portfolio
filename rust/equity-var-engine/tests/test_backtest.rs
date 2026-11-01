@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! Backtesting: Kupiec LR hand-computed, chi2 p-values, Christoffersen
 //! clustering detection, Basel traffic-light exact zone boundaries.
 
@@ -23,7 +24,7 @@ fn kupiec_hand_computed_lr() {
     let ll0 = (t - x) * (1.0 - p).ln() + x * p.ln();
     let ll1 = (t - x) * (1.0 - pihat).ln() + x * pihat.ln();
     let lr_hand = -2.0 * (ll0 - ll1);
-    let r = kupiec_pof(250, 5, 0.01).unwrap();
+    let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
     assert!((r.lr - lr_hand).abs() < 1e-12);
     assert!((r.pvalue - chi2_sf(lr_hand, 1.0).unwrap()).abs() < 1e-14);
     assert!((r.expected - 2.5).abs() < 1e-12);
@@ -33,20 +34,20 @@ fn kupiec_hand_computed_lr() {
 #[test]
 fn kupiec_chi2_critical_value_gives_point_oh_five() {
     assert!((chi2_sf(3.841458820694124, 1.0).unwrap() - 0.05).abs() < 1e-4);
-    let exact = kupiec_pof(200, 2, 0.01).unwrap();
+    let exact = kupiec_pof(&KupiecInput { n_obs: 200, n_exceptions: 2, alpha: 0.01 }).unwrap();
     assert!(exact.lr.abs() < 1e-12);
     assert!((exact.pvalue - 1.0).abs() < 1e-12);
 }
 
 #[test]
 fn kupiec_degenerate_counts_and_monotonicity() {
-    let zero = kupiec_pof(250, 0, 0.01).unwrap();
+    let zero = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 0, alpha: 0.01 }).unwrap();
     assert!((zero.lr - (-2.0 * 250.0 * 0.99f64.ln())).abs() < 1e-12);
-    assert!(kupiec_pof(250, 10, 0.01).unwrap().lr > kupiec_pof(250, 6, 0.01).unwrap().lr);
-    assert!(kupiec_pof(250, 10, 0.01).unwrap().pvalue < 0.05);
-    assert!(kupiec_pof(0, 0, 0.01).is_err());
-    assert!(kupiec_pof(250, 251, 0.01).is_err());
-    assert!(kupiec_pof(250, -1, 0.01).is_err());
+    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap().lr > kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 6, alpha: 0.01 }).unwrap().lr);
+    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap().pvalue < 0.05);
+    assert!(kupiec_pof(&KupiecInput { n_obs: 0, n_exceptions: 0, alpha: 0.01 }).is_err());
+    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
+    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: -1, alpha: 0.01 }).is_err());
 }
 
 #[test]
@@ -88,7 +89,7 @@ fn christoffersen_conditional_coverage_is_sum_of_components() {
     for v in ex.iter_mut().take(108).skip(100) {
         *v = 1;
     }
-    let uc = kupiec_pof(250, 8, 0.01).unwrap();
+    let uc = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 }).unwrap();
     let ind = christoffersen_independence(&ex).unwrap();
     let cc = christoffersen_cc(&ex, 0.01).unwrap();
     assert!((cc.lr - (uc.lr + ind.lr)).abs() < 1e-12);
@@ -100,36 +101,36 @@ fn christoffersen_conditional_coverage_is_sum_of_components() {
 
 #[test]
 fn basel_exact_zone_boundaries_at_250_obs() {
-    assert_eq!(basel_traffic_light(0, 250).unwrap().zone, BaselZone::Green);
-    let r4 = basel_traffic_light(4, 250).unwrap();
+    assert_eq!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 0, alpha: 0.01 }).unwrap().zone, BaselZone::Green);
+    let r4 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 4, alpha: 0.01 }).unwrap();
     assert_eq!(r4.zone, BaselZone::Green);
     assert!((r4.multiplier - 3.0).abs() < 1e-12);
 
-    let r5 = basel_traffic_light(5, 250).unwrap();
+    let r5 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
     assert_eq!(r5.zone, BaselZone::Yellow);
     assert!((r5.multiplier - 3.40).abs() < 1e-12);
-    assert!((basel_traffic_light(6, 250).unwrap().multiplier - 3.50).abs() < 1e-12);
-    assert!((basel_traffic_light(7, 250).unwrap().multiplier - 3.65).abs() < 1e-12);
-    assert!((basel_traffic_light(8, 250).unwrap().multiplier - 3.75).abs() < 1e-12);
-    let r9 = basel_traffic_light(9, 250).unwrap();
+    assert!((basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 6, alpha: 0.01 }).unwrap().multiplier - 3.50).abs() < 1e-12);
+    assert!((basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 7, alpha: 0.01 }).unwrap().multiplier - 3.65).abs() < 1e-12);
+    assert!((basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 }).unwrap().multiplier - 3.75).abs() < 1e-12);
+    let r9 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 9, alpha: 0.01 }).unwrap();
     assert_eq!(r9.zone, BaselZone::Yellow);
     assert!((r9.multiplier - 3.85).abs() < 1e-12);
 
-    let r10 = basel_traffic_light(10, 250).unwrap();
+    let r10 = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap();
     assert_eq!(r10.zone, BaselZone::Red);
     assert!((r10.multiplier - 4.0).abs() < 1e-12);
-    assert_eq!(basel_traffic_light(15, 250).unwrap().zone, BaselZone::Red);
-    assert!(basel_traffic_light(-1, 250).is_err());
+    assert_eq!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 15, alpha: 0.01 }).unwrap().zone, BaselZone::Red);
+    assert!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: -1, alpha: 0.01 }).is_err());
 }
 
 #[test]
 fn basel_binomial_zone_probabilities() {
     assert!(
-        (basel_traffic_light(4, 250).unwrap().cumulative_prob - 0.892_187_626_903_625_1).abs()
+        (basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 4, alpha: 0.01 }).unwrap().cumulative_prob - 0.892_187_626_903_625_1).abs()
             < 1e-10
     );
     assert!(
-        (basel_traffic_light(9, 250).unwrap().cumulative_prob - 0.999_749_809_931_259_5).abs()
+        (basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 9, alpha: 0.01 }).unwrap().cumulative_prob - 0.999_749_809_931_259_5).abs()
             < 1e-10
     );
     assert_eq!(BaselZone::Green.as_str(), "green");

@@ -1,10 +1,12 @@
 //! # eq_var_engine — equity market-risk engine (VaR / ES / backtesting)
 //!
-//! Rust twin of the Python research library
-//! `python/equity/03-var-es-engine` (package `eq_var`) and the C++ engine
-//! `cpp/equity-var-engine` (namespace `eqvar`). All three stacks share the
-//! same semantics and are cross-validated against the same golden vectors
-//! (see `tests/test_cross_language.rs` and `docs/VALIDATION.md`).
+//! Linear-book port of the Python research library
+//! `python/equity/03-var-es-engine` (package `eq_var`), alongside the C++
+//! engine `cpp/equity-var-engine` (namespace `eqvar`). The Rust engine
+//! revalues books linearly (dollar exposures times factor returns); the
+//! Python library also does full revaluation. The shared conventions are
+//! checked against the same golden vectors (see
+//! `tests/test_cross_language.rs` and `docs/VALIDATION.md`).
 //!
 //! ## Pipeline
 //!
@@ -19,11 +21,15 @@
 //! * `alpha` is the **tail probability**: `alpha = 0.01` → 99 % VaR.
 //! * VaR and ES are reported as **positive** numbers for a loss:
 //!   `VaR_alpha = -Q_alpha(pnl)`.
-//! * Empirical quantiles use NumPy's default `"linear"` (Hyndman–Fan
-//!   type-7) interpolation between order statistics, so numbers agree with
-//!   the Python reference to cross-language tolerance.
-//! * All stochastic components take an explicit `u64` seed and are
-//!   bit-reproducible for a fixed seed on a given platform ([`rng`]).
+//!   Every public function rejects `alpha` outside `(0, 0.5)`.
+//! * Empirical VaR is the order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`,
+//!   of the losses sorted descending; empirical ES is the Acerbi-Tasche
+//!   estimator with the exact fractional boundary weight ([`tail`]). There
+//!   is no interpolation on any VaR path.
+//! * All stochastic components take an explicit `u64` seed and repeat
+//!   exactly for a fixed seed on the same build and platform ([`rng`]).
+//!   Results are not claimed to match bit for bit across platforms, since
+//!   `ln`, `sin` and `cos` come from the platform libm.
 //!
 //! ## Design
 //!
@@ -61,6 +67,11 @@
 
 #![deny(missing_docs)]
 #![warn(clippy::all)]
+// `!(x > 0.0)` is the NaN-rejecting form on purpose: `x <= 0.0` is false
+// for NaN and would let it through. The lint asks for the opposite.
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+// Index loops mirror the matrix formulas they implement.
+#![allow(clippy::needless_range_loop)]
 
 pub mod backtest;
 pub mod expected_shortfall;
@@ -68,8 +79,10 @@ pub mod historical;
 pub mod matrix;
 pub mod monte_carlo;
 pub mod parametric;
+pub mod psd;
 pub mod rng;
 pub mod stats;
+pub mod tail;
 
 use std::fmt;
 
@@ -121,39 +134,39 @@ pub enum TailModel {
 }
 
 pub(crate) fn validate_alpha(alpha: f64) -> Result<()> {
-    if !(alpha > 0.0 && alpha < 0.5) {
-        return Err(EqVarError::InvalidInput(format!(
-            "alpha must be in (0, 0.5) (tail probability), got {alpha}"
-        )));
-    }
-    Ok(())
+    tail::validate_alpha(alpha).map(|_| ())
 }
 
 /// Convenience re-exports of the full public API.
 pub mod prelude {
     pub use crate::backtest::{
-        basel_traffic_light, christoffersen_cc, christoffersen_independence,
-        exceptions_from_pnl, kupiec_pof, BaselZone, ChristoffersenResult,
-        ConditionalCoverageResult, KupiecResult, TrafficLightResult,
+        acerbi_szekely_z2, basel_traffic_light, christoffersen_cc,
+        christoffersen_independence, exceptions_from_pnl, kupiec_pof, BaselInput, BaselZone,
+        ChristoffersenResult, ConditionalCoverageResult, KupiecInput, KupiecResult,
+        TrafficLightResult,
     };
     pub use crate::expected_shortfall::{
         expected_shortfall, normal_es, parametric_es, parametric_es_full, student_t_es,
     };
     pub use crate::historical::{
-        age_weighted_var, brw_weights, ewma_volatility, filtered_historical_var,
-        historical_var, linear_quantile, overlapping_horizon_pnl, scale_var_sqrt_time,
-        MIN_OBS,
+        age_weighted_var, brw_weights, ewma_volatility, ewma_volatility_forecast,
+        fhs_factor_scenarios, filtered_historical_var_factors, historical_var,
+        overlapping_horizon_pnl, scale_var_sqrt_time, MIN_OBS,
     };
     pub use crate::matrix::{
         covariance_from_vols, ewma_covariance, sample_covariance, Matrix,
     };
     pub use crate::monte_carlo::{
-        monte_carlo_es, monte_carlo_pnl, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, var_bootstrap_se, var_order_statistic_se,
+        monte_carlo_es, monte_carlo_pnl, monte_carlo_run, monte_carlo_var, portfolio_pnl,
+        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se,
+        var_kde_se, McRun,
     };
     pub use crate::parametric::{
-        cornish_fisher_domain_ok, cornish_fisher_var, cornish_fisher_z, parametric_var,
+        cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
         parametric_var_full, portfolio_sigma,
+    };
+    pub use crate::psd::{
+        cholesky_repair, clip_psd, higham_nearest, symmetric_eigen, CholeskyFactor, PsdRepair,
     };
     pub use crate::rng::Rng;
     pub use crate::stats::{
@@ -161,5 +174,14 @@ pub mod prelude {
         normal_ppf, regularized_beta, regularized_gamma_p, regularized_gamma_q, skewness,
         stdev, student_t_cdf, student_t_pdf, student_t_ppf,
     };
+    pub use crate::tail::{empirical_var, empirical_var_es, tail_rank, weighted_var_es};
     pub use crate::{EqVarError, TailModel};
+    /// Deprecated entry points, kept in the prelude for one release.
+    #[allow(deprecated)]
+    pub use crate::{
+        backtest::{basel_traffic_light_250, kupiec_pof_positional},
+        historical::{filtered_historical_var, linear_quantile},
+        monte_carlo::var_order_statistic_se,
+        parametric::cornish_fisher_domain_ok,
+    };
 }

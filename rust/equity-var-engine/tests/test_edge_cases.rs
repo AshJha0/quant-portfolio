@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Edge cases from the documentation contract: empty inputs, single-asset
 //! portfolios, alpha at the boundaries of (0, 0.5), zero-variance assets,
 //! degenerate P&L series, and returns/pnl-mapping validation. Each case here
@@ -132,21 +134,16 @@ fn min_obs_guard_exact_boundary() {
 
 #[test]
 fn deep_tail_alpha_on_small_sample() {
-    // alpha far below 1/n: the type-7 quantile interpolates just above the
-    // sample minimum (h = (n-1) alpha < 1) — the tail is unresolvable and the
-    // estimate is pinned to the worst observed loss, never extrapolated
-    // beyond it. Documented failure mode (docs/VALIDATION.md).
+    // alpha far below 1/n: k = n alpha < 1, so m clamps to 1 and the VaR is
+    // the worst observed loss exactly, never extrapolated beyond it.
+    // Documented failure mode (docs/VALIDATION.md).
     let pnl: Vec<f64> = (0..100)
         .map(|t| 10.0 * (2.3 * t as f64).sin() - if t == 50 { 500.0 } else { 0.0 })
         .collect();
     let v = historical_var(&pnl, 1e-6).unwrap();
     let mut sorted = pnl.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let h = 99.0 * 1e-6;
-    let expected = -(sorted[0] + h * (sorted[1] - sorted[0]));
-    assert!((v - expected).abs() < 1e-12 * expected.abs());
-    assert!(v <= -sorted[0]); // never exceeds the worst observed loss
-    assert!(v > -sorted[1]); // ... but stays pinned to it
+    assert_eq!(v, -sorted[0]); // the worst observed loss, no interpolation
 }
 
 /// A NaN anywhere in the risk pipeline must produce an error, never a
@@ -237,14 +234,14 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
 /// A NaN VaR or a NaN P&L must not be counted as "no exception".
 #[test]
 fn backtests_reject_non_finite_series_instead_of_scoring_them_green() {
-    use eq_var_engine::backtest::{basel_traffic_light, exceptions_from_pnl, BaselZone};
+    use eq_var_engine::backtest::{basel_traffic_light, exceptions_from_pnl, BaselInput, BaselZone};
 
     let mut pnl: Vec<f64> = (0..250).map(|t| 50.0 * (0.7 * t as f64).sin()).collect();
     // A genuinely broken model: losses far beyond the VaR every day.
     let breached: Vec<f64> = vec![-1000.0; 250];
     let ex = exceptions_from_pnl(&breached, &[100.0]).unwrap();
     assert_eq!(ex.iter().map(|&e| e as i64).sum::<i64>(), 250);
-    assert_eq!(basel_traffic_light(250, 250).unwrap().zone, BaselZone::Red);
+    assert_eq!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 250, alpha: 0.01 }).unwrap().zone, BaselZone::Red);
 
     // Now poison the VaR feed. `pnl < -NaN` is false on every day, so a
     // naive implementation reports ZERO exceptions and the traffic light
@@ -338,7 +335,7 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
 
     // (d) The cap is documented and small: a repair must never be a
     //     material fraction of the mean variance.
-    assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4);
+    const { assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4) };
     // A jitter argument that is itself nonsense is rejected up front.
     assert!(singular.cholesky_jitter(0.0, 12).is_err());
     assert!(singular.cholesky_jitter(f64::NAN, 12).is_err());

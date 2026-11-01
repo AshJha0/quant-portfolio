@@ -4,20 +4,26 @@
 //! Student-t (common-mixing-variable construction `Z / sqrt(W/df)`, scale
 //! matrix `cov * (df-2)/df` so the **covariance** matches `cov` exactly while
 //! the tails fatten), revalue the linear portfolio `P&L = w . r`, and read
-//! VaR / ES off the scenario distribution with an order-statistic standard
-//! error ([`var_order_statistic_se`]) cross-checked by a distribution-free
-//! bootstrap standard error ([`var_bootstrap_se`]).
+//! VaR / ES off the scenario distribution with the shared S2 estimator
+//! ([`crate::tail`]). [`monte_carlo_run`] simulates once and returns VaR,
+//! ES, the bootstrap standard error ([`var_bootstrap_se`], primary) and the
+//! KDE standard error ([`var_kde_se`], diagnostic) from the same scenarios.
+//!
+//! This is a linear-book engine: for a linear book MC adds nothing over the
+//! closed form except a check of it. Option revaluation lives in the Python
+//! library.
 //!
 //! Determinism: every draw comes from a seeded [`crate::rng::Rng`]
 //! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma) — no
-//! platform-dependent RNG — so results are bit-reproducible for a given seed
-//! on a given build. Mirrors `eq_var.monte_carlo_var` semantically (same
+//! platform-dependent RNG — so results repeat exactly for a given seed on
+//! the same build and platform. Mirrors `eq_var.monte_carlo_var` semantically (same
 //! factor model, same quantile convention); the RNG stream differs from
 //! NumPy's and from the C++ engine's `std::mt19937_64` stream, so
 //! cross-language / cross-engine agreement is statistical (within
 //! order-statistic error bars), not bitwise.
 
 use crate::matrix::Matrix;
+use crate::psd::PsdRepair;
 use crate::rng::Rng;
 use crate::{validate_alpha, EqVarError, Result, TailModel};
 
@@ -25,10 +31,9 @@ use crate::{validate_alpha, EqVarError, Result, TailModel};
 /// — mirrors the C++ engine's `mc_tail_metrics` floor.
 pub const MIN_PATHS: usize = 100;
 
-/// Minimum observations for [`var_bootstrap_se`] — mirrors the Python
-/// reference's `var_standard_error_bootstrap` floor. Deliberately lower than
-/// [`MIN_PATHS`]: resampling a standard deviation is meaningful well below
-/// the sample size needed for a raw tail read-off.
+/// Minimum observations for [`var_bootstrap_se`] and [`var_kde_se`]. Lower
+/// than [`MIN_PATHS`]: resampling a standard deviation is meaningful well
+/// below the sample size needed for a raw tail read-off.
 pub const MIN_BOOTSTRAP_OBS: usize = 10;
 
 /// Simulate `n_paths` factor-return scenarios (an `(n_paths, n)` panel) with
@@ -37,14 +42,29 @@ pub const MIN_BOOTSTRAP_OBS: usize = 10;
 /// `TailModel::StudentT { df }` requires `df > 2`; the Cholesky factor is
 /// taken of `cov * (df-2)/df` (variance-matched) rather than `cov` so the
 /// **simulated** covariance still equals `cov` while the joint tails fatten.
-/// Uses [`Matrix::cholesky_jitter`] so a PSD-but-singular `cov` (e.g. a
-/// riskless leg) still simulates. Bit-reproducible in `seed`.
+/// Uses [`Matrix::cholesky_repair`] without repair, so a PSD-but-singular
+/// `cov` (e.g. a riskless leg) still simulates with a reported jitter; see
+/// [`simulate_factor_returns_jitter`]. Repeats exactly for a fixed `seed`.
 pub fn simulate_factor_returns(
     cov: &Matrix,
     n_paths: usize,
     tail: TailModel,
     seed: u64,
 ) -> Result<Matrix> {
+    Ok(simulate_factor_returns_jitter(cov, n_paths, tail, seed)?.0)
+}
+
+/// [`simulate_factor_returns`] plus the Cholesky jitter that was needed
+/// (`0.0` when the covariance factorised as given).
+///
+/// # Errors
+/// Same as [`simulate_factor_returns`].
+pub fn simulate_factor_returns_jitter(
+    cov: &Matrix,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+) -> Result<(Matrix, f64)> {
     if n_paths < 1 {
         return Err(EqVarError::InvalidInput(
             "simulate_factor_returns: n_paths must be >= 1".to_string(),
@@ -89,7 +109,8 @@ pub fn simulate_factor_returns(
             m
         }
     };
-    let chol = scale.cholesky_jitter(1e-10, 12)?;
+    let cf = scale.cholesky_repair(PsdRepair::None)?;
+    let chol = cf.factor;
     let mut rng = Rng::new(seed);
     let mut out = Matrix::zeros(n_paths, n);
     let mut z = vec![0.0; n];
@@ -114,7 +135,7 @@ pub fn simulate_factor_returns(
             }
         }
     }
-    Ok(out)
+    Ok((out, cf.jitter))
 }
 
 /// Linear-portfolio scenario P&L: `pnl[t] = sum_j exposures[j] * returns(t, j)`.
@@ -123,7 +144,12 @@ pub fn simulate_factor_returns(
 pub fn portfolio_pnl(returns: &Matrix, exposures: &[f64]) -> Result<Vec<f64>> {
     if exposures.is_empty() {
         return Err(EqVarError::InvalidInput(
-            "portfolio_pnl: empty portfolio (no exposures); nothing to revalue".to_string(),
+            "portfolio_pnl: book has no positions".to_string(),
+        ));
+    }
+    if exposures.iter().any(|w| !w.is_finite()) || !returns.all_finite() {
+        return Err(EqVarError::InvalidInput(
+            "portfolio_pnl: exposures and returns must be finite".to_string(),
         ));
     }
     if returns.cols() != exposures.len() {
@@ -147,7 +173,7 @@ pub fn monte_carlo_pnl(
 ) -> Result<Vec<f64>> {
     if exposures.is_empty() {
         return Err(EqVarError::InvalidInput(
-            "monte_carlo_pnl: empty portfolio (no exposures)".to_string(),
+            "monte_carlo_pnl: book has no positions".to_string(),
         ));
     }
     if cov.rows() != cov.cols() || cov.rows() != exposures.len() {
@@ -185,8 +211,9 @@ fn validate_pnl_mc(pnl: &[f64]) -> Result<()> {
     Ok(())
 }
 
-/// Monte Carlo VaR: minus the type-7 linear-interpolated `alpha`-quantile of
-/// a scenario P&L sample (`>= `[`MIN_PATHS`]` `scenarios).
+/// Monte Carlo VaR: the S2 order-statistic VaR of the scenario P&L
+/// (`>= `[`MIN_PATHS`]` `scenarios). To get VaR, ES and their standard
+/// errors from one simulation use [`monte_carlo_run`].
 pub fn monte_carlo_var(
     exposures: &[f64],
     cov: &Matrix,
@@ -198,7 +225,7 @@ pub fn monte_carlo_var(
     validate_alpha(alpha)?;
     let pnl = monte_carlo_pnl(exposures, cov, n_paths, tail, seed)?;
     validate_pnl_mc(&pnl)?;
-    Ok(-crate::historical::linear_quantile(&pnl, alpha)?)
+    crate::tail::empirical_var(&pnl, alpha)
 }
 
 /// Monte Carlo Expected Shortfall: the exact tail integral of the scenario
@@ -217,6 +244,9 @@ pub fn monte_carlo_es(
     crate::expected_shortfall::expected_shortfall(&pnl, alpha)
 }
 
+/// Old symmetric order-statistic finite-difference SE, kept for one
+/// release. Use [`var_bootstrap_se`] (primary) or [`var_kde_se`].
+///
 /// Order-statistic standard error of the `alpha`-quantile VaR estimate on a
 /// scenario P&L sample.
 ///
@@ -225,6 +255,7 @@ pub fn monte_carlo_es(
 /// bandwidth `ceil(sqrt(alpha * n))` around the quantile rank. Returns `0`
 /// in the degenerate case where the local window has zero spread (e.g. a
 /// riskless / zero-variance portfolio).
+#[deprecated(since = "0.2.0", note = "use var_bootstrap_se (primary) or var_kde_se")]
 pub fn var_order_statistic_se(pnl: &[f64], alpha: f64) -> Result<f64> {
     validate_alpha(alpha)?;
     validate_pnl_mc(pnl)?;
@@ -244,65 +275,175 @@ pub fn var_order_statistic_se(pnl: &[f64], alpha: f64) -> Result<f64> {
     }
 }
 
-fn validate_pnl_bootstrap(pnl: &[f64]) -> Result<()> {
-    if pnl.len() < MIN_BOOTSTRAP_OBS {
+/// Everything one Monte Carlo simulation gives: see [`monte_carlo_run`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct McRun {
+    /// Scenario P&L (profit +).
+    pub pnl: Vec<f64>,
+    /// S2 order-statistic VaR (positive loss).
+    pub var: f64,
+    /// S2 Acerbi-Tasche ES (positive loss).
+    pub es: f64,
+    /// Bootstrap standard error of the VaR (primary).
+    pub se: f64,
+    /// KDE (Silverman) standard error of the VaR (diagnostic).
+    pub se_kde: f64,
+    /// Cholesky jitter that was needed (0 if none).
+    pub jitter: f64,
+}
+
+/// Simulate once and derive VaR, ES and both standard errors from the
+/// same scenarios.
+///
+/// The bootstrap uses `n_boot` resamples seeded from `seed` (offset so its
+/// stream differs from the simulation stream).
+///
+/// # Errors
+/// Invalid `alpha`, an empty book, fewer than [`MIN_PATHS`] paths,
+/// `n_boot < 2`, an invalid tail model, or a covariance that is not
+/// factorisable within the jitter cap.
+pub fn monte_carlo_run(
+    exposures: &[f64],
+    cov: &Matrix,
+    alpha: f64,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    n_boot: usize,
+) -> Result<McRun> {
+    validate_alpha(alpha)?;
+    if n_boot < 2 {
         return Err(EqVarError::InvalidInput(format!(
-            "need at least {MIN_BOOTSTRAP_OBS} observations to bootstrap, got {}",
+            "n_boot must be >= 2 to estimate a standard deviation, got {n_boot}"
+        )));
+    }
+    if exposures.is_empty() {
+        return Err(EqVarError::InvalidInput("book has no positions".to_string()));
+    }
+    if exposures.iter().any(|w| !w.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "exposures must all be finite".to_string(),
+        ));
+    }
+    if cov.rows() != cov.cols() || cov.rows() != exposures.len() {
+        return Err(EqVarError::InvalidInput(format!(
+            "covariance shape {} x {} does not match {} exposures",
+            cov.rows(),
+            cov.cols(),
+            exposures.len()
+        )));
+    }
+    let (scen, jitter) = simulate_factor_returns_jitter(cov, n_paths, tail, seed)?;
+    let pnl = portfolio_pnl(&scen, exposures)?;
+    validate_pnl_mc(&pnl)?;
+    let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
+    let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
+    let se_kde = var_kde_se(&pnl, alpha)?;
+    Ok(McRun { pnl, var, es, se, se_kde, jitter })
+}
+
+/// Bootstrap standard error of the S2 order-statistic VaR (primary SE).
+///
+/// Resamples `pnl` with replacement `n_boot` times from one seeded
+/// [`Rng`], recomputes the S2 VaR `L(m)` on each resample (selection, not a
+/// sort; `m` depends only on `n` and `alpha`), and returns the sample
+/// standard deviation (`ddof = 1`) of the `n_boot` estimates. Memory is one
+/// resample buffer of length `n`, never an `n_boot x n` index matrix.
+///
+/// # Errors
+/// Invalid `alpha`, fewer than 10 or non-finite observations, or
+/// `n_boot < 2` (a standard deviation needs two draws).
+pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    if pnl.len() < 10 {
+        return Err(EqVarError::InvalidInput(format!(
+            "need at least 10 observations to bootstrap, got {}",
             pnl.len()
         )));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(EqVarError::InvalidInput(
-            "pnl contains NaN or infinite values".to_string(),
-        ));
+        return Err(EqVarError::InvalidInput("pnl contains NaN or infinite values".to_string()));
     }
-    Ok(())
-}
-
-/// Bootstrap standard error of the empirical `alpha`-quantile VaR estimate.
-///
-/// Distribution-free cross-check for [`var_order_statistic_se`]: resamples
-/// `pnl` with replacement `n_boot` times using the engine's own
-/// [`crate::rng::Rng`] (seeded once from `seed`), takes the same type-7
-/// linear-interpolated quantile ([`crate::historical::linear_quantile`]) on
-/// each resample to get a re-estimated VaR, and returns the sample standard
-/// deviation (`ddof = 1`) across the `n_boot` re-estimates. Mirrors
-/// `eq_var.monte_carlo_var.var_standard_error_bootstrap` bit for bit in
-/// algorithm (same resampling scheme, same quantile convention) though not
-/// in RNG stream.
-///
-/// [`var_order_statistic_se`]'s local finite-difference bandwidth
-/// (`ceil(sqrt(alpha * n))`) is tuned to resolve the bulk of the
-/// distribution; deep in the tail or at modest scenario counts that
-/// bandwidth undersmooths and the estimate can understate the true sampling
-/// SE by roughly 10-15 %. This estimator carries no such bandwidth
-/// assumption — the price is `n_boot` extra quantile evaluations. Running
-/// both and comparing is the desk-standard cross-check (see
-/// docs/VALIDATION.md).
-///
-/// Requires `pnl.len() >= `[`MIN_BOOTSTRAP_OBS`]`, `alpha` in `(0, 0.5)`, and
-/// `n_boot >= 2` (a standard deviation needs at least two draws).
-pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
-    validate_alpha(alpha)?;
-    validate_pnl_bootstrap(pnl)?;
     if n_boot < 2 {
         return Err(EqVarError::InvalidInput(format!(
             "n_boot must be >= 2 to estimate a standard deviation, got {n_boot}"
         )));
     }
     let n = pnl.len();
+    let m = crate::tail::tail_rank(n, alpha)?;
     let mut rng = Rng::new(seed);
-    let mut resample = vec![0.0; n];
-    let mut boot_vars = Vec::with_capacity(n_boot);
+    let mut buf = vec![0.0; n];
+    let mut sum = 0.0;
+    let mut est = Vec::with_capacity(n_boot);
     for _ in 0..n_boot {
-        for slot in resample.iter_mut() {
+        for slot in buf.iter_mut() {
             let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
-            *slot = pnl[idx];
+            *slot = -pnl[idx];
         }
-        let sorted = sorted_copy(&resample);
-        boot_vars.push(-crate::historical::linear_quantile_sorted(&sorted, alpha));
+        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+        let v = *lm;
+        est.push(v);
+        sum += v;
     }
-    let mean = boot_vars.iter().sum::<f64>() / n_boot as f64;
-    let ss: f64 = boot_vars.iter().map(|v| (v - mean) * (v - mean)).sum();
+    let mean = sum / n_boot as f64;
+    let ss: f64 = est.iter().map(|v| (v - mean) * (v - mean)).sum();
     Ok((ss / (n_boot - 1) as f64).sqrt())
+}
+
+/// Kernel-density standard error of the VaR (diagnostic only).
+///
+/// `SE = sqrt(alpha (1 - alpha) / n) / f_hat(q)` with `q = -VaR` the
+/// reported S2 quantile and `f_hat` a Gaussian KDE with Silverman's
+/// bandwidth `h = 0.9 min(sd, IQR/1.34) n^(-1/5)`. A fixed bandwidth is
+/// tuned to the bulk of the distribution, so deep in the tail it tends to
+/// understate the SE; [`var_bootstrap_se`] is the primary estimate.
+///
+/// # Errors
+/// Invalid `alpha`, fewer than 10 or non-finite observations.
+pub fn var_kde_se(pnl: &[f64], alpha: f64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    let n = pnl.len();
+    if n < 10 {
+        return Err(EqVarError::InvalidInput(format!(
+            "need at least 10 scenarios for a VaR standard error, got {n}"
+        )));
+    }
+    if pnl.iter().any(|v| !v.is_finite()) {
+        return Err(EqVarError::InvalidInput("pnl contains NaN or infinite values".to_string()));
+    }
+    let q = -crate::tail::empirical_var(pnl, alpha)?;
+    let nf = n as f64;
+    let mean = pnl.iter().sum::<f64>() / nf;
+    let sd = (pnl.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (nf - 1.0)).sqrt();
+    let mut sorted = pnl.to_vec();
+    sorted.sort_unstable_by(f64::total_cmp);
+    let type7 = |p: f64| {
+        let pos = p * (n - 1) as f64;
+        let lo = pos.floor() as usize;
+        let hi = (lo + 1).min(n - 1);
+        let frac = pos - lo as f64;
+        sorted[lo] + frac * (sorted[hi] - sorted[lo])
+    };
+    let iqr = type7(0.75) - type7(0.25);
+    let spread = if iqr > 0.0 { sd.min(iqr / 1.34) } else { sd };
+    if !(spread > 0.0) {
+        // Degenerate (constant) sample: the quantile has no sampling error.
+        return Ok(0.0);
+    }
+    let h = 0.9 * spread * nf.powf(-0.2);
+    let inv_sqrt_2pi = 0.398_942_280_401_432_7;
+    let dens = pnl
+        .iter()
+        .map(|x| {
+            let u = (q - x) / h;
+            inv_sqrt_2pi * (-0.5 * u * u).exp()
+        })
+        .sum::<f64>()
+        / (nf * h);
+    if !(dens > 0.0) {
+        return Err(EqVarError::Numerical(
+            "KDE density at the VaR quantile underflowed to zero".to_string(),
+        ));
+    }
+    Ok((alpha * (1.0 - alpha) / nf).sqrt() / dens)
 }

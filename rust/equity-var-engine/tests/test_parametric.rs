@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(deprecated)]
 //! Parametric (variance-covariance) VaR: closed-form identities, Student-t
 //! tail behaviour, Cornish-Fisher with validity-domain check.
 

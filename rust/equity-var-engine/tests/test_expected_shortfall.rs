@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 //! Expected Shortfall: hand-exact empirical tail integral, the closed-form
 //! normal ES identity against numerical quadrature to 1e-10, ES >= VaR.
 
