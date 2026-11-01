@@ -7,13 +7,14 @@
 | **Country risk / credit** | Scorecard PD + rating band per sovereign → country limits; binning tables for the annual review pack | Annual refit, quarterly monitoring (PSI, realised-vs-predicted), event-driven overrides |
 | **EM trading desk** | Pre-trade check: does the trade fit within the counterparty's PFE limit and the country limit? Rating-band PD feeds spread guidance | Every trade > threshold |
 | **Treasury / operations** | Settlement-line management: gross Herstatt exposure per counterparty vs settlement limit; CLS vs non-CLS routing decisions (the 6-trade demo: USD 180m gross → 66m netted → target: everything CLS-eligible into CLS) | Daily, per value date |
-| **CVA desk** | EE profile and CVA per counterparty netting set; hedges CVA with sovereign CDS / FX options; flags wrong-way trades (long-USD forwards vs the EM sovereign itself) for the WWR add-on | Daily batch + new-trade incremental |
+| **Counterparty risk** | EE/PFE profile and expected loss on exposure per netting set (real-world PD); flags wrong-way trades (long-USD forwards vs the EM sovereign itself). A CVA desk would need a risk-neutral, CDS-implied PD, collateral terms and DVA, which this project does not compute | Daily batch + new-trade incremental |
 | **Capital / finance** | EL for provisioning; standardized RW for regulatory RWA; Vasicek K for internal capital allocation and limit sizing (the AAA wedge: 0 regulatory vs 0.34 per 100 internal) | Monthly |
 | **Model risk / validation** | VALIDATION.md evidence pack: OOT metrics, bootstrap CIs, contagion-year stress, autocorrelation caveat | Annual model review |
 
 A morning run: `run_pipeline.py`-equivalent batch produces (i) refreshed PDs
 and ratings per country, (ii) per-counterparty settlement exposure for
-today's value dates, (iii) EE/PFE/CVA per netting set, (iv) exceptions:
+today's value dates, (iii) EE/PFE and expected loss on exposure per netting
+set, (iv) exceptions:
 limit breaches, PSI > 0.10, ratings migrating ≥ 2 notches.
 
 ## 2. Limits governance
@@ -69,16 +70,17 @@ limit breaches, PSI > 0.10, ratings migrating ≥ 2 notches.
    control is the settlement line + same-day kill-switch on payment release,
    not the PD model.
 5. **2020-style global contagion (planted in the data).** The out-of-time
-   2020 year defaults at 16.7% vs 6.4% predicted: limits governance (regional
+   2020 year defaults at 16.7% vs 6.3% predicted (synthetic, planted): limits governance (regional
    50% cut on contagion trigger) exists precisely because the PD model is
    documented to under-call systemic waves.
 
 ## 4. P&L and attribution
 
-CVA desk marks CVA = 4.4 bp (BB example) into the trade at inception and
-hedges the PD leg with sovereign CDS, the EE leg with FX options; daily CVA
-P&L attributes to (i) spread/PD moves, (ii) FX spot/vol moves on EE, (iii)
-new trades/netting changes. Country-risk EL feeds loan-loss provisioning.
+The expected loss on exposure (4.1 bp in the BB example) is built on a
+real-world PD, so it is a provisioning-style number, not a price. It cannot be
+hedged with sovereign CDS. A priced CVA would need a CDS-implied hazard,
+market LGD, collateral terms and DVA. Country-risk EL feeds loan-loss
+provisioning.
 Settlement risk carries no P&L — it is a pure tail-loss control, which is why
 its limit is a hard block rather than a priced charge.
 
@@ -89,4 +91,4 @@ back-test, VALIDATION.md refresh with new OOT year. Quarterly: PSI, band
 migration matrix, realised-vs-predicted by band. Event-driven: contagion
 trigger, peg-break watchlist, sanctions rail review. Change control: any
 band-boundary or PD-midpoint change requires model-risk sign-off (it rescales
-every CVA and limit downstream — Assumption A9).
+every exposure-loss figure and limit downstream, Assumption A9).

@@ -13,9 +13,11 @@ penalty is supplied (``ridge > 0``), which restores a finite maximiser.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 
 __all__ = [
     "LogisticFit",
@@ -27,6 +29,8 @@ __all__ = [
     "RATING_ORDER",
     "assign_rating",
     "rating_midpoint_pd",
+    "ConvergenceWarning",
+    "expected_sign_check",
 ]
 
 
@@ -95,7 +99,7 @@ def fit_logistic_irls(
         intercept (0 = MLE).  Use a small value (e.g. 1e-6) to stabilise
         separated data.
     separation_bound : float
-        If any |coefficient| exceeds this during iteration with ``ridge=0``,
+        If any |slope| (intercept excluded) exceeds this during iteration with ``ridge=0``,
         (quasi-)separation is declared and ``ValueError`` is raised: a
         log-odds of 30 corresponds to a PD below 1e-13, far outside any
         estimable sovereign PD.
@@ -136,7 +140,8 @@ def fit_logistic_irls(
                 "drop collinear columns or set ridge>0"
             ) from exc
         beta = beta + delta
-        if ridge == 0.0 and np.max(np.abs(beta)) > separation_bound:
+        slopes = beta[1:]
+        if ridge == 0.0 and slopes.size and np.max(np.abs(slopes)) > separation_bound:
             raise ValueError(
                 "coefficients diverging (|beta| > "
                 f"{separation_bound}): (quasi-)complete separation detected. "
@@ -147,6 +152,13 @@ def fit_logistic_irls(
         if np.max(np.abs(delta)) < tol:
             converged = True
             break
+    if not converged:
+        warnings.warn(
+            f"IRLS did not converge in {max_iter} iterations "
+            f"(last max |step| {np.max(np.abs(delta)):.2e}); check LogisticFit.converged",
+            ConvergenceWarning,
+            stacklevel=2,
+        )
     eta = Xd @ beta
     p = _sigmoid(eta)
     w = np.maximum(p * (1.0 - p), 1e-12)
@@ -238,8 +250,36 @@ def assign_rating(pd_1y: float) -> str:
 
 
 def rating_midpoint_pd(rating: str) -> float:
-    """PD midpoint assigned to a letter band (used for pricing/CVA/limits)."""
+    """PD midpoint assigned to a letter band (used for pricing, exposure loss and limits)."""
     try:
         return RATING_BANDS[rating][1]
     except KeyError as exc:
         raise ValueError(f"unknown rating {rating!r}; known: {RATING_ORDER}") from exc
+
+
+class ConvergenceWarning(UserWarning):
+    """IRLS stopped at ``max_iter`` without meeting the step tolerance."""
+
+
+def expected_sign_check(
+    fit: LogisticFit, feature_names: list[str], expected: float = -1.0
+) -> pd.DataFrame:
+    """Expected-sign check for a WOE scorecard.
+
+    With good-over-bad WOE (positive = safer), every slope on a WOE input
+    should be negative (``expected=-1``); a wrong-signed coefficient means
+    the variable moves the score against its own univariate evidence, which
+    a validator rejects. Returns one row per feature with ``coef``, ``z``
+    and ``sign_ok``.
+    """
+    if len(feature_names) != fit.coef.size:
+        raise ValueError("feature_names must match the number of slopes")
+    if expected not in (-1.0, 1.0):
+        raise ValueError("expected must be -1 or +1")
+    z = fit.coef / fit.se[1:]
+    return pd.DataFrame({
+        "feature": list(feature_names),
+        "coef": fit.coef,
+        "z": z,
+        "sign_ok": np.sign(fit.coef) == expected,
+    })

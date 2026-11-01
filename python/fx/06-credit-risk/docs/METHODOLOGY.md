@@ -26,7 +26,7 @@ the Merton mapping heroic. Market signals belong in an early-warning overlay,
 not in the through-the-cycle limit-setting PD.
 
 **Alternative 3 — shadow rating (documented, not chosen as primary).** With
-3-6% event rates, an honest low-default alternative is to regress *agency
+3-6% event rates, a credible low-default alternative is to regress *agency
 ratings* (ordered logit on S&P/Moody's sovereign ratings) instead of defaults
 — thousands of country-year rating observations instead of ~60 defaults, so
 much tighter coefficients. Its limits: it inherits agency behaviour (rating
@@ -36,9 +36,10 @@ job. The right production design is a default-based scorecard (this project)
 *benchmarked* against a shadow-rating model; disagreements are the review
 committee's agenda.
 
-**The low-default problem, stated honestly.** 63 training events pin down 10
+**The low-default problem.** 63 training events pin down 10
 WOE coefficients only loosely (see the standard errors in the pipeline
-output: `fiscal_gdp` z = -0.7). We mitigate by (a) WOE compression — each
+output). `fiscal_gdp` enters with the wrong sign (z 0.71) and the pipeline's
+expected-sign check drops it. We mitigate by (a) WOE compression — each
 feature contributes one dimension, monotone by construction; (b) separation
 detection with an explicit ridge fallback; (c) wide bootstrap CIs reported,
 never hidden (VALIDATION.md). We do *not* pretend a 3-decimal PD for an AAA
@@ -49,15 +50,17 @@ long-run rating-agency default studies, which is itself Assumption A9.
 
 ### 2.1 Sovereign PD
 
-WOE for bin *i*: `WOE_i = ln[(bad_i/Bad) / (good_i/Good)]` (bad-over-good, so
+WOE for bin *i*: `WOE_i = ln[(good_i/Good) / (bad_i/Bad)]` (good-over-bad, the
+convention shared with `eq_credit`; smoothed counts use denominators
+`Good + k·s` and `Bad + k·s` over k bins so each distribution sums to 1; so
 positive = risky); `IV = Σ (bad share − good share)·WOE_i`. IRLS solves the
 logistic MLE by Newton steps `β ← β + (XᵀWX)⁻¹ Xᵀ(y − p)` with
 `W = diag(p(1−p))`; standard errors from `(XᵀWX)⁻¹`. Scorecard:
 `score = 600 + (20/ln2)·ln(odds_good/50)` — 20 points doubles the good odds
 (identity unit-tested). Rating bands are fixed PD cut-offs with monotone
-midpoints (unit-tested), so band ⇒ PD ⇒ CVA/capital is a single audited map.
+midpoints (unit-tested), so band ⇒ PD ⇒ exposure loss/capital is a single audited map.
 
-`contagion` is deliberately **excluded** from the scorecard: the flag is
+`contagion` is **excluded** from the scorecard: the flag is
 contemporaneous with the regional crisis (not observable ex ante), so using
 it would be borderline outcome leakage. It is retained in the panel as a
 *stress overlay* — which is exactly what makes the planted 2020 global
@@ -78,7 +81,7 @@ the party paying the earlier-time-zone currency always bears Herstatt risk,
 exactly the 1974 configuration (banks paid DEM in the European morning;
 Herstatt was closed at 15:30 CET before the USD legs paid in New York).
 
-### 2.3 Pre-settlement exposure and CVA
+### 2.3 Pre-settlement exposure and expected loss on exposure
 
 Garman-Kohlhagen GBM under the domestic measure,
 `dS = (r_d − r_f)S dt + σS dW` (exact scheme, no discretisation error).
@@ -97,8 +100,13 @@ Netting: with an agreement, exposure is `max(ΣV_i, 0)`; without,
 `Σ max(V_i,0)`. Pathwise `max(Σv,0) ≤ Σmax(v,0)` gives netted ≤ gross always,
 with equality iff MTMs never have mixed signs (both bounds unit-tested).
 
-CVA: `CVA = LGD·Σ EE(t_i)·[PD(t_i)−PD(t_{i−1})]·e^{−r_d t_i}` with
-`PD(t) = 1 − e^{−ht}`, `h = −ln(1 − PD_1y)` from the block-1 rating midpoint.
+Expected loss on exposure: `LGD·Σ EE(t_i)·[PD(t_i)−PD(t_{i−1})]·e^{−r_d t_i}`
+with `PD(t) = 1 − e^{−ht}`, `h = −ln(1 − PD_1y)` from a real-world 1-year PD
+(the pipeline uses a fixed synthetic 2%). The formula has the shape of a
+CVA, but a CVA needs a risk-neutral hazard from CDS or proxy spreads, market
+LGD, collateral (CSA, margin period of risk), DVA, and EEPE or SA-CCR
+exposure; none of these is implemented, and a netting set holds one pair.
+`cva` and `cva_for_forward` remain as deprecated aliases.
 
 ### 2.4 Capital
 
@@ -121,12 +129,12 @@ K(ρ_sov) > K(ρ_corp) is unit-tested across the PD range.
 | A2 | Annual macro data are point-in-time and correctly lagged. Real World Bank/IMF data arrive with 6-18 month lags and revisions. | Backtests overstate timeliness ("data staleness", VALIDATION §5); production must use vintage data and the `data/live.py` schema keeps year alignment explicit. |
 | A3 | No structural regime shifts: WOE bins and coefficients fitted on 1995-2014 hold in 2015-23. | Calibration breaks exactly as demonstrated by the planted 2020 contagion year (predicted 6.4% vs realised 16.7%); PSI monitoring + annual re-bin are the controls. |
 | A4 | A peg dummy captures FX-regime risk linearly. In reality **pegs mask risk until they break** (Argentina 2001): observed volatility is suppressed while devaluation risk accumulates. | Peg-country PDs are understated in calm years and jump discontinuously; desk overlay required (DESK_GUIDE scenario 3). |
-| A5 | PD term structure is a flat hazard from the 1y PD. | Understates front-loaded risk for stressed names (real CCC curves are inverted) and long-run risk for improving credits; CVA on multi-year trades mis-stated — acceptable for ≤2y FX forwards, not for 10y swaps. |
+| A5 | PD term structure is a flat hazard from the 1y PD. | Understates front-loaded risk for stressed names (real CCC curves are inverted) and long-run risk for improving credits; exposure loss on multi-year trades mis-stated — acceptable for ≤2y FX forwards, not for 10y swaps. |
 | A6 | FX spot is GBM with constant vol for exposure simulation. | EM currencies jump and have fat tails/vol smiles; 99% PFE understated for pegged/managed floats (the break IS the tail). Stress PFE with jump scenarios before setting limits on EM pairs. |
-| A7 | Exposure independent of counterparty default (no wrong-way risk) in CVA. | For an EM sovereign counterparty on a long-USD forward this is the *worst possible* assumption — default and devaluation coincide; VALIDATION §4 quantifies a 6x CVA understatement. |
-| A8 | Settlement timing: pay at sold-currency window open, finality at bought-currency window close, one representative winter day. | DST shifts and intraday payment scheduling change windows by ±1-2h; extended Fedwire/CHIPS hours reduce them. Numbers are conservative bounds, not clock-accurate; treasury should feed actual cut-off agreements. |
-| A9 | Rating-band PD midpoints (AAA 1bp … C 40%) anchored to agency long-run studies are correct through the cycle. | All downstream CVA/capital scales linearly in these; a misanchored band shifts every limit. Governance: annual recalibration against realised default studies. |
-| A10 | Vasicek single-factor with ρ_sov = 0.30 describes sovereign tail dependence. | Multi-factor reality (regional blocs) means one global ρ can under/overstate joint tails; ρ = 0.30 is a documented, deliberately conservative choice vs Basel corporate. |
+| A7 | Exposure independent of counterparty default (no wrong-way risk) in the expected loss on exposure. | For an EM sovereign counterparty on a long-USD forward this is the worst possible assumption: default and devaluation coincide. VALIDATION §4 shows a 6x understatement in a hand example. |
+| A8 | Settlement timing: by default, pay at sold-currency window open and finality at bought-currency window close, one representative winter day. | This operating-hours window is a lower bound, not a conservative one. BCBS (2013) measures from the unilateral cancellation deadline (often the previous business day) to confirmed receipt; pass `cancellation_lead_hours`, `reconciliation_lag_hours` and `extra_days` with the bank's actual deadlines. Fedwire Funds opens at 21:00 ET the previous day. No settlement-fail model. |
+| A9 | Rating-band PD midpoints (AAA 1bp … C 40%) anchored to agency long-run studies are correct through the cycle. | All downstream exposure-loss/capital figures scale linearly in these; a misanchored band shifts every limit. Governance: annual recalibration against realised default studies. |
+| A10 | Vasicek single-factor with ρ_sov = 0.30 describes sovereign tail dependence. | Multi-factor reality (regional blocs) means one global ρ can under/overstate joint tails; ρ = 0.30 is a conservative choice relative to Basel corporate. |
 
 ## 4. Numerical/engineering notes
 

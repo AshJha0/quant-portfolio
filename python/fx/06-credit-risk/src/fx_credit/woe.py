@@ -6,16 +6,19 @@ For bin *i* with ``n_bad`` events (defaults) and ``n_good`` non-events:
 
 .. math::
 
-    \\mathrm{WOE}_i = \\ln\\frac{n^{bad}_i / N^{bad}}{n^{good}_i / N^{good}},
+    \\mathrm{WOE}_i = \\ln\\frac{g_i}{b_i},
     \\qquad
-    \\mathrm{IV} = \\sum_i \\left(\\frac{n^{bad}_i}{N^{bad}} -
-    \\frac{n^{good}_i}{N^{good}}\\right)\\mathrm{WOE}_i .
+    \\mathrm{IV} = \\sum_i (g_i - b_i)\\,\\mathrm{WOE}_i ,
 
-Positive WOE = riskier than average (bad-over-good convention; sign is a pure
-convention — flip both the ratio and the logistic coefficients to get the
-scorecard-vendor convention).  A ``smoothing`` count (default 0.5, Laplace
-style) is added to each bin's bad and good counts so empty cells stay finite;
-set ``smoothing=0`` for exact textbook arithmetic.
+with ``g_i = (n^{good}_i + s) / (N^{good} + k s)`` and
+``b_i = (n^{bad}_i + s) / (N^{bad} + k s)`` over the k bins (missing bin
+included), so each distribution sums to exactly 1.
+
+Positive WOE = safer than average. This good-over-bad convention is the one
+used by the equity twin (``eq_credit``) and by most scorecard texts
+(Siddiqi), so the logistic coefficients on WOE are negative (about -1).
+``smoothing`` (default 0.5, Laplace style) keeps empty cells finite; set
+``smoothing=0`` for exact textbook arithmetic.
 
 Missing values get their **own explicit bin**: in sovereign data, a missing
 governance score is itself a signal (weak statistical capacity correlates
@@ -107,29 +110,38 @@ class WOETable:
         )
 
 
-def _make_bin(
-    label: str,
-    left: float,
-    right: float,
-    is_missing: bool,
-    n_bad: int,
-    n_good: int,
+def _finalise(
+    raw: list[tuple[str, float, float, bool, int, int]],
     bad_total: int,
     good_total: int,
     smoothing: float,
-) -> WOEBin:
+) -> list[WOEBin]:
+    """WOE/IV for every bin at once: (label, left, right, is_missing, n_bad, n_good).
+
+    The smoothing count is added to every bin, and the denominators add it
+    k times, so the smoothed good and bad distributions each sum to 1.
+    """
     if bad_total <= 0 or good_total <= 0:
         raise ValueError("need at least one bad and one good observation overall")
-    bs = (n_bad + smoothing) / (bad_total + 2 * smoothing)
-    gs = (n_good + smoothing) / (good_total + 2 * smoothing)
-    if bs <= 0 or gs <= 0:
-        raise ValueError(
-            f"bin {label!r} has an empty cell with smoothing=0; "
-            "use smoothing>0 or coarser bins"
-        )
-    woe = float(np.log(bs / gs))
-    iv = float((bs - gs) * woe)
-    return WOEBin(label, left, right, is_missing, n_bad + n_good, n_bad, n_good, woe, iv)
+    k = len(raw)
+    out = []
+    for label, left, right, is_missing, n_bad, n_good in raw:
+        bs = (n_bad + smoothing) / (bad_total + k * smoothing)
+        gs = (n_good + smoothing) / (good_total + k * smoothing)
+        if bs <= 0 or gs <= 0:
+            raise ValueError(
+                f"bin {label!r} has an empty cell with smoothing=0; "
+                "use smoothing>0 or coarser bins"
+            )
+        woe = float(np.log(gs / bs))
+        iv = float((gs - bs) * woe)
+        out.append(WOEBin(label, left, right, is_missing, n_bad + n_good, n_bad,
+                          n_good, woe, iv))
+    return out
+
+
+def _raw(b: WOEBin) -> tuple[str, float, float, bool, int, int]:
+    return (b.label, b.left, b.right, b.is_missing, b.n_bad, b.n_good)
 
 
 def woe_table(
@@ -199,22 +211,19 @@ def woe_table(
     k = edges.size - 1
     # assign: bin i covers (edges[i], edges[i+1]], first bin closed left
     idx = np.searchsorted(edges[1:-1], xv, side="left")
-    bins: list[WOEBin] = []
+    raw: list[tuple[str, float, float, bool, int, int]] = []
     for i in range(k):
         sel = idx == i
         nb = int(yv[sel].sum())
         ng = int(sel.sum() - nb)
         lo, hi = edges[i], edges[i + 1]
         label = f"({lo:.4g}, {hi:.4g}]" if i > 0 else f"[{lo:.4g}, {hi:.4g}]"
-        bins.append(
-            _make_bin(label, lo, hi, False, nb, ng, bad_total, good_total, smoothing)
-        )
+        raw.append((label, lo, hi, False, nb, ng))
     if miss.any():
         nb = int(y[miss].sum())
         ng = int(miss.sum() - nb)
-        bins.append(
-            _make_bin("missing", np.nan, np.nan, True, nb, ng, bad_total, good_total, smoothing)
-        )
+        raw.append(("missing", np.nan, np.nan, True, nb, ng))
+    bins = _finalise(raw, bad_total, good_total, smoothing)
     return WOETable(feature, tuple(bins), bad_total, good_total, smoothing)
 
 
@@ -234,14 +243,15 @@ def monotone_merge(table: WOETable) -> WOETable:
     nums = list(table.numeric_bins)
     if len(nums) <= 2:
         return table
+    mb = table.missing_bin
     woes = np.array([b.woe for b in nums])
-    direction = 1.0 if np.corrcoef(np.arange(len(nums)), woes)[0, 1] >= 0 else -1.0
+    k_idx = np.arange(len(nums), dtype=float)
+    # direction of the dominant trend; a constant WOE (corrcoef NaN) counts
+    # as increasing and has no violations anyway
+    cov = float(np.mean((k_idx - k_idx.mean()) * (woes - woes.mean())))
+    direction = -1.0 if cov < 0 else 1.0
 
-    def rebuild(nb: int, ng: int, left: float, right: float, first: bool) -> WOEBin:
-        label = f"({left:.4g}, {right:.4g}]" if not first else f"[{left:.4g}, {right:.4g}]"
-        return _make_bin(label, left, right, False, nb, ng,
-                         table.bad_total, table.good_total, table.smoothing)
-
+    raw = [_raw(b) for b in nums]
     while len(nums) > 1:
         woes = np.array([b.woe for b in nums])
         diffs = direction * np.diff(woes)
@@ -249,11 +259,17 @@ def monotone_merge(table: WOETable) -> WOETable:
         if bad_idx.size == 0:
             break
         i = int(bad_idx[0])
-        a, b = nums[i], nums[i + 1]
-        merged = rebuild(a.n_bad + b.n_bad, a.n_good + b.n_good, a.left, b.right, i == 0)
-        nums = nums[:i] + [merged] + nums[i + 2:]
+        a, b = raw[i], raw[i + 1]
+        left, right = a[1], b[2]
+        label = f"({left:.4g}, {right:.4g}]" if i > 0 else f"[{left:.4g}, {right:.4g}]"
+        raw = raw[:i] + [(label, left, right, False, a[4] + b[4], a[5] + b[5])] + raw[i + 2:]
+        # bin count changed, so every bin's smoothed share changes
+        allb = _finalise(raw + ([_raw(mb)] if mb else []), table.bad_total,
+                         table.good_total, table.smoothing)
+        nums = allb[: len(raw)]
+        mb = allb[-1] if mb else None
 
-    out_bins = tuple(nums) + ((table.missing_bin,) if table.missing_bin else ())
+    out_bins = tuple(nums) + ((mb,) if mb else ())
     return replace(table, bins=out_bins)
 
 

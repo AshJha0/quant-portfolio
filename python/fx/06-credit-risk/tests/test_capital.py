@@ -63,13 +63,16 @@ def test_vasicek_invalid_rho_raises():
 
 
 def test_vasicek_matches_granular_portfolio_simulation():
-    """Non-circular check: simulate a one-factor default model on 5000 names;
-    the portfolio loss-rate quantile must match the ASRF conditional PD."""
+    """Simulate a one-factor default model on 5000 names; the portfolio
+    loss-rate quantile must match the ASRF conditional PD. The conditional
+    default probability is written out here from the asset-value model
+    (default iff sqrt(rho) X + sqrt(1 - rho) e < N^-1(PD), X = -Z), not taken
+    from the function under test."""
     pd1, rho, alpha = 0.05, 0.30, 0.95
     rng = np.random.default_rng(10)
     n_draws, n_names = 4000, 5000
     x = rng.standard_normal(n_draws)
-    cond = np.array([vasicek_conditional_pd(pd1, rho, xi) for xi in x])
+    cond = norm.cdf((norm.ppf(pd1) + np.sqrt(rho) * x) / np.sqrt(1.0 - rho))
     losses = rng.binomial(n_names, cond) / n_names
     sim_q = np.quantile(losses, alpha)
     analytic = vasicek_conditional_pd(pd1, rho, norm.ppf(alpha))

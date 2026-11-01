@@ -19,9 +19,10 @@ LN2 = np.log(2.0)
 def _hand_case():
     """Two bins, no smoothing. bad_total = good_total = 3.
 
-    bin1 (x=1): 1 bad, 2 good -> WOE = ln((1/3)/(2/3)) = -ln2,
-                IV = (1/3 - 2/3)(-ln2) = ln2/3
-    bin2 (x=2): 2 bad, 1 good -> WOE = +ln2, IV = ln2/3
+    Good-over-bad convention, WOE = ln(dist_good / dist_bad):
+    bin1 (x=1): 1 bad, 2 good -> WOE = ln((2/3)/(1/3)) = +ln2,
+                IV = (2/3 - 1/3)(ln2) = ln2/3
+    bin2 (x=2): 2 bad, 1 good -> WOE = -ln2, IV = ln2/3
     Total IV = 2 ln2 / 3.
     """
     x = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
@@ -34,7 +35,7 @@ def test_woe_hand_computed_exact():
     x, y, edges = _hand_case()
     t = woe_table(x, y, edges=edges, smoothing=0.0)
     woes = [b.woe for b in t.bins]
-    assert woes == pytest.approx([-LN2, LN2], abs=1e-14)
+    assert woes == pytest.approx([LN2, -LN2], abs=1e-14)
 
 
 def test_iv_hand_computed_exact():
@@ -160,7 +161,7 @@ def test_woe_transform_hand_case():
     x, y, edges = _hand_case()
     t = woe_table(x, y, edges=edges, smoothing=0.0)
     out = woe_transform(np.array([1.0, 2.0]), t)
-    assert out == pytest.approx([-LN2, LN2], abs=1e-14)
+    assert out == pytest.approx([LN2, -LN2], abs=1e-14)
 
 
 def test_woe_transform_missing_to_missing_bin():
@@ -182,7 +183,7 @@ def test_woe_transform_clamps_out_of_range():
     x, y, edges = _hand_case()
     t = woe_table(x, y, edges=edges, smoothing=0.0)
     out = woe_transform(np.array([-100.0, 100.0]), t)
-    assert out == pytest.approx([-LN2, LN2], abs=1e-14)
+    assert out == pytest.approx([LN2, -LN2], abs=1e-14)
 
 
 def test_leaky_feature_iv_flagged_on_panel():
@@ -207,3 +208,24 @@ def test_flag_leaky_iv_threshold():
     ivs = {"good": 0.25, "strong": 0.8, "leaky": 1.7}
     assert flag_leaky_iv(ivs) == ["leaky"]
     assert flag_leaky_iv(ivs, threshold=0.5) == ["leaky", "strong"]
+
+
+def test_smoothed_shares_sum_to_one_for_any_bin_count():
+    # Old denominators used total + 2s regardless of the number of bins k.
+    x = np.array([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 4.0])
+    y = np.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0])
+    t = woe_table(x, y, edges=np.array([0.5, 1.5, 2.5, 3.5, 4.5]), smoothing=0.5)
+    k = len(t.bins)
+    gs = [(b.n_good + 0.5) / (t.good_total + k * 0.5) for b in t.bins]
+    bs = [(b.n_bad + 0.5) / (t.bad_total + k * 0.5) for b in t.bins]
+    assert sum(gs) == pytest.approx(1.0, abs=1e-15)
+    assert [b.woe for b in t.bins] == pytest.approx(list(np.log(np.array(gs) / bs)), abs=1e-14)
+
+
+def test_monotone_merge_constant_woe_is_stable():
+    # constant WOE: np.corrcoef is NaN; the merge must not misread direction
+    x = np.repeat([1.0, 2.0, 3.0, 4.0], 10)
+    y = np.tile([1.0] + [0.0] * 4, 8)
+    t = woe_table(x, y, edges=np.array([0.5, 1.5, 2.5, 3.5, 4.5]), smoothing=0.0)
+    assert len({round(b.woe, 12) for b in t.bins}) == 1
+    assert len(monotone_merge(t).numeric_bins) == 4

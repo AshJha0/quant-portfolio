@@ -5,8 +5,8 @@ import pytest
 
 from fx_credit.exposure import (
     FXForward,
-    cva,
-    cva_for_forward,
+    expected_exposure_loss,
+    expected_exposure_loss_for_forward,
     exposure_profile,
     forward_mtm,
     hazard_from_pd1y,
@@ -176,33 +176,33 @@ def test_cva_hand_computed_two_period():
 
     CVA = 0.6 * (10*0.01 + 8*0.02) = 0.156 exactly.
     """
-    val = cva(np.array([0.5, 1.0]), np.array([10.0, 8.0]), np.array([0.01, 0.03]), 0.6)
+    val = expected_exposure_loss(np.array([0.5, 1.0]), np.array([10.0, 8.0]), np.array([0.01, 0.03]), 0.6)
     assert val == pytest.approx(0.156, abs=1e-15)
 
 
 def test_cva_hand_computed_with_discounting():
     r = 0.05
     expected = 0.6 * (10 * 0.01 * np.exp(-r * 0.5) + 8 * 0.02 * np.exp(-r * 1.0))
-    val = cva(np.array([0.5, 1.0]), np.array([10.0, 8.0]), np.array([0.01, 0.03]), 0.6, r_d=r)
+    val = expected_exposure_loss(np.array([0.5, 1.0]), np.array([10.0, 8.0]), np.array([0.01, 0.03]), 0.6, r_d=r)
     assert val == pytest.approx(expected, abs=1e-15)
 
 
 def test_cva_zero_pd_counterparty_is_zero():
-    val, prof = cva_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.0, lgd=0.6,
+    val, prof = expected_exposure_loss_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.0, lgd=0.6,
                                 n_steps=6, n_paths=2000, seed=1)
     assert val == 0.0 and prof.times.size > 0
 
 
 def test_cva_increases_with_pd():
     kw = dict(n_steps=6, n_paths=5000, seed=1)
-    lo, _ = cva_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.01, lgd=0.6, **kw)
-    hi, _ = cva_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.05, lgd=0.6, **kw)
+    lo, _ = expected_exposure_loss_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.01, lgd=0.6, **kw)
+    hi, _ = expected_exposure_loss_for_forward(FWD, SPOT, VOL, RD, RF, pd_1y=0.05, lgd=0.6, **kw)
     assert 0.0 < lo < hi
 
 
 def test_cva_matured_forward_zero():
     dead = FXForward("EURUSD", 10e6, 1.08, 0.0, True)
-    val, _ = cva_for_forward(dead, SPOT, VOL, RD, RF, pd_1y=0.02, lgd=0.6,
+    val, _ = expected_exposure_loss_for_forward(dead, SPOT, VOL, RD, RF, pd_1y=0.02, lgd=0.6,
                              n_steps=6, n_paths=1000, seed=1)
     assert val == 0.0
 
@@ -211,8 +211,19 @@ def test_cva_validation_errors():
     t = np.array([0.5, 1.0])
     e = np.array([1.0, 1.0])
     with pytest.raises(ValueError, match="lgd"):
-        cva(t, e, np.array([0.01, 0.02]), lgd=1.5)
+        expected_exposure_loss(t, e, np.array([0.01, 0.02]), lgd=1.5)
     with pytest.raises(ValueError, match="nondecreasing"):
-        cva(t, e, np.array([0.03, 0.01]), lgd=0.5)
+        expected_exposure_loss(t, e, np.array([0.03, 0.01]), lgd=0.5)
     with pytest.raises(ValueError, match="shape"):
-        cva(t, e[:1], np.array([0.01, 0.02]), lgd=0.5)
+        expected_exposure_loss(t, e[:1], np.array([0.01, 0.02]), lgd=0.5)
+
+
+def test_cva_names_are_deprecated_aliases():
+    import fx_credit as fc
+
+    t = np.array([0.5, 1.0])
+    ee = np.array([100.0, 150.0])
+    q = np.array([0.01, 0.02])
+    with pytest.warns(DeprecationWarning, match="not a CVA"):
+        old = fc.cva(t, ee, q, 0.6)
+    assert old == fc.expected_exposure_loss(t, ee, q, 0.6)
