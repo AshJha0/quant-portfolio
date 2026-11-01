@@ -163,7 +163,7 @@ class TestImpliedVol:
         """
         S, K, T, r_d, r_f, sigma = 1.0, 0.5, 30.0, 0.03, 0.01, 3.0
         price = gk_call(S, K, T, r_d, r_f, sigma)
-        with pytest.raises(ValueError, match="unrecoverably large"):
+        with pytest.raises(ValueError, match="no finite implied volatility"):
             implied_vol(price, S, K, T, r_d, r_f, "call")
 
 
