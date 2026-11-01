@@ -27,16 +27,14 @@ per-factor FHS VaR, parametric normal and t VaR, one 100k-path MC run that
 gives VaR, ES and the bootstrap SE (seed derived from the run date and
 logged), then the backtest update.
 
-Measured on a 250 x 100 panel, single thread, release + LTO, 2026-11-01
-(`src/bin/bench.rs`):
+The 100k-path MC run is the dominant cost of the batch. Per-call latency
+for every kernel, before and after the allocation-free API, is in the
+README "Latency" table (`cargo run --release --bin bench`).
 
-| stage | best ms |
-|---|---|
-| covariance (sample + EWMA) | 2.0 |
-| historical family, FHS per factor, empirical ES | 0.15 |
-| parametric family, closed-form ES | 0.03 |
-| MC 100k paths normal: VaR + ES + bootstrap SE (200) | 657 |
-| MC 100k paths Student-t(6): same | 1744 |
+For an intraday or pre-trade path, use `eq_var_engine::fast`. Size one
+`McWorkspace` per book, call `prepare` when the covariance changes, then
+`run` or `var` per request. Those calls allocate nothing and return the
+same numbers as `monte_carlo_run` and `monte_carlo_var`.
 
 Books are independent, so the batch parallelises across cores. If MC cost
 matters, cut paths and report the larger SE; the SE is part of the output.

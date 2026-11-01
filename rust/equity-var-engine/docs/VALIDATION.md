@@ -92,7 +92,11 @@ and `portfolio_pnl` accepted non-finite input.
   form; simulated covariance against the target (`tests/test_monte_carlo.rs`).
 - Same seed gives exactly equal VaR and ES on the same build
   (`bitwise_seed_determinism`). No claim is made across platforms.
-- The bench prints MC normal VaR 444 614 against parametric 444 396 with
+- The allocation-free `fast` API returns the same bits as the main API
+  (VaR, ES, both SEs and every scenario P&L) and repeats bit for bit on a
+  second run with the same seed (`tests/test_fast_equiv.rs`). It makes
+  zero heap allocations per call (`tests/test_fast_alloc.rs`).
+- On the 250 x 100 bench book, MC normal VaR is 444 614 against parametric 444 396 with
   bootstrap SE 2 110 and KDE SE 2 157 (full-rank 100-factor covariance).
 
 ## 6. Known limits
