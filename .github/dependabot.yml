@@ -1,0 +1,66 @@
+# Dependabot: weekly, grouped, one PR per ecosystem directory group.
+# Python: every project's pyproject.toml plus requirements/ (the CI
+# constraints). Rust: every crate's Cargo.toml / Cargo.lock. Actions: the
+# SHA-pinned actions in .github/workflows.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories:
+      - "/requirements"
+      - "/python/equity/01-options-pricing"
+      - "/python/equity/02-volatility-modeling"
+      - "/python/equity/03-var-es-engine"
+      - "/python/equity/04-fixed-income"
+      - "/python/equity/05-pairs-trading"
+      - "/python/equity/06-credit-risk"
+      - "/python/equity/07-portfolio-optimization"
+      - "/python/equity/08-algo-execution"
+      - "/python/equity/09-vol-surface"
+      - "/python/equity/10-regime-switching"
+      - "/python/foundations/01-risk-metrics"
+      - "/python/foundations/02-trading-signal-backtest"
+      - "/python/foundations/03-black-scholes-replication"
+      - "/python/fx/01-options-pricing"
+      - "/python/fx/02-volatility-modeling"
+      - "/python/fx/03-var-es-engine"
+      - "/python/fx/04-fixed-income"
+      - "/python/fx/05-pairs-trading"
+      - "/python/fx/06-credit-risk"
+      - "/python/fx/07-portfolio-optimization"
+      - "/python/fx/08-algo-execution"
+      - "/python/fx/09-vol-surface"
+      - "/python/fx/10-regime-switching"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(python)"
+  - package-ecosystem: cargo
+    directories:
+      - "/rust/equity-options-engine"
+      - "/rust/equity-var-engine"
+      - "/rust/fx-options-engine"
+      - "/rust/fx-var-engine"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      rust:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(rust)"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
