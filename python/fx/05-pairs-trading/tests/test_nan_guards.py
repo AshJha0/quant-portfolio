@@ -26,7 +26,7 @@ corruption in this package, not NaN: a zero or missing price becomes
 design matrix, `lstsq` returns NaN coefficients, the ADF tau is NaN, and
 ``bool(nan < critical_value)`` is False — so `engle_granger` reported
 **"not cointegrated"** on data it could not test at all. A false negative
-that looks exactly like a genuine one.
+that looks like a correct one.
 """
 
 from __future__ import annotations
@@ -350,7 +350,7 @@ class TestScreenAndMetricGuards:
             turnover(np.array([0.0, 1.0, float("nan"), 0.0]))
 
     def test_metrics_still_tolerate_warmup_nans_in_pnl(self) -> None:
-        # Deliberate asymmetry: P&L series legitimately start with NaN
+        # Asymmetry: P&L series legitimately start with NaN
         # warmup, so the metric layer drops them rather than raising.
         from fx_pairs.metrics import max_drawdown, sharpe_ratio
 

@@ -1,8 +1,15 @@
-# Desk Guide — Running FX Relative Value with `fx_pairs`
+# Desk Guide: running FX relative value with `fx_pairs`
 
-How an FX relative-value pod would actually use this library: trade
-expression, workflow, sizing, limits, P&L attribution, and the scenarios that
-have hurt real books.
+How an FX relative-value pod would use this library: trade expression,
+workflow, sizing, limits, P&L attribution, and the historical scenarios that
+hurt such books. The library has only been run on synthetic data. No
+real-data result exists yet (Phase 4 of the remediation plan), and the
+planted edge in the examples is a property of the generator.
+
+**Execution timing.** Signals use data up to the close of day t. Orders fill
+at a modelled t+1 price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a
+close-auction variant fills at p_t and pays an auction cost. A signal sheet
+built on the London close is therefore traded the next session.
 
 ---
 
@@ -14,7 +21,7 @@ currencies. A long AUDUSD / short beta·NZDUSD spread is executed as:
 * two **FX forwards** (or spot rolled via tom-next swaps) with the pod's
   prime broker, netted under an ISDA/CSA;
 * the deposit-rate differential of the model is realised as **forward
-  points** on the daily roll — which is why the engine's carry ledger is
+  points** on the daily roll, which is why the engine's carry ledger is
   swap-point-based (`(S−F)/S`), not an interest-accrual fiction;
 * Wednesday's tom-next covers the weekend (T+2): the desk sees a **3-day
   swap on Wednesday**. The library books the same 3 days on Monday
@@ -26,7 +33,7 @@ margin is set on net open exposure with add-ons for EM legs; a pairs book
 looks small in net USD delta but gross notional (both legs) is what the PB
 margins and what the credit officer sees. Cross-currency basis (CIP
 deviations, assumption A6) shows up as the difference between model carry and
-the PB's actual swap points — reconcile monthly; feed market forward points
+the PB's actual swap points, reconcile monthly; feed market forward points
 into the accrual for basis-heavy pairs (JPY, quarter-ends).
 
 **Costs.** The engine's pip-spread table is indicative interbank: majors
@@ -49,14 +56,14 @@ before believing any backtest.
 **Who consumes the numbers.** PM (signal sheet + decomposition), risk
 (vol-target sizes, block report, stress P&L), operations (roll amounts,
 Wednesday 3-day swaps), management (monthly attribution: spot vs carry vs
-costs — the decomposition is the anti-fooling device: a "mean reversion" pod
+costs, the decomposition is the anti-fooling device: a "mean reversion" pod
 whose P&L is 80% carry is a carry pod with extra steps).
 
 ## 3. Sizing: by vol, never by notional
 
 Positions are sized so each spread contributes equal *risk*:
 `units = target_vol / realised_spread_vol` (`vol_target_scale`), capped at a
-hard max leverage. The cap is not cosmetic — it is the SNB lesson: a pegged
+hard max leverage. The cap is not cosmetic, it is the SNB lesson: a pegged
 spread's realised vol collapses, an uncapped vol targeter mechanically
 maximises leverage at the moment of maximum event risk. Size EM and
 policy-maintained spreads on **event scale** (assume a 10–20% gap), not OU
@@ -76,21 +83,21 @@ sigma.
 
 **Carry book vs RV book separation.** Run the carry-driven P&L and the
 spot-reversion P&L as separate books (the decomposition gives the split
-daily). Reasons: (i) they have different risk factors — carry P&L dies in
+daily). Reasons: (i) they have different risk factors, carry P&L dies in
 risk-off exactly when spread P&L draws down (crowded-carry unwind), so
 netting them hides the correlation; (ii) the carry filter creates a
 systematic long-high-yielder tilt that must be visible to risk as carry
 exposure, not disguised as "statistical arbitrage"; (iii) sign-flip pairs
-(VALIDATION §4) are carry trades wearing an RV costume — the split exposes
+(VALIDATION §4) are carry trades wearing an RV costume, the split exposes
 them within a month.
 
 ## 5. Real-life scenarios
 
 * **SNB floor, 2011–2015 → 15 Jan 2015.** EURCHF at the 1.20 floor was the
-  highest-scoring 'mean reverter' in any G10 scan for three years — and the
-  simulated replay (pipeline stage 6) shows the exact book shape: +0.058
-  over 750 days at 0.75 hit rate, then −0.150 in one day, 2.6× cumulative
-  gains, long-with-the-crowd, gap through every stop. Desk rule: spreads
+  highest-scoring 'mean reverter' in any G10 scan for three years, and the
+  synthetic replay (pipeline stage 6, seed 3) shows the book shape: +0.053
+  over 750 days at 0.75 hit rate, then −0.150 in one day, 2.8× cumulative
+  gains, long with the crowd, gap through every stop. Desk rule: spreads
   whose stationarity is *policy-maintained* go on the peg/floor list and are
   sized on depeg scale. Several real funds and retail brokers (Alpari,
   Everest) did not survive the day.
@@ -102,12 +109,12 @@ them within a month.
 * **Brexit, 24 Jun 2016.** GBP crosses gapped 8–10% overnight; GBP-block RV
   (EURGBP vs GBPUSD structures) saw hedge ratios estimated on pre-vote data
   fail simultaneously with 10× spreads. Walk-forward windows spanning the
-  event de-select GBP pairs in the next formation — by design, *after* the
+  event de-select GBP pairs in the next formation, by design, *after* the
   loss. Pre-scheduled event risk ⇒ flatten or option-hedge; the daily model
   has no vote-risk input.
 * **Risk-off JPY spikes (Oct 1998 USDJPY −15% in two days; Mar 2020; Aug
   2024 carry unwind).** Safe-haven legs gap richer while commodity legs gap
-  cheaper — the two-block correlation flip, at gap speed. Any RV book short
+  cheaper, the two-block correlation flip, at gap speed. Any RV book short
   JPY/CHF as the 'rich' leg is implicitly short the risk-off factor; the
   block limit exists precisely for this, and the regime monitor (rolling
   cross-block correlation, tested detectable within ~40 days) is the early
@@ -120,28 +127,28 @@ Daily P&L is published as **spot + carry + costs** (identity-tested to
 offline: cross-validation vs statsmodels (VALIDATION §1), spurious-size
 control, no-lookahead detector, walk-forward window-integrity tests, and the
 seeded scenario suite (SNB, carry-flip, EM costs). Model changes require the
-full suite green plus a re-run of `examples/run_pipeline.py` with the numbers
-pasted into VALIDATION.md — the same discipline this repository follows.
+full suite green plus a re-run of `examples/run_pipeline.py`, with the
+numbers in VALIDATION.md regenerated from that run.
 
-**Data-quality gate — "the strategy did nothing" is a result that must be
-explained, not accepted.** Two of this book's controls fail *silently* on
+**Data-quality gate: "the strategy did nothing" is a result to be
+explained, not accepted.** Three of this book's controls used to fail *silently* on
 bad data rather than loudly, which is the worst possible direction:
 
 * a non-finite `sigma` on the frozen formation statistics produces an
   all-NaN z-score, so the state machine never leaves flat and the run
-  reports a tidy zero-P&L, zero-trade day — a broken pipeline that looks
+  reports a tidy zero-P&L, zero-trade day, a broken pipeline that looks
   like a quiet market;
 * a non-finite `stop` disables the hard stop entirely (`state * z <= -nan`
   is always False), removing the one control designed to survive a regime
   break, with no message anywhere;
 * an infinity from a logged zero/missing fixing makes `engle_granger`
   return **"not cointegrated"** rather than an error, so a data outage is
-  indistinguishable from a genuinely de-selected pair.
+  indistinguishable from a correctly de-selected pair.
 
 All three now raise a named `ValueError` (VALIDATION §6.1). The
 operational rules that follow: (i) a zero-trade day is reconciled against
 the z-score series, never signed off on its own; (ii) the formation-window
 statistics are range-checked before they are frozen for the trading window;
-(iii) pairs that drop out of the funnel are logged with the *reason* —
+(iii) pairs that drop out of the funnel are logged with the *reason* -
 "failed ADF" and "failed validation" are different lines in the report and
 only the first is a modelling decision.

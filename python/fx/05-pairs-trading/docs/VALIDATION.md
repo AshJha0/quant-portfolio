@@ -1,8 +1,18 @@
-# Validation — FX Statistical Pairs
+# Validation: FX statistical pairs
 
-How the implementation was validated, with the numbers. All figures below are
-reproducible: `python examples/run_pipeline.py` (seeded, offline, ~1 s) and
-`pytest -q` (246 tests, ~6 s, offline).
+How the implementation was validated, with the numbers. Every performance
+number here comes from synthetic data in which the planted pair is
+cointegrated by construction, so the profit is a property of the generator,
+not evidence of an edge in FX markets. No real-data result exists yet (Phase
+4 of the remediation plan).
+
+Reproduce: `python examples/run_pipeline.py` (seeded, offline, 196 s with the
+default 60 seeds; it writes no files) and `pytest -q` (286 tests, 106 s).
+
+Execution convention for every backtest below: signals use data up to the
+close of day t. Orders fill at a modelled t+1 price, p_t + f (p_{t+1} - p_t)
+with f = 0.5 by default; a close-auction variant fills at p_t and pays an
+auction cost.
 
 ---
 
@@ -15,25 +25,35 @@ reproducible: `python examples/run_pipeline.py` (seeded, offline, ~1 s) and
 | ADF auto-lag (AIC) | selected lag identical; stat matches to < 1e-8 |
 | MacKinnon critical values (N=1, finite-sample) | match statsmodels-reported values to < 1e-10 |
 | Engle–Granger statistic | matches `statsmodels.coint(trend='c', autolag='aic')` to **~2e-15**; 5% critical value matches to < 1e-8 |
-| EG vs plain ADF critical values | N=2 table more negative by > 0.3 at every level (asymptotic 5%: −3.336 vs −2.862) — using the N=1 table on residuals would over-reject |
+| EG vs plain ADF critical values | N=2 table more negative by > 0.3 at every level (asymptotic 5%: −3.336 vs −2.862): using the N=1 table on residuals would over-reject |
 
-## 2. Statistical size and power
+## 2. Statistical size, power and the funnel
 
 * **Spurious-regression size control**: 200 seeded independent random-walk
-  pairs, EG at 5% → rejection rate **4.5%** (nominal 5%; asserted < 10%).
-* **Power / recovery**: planted cointegrated pair (n=1500, true beta 1.0):
-  EG stat **−7.76** vs 5% cv −3.34; recovered beta **0.999**, alpha −0.0004.
-  At n=2000, beta 1.4 recovered within ±0.05 (unit test).
-* **Correlated ≠ cointegrated**: walks with daily return correlation 0.9
-  are *not* flagged (single-case test + the funnel below).
+  pairs, EG at 5%: rejection rate **4.5%** (nominal 5%; asserted < 10%).
+* **Recovery on one synthetic seed** (n=1500, true beta 1.0): EG stat
+  **-7.76**, recovered beta **0.999**, alpha -0.0004.
+* **Funnel** (`cointegration_funnel`): the planted pair is added to the
+  8-pair two-block universe under the labels SEKUSD/NOKUSD. Candidates are
+  regressed in input column order, so the orientation uses neither the data
+  nor the ground truth. On seed 9 the screen keeps 8 candidates and EG at 5%
+  keeps only the planted pair. Over 60 synthetic seeds the funnel finds the
+  planted pair in 60 of 60 and admits 1.12 [0.80, 1.43] false positives per
+  seed out of about 8 tests (`tests/test_wiring.py`).
+* **EG gate power inside the walk-forward**: on 252-day formation windows the
+  10% gate passes 82% [79%, 85%] of windows on a pair that is cointegrated by
+  construction (60 synthetic seeds). The gate costs trading time even when
+  the relation holds.
 
 ## 3. Model recovery and cross-model consistency
 
 * **OU recovery** (true kappa=20/yr, sigma=0.05, half-life 8.7 bd; n=1500):
   OLS kappa **20.1**, sigma **0.051**, half-life **8.7 bd**. MLE matches OLS
-  (kappa within 2%, as it must — conditional MLE ≡ OLS for AR(1)); this is a
-  consistency check, not an independent estimate. Known caveat: kappa carries
-  the upward AR(1) small-sample bias; recovery tolerance ±25% at n=8000.
+  (kappa within 2%, as it must, conditional MLE equals OLS for AR(1)); this is a
+  consistency check, not an independent estimate. Kappa carries the upward
+  small-sample bias of -ln(phi) (phi is biased down); recovery tolerance ±25%
+  at n=8000. A fitted phi <= 0 raises `ValueError`
+  (`test_spread.py::TestOscillatingSpreadRejected`).
 * **Half-life identity**: `ln 2/(kappa·dt)` asserted to 1e-12 against the
   fitted kappa; white noise → half-life < 1 bar; random walk → > 250 bars.
 * **RLS hedge**: lam=1 converges to batch OLS (|Δbeta| < 1e-5); with lam=0.98
@@ -44,33 +64,53 @@ reproducible: `python examples/run_pipeline.py` (seeded, offline, ~1 s) and
   spread, and hedge-leg beta; a hand-built 3-trade ledger (weekend 3-day
   accrual included) matches the engine number-for-number.
 * **No lookahead**: perturbing all prices after day k (×1.5 / ×0.7 shocks)
-  leaves P&L and positions through k **bit-identical** (detector test).
+  leaves P&L and positions through k unchanged (detector test). The same
+  check covers the RLS hedge path and the vol-target scale
+  (`tests/test_wiring.py`).
+* **Execution**: a hand ledger checks the fill price `p_t + f (p_{t+1} - p_t)`
+  for f = 0.25, 0.5 and 1; a perfect-foresight signal earns zero (within 4
+  SE) at f = 1, while the same signal filled at the decision close earns the
+  full |r|; the close-auction variant charges exactly `auction_cost_bp` per
+  unit traded (`tests/test_execution.py`).
 
-## 4. The carry-flip demonstration (why spot-only FX backtests lie)
+## 4. Costs, carry and the carry-flip pair (synthetic)
 
-Constructed pair: base leg deposits **8%** vs hedge leg **1%** (persistent),
-spot of the high-yielder drifting down at half the differential (forward
-premium puzzle calibration). Identical trades, two accountings:
+One synthetic seed (seed 9), same signal path, full-sample hedge ratio (so
+these runs are in-sample):
+
+| run | total P&L | costs | Sharpe (Lo/NW SE) |
+|---|---|---|---|
+| frictionless | +0.1995 | 0 | 1.58 (0.32) |
+| major costs (0.7 / 1.0 pips) | +0.1946 | -0.0049 | 1.54 (0.32) |
+| major costs, RLS hedge (lam 0.995, causal) | +0.1920 | -0.0050 | 1.52 (0.33) |
+| major costs, close-auction fill (+10 bp) | +0.1096 | -0.0849 | 0.87 (0.35) |
+| EM costs (60 / 30 pips) | -0.0601 | -0.2596 | -0.37 (0.29) |
+
+Across 60 synthetic seeds (mean [95% CI] (sd)):
+
+| quantity | value |
+|---|---|
+| in-sample Sharpe, frictionless | 1.82 [1.75, 1.89] (0.28) |
+| in-sample Sharpe, major costs | 1.77 [1.70, 1.84] (0.27) |
+| in-sample Sharpe, EM costs | -0.44 [-0.50, -0.38] (0.24) |
+
+The carry-flip generator gives the base leg an **8%** deposit rate against
+**1%** on the hedge leg, with the high-yielder's spot drifting down at half
+the differential. The signal is mostly long the high-yielder. Synthetic
+seed 4:
 
 | | total P&L | spot | carry | Sharpe |
 |---|---|---|---|---|
-| spot-only backtest | **−0.143** | −0.143 | — | −0.98 |
-| carry-inclusive | **+0.085** | −0.143 | **+0.228** | +0.58 |
+| spot-only backtest | **-0.1431** | -0.1426 | 0 | -0.98 |
+| carry-inclusive | **+0.0844** | -0.1426 | **+0.2275** | 0.58 |
+| carry-inclusive, carry entry veto | +0.0765 | -0.1546 | +0.2313 | 0.53 |
 
-The signal is systematically long the 'cheap' high-yielder: on spot it bleeds
-(the drift never stops), while the position earns the differential. Ignoring
-carry does not just misstate the P&L — **it flips its sign**. The carry-aware
-entry filter on the same data keeps all 874 carry-favourable long-entry bars
-and vetoes 21 of 26 short-entry bars (shorts pay 7.0%/yr; veto threshold
-|z| ≈ 2.26 at a 6-half-life expected hold).
-
-Cost sensitivity on the planted pair (same signal path):
-
-| costs | total P&L | costs paid | Sharpe |
-|---|---|---|---|
-| frictionless | +0.194 | 0 | +1.51 |
-| major (0.7/1.0 pips) | +0.190 | −0.005 | +1.48 |
-| EM (60/30 pips) | **−0.065** | −0.259 | −0.45 |
+Across 60 synthetic seeds the spot-only P&L is -0.143 [-0.153, -0.133] and
+the carry-inclusive P&L is +0.120 [0.110, 0.129]: ignoring carry flips the
+sign. The carry entry veto (6 half-lives of expected hold) keeps every long
+entry bar and vetoes 21 of 26 short entry bars on seed 4. Across seeds it
+leaves the mean P&L at +0.120 [0.110, 0.129], because on this generator
+nearly all trades are already long the high-yielder.
 
 ## 5. Failure modes (documented AND simulated)
 
@@ -78,18 +118,18 @@ Cost sensitivity on the planted pair (same signal path):
 
 Generator: 750 days of tight OU around a floor (EURCHF 2011–2015 analogue),
 spread pinned below its mean at the floor edge, then a one-day **−15%** gap
-and a high-vol regime. Pipeline numbers (seed 3):
+and a high-vol regime. Synthetic pipeline numbers (seed 3):
 
 * Formation scan on the pegged period: EG stat **−5.82** → "cointegrated",
   the best-looking spread a scan could find. That is the trap.
-* Pre-break: cumulative P&L **+0.058** over 750 days, hit rate 0.75 — the
-  classic steady grind that builds false confidence (and, on a vol-targeted
-  book, maximal leverage: realised spread vol was collapsing).
-* Break day: **−0.150** in one day — **2.6×** every franc the strategy ever
-  made; full-sample P&L −0.060. A z-stop at |z|=25 changes nothing: the
+* Pre-break: cumulative P&L **+0.053** over 750 days, hit rate 0.75. The
+  steady gains build false confidence (and, on a vol-targeted book, maximal
+  leverage, because realised spread vol was collapsing).
+* Break day: **-0.150** in one day, **2.8×** everything the strategy had
+  made; full-sample P&L -0.065.
   market gaps straight through any stop (asserted in
   `test_scenarios.py::test_stop_cannot_prevent_the_gap_loss`).
-* Position on break eve: +1, long the pegged pair — with the crowd.
+* Position on break eve: +1, long the pegged pair, with the crowd.
 
 Lesson encoded in tests: statistical excellence of a spread is **not**
 evidence of economic stability; policy-maintained cointegrations carry the
@@ -105,7 +145,7 @@ sample → windows skipped), time stops.
 
 ### 5.3 EM devaluations and wide costs
 
-Step devaluations (CNY 2015, ARS repeatedly) are the A3 jump failure — same
+Step devaluations (CNY 2015, ARS repeatedly) are the A3 jump failure, same
 shape as 5.1. Even without events, EM pip spreads of 30–150 turn the
 strategy's gross edge negative (table above); the EM-vs-major cost test
 asserts the sign flip at identical signals.
@@ -115,7 +155,7 @@ asserts the sign flip at identical signals.
 Risk-off episodes flip the commodity-bloc/safe-haven correlation structure:
 in the synthetic two-block panel, intra-block return correlation stays ~0.85
 while cross-block correlation flips from **+0.09 to −0.57** in risk-off
-windows (detectable on a 40-day rolling correlation — tested). Pairs that
+windows (detectable on a 40-day rolling correlation, tested). Pairs that
 diversified in calm regimes become one trade in stress; carry longs and RV
 spreads that share the same high-yielder unwind together. Control: per-block
 exposure limits (`DESK_GUIDE.md`), regime monitoring on rolling correlations.
@@ -126,7 +166,7 @@ exposure limits (`DESK_GUIDE.md`), regime monitoring on rolling correlations.
 |---|---|---|
 | Pegged / zero-vol instrument in universe | dropped from screen with `UserWarning`; OU fit on its spread raises `ValueError` | `test_universe`, `test_scenarios` |
 | Triangular identity spread | flagged degenerate, never cointegrated, ADF skipped (NaN stat) | `test_cointegration`, `test_scenarios` |
-| Zero-trade backtest | all-zero ledgers, NaN Sharpe, 0 trades — no crashes | `test_backtest` |
+| Zero-trade backtest | all-zero ledgers, NaN Sharpe, 0 trades, no crashes | `test_backtest` |
 | Missing days / calendar gaps | engine runs; carry accrues actual calendar days (Fri→Mon = 3/365; gap of 10 days = 10/365) | `test_backtest`, `test_carry` |
 | Weekend/holiday accrual total | sums exactly to calendar days/365 | `test_carry` |
 | Rate spike on last day | cannot affect prior accruals (lagged rates) | `test_carry` |
@@ -137,73 +177,58 @@ exposure limits (`DESK_GUIDE.md`), regime monitoring on rolling correlations.
 | Vol-target on collapsing vol | scale capped at max leverage (the SNB lesson) | `test_signals` |
 | Sub-5% EG rejection on pure noise | size control holds | `test_cointegration` |
 
-### 6.1 Non-finite inputs: the guards that silently muted the strategy
-(`tests/test_nan_guards.py`)
+### 6.1 Non-finite inputs (`tests/test_nan_guards.py`)
 
-Two distinct defect patterns were found and closed; both produced a
-*plausible-looking* result instead of an error, which is why neither had
-been noticed.
+Every public entry point rejects NaN and ±Inf with a named `ValueError`.
+Thresholds and parameters (`stop`, `sigma`, `notional`, `min_abs_corr`,
+`ann_factor`, deposit rates) are checked with `np.isfinite`, because an
+inequality guard such as `if sigma <= 0` passes NaN. Series inputs to
+`adf_test`, `engle_granger`, the OU fitters and `run_backtest` are checked
+with `np.isfinite`, because a zero or missing fixing becomes `-inf` after
+`log`, and an `isnan` check would let it through. Without these checks a NaN
+`stop` disables the hard stop, a NaN `sigma` produces an all-flat strategy
+reported as a zero-P&L run, and an Inf makes `engle_granger` report "not
+cointegrated" on data it could not test. Price levels must be strictly
+positive.
 
-**Pattern 1 — inequality-only guards.** `if sigma <= 0`, `if stop <= entry`,
-`if notional <= 0`, `if target_vol <= 0`, `if delta <= 0`. Every comparison
-against NaN is False, so NaN passed every one of them. Specific
-consequences reproduced in tests:
+Companion tests check that the guards do not over-reject: the planted pair is
+still detected, a finite stop still fires, the vol-target cap still binds at
+10×, RLS at `lam=1` still converges to batch OLS, and the clean backtest still
+satisfies `total = spot + carry + costs` to 1e-12.
 
-* NaN `sigma` in `zscore(mu=…, sigma=…)` → all-NaN z-score → the state
-  machine stays flat for the entire sample → the backtest reports a clean
-  zero-P&L, zero-trade run. A strategy that never traded, presented as a
-  result.
-* NaN `stop` in `generate_positions` → **the hard stop is disabled**, because
-  `state * z <= -nan` is always False. That stop is the single control that
-  exists to limit a regime break (§5, the SNB floor case). It would have been
-  switched off with no message.
-* NaN `min_abs_corr` in `correlation_screen` → every `abs(rho) >= threshold`
-  False → an empty candidate table, indistinguishable from "the universe
-  contains no tradable pairs".
-* A non-finite deposit rate in `run_backtest(rates=…)` → NaN carry accrual →
-  NaN carry P&L → a NaN Sharpe in the summary. The error now names the
-  offending dict key (`rates['rq2']`).
-* NaN `ann_factor` in the metrics → NaN Sharpe/Sortino/turnover.
+`RLSHedge.update` validates before it mutates `theta` and `P`, because the
+filter cannot recover from a non-finite state. The metrics layer tolerates
+NaN in a P&L series (it drops non-finite entries) because a warm-up window
+produces NaN P&L before the first position; the pricing, signal and backtest
+layers reject.
 
-**Pattern 2 — `isnan`-only guards on series.** `adf_test`, `engle_granger`,
-`_validate_spread` (OU fitting) and `run_backtest` all tested
-`np.isnan(x).any()` and therefore **accepted ±Inf**. Inf, not NaN, is the
-realistic corruption in this package: a zero or missing fixing becomes
-`-inf` the instant it passes through `log`. The consequence was the most
-serious defect found here — an Inf in the input made `lstsq` return NaN
-coefficients, the ADF tau NaN, and `bool(nan < critical_value)` **False**,
-so `engle_granger` reported **"not cointegrated"** on data it could not test.
-A false negative identical in appearance to a genuine one. All four
-validators now use `np.isfinite`, and price-level inputs are additionally
-required to be strictly positive so the zero-price case raises *before* the
-`log`.
+## 7. Metrics and research statistics
 
-Positive companions in the same file guard against over-rejection: the
-planted cointegrated pair is still detected (`cointegrated=True`,
-beta ≈ 1.0); a finite stop still fires when z walks to −6 and the position is
-flat afterwards; the vol-target cap still binds at 10× on a near-pegged
-spread; `half_life_days` still returns `inf` for `kappa <= 0` and
-`ln2/(kappa·dt)` otherwise; RLS at `lam=1` still converges to the batch OLS
-beta to 1e-6; the correlation screen still finds the EURUSD/GBPUSD block; and
-the clean backtest still satisfies `total = spot + carry + costs` to 1e-12.
+Sharpe, Sortino, MDD, hit rate and turnover are hand-computed on toy ledgers.
+The Sharpe standard error is the Lo (2002) delta-method estimator with a
+Newey-West (Bartlett) long-run variance truncated at `floor(4 (T/100)^(2/9))`
+lags (`research_stats.lo_sharpe_se`). With zero lags it equals the Mertens
+iid formula to 1e-10; on AR(1) returns with phi 0.4 it matches the Monte
+Carlo sd of the Sharpe estimate within 10% (`test_research_stats.py`).
 
-**RLS state integrity.** `RLSHedge.update` now validates *before* mutating
-`theta` and `P`. This matters because the filter has no recovery mechanism: a
-single non-finite tick would have made every subsequent hedge ratio NaN for
-the rest of the run. A test asserts `(alpha, beta, n_obs)` are bit-identical
-after a rejected update.
+## 8. Walk-forward headline over many seeds (synthetic)
 
-**Deliberate asymmetry.** The metrics layer still *tolerates* NaN in a P&L
-series (it drops non-finite entries) because a warmup window legitimately
-produces NaN P&L before the first position exists; the pricing, signal and
-backtest layers reject. This split is now documented in `metrics._clean` and
-asserted in `test_metrics_still_tolerate_warmup_nans_in_pnl`.
+Walk-forward 252/63, entry 2.0, exit 0.5, stop 4.0, EG gate at 10%, major
+costs and carry, default t+1 execution. 60 synthetic seeds (1000 to 1059),
+command `python examples/run_pipeline.py`:
 
-## 7. Metrics validation
+| quantity | mean [95% CI] (sd) |
+|---|---|
+| walk-forward Sharpe | 1.49 [1.39, 1.59] (0.38) |
+| walk-forward Sharpe, same-close fill, no auction cost | 1.51 [1.41, 1.61] (0.39) |
+| walk-forward Sharpe, vol-targeted to 10% | 1.46 [1.36, 1.56] (0.38) |
+| PBO over the 6-config entry/exit grid | 0.32 [0.26, 0.38] (0.25) |
 
-Sharpe/Sortino/MDD/hit-rate/turnover hand-computed on toy ledgers; Lo (2002)
-SE: collapses to the classical `sqrt((1+SR²/2)/T)` for iid returns (q=0,
-match to 1e-10) and inflates by > 1.5× on AR(1)-correlated P&L with rho=0.6 —
-the honest error bar for autocorrelated mean-reversion books (walk-forward
-Sharpe above: **0.77 ± 0.41** — barely 2 SEs from zero, which is exactly the
-kind of humility the Lo SE is there to enforce).
+The modelled t+1 fill costs nothing measurable on this generator (half-life
+8.7 days). On real data with shorter-lived deviations it has to be measured.
+
+Reference seed 9, trading days only: Sharpe 0.99, circular block-bootstrap
+95% CI [0.25, 1.74] (20-day blocks), Lo/NW SE 0.39. The pipeline logs 9
+trials on that pair (two in-sample variants, the walk-forward, its
+vol-targeted version, and five more points of the entry/exit grid). The
+deflated Sharpe ratio at 9 trials is 0.83, below the usual 0.95 bar.
