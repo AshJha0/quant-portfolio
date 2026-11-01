@@ -1,7 +1,9 @@
 //! Deterministic pseudo-random number generation (no external dependencies).
 //!
-//! The engine owns its RNG so that Monte Carlo results are **bit-reproducible**
-//! for a given seed, independent of any third-party crate's version churn:
+//! The engine owns its RNG so that Monte Carlo results repeat exactly for a
+//! given seed on the same build and platform (the integer stream is portable;
+//! the float transforms use the platform libm), independent of any
+//! third-party crate:
 //!
 //! * core stream: xoshiro256++ (Blackman & Vigna 2019), seeded through
 //!   SplitMix64 so that any `u64` seed - including 0 - yields a well-mixed

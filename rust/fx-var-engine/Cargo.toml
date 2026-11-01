@@ -2,7 +2,7 @@
 name = "fx-var-engine"
 version = "0.1.0"
 edition = "2021"
-description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress) - Rust twin of python/fx/03-var-es-engine"
+description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress); linear-book port of python/fx/03-var-es-engine"
 license = "MIT"
 
 [lib]
