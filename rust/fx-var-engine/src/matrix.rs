@@ -153,7 +153,7 @@ impl Matrix {
     /// `|a_ij - a_ji| <= rtol * max(1, max|a|)`.
     ///
     /// This is what covariance inputs of unknown magnitude want. With an
-    /// absolute tolerance, a genuinely symmetric covariance expressed in
+    /// absolute tolerance, a symmetric covariance expressed in
     /// currency units (entries ~1e12 for a multi-billion book) is rejected
     /// purely because its two triangles were summed in different orders and
     /// differ in the last ulp — roughly 1e-4 in absolute terms at that
