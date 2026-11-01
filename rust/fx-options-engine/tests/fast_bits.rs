@@ -29,7 +29,15 @@ struct Cases {
 
 fn cases(n: usize, seed: u64) -> Cases {
     let mut r = SplitMix64::new(seed);
-    let mut c = Cases { s: vec![], k: vec![], t: vec![], rd: vec![], rf: vec![], v: vec![], ty: vec![] };
+    let mut c = Cases {
+        s: vec![],
+        k: vec![],
+        t: vec![],
+        rd: vec![],
+        rf: vec![],
+        v: vec![],
+        ty: vec![],
+    };
     for i in 0..n {
         let s = uni(&mut r, 0.5, 150.0);
         c.s.push(s);
@@ -38,7 +46,11 @@ fn cases(n: usize, seed: u64) -> Cases {
         c.rd.push(uni(&mut r, -0.01, 0.12));
         c.rf.push(uni(&mut r, -0.01, 0.12));
         c.v.push(uni(&mut r, 0.01, 0.8));
-        c.ty.push(if i % 2 == 0 { OptionType::Call } else { OptionType::Put });
+        c.ty.push(if i % 2 == 0 {
+            OptionType::Call
+        } else {
+            OptionType::Put
+        });
     }
     c
 }
@@ -75,9 +87,16 @@ fn scalar_kernels_match_classic_api_bits() {
     for i in 0..c.s.len() {
         let (s, k, t, rd, rf, v, ty) = (c.s[i], c.k[i], c.t[i], c.rd[i], c.rf[i], c.v[i], c.ty[i]);
         let a = gk_price(s, k, t, rd, rf, v, ty).unwrap();
-        assert_eq!(a.to_bits(), gk_price_k(s, k, t, rd, rf, v, ty).unwrap().to_bits(), "case {i}");
+        assert_eq!(
+            a.to_bits(),
+            gk_price_k(s, k, t, rd, rf, v, ty).unwrap().to_bits(),
+            "case {i}"
+        );
         let g = analytic_greeks(s, k, t, rd, rf, v, ty).unwrap();
-        assert!(same_greeks(&g, &greeks_k(s, k, t, rd, rf, v, ty).unwrap()), "case {i}");
+        assert!(
+            same_greeks(&g, &greeks_k(s, k, t, rd, rf, v, ty).unwrap()),
+            "case {i}"
+        );
         let iv_a = implied_vol(a, s, k, t, rd, rf, ty);
         let iv_b = implied_vol_k(a, s, k, t, rd, rf, ty);
         match (iv_a, iv_b) {
@@ -108,7 +127,15 @@ fn scalar_kernels_match_classic_api_bits() {
 #[test]
 fn batch_matches_scalar_bits() {
     let c = cases(1031, 23);
-    let b = GkBatch { s: &c.s, k: &c.k, t: &c.t, r_d: &c.rd, r_f: &c.rf, sigma: &c.v, option_type: &c.ty };
+    let b = GkBatch {
+        s: &c.s,
+        k: &c.k,
+        t: &c.t,
+        r_d: &c.rd,
+        r_f: &c.rf,
+        sigma: &c.v,
+        option_type: &c.ty,
+    };
     let n = c.s.len();
     let mut out = vec![0.0; n];
     gk_price_batch(&b, &mut out).unwrap();
@@ -156,12 +183,23 @@ fn batch_reports_first_bad_index_and_lengths() {
     let mut c = cases(16, 5);
     c.v[9] = -0.1;
     c.s[12] = f64::NAN;
-    let b = GkBatch { s: &c.s, k: &c.k, t: &c.t, r_d: &c.rd, r_f: &c.rf, sigma: &c.v, option_type: &c.ty };
+    let b = GkBatch {
+        s: &c.s,
+        k: &c.k,
+        t: &c.t,
+        r_d: &c.rd,
+        r_f: &c.rf,
+        sigma: &c.v,
+        option_type: &c.ty,
+    };
     let mut out = vec![0.0; 16];
     let e = gk_price_batch(&b, &mut out).unwrap_err();
     assert_eq!((e.index, e.error), (9, KernelError::NegativeVol));
     let mut short = vec![0.0; 15];
-    assert_eq!(gk_price_batch(&b, &mut short).unwrap_err().error, KernelError::LengthMismatch);
+    assert_eq!(
+        gk_price_batch(&b, &mut short).unwrap_err().error,
+        KernelError::LengthMismatch
+    );
 }
 
 #[test]
@@ -171,11 +209,14 @@ fn binomial_workspace_matches_classic_bits() {
     for i in 0..c.s.len() {
         for ex in [Exercise::European, Exercise::American] {
             for steps in [1u32, 2, 7, 64, 301] {
-                let (s, k, t, rd, rf, v, ty) = (c.s[i], c.k[i], c.t[i], c.rd[i], c.rf[i], c.v[i], c.ty[i]);
+                let (s, k, t, rd, rf, v, ty) =
+                    (c.s[i], c.k[i], c.t[i], c.rd[i], c.rf[i], c.v[i], c.ty[i]);
                 let a = binomial_price(s, k, t, rd, rf, v, ty, steps, ex);
                 let b = binomial_price_ws(&mut ws, s, k, t, rd, rf, v, ty, steps, ex);
                 match (a, b) {
-                    (Ok(x), Ok(y)) => assert_eq!(x.to_bits(), y.to_bits(), "case {i} steps {steps}"),
+                    (Ok(x), Ok(y)) => {
+                        assert_eq!(x.to_bits(), y.to_bits(), "case {i} steps {steps}")
+                    }
                     (Err(_), Err(_)) => {}
                     (x, y) => panic!("case {i} steps {steps}: {x:?} vs {y:?}"),
                 }
@@ -184,7 +225,19 @@ fn binomial_workspace_matches_classic_bits() {
     }
     for ex in [Exercise::European, Exercise::American] {
         let a = binomial_price(1.1, 1.2, 1.0, 0.05, 0.01, 0.0, OptionType::Put, 50, ex).unwrap();
-        let b = binomial_price_ws(&mut ws, 1.1, 1.2, 1.0, 0.05, 0.01, 0.0, OptionType::Put, 50, ex).unwrap();
+        let b = binomial_price_ws(
+            &mut ws,
+            1.1,
+            1.2,
+            1.0,
+            0.05,
+            0.01,
+            0.0,
+            OptionType::Put,
+            50,
+            ex,
+        )
+        .unwrap();
         assert_eq!(a.to_bits(), b.to_bits());
     }
 }
@@ -195,8 +248,12 @@ fn monte_carlo_matches_classic_for_every_thread_count() {
     for (anti, cv) in [(true, true), (true, false), (false, true), (false, false)] {
         for n_paths in [3u64, 4, 5, 1001, 20_000] {
             for ty in [OptionType::Call, OptionType::Put] {
-                let a = mc_price(1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv);
-                let b = mc_price_ws(&mut ws, 1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv);
+                let a = mc_price(
+                    1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv,
+                );
+                let b = mc_price_ws(
+                    &mut ws, 1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv,
+                );
                 let a = match (a, b) {
                     (Ok(x), Ok(y)) => {
                         assert!(same_mc(&x, &y), "{anti} {cv} {n_paths}");
@@ -207,7 +264,8 @@ fn monte_carlo_matches_classic_for_every_thread_count() {
                 };
                 for threads in [2usize, 3, 4, 7, 12, 64] {
                     let p = mc_price_par(
-                        &mut ws, 1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv, threads,
+                        &mut ws, 1.10, 1.12, 0.5, 0.0425, 0.029, 0.0925, ty, n_paths, 42, anti, cv,
+                        threads,
                     )
                     .unwrap();
                     assert!(same_mc(&a, &p), "{anti} {cv} {n_paths} threads {threads}");
@@ -221,8 +279,22 @@ fn monte_carlo_matches_classic_for_every_thread_count() {
 fn monte_carlo_repeats_across_runs() {
     let run = |threads| {
         let mut ws = McWorkspace::new();
-        mc_price_par(&mut ws, 1.10, 1.05, 1.0, 0.03, 0.01, 0.12, OptionType::Call, 200_001, 9, true, true, threads)
-            .unwrap()
+        mc_price_par(
+            &mut ws,
+            1.10,
+            1.05,
+            1.0,
+            0.03,
+            0.01,
+            0.12,
+            OptionType::Call,
+            200_001,
+            9,
+            true,
+            true,
+            threads,
+        )
+        .unwrap()
     };
     let first = run(4);
     for threads in [1, 4, 4, 8] {
@@ -230,10 +302,39 @@ fn monte_carlo_repeats_across_runs() {
     }
     let mut ws = McWorkspace::new();
     assert_eq!(
-        mc_price_par(&mut ws, 1.1, 1.1, 1.0, 0.0, 0.0, 0.1, OptionType::Call, 100, 1, true, true, 0).unwrap_err(),
+        mc_price_par(
+            &mut ws,
+            1.1,
+            1.1,
+            1.0,
+            0.0,
+            0.0,
+            0.1,
+            OptionType::Call,
+            100,
+            1,
+            true,
+            true,
+            0
+        )
+        .unwrap_err(),
         KernelError::Threads
     );
-    let other =
-        mc_price_par(&mut ws, 1.10, 1.05, 1.0, 0.03, 0.01, 0.12, OptionType::Call, 200_001, 10, true, true, 4).unwrap();
+    let other = mc_price_par(
+        &mut ws,
+        1.10,
+        1.05,
+        1.0,
+        0.03,
+        0.01,
+        0.12,
+        OptionType::Call,
+        200_001,
+        10,
+        true,
+        true,
+        4,
+    )
+    .unwrap();
     assert_ne!(first.price.to_bits(), other.price.to_bits());
 }

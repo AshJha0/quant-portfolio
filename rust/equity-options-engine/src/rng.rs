@@ -88,10 +88,7 @@ impl Xoshiro256PlusPlus {
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
         let s = &mut self.state;
-        let result = s[0]
-            .wrapping_add(s[3])
-            .rotate_left(23)
-            .wrapping_add(s[0]);
+        let result = s[0].wrapping_add(s[3]).rotate_left(23).wrapping_add(s[0]);
         let t = s[1] << 17;
         s[2] ^= s[0];
         s[3] ^= s[1];

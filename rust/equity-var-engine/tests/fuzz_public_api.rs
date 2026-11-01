@@ -39,7 +39,12 @@ fn bad() -> impl Strategy<Value = f64> {
 }
 
 fn bad_or_neg() -> impl Strategy<Value = f64> {
-    prop_oneof![Just(f64::NAN), Just(f64::INFINITY), Just(f64::NEG_INFINITY), -1e6..-1e-12]
+    prop_oneof![
+        Just(f64::NAN),
+        Just(f64::INFINITY),
+        Just(f64::NEG_INFINITY),
+        -1e6..-1e-12
+    ]
 }
 
 fn bad_alpha() -> impl Strategy<Value = f64> {
@@ -47,7 +52,9 @@ fn bad_alpha() -> impl Strategy<Value = f64> {
 }
 
 fn pnl(n: usize) -> Vec<f64> {
-    (0..n).map(|i| 1000.0 * (0.37 * i as f64 + 0.1).sin()).collect()
+    (0..n)
+        .map(|i| 1000.0 * (0.37 * i as f64 + 0.1).sin())
+        .collect()
 }
 
 fn poison(mut v: Vec<f64>, i: usize, x: f64) -> Vec<f64> {
@@ -334,15 +341,29 @@ fn registry_covers_every_public_fn() {
     let me = include_str!("fuzz_public_api.rs");
     // Accessors and constructors with no float input to poison.
     let exempt = [
-        "zeros", "identity", "rows", "cols", "get", "set", "row", "as_slice", "as_str", "new",
-        "next_u64", "uniform", "standard_normal",
+        "zeros",
+        "identity",
+        "rows",
+        "cols",
+        "get",
+        "set",
+        "row",
+        "as_slice",
+        "as_str",
+        "new",
+        "next_u64",
+        "uniform",
+        "standard_normal",
     ];
     let mut missing = Vec::new();
     for src in srcs {
         for line in src.lines() {
             let t = line.trim_start();
             if let Some(rest) = t.strip_prefix("pub fn ") {
-                let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
                 let used = me.contains(&format!("{name}(")) || me.contains(&format!(".{name}("));
                 if !used && !exempt.contains(&name.as_str()) {
                     missing.push(name);
@@ -350,5 +371,8 @@ fn registry_covers_every_public_fn() {
             }
         }
     }
-    assert!(missing.is_empty(), "public fns without a fuzz entry: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "public fns without a fuzz entry: {missing:?}"
+    );
 }

@@ -59,7 +59,11 @@ pub fn normalised_otm_call(x: f64, s: f64) -> f64 {
             let c = he_prev * term;
             acc += c;
             // two consecutive negligible terms: He_{2k}(h) can vanish at isolated h
-            small = if c.abs() <= 1e-17 * acc.abs() { small + 1 } else { 0 };
+            small = if c.abs() <= 1e-17 * acc.abs() {
+                small + 1
+            } else {
+                0
+            };
             if small == 2 {
                 break;
             }
@@ -132,7 +136,11 @@ fn acklam_guess(p: f64) -> f64 {
 pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'static str> {
     let b_max = (0.5 * x).exp();
     let s_c = (-2.0 * x).sqrt(); // inflection point of b in s
-    let b_c = if s_c > 0.0 { normalised_otm_call(x, s_c) } else { 0.0 };
+    let b_c = if s_c > 0.0 {
+        normalised_otm_call(x, s_c)
+    } else {
+        0.0
+    };
     let mode;
     let ln_target;
     let (mut lo, mut hi);
@@ -149,8 +157,8 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
             if !(y < -2.0 * x) {
                 break;
             }
-            let rhs = -ln_target - 0.125 * y - LN_SQRT_2PI + 1.5 * y.ln()
-                - (x * x - 0.25 * y * y).ln();
+            let rhs =
+                -ln_target - 0.125 * y - LN_SQRT_2PI + 1.5 * y.ln() - (x * x - 0.25 * y * y).ln();
             if !(rhs > 0.0) {
                 break;
             }
@@ -221,7 +229,11 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
         }
         let newton = f / fp;
         let den = 1.0 - 0.5 * newton * fpp / fp;
-        let mut s_new = if den > 0.5 { s - newton / den } else { f64::NAN };
+        let mut s_new = if den > 0.5 {
+            s - newton / den
+        } else {
+            f64::NAN
+        };
         let tol: f64;
         if lo < s_new && s_new < hi {
             tol = 1e-7; // Halley: next error ~ step^3
@@ -236,7 +248,11 @@ pub fn total_vol(beta: f64, u: f64, x: f64, evals: &mut u32) -> Result<f64, &'st
                 s_new = lo;
                 tol = 0.0;
             } else {
-                s_new = if hi.is_finite() { 0.5 * (lo + hi) } else { 2.0 * s };
+                s_new = if hi.is_finite() {
+                    0.5 * (lo + hi)
+                } else {
+                    2.0 * s
+                };
                 tol = 0.0;
             }
         }

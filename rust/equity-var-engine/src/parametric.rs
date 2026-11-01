@@ -96,12 +96,7 @@ pub fn tail_quantile(alpha: f64, tail: TailModel) -> Result<f64> {
 /// let var = parametric_var(&[1.0e6], &cov, 0.01, TailModel::Normal).unwrap();
 /// assert!((var - 23_263.478740408408).abs() < 1e-6); // 2.3263 sigma
 /// ```
-pub fn parametric_var(
-    exposures: &[f64],
-    cov: &Matrix,
-    alpha: f64,
-    tail: TailModel,
-) -> Result<f64> {
+pub fn parametric_var(exposures: &[f64], cov: &Matrix, alpha: f64, tail: TailModel) -> Result<f64> {
     parametric_var_full(exposures, cov, alpha, tail, 0.0, 1)
 }
 
@@ -145,8 +140,7 @@ pub fn parametric_var_full(
 /// with skewness `S` and **excess** kurtosis `K`. Reduces to `z` when
 /// `S = K = 0`.
 pub fn cornish_fisher_z(z: f64, skew: f64, excess_kurt: f64) -> f64 {
-    z + (z * z - 1.0) * skew / 6.0
-        + (z * z * z - 3.0 * z) * excess_kurt / 24.0
+    z + (z * z - 1.0) * skew / 6.0 + (z * z * z - 3.0 * z) * excess_kurt / 24.0
         - (2.0 * z * z * z - 5.0 * z) * skew * skew / 36.0
 }
 
@@ -196,13 +190,11 @@ fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
 /// Old fixed-interval check `g'(z) > 0` on `[-z_range, z_range]`, kept for
 /// one release. The interval should follow the VaR level; use
 /// [`cornish_fisher_valid`]. Non-finite input returns `false`.
-#[deprecated(since = "0.2.0", note = "use cornish_fisher_valid(skew, excess_kurt, alpha)")]
-pub fn cornish_fisher_domain_ok(
-    skew: f64,
-    excess_kurt: f64,
-    z_range: f64,
-    _n_grid: usize,
-) -> bool {
+#[deprecated(
+    since = "0.2.0",
+    note = "use cornish_fisher_valid(skew, excess_kurt, alpha)"
+)]
+pub fn cornish_fisher_domain_ok(skew: f64, excess_kurt: f64, z_range: f64, _n_grid: usize) -> bool {
     if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
         return false;
     }

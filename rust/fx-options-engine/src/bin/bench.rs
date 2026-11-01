@@ -46,7 +46,16 @@ fn inputs() -> Inputs {
         x ^= x << 17;
         (x >> 11) as f64 / (1u64 << 53) as f64
     };
-    let mut i = Inputs { s: vec![], k: vec![], t: vec![], rd: vec![], rf: vec![], v: vec![], ty: vec![], px: vec![] };
+    let mut i = Inputs {
+        s: vec![],
+        k: vec![],
+        t: vec![],
+        rd: vec![],
+        rf: vec![],
+        v: vec![],
+        ty: vec![],
+        px: vec![],
+    };
     for j in 0..NIN {
         let s = 1.0 + 0.3 * u();
         let k = s * (0.8 + 0.4 * u());
@@ -54,7 +63,11 @@ fn inputs() -> Inputs {
         let rd = 0.05 * u();
         let rf = 0.05 * u();
         let v = 0.05 + 0.25 * u();
-        let ty = if j % 2 == 0 { OptionType::Call } else { OptionType::Put };
+        let ty = if j % 2 == 0 {
+            OptionType::Call
+        } else {
+            OptionType::Put
+        };
         let px = gk_price(s, k, t, rd, rf, v, ty).unwrap_or(0.0);
         i.s.push(s);
         i.k.push(k);
@@ -76,9 +89,20 @@ struct Row {
 }
 
 /// Time `samples` samples of `per` calls of `f(idx)` after `warm` warm-up calls.
-fn measure(kernel: &'static str, warm: usize, samples: usize, per: usize, mut f: impl FnMut(usize)) -> Row {
+fn measure(
+    kernel: &'static str,
+    warm: usize,
+    samples: usize,
+    per: usize,
+    mut f: impl FnMut(usize),
+) -> Row {
     if std::env::var("BENCH_FILTER").is_ok_and(|p| !kernel.contains(p.as_str())) {
-        return Row { kernel, n_iter: 0, calls_per_sample: per, q: [0.0; 5] };
+        return Row {
+            kernel,
+            n_iter: 0,
+            calls_per_sample: per,
+            q: [0.0; 5],
+        };
     }
     for j in 0..warm {
         f(j % NIN);
@@ -99,12 +123,20 @@ fn measure(kernel: &'static str, warm: usize, samples: usize, per: usize, mut f:
         kernel,
         n_iter: samples * per,
         calls_per_sample: per,
-        q: [pick(0.50), pick(0.90), pick(0.99), pick(0.999), ns[ns.len() - 1]],
+        q: [
+            pick(0.50),
+            pick(0.90),
+            pick(0.99),
+            pick(0.999),
+            ns[ns.len() - 1],
+        ],
     }
 }
 
 fn utc_date() -> String {
-    let days = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400) as i64;
+    let days = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() / 86_400) as i64;
     // Civil-from-days (H. Hinnant).
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -121,7 +153,11 @@ fn utc_date() -> String {
 fn cpu() -> String {
     std::fs::read_to_string("/proc/cpuinfo")
         .ok()
-        .and_then(|c| c.lines().find(|l| l.starts_with("model name")).map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string()))
+        .and_then(|c| {
+            c.lines()
+                .find(|l| l.starts_with("model name"))
+                .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
+        })
         .unwrap_or_else(|| "unknown".into())
 }
 
@@ -140,37 +176,139 @@ fn main() {
     let mut sink = 0.0f64;
 
     rows.push(measure("gk_price", 100_000, 200_000, 64, |j| {
-        sink += gk_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).unwrap_or(0.0);
+        sink += gk_price(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+        )
+        .unwrap_or(0.0);
     }));
     rows.push(measure("analytic_greeks", 100_000, 100_000, 64, |j| {
-        sink += analytic_greeks(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).map_or(0.0, |g| g.vega);
+        sink += analytic_greeks(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+        )
+        .map_or(0.0, |g| g.vega);
     }));
     rows.push(measure("implied_vol", 20_000, 50_000, 16, |j| {
-        sink += implied_vol(black_box(inp.px[j]), inp.s[j], inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.ty[j]).unwrap_or(0.0);
+        sink += implied_vol(
+            black_box(inp.px[j]),
+            inp.s[j],
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.ty[j],
+        )
+        .unwrap_or(0.0);
     }));
-    rows.push(measure("strike_from_delta_spot_pa", 5_000, 20_000, 4, |j| {
-        let d = 0.05 + 0.4 * (j % 100) as f64 / 100.0;
-        sink += strike_from_delta(black_box(d), inp.s[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Call, DeltaConvention::SpotPa).unwrap_or(0.0);
-    }));
+    rows.push(measure(
+        "strike_from_delta_spot_pa",
+        5_000,
+        20_000,
+        4,
+        |j| {
+            let d = 0.05 + 0.4 * (j % 100) as f64 / 100.0;
+            sink += strike_from_delta(
+                black_box(d),
+                inp.s[j],
+                inp.t[j],
+                inp.rd[j],
+                inp.rf[j],
+                inp.v[j],
+                OptionType::Call,
+                DeltaConvention::SpotPa,
+            )
+            .unwrap_or(0.0);
+        },
+    ));
     rows.push(measure("binomial_price_american_500", 200, 3_000, 1, |j| {
-        sink += binomial_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Put, 500, Exercise::American).unwrap_or(0.0);
+        sink += binomial_price(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            OptionType::Put,
+            500,
+            Exercise::American,
+        )
+        .unwrap_or(0.0);
     }));
     rows.push(measure("mc_price_100k_anti_cv", 5, 200, 1, |j| {
-        sink += mc_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 100_000, j as u64, true, true).map_or(0.0, |r| r.price);
+        sink += mc_price(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+            100_000,
+            j as u64,
+            true,
+            true,
+        )
+        .map_or(0.0, |r| r.price);
     }));
 
     // FAST-BEGIN
     rows.push(measure("fast::gk_price_k", 100_000, 200_000, 64, |j| {
-        sink += gk_price_k(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).unwrap_or(0.0);
+        sink += gk_price_k(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+        )
+        .unwrap_or(0.0);
     }));
     rows.push(measure("fast::greeks_k", 100_000, 100_000, 64, |j| {
-        sink += greeks_k(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j]).map_or(0.0, |g| g.vega);
+        sink += greeks_k(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+        )
+        .map_or(0.0, |g| g.vega);
     }));
     rows.push(measure("fast::implied_vol_k", 20_000, 50_000, 16, |j| {
-        sink += implied_vol_k(black_box(inp.px[j]), inp.s[j], inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.ty[j]).unwrap_or(0.0);
+        sink += implied_vol_k(
+            black_box(inp.px[j]),
+            inp.s[j],
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.ty[j],
+        )
+        .unwrap_or(0.0);
     }));
     {
-        let b = GkBatch { s: &inp.s, k: &inp.k, t: &inp.t, r_d: &inp.rd, r_f: &inp.rf, sigma: &inp.v, option_type: &inp.ty };
+        let b = GkBatch {
+            s: &inp.s,
+            k: &inp.k,
+            t: &inp.t,
+            r_d: &inp.rd,
+            r_f: &inp.rf,
+            sigma: &inp.v,
+            option_type: &inp.ty,
+        };
         let mut out = vec![0.0; NIN];
         // One sample = one 1024-element batch; reported per element.
         let mut r = measure("fast::gk_price_batch_per_option", 200, 20_000, 1, |_| {
@@ -210,20 +348,86 @@ fn main() {
         rows.push(r);
     }
     let mut bws = BinomialWorkspace::with_steps(500);
-    rows.push(measure("fast::binomial_price_ws_american_500", 200, 3_000, 1, |j| {
-        sink += binomial_price_ws(&mut bws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], OptionType::Put, 500, Exercise::American).unwrap_or(0.0);
-    }));
+    rows.push(measure(
+        "fast::binomial_price_ws_american_500",
+        200,
+        3_000,
+        1,
+        |j| {
+            sink += binomial_price_ws(
+                &mut bws,
+                black_box(inp.s[j]),
+                inp.k[j],
+                inp.t[j],
+                inp.rd[j],
+                inp.rf[j],
+                inp.v[j],
+                OptionType::Put,
+                500,
+                Exercise::American,
+            )
+            .unwrap_or(0.0);
+        },
+    ));
     let mut mws = McWorkspace::with_paths(1_000_000);
     rows.push(measure("fast::mc_price_ws_100k_anti_cv", 5, 200, 1, |j| {
-        sink += mc_price_ws(&mut mws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 100_000, j as u64, true, true).map_or(0.0, |r| r.price);
+        sink += mc_price_ws(
+            &mut mws,
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+            100_000,
+            j as u64,
+            true,
+            true,
+        )
+        .map_or(0.0, |r| r.price);
     }));
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
-    rows.push(measure("fast::mc_price_par_1m_anti_cv_all_threads", 3, 60, 1, |j| {
-        sink += mc_price_par(&mut mws, black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 1_000_000, j as u64, true, true, threads).map_or(0.0, |r| r.price);
-    }));
+    rows.push(measure(
+        "fast::mc_price_par_1m_anti_cv_all_threads",
+        3,
+        60,
+        1,
+        |j| {
+            sink += mc_price_par(
+                &mut mws,
+                black_box(inp.s[j]),
+                inp.k[j],
+                inp.t[j],
+                inp.rd[j],
+                inp.rf[j],
+                inp.v[j],
+                inp.ty[j],
+                1_000_000,
+                j as u64,
+                true,
+                true,
+                threads,
+            )
+            .map_or(0.0, |r| r.price);
+        },
+    ));
     // FAST-END
     rows.push(measure("mc_price_1m_anti_cv", 2, 30, 1, |j| {
-        sink += mc_price(black_box(inp.s[j]), inp.k[j], inp.t[j], inp.rd[j], inp.rf[j], inp.v[j], inp.ty[j], 1_000_000, j as u64, true, true).map_or(0.0, |r| r.price);
+        sink += mc_price(
+            black_box(inp.s[j]),
+            inp.k[j],
+            inp.t[j],
+            inp.rd[j],
+            inp.rf[j],
+            inp.v[j],
+            inp.ty[j],
+            1_000_000,
+            j as u64,
+            true,
+            true,
+        )
+        .map_or(0.0, |r| r.price);
     }));
     black_box(sink);
 

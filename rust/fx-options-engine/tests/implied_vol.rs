@@ -13,7 +13,12 @@ fn round_trip_grid_to_1e10() {
             for ty in [OptionType::Call, OptionType::Put] {
                 let px = gk_price(s, k, t, rd, rf, sig, ty).unwrap();
                 let iv = implied_vol(px, s, k, t, rd, rf, ty).unwrap();
-                assert_close(iv, sig, 1e-10, &format!("IV round trip K={k} sigma={sig} {ty:?}"));
+                assert_close(
+                    iv,
+                    sig,
+                    1e-10,
+                    &format!("IV round trip K={k} sigma={sig} {ty:?}"),
+                );
             }
         }
     }
@@ -41,7 +46,9 @@ fn round_trip_short_dated_wings() {
         for ty in [OptionType::Call, OptionType::Put] {
             let px = gk_price(s, k, t, rd, rf, sig, ty).unwrap();
             let iv = implied_vol(px, s, k, t, rd, rf, ty).unwrap();
-            let vega = fx_options_engine::analytic_greeks(s, k, t, rd, rf, sig, ty).unwrap().vega;
+            let vega = fx_options_engine::analytic_greeks(s, k, t, rd, rf, sig, ty)
+                .unwrap()
+                .vega;
             let tol = 8.0 * f64::EPSILON * f64::max(s, k) / vega + 2e-12 * sig;
             assert_close(iv, sig, tol, &format!("short-dated wing K={k} {ty:?}"));
         }
@@ -53,10 +60,16 @@ fn price_outside_no_arbitrage_bounds_errs() {
     let (s, k, t, rd, rf) = (1.10, 1.05, 0.5, 0.0425, 0.0290);
     // Below discounted forward intrinsic.
     let res = implied_vol(0.0, s, k, t, rd, rf, OptionType::Call);
-    assert!(matches!(res, Err(FxError::InvalidInput(_))), "below intrinsic");
+    assert!(
+        matches!(res, Err(FxError::InvalidInput(_))),
+        "below intrinsic"
+    );
     // Above the sigma -> inf bound (S e^{-r_f T} for a call).
     let res = implied_vol(1.20, s, k, t, rd, rf, OptionType::Call);
-    assert!(matches!(res, Err(FxError::InvalidInput(_))), "above upper bound");
+    assert!(
+        matches!(res, Err(FxError::InvalidInput(_))),
+        "above upper bound"
+    );
 }
 
 #[test]

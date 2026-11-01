@@ -36,7 +36,11 @@ pub struct Matrix {
 impl Matrix {
     /// Zero-filled `rows x cols` matrix.
     pub fn zeros(rows: usize, cols: usize) -> Self {
-        Matrix { rows, cols, data: vec![0.0; rows * cols] }
+        Matrix {
+            rows,
+            cols,
+            data: vec![0.0; rows * cols],
+        }
     }
 
     /// Build from a row-major buffer; errors if `data.len() != rows * cols`.
@@ -249,7 +253,10 @@ impl Matrix {
     /// PSD-but-singular covariances (a riskless leg, two perfectly
     /// correlated factors) are repaired at the very first rung
     /// (`1e-10 * mean(diag)`) and are unaffected.
-    #[deprecated(since = "0.2.0", note = "use cholesky_repair, which reports the jitter")]
+    #[deprecated(
+        since = "0.2.0",
+        note = "use cholesky_repair, which reports the jitter"
+    )]
     pub fn cholesky_jitter(&self, jitter: f64, max_tries: usize) -> Result<Matrix> {
         match self.cholesky() {
             Ok(l) => return Ok(l),

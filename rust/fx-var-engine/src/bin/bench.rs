@@ -26,7 +26,13 @@ struct Stat {
 
 /// Time `n_iter` samples of `calls` calls each after `warm` warm-up
 /// samples. `f(i)` runs call number `i` (the caller varies inputs by `i`).
-fn measure(kernel: &'static str, warm: usize, n_iter: usize, calls: usize, mut f: impl FnMut(usize)) -> Stat {
+fn measure(
+    kernel: &'static str,
+    warm: usize,
+    n_iter: usize,
+    calls: usize,
+    mut f: impl FnMut(usize),
+) -> Stat {
     let mut i = 0usize;
     for _ in 0..warm * calls {
         f(i);
@@ -44,26 +50,48 @@ fn measure(kernel: &'static str, warm: usize, n_iter: usize, calls: usize, mut f
     ns.sort_unstable_by(f64::total_cmp);
     let q = |p: f64| ns[((p * (ns.len() - 1) as f64).round() as usize).min(ns.len() - 1)];
     let p = [q(0.5), q(0.9), q(0.99), q(0.999), ns[ns.len() - 1]];
-    eprintln!("{kernel:<34} p50 {:>12.0}  p99 {:>12.0}  p99.9 {:>12.0} ns", p[0], p[2], p[3]);
-    Stat { kernel, n_iter, calls_per_sample: calls, p }
+    eprintln!(
+        "{kernel:<34} p50 {:>12.0}  p99 {:>12.0}  p99.9 {:>12.0} ns",
+        p[0], p[2], p[3]
+    );
+    Stat {
+        kernel,
+        n_iter,
+        calls_per_sample: calls,
+        p,
+    }
 }
 
 fn cmd(program: &str, args: &[&str]) -> Option<String> {
-    let out = std::process::Command::new(program).args(args).output().ok()?;
+    let out = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()?;
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
 }
 
 fn cpu() -> String {
     std::fs::read_to_string("/proc/cpuinfo")
         .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("model name")).map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string()))
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("model name"))
+                .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
+        })
         .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn main() {
     // ---- deterministic 45-currency universe -----------------------------
-    let ccys: Vec<String> =
-        (0..45).map(|i| format!("C{}{}", (b'A' + (i / 26) as u8) as char, (b'A' + (i % 26) as u8) as char)).collect();
+    let ccys: Vec<String> = (0..45)
+        .map(|i| {
+            format!(
+                "C{}{}",
+                (b'A' + (i / 26) as u8) as char,
+                (b'A' + (i % 26) as u8) as char
+            )
+        })
+        .collect();
     let mut spots: Vec<(String, f64)> = Vec::new();
     let mut rates: Vec<(String, f64)> = vec![("USD".to_string(), 0.05)];
     for (i, c) in ccys.iter().enumerate() {
@@ -74,7 +102,11 @@ fn main() {
     let mut positions = Vec::new();
     for i in 0..200 {
         let notional = if i % 2 == 1 { -1.0 } else { 1.0 } * (1.0e6 + 2.0e4 * i as f64);
-        positions.push(Position::Spot(SpotPosition::new(format!("{}USD", ccys[i % 45]), notional, None)));
+        positions.push(Position::Spot(SpotPosition::new(
+            format!("{}USD", ccys[i % 45]),
+            notional,
+            None,
+        )));
     }
     for i in 0..50 {
         let notional = if i % 2 == 1 { -1.0 } else { 1.0 } * 2.0e6;
@@ -97,7 +129,11 @@ fn main() {
     for t in 0..n_days {
         for (j, f) in factors.iter().enumerate() {
             let scale = if f.starts_with("FX:") { 0.006 } else { 0.0004 };
-            data.set(t, j, scale * (0.5 * (0.1 * t as f64 + 0.37 * j as f64).sin() + rng.normal()));
+            data.set(
+                t,
+                j,
+                scale * (0.5 * (0.1 * t as f64 + 0.37 * j as f64).sin() + rng.normal()),
+            );
         }
     }
     let rets = ReturnsMatrix::new(factors.clone(), data).expect("returns");
@@ -135,23 +171,44 @@ fn main() {
     }));
     let mut out = vec![0.0; n_days];
     stats.push(measure("pnl_aligned_into_500scen", 20, 2_000, 1, |_| {
-        black_box(compiled.pnl_aligned_into(black_box(&rets.data), &mut out).ok());
+        black_box(
+            compiled
+                .pnl_aligned_into(black_box(&rets.data), &mut out)
+                .ok(),
+        );
     }));
     // new-api-end
-    let hopts = HistoricalOptions { warn_pegs: false, ..Default::default() };
+    let hopts = HistoricalOptions {
+        warn_pegs: false,
+        ..Default::default()
+    };
     stats.push(measure("historical_var_500scen", 20, 2_000, 1, |_| {
         black_box(historical_var(&book, &market, black_box(&rets), &hopts).ok());
     }));
-    let popts = ParametricOptions { warn_pegs: false, ..Default::default() };
+    let popts = ParametricOptions {
+        warn_pegs: false,
+        ..Default::default()
+    };
     stats.push(measure("parametric_var_normal", 20, 2_000, 1, |_| {
         black_box(parametric_var(&book, &market, black_box(&rets), &popts).ok());
     }));
     stats.push(measure("var_se_bootstrap_100k_x200", 2, 50, 1, |i| {
-        black_box(var_standard_error_bootstrap(black_box(&samples[i % 8]), 0.01, 200, i as u64).ok());
+        black_box(
+            var_standard_error_bootstrap(black_box(&samples[i % 8]), 0.01, 200, i as u64).ok(),
+        );
     }));
-    for (dist, name) in [(McDist::Normal, "monte_carlo_var_100k_normal"), (McDist::StudentT, "monte_carlo_var_100k_t5")] {
+    for (dist, name) in [
+        (McDist::Normal, "monte_carlo_var_100k_normal"),
+        (McDist::StudentT, "monte_carlo_var_100k_t5"),
+    ] {
         stats.push(measure(name, 2, 20, 1, |i| {
-            let o = MonteCarloOptions { n_scenarios: 100_000, seed: 42 + i as u64, dist, df: 5.0, ..Default::default() };
+            let o = MonteCarloOptions {
+                n_scenarios: 100_000,
+                seed: 42 + i as u64,
+                dist,
+                df: 5.0,
+                ..Default::default()
+            };
             black_box(monte_carlo_var(&book, &market, black_box(&cov), &o).ok());
         }));
     }

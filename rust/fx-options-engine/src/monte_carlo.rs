@@ -118,7 +118,11 @@ pub fn mc_price(
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
-    let units = if antithetic { n_paths.div_ceil(2) } else { n_paths };
+    let units = if antithetic {
+        n_paths.div_ceil(2)
+    } else {
+        n_paths
+    };
     let needed = if control_variate { 3 } else { 2 };
     if units < needed {
         return invalid(format!(

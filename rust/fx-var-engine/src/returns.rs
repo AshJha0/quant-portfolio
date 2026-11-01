@@ -85,7 +85,10 @@ impl ReturnsMatrix {
                 data.set(i, j, self.data.get(i, src));
             }
         }
-        Ok(ReturnsMatrix { factors: wanted.to_vec(), data })
+        Ok(ReturnsMatrix {
+            factors: wanted.to_vec(),
+            data,
+        })
     }
 }
 
@@ -124,7 +127,10 @@ impl FactorCov {
                 cov.set(i, j, self.cov.get(ri, rj));
             }
         }
-        Ok(FactorCov { factors: wanted.to_vec(), cov })
+        Ok(FactorCov {
+            factors: wanted.to_vec(),
+            cov,
+        })
     }
 }
 
@@ -150,8 +156,10 @@ pub fn validate_returns(
             returns.n_obs()
         )));
     }
-    let missing: Vec<&String> =
-        required.iter().filter(|f| returns.column_index(f).is_none()).collect();
+    let missing: Vec<&String> = required
+        .iter()
+        .filter(|f| returns.column_index(f).is_none())
+        .collect();
     if !missing.is_empty() {
         return Err(FxVarError::invalid(format!(
             "returns is missing required factor columns: {missing:?}"
@@ -178,7 +186,9 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
     let n = returns.n_obs();
     let k = returns.n_factors();
     if n < 2 {
-        return Err(FxVarError::invalid("sample_cov: need at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "sample_cov: need at least 2 observations",
+        ));
     }
     if !returns.data.all_finite() {
         return Err(FxVarError::invalid(
@@ -214,7 +224,10 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
             cov.set(b, a, v);
         }
     }
-    Ok(FactorCov { factors: returns.factors.clone(), cov })
+    Ok(FactorCov {
+        factors: returns.factors.clone(),
+        cov,
+    })
 }
 
 /// RiskMetrics EWMA covariance forecast after the last observation:
@@ -226,7 +239,9 @@ pub fn sample_cov(returns: &ReturnsMatrix) -> Result<FactorCov> {
 /// as [`sample_cov`].
 pub fn ewma_cov(returns: &ReturnsMatrix, lam: f64) -> Result<FactorCov> {
     if !(lam > 0.0 && lam < 1.0) {
-        return Err(FxVarError::invalid(format!("lambda must be in (0, 1), got {lam}")));
+        return Err(FxVarError::invalid(format!(
+            "lambda must be in (0, 1), got {lam}"
+        )));
     }
     let mut out = sample_cov(returns)?; // also rejects non-finite input
     let n = returns.n_obs();
@@ -268,12 +283,16 @@ pub const SEED_WINDOW: usize = 30;
 /// observations are given.
 pub fn ewma_volatility(returns: &ReturnsMatrix, lam: f64) -> Result<EwmaVolatility> {
     if !(lam > 0.0 && lam < 1.0) {
-        return Err(FxVarError::invalid(format!("lambda must be in (0, 1), got {lam}")));
+        return Err(FxVarError::invalid(format!(
+            "lambda must be in (0, 1), got {lam}"
+        )));
     }
     let n = returns.n_obs();
     let k = returns.n_factors();
     if n < 2 {
-        return Err(FxVarError::invalid("ewma_volatility: need at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "ewma_volatility: need at least 2 observations",
+        ));
     }
     if !returns.data.all_finite() {
         return Err(FxVarError::invalid(
@@ -325,7 +344,9 @@ pub fn flag_peg_factors(returns: &ReturnsMatrix, threshold: f64) -> Result<Vec<S
         )));
     }
     if !returns.data.all_finite() {
-        return Err(FxVarError::invalid("flag_peg_factors: returns contain NaN or infinite values"));
+        return Err(FxVarError::invalid(
+            "flag_peg_factors: returns contain NaN or infinite values",
+        ));
     }
     let mut flagged = Vec::new();
     let n = returns.n_obs();
@@ -423,8 +444,7 @@ mod tests {
             data.set(i, 0, 0.00001 * ((i % 3) as f64 - 1.0)); // pegged
             data.set(i, 1, 0.02 * ((i % 5) as f64 - 2.0)); // free float
         }
-        let r =
-            ReturnsMatrix::new(vec!["FX:HKD".to_string(), "FX:EUR".to_string()], data).unwrap();
+        let r = ReturnsMatrix::new(vec!["FX:HKD".to_string(), "FX:EUR".to_string()], data).unwrap();
         let flagged = flag_peg_factors(&r, PEG_VOL_THRESHOLD).unwrap();
         assert_eq!(flagged, vec!["FX:HKD".to_string()]);
     }

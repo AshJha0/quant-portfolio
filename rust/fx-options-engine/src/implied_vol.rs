@@ -8,7 +8,9 @@
 //! `fx_options.implied_vol` and the C++ engine.
 
 use crate::iv_core::black_implied_vol;
-use crate::{finite_result, invalid, require_finite, validate_inputs, FxError, FxResult, OptionType};
+use crate::{
+    finite_result, invalid, require_finite, validate_inputs, FxError, FxResult, OptionType,
+};
 
 /// Implied Garman-Kohlhagen volatility from a domestic-currency premium.
 ///
@@ -62,8 +64,8 @@ pub fn implied_vol(
     let forward = finite_result(s * df_f / df_d, "forward")?;
     let lower = df_d * (phi * (forward - k)).max(0.0); // sigma -> 0 limit
     let upper = if phi > 0.0 { s * df_f } else { k * df_d }; // sigma -> inf
-    // Rounding of the sigma -> 0 bound df (F - K): a few eps of df max(F, K)
-    // when the option is in the money; exactly zero otherwise.
+                                                             // Rounding of the sigma -> 0 bound df (F - K): a few eps of df max(F, K)
+                                                             // when the option is in the money; exactly zero otherwise.
     let tau_lo = if lower > 0.0 {
         4.0 * f64::EPSILON * df_d * forward.max(k)
     } else {

@@ -26,7 +26,10 @@ fn alpha_is_tail_probability_and_confidence_levels_are_rejected() {
     let pnl: Vec<f64> = (0..100).map(|i| (i as f64 * 0.7).sin()).collect();
     for bad in [0.5, 0.95, 0.99, 0.0, -0.01, f64::NAN, f64::INFINITY] {
         let e = historical_var(&pnl, bad).unwrap_err();
-        assert!(msg(e).contains("alpha is the tail probability"), "alpha={bad}");
+        assert!(
+            msg(e).contains("alpha is the tail probability"),
+            "alpha={bad}"
+        );
     }
     let e = cornish_fisher_valid(0.0, 0.0, 0.99).unwrap_err();
     assert!(msg(e).contains("tail probability"));
@@ -51,7 +54,9 @@ fn order_statistic_var_and_fractional_es_by_hand() {
 
 #[test]
 fn weighted_estimator_matches_unweighted_with_equal_weights() {
-    let pnl: Vec<f64> = (0..250).map(|i| 100.0 * ((0.37 * i as f64) + 0.1).sin()).collect();
+    let pnl: Vec<f64> = (0..250)
+        .map(|i| 100.0 * ((0.37 * i as f64) + 0.1).sin())
+        .collect();
     for a in [0.01, 0.025, 0.05] {
         let (v, e) = empirical_var_es(&pnl, a).unwrap();
         let (vw, ew) = weighted_var_es(&pnl, &vec![1.0; 250], a).unwrap();
@@ -64,13 +69,29 @@ fn weighted_estimator_matches_unweighted_with_equal_weights() {
 
 #[test]
 fn kupiec_struct_matches_formula_and_rejects_bad_counts() {
-    let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
+    let r = kupiec_pof(&KupiecInput {
+        n_obs: 250,
+        n_exceptions: 5,
+        alpha: 0.01,
+    })
+    .unwrap();
     let (n, x, a) = (250.0_f64, 5.0_f64, 0.01_f64);
     let p = x / n;
-    let lr = -2.0 * ((n - x) * (1.0 - a).ln() + x * a.ln()) + 2.0 * ((n - x) * (1.0 - p).ln() + x * p.ln());
+    let lr = -2.0 * ((n - x) * (1.0 - a).ln() + x * a.ln())
+        + 2.0 * ((n - x) * (1.0 - p).ln() + x * p.ln());
     assert!((r.lr - lr).abs() < 1e-12);
-    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
-    assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 5, alpha: 0.99 }).is_err());
+    assert!(kupiec_pof(&KupiecInput {
+        n_obs: 250,
+        n_exceptions: 251,
+        alpha: 0.01
+    })
+    .is_err());
+    assert!(kupiec_pof(&KupiecInput {
+        n_obs: 250,
+        n_exceptions: 5,
+        alpha: 0.99
+    })
+    .is_err());
     #[allow(deprecated)]
     let old = kupiec_pof_positional(250, 5, 0.01).unwrap();
     assert_eq!(old, r);
@@ -80,7 +101,14 @@ fn kupiec_struct_matches_formula_and_rejects_bad_counts() {
 
 #[test]
 fn basel_zone_follows_the_window_not_the_raw_count() {
-    let z = |n, x, a| basel_traffic_light(&BaselInput { n_obs: n, n_exceptions: x, alpha: a }).unwrap();
+    let z = |n, x, a| {
+        basel_traffic_light(&BaselInput {
+            n_obs: n,
+            n_exceptions: x,
+            alpha: a,
+        })
+        .unwrap()
+    };
     // Old code: 5 raw exceptions were yellow whatever the window.
     assert_eq!(z(500, 5, 0.01).zone, BaselZone::Green);
     assert_eq!(z(250, 4, 0.01).zone, BaselZone::Green);
@@ -92,20 +120,47 @@ fn basel_zone_follows_the_window_not_the_raw_count() {
     }
     assert_eq!(z(250, 10, 0.01).zone, BaselZone::Red);
     // Old code clamped x > n; now an error.
-    assert!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 300, alpha: 0.01 }).is_err());
+    assert!(basel_traffic_light(&BaselInput {
+        n_obs: 250,
+        n_exceptions: 300,
+        alpha: 0.01
+    })
+    .is_err());
     // Zone thresholds on F(x) for other windows.
-    for (n, x, a) in [(500, 8, 0.01), (500, 9, 0.01), (500, 12, 0.01), (1000, 15, 0.01), (250, 12, 0.025)] {
+    for (n, x, a) in [
+        (500, 8, 0.01),
+        (500, 9, 0.01),
+        (500, 12, 0.01),
+        (1000, 15, 0.01),
+        (250, 12, 0.025),
+    ] {
         let r = z(n, x, a);
         let f = r.cumulative_prob;
-        let want = if f < 0.95 { BaselZone::Green } else if f < 0.9999 { BaselZone::Yellow } else { BaselZone::Red };
+        let want = if f < 0.95 {
+            BaselZone::Green
+        } else if f < 0.9999 {
+            BaselZone::Yellow
+        } else {
+            BaselZone::Red
+        };
         assert_eq!(r.zone, want, "n={n} x={x}");
     }
 }
 
 #[test]
 fn basel_cdf_matches_incomplete_beta() {
-    for (n, x, a) in [(250_i64, 4_i64, 0.01), (500, 9, 0.01), (1000, 15, 0.01), (250, 12, 0.025)] {
-        let r = basel_traffic_light(&BaselInput { n_obs: n, n_exceptions: x, alpha: a }).unwrap();
+    for (n, x, a) in [
+        (250_i64, 4_i64, 0.01),
+        (500, 9, 0.01),
+        (1000, 15, 0.01),
+        (250, 12, 0.025),
+    ] {
+        let r = basel_traffic_light(&BaselInput {
+            n_obs: n,
+            n_exceptions: x,
+            alpha: a,
+        })
+        .unwrap();
         let beta = binomial_cdf(x as u64, n as u64, a).unwrap();
         assert!((r.cumulative_prob - beta).abs() < 1e-12, "n={n} x={x}");
     }
@@ -162,7 +217,11 @@ fn indefinite_matrix_errors_with_eigenvalue_and_repairs_work() {
     let e = cholesky_repair(&a, PsdRepair::None).unwrap_err();
     assert!(msg(e).contains("most negative eigenvalue"));
     let (vals, _) = symmetric_eigen(&a).unwrap();
-    assert!((vals[0] - (1.0 - 1.8)).abs() < 1e-12, "lambda_min = {}", vals[0]);
+    assert!(
+        (vals[0] - (1.0 - 1.8)).abs() < 1e-12,
+        "lambda_min = {}",
+        vals[0]
+    );
 
     let h = cholesky_repair(&a, PsdRepair::Higham).unwrap();
     let rh = h.repaired.unwrap();
@@ -272,7 +331,10 @@ fn monte_carlo_run_simulates_once_and_bootstrap_is_primary() {
     let (v, e) = empirical_var_es(&run.pnl, 0.01).unwrap();
     assert_eq!(run.var, v);
     assert_eq!(run.es, e);
-    assert_eq!(run.var, monte_carlo_var(&w, &cov, 0.01, 20_000, TailModel::Normal, 7).unwrap());
+    assert_eq!(
+        run.var,
+        monte_carlo_var(&w, &cov, 0.01, 20_000, TailModel::Normal, 7).unwrap()
+    );
     assert!(run.se > 0.0 && run.se_kde > 0.0);
     assert!(run.se < 3.0 * run.se_kde && run.se_kde < 3.0 * run.se);
     assert!(monte_carlo_run(&w, &cov, 0.01, 20_000, TailModel::Normal, 7, 1).is_err());

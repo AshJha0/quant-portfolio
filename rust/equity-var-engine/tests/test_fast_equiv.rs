@@ -119,15 +119,30 @@ fn mc_workspace_matches_bits_and_repeats() {
 fn fast_errors_are_reported_not_panics() {
     let pnl = sample(1, 100, false);
     let mut short = vec![0.0; 5];
-    assert_eq!(historical_var_ws(&pnl, 0.01, &mut short), Err(VarFault::WorkspaceTooSmall));
-    assert_eq!(historical_var_ws(&pnl[..10], 0.01, &mut short), Err(VarFault::TooFewObservations));
+    assert_eq!(
+        historical_var_ws(&pnl, 0.01, &mut short),
+        Err(VarFault::WorkspaceTooSmall)
+    );
+    assert_eq!(
+        historical_var_ws(&pnl[..10], 0.01, &mut short),
+        Err(VarFault::TooFewObservations)
+    );
     let mut bad = pnl.clone();
     bad[3] = f64::NAN;
     let mut work = vec![0.0; 100];
-    assert_eq!(historical_var_ws(&bad, 0.01, &mut work), Err(VarFault::NonFinite));
-    assert_eq!(expected_shortfall_ws(&pnl, 0.0, &mut work), Err(VarFault::BadAlpha));
+    assert_eq!(
+        historical_var_ws(&bad, 0.01, &mut work),
+        Err(VarFault::NonFinite)
+    );
+    assert_eq!(
+        expected_shortfall_ws(&pnl, 0.0, &mut work),
+        Err(VarFault::BadAlpha)
+    );
     let (w, cov) = book(2, 3);
-    assert_eq!(parametric_var_fast(&w[..2], &cov, 0.01, TailModel::Normal), Err(VarFault::ShapeMismatch));
+    assert_eq!(
+        parametric_var_fast(&w[..2], &cov, 0.01, TailModel::Normal),
+        Err(VarFault::ShapeMismatch)
+    );
     assert_eq!(
         parametric_var_fast(&w, &cov, 0.01, TailModel::StudentT { df: 2.0 }),
         Err(VarFault::BadParameter)
@@ -135,11 +150,23 @@ fn fast_errors_are_reported_not_panics() {
     let mut ws = McWorkspace::new(3, 200, 10);
     assert_eq!(ws.run(&w, 0.01, 200, 1, 10), Err(VarFault::NotPrepared));
     ws.prepare(&cov, TailModel::Normal).unwrap();
-    assert_eq!(ws.run(&w, 0.01, 500, 1, 10), Err(VarFault::WorkspaceTooSmall));
-    assert_eq!(ws.run(&w, 0.01, 200, 1, 11), Err(VarFault::WorkspaceTooSmall));
-    assert_eq!(ws.run(&w, 0.01, 50, 1, 10), Err(VarFault::TooFewObservations));
+    assert_eq!(
+        ws.run(&w, 0.01, 500, 1, 10),
+        Err(VarFault::WorkspaceTooSmall)
+    );
+    assert_eq!(
+        ws.run(&w, 0.01, 200, 1, 11),
+        Err(VarFault::WorkspaceTooSmall)
+    );
+    assert_eq!(
+        ws.run(&w, 0.01, 50, 1, 10),
+        Err(VarFault::TooFewObservations)
+    );
     assert_eq!(ws.run(&w, 0.01, 200, 1, 1), Err(VarFault::BadParameter));
     assert_eq!(ws.var(&w[..1], 0.01, 200, 1), Err(VarFault::ShapeMismatch));
     let mut ws2 = McWorkspace::new(2, 200, 10);
-    assert_eq!(ws2.prepare(&cov, TailModel::Normal), Err(VarFault::ShapeMismatch));
+    assert_eq!(
+        ws2.prepare(&cov, TailModel::Normal),
+        Err(VarFault::ShapeMismatch)
+    );
 }

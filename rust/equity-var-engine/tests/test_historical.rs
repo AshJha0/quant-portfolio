@@ -131,8 +131,7 @@ fn filtered_historical_var_scale_equivariant_and_regime_responsive() {
         *v *= 0.05;
     }
     assert!(
-        filtered_historical_var(&calm, 0.05, 0.94).unwrap()
-            < historical_var(&calm, 0.05).unwrap()
+        filtered_historical_var(&calm, 0.05, 0.94).unwrap() < historical_var(&calm, 0.05).unwrap()
     );
 }
 

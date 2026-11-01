@@ -52,7 +52,11 @@ impl Matrix {
             }
             data.extend_from_slice(row);
         }
-        Ok(Matrix { rows: r, cols: c, data })
+        Ok(Matrix {
+            rows: r,
+            cols: c,
+            data,
+        })
     }
 
     /// Number of rows.
@@ -185,7 +189,9 @@ impl Matrix {
             return Err(FxVarError::invalid("quad_form dimension mismatch"));
         }
         if !self.all_finite() || w.iter().any(|v| !v.is_finite()) {
-            return Err(FxVarError::invalid("quad_form: matrix and vector must be finite"));
+            return Err(FxVarError::invalid(
+                "quad_form: matrix and vector must be finite",
+            ));
         }
         // `A w` is formed lazily, one row at a time, so the quadratic form
         // allocates nothing. Each row product and the outer sum run in the
@@ -296,7 +302,9 @@ impl Matrix {
             return Err(FxVarError::invalid("solve dimension mismatch"));
         }
         if b.iter().any(|v| !v.is_finite()) {
-            return Err(FxVarError::invalid("solve_spd: right-hand side must be finite"));
+            return Err(FxVarError::invalid(
+                "solve_spd: right-hand side must be finite",
+            ));
         }
         // forward: L y = b
         let mut y = vec![0.0; n];

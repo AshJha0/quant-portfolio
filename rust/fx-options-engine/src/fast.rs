@@ -170,7 +170,15 @@ pub fn gk_price_k(
 
 /// Analytic Greeks on validated inputs with `t > 0`, `sigma > 0`.
 #[inline(always)]
-fn greeks_core(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64, phi: f64) -> KResult<GreeksResult> {
+fn greeks_core(
+    s: f64,
+    k: f64,
+    t: f64,
+    r_d: f64,
+    r_f: f64,
+    sigma: f64,
+    phi: f64,
+) -> KResult<GreeksResult> {
     let vol_sqrt_t = sigma * t.sqrt();
     if vol_sqrt_t <= MIN_VOL {
         return Err(KernelError::ZeroVol);
@@ -364,7 +372,10 @@ fn all_valid(b: &GkBatch<'_>, n: usize, need_positive: bool) -> bool {
 pub fn gk_price_batch(b: &GkBatch<'_>, out: &mut [f64]) -> Result<(), BatchError> {
     let n = b.len().map_err(|error| BatchError { index: 0, error })?;
     if out.len() != n {
-        return Err(BatchError { index: 0, error: KernelError::LengthMismatch });
+        return Err(BatchError {
+            index: 0,
+            error: KernelError::LengthMismatch,
+        });
     }
     if !all_valid(b, n, false) {
         for i in 0..n {
@@ -384,7 +395,10 @@ pub fn gk_price_batch(b: &GkBatch<'_>, out: &mut [f64]) -> Result<(), BatchError
         }
     }
     if bad != usize::MAX {
-        return Err(BatchError { index: bad, error: KernelError::Overflow });
+        return Err(BatchError {
+            index: bad,
+            error: KernelError::Overflow,
+        });
     }
     Ok(())
 }
@@ -444,7 +458,10 @@ impl GreeksBatchOut<'_> {
 pub fn greeks_batch(b: &GkBatch<'_>, out: &mut GreeksBatchOut<'_>) -> Result<(), BatchError> {
     let n = b.len().map_err(|error| BatchError { index: 0, error })?;
     if !out.all_len(n) {
-        return Err(BatchError { index: 0, error: KernelError::LengthMismatch });
+        return Err(BatchError {
+            index: 0,
+            error: KernelError::LengthMismatch,
+        });
     }
     if !all_valid(b, n, true) {
         for i in 0..n {
@@ -670,7 +687,12 @@ fn fill_chunk(
     let pay = |s_t: f64| p.df_d * (p.phi * (s_t - p.k)).max(0.0);
     match (!d_hi.is_empty(), !c_lo.is_empty()) {
         (true, true) => {
-            for (((a, b), c), e) in d_lo.iter_mut().zip(d_hi.iter_mut()).zip(c_lo.iter_mut()).zip(c_hi.iter_mut()) {
+            for (((a, b), c), e) in d_lo
+                .iter_mut()
+                .zip(d_hi.iter_mut())
+                .zip(c_lo.iter_mut())
+                .zip(c_hi.iter_mut())
+            {
                 let z = rng.next_normal();
                 let s1 = spot(z);
                 *a = pay(s1);
@@ -728,7 +750,21 @@ pub fn mc_price_ws(
     antithetic: bool,
     control_variate: bool,
 ) -> KResult<McResult> {
-    mc_price_par(ws, s, k, t, r_d, r_f, sigma, option_type, n_paths, seed, antithetic, control_variate, 1)
+    mc_price_par(
+        ws,
+        s,
+        k,
+        t,
+        r_d,
+        r_f,
+        sigma,
+        option_type,
+        n_paths,
+        seed,
+        antithetic,
+        control_variate,
+        1,
+    )
 }
 
 /// Monte Carlo GK price with the path fill split over `n_threads` scoped
@@ -763,7 +799,11 @@ pub fn mc_price_par(
     if n_threads == 0 {
         return Err(KernelError::Threads);
     }
-    let units = if antithetic { n_paths.div_ceil(2) } else { n_paths };
+    let units = if antithetic {
+        n_paths.div_ceil(2)
+    } else {
+        n_paths
+    };
     let needed = if control_variate { 3 } else { 2 };
     if units < needed || n_paths > crate::monte_carlo::MAX_PATHS {
         return Err(KernelError::PathCount);
@@ -787,13 +827,20 @@ pub fn mc_price_par(
     if control_variate && ws.control.len() < total {
         ws.control.resize(total, 0.0);
     }
-    let disc = ws.discounted.get_mut(..total).ok_or(KernelError::PathCount)?;
+    let disc = ws
+        .discounted
+        .get_mut(..total)
+        .ok_or(KernelError::PathCount)?;
     let ctrl: &mut [f64] = if control_variate {
         ws.control.get_mut(..total).ok_or(KernelError::PathCount)?
     } else {
         &mut []
     };
-    let (d_lo, d_hi) = if antithetic { disc.split_at_mut(units) } else { (disc, &mut [][..]) };
+    let (d_lo, d_hi) = if antithetic {
+        disc.split_at_mut(units)
+    } else {
+        (disc, &mut [][..])
+    };
     let (c_lo, c_hi): (&mut [f64], &mut [f64]) = if antithetic && control_variate {
         ctrl.split_at_mut(units)
     } else {
@@ -818,11 +865,23 @@ pub fn mc_price_par(
                 let m = chunk.min(dl.len());
                 let (a, rest_dl) = dl.split_at_mut(m);
                 dl = rest_dl;
-                let (b, rest_dh) = if dh.is_empty() { (&mut [][..], dh) } else { dh.split_at_mut(m) };
+                let (b, rest_dh) = if dh.is_empty() {
+                    (&mut [][..], dh)
+                } else {
+                    dh.split_at_mut(m)
+                };
                 dh = rest_dh;
-                let (c, rest_cl) = if cl.is_empty() { (&mut [][..], cl) } else { cl.split_at_mut(m) };
+                let (c, rest_cl) = if cl.is_empty() {
+                    (&mut [][..], cl)
+                } else {
+                    cl.split_at_mut(m)
+                };
                 cl = rest_cl;
-                let (e, rest_ch) = if ch.is_empty() { (&mut [][..], ch) } else { ch.split_at_mut(m) };
+                let (e, rest_ch) = if ch.is_empty() {
+                    (&mut [][..], ch)
+                } else {
+                    ch.split_at_mut(m)
+                };
                 ch = rest_ch;
                 let mut rng = rng0.clone();
                 let skip = start;
@@ -836,7 +895,9 @@ pub fn mc_price_par(
                 }));
                 start += m;
             }
-            handles.into_iter().fold(false, |acc, h| acc | h.join().unwrap_or(true))
+            handles
+                .into_iter()
+                .fold(false, |acc, h| acc | h.join().unwrap_or(true))
         })
     };
     if overflow {
@@ -846,7 +907,10 @@ pub fn mc_price_par(
     // Reduce in place to one value per independent unit (pair average when
     // antithetic), then fit the control variate on those units, exactly as
     // the classic path does with fresh vectors.
-    let disc = ws.discounted.get_mut(..total).ok_or(KernelError::PathCount)?;
+    let disc = ws
+        .discounted
+        .get_mut(..total)
+        .ok_or(KernelError::PathCount)?;
     if antithetic {
         let (lo, hi) = disc.split_at_mut(units);
         for (a, b) in lo.iter_mut().zip(hi.iter()) {

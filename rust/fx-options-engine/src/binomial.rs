@@ -129,7 +129,11 @@ pub fn binomial_price(
         let offset = n - step; // index of m = -step
         for j in 0..=step {
             let v = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
-            values[j] = if american { v.max(exercise_value[offset + 2 * j]) } else { v };
+            values[j] = if american {
+                v.max(exercise_value[offset + 2 * j])
+            } else {
+                v
+            };
         }
     }
     crate::finite_result(values[0], "binomial_price")

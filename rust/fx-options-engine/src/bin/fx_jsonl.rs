@@ -69,11 +69,15 @@ fn parse(line: &str) -> Result<Req, String> {
 }
 
 fn field<'a>(r: &'a Req, k: &str) -> Result<&'a str, String> {
-    r.get(k).map(String::as_str).ok_or(format!("missing field: {k}"))
+    r.get(k)
+        .map(String::as_str)
+        .ok_or(format!("missing field: {k}"))
 }
 
 fn num(r: &Req, k: &str) -> Result<f64, String> {
-    field(r, k)?.parse::<f64>().map_err(|_| format!("not a number: {k}"))
+    field(r, k)?
+        .parse::<f64>()
+        .map_err(|_| format!("not a number: {k}"))
 }
 
 fn option_type(r: &Req) -> Result<OptionType, String> {
@@ -88,7 +92,11 @@ fn number(v: f64) -> String {
     if v.is_nan() {
         "\"nan\"".into()
     } else if v.is_infinite() {
-        if v > 0.0 { "\"inf\"".into() } else { "\"-inf\"".into() }
+        if v > 0.0 {
+            "\"inf\"".into()
+        } else {
+            "\"-inf\"".into()
+        }
     } else {
         format!("{v:?}")
     }
@@ -108,16 +116,28 @@ fn handle(r: &Req) -> Result<Vec<(&'static str, f64)>, String> {
     let e = |err: fx_options_engine::FxError| err.to_string();
     match field(r, "fn")? {
         "gk" => {
-            let (s, k, t, rd, rf, sig) =
-                (num(r, "S")?, num(r, "K")?, num(r, "T")?, num(r, "rd")?, num(r, "rf")?, num(r, "sigma")?);
+            let (s, k, t, rd, rf, sig) = (
+                num(r, "S")?,
+                num(r, "K")?,
+                num(r, "T")?,
+                num(r, "rd")?,
+                num(r, "rf")?,
+                num(r, "sigma")?,
+            );
             let ot = option_type(r)?;
             let g = analytic_greeks(s, k, t, rd, rf, sig, ot).map_err(e)?;
             Ok(vec![
                 ("price", g.price),
                 ("delta_spot", g.delta_spot),
                 ("delta_fwd", g.delta_forward),
-                ("delta_spot_pa", delta(s, k, t, rd, rf, sig, ot, DeltaConvention::SpotPa).map_err(e)?),
-                ("delta_fwd_pa", delta(s, k, t, rd, rf, sig, ot, DeltaConvention::ForwardPa).map_err(e)?),
+                (
+                    "delta_spot_pa",
+                    delta(s, k, t, rd, rf, sig, ot, DeltaConvention::SpotPa).map_err(e)?,
+                ),
+                (
+                    "delta_fwd_pa",
+                    delta(s, k, t, rd, rf, sig, ot, DeltaConvention::ForwardPa).map_err(e)?,
+                ),
                 ("gamma", g.gamma),
                 ("vega", g.vega),
                 ("theta", g.theta),
@@ -127,27 +147,79 @@ fn handle(r: &Req) -> Result<Vec<(&'static str, f64)>, String> {
                 ("volga", g.volga),
             ])
         }
-        "iv" => Ok(vec![("sigma", implied_vol(num(r, "price")?, num(r, "S")?, num(r, "K")?,
-                                              num(r, "T")?, num(r, "rd")?, num(r, "rf")?,
-                                              option_type(r)?).map_err(e)?)]),
-        "strike" => Ok(vec![("K", strike_from_delta(num(r, "delta")?, num(r, "S")?, num(r, "T")?,
-                                                    num(r, "rd")?, num(r, "rf")?, num(r, "sigma")?,
-                                                    option_type(r)?, convention(field(r, "convention")?)?)
-            .map_err(e)?)]),
+        "iv" => Ok(vec![(
+            "sigma",
+            implied_vol(
+                num(r, "price")?,
+                num(r, "S")?,
+                num(r, "K")?,
+                num(r, "T")?,
+                num(r, "rd")?,
+                num(r, "rf")?,
+                option_type(r)?,
+            )
+            .map_err(e)?,
+        )]),
+        "strike" => Ok(vec![(
+            "K",
+            strike_from_delta(
+                num(r, "delta")?,
+                num(r, "S")?,
+                num(r, "T")?,
+                num(r, "rd")?,
+                num(r, "rf")?,
+                num(r, "sigma")?,
+                option_type(r)?,
+                convention(field(r, "convention")?)?,
+            )
+            .map_err(e)?,
+        )]),
         "dns_atm" => {
-            let conv = if field(r, "pa")? == "true" { DeltaConvention::SpotPa } else { DeltaConvention::Spot };
-            Ok(vec![("K", atm_dns_strike(num(r, "S")?, num(r, "T")?, num(r, "rd")?, num(r, "rf")?,
-                                         num(r, "sigma")?, conv).map_err(e)?)])
+            let conv = if field(r, "pa")? == "true" {
+                DeltaConvention::SpotPa
+            } else {
+                DeltaConvention::Spot
+            };
+            Ok(vec![(
+                "K",
+                atm_dns_strike(
+                    num(r, "S")?,
+                    num(r, "T")?,
+                    num(r, "rd")?,
+                    num(r, "rf")?,
+                    num(r, "sigma")?,
+                    conv,
+                )
+                .map_err(e)?,
+            )])
         }
         "crr" => {
-            let ex = if field(r, "american")? == "true" { Exercise::American } else { Exercise::European };
+            let ex = if field(r, "american")? == "true" {
+                Exercise::American
+            } else {
+                Exercise::European
+            };
             let steps = num(r, "steps")? as u32;
-            Ok(vec![("price", binomial_price(num(r, "S")?, num(r, "K")?, num(r, "T")?, num(r, "rd")?,
-                                             num(r, "rf")?, num(r, "sigma")?, option_type(r)?, steps, ex)
-                .map_err(e)?)])
+            Ok(vec![(
+                "price",
+                binomial_price(
+                    num(r, "S")?,
+                    num(r, "K")?,
+                    num(r, "T")?,
+                    num(r, "rd")?,
+                    num(r, "rf")?,
+                    num(r, "sigma")?,
+                    option_type(r)?,
+                    steps,
+                    ex,
+                )
+                .map_err(e)?,
+            )])
         }
-        "fwd" => Ok(vec![("forward", cip_forward(num(r, "S")?, num(r, "T")?, num(r, "rd")?, num(r, "rf")?)
-            .map_err(e)?)]),
+        "fwd" => Ok(vec![(
+            "forward",
+            cip_forward(num(r, "S")?, num(r, "T")?, num(r, "rd")?, num(r, "rf")?).map_err(e)?,
+        )]),
         other => Err(format!("unknown fn: {other}")),
     }
 }
@@ -161,12 +233,18 @@ fn main() {
             continue;
         }
         let (id, result) = match parse(&line) {
-            Ok(r) => (r.get("id").cloned().unwrap_or_else(|| "null".into()), handle(&r)),
+            Ok(r) => (
+                r.get("id").cloned().unwrap_or_else(|| "null".into()),
+                handle(&r),
+            ),
             Err(msg) => ("null".into(), Err(msg)),
         };
         let text = match result {
             Ok(vals) => {
-                let body: Vec<String> = vals.iter().map(|(k, v)| format!("\"{k}\":{}", number(*v))).collect();
+                let body: Vec<String> = vals
+                    .iter()
+                    .map(|(k, v)| format!("\"{k}\":{}", number(*v)))
+                    .collect();
                 format!("{{\"id\":{id},\"ok\":true,\"out\":{{{}}}}}", body.join(","))
             }
             Err(msg) => format!(

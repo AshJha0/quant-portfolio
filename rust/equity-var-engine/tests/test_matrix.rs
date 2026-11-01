@@ -62,12 +62,18 @@ fn cholesky_jitter_path_on_zero_variance_asset() {
 #[test]
 fn cholesky_rejects_bad_input() {
     let non_square = Matrix::from_vec(2, 3, vec![1.0; 6]).unwrap();
-    assert!(matches!(non_square.cholesky(), Err(EqVarError::InvalidInput(_))));
+    assert!(matches!(
+        non_square.cholesky(),
+        Err(EqVarError::InvalidInput(_))
+    ));
     let asym = Matrix::from_vec(2, 2, vec![1.0, 0.5, -0.5, 1.0]).unwrap();
     assert!(matches!(asym.cholesky(), Err(EqVarError::InvalidInput(_))));
     // Badly indefinite: jitter cannot rescue a huge negative eigenvalue.
     let bad = Matrix::from_vec(2, 2, vec![1.0, 1e8, 1e8, 1.0]).unwrap();
-    assert!(matches!(bad.cholesky_jitter(1e-10, 12), Err(EqVarError::Numerical(_))));
+    assert!(matches!(
+        bad.cholesky_jitter(1e-10, 12),
+        Err(EqVarError::Numerical(_))
+    ));
 }
 
 #[test]

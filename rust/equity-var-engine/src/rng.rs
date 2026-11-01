@@ -67,7 +67,10 @@ impl Rng {
         if state == [0, 0, 0, 0] {
             state[0] = 1; // unreachable in practice; xoshiro forbids all-zero
         }
-        Rng { state, cached_normal: None }
+        Rng {
+            state,
+            cached_normal: None,
+        }
     }
 
     /// Next raw 64-bit output of xoshiro256++.

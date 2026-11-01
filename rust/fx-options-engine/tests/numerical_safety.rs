@@ -9,10 +9,26 @@ use fx_options_engine::{
 #[test]
 fn sigma_zero_with_overflowing_forward_is_finite() {
     // (r_d - r_f) T = 800 overflows the forward; the old branch gave NaN.
-    assert_eq!(gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call).unwrap(), 1.0);
-    assert_eq!(gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Put).unwrap(), 0.0);
-    let a = binomial_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call, 100, Exercise::American)
-        .unwrap();
+    assert_eq!(
+        gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call).unwrap(),
+        1.0
+    );
+    assert_eq!(
+        gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Put).unwrap(),
+        0.0
+    );
+    let a = binomial_price(
+        1.0,
+        1.0,
+        1000.0,
+        0.8,
+        0.0,
+        0.0,
+        OptionType::Call,
+        100,
+        Exercise::American,
+    )
+    .unwrap();
     assert_eq!(a, 1.0);
 }
 
@@ -24,7 +40,19 @@ fn overflowing_discount_factor_is_an_error_not_inf() {
 
 #[test]
 fn mc_with_overflowing_drift_is_an_error() {
-    let r = mc_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.2, OptionType::Call, 1000, 1, true, true);
+    let r = mc_price(
+        1.0,
+        1.0,
+        1000.0,
+        0.8,
+        0.0,
+        0.2,
+        OptionType::Call,
+        1000,
+        1,
+        true,
+        true,
+    );
     assert!(r.is_err(), "got {r:?}");
 }
 
@@ -36,14 +64,32 @@ fn pa_call_strike_solves_for_total_vol_above_37() {
     // that the engine must say so (InvalidInput), not fail in Brent.
     for &(sigma, t) in &[(37.5, 1.0), (7.5, 25.0), (0.1, 1.0), (40.0, 1.0)] {
         let target = 1e-3;
-        match strike_from_delta(target, 1.1, t, 0.03, 0.01, sigma, OptionType::Call, DeltaConvention::ForwardPa) {
+        match strike_from_delta(
+            target,
+            1.1,
+            t,
+            0.03,
+            0.01,
+            sigma,
+            OptionType::Call,
+            DeltaConvention::ForwardPa,
+        ) {
             // Above v ~ 30 the PA delta at the strike, (K/F) N(d2), is a
             // product of e^{+v^2/2} and e^{-v^2/2} that underflows; only
             // check that the solve itself does not fail there.
             Ok(_) if sigma * t.sqrt() > 30.0 => {}
             Ok(k) => {
-                let d = delta(1.1, k, t, 0.03, 0.01, sigma, OptionType::Call, DeltaConvention::ForwardPa)
-                    .unwrap();
+                let d = delta(
+                    1.1,
+                    k,
+                    t,
+                    0.03,
+                    0.01,
+                    sigma,
+                    OptionType::Call,
+                    DeltaConvention::ForwardPa,
+                )
+                .unwrap();
                 assert!((d - target).abs() <= 1e-10, "sigma={sigma}: {d}");
             }
             Err(FxError::InvalidInput(msg)) => {
@@ -68,7 +114,10 @@ fn bounds_contract() {
     let (s, k, t, rd, rf) = (1.1, 1.0, 0.5, 0.04, 0.02);
     let lower = gk_price(s, k, t, rd, rf, 0.0, OptionType::Call).unwrap();
     let upper = s * (-rf * t).exp();
-    assert_eq!(implied_vol(lower, s, k, t, rd, rf, OptionType::Call).unwrap(), 0.0);
+    assert_eq!(
+        implied_vol(lower, s, k, t, rd, rf, OptionType::Call).unwrap(),
+        0.0
+    );
     assert!(implied_vol(upper, s, k, t, rd, rf, OptionType::Call).is_err());
     assert!(implied_vol(lower - 1e-9, s, k, t, rd, rf, OptionType::Call).is_err());
 }
@@ -81,7 +130,11 @@ fn iv_uses_at_most_ten_evaluations() {
             for &sigma in &[0.01, 0.2, 2.0] {
                 let k = f64::exp(lk);
                 let is_call = k >= 1.0;
-                let ot = if is_call { OptionType::Call } else { OptionType::Put };
+                let ot = if is_call {
+                    OptionType::Call
+                } else {
+                    OptionType::Put
+                };
                 let r = -df.ln() / t;
                 let price = gk_price(1.0, k, t, r, r, sigma, ot).unwrap();
                 if price.is_nan() || price <= 1e-300 {
@@ -89,7 +142,10 @@ fn iv_uses_at_most_ten_evaluations() {
                 }
                 let mut evals = 0;
                 let _ = black_implied_vol(price, 1.0, k, t, df, is_call, &mut evals);
-                assert!(evals <= 10, "lk={lk} t={t} sigma={sigma}: {evals} evaluations");
+                assert!(
+                    evals <= 10,
+                    "lk={lk} t={t} sigma={sigma}: {evals} evaluations"
+                );
             }
         }
     }

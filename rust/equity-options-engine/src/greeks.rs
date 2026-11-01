@@ -233,7 +233,8 @@ where
     let vega = (f(s, sigma + h_v, t, r)? - f(s, sigma - h_v, t, r)?) / (2.0 * h_v);
     let theta = -(f(s, sigma, t + h_t, r)? - f(s, sigma, t - h_t, r)?) / (2.0 * h_t);
     let rho = (f(s, sigma, t, r + h_r)? - f(s, sigma, t, r - h_r)?) / (2.0 * h_r);
-    let vanna = (f(s + h_s2, sigma + h_v2, t, r)? - f(s + h_s2, sigma - h_v2, t, r)?
+    let vanna = (f(s + h_s2, sigma + h_v2, t, r)?
+        - f(s + h_s2, sigma - h_v2, t, r)?
         - f(s - h_s2, sigma + h_v2, t, r)?
         + f(s - h_s2, sigma - h_v2, t, r)?)
         / (4.0 * h_s2 * h_v2);

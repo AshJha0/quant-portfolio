@@ -197,7 +197,7 @@ pub(crate) fn black76_greeks_core(
     // theta = dV/dt at fixed F: r*V minus decay of the time value.
     let theta = r * price - df * f * pdf_d1 * sigma / (2.0 * sqrt_t);
     let rho = -t * price;
-        Black76Greeks {
+    Black76Greeks {
         price,
         delta,
         gamma,

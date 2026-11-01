@@ -151,7 +151,8 @@ pub fn simulate_factor_returns(
     seed: u64,
     horizon_days: f64,
 ) -> Result<(ReturnsMatrix, String)> {
-    let (r, w, _) = simulate_factor_returns_jitter(cov, n_scenarios, dist, df, jumps, seed, horizon_days)?;
+    let (r, w, _) =
+        simulate_factor_returns_jitter(cov, n_scenarios, dist, df, jumps, seed, horizon_days)?;
     Ok((r, w))
 }
 
@@ -169,7 +170,16 @@ pub fn simulate_factor_returns_jitter(
     seed: u64,
     horizon_days: f64,
 ) -> Result<(ReturnsMatrix, String, f64)> {
-    simulate_threads(cov, n_scenarios, dist, df, jumps, seed, horizon_days, crate::par::default_threads())
+    simulate_threads(
+        cov,
+        n_scenarios,
+        dist,
+        df,
+        jumps,
+        seed,
+        horizon_days,
+        crate::par::default_threads(),
+    )
 }
 
 /// Rows per thread below which the simulation stays serial.
@@ -213,12 +223,16 @@ fn simulate_threads(
         }
         for (f, &s) in &jumps.stdev {
             if !(s >= 0.0) || !s.is_finite() {
-                return Err(FxVarError::invalid(format!("jump stdev for {f} must be finite and >= 0")));
+                return Err(FxVarError::invalid(format!(
+                    "jump stdev for {f} must be finite and >= 0"
+                )));
             }
         }
         for (f, &m) in &jumps.mean {
             if !m.is_finite() {
-                return Err(FxVarError::invalid(format!("jump mean for {f} must be finite")));
+                return Err(FxVarError::invalid(format!(
+                    "jump mean for {f} must be finite"
+                )));
             }
         }
         jump_lam_h = -(-jumps.prob).ln_1p() * horizon_days;
@@ -264,16 +278,32 @@ fn simulate_threads(
         }
     }
 
-    let t_scale = if dist == McDist::StudentT { ((df - 2.0) / df).sqrt() } else { 1.0 };
+    let t_scale = if dist == McDist::StudentT {
+        ((df - 2.0) / df).sqrt()
+    } else {
+        1.0
+    };
     let jc = jump_col.len();
 
     // Phase 1 (serial, cheap): walk the single RNG stream in the reference
     // order. Each scenario takes k uniforms for its normals (stored raw in
     // its row), then its Student-t mixing draw or its jump draws, which are
     // kept in side buffers. The stream and its order are unchanged.
-    let mut mult = if dist == McDist::StudentT { vec![0.0; n_scenarios] } else { Vec::new() };
-    let mut n_jumps_buf = if dist == McDist::Jump { vec![0.0; n_scenarios] } else { Vec::new() };
-    let mut zj_buf = if dist == McDist::Jump { vec![0.0; n_scenarios * jc] } else { Vec::new() };
+    let mut mult = if dist == McDist::StudentT {
+        vec![0.0; n_scenarios]
+    } else {
+        Vec::new()
+    };
+    let mut n_jumps_buf = if dist == McDist::Jump {
+        vec![0.0; n_scenarios]
+    } else {
+        Vec::new()
+    };
+    let mut zj_buf = if dist == McDist::Jump {
+        vec![0.0; n_scenarios * jc]
+    } else {
+        Vec::new()
+    };
     {
         let flat = data.as_mut_slice();
         for s in 0..n_scenarios {
@@ -307,40 +337,57 @@ fn simulate_threads(
     let lower_flat = lower.as_slice();
     let (mult, n_jumps_buf, zj_buf) = (&mult, &n_jumps_buf, &zj_buf);
     let (jump_col, jump_mean, jump_std) = (&jump_col, &jump_mean, &jump_std);
-    crate::par::for_row_chunks(data.as_mut_slice(), k, SIM_MIN_ROWS, threads, |first, chunk| {
-        let mut z = vec![0.0; k];
-        for (r, row) in chunk.chunks_exact_mut(k.max(1)).enumerate() {
-            let s = first + r;
-            for (zi, &u) in z.iter_mut().zip(row.iter()) {
-                *zi = inv_norm_cdf_unchecked(u);
-            }
-            for (i, (out, li)) in row.iter_mut().zip(lower_flat.chunks_exact(k.max(1))).enumerate() {
-                let mut acc = 0.0;
-                for (a, b) in li.iter().zip(z.iter()).take(i + 1) {
-                    acc += a * b;
+    crate::par::for_row_chunks(
+        data.as_mut_slice(),
+        k,
+        SIM_MIN_ROWS,
+        threads,
+        |first, chunk| {
+            let mut z = vec![0.0; k];
+            for (r, row) in chunk.chunks_exact_mut(k.max(1)).enumerate() {
+                let s = first + r;
+                for (zi, &u) in z.iter_mut().zip(row.iter()) {
+                    *zi = inv_norm_cdf_unchecked(u);
                 }
-                *out = acc;
-            }
-            if dist == McDist::StudentT {
-                let m = mult.get(s).copied().unwrap_or(1.0);
-                for v in row.iter_mut() {
-                    *v *= m;
+                for (i, (out, li)) in row
+                    .iter_mut()
+                    .zip(lower_flat.chunks_exact(k.max(1)))
+                    .enumerate()
+                {
+                    let mut acc = 0.0;
+                    for (a, b) in li.iter().zip(z.iter()).take(i + 1) {
+                        acc += a * b;
+                    }
+                    *out = acc;
                 }
-            } else if dist == McDist::Jump {
-                let n_jumps = n_jumps_buf.get(s).copied().unwrap_or(0.0);
-                let zs = zj_buf.get(s * jc..(s + 1) * jc).unwrap_or(&[]);
-                for (idx, &zj) in zs.iter().enumerate() {
-                    if n_jumps > 0.0 {
-                        let (col, mean, sd) = (jump_col[idx], jump_mean[idx], jump_std[idx]);
-                        if let Some(x) = row.get_mut(col) {
-                            *x = *x + n_jumps * mean + sd * n_jumps.sqrt() * zj;
+                if dist == McDist::StudentT {
+                    let m = mult.get(s).copied().unwrap_or(1.0);
+                    for v in row.iter_mut() {
+                        *v *= m;
+                    }
+                } else if dist == McDist::Jump {
+                    let n_jumps = n_jumps_buf.get(s).copied().unwrap_or(0.0);
+                    let zs = zj_buf.get(s * jc..(s + 1) * jc).unwrap_or(&[]);
+                    for (idx, &zj) in zs.iter().enumerate() {
+                        if n_jumps > 0.0 {
+                            let (col, mean, sd) = (jump_col[idx], jump_mean[idx], jump_std[idx]);
+                            if let Some(x) = row.get_mut(col) {
+                                *x = *x + n_jumps * mean + sd * n_jumps.sqrt() * zj;
+                            }
                         }
                     }
                 }
             }
-        }
-    });
-    Ok((ReturnsMatrix { factors: cov.factors.clone(), data }, warning, jitter))
+        },
+    );
+    Ok((
+        ReturnsMatrix {
+            factors: cov.factors.clone(),
+            data,
+        },
+        warning,
+        jitter,
+    ))
 }
 
 /// Poisson(`mu`) draw by sequential inversion (one uniform per draw);
@@ -375,7 +422,12 @@ fn poisson(rng: &mut Rng, mu: f64) -> u64 {
 /// # Errors
 /// Invalid `alpha`, fewer than 10 or non-finite observations, or
 /// `n_boot < 2` (a standard deviation needs two draws).
-pub fn var_standard_error_bootstrap(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
+pub fn var_standard_error_bootstrap(
+    pnl: &[f64],
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+) -> Result<f64> {
     bootstrap_se_threads(pnl, alpha, n_boot, seed, crate::par::default_threads())
 }
 
@@ -394,11 +446,21 @@ const BOOT_PAR_MIN_DRAWS: usize = 1 << 19;
 /// One scoped thread per chunk then regenerates its own draws from that
 /// state, gathers and selects. The estimates are the same bits as the
 /// one-thread loop.
-fn bootstrap_estimates(pnl: &[f64], m: usize, n_boot: usize, seed: u64, threads: usize) -> Vec<f64> {
+fn bootstrap_estimates(
+    pnl: &[f64],
+    m: usize,
+    n_boot: usize,
+    seed: u64,
+    threads: usize,
+) -> Vec<f64> {
     let n = pnl.len();
     let mut est = vec![0.0; n_boot];
     let draws = n_boot.saturating_mul(n);
-    let threads = if draws < BOOT_PAR_MIN_DRAWS { 1 } else { threads.clamp(1, n_boot.max(1)) };
+    let threads = if draws < BOOT_PAR_MIN_DRAWS {
+        1
+    } else {
+        threads.clamp(1, n_boot.max(1))
+    };
     let per = n_boot.div_ceil(threads).max(1);
     // Generator state at the start of each chunk.
     let mut starts = Vec::with_capacity(threads);
@@ -455,7 +517,13 @@ pub fn var_standard_error_bootstrap_with_threads(
     bootstrap_se_threads(pnl, alpha, n_boot, seed, threads)
 }
 
-fn bootstrap_se_threads(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64, threads: usize) -> Result<f64> {
+fn bootstrap_se_threads(
+    pnl: &[f64],
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    threads: usize,
+) -> Result<f64> {
     validate_alpha(alpha)?;
     if pnl.len() < 10 {
         return Err(FxVarError::Invalid(format!(
@@ -464,7 +532,9 @@ fn bootstrap_se_threads(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64, threa
         )));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(FxVarError::Invalid("pnl contains NaN or infinite values".to_string()));
+        return Err(FxVarError::Invalid(
+            "pnl contains NaN or infinite values".to_string(),
+        ));
     }
     if n_boot < 2 {
         return Err(FxVarError::Invalid(format!(
@@ -502,7 +572,9 @@ pub fn var_standard_error(pnl: &[f64], alpha: f64) -> Result<f64> {
         )));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(FxVarError::Invalid("pnl contains NaN or infinite values".to_string()));
+        return Err(FxVarError::Invalid(
+            "pnl contains NaN or infinite values".to_string(),
+        ));
     }
     let q = -crate::tail::empirical_var(pnl, alpha)?;
     let nf = n as f64;
@@ -520,7 +592,10 @@ pub fn var_standard_error(pnl: &[f64], alpha: f64) -> Result<f64> {
         let (_, x_lo, right) = work.select_nth_unstable_by(lo, f64::total_cmp);
         let x_lo = *x_lo;
         let x_hi = if lo + 1 < n {
-            right.iter().copied().fold(f64::INFINITY, |a, b| if b.total_cmp(&a).is_lt() { b } else { a })
+            right.iter().copied().fold(
+                f64::INFINITY,
+                |a, b| if b.total_cmp(&a).is_lt() { b } else { a },
+            )
         } else {
             x_lo
         };
@@ -591,7 +666,10 @@ pub fn monte_carlo_var_with_threads(
     validate_alpha(opts.alpha)?;
     validate_horizon(opts.horizon_days)?;
     if opts.n_boot < 2 {
-        return Err(FxVarError::invalid(format!("n_boot must be >= 2, got {}", opts.n_boot)));
+        return Err(FxVarError::invalid(format!(
+            "n_boot must be >= 2, got {}",
+            opts.n_boot
+        )));
     }
     let compiled = CompiledBook::new(book, market)?;
 
@@ -630,8 +708,13 @@ pub fn monte_carlo_var_with_threads(
     let (var, es) = empirical_var_es(&res.pnl, opts.alpha, None)?;
     res.var = var;
     res.es = es;
-    res.se_var =
-        bootstrap_se_threads(&res.pnl, opts.alpha, opts.n_boot, opts.seed ^ 0x9E37_79B9_7F4A_7C15, threads)?;
+    res.se_var = bootstrap_se_threads(
+        &res.pnl,
+        opts.alpha,
+        opts.n_boot,
+        opts.seed ^ 0x9E37_79B9_7F4A_7C15,
+        threads,
+    )?;
     res.se_var_kde = var_standard_error(&res.pnl, opts.alpha)?;
     Ok(res)
 }
@@ -643,20 +726,59 @@ mod tests {
     use crate::TailDist;
 
     fn cov1() -> FactorCov {
-        FactorCov { factors: vec!["FX:EUR".to_string()], cov: Matrix::from_rows(&[vec![0.0001]]).unwrap() }
+        FactorCov {
+            factors: vec!["FX:EUR".to_string()],
+            cov: Matrix::from_rows(&[vec![0.0001]]).unwrap(),
+        }
     }
 
     #[test]
     fn simulate_is_deterministic_for_fixed_seed() {
-        let (a, _) = simulate_factor_returns(&cov1(), 100, McDist::Normal, 6.0, &JumpSpec::default(), 7, 1.0).unwrap();
-        let (b, _) = simulate_factor_returns(&cov1(), 100, McDist::Normal, 6.0, &JumpSpec::default(), 7, 1.0).unwrap();
+        let (a, _) = simulate_factor_returns(
+            &cov1(),
+            100,
+            McDist::Normal,
+            6.0,
+            &JumpSpec::default(),
+            7,
+            1.0,
+        )
+        .unwrap();
+        let (b, _) = simulate_factor_returns(
+            &cov1(),
+            100,
+            McDist::Normal,
+            6.0,
+            &JumpSpec::default(),
+            7,
+            1.0,
+        )
+        .unwrap();
         assert_eq!(a.data, b.data);
     }
 
     #[test]
     fn different_seeds_differ() {
-        let (a, _) = simulate_factor_returns(&cov1(), 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0).unwrap();
-        let (b, _) = simulate_factor_returns(&cov1(), 100, McDist::Normal, 6.0, &JumpSpec::default(), 2, 1.0).unwrap();
+        let (a, _) = simulate_factor_returns(
+            &cov1(),
+            100,
+            McDist::Normal,
+            6.0,
+            &JumpSpec::default(),
+            1,
+            1.0,
+        )
+        .unwrap();
+        let (b, _) = simulate_factor_returns(
+            &cov1(),
+            100,
+            McDist::Normal,
+            6.0,
+            &JumpSpec::default(),
+            2,
+            1.0,
+        )
+        .unwrap();
         assert_ne!(a.data, b.data);
     }
 
@@ -666,10 +788,26 @@ mod tests {
             factors: vec!["FX:EUR".to_string()],
             cov: Matrix::from_rows(&[vec![0.0001]]).unwrap(),
         };
-        let (n, _) =
-            simulate_factor_returns(&big_cov, 20_000, McDist::Normal, 6.0, &JumpSpec::default(), 11, 1.0).unwrap();
-        let (t, _) =
-            simulate_factor_returns(&big_cov, 20_000, McDist::StudentT, 5.0, &JumpSpec::default(), 11, 1.0).unwrap();
+        let (n, _) = simulate_factor_returns(
+            &big_cov,
+            20_000,
+            McDist::Normal,
+            6.0,
+            &JumpSpec::default(),
+            11,
+            1.0,
+        )
+        .unwrap();
+        let (t, _) = simulate_factor_returns(
+            &big_cov,
+            20_000,
+            McDist::StudentT,
+            5.0,
+            &JumpSpec::default(),
+            11,
+            1.0,
+        )
+        .unwrap();
         let max_abs = |m: &Matrix| m.as_slice().iter().fold(0.0_f64, |acc, v| acc.max(v.abs()));
         assert!(max_abs(&t.data) > max_abs(&n.data));
     }
@@ -677,7 +815,10 @@ mod tests {
     #[test]
     fn jump_overlay_adds_tail_mass() {
         // p = 1 - e^{-5}: lam = 5 jumps a day, P(N = 0) = e^{-5} ~ 0.7 %.
-        let mut jumps = JumpSpec { prob: 1.0 - (-5.0_f64).exp(), ..Default::default() };
+        let mut jumps = JumpSpec {
+            prob: 1.0 - (-5.0_f64).exp(),
+            ..Default::default()
+        };
         jumps.mean.insert("FX:EUR".to_string(), -0.10);
         let (scen, _) =
             simulate_factor_returns(&cov1(), 50, McDist::Jump, 6.0, &jumps, 3, 1.0).unwrap();
@@ -693,35 +834,71 @@ mod tests {
         // Per-day p = 0.02 -> lam = -ln(0.98). Mean jump P&L over h days is
         // lam * h * mu_J (uncompensated). The old Bernoulli overlay gave
         // p * mu_J whatever h, so its 10-day mean was 10x too small.
-        let mut jumps = JumpSpec { prob: 0.02, ..Default::default() };
+        let mut jumps = JumpSpec {
+            prob: 0.02,
+            ..Default::default()
+        };
         jumps.mean.insert("FX:EUR".to_string(), -0.10);
-        let tiny = FactorCov { factors: vec!["FX:EUR".to_string()], cov: Matrix::from_rows(&[vec![1e-12]]).unwrap() };
+        let tiny = FactorCov {
+            factors: vec!["FX:EUR".to_string()],
+            cov: Matrix::from_rows(&[vec![1e-12]]).unwrap(),
+        };
         let n = 200_000;
-        let (scen, _) = simulate_factor_returns(&tiny, n, McDist::Jump, 6.0, &jumps, 9, 10.0).unwrap();
+        let (scen, _) =
+            simulate_factor_returns(&tiny, n, McDist::Jump, 6.0, &jumps, 9, 10.0).unwrap();
         let mean = scen.data.as_slice().iter().sum::<f64>() / n as f64;
         let lam_h = -(0.98_f64).ln() * 10.0;
         let want = lam_h * -0.10;
         // SE of the mean: 0.1 * sqrt(lam_h / n) ~ 1e-4; allow 5 SE.
         let se = 0.10 * (lam_h / n as f64).sqrt();
-        assert!((mean - want).abs() < 5.0 * se, "mean {mean} want {want} se {se}");
+        assert!(
+            (mean - want).abs() < 5.0 * se,
+            "mean {mean} want {want} se {se}"
+        );
     }
 
     #[test]
     fn monte_carlo_var_normal_agrees_with_parametric() {
         let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
         let cov = cov1();
-        let opts = MonteCarloOptions { n_scenarios: 200_000, seed: 42, ..Default::default() };
+        let opts = MonteCarloOptions {
+            n_scenarios: 200_000,
+            seed: 42,
+            ..Default::default()
+        };
         let mc = monte_carlo_var(&book, &market, &cov, &opts).unwrap();
-        let exposures = CompiledBook::new(&book, &market).unwrap().linear_exposures(1e-6).unwrap();
-        let closed = crate::parametric::var_covar(&exposures, &cov.cov, 0.01, 1.0, TailDist::Normal, 6.0, 0.0).unwrap();
+        let exposures = CompiledBook::new(&book, &market)
+            .unwrap()
+            .linear_exposures(1e-6)
+            .unwrap();
+        let closed = crate::parametric::var_covar(
+            &exposures,
+            &cov.cov,
+            0.01,
+            1.0,
+            TailDist::Normal,
+            6.0,
+            0.0,
+        )
+        .unwrap();
         // Full revaluation: P&L = 11m (e^r - 1), r ~ N(0, 0.01^2), so the
         // exact 99 % VaR is 11m (1 - e^{z sigma}), z = Phi^{-1}(0.01); the
         // delta closed form is ~1 % higher (convexity).
         let z = crate::stats::inv_norm_cdf(0.01).unwrap();
         let exact = 11.0e6 * (1.0 - (z * 0.01).exp());
         // 4 bootstrap SEs: a two-sided 6e-5 miss probability for a correct engine.
-        assert!((mc.var - exact).abs() < 4.0 * mc.se_var, "{} vs {} (se {})", mc.var, exact, mc.se_var);
+        assert!(
+            (mc.var - exact).abs() < 4.0 * mc.se_var,
+            "{} vs {} (se {})",
+            mc.var,
+            exact,
+            mc.se_var
+        );
         assert!(closed.var > exact);
         assert!(mc.se_var > 0.0 && mc.se_var_kde > 0.0);
     }
@@ -729,16 +906,31 @@ mod tests {
     #[test]
     fn empty_book_errors() {
         let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-        assert!(monte_carlo_var(&Book::empty(), &market, &cov1(), &MonteCarloOptions::default()).is_err());
+        assert!(monte_carlo_var(
+            &Book::empty(),
+            &market,
+            &cov1(),
+            &MonteCarloOptions::default()
+        )
+        .is_err());
     }
 
     #[test]
     fn n_scenarios_zero_errors() {
-        let opts = MonteCarloOptions { n_scenarios: 0, ..Default::default() };
-        assert!(
-            simulate_factor_returns(&cov1(), opts.n_scenarios, opts.dist, opts.df, &opts.jumps, opts.seed, 1.0)
-                .is_err()
-        );
+        let opts = MonteCarloOptions {
+            n_scenarios: 0,
+            ..Default::default()
+        };
+        assert!(simulate_factor_returns(
+            &cov1(),
+            opts.n_scenarios,
+            opts.dist,
+            opts.df,
+            &opts.jumps,
+            opts.seed,
+            1.0
+        )
+        .is_err());
     }
 
     #[test]
@@ -753,7 +945,8 @@ mod tests {
             cov: Matrix::from_rows(&[vec![6.25e-2, 3.125e-2], vec![3.125e-2, 1.5625e-2]]).unwrap(),
         };
         let (_, warning) =
-            simulate_factor_returns(&cov, 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0).unwrap();
+            simulate_factor_returns(&cov, 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0)
+                .unwrap();
         assert!(!warning.is_empty());
     }
 

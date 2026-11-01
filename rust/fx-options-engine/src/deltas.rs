@@ -42,8 +42,7 @@
 
 use crate::garman_kohlhagen::d1 as d1_fn;
 use crate::{
-    brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs, FxResult,
-    OptionType,
+    brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs, FxResult, OptionType,
 };
 
 /// FX delta quoting convention (see the module docs for the formulae).
@@ -263,7 +262,12 @@ pub(crate) fn log_norm_cdf(x: f64) -> f64 {
 pub(crate) fn pa_fold_bracket(v: f64) -> (f64, f64) {
     let x_lo = -(v + 1.0);
     let arg = 2.0 / (v * (2.0 * std::f64::consts::PI).sqrt());
-    let x_hi = 1.0 + if arg > 1.0 { (2.0 * arg.ln()).sqrt() } else { 0.0 };
+    let x_hi = 1.0
+        + if arg > 1.0 {
+            (2.0 * arg.ln()).sqrt()
+        } else {
+            0.0
+        };
     (x_lo, x_hi)
 }
 

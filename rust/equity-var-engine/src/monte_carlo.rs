@@ -79,8 +79,7 @@ pub fn simulate_factor_returns_jitter(
     }
     if !cov.all_finite() {
         return Err(EqVarError::InvalidInput(
-            "simulate_factor_returns: covariance contains NaN or infinite entries"
-                .to_string(),
+            "simulate_factor_returns: covariance contains NaN or infinite entries".to_string(),
         ));
     }
     let n = cov.rows();
@@ -318,7 +317,9 @@ pub fn monte_carlo_run(
         )));
     }
     if exposures.is_empty() {
-        return Err(EqVarError::InvalidInput("book has no positions".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "book has no positions".to_string(),
+        ));
     }
     if exposures.iter().any(|w| !w.is_finite()) {
         return Err(EqVarError::InvalidInput(
@@ -339,7 +340,14 @@ pub fn monte_carlo_run(
     let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
     let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
     let se_kde = var_kde_se(&pnl, alpha)?;
-    Ok(McRun { pnl, var, es, se, se_kde, jitter })
+    Ok(McRun {
+        pnl,
+        var,
+        es,
+        se,
+        se_kde,
+        jitter,
+    })
 }
 
 /// Bootstrap standard error of the S2 order-statistic VaR (primary SE).
@@ -362,7 +370,9 @@ pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Re
         )));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(EqVarError::InvalidInput("pnl contains NaN or infinite values".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "pnl contains NaN or infinite values".to_string(),
+        ));
     }
     if n_boot < 2 {
         return Err(EqVarError::InvalidInput(format!(
@@ -409,7 +419,9 @@ pub fn var_kde_se(pnl: &[f64], alpha: f64) -> Result<f64> {
         )));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(EqVarError::InvalidInput("pnl contains NaN or infinite values".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "pnl contains NaN or infinite values".to_string(),
+        ));
     }
     let q = -crate::tail::empirical_var(pnl, alpha)?;
     let nf = n as f64;

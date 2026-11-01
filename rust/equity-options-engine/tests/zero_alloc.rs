@@ -61,19 +61,38 @@ fn kernel_success_paths_do_not_allocate() {
     assert_eq!(allocs(|| black76_greeks(s, k, t, r, v, put).unwrap()), 0);
     assert_eq!(allocs(|| try_bs_price(s, k, t, r, v, q, call).unwrap()), 0);
     assert_eq!(allocs(|| try_bs_greeks(s, k, t, r, v, q, put).unwrap()), 0);
-    assert_eq!(allocs(|| try_black76_price(s, k, t, r, v, call).unwrap()), 0);
-    assert_eq!(allocs(|| try_black76_greeks(s, k, t, r, v, put).unwrap()), 0);
+    assert_eq!(
+        allocs(|| try_black76_price(s, k, t, r, v, call).unwrap()),
+        0
+    );
+    assert_eq!(
+        allocs(|| try_black76_greeks(s, k, t, r, v, put).unwrap()),
+        0
+    );
     let p = bs_price(s, k, t, r, v, q, call).unwrap();
     assert_eq!(allocs(|| implied_vol(p, s, k, t, r, q, call).unwrap()), 0);
-    assert_eq!(allocs(|| try_implied_vol(p, s, k, t, r, q, call).unwrap()), 0);
+    assert_eq!(
+        allocs(|| try_implied_vol(p, s, k, t, r, q, call).unwrap()),
+        0
+    );
 
     // Error paths of the fast API do not allocate either.
-    assert_eq!(allocs(|| try_bs_price(f64::NAN, k, t, r, v, q, call).is_err()), 0);
-    assert_eq!(allocs(|| try_implied_vol(0.0, s, k, t, r, q, call).is_err()), 0);
+    assert_eq!(
+        allocs(|| try_bs_price(f64::NAN, k, t, r, v, q, call).is_err()),
+        0
+    );
+    assert_eq!(
+        allocs(|| try_implied_vol(0.0, s, k, t, r, q, call).is_err()),
+        0
+    );
 
     // Tree: a pre-sized workspace never grows.
     let mut ws = CrrWorkspace::with_steps(1000);
-    for (ex, n) in [(Exercise::American, 1000), (Exercise::European, 1000), (Exercise::American, 10)] {
+    for (ex, n) in [
+        (Exercise::American, 1000),
+        (Exercise::European, 1000),
+        (Exercise::American, 10),
+    ] {
         assert_eq!(
             allocs(|| try_crr_price(s, k, t, r, v, q, put, ex, n, &mut ws).unwrap()),
             0,
@@ -87,7 +106,9 @@ fn kernel_success_paths_do_not_allocate() {
     for (anti, cv) in [(true, true), (false, true), (true, false), (false, false)] {
         try_mc_price(s, k, t, r, v, q, call, 20_000, anti, cv, 1, 1, &mut mc).unwrap();
         assert_eq!(
-            allocs(|| try_mc_price(s, k, t, r, v, q, call, 20_000, anti, cv, 2, 1, &mut mc).unwrap()),
+            allocs(
+                || try_mc_price(s, k, t, r, v, q, call, 20_000, anti, cv, 2, 1, &mut mc).unwrap()
+            ),
             0,
             "anti={anti} cv={cv}"
         );
@@ -101,7 +122,15 @@ fn kernel_success_paths_do_not_allocate() {
     let vv = [0.2; 4];
     let qv = [0.01; 4];
     let ot = [call, put, call, put];
-    let b = BsBatch { s: &sv, k: &kv, t: &tv, r: &rv, sigma: &vv, q: &qv, option_type: &ot };
+    let b = BsBatch {
+        s: &sv,
+        k: &kv,
+        t: &tv,
+        r: &rv,
+        sigma: &vv,
+        q: &qv,
+        option_type: &ot,
+    };
     let mut out = [0.0; 4];
     assert_eq!(allocs(|| bs_price_batch(&b, &mut out).unwrap()), 0);
     let mut g = [[0.0; 4]; 8];

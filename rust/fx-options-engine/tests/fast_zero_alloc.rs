@@ -70,7 +70,15 @@ fn kernels_do_not_allocate_on_success() {
     let rfv = [rf; 64];
     let vv = [v; 64];
     let ty = [call; 64];
-    let b = GkBatch { s: &sv, k: &kv, t: &tv, r_d: &rdv, r_f: &rfv, sigma: &vv, option_type: &ty };
+    let b = GkBatch {
+        s: &sv,
+        k: &kv,
+        t: &tv,
+        r_d: &rdv,
+        r_f: &rfv,
+        sigma: &vv,
+        option_type: &ty,
+    };
     let mut out = [0.0; 64];
     let (n, r) = count(|| gk_price_batch(&b, &mut out));
     assert!(r.is_ok());
@@ -96,7 +104,18 @@ fn kernels_do_not_allocate_on_success() {
 
     let mut bws = BinomialWorkspace::with_steps(500);
     let (n, r) = count(|| {
-        binomial_price_ws(&mut bws, s, k, t, rd, rf, v, OptionType::Put, 500, Exercise::American)
+        binomial_price_ws(
+            &mut bws,
+            s,
+            k,
+            t,
+            rd,
+            rf,
+            v,
+            OptionType::Put,
+            500,
+            Exercise::American,
+        )
     });
     assert!(r.is_ok());
     assert_eq!(n, 0, "binomial_price_ws allocated");
@@ -108,7 +127,17 @@ fn kernels_do_not_allocate_on_success() {
 
     // Sanity: the counter does see the classic tree, which builds Vecs.
     let (n, _) = count(|| {
-        fx_options_engine::binomial_price(s, k, t, rd, rf, v, OptionType::Put, 500, Exercise::American)
+        fx_options_engine::binomial_price(
+            s,
+            k,
+            t,
+            rd,
+            rf,
+            v,
+            OptionType::Put,
+            500,
+            Exercise::American,
+        )
     });
     assert!(n > 0, "counter did not observe a known allocation");
 }

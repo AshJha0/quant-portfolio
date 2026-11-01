@@ -42,8 +42,8 @@
 
 use std::collections::HashMap;
 
-use crate::returns::ReturnsMatrix;
 use crate::matrix::Matrix;
+use crate::returns::ReturnsMatrix;
 use crate::{FxVarError, KernelError, Result};
 
 /// `(base, quote)` legs of a 6-letter pair, upper-cased.
@@ -69,7 +69,9 @@ pub fn split_pair(pair: &str) -> Result<PairLegs> {
     let base = pair[..3].to_uppercase();
     let quote = pair[3..].to_uppercase();
     if base == quote {
-        return Err(FxVarError::invalid(format!("FX pair has identical legs: '{pair}'")));
+        return Err(FxVarError::invalid(format!(
+            "FX pair has identical legs: '{pair}'"
+        )));
     }
     Ok(PairLegs { base, quote })
 }
@@ -81,7 +83,9 @@ pub fn split_pair(pair: &str) -> Result<PairLegs> {
 pub fn fx_factor(ccy: &str) -> Result<String> {
     let c = ccy.to_uppercase();
     if c == "USD" {
-        return Err(FxVarError::invalid("USD has no FX factor: its USD price is identically 1"));
+        return Err(FxVarError::invalid(
+            "USD has no FX factor: its USD price is identically 1",
+        ));
     }
     Ok(format!("FX:{c}"))
 }
@@ -128,7 +132,9 @@ impl Market {
         }
         if let Some(&usd) = spots.get("USD") {
             if (usd - 1.0).abs() > 1e-12 {
-                return Err(FxVarError::invalid("spot_usd['USD'] must be 1.0 (USD per USD)"));
+                return Err(FxVarError::invalid(
+                    "spot_usd['USD'] must be 1.0 (USD per USD)",
+                ));
             }
         }
         spots.insert("USD".to_string(), 1.0);
@@ -143,7 +149,10 @@ impl Market {
             }
             rate_map.insert(c, r);
         }
-        Ok(Market { spot_usd: spots, rates: rate_map })
+        Ok(Market {
+            spot_usd: spots,
+            rates: rate_map,
+        })
     }
 
     /// USD price of 1 unit of `ccy` (1.0 for USD).
@@ -154,7 +163,9 @@ impl Market {
         self.spot_usd
             .get(&ccy.to_uppercase())
             .copied()
-            .ok_or_else(|| FxVarError::invalid(format!("no USD spot for currency '{ccy}' in Market")))
+            .ok_or_else(|| {
+                FxVarError::invalid(format!("no USD spot for currency '{ccy}' in Market"))
+            })
     }
 
     /// cc zero rate for `ccy`.
@@ -162,10 +173,9 @@ impl Market {
     /// # Errors
     /// [`FxVarError::Invalid`] if `ccy` is unknown.
     pub fn rate(&self, ccy: &str) -> Result<f64> {
-        self.rates
-            .get(&ccy.to_uppercase())
-            .copied()
-            .ok_or_else(|| FxVarError::invalid(format!("no interest rate for currency '{ccy}' in Market")))
+        self.rates.get(&ccy.to_uppercase()).copied().ok_or_else(|| {
+            FxVarError::invalid(format!("no interest rate for currency '{ccy}' in Market"))
+        })
     }
 
     /// Cross rate of `pair` (QUOTE per 1 BASE) by USD triangulation.
@@ -199,7 +209,10 @@ pub struct CashPosition {
 impl CashPosition {
     /// Build a cash position of `amount` units of `ccy`.
     pub fn new(ccy: impl Into<String>, amount: f64) -> Self {
-        CashPosition { ccy: ccy.into(), amount }
+        CashPosition {
+            ccy: ccy.into(),
+            amount,
+        }
     }
 }
 
@@ -220,7 +233,11 @@ pub struct SpotPosition {
 impl SpotPosition {
     /// Build a spot FX position.
     pub fn new(pair: impl Into<String>, notional: f64, entry_rate: Option<f64>) -> Self {
-        SpotPosition { pair: pair.into(), notional, entry_rate }
+        SpotPosition {
+            pair: pair.into(),
+            notional,
+            entry_rate,
+        }
     }
 }
 
@@ -241,7 +258,12 @@ pub struct ForwardPosition {
 impl ForwardPosition {
     /// Build an outright forward position.
     pub fn new(pair: impl Into<String>, notional: f64, expiry: f64, strike: Option<f64>) -> Self {
-        ForwardPosition { pair: pair.into(), notional, expiry, strike }
+        ForwardPosition {
+            pair: pair.into(),
+            notional,
+            expiry,
+            strike,
+        }
     }
 }
 
@@ -351,12 +373,18 @@ impl Book {
         for p in &positions {
             validate_position(p)?;
         }
-        Ok(Book { positions, base: base.into().to_uppercase() })
+        Ok(Book {
+            positions,
+            base: base.into().to_uppercase(),
+        })
     }
 
     /// Empty book with base currency `"USD"`.
     pub fn empty() -> Self {
-        Book { positions: Vec::new(), base: "USD".to_string() }
+        Book {
+            positions: Vec::new(),
+            base: "USD".to_string(),
+        }
     }
 
     /// The book's base (reporting) currency.
@@ -429,7 +457,9 @@ const PAR_MIN_ROWS: usize = 4096;
 /// same bits.
 #[inline]
 fn reval_usd(value0: &[f64], fx: &[i64], ir: &[i64], neg_expiry: &[f64], row: &[f64]) -> f64 {
-    debug_assert!(fx.len() == value0.len() && ir.len() == value0.len() && neg_expiry.len() == value0.len());
+    debug_assert!(
+        fx.len() == value0.len() && ir.len() == value0.len() && neg_expiry.len() == value0.len()
+    );
     let mut total = 0.0;
     for (((&v0, &f), &r), &ne) in value0.iter().zip(fx).zip(ir).zip(neg_expiry) {
         let mut shift = 0.0;
@@ -496,10 +526,18 @@ impl CompiledBook {
         let base = book.base().to_string();
         let s0_base = market.spot(&base)?;
 
-        let factor_index =
-            |f: &str, factors: &[String]| -> i64 { factors.iter().position(|x| x == f).map(|i| i as i64).unwrap_or(-1) };
-        let base_fx_idx =
-            if base == "USD" { -1 } else { factor_index(&fx_factor(&base)?, &factors) };
+        let factor_index = |f: &str, factors: &[String]| -> i64 {
+            factors
+                .iter()
+                .position(|x| x == f)
+                .map(|i| i as i64)
+                .unwrap_or(-1)
+        };
+        let base_fx_idx = if base == "USD" {
+            -1
+        } else {
+            factor_index(&fx_factor(&base)?, &factors)
+        };
 
         let mut cb = CompiledBook {
             value0: Vec::new(),
@@ -513,11 +551,28 @@ impl CompiledBook {
             s0_base,
         };
 
-        let add_leg = |cb: &mut CompiledBook, amount: f64, ccy: &str, rate0: f64, expiry: f64| -> Result<()> {
-            let df = if expiry > 0.0 { (-rate0 * expiry).exp() } else { 1.0 };
+        let add_leg = |cb: &mut CompiledBook,
+                       amount: f64,
+                       ccy: &str,
+                       rate0: f64,
+                       expiry: f64|
+         -> Result<()> {
+            let df = if expiry > 0.0 {
+                (-rate0 * expiry).exp()
+            } else {
+                1.0
+            };
             cb.value0.push(amount * market.spot(ccy)? * df);
-            cb.fx_idx.push(if ccy == "USD" { -1 } else { factor_index(&fx_factor(ccy)?, &cb.factors) });
-            cb.ir_idx.push(if expiry > 0.0 { factor_index(&ir_factor(ccy), &cb.factors) } else { -1 });
+            cb.fx_idx.push(if ccy == "USD" {
+                -1
+            } else {
+                factor_index(&fx_factor(ccy)?, &cb.factors)
+            });
+            cb.ir_idx.push(if expiry > 0.0 {
+                factor_index(&ir_factor(ccy), &cb.factors)
+            } else {
+                -1
+            });
             cb.neg_expiry.push(if expiry > 0.0 { -expiry } else { 0.0 });
             Ok(())
         };
@@ -543,8 +598,20 @@ impl CompiledBook {
                         None => market.forward(&fw.pair, fw.expiry)?,
                     };
                     if fw.expiry > 0.0 {
-                        add_leg(&mut cb, fw.notional, &legs.base, market.rate(&legs.base)?, fw.expiry)?;
-                        add_leg(&mut cb, -fw.notional * k, &legs.quote, market.rate(&legs.quote)?, fw.expiry)?;
+                        add_leg(
+                            &mut cb,
+                            fw.notional,
+                            &legs.base,
+                            market.rate(&legs.base)?,
+                            fw.expiry,
+                        )?;
+                        add_leg(
+                            &mut cb,
+                            -fw.notional * k,
+                            &legs.quote,
+                            market.rate(&legs.quote)?,
+                            fw.expiry,
+                        )?;
                     } else {
                         // Expired forward = spot difference vs strike.
                         add_leg(&mut cb, fw.notional, &legs.base, 0.0, 0.0)?;
@@ -582,9 +649,17 @@ impl CompiledBook {
             )));
         }
         if shocks.iter().any(|v| !v.is_finite()) {
-            return Err(FxVarError::invalid("shock vector contains NaN or infinite values"));
+            return Err(FxVarError::invalid(
+                "shock vector contains NaN or infinite values",
+            ));
         }
-        Ok(reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, shocks))
+        Ok(reval_usd(
+            &self.value0,
+            &self.fx_idx,
+            &self.ir_idx,
+            &self.neg_expiry,
+            shocks,
+        ))
     }
 
     /// Allocation-free P&L of one shock row aligned with
@@ -607,7 +682,13 @@ impl CompiledBook {
     /// P&L of a row already checked for length and finiteness.
     #[inline]
     fn pnl_row_unchecked(&self, row: &[f64]) -> f64 {
-        let v1 = reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, row);
+        let v1 = reval_usd(
+            &self.value0,
+            &self.fx_idx,
+            &self.ir_idx,
+            &self.neg_expiry,
+            row,
+        );
         let s1_base = base_spot(self.s0_base, self.base_fx_idx, row);
         v1 / s1_base - self.v0_usd / self.s0_base
     }
@@ -622,7 +703,11 @@ impl CompiledBook {
     /// [`KernelError::LengthMismatch`] when the matrix width differs from
     /// `factors().len()` or `out.len()` differs from the row count;
     /// [`KernelError::NonFinite`] for a NaN or infinite entry.
-    pub fn pnl_aligned_into(&self, scenarios: &Matrix, out: &mut [f64]) -> std::result::Result<(), KernelError> {
+    pub fn pnl_aligned_into(
+        &self,
+        scenarios: &Matrix,
+        out: &mut [f64],
+    ) -> std::result::Result<(), KernelError> {
         if scenarios.cols() != self.factors.len() || out.len() != scenarios.rows() {
             return Err(KernelError::LengthMismatch);
         }
@@ -634,7 +719,13 @@ impl CompiledBook {
         let data = scenarios.as_slice();
         for (s, o) in out.iter_mut().enumerate() {
             let row = data.get(s * k..(s + 1) * k).unwrap_or(&[]);
-            let v1 = reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, row);
+            let v1 = reval_usd(
+                &self.value0,
+                &self.fx_idx,
+                &self.ir_idx,
+                &self.neg_expiry,
+                row,
+            );
             *o = v1 / base_spot(self.s0_base, self.base_fx_idx, row) - v0_base;
         }
         Ok(())
@@ -662,8 +753,11 @@ impl CompiledBook {
                  is identically 1). Shock the other leg(s).",
             ));
         }
-        let aligned: Vec<f64> =
-            self.factors.iter().map(|f| shocks.get(f).copied().unwrap_or(0.0)).collect();
+        let aligned: Vec<f64> = self
+            .factors
+            .iter()
+            .map(|f| shocks.get(f).copied().unwrap_or(0.0))
+            .collect();
         self.pnl(&aligned)
     }
 
@@ -678,10 +772,13 @@ impl CompiledBook {
             .factors
             .iter()
             .map(|f| {
-                scenarios.column_index(f).map(|j| j as i64).unwrap_or_else(|| {
-                    missing.push(f.clone());
-                    -1
-                })
+                scenarios
+                    .column_index(f)
+                    .map(|j| j as i64)
+                    .unwrap_or_else(|| {
+                        missing.push(f.clone());
+                        -1
+                    })
             })
             .collect();
         if !missing.is_empty() {
@@ -699,10 +796,16 @@ impl CompiledBook {
             .iter()
             .map(|&i| if i >= 0 { factor_col[i as usize] } else { -1 })
             .collect();
-        let base_col = if self.base_fx_idx >= 0 { factor_col[self.base_fx_idx as usize] } else { -1 };
+        let base_col = if self.base_fx_idx >= 0 {
+            factor_col[self.base_fx_idx as usize]
+        } else {
+            -1
+        };
 
         if !scenarios.data.all_finite() {
-            return Err(FxVarError::invalid("scenario matrix contains NaN or infinite values"));
+            return Err(FxVarError::invalid(
+                "scenario matrix contains NaN or infinite values",
+            ));
         }
         let n_scen = scenarios.n_obs();
         let v0_base = self.v0_usd / self.s0_base;
@@ -712,14 +815,20 @@ impl CompiledBook {
         // Rows are independent, so a fixed contiguous partition over
         // threads gives the same bits as the serial loop. Small inputs
         // (historical windows) stay on the caller's thread.
-        crate::par::for_row_chunks(&mut out, 1, PAR_MIN_ROWS, crate::par::default_threads(), |first, chunk| {
-            for (i, o) in chunk.iter_mut().enumerate() {
-                let start = (first + i) * width;
-                let row = data.get(start..start + width).unwrap_or(&[]);
-                let v1 = reval_usd(&self.value0, &fx_col, &ir_col, &self.neg_expiry, row);
-                *o = v1 / base_spot(self.s0_base, base_col, row) - v0_base;
-            }
-        });
+        crate::par::for_row_chunks(
+            &mut out,
+            1,
+            PAR_MIN_ROWS,
+            crate::par::default_threads(),
+            |first, chunk| {
+                for (i, o) in chunk.iter_mut().enumerate() {
+                    let start = (first + i) * width;
+                    let row = data.get(start..start + width).unwrap_or(&[]);
+                    let v1 = reval_usd(&self.value0, &fx_col, &ir_col, &self.neg_expiry, row);
+                    *o = v1 / base_spot(self.s0_base, base_col, row) - v0_base;
+                }
+            },
+        );
         Ok(out)
     }
 
@@ -758,7 +867,12 @@ mod tests {
     fn test_market() -> Market {
         Market::new(
             [("EUR", 1.10), ("JPY", 0.0090), ("GBP", 1.27), ("CHF", 1.12)],
-            [("USD", 0.050), ("EUR", 0.030), ("JPY", 0.001), ("GBP", 0.045)],
+            [
+                ("USD", 0.050),
+                ("EUR", 0.030),
+                ("JPY", 0.001),
+                ("GBP", 0.045),
+            ],
         )
         .unwrap()
     }
@@ -807,11 +921,19 @@ mod tests {
     fn triangulation_identity_eurjpy() {
         let m = test_market();
         let n = 7_000_000.0;
-        let cross = Book::new(vec![Position::Spot(SpotPosition::new("EURJPY", n, None))], "USD").unwrap();
+        let cross = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURJPY", n, None))],
+            "USD",
+        )
+        .unwrap();
         let legs = Book::new(
             vec![
                 Position::Spot(SpotPosition::new("EURUSD", n, None)),
-                Position::Spot(SpotPosition::new("USDJPY", n * m.cross("EURUSD").unwrap(), None)),
+                Position::Spot(SpotPosition::new(
+                    "USDJPY",
+                    n * m.cross("EURUSD").unwrap(),
+                    None,
+                )),
             ],
             "USD",
         )
@@ -830,14 +952,30 @@ mod tests {
     #[test]
     fn forward_zero_value_at_inception_and_cip() {
         let m = test_market();
-        let atm = Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 5e6, 0.75, None))], "USD").unwrap();
+        let atm = Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD", 5e6, 0.75, None,
+            ))],
+            "USD",
+        )
+        .unwrap();
         let cb = CompiledBook::new(&atm, &m).unwrap();
         assert!(cb.value0_usd().abs() < 1e-10 * 5e6);
 
         let k = 1.08;
-        let struck = Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 5e6, 0.75, Some(k)))], "USD").unwrap();
+        let struck = Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD",
+                5e6,
+                0.75,
+                Some(k),
+            ))],
+            "USD",
+        )
+        .unwrap();
         let cb2 = CompiledBook::new(&struck, &m).unwrap();
-        let expect = 5e6 * (-0.030_f64 * 0.75).exp() * 1.10 - 5e6 * k * (-0.050_f64 * 0.75).exp() * 1.0;
+        let expect =
+            5e6 * (-0.030_f64 * 0.75).exp() * 1.10 - 5e6 * k * (-0.050_f64 * 0.75).exp() * 1.0;
         assert!((cb2.value0_usd() - expect).abs() < 1e-10 * expect.abs());
     }
 
@@ -846,7 +984,16 @@ mod tests {
         let m = test_market();
         let (n, t) = (5e6, 0.5);
         let k = m.forward("EURUSD", t).unwrap();
-        let fwd = Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", n, t, Some(k)))], "USD").unwrap();
+        let fwd = Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD",
+                n,
+                t,
+                Some(k),
+            ))],
+            "USD",
+        )
+        .unwrap();
         let cash = Book::new(
             vec![
                 Position::Cash(CashPosition::new("EUR", n * (-0.030_f64 * t).exp())),
@@ -869,7 +1016,16 @@ mod tests {
         let m = test_market();
         let (n, t) = (5e6, 0.5);
         let k = m.forward("EURUSD", t).unwrap();
-        let fwd = Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", n, t, Some(k)))], "USD").unwrap();
+        let fwd = Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD",
+                n,
+                t,
+                Some(k),
+            ))],
+            "USD",
+        )
+        .unwrap();
         let cb = CompiledBook::new(&fwd, &m).unwrap();
         let factors = cb.factors().to_vec();
         let w = cb.linear_exposures(1e-6).unwrap();
@@ -919,7 +1075,11 @@ mod tests {
     #[test]
     fn usd_shock_rejected_and_unknown_factors_ignored() {
         let m = test_market();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+            "USD",
+        )
+        .unwrap();
         let cb = CompiledBook::new(&book, &m).unwrap();
         let mut shocks = HashMap::new();
         shocks.insert("FX:USD".to_string(), 0.01);
@@ -931,16 +1091,43 @@ mod tests {
 
     #[test]
     fn position_validation() {
-        assert!(Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, Some(-1.0)))], "USD").is_err());
-        assert!(Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 1e6, -0.5, None))], "USD").is_err());
-        assert!(Book::new(vec![Position::Forward(ForwardPosition::new("EURUSD", 1e6, 0.5, Some(0.0)))], "USD").is_err());
-        assert!(Book::new(vec![Position::Spot(SpotPosition::new("E2RUSD", 1e6, None))], "USD").is_err());
+        assert!(Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, Some(-1.0)))],
+            "USD"
+        )
+        .is_err());
+        assert!(Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD", 1e6, -0.5, None
+            ))],
+            "USD"
+        )
+        .is_err());
+        assert!(Book::new(
+            vec![Position::Forward(ForwardPosition::new(
+                "EURUSD",
+                1e6,
+                0.5,
+                Some(0.0)
+            ))],
+            "USD"
+        )
+        .is_err());
+        assert!(Book::new(
+            vec![Position::Spot(SpotPosition::new("E2RUSD", 1e6, None))],
+            "USD"
+        )
+        .is_err());
     }
 
     #[test]
     fn single_currency_book_spot_exposure_is_notional() {
         let m = test_market();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
         let cb = CompiledBook::new(&book, &m).unwrap();
         let w = cb.linear_exposures(1e-6).unwrap();
         assert_eq!(w.len(), 1);

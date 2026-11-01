@@ -23,9 +23,17 @@ fn confidence_levels_are_rejected_not_reinterpreted() {
     let pnl: Vec<f64> = (0..100).map(|i| (i as f64 * 0.7).sin()).collect();
     for bad in [0.99, 0.975, 0.95, 0.5] {
         let e = empirical_var(&pnl, bad, None).unwrap_err();
-        assert!(e.to_string().contains("alpha is the tail probability"), "{bad}");
+        assert!(
+            e.to_string().contains("alpha is the tail probability"),
+            "{bad}"
+        );
         assert!(normal_var(1.0, bad, 0.0).is_err());
-        assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 3, alpha: bad }).is_err());
+        assert!(kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 3,
+            alpha: bad
+        })
+        .is_err());
     }
     // Tail convention: alpha = 0.01 is 99 % VaR.
     assert!((normal_var(1.0, 0.01, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
@@ -38,7 +46,12 @@ fn confidence_levels_are_rejected_not_reinterpreted() {
 #[test]
 #[allow(deprecated)]
 fn deprecated_confidence_shims_convert() {
-    let new = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 }).unwrap();
+    let new = kupiec_pof(&KupiecInput {
+        n_obs: 250,
+        n_exceptions: 8,
+        alpha: 0.01,
+    })
+    .unwrap();
     let old = kupiec_pof_confidence(8, 250, 0.99).unwrap();
     assert!((new.lr - old.lr).abs() < 1e-12);
     let t = basel_traffic_light_confidence(5, 250, 0.99).unwrap();
@@ -61,7 +74,12 @@ fn order_statistic_and_fractional_es_by_hand() {
 fn basel_plus_factor_uses_the_equivalent_250_day_count() {
     // Old code read the add-on from the raw count (15 -> 0.85).
     for (n, x) in [(1000_i64, 15_i64), (500, 9), (500, 12)] {
-        let t = basel_traffic_light(&BaselInput { n_obs: n, n_exceptions: x, alpha: 0.01 }).unwrap();
+        let t = basel_traffic_light(&BaselInput {
+            n_obs: n,
+            n_exceptions: x,
+            alpha: 0.01,
+        })
+        .unwrap();
         let f = binom_cdf(x, n, 0.01).unwrap();
         assert!((t.cumulative_prob - f).abs() < 1e-12);
         if t.zone == Zone::Yellow {
@@ -76,10 +94,20 @@ fn basel_plus_factor_uses_the_equivalent_250_day_count() {
             assert_eq!(t.plus_factor, table, "n={n} x={x}");
         }
     }
-    let t = basel_traffic_light(&BaselInput { n_obs: 1000, n_exceptions: 15, alpha: 0.01 }).unwrap();
+    let t = basel_traffic_light(&BaselInput {
+        n_obs: 1000,
+        n_exceptions: 15,
+        alpha: 0.01,
+    })
+    .unwrap();
     assert_eq!(t.zone, Zone::Yellow);
     assert!(t.plus_factor < 0.85);
-    assert!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
+    assert!(basel_traffic_light(&BaselInput {
+        n_obs: 250,
+        n_exceptions: 251,
+        alpha: 0.01
+    })
+    .is_err());
 }
 
 // --------------------------------------------------------------------- S5 Z2
@@ -104,19 +132,36 @@ fn cornish_fisher_counterexample_is_valid_at_99() {
 
 #[test]
 fn indefinite_covariance_errors_and_repairs() {
-    let a = Matrix::from_rows(&[vec![1.0, 0.9, 0.9], vec![0.9, 1.0, -0.9], vec![0.9, -0.9, 1.0]]).unwrap();
+    let a = Matrix::from_rows(&[
+        vec![1.0, 0.9, 0.9],
+        vec![0.9, 1.0, -0.9],
+        vec![0.9, -0.9, 1.0],
+    ])
+    .unwrap();
     let e = cholesky_repair(&a, PsdRepair::None).unwrap_err();
     assert!(e.to_string().contains("most negative eigenvalue"));
-    let h = cholesky_repair(&a, PsdRepair::Higham).unwrap().repaired.unwrap();
+    let h = cholesky_repair(&a, PsdRepair::Higham)
+        .unwrap()
+        .repaired
+        .unwrap();
     for i in 0..3 {
         assert!((h.get(i, i) - 1.0).abs() < 1e-12);
     }
-    let c = cholesky_repair(&a, PsdRepair::Clip).unwrap().repaired.unwrap();
+    let c = cholesky_repair(&a, PsdRepair::Clip)
+        .unwrap()
+        .repaired
+        .unwrap();
     for i in 0..3 {
         assert!((c.get(i, i) - 1.0).abs() < 1e-15);
     }
-    let cov = FactorCov { factors: vec!["FX:EUR".into(), "FX:JPY".into(), "FX:GBP".into()], cov: a };
-    assert!(simulate_factor_returns(&cov, 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0).is_err());
+    let cov = FactorCov {
+        factors: vec!["FX:EUR".into(), "FX:JPY".into(), "FX:GBP".into()],
+        cov: a,
+    };
+    assert!(
+        simulate_factor_returns(&cov, 100, McDist::Normal, 6.0, &JumpSpec::default(), 1, 1.0)
+            .is_err()
+    );
 }
 
 // -------------------------------------------------------------------- S8 EWMA
@@ -126,7 +171,11 @@ fn ewma_seed_is_first_30_observations() {
     let n = 60;
     let mut data = Matrix::zeros(n, 1);
     for t in 0..n {
-        data.set(t, 0, 0.01 * ((t as f64) * 0.9).sin() * if t >= 30 { 10.0 } else { 1.0 });
+        data.set(
+            t,
+            0,
+            0.01 * ((t as f64) * 0.9).sin() * if t >= 30 { 10.0 } else { 1.0 },
+        );
     }
     let r = ReturnsMatrix::new(vec!["FX:EUR".to_string()], data.clone()).unwrap();
     let ev = ewma_volatility(&r, 0.94).unwrap();
@@ -140,11 +189,24 @@ fn ewma_seed_is_first_30_observations() {
 #[test]
 fn monte_carlo_reports_bootstrap_se_and_jitter() {
     let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-    let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
-    let cov = FactorCov { factors: vec!["FX:EUR".to_string()], cov: Matrix::from_rows(&[vec![1e-4]]).unwrap() };
-    let opts = MonteCarloOptions { n_scenarios: 20_000, seed: 3, ..Default::default() };
+    let book = Book::new(
+        vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+        "USD",
+    )
+    .unwrap();
+    let cov = FactorCov {
+        factors: vec!["FX:EUR".to_string()],
+        cov: Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+    };
+    let opts = MonteCarloOptions {
+        n_scenarios: 20_000,
+        seed: 3,
+        ..Default::default()
+    };
     let r = monte_carlo_var(&book, &market, &cov, &opts).unwrap();
-    let boot = var_standard_error_bootstrap(&r.pnl, 0.01, opts.n_boot, opts.seed ^ 0x9E37_79B9_7F4A_7C15).unwrap();
+    let boot =
+        var_standard_error_bootstrap(&r.pnl, 0.01, opts.n_boot, opts.seed ^ 0x9E37_79B9_7F4A_7C15)
+            .unwrap();
     assert_eq!(r.se_var, boot);
     assert_eq!(r.jitter, 0.0);
     let bad = MonteCarloOptions { n_boot: 1, ..opts };
@@ -157,7 +219,13 @@ fn monte_carlo_reports_bootstrap_se_and_jitter() {
 fn empty_book_error_message() {
     let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
     let rets = ReturnsMatrix::new(vec!["FX:EUR".to_string()], Matrix::zeros(100, 1)).unwrap();
-    let e = historical_var(&Book::empty(), &market, &rets, &HistoricalOptions::default()).unwrap_err();
+    let e = historical_var(
+        &Book::empty(),
+        &market,
+        &rets,
+        &HistoricalOptions::default(),
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("book has no positions"));
 }
 
@@ -176,8 +244,20 @@ fn former_panics_are_errors() {
     // Defensive: the old partial_cmp().expect() was shielded by an earlier
     // finiteness check; the sort now uses total_cmp and cannot panic.
     assert!(var_standard_error(&[f64::NAN; 20], 0.01).is_err());
-    let cov1 = FactorCov { factors: vec!["FX:EUR".to_string()], cov: Matrix::from_rows(&[vec![1e-4]]).unwrap() };
-    assert!(simulate_factor_returns(&cov1, 10, McDist::StudentT, f64::NAN, &JumpSpec::default(), 1, 1.0).is_err());
+    let cov1 = FactorCov {
+        factors: vec!["FX:EUR".to_string()],
+        cov: Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+    };
+    assert!(simulate_factor_returns(
+        &cov1,
+        10,
+        McDist::StudentT,
+        f64::NAN,
+        &JumpSpec::default(),
+        1,
+        1.0
+    )
+    .is_err());
     assert!(student_t_quantile(0.3, f64::NAN).is_err());
     let mut rng = Rng::new(1);
     assert!(rng.gamma(-1.0).is_nan());

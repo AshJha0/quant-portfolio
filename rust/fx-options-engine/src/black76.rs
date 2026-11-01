@@ -66,7 +66,9 @@ pub fn black76_price(
         return invalid(format!("Time to expiry T must be non-negative, got {t}"));
     }
     if sigma < 0.0 {
-        return invalid(format!("Volatility sigma must be non-negative, got {sigma}"));
+        return invalid(format!(
+            "Volatility sigma must be non-negative, got {sigma}"
+        ));
     }
 
     let df = (-r_d * t).exp();

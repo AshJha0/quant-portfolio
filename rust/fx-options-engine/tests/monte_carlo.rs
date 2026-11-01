@@ -39,14 +39,25 @@ fn std_error_scales_as_inverse_sqrt_n_fitted() {
         let reps: Vec<f64> = (0..REPS)
             .map(|rep| {
                 let seed = 1_000_003u64.wrapping_mul(n).wrapping_add(rep);
-                mc_price(s, k, t, rd, rf, sig, OptionType::Call, n, seed, false, false)
-                    .unwrap()
-                    .price
+                mc_price(
+                    s,
+                    k,
+                    t,
+                    rd,
+                    rf,
+                    sig,
+                    OptionType::Call,
+                    n,
+                    seed,
+                    false,
+                    false,
+                )
+                .unwrap()
+                .price
             })
             .collect();
         let mean = reps.iter().sum::<f64>() / reps.len() as f64;
-        let var =
-            reps.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (reps.len() as f64 - 1.0);
+        let var = reps.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (reps.len() as f64 - 1.0);
         log_n.push((n as f64).ln());
         log_std.push(0.5 * var.ln());
     }
@@ -69,7 +80,20 @@ fn std_error_scales_as_inverse_sqrt_n_fitted() {
 fn negative_rates_within_three_standard_errors() {
     let (s, k, t, rd, rf, sig) = (1.08, 1.10, 1.0, -0.0075, -0.0050, 0.07);
     let exact = gk_price(s, k, t, rd, rf, sig, OptionType::Call).unwrap();
-    let mc = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 200_000, 1, true, true).unwrap();
+    let mc = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        200_000,
+        1,
+        true,
+        true,
+    )
+    .unwrap();
     assert!((mc.price - exact).abs() < 3.0 * mc.std_error);
 }
 
@@ -92,8 +116,34 @@ fn variance_reduction_shrinks_the_standard_error() {
 #[test]
 fn same_seed_is_bitwise_reproducible() {
     let (s, k, t, rd, rf, sig) = MKT;
-    let a = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 50_000, 42, true, true).unwrap();
-    let b = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 50_000, 42, true, true).unwrap();
+    let a = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        50_000,
+        42,
+        true,
+        true,
+    )
+    .unwrap();
+    let b = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        50_000,
+        42,
+        true,
+        true,
+    )
+    .unwrap();
     // Bit-identical, not merely close.
     assert_eq!(a.price.to_bits(), b.price.to_bits());
     assert_eq!(a.std_error.to_bits(), b.std_error.to_bits());
@@ -103,8 +153,34 @@ fn same_seed_is_bitwise_reproducible() {
 #[test]
 fn different_seeds_differ() {
     let (s, k, t, rd, rf, sig) = MKT;
-    let a = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 50_000, 1, true, true).unwrap();
-    let b = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 50_000, 2, true, true).unwrap();
+    let a = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        50_000,
+        1,
+        true,
+        true,
+    )
+    .unwrap();
+    let b = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        50_000,
+        2,
+        true,
+        true,
+    )
+    .unwrap();
     assert_ne!(a.price.to_bits(), b.price.to_bits());
 }
 
@@ -125,7 +201,20 @@ fn confidence_interval_brackets_the_price() {
 #[test]
 fn antithetic_rounds_odd_path_counts_up_to_even() {
     let (s, k, t, rd, rf, sig) = MKT;
-    let mc = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 9_999, 0, true, false).unwrap();
+    let mc = mc_price(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        9_999,
+        0,
+        true,
+        false,
+    )
+    .unwrap();
     assert_eq!(mc.n_paths, 10_000);
     assert_eq!(mc.method, "antithetic+plain");
 }
@@ -133,9 +222,35 @@ fn antithetic_rounds_odd_path_counts_up_to_even() {
 #[test]
 fn invalid_inputs_err() {
     let (s, k, _, rd, rf, sig) = MKT;
-    assert!(mc_price(s, k, 0.0, rd, rf, sig, OptionType::Call, 1000, 0, true, true).is_err());
+    assert!(mc_price(
+        s,
+        k,
+        0.0,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        1000,
+        0,
+        true,
+        true
+    )
+    .is_err());
     assert!(mc_price(s, k, 0.5, rd, rf, sig, OptionType::Call, 1, 0, true, true).is_err());
-    assert!(mc_price(-s, k, 0.5, rd, rf, sig, OptionType::Call, 1000, 0, true, true).is_err());
+    assert!(mc_price(
+        -s,
+        k,
+        0.5,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        1000,
+        0,
+        true,
+        true
+    )
+    .is_err());
 }
 
 #[test]
@@ -148,12 +263,26 @@ fn too_few_independent_samples_is_an_error() {
     let mc = |n: u64, anti: bool, cv: bool| {
         mc_price(s, k, t, rd, rf, sig, OptionType::Call, n, 3, anti, cv)
     };
-    for &(n, anti, cv) in &[(2u64, true, false), (2, true, true), (4, true, true), (2, false, true)] {
+    for &(n, anti, cv) in &[
+        (2u64, true, false),
+        (2, true, true),
+        (4, true, true),
+        (2, false, true),
+    ] {
         assert!(mc(n, anti, cv).is_err(), "n={n} anti={anti} cv={cv}");
     }
-    for &(n, anti, cv) in &[(3u64, true, false), (2, false, false), (5, true, true), (3, false, true)] {
+    for &(n, anti, cv) in &[
+        (3u64, true, false),
+        (2, false, false),
+        (5, true, true),
+        (3, false, true),
+    ] {
         let r = mc(n, anti, cv).unwrap();
-        assert!(r.std_error.is_finite() && r.std_error > 0.0, "n={n}: SE {}", r.std_error);
+        assert!(
+            r.std_error.is_finite() && r.std_error > 0.0,
+            "n={n}: SE {}",
+            r.std_error
+        );
         assert!(r.ci_low <= r.price && r.price <= r.ci_high);
     }
 }
@@ -165,8 +294,20 @@ fn extreme_moneyness_and_long_tenor_estimates_stay_inside_three_se() {
     // the analytic GK value.
     for &(s, k, t) in &[(1.10, 110.0, 0.5), (110.0, 1.10, 0.5), (1.10, 1.12, 30.0)] {
         let exact = gk_price(s, k, t, 0.03, 0.01, 0.12, OptionType::Call).unwrap();
-        let mc = mc_price(s, k, t, 0.03, 0.01, 0.12, OptionType::Call, 200_000, 21, true, true)
-            .unwrap();
+        let mc = mc_price(
+            s,
+            k,
+            t,
+            0.03,
+            0.01,
+            0.12,
+            OptionType::Call,
+            200_000,
+            21,
+            true,
+            true,
+        )
+        .unwrap();
         assert!(
             mc.price >= -1e-12 * exact.abs().max(1.0),
             "S={s} K={k} T={t}: materially negative price {}",

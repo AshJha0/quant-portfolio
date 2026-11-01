@@ -217,14 +217,22 @@ pub fn try_implied_vol(
     let df = finite((-r * t).exp())?;
     let forward = finite(s * ((r - q) * t).exp())?;
     let mut evals = 0;
-    black_implied_vol(price, forward, k, t, df, option_type == OptionType::Call, &mut evals)
-        .map_err(|msg| {
-            if msg.starts_with("price") {
-                ErrorCode::ArbitrageBound
-            } else {
-                ErrorCode::NoConvergence
-            }
-        })
+    black_implied_vol(
+        price,
+        forward,
+        k,
+        t,
+        df,
+        option_type == OptionType::Call,
+        &mut evals,
+    )
+    .map_err(|msg| {
+        if msg.starts_with("price") {
+            ErrorCode::ArbitrageBound
+        } else {
+            ErrorCode::NoConvergence
+        }
+    })
 }
 
 /// Black-76 price. Same value as [`crate::black76_price`].
@@ -357,7 +365,11 @@ pub fn try_mc_price(
 ) -> Result<McResult, ErrorCode> {
     check_inputs(s, k, t, sigma)?;
     check_rates(r, q)?;
-    let units = if antithetic { n_paths.div_ceil(2) } else { n_paths };
+    let units = if antithetic {
+        n_paths.div_ceil(2)
+    } else {
+        n_paths
+    };
     let needed = if control_variate { 3 } else { 2 };
     if units < needed || n_paths > MAX_PATHS {
         return Err(ErrorCode::PathsOutOfRange);
@@ -548,18 +560,10 @@ pub fn bs_greeks_batch(inputs: &BsBatch<'_>, out: &mut GreeksOut<'_>) -> Result<
         .zip(&inputs.q[..n])
         .zip(&inputs.option_type[..n]);
     for (index, ((((((&s, &k), &t), &r), &sigma), &q), &ot)) in rows.enumerate() {
-        let g = try_bs_greeks(s, k, t, r, sigma, q, ot).map_err(|code| BatchError { index, code })?;
+        let g =
+            try_bs_greeks(s, k, t, r, sigma, q, ot).map_err(|code| BatchError { index, code })?;
         // `index < n` and every output has length `n`.
-        if let (
-            Some(p),
-            Some(de),
-            Some(ga),
-            Some(ve),
-            Some(th),
-            Some(rh),
-            Some(va),
-            Some(vo),
-        ) = (
+        if let (Some(p), Some(de), Some(ga), Some(ve), Some(th), Some(rh), Some(va), Some(vo)) = (
             out.price.get_mut(index),
             out.delta.get_mut(index),
             out.gamma.get_mut(index),
@@ -569,8 +573,9 @@ pub fn bs_greeks_batch(inputs: &BsBatch<'_>, out: &mut GreeksOut<'_>) -> Result<
             out.vanna.get_mut(index),
             out.volga.get_mut(index),
         ) {
-            (*p, *de, *ga, *ve, *th, *rh, *va, *vo) =
-                (g.price, g.delta, g.gamma, g.vega, g.theta, g.rho, g.vanna, g.volga);
+            (*p, *de, *ga, *ve, *th, *rh, *va, *vo) = (
+                g.price, g.delta, g.gamma, g.vega, g.theta, g.rho, g.vanna, g.volga,
+            );
         }
     }
     Ok(())

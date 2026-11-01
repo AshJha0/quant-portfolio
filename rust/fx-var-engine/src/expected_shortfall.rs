@@ -17,8 +17,8 @@
 //!   uses the *standardised* (unit-variance) t so sigma is always the true
 //!   P&L std.
 
-use crate::stats::{inv_norm_cdf, norm_pdf, student_t_pdf, student_t_quantile};
 use crate::stats::validate_alpha;
+use crate::stats::{inv_norm_cdf, norm_pdf, student_t_pdf, student_t_quantile};
 use crate::{FxVarError, Result};
 
 fn var_es(pnl: &[f64], alpha: f64, weights: Option<&[f64]>) -> Result<(f64, f64)> {
@@ -103,7 +103,9 @@ fn check_sigma_mean(sigma: f64, mean: f64) -> Result<()> {
         )));
     }
     if !mean.is_finite() {
-        return Err(FxVarError::invalid(format!("mean must be finite, got {mean}")));
+        return Err(FxVarError::invalid(format!(
+            "mean must be finite, got {mean}"
+        )));
     }
     Ok(())
 }

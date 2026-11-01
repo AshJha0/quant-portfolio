@@ -41,9 +41,7 @@ pub fn validate_alpha(alpha: f64) -> Result<f64> {
 
 fn check_sample(pnl: &[f64]) -> Result<()> {
     if pnl.is_empty() {
-        return Err(FxVarError::Invalid(
-            "P&L sample is empty".to_string(),
-        ));
+        return Err(FxVarError::Invalid("P&L sample is empty".to_string()));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
         return Err(FxVarError::Invalid(
@@ -134,7 +132,9 @@ fn load_losses<'a>(
     if pnl.is_empty() {
         return Err(KernelError::EmptySample);
     }
-    let losses = scratch.get_mut(..pnl.len()).ok_or(KernelError::ScratchTooSmall)?;
+    let losses = scratch
+        .get_mut(..pnl.len())
+        .ok_or(KernelError::ScratchTooSmall)?;
     let mut finite = true;
     for (l, p) in losses.iter_mut().zip(pnl) {
         finite &= p.is_finite();

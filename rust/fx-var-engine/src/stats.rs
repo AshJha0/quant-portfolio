@@ -71,7 +71,9 @@ pub fn norm_cdf(x: f64) -> f64 {
 /// `assert!`, a panic reachable from user input.)
 pub fn inv_norm_cdf(p: f64) -> Result<f64> {
     if !(p > 0.0 && p < 1.0) {
-        return Err(FxVarError::invalid(format!("inv_norm_cdf requires p in (0, 1), got {p}")));
+        return Err(FxVarError::invalid(format!(
+            "inv_norm_cdf requires p in (0, 1), got {p}"
+        )));
     }
     Ok(inv_norm_cdf_unchecked(p))
 }
@@ -139,7 +141,9 @@ pub(crate) fn inv_norm_cdf_unchecked(p: f64) -> f64 {
 /// [`FxVarError::Invalid`] unless `x` is finite and `> 0`.
 pub fn ln_gamma(x: f64) -> Result<f64> {
     if !(x > 0.0) || !x.is_finite() {
-        return Err(FxVarError::invalid(format!("ln_gamma requires a finite x > 0, got {x}")));
+        return Err(FxVarError::invalid(format!(
+            "ln_gamma requires a finite x > 0, got {x}"
+        )));
     }
     Ok(ln_gamma_pos(x))
 }
@@ -271,7 +275,9 @@ fn reg_upper_gamma_cf(a: f64, x: f64) -> f64 {
 /// p-values. Validated against SciPy to ~1e-12.
 pub fn chi2_sf(x: f64, df: f64) -> Result<f64> {
     if !(df > 0.0) || !df.is_finite() {
-        return Err(FxVarError::invalid(format!("chi-square df must be finite and > 0, got {df}")));
+        return Err(FxVarError::invalid(format!(
+            "chi-square df must be finite and > 0, got {df}"
+        )));
     }
     if x.is_nan() {
         return Err(FxVarError::invalid("chi2_sf: x is NaN"));
@@ -293,10 +299,14 @@ pub fn chi2_sf(x: f64, df: f64) -> Result<f64> {
 /// `[0, 1]` (these were `assert!`s).
 pub fn reg_inc_beta(a: f64, b: f64, x: f64) -> Result<f64> {
     if !(a > 0.0) || !(b > 0.0) || !a.is_finite() || !b.is_finite() {
-        return Err(FxVarError::invalid(format!("reg_inc_beta requires finite a, b > 0, got {a}, {b}")));
+        return Err(FxVarError::invalid(format!(
+            "reg_inc_beta requires finite a, b > 0, got {a}, {b}"
+        )));
     }
     if !(0.0..=1.0).contains(&x) {
-        return Err(FxVarError::invalid(format!("reg_inc_beta requires x in [0, 1], got {x}")));
+        return Err(FxVarError::invalid(format!(
+            "reg_inc_beta requires x in [0, 1], got {x}"
+        )));
     }
     Ok(inc_beta_unchecked(a, b, x))
 }
@@ -368,7 +378,9 @@ fn beta_cf(a: f64, b: f64, x: f64) -> f64 {
 
 fn check_t_df(df: f64) -> Result<()> {
     if !(df > 0.0) || !df.is_finite() {
-        return Err(FxVarError::invalid(format!("Student-t df must be finite and > 0, got {df}")));
+        return Err(FxVarError::invalid(format!(
+            "Student-t df must be finite and > 0, got {df}"
+        )));
     }
     Ok(())
 }
@@ -441,7 +453,11 @@ pub fn student_t_quantile(p: f64, df: f64) -> Result<f64> {
     }
     // Start from the normal quantile, inflated for fat tails.
     let z = inv_norm_cdf_unchecked(p);
-    let mut x = if df > 6.0 { z } else { z * (df / (df - 2.0).max(0.5)).sqrt() };
+    let mut x = if df > 6.0 {
+        z
+    } else {
+        z * (df / (df - 2.0).max(0.5)).sqrt()
+    };
     if x <= 0.0 {
         x = 0.5;
     }
@@ -458,7 +474,11 @@ pub fn student_t_quantile(p: f64, df: f64) -> Result<f64> {
         // clamp the Newton step inside the bracket
         let mut xn = x - step;
         if !(xn.is_finite()) || xn <= lo || (hi.is_finite() && xn >= hi) {
-            xn = if hi.is_finite() { 0.5 * (lo + hi) } else { 2.0 * x.max(1.0) };
+            xn = if hi.is_finite() {
+                0.5 * (lo + hi)
+            } else {
+                2.0 * x.max(1.0)
+            };
             step = x - xn;
         }
         x = xn;
@@ -514,10 +534,14 @@ pub struct Moments {
 /// (NaN policy: refuse, never impute).
 pub fn moments(x: &[f64]) -> Result<Moments> {
     if x.len() < 2 {
-        return Err(FxVarError::invalid("moments requires at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "moments requires at least 2 observations",
+        ));
     }
     if x.iter().any(|v| !v.is_finite()) {
-        return Err(FxVarError::invalid("moments input contains NaN or infinite values (NaN policy: refuse)"));
+        return Err(FxVarError::invalid(
+            "moments input contains NaN or infinite values (NaN policy: refuse)",
+        ));
     }
     let n = x.len() as f64;
     let mean = x.iter().sum::<f64>() / n;
@@ -580,10 +604,14 @@ pub fn validate_horizon(horizon_days: f64) -> Result<f64> {
 /// (it used to return 0 for short input).
 pub fn sample_std(x: &[f64]) -> Result<f64> {
     if x.len() < 2 {
-        return Err(FxVarError::invalid("sample_std requires at least 2 observations"));
+        return Err(FxVarError::invalid(
+            "sample_std requires at least 2 observations",
+        ));
     }
     if x.iter().any(|v| !v.is_finite()) {
-        return Err(FxVarError::invalid("sample_std input contains NaN or infinite values"));
+        return Err(FxVarError::invalid(
+            "sample_std input contains NaN or infinite values",
+        ));
     }
     Ok(sample_std_unchecked(x))
 }

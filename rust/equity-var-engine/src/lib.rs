@@ -141,26 +141,28 @@ pub(crate) fn validate_alpha(alpha: f64) -> Result<()> {
 /// Convenience re-exports of the full public API.
 pub mod prelude {
     pub use crate::backtest::{
-        acerbi_szekely_z2, basel_traffic_light, christoffersen_cc,
-        christoffersen_independence, exceptions_from_pnl, kupiec_pof, BaselInput, BaselZone,
-        ChristoffersenResult, ConditionalCoverageResult, KupiecInput, KupiecResult,
-        TrafficLightResult,
+        acerbi_szekely_z2, basel_traffic_light, christoffersen_cc, christoffersen_independence,
+        exceptions_from_pnl, kupiec_pof, BaselInput, BaselZone, ChristoffersenResult,
+        ConditionalCoverageResult, KupiecInput, KupiecResult, TrafficLightResult,
     };
     pub use crate::expected_shortfall::{
         expected_shortfall, normal_es, parametric_es, parametric_es_full, student_t_es,
+    };
+    pub use crate::fast::{
+        empirical_var_es_ws, expected_shortfall_ws, historical_var_ws, parametric_es_fast,
+        parametric_var_fast, portfolio_sigma_fast, var_bootstrap_se_ws, FastResult, McStats,
+        McWorkspace, VarFault,
     };
     pub use crate::historical::{
         age_weighted_var, brw_weights, ewma_volatility, ewma_volatility_forecast,
         fhs_factor_scenarios, filtered_historical_var_factors, historical_var,
         overlapping_horizon_pnl, scale_var_sqrt_time, MIN_OBS,
     };
-    pub use crate::matrix::{
-        covariance_from_vols, ewma_covariance, sample_covariance, Matrix,
-    };
+    pub use crate::matrix::{covariance_from_vols, ewma_covariance, sample_covariance, Matrix};
     pub use crate::monte_carlo::{
         monte_carlo_es, monte_carlo_pnl, monte_carlo_run, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se,
-        var_kde_se, McRun,
+        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se,
+        McRun,
     };
     pub use crate::parametric::{
         cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
@@ -171,17 +173,11 @@ pub mod prelude {
     };
     pub use crate::rng::Rng;
     pub use crate::stats::{
-        binomial_cdf, chi2_sf, erfc, excess_kurtosis, mean, normal_cdf, normal_pdf,
-        normal_ppf, regularized_beta, regularized_gamma_p, regularized_gamma_q, skewness,
-        stdev, student_t_cdf, student_t_pdf, student_t_ppf,
+        binomial_cdf, chi2_sf, erfc, excess_kurtosis, mean, normal_cdf, normal_pdf, normal_ppf,
+        regularized_beta, regularized_gamma_p, regularized_gamma_q, skewness, stdev, student_t_cdf,
+        student_t_pdf, student_t_ppf,
     };
     pub use crate::tail::{empirical_var, empirical_var_es, tail_rank, weighted_var_es};
-    pub use crate::fast::{
-        empirical_var_es_ws, expected_shortfall_ws, historical_var_ws, parametric_es_fast,
-        parametric_var_fast, portfolio_sigma_fast, var_bootstrap_se_ws, FastResult, McStats,
-        McWorkspace, VarFault,
-    };
-    pub use crate::{EqVarError, TailModel};
     /// Deprecated entry points, kept in the prelude for one release.
     #[allow(deprecated)]
     pub use crate::{
@@ -190,4 +186,5 @@ pub mod prelude {
         monte_carlo::var_order_statistic_se,
         parametric::cornish_fisher_domain_ok,
     };
+    pub use crate::{EqVarError, TailModel};
 }

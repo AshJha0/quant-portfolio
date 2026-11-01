@@ -285,7 +285,9 @@ pub fn filtered_historical_var_factors(
 ) -> Result<f64> {
     validate_alpha(alpha)?;
     if exposures.is_empty() {
-        return Err(EqVarError::InvalidInput("book has no positions".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "book has no positions".to_string(),
+        ));
     }
     if exposures.iter().any(|w| !w.is_finite()) {
         return Err(EqVarError::InvalidInput(

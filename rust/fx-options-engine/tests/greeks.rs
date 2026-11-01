@@ -3,10 +3,10 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::greeks::{central_difference, gamma, second_central_difference, vanna, vega, volga};
-use fx_options_engine::{
-    analytic_greeks, finite_difference_greeks, gk_price, OptionType,
+use fx_options_engine::greeks::{
+    central_difference, gamma, second_central_difference, vanna, vega, volga,
 };
+use fx_options_engine::{analytic_greeks, finite_difference_greeks, gk_price, OptionType};
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);
 
@@ -55,10 +55,25 @@ fn vega_and_gamma_positive_and_type_independent() {
 fn standalone_greeks_match_struct_fields() {
     let (s, k, t, rd, rf, sig) = MKT;
     let a = analytic_greeks(s, k, t, rd, rf, sig, OptionType::Call).unwrap();
-    assert_close(gamma(s, k, t, rd, rf, sig).unwrap(), a.gamma, 1e-15, "gamma");
+    assert_close(
+        gamma(s, k, t, rd, rf, sig).unwrap(),
+        a.gamma,
+        1e-15,
+        "gamma",
+    );
     assert_close(vega(s, k, t, rd, rf, sig).unwrap(), a.vega, 1e-15, "vega");
-    assert_close(vanna(s, k, t, rd, rf, sig).unwrap(), a.vanna, 1e-15, "vanna");
-    assert_close(volga(s, k, t, rd, rf, sig).unwrap(), a.volga, 1e-15, "volga");
+    assert_close(
+        vanna(s, k, t, rd, rf, sig).unwrap(),
+        a.vanna,
+        1e-15,
+        "vanna",
+    );
+    assert_close(
+        volga(s, k, t, rd, rf, sig).unwrap(),
+        a.volga,
+        1e-15,
+        "volga",
+    );
 }
 
 #[test]
@@ -76,7 +91,11 @@ fn generic_fd_helpers_reproduce_delta_and_gamma() {
 fn otm_option_theta_negative() {
     let (s, k, t, rd, rf, sig) = MKT;
     let g = analytic_greeks(s, k, t, rd, rf, sig, OptionType::Call).unwrap();
-    assert!(g.theta < 0.0, "OTM call theta {} should be negative", g.theta);
+    assert!(
+        g.theta < 0.0,
+        "OTM call theta {} should be negative",
+        g.theta
+    );
 }
 
 #[test]

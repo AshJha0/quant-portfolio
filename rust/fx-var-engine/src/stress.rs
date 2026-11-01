@@ -138,8 +138,7 @@ pub fn historical_scenarios() -> HashMap<String, Scenario> {
                 (lit_fx("NZD"), lit_log(-0.040)),
                 (lit_fx("CHF"), lit_log(0.020)),
             ]),
-            description: "USDJPY 131 -> 117 in two sessions as levered carry unwound."
-                .to_string(),
+            description: "USDJPY 131 -> 117 in two sessions as levered carry unwound.".to_string(),
         },
     );
     lib
@@ -160,9 +159,15 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
         )));
     }
     if ccys.is_empty() {
-        return Err(FxVarError::invalid("usd_broad_move: currency list is empty"));
+        return Err(FxVarError::invalid(
+            "usd_broad_move: currency list is empty",
+        ));
     }
-    let name = format!("USD {}{}% broad move", if pct >= 0.0 { "+" } else { "" }, pct * 100.0);
+    let name = format!(
+        "USD {}{}% broad move",
+        if pct >= 0.0 { "+" } else { "" },
+        pct * 100.0
+    );
     let mut shocks = HashMap::new();
     for c in ccys {
         let u = c.to_uppercase();
@@ -172,7 +177,11 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
         // USD +pct vs CCY means CCYUSD falls by pct/(1+pct) in simple terms.
         shocks.insert(fx_factor(&u)?, simple_to_log(-pct / (1.0 + pct))?);
     }
-    Ok(Scenario { name, shocks, description: "Uniform USD move against all book currencies.".to_string() })
+    Ok(Scenario {
+        name,
+        shocks,
+        description: "Uniform USD move against all book currencies.".to_string(),
+    })
 }
 
 /// Peg-break stress add-on for a pegged/managed currency: the mandatory
@@ -184,7 +193,11 @@ pub fn usd_broad_move(ccys: &[String], pct: f64) -> Result<Scenario> {
 ///
 /// # Errors
 /// [`FxVarError::Invalid`] for `jump <= -100%`.
-pub fn peg_break_scenario(ccy: &str, jump: f64, contagion: &HashMap<String, f64>) -> Result<Scenario> {
+pub fn peg_break_scenario(
+    ccy: &str,
+    jump: f64,
+    contagion: &HashMap<String, f64>,
+) -> Result<Scenario> {
     if !(jump > -1.0) || !jump.is_finite() {
         return Err(FxVarError::invalid(format!(
             "jump must be finite and > -100%, got {jump}"
@@ -199,15 +212,27 @@ pub fn peg_break_scenario(ccy: &str, jump: f64, contagion: &HashMap<String, f64>
         // even focused on.
         shocks.insert(fx_factor(c)?, simple_to_log(m)?);
     }
-    let direction = if jump < 0.0 { "devaluation" } else { "revaluation" };
-    let name = format!("{u} peg break ({}{:.1}% {direction})", if jump >= 0.0 { "+" } else { "" }, jump * 100.0);
+    let direction = if jump < 0.0 {
+        "devaluation"
+    } else {
+        "revaluation"
+    };
+    let name = format!(
+        "{u} peg break ({}{:.1}% {direction})",
+        if jump >= 0.0 { "+" } else { "" },
+        jump * 100.0
+    );
     let description = format!(
         "Managed-currency regime break: {u} gaps {}{:.1}% vs USD with no intermediate \
          prints; HS/parametric VaR see none of it.",
         if jump >= 0.0 { "+" } else { "" },
         jump * 100.0
     );
-    Ok(Scenario { name, shocks, description })
+    Ok(Scenario {
+        name,
+        shocks,
+        description,
+    })
 }
 
 /// One row of a stress report.
@@ -228,15 +253,28 @@ pub struct StressRow {
 ///
 /// # Errors
 /// [`FxVarError::Invalid`] for an empty book.
-pub fn run_stress(book: &Book, market: &Market, scenarios: &HashMap<String, Scenario>) -> Result<Vec<StressRow>> {
+pub fn run_stress(
+    book: &Book,
+    market: &Market,
+    scenarios: &HashMap<String, Scenario>,
+) -> Result<Vec<StressRow>> {
     let compiled = CompiledBook::new(book, market)?;
     let factors: std::collections::HashSet<&String> = compiled.factors().iter().collect();
     let mut rows = Vec::with_capacity(scenarios.len());
     for (key, sc) in scenarios {
-        let filtered: HashMap<String, f64> =
-            sc.shocks.iter().filter(|(f, _)| factors.contains(f)).map(|(f, &v)| (f.clone(), v)).collect();
+        let filtered: HashMap<String, f64> = sc
+            .shocks
+            .iter()
+            .filter(|(f, _)| factors.contains(f))
+            .map(|(f, &v)| (f.clone(), v))
+            .collect();
         let pnl = compiled.pnl_map(&filtered)?;
-        rows.push(StressRow { key: key.clone(), name: sc.name.clone(), pnl, description: sc.description.clone() });
+        rows.push(StressRow {
+            key: key.clone(),
+            name: sc.name.clone(),
+            pnl,
+            description: sc.description.clone(),
+        });
     }
     // `total_cmp`: a total order on every f64, so the report cannot panic
     // on a scenario that revalues to a non-finite P&L (and such a row
@@ -262,15 +300,21 @@ fn checked_sigma_p(w: &[f64], cov: &Matrix) -> Result<f64> {
     // Finiteness first: `NaN.max(0.0)` is 0.0, so a NaN quadratic form
     // would be reported as "zero linear risk" rather than as corrupt data.
     if w.iter().any(|v| !v.is_finite()) {
-        return Err(FxVarError::invalid("reverse stress: exposures must all be finite"));
+        return Err(FxVarError::invalid(
+            "reverse stress: exposures must all be finite",
+        ));
     }
     if !cov.all_finite() {
-        return Err(FxVarError::invalid("reverse stress: covariance must be finite"));
+        return Err(FxVarError::invalid(
+            "reverse stress: covariance must be finite",
+        ));
     }
     let sp2 = cov.quad_form(w)?;
     let sp = sp2.max(0.0).sqrt();
     if !(sp > 0.0) || !sp.is_finite() {
-        return Err(FxVarError::invalid("book has zero linear risk; reverse stress undefined"));
+        return Err(FxVarError::invalid(
+            "book has zero linear risk; reverse stress undefined",
+        ));
     }
     Ok(sp)
 }
@@ -283,7 +327,11 @@ fn checked_sigma_p(w: &[f64], cov: &Matrix) -> Result<f64> {
 /// # Errors
 /// [`FxVarError::Invalid`] if the book has zero linear risk or
 /// `radius <= 0`.
-pub fn reverse_stress_linear(exposures: &[f64], cov: &Matrix, radius: f64) -> Result<ReverseStress> {
+pub fn reverse_stress_linear(
+    exposures: &[f64],
+    cov: &Matrix,
+    radius: f64,
+) -> Result<ReverseStress> {
     if !(radius > 0.0) || !radius.is_finite() {
         return Err(FxVarError::invalid(format!(
             "radius / loss_target must be finite and positive, got {radius}"
@@ -292,7 +340,10 @@ pub fn reverse_stress_linear(exposures: &[f64], cov: &Matrix, radius: f64) -> Re
     let sp = checked_sigma_p(exposures, cov)?;
     let sw = cov.matvec(exposures)?;
     let shocks: Vec<f64> = sw.iter().map(|&v| -radius * v / sp).collect();
-    Ok(ReverseStress { shocks, loss: radius * sp })
+    Ok(ReverseStress {
+        shocks,
+        loss: radius * sp,
+    })
 }
 
 /// As [`reverse_stress_linear`] but solving for the radius that produces
@@ -300,7 +351,11 @@ pub fn reverse_stress_linear(exposures: &[f64], cov: &Matrix, radius: f64) -> Re
 ///
 /// # Errors
 /// Same as [`reverse_stress_linear`].
-pub fn reverse_stress_for_loss(exposures: &[f64], cov: &Matrix, loss_target: f64) -> Result<ReverseStress> {
+pub fn reverse_stress_for_loss(
+    exposures: &[f64],
+    cov: &Matrix,
+    loss_target: f64,
+) -> Result<ReverseStress> {
     let sp = checked_sigma_p(exposures, cov)?;
     reverse_stress_linear(exposures, cov, loss_target / sp)
 }
@@ -314,7 +369,12 @@ pub fn reverse_stress_for_loss(exposures: &[f64], cov: &Matrix, loss_target: f64
 /// # Errors
 /// [`FxVarError::Invalid`] if `radius <= 0` or the book has zero linear
 /// risk; [`FxVarError::Numerical`] if the covariance cannot be factorised.
-pub fn reverse_stress_numerical(exposures: &[f64], cov: &Matrix, radius: f64, seed: u64) -> Result<ReverseStress> {
+pub fn reverse_stress_numerical(
+    exposures: &[f64],
+    cov: &Matrix,
+    radius: f64,
+    seed: u64,
+) -> Result<ReverseStress> {
     if !(radius > 0.0) || !radius.is_finite() {
         return Err(FxVarError::invalid(format!(
             "radius must be finite and positive, got {radius}"
@@ -412,8 +472,20 @@ mod tests {
 
     fn test_market() -> Market {
         Market::new(
-            [("EUR", 1.10), ("GBP", 1.27), ("JPY", 0.0090), ("CHF", 1.12), ("HKD", 0.1282)],
-            [("USD", 0.050), ("EUR", 0.030), ("GBP", 0.045), ("JPY", 0.001), ("CHF", -0.005)],
+            [
+                ("EUR", 1.10),
+                ("GBP", 1.27),
+                ("JPY", 0.0090),
+                ("CHF", 1.12),
+                ("HKD", 0.1282),
+            ],
+            [
+                ("USD", 0.050),
+                ("EUR", 0.030),
+                ("GBP", 0.045),
+                ("JPY", 0.001),
+                ("CHF", -0.005),
+            ],
         )
         .unwrap()
     }
@@ -421,7 +493,11 @@ mod tests {
     #[test]
     fn brexit_scenario_hits_long_cable() {
         let m = test_market();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("GBPUSD", 10e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("GBPUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
         let lib = historical_scenarios();
         assert!(lib.contains_key("brexit_2016"));
         let rows = run_stress(&book, &m, &lib).unwrap();
@@ -436,7 +512,11 @@ mod tests {
     #[test]
     fn chf_depeg_hits_short_chf() {
         let m = test_market();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("USDCHF", 20e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("USDCHF", 20e6, None))],
+            "USD",
+        )
+        .unwrap();
         let lib = historical_scenarios();
         let rows = run_stress(&book, &m, &lib).unwrap();
         let row = rows.iter().find(|r| r.key == "chf_depeg_2015").unwrap();
@@ -446,7 +526,13 @@ mod tests {
     #[test]
     fn joint_fx_rate_shock_moves_forward_through_both_legs() {
         let m = test_market();
-        let fwd = Book::new(vec![Position::Forward(crate::book::ForwardPosition::new("GBPUSD", 10e6, 1.0, None))], "USD").unwrap();
+        let fwd = Book::new(
+            vec![Position::Forward(crate::book::ForwardPosition::new(
+                "GBPUSD", 10e6, 1.0, None,
+            ))],
+            "USD",
+        )
+        .unwrap();
         let lib = historical_scenarios();
         let brexit = &lib["brexit_2016"];
         let cb = CompiledBook::new(&fwd, &m).unwrap();
@@ -461,10 +547,18 @@ mod tests {
     #[test]
     fn usd_broad_move_and_peg_break() {
         let m = test_market();
-        let usd10 = usd_broad_move(&["EUR".to_string(), "JPY".to_string(), "USD".to_string()], 0.10).unwrap();
+        let usd10 = usd_broad_move(
+            &["EUR".to_string(), "JPY".to_string(), "USD".to_string()],
+            0.10,
+        )
+        .unwrap();
         assert_eq!(usd10.shocks.len(), 2);
         assert!((usd10.shocks["FX:EUR"] - (-0.10_f64 / 1.10).ln_1p()).abs() < 1e-15);
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 11e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 11e6, None))],
+            "USD",
+        )
+        .unwrap();
         let cb = CompiledBook::new(&book, &m).unwrap();
         let pnl = cb.pnl_map(&usd10.shocks).unwrap();
         assert!((pnl - 11e6 * 1.10 * (-0.10 / 1.10)).abs() < 1e-6 * pnl.abs());
@@ -513,7 +607,10 @@ mod tests {
         let numeric = reverse_stress_numerical(&w, &cov, k, 3).unwrap();
         assert!((numeric.loss - closed.loss).abs() < 1e-6 * closed.loss);
         for i in 0..w.len() {
-            assert!((numeric.shocks[i] - closed.shocks[i]).abs() < 1e-4 * (closed.shocks[i].abs() + 1e-6));
+            assert!(
+                (numeric.shocks[i] - closed.shocks[i]).abs()
+                    < 1e-4 * (closed.shocks[i].abs() + 1e-6)
+            );
         }
     }
 

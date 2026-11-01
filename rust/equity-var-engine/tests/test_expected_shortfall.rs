@@ -82,9 +82,7 @@ fn normal_es_exceeds_var_and_scales_with_sigma() {
 fn student_t_es_fatter_than_normal_and_normal_limit() {
     let sigma = 1.0e4;
     assert!(student_t_es(sigma, 0.01, 4.0, 0.0).unwrap() > normal_es(sigma, 0.01, 0.0).unwrap());
-    assert!(
-        student_t_es(sigma, 0.025, 6.0, 0.0).unwrap() > normal_es(sigma, 0.025, 0.0).unwrap()
-    );
+    assert!(student_t_es(sigma, 0.025, 6.0, 0.0).unwrap() > normal_es(sigma, 0.025, 0.0).unwrap());
     let big_df = student_t_es(sigma, 0.025, 1.0e5, 0.0).unwrap();
     let normal = normal_es(sigma, 0.025, 0.0).unwrap();
     assert!((big_df - normal).abs() < 1e-3 * normal);

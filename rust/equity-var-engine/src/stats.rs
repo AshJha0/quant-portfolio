@@ -230,7 +230,11 @@ pub fn erf(x: f64) -> f64 {
     if x.abs() < 0.5 {
         // For small |x| compute P(1/2, x^2) directly to preserve relative
         // accuracy of the *erf* value (1 - erfc would lose digits).
-        let p = if x == 0.0 { 0.0 } else { gamma_series(0.5, x * x) };
+        let p = if x == 0.0 {
+            0.0
+        } else {
+            gamma_series(0.5, x * x)
+        };
         if x >= 0.0 {
             p
         } else {
@@ -456,7 +460,9 @@ fn check_df(df: f64) -> Result<()> {
 pub fn student_t_pdf(x: f64, df: f64) -> Result<f64> {
     check_df(df)?;
     if x.is_nan() {
-        return Err(EqVarError::InvalidInput("student_t_pdf: x is NaN".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "student_t_pdf: x is NaN".to_string(),
+        ));
     }
     let ln_norm = ln_gamma_pos(0.5 * (df + 1.0))
         - ln_gamma_pos(0.5 * df)
@@ -469,7 +475,9 @@ pub fn student_t_pdf(x: f64, df: f64) -> Result<f64> {
 pub fn student_t_cdf(x: f64, df: f64) -> Result<f64> {
     check_df(df)?;
     if x.is_nan() {
-        return Err(EqVarError::InvalidInput("student_t_cdf: x is NaN".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "student_t_cdf: x is NaN".to_string(),
+        ));
     }
     if x.is_infinite() {
         return Ok(if x > 0.0 { 1.0 } else { 0.0 });

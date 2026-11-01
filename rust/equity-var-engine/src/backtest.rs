@@ -54,8 +54,7 @@ pub fn exceptions_from_pnl(pnl: &[f64], var: &[f64]) -> Result<Vec<u8>> {
     }
     if var.len() != 1 && var.len() != pnl.len() {
         return Err(EqVarError::InvalidInput(
-            "exceptions_from_pnl: var must be scalar (length 1) or one entry per day"
-                .to_string(),
+            "exceptions_from_pnl: var must be scalar (length 1) or one entry per day".to_string(),
         ));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
@@ -130,7 +129,11 @@ pub fn kupiec_pof(input: &KupiecInput) -> Result<KupiecResult> {
 /// release. It forwards to [`kupiec_pof`], so it now rejects `alpha >= 0.5`.
 #[deprecated(since = "0.2.0", note = "use kupiec_pof(&KupiecInput { .. })")]
 pub fn kupiec_pof_positional(n_obs: i64, n_exceptions: i64, alpha: f64) -> Result<KupiecResult> {
-    kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })
+    kupiec_pof(&KupiecInput {
+        n_obs,
+        n_exceptions,
+        alpha,
+    })
 }
 
 /// Inputs of the coverage tests ([`kupiec_pof`], [`basel_traffic_light`]).
@@ -153,7 +156,10 @@ pub type BaselInput = KupiecInput;
 fn check_coverage_input(inp: &KupiecInput) -> Result<()> {
     crate::tail::validate_alpha(inp.alpha)?;
     if inp.n_obs < 1 {
-        return Err(EqVarError::InvalidInput(format!("n_obs must be >= 1, got {}", inp.n_obs)));
+        return Err(EqVarError::InvalidInput(format!(
+            "n_obs must be >= 1, got {}",
+            inp.n_obs
+        )));
     }
     if inp.n_exceptions < 0 {
         return Err(EqVarError::InvalidInput(format!(
@@ -264,7 +270,9 @@ pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Re
     crate::tail::validate_alpha(alpha)?;
     let t = pnl.len();
     if t == 0 {
-        return Err(EqVarError::InvalidInput("acerbi_szekely_z2: empty pnl".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "acerbi_szekely_z2: empty pnl".to_string(),
+        ));
     }
     for (name, s) in [("var", var), ("es", es)] {
         if s.len() != 1 && s.len() != t {
@@ -280,10 +288,14 @@ pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Re
         ));
     }
     if var.iter().any(|v| *v < 0.0) {
-        return Err(EqVarError::InvalidInput("acerbi_szekely_z2: VaR must be >= 0".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "acerbi_szekely_z2: VaR must be >= 0".to_string(),
+        ));
     }
     if es.iter().any(|v| !(*v > 0.0)) {
-        return Err(EqVarError::InvalidInput("acerbi_szekely_z2: ES must be > 0".to_string()));
+        return Err(EqVarError::InvalidInput(
+            "acerbi_szekely_z2: ES must be > 0".to_string(),
+        ));
     }
     let pick = |s: &[f64], i: usize| if s.len() == 1 { s[0] } else { s[i] };
     let denom = t as f64 * alpha;
@@ -479,5 +491,9 @@ pub fn basel_traffic_light(input: &BaselInput) -> Result<TrafficLightResult> {
 /// an error instead of being clamped.
 #[deprecated(since = "0.2.0", note = "use basel_traffic_light(&BaselInput { .. })")]
 pub fn basel_traffic_light_250(n_exceptions: i64, n_obs: i64) -> Result<TrafficLightResult> {
-    basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha: 0.01 })
+    basel_traffic_light(&BaselInput {
+        n_obs,
+        n_exceptions,
+        alpha: 0.01,
+    })
 }

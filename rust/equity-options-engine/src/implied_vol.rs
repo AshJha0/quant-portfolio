@@ -7,7 +7,9 @@
 //! relative stopping rule; the same algorithm runs in the Python and C++
 //! engines.
 
-use crate::black_scholes::{bs_price, finite_result, validate_inputs, validate_rates, OptionType, PricingError};
+use crate::black_scholes::{
+    bs_price, finite_result, validate_inputs, validate_rates, OptionType, PricingError,
+};
 use crate::iv_core::black_implied_vol;
 
 /// Former absolute price tolerance of the bisection solver. Unused.
@@ -100,12 +102,20 @@ pub fn implied_vol(
     let df = finite_result((-r * t).exp(), "implied_vol")?;
     let forward = finite_result(s * ((r - q) * t).exp(), "implied_vol")?;
     let mut evals = 0;
-    black_implied_vol(price, forward, k, t, df, option_type == OptionType::Call, &mut evals)
-        .map_err(|msg| {
-            if msg.starts_with("price") {
-                PricingError::ArbitrageBound(msg.into())
-            } else {
-                PricingError::NoConvergence(msg.into())
-            }
-        })
+    black_implied_vol(
+        price,
+        forward,
+        k,
+        t,
+        df,
+        option_type == OptionType::Call,
+        &mut evals,
+    )
+    .map_err(|msg| {
+        if msg.starts_with("price") {
+            PricingError::ArbitrageBound(msg.into())
+        } else {
+            PricingError::NoConvergence(msg.into())
+        }
+    })
 }

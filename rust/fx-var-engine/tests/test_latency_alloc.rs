@@ -63,7 +63,9 @@ fn hot_kernels_do_not_allocate() {
         }
     }
     let mut out = vec![0.0; 64];
-    let pnl: Vec<f64> = (0..1000).map(|i| 1000.0 * (0.37 * i as f64).sin()).collect();
+    let pnl: Vec<f64> = (0..1000)
+        .map(|i| 1000.0 * (0.37 * i as f64).sin())
+        .collect();
     let mut ws = vec![0.0; pnl.len()];
     let cov = Matrix::identity(k);
     let w = vec![1.0e6; k];

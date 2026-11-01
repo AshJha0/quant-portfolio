@@ -6,9 +6,7 @@
 use std::collections::HashMap;
 
 use eq_options_engine::golden::{GoldenRecord, RECORDS};
-use eq_options_engine::{
-    black76_greeks, bs_greeks, bs_price, crr_price, implied_vol, Exercise,
-};
+use eq_options_engine::{black76_greeks, bs_greeks, bs_price, crr_price, implied_vol, Exercise};
 
 fn evaluate(r: &GoldenRecord) -> HashMap<&'static str, f64> {
     let x = &r.inputs;
@@ -16,27 +14,53 @@ fn evaluate(r: &GoldenRecord) -> HashMap<&'static str, f64> {
     let mut m = HashMap::new();
     match r.func {
         "bs" if r.outputs.len() == 1 => {
-            m.insert("price", bs_price(x[0], x[1], x[2], x[3], x[5], x[4], ot).unwrap());
+            m.insert(
+                "price",
+                bs_price(x[0], x[1], x[2], x[3], x[5], x[4], ot).unwrap(),
+            );
         }
         "bs" => {
             let g = bs_greeks(x[0], x[1], x[2], x[3], x[5], x[4], ot).unwrap();
-            for (k, v) in [("price", g.price), ("delta", g.delta), ("gamma", g.gamma),
-                           ("vega", g.vega), ("theta", g.theta), ("rho", g.rho),
-                           ("vanna", g.vanna), ("volga", g.volga)] {
+            for (k, v) in [
+                ("price", g.price),
+                ("delta", g.delta),
+                ("gamma", g.gamma),
+                ("vega", g.vega),
+                ("theta", g.theta),
+                ("rho", g.rho),
+                ("vanna", g.vanna),
+                ("volga", g.volga),
+            ] {
                 m.insert(k, v);
             }
         }
         "iv" => {
-            m.insert("sigma", implied_vol(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap());
+            m.insert(
+                "sigma",
+                implied_vol(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap(),
+            );
         }
         "crr" => {
-            let ex = if r.flag == 1 { Exercise::American } else { Exercise::European };
-            m.insert("price", crr_price(x[0], x[1], x[2], x[3], x[5], x[4], ot, ex, x[6] as usize).unwrap());
+            let ex = if r.flag == 1 {
+                Exercise::American
+            } else {
+                Exercise::European
+            };
+            m.insert(
+                "price",
+                crr_price(x[0], x[1], x[2], x[3], x[5], x[4], ot, ex, x[6] as usize).unwrap(),
+            );
         }
         "b76" => {
             let g = black76_greeks(x[0], x[1], x[2], x[3], x[4], ot).unwrap();
-            for (k, v) in [("price", g.price), ("delta", g.delta), ("gamma", g.gamma),
-                           ("vega", g.vega), ("theta", g.theta), ("rho", g.rho)] {
+            for (k, v) in [
+                ("price", g.price),
+                ("delta", g.delta),
+                ("gamma", g.gamma),
+                ("vega", g.vega),
+                ("theta", g.theta),
+                ("rho", g.rho),
+            ] {
                 m.insert(k, v);
             }
         }

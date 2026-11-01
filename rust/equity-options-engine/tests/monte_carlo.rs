@@ -44,14 +44,25 @@ fn std_error_scales_as_inverse_sqrt_n_fitted() {
         let reps: Vec<f64> = (0..REPS)
             .map(|rep| {
                 let seed = 1_000_003u64.wrapping_mul(n as u64).wrapping_add(rep);
-                mc_price(s, k, t, r, sigma, q, OptionType::Call, n, false, false, seed)
-                    .unwrap()
-                    .price
+                mc_price(
+                    s,
+                    k,
+                    t,
+                    r,
+                    sigma,
+                    q,
+                    OptionType::Call,
+                    n,
+                    false,
+                    false,
+                    seed,
+                )
+                .unwrap()
+                .price
             })
             .collect();
         let mean = reps.iter().sum::<f64>() / reps.len() as f64;
-        let var =
-            reps.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (reps.len() as f64 - 1.0);
+        let var = reps.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (reps.len() as f64 - 1.0);
         log_n.push((n as f64).ln());
         log_std.push(0.5 * var.ln());
     }
@@ -73,14 +84,62 @@ fn std_error_scales_as_inverse_sqrt_n_fitted() {
 #[test]
 fn variance_reduction_reduces_standard_error() {
     let (s, k, t, r, q, sigma) = (100.0, 100.0, 1.0, 0.05, 0.0, 0.2);
-    let plain = mc_price(s, k, t, r, sigma, q, OptionType::Call, 100_000, false, false, 7)
-        .unwrap();
-    let anti = mc_price(s, k, t, r, sigma, q, OptionType::Call, 100_000, true, false, 7)
-        .unwrap();
-    let cv = mc_price(s, k, t, r, sigma, q, OptionType::Call, 100_000, false, true, 7)
-        .unwrap();
-    let both = mc_price(s, k, t, r, sigma, q, OptionType::Call, 100_000, true, true, 7)
-        .unwrap();
+    let plain = mc_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        OptionType::Call,
+        100_000,
+        false,
+        false,
+        7,
+    )
+    .unwrap();
+    let anti = mc_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        OptionType::Call,
+        100_000,
+        true,
+        false,
+        7,
+    )
+    .unwrap();
+    let cv = mc_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        OptionType::Call,
+        100_000,
+        false,
+        true,
+        7,
+    )
+    .unwrap();
+    let both = mc_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        OptionType::Call,
+        100_000,
+        true,
+        true,
+        7,
+    )
+    .unwrap();
     assert!(
         anti.std_error < plain.std_error,
         "antithetic did not reduce SE: {} vs {}",
@@ -106,10 +165,34 @@ fn variance_reduction_reduces_standard_error() {
 
 #[test]
 fn same_seed_is_bitwise_identical() {
-    let a = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 50_000, true, true, 123)
-        .unwrap();
-    let b = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 50_000, true, true, 123)
-        .unwrap();
+    let a = mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        50_000,
+        true,
+        true,
+        123,
+    )
+    .unwrap();
+    let b = mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        50_000,
+        true,
+        true,
+        123,
+    )
+    .unwrap();
     assert_eq!(a.price.to_bits(), b.price.to_bits());
     assert_eq!(a.std_error.to_bits(), b.std_error.to_bits());
     assert_eq!(a.ci_low.to_bits(), b.ci_low.to_bits());
@@ -118,24 +201,70 @@ fn same_seed_is_bitwise_identical() {
 
 #[test]
 fn different_seeds_differ() {
-    let a = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 50_000, true, true, 1)
-        .unwrap();
-    let b = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 50_000, true, true, 2)
-        .unwrap();
+    let a = mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        50_000,
+        true,
+        true,
+        1,
+    )
+    .unwrap();
+    let b = mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        50_000,
+        true,
+        true,
+        2,
+    )
+    .unwrap();
     assert_ne!(a.price.to_bits(), b.price.to_bits());
 }
 
 #[test]
 fn deterministic_limits_have_zero_std_error() {
     // T = 0 and sigma = 0 return the exact BS value with SE = 0.
-    let at_expiry =
-        mc_price(105.0, 100.0, 0.0, 0.05, 0.2, 0.0, OptionType::Call, 1000, true, true, 42)
-            .unwrap();
+    let at_expiry = mc_price(
+        105.0,
+        100.0,
+        0.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        42,
+    )
+    .unwrap();
     assert_eq!(at_expiry.price, 5.0);
     assert_eq!(at_expiry.std_error, 0.0);
-    let no_vol =
-        mc_price(100.0, 95.0, 1.0, 0.05, 0.0, 0.02, OptionType::Call, 1000, true, true, 42)
-            .unwrap();
+    let no_vol = mc_price(
+        100.0,
+        95.0,
+        1.0,
+        0.05,
+        0.0,
+        0.02,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        42,
+    )
+    .unwrap();
     let bs = bs_price(100.0, 95.0, 1.0, 0.05, 0.0, 0.02, OptionType::Call).unwrap();
     assert_eq!(no_vol.price, bs);
     assert_eq!(no_vol.ci_low, no_vol.ci_high);
@@ -143,31 +272,80 @@ fn deterministic_limits_have_zero_std_error() {
 
 #[test]
 fn invalid_inputs_return_err() {
-    assert!(
-        mc_price(-1.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 1000, true, true, 42)
-            .is_err()
-    );
-    assert!(
-        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 1, true, true, 42).is_err()
-    );
+    assert!(mc_price(
+        -1.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        42
+    )
+    .is_err());
+    assert!(mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1,
+        true,
+        true,
+        42
+    )
+    .is_err());
     // Non-finite inputs (including r/q) are rejected before any simulation.
-    assert!(
-        mc_price(100.0, 100.0, 1.0, f64::NAN, 0.2, 0.0, OptionType::Call, 1000, true, true, 42)
-            .is_err()
-    );
-    assert!(
-        mc_price(100.0, 100.0, f64::INFINITY, 0.05, 0.2, 0.0, OptionType::Call, 1000, true,
-                 true, 42)
-            .is_err()
-    );
+    assert!(mc_price(
+        100.0,
+        100.0,
+        1.0,
+        f64::NAN,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        42
+    )
+    .is_err());
+    assert!(mc_price(
+        100.0,
+        100.0,
+        f64::INFINITY,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        42
+    )
+    .is_err());
     // Path counts that would ask the allocator for tens of GB are
     // rejected up front rather than aborting the process.
     use eq_options_engine::monte_carlo::MAX_PATHS;
-    assert!(
-        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, MAX_PATHS + 1, true,
-                 true, 42)
-            .is_err()
-    );
+    assert!(mc_price(
+        100.0,
+        100.0,
+        1.0,
+        0.05,
+        0.2,
+        0.0,
+        OptionType::Call,
+        MAX_PATHS + 1,
+        true,
+        true,
+        42
+    )
+    .is_err());
 }
 
 #[test]
@@ -208,14 +386,37 @@ fn too_few_independent_samples_is_an_error() {
     // standard error exists, so the call must fail rather than report
     // SE = 0. With the control variate, two samples fit the regression
     // exactly, so three are needed.
-    let mc = |n, anti, cv| mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, n, anti, cv, 11);
+    let mc = |n, anti, cv| {
+        mc_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            n,
+            anti,
+            cv,
+            11,
+        )
+    };
     assert!(mc(2, true, false).is_err());
     assert!(mc(1, false, false).is_err());
     assert!(mc(4, true, true).is_err());
     assert!(mc(2, false, true).is_err());
-    for (n, anti, cv) in [(3, true, false), (2, false, false), (6, true, true), (3, false, true)] {
+    for (n, anti, cv) in [
+        (3, true, false),
+        (2, false, false),
+        (6, true, true),
+        (3, false, true),
+    ] {
         let r = mc(n, anti, cv).unwrap();
-        assert!(r.std_error.is_finite() && r.std_error > 0.0, "n={n}: SE {}", r.std_error);
+        assert!(
+            r.std_error.is_finite() && r.std_error > 0.0,
+            "n={n}: SE {}",
+            r.std_error
+        );
         assert!(r.contains(r.price));
     }
 }
@@ -224,12 +425,35 @@ fn too_few_independent_samples_is_an_error() {
 fn extreme_moneyness_and_long_expiry_estimates_are_sane() {
     // Deep OTM (100x strike) with a long expiry: the estimator must stay
     // non-negative, finite, and bracket the analytic value within 3 SE.
-    for &(s, k, t) in &[(100.0, 10_000.0, 1.0), (10_000.0, 100.0, 1.0), (100.0, 100.0, 30.0)] {
-        let mc = mc_price(s, k, t, 0.03, 0.2, 0.01, OptionType::Call, 200_000, true, true, 99)
-            .unwrap();
+    for &(s, k, t) in &[
+        (100.0, 10_000.0, 1.0),
+        (10_000.0, 100.0, 1.0),
+        (100.0, 100.0, 30.0),
+    ] {
+        let mc = mc_price(
+            s,
+            k,
+            t,
+            0.03,
+            0.2,
+            0.01,
+            OptionType::Call,
+            200_000,
+            true,
+            true,
+            99,
+        )
+        .unwrap();
         let bs = bs_price(s, k, t, 0.03, 0.2, 0.01, OptionType::Call).unwrap();
-        assert!(mc.price.is_finite() && mc.std_error.is_finite(), "S={s}, K={k}, T={t}");
-        assert!(mc.price >= -1e-12, "negative MC price {} at S={s}, K={k}", mc.price);
+        assert!(
+            mc.price.is_finite() && mc.std_error.is_finite(),
+            "S={s}, K={k}, T={t}"
+        );
+        assert!(
+            mc.price >= -1e-12,
+            "negative MC price {} at S={s}, K={k}",
+            mc.price
+        );
         // Tolerance is 3 SE plus a SCALE-RELATIVE floor: deep ITM the
         // control variate drives the SE to ~1e-11, well below the
         // floating-point accumulation noise of a 200k-term sum on a

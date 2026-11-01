@@ -164,8 +164,12 @@ pub fn crr_price(
             (OptionType::Call, _) => 0.0,
             // Exercise now pays K; waiting pays K e^{-rT}, which is larger
             // when r < 0.
-            (OptionType::Put, Exercise::American) => k.max(finite_result(k * (-r * t).exp(), "crr_price")?),
-            (OptionType::Put, Exercise::European) => finite_result(k * (-r * t).exp(), "crr_price")?,
+            (OptionType::Put, Exercise::American) => {
+                k.max(finite_result(k * (-r * t).exp(), "crr_price")?)
+            }
+            (OptionType::Put, Exercise::European) => {
+                finite_result(k * (-r * t).exp(), "crr_price")?
+            }
         });
     }
     if k == 0.0 {
@@ -183,7 +187,18 @@ pub fn crr_price(
     }
 
     let mut ws = CrrWorkspace::new();
-    match crr_tree(s, k, t, r, sigma, q, option_type, exercise, n_steps, &mut ws) {
+    match crr_tree(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        option_type,
+        exercise,
+        n_steps,
+        &mut ws,
+    ) {
         Ok(v) => Ok(v),
         Err(ErrorCode::BadProbability) => {
             // Error path only: rebuild the message with the value of p.
@@ -290,7 +305,11 @@ pub(crate) fn crr_tree(
             let m = idx as f64 - n_f;
             *e = sign * ((log_s + m * log_u).exp() - k);
         }
-        for (v, e) in ws.values.iter_mut().zip(ws.exercise_value.iter().step_by(2)) {
+        for (v, e) in ws
+            .values
+            .iter_mut()
+            .zip(ws.exercise_value.iter().step_by(2))
+        {
             *v = e.max(0.0);
         }
     } else {
@@ -358,7 +377,27 @@ pub fn early_exercise_premium(
     option_type: OptionType,
     n_steps: usize,
 ) -> Result<f64, PricingError> {
-    let amer = crr_price(s, k, t, r, sigma, q, option_type, Exercise::American, n_steps)?;
-    let euro = crr_price(s, k, t, r, sigma, q, option_type, Exercise::European, n_steps)?;
+    let amer = crr_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        option_type,
+        Exercise::American,
+        n_steps,
+    )?;
+    let euro = crr_price(
+        s,
+        k,
+        t,
+        r,
+        sigma,
+        q,
+        option_type,
+        Exercise::European,
+        n_steps,
+    )?;
     Ok((amer - euro).max(0.0))
 }

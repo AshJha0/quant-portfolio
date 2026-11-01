@@ -22,9 +22,7 @@
 //! Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 //! `t` in years, `sigma` annualised.
 
-use crate::black_scholes::{
-    bs_price, validate_inputs, validate_rates, OptionType, PricingError,
-};
+use crate::black_scholes::{bs_price, validate_inputs, validate_rates, OptionType, PricingError};
 use crate::fast::ErrorCode;
 use crate::rng::{box_muller, uniform_from_bits, Xoshiro256PlusPlus};
 
@@ -160,7 +158,11 @@ pub fn mc_price(
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
-    let units = if antithetic { n_paths.div_ceil(2) } else { n_paths };
+    let units = if antithetic {
+        n_paths.div_ceil(2)
+    } else {
+        n_paths
+    };
     let needed = if control_variate { 3 } else { 2 };
     if units < needed {
         return Err(PricingError::InvalidInput(format!(
@@ -368,7 +370,8 @@ pub(crate) fn mc_core(
     ws.samples.clear();
     ws.samples.resize(units, 0.0);
     ws.control.clear();
-    ws.control.resize(if control_variate { units } else { 0 }, 0.0);
+    ws.control
+        .resize(if control_variate { units } else { 0 }, 0.0);
 
     let finite = if threads <= 1 {
         rng.fill_standard_normal(&mut ws.samples);

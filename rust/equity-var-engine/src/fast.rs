@@ -224,7 +224,8 @@ fn tail_z(alpha: f64, tail: TailModel) -> FastResult<f64> {
             if !(df > 2.0) || !df.is_finite() {
                 return Err(VarFault::BadParameter);
             }
-            Ok(student_t_ppf(alpha, df).map_err(|_| VarFault::Numerical)? * ((df - 2.0) / df).sqrt())
+            Ok(student_t_ppf(alpha, df).map_err(|_| VarFault::Numerical)?
+                * ((df - 2.0) / df).sqrt())
         }
     }
 }
@@ -282,7 +283,14 @@ pub fn parametric_es_fast(
 /// Bootstrap SE core shared by [`var_bootstrap_se_ws`] and the MC
 /// workspace. Same RNG calls, same order, same sums as
 /// [`crate::monte_carlo::var_bootstrap_se`].
-fn bootstrap_core(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64, buf: &mut [f64], est: &mut [f64]) -> FastResult<f64> {
+fn bootstrap_core(
+    pnl: &[f64],
+    alpha: f64,
+    n_boot: usize,
+    seed: u64,
+    buf: &mut [f64],
+    est: &mut [f64],
+) -> FastResult<f64> {
     let n = pnl.len();
     let buf = buf.get_mut(..n).ok_or(VarFault::WorkspaceTooSmall)?;
     let est = est.get_mut(..n_boot).ok_or(VarFault::WorkspaceTooSmall)?;
@@ -349,7 +357,10 @@ fn kde_core(pnl: &[f64], alpha: f64, q: f64, sorted: &mut [f64]) -> FastResult<f
         let lo = (pos.floor() as usize).min(n - 1);
         let hi = (lo + 1).min(n - 1);
         let frac = pos - lo as f64;
-        let (a, b) = (sorted.get(lo).copied().unwrap_or(0.0), sorted.get(hi).copied().unwrap_or(0.0));
+        let (a, b) = (
+            sorted.get(lo).copied().unwrap_or(0.0),
+            sorted.get(hi).copied().unwrap_or(0.0),
+        );
         a + frac * (b - a)
     };
     let iqr = type7(0.75) - type7(0.25);
@@ -509,7 +520,10 @@ impl McWorkspace {
         if n_paths < crate::monte_carlo::MIN_PATHS {
             return Err(VarFault::TooFewObservations);
         }
-        let pnl = self.pnl.get_mut(..n_paths).ok_or(VarFault::WorkspaceTooSmall)?;
+        let pnl = self
+            .pnl
+            .get_mut(..n_paths)
+            .ok_or(VarFault::WorkspaceTooSmall)?;
         let z = &mut self.z[..];
         let chol = &self.chol[..];
         let df = self.df;
@@ -574,9 +588,22 @@ impl McWorkspace {
         self.simulate(exposures, n_paths, seed)?;
         let pnl = &self.pnl[..n_paths];
         let (var, es) = var_es_into(pnl, alpha, &mut self.buf, true)?;
-        let se = bootstrap_core(pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15, &mut self.buf, &mut self.est)?;
+        let se = bootstrap_core(
+            pnl,
+            alpha,
+            n_boot,
+            seed ^ 0x9E37_79B9_7F4A_7C15,
+            &mut self.buf,
+            &mut self.est,
+        )?;
         let se_kde = kde_core(pnl, alpha, -var, &mut self.buf)?;
-        Ok(McStats { var, es, se, se_kde, jitter: self.jitter })
+        Ok(McStats {
+            var,
+            es,
+            se,
+            se_kde,
+            jitter: self.jitter,
+        })
     }
 
     /// Simulate once and return the S2 VaR only, with the same bits as
@@ -584,7 +611,13 @@ impl McWorkspace {
     ///
     /// # Errors
     /// As [`McWorkspace::run`] without the `n_boot` check.
-    pub fn var(&mut self, exposures: &[f64], alpha: f64, n_paths: usize, seed: u64) -> FastResult<f64> {
+    pub fn var(
+        &mut self,
+        exposures: &[f64],
+        alpha: f64,
+        n_paths: usize,
+        seed: u64,
+    ) -> FastResult<f64> {
         check_alpha(alpha)?;
         self.simulate(exposures, n_paths, seed)?;
         Ok(var_es_into(&self.pnl[..n_paths], alpha, &mut self.buf, false)?.0)

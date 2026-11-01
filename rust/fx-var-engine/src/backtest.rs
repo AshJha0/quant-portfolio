@@ -67,7 +67,10 @@ pub type BaselInput = KupiecInput;
 fn check_coverage_input(inp: &KupiecInput) -> Result<()> {
     crate::tail::validate_alpha(inp.alpha)?;
     if inp.n_obs < 1 {
-        return Err(FxVarError::Invalid(format!("n_obs must be >= 1, got {}", inp.n_obs)));
+        return Err(FxVarError::Invalid(format!(
+            "n_obs must be >= 1, got {}",
+            inp.n_obs
+        )));
     }
     if inp.n_exceptions < 0 {
         return Err(FxVarError::Invalid(format!(
@@ -178,7 +181,9 @@ pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Re
     crate::tail::validate_alpha(alpha)?;
     let t = pnl.len();
     if t == 0 {
-        return Err(FxVarError::Invalid("acerbi_szekely_z2: empty pnl".to_string()));
+        return Err(FxVarError::Invalid(
+            "acerbi_szekely_z2: empty pnl".to_string(),
+        ));
     }
     for (name, s) in [("var", var), ("es", es)] {
         if s.len() != 1 && s.len() != t {
@@ -194,10 +199,14 @@ pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Re
         ));
     }
     if var.iter().any(|v| *v < 0.0) {
-        return Err(FxVarError::Invalid("acerbi_szekely_z2: VaR must be >= 0".to_string()));
+        return Err(FxVarError::Invalid(
+            "acerbi_szekely_z2: VaR must be >= 0".to_string(),
+        ));
     }
     if es.iter().any(|v| !(*v > 0.0)) {
-        return Err(FxVarError::Invalid("acerbi_szekely_z2: ES must be > 0".to_string()));
+        return Err(FxVarError::Invalid(
+            "acerbi_szekely_z2: ES must be > 0".to_string(),
+        ));
     }
     let pick = |s: &[f64], i: usize| if s.len() == 1 { s[0] } else { s[i] };
     let denom = t as f64 * alpha;
@@ -227,14 +236,24 @@ pub fn acerbi_szekely_z2(pnl: &[f64], var: &[f64], es: &[f64], alpha: f64) -> Re
 pub fn kupiec_pof(input: &KupiecInput) -> Result<KupiecResult> {
     check_coverage_input(input)?;
     let lr = kupiec_lr(input);
-    Ok(LrTest { lr, p: chi2_sf(lr, 1.0)? })
+    Ok(LrTest {
+        lr,
+        p: chi2_sf(lr, 1.0)?,
+    })
 }
 
 /// Old Kupiec call `(n_exceptions, n_obs, confidence)`, kept for one
 /// release. `alpha = 1 - confidence`; forwards to [`kupiec_pof`].
-#[deprecated(since = "0.2.0", note = "use kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })")]
+#[deprecated(
+    since = "0.2.0",
+    note = "use kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })"
+)]
 pub fn kupiec_pof_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> Result<LrTest> {
-    kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha: 1.0 - confidence })
+    kupiec_pof(&KupiecInput {
+        n_obs,
+        n_exceptions,
+        alpha: 1.0 - confidence,
+    })
 }
 
 /// Christoffersen (1998) independence test on a 0/1 exception series
@@ -245,10 +264,14 @@ pub fn kupiec_pof_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> 
 /// [`FxVarError::Invalid`] for fewer than 2 observations or non-0/1 values.
 pub fn christoffersen_independence(exceedances: &[i32]) -> Result<LrTest> {
     if exceedances.len() < 2 {
-        return Err(FxVarError::invalid("need at least 2 observations for the independence test"));
+        return Err(FxVarError::invalid(
+            "need at least 2 observations for the independence test",
+        ));
     }
     if exceedances.iter().any(|&e| e != 0 && e != 1) {
-        return Err(FxVarError::invalid("exceedances must be a 0/1 (or boolean) series"));
+        return Err(FxVarError::invalid(
+            "exceedances must be a 0/1 (or boolean) series",
+        ));
     }
     let (mut n00, mut n01, mut n10, mut n11) = (0.0, 0.0, 0.0, 0.0);
     for t in 1..exceedances.len() {
@@ -259,14 +282,25 @@ pub fn christoffersen_independence(exceedances: &[i32]) -> Result<LrTest> {
             _ => n11 += 1.0, // (1, 1): values were checked to be 0/1 above
         }
     }
-    let pi01 = if n00 + n01 > 0.0 { n01 / (n00 + n01) } else { 0.0 };
-    let pi11 = if n10 + n11 > 0.0 { n11 / (n10 + n11) } else { 0.0 };
+    let pi01 = if n00 + n01 > 0.0 {
+        n01 / (n00 + n01)
+    } else {
+        0.0
+    };
+    let pi11 = if n10 + n11 > 0.0 {
+        n11 / (n10 + n11)
+    } else {
+        0.0
+    };
     let pi = (n01 + n11) / (n00 + n01 + n10 + n11);
     let ll0 = xlogy(n00 + n10, 1.0 - pi) + xlogy(n01 + n11, pi);
     let ll1 = xlogy(n00, 1.0 - pi01) + xlogy(n01, pi01) + xlogy(n10, 1.0 - pi11) + xlogy(n11, pi11);
     let raw = -2.0 * (ll0 - ll1);
     let lr = if raw.is_finite() { raw.max(0.0) } else { 0.0 };
-    Ok(LrTest { lr, p: chi2_sf(lr, 1.0)? })
+    Ok(LrTest {
+        lr,
+        p: chi2_sf(lr, 1.0)?,
+    })
 }
 
 /// Christoffersen conditional coverage: `LR_cc = LR_uc + LR_ind`, `chi2(2)`.
@@ -275,10 +309,17 @@ pub fn christoffersen_independence(exceedances: &[i32]) -> Result<LrTest> {
 /// Same as [`kupiec_pof`] / [`christoffersen_independence`].
 pub fn conditional_coverage(exceedances: &[i32], alpha: f64) -> Result<LrTest> {
     let x: i64 = exceedances.iter().map(|&e| e as i64).sum();
-    let uc = kupiec_pof(&KupiecInput { n_obs: exceedances.len() as i64, n_exceptions: x, alpha })?;
+    let uc = kupiec_pof(&KupiecInput {
+        n_obs: exceedances.len() as i64,
+        n_exceptions: x,
+        alpha,
+    })?;
     let ind = christoffersen_independence(exceedances)?;
     let lr = uc.lr + ind.lr;
-    Ok(LrTest { lr, p: chi2_sf(lr, 2.0)? })
+    Ok(LrTest {
+        lr,
+        p: chi2_sf(lr, 2.0)?,
+    })
 }
 
 /// Basel traffic-light zone.
@@ -350,9 +391,20 @@ pub fn basel_traffic_light(input: &BaselInput) -> Result<TrafficLight> {
 
 /// Old call `(n_exceptions, n_obs, confidence)`, kept for one release.
 /// `alpha = 1 - confidence`; forwards to [`basel_traffic_light`].
-#[deprecated(since = "0.2.0", note = "use basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha })")]
-pub fn basel_traffic_light_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> Result<TrafficLight> {
-    basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha: 1.0 - confidence })
+#[deprecated(
+    since = "0.2.0",
+    note = "use basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha })"
+)]
+pub fn basel_traffic_light_confidence(
+    n_exceptions: i64,
+    n_obs: i64,
+    confidence: f64,
+) -> Result<TrafficLight> {
+    basel_traffic_light(&BaselInput {
+        n_obs,
+        n_exceptions,
+        alpha: 1.0 - confidence,
+    })
 }
 
 /// Full VaR backtest summary over a forecast/realisation window.
@@ -386,13 +438,21 @@ pub struct BacktestResult {
 /// a negative VaR forecast, or non-finite values in either series (NaN
 /// policy: refuse; see the note below on why `is_nan` alone is not
 /// enough).
-pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> Result<BacktestResult> {
+pub fn evaluate_var_backtest(
+    pnl: &[f64],
+    var_forecasts: &[f64],
+    alpha: f64,
+) -> Result<BacktestResult> {
     validate_alpha(alpha)?;
     if pnl.len() != var_forecasts.len() {
-        return Err(FxVarError::invalid("pnl and var_forecasts must have equal length"));
+        return Err(FxVarError::invalid(
+            "pnl and var_forecasts must have equal length",
+        ));
     }
     if pnl.len() < 2 {
-        return Err(FxVarError::invalid("need at least 2 observations to backtest"));
+        return Err(FxVarError::invalid(
+            "need at least 2 observations to backtest",
+        ));
     }
     // `is_finite`, not `!is_nan`. The exception test below is `-p > v`:
     // with a NaN on either side it is FALSE, so the day is silently
@@ -400,7 +460,11 @@ pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> 
     // records ZERO breaches and sails through Kupiec, Christoffersen and
     // the Basel traffic light in the green zone. `+inf` on either side
     // does the same thing. Both must be errors.
-    if pnl.iter().chain(var_forecasts.iter()).any(|v| !v.is_finite()) {
+    if pnl
+        .iter()
+        .chain(var_forecasts.iter())
+        .any(|v| !v.is_finite())
+    {
         return Err(FxVarError::invalid(
             "backtest inputs contain NaN or infinite values; a non-finite day \
              compares false against any threshold and would be silently scored as \
@@ -414,16 +478,26 @@ pub fn evaluate_var_backtest(pnl: &[f64], var_forecasts: &[f64], alpha: f64) -> 
         ));
     }
 
-    let exceedances: Vec<i32> =
-        pnl.iter().zip(var_forecasts).map(|(&p, &v)| if -p > v { 1 } else { 0 }).collect();
+    let exceedances: Vec<i32> = pnl
+        .iter()
+        .zip(var_forecasts)
+        .map(|(&p, &v)| if -p > v { 1 } else { 0 })
+        .collect();
     let x: i64 = exceedances.iter().map(|&e| e as i64).sum();
     let n = pnl.len();
 
-    let input = KupiecInput { n_obs: n as i64, n_exceptions: x, alpha };
+    let input = KupiecInput {
+        n_obs: n as i64,
+        n_exceptions: x,
+        alpha,
+    };
     let kupiec = kupiec_pof(&input)?;
     let independence = christoffersen_independence(&exceedances)?;
     let lr_cc = kupiec.lr + independence.lr;
-    let conditional = LrTest { lr: lr_cc, p: chi2_sf(lr_cc, 2.0)? };
+    let conditional = LrTest {
+        lr: lr_cc,
+        p: chi2_sf(lr_cc, 2.0)?,
+    };
     let traffic_light = basel_traffic_light(&input)?;
 
     Ok(BacktestResult {
@@ -447,13 +521,23 @@ mod tests {
     fn kupiec_zero_exceptions_at_nominal_rate() {
         // 2.5 exceptions expected in 250 at 99%; exactly 2 or 3 should not
         // strongly reject.
-        let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 3, alpha: 0.01 }).unwrap();
+        let r = kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 3,
+            alpha: 0.01,
+        })
+        .unwrap();
         assert!(r.p > 0.05);
     }
 
     #[test]
     fn kupiec_excess_exceptions_reject() {
-        let r = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 30, alpha: 0.01 }).unwrap();
+        let r = kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 30,
+            alpha: 0.01,
+        })
+        .unwrap();
         assert!(r.p < 0.01);
     }
 
@@ -470,12 +554,27 @@ mod tests {
 
     #[test]
     fn basel_zones_at_boundaries() {
-        let green = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 4, alpha: 0.01 }).unwrap();
+        let green = basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 4,
+            alpha: 0.01,
+        })
+        .unwrap();
         assert_eq!(green.zone, Zone::Green);
-        let yellow = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0.01 }).unwrap();
+        let yellow = basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 5,
+            alpha: 0.01,
+        })
+        .unwrap();
         assert_eq!(yellow.zone, Zone::Yellow);
         assert!((yellow.multiplier - 3.40).abs() < 1e-12);
-        let red = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 10, alpha: 0.01 }).unwrap();
+        let red = basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 10,
+            alpha: 0.01,
+        })
+        .unwrap();
         assert_eq!(red.zone, Zone::Red);
         assert!((red.multiplier - 4.0).abs() < 1e-12);
     }
@@ -496,8 +595,18 @@ mod tests {
 
     #[test]
     fn invalid_inputs_error() {
-        assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: -1, alpha: 0.01 }).is_err());
-        assert!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
+        assert!(kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: -1,
+            alpha: 0.01
+        })
+        .is_err());
+        assert!(kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 251,
+            alpha: 0.01
+        })
+        .is_err());
         assert!(christoffersen_independence(&[0]).is_err());
         assert!(christoffersen_independence(&[0, 2]).is_err());
         assert!(evaluate_var_backtest(&[1.0], &[1.0, 2.0], 0.01).is_err());

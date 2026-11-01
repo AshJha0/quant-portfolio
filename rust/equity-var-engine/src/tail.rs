@@ -41,9 +41,7 @@ pub fn validate_alpha(alpha: f64) -> Result<f64> {
 
 fn check_sample(pnl: &[f64]) -> Result<()> {
     if pnl.is_empty() {
-        return Err(EqVarError::InvalidInput(
-            "P&L sample is empty".to_string(),
-        ));
+        return Err(EqVarError::InvalidInput("P&L sample is empty".to_string()));
     }
     if pnl.iter().any(|v| !v.is_finite()) {
         return Err(EqVarError::InvalidInput(

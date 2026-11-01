@@ -160,7 +160,10 @@ pub fn historical_var(
         HsMethod::Plain => vec![1.0 / n as f64; n],
         HsMethod::Age => {
             if !(opts.decay > 0.0 && opts.decay < 1.0) {
-                return Err(FxVarError::invalid(format!("decay must be in (0, 1), got {}", opts.decay)));
+                return Err(FxVarError::invalid(format!(
+                    "decay must be in (0, 1), got {}",
+                    opts.decay
+                )));
             }
             let mut w = vec![0.0; n];
             let mut sum = 0.0;
@@ -202,7 +205,11 @@ mod tests {
     use crate::matrix::Matrix;
 
     fn market() -> Market {
-        Market::new([("EUR", 1.10), ("JPY", 0.0090)], [("USD", 0.05), ("EUR", 0.03), ("JPY", 0.001)]).unwrap()
+        Market::new(
+            [("EUR", 1.10), ("JPY", 0.0090)],
+            [("USD", 0.05), ("EUR", 0.03), ("JPY", 0.001)],
+        )
+        .unwrap()
     }
 
     fn returns(n: usize) -> ReturnsMatrix {
@@ -215,25 +222,52 @@ mod tests {
 
     #[test]
     fn plain_var_positive_and_es_ge_var() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
-        let r = historical_var(&book, &market(), &returns(120), &HistoricalOptions::default()).unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
+        let r = historical_var(
+            &book,
+            &market(),
+            &returns(120),
+            &HistoricalOptions::default(),
+        )
+        .unwrap();
         assert!(r.var > 0.0);
         assert!(r.es >= r.var);
     }
 
     #[test]
     fn zero_risk_book_reports_zero() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))],
+            "USD",
+        )
+        .unwrap();
         // still has FX:EUR factor with zero exposure -> zero pnl always.
-        let r = historical_var(&book, &market(), &returns(120), &HistoricalOptions::default()).unwrap();
+        let r = historical_var(
+            &book,
+            &market(),
+            &returns(120),
+            &HistoricalOptions::default(),
+        )
+        .unwrap();
         assert_eq!(r.var, 0.0);
         assert_eq!(r.es, 0.0);
     }
 
     #[test]
     fn age_weighted_reacts_to_recent_regime() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
-        let mut opts = HistoricalOptions { method: HsMethod::Age, ..Default::default() };
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
+        let mut opts = HistoricalOptions {
+            method: HsMethod::Age,
+            ..Default::default()
+        };
         opts.decay = 0.9;
         let r = historical_var(&book, &market(), &returns(120), &opts).unwrap();
         assert!(r.var > 0.0);
@@ -242,21 +276,44 @@ mod tests {
 
     #[test]
     fn filtered_hs_runs() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
-        let opts = HistoricalOptions { method: HsMethod::Filtered, ..Default::default() };
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
+        let opts = HistoricalOptions {
+            method: HsMethod::Filtered,
+            ..Default::default()
+        };
         let r = historical_var(&book, &market(), &returns(120), &opts).unwrap();
         assert!(r.var > 0.0);
     }
 
     #[test]
     fn insufficient_history_errors() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
-        assert!(historical_var(&book, &market(), &returns(10), &HistoricalOptions::default()).is_err());
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
+        assert!(historical_var(
+            &book,
+            &market(),
+            &returns(10),
+            &HistoricalOptions::default()
+        )
+        .is_err());
     }
 
     #[test]
     fn empty_book_errors() {
-        assert!(historical_var(&Book::empty(), &market(), &returns(120), &HistoricalOptions::default()).is_err());
+        assert!(historical_var(
+            &Book::empty(),
+            &market(),
+            &returns(120),
+            &HistoricalOptions::default()
+        )
+        .is_err());
     }
 
     #[test]
@@ -266,7 +323,11 @@ mod tests {
             data.set(t, 0, 0.00001 * ((t % 3) as f64 - 1.0));
         }
         let rets = ReturnsMatrix::new(vec!["FX:EUR".to_string()], data).unwrap();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
         let r = historical_var(&book, &market(), &rets, &HistoricalOptions::default()).unwrap();
         assert_eq!(r.flagged_peg_factors, vec!["FX:EUR".to_string()]);
         assert!(!r.warnings.is_empty());
@@ -274,9 +335,16 @@ mod tests {
 
     #[test]
     fn horizon_scaling_is_sqrt_time() {
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 10e6, None))],
+            "USD",
+        )
+        .unwrap();
         let opts1 = HistoricalOptions::default();
-        let opts10 = HistoricalOptions { horizon_days: 10.0, ..Default::default() };
+        let opts10 = HistoricalOptions {
+            horizon_days: 10.0,
+            ..Default::default()
+        };
         let r1 = historical_var(&book, &market(), &returns(120), &opts1).unwrap();
         let r10 = historical_var(&book, &market(), &returns(120), &opts10).unwrap();
         assert!((r10.var - r1.var * 10f64.sqrt()).abs() < 1e-6 * r10.var);

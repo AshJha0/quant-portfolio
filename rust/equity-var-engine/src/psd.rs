@@ -233,7 +233,9 @@ pub fn clip_psd(a: &Matrix) -> Result<Matrix> {
     check_symmetric(a)?;
     let md = mean_diag(a);
     if !(md > 0.0) {
-        return Err(EqVarError::InvalidInput(format!("mean diagonal must be > 0, got {md}")));
+        return Err(EqVarError::InvalidInput(format!(
+            "mean diagonal must be > 0, got {md}"
+        )));
     }
     let (vals, vecs) = symmetric_eigen(a)?;
     let floor = 1e-10 * md;
@@ -241,7 +243,13 @@ pub fn clip_psd(a: &Matrix) -> Result<Matrix> {
     let mut b = rebuild(&clipped, &vecs);
     let n = a.rows();
     let d: Vec<f64> = (0..n)
-        .map(|i| if b.get(i, i) > 0.0 { (a.get(i, i).max(0.0) / b.get(i, i)).sqrt() } else { 0.0 })
+        .map(|i| {
+            if b.get(i, i) > 0.0 {
+                (a.get(i, i).max(0.0) / b.get(i, i)).sqrt()
+            } else {
+                0.0
+            }
+        })
         .collect();
     for i in 0..n {
         for j in 0..n {
@@ -282,7 +290,15 @@ pub fn higham_nearest(a: &Matrix) -> Result<Matrix> {
     let mut y = Matrix::zeros(n, n);
     for i in 0..n {
         for j in 0..n {
-            y.set(i, j, if i == j { 1.0 } else { a.get(i, j) / (vol[i] * vol[j]) });
+            y.set(
+                i,
+                j,
+                if i == j {
+                    1.0
+                } else {
+                    a.get(i, j) / (vol[i] * vol[j])
+                },
+            );
         }
     }
     let mut ds = Matrix::zeros(n, n);
@@ -321,8 +337,7 @@ pub fn higham_nearest(a: &Matrix) -> Result<Matrix> {
     }
     if !converged {
         return Err(EqVarError::Numerical(
-            "Higham nearest-correlation iteration did not converge in 1000 iterations"
-                .to_string(),
+            "Higham nearest-correlation iteration did not converge in 1000 iterations".to_string(),
         ));
     }
     let mut out = Matrix::zeros(n, n);
@@ -385,7 +400,12 @@ pub fn cholesky_repair(a: &Matrix, repair: PsdRepair) -> Result<CholeskyFactor> 
                 jitter / mean_diag(a)
             ));
         }
-        return Ok(CholeskyFactor { factor, jitter, repaired: None, warnings });
+        return Ok(CholeskyFactor {
+            factor,
+            jitter,
+            repaired: None,
+            warnings,
+        });
     }
     let (vals, _) = symmetric_eigen(a)?;
     let lam_min = vals.first().copied().unwrap_or(f64::NAN);
@@ -404,10 +424,17 @@ pub fn cholesky_repair(a: &Matrix, repair: PsdRepair) -> Result<CholeskyFactor> 
         "matrix repaired with {repair:?} (most negative eigenvalue was {lam_min:e})"
     ));
     let (factor, jitter) = jitter_ladder(&repaired).ok_or_else(|| {
-        EqVarError::Numerical("repaired matrix still not factorisable within the jitter cap".to_string())
+        EqVarError::Numerical(
+            "repaired matrix still not factorisable within the jitter cap".to_string(),
+        )
     })?;
     if jitter > 0.0 {
         warnings.push(format!("repaired matrix needed diagonal jitter {jitter:e}"));
     }
-    Ok(CholeskyFactor { factor, jitter, repaired: Some(repaired), warnings })
+    Ok(CholeskyFactor {
+        factor,
+        jitter,
+        repaired: Some(repaired),
+        warnings,
+    })
 }

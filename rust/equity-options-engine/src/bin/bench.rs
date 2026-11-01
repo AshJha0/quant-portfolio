@@ -60,9 +60,22 @@ fn rows() -> Vec<Row> {
             let r = 0.03 * unit();
             let v = 0.1 + 0.5 * unit();
             let q = 0.02 * unit();
-            let ot = if i % 2 == 0 { OptionType::Call } else { OptionType::Put };
+            let ot = if i % 2 == 0 {
+                OptionType::Call
+            } else {
+                OptionType::Put
+            };
             let p = bs_price(s, k, t, r, v, q, ot).unwrap_or(0.0);
-            Row { s, k, t, r, v, q, ot, p }
+            Row {
+                s,
+                k,
+                t,
+                r,
+                v,
+                q,
+                ot,
+                p,
+            }
         })
         .collect()
 }
@@ -183,21 +196,55 @@ fn main() {
     ] {
         stats.push(measure(name, iters / 10, iters, 1, |i| {
             let x = rs[i];
-            crr_price(black_box(x.s), x.k, x.t, x.r, x.v, x.q, OptionType::Put, ex, n)
-                .unwrap_or(0.0)
+            crr_price(
+                black_box(x.s),
+                x.k,
+                x.t,
+                x.r,
+                x.v,
+                x.q,
+                OptionType::Put,
+                ex,
+                n,
+            )
+            .unwrap_or(0.0)
         }));
     }
     stats.push(measure("mc_price 10k paths anti+cv", 200, 2_000, 1, |i| {
         let x = rs[i];
-        mc_price(black_box(x.s), x.k, x.t, x.r, x.v, x.q, x.ot, 10_000, true, true, i as u64)
-            .map(|m| m.price)
-            .unwrap_or(0.0)
+        mc_price(
+            black_box(x.s),
+            x.k,
+            x.t,
+            x.r,
+            x.v,
+            x.q,
+            x.ot,
+            10_000,
+            true,
+            true,
+            i as u64,
+        )
+        .map(|m| m.price)
+        .unwrap_or(0.0)
     }));
     stats.push(measure("mc_price 1M paths anti+cv", 3, 30, 1, |i| {
         let x = rs[i];
-        mc_price(black_box(x.s), x.k, x.t, x.r, x.v, x.q, x.ot, 1_000_000, true, true, i as u64)
-            .map(|m| m.price)
-            .unwrap_or(0.0)
+        mc_price(
+            black_box(x.s),
+            x.k,
+            x.t,
+            x.r,
+            x.v,
+            x.q,
+            x.ot,
+            1_000_000,
+            true,
+            true,
+            i as u64,
+        )
+        .map(|m| m.price)
+        .unwrap_or(0.0)
     }));
 
     #[cfg(not(before))]
@@ -273,49 +320,118 @@ fn new_api(rs: &[Row], stats: &mut Vec<Stat>) {
         col(|x| x.q),
     );
     let ot: Vec<OptionType> = rs.iter().map(|x| x.ot).collect();
-    let b = BsBatch { s: &s, k: &k, t: &t, r: &r, sigma: &v, q: &q, option_type: &ot };
+    let b = BsBatch {
+        s: &s,
+        k: &k,
+        t: &t,
+        r: &r,
+        sigma: &v,
+        q: &q,
+        option_type: &ot,
+    };
     let mut out = vec![0.0; N_ROWS];
-    stats.push(per_row(measure("bs_price_batch (per row)", 200, 5_000, 1, |_| {
-        let ok = bs_price_batch(black_box(&b), &mut out).is_ok();
-        f64::from(u8::from(ok)) + out[0]
-    })));
+    stats.push(per_row(measure(
+        "bs_price_batch (per row)",
+        200,
+        5_000,
+        1,
+        |_| {
+            let ok = bs_price_batch(black_box(&b), &mut out).is_ok();
+            f64::from(u8::from(ok)) + out[0]
+        },
+    )));
     let mut cols = vec![vec![0.0; N_ROWS]; 8];
-    stats.push(per_row(measure("bs_greeks_batch (per row)", 200, 5_000, 1, |_| {
-        let [c0, c1, c2, c3, c4, c5, c6, c7] = &mut cols[..] else {
-            return 0.0;
-        };
-        let mut go = GreeksOut {
-            price: c0,
-            delta: c1,
-            gamma: c2,
-            vega: c3,
-            theta: c4,
-            rho: c5,
-            vanna: c6,
-            volga: c7,
-        };
-        let ok = bs_greeks_batch(black_box(&b), &mut go).is_ok();
-        f64::from(u8::from(ok)) + go.delta[0]
-    })));
+    stats.push(per_row(measure(
+        "bs_greeks_batch (per row)",
+        200,
+        5_000,
+        1,
+        |_| {
+            let [c0, c1, c2, c3, c4, c5, c6, c7] = &mut cols[..] else {
+                return 0.0;
+            };
+            let mut go = GreeksOut {
+                price: c0,
+                delta: c1,
+                gamma: c2,
+                vega: c3,
+                theta: c4,
+                rho: c5,
+                vanna: c6,
+                volga: c7,
+            };
+            let ok = bs_greeks_batch(black_box(&b), &mut go).is_ok();
+            f64::from(u8::from(ok)) + go.delta[0]
+        },
+    )));
 
     let mut ws = CrrWorkspace::with_steps(1000);
     for (name, ex, n, iters) in [
-        ("try_crr_price n=100 european", Exercise::European, 100, 20_000),
-        ("try_crr_price n=100 american", Exercise::American, 100, 20_000),
-        ("try_crr_price n=1000 european", Exercise::European, 1000, 2_000),
-        ("try_crr_price n=1000 american", Exercise::American, 1000, 2_000),
+        (
+            "try_crr_price n=100 european",
+            Exercise::European,
+            100,
+            20_000,
+        ),
+        (
+            "try_crr_price n=100 american",
+            Exercise::American,
+            100,
+            20_000,
+        ),
+        (
+            "try_crr_price n=1000 european",
+            Exercise::European,
+            1000,
+            2_000,
+        ),
+        (
+            "try_crr_price n=1000 american",
+            Exercise::American,
+            1000,
+            2_000,
+        ),
     ] {
         stats.push(measure(name, iters / 10, iters, 1, |i| {
             let x = rs[i];
-            try_crr_price(black_box(x.s), x.k, x.t, x.r, x.v, x.q, OptionType::Put, ex, n, &mut ws)
-                .unwrap_or(0.0)
+            try_crr_price(
+                black_box(x.s),
+                x.k,
+                x.t,
+                x.r,
+                x.v,
+                x.q,
+                OptionType::Put,
+                ex,
+                n,
+                &mut ws,
+            )
+            .unwrap_or(0.0)
         }));
     }
     let mut mc = McWorkspace::new();
     for (name, n_paths, threads, warm, iters) in [
-        ("try_mc_price 10k paths anti+cv 1 thread", 10_000, 1, 200, 2_000),
-        ("try_mc_price 1M paths anti+cv 1 thread", 1_000_000, 1, 3, 30),
-        ("try_mc_price 1M paths anti+cv 8 threads", 1_000_000, 8, 3, 30),
+        (
+            "try_mc_price 10k paths anti+cv 1 thread",
+            10_000,
+            1,
+            200,
+            2_000,
+        ),
+        (
+            "try_mc_price 1M paths anti+cv 1 thread",
+            1_000_000,
+            1,
+            3,
+            30,
+        ),
+        (
+            "try_mc_price 1M paths anti+cv 8 threads",
+            1_000_000,
+            8,
+            3,
+            30,
+        ),
     ] {
         stats.push(measure(name, warm, iters, 1, |i| {
             let x = rs[i];

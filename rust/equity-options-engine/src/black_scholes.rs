@@ -279,7 +279,7 @@ pub fn erfc(x: f64) -> f64 {
     }
 }
 
-    // Cody's coefficients, regime |x| <= 0.46875: erf(x) = x P(x^2)/Q(x^2).
+// Cody's coefficients, regime |x| <= 0.46875: erf(x) = x P(x^2)/Q(x^2).
 const CODY_A: [f64; 5] = [
     3.161_123_743_870_565_6e0,
     1.138_641_541_510_501_6e2,

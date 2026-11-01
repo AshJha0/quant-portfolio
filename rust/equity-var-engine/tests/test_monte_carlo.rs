@@ -43,7 +43,10 @@ fn normal_converges_to_parametric_within_3se() {
     let se = var_order_statistic_se(&pnl, 0.01).unwrap();
     assert!(se > 0.0);
     assert!(se < 0.02 * exact_var);
-    assert!((mc_var - exact_var).abs() < 3.0 * se, "mc={mc_var} exact={exact_var} se={se}");
+    assert!(
+        (mc_var - exact_var).abs() < 3.0 * se,
+        "mc={mc_var} exact={exact_var} se={se}"
+    );
     assert!((mc_es - exact_es).abs() < 4.0 * se);
 }
 
@@ -73,8 +76,14 @@ fn student_t_fatter_than_normal_at_99_and_converges_to_closed_form() {
     assert!(t_var > n_var);
     assert!(t_es > n_es);
     let exact_t = parametric_var(&EXPOSURES, &cov, 0.01, TailModel::StudentT { df: 5.0 }).unwrap();
-    let pnl_t = monte_carlo_pnl(&EXPOSURES, &cov, 200_000, TailModel::StudentT { df: 5.0 }, 11)
-        .unwrap();
+    let pnl_t = monte_carlo_pnl(
+        &EXPOSURES,
+        &cov,
+        200_000,
+        TailModel::StudentT { df: 5.0 },
+        11,
+    )
+    .unwrap();
     let se_t = var_order_statistic_se(&pnl_t, 0.01).unwrap();
     assert!((t_var - exact_t).abs() < 3.0 * se_t);
 }
@@ -83,7 +92,8 @@ fn student_t_fatter_than_normal_at_99_and_converges_to_closed_form() {
 fn es_dominates_var() {
     let cov = demo_cov();
     for seed in [0u64, 1, 2] {
-        let var = monte_carlo_var(&EXPOSURES, &cov, 0.025, 50_000, TailModel::Normal, seed).unwrap();
+        let var =
+            monte_carlo_var(&EXPOSURES, &cov, 0.025, 50_000, TailModel::Normal, seed).unwrap();
         let es = monte_carlo_es(&EXPOSURES, &cov, 0.025, 50_000, TailModel::Normal, seed).unwrap();
         assert!(es >= var, "seed={seed}");
     }
@@ -143,8 +153,15 @@ fn monte_carlo_validation() {
     assert!(monte_carlo_var(&[], &cov, 0.01, 1000, TailModel::Normal, 0).is_err());
     assert!(monte_carlo_var(&[1.0], &cov, 0.01, 1000, TailModel::Normal, 0).is_err());
     assert!(monte_carlo_var(&EXPOSURES, &cov, 0.6, 1000, TailModel::Normal, 0).is_err());
-    assert!(monte_carlo_var(&EXPOSURES, &cov, 0.01, 1000, TailModel::StudentT { df: 2.0 }, 0)
-        .is_err());
+    assert!(monte_carlo_var(
+        &EXPOSURES,
+        &cov,
+        0.01,
+        1000,
+        TailModel::StudentT { df: 2.0 },
+        0
+    )
+    .is_err());
     assert!(simulate_factor_returns(&cov, 0, TailModel::Normal, 0).is_err());
     let tiny_pnl = vec![0.0; 50];
     assert!(var_order_statistic_se(&tiny_pnl, 0.01).is_err());

@@ -22,7 +22,17 @@ fn deep_itm_call_approaches_discounted_forward_minus_strike() {
         "deep ITM call ~ discounted forward intrinsic",
     );
     // Delta pinned to the discount factor.
-    let d = delta(s, k, t, rd, rf, sig, OptionType::Call, DeltaConvention::Spot).unwrap();
+    let d = delta(
+        s,
+        k,
+        t,
+        rd,
+        rf,
+        sig,
+        OptionType::Call,
+        DeltaConvention::Spot,
+    )
+    .unwrap();
     assert_close(d, (-rf * t).exp(), 1e-10, "deep ITM call delta");
 }
 
@@ -113,7 +123,10 @@ fn every_entry_point_rejects_non_finite_inputs() {
                 if slot == 5 { b } else { sig },
             );
             let label = format!("slot {slot} = {b}");
-            assert!(gk_price(s_, k_, t_, rd_, rf_, sig_, ot).is_err(), "gk_price {label}");
+            assert!(
+                gk_price(s_, k_, t_, rd_, rf_, sig_, ot).is_err(),
+                "gk_price {label}"
+            );
             assert!(d1(s_, k_, t_, rd_, rf_, sig_).is_err(), "d1 {label}");
             assert!(d2(s_, k_, t_, rd_, rf_, sig_).is_err(), "d2 {label}");
             assert!(
@@ -149,15 +162,33 @@ fn every_entry_point_rejects_non_finite_inputs() {
             }
         }
         // Non-six-argument surfaces.
-        assert!(black76_price(b, k, t, rd, sig, ot).is_err(), "black76 F={b}");
-        assert!(black76_price(1.11, b, t, rd, sig, ot).is_err(), "black76 K={b}");
-        assert!(black76_price(1.11, k, b, rd, sig, ot).is_err(), "black76 T={b}");
-        assert!(black76_price(1.11, k, t, b, sig, ot).is_err(), "black76 r_d={b}");
-        assert!(black76_price(1.11, k, t, rd, b, ot).is_err(), "black76 sigma={b}");
+        assert!(
+            black76_price(b, k, t, rd, sig, ot).is_err(),
+            "black76 F={b}"
+        );
+        assert!(
+            black76_price(1.11, b, t, rd, sig, ot).is_err(),
+            "black76 K={b}"
+        );
+        assert!(
+            black76_price(1.11, k, b, rd, sig, ot).is_err(),
+            "black76 T={b}"
+        );
+        assert!(
+            black76_price(1.11, k, t, b, sig, ot).is_err(),
+            "black76 r_d={b}"
+        );
+        assert!(
+            black76_price(1.11, k, t, rd, b, ot).is_err(),
+            "black76 sigma={b}"
+        );
         assert!(cip_forward(b, t, rd, rf).is_err(), "cip_forward S={b}");
         assert!(cip_forward(s, b, rd, rf).is_err(), "cip_forward T={b}");
         assert!(cip_forward(s, t, b, rf).is_err(), "cip_forward r_d={b}");
-        assert!(forward_points(s, t, rd, rf, b).is_err(), "forward_points pip={b}");
+        assert!(
+            forward_points(s, t, rd, rf, b).is_err(),
+            "forward_points pip={b}"
+        );
         assert!(
             synthetic_forward_from_options(b, 0.01, k, t, rd).is_err(),
             "synthetic_forward call={b}"
@@ -166,7 +197,10 @@ fn every_entry_point_rejects_non_finite_inputs() {
             synthetic_forward_from_options(0.02, b, k, t, rd).is_err(),
             "synthetic_forward put={b}"
         );
-        assert!(atm_forward_strike(b, t, rd, rf).is_err(), "atm_forward_strike S={b}");
+        assert!(
+            atm_forward_strike(b, t, rd, rf).is_err(),
+            "atm_forward_strike S={b}"
+        );
         assert!(
             atm_dns_strike(s, t, rd, rf, b, DeltaConvention::SpotPa).is_err(),
             "atm_dns_strike sigma={b}"
@@ -177,13 +211,31 @@ fn every_entry_point_rejects_non_finite_inputs() {
         );
         // Delta conversions: a NaN delta must not be scaled into a NaN
         // hedge ratio.
-        assert!(spot_to_forward_delta(b, t, rf).is_err(), "spot_to_forward_delta {b}");
-        assert!(forward_to_spot_delta(b, t, rf).is_err(), "forward_to_spot_delta {b}");
-        assert!(premium_adjust_spot_delta(b, 0.02, s).is_err(), "pa delta={b}");
-        assert!(premium_adjust_spot_delta(0.5, b, s).is_err(), "pa price={b}");
-        assert!(premium_adjust_spot_delta(0.5, 0.02, b).is_err(), "pa spot={b}");
+        assert!(
+            spot_to_forward_delta(b, t, rf).is_err(),
+            "spot_to_forward_delta {b}"
+        );
+        assert!(
+            forward_to_spot_delta(b, t, rf).is_err(),
+            "forward_to_spot_delta {b}"
+        );
+        assert!(
+            premium_adjust_spot_delta(b, 0.02, s).is_err(),
+            "pa delta={b}"
+        );
+        assert!(
+            premium_adjust_spot_delta(0.5, b, s).is_err(),
+            "pa price={b}"
+        );
+        assert!(
+            premium_adjust_spot_delta(0.5, 0.02, b).is_err(),
+            "pa spot={b}"
+        );
         // Implied vol: a NaN premium is a corrupt quote, not a vol.
-        assert!(implied_vol(b, s, k, t, rd, rf, ot).is_err(), "implied_vol price={b}");
+        assert!(
+            implied_vol(b, s, k, t, rd, rf, ot).is_err(),
+            "implied_vol price={b}"
+        );
         // FD bump size.
         assert!(
             finite_difference_greeks(s, k, t, rd, rf, sig, ot, b).is_err(),
@@ -211,8 +263,14 @@ fn hundredfold_moneyness_and_multidecade_tenors() {
             assert!(c.is_finite() && p.is_finite(), "S={s} K={k} T={t}");
             assert!(c >= 0.0 && p >= 0.0, "S={s} K={k} T={t}: {c}, {p}");
             // Static bounds: 0 <= C <= S e^{-r_f T}, 0 <= P <= K e^{-r_d T}.
-            assert!(c <= s * (-rf * t).exp() * (1.0 + 1e-12), "call bound S={s} K={k} T={t}");
-            assert!(p <= k * (-rd * t).exp() * (1.0 + 1e-12), "put bound S={s} K={k} T={t}");
+            assert!(
+                c <= s * (-rf * t).exp() * (1.0 + 1e-12),
+                "call bound S={s} K={k} T={t}"
+            );
+            assert!(
+                p <= k * (-rd * t).exp() * (1.0 + 1e-12),
+                "put bound S={s} K={k} T={t}"
+            );
             // Two-rate parity, scale-relative (a 100x book is a large
             // notional; an absolute tolerance would be a different, and
             // much harsher, demand at S = 100 than at S = 1).

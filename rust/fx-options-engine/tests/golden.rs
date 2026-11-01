@@ -24,7 +24,10 @@ fn evaluate(r: &GoldenRecord) -> HashMap<&'static str, f64> {
     let mut m = HashMap::new();
     match r.func {
         "gk" if r.outputs.len() == 1 => {
-            m.insert("price", gk_price(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap());
+            m.insert(
+                "price",
+                gk_price(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap(),
+            );
         }
         "gk" => {
             let g = analytic_greeks(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap();
@@ -47,19 +50,39 @@ fn evaluate(r: &GoldenRecord) -> HashMap<&'static str, f64> {
             }
         }
         "iv" => {
-            m.insert("sigma", implied_vol(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap());
+            m.insert(
+                "sigma",
+                implied_vol(x[0], x[1], x[2], x[3], x[4], x[5], ot).unwrap(),
+            );
         }
         "strike" => {
             let conv = CONVENTIONS[r.flag as usize];
-            m.insert("K", strike_from_delta(x[0], x[1], x[2], x[3], x[4], x[5], ot, conv).unwrap());
+            m.insert(
+                "K",
+                strike_from_delta(x[0], x[1], x[2], x[3], x[4], x[5], ot, conv).unwrap(),
+            );
         }
         "dns_atm" => {
-            let conv = if r.flag == 1 { DeltaConvention::SpotPa } else { DeltaConvention::Spot };
-            m.insert("K", atm_dns_strike(x[0], x[1], x[2], x[3], x[4], conv).unwrap());
+            let conv = if r.flag == 1 {
+                DeltaConvention::SpotPa
+            } else {
+                DeltaConvention::Spot
+            };
+            m.insert(
+                "K",
+                atm_dns_strike(x[0], x[1], x[2], x[3], x[4], conv).unwrap(),
+            );
         }
         "crr" => {
-            let ex = if r.flag == 1 { Exercise::American } else { Exercise::European };
-            m.insert("price", binomial_price(x[0], x[1], x[2], x[3], x[4], x[5], ot, x[6] as u32, ex).unwrap());
+            let ex = if r.flag == 1 {
+                Exercise::American
+            } else {
+                Exercise::European
+            };
+            m.insert(
+                "price",
+                binomial_price(x[0], x[1], x[2], x[3], x[4], x[5], ot, x[6] as u32, ex).unwrap(),
+            );
         }
         "fwd" => {
             m.insert("forward", cip_forward(x[0], x[1], x[2], x[3]).unwrap());

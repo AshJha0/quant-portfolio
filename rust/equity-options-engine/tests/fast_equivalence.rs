@@ -8,8 +8,8 @@ use eq_options_engine::fast::{
     GreeksOut,
 };
 use eq_options_engine::{
-    black76_greeks, black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price,
-    BsGreeks, CrrWorkspace, Exercise, McWorkspace, OptionType,
+    black76_greeks, black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price, BsGreeks,
+    CrrWorkspace, Exercise, McWorkspace, OptionType,
 };
 
 /// Small xorshift for varied inputs (test-only, fixed seed).
@@ -47,7 +47,11 @@ fn rows(n: usize) -> Vec<Row> {
                 r: -0.03 + 0.15 * g.unit(),
                 v: 0.01 + 2.0 * g.unit(),
                 q: 0.1 * g.unit(),
-                ot: if i % 2 == 0 { OptionType::Call } else { OptionType::Put },
+                ot: if i % 2 == 0 {
+                    OptionType::Call
+                } else {
+                    OptionType::Put
+                },
             };
             match i % 41 {
                 0 => row.t = 0.0,
@@ -65,33 +69,55 @@ fn rows(n: usize) -> Vec<Row> {
 }
 
 fn greek_bits(g: &BsGreeks) -> [u64; 8] {
-    [g.price, g.delta, g.gamma, g.vega, g.theta, g.rho, g.vanna, g.volga].map(f64::to_bits)
+    [
+        g.price, g.delta, g.gamma, g.vega, g.theta, g.rho, g.vanna, g.volga,
+    ]
+    .map(f64::to_bits)
 }
 
 #[test]
 fn try_api_matches_classic_bit_for_bit() {
     for x in rows(20_000) {
-        let a = bs_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot).ok().map(f64::to_bits);
-        let b = try_bs_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot).ok().map(f64::to_bits);
+        let a = bs_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot)
+            .ok()
+            .map(f64::to_bits);
+        let b = try_bs_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot)
+            .ok()
+            .map(f64::to_bits);
         assert_eq!(a, b);
 
-        let a = bs_greeks(x.s, x.k, x.t, x.r, x.v, x.q, x.ot).ok().map(|g| greek_bits(&g));
-        let b = try_bs_greeks(x.s, x.k, x.t, x.r, x.v, x.q, x.ot).ok().map(|g| greek_bits(&g));
+        let a = bs_greeks(x.s, x.k, x.t, x.r, x.v, x.q, x.ot)
+            .ok()
+            .map(|g| greek_bits(&g));
+        let b = try_bs_greeks(x.s, x.k, x.t, x.r, x.v, x.q, x.ot)
+            .ok()
+            .map(|g| greek_bits(&g));
         assert_eq!(a, b);
 
-        let a = black76_price(x.s, x.k, x.t, x.r, x.v, x.ot).ok().map(f64::to_bits);
-        let b = try_black76_price(x.s, x.k, x.t, x.r, x.v, x.ot).ok().map(f64::to_bits);
+        let a = black76_price(x.s, x.k, x.t, x.r, x.v, x.ot)
+            .ok()
+            .map(f64::to_bits);
+        let b = try_black76_price(x.s, x.k, x.t, x.r, x.v, x.ot)
+            .ok()
+            .map(f64::to_bits);
         assert_eq!(a, b);
 
-        let a = black76_greeks(x.s, x.k, x.t, x.r, x.v, x.ot).ok().map(|g| g.delta.to_bits());
-        let b = try_black76_greeks(x.s, x.k, x.t, x.r, x.v, x.ot).ok().map(|g| g.delta.to_bits());
+        let a = black76_greeks(x.s, x.k, x.t, x.r, x.v, x.ot)
+            .ok()
+            .map(|g| g.delta.to_bits());
+        let b = try_black76_greeks(x.s, x.k, x.t, x.r, x.v, x.ot)
+            .ok()
+            .map(|g| g.delta.to_bits());
         assert_eq!(a, b);
 
         if let Ok(p) = bs_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot) {
             for quote in [p, 0.5 * p, 1.5 * p] {
                 let a = implied_vol(quote, x.s, x.k, x.t, x.r, x.q, x.ot);
                 let b = try_implied_vol(quote, x.s, x.k, x.t, x.r, x.q, x.ot);
-                assert_eq!(a.as_ref().ok().map(|v| v.to_bits()), b.ok().map(f64::to_bits));
+                assert_eq!(
+                    a.as_ref().ok().map(|v| v.to_bits()),
+                    b.ok().map(f64::to_bits)
+                );
                 if let Err(e) = b {
                     // Same error category as the classic API.
                     let classic: eq_options_engine::PricingError = e.into();
@@ -125,13 +151,23 @@ fn batch_matches_scalar_bit_for_bit() {
         col(|x| x.q),
     );
     let ot: Vec<OptionType> = ok.iter().map(|x| x.ot).collect();
-    let b = BsBatch { s: &s, k: &k, t: &t, r: &r, sigma: &v, q: &q, option_type: &ot };
+    let b = BsBatch {
+        s: &s,
+        k: &k,
+        t: &t,
+        r: &r,
+        sigma: &v,
+        q: &q,
+        option_type: &ot,
+    };
     let n = ok.len();
 
     let mut prices = vec![0.0; n];
     bs_price_batch(&b, &mut prices).unwrap();
     let mut cols = vec![vec![0.0; n]; 8];
-    let [c0, c1, c2, c3, c4, c5, c6, c7] = &mut cols[..] else { unreachable!() };
+    let [c0, c1, c2, c3, c4, c5, c6, c7] = &mut cols[..] else {
+        unreachable!()
+    };
     let mut out = GreeksOut {
         price: c0,
         delta: c1,
@@ -158,7 +194,10 @@ fn batch_matches_scalar_bit_for_bit() {
     let mut out2 = vec![0.0; n];
     assert_eq!(
         bs_price_batch(&bb, &mut out2),
-        Err(BatchError { index: 7, code: ErrorCode::NanInput })
+        Err(BatchError {
+            index: 7,
+            code: ErrorCode::NanInput
+        })
     );
     assert_eq!(out2[6].to_bits(), prices[6].to_bits());
 
@@ -176,7 +215,9 @@ fn crr_workspace_matches_classic_bit_for_bit() {
     for (i, x) in rows(1_500).into_iter().enumerate() {
         let n = 1 + (i * 7) % 400;
         for ex in [Exercise::European, Exercise::American] {
-            let a = crr_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot, ex, n).ok().map(f64::to_bits);
+            let a = crr_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot, ex, n)
+                .ok()
+                .map(f64::to_bits);
             let b = try_crr_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot, ex, n, &mut ws)
                 .ok()
                 .map(f64::to_bits);
@@ -185,7 +226,18 @@ fn crr_workspace_matches_classic_bit_for_bit() {
     }
     let x = (100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Put);
     assert_eq!(
-        try_crr_price(x.0, x.1, x.2, x.3, x.4, x.5, x.6, Exercise::American, 0, &mut ws),
+        try_crr_price(
+            x.0,
+            x.1,
+            x.2,
+            x.3,
+            x.4,
+            x.5,
+            x.6,
+            Exercise::American,
+            0,
+            &mut ws
+        ),
         Err(ErrorCode::StepsOutOfRange)
     );
 }
@@ -196,9 +248,11 @@ fn mc_workspace_matches_classic_bit_for_bit() {
     for (i, x) in rows(240).into_iter().enumerate() {
         let n_paths = 2 + 37 * i;
         for (anti, cv) in [(false, false), (true, false), (false, true), (true, true)] {
-            let a = mc_price(x.s, x.k, x.t, x.r, x.v, x.q, x.ot, n_paths, anti, cv, i as u64)
-                .ok()
-                .map(|m| [m.price, m.std_error, m.ci_low, m.ci_high].map(f64::to_bits));
+            let a = mc_price(
+                x.s, x.k, x.t, x.r, x.v, x.q, x.ot, n_paths, anti, cv, i as u64,
+            )
+            .ok()
+            .map(|m| [m.price, m.std_error, m.ci_low, m.ci_high].map(f64::to_bits));
             let b = try_mc_price(
                 x.s, x.k, x.t, x.r, x.v, x.q, x.ot, n_paths, anti, cv, i as u64, 1, &mut ws,
             )
@@ -225,13 +279,17 @@ fn mc_is_deterministic_across_runs_and_thread_counts() {
             for run in 0..2 {
                 for threads in [1, 2, 3, 4, 7, 12] {
                     let m = try_mc_price(
-                        args.0, args.1, args.2, args.3, args.4, args.5, args.6, n_paths, anti,
-                        cv, 2024, threads, &mut ws,
+                        args.0, args.1, args.2, args.3, args.4, args.5, args.6, n_paths, anti, cv,
+                        2024, threads, &mut ws,
                     )
                     .unwrap();
                     assert_eq!(
                         (m.price.to_bits(), m.std_error.to_bits(), m.n_paths),
-                        (reference.price.to_bits(), reference.std_error.to_bits(), reference.n_paths),
+                        (
+                            reference.price.to_bits(),
+                            reference.std_error.to_bits(),
+                            reference.n_paths
+                        ),
                         "run {run} n={n_paths} anti={anti} cv={cv} threads={threads}"
                     );
                 }

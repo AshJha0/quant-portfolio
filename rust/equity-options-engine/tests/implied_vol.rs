@@ -34,12 +34,9 @@ fn round_trip_recovers_sigma_within_condition_bound_across_grid() {
                                 }
                                 continue;
                             }
-                            let iv = implied_vol(price, s, k, t, r, q, ot)
-                                .unwrap_or_else(|e| {
-                                    panic!(
-                                        "IV failed at (K={k}, T={t}, sigma={sigma}, {ot:?}): {e}"
-                                    )
-                                });
+                            let iv = implied_vol(price, s, k, t, r, q, ot).unwrap_or_else(|e| {
+                                panic!("IV failed at (K={k}, T={t}, sigma={sigma}, {ot:?}): {e}")
+                            });
                             assert!(
                                 (iv - sigma).abs() <= tol,
                                 "round trip (K={k}, T={t}, r={r}, q={q}, {ot:?}): \
@@ -143,8 +140,7 @@ fn tiny_vol_and_near_expiry_are_recovered() {
                 Ok(iv) => {
                     // Price tolerance is absolute (1e-10), so the vol
                     // tolerance it buys scales as 1e-10 / vega.
-                    let vega = eq_options_engine::bs_greeks(s, k, t, r, sigma, q,
-                                                            OptionType::Call)
+                    let vega = eq_options_engine::bs_greeks(s, k, t, r, sigma, q, OptionType::Call)
                         .unwrap()
                         .vega;
                     let vol_tol = (1e-10 / vega).max(1e-12) * 10.0;
@@ -163,14 +159,23 @@ fn tiny_vol_and_near_expiry_are_recovered() {
     // an arbitrage bound, not solved to a fictitious vol.
     let floor = bs_price(s, k, 1.0, r, 0.0, q, OptionType::Call).unwrap();
     let res = implied_vol(floor, s, k, 1.0, r, q, OptionType::Call);
-    assert!(matches!(res, Err(PricingError::ArbitrageBound(_))), "got {res:?}");
+    assert!(
+        matches!(res, Err(PricingError::ArbitrageBound(_))),
+        "got {res:?}"
+    );
     // Just inside the floor the solver returns a small positive vol that
     // reprices back to the quote within the solver's price tolerance.
     let quote = floor + 1e-6;
     let iv = implied_vol(quote, s, k, 1.0, r, q, OptionType::Call).unwrap();
-    assert!(iv > 0.0 && iv < 0.05, "expected a small positive vol, got {iv}");
+    assert!(
+        iv > 0.0 && iv < 0.05,
+        "expected a small positive vol, got {iv}"
+    );
     let repriced = bs_price(s, k, 1.0, r, iv, q, OptionType::Call).unwrap();
-    assert!((repriced - quote).abs() < 1e-9, "reprice {repriced} vs quote {quote}");
+    assert!(
+        (repriced - quote).abs() < 1e-9,
+        "reprice {repriced} vs quote {quote}"
+    );
 }
 
 #[test]
@@ -187,5 +192,8 @@ fn long_dated_high_vol_flat_vega_regime_stays_accurate() {
     let (s, k, t, r, q, sigma) = (100.0, 100.0, 25.0, 0.10, 0.0, 3.0);
     let price = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
     let iv = implied_vol(price, s, k, t, r, q, OptionType::Put).unwrap();
-    assert!((iv - sigma).abs() < 2e-4, "recovered {iv}, expected ~{sigma}");
+    assert!(
+        (iv - sigma).abs() < 2e-4,
+        "recovered {iv}, expected ~{sigma}"
+    );
 }

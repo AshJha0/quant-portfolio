@@ -6,15 +6,22 @@
 
 /// Worker threads to use by default: the machine's available parallelism.
 pub(crate) fn default_threads() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
 }
 
 /// Run `f(first_row, chunk)` over `out`, split into at most `threads`
 /// contiguous chunks of whole rows (`row_len` elements each). A chunk never
 /// holds fewer than `min_rows` rows, so small inputs stay on the caller's
 /// thread. Threads are created once per call inside one scope.
-pub(crate) fn for_row_chunks<T, F>(out: &mut [T], row_len: usize, min_rows: usize, threads: usize, f: F)
-where
+pub(crate) fn for_row_chunks<T, F>(
+    out: &mut [T],
+    row_len: usize,
+    min_rows: usize,
+    threads: usize,
+    f: F,
+) where
     T: Send,
     F: Fn(usize, &mut [T]) + Sync,
 {

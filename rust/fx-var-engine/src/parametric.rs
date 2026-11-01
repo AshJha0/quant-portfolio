@@ -101,10 +101,14 @@ pub fn var_covar(
     let sig = sig1 * scale;
     let mu = mean * horizon_days;
     match dist {
-        TailDist::Normal => Ok(VarEs { var: normal_var(sig, alpha, mu)?, es: normal_es(sig, alpha, mu)? }),
-        TailDist::StudentT => {
-            Ok(VarEs { var: student_t_var(sig, alpha, df, mu)?, es: student_t_es(sig, alpha, df, mu)? })
-        }
+        TailDist::Normal => Ok(VarEs {
+            var: normal_var(sig, alpha, mu)?,
+            es: normal_es(sig, alpha, mu)?,
+        }),
+        TailDist::StudentT => Ok(VarEs {
+            var: student_t_var(sig, alpha, df, mu)?,
+            es: student_t_es(sig, alpha, df, mu)?,
+        }),
     }
 }
 
@@ -230,7 +234,15 @@ pub fn parametric_var(
         CovMethod::Ewma => ewma_cov(&rets, opts.ewma_lambda)?,
     };
     res.exposures = compiled.linear_exposures(1e-6)?;
-    let ve = var_covar(&res.exposures, &cov.cov, opts.alpha, opts.horizon_days, opts.dist, opts.df, 0.0)?;
+    let ve = var_covar(
+        &res.exposures,
+        &cov.cov,
+        opts.alpha,
+        opts.horizon_days,
+        opts.dist,
+        opts.df,
+        0.0,
+    )?;
     res.var = ve.var;
     res.es = ve.es;
     res.sigma = portfolio_sigma(&res.exposures, &cov.cov)?;
@@ -297,8 +309,16 @@ fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
 /// one release (the old call used `|z| <= 4`). The interval should follow
 /// the VaR level; use [`cornish_fisher_valid`]. Non-finite input returns
 /// `false`; `n_grid` is ignored (the check is closed form).
-#[deprecated(since = "0.2.0", note = "use cornish_fisher_valid(skew, excess_kurtosis, alpha)")]
-pub fn cornish_fisher_domain_ok(skew: f64, excess_kurtosis: f64, z_range: f64, _n_grid: usize) -> bool {
+#[deprecated(
+    since = "0.2.0",
+    note = "use cornish_fisher_valid(skew, excess_kurtosis, alpha)"
+)]
+pub fn cornish_fisher_domain_ok(
+    skew: f64,
+    excess_kurtosis: f64,
+    z_range: f64,
+    _n_grid: usize,
+) -> bool {
     if !skew.is_finite() || !excess_kurtosis.is_finite() || !z_range.is_finite() {
         return false;
     }
@@ -326,7 +346,9 @@ pub fn cornish_fisher_var(
     validate_alpha(alpha)?;
     validate_horizon(horizon_days)?;
     if !(sigma >= 0.0) || !sigma.is_finite() {
-        return Err(FxVarError::invalid(format!("sigma must be finite and >= 0, got {sigma}")));
+        return Err(FxVarError::invalid(format!(
+            "sigma must be finite and >= 0, got {sigma}"
+        )));
     }
     if !skew.is_finite() || !excess_kurtosis.is_finite() || !mean.is_finite() {
         return Err(FxVarError::invalid(format!(
@@ -431,7 +453,11 @@ mod tests {
     #[test]
     fn zero_factor_book_reports_zero_parametric_var() {
         let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-        let book = Book::new(vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))], "USD").unwrap();
+        let book = Book::new(
+            vec![Position::Spot(SpotPosition::new("EURUSD", 0.0, None))],
+            "USD",
+        )
+        .unwrap();
         let mut data = Matrix::zeros(120, 1);
         for t in 0..120 {
             data.set(t, 0, 0.01 * (t as f64).sin());

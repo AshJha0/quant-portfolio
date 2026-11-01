@@ -172,7 +172,10 @@ fn price_is_monotone_in_vol_and_convex_in_strike() {
     for i in 1..=20 {
         let sigma = 0.05 * i as f64;
         let c = bs_price(s, 100.0, t, r, sigma, q, OptionType::Call).unwrap();
-        assert!(c > last, "call price not increasing in vol at sigma={sigma}");
+        assert!(
+            c > last,
+            "call price not increasing in vol at sigma={sigma}"
+        );
         last = c;
     }
     for k in (60..=140).step_by(5) {
@@ -180,10 +183,7 @@ fn price_is_monotone_in_vol_and_convex_in_strike() {
         let lo = bs_price(s, k - 5.0, t, r, 0.2, q, OptionType::Call).unwrap();
         let mid = bs_price(s, k, t, r, 0.2, q, OptionType::Call).unwrap();
         let hi = bs_price(s, k + 5.0, t, r, 0.2, q, OptionType::Call).unwrap();
-        assert!(
-            lo - 2.0 * mid + hi >= -1e-12,
-            "butterfly negative at K={k}"
-        );
+        assert!(lo - 2.0 * mid + hi >= -1e-12, "butterfly negative at K={k}");
     }
 }
 
@@ -207,12 +207,7 @@ fn non_finite_inputs_are_rejected() {
         assert!(validate_inputs(s, k, t, sigma).is_err());
     }
     // NaN / infinite r or q must not silently produce a NaN price.
-    for (r, q) in [
-        (f64::NAN, 0.0),
-        (0.05, f64::NAN),
-        (inf, 0.0),
-        (0.05, -inf),
-    ] {
+    for (r, q) in [(f64::NAN, 0.0), (0.05, f64::NAN), (inf, 0.0), (0.05, -inf)] {
         let res = bs_price(100.0, 100.0, 1.0, r, 0.2, q, OptionType::Call);
         assert!(
             matches!(res, Err(PricingError::InvalidInput(_))),
@@ -234,7 +229,10 @@ fn extreme_moneyness_prices_are_stable() {
     assert_rel_close!(c, parity, 1e-12);
     // The matching put is worthless but must be a clean non-negative zero.
     let p = bs_price(s, k, t, r, sigma, q, OptionType::Put).unwrap();
-    assert!((0.0..1e-100).contains(&p), "deep OTM put should underflow cleanly, got {p}");
+    assert!(
+        (0.0..1e-100).contains(&p),
+        "deep OTM put should underflow cleanly, got {p}"
+    );
     // Deep OTM call (S/K = 1e-4): worthless, finite, non-negative.
     let c_otm = bs_price(1.0, 1.0e4, t, r, sigma, q, OptionType::Call).unwrap();
     assert!((0.0..1e-100).contains(&c_otm), "deep OTM call: {c_otm}");
@@ -264,10 +262,7 @@ fn very_long_and_very_short_expiries() {
     // intrinsic: which for a European put with r > 0 sits *below* the
     // undiscounted intrinsic, so `>= intrinsic` is NOT the right bound).
     let t = 1e-6;
-    for (s2, ot, intrinsic) in [
-        (105.0, OptionType::Call, 5.0),
-        (95.0, OptionType::Put, 5.0),
-    ] {
+    for (s2, ot, intrinsic) in [(105.0, OptionType::Call, 5.0), (95.0, OptionType::Put, 5.0)] {
         let v = bs_price(s2, k, t, r, sigma, q, ot).unwrap();
         let floor = bs_price(s2, k, t, r, 0.0, q, ot).unwrap();
         assert!(

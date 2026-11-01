@@ -10,8 +10,18 @@ fn sigma_zero_with_overflowing_forward_is_finite() {
     assert_eq!(c, 100.0);
     let p = bs_price(100.0, 100.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Put).unwrap();
     assert_eq!(p, 0.0);
-    let a = crr_price(100.0, 100.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call, Exercise::American, 100)
-        .unwrap();
+    let a = crr_price(
+        100.0,
+        100.0,
+        1000.0,
+        0.8,
+        0.0,
+        0.0,
+        OptionType::Call,
+        Exercise::American,
+        100,
+    )
+    .unwrap();
     assert_eq!(a, 100.0);
 }
 
@@ -23,20 +33,55 @@ fn overflowing_discount_factor_is_an_error_not_inf() {
 
 #[test]
 fn mc_with_overflowing_drift_is_an_error() {
-    let r = mc_price(100.0, 100.0, 1000.0, 0.8, 0.2, 0.0, OptionType::Call, 1000, true, true, 1);
+    let r = mc_price(
+        100.0,
+        100.0,
+        1000.0,
+        0.8,
+        0.2,
+        0.0,
+        OptionType::Call,
+        1000,
+        true,
+        true,
+        1,
+    );
     assert!(r.is_err(), "got {r:?}");
 }
 
 #[test]
 fn american_put_at_zero_spot_waits_when_rates_are_negative() {
     for r in [-0.02, -0.005] {
-        let v = crr_price(0.0, 100.0, 1.0, r, 0.2, 0.0, OptionType::Put, Exercise::American, 100)
-            .unwrap();
-        let expected = 100.0 * (-r * 1.0_f64).exp();
-        assert!((v - expected).abs() <= 4.0 * f64::EPSILON * expected, "{v} vs {expected}");
-    }
-    let v = crr_price(0.0, 100.0, 1.0, 0.03, 0.2, 0.0, OptionType::Put, Exercise::American, 100)
+        let v = crr_price(
+            0.0,
+            100.0,
+            1.0,
+            r,
+            0.2,
+            0.0,
+            OptionType::Put,
+            Exercise::American,
+            100,
+        )
         .unwrap();
+        let expected = 100.0 * (-r * 1.0_f64).exp();
+        assert!(
+            (v - expected).abs() <= 4.0 * f64::EPSILON * expected,
+            "{v} vs {expected}"
+        );
+    }
+    let v = crr_price(
+        0.0,
+        100.0,
+        1.0,
+        0.03,
+        0.2,
+        0.0,
+        OptionType::Put,
+        Exercise::American,
+        100,
+    )
+    .unwrap();
     assert_eq!(v, 100.0);
 }
 
@@ -57,7 +102,10 @@ fn k90_itm_call_is_backward_stable() {
     let call = bs_price(s, k, t, r, sigma, 0.0, OptionType::Call).unwrap();
     let iv = implied_vol(call, s, k, t, r, 0.0, OptionType::Call).unwrap();
     let back = bs_price(s, k, t, r, iv, 0.0, OptionType::Call).unwrap();
-    assert!((back - call).abs() <= 16.0 * f64::EPSILON * call, "{back} vs {call}");
+    assert!(
+        (back - call).abs() <= 16.0 * f64::EPSILON * call,
+        "{back} vs {call}"
+    );
 }
 
 #[test]
@@ -69,7 +117,11 @@ fn iv_uses_at_most_ten_evaluations() {
                 let k = f64::exp(lk);
                 // OTM option on a forward of 1: call above the forward, put below.
                 let is_call = k >= 1.0;
-                let ot = if is_call { OptionType::Call } else { OptionType::Put };
+                let ot = if is_call {
+                    OptionType::Call
+                } else {
+                    OptionType::Put
+                };
                 let r = -df.ln() / t;
                 let price = bs_price(df, k, t, r, sigma, 0.0, ot).unwrap();
                 if price.is_nan() || price <= 1e-300 {
@@ -77,7 +129,10 @@ fn iv_uses_at_most_ten_evaluations() {
                 }
                 let mut evals = 0;
                 let _ = black_implied_vol(price, 1.0, k, t, df, is_call, &mut evals);
-                assert!(evals <= 10, "lk={lk} t={t} sigma={sigma}: {evals} evaluations");
+                assert!(
+                    evals <= 10,
+                    "lk={lk} t={t} sigma={sigma}: {evals} evaluations"
+                );
             }
         }
     }
