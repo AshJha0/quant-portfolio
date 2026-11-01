@@ -318,11 +318,14 @@ pub fn filtered_historical_var_factors(
 /// 2. standardise `z_t = pnl_t / sigma_t` (i.i.d.-ish innovations);
 /// 3. rescale every innovation to tomorrow's forecast
 ///    `sigma_{T+1}^2 = lam * sigma_T^2 + (1 - lam) * pnl_T^2`;
-/// 4. S2 order-statistic `alpha` quantile of the rescaled scenarios.
+/// 4. type-7 `alpha` quantile of the rescaled scenarios (old arithmetic).
 ///
 /// Deprecated: filtering the scalar P&L ignores that the book's factor mix
-/// changes the P&L vol. Use [`filtered_historical_var_factors`]. The
-/// quantile is now the S2 order statistic.
+/// changes the P&L vol. Use [`filtered_historical_var_factors`].
+///
+/// Kept for one release with its old arithmetic unchanged, as in the Python
+/// reference, so existing numbers do not move: full-sample population
+/// variance seed and type-7 interpolated quantile.
 #[deprecated(
     since = "0.2.0",
     note = "P&L-level FHS; use filtered_historical_var_factors (per-factor S9)"
@@ -330,13 +333,31 @@ pub fn filtered_historical_var_factors(
 pub fn filtered_historical_var(pnl: &[f64], alpha: f64, lam: f64) -> Result<f64> {
     validate_alpha(alpha)?;
     validate_pnl(pnl, MIN_OBS)?;
-    let (sigma, sigma_next) = ewma_volatility_forecast(pnl, lam)?;
-    let scenarios: Vec<f64> = pnl
+    if !(lam > 0.0 && lam < 1.0) {
+        return Err(EqVarError::InvalidInput(format!(
+            "decay lam must be in (0, 1), got {lam}"
+        )));
+    }
+    let mut seed = crate::stats::population_variance(pnl)?;
+    if seed <= 0.0 {
+        seed = 1e-16;
+    }
+    let n = pnl.len();
+    let mut sig2 = vec![0.0; n];
+    sig2[0] = seed;
+    for t in 1..n {
+        sig2[t] = lam * sig2[t - 1] + (1.0 - lam) * pnl[t - 1] * pnl[t - 1];
+    }
+    let sigma: Vec<f64> = sig2.iter().map(|v| v.max(1e-32).sqrt()).collect();
+    let sigma_next =
+        (lam * sigma[n - 1] * sigma[n - 1] + (1.0 - lam) * pnl[n - 1] * pnl[n - 1]).sqrt();
+    let mut scenarios: Vec<f64> = pnl
         .iter()
         .zip(sigma.iter())
         .map(|(p, s)| p / s * sigma_next)
         .collect();
-    crate::tail::empirical_var(&scenarios, alpha)
+    scenarios.sort_by(f64::total_cmp);
+    Ok(-linear_quantile_sorted(&scenarios, alpha))
 }
 
 /// Square-root-of-time scaling: `VaR_h = VaR_1 * sqrt(h)`.
