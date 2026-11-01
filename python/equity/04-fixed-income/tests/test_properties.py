@@ -595,26 +595,26 @@ class TestScenarioProperties:
 class TestDayCountProperties:
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_zero_on_identical_dates(self, conv):
-        assert fr.year_fraction(D(2026, 3, 15), D(2026, 3, 15), conv) == 0.0
+        assert _yf(D(2026, 3, 15), D(2026, 3, 15), conv) == 0.0
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_antisymmetric(self, conv):
         a, b = D(2025, 2, 10), D(2026, 7, 4)
-        assert fr.year_fraction(a, b, conv) == pytest.approx(
-            -fr.year_fraction(b, a, conv), rel=1e-12
+        assert _yf(a, b, conv) == pytest.approx(
+            -_yf(b, a, conv), rel=1e-12
         )
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_is_additive_across_a_split_date(self, conv):
         a, mid, b = D(2025, 2, 10), D(2025, 9, 30), D(2026, 7, 4)
-        assert fr.year_fraction(a, b, conv) == pytest.approx(
-            fr.year_fraction(a, mid, conv) + fr.year_fraction(mid, b, conv), rel=1e-12
+        assert _yf(a, b, conv) == pytest.approx(
+            _yf(a, mid, conv) + _yf(mid, b, conv), rel=1e-12
         )
 
     @pytest.mark.parametrize("conv", fr.SUPPORTED_CONVENTIONS)
     def test_year_fraction_increases_with_the_end_date(self, conv):
         a = D(2025, 1, 1)
-        fracs = [fr.year_fraction(a, D(2025 + k, 1, 1), conv) for k in (1, 2, 5, 10)]
+        fracs = [_yf(a, D(2025 + k, 1, 1), conv) for k in (1, 2, 5, 10)]
         assert all(b > a_ for a_, b in zip(fracs, fracs[1:]))
 
     def test_act365f_exact_day_counts(self):
@@ -668,3 +668,11 @@ class TestDayCountProperties:
             fr.generate_schedule(D(2025, 1, 1), D(2030, 1, 1), 3)
         with pytest.raises(ValueError, match="after"):
             fr.generate_schedule(D(2030, 1, 1), D(2025, 1, 1), 2)
+
+
+def _yf(a, b, conv):
+    """year_fraction with a fixed reference period for ACT/ACT-ICMA."""
+    if conv == "ACT/ACT-ICMA":
+        return fr.year_fraction(a, b, conv, ref_start=D(2025, 1, 1),
+                                ref_end=D(2025, 7, 1), frequency=2)
+    return fr.year_fraction(a, b, conv)

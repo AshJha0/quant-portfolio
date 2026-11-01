@@ -6,6 +6,10 @@ Conventions
   taking a ``face`` return currency amounts.
 * ``dirty = clean + accrued``.  Accrued interest uses the bond's own day
   count within the current coupon period.
+* Under ``ACT/ACT-ICMA`` (the government-bond convention) a regular coupon
+  is exactly ``face * coupon / frequency`` and accrued interest is that
+  coupon times (days accrued / days in the period). A short front stub
+  accrues against its notional regular reference period.
 * YTM is the **street convention** periodic yield compounded ``frequency``
   times per year: cashflow ``k`` periods after settlement (fractional first
   period ``w``) is discounted by ``(1 + y/m)^-(w + k - 1)`` where
@@ -27,8 +31,11 @@ from scipy.optimize import brentq
 
 from .curve import DiscountCurve, ExtrapolationWarning
 from .daycount import (
+    SUPPORTED_CONVENTIONS,
     SUPPORTED_FREQUENCIES,
     generate_schedule,
+    is_month_end,
+    roll_months,
     year_fraction,
 )
 
@@ -84,10 +91,14 @@ class FixedRateBond:
     frequency : int
         1, 2 or 4 coupons per year.
     daycount : str
-        Accrual convention for coupons/accrued interest (default 30/360US,
-        the US corporate/agency convention; use ACT/ACT-ISDA for Treasuries).
+        Accrual convention for coupons and accrued interest. Default
+        30/360US, the US corporate and agency convention. Use
+        ``ACT/ACT-ICMA`` for Treasuries and other government bonds.
     face : float
         Redemption amount per bond (default 100).
+    eom : bool
+        End-of-month rule for the coupon schedule (default True). A
+        month-end maturity then keeps every coupon on a month end.
     """
 
     effective: dt.date
@@ -96,6 +107,7 @@ class FixedRateBond:
     frequency: int = 2
     daycount: str = "30/360US"
     face: float = 100.0
+    eom: bool = True
 
     def __post_init__(self) -> None:
         if self.frequency not in SUPPORTED_FREQUENCIES:
@@ -110,6 +122,10 @@ class FixedRateBond:
             )
         _require_finite("face", self.face)
         _require_finite("coupon", self.coupon)
+        if self.daycount not in SUPPORTED_CONVENTIONS:
+            raise ValueError(
+                f"unknown day count {self.daycount!r}; supported: {SUPPORTED_CONVENTIONS}"
+            )
         if self.face <= 0:
             raise ValueError(f"face must be > 0, got {self.face}")
         if self.coupon < 0:
@@ -117,7 +133,38 @@ class FixedRateBond:
 
     def schedule(self) -> list[dt.date]:
         """Coupon payment dates in ``(effective, maturity]``."""
-        return generate_schedule(self.effective, self.maturity, self.frequency)
+        return generate_schedule(
+            self.effective, self.maturity, self.frequency, eom=self.eom
+        )
+
+    def periods(self) -> list[tuple[dt.date, dt.date, dt.date]]:
+        """Coupon periods as ``(accrual_start, accrual_end, reference_start)``.
+
+        ``reference_start`` equals ``accrual_start`` for regular periods; for
+        a short front stub it is the notional regular period start one step
+        before the first coupon date (used by ACT/ACT-ICMA).
+        """
+        dates = self.schedule()
+        step = 12 // self.frequency
+        first_ref = roll_months(
+            self.maturity,
+            -step * len(dates),
+            eom=self.eom and is_month_end(self.maturity),
+        )
+        starts = [self.effective] + dates[:-1]
+        refs = [first_ref] + dates[:-1]
+        return list(zip(starts, dates, refs))
+
+    def accrual_fraction(
+        self, start: dt.date, end: dt.date, ref_start: dt.date, upto: dt.date
+    ) -> float:
+        """Year fraction accrued from ``start`` to ``upto`` in period ``(start, end]``."""
+        if self.daycount == "ACT/ACT-ICMA":
+            return year_fraction(
+                start, upto, "ACT/ACT-ICMA",
+                ref_start=ref_start, ref_end=end, frequency=self.frequency,
+            )
+        return year_fraction(start, upto, self.daycount)
 
 
 @dataclass(frozen=True)
@@ -151,13 +198,11 @@ def bond_cashflows(
     when ``settlement == maturity`` (all cashflows have been paid).
     """
     _check_settlement(settlement, bond.maturity)
-    dates = bond.schedule()
-    period_starts = [bond.effective] + dates[:-1]
     flows: list[tuple[dt.date, float]] = []
-    for start, end in zip(period_starts, dates):
+    for start, end, ref in bond.periods():
         if end <= settlement:
             continue
-        accr = year_fraction(start, end, bond.daycount)
+        accr = bond.accrual_fraction(start, end, ref, end)
         amount = bond.face * bond.coupon * accr
         if end == bond.maturity:
             amount += bond.face
@@ -170,13 +215,11 @@ def accrued_interest(bond: FixedRateBond, settlement: dt.date) -> float:
     _check_settlement(settlement, bond.maturity)
     if settlement <= bond.effective or settlement == bond.maturity:
         return 0.0
-    dates = bond.schedule()
-    period_starts = [bond.effective] + dates[:-1]
-    for start, end in zip(period_starts, dates):
+    for start, end, ref in bond.periods():
         if start < settlement <= end:
             if settlement == end:
                 return 0.0
-            accr = year_fraction(start, settlement, bond.daycount)
+            accr = bond.accrual_fraction(start, end, ref, settlement)
             return bond.face * bond.coupon * accr
     return 0.0
 
@@ -231,15 +274,18 @@ def _period_exponents(
             f"no remaining cashflows at settlement {settlement} "
             f"(maturity {bond.maturity}): YTM undefined"
         )
-    dates = bond.schedule()
-    period_starts = [bond.effective] + dates[:-1]
     # Fraction remaining of the period containing the *next* cashflow.  When
     # settlement is exactly a coupon date, the next period is complete: w = 1.
     first_date = flows[0][0]
     w = 1.0
-    for start, end in zip(period_starts, dates):
+    for start, end, ref in bond.periods():
         if end == first_date:
-            if settlement > start:
+            if bond.daycount == "ACT/ACT-ICMA":
+                # remaining days over days in the reference period
+                w = bond.frequency * bond.accrual_fraction(
+                    max(start, settlement), end, ref, end
+                )
+            elif settlement > start:
                 full = year_fraction(start, end, bond.daycount)
                 if full > 0:
                     w = year_fraction(settlement, end, bond.daycount) / full
