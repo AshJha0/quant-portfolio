@@ -123,7 +123,7 @@ Each assumption states what breaks when it is violated.
    stress. Breaks: hedging simulator's cost model understates slippage;
    delta conventions themselves can become ambiguous when the forward
    market dries up.
-7. **T+2 settlement and cut-time details abstracted away.** Real desks
+7. **T+2 settlement and cut-time details abstracted away.** Market practice is to
    price to the exact expiry cut (10am NY / 3pm Tokyo) and settle spot
    T+2 (T+1 USDCAD); day-count subtleties (NY holidays, weekends) shift T
    by up to ~1% for 1w options. Breaks: short-dated vols misquoted if T is

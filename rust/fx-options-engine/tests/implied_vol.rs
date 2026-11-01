@@ -64,14 +64,8 @@ fn zero_time_value_returns_zero_vol() {
     let (s, k, t, rd, rf): (f64, f64, f64, f64, f64) = (1.10, 0.80, 0.25, 0.0425, 0.0290);
     // Deep ITM call priced exactly at discounted forward intrinsic.  Build
     // the forward with the *same* arithmetic `implied_vol` uses internally
-    // (F = S * df_f / df_d, i.e. two separate `exp` calls and a division)
-    // rather than the mathematically-equivalent `S * exp((r_d - r_f) * T)`
-    // — the two expressions are not bit-identical in floating point, and
-    // `implied_vol`'s near-intrinsic detection (`price - lower <= 1e-16 *
-    // lower.max(1.0)`) is deliberately a last-ULP check, so it only fires
-    // when the caller's price matches its internal `lower` to the bit.
-    // (Mirrors the C++ engine's `ZeroTimeValueReturnsZeroVol`, which
-    // documents and relies on the identical construction.)
+    // (F = S * df_f / df_d) so the quote equals the engine's own intrinsic
+    // bound; a time value within 4 eps df_d max(F, K) of it returns 0.0.
     let df_d = (-rd * t).exp();
     let df_f = (-rf * t).exp();
     let forward = s * df_f / df_d;
