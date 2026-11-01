@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from eq_algo import (BacktestConfig, cs_zscore, generate_daily_panel,
+from eq_algo import (BacktestConfig, ExecutionConfig, cs_zscore, generate_daily_panel,
                      long_short_weights, momentum, run_backtest)
 
 
@@ -21,11 +21,13 @@ def _toy():
     return prices, signal
 
 
-def test_ledger_hand_computed_exact():
+def test_ledger_hand_computed_exact_close_auction():
+    """Close-auction fill with zero auction cost: trade at close t, earn t->t+1."""
     prices, signal = _toy()
     cfg = BacktestConfig(n_quantiles=2, gross_exposure=2.0, max_weight=1.0,
                          linear_cost_bps=10.0, impact_coef=0.0)
-    res = run_backtest(prices, signal, cfg)
+    res = run_backtest(prices, signal, cfg,
+                       execution=ExecutionConfig(mode="close_auction", auction_cost_bp=0.0))
     led = res.ledger
     # weights every day: C,D long 0.5 each; A,B short 0.5 each
     w = res.weights.iloc[0]
@@ -48,7 +50,7 @@ def test_ledger_hand_computed_exact():
 
 def test_no_lookahead_full_pipeline_mutation():
     """Mutate all data strictly after the cutoff; ledger rows <= cutoff must
-    be bit-identical (features -> signal -> weights -> costs -> returns)."""
+    be identical (features -> signal -> weights -> costs -> returns)."""
     panel = generate_daily_panel(n_stocks=40, n_days=420, seed=21)
     cfg = BacktestConfig(n_quantiles=5, linear_cost_bps=5.0, impact_coef=0.1,
                          aum=50e6, rebalance_band=0.002)

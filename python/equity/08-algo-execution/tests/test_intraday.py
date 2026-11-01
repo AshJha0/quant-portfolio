@@ -30,7 +30,9 @@ def test_permanent_impact_persists_temporary_reverts():
     square-root temporary impact appear only in the fill price."""
     cfg = IntradayConfig(mid0=100.0, day_volume=1e6, n_buckets=10,
                          sigma_daily=0.02, spread_bps=4.0, temp_coef=1.0,
-                         perm_coef=0.5, price_noise=0.0)
+                         perm_coef=0.5, price_noise=0.0, curvature=0.0)
+    # flat profile: bucket volume x n_buckets = day volume, so the bucket-
+    # volume square-root law reduces to sqrt(q / V_day)
     mkt = IntradayMarket(cfg)
     q = np.zeros(10)
     q[0] = 50_000.0
@@ -140,3 +142,25 @@ def test_execute_validation(bad):
 def test_config_validation(kwargs):
     with pytest.raises(ValueError):
         IntradayConfig(**kwargs)
+
+
+def test_thin_bucket_costs_more_than_heavy_bucket():
+    """Temporary impact uses the bucket's own volume: the same child order in
+    the thin midday bucket of a U-shaped day pays more than at the open."""
+    cfg = IntradayConfig(mid0=100.0, day_volume=1e6, n_buckets=10, sigma_daily=0.02,
+                         spread_bps=0.0, temp_coef=1.0, perm_coef=0.0,
+                         price_noise=0.0, curvature=3.0)
+    mkt = IntradayMarket(cfg)
+    prof = cfg.profile
+    q_open = np.zeros(10)
+    q_open[0] = 5_000.0
+    q_mid = np.zeros(10)
+    q_mid[5] = 5_000.0
+    c_open = mkt.execute(q_open, seed=0).fills["temp_cost"].iloc[0]
+    c_mid = mkt.execute(q_mid, seed=0).fills["temp_cost"].iloc[5]
+    assert c_mid > c_open
+    # exact ratio from the square-root law on bucket volume
+    assert c_mid / c_open == pytest.approx(np.sqrt(prof[0] / prof[5]), rel=1e-12)
+    # hand value at the open: 1.0 * 0.02 * sqrt(q / (n * v_0)) * mid
+    assert c_open == pytest.approx(0.02 * np.sqrt(5_000.0 / (10 * prof[0] * 1e6)) * 100.0,
+                                   rel=1e-12)

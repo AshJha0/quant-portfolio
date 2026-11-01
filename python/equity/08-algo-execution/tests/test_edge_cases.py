@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from eq_algo import (ACParams, BacktestConfig, IntradayConfig, IntradayMarket,
+from eq_algo import (ACParams, BacktestConfig, ExecutionConfig, IntradayConfig, IntradayMarket,
                      ac_trades, ac_trajectory, cs_zscore, deflated_sharpe_ratio,
                      generate_daily_panel, momentum, pov_schedule, run_backtest,
                      twap_schedule)
@@ -20,7 +20,10 @@ def test_one_day_backtest():
     res = run_backtest(prices, signal, BacktestConfig(n_quantiles=2, max_weight=1.0))
     assert len(res.ledger) == 1
     assert res.ledger["gross_ret"].iloc[0] == 0.0     # no return day yet
-    assert res.ledger["turnover"].iloc[0] > 0         # but the book was built
+    assert res.ledger["turnover"].iloc[0] == 0.0      # decided at close 0, fills on day 1
+    auc = run_backtest(prices, signal, BacktestConfig(n_quantiles=2, max_weight=1.0),
+                       execution=ExecutionConfig(mode="close_auction"))
+    assert auc.ledger["turnover"].iloc[0] > 0         # the auction fills at close 0
 
 
 def test_single_stock_universe_stays_flat():

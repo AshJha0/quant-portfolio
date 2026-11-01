@@ -2,7 +2,7 @@
 
 All functions keep the PIT discipline of :mod:`eq_algo.features`: a signal at
 date ``t`` uses only information available at ``t``.  Forward returns are the
-*targets* — they intentionally look ahead and must never be fed back into a
+*targets*, they intentionally look ahead and must never be fed back into a
 signal (the backtester never sees them).
 """
 
@@ -31,7 +31,7 @@ __all__ = [
 def forward_returns(prices: pd.DataFrame, horizon: int = 1) -> pd.DataFrame:
     """``h``-day forward simple return aligned at the *signal* date ``t``.
 
-    ``fwd_t = P_{t+h} / P_t - 1``.  This is a target/label — it uses future
+    ``fwd_t = P_{t+h} / P_t - 1``.  This is a target/label, it uses future
     prices by definition and exists only for evaluation, never as an input.
     """
     if horizon < 1:
@@ -189,7 +189,7 @@ def freeze_signal(signal: pd.DataFrame, band: float) -> pd.DataFrame:
     moved more than ``band`` since its last refresh.
 
     Portfolio construction downstream then sees a *frozen* signal that
-    changes rarely, so decile membership — and hence turnover — churns less
+    changes rarely, so decile membership, and hence turnover, churns less
     (``trade only when the signal moves > band``).  ``band=0`` returns the
     signal unchanged.  Names with a missing signal today output NaN (they
     leave the tradable universe) but keep their frozen value for when they

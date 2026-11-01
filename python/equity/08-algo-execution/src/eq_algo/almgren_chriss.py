@@ -191,7 +191,14 @@ def evaluate_schedules(market: IntradayMarket,
     shortfall (bps vs the arrival mid) and slippage vs VWAP/TWAP.
 
     Returns a DataFrame indexed by strategy name with columns
-    ``mean_is_bps, std_is_bps, mean_vs_vwap_bps, mean_vs_twap_bps``.
+    ``expected_is_bps`` (implementation shortfall on the same market with
+    zero price and volume noise, the model's expected cost), ``mean_is_bps``
+    and ``se_mean_is_bps`` (Monte Carlo mean and its standard error),
+    ``std_is_bps``, ``mean_vs_vwap_bps``, ``mean_vs_twap_bps``.
+
+    Publish ``expected_is_bps`` for the cost ranking and the Monte Carlo
+    columns for the risk: with a few hundred replications the common price
+    noise (std of order 100 bp) swamps differences of a few bp in the mean.
     """
     from .benchmarks import benchmark_slippage  # local import avoids cycles
 
@@ -209,8 +216,17 @@ def evaluate_schedules(market: IntradayMarket,
             is_bps[k][r] = s["vs_arrival_bps"]
             vw[k][r] = s["vs_vwap_bps"]
             tw[k][r] = s["vs_twap_bps"]
+    from dataclasses import replace as _replace
+
+    quiet = IntradayMarket(_replace(market.config, price_noise=0.0, vol_noise=0.0))
+    expected = {}
+    for k in names:
+        res0 = quiet.execute(np.asarray(schedules[k], dtype=float), side=side, seed=0)
+        expected[k] = benchmark_slippage(res0)["vs_arrival_bps"]
     rows = {k: {
+        "expected_is_bps": expected[k],
         "mean_is_bps": is_bps[k].mean(),
+        "se_mean_is_bps": is_bps[k].std(ddof=1) / np.sqrt(n_reps),
         "std_is_bps": is_bps[k].std(ddof=1),
         "mean_vs_vwap_bps": vw[k].mean(),
         "mean_vs_twap_bps": tw[k].mean(),

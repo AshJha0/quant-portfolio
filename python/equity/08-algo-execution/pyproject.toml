@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 live = ["yfinance>=0.2"]
 plots = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
