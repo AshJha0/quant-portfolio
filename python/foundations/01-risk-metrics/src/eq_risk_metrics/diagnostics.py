@@ -57,16 +57,31 @@ def normality_report(returns: pd.Series) -> NormalityReport:
         ``normality_rejected_at_5pct`` (bool, ``p < 0.05``).
     """
     returns = finite_series(returns, "normality_report", min_len=3)
-    if np.ptp(returns.to_numpy()) == 0.0:
+    x = returns.to_numpy(dtype=float)
+    # A sample is treated as constant when its spread is at or below
+    # floating-point resolution at the sample's own scale. That covers an
+    # exactly constant sample and one whose variance underflows to zero
+    # (e.g. [0, 0, 5e-324]); either way skewness and kurtosis are 0/0.
+    centred = x - x.mean()
+    m2 = float(np.mean(centred * centred))
+    scale = float(np.max(np.abs(x)))
+    if not m2 > (np.finfo(float).eps * scale) ** 2:
         raise ValueError(
-            "normality_report: the sample is constant, so skewness and "
-            "kurtosis are undefined"
+            "normality_report: the sample is constant to floating-point "
+            "resolution, so skewness and kurtosis are undefined"
         )
-    jb_stat, jb_p = stats.jarque_bera(returns)
+    skewness = float(stats.skew(x))
+    excess_kurtosis = float(stats.kurtosis(x))
+    jb_stat, jb_p = stats.jarque_bera(x)
+    if not all(np.isfinite([skewness, excess_kurtosis, jb_stat, jb_p])):
+        raise ValueError(
+            "normality_report: moments are not finite for this sample "
+            "(variance too small relative to the data's scale)"
+        )
     return {
-        "skewness": stats.skew(returns),
-        "excess_kurtosis": stats.kurtosis(returns),
-        "jarque_bera_stat": jb_stat,
-        "jarque_bera_pvalue": jb_p,
+        "skewness": skewness,
+        "excess_kurtosis": excess_kurtosis,
+        "jarque_bera_stat": float(jb_stat),
+        "jarque_bera_pvalue": float(jb_p),
         "normality_rejected_at_5pct": jb_p < 0.05,
     }
