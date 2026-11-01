@@ -1,6 +1,7 @@
 #include "fxopt/common.hpp"
 
 #include <cmath>
+#include <format>
 
 namespace fxopt {
 
@@ -10,7 +11,7 @@ namespace fxopt {
 double norm_ppf(double p) {
     if (!(p > 0.0 && p < 1.0)) {
         throw std::invalid_argument("norm_ppf requires p in (0, 1), got " +
-                                    std::to_string(p));
+                                    std::format("{}", p));
     }
     static constexpr double a[6] = {
         -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 namespace fxopt {
 
@@ -10,7 +11,7 @@ double d1(double S, double K, double T, double r_d, double r_f, double sigma) {
     const double vol_sqrt_t = sigma * std::sqrt(T);
     if (vol_sqrt_t <= kMinVol) {
         throw std::invalid_argument(
-            "d1 undefined for sigma*sqrt(T)=" + std::to_string(vol_sqrt_t) +
+            "d1 undefined for sigma*sqrt(T)=" + std::format("{}", vol_sqrt_t) +
             "; need sigma>0, T>0");
     }
     return (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) /
@@ -30,15 +31,18 @@ double gk_price(double S, double K, double T, double r_d, double r_f,
     }
     const double sqrt_t = std::sqrt(T);
     const double vol_sqrt_t = sigma * sqrt_t;
+    const double disc_s = S * std::exp(-r_f * T);
+    const double disc_k = K * std::exp(-r_d * T);
     if (vol_sqrt_t <= kMinVol) {
-        const double forward = S * std::exp((r_d - r_f) * T);
-        return std::exp(-r_d * T) * std::max(p * (forward - K), 0.0);
+        // e^{-r_d T} max(phi (F - K), 0) as S e^{-r_f T} - K e^{-r_d T}: the
+        // forward itself overflows when (r_d - r_f) T > 709.
+        return detail::finite_result(std::max(p * (disc_s - disc_k), 0.0), "gk_price");
     }
     const double d1v =
         (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
     const double d2v = d1v - vol_sqrt_t;
-    return p * (S * std::exp(-r_f * T) * norm_cdf(p * d1v) -
-                K * std::exp(-r_d * T) * norm_cdf(p * d2v));
+    return detail::finite_result(
+        p * (disc_s * norm_cdf(p * d1v) - disc_k * norm_cdf(p * d2v)), "gk_price");
 }
 
 double gk_call(double S, double K, double T, double r_d, double r_f,

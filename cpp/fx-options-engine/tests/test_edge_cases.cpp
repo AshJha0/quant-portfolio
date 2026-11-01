@@ -232,21 +232,17 @@ TEST(EdgeCases, FiniteDifferenceGreeksRejectUnbumpableVol) {
                  std::invalid_argument);
 }
 
-TEST(EdgeCases, MonteCarloSinglePairReportsFiniteStandardError) {
-    // n_paths = 2 with antithetic leaves exactly one independent sample:
-    // the SE is unestimable and must be reported as 0, not NaN.
-    const MCResult r = mc_price(1.10, 1.10, 1.0, 0.03, 0.01, 0.10,
-                                OptionType::Call, 2, 7, true, true);
-    EXPECT_TRUE(std::isfinite(r.price));
-    EXPECT_TRUE(std::isfinite(r.std_error));
-    EXPECT_DOUBLE_EQ(r.std_error, 0.0);
-    EXPECT_TRUE(std::isfinite(r.ci_low));
-    EXPECT_TRUE(std::isfinite(r.ci_high));
-    EXPECT_EQ(r.n_paths, 2);
-    // Four paths (two pairs) do produce a real error bar.
-    const MCResult r4 = mc_price(1.10, 1.10, 1.0, 0.03, 0.01, 0.10,
-                                 OptionType::Call, 4, 7, true, true);
-    EXPECT_GT(r4.std_error, 0.0);
+TEST(EdgeCases, MonteCarloTooFewIndependentSamplesThrows) {
+    // n_paths = 2 with antithetic is one independent sample: no standard
+    // error exists, so the call throws instead of reporting SE = 0. With
+    // the control variate, two samples fit the regression exactly.
+    EXPECT_THROW(mc_price(1.10, 1.10, 1.0, 0.03, 0.01, 0.10, OptionType::Call, 2, Seed{7}, true, false),
+                 std::invalid_argument);
+    EXPECT_THROW(mc_price(1.10, 1.10, 1.0, 0.03, 0.01, 0.10, OptionType::Call, 4, Seed{7}, true, true),
+                 std::invalid_argument);
+    const MCResult r = mc_price(1.10, 1.10, 1.0, 0.03, 0.01, 0.10, OptionType::Call, 6, Seed{7}, true, true);
+    EXPECT_GT(r.std_error, 0.0);
+    EXPECT_TRUE(std::isfinite(r.ci_low) && std::isfinite(r.ci_high));
 }
 
 }  // namespace

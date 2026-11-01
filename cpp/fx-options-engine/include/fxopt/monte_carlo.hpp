@@ -47,9 +47,35 @@ struct MCResult {
 /// n_paths <= 2 with antithetic on) leaves the SE unestimable; it is
 /// reported as 0.0 and the CI collapses to the point estimate, so use at
 /// least 4 antithetic paths if the error bar matters.
+/// Explicit RNG seed. The constructor is explicit so that a bool or an
+/// integer meant for another parameter cannot bind to the seed:
+/// `mc_price(..., 100000, true, true, 42)` does not compile.
+struct Seed {
+    std::uint64_t value;
+    constexpr explicit Seed(std::uint64_t v) noexcept : value(v) {}
+};
+
+/// Monte Carlo settings as one strongly typed value.
+struct McConfig {
+    std::int64_t n_paths = 100'000;  ///< draws (antithetic pairs count as 2)
+    Seed seed{0};                     ///< RNG seed
+    bool antithetic = true;           ///< mirror each draw z -> -z
+    bool control_variate = true;      ///< discounted terminal spot as control
+};
+
+MCResult mc_price(double S, double K, double T, double r_d, double r_f,
+                  double sigma, OptionType type, const McConfig& config);
+
 MCResult mc_price(double S, double K, double T, double r_d, double r_f,
                   double sigma, OptionType type,
-                  std::int64_t n_paths = 100'000, std::uint64_t seed = 0,
+                  std::int64_t n_paths = 100'000, Seed seed = Seed{0},
                   bool antithetic = true, bool control_variate = true);
+
+/// Former positional signature with a raw integer seed: deleted, because a
+/// bool argument converted to it silently. Use Seed{...} or McConfig.
+MCResult mc_price(double S, double K, double T, double r_d, double r_f,
+                  double sigma, OptionType type, std::int64_t n_paths,
+                  std::uint64_t seed, bool antithetic = true,
+                  bool control_variate = true) = delete;
 
 }  // namespace fxopt

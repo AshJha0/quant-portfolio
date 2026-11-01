@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
+#include <stdexcept>
 #include <random>
 #include <vector>
 
@@ -30,16 +32,29 @@ double normal_draw(std::mt19937_64& rng) {
 }  // namespace
 
 MCResult mc_price(double S, double K, double T, double r_d, double r_f,
+                  double sigma, OptionType type, const McConfig& config) {
+    return mc_price(S, K, T, r_d, r_f, sigma, type, config.n_paths, config.seed,
+                    config.antithetic, config.control_variate);
+}
+
+MCResult mc_price(double S, double K, double T, double r_d, double r_f,
                   double sigma, OptionType type, std::int64_t n_paths,
-                  std::uint64_t seed, bool antithetic, bool control_variate) {
+                  Seed seed_value, bool antithetic, bool control_variate) {
+    const std::uint64_t seed = seed_value.value;
     const double p_sign = phi(type);
     validate_inputs(S, K, T, r_d, r_f, sigma);
     if (T <= 0.0) {
         throw std::invalid_argument("mc_price requires T > 0");
     }
-    if (n_paths < 2) {
-        throw std::invalid_argument("n_paths must be >= 2, got " +
-                                    std::to_string(n_paths));
+    // A standard error needs two independent samples (paths, or antithetic
+    // pairs) left after fitting: three with the control variate, since two
+    // points fit the regression line exactly and leave a zero residual.
+    const std::int64_t units = antithetic ? (n_paths + 1) / 2 : n_paths;
+    const std::int64_t needed = control_variate ? 3 : 2;
+    if (units < needed) {
+        throw std::invalid_argument(std::format(
+            "n_paths = {} gives {} independent sample(s); at least {} are needed "
+            "for a standard error", n_paths, units, needed));
     }
 
     const double drift = (r_d - r_f - 0.5 * sigma * sigma) * T;
@@ -61,8 +76,10 @@ MCResult mc_price(double S, double K, double T, double r_d, double r_f,
     std::vector<double> control;
     if (control_variate) control.resize(total);
 
+    bool overflow = false;
     const auto fill = [&](std::size_t idx, double z) {
         const double s_t = S * std::exp(drift + vol * z);
+        overflow = overflow || !std::isfinite(s_t);
         discounted[idx] = df_d * std::max(p_sign * (s_t - K), 0.0);
         if (control_variate) control[idx] = df_d * s_t;
     };
@@ -78,34 +95,40 @@ MCResult mc_price(double S, double K, double T, double r_d, double r_f,
         }
     }
 
-    // Control-variate adjustment: subtract beta * (control - known mean),
-    // beta = sample cov(payoff, control) / var(control).
-    if (control_variate) {
-        const double control_mean_known = S * std::exp(-r_f * T);
-        const double mp = mean_of(discounted);
-        const double mc = mean_of(control);
-        double cov = 0.0;
-        double var_c = 0.0;
-        for (std::size_t i = 0; i < total; ++i) {
-            const double dc = control[i] - mc;
-            cov += (discounted[i] - mp) * dc;
-            var_c += dc * dc;
-        }
-        const double beta = var_c > 0.0 ? cov / var_c : 0.0;
-        for (std::size_t i = 0; i < total; ++i) {
-            discounted[i] -= beta * (control[i] - control_mean_known);
-        }
+    if (overflow) {
+        throw std::invalid_argument("simulated spots overflow a double; drift or vol too large");
     }
 
-    // SE from independent samples (pair averages when antithetic).
+    // Reduce to one value per independent draw first (the antithetic pair
+    // average), then fit the control-variate beta on those same units: the
+    // optimal beta for the pair-average estimator is
+    // Cov(pair payoff, pair control) / Var(pair control).
     std::vector<double> samples;
     if (antithetic) {
         samples.resize(half);
         for (std::size_t i = 0; i < half; ++i) {
             samples[i] = 0.5 * (discounted[i] + discounted[i + half]);
+            if (control_variate) control[i] = 0.5 * (control[i] + control[i + half]);
         }
+        if (control_variate) control.resize(half);
     } else {
         samples = std::move(discounted);
+    }
+    if (control_variate) {
+        const double control_mean_known = S * std::exp(-r_f * T);
+        const double mp = mean_of(samples);
+        const double mc = mean_of(control);
+        double cov = 0.0;
+        double var_c = 0.0;
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            const double dc = control[i] - mc;
+            cov += (samples[i] - mp) * dc;
+            var_c += dc * dc;
+        }
+        const double beta = var_c > 0.0 ? cov / var_c : 0.0;
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            samples[i] -= beta * (control[i] - control_mean_known);
+        }
     }
     const double price = mean_of(samples);
     double ss = 0.0;
@@ -114,12 +137,8 @@ MCResult mc_price(double S, double K, double T, double r_d, double r_f,
         ss += d * d;
     }
     const double n = static_cast<double>(samples.size());
-    // With fewer than two *independent* samples the sample variance is 0/0.
-    // That happens only for the degenerate n_paths <= 2 antithetic case
-    // (one mirrored pair); report SE = 0 rather than propagating NaN into
-    // the price's confidence interval.  Documented in monte_carlo.hpp.
-    const double se =
-        samples.size() > 1 ? std::sqrt(ss / (n - 1.0)) / std::sqrt(n) : 0.0;
+    // At least two independent samples are guaranteed by the check above.
+    const double se = std::sqrt(ss / (n - 1.0)) / std::sqrt(n);
 
     std::string method = antithetic ? "antithetic+" : "";
     method += control_variate ? "control_variate" : "plain";
