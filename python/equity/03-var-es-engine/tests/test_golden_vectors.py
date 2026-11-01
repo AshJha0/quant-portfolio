@@ -80,6 +80,24 @@ def ulp_distance(a: float, b: float) -> int:
     return abs(ia - ib)
 
 
+REL_TOL_OTHER_VERSIONS = 1e-10  # SciPy t-quantile moved 4.3e-12 rel between 1.15 and 1.18
+
+
+def _minor(v: str) -> tuple:
+    return tuple(v.split(".")[:2])
+
+
+def _same_minor_versions(recorded: dict) -> bool:
+    import scipy
+
+    return (_minor(recorded["numpy"]) == _minor(np.__version__)
+            and _minor(recorded["scipy"]) == _minor(scipy.__version__))
+
+
+def _rel_close(a: float, b: float) -> bool:
+    return abs(a - b) <= REL_TOL_OTHER_VERSIONS * max(abs(a), abs(b), 1e-300)
+
+
 class TestUlpDistance:
     def test_adjacent_doubles(self):
         assert ulp_distance(1.0, math.nextafter(1.0, 2.0)) == 1
@@ -93,14 +111,22 @@ class TestCommittedJsonIsReproducible:
         assert list(committed["values"]) == list(regenerated["values"])
 
     def test_every_value_within_ulp_bound(self, committed, regenerated):
+        # The ulp bound holds against the numpy/scipy minor versions the JSON
+        # was generated with. Other versions change special functions
+        # (Student-t isf, erfc) by up to ~1e2 ulps, so there the check falls
+        # back to REL_TOL_OTHER_VERSIONS, which is still far below any
+        # modelling tolerance.
+        same = _same_minor_versions(committed["versions"])
         for k, v in regenerated["values"].items():
             c = committed["values"][k]
+            pairs = list(zip(c, v)) if isinstance(v, list) else [(c, v)]
             if isinstance(v, list):
                 assert len(c) == len(v), k
-                for ci, vi in zip(c, v):
-                    assert ulp_distance(ci, vi) <= MAX_ULPS, k
-            else:
-                assert ulp_distance(c, v) <= MAX_ULPS, f"{k}: committed {c!r} vs regenerated {v!r}"
+            for ci, vi in pairs:
+                if same:
+                    assert ulp_distance(ci, vi) <= MAX_ULPS, f"{k}: committed {ci!r} vs regenerated {vi!r}"
+                else:
+                    assert _rel_close(ci, vi), f"{k}: committed {ci!r} vs regenerated {vi!r}"
 
     def test_versions_recorded(self, committed):
         assert set(committed["versions"]) == {"python", "numpy", "scipy"}
