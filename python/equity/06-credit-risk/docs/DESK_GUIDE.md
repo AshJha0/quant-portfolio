@@ -47,8 +47,8 @@ pricing input.
 
 ## 5. ICAAP / stress testing
 
-The Vasicek layer is the ICAAP engine: economic capital at 99.9% (8.20% of
-EAD on the demo book) vs Basel K (10.03%).  Stress scenarios are run by
+The Vasicek layer is the ICAAP engine: economic capital at 99.9% (8.19% of
+EAD on the synthetic demo book) vs Basel K (10.02%).  Stress scenarios are run by
 (i) shifting the calibration intercept (the OOT generator does exactly this —
 +0.5 log-odds ≈ default rate 3.0% → 4.8%), (ii) applying the downturn-LGD
 haircut, (iii) raising ρ (sector concentration stress).  The MC engine
@@ -61,13 +61,15 @@ Per SR 11-7 / EBA model-governance expectations:
 
 1. **Independent validation** (not the developers) annually: re-run
    `examples/run_pipeline.py`-equivalent on the latest cohort; the
-   VALIDATION.md tables are the pack skeleton.  Effective challenge includes
-   a challenger model (GBM benchmark) and the sklearn cross-check.
+   VALIDATION.md tables are the pack skeleton.  Effective challenge needs a
+   challenger model, which this project does not include; the sklearn
+   cross-check only re-estimates the same logit.
 2. **Ongoing monitoring, with hard triggers:**
    - **PSI > 0.25 on the score or any input → recalibrate/rebin** (the
      0.10–0.25 band → investigate). Implemented in `psi_report` / `psi_status`.
-   - Realised vs predicted default rate outside the binomial 95% band, or
-     HL p < 0.01 on the latest vintage → recalibrate intercept (at minimum).
+   - A red grade in `pd_backtest_by_grade` (binomial p < 0.001), or
+     out-of-sample HL p < 0.01 on the latest vintage (df = g, since the
+     vintage was not used in fitting) → recalibrate the intercept at minimum.
    - AUC drop > 5 points from development → redevelop.
 3. **Change control**: binning tables and coefficients are the model; any
    change is versioned and re-approved.  The leakage deny-list
@@ -88,8 +90,8 @@ Per SR 11-7 / EBA model-governance expectations:
   behavioural feature excluded, which this pipeline supports by construction.
 - **2008-style vintage effects.**  Loans originated at the top of the cycle
   (loose underwriting) default more at every score level.  Detection:
-  vintage-level HL tests, exactly the OOT demonstration here (realised 4.78%
-  vs predicted 3.80%).  Response: intercept recalibration by vintage, not
+  vintage-level HL and per-grade tests, as in the synthetic OOT
+  demonstration here (realised 4.78% vs predicted 3.81%).  Response: intercept recalibration by vintage, not
   full redevelopment, unless rank-ordering (AUC) also degrades.
 - **Sector concentration.**  The demo book is 12% construction — the riskiest
   sector (WOE −0.4 vs manufacturing).  The single-factor Vasicek treats

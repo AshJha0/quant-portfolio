@@ -276,8 +276,25 @@ def stepwise_select(
        p-value in the joint fit is < ``p_max``.
     3. Backward prune: refit and drop the worst-p feature until all < ``p_max``.
 
+    Every fit must converge; a non-converged fit raises ``ValueError``
+    rather than letting its p-values drive the selection.
+
+    The Wald p-values of the final model are post-selection: the same
+    sample chose the features, so they overstate significance. Use a
+    holdout or the out-of-time sample for inference on the chosen model.
+
     Returns the selected column names of ``woe_df``.
     """
+
+    def _fit(cols: list[str]) -> LogisticFit:
+        fit = fit_logistic(woe_df[cols], y, feature_names=cols)
+        if not fit.converged:
+            raise ValueError(
+                f"stepwise_select: logistic fit on {cols} did not converge "
+                f"in {fit.n_iter} iterations"
+            )
+        return fit
+
     ranked = [
         f for f, iv in sorted(ivs.items(), key=lambda kv: -kv[1])
         if iv_min <= iv <= iv_max and f in woe_df.columns
@@ -285,12 +302,12 @@ def stepwise_select(
     selected: list[str] = []
     for f in ranked:
         trial = selected + [f]
-        fit = fit_logistic(woe_df[trial], y, feature_names=trial)
+        fit = _fit(trial)
         if fit.p_values[-1] < p_max:
             selected = trial
     # Backward prune.
     while selected:
-        fit = fit_logistic(woe_df[selected], y, feature_names=selected)
+        fit = _fit(selected)
         pv = fit.p_values[1:]
         worst = int(np.argmax(pv))
         if pv[worst] < p_max:

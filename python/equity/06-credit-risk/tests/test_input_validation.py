@@ -90,11 +90,11 @@ def test_brier_and_hl_reject_out_of_range_pd() -> None:
     nan_pd = np.full(20, 0.5)
     nan_pd[3] = np.nan
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
-        hosmer_lemeshow(y, nan_pd, n_groups=4)
+        hosmer_lemeshow(y, nan_pd, n_groups=4, out_of_sample=True)
 
 
 def test_hl_tiny_sample_raises_informative() -> None:
     y = np.array([0.0, 1.0, 0.0])
     p = np.array([0.1, 0.6, 0.2])
     with pytest.raises(ValueError, match="n_groups"):
-        hosmer_lemeshow(y, p, n_groups=10)
+        hosmer_lemeshow(y, p, n_groups=10, out_of_sample=True)

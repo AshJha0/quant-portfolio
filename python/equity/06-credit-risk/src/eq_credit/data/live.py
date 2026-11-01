@@ -65,9 +65,18 @@ def load_credit_csv(path: str | Path, schema: str = "german") -> pd.DataFrame:
             raise ValueError(
                 f"no recognised target column among {_GERMAN_TARGETS} in {p.name}"
             )
-        # German credit convention: 1 = good, 2 (or 0) = bad -> default flag.
-        vals = df[target]
-        df["default"] = (vals != vals.mode().iloc[0]).astype(int) if vals.nunique() == 2 else (vals == 2).astype(int)
+        # Explicit codings, never guessed from class frequencies:
+        # UCI Statlog "class"/"target": 1 = good, 2 = bad;
+        # Fahrmeir-Hamerle "kredit": 1 = good, 0 = bad.
+        vals = pd.to_numeric(df[target], errors="coerce")
+        bad = 0 if target == "kredit" else 2
+        if not vals.isin([1, bad]).all():
+            raise ValueError(
+                f"target column {target!r} must use the coding 1 = good, "
+                f"{bad} = bad (UCI coding for class/target); found values "
+                f"{sorted(df[target].dropna().unique())[:5]}"
+            )
+        df["default"] = (vals == bad).astype(int)
         return df.drop(columns=[target])
     if schema == "lendingclub":
         if "loan_status" not in df.columns:

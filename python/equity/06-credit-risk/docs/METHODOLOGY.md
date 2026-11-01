@@ -32,9 +32,9 @@ scorecard because:
 - **Regulatory acceptance and SR 11-7 model risk.** IRB approval, annual
   independent validation, and audit all require a model whose full state fits
   on two pages (binning tables + coefficient table).  The Fed's SR 11-7
-  demands effective challenge: a challenger GBM is run as a *benchmark* (our
-  sklearn cross-checks play this role in miniature), but the production model
-  stays simple.
+  demands effective challenge, usually a challenger model such as a GBM. This
+  project has no challenger model; the sklearn cross-check re-estimates the
+  same logit and is a numerical check, not a challenger.
 - **Monotonicity by construction.** Business logic requires "more leverage
   never lowers the PD".  Our binning enforces monotone WOE per feature
   (except where the U-shape is real and documented, e.g. current ratio);
@@ -42,10 +42,10 @@ scorecard because:
 - **Stability under thin data.** With a 3% base rate, 30k loans contain ~900
   defaults.  A 9-coefficient logit has ~100 defaults per parameter; a GBM
   happily memorises noise at this size.
-- The cost — a few AUC points — is measured here directly: the scorecard
-  achieves AUC 0.784 vs the true-model ceiling of 0.781 on the training
-  sample (the generator's noise floor dominates), i.e. on this book the
-  scorecard leaves essentially nothing on the table.
+- On the synthetic book the scorecard reaches AUC 0.785 against a
+  true-model ceiling of 0.781. The generator draws defaults from a logistic
+  model built from the shapes WOE binning approximates, so this shows that
+  the generator and the model share a form, not that the method beats a GBM.
 
 **Alternative 2 — linear logit on raw (unbinned) ratios.**
 Cheaper, but it misses real nonlinearity.  On our book, `current_ratio` has a
@@ -101,8 +101,8 @@ property (odds double every 20 points) holds exactly and is unit-tested.
 1. **Stationarity of the feature→default relationship.**  The scorecard fitted
    on 2019–21 originations is applied to 2022+.  If the relationship shifts
    (regime change, payment holidays), calibration breaks first, discrimination
-   second — exactly what the OOT sample demonstrates (HL p = 3.8e-07 after a
-   +0.5 log-odds calibration shift).  Monitoring: PSI and vintage HL tests.
+   second. The synthetic OOT sample shows this: out-of-sample HL p = 4.7e-06
+   after a +0.5 log-odds calibration shift.  Monitoring: PSI and vintage HL tests.
 2. **One-year default horizon, cohort sampling.**  Each loan contributes one
    Bernoulli observation.  Violated by cure-and-redefault dynamics or multiple
    observation periods per loan (would need panel methods / GEE corrections to
@@ -150,7 +150,7 @@ IRB formula makes capital **procyclical** (capital requirements rise in a
 downturn exactly when capital is scarce); (ii) for IRB use, banks typically
 apply a cycle adjustment / long-run average PD per grade.  The OOT
 demonstration quantifies the PIT weakness: the realised OOT rate (4.78%)
-exceeds the mean predicted PD (3.80%) once the cycle turns.
+exceeds the mean predicted PD (3.81%) once the cycle turns.
 
 ## 7. Basel IRB and Vasicek layer
 
@@ -158,6 +158,11 @@ The IRB capital function K(PD, LGD, M) is the Vasicek 99.9% conditional PD
 minus expected loss, times a maturity adjustment — formulas and constants in
 `portfolio_risk.py`, hand-checked at PD = 1%, LGD = 45%, M = 2.5 against the
 published corporate risk weight of **92.32%** (BCBS Explanatory Note, July
-2005).  The Vasicek analytic loss CDF, its quantile, seeded Monte Carlo for
-finite portfolios, and the granularity comparison are all reproduced and
-tested; details and numbers in VALIDATION.md.
+2005).  Parameters follow Basel III final (CRE31/32): 5 bp corporate PD
+floor, M in [1, 5], 1.25 correlation multiplier for large or unregulated
+financials, no 1.06 scaling, K = max(0, LGD - EL_best) for defaulted
+exposures. There are no F-IRB supervisory LGDs or A-IRB LGD floors. The
+Vasicek layer has the analytic loss CDF and quantile, an exact
+finite-portfolio quantile by quadrature, the Gordy-Lutkebohmert
+granularity adjustment, and seeded Monte Carlo with order-statistic
+confidence intervals. Numbers are in VALIDATION.md.

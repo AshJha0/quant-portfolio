@@ -25,6 +25,8 @@ get higher PDs.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -38,6 +40,7 @@ __all__ = [
     "bootstrap_auc_ci",
     "brier_score",
     "hosmer_lemeshow",
+    "pd_backtest_by_grade",
     "calibration_table",
     "psi_from_proportions",
     "psi",
@@ -81,11 +84,15 @@ def roc_curve_points(y: np.ndarray, s: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return fpr, tpr
 
 
+# np.trapezoid exists from numpy 2.0; np.trapz is the numpy 1.x name.
+_trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+
+
 def roc_auc(y: np.ndarray, s: np.ndarray) -> float:
     """AUC from scratch: trapezoid over the ROC curve (ties handled exactly
     as in sklearn — matches ``roc_auc_score`` to machine precision)."""
     fpr, tpr = roc_curve_points(y, s)
-    return float(np.trapezoid(tpr, fpr))
+    return float(_trapezoid(tpr, fpr))
 
 
 def gini(y: np.ndarray, s: np.ndarray) -> float:
@@ -173,13 +180,40 @@ def brier_score(y: np.ndarray, pd_hat: np.ndarray) -> float:
 
 
 def hosmer_lemeshow(
-    y: np.ndarray, pd_hat: np.ndarray, n_groups: int = 10
+    y: np.ndarray,
+    pd_hat: np.ndarray,
+    n_groups: int = 10,
+    out_of_sample: bool | None = None,
 ) -> tuple[float, float, pd.DataFrame]:
-    """Hosmer-Lemeshow goodness-of-fit test on predicted-PD deciles.
+    """Hosmer-Lemeshow goodness-of-fit test on predicted-PD groups.
 
-    Returns (chi2 statistic, p-value with df = groups - 2, group table with
-    observed vs expected defaults).
+    The reference distribution depends on where the PDs come from
+    (Hosmer and Lemeshow 2000, sec. 5.2.2):
+
+    * ``out_of_sample=False``: PDs from a model fitted on these same rows.
+      Estimating the coefficients costs about two degrees of freedom, so
+      the statistic is compared with chi-square(g - 2).
+    * ``out_of_sample=True``: PDs scored on rows not used in fitting
+      (out-of-time validation, or externally supplied PDs). Nothing was
+      estimated on these rows, so the reference is chi-square(g).
+
+    g counts only groups whose expected defaults and non-defaults are both
+    positive (the others contribute nothing to the statistic). Leaving
+    ``out_of_sample`` unset is deprecated: it keeps the old in-sample
+    g - 2 behaviour and warns.
+
+    Returns (chi2 statistic, p-value, group table with observed vs
+    expected defaults).
     """
+    if out_of_sample is None:
+        warnings.warn(
+            "hosmer_lemeshow: pass out_of_sample=True for PDs scored on data "
+            "not used in fitting (df = g) or False for in-sample PDs "
+            "(df = g - 2); the implicit in-sample default will be removed",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        out_of_sample = False
     ya = np.asarray(y, dtype=float).ravel()
     pa = np.asarray(pd_hat, dtype=float).ravel()
     if len(ya) != len(pa) or len(ya) == 0:
@@ -193,6 +227,7 @@ def hosmer_lemeshow(
     groups = pd.qcut(pd.Series(pa).rank(method="first"), n_groups, labels=False)
     rows = []
     chi2 = 0.0
+    used = 0
     for g in range(n_groups):
         m = (groups == g).to_numpy()
         n_g = int(m.sum())
@@ -201,6 +236,7 @@ def hosmer_lemeshow(
         obs0, exp0 = n_g - obs1, n_g - exp1
         if exp1 > 0 and exp0 > 0:
             chi2 += (obs1 - exp1) ** 2 / exp1 + (obs0 - exp0) ** 2 / exp0
+            used += 1
         rows.append(
             {
                 "group": g + 1,
@@ -211,7 +247,12 @@ def hosmer_lemeshow(
                 "observed_rate": obs1 / n_g,
             }
         )
-    df_ = max(n_groups - 2, 1)
+    df_ = used if out_of_sample else used - 2
+    if df_ < 1:
+        raise ValueError(
+            f"Hosmer-Lemeshow needs more informative groups: {used} groups "
+            f"with positive expected counts give df = {df_}"
+        )
     p_value = float(stats.chi2.sf(chi2, df_))
     return float(chi2), p_value, pd.DataFrame(rows)
 
@@ -220,7 +261,7 @@ def calibration_table(
     y: np.ndarray, pd_hat: np.ndarray, n_bins: int = 10
 ) -> pd.DataFrame:
     """Reliability table: mean predicted PD vs observed default rate per bin."""
-    _, _, table = hosmer_lemeshow(y, pd_hat, n_groups=n_bins)
+    _, _, table = hosmer_lemeshow(y, pd_hat, n_groups=n_bins, out_of_sample=True)
     table = table.rename(columns={"mean_pd": "predicted_pd"})
     return table[["group", "n", "predicted_pd", "observed_rate"]]
 
@@ -318,3 +359,63 @@ def is_monotone(values: np.ndarray, increasing: bool = True, tol: float = 0.0) -
     """True if the sequence is monotone (within ``tol`` per step)."""
     d = np.diff(np.asarray(values, dtype=float))
     return bool(np.all(d >= -tol)) if increasing else bool(np.all(d <= tol))
+
+
+def _traffic_light(p: float) -> str:
+    """Tasche-style traffic light on a one-sided p-value for PD underestimation.
+
+    green: p >= 0.05 (observed defaults below the 95% binomial quantile);
+    amber: 0.001 <= p < 0.05; red: p < 0.001 (beyond the 99.9% quantile).
+    """
+    if p < 0.001:
+        return "red"
+    if p < 0.05:
+        return "amber"
+    return "green"
+
+
+def pd_backtest_by_grade(
+    y: np.ndarray, pd_hat: np.ndarray, grades: np.ndarray | pd.Series
+) -> pd.DataFrame:
+    """Per-grade PD back-test: binomial and Jeffreys tests with a traffic light.
+
+    For each grade with N obligors, D defaults and average PD p:
+
+    * binomial p-value: P(X >= D) for X ~ Binomial(N, p). It tests whether
+      the grade's PD is too low and assumes independent defaults, so it is
+      too strict when defaults are correlated;
+    * Jeffreys p-value (ECB 2019 instructions for IRB validation):
+      P(theta <= p) under the Beta(D + 1/2, N - D + 1/2) posterior;
+    * traffic light from the binomial p-value: green >= 0.05,
+      amber in [0.001, 0.05), red < 0.001.
+
+    Returns one row per grade in sorted grade order.
+    """
+    ya = _check_binary(y).astype(float)
+    pa = np.asarray(pd_hat, dtype=float).ravel()
+    ga = pd.Series(np.asarray(grades, dtype=object).ravel())
+    if not (len(ya) == len(pa) == len(ga)) or len(ya) == 0:
+        raise ValueError("y, pd_hat and grades must be same nonzero length")
+    if (~np.isfinite(pa)).any() or ((pa < 0) | (pa > 1)).any():
+        raise ValueError("pd_hat must lie in [0, 1] with no NaN/Inf")
+    if ga.isna().any():
+        raise ValueError("grades contain missing values")
+    rows = []
+    for g in pd.unique(ga):
+        m = (ga == g).to_numpy()
+        n = int(m.sum())
+        d = int(ya[m].sum())
+        p = float(pa[m].mean())
+        p_bin = float(stats.binom.sf(d - 1, n, p)) if d > 0 else 1.0
+        p_jef = float(stats.beta.cdf(p, d + 0.5, n - d + 0.5))
+        rows.append({
+            "grade": g, "n": n, "defaults": d, "mean_pd": p,
+            "observed_rate": d / n, "binomial_p": p_bin,
+            "jeffreys_p": p_jef, "light": _traffic_light(p_bin),
+        })
+    out = pd.DataFrame(rows)
+    try:
+        out = out.sort_values("grade", kind="stable")
+    except TypeError:
+        pass
+    return out.reset_index(drop=True)
