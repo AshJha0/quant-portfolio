@@ -1,0 +1,182 @@
+arch==8.0.0
+    # via -r requirements/ci-requirements.in
+cloudpickle==3.1.2
+    # via joblib
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via pytest
+contourpy==1.3.2 ; python_full_version < '3.11'
+    # via matplotlib
+contourpy==1.3.3 ; python_full_version == '3.11.*'
+    # via matplotlib
+contourpy==1.4.0 ; python_full_version >= '3.12'
+    # via matplotlib
+cycler==0.12.1
+    # via matplotlib
+exceptiongroup==1.3.1 ; python_full_version < '3.11'
+    # via
+    #   hypothesis
+    #   pytest
+fonttools==4.65.0 ; python_full_version < '3.11'
+    # via matplotlib
+fonttools==4.68.0 ; python_full_version >= '3.11'
+    # via matplotlib
+formulaic==1.2.2
+    # via statsmodels
+hmmlearn==0.3.3
+    # via -r requirements/ci-requirements.in
+hypothesis==6.168.5 ; python_full_version < '3.11'
+    # via -r requirements/ci-requirements.in
+hypothesis==6.170.14 ; python_full_version >= '3.11'
+    # via -r requirements/ci-requirements.in
+iniconfig==2.3.1
+    # via pytest
+interface-meta==2.0.1
+    # via formulaic
+joblib==1.6.0
+    # via scikit-learn
+kiwisolver==1.5.1
+    # via matplotlib
+matplotlib==3.10.9 ; python_full_version < '3.11'
+    # via -r requirements/ci-requirements.in
+matplotlib==3.11.2 ; python_full_version >= '3.11'
+    # via -r requirements/ci-requirements.in
+narwhals==2.28.0
+    # via
+    #   formulaic
+    #   scikit-learn
+numpy==2.2.6 ; python_full_version < '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   contourpy
+    #   formulaic
+    #   hmmlearn
+    #   matplotlib
+    #   pandas
+    #   patsy
+    #   scikit-learn
+    #   scipy
+    #   statsmodels
+numpy==2.4.6 ; python_full_version == '3.11.*'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   contourpy
+    #   formulaic
+    #   hmmlearn
+    #   matplotlib
+    #   pandas
+    #   patsy
+    #   scikit-learn
+    #   scipy
+    #   statsmodels
+numpy==2.5.4 ; python_full_version >= '3.12'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   contourpy
+    #   formulaic
+    #   hmmlearn
+    #   matplotlib
+    #   pandas
+    #   patsy
+    #   scikit-learn
+    #   scipy
+    #   statsmodels
+packaging==26.3
+    # via
+    #   arch
+    #   matplotlib
+    #   patsy
+    #   pytest
+    #   statsmodels
+pandas==2.3.3 ; python_full_version < '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   formulaic
+    #   statsmodels
+pandas==3.1.0 ; python_full_version >= '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   formulaic
+    #   statsmodels
+patsy==1.0.3
+    # via statsmodels
+pillow==12.3.0 ; python_full_version < '3.11'
+    # via matplotlib
+pillow==13.0.0 ; python_full_version >= '3.11'
+    # via matplotlib
+pluggy==1.7.0
+    # via pytest
+pygments==2.21.0
+    # via pytest
+pyparsing==3.3.3
+    # via matplotlib
+pytest==9.2.0
+    # via -r requirements/ci-requirements.in
+python-dateutil==3.0.0 ; python_full_version < '3.11'
+    # via
+    #   matplotlib
+    #   pandas
+python-dateutil==4.0.0 ; python_full_version >= '3.11'
+    # via
+    #   matplotlib
+    #   pandas
+pytz==2026.6 ; python_full_version < '3.11'
+    # via pandas
+scikit-learn==1.7.2 ; python_full_version < '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   hmmlearn
+scikit-learn==1.9.1 ; python_full_version >= '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   hmmlearn
+scipy==1.15.3 ; python_full_version < '3.11'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   formulaic
+    #   hmmlearn
+    #   scikit-learn
+    #   statsmodels
+scipy==1.17.1 ; python_full_version == '3.11.*'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   formulaic
+    #   hmmlearn
+    #   scikit-learn
+    #   statsmodels
+scipy==1.18.1 ; python_full_version >= '3.12'
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+    #   formulaic
+    #   hmmlearn
+    #   scikit-learn
+    #   statsmodels
+six==1.17.0 ; python_full_version < '3.11'
+    # via python-dateutil
+sortedcontainers==2.4.0
+    # via hypothesis
+statsmodels==0.15.0
+    # via
+    #   -r requirements/ci-requirements.in
+    #   arch
+threadpoolctl==3.7.0
+    # via scikit-learn
+tomli==2.5.0 ; python_full_version < '3.11'
+    # via pytest
+typing-extensions==4.16.0
+    # via
+    #   exceptiongroup
+    #   formulaic
+tzdata==2026.6
+    # via
+    #   pandas
+    #   python-dateutil
+wrapt==2.5.2
+    # via formulaic
