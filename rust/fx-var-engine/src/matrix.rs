@@ -224,26 +224,11 @@ impl Matrix {
         }
         let n = self.rows;
         let mut l = Matrix::zeros(n, n);
-        for i in 0..n {
-            for j in 0..=i {
-                let mut s = self.get(i, j);
-                for k in 0..j {
-                    s -= l.get(i, k) * l.get(j, k);
-                }
-                if i == j {
-                    // `!(s > 0.0)` rather than `s <= 0.0`: the latter is
-                    // FALSE for a NaN pivot, which would then propagate
-                    // through `sqrt` into an all-NaN factor.
-                    if !(s > 0.0) {
-                        return Err(FxVarError::numerical(
-                            "matrix is not positive definite (Cholesky pivot <= 0)",
-                        ));
-                    }
-                    l.set(i, j, s.sqrt());
-                } else {
-                    l.set(i, j, s / l.get(j, j));
-                }
-            }
+        // Shared kernel; fails on a pivot that is not > 0, NaN included.
+        if qp_core::linalg::cholesky_lower(&self.data, n, &mut l.data).is_err() {
+            return Err(FxVarError::numerical(
+                "matrix is not positive definite (Cholesky pivot <= 0)",
+            ));
         }
         Ok(l)
     }

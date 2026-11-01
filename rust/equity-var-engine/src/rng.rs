@@ -18,9 +18,12 @@
 //! lines of generator code freezes the stream definition forever and keeps
 //! the crate std-only (see docs/METHODOLOGY.md).
 
-const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
+use qp_core::rng::{marsaglia_tsang, GammaSource, Xoshiro256PlusPlus};
 
 /// Deterministic xoshiro256++ generator with Box–Muller normal caching.
+///
+/// The stream and the normal sampler are `qp_core::rng::Xoshiro256PlusPlus`;
+/// this type adds the gamma and chi-squared draws.
 ///
 /// # Examples
 ///
@@ -34,22 +37,18 @@ const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Rng {
-    state: [u64; 4],
-    cached_normal: Option<f64>,
+    inner: Xoshiro256PlusPlus,
 }
 
-#[inline]
-fn splitmix64(x: &mut u64) -> u64 {
-    *x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *x;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-#[inline]
-fn rotl(x: u64, k: u32) -> u64 {
-    x.rotate_left(k)
+impl GammaSource for Rng {
+    #[inline]
+    fn gamma_normal(&mut self) -> f64 {
+        self.standard_normal()
+    }
+    #[inline]
+    fn gamma_uniform(&mut self) -> f64 {
+        self.uniform()
+    }
 }
 
 impl Rng {
@@ -58,34 +57,17 @@ impl Rng {
     /// The 256-bit xoshiro state is expanded from `seed` with SplitMix64,
     /// the recommended seeding procedure (avoids the all-zero state and
     /// decorrelates nearby seeds).
+    #[inline]
     pub fn new(seed: u64) -> Self {
-        let mut sm = seed;
-        let mut state = [0u64; 4];
-        for s in &mut state {
-            *s = splitmix64(&mut sm);
-        }
-        if state == [0, 0, 0, 0] {
-            state[0] = 1; // unreachable in practice; xoshiro forbids all-zero
-        }
         Rng {
-            state,
-            cached_normal: None,
+            inner: Xoshiro256PlusPlus::new(seed),
         }
     }
 
     /// Next raw 64-bit output of xoshiro256++.
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
-        let s = &mut self.state;
-        let result = rotl(s[0].wrapping_add(s[3]), 23).wrapping_add(s[0]);
-        let t = s[1] << 17;
-        s[2] ^= s[0];
-        s[3] ^= s[1];
-        s[1] ^= s[2];
-        s[0] ^= s[3];
-        s[2] ^= t;
-        s[3] = rotl(s[3], 45);
-        result
+        self.inner.next_u64()
     }
 
     /// Uniform draw on the **open** interval `(0, 1)` with 53-bit
@@ -93,7 +75,7 @@ impl Rng {
     /// always safe under `ln`.
     #[inline]
     pub fn uniform(&mut self) -> f64 {
-        ((self.next_u64() >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0)
+        self.inner.next_uniform()
     }
 
     /// Standard normal draw via the Box–Muller transform.
@@ -103,15 +85,7 @@ impl Rng {
     /// stream is fixed and deterministic.
     #[inline]
     pub fn standard_normal(&mut self) -> f64 {
-        if let Some(z) = self.cached_normal.take() {
-            return z;
-        }
-        let u1 = self.uniform();
-        let u2 = self.uniform();
-        let r = (-2.0 * u1.ln()).sqrt();
-        let theta = TWO_PI * u2;
-        self.cached_normal = Some(r * theta.sin());
-        r * theta.cos()
+        self.inner.standard_normal()
     }
 
     /// Gamma(shape, scale = 1) draw, `shape > 0`.
@@ -120,35 +94,18 @@ impl Rng {
     /// standard boost `Gamma(a) = Gamma(a + 1) * U^{1/a}` for `shape < 1`.
     ///
     /// An invalid `shape` (NaN, infinite, or `<= 0`) returns NaN without
-    /// consuming the stream. It never panics and never loops: a NaN shape
-    /// used to make every rejection test false, so the loop never ended.
+    /// consuming the stream. It never panics and never loops.
     pub fn gamma(&mut self, shape: f64) -> f64 {
         if !(shape > 0.0) || !shape.is_finite() {
             return f64::NAN;
         }
         if shape < 1.0 {
+            // Stream order: the Gamma(shape + 1) draw first, then the boost uniform.
             let g = self.gamma(shape + 1.0);
             let u = self.uniform();
             return g * u.powf(1.0 / shape);
         }
-        let d = shape - 1.0 / 3.0;
-        let c = 1.0 / (9.0 * d).sqrt();
-        loop {
-            let x = self.standard_normal();
-            let v = 1.0 + c * x;
-            if v <= 0.0 {
-                continue;
-            }
-            let v3 = v * v * v;
-            let u = self.uniform();
-            let x2 = x * x;
-            if u < 1.0 - 0.0331 * x2 * x2 {
-                return d * v3;
-            }
-            if u.ln() < 0.5 * x2 + d * (1.0 - v3 + v3.ln()) {
-                return d * v3;
-            }
-        }
+        marsaglia_tsang(self, shape)
     }
 
     /// Chi-squared draw with `df > 0` degrees of freedom:

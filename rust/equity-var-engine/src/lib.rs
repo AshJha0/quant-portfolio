@@ -115,6 +115,15 @@ impl fmt::Display for EqVarError {
 
 impl std::error::Error for EqVarError {}
 
+impl From<qp_core::Error> for EqVarError {
+    fn from(e: qp_core::Error) -> Self {
+        match e {
+            qp_core::Error::InvalidInput(m) => EqVarError::InvalidInput(m),
+            qp_core::Error::Numerical(m) => EqVarError::Numerical(m),
+        }
+    }
+}
+
 /// Crate-wide result alias.
 pub type Result<T> = std::result::Result<T, EqVarError>;
 

@@ -25,68 +25,30 @@
 
 use crate::norm_ppf;
 
-/// SplitMix64 (Steele, Lea & Flood 2014): a tiny 64-bit generator whose
-/// single-pass output mixing makes it the standard seed expander for
-/// xoshiro/xoroshiro state initialisation.
-#[derive(Debug, Clone)]
-pub struct SplitMix64 {
-    state: u64,
-}
-
-impl SplitMix64 {
-    /// Create a generator from a `u64` seed (any value is valid).
-    #[inline]
-    pub const fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    /// Next 64-bit output.
-    #[inline]
-    pub fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-}
+pub use qp_core::rng::SplitMix64;
 
 /// xoshiro256** 1.0 (Blackman & Vigna 2018), seeded via [`SplitMix64`].
 ///
-/// Passes BigCrush; period 2^256 - 1.  Used by the Monte Carlo engine
-/// with an explicit `u64` seed for reproducible pricing runs.
+/// Passes BigCrush; period 2^256 - 1. Used by the Monte Carlo engine with
+/// an explicit `u64` seed for reproducible pricing runs. The integer
+/// generator is `qp_core::rng::Xoshiro256StarStar`; this wrapper adds the
+/// inverse-CDF normal draw.
 #[derive(Debug, Clone)]
-pub struct Xoshiro256StarStar {
-    s: [u64; 4],
-}
+pub struct Xoshiro256StarStar(qp_core::rng::Xoshiro256StarStar);
 
 impl Xoshiro256StarStar {
     /// Create a generator from a `u64` seed, expanding it into the
-    /// 256-bit state with [`SplitMix64`] (the authors' recommendation:
-    /// guarantees a non-zero state for every seed in practice).
+    /// 256-bit state with [`SplitMix64`]. Every seed gives a non-zero
+    /// state (see `qp_core::rng`).
+    #[inline]
     pub fn new(seed: u64) -> Self {
-        let mut sm = SplitMix64::new(seed);
-        let mut s = [sm.next_u64(), sm.next_u64(), sm.next_u64(), sm.next_u64()];
-        if s == [0, 0, 0, 0] {
-            // The all-zero state is the one fixed point of the generator;
-            // unreachable via SplitMix64 in practice, guarded regardless.
-            s[0] = 0x9E37_79B9_7F4A_7C15;
-        }
-        Self { s }
+        Self(qp_core::rng::Xoshiro256StarStar::new(seed))
     }
 
     /// Next 64-bit output.
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
-        let result = self.s[1].wrapping_mul(5).rotate_left(7).wrapping_mul(9);
-        let t = self.s[1] << 17;
-        self.s[2] ^= self.s[0];
-        self.s[3] ^= self.s[1];
-        self.s[1] ^= self.s[2];
-        self.s[0] ^= self.s[3];
-        self.s[2] ^= t;
-        self.s[3] = self.s[3].rotate_left(45);
-        result
+        self.0.next_u64()
     }
 
     /// Uniform draw strictly inside `(0, 1)`: the top 53 bits of a
@@ -95,7 +57,7 @@ impl Xoshiro256StarStar {
     /// finite.
     #[inline]
     pub fn next_open01(&mut self) -> f64 {
-        ((self.next_u64() >> 11) as f64 + 0.5) * (1.0 / (1u64 << 53) as f64)
+        self.0.next_open01()
     }
 
     /// Standard normal draw by inverse-CDF transform of
