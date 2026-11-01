@@ -1,7 +1,7 @@
 """Seeded synthetic market-data generators and the canned demo portfolio.
 
 All generators take an explicit ``seed`` / ``numpy.random.Generator`` and run
-offline — the test suite depends only on this module, never on live data.
+offline, the test suite depends only on this module, never on live data.
 """
 
 from __future__ import annotations

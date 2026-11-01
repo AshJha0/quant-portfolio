@@ -5,8 +5,8 @@ numbers, so they hold for any correct implementation and would immediately
 catch a sign flip, a wrong tail convention, or a broken quantile scheme.
 The properties checked here are the ones a model-validation team asks for:
 
-* coherence — ES subadditivity, positive homogeneity, translation invariance;
-* ordering — ES >= VaR, VaR monotone in alpha, t-tail >= normal tail;
+* coherence: ES subadditivity, positive homogeneity, translation invariance;
+* ordering: ES >= VaR, VaR monotone in alpha, t-tail >= normal tail;
 * scale/shift equivariance of every VaR family;
 * backtest statistics: monotone in exception count, correct degenerate limits;
 * NaN/Inf rejection and crisis-regime (vol-clustering) behaviour.
@@ -97,7 +97,7 @@ class TestOrdering:
         """The other side of variance matching, and a real trap: because the
         two distributions have the *same* variance, the t's fat tail is paid
         for with a thinner shoulder. A t(5) charges LESS than the normal at
-        95 % — so switching to a t model to 'be conservative' can lower a
+        95 %, so switching to a t model to 'be conservative' can lower a
         95 % VaR. The crossover for df=5 sits near alpha = 0.028.
         """
         sigma = 1_000.0
@@ -140,7 +140,7 @@ class TestOrdering:
 class TestCoherence:
     @pytest.mark.parametrize("alpha", [0.01, 0.05])
     def test_es_subadditive_on_random_splits(self, alpha):
-        """ES(X+Y) <= ES(X) + ES(Y) — the property VaR lacks."""
+        """ES(X+Y) <= ES(X) + ES(Y), the property VaR lacks."""
         rng = np.random.default_rng(99)
         for _ in range(25):
             x = rng.standard_t(5, 1000)
@@ -441,7 +441,7 @@ class TestHorizonScaling:
         sqrt(10) lands above the directly estimated 10-day quantile, because
         the 10-day distribution has already lost much of its excess kurtosis.
         (The opposite sign applies to a *conditional* VaR measured in a calm
-        state — see docs/METHODOLOGY.md §6.)"""
+        state, see docs/METHODOLOGY.md §8.)"""
         cov = np.array([[(0.20 / np.sqrt(252)) ** 2]])
         r = syn.simulate_garch_returns(20_000, cov, seed=88)[:, 0]
         var_1d = historical_var(r, 0.01)

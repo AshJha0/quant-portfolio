@@ -1,4 +1,4 @@
-"""eq_var — Equity market risk engine: VaR, Expected Shortfall, backtesting,
+"""eq_var: Equity market risk engine: VaR, Expected Shortfall, backtesting,
 Basel traffic light and stress testing.
 
 Pipeline: portfolio & factor mapping -> historical / parametric / Monte Carlo

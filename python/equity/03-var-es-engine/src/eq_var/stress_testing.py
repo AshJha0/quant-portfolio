@@ -166,7 +166,7 @@ def reverse_stress_delta(
 
     ``x* = -r * Sigma w / sqrt(w' Sigma w)``,   loss ``= r * sqrt(w' Sigma w)``
 
-    — the worst plausible scenario is a move along the portfolio's own
+   , the worst plausible scenario is a move along the portfolio's own
     covariance-weighted exposure direction, and the worst loss is exactly
     ``r`` portfolio standard deviations.
 

@@ -427,7 +427,7 @@ def rolling_var_backtest(
 
 
 def exception_cluster_table(exceptions: np.ndarray) -> pd.DataFrame:
-    """Table of exception days with gaps — a visual clustering diagnostic.
+    """Table of exception days with gaps, a visual clustering diagnostic.
 
     Columns: exception day index, gap since the previous exception, and a
     ``clustered`` flag (gap <= 5 business days).  Under a correct i.i.d.

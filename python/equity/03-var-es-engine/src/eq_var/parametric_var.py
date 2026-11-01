@@ -124,7 +124,7 @@ def parametric_var(
 
     Returns
     -------
-    float — VaR as a positive loss.
+    float, VaR as a positive loss.
     """
     alpha = _validate_alpha(alpha)
     horizon_days = integer("horizon_days", horizon_days, min_value=1)
@@ -236,7 +236,7 @@ def cornish_fisher_var(
 
     ``VaR = -(mean + z_cf(alpha) * sigma)`` with the CF-adjusted quantile.
     With ``check_domain=True`` (default) a ``ValueError`` is raised when
-    (skew, excess_kurt) lie outside the monotonicity region — outside it the
+    (skew, excess_kurt) lie outside the monotonicity region, outside it the
     expansion is not a quantile function and the number is not a VaR.
     """
     alpha = validate_alpha(alpha)

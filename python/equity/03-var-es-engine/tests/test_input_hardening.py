@@ -8,7 +8,7 @@ pass, ``exceptions_from_pnl(pnl, np.nan)`` recorded *zero* breaches on a
 feed made a broken model look better.
 
 The C++ (``cpp/equity-var-engine/tests/test_backtest.cpp``) and Rust
-(``rust/equity-var-engine/tests/test_backtest.rs``) twins reject NaN / inf
+(``rust/equity-var-engine/tests/test_backtest.rs``) ports reject NaN / inf
 in these paths; this module pins the same error contract on the Python
 reference so the three languages agree.
 """

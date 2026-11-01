@@ -32,7 +32,7 @@ cov = demo_covariance()
 expos = pf.delta_exposures()
 
 print("=" * 78)
-print("EQUITY VaR / ES ENGINE — demo pipeline")
+print("EQUITY VaR / ES ENGINE: demo pipeline")
 print("=" * 78)
 print(f"\nPortfolio value: ${pf.value():,.0f}")
 print("Dollar exposures (per unit factor move):")
@@ -85,7 +85,7 @@ ov = ev.overlapping_horizon_pnl(hist_pnl, 10)
 print(
     f"\n10d 99% VaR: sqrt-time {ev.scale_var_sqrt_time(ev.historical_var(hist_pnl, 0.01), 10):,.0f}"
     f" vs overlapping-window {ev.historical_var(ov, 0.01):,.0f}"
-    "  (overlapping windows are serially dependent — wide error bars)"
+    "  (overlapping windows are serially dependent, wide error bars)"
 )
 
 # MC VaR, ES and standard error from one scenario set
