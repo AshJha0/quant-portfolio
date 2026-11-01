@@ -1,0 +1,120 @@
+//! Determinism and equivalence for the latency work.
+//!
+//! * Monte Carlo gives the same bits for any thread count and across runs.
+//! * The pinned bits below were printed by the code before the parallel
+//!   rewrite (commit d71e799), so they show the rewrite changed no result.
+//! * The workspace kernels equal the allocating API bit for bit.
+
+use fx_var_engine::prelude::*;
+
+fn market() -> Market {
+    Market::new(
+        [("EUR", 1.1), ("JPY", 0.009), ("GBP", 1.27)],
+        [("USD", 0.05), ("EUR", 0.03), ("JPY", 0.001), ("GBP", 0.04)],
+    )
+    .unwrap()
+}
+
+fn book() -> Book {
+    Book::new(
+        vec![
+            Position::Spot(SpotPosition::new("EURUSD", 10e6, None)),
+            Position::Forward(ForwardPosition::new("USDJPY", 5e6, 0.5, None)),
+            Position::Spot(SpotPosition::new("GBPJPY", -3e6, None)),
+        ],
+        "EUR",
+    )
+    .unwrap()
+}
+
+fn returns() -> ReturnsMatrix {
+    let f = CompiledBook::new(&book(), &market()).unwrap().factors().to_vec();
+    let k = f.len();
+    let mut d = Matrix::zeros(300, k);
+    let mut r = Rng::new(5);
+    for t in 0..300 {
+        for j in 0..k {
+            d.set(t, j, 0.005 * r.normal());
+        }
+    }
+    ReturnsMatrix::new(f, d).unwrap()
+}
+
+fn opts(dist: McDist) -> MonteCarloOptions {
+    let mut jumps = JumpSpec { prob: 0.05, ..Default::default() };
+    jumps.mean.insert("FX:JPY".into(), -0.05);
+    jumps.stdev.insert("FX:JPY".into(), 0.02);
+    jumps.mean.insert("FX:GBP".into(), 0.03);
+    MonteCarloOptions { n_scenarios: 30_000, seed: 9, dist, df: 5.0, jumps, horizon_days: 2.0, ..Default::default() }
+}
+
+fn bits(r: &MonteCarloResult) -> Vec<u64> {
+    let mut v: Vec<u64> = r.pnl.iter().map(|x| x.to_bits()).collect();
+    v.extend([r.var, r.es, r.se_var, r.se_var_kde].iter().map(|x| x.to_bits()));
+    v
+}
+
+#[test]
+fn monte_carlo_same_bits_for_any_thread_count() {
+    let (b, m) = (book(), market());
+    let cov = sample_cov(&returns()).unwrap();
+    for dist in [McDist::Normal, McDist::StudentT, McDist::Jump] {
+        let o = opts(dist);
+        let reference = bits(&monte_carlo_var_with_threads(&b, &m, &cov, &o, 1).unwrap());
+        for threads in [0, 2, 3, 7, 12, 64] {
+            let got = bits(&monte_carlo_var_with_threads(&b, &m, &cov, &o, threads).unwrap());
+            assert!(got == reference, "{dist:?} differs at {threads} threads");
+        }
+        let again = bits(&monte_carlo_var(&b, &m, &cov, &o).unwrap());
+        assert!(again == reference, "{dist:?} differs between runs");
+    }
+}
+
+#[test]
+fn monte_carlo_matches_pre_rewrite_bits() {
+    // (var, es, se_var, se_var_kde).to_bits() from the serial code.
+    let pinned: [(McDist, [u64; 4]); 3] = [
+        (McDist::Normal, [4685455079207104509, 4686410565451505560, 4657095559504160043, 4655565937955669656]),
+        (McDist::StudentT, [4686150028457073056, 4688374324442965622, 4659162002223065256, 4658866423433919198]),
+        (McDist::Jump, [4685990298010813155, 4687073495714471209, 4657605887974892865, 4656117938015996231]),
+    ];
+    let (b, m) = (book(), market());
+    let cov = sample_cov(&returns()).unwrap();
+    for (dist, want) in pinned {
+        let r = monte_carlo_var(&b, &m, &cov, &opts(dist)).unwrap();
+        let got = [r.var.to_bits(), r.es.to_bits(), r.se_var.to_bits(), r.se_var_kde.to_bits()];
+        assert_eq!(got, want, "{dist:?}");
+    }
+}
+
+#[test]
+fn workspace_tail_equals_allocating_tail() {
+    let mut rng = Rng::new(17);
+    for n in [1usize, 2, 7, 10, 99, 100, 101, 1000, 4097] {
+        let pnl: Vec<f64> = (0..n).map(|i| if i % 13 == 0 { 0.0 } else { 1e5 * rng.normal() }).collect();
+        let mut ws = vec![f64::NAN; n + 3];
+        for alpha in [0.001, 0.01, 0.025, 0.05, 0.1, 0.25, 0.4999] {
+            let a = empirical_var_es_into(&pnl, alpha, &mut ws).unwrap();
+            let b = empirical_var_es(&pnl, alpha, None).unwrap();
+            assert_eq!((a.0.to_bits(), a.1.to_bits()), (b.0.to_bits(), b.1.to_bits()), "n={n} alpha={alpha}");
+            let v = empirical_var_into(&pnl, alpha, &mut ws).unwrap();
+            assert_eq!(v.to_bits(), empirical_var(&pnl, alpha, None).unwrap().to_bits());
+        }
+    }
+}
+
+#[test]
+fn workspace_pnl_equals_allocating_pnl() {
+    let (b, m) = (book(), market());
+    let cb = CompiledBook::new(&b, &m).unwrap();
+    let rets = returns();
+    let reference = cb.pnl_scenarios(&rets).unwrap();
+    let mut out = vec![0.0; rets.n_obs()];
+    cb.pnl_aligned_into(&rets.data, &mut out).unwrap();
+    for (s, (a, r)) in out.iter().zip(&reference).enumerate() {
+        assert_eq!(a.to_bits(), r.to_bits(), "row {s}");
+        let row = cb.pnl_row(rets.data.row(s)).unwrap();
+        assert_eq!(row.to_bits(), cb.pnl(rets.data.row(s)).unwrap().to_bits());
+        assert_eq!(row.to_bits(), r.to_bits());
+    }
+}

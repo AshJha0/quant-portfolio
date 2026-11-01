@@ -47,7 +47,7 @@ use crate::expected_shortfall::empirical_var_es;
 use crate::matrix::Matrix;
 use crate::returns::{FactorCov, ReturnsMatrix};
 use crate::rng::Rng;
-use crate::stats::{validate_alpha, validate_horizon};
+use crate::stats::{inv_norm_cdf_unchecked, validate_alpha, validate_horizon};
 use crate::{FxVarError, McDist, Result};
 
 /// Common-jump overlay for [`McDist::Jump`]: `prob` is the per-day jump
@@ -169,6 +169,23 @@ pub fn simulate_factor_returns_jitter(
     seed: u64,
     horizon_days: f64,
 ) -> Result<(ReturnsMatrix, String, f64)> {
+    simulate_threads(cov, n_scenarios, dist, df, jumps, seed, horizon_days, crate::par::default_threads())
+}
+
+/// Rows per thread below which the simulation stays serial.
+const SIM_MIN_ROWS: usize = 2048;
+
+#[allow(clippy::too_many_arguments)]
+fn simulate_threads(
+    cov: &FactorCov,
+    n_scenarios: usize,
+    dist: McDist,
+    df: f64,
+    jumps: &JumpSpec,
+    seed: u64,
+    horizon_days: f64,
+    threads: usize,
+) -> Result<(ReturnsMatrix, String, f64)> {
     validate_horizon(horizon_days)?;
     if n_scenarios < 1 {
         return Err(FxVarError::invalid("n_scenarios must be >= 1"));
@@ -248,40 +265,81 @@ pub fn simulate_factor_returns_jitter(
     }
 
     let t_scale = if dist == McDist::StudentT { ((df - 2.0) / df).sqrt() } else { 1.0 };
-    let mut z = vec![0.0; k];
-    for s in 0..n_scenarios {
-        for zi in z.iter_mut() {
-            *zi = rng.normal();
-        }
-        for i in 0..k {
-            let li = lower.row(i);
-            let mut acc = 0.0;
-            for j in 0..=i {
-                acc += li[j] * z[j];
+    let jc = jump_col.len();
+
+    // Phase 1 (serial, cheap): walk the single RNG stream in the reference
+    // order. Each scenario takes k uniforms for its normals (stored raw in
+    // its row), then its Student-t mixing draw or its jump draws, which are
+    // kept in side buffers. The stream and its order are unchanged.
+    let mut mult = if dist == McDist::StudentT { vec![0.0; n_scenarios] } else { Vec::new() };
+    let mut n_jumps_buf = if dist == McDist::Jump { vec![0.0; n_scenarios] } else { Vec::new() };
+    let mut zj_buf = if dist == McDist::Jump { vec![0.0; n_scenarios * jc] } else { Vec::new() };
+    {
+        let flat = data.as_mut_slice();
+        for s in 0..n_scenarios {
+            if let Some(row) = flat.get_mut(s * k..(s + 1) * k) {
+                for u in row.iter_mut() {
+                    *u = rng.uniform_open();
+                }
             }
-            data.set(s, i, acc);
-        }
-        if dist == McDist::StudentT {
-            let w = rng.chi_square(df) / df;
-            let m = t_scale / w.sqrt();
-            for i in 0..k {
-                let v = data.get(s, i) * m;
-                data.set(s, i, v);
-            }
-        } else if dist == McDist::Jump {
-            let n_jumps = poisson(&mut rng, jump_lam_h) as f64;
-            // Draw the jump normals unconditionally so the scenario count,
-            // not the jump pattern, fixes the random stream.
-            for idx in 0..jump_col.len() {
-                let zj = if jump_std[idx] > 0.0 { rng.normal() } else { 0.0 };
-                if n_jumps > 0.0 {
-                    let col = jump_col[idx];
-                    let v = data.get(s, col) + n_jumps * jump_mean[idx] + jump_std[idx] * n_jumps.sqrt() * zj;
-                    data.set(s, col, v);
+            if dist == McDist::StudentT {
+                let w = rng.chi_square(df) / df;
+                if let Some(m) = mult.get_mut(s) {
+                    *m = t_scale / w.sqrt();
+                }
+            } else if dist == McDist::Jump {
+                if let Some(nj) = n_jumps_buf.get_mut(s) {
+                    *nj = poisson(&mut rng, jump_lam_h) as f64;
+                }
+                if let Some(zs) = zj_buf.get_mut(s * jc..(s + 1) * jc) {
+                    for (z, &sd) in zs.iter_mut().zip(&jump_std) {
+                        *z = if sd > 0.0 { rng.normal() } else { 0.0 };
+                    }
                 }
             }
         }
     }
+
+    // Phase 2 (parallel, heavy): per row, inverse-CDF the stored uniforms,
+    // multiply by the Cholesky factor, then apply the per-scenario Student-t
+    // scale or jump overlay. Each row depends only on itself, so a fixed
+    // contiguous partition gives the same bits for any thread count.
+    let lower_flat = lower.as_slice();
+    let (mult, n_jumps_buf, zj_buf) = (&mult, &n_jumps_buf, &zj_buf);
+    let (jump_col, jump_mean, jump_std) = (&jump_col, &jump_mean, &jump_std);
+    crate::par::for_row_chunks(data.as_mut_slice(), k, SIM_MIN_ROWS, threads, |first, chunk| {
+        let mut z = vec![0.0; k];
+        for (r, row) in chunk.chunks_exact_mut(k.max(1)).enumerate() {
+            let s = first + r;
+            for (zi, &u) in z.iter_mut().zip(row.iter()) {
+                *zi = inv_norm_cdf_unchecked(u);
+            }
+            for (i, (out, li)) in row.iter_mut().zip(lower_flat.chunks_exact(k.max(1))).enumerate() {
+                let mut acc = 0.0;
+                for (a, b) in li.iter().zip(z.iter()).take(i + 1) {
+                    acc += a * b;
+                }
+                *out = acc;
+            }
+            if dist == McDist::StudentT {
+                let m = mult.get(s).copied().unwrap_or(1.0);
+                for v in row.iter_mut() {
+                    *v *= m;
+                }
+            } else if dist == McDist::Jump {
+                let n_jumps = n_jumps_buf.get(s).copied().unwrap_or(0.0);
+                let zs = zj_buf.get(s * jc..(s + 1) * jc).unwrap_or(&[]);
+                for (idx, &zj) in zs.iter().enumerate() {
+                    if n_jumps > 0.0 {
+                        let (col, mean, sd) = (jump_col[idx], jump_mean[idx], jump_std[idx]);
+                        if let Some(x) = row.get_mut(col) {
+                            *x = *x + n_jumps * mean + sd * n_jumps.sqrt() * zj;
+                        }
+                    }
+                }
+            }
+        }
+    });
     Ok((ReturnsMatrix { factors: cov.factors.clone(), data }, warning, jitter))
 }
 
@@ -318,6 +376,52 @@ fn poisson(rng: &mut Rng, mu: f64) -> u64 {
 /// Invalid `alpha`, fewer than 10 or non-finite observations, or
 /// `n_boot < 2` (a standard deviation needs two draws).
 pub fn var_standard_error_bootstrap(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Result<f64> {
+    bootstrap_se_threads(pnl, alpha, n_boot, seed, crate::par::default_threads())
+}
+
+/// Bootstrap replicates of the rank-`m` loss, in replicate order.
+///
+/// The resample indices come from one RNG stream in the reference order:
+/// replicate `b` uses draws `b * n .. (b + 1) * n`. The serial thread
+/// draws the indices for a batch of replicates; the selections then run
+/// in parallel, one replicate per slot. The estimates are the same bits
+/// as the one-thread loop.
+fn bootstrap_estimates(pnl: &[f64], m: usize, n_boot: usize, seed: u64, threads: usize) -> Vec<f64> {
+    let n = pnl.len();
+    let threads = threads.max(1);
+    let mut rng = Rng::new(seed);
+    let mut est = vec![0.0; n_boot];
+    let batch = if n >= 4096 { threads } else { 1 };
+    let mut idx = vec![0usize; batch * n];
+    let mut bufs = vec![0.0; batch * n];
+    for est_chunk in est.chunks_mut(batch) {
+        let nb = est_chunk.len();
+        for slot in idx.iter_mut().take(nb * n) {
+            *slot = ((rng.uniform() * n as f64) as usize).min(n - 1);
+        }
+        let work = |(e, (buf, ix)): (&mut f64, (&mut [f64], &[usize]))| {
+            for (b, &i) in buf.iter_mut().zip(ix) {
+                *b = -pnl.get(i).copied().unwrap_or(0.0);
+            }
+            let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+            *e = *lm;
+        };
+        let jobs = est_chunk.iter_mut().zip(bufs.chunks_exact_mut(n).zip(idx.chunks_exact(n)));
+        if nb == 1 {
+            jobs.for_each(work);
+        } else {
+            let work = &work;
+            std::thread::scope(|sc| {
+                for job in jobs {
+                    sc.spawn(move || work(job));
+                }
+            });
+        }
+    }
+    est
+}
+
+fn bootstrap_se_threads(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64, threads: usize) -> Result<f64> {
     validate_alpha(alpha)?;
     if pnl.len() < 10 {
         return Err(FxVarError::Invalid(format!(
@@ -335,18 +439,9 @@ pub fn var_standard_error_bootstrap(pnl: &[f64], alpha: f64, n_boot: usize, seed
     }
     let n = pnl.len();
     let m = crate::tail::tail_rank(n, alpha)?;
-    let mut rng = Rng::new(seed);
-    let mut buf = vec![0.0; n];
+    let est = bootstrap_estimates(pnl, m, n_boot, seed, threads);
     let mut sum = 0.0;
-    let mut est = Vec::with_capacity(n_boot);
-    for _ in 0..n_boot {
-        for slot in buf.iter_mut() {
-            let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
-            *slot = -pnl[idx];
-        }
-        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
-        let v = *lm;
-        est.push(v);
+    for &v in &est {
         sum += v;
     }
     let mean = sum / n_boot as f64;
@@ -379,16 +474,26 @@ pub fn var_standard_error(pnl: &[f64], alpha: f64) -> Result<f64> {
     let nf = n as f64;
     let mean = pnl.iter().sum::<f64>() / nf;
     let sd = (pnl.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (nf - 1.0)).sqrt();
-    let mut sorted = pnl.to_vec();
-    sorted.sort_unstable_by(f64::total_cmp);
-    let type7 = |p: f64| {
+    // Type-7 quantiles need only the order statistics at `lo` and `lo + 1`.
+    // A selection at `lo` puts the `lo`-th value in place and the larger
+    // values to its right, so the `lo + 1`-th is the minimum of that right
+    // part. Same values as a full sort, in O(n).
+    let mut work = pnl.to_vec();
+    let mut type7 = |p: f64| {
         let pos = p * (n - 1) as f64;
         let lo = pos.floor() as usize;
-        let hi = (lo + 1).min(n - 1);
         let frac = pos - lo as f64;
-        sorted[lo] + frac * (sorted[hi] - sorted[lo])
+        let (_, x_lo, right) = work.select_nth_unstable_by(lo, f64::total_cmp);
+        let x_lo = *x_lo;
+        let x_hi = if lo + 1 < n {
+            right.iter().copied().fold(f64::INFINITY, |a, b| if b.total_cmp(&a).is_lt() { b } else { a })
+        } else {
+            x_lo
+        };
+        x_lo + frac * (x_hi - x_lo)
     };
-    let iqr = type7(0.75) - type7(0.25);
+    let q75 = type7(0.75);
+    let iqr = q75 - type7(0.25);
     let spread = if iqr > 0.0 { sd.min(iqr / 1.34) } else { sd };
     if !(spread > 0.0) {
         // Degenerate (constant) sample: the quantile has no sampling error.
@@ -427,6 +532,28 @@ pub fn monte_carlo_var(
     cov: &FactorCov,
     opts: &MonteCarloOptions,
 ) -> Result<MonteCarloResult> {
+    monte_carlo_var_with_threads(book, market, cov, opts, crate::par::default_threads())
+}
+
+/// [`monte_carlo_var`] on at most `threads` worker threads (0 is treated
+/// as 1).
+///
+/// The RNG stream is drawn serially in the reference order. The heavy
+/// per-scenario work (inverse normal CDF, Cholesky product, revaluation,
+/// bootstrap selections) runs on a fixed contiguous partition created
+/// once per call with `std::thread::scope`. The result is the same bits
+/// for every thread count, which `tests/test_latency_determinism.rs`
+/// checks.
+///
+/// # Errors
+/// Same as [`monte_carlo_var`].
+pub fn monte_carlo_var_with_threads(
+    book: &Book,
+    market: &Market,
+    cov: &FactorCov,
+    opts: &MonteCarloOptions,
+    threads: usize,
+) -> Result<MonteCarloResult> {
     validate_alpha(opts.alpha)?;
     validate_horizon(opts.horizon_days)?;
     if opts.n_boot < 2 {
@@ -453,7 +580,7 @@ pub fn monte_carlo_var(
     }
 
     let sub = cov.select(compiled.factors())?;
-    let (scen, warning, jitter) = simulate_factor_returns_jitter(
+    let (scen, warning, jitter) = simulate_threads(
         &sub,
         opts.n_scenarios,
         opts.dist,
@@ -461,6 +588,7 @@ pub fn monte_carlo_var(
         &opts.jumps,
         opts.seed,
         opts.horizon_days,
+        threads,
     )?;
     res.jitter = jitter;
     res.cholesky_warning = warning;
@@ -468,7 +596,8 @@ pub fn monte_carlo_var(
     let (var, es) = empirical_var_es(&res.pnl, opts.alpha, None)?;
     res.var = var;
     res.es = es;
-    res.se_var = var_standard_error_bootstrap(&res.pnl, opts.alpha, opts.n_boot, opts.seed ^ 0x9E37_79B9_7F4A_7C15)?;
+    res.se_var =
+        bootstrap_se_threads(&res.pnl, opts.alpha, opts.n_boot, opts.seed ^ 0x9E37_79B9_7F4A_7C15, threads)?;
     res.se_var_kde = var_standard_error(&res.pnl, opts.alpha)?;
     Ok(res)
 }

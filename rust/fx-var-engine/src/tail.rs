@@ -20,7 +20,7 @@
 //! only the `m - 1` larger losses (sorted, so the summation order and hence
 //! the rounding is fixed). It is `O(n + m log m)`, not a full sort.
 
-use crate::{FxVarError, Result};
+use crate::{FxVarError, KernelError, Result};
 
 /// Message used by every `alpha` validation error.
 pub const ALPHA_MSG: &str = "alpha is the tail probability (e.g. 0.01 for 99 %)";
@@ -94,12 +94,101 @@ pub fn empirical_var_es(pnl: &[f64], alpha: f64) -> Result<(f64, f64)> {
     let m = tail_rank(n, alpha)?;
     let k = n as f64 * alpha;
     let mut losses: Vec<f64> = pnl.iter().map(|p| -p).collect();
+    Ok(var_es_core(&mut losses, m, k))
+}
+
+/// `(VaR, ES)` from a loss buffer, rank `m` and `k = n * alpha`. Reorders
+/// `losses`. Shared by the allocating and the workspace entry points so
+/// both give the same bits.
+#[inline]
+fn var_es_core(losses: &mut [f64], m: usize, k: f64) -> (f64, f64) {
+    debug_assert!(m >= 1 && m <= losses.len());
     let (top, lm, _) = losses.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
     let var = *lm;
     top.sort_unstable_by(|a, b| b.total_cmp(a));
     let head: f64 = top.iter().sum();
     let es = (head + (k - (m - 1) as f64) * var) / k;
-    Ok((var, es))
+    (var, es)
+}
+
+/// Rank `m` without the error path: `n >= 1` and a valid `alpha` are
+/// checked by the caller. Same arithmetic as [`tail_rank`].
+#[inline]
+fn tail_rank_unchecked(n: usize, alpha: f64) -> usize {
+    let k = n as f64 * alpha;
+    let m = (k - 1e-9).ceil();
+    (m.max(1.0) as usize).min(n)
+}
+
+/// Fill `scratch[..n]` with losses `-pnl` after checking `alpha` and the
+/// sample. Returns the loss slice.
+#[inline]
+fn load_losses<'a>(
+    pnl: &[f64],
+    alpha: f64,
+    scratch: &'a mut [f64],
+) -> std::result::Result<&'a mut [f64], KernelError> {
+    if !(alpha > 0.0 && alpha < 0.5) {
+        return Err(KernelError::BadAlpha);
+    }
+    if pnl.is_empty() {
+        return Err(KernelError::EmptySample);
+    }
+    let losses = scratch.get_mut(..pnl.len()).ok_or(KernelError::ScratchTooSmall)?;
+    let mut finite = true;
+    for (l, p) in losses.iter_mut().zip(pnl) {
+        finite &= p.is_finite();
+        *l = -p;
+    }
+    if !finite {
+        return Err(KernelError::NonFinite);
+    }
+    Ok(losses)
+}
+
+/// Allocation-free [`empirical_var_es`]: the same `(VaR, ES)` bits, using
+/// `scratch` (at least `pnl.len()` long) as the loss buffer.
+///
+/// Average cost is O(n) for the selection plus O(m log m) to order the
+/// tail, with `m = ceil(n * alpha)`.
+///
+/// # Errors
+/// [`KernelError`] for a bad `alpha`, an empty or non-finite sample, or a
+/// short `scratch`. The error never allocates.
+///
+/// ```
+/// use fx_var_engine::tail::{empirical_var_es, empirical_var_es_into};
+/// let pnl: Vec<f64> = (1..=10).map(|i| -(i as f64)).collect();
+/// let mut ws = vec![0.0; pnl.len()];
+/// let a = empirical_var_es_into(&pnl, 0.25, &mut ws).unwrap();
+/// let b = empirical_var_es(&pnl, 0.25).unwrap();
+/// assert_eq!(a.0.to_bits(), b.0.to_bits());
+/// assert_eq!(a.1.to_bits(), b.1.to_bits());
+/// ```
+pub fn empirical_var_es_into(
+    pnl: &[f64],
+    alpha: f64,
+    scratch: &mut [f64],
+) -> std::result::Result<(f64, f64), KernelError> {
+    let losses = load_losses(pnl, alpha, scratch)?;
+    let n = losses.len();
+    let m = tail_rank_unchecked(n, alpha);
+    Ok(var_es_core(losses, m, n as f64 * alpha))
+}
+
+/// Allocation-free [`empirical_var`]; see [`empirical_var_es_into`].
+///
+/// # Errors
+/// Same as [`empirical_var_es_into`].
+pub fn empirical_var_into(
+    pnl: &[f64],
+    alpha: f64,
+    scratch: &mut [f64],
+) -> std::result::Result<f64, KernelError> {
+    let losses = load_losses(pnl, alpha, scratch)?;
+    let m = tail_rank_unchecked(losses.len(), alpha);
+    let (_, lm, _) = losses.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+    Ok(*lm)
 }
 
 /// Empirical VaR (order statistic `L(m)`), see [`empirical_var_es`].
