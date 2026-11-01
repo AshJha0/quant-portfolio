@@ -4,8 +4,11 @@ data -> total returns -> style portfolios -> covariance -> allocation
 (MVO frontier / ERC / CVaR-constrained) -> optimal hedging -> walk-forward
 race with costs and carry -> GBP-base reporting.
 
-Runs offline on the seeded synthetic panel in well under 120 s and prints the
-numbers quoted in README.md / docs/VALIDATION.md.
+Runs offline on the seeded synthetic panel and prints the numbers quoted in
+README.md / docs/VALIDATION.md. Prints only and writes no files. All data are
+synthetic. The value signal uses the PPP anchor that the synthetic spots
+mean-revert to, and momentum is a planted AR(1) trend, so style performance
+here is a property of the generator.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from fx_port.data import make_equity_portfolio, make_panel  # noqa: E402
 SEED = 123
 N_DAYS = 3024  # ~12 years of business days
 ALPHA = 0.95
+SLEEVE_COST_BPS = 5.0  # currency-level cost inside the style sleeves
 
 
 def fmt(x: float, pct: bool = False, digits: int = 2) -> str:
@@ -63,17 +67,25 @@ def main() -> None:
 
     # ------------------------------------------------------------------ 2
     print("\n[2] Style portfolios (dollar-neutral, gross = 2.0, 1-day lag)")
+    print(f"    net of {SLEEVE_COST_BPS:.0f} bp per unit of currency-level turnover")
     gross = 2.0
     idx = dec.total.index
     sig_carry = fp.carry_signal(panel.rates, ccys).reindex(idx)
     sig_mom = fp.momentum_signal(panel.spots).reindex(idx)
     sig_val = fp.value_signal(panel.spots, panel.ppp).reindex(idx)
-    styles = {}
+    styles, applied = {}, {}
     for name, sig in (("carry", sig_carry), ("momentum", sig_mom), ("value", sig_val)):
-        ret, w = fp.style_returns(dec.total, sig, gross=gross)
-        live = ret[(w.abs().sum(axis=1) > 0)]
+        gross_ret, w = fp.style_returns(dec.total, sig, gross=gross)
+        # same as style_returns(..., cost_bps=SLEEVE_COST_BPS), without re-ranking
+        ret = gross_ret - SLEEVE_COST_BPS * 1e-4 * fp.sleeve_turnover(w)
+        live_mask = w.abs().sum(axis=1) > 0
+        live = ret[live_mask]
         styles[name] = live
-        print(stat_line(name.upper(), fp.summary(live, ALPHA)))
+        applied[name] = w
+        turn = fp.sleeve_turnover(w)[live_mask].mean() * 252
+        print(stat_line(name.upper(), fp.summary(live, ALPHA))
+              + f"  gross SR {fmt(fp.sharpe_ratio(gross_ret[live_mask]))}"
+              + f"  turnover {turn:.1f}x/yr")
     style_panel = pd.DataFrame(styles).dropna()
     print(
         "  -> carry: positive premium, NEGATIVE skew (crash risk); "
@@ -86,8 +98,9 @@ def main() -> None:
     print(f"  currency-level James-Stein shrinkage intensity (12 ccys): "
           f"{lam_ccy:.2f}")
     style_mu, lam = fp.shrunk_means(style_panel)
-    style_cov = style_panel.cov()
-    print(f"  style means (lam={lam:.2f}: JS needs K>3, no shrink across 3 styles):",
+    style_cov, lw_delta = fp.lw_shrinkage(style_panel)
+    print(f"  Ledoit-Wolf covariance, shrinkage intensity {lw_delta:.3f}")
+    print(f"  style means (sample means: shrinkage intensity {lam:.2f}, JS needs K > 3):",
           {k: f"{v * 252:.1%}" for k, v in style_mu.items()})
     print("  style correlations:")
     corr = style_panel.corr()
@@ -151,8 +164,10 @@ def main() -> None:
     print("\n[6] Optimal currency hedging (international equity portfolio)")
     eq = make_equity_portfolio(seed=SEED, n_days=N_DAYS)
     rep = fp.variance_decomposition(eq.unhedged_returns, eq.fx_returns, eq.exposures)
-    print("  optimal hedge ratios:",
-          {k: fmt(float(v)) for k, v in rep.hedge_ratios.items()})
+    inf = fp.hedge_ratio_inference(eq.unhedged_returns, eq.fx_returns, eq.exposures)
+    print("  in-sample hedge ratios (OLS SE):",
+          {k: f"{float(v):.2f} ({float(inf.std_errors[k]):.2f})"
+           for k, v in rep.hedge_ratios.items()})
     print(f"  ann.vol: unhedged {fmt(np.sqrt(rep.var_unhedged * 252), True)}, "
           f"full hedge {fmt(np.sqrt(rep.var_full * 252), True)}, "
           f"optimal {fmt(np.sqrt(rep.var_optimal * 252), True)}")
@@ -160,15 +175,31 @@ def main() -> None:
           f"optimal {fmt(rep.reduction_optimal, True, 1)} -> "
           "full hedging is NOT optimal: safe havens (JPY/CHF) are underhedged"
           f" (h_JPY={fmt(rep.hedge_ratios['JPY'])}, h_CHF={fmt(rep.hedge_ratios['CHF'])})")
+    oos = fp.out_of_sample_hedge(eq.unhedged_returns, eq.fx_returns, eq.exposures, 0.5)
+    print("  split sample: h* first half", {k: fmt(float(v)) for k, v in oos.hedge_ratios_train.items()})
+    print("                h* second half", {k: fmt(float(v)) for k, v in oos.hedge_ratios_test.items()})
+    print(f"  out-of-sample variance reduction (second half, first-half h*): "
+          f"full {fmt(oos.reduction_full, True, 1)} vs optimal {fmt(oos.reduction_optimal, True, 1)}")
+    # forward carry of the hedge: r_USD - r_ccy per day, from the panel's
+    # average synthetic short rates (rates in decimal per year)
+    rate_mean = panel.rates.mean()
+    fwd = pd.Series({c: (rate_mean["USD"] - rate_mean[c]) / 252 for c in eq.exposures.index})
+    h_full = fp.hedged_returns(eq.unhedged_returns, eq.fx_returns, eq.exposures, 1.0)
+    h_full_c = fp.hedged_returns(eq.unhedged_returns, eq.fx_returns, eq.exposures, 1.0,
+                                 forward_carry=fwd)
+    print(f"  full hedge ann. mean: spot-only {fmt(h_full.mean() * 252, True)}, "
+          f"with forward carry {fmt(h_full_c.mean() * 252, True)}")
 
     # ------------------------------------------------------------------ 7
     print("\n[7] Walk-forward race across styles (est=504d, monthly rebalance,")
-    print("    5 bps style-level costs, carry accrued daily, no lookahead)")
-    # style sleeves decomposed into spot and carry legs for the ledger
+    print(f"    5 bp style-level costs plus {SLEEVE_COST_BPS:.0f} bp sleeve-level currency costs,")
+    print("    carry accrued daily, no lookahead, Ledoit-Wolf covariance)")
+    # style sleeves decomposed into spot and carry legs for the ledger; the
+    # sleeves' own currency-level trading cost is charged in the spot leg
     spot_leg, carry_leg = {}, {}
-    for name, sig in (("carry", sig_carry), ("momentum", sig_mom), ("value", sig_val)):
-        _, w_applied = fp.style_returns(dec.total, sig, gross=gross)
-        spot_leg[name] = (w_applied * dec.spot).sum(axis=1)
+    for name, w_applied in applied.items():
+        sleeve_cost = SLEEVE_COST_BPS * 1e-4 * fp.sleeve_turnover(w_applied)
+        spot_leg[name] = (w_applied * dec.spot).sum(axis=1) - sleeve_cost
         carry_leg[name] = (w_applied * dec.carry).sum(axis=1)
     spot_leg = pd.DataFrame(spot_leg).loc[style_panel.index]
     carry_leg = pd.DataFrame(carry_leg).loc[style_panel.index]
@@ -178,13 +209,13 @@ def main() -> None:
 
     def alloc_mvo(hist: pd.DataFrame) -> pd.Series:
         h = hist.tail(504)
-        mu, _ = fp.shrunk_means(h)
-        res = fp.max_utility(mu, h.cov(), gamma=40.0, sum_to=1.0,
-                             gross_limit=1.5)
+        mu = h.mean()  # sample means: JS shrinkage is 0 for K = 3 styles
+        res = fp.max_utility(mu, fp.lw_shrinkage(h)[0], gamma=40.0, sum_to=1.0,
+                             gross_limit=1.5)  # raises if SLSQP fails
         return res.weights
 
     def alloc_erc(hist: pd.DataFrame) -> pd.Series:
-        return fp.erc_weights(hist.tail(504).cov())
+        return fp.erc_weights(fp.lw_shrinkage(hist.tail(504))[0])
 
     def alloc_cvar(hist: pd.DataFrame) -> pd.Series:
         h = hist.tail(504)
@@ -213,16 +244,21 @@ def main() -> None:
     conv = fp.base_conversion_returns(panel.spots["GBP"], panel.rates,
                                       base="GBP").reindex(dec.total.index)
     total_gbp = fp.convert_base(dec.total, conv)
-    ret_usd, w_c = fp.style_returns(dec.total, sig_carry, gross=gross)
+    w_c = applied["carry"]
+    ret_usd = (w_c * dec.total).sum(axis=1)
     ret_gbp = (w_c * total_gbp).sum(axis=1)
     diff = float((ret_usd - ret_gbp).abs().max())
     print(f"  dollar-neutral carry sleeve: |USD-base - GBP-base| log-return "
           f"diff = {diff:.2e} (exact invariance)")
     ew_net = race_nets["EW"]
-    ew_gbp = ew_net + conv.reindex(ew_net.index)  # net-long book shifts by conv
-    print(f"  EW multi-style (net-long): SR {fmt(fp.sharpe_ratio(ew_net))} (USD base) "
-          f"vs {fmt(fp.sharpe_ratio(ew_gbp))} (GBP base) — net books are NOT "
-          "base-invariant; hedge the base or report both")
+    ew_gbp = ew_net + conv.reindex(ew_net.index)
+    print("  every style sleeve is dollar-neutral, so the EW book is too. Adding")
+    print("  the conversion return models an unhedged USD collateral account,")
+    print("  which the excess-return ledger does not hold:")
+    print(f"  EW + USD collateral: SR {fmt(fp.sharpe_ratio(ew_net))} (USD base) "
+          f"vs {fmt(fp.sharpe_ratio(ew_gbp))} (GBP base)")
+    print("  (invariance above holds for log returns aggregated linearly; "
+          "arithmetic returns are not exactly invariant)")
 
     print(f"\nDone in {time.time() - t0:.1f}s")
 

@@ -25,7 +25,7 @@ enters the return (no lookahead), and the decomposition
 Uncovered interest parity (UIP) says the spot leg should on average offset
 the carry leg; empirically it does not — the **forward premium puzzle**
 (Fama 1984): high-yield currencies do not depreciate enough, so carry earns
-a premium. We take that premium as given, with the standard honesty caveat:
+a premium. We take that premium as given, with the standard caveat:
 part of the measured premium may be a **peso problem** — compensation for
 rare crashes that a finite sample under-represents. Our synthetic generator
 builds exactly that structure: no offsetting drift, plus a crash mechanism
@@ -77,8 +77,9 @@ estimates the first principal component, orients it so it correlates
 positively with the average currency return vs USD (dollar-down = risk-on),
 and regresses each currency on it: recovered loadings have the classic
 signs — AUD/NZD/EM positive, JPY/CHF negative (tested). PSD repair by
-eigenvalue clipping (Higham projection; optional strictly-positive floor for
-pegged currencies) guards every optimizer input.
+eigenvalue clipping guards every optimizer input. With a zero floor it is the
+Frobenius-nearest PSD matrix (Higham 1988). With the positive floor used for
+pegged currencies it is plain clipping and can change the variances.
 
 ## 5. Allocation
 
@@ -135,18 +136,23 @@ Verified against brute-force numerical minimisation to 1e-6. If local
 returns are uncorrelated with FX, h\* = 1 (full hedge) — recovered exactly
 in tests. With safe havens negatively correlated to risk assets
 (JPY, CHF), h\* < 1 and often < 0: **full hedging is not variance-optimal**
-(Campbell-Serfaty-de Medeiros-Viceira 2010). Forward carry cost shifts the
-hedged *mean*, not the variance, so it enters as a separate mean adjustment
-in the decision, not in h\*.
+(Campbell-Serfaty-de Medeiros-Viceira 2010). Forward carry (the rate
+differential r_base - r_foreign earned on a short forward) shifts the
+hedged mean, not the variance, so h* does not depend on it.
+`hedged_returns(..., forward_carry=...)` includes it in the hedged return.
+h* is an OLS estimate: `hedge_ratio_inference` gives its standard errors and
+`out_of_sample_hedge` scores a split-sample estimate on held-out data.
 
 ## 7. Backtesting and base currency
 
 Walk-forward: the allocator sees history up to and including the rebalance
 date; weights earn P&L from the next day. Ledger splits spot P&L, carry
 accrual, and costs (quoted in pips, converted via ``pips × pip_size / spot``
-to bps of notional, charged on turnover). Weights are treated as reset to
-target at each rebalance; intra-month drift of long-short FX weights is
-second-order and documented as a simplification.
+to bps of notional, charged on turnover). Weights are held at target
+between rebalances. That is an implicit daily rebalance whose trades are
+not charged. Each style sleeve is itself re-formed daily at the currency
+level; `style_returns(..., cost_bps=...)` and `sleeve_turnover` charge that
+currency-level turnover, and the pipeline's race includes it.
 
 Base-currency conversion adds the old base's total return (in the new base)
 to every asset's log total return. Because the added term is common across
@@ -155,8 +161,11 @@ to the base choice (Σw = 0 kills the common term) — tested to 1e-14.
 For arithmetic returns the invariance is only approximate (cross terms
 r_i·c of order vol²); this is the documented, exact-conditions version of
 the folklore claim "long-short FX P&L doesn't care about your base ccy".
-Net-long books shift by the base currency's own return — the pipeline shows
-the EW book's Sharpe moving 0.87 (USD) → 0.74 (GBP).
+Every combination of dollar-neutral sleeves is also dollar-neutral, so the
+multi-style book is base-invariant too. The pipeline's GBP example adds the
+conversion return to model an unhedged USD collateral account. The
+excess-return ledger does not hold one. With it, the EW Sharpe moves from
+0.73 (USD) to 0.63 (GBP).
 
 ## 8. Assumptions register
 

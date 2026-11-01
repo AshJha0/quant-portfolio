@@ -27,8 +27,8 @@ Daily (risk):
 
 Monthly (allocation committee):
 1. Rebuild style signals; re-estimate LW covariance on the trailing 504d.
-2. Run the allocator set: ERC (baseline), MVO with shrunk means
-   (challenger), CVaR-constrained LP (sizing authority). The **smallest**
+2. Run the allocator set: ERC (baseline), MVO with sample style means
+   (challenger; James-Stein shrinkage is 0 for three styles), CVaR-constrained LP (sizing authority). The **smallest**
    of the MVO and CVaR books is what trades: mean-variance proposes,
    CVaR disposes.
 3. Re-run the hedge-ratio closed form for the overlay book; move actual
@@ -91,10 +91,9 @@ its vol. That number goes on page 1 of the risk report.
 
 ## 6. What the numbers mean (and don't)
 
-Synthetic Sharpes calibrate the *machinery*, not the market. The transferable
-results are relative: CVaR sizing cuts carry ~30% vs vol sizing at matched
-budgets; optimal hedging beats full hedging by ~4x in variance reduction with
-safe-haven underhedging; ERC ≈ EW Sharpe with smaller drawdowns; MVO's edge
-is exactly as large as your faith in your mean estimates (Lo SE ~0.3 on an
-11-year daily Sharpe — most style Sharpe differences are not resolvable).
-Quote ranges, not points, to the investment committee.
+Synthetic Sharpes test the machinery, not the market. CVaR sizing cuts the
+synthetic carry book about 30% against vol sizing at matched budgets. Out of
+sample, the split-sample optimal hedge cut variance 4.1% against 2.1% for a
+full hedge, and the CHF ratio changed sign between halves. The allocators'
+Sharpe ratios differ by at most 0.08 with iid standard errors near 0.33, so
+the race does not rank them. Quote ranges, not points.
