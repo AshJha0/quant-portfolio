@@ -1,25 +1,30 @@
-"""TEST-12: the numbers quoted in the portfolio docs are recounted from the tree.
+"""TEST-12: the numbers quoted in the portfolio docs match the test runs.
 
-Every headline figure -- sub-projects, tests per area, questions in the
+Every headline figure (sub-projects, tests per area, questions in the
 LEARN.md self-test bank, recipes in COOKBOOK.md, the per-engine
-cross-validation table, the per-project README test counts -- is
-recomputed here and diffed against the prose, so a stale count fails CI
-instead of surviving in a README.
+cross-validation table, the per-project README test counts) is compared
+with the prose, so a stale count fails CI instead of surviving in a README.
 
-Counting rules (the same ones the top-level README says it used):
+Where the test counts come from:
 
-* Python: ``pytest --collect-only`` per project, ``PYTHONPATH=src``.
-* C++: ``TEST`` / ``TEST_F`` / ``TEST_P`` macros, with each ``TEST_P``
-  multiplied by the number of golden cases it is instantiated over
-  (``INSTANTIATE_TEST_SUITE_P(..., Range(0, kCases.size()))``).
-* Rust: ``#[test]`` functions in ``src/`` + ``tests/`` plus rustdoc
-  doctests (fenced blocks in ``///`` / ``//!`` comments that are not
-  ``ignore`` / ``text`` / ``no_run``), which is what ``cargo test``
-  reports.
+* CI (authoritative). The ``counts`` job aggregates the JUnit XML and cargo
+  logs of every test job into ``counts.json`` and points ``QP_COUNTS_JSON``
+  at it (a ``counts.json`` at the repository root is also picked up). The
+  counts are tests that were executed and passed: Python on the reference
+  version (3.12), C++ with the reference compiler (GCC), Rust from
+  ``cargo test --release``.
+* Local fallback (approximate, for a quick check only). Without
+  ``counts.json`` the counts are estimated: Python by
+  ``pytest --collect-only`` per project with ``PYTHONPATH=src``, C++ by
+  counting ``TEST`` / ``TEST_F`` macros (``TEST_P`` times the golden case
+  count), Rust by counting ``#[test]`` functions plus rustdoc doctests.
+  Collected is not passed: a skipped test is collected but not passed, so
+  the fallback can disagree with CI. A warning says so.
 
 Run from the repository root::
 
     python -m pytest -p no:cacheprovider -q tests/test_docs_counts.py
+    QP_COUNTS_JSON=counts.json python -m pytest -p no:cacheprovider -q tests/test_docs_counts.py
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ import os
 import re
 import subprocess
 import sys
-from functools import lru_cache
+import warnings
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -47,6 +53,36 @@ CPP_ENGINES = sorted(p for p in (REPO / "cpp").iterdir() if p.is_dir())
 RUST_ENGINES = sorted(p for p in (REPO / "rust").iterdir() if p.is_dir())
 
 
+def _counts_path() -> Path | None:
+    env = os.environ.get("QP_COUNTS_JSON")
+    if env:
+        p = Path(env)
+        assert p.is_file(), f"QP_COUNTS_JSON={env} does not exist"
+        return p
+    p = REPO / "counts.json"
+    return p if p.is_file() else None
+
+
+@cache
+def executed_counts() -> dict | None:
+    """counts.json written by the CI ``counts`` job, or None outside CI."""
+    p = _counts_path()
+    return json.loads(p.read_text(encoding="utf-8")) if p else None
+
+
+def _executed_passed(section: str, key: str) -> int:
+    counts = executed_counts()
+    assert counts is not None
+    entry = counts[section].get(key)
+    assert entry is not None, f"counts.json has no {section} entry for {key}: the job did not run or upload"
+    return int(entry["passed"])
+
+
+def _warn_fallback() -> None:
+    warnings.warn("counts.json not found: using LOCAL FALLBACK counts (collected / source-scanned, "
+                  "not executed). CI uses executed pass counts.", stacklevel=2)
+
+
 def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
@@ -55,9 +91,10 @@ def _num(s: str) -> int:
     return int(s.replace(",", ""))
 
 
-# --------------------------------------------------------------- counters --
-@lru_cache(maxsize=None)
+# ------------------------------------------- local fallback counters --
+@cache
 def collect_python(project: Path) -> int:
+    """LOCAL FALLBACK ONLY: collected (not executed) tests in one project."""
     env = dict(os.environ, PYTHONPATH="src")
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-o", "addopts=",
@@ -126,16 +163,26 @@ def count_recipes() -> int:
 # ----------------------------------------------------------------- fixtures --
 @pytest.fixture(scope="module")
 def py_counts() -> dict[str, dict[str, int]]:
+    if executed_counts() is not None:
+        return {area: {p.name: _executed_passed("python", f"{area}__{p.name}") for p in projects}
+                for area, projects in PY_AREAS.items()}
+    _warn_fallback()
     return {area: {p.name: collect_python(p) for p in projects} for area, projects in PY_AREAS.items()}
 
 
 @pytest.fixture(scope="module")
 def cpp_counts() -> dict[str, int]:
+    if executed_counts() is not None:
+        return {e.name: _executed_passed("cpp", e.name) for e in CPP_ENGINES}
+    _warn_fallback()
     return {e.name: count_cpp(e) for e in CPP_ENGINES}
 
 
 @pytest.fixture(scope="module")
 def rust_counts() -> dict[str, int]:
+    if executed_counts() is not None:
+        return {e.name: _executed_passed("rust", e.name) for e in RUST_ENGINES}
+    _warn_fallback()
     return {e.name: sum(count_rust(e)) for e in RUST_ENGINES}
 
 
@@ -327,3 +374,32 @@ class TestGoldenPipeline:
         assert (p / "tests/golden/generate_golden.py").exists()
         assert (p / "tests/golden/golden_vectors.json").exists()
         assert any(p.glob("tests/test_golden*.py")), project
+
+
+class TestExecutedCounts:
+    """Only meaningful in CI, where counts.json exists."""
+
+    @pytest.fixture(autouse=True)
+    def _need_counts(self):
+        if executed_counts() is None:
+            pytest.skip("counts.json not present (local run)")
+
+    def test_every_project_and_engine_reported(self):
+        c = executed_counts()
+        want_py = {f"{a}__{p.name}" for a, ps in PY_AREAS.items() for p in ps}
+        assert set(c["python"]) == want_py
+        assert set(c["cpp"]) == {e.name for e in CPP_ENGINES}
+        assert set(c["rust"]) == {e.name for e in RUST_ENGINES}
+
+    def test_no_failures_or_errors_anywhere(self):
+        c = executed_counts()
+        bad = {}
+        for section in ("python_by_version", "cpp_by_compiler"):
+            for name, per in c[section].items():
+                for variant, r in per.items():
+                    if r["failed"] or r["errors"]:
+                        bad[f"{section}:{name}:{variant}"] = r
+        for name, r in c["rust"].items():
+            if r["failed"] or r["errors"]:
+                bad[f"rust:{name}"] = r
+        assert not bad, bad

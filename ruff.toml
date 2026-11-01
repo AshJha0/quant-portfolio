@@ -1,0 +1,22 @@
+# Repository-wide ruff configuration. Projects inherit it unless they define
+# their own [tool.ruff] table.
+target-version = "py310"
+line-length = 110
+extend-exclude = ["**/build", "**/target", "**/output", "**/figures"]
+
+[lint]
+# E/W pycodestyle, F pyflakes, I isort, B bugbear, UP pyupgrade,
+# NPY numpy-specific rules, RUF ruff-specific rules.
+select = ["E", "W", "F", "I", "B", "UP", "NPY", "RUF"]
+ignore = [
+    "E501",    # line length is the formatter's job
+    "RUF001",  # ambiguous unicode in strings: maths symbols are intended
+    "RUF002",  # ambiguous unicode in docstrings
+    "RUF003",  # ambiguous unicode in comments
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["B011"]  # assert False is fine in tests
+
+[format]
+quote-style = "double"

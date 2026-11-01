@@ -46,3 +46,32 @@ Testing/
 # --- generated mermaid renders / scratch ---
 docs/*.svg
 .hypothesis/
+
+# --- example and script outputs (examples write under a temp dir or --out) ---
+python/*/*/output/
+python/*/*/outputs/
+python/*/*/figures/
+python/*/*/results/
+python/*/*/examples/output/
+python/*/*/examples/figures/
+
+# --- build directories anywhere ---
+**/build/
+**/cmake-build-*/
+**/target/
+out/
+
+# --- virtual environments ---
+.venv*/
+venv*/
+env/
+.env/
+.tox/
+.nox/
+
+# --- CI artefacts produced locally ---
+counts.json
+junit*.xml
+.coverage
+coverage.xml
+htmlcov/
