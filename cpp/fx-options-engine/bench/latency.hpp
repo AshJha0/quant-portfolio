@@ -12,7 +12,8 @@
 // Output: one line per kernel on stdout and, with --out PATH, a JSON array
 // with fields engine, kernel, label, compiler, flags, cpu, date, iters,
 // unit, timer, overhead_ns, p50, p90, p99, p999, max, mean.
-// Options: --out PATH, --label NAME (e.g. before/after), --quick (10% iters).
+// Options: --out PATH, --label NAME (e.g. before/after), --quick (10% iters),
+// --only TEXT (run only kernels whose name contains TEXT).
 
 #ifndef QP_BENCH_LATENCY_HPP
 #define QP_BENCH_LATENCY_HPP
@@ -145,6 +146,8 @@ public:
                 out_ = argv[++i];
             } else if (std::strcmp(argv[i], "--label") == 0 && i + 1 < argc) {
                 label_ = argv[++i];
+            } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
+                only_ = argv[++i];
             } else if (std::strcmp(argv[i], "--quick") == 0) {
                 scale_ = 0.1;
             }
@@ -166,6 +169,7 @@ public:
     /// Time `f(i)` for i in [0, iters) after `warmup` untimed calls.
     template <class F>
     void run(const std::string& kernel, F&& f, std::size_t warmup, std::size_t iters) {
+        if (!only_.empty() && kernel.find(only_) == std::string::npos) return;
         iters = std::max<std::size_t>(
             20, static_cast<std::size_t>(static_cast<double>(iters) * scale_));
         const Stats s = run_raw(f, warmup, iters, overhead_);
@@ -224,7 +228,7 @@ private:
         return s;
     }
 
-    std::string engine_, out_, label_ = "current", cpu_;
+    std::string engine_, out_, label_ = "current", cpu_, only_;
     double scale_ = 1.0;
     double overhead_ = 0.0;
     Timer timer_;

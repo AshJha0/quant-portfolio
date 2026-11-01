@@ -82,6 +82,17 @@ std::string message(const Error& e) {
     return oss.str();
 }
 
+Error detail::input_error(double S, double K, double T, double sigma) noexcept {
+    if (auto e = try_check_nonneg(S, "S"); !e) return e.error();
+    if (auto e = try_check_nonneg(K, "K"); !e) return e.error();
+    if (auto e = try_check_nonneg(T, "T"); !e) return e.error();
+    return try_check_nonneg(sigma, "sigma").error();
+}
+
+Error detail::rate_error(double r, double q) noexcept {
+    return Error{Errc::NonFiniteRate, "r", r, q};
+}
+
 void throw_error(const Error& e) {
     if (e.code == Errc::NoConvergence) throw std::runtime_error(message(e));
     throw std::invalid_argument(message(e));

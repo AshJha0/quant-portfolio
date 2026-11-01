@@ -141,21 +141,40 @@ double require_finite_result(double value, const char* what);
     return {};
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define EQOPT_COLD [[gnu::cold, gnu::noinline]]
+#elif defined(_MSC_VER)
+#define EQOPT_COLD __declspec(noinline)
+#else
+#define EQOPT_COLD
+#endif
+
+namespace detail {
+/// `std::isfinite(x) && x >= 0` as one comparison pair (false for NaN).
+inline bool nonneg_finite(double x) noexcept { return x >= 0.0 && x <= 1.7976931348623157e308; }
+/// Out-of-line builders for the error values, so the inlined success path
+/// carries only the comparisons.
+EQOPT_COLD Error input_error(double S, double K, double T, double sigma) noexcept;
+EQOPT_COLD Error rate_error(double r, double q) noexcept;
+}  // namespace detail
+
 /// \brief noexcept form of validate_inputs().
 [[nodiscard]] inline Result<void> try_validate_inputs(double S, double K, double T,
                                                       double sigma) noexcept {
-    if (auto e = try_check_nonneg(S, "S"); !e) [[unlikely]] return e;
-    if (auto e = try_check_nonneg(K, "K"); !e) [[unlikely]] return e;
-    if (auto e = try_check_nonneg(T, "T"); !e) [[unlikely]] return e;
-    return try_check_nonneg(sigma, "sigma");
+    if (detail::nonneg_finite(S) && detail::nonneg_finite(K) && detail::nonneg_finite(T) &&
+        detail::nonneg_finite(sigma)) [[likely]] {
+        return {};
+    }
+    return std::unexpected(detail::input_error(S, K, T, sigma));
 }
 
 /// \brief noexcept form of validate_rates().
 [[nodiscard]] inline Result<void> try_validate_rates(double r, double q = 0.0) noexcept {
-    if (!std::isfinite(r) || !std::isfinite(q)) [[unlikely]] {
-        return std::unexpected(Error{Errc::NonFiniteRate, "r", r, q});
+    if (std::fabs(r) <= 1.7976931348623157e308 && std::fabs(q) <= 1.7976931348623157e308)
+        [[likely]] {
+        return {};
     }
-    return {};
+    return std::unexpected(detail::rate_error(r, q));
 }
 
 /// \brief noexcept form of require_finite_result().
