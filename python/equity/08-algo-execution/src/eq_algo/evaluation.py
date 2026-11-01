@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 import pandas as pd
 from scipy import stats
 
@@ -122,8 +123,7 @@ def sortino_ratio(returns: pd.Series | np.ndarray, periods_per_year: int = 252) 
     r = pd.Series(returns).dropna().to_numpy(dtype=float)
     if r.size < 2:
         raise ValueError("need at least 2 returns")
-    downside = np.minimum(r, 0.0)
-    dd = np.sqrt((downside**2).mean())
+    dd = downside_deviation(r)
     if dd == 0.0:
         raise ValueError("no downside observations; Sortino undefined")
     return float(r.mean() / dd * np.sqrt(periods_per_year))
@@ -134,9 +134,9 @@ def max_drawdown(returns: pd.Series | np.ndarray) -> float:
     r = pd.Series(returns).dropna().to_numpy(dtype=float)
     if r.size == 0:
         raise ValueError("empty return series")
-    wealth = np.cumprod(1.0 + r)
-    peak = np.maximum.accumulate(wealth)
-    return float(np.max(1.0 - wealth / peak))
+    # Peak taken over post-return wealth only (the start at 1 is excluded),
+    # the historical convention of this project; see qp_core.metrics.
+    return max_drawdown_from_returns(r, "simple", include_start=False)
 
 
 def perf_summary(returns: pd.Series, turnover: pd.Series | None = None,

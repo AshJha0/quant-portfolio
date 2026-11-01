@@ -39,6 +39,7 @@ arithmetic of version 1.0.0 of this engine.
 
 ```bash
 cd python/foundations/02-trading-signal-backtest
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev,plots]
 pytest -q                          # 133 tests, offline, about 40-60 s
 python examples/run_pipeline.py    # every number below, about 280 s (100 seeds, 4 workers)

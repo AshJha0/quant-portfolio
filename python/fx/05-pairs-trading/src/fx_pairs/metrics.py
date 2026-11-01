@@ -8,6 +8,7 @@ which is precisely the point of the carry decomposition).
 from __future__ import annotations
 
 import numpy as np
+from qp_core.metrics import downside_deviation, max_drawdown_from_pnl
 import pandas as pd
 
 from . import research_stats as _rs
@@ -98,8 +99,7 @@ def sortino_ratio(
     r = _clean(returns)
     if len(r) < 2:
         return float("nan")
-    downside = np.minimum(r, 0.0)
-    dd = np.sqrt(np.mean(downside**2))
+    dd = downside_deviation(r)
     if dd == 0.0:
         return float("inf") if r.mean() > 0 else float("nan")
     return float(r.mean() / dd * np.sqrt(ann_factor))
@@ -113,12 +113,7 @@ def max_drawdown(pnl: pd.Series | np.ndarray) -> float:
     pnl : array-like
         Per-period P&L (not the equity curve); the curve is its cumsum.
     """
-    r = _clean(pnl)
-    if len(r) == 0:
-        return 0.0
-    eq = np.cumsum(r)
-    peak = np.maximum.accumulate(np.maximum(eq, 0.0))
-    return float(np.max(peak - eq, initial=0.0))
+    return max_drawdown_from_pnl(_clean(pnl))
 
 
 def hit_rate(trade_pnls: list[float] | np.ndarray) -> float:

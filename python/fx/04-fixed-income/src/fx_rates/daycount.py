@@ -25,9 +25,13 @@ All year fractions are returned as plain floats (units: years).
 
 from __future__ import annotations
 
-import calendar as _cal
 import datetime as dt
 import warnings
+
+from qp_core import daycount as _core
+from qp_core.daycount import MONEY_MARKET_DAYCOUNT, money_market_year_fraction
+from qp_core.daycount import add_months as _roll_months
+from qp_core.daycount import last_business_day as _last_business_day
 
 from .calendars import CALENDARS, BusinessCalendar, joint_calendar
 
@@ -45,12 +49,6 @@ __all__ = [
 ]
 
 VALID_CONVENTIONS: tuple[str, ...] = ("ACT/360", "ACT/365F", "30/360")
-
-#: Money-market (deposit, FX-swap implied rate) day count per currency.
-MONEY_MARKET_DAYCOUNT: dict[str, str] = {
-    "USD": "ACT/360", "EUR": "ACT/360", "JPY": "ACT/360", "CHF": "ACT/360",
-    "GBP": "ACT/365F", "AUD": "ACT/365F", "CAD": "ACT/365F", "NZD": "ACT/365F",
-}
 
 
 def year_fraction(start: dt.date, end: dt.date, convention: str = "ACT/365F") -> float:
@@ -77,31 +75,7 @@ def year_fraction(start: dt.date, end: dt.date, convention: str = "ACT/365F") ->
         raise ValueError(
             f"Unknown day-count convention {convention!r}; expected one of {VALID_CONVENTIONS}"
         )
-    if end < start:
-        raise ValueError(f"end date {end} precedes start date {start}")
-    if convention == "ACT/360":
-        return (end - start).days / 360.0
-    if convention == "ACT/365F":
-        return (end - start).days / 365.0
-    # 30/360 US (bond basis)
-    d1, d2 = start.day, end.day
-    if d1 == 31:
-        d1 = 30
-    if d2 == 31 and d1 >= 30:
-        d2 = 30
-    return (
-        360 * (end.year - start.year) + 30 * (end.month - start.month) + (d2 - d1)
-    ) / 360.0
-
-
-def money_market_year_fraction(start: dt.date, end: dt.date, currency: str) -> float:
-    """Deposit accrual fraction in ``currency``'s money-market convention."""
-    ccy = currency.upper()
-    if ccy not in MONEY_MARKET_DAYCOUNT:
-        raise ValueError(
-            f"no money-market convention for {currency!r}; known: {tuple(MONEY_MARKET_DAYCOUNT)}"
-        )
-    return year_fraction(start, end, MONEY_MARKET_DAYCOUNT[ccy])
+    return _core.year_fraction(start, end, convention, allow_negative=False)
 
 
 def _ccy_calendar(ccy: str) -> BusinessCalendar:
@@ -162,17 +136,6 @@ def spot_date(
     for _ in range(int(spot_lag_days)):
         d = count_cal.add_business_days(d + dt.timedelta(days=1), 0)
     return pair_calendar(pair).adjust(d, "following")
-
-
-def _roll_months(date: dt.date, months: int) -> dt.date:
-    idx = date.month - 1 + months
-    y, m = date.year + idx // 12, idx % 12 + 1
-    return dt.date(y, m, min(date.day, _cal.monthrange(y, m)[1]))
-
-
-def _last_business_day(year: int, month: int, cal: BusinessCalendar) -> dt.date:
-    d = dt.date(year, month, _cal.monthrange(year, month)[1])
-    return cal.adjust(d, "preceding")
 
 
 def tenor_dates(

@@ -38,6 +38,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from qp_core.execution import ExecutionConfig
+
 from ._validation import finite_series, require_finite
 
 from . import carry as carry_mod
@@ -54,36 +56,6 @@ __all__ = [
     "walk_forward_backtest",
 ]
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """When and at what price a decision taken at the close of ``t`` fills.
-
-    Parameters
-    ----------
-    mode : str
-        ``"next"``: fill at the modelled t+1 price ``p_t + f (p_{t+1} - p_t)``.
-        ``"close_auction"``: fill at ``p_t`` and pay ``auction_cost_bp`` per
-        unit of traded notional on top of the half spread.
-    fill_fraction : float
-        ``f`` in (0, 1]; 1 is the next close. Used by ``"next"`` only.
-    auction_cost_bp : float
-        Extra cost of a close-auction fill, basis points of traded notional.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        require_finite(fill_fraction=self.fill_fraction,
-                       auction_cost_bp=self.auction_cost_bp)
-        if not 0.0 < self.fill_fraction <= 1.0:
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        if self.auction_cost_bp < 0:
-            raise ValueError("auction_cost_bp must be non-negative")
 
 
 @dataclass

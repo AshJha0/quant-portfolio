@@ -28,6 +28,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from qp_core.execution import ExecutionConfig
+
 from .data.synthetic import QUOTES, quote_levels
 from .strategy import (
     StrategyConfig,
@@ -37,37 +39,6 @@ from .strategy import (
 
 TRADING_DAYS = 252
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """Fill model shared by the strategy projects.
-
-    Attributes
-    ----------
-    mode : {"next", "close_auction"}
-        "next" fills at p_t + f (p_{t+1} - p_t). "close_auction" fills at
-        the decision close p_t and pays ``auction_cost_bp``.
-    fill_fraction : float in (0, 1]
-        f, the share of the next period's move that has happened by the
-        fill. 0.5 by default; 1.0 is the next close.
-    auction_cost_bp : float >= 0
-        Extra cost per unit of traded notional in close-auction mode, in
-        basis points, on top of the spread cost.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        if not (math.isfinite(self.fill_fraction) and 0.0 < self.fill_fraction <= 1.0):
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        if not (math.isfinite(self.auction_cost_bp) and self.auction_cost_bp >= 0.0):
-            raise ValueError(
-                f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}"
-            )
 
 
 @dataclass

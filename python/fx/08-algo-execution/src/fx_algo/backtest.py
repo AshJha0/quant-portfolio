@@ -36,6 +36,8 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
+from qp_core.execution import ExecutionConfig as _CoreExecutionConfig
+
 from .sessions import session_of_hour
 
 from .research_stats import lo_sharpe_se
@@ -54,34 +56,15 @@ BARS_PER_YEAR = 24.0 * 261.0
 
 
 @dataclass(frozen=True)
-class ExecutionConfig:
-    """When and at what price a decision taken at the close of bar t fills.
+class ExecutionConfig(_CoreExecutionConfig):
+    """:class:`qp_core.execution.ExecutionConfig` with an FX default.
 
-    Attributes
-    ----------
-    mode : {"next", "close_auction"}
-        ``"next"`` fills at ``p_t + f (p_{t+1} - p_t)``. ``"close_auction"``
-        fills at ``p_t`` and charges ``auction_cost_bp`` extra.
-    fill_fraction : float
-        ``f`` in (0, 1]. 1.0 is the next bar's close.
-    auction_cost_bp : float
-        Extra cost per unit traded notional in ``close_auction`` mode, in
-        basis points of price. 0.5 bp is about 0.55 pips on EURUSD at 1.10.
+    ``auction_cost_bp`` defaults to 0.5 bp of price, about 0.55 pips on
+    EURUSD at 1.10, instead of the equity 10 bp. Everything else (modes,
+    validation, the t+1 fill rule) is the shared one.
     """
 
-    mode: str = "next"
-    fill_fraction: float = 0.5
     auction_cost_bp: float = 0.5
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        f = float(self.fill_fraction)
-        if not np.isfinite(f) or not (0.0 < f <= 1.0):
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        c = float(self.auction_cost_bp)
-        if not np.isfinite(c) or c < 0:
-            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
 
 
 @dataclass(frozen=True)

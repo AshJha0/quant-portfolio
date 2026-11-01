@@ -45,6 +45,7 @@ t's close in the default mode.
 
 ```bash
 cd python/equity/08-algo-execution
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 pytest -q                          # 213 tests, 47-97 s measured, offline, seeded
 python examples/run_pipeline.py    # full demo, 175-247 s measured, writes nothing

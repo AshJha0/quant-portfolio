@@ -69,7 +69,8 @@ zero variance in floating point, so the zero-variance test uses literal
 
 ## 4. Research statistics
 
-`tests/test_research_stats.py` (shared verbatim across the alpha projects):
+`tests/test_research_stats.py` (the same tests run against `qp_core.stats`
+in `python/core/tests/test_stats.py`):
 
 | check | tolerance and why |
 |---|---|

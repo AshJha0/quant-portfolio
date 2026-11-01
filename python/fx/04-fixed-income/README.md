@@ -24,6 +24,7 @@ TN settle before spot. See `docs/METHODOLOGY.md`.
 
 ```bash
 cd python/fx/04-fixed-income
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[test]
 python -m pytest tests -q
 python examples/run_pipeline.py

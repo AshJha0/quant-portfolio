@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 import numpy as np
+from qp_core.metrics import downside_deviation
 import pandas as pd
 
 from ._validate import finite_scalar, finite_series
@@ -128,7 +129,8 @@ def sharpe_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
 def sortino_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
     """Annualised Sortino ratio: like Sharpe, but penalises only downside risk.
 
-    ``Sortino = mean(excess) / std(excess[excess < 0]) * sqrt(252)``.
+    ``Sortino = mean(excess) / DD * sqrt(252)`` with the full-sample
+    downside deviation ``DD = sqrt(mean(min(excess, 0)^2))``.
     Upside volatility is not penalised, which better matches how most
     investors actually perceive risk (an asymmetric utility over gains
     vs losses).
@@ -161,7 +163,7 @@ def sortino_ratio(returns: pd.Series, rf_annual: float = 0.03) -> float:
     finite_scalar(rf_annual, "sortino_ratio", "rf_annual")
     rf_daily = (1 + rf_annual) ** (1 / TRADING_DAYS) - 1
     excess = returns - rf_daily
-    dd = float(np.sqrt(np.mean(np.minimum(excess.to_numpy(dtype=float), 0.0) ** 2)))
+    dd = downside_deviation(excess.to_numpy(dtype=float))
     if dd == 0.0:
         raise ValueError(
             "sortino_ratio: no excess return is below zero, so the downside "

@@ -44,6 +44,8 @@ from typing import Optional, Sequence
 import numpy as np
 import pandas as pd
 
+from qp_core.execution import ExecutionConfig
+
 from .cointegration import engle_granger
 from .signals import SignalRules, generate_signals, size_positions, time_stop_bars
 from .spread import OUFit, compute_spread, fit_ou_ols
@@ -65,34 +67,6 @@ __all__ = [
 
 COST_COLUMNS = ["commission", "slippage", "impact", "borrow", "financing", "auction"]
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """When and at what price a decision taken at the close of t is filled.
-
-    mode : {"next", "close_auction"}
-        "next" fills at p_t + f (p_{t+1} - p_t). "close_auction" fills at
-        p_t and pays ``auction_cost_bp`` per leg on traded notional.
-    fill_fraction : float in (0, 1]
-        f above. 1 is the next close; 0 is not allowed (that is a same-close
-        fill, which must go through the close-auction mode and its cost).
-    auction_cost_bp : float >= 0
-        Extra cost of a close-auction fill, bp of traded notional per leg.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        f = float(self.fill_fraction)
-        if not math.isfinite(f) or not (0.0 < f <= 1.0):
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        a = float(self.auction_cost_bp)
-        if not math.isfinite(a) or a < 0:
-            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
 
 
 DEFAULT_EXECUTION = ExecutionConfig()
