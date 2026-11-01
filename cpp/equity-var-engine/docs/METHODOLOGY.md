@@ -1,251 +1,193 @@
 # Methodology
 
-The engine mirrors the Python reference (`eq_var`) function-for-function so
-the two stacks are twins: Python for research iteration, C++ for the
-latency/determinism-critical production path. This file states the maths,
-**why each model was chosen against alternatives**, and the assumptions
-register. Conventions throughout: `alpha` is the tail probability
-(`alpha = 0.01` → 99 % VaR), P&L is in currency units with losses negative,
-VaR/ES are reported **positive for a loss**, daily horizon unless scaled.
+This engine is the linear-book port of the Python engine `eq_var`. The
+Python engine revalues each position in full. This engine takes a vector of
+linear factor exposures `w` and uses `P&L = w . r`. This file states the
+conventions, the maths, the model choices and the assumptions.
 
-## 1. Historical simulation family (`eqvar/historical.hpp`)
+## 0. Conventions (shared by the Python, Rust and C++ VaR engines)
 
-**Plain historical VaR** is minus the empirical `alpha`-quantile of the P&L
-sample using NumPy's default *linear* (Hyndman–Fan **type-7**) interpolation:
+| item | convention |
+|---|---|
+| alpha | Tail probability: 0.01 = 99 % VaR. Every public function rejects alpha outside (0, 0.5) with `std::invalid_argument("alpha is the tail probability (e.g. 0.01 for 99 %) ...")`. |
+| sign | P&L in currency units, loss negative. VaR and ES are positive for a loss. |
+| empirical VaR | Losses L = -pnl sorted descending. k = n alpha, m = ceil(k - 1e-9) clamped to [1, n]. VaR = L(m). No interpolation. |
+| empirical ES | ES = [ sum_{i<m} L(i) + (k - (m-1)) L(m) ] / k (Acerbi-Tasche, exact fractional atom). |
+| weighted VaR / ES | Weights normalised to 1, stable-sorted with the losses. W_j cumulative. m = first j with W_j >= alpha - 1e-12. VaR = L(m), ES = [ sum_{i<m} w_i L(i) + (alpha - W_{m-1}) L(m) ] / alpha. |
+| Kupiec | `kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha})`. Throws for alpha outside (0, 0.5), n_obs < 1, n_exceptions < 0 or > n_obs. |
+| Basel | F(x) = P(X <= x), X ~ Binomial(n_obs, alpha) by pmf recursion. Green if F < 0.95, yellow if F < 0.9999, red otherwise. Yellow plus factor from the 250-day table at the smallest x' in 5..9 with F250(x') >= F(x) - 1e-12. |
+| Acerbi-Szekely | Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1, I_t = 1{pnl_t < -VaR_t}. Negative means ES is understated. |
+| Cornish-Fisher | Valid iff g'(z) > 0 on [-z_a, z_a], z_a = Phi^{-1}(1 - alpha). Non-finite moments throw. |
+| Cholesky | Symmetry within 1e-10 max abs entry. Jitter from 1e-12 to 1e-6 x mean(diag), x10 per step. Past the cap: throw, or repair by eigenvalue clip or Higham. |
+| EWMA | s2_0 = mean of r^2 over the first min(30, n) observations, s2_t = lam s2_{t-1} + (1 - lam) r_{t-1}^2. |
+| Monte Carlo SE | Bootstrap of the order-statistic VaR (primary, n_boot >= 2). Silverman KDE at the reported quantile (diagnostic). |
+| empty book | An empty or all-zero exposure vector throws "book has no positions". |
+| inputs | NaN, +inf, -inf, empty, too-short and negative-where-invalid inputs throw `std::invalid_argument`. |
 
-    h = (n-1) alpha,   Q = x_(floor h) + (h - floor h) (x_(floor h + 1) - x_(floor h))
+## 1. Historical simulation (`eqvar/historical.hpp`)
 
-*Why type-7?* It is what `np.quantile` does by default, hence what every
-research notebook and the Python twin produce — cross-language agreement to
-1e-9 requires bit-matching the interpolation rule, not just "a quantile".
-Alternatives considered: *lower/higher order statistic* (types 1/3) differ by
-O(1/n) and make VaR a step function of alpha (bad for limit monitoring);
-*Harrell–Davis* weights all order statistics (smoother, but no longer matches
-any regulator-recognisable convention and is ~50x more expensive). The
-interpolation choice moves 99 % VaR on 250 days by well under 1 σ of the
-estimator's own sampling noise; it is a convention, and we pick the dominant
-one.
+**Plain historical VaR** is the order statistic L(m) above. It is computed
+with `std::nth_element` (O(n)) and a partial sum of the m - 1 larger losses,
+with no full sort. The order statistic is a value from the sample, so it is
+the same in every language that rounds the inputs the same way. Type-7
+interpolation (`quantile_linear`) is deprecated and no VaR path uses it.
 
-**BRW age-weighted VaR** (Boudoukh–Richardson–Whitelaw): observation `i`
-(0 = oldest) gets weight `(1-λ) λ^{n-1-i} / (1-λ^n)`, and VaR is the
-step-function inversion of the *weighted* empirical CDF (smallest P&L whose
-cumulative weight reaches alpha, stable-sorted). With λ = 0.98 and n = 250,
-the most recent day carries ~2 % weight — a crash yesterday enters VaR
-immediately instead of at weight 1/250.
+**BRW age-weighted VaR and ES** (Boudoukh, Richardson, Whitelaw):
+observation i (0 = oldest) gets weight (1-lam) lam^{n-1-i} / (1-lam^n), and
+the weighted rule above applies. With lam = 0.98 and n = 250 the most recent
+day carries about 2 % of the weight.
 
-**Filtered historical simulation (FHS)**: devolatilise P&L by one-step-ahead
-EWMA (RiskMetrics) volatility forecasts
+**Filtered historical simulation, per factor**
+(`filtered_historical_var_es`). For each factor j, sigma_{t,j} is the EWMA
+volatility of the factor returns (section 2), z_{t,j} = r_{t,j} / sigma_{t,j},
+and the rescaled scenario is r*_{t,j} = z_{t,j} sigma_{T+1,j}, with
+sigma_{T+1,j} the one-step-ahead forecast. Scenario P&L = w . r*. VaR and ES
+then follow the order-statistic rule. The P&L-level `filtered_historical_var`
+devolatilises the book P&L instead of the factors. It is deprecated and kept
+unchanged for one release (full-sample seed, type-7 quantile).
 
-    sigma²_t = λ sigma²_{t-1} + (1-λ) x²_{t-1}     (seeded with the ddof-0 sample variance)
+**Square-root-of-time**: VaR_h = VaR_1 sqrt(h). It holds only for i.i.d.
+zero-drift returns and understates multi-day risk under volatility
+clustering.
 
-then rescale the standardised innovations to tomorrow's forecast
-`sigma²_{T+1} = λ sigma²_T + (1-λ) x²_T` and take the empirical type-7
-quantile. FHS keeps the empirical (fat, skewed) tail *shape* but re-levels it
-to the current volatility regime — the best-performing member of the family
-in the Python project's 500-day backtest.
+## 2. EWMA volatility
 
-*Why this family at all (vs parametric only)?* Historical simulation makes no
-distributional assumption in the tail, prices in observed cross-asset
-dependence for free, and is the desk lingua franca. Its weaknesses (ghost
-effects, unresponsiveness) are exactly what BRW and FHS address, so all three
-are shipped and compared rather than picking one.
+RiskMetrics zero-mean recursion:
 
-**Square-root-of-time**: `VaR_h = VaR_1 · sqrt(h)` — valid only under i.i.d.
-zero-drift returns; documented as an *approximation with known bias* under
-volatility clustering (understates multi-day risk in stressed regimes; see
-VALIDATION.md). The alternative — overlapping h-day P&L — needs h× the
-history and autocorrelates the sample; for the 10-day regulatory number,
-sqrt-time on 1-day VaR is the standard desk compromise and is what we scale.
+    s2_0 = mean(r_0^2 .. r_{w-1}^2),  w = min(30, n)
+    s2_t = lam s2_{t-1} + (1 - lam) r_{t-1}^2,   sigma_t = sqrt(s2_t)
 
-## 2. Covariance estimation (`eqvar/matrix.hpp`)
+sigma_t is the forecast for day t from data up to t - 1. The seed reads the
+first w observations, so sigma_t has look-ahead only inside the seed window.
+`ewma_volatility_next` returns sqrt(lam s2_{n-1} + (1 - lam) r_{n-1}^2).
+Variances are floored at 1e-32 to keep r / sigma finite on all-zero data.
 
-- **Sample covariance** (ddof = 1) of the (T x n) returns panel — the
-  unbiased baseline, equally weighting the window.
-- **EWMA (RiskMetrics) covariance**: `Σ ← λ Σ + (1-λ) r_t r_tᵀ` iterated over
-  all rows, seeded with the sample covariance, λ = 0.94 daily. Zero-mean
-  returns assumed (standard at daily horizon — the daily mean is ~20x smaller
-  than the daily vol and estimating it adds noise).
+## 3. Covariance and linear algebra (`eqvar/matrix.hpp`)
 
-*Why not shrinkage (Ledoit–Wolf) or a factor model?* For n = 100, T = 250
-the sample matrix is invertible but noisy; however the VaR use-case only
-needs `wᵀΣw` (a quadratic form, noise-averaging) and a Cholesky factor —
-neither inverts Σ, so shrinkage's main benefit (conditioning of Σ⁻¹) is moot.
-The Python research stack is the place to iterate on estimators; the engine
-mirrors the two the reference implements. Near-singularity is handled at the
-Cholesky, not the estimator.
+- **Sample covariance**, ddof = 1.
+- **EWMA covariance**: Sigma <- lam Sigma + (1 - lam) r r' over all rows,
+  seeded with the sample covariance, lam = 0.94. It does not yet use the
+  30-observation seed of section 2.
 
-## 3. Linear algebra: dense Matrix + Cholesky with jitter
+**Cholesky.** Plain factorisation first. On a non-positive pivot the engine
+adds eps I with eps = 1e-12 mean(diag), then x10 per try up to
+1e-6 mean(diag). Any jitter is reported in `CholeskyResult::jitter_added`
+and `warning`. A matrix that needs more than the cap has a real negative
+eigenvalue, and factoring it would simulate a different covariance from the
+one supplied. With `Repair::None` (default) the engine throws
+`std::runtime_error` and names the most negative eigenvalue.
 
-A deliberately minimal row-major dense `Matrix` over one contiguous
-`std::vector<double>` — cache-friendly, allocation-free hot loops, no
-expression-template machinery to audit. *Why not Eigen?* The project rule is
-zero external dependencies; the operations needed (matvec, quadratic form,
-Cholesky, rank-1 updates) are 50 lines each and trivially verified, and the
-MC hot loop is memory-bound on the triangular product either way.
+**Repair.** `Repair::Clip` eigen-decomposes, clips eigenvalues to
+max(lam, 1e-10 mean(diag)), rebuilds, and rescales by D^{1/2} so the
+original variances are kept. `Repair::Higham` runs Higham's (2002)
+alternating projections with Dykstra correction on the correlation matrix
+(unit-diagonal projection, then PSD projection), stops when successive
+iterates differ by less than 1e-12 in relative Frobenius norm, fails after
+1000 iterations, and rescales by the original vols. Both use a cyclic Jacobi
+eigen solver (`symmetric_eigen`), which is accurate and simple at the
+factor counts used here.
 
-**Cholesky with diagonal-jitter fallback** (mirrors
-`eq_var.monte_carlo_var.safe_cholesky`): attempt plain `A = LLᵀ`; on a
-non-positive pivot (exactly singular PSD inputs — perfectly correlated
-factors, zero-variance assets — or slight asymmetry-rounding indefiniteness)
-add `jitter · mean(diag)` to the diagonal and retry, escalating ×10 up to 12
-times, reporting the jitter actually used. Starting at 1e-10 of the average
-variance, the perturbation is orders of magnitude below Monte Carlo noise.
-*Alternative*: eigenvalue clipping is more surgical but needs an
-eigendecomposition (O(n³) with a big constant, plus code we'd have to write
-dependency-free); jitter achieves the same effect for PSD-but-singular
-matrices at zero extra cost, and *badly indefinite* input still throws — it
-should, because that is corrupt data, not numerics.
+## 4. Parametric VaR (`eqvar/parametric.hpp`)
 
-The escalation is **capped at 1e-6 x mean(diag)**. Without a cap the ladder
-eventually makes *any* symmetric matrix positive definite — including one
-with a genuine negative eigenvalue — by adding a perturbation larger than
-the variances themselves, so the simulation would silently run on a
-covariance the caller never supplied and the resulting VaR would be
-unrelated to the book. Past the cap the engine throws and points at the
-right fix (eigenvalue clipping / nearest-PSD projection upstream). This is
-deliberately stricter than the Python `safe_cholesky`; it only diverges on
-inputs that are not valid covariance matrices, so no golden-vector or
-cross-language result is affected. Non-finite entries are rejected up front
-as `std::invalid_argument` rather than being ground through twelve futile
-factorisations.
+    sigma_p = sqrt(w' Sigma w),   VaR = -(mu h + z sigma_p sqrt(h))
 
-## 4. Parametric (variance–covariance) VaR (`eqvar/parametric.hpp`)
-
-    sigma_p = sqrt(wᵀ Σ w),   VaR = -(mu·h + z_alpha · sigma_p · sqrt(h))
-
-with three tail models:
-
-- **Normal**: `z = Phi^{-1}(alpha)`.
-- **Variance-matched Student-t**: `z = t_nu^{-1}(alpha) · sqrt((nu-2)/nu)`,
-  df > 2. The rescaling matches the *variance* so that switching the tail
-  model changes only tail shape, never the sigma — otherwise t-VaR and
-  normal-VaR differences would conflate two effects. df = 6 default (typical
-  equity daily-return fit).
-- **Cornish–Fisher**: `z_cf = z + (z²-1)S/6 + (z³-3z)K/24 - (2z³-5z)S²/36`
-  with sample skewness S and excess kurtosis K, **guarded by an explicit
-  monotonicity-domain check**: the quartic expansion is only a quantile
-  function where `dz_cf/dz > 0` on `|z| ≤ 3.5`; outside that region (e.g.
-  S = -0.5, K = 0 already fails) the "quantile" is not a quantile and the
-  engine throws rather than returning nonsense. This check is inherited
-  verbatim from the Python reference and is unit-tested on both sides.
-
-*Why keep parametric at all?* It is the only closed-form method — the
-analytic anchor every simulation method is validated against, the fastest
-(sub-µs marginal cost per exposure update → intraday incremental VaR), and
-the basis of Euler risk decomposition (`∂VaR/∂w = z Σw / sigma_p`).
+- **Normal**: z = Phi^{-1}(alpha).
+- **Variance-matched Student-t**: z = t_nu^{-1}(alpha) sqrt((nu-2)/nu),
+  nu > 2. Switching the tail model then changes tail shape only, not sigma.
+- **Cornish-Fisher**: z_cf = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36
+  with skewness S and excess kurtosis K. The map is a quantile function only
+  where it is monotone. `cornish_fisher_valid(S, K, alpha)` checks g' > 0 on
+  the closed interval [-z_a, z_a], z_a = Phi^{-1}(1 - alpha), in closed form:
+  g' is quadratic in z, so its minimum is at the vertex (if inside and the
+  parabola opens upward) or at an endpoint. Example: (S, K) = (0.122, -0.427)
+  has a concave g' with its minimum at the left endpoint. On the old fixed
+  interval [-4, 4] it fails (g'(-4) = -9e-4). At alpha = 0.01 (z_a = 2.326)
+  and alpha = 0.001 (z_a = 3.090) it is valid. `cornish_fisher_var` throws
+  when the check fails, and always throws on non-finite moments.
 
 ## 5. Monte Carlo VaR (`eqvar/monte_carlo.hpp`)
 
-Simulate factor returns `r = L z` (L the Cholesky factor), P&L `= wᵀr`, read
-VaR/ES off the scenario distribution.
+Simulate r = L z, P&L = w . r, then VaR and ES by the order statistic.
 
-- **Multivariate normal**: `z ~ N(0, I)` via inverse-CDF on 53-bit uniforms.
-- **Multivariate Student-t**: common-mixing construction `r = L z / sqrt(W/nu)`,
-  `W ~ chi²_nu`, with scale matrix `Σ·(nu-2)/nu` so the simulated
-  **covariance equals Σ exactly** while tails fatten — the same
-  variance-matching discipline as the parametric family. A *single* mixing
-  variable per path (not per factor) is what makes the joint tails fat —
-  independent per-factor t draws would kill tail dependence, which is the
-  point of using t.
-- **Determinism**: one seeded `std::mt19937_64`; gaussians via our own
-  `Phi^{-1}(u)` (Acklam + one Halley step), chi² via Marsaglia–Tsang gamma
-  built on the same primitives. `std::normal_distribution` and
-  `std::gamma_distribution` are deliberately avoided: their algorithms are
-  implementation-defined, so results would differ across standard libraries.
-  Given a seed, VaR is **bitwise** reproducible (unit-tested).
-- **Error bars**: order-statistic asymptotic SE
-  `sqrt(alpha(1-alpha)/n) / f_hat(q)`, with the density estimated by a
-  symmetric order-statistic finite difference of bandwidth `ceil(sqrt(alpha n))`.
-  Every MC number ships with its SE; convergence tests assert within 3 SE.
+- **Multivariate normal**: z ~ N(0, I) by inverse CDF on 53-bit uniforms.
+- **Multivariate Student-t**: r = L z / sqrt(W / nu), W ~ chi2_nu, scale
+  matrix Sigma (nu-2)/nu so the simulated covariance equals Sigma. One
+  mixing variable per path keeps the joint tails dependent.
+- **Repeatability**: one seeded `std::mt19937_64`. Gaussians come from the
+  engine's own Phi^{-1} (Acklam plus one Halley step), chi2 from a
+  Marsaglia-Tsang gamma sampler. A seed repeats exactly on one platform.
+  Results can differ in the last bits across platforms because `std::log`,
+  `std::exp` and `std::erfc` are not correctly rounded.
+- **Simulate once**: `monte_carlo_var` simulates one scenario set and
+  derives VaR, ES and both standard errors from it.
+- **Standard error**: the bootstrap resamples the P&L with replacement
+  n_boot times (default 200, at least 2), recomputes L(m) with
+  `std::nth_element` and reports the ddof = 1 standard deviation. It reuses
+  one buffer, so memory is O(n). The KDE value
+  sqrt(alpha(1-alpha)/n) / f_hat(q), with a Silverman bandwidth
+  0.9 min(sd, IQR/1.34) n^{-1/5} at the reported quantile q, is a
+  diagnostic. It is biased low in deep tails.
 
-*Why MC when the portfolio is linear?* For a linear book, MC with a normal
-factor model must reproduce parametric VaR — that identity is a validation
-asset, not redundancy. MC is the only method that extends to fat-tailed
-joint factors (t), and the architecture (simulate panel → revalue → tail
-metrics) is the one that generalises to non-linear revaluation.
+For a linear book with a normal factor model, MC must reproduce parametric
+VaR. The tests use that identity.
 
 ## 6. Expected Shortfall (`eqvar/expected_shortfall.hpp`)
 
-**Empirical ES** is the *exact* integral of the empirical quantile function
-over `(0, alpha]`: with `k = floor(alpha n)`,
-
-    ES = -(1/(alpha n)) [ Σ_{i≤k} x_(i) + (alpha n - k) · x_(k+1) ]
-
-i.e. fractional weight on the boundary order statistic — not "mean of
-observations beyond VaR", which is biased for non-integer `alpha n`.
-Closed forms: **normal** `ES = sigma·phi(z_alpha)/alpha - mean` (the identity
-validated against quadrature to 1e-10) and **variance-matched Student-t**
-`ES = sigma · f_nu(q)(nu+q²)/((nu-1)alpha) · sqrt((nu-2)/nu) - mean`.
-ES ≥ VaR always (tested); ES is subadditive where VaR need not be, and FRTB
-made 97.5 % ES the capital measure — both closed forms take `alpha = 0.025`.
+Empirical ES follows the convention table. Closed forms: normal
+ES = sigma phi(z_alpha) / alpha - mean, variance-matched Student-t
+ES = sigma f_nu(q) (nu + q^2) / ((nu - 1) alpha) sqrt((nu-2)/nu) - mean.
+ES >= VaR for every sample (tested).
 
 ## 7. Backtesting (`eqvar/backtest.hpp`)
 
-An exception is a day with `pnl < -VaR`. Three regulator-standard tests:
+An exception is a day with pnl < -VaR.
 
-- **Kupiec POF (1995)**: `LR_uc = -2 ln[ L(alpha) / L(x/T) ]` on the binomial
-  likelihood, chi²(1) under H0; `0·ln 0 = 0` convention for degenerate counts.
-- **Christoffersen (1998) independence**: LR of an i.i.d. exception process
-  against a first-order Markov alternative on the transition counts
-  `n00, n01, n10, n11`; clustering inflates `n11` and rejects. **Conditional
-  coverage**: `LR_cc = LR_uc + LR_ind ~ chi²(2)` — right rate *and*
-  independence jointly.
-- **p-values** from the chi² survival function via the **regularized upper
-  incomplete gamma** (series + continued fraction, `src/stats.cpp`) — no
-  statistics library needed; validated at the classical critical value
-  `chi²(1) = 3.8415 → p = 0.05` to 1e-12.
-- **Basel traffic light** on the 250-day window with the *exact* regulatory
-  count boundaries: 0–4 green (k = 3.0), 5–9 yellow (add-ons
-  0.40/0.50/0.65/0.75/0.85), 10+ red (k = 4.0). The exact binomial CDF (via
-  the regularized incomplete beta) reports where the observed count sits
-  under a correct model — e.g. 4 exceptions is the 89.2nd percentile.
-
-*Why LR tests and not just counting?* The traffic light *is* counting — but
-it has known low power; Kupiec adds a calibrated significance level, and
-Christoffersen catches the failure counting cannot see: 10 exceptions in one
-volatility cluster versus 10 spread over the year (unit-tested with planted
-patterns of both kinds).
+- **Kupiec POF**: LR = -2 ln[(1-a)^{n-x} a^x] + 2 ln[(1-p)^{n-x} p^x],
+  p = x/n, 0 ln 0 = 0, chi2(1) p-value.
+- **Christoffersen independence** on the transition counts n00, n01, n10,
+  n11, and **conditional coverage** LR_cc = LR_uc + LR_ind, chi2(2).
+- **Basel traffic light** for any window and alpha (convention table). At
+  n = 250 and alpha = 0.01 the binomial zones give green 0-4, yellow 5-9 and
+  red 10+, which is the 1996 table. On other windows the zone comes from
+  F(x), and the yellow plus factor comes from the 250-day count with the
+  same F. Example: n = 1000, x = 15 gives F = 0.9521, yellow, plus 0.40.
+- **Acerbi-Szekely Z2** (convention table). The C++ engine returns Z2 only.
+  The Python engine also simulates a p-value.
 
 ## 8. Special functions (`eqvar/stats.hpp`)
 
-- `Phi^{-1}`: Acklam's rational approximation (|rel err| < 1.15e-9) + one
-  Halley refinement → ~1e-13 observed; upper half routed through the lower
-  tail (`p > 0.5 → -Phi^{-1}(1-p)`, exact for doubles by Sterbenz), which
-  makes symmetry bitwise and avoids erfc cancellation near 1.
-- Regularized incomplete beta (Lentz continued fraction) → Student-t CDF and
-  exact binomial CDF; incomplete gamma (series + CF) → chi² survival.
-- Student-t quantile by bisection on the CDF to a machine-precision bracket
-  (matches `scipy.stats.t.ppf` to < 1e-9; a 200-step bisection at ~µs cost is
-  irrelevant next to any consumer, and has no tuning parameters to defend).
-- Moments: `stdev` ddof = 1; skew/kurtosis as biased moment ratios
-  (`scipy bias=True`) because that is what the Python reference feeds
-  Cornish-Fisher.
+- Phi^{-1}: Acklam's rational approximation plus one Halley step. The upper
+  half is routed through the lower tail (1 - p is exact for p in [0.5, 1)).
+- `log_gamma`: Lanczos (g = 7, 9 terms), about 1e-15 relative, with
+  reflection below 0.5. The library never calls `std::lgamma`, which writes
+  glibc's global `signgam` and is not thread-safe.
+- Regularised incomplete beta (Lentz continued fraction) for the Student-t
+  CDF; incomplete gamma (series and continued fraction) for chi2.
+- Binomial CDF by the pmf recursion pmf(0) = exp(n log1p(-p)),
+  pmf(j+1) = pmf(j) (n-j)/(j+1) p/(1-p). It falls back to the incomplete
+  beta when pmf(0) underflows.
+- Student-t quantile by bisection on the CDF.
+- Moments: stdev with ddof = 1; skewness and kurtosis as biased moment
+  ratios, as the Python engine feeds Cornish-Fisher.
 
 ## Assumptions register
 
-Each assumption states *what breaks if violated*.
+Each line states what breaks if the assumption fails.
 
-1. **Linear (delta) P&L mapping**: `pnl = wᵀr`. Violated by optionality/gamma
-   → all methods mis-state risk on gap moves; the Python twin's full
-   revaluation shows delta-gamma missing 37 % on a 2020 replay. This engine
-   is for the linear (cash equity / futures) book or delta-mapped views.
-2. **Daily returns are (locally) stationary over the window**. Violated in
-   regime breaks → plain historical VaR lags ~250 days; use FHS/BRW (built
-   for exactly this) and monitor with Christoffersen.
-3. **Zero-mean daily returns** (EWMA covariance, default `mean = 0`).
-   Violated for strongly trending factors → second-order at daily horizon
-   (mean ≈ vol²·years); the `mean` parameter exists where it matters.
-4. **i.i.d. for sqrt-time scaling**. Violated under vol clustering → 10-day
-   VaR understated in stressed regimes; documented bias, use overlapping
-   P&L in the research stack when it matters.
-5. **Student-t df > 2** (finite variance) for variance matching. df ≤ 2 has
-   no variance to match → throws by design.
-6. **Cornish-Fisher inside its monotonicity domain**. Outside → not a
-   quantile function; the engine refuses (domain check) instead of returning
-   a number.
-7. **Covariance input is symmetric PSD up to rounding**. Small negative
-   eigenvalues → jitter absorbs them; a badly indefinite matrix (data error)
-   → `std::runtime_error`, deliberately fatal.
-8. **250-day, 99 % convention for Basel zones**; the count boundaries are
-   specific to that window — other windows change the binomial, and the
-   engine reports the exact binomial CDF for whatever `n_obs` is passed.
+1. **Linear P&L, pnl = w . r.** Options and other non-linear positions are
+   mis-stated on large moves. Use the Python engine for those books.
+2. **Locally stationary daily returns.** Plain historical VaR lags regime
+   breaks. BRW and FHS respond faster. Christoffersen detects the lag.
+3. **Zero-mean daily returns** in EWMA. Strongly trending factors add a
+   second-order error at the daily horizon.
+4. **i.i.d. returns for sqrt-time.** Ten-day VaR is understated under
+   volatility clustering.
+5. **Student-t df > 2.** No finite variance to match below that; throws.
+6. **Cornish-Fisher inside its validity region.** Outside it the map is not
+   a quantile function; the engine throws.
+7. **Covariance symmetric PSD up to rounding.** Small negative eigenvalues
+   are absorbed by jitter below 1e-6 mean(diag). Larger ones throw unless a
+   repair is requested.
+8. **Basel plus factors** come from the 1996 250-day table. For other
+   windows the mapping through F(x) is this engine's convention, not a
+   regulatory rule.
