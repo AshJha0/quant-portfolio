@@ -1,213 +1,184 @@
-# Methodology — FX Regime Switching (Risk-On / Risk-Off)
+# Methodology: FX Regime Switching (Risk-On / Risk-Off)
 
-## 1. Why RORO regimes are *the* FX regime story
+Every result in this project comes from synthetic data. The generator
+plants regimes with known drifts, vols and correlations, and the edge the
+strategy shows is the drift it plants. No real-data result exists yet.
 
-Currency markets do not cycle through abstract "states" — they cycle
-through **risk-on / risk-off**, and the asset that lives or dies by it is
-the **carry trade**:
+## 1. The regime story being modelled
 
-* **Risk-on**: funding is cheap, vol is low, investors borrow JPY/CHF and
-  lend AUD/NZD/EM.  Carry pairs grind higher, safe havens bleed, the
-  interest differential accrues day after day.  Returns look like a
-  short-vol position: steady premium, small daily moves.
-* **Risk-off**: the same crowded position unwinds *violently*.  Carry and
-  EM currencies gap lower against USD, JPY and CHF are bid as funding
-  trades are repaid, realised vol multiplies, and — crucially — the
-  cross-section collapses onto one factor: every USD pair trades the
-  same "one trade" and pairwise correlations spike.
-* **USD squeeze** (the 2008 / March-2020 variant): a dollar-funding
-  scramble in which *everything* falls against USD, safe havens included.
-  Distinct from ordinary risk-off precisely because the haven bid fails.
+Currency markets are usually described in terms of risk-on and risk-off,
+and the carry trade is the position most exposed to the switch.
 
-This is the empirical regularity behind the carry-crash literature —
-Brunnermeier, Nagel & Pedersen's "carry trades and currency crashes"
-story qualitatively: carry returns are negatively skewed because
-crash risk is the compensation; unwinds coincide with funding-liquidity
-stress and vol spikes; "up the stairs, down the elevator."  A regime
-model is the natural formalisation: two (or three) persistent states
-with different means, vols and **correlation structure**, and
-state-dependent optimal books.
+* Risk-on: funding is cheap and vol is low. Carry currencies (AUD, NZD,
+  EM) drift up against USD, havens (JPY, CHF) drift down, and the rate
+  differential accrues daily.
+* Risk-off: crowded carry positions unwind. Carry and EM currencies fall,
+  JPY and CHF are bid, vol rises and pairwise correlations of USD pairs
+  rise.
+* USD squeeze: everything falls against USD, havens included.
 
-The economic punchline this project quantifies: **carry earns steadily
-in risk-on and gives it back violently in risk-off; the value of a
-regime filter is avoiding the unwind; its honesty metric is how many
-days late it flags the flip — and what those days cost versus an oracle
-that knows the true state.**
+The carry-crash literature (for example Brunnermeier, Nagel and Pedersen,
+"Carry Trades and Currency Crashes", 2008) reports that carry returns are
+negatively skewed and that unwinds coincide with funding stress and vol
+spikes. Whether high-vol states have negative expected carry returns out
+of sample is an empirical question. The synthetic generator here assumes
+they do (risk-off drift -25% a year for G10 carry and -40% for EM), so the
+synthetic results cannot answer it.
 
 ## 2. Pipeline
 
 ```
 returns + deposit rates (synthetic RORO generator, known truth)
-    │
-    ▼
-features.py     6+1 FX-native features, expanding-window (PIT) z-scores
-    │
-    ▼
-pca.py          from-scratch PCA: PC1 of the currency panel = RORO axis
-    │
-    ▼
-gmm.py/hmm.py   from-scratch EM: GMM (static clusters, BIC) and
-    │           Gaussian HMM (Baum-Welch, log-space forward-backward)
-    ▼
-detection.py    expanding refit, FILTERED probabilities only,
-    │           economic labeling, hysteresis + confirmation
-    ▼
-strategy.py     regime-conditional baskets, carry accrual, vol target,
-    │           pip costs
-    ▼
-backtest.py     walk-forward ledger (net = spot + carry − cost, exact)
-    │
-    ▼
-risk.py         per-regime stats, oracle comparison, detection-lag cost
+  -> features.py   7 FX features, expanding-window (PIT) z-scores
+  -> pca.py        PCA; PC1 of the currency panel is the RORO axis
+  -> gmm.py/hmm.py GMM (BIC evidence, HMM initialisation) and Gaussian HMM
+  -> detection.py  expanding refit, filtered probabilities, labeling,
+                   hysteresis
+  -> strategy.py   regime books, vol targeting, carry, pip costs
+  -> backtest.py   walk-forward ledger, net = spot + carry - cost
+  -> risk.py       per-regime stats, oracle gap, detection lag,
+                   random-timing benchmark
 ```
 
-## 3. Why an HMM (vs at least two alternatives)
+## 3. Model choice
 
-| Model | What it captures | What it misses | Verdict |
-|---|---|---|---|
-| **Vol-threshold rule** ("risk-off if realised vol > x") | The single most informative symptom; trivially explainable | One symptom only: misses correlation spikes and haven bids; threshold is arbitrary and needs constant recalibration; binary output with no persistence model → flickers at the boundary | Good benchmark, not a model |
-| **Correlation-threshold rule** ("risk-off if avg pairwise corr > y") | The "one-trade market" signature | Same arbitrariness; corr estimates need windows → lag; ignores vol and direction | Same class of problem |
-| **GMM (static mixture)** | Full multivariate signature (vol + corr + direction) via cluster means/covariances | **No dynamics**: classifies each day independently, so it has no notion of regime *persistence*; posterior flickers day to day; cannot produce transition probabilities or expected durations | Used here for initialisation and BIC evidence |
-| **Gaussian HMM** (chosen) | Everything the GMM sees **plus** a transition matrix: persistence, expected durations, and a filtered probability that correctly blends today's evidence with yesterday's belief | Gaussian emissions understate FX tails; constant transition probabilities; k must be chosen | **Chosen** — the persistence prior is exactly what separates a regime from a bad day |
-
-The HMM's decisive advantage is the **filtered recursion**: p(sₜ|x₁..ₜ)
-∝ emission × (transition-weighted prior).  A single bad day moves the
-posterior a little; three bad days move it a lot.  Threshold rules and
-GMMs cannot express that without ad-hoc smoothing — and ad-hoc smoothing
-is just an unprincipled HMM.
-
-Trade-offs accepted: EM finds local optima (mitigated by k-means-style
-restarts and warm-started refits); Gaussian emissions are wrong in the
-tails (see assumptions); k is treated as an economic choice with BIC as
-evidence (see §6).
-
-## 4. Filtered vs smoothed — the honesty rule
-
-* **Filtered** p(sₜ | x₁..ₜ): uses data up to *t* only.  Tradeable.
-* **Smoothed** p(sₜ | x₁..T): uses the whole sample, including the
-  future.  Research only.  Smoothed probabilities make any regime model
-  look clairvoyant — the flip is "detected" days before it happens,
-  because the algorithm read the following week.
-
-This project trades **only** filtered probabilities, produced by models
-fitted on expanding windows, and enforces it with mutation tests:
-perturbing data after *t* must leave every output at ≤ *t* bit-for-bit
-unchanged (`tests/test_detection.py::test_filtered_only_past_mutation`,
-`tests/test_backtest.py::test_no_lookahead_mutation`).  The suite also
-verifies filtered ≠ smoothed except at the final observation.
-
-## 5. Features (FX-native, point-in-time)
-
-| Feature | Construction | Regime signature |
+| model | captures | misses |
 |---|---|---|
-| `avg_vol` | mean rolling realised vol of G10-vs-USD legs, annualised (synthetic VXY analog) | ↑↑ in risk-off / squeeze |
-| `carry_ret` | rolling return of the rank-carry basket (long top-3 yielders, short bottom-3, spot + accrual, PIT weights) | ↓↓ in unwinds |
-| `haven_rs` | rolling (JPY+CHF)/2 − (AUD+NZD)/2 return | ↑ in risk-off; weaker in squeeze |
-| `usd_corr` | average pairwise rolling correlation of the risk-block USD pairs | ↑↑ in unwinds ("one trade") |
-| `em_g10` | rolling EM basket − G10 basket return | ↓↓ in unwinds |
-| `usd_str` | − rolling average return of all currencies vs USD (dollar factor) | ↑↑ in a squeeze specifically |
-| `fwd_ts` | CIP forward-point proxy: average annualised forward discount (r_ccy − r_USD) of the carry longs | slow-moving carry-availability gauge |
+| vol threshold | the main symptom, easy to explain | correlation and haven signals, persistence, arbitrary threshold |
+| correlation threshold | the one-factor market | same problems as the vol rule |
+| GMM | the multivariate signature of each state | dynamics: each day is classified alone, so labels flicker |
+| Gaussian HMM (used) | the GMM signature plus a transition matrix | fat tails, time-varying transition hazards, k must be chosen |
 
-All features are standardised with **expanding-window z-scores**
-(mean/std computed from data up to and including *t*) — no full-sample
-statistics ever touch the past.  Windows are deliberately short (8/5/12
-days): FX risk episodes last days-to-weeks, and longer windows smear
-transitions into a spurious "transitional" state (found and documented
-in VALIDATION.md §6).
+The filtered HMM probability p(s_t | x_1..t) combines today's evidence
+with yesterday's belief through the transition matrix, so one bad day
+moves it a little and several move it a lot.
 
-`fwd_ts` is **excluded from the HMM input by default**: its expanding
-z-score is near-unit-root, and an HMM offered a wandering feature will
-happily carve the sample into meaningless early/late epochs.  It is
-retained in the feature block as a desk-level diagnostic.
+EM finds local optima. Each fit starts from GMM-seeded initialisations.
+Refits are warm-started from the previous model, and every fourth refit
+a cold fit competes with the warm one; the higher training likelihood
+wins. When EM stops at `max_iter`, the reported likelihood is recomputed
+for the returned parameters.
 
-## 6. Economic labeling and the number of regimes
+## 4. Filtered, never smoothed
 
-HMM state indices are arbitrary.  Each refit maps them to economics
-from the state means in feature space:
+* Filtered p(s_t | x_1..t) uses data up to t and is the only probability
+  that trades.
+* Smoothed p(s_t | x_1..T) uses the whole sample and is research only.
 
-1. `risk_on` = lowest `avg_vol` mean (with high-corr states this is
-   equivalently the low-vol-low-corr state; the mapping "high-vol +
-   high-corr ⇒ risk_off" is unit-tested);
-2. with k=3, the remaining two split on `haven_rs`: havens rallying ⇒
-   `risk_off`, havens falling too ⇒ `usd_squeeze`.
+Mutation tests perturb data after t and require every output at or
+before t to be unchanged (`tests/test_detection.py`,
+`tests/test_backtest.py::test_no_lookahead_mutation`).
 
-**Number of regimes.**  On raw iid returns, BIC recovers the true k
-exactly (tested).  On rolling-window features — autocorrelated and
-fat-tailed — HMM-BIC systematically over-selects k (the pipeline shows
-GMM-BIC → 3, HMM-BIC → 4 on a true 3-state panel).  k is therefore an
-**economic choice** (2 = RORO, 3 = RORO + squeeze) with BIC presented
-as evidence, not verdict.
+## 5. Features
 
-## 7. Regime-conditional strategy
+| feature | construction |
+|---|---|
+| `avg_vol` | mean rolling realised vol of G10-vs-USD legs, annualised |
+| `carry_ret` | rolling return of the rank-carry basket (top-3 long, bottom-3 short) |
+| `haven_rs` | rolling (JPY+CHF)/2 minus (AUD+NZD)/2 return |
+| `usd_corr` | average pairwise rolling correlation of the risk-block USD pairs |
+| `em_g10` | rolling EM basket minus G10 basket return |
+| `usd_str` | minus the rolling average return of all currencies vs USD |
+| `fwd_ts` | CIP forward-point proxy, mean (r_ccy - r_USD) of the carry longs |
 
-| Regime | Book | Rationale |
-|---|---|---|
-| `risk_on` | rank-carry: long top-3 yielders, short bottom-3, dollar-neutral | harvest the differential while vol is low |
-| `risk_off` | long JPY+CHF vs the risk block (AUD, NZD + EM) | carry is CUT; own the unwind |
-| `usd_squeeze` | long USD vs everything | the haven bid fails; only USD works |
+All features are standardised with expanding-window z-scores. Windows
+default to 8 days (vol), 5 days (returns) and 12 days (correlation).
+The HMM uses five columns by default (`avg_vol`, `carry_ret`, `haven_rs`,
+`usd_corr`, `em_g10`). The windows and the column set were chosen on
+design seeds only (section 8).
 
-All books are **vol-targeted** at 10% annualised using a trailing
-63-day covariance (PIT), leverage capped at 4×, with a vol floor
-guarding degenerate (pegged) covariances.  P&L accrues
-`w·(r_ccy − r_USD)/252` of **carry** daily on top of spot, and pays
-**pip costs** on turnover (half-spreads per leg: ~0.5–2.5 pips G10,
-6–12 pips EM; 1 pip = 1e-4 of notional).
+## 6. Labeling and the number of states
 
-**Hysteresis + confirmation**: a regime switch requires the challenger's
-filtered probability ≥ 0.70 (or the incumbent's < 0.30) for 2
-consecutive days.  This throttles turnover and flicker at the price of
-detection lag — a governed, measured trade-off (VALIDATION.md §4).
+HMM state indices are arbitrary. Each refit maps them from the state
+means in feature space: `risk_on` is the lowest `avg_vol` mean; with
+k = 3 the other two split on `haven_rs` (havens rallying is `risk_off`,
+havens falling is `usd_squeeze`).
 
-## 8. Assumptions register
+On raw iid returns BIC recovers the true k (tested). On autocorrelated
+rolling-window features BIC is unreliable, so k = 3 is an assumption.
+The pipeline prints the BIC table as evidence only.
 
-Each assumption states *what breaks if violated*.
+## 7. Strategy, execution and costs
 
-1. **Gaussian emissions.**  FX daily returns are fat-tailed and jumpy
-   (peg breaks, flash crashes).  *If violated*: a single 6σ day can be
-   "explained" only by the high-vol state, causing false flips; tail
-   risk inside a state is understated.  Mitigation: hysteresis absorbs
-   one-day shocks; the failure is demonstrated for SNB-style jumps in
-   VALIDATION.md §7.
-2. **Constant transition probabilities.**  Real flip hazards are
-   event-driven (FOMC, crises), not homogeneous.  *If violated*:
-   expected durations and filtered priors are wrong around scheduled
-   events; the desk override protocol (DESK_GUIDE.md) exists precisely
-   because the model cannot see the calendar.
-3. **Regime count k is known (2 or 3).**  *If violated*: with too-small
-   k, distinct crash types merge (observed: risk_off and squeeze merge
-   at realistic sample sizes); with too-large k, spurious transitional
-   states appear and the labeler maps noise to books.
-4. **Markov property (state depends only on yesterday's state).**
-   *If violated* (e.g. duration-dependent hazards): duration estimates
-   bias, but filtered inference degrades gracefully.
-5. **Stationary feature distribution under expanding standardisation.**
-   *If violated* (secular vol decline, structural break): z-scores
-   drift and state means migrate; expanding refits partially adapt but
-   with the full memory of the past.
-6. **Deposit rates ≈ tradable forwards (CIP holds).**  Carry accrual is
-   computed as (r_ccy − r_USD)/252, ACT/252.  *If violated* (cross-
-   currency basis blowouts — exactly the squeeze state): realised carry
-   on EM/funding legs is overstated in the worst state, so reported
-   carry P&L in crises is an upper bound.
-7. **Costs are constant half-spreads in pips.**  *If violated*: spreads
-   widen 3–10× in risk-off, so switching costs at the flip are
-   understated; hysteresis (fewer switches) limits the damage.
-8. **Returns are currency-vs-USD legs with USD as numeraire and
-   funding.**  BASE/QUOTE conventions follow the repo standard
-   (EURUSD = USD per EUR); a "long AUD" leg means long AUDUSD.
-9. **Liquidity is always available at the close.**  *If violated*
-   (gapping markets): one-day execution delay understates slippage at
-   exactly the flips the model is designed to catch — the oracle
-   comparison partially prices this since the oracle pays the same
-   delay.
+| regime | book |
+|---|---|
+| `risk_on` | rank-carry: long top-3 yielders, short bottom-3, dollar-neutral |
+| `risk_off` | long JPY and CHF against AUD, NZD, MXN, ZAR, BRL |
+| `usd_squeeze` | long USD against every currency |
 
-## 9. Conventions
+Books are vol-targeted to 10% a year with a trailing 63-day covariance,
+leverage capped at 4x, with a vol floor for degenerate covariances.
 
-* Returns: daily log returns of currency vs USD; positive = currency
-  appreciates.
-* Rates: annualised decimals; daily accrual r/252 (ACT/252
-  simplification, documented).
-* Vol: annualised with √252; realised vol uses population ddof=0.
-* All randomness flows through explicit `numpy.random.Generator`
-  seeds; every number in the docs is reproducible from
-  `examples/run_pipeline.py`.
+Execution. Signals use data up to the close of day t. Orders fill at a
+modelled t+1 price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a
+close-auction variant fills at p_t and pays an auction cost. Over day
+t+1 the old book earns p_fill/p_t - 1 = f R and the new book earns
+p_{t+1}/p_fill - 1 = (1 + R)/(1 + f R) - 1, where R is the simple return
+of the currency against USD. f = 1 is a fill at the next close.
+
+Carry. Each book accrues w . (r_ccy - r_USD) x days / 365 over the
+calendar gap between closes (ACT/365, so a weekend accrues three days),
+split between the old and new book in the proportion f : 1 - f. This is
+the same day count as the FX pairs project.
+
+Costs. Half-spreads are given in market pips of each pair's quote
+(AUDUSD, USDJPY, USDMXN and so on). The cost per unit of notional is
+pips x pip size / quote level, with pip size 0.01 for USDJPY and 0.0001
+otherwise, and the quote level taken from the simulated path at the
+decision close. At reference levels this is 0.5-1.7 bp for G10 legs and
+3-10 bp for EM legs. The close-auction mode adds its auction cost per
+unit of traded notional.
+
+Hysteresis. A switch needs the challenger's filtered probability at
+least 0.70, or the incumbent's below 0.30, for 2 consecutive days.
+
+## 8. Research protocol
+
+Configurations are chosen on design seeds and judged on fresh seeds:
+
+1. Twelve configurations (2 window sets x 3 HMM column sets x 2 risk-off
+   baskets) are the ones tried during development. Each is logged in a
+   `TrialLog` and run on design seeds 1001-1003.
+2. The best mean Sharpe on design seeds fixes the configuration. PBO is
+   computed by CSCV across the twelve.
+3. The fixed configuration is evaluated on seeds 2001-2008. Each seed is
+   run twice: with the planted drifts, and with zero drift in every state
+   (same states and shocks). The zero-drift panel is the vol-clustering
+   null: vol and correlation regimes without any link to expected returns.
+4. Benchmarks: an oracle that knows the true state, static carry, and the
+   strategy's own regime path shifted to random times (same occupancy and
+   spell lengths, so equal exposure to each book).
+5. Statistics come from `research_stats.py`: Lo (2002) Sharpe standard
+   errors with a Newey-West lag window, the deflated Sharpe ratio at the
+   logged trial count, PBO, circular block-bootstrap CIs, and Student-t
+   CIs across seeds.
+
+## 9. Assumptions register
+
+1. Gaussian emissions. FX returns are fat-tailed. If violated, one large
+   day can force a false flip and tail risk inside a state is understated.
+2. Constant transition probabilities. Real flip hazards cluster around
+   events. If violated, filtered priors are wrong around scheduled events.
+3. k is known. With k too small distinct crash types merge; with k too
+   large the labeler maps noise to books.
+4. Markov property. Duration-dependent hazards bias durations; filtered
+   inference degrades gradually.
+5. Stationary features under expanding standardisation. A structural
+   break makes z-scores drift.
+6. Deposit rates stand in for forwards (CIP). In a squeeze the
+   cross-currency basis widens and carry on funding legs is overstated.
+7. Spreads are constant in pips. In risk-off they widen several times,
+   so switching costs at the flip are understated.
+8. Returns are currency-vs-USD legs; a long AUD leg is long AUDUSD, a
+   long JPY leg is short USDJPY.
+9. The synthetic drift link between state and expected return is assumed,
+   not estimated.
+
+## 10. Conventions
+
+* Returns in the data: daily log returns of currency vs USD; positive
+  means the currency appreciated. P&L uses simple returns.
+* Rates: annualised decimals; carry ACT/365.
+* Vol: annualised with sqrt(252); realised vol uses ddof=0.
+* Max drawdown: additive cumulative sum of daily returns.
+* All randomness flows through seeded `numpy.random.Generator` objects.

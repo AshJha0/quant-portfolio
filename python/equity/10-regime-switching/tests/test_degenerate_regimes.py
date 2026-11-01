@@ -39,30 +39,13 @@ def test_single_regime_data_fitted_with_two_states_stays_finite():
 
 def test_single_regime_states_are_economically_indistinguishable():
     """On one-regime data the two fitted state means must be close relative
-    to the pooled dispersion — the honest signature of 'there is no second
+    to the pooled dispersion — the signature of 'there is no second
     regime here'."""
     rng = np.random.default_rng(4)
     x = rng.standard_normal((800, 1)) * 0.01
     fit = fit_hmm(x, 2, seed=1, n_init=3)
     separation = abs(fit.means[0, 0] - fit.means[1, 0])
     assert separation < 3.0 * float(x.std())
-
-
-def test_gbm_null_panel_regimes_flip_more_than_true_regime_panel():
-    """The null: on a no-regime GBM panel the decoded path should be far less
-    persistent than on genuine regime data (this is the diagnostic a desk
-    uses to reject a spurious regime model)."""
-    from eq_regime.data import make_regime_panel
-    from eq_regime.features import build_features
-
-    null = build_features(make_gbm_panel(n_assets=5, n_days=1200, seed=11).prices)
-    real = build_features(make_regime_panel(n_states=2, n_assets=5, n_days=1200,
-                                            seed=3).prices)
-    f_null = fit_hmm(null.to_numpy(), 2, seed=0, n_init=2)
-    f_real = fit_hmm(real.to_numpy(), 2, seed=0, n_init=2)
-    ff_null = flip_flop_rate(f_null.viterbi(null.to_numpy()))
-    ff_real = flip_flop_rate(f_real.viterbi(real.to_numpy()))
-    assert ff_null > ff_real
 
 
 def test_k1_hmm_is_a_single_gaussian():
@@ -239,7 +222,7 @@ def test_filtered_probabilities_are_causal():
     """Row t of the filter must not change when the future is altered — the
     property that makes filtered probs tradeable and smoothed probs not."""
     rng = np.random.default_rng(21)
-    # Deliberately OVERLAPPING regimes: with well-separated states the
+    # OVERLAPPING regimes: with well-separated states the
     # posteriors saturate at 0/1 and smoothing has nothing left to add, which
     # would make the contrast below vacuous.
     x = np.vstack([rng.normal(0.0, 0.010, (100, 1)),

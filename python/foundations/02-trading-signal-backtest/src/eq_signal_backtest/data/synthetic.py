@@ -2,7 +2,7 @@
 
 A trend-following backtest needs data with *trends* in it, or the exercise
 is vacuous. This generator is a two-state Markov-switching model with
-deliberately persistent regimes -- long calm uptrends punctuated by
+persistent regimes -- long calm uptrends punctuated by
 shorter, sharper drawdown regimes -- because that is the shape of market
 in which a moving-average crossover is supposed to earn its keep, and
 having it in the bundled data is what makes the *failure* case (the

@@ -1,198 +1,165 @@
-# Validation — evidence, numbers, failure modes
+# Validation: evidence, numbers, failure modes
 
-All numbers below are produced by `python examples/run_pipeline.py` (seed
-42) or by named tests in `tests/` (161 tests, all passing, ~4 s, offline).
+Numbers come from `python examples/run_pipeline.py` (synthetic data, seeds
+named in each table) or from named tests in `tests/`. Every alpha number
+here is on a synthetic panel whose generator contains the signal, so it
+measures the code, not a market edge. No real-data result exists yet.
 
 ---
 
-## 1. Point-in-time / no-lookahead (the tests that matter most)
+## 1. Execution convention
 
-- **Feature-level mutation test** (`test_features.py::test_point_in_time_mutation`,
-  parametrised over all 6 features): compute features, then multiply every
-  price/volume strictly after row 300 by random factors in [0.2, 5.0] and
-  recompute. All rows ≤ 300 must be **bit-identical**
-  (`assert_frame_equal`, exact). Passes for momentum, reversal, realised
-  vol, MA crossover, RSI, turnover-z.
-- **Full-pipeline mutation test**
-  (`test_backtest.py::test_no_lookahead_full_pipeline_mutation`): the whole
-  chain — features -> z-scores -> signal freeze -> decile weights -> ADV/vol
-  estimates -> costs -> ledger — re-run after mutating all data past day
-  400. Ledger rows ≤ 400 bit-identical, including the cost column (the
-  impact model's rolling ADV$ and vol estimators are PIT too).
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost.
 
-## 2. Planted alpha recovered at the right strength
+| check | test |
+|---|---|
+| Fill price equals p_t + f (p_{t+1} - p_t) on a hand-computed 3-day book, f = 0.25, 0.5, 1 | `test_execution_convention.py::test_fill_price_is_interpolated_next_price` |
+| A perfect-foresight signal s_t = r_{t+1} earns zero in mean (within 4 SE) at f = 1; the same signal filled at t's close earns over 20 SE | `test_perfect_foresight_earns_nothing_when_filled_at_next_close` |
+| Close-auction mode charges exactly `auction_cost_bp` per unit turnover | `test_close_auction_charges_exactly_the_auction_cost` |
+| Borrow fee charged on the short gross | `test_borrow_fee_charged_on_short_gross` |
+| Bad fill fraction, auction cost, mode, non-finite config, non-positive prices raise `ValueError` | `test_execution_config_rejects_bad_values` et al. |
 
-Generator plants next-day momentum alpha of strength 0.0008/0.02 = IC 0.04
-and a reversal effect. Pipeline output (150 stocks x 1250 days):
+## 2. Point-in-time checks
 
-| feature     | mean IC | NW t-stat |  verdict |
-|-------------|--------:|----------:|----------|
-| mom_12_1    |  0.0332 |     13.36 | planted, recovered |
-| mom_6_1     |  0.0279 |     12.37 | planted, recovered |
-| reversal_1m |  0.0161 |      6.73 | planted, recovered |
-| vol_63d     |  0.0020 |      0.86 | not planted, correctly null |
-| turnover_z  |  0.0004 |      0.17 | not planted, correctly null |
+- Feature mutation test (`test_features.py::test_point_in_time_mutation`):
+  every price and volume after row 300 is multiplied by random factors in
+  [0.2, 5.0]; all feature rows up to 300 must be identical.
+- Full-pipeline mutation test
+  (`test_backtest.py::test_no_lookahead_full_pipeline_mutation`): features,
+  z-scores, signal freeze, decile weights, trailing ADV and vol, costs and
+  ledger are re-run after mutating all data past day 400. Ledger rows up to
+  400 are identical.
+- Trailing ADV is causal
+  (`test_capacity_and_race.py::test_full_sample_adv_is_deprecated_and_trailing_adv_is_causal`).
+  The full-sample `DailyPanel.adv_dollars` now warns.
 
-Statistical tests: `test_planted_alpha_has_significant_ic` (t > 2 required),
-`test_noise_feature_has_no_ic` (|t| < 2 required on a pure-noise signal),
-`test_planted_momentum_ic_in_target_band` (0.02 < IC < 0.07). Decile
-portfolios perfectly monotone: rho = 1.000, Q1 -10.9 -> Q10 +15.3 bps/day.
-IC decay: cumulative-horizon IC grows 0.036 (1d) -> 0.129 (20d); against
-the no-decay benchmark sqrt(20)·IC_1 = 0.162, i.e. ~20% of per-day alpha
-decays over the month.
+## 3. Planted alpha recovered (synthetic, seed 42)
 
-## 3. Exact identities and hand-computed checks
+The generator plants next-day momentum of strength 0.0008 / 0.02 = IC 0.04
+and a reversal effect. On 150 synthetic stocks x 1,250 days:
+
+| feature | mean IC | NW t-stat | planted |
+|---|---:|---:|---|
+| mom_12_1 | 0.0332 | 13.36 | yes |
+| mom_6_1 | 0.0279 | 12.37 | overlaps the planted regressor |
+| reversal_1m | 0.0161 | 6.73 | yes |
+| ma_20_100 | 0.0132 | 5.84 | overlaps the planted regressor |
+| rsi_14 | 0.0129 | 5.37 | overlaps the planted reversal |
+| vol_63d | 0.0020 | 0.86 | no |
+| turnover_z | 0.0004 | 0.17 | no |
+
+Across 20 seeds the mom_12_1 IC is 0.0325 [0.0315, 0.0335] on synthetic
+data. Tests: `test_planted_alpha_has_significant_ic`,
+`test_noise_feature_has_no_ic`, `test_planted_momentum_ic_in_target_band`.
+These tests show the pipeline recovers what the generator planted. They are
+not evidence of alpha.
+
+## 4. Headline book with statistics (synthetic)
+
+| quantity | value | source |
+|---|---|---|
+| net Sharpe, 20 seeds, mean [95% CI] | 0.28 [-0.05, 0.60] | section 2 of the pipeline |
+| gross Sharpe, 20 seeds | 5.05 [4.80, 5.31] | same |
+| cost and borrow drag, 20 seeds (bp a year) | 4,075 [3,852, 4,298] | same |
+| net Sharpe, seed 42 | 0.93, Lo/NW SE 0.48, bootstrap CI [0.02, 1.84] | section 1 |
+| deflated Sharpe, seed 42, 10 logged trials | 0.59 (null spread), 0.00 (trial spread) | section 1 |
+| PBO, 8 signal configurations | 0.00 | section 1 |
+
+The trial log holds the seven single features, the combined signal and two
+execution variants of the combined book. The second deflated Sharpe uses
+the variance of those ten trial Sharpes, which is inflated by
+high-turnover trials such as `turnover_z` (net Sharpe -52). The first uses
+the sampling variance of a zero-Sharpe estimate. The truth is between them.
+
+The statistics module (`research_stats.py`, identical in every strategy
+project) is tested in `tests/test_research_stats.py`: the Newey-West Lo SE
+matches the Monte Carlo sd of the Sharpe estimate on AR(1) returns within
+10%; the expected maximum Sharpe matches simulation within 3%; the deflated
+Sharpe is uniform under the null (5.0% above 0.95, bound 2%); PBO averages
+near 0.5 on noise and near 0 when one configuration has skill; the block
+bootstrap covers the true mean in more than 89% of 200 trials.
+
+## 5. Costs and capacity (synthetic)
+
+- The default impact coefficient is Y = 0.7, inside the 0.5-1 range the
+  methodology cites (`test_default_impact_coefficient_is_in_the_cited_range`).
+- Capacity is a full backtest per AUM and Y with per-name trailing ADV
+  (`capacity_backtest`; `test_capacity_backtest_monotone_in_aum_and_impact`).
+  On synthetic seed 42 the net Sharpe at $100m is 3.56 / 2.03 / 0.89 for
+  Y = 0.3 / 0.7 / 1.0, and it is negative at $1bn for Y >= 0.7.
+- Costs never feed back into positions: gross returns are identical across
+  AUM (`test_impact_cost_increases_total_cost_and_scales_with_aum`).
+- The signal band cuts turnover (`test_rebalance_band_reduces_turnover_in_backtest`).
+
+## 6. Execution layer
+
+Simulator mechanics (deterministic path tests):
+
+- A burst moves every later mid by exactly the permanent move; the half
+  spread and temporary impact appear only in the fill
+  (`test_permanent_impact_persists_temporary_reverts`).
+- Permanent impact is linear in size, temporary impact is square-root
+  (`test_permanent_impact_linear_temporary_sqrt_in_participation`).
+- Temporary impact uses the bucket's own volume: the same child order costs
+  sqrt(v_open / v_mid) times more in the thin midday bucket
+  (`test_thin_bucket_costs_more_than_heavy_bucket`).
+
+Schedule ranking. `evaluate_schedules` reports the expected IS from the
+same simulator with zero price and volume noise, and the Monte Carlo std
+and the SE of the Monte Carlo mean. On synthetic seed 42 with 500
+replications the expected IS is VWAP 13.7 < TWAP 14.3 < AC 15.1 < POV 17.2
+< Aggressive 27.5 bp, and the std is Aggressive 19.2 < POV 60.9 < AC 74.2 <
+VWAP 109.1 < TWAP 113.2 bp. The TWAP hand value of the expected IS is
+checked to 1e-10 (`test_race_publishes_deterministic_expected_cost`).
+
+AC against TWAP on the simulator: `test_ac_beats_twap_on_cost_variance_on_simulator`
+requires std_AC < 0.85 std_TWAP and a Levene p < 0.01 over 300 paired
+replications. The analytic frontier agrees in direction
+(`test_ac_variance_reduction_matches_theory_direction`).
+
+## 7. Exact identities and hand-computed checks
 
 | identity | test | tolerance |
 |---|---|---|
-| Backtest ledger (weights, turnover, cost, gross/net) on a 3-day toy book | `test_ledger_hand_computed_exact` | 1e-15 |
-| Perold IS: delay + trading + opportunity = total | `test_is_components_sum_to_total_exactly` (25 random orders incl. partial fills) | 1e-10 |
-| Toy IS order (60@10.2, 20@10.3, 20 unfilled): 10 + 10 + 8 = 28 = 280 bps | `test_is_decomposition_hand_checked_toy_order` | 1e-12 |
-| Slippage attribution: drift + spread + temporary = total per bucket and qty-weighted | `test_slippage_attribution_components_sum_exactly` | 1e-10 |
-| VWAP of toy tape (10,11,12 x 1,2,1) = 11.0; TWAP = 11.0; arrival = 10.0 | `test_vwap_hand_computed` et al. | 1e-12 |
-| AC trajectory satisfies x_{j-1}+x_{j+1} = 2cosh(kappa tau) x_j | `test_trajectory_satisfies_discrete_optimality_recursion` | 1e-8 rel |
-| AC lambda=0 = TWAP; sum of AC trades = X | dedicated tests | 1e-10 / 1e-12 |
-| AC cost moments on a hand trajectory [10,4,0] | `test_cost_moments_hand_computed` | 1e-12 |
-| DSR = PSR at N = 1; E[maxSR] hand-checked at N=10 | `test_dsr_decreases_with_trials_...`, `test_expected_max_sharpe_properties` | 1e-12 |
-| NW SE hand-computed on [1,2,3,4] with 1 lag; lags=0 = naive SE | `test_newey_west_hand_computed` | 1e-12 |
-| RSI/momentum/reversal/vol/MA/turnover-z on tiny series | `test_*_hand_computed` | 1e-12 |
+| Close-auction ledger on a 3-day toy book | `test_ledger_hand_computed_exact_close_auction` | 1e-15 |
+| Next-price ledger on the same book | `test_fill_price_is_interpolated_next_price` | 1e-15 |
+| Perold IS: delay + trading + opportunity = total | `test_is_components_sum_to_total_exactly` | 1e-10 |
+| Toy IS order (60 at 10.2, 20 at 10.3, 20 unfilled) = 280 bp | `test_is_decomposition_hand_checked_toy_order` | 1e-12 |
+| Slippage attribution sums per bucket | `test_slippage_attribution_components_sum_exactly` | 1e-10 |
+| VWAP, TWAP, arrival of a toy tape | `test_vwap_hand_computed` et al. | 1e-12 |
+| AC recursion x_{j-1} + x_{j+1} = 2 cosh(kappa tau) x_j | `test_trajectory_satisfies_discrete_optimality_recursion` | 1e-8 rel |
+| AC at lambda = 0 is TWAP | dedicated tests | 1e-10 |
+| AC cost moments on a hand trajectory | `test_cost_moments_hand_computed` | 1e-12 |
+| NW SE on [1, 2, 3, 4] with 1 lag | `test_newey_west_hand_computed` | 1e-12 |
 
-## 4. Execution-layer statistical evidence
-
-**Simulator mechanics** (deterministic-path tests): permanent impact of a
-50k burst moves *all* later mids by exactly perm = 0.5·0.02·0.05·100 =
-0.05 while the fill price additionally carries half-spread + sqrt temporary
-impact that never appears in subsequent mids (temporary reverts —
-`test_permanent_impact_persists_temporary_reverts`). Permanent impact
-verified linear (4x size -> 4x move), temporary verified sqrt (4x size ->
-2x cost). Zero participation -> zero impact and an untouched mid path.
-
-**AC vs TWAP, 300 paired replications** (5% ADV buy, sigma 2%/day, sqrt
-temp coef 1.0, perm coef 0.5, lognormal volume noise):
-
-| schedule | mean IS (bps) | std IS (bps) |
-|---|---:|---:|
-| TWAP          |  8.3 | 113.0 |
-| AC lambda=5e-6 | 12.0 |  74.0 |
-
-Variance reduction 35% for +3.7 bps expected cost; Levene test W = 42.9,
-**p = 1.2e-10** (`test_ac_beats_twap_on_cost_variance_on_simulator`, which
-requires std_AC < 0.85·std_TWAP *and* p < 0.01). The analytic frontier
-agrees in direction: model-implied V_AC < V_TWAP and E_AC > E_TWAP
-(`test_ac_variance_reduction_matches_theory_direction`). Frontier
-monotonicity (E strictly up, V strictly down in lambda) is tested across
-six lambdas and shown in the demo: (15.5, 99.0) -> (21.1, 73.8) ->
-(53.9, 36.5) bps for lambda = 1e-6 / 5e-6 / 5e-5.
-
-**200-replication horse race** (demo): TWAP 29.8 ± 114.2, VWAP 29.6 ±
-109.6, POV-10% 25.2 ± 63.6, AC(5e-6) 25.7 ± 76.6, Aggressive-2-buckets
-37.6 ± 19.3 bps. Mean differences between TWAP/VWAP are within Monte Carlo
-noise (SE ≈ 8 bps); the variance ordering is the robust result.
-
-## 5. Cost, capacity, overfitting guards
-
-- Gross vs net (AUM $200m): Sharpe 4.86 -> 4.06, cost drag 709 bps/yr at
-  20% daily turnover. Costs never feed back into positions
-  (`test_impact_cost_increases_total_cost_and_scales_with_aum` checks gross
-  returns are identical across AUM).
-- Capacity curve strictly decreasing in AUM (tested): net Sharpe 4.54 at
-  $10m -> 3.94 at $5bn on the demo panel (deep synthetic liquidity; real
-  small/mid-cap books decay far faster — see failure modes).
-- Signal-band rebalancing (0.25-z freeze) cuts turnover from 30% to 20%/day
-  and *raises* net Sharpe 3.45 -> 4.06 in the demo; reduction property is
-  tested (`test_rebalance_band_reduces_turnover_in_backtest`).
-- Deflated Sharpe: demo MA-crossover strategy SR 1.35, PSR0 = 0.9954, DSR =
-  0.8912 (N=7) and 0.6521 (N=45). DSR strictly decreasing in N (tested).
-
-## 6. Edge cases (each documented *and* unit-tested)
+## 8. Edge cases
 
 | edge case | behaviour | test |
 |---|---|---|
-| one-day backtest | 1-row ledger, no return, book built | `test_one_day_backtest` |
-| single-stock universe | flat book, zero P&L, no crash | `test_single_stock_universe_stays_flat` |
+| one-day backtest | nothing fills in the default mode; close auction builds the book | `test_one_day_backtest` |
+| single-stock universe | flat book | `test_single_stock_universe_stays_flat` |
 | all-NaN signal | flat ledger | `test_all_nan_signal_is_flat` |
-| delisting mid-sample (NaN prices) | name leaves universe, ledger finite | `test_backtest_with_nan_prices_mid_sample` |
-| zero-volume bucket, order routed there | informative ValueError ("reschedule around the halt") | `test_zero_volume_bucket_raises_informative_error` |
-| zero-volume bucket, POV | bucket skipped, order completes | `test_zero_volume_bucket_pov_skips_it` |
-| parent > day volume at cap | ValueError naming day capacity, advising multi-day split | `test_parent_order_larger_than_day_volume_informative_error` |
-| child > bucket volume | ValueError (participation > 100%) | `test_child_exceeding_bucket_volume_raises` |
-| zero risk aversion | AC = TWAP exactly | `test_zero_risk_aversion_ac_is_twap` |
-| lambda -> infinity | >99.9% in first slice | `test_higher_risk_aversion_front_loads` |
-| T = 1 slice AC | [X, 0] trajectory for any lambda | `test_single_slice_ac` |
-| single-bucket market | exact half-spread fill | `test_single_bucket_intraday_market` |
-| eta_tilde <= 0 | ValueError (ill-posed AC) | `test_params_validation` |
-| zero-vol returns / N=0 trials / short series | ValueError | `test_deflated_sharpe_edge_inputs` et al. |
-| **extreme risk aversion (κT ≫ 710)** | finite front-loaded schedule (was NaN — see §8) | `test_ac_extreme_risk_aversion_does_not_overflow_to_nan` |
-| **λ → ∞ limit** | >99.9% of the parent in slice 1, sums to X exactly | `test_ac_infinite_urgency_limit_dumps_first_slice` |
-| **fully halted day** (all buckets zero volume) | empty schedule legal; VWAP raises "total volume must be > 0"; TWAP still defined | `test_fully_halted_day_zero_schedule_is_legal_but_has_no_vwap` |
-| **POV on an all-zero-volume day** | ValueError (day capacity 0) | `test_pov_on_all_zero_volume_day_raises_with_capacity_zero` |
-| **one-tick day** (all volume in one bucket) | VWAP schedule routes 100% to that bucket; slippage vs VWAP = exactly half the quoted spread | `test_one_tick_market_all_volume_in_one_bucket` |
-| **single-bucket day** | VWAP = TWAP = arrival identically | `test_single_bucket_day_vwap_equals_twap_equals_arrival` |
-| **σ = 0 market** | both impact terms vanish; trading cost = exactly half-spread, opportunity cost = 0 | `test_zero_volatility_market_isolates_pure_impact_cost` |
-| **NaN/Inf schedule, volumes, tapes or fills** | ValueError everywhere (was silent NaN — see §8) | `test_nan_schedule_rejected_not_silently_filled`, `test_benchmarks_reject_non_finite_tapes`, `test_is_decomposition_rejects_non_finite_fills` |
-| partial fill (unfilled tail) | Perold identity delay+trading+opportunity = total holds exactly, in $ and bps | `test_is_components_sum_to_total_on_partial_fill` |
-| buy vs sell symmetry | equal and opposite price moves give identical signed cost | `test_buy_and_sell_costs_are_sign_symmetric` |
-| monotonicity in order size | cost in bps strictly increasing in parent size (sqrt law) | `test_larger_orders_cost_more_monotonicity` |
+| NaN prices mid-sample | name leaves the universe, ledger finite | `test_backtest_with_nan_prices_mid_sample` |
+| zero-volume bucket with an order | `ValueError` | `test_zero_volume_bucket_raises_informative_error` |
+| child larger than bucket volume | `ValueError` | `test_child_exceeding_bucket_volume_raises` |
+| extreme risk aversion (kappa T > 710) | finite front-loaded schedule | `test_ac_extreme_risk_aversion_does_not_overflow_to_nan` |
+| fully halted day | VWAP raises, TWAP defined | `test_fully_halted_day_zero_schedule_is_legal_but_has_no_vwap` |
+| NaN or Inf schedule, tape, fills | `ValueError` | `test_nan_schedule_rejected_not_silently_filled` et al. |
+| partial fill | Perold identity holds | `test_is_components_sum_to_total_on_partial_fill` |
 
-## 7. Numerical-stability fixes found by this test pass
+## 9. Known failure modes
 
-1. **Almgren-Chriss overflow to NaN at high urgency.** `x_j = X ·
-   sinh(κ(T−t_j)) / sinh(κT)` was evaluated literally. `sinh` overflows the
-   double range past an argument of ~710, so for `κT ≳ 710` (reached at
-   λ ≈ 1e12 with the demo parameters) both numerator and denominator became
-   `inf` and the entire trajectory came back `NaN` — silently, with no
-   warning, and every downstream cost figure `NaN`. The ratio is now
-   evaluated as
-
-   ```
-   sinh(a)/sinh(b) = e^{a−b} · (1 − e^{−2a}) / (1 − e^{−2b}),   0 ≤ a ≤ b
-   ```
-
-   using `expm1` for the small-argument terms. Every exponential argument is
-   now non-positive, so the result is finite for arbitrarily large κ, and the
-   λ → ∞ limit correctly converges to "everything in slice 1". Verified
-   finite, monotone and exactly share-conserving up to λ = 1e30.
-2. **NaN quantities accepted by the simulator.** `np.any(q < 0)` and
-   `np.any(q > volumes)` are both `False` for `NaN`, so a NaN child order
-   passed every guard and produced NaN fill prices, a NaN average price and a
-   NaN TCA report. `IntradayMarket.execute` now rejects non-finite schedules
-   and market volumes up front; the same `isfinite` guard was added to
-   `vwap`, `twap`, `vwap_schedule`, `pov_schedule` and `is_decomposition`.
-
-## 8. Known failure modes
-
-1. **Alpha decay and crowding.** The planted IC is stationary; real
-   momentum ICs decay as capital crowds in. The IC-weighted combiner
-   (expanding, lagged) would down-weight a dying signal only slowly; a
-   rolling window or decay-time-scale monitoring (DESK_GUIDE) is the
-   production answer. Symptom to watch: live IC drifting below the
-   backtest's NW confidence band.
-2. **Impact model misspecification for illiquid names.** The sqrt law is
-   calibrated on liquid equities. For names at > ~10% ADV participation,
-   costs are convex-worse than sqrt (book depletion, information leakage);
-   the capacity curve and POV caps understate the pain. The simulator's
-   guard (child > bucket volume raises) is a blunt version of the real
-   constraint.
-3. **Momentum crashes (2009-style).** Cross-sectional momentum is short
-   the highest-beta losers after a crash; in a sharp reversal the L/S book
-   takes a multi-sigma left-tail hit that no daily-IC statistic predicts.
-   The synthetic panel can be re-run with `mom_strength` flipped for a
-   window to rehearse this; the backtest's max-drawdown and the Sortino/
-   Sharpe gap are the early indicators. Guard: crash filters (skip signal
-   after market drawdowns), vol-scaled deciles — out of scope here,
-   documented as the known limitation of raw momentum.
-4. **Backtest overfitting.** The guard *is* the deflated Sharpe ratio:
-   report DSR at the honest trial count N (every variant, hyper-parameter
-   and universe tweak counts). The demo shows a 0.995-PSR strategy falling
-   to DSR 0.65 at N=45.
-5. **Regime dependence of costs.** Spread and impact coefficients double or
-   worse in stress while volumes shift toward the close; a static cost
-   model then misprices both the daily drag and the AC schedule. Production
-   answer: re-fit weekly from own-fill TCA, apply stress multipliers in
-   risk scenarios (DESK_GUIDE kill-switch section).
-6. **Simulator-optimiser mismatch (by design).** AC assumes linear
-   temporary impact; the simulator charges sqrt. Consequence visible in the
-   demo: concentrating flow (Aggressive) pays 37.6 bps mean vs TWAP's 29.8,
-   more than linear-model AC would predict. Conclusions about *rankings*
-   (variance ordering) are robust; absolute expected-cost numbers are
-   model-dependent.
+1. The edge is planted. On real data the momentum IC is a fraction of the
+   synthetic one and decays as capital crowds in.
+2. The square-root law is fitted on liquid names at modest participation.
+   Above about 10% of ADV costs are worse than the model says, so the
+   high-AUM rows of the capacity table are optimistic even at Y = 1.
+3. Momentum crashes. The long-short book is short recent losers and takes
+   a large loss in a sharp reversal. No statistic here predicts that.
+4. Cost regimes. Spreads and impact rise in stress. The cost model is
+   static.
+5. AC optimises a linear temporary-impact model and is evaluated in a
+   square-root simulator. Rankings of risk are stable; absolute expected
+   costs depend on the model.

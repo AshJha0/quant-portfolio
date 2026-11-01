@@ -28,8 +28,8 @@ def _signal_positions(p1, p2, form=252, window=126, entry=2.0, exit_=0.5,
 
 class TestHandLedger:
     def test_three_trade_ledger_exact(self):
-        """Every booked number checked against a hand-built ledger:
-        3 position changes, log-return spot P&L, linear carry with lagged
+        """Close-auction mode, every booked number checked against a
+        hand-built ledger: 3 position changes, a 3 bp auction charge, log-return spot P&L, linear carry with lagged
         rates and ACT/365 gaps, half-spread costs on both legs."""
         idx = pd.bdate_range("2020-01-06", periods=6)  # Mon..Fri + Mon
         p1 = pd.Series([1.2000, 1.2100, 1.1900, 1.2050, 1.1980, 1.2020], index=idx)
@@ -37,7 +37,10 @@ class TestHandLedger:
         pos = pd.Series([0.0, 1.0, 1.0, -1.0, -1.0, 0.0], index=idx)
         beta = 0.8
         rates = {"rb1": 0.05, "rq1": 0.01, "rb2": 0.02, "rq2": 0.01}
-        res = fp.run_backtest(p1, p2, pos, beta, pip_spread_1=1.0,
+        res = fp.run_backtest(p1, p2, pos, beta,
+                              execution=fp.ExecutionConfig("close_auction",
+                                                           auction_cost_bp=3.0),
+                              pip_spread_1=1.0,
                               pip_spread_2=2.0, rates=rates,
                               carry_method="linear", notional=1.0)
 
@@ -58,7 +61,8 @@ class TestHandLedger:
             prev2 = n2[t - 1] if t > 0 else 0.0
             hs1 = 0.5 * 1.0 * 1e-4 / p1.values[t]
             hs2 = 0.5 * 2.0 * 1e-4 / p2.values[t]
-            cost_exp[t] = -(abs(n1[t] - prev1) * hs1 + abs(n2[t] - prev2) * hs2)
+            cost_exp[t] = -(abs(n1[t] - prev1) * (hs1 + 3e-4)
+                            + abs(n2[t] - prev2) * (hs2 + 3e-4))
 
         assert np.allclose(res.spot_pnl.values, spot_exp, atol=1e-15)
         assert np.allclose(res.carry_pnl.values, carry_exp, atol=1e-18)
@@ -93,8 +97,13 @@ class TestIdentities:
                                 pip_spread_2=1.0, rates=rates)
         accr1 = carry_accrual(0.06, 0.01, p1.index)
         accr2 = carry_accrual(0.02, 0.015, p1.index)
+        # default execution: the order for pos[t-1] fills a fraction f = 0.5
+        # into period t, so the carry of period t is earned by the
+        # time-weighted position f * pos[t-2] + (1 - f) * pos[t-1]
+        f = fp.ExecutionConfig().fill_fraction
+        held = f * np.concatenate([[0.0], pos[:-2]]) + (1 - f) * pos[:-1]
         ledger = np.zeros(len(p1))
-        ledger[1:] = pos[:-1] * accr1[1:] - pos[:-1] * eg.beta * accr2[1:]
+        ledger[1:] = held * accr1[1:] - held * eg.beta * accr2[1:]
         assert np.allclose(res_c.total_pnl.values,
                            res_no.total_pnl.values + ledger, atol=1e-18)
         assert np.allclose(res_c.spot_pnl.values, res_no.spot_pnl.values,
@@ -155,7 +164,7 @@ class TestCosts:
 class TestNoLookahead:
     def test_perturbing_future_prices_leaves_past_pnl_unchanged(self, coint_pair):
         """Detector: rebuild signals+backtest on prices perturbed after day k;
-        P&L through k must be bit-identical."""
+        P&L through k must be unchanged."""
         p1, p2, _ = coint_pair
         k = 800
 

@@ -205,7 +205,7 @@ def deflated_sharpe_ratio(returns: pd.Series | np.ndarray, n_trials: int,
 
     The observed (per-period) Sharpe is benchmarked against the expected max
     Sharpe of ``n_trials`` noise strategies with cross-trial Sharpe variance
-    ``var_sharpe_trials`` (default: the estimator variance ``1/n_obs`` — a
+    ``var_sharpe_trials`` (default: the estimator variance ``1/n_obs``, a
     conservative floor when the true cross-trial dispersion is unknown).
 
     Returns a dict with ``sr`` (per period), ``sr_annual``, ``sr_benchmark``,
@@ -243,7 +243,7 @@ def deflated_sharpe_ratio(returns: pd.Series | np.ndarray, n_trials: int,
 def capacity_curve(gross_returns: pd.Series, mean_turnover: float,
                    aum_grid: Sequence[float], adv_dollars: float, n_names: int,
                    sigma_daily: float = 0.02, linear_cost_bps: float = 5.0,
-                   impact_coef: float = 0.1) -> pd.DataFrame:
+                   impact_coef: float = 0.7) -> pd.DataFrame:
     """Cost-adjusted Sharpe as a function of AUM (capacity estimate).
 
     Assumes daily one-way turnover ``mean_turnover`` spread evenly over
@@ -254,9 +254,11 @@ def capacity_curve(gross_returns: pd.Series, mean_turnover: float,
 
     (linear + square-root impact on the average trade).  Because the drag is
     a constant shift of the daily return, the net Sharpe is strictly
-    decreasing in AUM — the capacity number is where it crosses a threshold
-    (e.g. half the gross Sharpe).  This is a planning approximation: real
-    capacity work re-runs the full backtest per AUM (see docs/DESK_GUIDE.md).
+    decreasing in AUM, the capacity number is where it crosses a threshold
+    (e.g. half the gross Sharpe).  ``impact_coef`` is the square-root-law
+    coefficient Y, default 0.7 (empirical range 0.5-1). This is a planning
+    approximation; :func:`eq_algo.backtest.capacity_backtest` re-runs the
+    full backtest per AUM with trailing per-name ADV.
     """
     if mean_turnover < 0:
         raise ValueError("mean_turnover must be >= 0")

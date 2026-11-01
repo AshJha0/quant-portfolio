@@ -1,13 +1,16 @@
-"""eq_pairs — equity statistical pairs trading.
+"""eq_pairs: equity statistical pairs trading.
 
-Pipeline: pair selection (correlation on returns / SSD) -> Engle-Granger
-cointegration with MacKinnon EG critical values -> Ornstein-Uhlenbeck spread
-modelling -> z-score signals -> event-driven backtest with transaction
-costs -> walk-forward validation -> performance metrics.
+Pipeline: pair selection (correlation on returns or SSD), Engle-Granger
+cointegration with MacKinnon critical values, Ornstein-Uhlenbeck spread
+model, z-score signals, backtest with a modelled t+1 fill and costs,
+walk-forward validation, research statistics (Lo SE, deflated Sharpe, PBO).
 """
 
+from . import research_stats
 from .backtest import (
+    COST_COLUMNS,
     CostModel,
+    ExecutionConfig,
     PairResult,
     PortfolioResult,
     ZERO_COSTS,
@@ -96,7 +99,9 @@ __all__ = [
     "zscore_ou",
     "zscore_rolling",
     # backtest
+    "COST_COLUMNS",
     "CostModel",
+    "ExecutionConfig",
     "ZERO_COSTS",
     "PairResult",
     "PortfolioResult",
@@ -116,4 +121,6 @@ __all__ = [
     "sortino_ratio",
     "summary",
     "turnover",
+    # research statistics (module)
+    "research_stats",
 ]

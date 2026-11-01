@@ -137,7 +137,7 @@ def test_forward_filter_is_causal(wellsep_2state, wellsep_fit):
 def test_smoothed_uses_future(wellsep_2state, wellsep_fit):
     """Contrast: the smoothed posterior at t DOES change with the future."""
     # Overlapping emissions (means +-0.5, sigma 1): the posterior at t is
-    # genuinely uncertain, so future evidence moves it materially.
+    # uncertain, so future evidence moves it materially.
     rng = np.random.default_rng(9)
     startprob = np.array([0.5, 0.5])
     transmat = np.array([[0.95, 0.05], [0.05, 0.95]])
@@ -191,3 +191,15 @@ def test_validation_errors():
     xn[3] = np.nan
     with pytest.raises(ValueError, match="NaN"):
         fit_hmm(xn, 2)
+
+
+def test_log_likelihood_belongs_to_returned_parameters_at_max_iter():
+    """When EM stops on max_iter the reported likelihood must be the
+    likelihood of the parameters returned, not of the previous iterate.
+    (Old code reported the pre-M-step value; this test failed on it.)"""
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.normal(0, 1, 300), rng.normal(0, 3, 300)][:, None]
+    fit = fit_hmm(x, 2, seed=0, n_init=1, max_iter=3, tol=1e-12)
+    assert not fit.converged
+    assert fit.log_likelihood == pytest.approx(fit.score(x), rel=1e-12)
+    assert fit.log_likelihood == fit.log_likelihood_history[-1]

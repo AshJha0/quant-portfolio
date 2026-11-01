@@ -1,38 +1,43 @@
 """Event-driven daily backtester for a portfolio of pairs, plus walk-forward.
 
-Execution timing — THE no-lookahead rule
-----------------------------------------
-A signal value at date t is a statistic of data through t's close. The
-engine therefore executes the position decided at t at the NEXT bar's close
-(t+1): ``executed_t = target_{t-1}``. We chose "t-1 signal, t close" over
-"t close signal, t+1 open" because the synthetic data (and most daily
-research data) has closes only; the choice is documented here, enforced
-structurally (the engine physically cannot see ``target_t`` when trading at
-t), and proven by a lookahead-detector test: a spread engineered so that
-same-day execution is profitable and lagged execution loses — the engine
-must produce the losing (honest) number (tests/test_backtest.py).
+Execution timing
+----------------
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost. ``ExecutionConfig`` selects
+the mode. The synthetic data has closes only, so the t+1 fill is modelled
+as a point on the path from close t to close t+1: f = 1 is the next close,
+small f approximates a next-open fill. The engine never fills a decision
+taken at t at the close of t except in the close-auction mode, which charges
+``auction_cost_bp`` on every traded dollar for doing so.
 
-Accounting conventions (all dollars):
+Accounting conventions (all dollars), for day t with fill price p_fill:
 
-* Mark-to-market: holdings carried into day t earn
-  q . (P_t - P_{t-1}) (gross P&L), BEFORE any rebalancing at t's close.
-* Rebalancing happens at t's close at the close price; commissions and
-  slippage are charged as explicit cash so the identity
-  net = gross - commission - slippage - borrow holds to the penny and is
-  asserted in tests.
-* Commission: ``cost_bps`` per leg on traded notional |shares| x close.
-* Slippage: ``slippage_bps`` per leg on traded notional (a fixed-impact
-  model; see docs/METHODOLOGY.md for its limits).
-* Borrow: short legs accrue ``borrow_bps`` (annualised, ACT/252) on the
-  short market value at today's close, for positions held overnight into
-  today. No borrow is charged on the entry day.
-* Positions are sized once at entry (gross dollar target) and NOT rebalanced
-  daily while the trade is on — turnover stays interpretable and the ledger
-  maps 1:1 to entries/exits/flips.
+* Gross P&L: holdings carried into day t earn q_old (p_fill - p_{t-1});
+  the holdings after the fill earn q_new (p_t - p_fill). With no trade
+  this is q (p_t - p_{t-1}).
+* Commission: ``cost_bps`` per leg on traded notional |shares| x p_fill.
+* Slippage: ``slippage_bps`` per leg on traded notional (fixed part).
+* Impact: square-root law, ``impact_coef * sigma_leg * sqrt(notional /
+  adv_dollars)`` as a fraction of traded notional, per leg. ``sigma_leg`` is
+  the leg's daily return volatility known before the fill.
+* Borrow: short legs carried overnight into day t accrue ``borrow_bps``
+  (annualised, ACT/252) on their market value at p_fill.
+* Financing: long legs carried overnight pay ``financing_bps`` (annual);
+  short proceeds earn ``short_rebate_bps`` (annual).
+* Auction: in close-auction mode, ``auction_cost_bp`` per leg on traded
+  notional.
+* The identity net = gross - commission - slippage - impact - borrow -
+  financing - auction holds to the penny and is asserted in tests.
+* Dividends: the synthetic prices are total-return prices, so a dividend on
+  the short leg is already inside the price P&L.
+* Positions are sized once at entry (gross dollar target) and not rebalanced
+  while the trade is on.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -45,6 +50,7 @@ from .spread import OUFit, compute_spread, fit_ou_ols
 
 __all__ = [
     "CostModel",
+    "ExecutionConfig",
     "PairResult",
     "PortfolioResult",
     "align_pair",
@@ -54,41 +60,101 @@ __all__ = [
     "walk_forward_windows",
     "walk_forward_pair",
     "walk_forward_portfolio",
+    "COST_COLUMNS",
 ]
+
+COST_COLUMNS = ["commission", "slippage", "impact", "borrow", "financing", "auction"]
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """When and at what price a decision taken at the close of t is filled.
+
+    mode : {"next", "close_auction"}
+        "next" fills at p_t + f (p_{t+1} - p_t). "close_auction" fills at
+        p_t and pays ``auction_cost_bp`` per leg on traded notional.
+    fill_fraction : float in (0, 1]
+        f above. 1 is the next close; 0 is not allowed (that is a same-close
+        fill, which must go through the close-auction mode and its cost).
+    auction_cost_bp : float >= 0
+        Extra cost of a close-auction fill, bp of traded notional per leg.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("next", "close_auction"):
+            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
+        f = float(self.fill_fraction)
+        if not math.isfinite(f) or not (0.0 < f <= 1.0):
+            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
+        a = float(self.auction_cost_bp)
+        if not math.isfinite(a) or a < 0:
+            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
+
+
+DEFAULT_EXECUTION = ExecutionConfig()
 
 
 @dataclass(frozen=True)
 class CostModel:
-    """Transaction-cost assumptions.
+    """Transaction, impact, borrow and financing assumptions.
 
     Attributes
     ----------
     cost_bps : float
-        Commission + fees per leg, in basis points of traded notional.
+        Commission + fees per leg, bp of traded notional.
     slippage_bps : float
-        Price impact per leg, bps of traded notional (fixed-impact model).
+        Fixed slippage per leg, bp of traded notional.
     borrow_bps : float
-        Annualised stock-borrow fee on short market value, bps, ACT/252.
+        Annualised stock-borrow fee on short market value, bp, ACT/252.
     days_per_year : int
-        Accrual basis for borrow (default 252).
+        Accrual basis for borrow and financing (default 252).
+    impact_coef : float
+        Square-root impact coefficient Y (cost fraction = Y sigma
+        sqrt(Q/ADV)). 0 switches impact off. Published estimates are of
+        order 0.5 to 1.
+    adv_dollars : float
+        Average daily dollar volume assumed for every name.
+    financing_bps : float
+        Annual financing charged on long market value carried overnight.
+    short_rebate_bps : float
+        Annual rebate earned on short proceeds carried overnight.
     """
 
     cost_bps: float = 5.0
     slippage_bps: float = 2.0
     borrow_bps: float = 50.0
     days_per_year: int = 252
+    impact_coef: float = 0.0
+    adv_dollars: float = 50_000_000.0
+    financing_bps: float = 0.0
+    short_rebate_bps: float = 0.0
 
     def __post_init__(self) -> None:
-        for name in ("cost_bps", "slippage_bps", "borrow_bps"):
+        for name in ("cost_bps", "slippage_bps", "borrow_bps", "impact_coef",
+                     "financing_bps", "short_rebate_bps"):
             v = getattr(self, name)
-            if v < 0:
-                raise ValueError(f"{name} must be >= 0, got {v}")
+            if not math.isfinite(v) or v < 0:
+                raise ValueError(f"{name} must be finite and >= 0, got {v}")
+        if not math.isfinite(self.adv_dollars) or self.adv_dollars <= 0:
+            raise ValueError(f"adv_dollars must be finite and positive, got {self.adv_dollars}")
         if self.days_per_year <= 0:
             raise ValueError(f"days_per_year must be positive, got {self.days_per_year}")
 
     @property
     def daily_borrow_rate(self) -> float:
         return self.borrow_bps / 1e4 / self.days_per_year
+
+    @property
+    def daily_financing_rate(self) -> float:
+        return self.financing_bps / 1e4 / self.days_per_year
+
+    @property
+    def daily_rebate_rate(self) -> float:
+        return self.short_rebate_bps / 1e4 / self.days_per_year
 
 
 ZERO_COSTS = CostModel(cost_bps=0.0, slippage_bps=0.0, borrow_bps=0.0)
@@ -130,11 +196,12 @@ class PairResult:
     @property
     def total_costs(self) -> float:
         return float(
-            self.daily[["commission", "slippage", "borrow"]].to_numpy().sum()
+            self.daily[COST_COLUMNS].to_numpy().sum()
         )
 
 
-_LEDGER_COLS = ["date", "leg", "shares", "price", "notional", "commission", "slippage"]
+_LEDGER_COLS = ["date", "leg", "shares", "price", "notional", "commission", "slippage",
+                "impact", "auction"]
 _TRADE_COLS = ["entry_date", "exit_date", "direction", "bars_held", "pnl", "exit_reason"]
 
 
@@ -145,7 +212,7 @@ def align_pair(
 
     Policy "ffill": stale-forward-fill gaps up to ``limit`` consecutive
     days; if any NaN survives (long halt, mismatched listing period), raise
-    — silent extrapolation over long gaps is how backtests go wrong.
+   : silent extrapolation over long gaps is how backtests go wrong.
     Policy "drop": keep only dates where both legs print.
 
     Returns
@@ -167,11 +234,19 @@ def align_pair(
             n_bad = int(df.isna().any(axis=1).sum())
             raise ValueError(
                 f"{n_bad} rows still missing after ffill(limit={limit}); "
-                "gap too long — inspect the data or use policy='drop'"
+                "gap too long: inspect the data or use policy='drop'"
             )
     if len(df) < 3:
         raise ValueError("fewer than 3 overlapping observations after alignment")
     return df["y"], df["x"]
+
+
+def _trailing_daily_vol(p: np.ndarray, window: int = 60, min_obs: int = 20,
+                        fallback: float = 0.02) -> np.ndarray:
+    """sigma[t] = sd of simple returns ending at t-1 (known before day t's fill)."""
+    r = pd.Series(p).pct_change()
+    sig = r.rolling(window, min_periods=min_obs).std().shift(1).to_numpy()
+    return np.where(np.isfinite(sig), sig, fallback)
 
 
 def backtest_pair(
@@ -184,18 +259,21 @@ def backtest_pair(
     gross: float = 1_000_000.0,
     sizing: str = "dollar",
     close_at_end: bool = True,
+    execution: ExecutionConfig = DEFAULT_EXECUTION,
+    leg_vol: Optional[tuple[float, float]] = None,
 ) -> PairResult:
-    """Backtest one pair under the strict t-1 signal / t close execution rule.
+    """Backtest one pair under the decide-at-t, fill-at-modelled-t+1 rule.
 
     Parameters
     ----------
     y, x : pandas.Series
         Close prices (dollars), identical index (use :func:`align_pair`).
     target : pandas.Series
-        Desired spread position in {-1, 0, +1} DECIDED at each date t using
-        information through t (e.g. ``generate_signals(...)["position"]``).
-        The engine executes ``target_{t-1}`` at t's close — it never reads
-        ``target_t`` on day t. NaNs are treated as 0 (flat).
+        Desired spread position in {-1, 0, +1} decided at each date t using
+        information through t's close. In "next" mode the engine fills
+        ``target_t`` on day t+1 at ``p_t + f (p_{t+1} - p_t)``. In
+        "close_auction" mode it fills ``target_t`` at ``p_t`` and pays the
+        auction cost. NaNs are treated as 0 (flat).
     beta : float
         Hedge ratio for beta-neutral sizing (ignored in dollar mode).
     costs : CostModel
@@ -204,12 +282,15 @@ def backtest_pair(
     sizing : {"dollar", "beta"}
         See :func:`eq_pairs.signals.size_positions`.
     close_at_end : bool
-        Force-close any open position at the final bar (default True).
-
-    Returns
-    -------
-    PairResult
+        Force-close any open position on the final bar (default True).
+    execution : ExecutionConfig
+        Fill timing and price (default: next mode, f = 0.5).
+    leg_vol : (sigma_y, sigma_x), optional
+        Daily return vol of each leg for the impact model. Default: trailing
+        60-day estimate known before each fill (2% until 20 returns exist).
     """
+    if not isinstance(execution, ExecutionConfig):
+        raise TypeError("execution must be an ExecutionConfig")
     if not y.index.equals(x.index):
         raise ValueError("y and x indices differ; use align_pair first")
     if not y.index.equals(target.index):
@@ -217,6 +298,8 @@ def backtest_pair(
     n = len(y)
     if n < 2:
         raise ValueError("need at least 2 bars to backtest")
+    if not math.isfinite(gross) or gross <= 0:
+        raise ValueError(f"gross must be finite and positive, got {gross}")
 
     tgt = target.fillna(0).astype(int).to_numpy()
     bad = set(np.unique(tgt)) - {-1, 0, 1}
@@ -227,20 +310,24 @@ def backtest_pair(
     if np.any(~np.isfinite(yv)) or np.any(~np.isfinite(xv)):
         raise ValueError("prices contain NaN/inf; use align_pair first")
 
+    if leg_vol is None:
+        sig_y = _trailing_daily_vol(yv)
+        sig_x = _trailing_daily_vol(xv)
+    else:
+        if len(leg_vol) != 2 or not all(math.isfinite(v) and v >= 0 for v in leg_vol):
+            raise ValueError(f"leg_vol must be two finite non-negative floats, got {leg_vol}")
+        sig_y = np.full(n, float(leg_vol[0]))
+        sig_x = np.full(n, float(leg_vol[1]))
+
+    auction = execution.mode == "close_auction"
+    f = 0.0 if auction else execution.fill_fraction
+    auction_rate = execution.auction_cost_bp / 1e4 if auction else 0.0
+
     idx = y.index
     daily = {
         k: np.zeros(n)
-        for k in (
-            "gross_pnl",
-            "commission",
-            "slippage",
-            "borrow",
-            "net_pnl",
-            "q_y",
-            "q_x",
-            "gross_exposure",
-            "net_exposure",
-        )
+        for k in ("gross_pnl", *COST_COLUMNS, "net_pnl", "q_y", "q_x",
+                  "gross_exposure", "net_exposure")
     }
     position = np.zeros(n, dtype=int)
     ledger_rows: list[dict] = []
@@ -250,108 +337,99 @@ def backtest_pair(
     direction = 0
     open_trade: Optional[dict] = None
 
-    def execute_leg(t: int, leg: str, d_shares: float, price: float) -> tuple[float, float]:
-        if d_shares == 0.0:
-            return 0.0, 0.0
+    def execute_leg(t: int, leg: str, d_shares: float, price: float, sigma: float) -> dict:
         notional = abs(d_shares) * price
-        commission = notional * costs.cost_bps / 1e4
-        slippage = notional * costs.slippage_bps / 1e4
-        ledger_rows.append(
-            {
-                "date": idx[t],
-                "leg": leg,
-                "shares": d_shares,
-                "price": price,
-                "notional": notional,
-                "commission": commission,
-                "slippage": slippage,
-            }
-        )
-        return commission, slippage
+        c = {
+            "commission": notional * costs.cost_bps / 1e4,
+            "slippage": notional * costs.slippage_bps / 1e4,
+            "impact": notional * costs.impact_coef * sigma
+            * math.sqrt(notional / costs.adv_dollars),
+            "auction": notional * auction_rate,
+        }
+        if d_shares != 0.0:
+            ledger_rows.append({"date": idx[t], "leg": leg, "shares": d_shares,
+                                "price": price, "notional": notional, **c})
+        return c
 
     for t in range(n):
-        # 1) mark-to-market holdings carried into today
-        if t > 0 and direction != 0:
-            daily["gross_pnl"][t] = q_y * (yv[t] - yv[t - 1]) + q_x * (
-                xv[t] - xv[t - 1]
-            )
-            short_mv = 0.0
-            if q_y < 0:
-                short_mv += -q_y * yv[t]
-            if q_x < 0:
-                short_mv += -q_x * xv[t]
-            daily["borrow"][t] = short_mv * costs.daily_borrow_rate
-
-        # 2) desired position: strictly yesterday's decision
-        desired = int(tgt[t - 1]) if t > 0 else 0
+        # 1) fill price for today's trade and the decision being filled
+        if auction:
+            pf_y, pf_x = yv[t], xv[t]
+            desired = int(tgt[t])
+        elif t == 0:
+            pf_y, pf_x = yv[0], xv[0]
+            desired = 0
+        else:
+            pf_y = yv[t - 1] + f * (yv[t] - yv[t - 1])
+            pf_x = xv[t - 1] + f * (xv[t] - xv[t - 1])
+            desired = int(tgt[t - 1])
         if close_at_end and t == n - 1:
             desired = 0
 
-        # 3) rebalance at today's close
-        if desired != direction:
-            comm = slip = 0.0
-            if direction != 0:  # close existing
-                c1, s1 = execute_leg(t, "y", -q_y, yv[t])
-                c2, s2 = execute_leg(t, "x", -q_x, xv[t])
-                comm += c1 + c2
-                slip += s1 + s2
+        # 2) carried holdings: price move up to the fill, overnight carry costs
+        carried_pnl = carry_cost = 0.0
+        if t > 0 and direction != 0:
+            carried_pnl = q_y * (pf_y - yv[t - 1]) + q_x * (pf_x - xv[t - 1])
+            short_mv = (-q_y * pf_y if q_y < 0 else 0.0) + (-q_x * pf_x if q_x < 0 else 0.0)
+            long_mv = (q_y * pf_y if q_y > 0 else 0.0) + (q_x * pf_x if q_x > 0 else 0.0)
+            daily["borrow"][t] = short_mv * costs.daily_borrow_rate
+            daily["financing"][t] = (long_mv * costs.daily_financing_rate
+                                     - short_mv * costs.daily_rebate_rate)
+            carry_cost = daily["borrow"][t] + daily["financing"][t]
+
+        # 3) trade at the fill price
+        exit_cost = entry_cost = 0.0
+        traded = desired != direction
+        if traded:
+            if direction != 0:
+                for leg, q, p, sg in (("y", -q_y, pf_y, sig_y[t]), ("x", -q_x, pf_x, sig_x[t])):
+                    c = execute_leg(t, leg, q, p, sg)
+                    for k, v in c.items():
+                        daily[k][t] += v
+                    exit_cost += sum(c.values())
                 q_y = q_x = 0.0
-            entry_comm_slip = 0.0
-            if desired != 0:  # open new
-                q_y, q_x = size_positions(
-                    yv[t], xv[t], desired, beta, gross=gross, mode=sizing
-                )
-                c1, s1 = execute_leg(t, "y", q_y, yv[t])
-                c2, s2 = execute_leg(t, "x", q_x, xv[t])
-                comm += c1 + c2
-                slip += s1 + s2
-                entry_comm_slip = c1 + s1 + c2 + s2
-            daily["commission"][t] += comm
-            daily["slippage"][t] += slip
-            # trade bookkeeping: today's MTM and exit costs belong to the
-            # closing trade; entry costs to the new one
+            if desired != 0:
+                q_y, q_x = size_positions(pf_y, pf_x, desired, beta, gross=gross, mode=sizing)
+                for leg, q, p, sg in (("y", q_y, pf_y, sig_y[t]), ("x", q_x, pf_x, sig_x[t])):
+                    c = execute_leg(t, leg, q, p, sg)
+                    for k, v in c.items():
+                        daily[k][t] += v
+                    entry_cost += sum(c.values())
+
+        # 4) holdings after the fill earn the rest of the day
+        new_pnl = q_y * (yv[t] - pf_y) + q_x * (xv[t] - pf_x)
+        daily["gross_pnl"][t] = carried_pnl + new_pnl
+
+        # 5) trade bookkeeping
+        if traded:
             if open_trade is not None:
-                open_trade["pnl"] += (
-                    daily["gross_pnl"][t]
-                    - daily["borrow"][t]
-                    + entry_comm_slip  # exclude the new trade's entry costs
-                    - (comm + slip)
-                )
+                open_trade["pnl"] += carried_pnl - carry_cost - exit_cost
                 open_trade["exit_date"] = idx[t]
                 open_trade["bars_held"] += 1
+                last_signal = tgt[t] if auction else tgt[t - 1]
                 open_trade["exit_reason"] = (
-                    "end_of_sample" if (close_at_end and t == n - 1 and tgt[t - 1] != 0) else "signal"
+                    "end_of_sample" if (close_at_end and t == n - 1 and last_signal != 0)
+                    else "signal"
                 )
                 trade_rows.append(open_trade)
                 open_trade = None
             if desired != 0:
-                open_trade = {
-                    "entry_date": idx[t],
-                    "exit_date": pd.NaT,
-                    "direction": desired,
-                    "bars_held": 0,
-                    "pnl": -entry_comm_slip,
-                    "exit_reason": "",
-                }
+                open_trade = {"entry_date": idx[t], "exit_date": pd.NaT,
+                              "direction": desired, "bars_held": 0,
+                              "pnl": new_pnl - entry_cost, "exit_reason": ""}
             direction = desired
-        else:
-            if open_trade is not None:
-                open_trade["pnl"] += daily["gross_pnl"][t] - daily["borrow"][t]
-                if t > 0:
-                    open_trade["bars_held"] += 1
+        elif open_trade is not None:
+            open_trade["pnl"] += carried_pnl + new_pnl - carry_cost
+            if t > 0:
+                open_trade["bars_held"] += 1
 
-        # 4) end-of-day state
+        # 6) end-of-day state
         position[t] = direction
         daily["q_y"][t] = q_y
         daily["q_x"][t] = q_x
         daily["gross_exposure"][t] = abs(q_y) * yv[t] + abs(q_x) * xv[t]
         daily["net_exposure"][t] = q_y * yv[t] + q_x * xv[t]
-        daily["net_pnl"][t] = (
-            daily["gross_pnl"][t]
-            - daily["commission"][t]
-            - daily["slippage"][t]
-            - daily["borrow"][t]
-        )
+        daily["net_pnl"][t] = daily["gross_pnl"][t] - sum(daily[k][t] for k in COST_COLUMNS)
 
     df = pd.DataFrame(daily, index=idx)
     df["position"] = position
@@ -378,8 +456,7 @@ class PortfolioResult:
     def __post_init__(self) -> None:
         if not self.pairs:
             raise ValueError("PortfolioResult needs at least one PairResult")
-        cols = ["gross_pnl", "commission", "slippage", "borrow", "net_pnl",
-                "gross_exposure", "net_exposure"]
+        cols = ["gross_pnl", *COST_COLUMNS, "net_pnl", "gross_exposure", "net_exposure"]
         frames = [p.daily[cols] for p in self.pairs]
         idx = frames[0].index
         for f in frames[1:]:
@@ -405,7 +482,10 @@ class PortfolioResult:
                     "gross_pnl": p.gross_pnl,
                     "commission": float(p.daily["commission"].sum()),
                     "slippage": float(p.daily["slippage"].sum()),
+                    "impact": float(p.daily["impact"].sum()),
                     "borrow": float(p.daily["borrow"].sum()),
+                    "financing": float(p.daily["financing"].sum()),
+                    "auction": float(p.daily["auction"].sum()),
                     "net_pnl": p.net_pnl,
                     "n_trades": len(p.trades),
                 }
@@ -420,6 +500,7 @@ def backtest_portfolio(
     costs: CostModel = CostModel(),
     gross_per_pair: float = 1_000_000.0,
     sizing: str = "dollar",
+    execution: ExecutionConfig = DEFAULT_EXECUTION,
 ) -> PortfolioResult:
     """Backtest a set of pairs and aggregate.
 
@@ -446,6 +527,7 @@ def backtest_portfolio(
             costs=costs,
             gross=gross_per_pair,
             sizing=sizing,
+            execution=execution,
         )
         results.append(res)
     return PortfolioResult(pairs=results)
@@ -474,14 +556,21 @@ class WalkForwardWindow:
 
 
 def walk_forward_windows(
-    n_obs: int, formation: int, trading: int, step: Optional[int] = None
+    n_obs: int,
+    formation: int,
+    trading: int,
+    step: Optional[int] = None,
+    allow_partial: bool = False,
 ) -> list[WalkForwardWindow]:
     """Rolling formation/trading splits over ``n_obs`` observations.
 
     formation window = [i, i+formation), trading window =
     [i+formation, i+formation+trading), stepping by ``step`` (default =
-    ``trading``, i.e. contiguous non-overlapping trading windows). The
-    formation and trading windows of each split NEVER overlap — asserted in
+    ``trading``, i.e. contiguous non-overlapping trading windows). With
+    ``allow_partial`` (and the default step) the trailing observations that
+    do not fill a whole trading window form one shorter last window instead
+    of being dropped. The
+    formation and trading windows of each split NEVER overlap: asserted in
     the constructor and unit-tested.
     """
     if formation < 30:
@@ -503,6 +592,17 @@ def walk_forward_windows(
             )
         )
         i += step
+    if allow_partial and step == trading:
+        start = (windows[-1].trading_end + 1) if windows else formation
+        if n_obs - start >= 2 and start - formation >= 0:
+            windows.append(
+                WalkForwardWindow(
+                    formation_start=start - formation,
+                    formation_end=start - 1,
+                    trading_start=start,
+                    trading_end=n_obs - 1,
+                )
+            )
     return windows
 
 
@@ -540,6 +640,11 @@ def _fit_formation(
     }
 
 
+def _formation_vol(y_f: pd.Series, x_f: pd.Series) -> tuple[float, float]:
+    """Daily return vol of each leg over the formation window (for impact)."""
+    return (float(y_f.pct_change().std()), float(x_f.pct_change().std()))
+
+
 def _frozen_z(y: pd.Series, x: pd.Series, params: dict) -> pd.Series:
     """Z-score of the spread using FROZEN formation parameters only."""
     s = compute_spread(y, x, params["beta"], params["alpha"])
@@ -558,6 +663,8 @@ def walk_forward_pair(
     time_stop_k: float = 3.0,
     eg_level: str = "5%",
     name: str = "pair",
+    execution: ExecutionConfig = DEFAULT_EXECUTION,
+    allow_partial: bool = False,
 ) -> tuple[Optional[PairResult], pd.DataFrame]:
     """Walk-forward backtest of a single pair.
 
@@ -574,7 +681,7 @@ def walk_forward_pair(
     that tests use to verify the freeze and non-overlap properties.
     """
     y, x = align_pair(y, x)
-    wins = walk_forward_windows(len(y), formation, trading)
+    wins = walk_forward_windows(len(y), formation, trading, allow_partial=allow_partial)
     if not wins:
         raise ValueError(
             f"sample of {len(y)} obs too short for formation={formation}, "
@@ -614,6 +721,8 @@ def walk_forward_pair(
                 gross=gross,
                 sizing=sizing,
                 close_at_end=True,
+                execution=execution,
+                leg_vol=_formation_vol(y_f, x_f),
             )
             daily_frames.append(res.daily)
             if len(res.ledger):
@@ -651,20 +760,53 @@ def walk_forward_portfolio(
     gross_per_pair: float = 1_000_000.0,
     sizing: str = "dollar",
     eg_level: str = "5%",
+    execution: ExecutionConfig = DEFAULT_EXECUTION,
+    allow_partial: bool = False,
+    hedge: str = "static",
+    hedge_window: int = 60,
+    screen: str = "corr",
+    ssd_top_n: int = 20,
+    rule_overrides: Optional[dict] = None,
 ) -> tuple[Optional[PortfolioResult], pd.DataFrame]:
     """Walk-forward portfolio: re-select and re-fit pairs each formation window.
 
-    Per split: correlation-screen candidates on formation returns, run EG +
-    OU gates, rank survivors by ADF statistic (most negative first), trade
-    up to ``max_pairs`` in the trading window with frozen parameters.
+    Per split: screen candidates on the formation window, run EG + OU gates,
+    rank survivors by ADF statistic (most negative first), trade up to
+    ``max_pairs`` in the trading window with frozen gate parameters.
+
+    screen : {"corr", "ssd"}
+        "corr" keeps pairs with formation return correlation >= ``min_corr``;
+        "ssd" keeps the ``ssd_top_n`` pairs with the smallest sum of squared
+        differences of normalised formation prices (Gatev et al. distance).
+    hedge : {"static", "rolling", "rls"}
+        "static": spread and z-score from the frozen formation OLS + OU fit.
+        "rolling": hedge ratio from rolling OLS over ``hedge_window`` days
+        and a rolling z-score over the same window, both using data up to t
+        only. "rls": recursive least squares, forgetting factor
+        ``1 - 1/hedge_window``, no intercept, with the same rolling z-score.
+        The EG and half-life gates are the same in all three.
+    rule_overrides : dict, optional
+        Extra ``SignalRules`` fields (for example ``entry_z``); the time stop
+        stays 3 x the formation half-life unless overridden.
 
     Returns
     -------
     (PortfolioResult or None, per-window selection DataFrame).
     """
-    from .universe import correlation_screen  # local import to avoid cycle
+    from .signals import zscore_rolling
+    from .spread import rls_hedge_ratio, rolling_ols_hedge_ratio
+    from .universe import correlation_screen, ssd_screen  # local import to avoid cycle
 
-    wins = walk_forward_windows(len(prices), formation, trading)
+    if hedge not in ("static", "rolling", "rls"):
+        raise ValueError(f"hedge must be 'static', 'rolling' or 'rls', got {hedge!r}")
+    if screen not in ("corr", "ssd"):
+        raise ValueError(f"screen must be 'corr' or 'ssd', got {screen!r}")
+    if hedge_window < 10 or hedge_window >= formation:
+        raise ValueError(f"hedge_window must be in [10, formation), got {hedge_window}")
+    if rules is not None and rule_overrides:
+        raise ValueError("pass either rules or rule_overrides, not both")
+
+    wins = walk_forward_windows(len(prices), formation, trading, allow_partial=allow_partial)
     if not wins:
         raise ValueError("sample too short for the requested windows")
     per_pair_frames: dict[str, list[PairResult]] = {}
@@ -672,7 +814,10 @@ def walk_forward_portfolio(
     for w in wins:
         pf = prices.iloc[w.formation_start : w.formation_end + 1]
         pt = prices.iloc[w.trading_start : w.trading_end + 1]
-        surv = correlation_screen(pf, list(candidate_pairs), min_corr=min_corr)
+        if screen == "corr":
+            surv = correlation_screen(pf, list(candidate_pairs), min_corr=min_corr)
+        else:
+            surv = ssd_screen(pf, list(candidate_pairs), top_n=ssd_top_n)
         fitted = []
         for a, b in surv.index:
             params = _fit_formation(pf[a], pf[b], eg_level=eg_level)
@@ -691,9 +836,21 @@ def walk_forward_portfolio(
         )
         for (a, b), params in fitted:
             wr = rules or SignalRules(
-                max_holding=time_stop_bars(params["half_life"], k=3.0)
+                **{"max_holding": time_stop_bars(params["half_life"], k=3.0),
+                   **(rule_overrides or {})}
             )
-            z = _frozen_z(pt[a], pt[b], params)
+            if hedge == "static":
+                z = _frozen_z(pt[a], pt[b], params)
+            else:
+                both = prices.iloc[w.formation_start : w.trading_end + 1]
+                if hedge == "rolling":
+                    hb = rolling_ols_hedge_ratio(both[a], both[b], window=hedge_window)
+                    spread = both[a] - hb["alpha"] - hb["beta"] * both[b]
+                else:
+                    hb = rls_hedge_ratio(both[a], both[b], lam=1.0 - 1.0 / hedge_window,
+                                         intercept=False)
+                    spread = both[a] - hb["beta"] * both[b]
+                z = zscore_rolling(spread, window=hedge_window).loc[pt.index]
             target = generate_signals(z, wr)["position"]
             res = backtest_pair(
                 pt[a],
@@ -704,6 +861,8 @@ def walk_forward_portfolio(
                 costs=costs,
                 gross=gross_per_pair,
                 sizing=sizing,
+                execution=execution,
+                leg_vol=_formation_vol(pf[a], pf[b]),
             )
             per_pair_frames.setdefault(f"{a}/{b}", []).append(res)
     windows_df = pd.DataFrame(records)

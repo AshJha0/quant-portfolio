@@ -3,6 +3,8 @@ and performance_stats against hand-computable equity curves."""
 
 import numpy as np
 import pandas as pd
+
+from eq_signal_backtest import ExecutionConfig
 import pytest
 
 from eq_signal_backtest.engine import performance_stats, run_backtest
@@ -35,7 +37,7 @@ class TestNoLookAhead:
             assert not pd.isna(res.position.iloc[0])
             assert res.position.iloc[0] == 0.0
 
-    def test_cheat_profits_from_a_jump_honest_engine_does_not(self):
+    def test_cheat_profits_from_a_jump_engine_does_not(self):
         """Detector test: an oracle signal fires exactly on the day of a
         30% overnight jump. Same-day ("cheat") execution captures the
         jump; the engine's t-1 lag means the position that day was decided
@@ -44,13 +46,13 @@ class TestNoLookAhead:
         prices = pd.Series([100.0, 100.0, 100.0, 130.0, 130.0], index=dates)
         signal = pd.Series([0.0, 0.0, 0.0, 1.0, 1.0], index=dates)
 
-        honest = run_backtest(prices, signal, cost_bps=0.0)
+        engine = run_backtest(prices, signal, cost_bps=0.0)
 
         rets = prices.pct_change().fillna(0.0)
         cheat_equity = (1 + signal * rets).cumprod()  # same-day execution bug
 
         assert cheat_equity.iloc[-1] > 1.25
-        assert honest.equity.iloc[-1] == pytest.approx(1.0, abs=1e-9)
+        assert engine.equity.iloc[-1] == pytest.approx(1.0, abs=1e-9)
 
     def test_position_never_uses_same_day_signal_value(self):
         """A signal that is 1 only on the final day can never produce a
@@ -116,8 +118,21 @@ class TestTransactionCosts:
             dtype=float,
         )
         signal = pd.Series(1.0, index=dates)
-        res = run_backtest(prices, signal, cost_bps=0.0)
+        # Same-close arithmetic (close auction at zero auction cost) is
+        # exactly buy & hold; the default t+1 fill misses the first half
+        # of day 1 and nothing else.
+        res = run_backtest(
+            prices, signal, cost_bps=0.0,
+            execution=ExecutionConfig("close_auction", auction_cost_bp=0.0),
+        )
         pd.testing.assert_series_equal(res.equity, res.benchmark, check_names=False)
+        nxt = run_backtest(prices, signal, cost_bps=0.0)
+        r1 = prices.iloc[1] / prices.iloc[0] - 1.0
+        np.testing.assert_allclose(
+            nxt.equity.to_numpy()[1:],
+            res.benchmark.to_numpy()[1:] / (1.0 + 0.5 * r1),
+            rtol=1e-12,
+        )
 
 
 # ---------------------------------------------------------------------------

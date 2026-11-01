@@ -177,7 +177,7 @@ def test_all_risk_on_sample_handled():
     """One state never visited: the k=2 model is unidentified, but the
     detector must run to completion with valid, finite probabilities.
 
-    (The detector WILL split noise into two pseudo-states here — that is
+    (The detector WILL split noise into two pseudo-states here, that is
     the documented failure mode; the economic guard is the null-panel
     strategy test in test_risk.py, which shows the split carries no
     P&L edge.)"""
@@ -219,7 +219,7 @@ def test_short_series_raises(feats2):
 @pytest.mark.parametrize("k", [1, 2, 10])
 def test_refit_boundary_mutation_after_refit_date(k):
     """TEST-11: a mutation strictly after refit date t0 leaves every row up
-    to the last unmutated day bit-identical -- including row t0 itself,
+    to the last unmutated day identical -- including row t0 itself,
     which the freshly refitted model produces on the boundary day.
     """
     panel = generate_roro_panel(700, n_states=2, seed=9)
@@ -244,3 +244,24 @@ def test_refit_boundary_mutation_after_refit_date(k):
     assert not np.allclose(
         det1.probs.loc[first_dirty:].to_numpy(), det2.probs.loc[first_dirty:].to_numpy()
     )
+
+
+def test_cold_restart_keeps_the_better_likelihood(feats2):
+    """With a cold restart at every refit, each refit model scores at least
+    as well on its training window as a cold fit with the same seed."""
+    from fx_regime import fit_hmm
+    from fx_regime.hmm import log_forward
+
+    cfg = DetectionConfig(n_states=2, min_train=252, refit_every=252,
+                          cold_restart_every=1, max_iter=20, n_init=1)
+    det = run_detection(feats2, cfg, seed=0)
+    cols = [c for c in cfg.detect_columns if c in feats2.columns]
+    X = feats2[cols].to_numpy()
+    for i, (d, model) in enumerate(det.models.items()):
+        if i == 0:
+            continue
+        t0 = feats2.index.get_loc(d)
+        cold = fit_hmm(X[:t0], 2, seed=i, n_init=1, max_iter=20)
+        assert log_forward(model, X[:t0])[1] >= cold.log_likelihood - 1e-6
+    with pytest.raises(ValueError):
+        DetectionConfig(cold_restart_every=-1)

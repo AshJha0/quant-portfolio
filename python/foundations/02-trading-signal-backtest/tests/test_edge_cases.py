@@ -3,6 +3,8 @@ zero volatility, single-day series, cost_bps=0, and live-data import guard."""
 
 import numpy as np
 import pandas as pd
+
+from eq_signal_backtest import ExecutionConfig
 import pytest
 
 from eq_signal_backtest.data import live as live_module
@@ -55,8 +57,21 @@ class TestZeroCostReproducesBuyAndHoldWhileOn:
     def test_exact_match_when_always_long(self):
         prices = _prices(n=60)
         signal = pd.Series(1.0, index=prices.index)
-        res = run_backtest(prices, signal, cost_bps=0.0)
+        # Same-close arithmetic (close auction at zero auction cost) is
+        # exactly buy & hold; the default t+1 fill misses the first half
+        # of day 1 and nothing else.
+        res = run_backtest(
+            prices, signal, cost_bps=0.0,
+            execution=ExecutionConfig("close_auction", auction_cost_bp=0.0),
+        )
         pd.testing.assert_series_equal(res.equity, res.benchmark, check_names=False)
+        nxt = run_backtest(prices, signal, cost_bps=0.0)
+        r1 = prices.iloc[1] / prices.iloc[0] - 1.0
+        np.testing.assert_allclose(
+            nxt.equity.to_numpy()[1:],
+            res.benchmark.to_numpy()[1:] / (1.0 + 0.5 * r1),
+            rtol=1e-12,
+        )
 
     def test_diverges_once_costs_are_nonzero(self):
         prices = _prices(n=60)
@@ -145,7 +160,7 @@ class TestNonFinitePrices:
     def test_nan_price_is_rejected_by_the_signal_too(self):
         """Caught one layer earlier as well: a NaN close blanks `slow` days
         of moving average, producing a flat signal that is impossible to
-        distinguish from a genuine bearish one."""
+        distinguish from a real bearish one."""
         idx = pd.bdate_range("2024-01-01", periods=8)
         prices = pd.Series([100.0, 101.0, np.nan, 103.0, 104.0, 103.0, 105.0, 106.0], index=idx)
         with pytest.raises(ValueError, match="non-finite"):

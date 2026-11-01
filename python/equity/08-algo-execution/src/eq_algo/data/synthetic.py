@@ -15,7 +15,7 @@ feature must show IC in the planted range with t-stat > 2, and a pure-noise
 feature must not (tests).
 
 Intraday data: see :class:`eq_algo.intraday.IntradayMarket` (re-exported
-here for convenience) — U-shaped volume, temporary + permanent impact.
+here for convenience), U-shaped volume, temporary + permanent impact.
 Everything takes an explicit seed; no network access.
 """
 
@@ -42,8 +42,23 @@ class DailyPanel:
 
     @property
     def adv_dollars(self) -> pd.Series:
-        """Full-sample average daily dollar volume per name (planning number)."""
+        """Full-sample average daily dollar volume per name.
+
+        Deprecated: a full-sample mean uses future volume. Use
+        :meth:`trailing_adv_dollars`, which is known at each close.
+        """
+        import warnings
+
+        warnings.warn("DailyPanel.adv_dollars is a full-sample mean and uses future "
+                      "data; use trailing_adv_dollars(window)", DeprecationWarning,
+                      stacklevel=2)
         return (self.prices * self.volumes).mean()
+
+    def trailing_adv_dollars(self, window: int = 21) -> pd.DataFrame:
+        """Trailing ``window``-day mean dollar volume, known at each close."""
+        if window < 1:
+            raise ValueError("window must be >= 1")
+        return (self.prices * self.volumes).rolling(window, min_periods=window).mean()
 
 
 def generate_daily_panel(n_stocks: int = 100, n_days: int = 1000, seed: int = 0,
@@ -65,7 +80,9 @@ def generate_daily_panel(n_stocks: int = 100, n_days: int = 1000, seed: int = 0,
     AR(1) around ``log(sigma_daily)`` with persistence ``vol_persistence``
     and innovation std ``vol_of_vol`` (vol clustering).  The planted next-day
     momentum IC is approximately ``mom_strength / sigma_daily`` (= 0.04 for
-    the defaults, inside the realistic 0.03-0.05 band).
+    the defaults). That is a daily IC; published 12-1 momentum ICs of
+    0.02-0.05 are monthly, so the planted effect is far stronger than any
+    real one.
 
     Parameters
     ----------

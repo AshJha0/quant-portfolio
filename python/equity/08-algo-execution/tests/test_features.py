@@ -30,7 +30,7 @@ FEATURE_FUNCS = {
 @pytest.mark.parametrize("name", list(FEATURE_FUNCS))
 def test_point_in_time_mutation(panel, name):
     """Gold-standard leakage test: mutating data strictly after t leaves the
-    feature at all dates <= t bit-identical."""
+    feature at all dates <= t identical."""
     func = FEATURE_FUNCS[name]
     base = func(panel.prices, panel.volumes)
     prices2 = panel.prices.copy()

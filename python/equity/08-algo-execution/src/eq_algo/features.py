@@ -6,7 +6,7 @@ feature value at date ``t`` uses only data with timestamp ``<= t``.  This is
 enforced by construction (pandas ``rolling``/``shift`` windows *end* at ``t``;
 lookbacks use ``shift``) and by the leakage tests in
 ``tests/test_features.py``, which mutate rows strictly after ``t`` and assert
-that the feature at ``t`` is bit-identical.
+that the feature at ``t`` is identical.
 
 Conventions
 -----------
@@ -73,7 +73,7 @@ def momentum(prices: pd.DataFrame, lookback: int = 252, skip: int = 21) -> pd.Da
 def short_term_reversal(prices: pd.DataFrame, lookback: int = 21) -> pd.DataFrame:
     """Short-term (1-month) reversal: minus the trailing ``lookback``-day return.
 
-    ``reversal_t = -(P_t / P_{t-lookback} - 1)`` — high values mean the stock
+    ``reversal_t = -(P_t / P_{t-lookback} - 1)``, high values mean the stock
     *fell* over the last month and is expected to bounce.
     """
     _check_frame(prices, "prices")

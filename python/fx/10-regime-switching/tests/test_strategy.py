@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from fx_regime import (
-    PIP_FRACTION,
     StrategyConfig,
     base_weights,
     carry_accrual,
@@ -60,13 +59,18 @@ def test_unknown_regime_raises():
 def test_carry_accrual_exact_hand_computed():
     w = pd.Series({"AUD": 0.5, "JPY": -0.5})
     # 0.5*(0.045-0.02) + (-0.5)*(0.001-0.02) = 0.0125 + 0.0095 = 0.022 p.a.
-    expected = 0.022 / 252.0
-    assert carry_accrual(w, RATES, 0.02) == pytest.approx(expected, abs=1e-15)
+    # ACT/365 over a Friday-to-Monday gap: 3 calendar days
+    expected = 0.022 * 3 / 365.0
+    assert carry_accrual(w, RATES, 0.02, year_fraction=3 / 365.0) == pytest.approx(
+        expected, abs=1e-15
+    )
+    with pytest.warns(DeprecationWarning):
+        assert carry_accrual(w, RATES, 0.02) == pytest.approx(0.022 / 252.0)
 
 
 def test_carry_accrual_zero_for_flat_book():
     w = pd.Series(0.0, index=CCYS)
-    assert carry_accrual(w, RATES, 0.02) == 0.0
+    assert carry_accrual(w, RATES, 0.02, year_fraction=1 / 365) == 0.0
 
 
 def test_vol_target_hit_exactly_ex_ante():
@@ -108,9 +112,32 @@ def test_regime_weights_scaled_book():
 def test_transaction_cost_hand_computed():
     old = pd.Series({"AUD": 0.0, "JPY": 0.0})
     new = pd.Series({"AUD": 0.5, "JPY": -0.5})
-    # AUD: 0.5 * 1.0 pip, JPY: 0.5 * 0.8 pip  (half-spreads, PIP=1e-4)
-    expected = (0.5 * 1.0 + 0.5 * 0.8) * PIP_FRACTION
-    assert transaction_cost(new, old) == pytest.approx(expected, abs=1e-15)
+    # AUDUSD 0.66: 0.7 pip * 1e-4 / 0.66; USDJPY 150: 1.0 pip * 0.01 / 150
+    expected = 0.5 * 0.7e-4 / 0.66 + 0.5 * 1.0e-2 / 150.0
+    assert transaction_cost(new, old) == pytest.approx(expected, rel=1e-12)
+
+
+def test_pip_value_scales_with_quote_level_jpy_and_mxn():
+    # Regression: the old code charged pips * 1e-4 of notional for every
+    # pair, ignoring the JPY pip size (0.01) and the quote level.
+    from fx_regime.data.synthetic import half_spread_fraction
+
+    assert half_spread_fraction("JPY", 1.0, 150.0) == pytest.approx(0.01 / 150.0)
+    assert half_spread_fraction("MXN", 60.0, 17.5) == pytest.approx(60e-4 / 17.5)
+    assert half_spread_fraction("EUR", 0.5, 1.08) == pytest.approx(0.5e-4 / 1.08)
+    # same pips cost less when the quote level doubles
+    assert half_spread_fraction("MXN", 60.0, 35.0) == pytest.approx(
+        0.5 * half_spread_fraction("MXN", 60.0, 17.5)
+    )
+    old = pd.Series({"JPY": 0.0, "MXN": 0.0})
+    new = pd.Series({"JPY": 1.0, "MXN": 1.0})
+    lv = pd.Series({"JPY": 150.0, "MXN": 17.5})
+    cost = transaction_cost(new, old, {"JPY": 1.0, "MXN": 60.0}, lv)
+    assert cost == pytest.approx(0.01 / 150.0 + 60e-4 / 17.5, rel=1e-12)
+    with pytest.raises(ValueError):
+        half_spread_fraction("MXN", 60.0, float("nan"))
+    with pytest.raises(ValueError):
+        half_spread_fraction("MXN", -1.0, 17.5)
 
 
 def test_transaction_cost_zero_without_trades():
@@ -121,7 +148,7 @@ def test_transaction_cost_zero_without_trades():
 def test_transaction_cost_unknown_currency_default():
     old = pd.Series({"XXX": 0.0})
     new = pd.Series({"XXX": 1.0})
-    assert transaction_cost(new, old) == pytest.approx(2.0 * PIP_FRACTION)
+    assert transaction_cost(new, old) == pytest.approx(2.0 * 1e-4)
 
 
 def test_config_validation():

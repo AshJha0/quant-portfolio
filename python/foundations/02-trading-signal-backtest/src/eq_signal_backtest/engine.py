@@ -2,17 +2,17 @@
 
 Design decisions that matter (expanded in ``docs/METHODOLOGY.md``):
 
-1. NO LOOK-AHEAD. The signal computed on day t's close is traded at day
-   t+1 (``position = signal.shift(1)``). Trading on the same close used
-   to compute the signal is the most common backtest bug and silently
-   inflates every downstream number -- ``tests/test_engine.py`` proves
-   this structurally, not just by inspection.
+1. FILL TIMING. Signals use data up to the close of day t. Orders fill
+   at a modelled t+1 price, p_t + f (p_{t+1} - p_t) with f = 0.5 by
+   default; a close-auction variant fills at p_t and pays an auction
+   cost. The old position earns p_fill / p_t - 1 of day t+1 and the new
+   position earns p_{t+1} / p_fill - 1. See :class:`ExecutionConfig` and
+   ``tests/test_execution.py``.
 
 2. TRANSACTION COSTS. A fixed cost in basis points is charged on every
-   *change* in position (0->1 or 1->0), applied to that day's return.
-   Cost-free backtests of fast signals are fiction; a zero-cost variant
-   is always available (``cost_bps=0.0``) so the drag is visible rather
-   than hidden.
+   change in position (0->1 or 1->0), on the day of the fill. A
+   zero-cost variant is available (``cost_bps=0.0``) so the drag is
+   visible.
 
 3. LONG/FLAT ONLY. Shorting adds borrow costs and margin mechanics this
    simple engine does not model, so it does not pretend to. Positions
@@ -26,8 +26,9 @@ Design decisions that matter (expanded in ``docs/METHODOLOGY.md``):
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -36,11 +37,46 @@ TRADING_DAYS = 252
 
 __all__ = [
     "TRADING_DAYS",
+    "ExecutionConfig",
     "BacktestResult",
     "strategy_returns",
     "run_backtest",
     "performance_stats",
 ]
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """How a decision taken at the close of day t is filled.
+
+    Parameters
+    ----------
+    mode : {"next", "close_auction"}
+        ``"next"`` (default) fills at the modelled t+1 price
+        ``p_t + fill_fraction * (p_{t+1} - p_t)``. ``"close_auction"``
+        fills at ``p_t`` and pays ``auction_cost_bp`` per unit of traded
+        notional on top of ``cost_bps``.
+    fill_fraction : float, default 0.5
+        Share of the next day's price move that has happened by the fill,
+        in (0, 1]. 1.0 is a next-close fill. 0.5 stands in for a
+        next-open or early-session fill when only closes exist.
+    auction_cost_bp : float, default 10.0
+        Extra cost per unit of traded notional in ``"close_auction"`` mode.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("next", "close_auction"):
+            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
+        f = float(self.fill_fraction)
+        if not math.isfinite(f) or not (0.0 < f <= 1.0):
+            raise ValueError(f"fill_fraction must be finite and in (0, 1], got {self.fill_fraction!r}")
+        a = float(self.auction_cost_bp)
+        if not math.isfinite(a) or a < 0:
+            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp!r}")
 
 
 def _validate_inputs(prices: pd.Series, signal: pd.Series, cost_bps: float) -> None:
@@ -77,7 +113,7 @@ def _validate_inputs(prices: pd.Series, signal: pd.Series, cost_bps: float) -> N
             "(NaN/inf). A NaN close is a missing observation, and "
             "pct_change().fillna(0) would silently record it as a FLAT DAY "
             "-- swallowing the whole move across the gap. Forward-fill, drop "
-            "or otherwise resolve the gap deliberately before backtesting."
+            "or otherwise resolve the gap explicitly before backtesting."
         )
     if (price_values <= 0).any():
         raise ValueError(
@@ -112,12 +148,15 @@ def _validate_inputs(prices: pd.Series, signal: pd.Series, cost_bps: float) -> N
 
 
 def strategy_returns(
-    prices: pd.Series, signal: pd.Series, cost_bps: float
+    prices: pd.Series,
+    signal: pd.Series,
+    cost_bps: float,
+    execution: Optional[ExecutionConfig] = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Daily net strategy returns, executed position, and trade flags.
 
     The single source of truth for how a signal becomes a P&L stream:
-    one-day execution lag, cost charged on every position change, daily
+    modelled t+1 fill (see :class:`ExecutionConfig`), cost charged on every position change, daily
     return floored at ``-1.0``. :func:`run_backtest` and
     :func:`eq_signal_backtest.split.walk_forward_backtest` both go through
     here, so the walk-forward path cannot silently drift away from the
@@ -134,13 +173,15 @@ def strategy_returns(
     cost_bps : float
         One-way transaction cost in basis points; a round trip costs
         twice this.
+    execution : ExecutionConfig, optional
+        Fill model. Defaults to ``ExecutionConfig()`` (t+1 fill, f = 0.5).
 
     Returns
     -------
     (strat_rets, position, trades) : tuple of pandas.Series
         ``strat_rets`` -- daily strategy returns net of costs, floored at
         ``-1.0``; ``position`` -- the executed 0/1 position after the
-        one-day lag; ``trades`` -- 1.0 on days the position changed, else
+        fill on day t+1 of a decision at close t; ``trades`` -- 1.0 on days the position changed, else
         0.0 (its sum is the trade count).
 
     Raises
@@ -149,16 +190,30 @@ def strategy_returns(
         See :func:`_validate_inputs`.
     """
     _validate_inputs(prices, signal, cost_bps)
+    if execution is None:
+        execution = ExecutionConfig()
+    if not isinstance(execution, ExecutionConfig):
+        raise ValueError("execution must be an ExecutionConfig")
     rets = prices.pct_change().fillna(0.0)
 
-    # Execution lag: today's position is yesterday's signal. This is the
-    # single line that prevents look-ahead bias.
+    # The signal decided at the close of day d-1 is filled during day d.
+    # ``position`` is the holding after that fill; ``old`` is the holding
+    # before it.
     position = signal.shift(1).fillna(0.0)
+    old = signal.shift(2).fillna(0.0)
 
-    trades = position.diff().abs().fillna(0.0)
-    costs = trades * cost_bps / 10_000
+    trades = (position - old).abs()
+    if execution.mode == "next":
+        f = execution.fill_fraction
+        before = f * rets  # p_fill / p_{d-1} - 1
+        after = (1.0 + rets) / (1.0 + f * rets) - 1.0  # p_d / p_fill - 1
+        gross = (1.0 + old * before) * (1.0 + position * after) - 1.0
+        costs = trades * cost_bps / 10_000
+    else:
+        gross = position * rets
+        costs = trades * (cost_bps + execution.auction_cost_bp) / 10_000
 
-    strat_rets = (position * rets - costs).clip(lower=-1.0)
+    strat_rets = (gross - costs).clip(lower=-1.0)
     return strat_rets, position, trades
 
 
@@ -173,7 +228,7 @@ class BacktestResult:
     benchmark : pandas.Series
         Buy & hold equity curve over the same prices, starts at 1.0.
     position : pandas.Series
-        Executed position (0.0 or 1.0) after the one-day execution lag.
+        Executed position (0.0 or 1.0) after the fill (the previous day's signal).
     n_trades : int
         Number of position changes (0->1 or 1->0) over the sample.
     stats : dict
@@ -189,9 +244,12 @@ class BacktestResult:
 
 
 def run_backtest(
-    prices: pd.Series, signal: pd.Series, cost_bps: float = 5.0
+    prices: pd.Series,
+    signal: pd.Series,
+    cost_bps: float = 5.0,
+    execution: Optional[ExecutionConfig] = None,
 ) -> BacktestResult:
-    """Backtest a 0/1 signal with next-day execution and transaction costs.
+    """Backtest a 0/1 signal with a modelled t+1 fill and transaction costs.
 
     Parameters
     ----------
@@ -208,6 +266,8 @@ def run_backtest(
         (commission + half spread + slippage) for a liquid large-cap ETF;
         it is optimistic for anything less liquid. Must be finite and
         non-negative.
+    execution : ExecutionConfig, optional
+        Fill model; defaults to ``ExecutionConfig()``.
 
     Returns
     -------
@@ -230,7 +290,7 @@ def run_backtest(
     an unaffordable cost assumption wipes the equity curve to zero and it
     stays there, which is what actually happens to a trader.
     """
-    strat_rets, position, trades = strategy_returns(prices, signal, cost_bps)
+    strat_rets, position, trades = strategy_returns(prices, signal, cost_bps, execution)
     rets = prices.pct_change().fillna(0.0)
     equity = (1 + strat_rets).cumprod()
     benchmark = (1 + rets).cumprod()

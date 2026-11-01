@@ -1,9 +1,9 @@
 """Risk analysis: per-regime stats, transition attribution, detection-lag cost.
 
-The centrepiece is the ORACLE COMPARISON — an honesty metric.  The
+The centrepiece is the ORACLE COMPARISON. The
 oracle strategy knows the true hidden state (zero detection lag, zero
-classification error) but pays the same costs and the same one-day
-execution delay.  The gap between oracle and filtered performance is
+classification error) but pays the same costs under the same
+execution convention. The gap between oracle and filtered performance is
 therefore exactly what imperfect, lagged detection costs; the gap
 between filtered and static carry is what detection is worth.
 """
@@ -23,7 +23,8 @@ def perf_stats(net: pd.Series) -> dict[str, float]:
     -------
     dict with ``ann_return`` (mean * 252), ``ann_vol`` (std * sqrt 252,
     ddof=1), ``sharpe``, ``max_drawdown`` (most negative peak-to-trough
-    of the cumulative sum, <= 0), ``calmar``, ``hit_rate``, ``n_days``.
+    of the ADDITIVE cumulative sum of daily returns, no compounding,
+    in return units, <= 0), ``calmar``, ``hit_rate``, ``n_days``.
     """
     r = net.dropna()
     n = len(r)
@@ -144,7 +145,7 @@ def detection_lag(
     first reports ANY label in ``target_labels`` (searching to the end
     of the spell plus a grace of one spell length).  Detection is
     defined DEFENSIVELY: flagging usd_squeeze during a true risk_off
-    spell counts as detected, because both books cut carry — what is
+    spell counts as detected, because both books cut carry, what is
     being priced is the days the filter left the book exposed, not the
     label spelling.  Only FRESH flips are counted: spells entered from a
     state outside ``target_labels`` (a risk_off spell straight after a
@@ -199,10 +200,11 @@ def detection_lag_report(
     """Detection-lag statistics and the cost of the lag per flip.
 
     The lag cost of a flip is the oracle-minus-filtered net P&L summed
-    over the lag window (flip, flip + lag] — the money lost while the
+    over the lag window (flip, flip + lag], the money lost while the
     filter had not yet flagged the true state.  The window is shifted
     one day past the flip because BOTH books carry the old position over
-    the flip day itself (one-day execution delay), and a label detected
+    the flip day itself (a book decided at a close is filled during the
+    next day), and a label detected
     at the close of day flip+lag only repositions the filtered book for
     day flip+lag+1 (position drift outside the window is not charged to
     the lag).
@@ -331,3 +333,24 @@ def comparison_table(nets: dict[str, pd.Series]) -> pd.DataFrame:
     return pd.DataFrame(
         {name: perf_stats(s.reindex(common)) for name, s in nets.items()}
     ).T
+
+
+def random_timing_regimes(regimes: pd.Series, seed: int = 0) -> pd.Series:
+    """Same regime path, circularly shifted by a random offset.
+
+    The shifted path has exactly the same occupancy of each label and the
+    same spell lengths as ``regimes``, so a book driven by it holds each
+    regime book for the same number of days (equal exposure) at timings
+    unrelated to the market. Comparing a strategy with its random-timing
+    twins isolates the value of WHEN the books are held.
+
+    The offset is drawn uniformly from ``[len/10, 9 len/10]`` so the shifted
+    path is not a near copy of the original.
+    """
+    n = len(regimes)
+    if n < 10:
+        raise ValueError("need at least 10 regime labels")
+    rng = np.random.default_rng(seed)
+    k = int(rng.integers(n // 10, n - n // 10))
+    vals = np.roll(regimes.to_numpy(), k)
+    return pd.Series(vals, index=regimes.index, name=regimes.name)

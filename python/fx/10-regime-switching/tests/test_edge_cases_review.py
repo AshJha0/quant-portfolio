@@ -2,10 +2,10 @@
 
 Focus, per the regime-switching domain:
 
-* single-regime (null) data — the model must not invent structure,
-* label switching — economic labels must be invariant to state permutation
+* single-regime (null) data, the model must not invent structure,
+* label switching, economic labels must be invariant to state permutation
   and to the seed that produced them,
-* peg-break style regime transitions — a sudden, persistent variance jump,
+* peg-break style regime transitions, a sudden, persistent variance jump,
 * tiny/empty samples, constant inputs, NaN/Inf rejection.
 """
 
@@ -71,7 +71,7 @@ def test_two_state_fit_on_null_data_yields_near_identical_states():
     v0 = np.mean(np.diag(m.covs[0]))
     v1 = np.mean(np.diag(m.covs[1]))
     ratio = max(v0, v1) / min(v0, v1)
-    # a genuine RORO panel separates by 4x+; the null must stay far below that
+    # a RORO panel separates by 4x+; the null must stay far below that
     assert ratio < 3.0
 
 

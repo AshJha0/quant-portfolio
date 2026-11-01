@@ -14,14 +14,14 @@ index. Conventions:
 
 Three canonical regimes are provided:
 
-(a) :func:`cointegrated_pair` — true cointegration with known hedge ratio and
+(a) :func:`cointegrated_pair`: true cointegration with known hedge ratio and
     a known Ornstein-Uhlenbeck spread (kappa, sigma known).
-(b) :func:`correlated_random_walks` — the classic trap: two *independent*
+(b) :func:`correlated_random_walks`: the classic trap: two *independent*
     random walks whose daily increments are highly correlated. Returns are
     correlated, price levels drift apart, and there is **no** cointegration.
-(c) :func:`regime_break_pair` — cointegrated in the first part of the sample,
+(c) :func:`regime_break_pair`: cointegrated in the first part of the sample,
     after which the spread stops mean-reverting (cointegration dies).
-(d) :func:`mixed_panel` — a sector-tagged panel mixing all three plus
+(d) :func:`mixed_panel`: a sector-tagged panel mixing all three plus
     idiosyncratic names, used by the selection-funnel example.
 """
 
@@ -274,7 +274,7 @@ def regime_break_pair(
     """Pair whose cointegration dies mid-sample.
 
     Before the break the spread is OU(kappa, sigma). From the break onwards
-    the spread becomes a random walk with drift ``drift_after`` dollars/day —
+    the spread becomes a random walk with drift ``drift_after`` dollars/day : 
     mean reversion never resumes, so convergence trades opened after the
     break lose money on average.
 
@@ -321,7 +321,7 @@ def mixed_panel(
     the same synthetic sector; idiosyncratic names are independent random
     walks spread across sectors. Ticker naming encodes the truth for easy
     debugging (CO_*, TRAP_*, BRK_*, IDIO_*), but the selection code never
-    reads the names — only prices and sector tags.
+    reads the names: only prices and sector tags.
 
     Returns
     -------

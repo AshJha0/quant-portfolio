@@ -257,7 +257,11 @@ def credit_proxy_spread(returns: pd.DataFrame, window: int = 21, lookback: int =
         raise ValueError(f"window must be >= 2, got {window}")
     hi, lo = _beta_split(returns, lookback)
     spread = returns[hi].mean(axis=1) - returns[lo].mean(axis=1)
-    return (spread.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)).rename("credit_proxy")
+    out = (spread.rolling(window).std(ddof=1) * np.sqrt(TRADING_DAYS)).rename("credit_proxy")
+    # Membership is fixed on the first ``lookback`` rows, so a value before
+    # row ``lookback`` would use later data. Those rows are left NaN.
+    out.iloc[: min(lookback, len(returns)) - 1] = np.nan
+    return out
 
 
 def term_proxy(returns: pd.DataFrame, short_window: int = 21, long_window: int = 126) -> pd.Series:

@@ -102,7 +102,7 @@ class TestADFvsStatsmodels:
 
 
 class TestMacKinnonCriticalValues:
-    """EG (N=2) values are NOT plain ADF (N=1) values — the classic mistake."""
+    """EG (N=2) values are NOT plain ADF (N=1) values: the classic mistake."""
 
     def test_asymptotic_values_are_published_ones(self):
         plain = mackinnon_crit(1, "c", np.inf)
@@ -196,9 +196,9 @@ class TestMacKinnonTableLock:
     """TEST-8: lock the 15 transcribed response-surface rows against
     statsmodels' ``mackinnoncrit`` (MacKinnon 2010, Table 1 / Table 4).
 
-    statsmodels is *not* a runtime dependency of ``eq_pairs`` -- the whole
-    point of the module is a from-scratch implementation -- so the check is
-    skipped when it is absent, but it runs in the CI environment.
+    statsmodels is a test-only dependency of ``eq_pairs`` (the dev extra);
+    the package itself never imports it. The check is skipped when it is
+    absent.
     """
 
     @pytest.fixture(scope="class")

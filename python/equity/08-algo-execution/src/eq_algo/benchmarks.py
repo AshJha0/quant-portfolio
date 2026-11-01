@@ -3,8 +3,8 @@
 Benchmark conventions:
 
 - **VWAP** = sum(p*v)/sum(v) over the *market* tape for the order's horizon
-  (our own volume is part of the tape in the simulator — documented; on a
-  real desk you would use the exchange tape which also includes you).
+  (our own volume is part of the tape in the simulator, documented; on a
+  trading desk you would use the exchange tape which also includes you).
 - **TWAP** = simple average of bucket mid prices over the horizon.
 - **Arrival price** = mid at order release; slippage vs arrival is the
   implementation-shortfall style benchmark (Perold).
@@ -47,7 +47,7 @@ def vwap(prices: np.ndarray, volumes: np.ndarray) -> float:
     if tot <= 0:
         raise ValueError(
             "total volume must be > 0 for VWAP: the tape is empty (halted "
-            "session / auction-only day) — VWAP is undefined, use TWAP or "
+            "session / auction-only day), VWAP is undefined, use TWAP or "
             "arrival as the benchmark"
         )
     return float((p * v).sum() / tot)
@@ -139,8 +139,8 @@ def pov_schedule(parent_qty: float, market_volumes: np.ndarray,
 
     Uses the (forecast or realised) bucket volumes; the cap is respected in
     every bucket.  If the parent cannot complete within the day at this cap,
-    a ``ValueError`` explains the shortfall — split the order across days or
-    raise the participation deliberately (see docs/DESK_GUIDE.md on caps).
+    a ``ValueError`` explains the shortfall, split the order across days or
+    raise the participation cap explicitly (see docs/DESK_GUIDE.md on caps).
     """
     if parent_qty <= 0:
         raise ValueError("parent_qty must be > 0")

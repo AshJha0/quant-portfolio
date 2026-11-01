@@ -15,6 +15,10 @@ from .data.synthetic import (
     HAVENS,
     MEAN_DEPOSIT_RATES,
     PIP_FRACTION,
+    PIP_SIZE,
+    QUOTES,
+    half_spread_fraction,
+    quote_levels,
     SPREAD_PIPS,
     STATE_NAMES_2,
     STATE_NAMES_3,
@@ -68,6 +72,7 @@ from .strategy import (
 )
 from .backtest import (
     BacktestResult,
+    ExecutionConfig,
     oracle_regimes,
     run_backtest,
     static_carry_regimes,
@@ -80,11 +85,13 @@ from .risk import (
     oracle_gap_decomposition,
     per_regime_stats,
     perf_stats,
+    random_timing_regimes,
     regime_spells,
     transition_attribution,
 )
 
 __all__ = [
+    "ExecutionConfig", "random_timing_regimes", "QUOTES", "PIP_SIZE", "half_spread_fraction", "quote_levels",
     # data
     "CURRENCIES", "EM", "G10", "G10_CARRY", "G10_NEUTRAL", "HAVENS",
     "MEAN_DEPOSIT_RATES", "PIP_FRACTION", "SPREAD_PIPS",

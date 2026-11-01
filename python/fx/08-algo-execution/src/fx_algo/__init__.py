@@ -35,7 +35,13 @@ from .signals import (
     session_filter,
     vol_target_positions,
 )
-from .backtest import BacktestConfig, IntradayBacktester, information_coefficient
+from .backtest import (
+    BARS_PER_YEAR,
+    BacktestConfig,
+    ExecutionConfig,
+    IntradayBacktester,
+    information_coefficient,
+)
 from .data.synthetic import generate_daily_panel, generate_ticks
 from .execution.simulator import (
     ExecutionResult,
@@ -59,6 +65,8 @@ from .execution.optimal import (
 from .execution.tca import (
     decompose_implementation_shortfall,
     fix_benchmark,
+    fix_print,
+    fix_self_impact_pips,
     rejection_cost_pips,
     slippage_vs_benchmark,
     twap_benchmark,
@@ -94,6 +102,8 @@ __all__ = [
     "carry_gate",
     # backtest
     "BacktestConfig",
+    "ExecutionConfig",
+    "BARS_PER_YEAR",
     "IntradayBacktester",
     "information_coefficient",
     # data
@@ -117,6 +127,8 @@ __all__ = [
     "decompose_implementation_shortfall",
     "twap_benchmark",
     "fix_benchmark",
+    "fix_print",
+    "fix_self_impact_pips",
     "slippage_vs_benchmark",
     "rejection_cost_pips",
     "venue_comparison",

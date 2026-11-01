@@ -1,156 +1,173 @@
-# Trading Signal Backtest — MA Crossover (`eq_signal_backtest`)
+# Trading Signal Backtest: MA Crossover (`eq_signal_backtest`)
 
-A long/flat moving-average crossover strategy, backtested with next-day
-execution, transaction costs, an in-sample/out-of-sample split, a
-walk-forward variant, and a parameter-sensitivity map — built from first
-principles.
+A long/flat moving-average crossover strategy, backtested with a modelled
+t+1 fill, transaction costs, an in-sample/out-of-sample split, a
+walk-forward variant, a parameter-sensitivity map, a deflated Sharpe ratio,
+PBO and a multi-seed distribution of every headline number.
 
-The strategy itself is deliberately simple. The point of the project is
-the *evaluation discipline*: showing where it worked, where it failed,
-what was assumed, and what would break it.
+The strategy is simple on purpose. The project is about the evaluation
+around it: where it worked, where it failed, what was assumed, and what
+would break it.
+
+Every result below comes from a synthetic price generator. No real-data
+result exists yet; real data is Phase 4 of the repository plan.
 
 ```
 close prices ──► ma_crossover_signal (fast MA vs slow MA, 0/1)
-                    ──► run_backtest (t-1 execution lag, cost_bps per trade)
+                    ──► run_backtest (t+1 fill, cost_bps per trade)
                           ──► performance_stats (CAGR, vol, Sharpe, maxDD)
                                 ──► select_best_params (grid search, TRAIN ONLY)
                                       ──► out-of-sample backtest (TEST ONLY)
                                       ──► walk_forward_backtest (rolling
                                           re-selection, stitched OOS curve)
-                                            ──► parameter_grid (sensitivity
-                                                heatmap: plateau vs spike)
+                                      ──► research_stats (Lo SE, deflated
+                                          Sharpe, PBO, bootstrap, seeds)
 ```
+
+## Fill timing
+
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost. The position held before
+the fill earns p_fill / p_t - 1 of day t+1 and the new position earns
+p_{t+1} / p_fill - 1. Set it with `ExecutionConfig(mode, fill_fraction,
+auction_cost_bp)`; `ExecutionConfig("next", 1.0)` is a next-close fill and
+`ExecutionConfig("close_auction", auction_cost_bp=0.0)` reproduces the
+arithmetic of version 1.0.0 of this engine.
 
 ## Quickstart
 
 ```bash
 cd python/foundations/02-trading-signal-backtest
 pip install -e .[dev,plots]
-pytest -q                        # 99 tests, offline, ~3 s
-python examples/run_pipeline.py  # every number below, ~3 s
+pytest -q                          # 133 tests, offline, about 40-60 s
+python examples/run_pipeline.py    # every number below, about 280 s (100 seeds, 4 workers)
+python examples/validation_tables.py   # cost and choppy-regime tables, about 2 s
 ```
 
+The pipeline writes `report.txt` and figures to a new temp directory, or
+to `--out DIR`. It never writes into the repository.
+
 ```python
+from eq_signal_backtest import ExecutionConfig, run_backtest
 from eq_signal_backtest.data.synthetic import generate
 from eq_signal_backtest.signals import ma_crossover_signal
-from eq_signal_backtest.engine import run_backtest
 from eq_signal_backtest.split import train_test_split, select_best_params
 
-prices = generate().set_index("Date")["Adj Close"]        # bundled, seeded (32), offline
+prices = generate().set_index("Date")["Adj Close"]        # synthetic, seed 32, offline
 split = train_test_split(prices, train_frac=0.7)
 fast, slow, grid = select_best_params(                     # TRAIN ONLY
     split.train, fast_range=range(10, 71, 10), slow_range=range(100, 251, 25)
 )
 sig = ma_crossover_signal(split.test, fast, slow)
-res = run_backtest(split.test, sig, cost_bps=5.0)          # TEST ONLY — the honest number
+res = run_backtest(split.test, sig, cost_bps=5.0, execution=ExecutionConfig())
 print(res.stats["sharpe"], res.stats["benchmark"]["sharpe"])
 ```
 
 For real market data (needs `pip install eq-signal-backtest[live]` and a
-network connection):
+network connection; no result in this repository uses it):
 
 ```python
 from eq_signal_backtest.data.live import load_prices
 prices = load_prices("SPY", start="2016-01-01")
 ```
 
-## Headline results (bundled synthetic data, seed=32, 10y)
+## Headline results (synthetic, 100 seeds)
 
-Parameters selected on the training window only: **fast=10, slow=125**.
+Command: `python examples/run_pipeline.py`. Each seed is a fresh 10-year
+synthetic path from the bundled two-regime generator. On each seed the
+pipeline selects (fast, slow) on the first 70% by grid search over 49
+pairs, trades it on the last 30%, and runs a 7-window walk-forward
+(756-day formation, 252-day trading). Costs are 5 bp per trade. Values are
+mean [95% CI] across seeds.
 
-| | strategy | buy & hold |
+| Sharpe (synthetic, 100 seeds) | mean [95% CI] | sd |
 |---|---:|---:|
-| In-sample CAGR / Sharpe / maxDD | +12.39% / 0.87 / -30.06% | +15.73% / 0.82 / -46.57% |
-| **Out-of-sample** CAGR / Sharpe / maxDD | **-2.27% / -0.12 / -26.50%** | -7.25% / -0.21 / -46.93% |
-| Walk-forward stitched OOS (7 windows) | -2.26% / -0.06 / -43.93% | +0.73% / 0.15 / -46.93% |
+| In-sample, selected pair | 0.67 [0.60, 0.75] | 0.36 |
+| Out-of-sample strategy | 0.32 [0.18, 0.47] | 0.73 |
+| Out-of-sample buy & hold | 0.43 [0.27, 0.59] | 0.80 |
+| Out-of-sample strategy minus buy & hold | -0.11 [-0.21, -0.00] | 0.52 |
+| Walk-forward strategy | 0.39 [0.29, 0.49] | 0.51 |
+| Walk-forward buy & hold | 0.44 [0.34, 0.54] | 0.50 |
+| Walk-forward strategy minus buy & hold | -0.05 [-0.11, 0.00] | 0.28 |
 
-**The headline is a negative result, and it is the point of the project.**
-An in-sample Sharpe of 0.87 became **-0.12** out-of-sample, and a
-walk-forward run that re-selected parameters every year did no better
-(-0.06). The evaluation machinery works: it caught a strategy that looked
-good in the window it was fitted to and did not survive contact with the
-window it wasn't. A project that reported only the in-sample number would
-have shown a "0.87 Sharpe trend-following strategy" — which is exactly the
-failure mode this repository exists to demonstrate.
+On this synthetic generator the crossover does not beat buy & hold on
+Sharpe. It beats it out of sample on 34% of seeds and in walk-forward on
+42% of seeds. The in-sample Sharpe of the selected pair overstates the
+out-of-sample Sharpe by 0.35 on average, which is the selection bias of
+taking the best of 49 noisy estimates. One seed in 100 had a window where
+the selected strategy never invested; its undefined Sharpe is scored 0.
 
-**The four numbers that matter (see `docs/VALIDATION.md` for full detail
-and reproduction):**
+### One path in detail (synthetic, seed 32)
 
-1. **In-sample vs out-of-sample Sharpe: 0.87 → -0.12.** Substantial
-   decay: essentially all of the in-sample edge was fitted noise. Picking
-   the `argmax` of a grid of noisy Sharpe estimates is itself a mild form
-   of overfitting (`docs/METHODOLOGY.md` A5), and here it is the whole
-   result.
-2. **Strategy vs buy & hold: drawdown, not just return.** Max drawdown
-   -30.06% in-sample / -26.50% out-of-sample (strategy) against -46.57% /
-   -46.93% (buy & hold). This is the one thing the signal does reliably in
-   both windows: it steps aside during sustained declines. Notably the
-   out-of-sample *Sharpe* is still better than buy & hold's (-0.12 vs
-   -0.21) — over a losing period, losing less is a real property, just not
-   one you can call alpha.
-3. **Transaction cost drag is parameter-dependent.** At the selected
-   parameters (32 trades over 10 years), costs shave 0.17pp off CAGR. At
-   the fastest grid pair (10, 50) — 55 trades — the drag is 1.21pp at
-   20 bps (`docs/VALIDATION.md` §7). A cost-free grid search
-   systematically flatters over-trading parameters.
-4. **A plateau in the in-sample grid is not evidence of an edge.** 39% of
-   the in-sample grid's cells sit within 25% of the best Sharpe, which
-   *looks* like the classic robustness signature — and is nonetheless
-   consistent with the whole plateau being over-fitted, as the
-   out-of-sample number shows. The pipeline now says this explicitly in
-   its own output rather than letting the heatmap imply otherwise.
+Parameters selected on the training window: fast=40, slow=100.
 
-**Regime dependence, stated plainly, and reproduced with a seeded
-example:** this strategy class does well in sustained trends and
-prolonged bear markets (it steps aside) and **loses money in choppy,
-range-bound markets** — `docs/VALIDATION.md` §8 constructs a
-mean-reverting synthetic path (seed 99) where the same signal loses
--8.59% CAGR against a roughly flat buy & hold, purely from whipsaws.
+| synthetic, seed 32 | strategy | buy & hold |
+|---|---:|---:|
+| In-sample CAGR / Sharpe / maxDD | +13.14% / 0.86 / -31.87% | +15.73% / 0.82 / -46.57% |
+| Out-of-sample CAGR / Sharpe / maxDD | -3.08% / -0.19 / -27.96% | -7.25% / -0.21 / -46.93% |
+| Walk-forward (7 windows) CAGR / Sharpe / maxDD | -1.70% / -0.02 / -45.15% | +0.73% / 0.15 / -46.93% |
+
+| synthetic, seed 32 | value |
+|---|---:|
+| Out-of-sample Sharpe, Lo/Newey-West SE | 0.56 |
+| Out-of-sample Sharpe, block-bootstrap 95% CI | [-1.37, 0.85] |
+| Trials logged in the grid search | 49 |
+| Deflated Sharpe of the selected in-sample result | 0.892 |
+| PBO (CSCV, 16 blocks, 49 configurations) | 0.45 |
+| Full-period Sharpe: t+1 fill f=0.5 / next close f=1 / close auction 10 bp | 0.61 / 0.62 / 0.59 |
+| Cost drag at the selected pair, 5 bp (24 trades in 10 years) | 0.13% CAGR |
+
+On seed 32 the out-of-sample bootstrap interval contains both zero and the
+in-sample 0.86, so one path cannot tell fitted noise from a real edge. The
+100-seed table above is the evidence. The deflated Sharpe of 0.892 is
+below the usual 0.95 bar, and a PBO of 0.45 means the in-sample winner of
+the grid lands at or below the out-of-sample median in 45% of CSCV splits.
+
+The strategy has smaller drawdowns than buy & hold on seed 32 (-27.96%
+against -46.93% out of sample) because it steps aside in the synthetic
+drawdown regime. A cash allocation gives drawdown control more cheaply.
+
+On a synthetic mean-reverting path (seed 99) the same signal loses -8.13%
+CAGR against +1.31% for buy & hold, from whipsaws
+(`docs/VALIDATION.md` §8).
 
 ## Layout
 
 ```
 src/eq_signal_backtest/
-├── signals.py       # ma_crossover_signal
-├── engine.py         # strategy_returns (the one P&L definition), run_backtest,
-│                     # BacktestResult, performance_stats
+├── signals.py        # ma_crossover_signal
+├── engine.py         # ExecutionConfig, strategy_returns (the one P&L
+│                     # definition), run_backtest, performance_stats
 ├── sensitivity.py    # parameter_grid (Sharpe surface, fast x slow)
-├── split.py           # train_test_split, select_best_params,
-│                       # WalkForwardWindow/walk_forward_windows,
-│                       # WalkForwardResult/walk_forward_backtest
+├── split.py          # train_test_split, select_best_params,
+│                     # walk_forward_windows, walk_forward_backtest
+├── research_stats.py # Lo/NW Sharpe SE, deflated Sharpe, PBO, bootstrap,
+│                     # seed distributions (shared verbatim across projects)
 └── data/
-    ├── synthetic.py  # deterministic two-regime price generator, calibrated to
-    │                 # realistic equity statistics (used by tests & examples)
-    └── live.py       # optional yfinance loader, import-guarded, never used in tests
-tests/                # 99 tests incl. the no-lookahead detector, the choppy-regime
-                      # failure mode, and the data-quality/extreme-cost guards
-examples/run_pipeline.py  # data -> selection -> OOS backtest -> walk-forward -> sensitivity -> report + figures
+    ├── synthetic.py  # seeded two-regime price generator (tests and examples)
+    └── live.py       # optional yfinance loader, import-guarded, unused in tests
+tests/                # 133 tests: fill-timing detector, statistics, choppy-regime
+                      # failure mode, data-quality and extreme-cost guards
+examples/run_pipeline.py      # selection, OOS, walk-forward, DSR, PBO, 100 seeds
+examples/validation_tables.py # cost-sensitivity and choppy-regime tables
 docs/                 # METHODOLOGY, VALIDATION (all numbers), DESK_GUIDE
 ```
 
-## The three design decisions worth reading about
+## Three design decisions
 
-1. **No-look-ahead by construction** (`docs/VALIDATION.md` §1): the
-   engine executes yesterday's signal at today's close
-   (`position = signal.shift(1)`), and a detector test engineers a price
-   jump where same-day execution is profitable and the honest engine must
-   not capture it.
-2. **Selection bias is contained, not eliminated**
-   (`docs/METHODOLOGY.md` A5-A6): `select_best_params` only ever sees the
-   training slice it is given; the out-of-sample and walk-forward numbers
-   exist specifically because the in-sample argmax cannot be trusted on
-   its own.
-3. **A cost model that changes which parameters win**
-   (`docs/VALIDATION.md` §7): fixed-bps transaction costs are cheap to
-   implement and easy to get wrong by omission — running the parameter
-   grid cost-free (as a first draft of this project once did, informally)
-   silently favours over-trading parameter pairs that lose to realistic
-   costs.
+1. **Fill timing is tested, not asserted** (`tests/test_execution.py`). A
+   perfect-foresight signal that knows the sign of the next day's return
+   earns nothing under a next-close fill. The same signal filled at the
+   decision close earns about 37 standard errors on the test path, so the
+   test fails on any engine that fills at the close of day t.
+2. **Selection bias is measured** (`docs/METHODOLOGY.md` A5). Every grid
+   cell is logged as a trial. The deflated Sharpe uses that count, PBO uses
+   the grid's return matrix, and the multi-seed run measures the in-sample
+   to out-of-sample gap directly.
+3. **Costs are always on** (`docs/VALIDATION.md` §7). A cost-free grid
+   search favours over-trading pairs. `parameter_grid` and
+   `select_best_params` default to 5 bp.
 
-Docs answer the full portfolio contract: model choice vs. alternatives
-(momentum, mean-reversion, ML classifier), an assumptions register with
-what-breaks-if-violated for every design decision, validation evidence
-with reproducible numbers, failure modes (choppy regime, cost
-misspecification, selection bias) with a worked example, and desk
-workflow (pre-launch checklist, live monitoring, kill criteria, real
-scenarios).
+Limitations: one synthetic asset, a flat cost model with no market
+impact, long/flat only, cash earns zero.

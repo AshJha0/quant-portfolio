@@ -3,8 +3,8 @@
 Timing convention (no lookahead)
 --------------------------------
 ``positions[t]`` is decided from information up to and including the close of
-``t`` and is *held from close t to close t+1*: the backtest engine applies it
-to the return from ``t`` to ``t+1``.  Rolling statistics use windows ending at
+``t``. The backtest fills it at a modelled t+1 price
+``p_t + f (p_{t+1} - p_t)`` (see :class:`fx_pairs.backtest.ExecutionConfig`).  Rolling statistics use windows ending at
 ``t``; the vol-target scale uses realised vol up to ``t``.
 
 State machine
@@ -24,7 +24,7 @@ earns carry at ``carry_per_day`` (log units/day, for a +1 long-spread unit).
 Expected holding time is proportional to the OU half-life.  The filter vetoes
 entries whose expected carry drag over ``holding_multiple x half-life`` exceeds
 the expected reversion gain; carry-favourable entries are never vetoed.  This
-is deliberately a coarse desk-style filter (documented in METHODOLOGY.md):
+is a coarse desk-style filter (documented in METHODOLOGY.md):
 it changes *which* trades are taken, never how existing ones are managed.
 """
 
@@ -43,6 +43,7 @@ __all__ = [
     "generate_positions",
     "carry_entry_veto",
     "vol_target_scale",
+    "hedged_vol_scale",
 ]
 
 
@@ -123,8 +124,8 @@ def generate_positions(
     Returns
     -------
     positions : numpy.ndarray
-        Values in {-1, 0, +1}; ``positions[t]`` is held from close t to
-        close t+1.
+        Values in {-1, 0, +1}; ``positions[t]`` is decided at the close
+        of t and filled at the modelled t+1 price.
     trades : list of Trade
         Round-trips; an open position at the last bar is closed as ``"eod"``.
     """
@@ -276,3 +277,30 @@ def vol_target_scale(
     ann = dvol * np.sqrt(ann_factor)
     scale = target_vol / ann
     return scale.clip(upper=max_leverage)
+
+
+def hedged_vol_scale(
+    p1: pd.Series,
+    p2: pd.Series,
+    beta: float | pd.Series,
+    target_vol: float = 0.10,
+    lookback: int = 63,
+    max_leverage: float = 10.0,
+) -> pd.Series:
+    """Vol-target scale for a hedged spread whose hedge ratio may change.
+
+    Builds the spread's daily log return ``dlog p1_t - beta_t dlog p2_t``
+    (so a walk-forward re-estimate of beta does not create a level jump),
+    cumulates it, and applies :func:`vol_target_scale`. Warm-up NaN is
+    returned as 0 (no exposure). The scale at ``t`` uses data through ``t``.
+    """
+    if not p1.index.equals(p2.index):
+        raise ValueError("p1 and p2 must share the same index")
+    b = pd.Series(float(beta), index=p1.index) if np.isscalar(beta) else beta.astype(float)
+    if not b.index.equals(p1.index):
+        raise ValueError("beta index must match price index")
+    require_finite(beta=b.to_numpy())
+    r = np.log(p1.astype(float)).diff() - b * np.log(p2.astype(float)).diff()
+    level = r.fillna(0.0).cumsum()
+    return vol_target_scale(level, target_vol=target_vol, lookback=lookback,
+                            max_leverage=max_leverage).fillna(0.0)

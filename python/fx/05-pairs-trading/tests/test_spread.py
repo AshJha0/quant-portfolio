@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import fx_pairs as fp
+
 from fx_pairs.data import synthetic as syn
 from fx_pairs.spread import (
     RLSHedge,
@@ -118,3 +120,29 @@ class TestRLS:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError):
             RLSHedge().fit_path(np.ones(10), np.ones(9))
+
+
+class TestOscillatingSpreadRejected:
+    """phi <= 0 has no OU representation. The old code returned
+    half_life = 0.0, ranking an oscillating series as the fastest reverter."""
+
+    @staticmethod
+    def _ar1(phi, n=2000, seed=5):
+        rng = np.random.default_rng(seed)
+        e = rng.standard_normal(n)
+        x = np.zeros(n)
+        for t in range(1, n):
+            x[t] = phi * x[t - 1] + e[t]
+        return x
+
+    @pytest.mark.parametrize("phi", [-0.6, -0.2])
+    def test_negative_phi_raises(self, phi):
+        s = self._ar1(phi)
+        with pytest.raises(ValueError, match="oscillates"):
+            fp.fit_ou_ols(s)
+        with pytest.raises(ValueError, match="oscillates"):
+            fp.fit_ou_mle(s)
+
+    def test_positive_phi_still_fits(self):
+        fit = fp.fit_ou_ols(self._ar1(0.9))
+        assert 0 < fit.half_life < np.inf

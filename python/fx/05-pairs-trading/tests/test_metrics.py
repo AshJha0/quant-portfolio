@@ -25,13 +25,21 @@ class TestSharpe:
         assert np.isnan(sharpe_ratio(np.array([0.01])))
 
     def test_lo_se_iid_matches_classical(self):
-        """For iid returns the Lo SE collapses to sqrt((1+SR^2/2)/T)."""
+        """With q=0 the SE is the Mertens (2002) iid formula
+        sqrt((1 - SR m3 + SR^2 (m4 - 1)/4) / T) with sample moments, which is
+        sqrt((1 + SR^2/2)/T) for Gaussian data."""
         rng = np.random.default_rng(0)
         r = 0.001 + 0.01 * rng.standard_normal(5000)
         sr_ann, se = sharpe_se_lo(r, q=0)
-        sr = r.mean() / r.std(ddof=1)
+        z = (r - r.mean()) / r.std()
+        sr = r.mean() / r.std()
+        m3, m4 = np.mean(z**3), np.mean(z**4)
+        mertens = np.sqrt((1 - sr * m3 + sr**2 * (m4 - 1) / 4) / len(r)) * np.sqrt(252)
+        assert se == pytest.approx(mertens, rel=1e-10)
         classical = np.sqrt((1 + 0.5 * sr**2) / len(r)) * np.sqrt(252)
-        assert se == pytest.approx(classical, rel=1e-10)
+        # Gaussian-sample moments differ from 3 and 0 by O(sqrt(24/T)) and
+        # O(sqrt(6/T)); with per-period SR ~0.1 that moves the SE by ~0.2%.
+        assert se == pytest.approx(classical, rel=5e-3)
 
     def test_lo_se_inflates_for_autocorrelated_pnl(self):
         """Positively autocorrelated P&L (typical of slow mean-reversion books)

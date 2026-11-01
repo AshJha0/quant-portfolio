@@ -1,33 +1,33 @@
 """Engle-Granger two-step cointegration test, implemented from scratch.
 
-Step 1 — cointegrating regression (OLS):  y_t = alpha + beta x_t + u_t.
-Step 2 — ADF unit-root test on the fitted residuals u_hat_t.
+Step 1: cointegrating regression (OLS):  y_t = alpha + beta x_t + u_t.
+Step 2: ADF unit-root test on the fitted residuals u_hat_t.
 
 The augmented Dickey-Fuller regression, lag selection by AIC, and the
 MacKinnon critical-value response surfaces are all implemented here from
 first principles; the test suite cross-validates the t-statistic against
 ``statsmodels.tsa.stattools.adfuller`` to 1e-8 on the same lag specification.
 
-THE CLASSIC MISTAKE — which critical values?
+THE CLASSIC MISTAKE: which critical values?
 --------------------------------------------
 The step-2 ADF statistic must NOT be compared against ordinary ADF critical
 values. The residuals u_hat are not an observed series: OLS chose
 (alpha, beta) to make u_hat look as stationary as possible, so the test
 statistic is biased towards rejection. Using the plain ADF 5% value (-2.86,
 constant case) instead of the Engle-Granger value for two variables (-3.34)
-makes the test badly oversized — you "find" cointegration that isn't there.
+makes the test badly oversized: you "find" cointegration that isn't there.
 MacKinnon (1991, 2010) tabulates response surfaces indexed by N, the number
 of I(1) series in the cointegrating regression: N=1 reproduces plain ADF,
 N=2 is the correct table for a two-leg pairs test. :func:`mackinnon_crit`
 implements both so the difference is testable.
 
 Intercept choice (documented per CONVENTIONS): the cointegrating regression
-includes an intercept by default. Two stocks trade at arbitrary per-share
-price levels (a 5:1 split changes the level, not the economics), so forcing
-the line through the origin misspecifies the long-run relation unless the
-legs are already on a comparable scale. With an intercept, step-2 runs the
+includes an intercept by default. The long-run spread level between two
+stocks need not be zero, and forcing the line through the origin then
+misspecifies the relation. (A split rescales one price series; on unadjusted
+prices that changes beta, not alpha. Use split-adjusted prices.) With an intercept, step-2 runs the
 ADF regression WITHOUT a constant (residuals are exactly mean-zero) but uses
-the N=2 "constant" critical-value surface — matching the deterministic terms
+the N=2 "constant" critical-value surface: matching the deterministic terms
 of step 1, which is what determines the null distribution. MacKinnon does
 not tabulate a no-constant surface for N >= 2 (he considers the case
 unrealistic); ``engle_granger(intercept=False)`` therefore reuses the N=2
@@ -36,7 +36,7 @@ unrealistic); ``engle_granger(intercept=False)`` therefore reuses the N=2
 Johansen's ML procedure is the standard alternative for systems of 3+ series
 (it estimates cointegration rank and avoids EG's arbitrary choice of
 dependent variable). For two-leg pairs, EG is standard, transparent, and
-directly yields the tradeable hedge ratio; Johansen is out of scope here —
+directly yields the tradeable hedge ratio; Johansen is out of scope here : 
 see docs/METHODOLOGY.md for the comparison.
 """
 
@@ -152,7 +152,7 @@ def hedge_ratio(
 
     Returns
     -------
-    (beta, alpha, resid) — hedge ratio, intercept (0.0 when excluded),
+    (beta, alpha, resid): hedge ratio, intercept (0.0 when excluded),
     residual spread in dollars.
     """
     y = np.asarray(y, dtype=float)

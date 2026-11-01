@@ -1,4 +1,13 @@
-"""End-to-end FX pairs pipeline on seeded synthetic data (offline, < 90 s).
+"""End-to-end FX pairs pipeline on seeded synthetic data (offline).
+
+Every result is synthetic: the planted pair is cointegrated by construction,
+so any profit is a property of the generator, not evidence of an edge in real
+FX markets. Sections 1-7 walk through one seed; section 8 repeats the
+headline experiments over many seeds and reports means with 95% confidence
+intervals, a deflated Sharpe ratio at the logged trial count and PBO.
+
+Execution: signals use data up to the close of day t; orders fill at a
+modelled t+1 price p_t + f (p_{t+1} - p_t), f = 0.5 (ExecutionConfig()).
 
 Stages:
  1. Universe: USD-leg panel with risk-on/risk-off two-block structure,
@@ -14,11 +23,13 @@ Stages:
  6. SNB-style floor-then-break case study.
  7. Walk-forward with formation/trading windows and full metrics.
 
-Run:  python examples/run_pipeline.py
+Run:  python examples/run_pipeline.py [--seeds N]
+The script prints to stdout and writes no files.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -31,7 +42,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import fx_pairs as fp  # noqa: E402
 from fx_pairs.data import synthetic as syn  # noqa: E402
 
+from fx_pairs import research_stats as rs  # noqa: E402
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--seeds", type=int, default=60,
+                help="number of seeds for the section 8 distributions")
+ARGS = ap.parse_args()
+if ARGS.seeds < 2:
+    raise SystemExit("--seeds must be >= 2")
+
 T0 = time.time()
+TRIALS = rs.TrialLog()  # every strategy configuration evaluated on planted data
 
 
 def hr(title: str) -> None:
@@ -86,22 +107,33 @@ print("  -> correctly refused: an exact identity is not a tradable spread "
       "(any deviation is inside the bid-ask at daily frequency).")
 
 # --------------------------------------------------------- 3. cointegration funnel
-hr("3. SELECTION FUNNEL: correlation screen -> Engle-Granger")
+hr("3. SELECTION FUNNEL: planted pair hidden in the universe")
+PLANTED = ("SEKUSD", "NOKUSD")  # labels for the synthetic planted pair
+
+
+def run_funnel(legs_panel, p1x, p2x, level="5%"):
+    """fp.cointegration_funnel on the market pairs plus the planted pair."""
+    uni = pd.DataFrame({p: fp.market_price_from_legs(legs_panel, p)
+                        for p in pair_names})
+    uni[PLANTED[0]] = p1x.values
+    uni[PLANTED[1]] = p2x.values
+    res = fp.cointegration_funnel(uni, min_abs_corr=0.60, level=level)
+    found = [(r.pair_1, r.pair_2, r.eg_stat) for r in res.itertuples() if r.passed]
+    return len(res), found
+
+
 p1c, p2c, truth = syn.make_cointegrated_pair(n=1500, beta=1.0, kappa=20.0,
                                              sigma_ou=0.05, seed=9)
-candidates = [(a, b) for a, b in screen[["pair_1", "pair_2"]].itertuples(index=False)]
-survivors = []
-for a, b in candidates:
-    eg = fp.engle_granger(np.log(prices[a].values), np.log(prices[b].values))
-    if eg.cointegrated and not eg.degenerate:
-        survivors.append((a, b, eg.stat))
+n_cand, survivors = run_funnel(legs, p1c, p2c)
+planted_found = any({a_, b_} == set(PLANTED) for a_, b_, _ in survivors)
+print(f"  instruments: {len(pair_names) + 2} (8 market pairs + planted pair "
+      f"{PLANTED[0]}/{PLANTED[1]}); screened candidates: {n_cand}")
+print(f"  EG 5% survivors: {[(a_, b_, round(st, 2)) for a_, b_, st in survivors]}")
+print(f"  planted pair found: {planted_found}; false positives: "
+      f"{sum({a_, b_} != set(PLANTED) for a_, b_, _ in survivors)} "
+      f"(EG tests run: {n_cand}; about {0.05 * n_cand:.1f} false positives "
+      "are expected at 5% under the null)")
 eg_planted = fp.engle_granger(np.log(p1c.values), np.log(p2c.values))
-print(f"  screened candidates: {len(candidates)}; "
-      f"EG 5% survivors among factor-correlated (non-cointegrated) pairs: "
-      f"{len(survivors)}")
-print(f"  planted cointegrated pair (AUDUSD-vs-NZDUSD-like): "
-      f"stat {eg_planted.stat:.2f} vs 5% cv {eg_planted.crit_values['5%']:.2f}"
-      f" -> cointegrated={eg_planted.cointegrated}")
 print(f"  hedge-ratio recovery: beta_hat {eg_planted.beta:.3f} "
       f"(true {truth['beta']:.1f}), alpha_hat {eg_planted.alpha:+.4f}")
 
@@ -116,10 +148,9 @@ print(f"  OLS :  kappa {ols.kappa:.1f}  sigma {ols.sigma:.3f}  "
       f"half-life {ols.half_life:.1f} bd  theta {ols.theta:+.4f}")
 print(f"  MLE :  kappa {mle.kappa:.1f}  sigma {mle.sigma:.3f}  "
       f"half-life {mle.half_life:.1f} bd")
-rls = fp.RLSHedge(lam=0.995)
-rls_path = rls.fit_path(p2c, p1c)
-print(f"  RLS hedge ratio: final beta {rls_path['beta'].iloc[-1]:.3f} "
-      f"(EG static {eg_planted.beta:.3f})")
+rls_path = fp.RLSHedge(lam=0.995).fit_path(p2c, p1c)
+print(f"  RLS hedge ratio (lam 0.995): final beta {rls_path['beta'].iloc[-1]:.3f} "
+      f"(EG static {eg_planted.beta:.3f}); used as a causal hedge in section 5")
 
 # ---------------------------------------------------------------- 5. backtests
 hr("5. BACKTESTS: costs and carry matter")
@@ -142,6 +173,17 @@ for name, kw in runs.items():
     res = fp.run_backtest(p1c, p2c, pos, eg_planted.beta, trades=trades, **kw)
     summaries[name] = fp.summarize(res)
     show_summary(name, summaries[name])
+TRIALS.log("in-sample: full-sample EG hedge, rolling z(126), 2.0/0.5/4.0",
+           summaries["major costs (0.7 / 1.0 pips)"]["sharpe"] / np.sqrt(252))
+res_rls = fp.run_backtest(p1c, p2c, pos, rls_path["beta"], trades=trades,
+                          pip_spread_1=0.7, pip_spread_2=1.0)
+show_summary("major costs, RLS hedge ratio (causal, lam 0.995)",
+             fp.summarize(res_rls))
+TRIALS.log("in-sample signal, RLS hedge", fp.summarize(res_rls)["sharpe"] / np.sqrt(252))
+res_auc = fp.run_backtest(p1c, p2c, pos, eg_planted.beta, trades=trades,
+                          pip_spread_1=0.7, pip_spread_2=1.0,
+                          execution=fp.ExecutionConfig("close_auction"))
+show_summary("major costs, close-auction fill (+10 bp)", fp.summarize(res_auc))
 print("  -> same signal path: profitable at major spreads, unprofitable at EM"
       " spreads.")
 
@@ -179,6 +221,13 @@ long_kept = int(((z_f <= -1.5) & pd.Series(allow_l, index=z_f.index)).sum())
 short_all = int((z_f >= 1.5).sum())
 short_kept = int(((z_f >= 1.5) & pd.Series(allow_s, index=z_f.index)).sum())
 z_star = 0.25 + hold_mult * hl_f * meta["carry_per_day_long"] / sig_f
+pos_v, trades_v = fp.generate_positions(z_f, entry=1.5, exit_=0.25, stop=None,
+                                        allow_long=allow_l, allow_short=allow_s)
+pos_v[:form] = 0.0
+r_veto = fp.run_backtest(p1f, p2f, pos_v, eg_f.beta, trades=trades_v,
+                         pip_spread_1=1.0, pip_spread_2=0.5, rates=meta["rates"])
+show_summary("carry-inclusive backtest with the carry entry veto",
+             fp.summarize(r_veto))
 print(f"  carry-aware filter (hold ~ {hold_mult:.0f} half-lives = "
       f"{hold_mult * hl_f:.0f} days): long entry bars kept "
       f"{long_kept}/{long_all} (earn carry, never vetoed); short entry bars "
@@ -226,5 +275,129 @@ wf_summ = fp.summarize(wf.result)
 show_summary("walk-forward, costs + carry", wf_summ)
 print(f"  mean formation beta: "
       f"{np.mean([w.beta for w in wf.windows if w.traded]):.3f}")
+TRIALS.log("walk-forward 252/63, entry 2.0 exit 0.5 stop 4.0",
+           wf_summ["sharpe"] / np.sqrt(252))
+scale = fp.hedged_vol_scale(p1c, p2c, wf.result.beta, target_vol=0.10)
+wf_vt = fp.run_backtest(p1c, p2c, wf.positions * scale, wf.result.beta,
+                        trades=wf.result.trades, pip_spread_1=0.7, pip_spread_2=1.0, rates=flat_rates)
+show_summary("walk-forward, vol-targeted to 10% (63d realised spread vol)",
+             fp.summarize(wf_vt))
+TRIALS.log("walk-forward + vol target 10%",
+           fp.summarize(wf_vt)["sharpe"] / np.sqrt(252))
+
+
+
+# ------------------------------------------------------- 8. many seeds + stats
+hr(f"8. DISTRIBUTIONS OVER {ARGS.seeds} SEEDS (synthetic), DSR, PBO")
+GRID = [(e, x) for e in (1.5, 2.0, 2.5) for x in (0.0, 0.5)]
+WF_KW = dict(formation=252, trading=63, stop=4.0, require_coint=True,
+             coint_level="10%", pip_spread_1=0.7, pip_spread_2=1.0,
+             rates=flat_rates)
+
+
+def sr(res):
+    s_ = fp.summarize(res)["sharpe"]
+    return float(s_) if np.isfinite(s_) else 0.0
+
+
+def one_seed(seed):
+    out = {}
+    lg, _ = syn.make_two_block_panel(n=1500, seed=seed)
+    q1, q2, _ = syn.make_cointegrated_pair(n=1500, beta=1.0, kappa=20.0,
+                                           sigma_ou=0.05, seed=seed)
+    _, surv = run_funnel(lg, q1, q2)
+    out["funnel_found"] = float(any({a_, b_} == set(PLANTED) for a_, b_, _ in surv))
+    out["funnel_false_pos"] = float(sum({a_, b_} != set(PLANTED) for a_, b_, _ in surv))
+    e = fp.engle_granger(np.log(q1.values), np.log(q2.values))
+    zz = fp.zscore(fp.log_spread(q1, q2, e.beta, e.alpha), window=126)
+    pp, tt = fp.generate_positions(zz, entry=2.0, exit_=0.5, stop=4.0)
+    for key, kw in (("is_frictionless", dict(pip_spread_1=0.0, pip_spread_2=0.0)),
+                    ("is_major", dict(pip_spread_1=0.7, pip_spread_2=1.0)),
+                    ("is_em", dict(pair1="USDZAR", pair2="USDMXN",
+                                   pip_spread_1=60.0, pip_spread_2=30.0))):
+        out[key] = sr(fp.run_backtest(q1, q2, pp, e.beta, trades=tt, **kw))
+    grid_returns = []
+    for ent, ext in GRID:
+        w = fp.walk_forward_backtest(q1, q2, entry=ent, exit_=ext, **WF_KW)
+        grid_returns.append(w.result.total_pnl.to_numpy())
+        if (ent, ext) == (2.0, 0.5):
+            out["wf"] = sr(w.result)
+            out["wf_windows_traded"] = float(np.mean([x.traded for x in w.windows]))
+            sc = fp.hedged_vol_scale(q1, q2, w.result.beta, target_vol=0.10)
+            out["wf_voltarget"] = sr(fp.run_backtest(
+                q1, q2, w.positions * sc, w.result.beta, pip_spread_1=0.7,
+                pip_spread_2=1.0, rates=flat_rates))
+            ws = fp.walk_forward_backtest(
+                q1, q2, entry=ent, exit_=ext,
+                execution=fp.ExecutionConfig("close_auction", auction_cost_bp=0.0),
+                **WF_KW)
+            out["wf_same_close"] = sr(ws.result)
+    out["pbo"] = rs.pbo_cscv(np.column_stack(grid_returns)[252:], n_splits=10)
+    f1, f2, m = syn.make_carry_flip_pair(seed=seed)
+    ef = fp.engle_granger(np.log(f1.values[:form]), np.log(f2.values[:form]))
+    spf = fp.log_spread(f1, f2, ef.beta, ef.alpha)
+    mf, sf = float(spf.iloc[:form].mean()), float(spf.iloc[:form].std())
+    zf = fp.zscore(spf, mu=mf, sigma=sf)
+    pf, tf = fp.generate_positions(zf, entry=1.5, exit_=0.25, stop=None)
+    pf[:form] = 0.0
+    out["flip_spot_only"] = fp.summarize(fp.run_backtest(
+        f1, f2, pf, ef.beta, trades=tf, pip_spread_1=1.0, pip_spread_2=0.5))["total_pnl"]
+    out["flip_with_carry"] = fp.summarize(fp.run_backtest(
+        f1, f2, pf, ef.beta, trades=tf, pip_spread_1=1.0, pip_spread_2=0.5,
+        rates=m["rates"]))["total_pnl"]
+    hl = fp.fit_ou_ols(spf.values[:form]).half_life
+    al, ash = fp.carry_entry_veto(zf, sigma_spread=sf,
+                                  carry_per_day=float(m["carry_per_day_long"]),
+                                  half_life=hl, entry=1.5, exit_=0.25,
+                                  holding_multiple=6.0)
+    pv, tv = fp.generate_positions(zf, entry=1.5, exit_=0.25, stop=None,
+                                   allow_long=al, allow_short=ash)
+    pv[:form] = 0.0
+    out["flip_veto"] = fp.summarize(fp.run_backtest(
+        f1, f2, pv, ef.beta, trades=tv, pip_spread_1=1.0, pip_spread_2=0.5,
+        rates=m["rates"]))["total_pnl"]
+    return out
+
+
+rows = [one_seed(1000 + k) for k in range(ARGS.seeds)]
+LABELS = [
+    ("funnel_found", "funnel finds the planted pair (share of seeds)"),
+    ("funnel_false_pos", "funnel false positives per seed"),
+    ("is_frictionless", "in-sample Sharpe, frictionless"),
+    ("is_major", "in-sample Sharpe, major costs"),
+    ("is_em", "in-sample Sharpe, EM costs"),
+    ("wf", "walk-forward Sharpe, costs + carry"),
+    ("wf_same_close", "walk-forward Sharpe, same-close fill, no auction cost"),
+    ("wf_voltarget", "walk-forward Sharpe, vol-targeted 10%"),
+    ("wf_windows_traded", "share of walk-forward windows passing the EG gate"),
+    ("pbo", "PBO over the 6-config entry/exit grid"),
+    ("flip_spot_only", "carry-flip pair P&L, spot only"),
+    ("flip_with_carry", "carry-flip pair P&L, with carry"),
+    ("flip_veto", "carry-flip pair P&L, with carry and entry veto"),
+]
+print(f"  synthetic, seeds 1000..{999 + ARGS.seeds}; mean [95% CI] (sd)")
+print(f"  {'quantity':58s} mean [95% CI] (sd)")
+for key, label in LABELS:
+    d = rs.seed_distribution([r_[key] for r_ in rows])
+    print(f"  {label:58s} {d.mean:+.3f} [{d.ci_low:+.3f}, {d.ci_high:+.3f}] "
+          f"({d.sd:.3f})")
+
+# deflated Sharpe of the reference walk-forward (seed 9) at the logged count
+for ent, ext in GRID:
+    if (ent, ext) == (2.0, 0.5):
+        continue
+    w = fp.walk_forward_backtest(p1c, p2c, entry=ent, exit_=ext, **WF_KW)
+    TRIALS.log(f"walk-forward grid entry {ent} exit {ext}", sr(w.result) / np.sqrt(252))
+ref = wf.result.total_pnl.to_numpy()[252:]
+dsr = rs.deflated_sharpe_ratio(ref, TRIALS.n_trials, trial_sharpes=TRIALS.sharpes())
+pt, lo, hi = rs.block_bootstrap_ci(ref, lambda x: rs.sharpe_ratio(x), n_boot=2000,
+                                   block_length=20, seed=0)
+print(f"\n  reference seed 9 walk-forward: Sharpe {pt:.2f}, block-bootstrap 95% CI "
+      f"[{lo:.2f}, {hi:.2f}] (20-day blocks), Lo/NW SE "
+      f"{rs.lo_sharpe_se(ref):.2f}")
+print(f"  trials logged on the seed-9 planted pair: {TRIALS.n_trials}")
+for t_ in TRIALS.trials:
+    print(f"    - {t_['name']}")
+print(f"  deflated Sharpe ratio at {TRIALS.n_trials} trials: {dsr:.3f}")
 
 print(f"\nPipeline completed in {time.time() - T0:.1f}s")

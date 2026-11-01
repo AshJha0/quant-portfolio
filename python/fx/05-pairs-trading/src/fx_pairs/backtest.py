@@ -1,28 +1,34 @@
-"""Daily event-driven backtest for pairs of currency pairs, with carry and pip costs.
+"""Daily backtest for pairs of currency pairs, with carry and pip costs.
 
-Accounting (all P&L as a fraction of base notional; multiply by ``notional``):
+Execution convention (shared by every strategy project in the repository)
+-------------------------------------------------------------------------
+Signals use data up to the close of day t. Orders fill at a modelled t+1
+price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
+variant fills at p_t and pays an auction cost. For daily FX the t+1 price is
+the next daily close. See :class:`ExecutionConfig`.
 
-* Leg notionals at close ``t``: ``n1_t = pos_t`` (units long pair 1) and
-  ``n2_t = pos_t * beta_t`` (units short pair 2).  ``pos_t`` may be any float
-  (vol-targeted sizing); ``beta`` may be a scalar or a per-date Series
-  (walk-forward / RLS hedge).
-* Spot P&L booked at ``t``: ``n1_{t-1} * dlog p1_t - n2_{t-1} * dlog p2_t``
-  (log-return P&L — exact for the log-spread the signals trade).
-* Carry booked at ``t``: ``n1_{t-1} * accr1_t - n2_{t-1} * accr2_t`` where the
-  accruals use rates at ``t-1`` and the actual calendar-day gap
-  (:func:`fx_pairs.carry.carry_accrual`, swap-point form by default).
-* Costs booked at ``t`` (trade executed at close ``t``):
-  ``|n1_t - n1_{t-1}| * hs1_t + |n2_t - n2_{t-1}| * hs2_t`` where the
-  half-spread fraction is ``hs_t = 0.5 * pip_spread * pip_size / price_t``
-  (pay half the quoted bid-ask spread per side, per unit of notional traded).
-* Identity (unit tested): ``total = spot + carry + cost`` elementwise, with
-  ``cost <= 0``; and running with rates equals running without rates plus the
-  independent carry ledger.
+Accounting (all P&L as a fraction of base notional; multiply by ``notional``).
+``pos_t`` is the spread position decided at the close of ``t``; leg notionals
+are ``n1_t = pos_t`` (long pair 1) and ``n2_t = pos_t * beta_t`` (short pair 2).
 
-No lookahead: ``P&L_t`` depends only on data up to ``t`` — positions are
-functions of information through their own bar, returns are applied one bar
-later, carry uses lagged rates.  The test suite includes a detector that
-perturbs prices after day ``k`` and asserts P&L through ``k`` is bit-identical.
+Mode ``"next"`` (default). The order for ``pos_{t-1}`` fills during period
+``t`` at ``q_t = p_{t-1} + f (p_t - p_{t-1})``. Booked at ``t``:
+
+* spot: ``n_{t-2} (log q_t - log p_{t-1}) + n_{t-1} (log p_t - log q_t)``
+  per leg (pair 2 with a minus sign). The pieces sum to the log return.
+* carry: ``(f n_{t-2} + (1 - f) n_{t-1}) * accr_t``, accruals from rates at
+  ``t-1`` and the calendar-day gap (ACT/365F).
+* cost: ``|n_{t-1} - n_{t-2}| * hs`` with half-spread fraction
+  ``hs = 0.5 * pip_spread * pip_size / q_t``.
+
+Mode ``"close_auction"``. The order for ``pos_t`` fills at ``p_t``. Spot is
+``n_{t-1} dlog p_t``, carry ``n_{t-1} accr_t``, and the cost at ``t`` is
+``|n_t - n_{t-1}| * (hs_t + auction_cost_bp * 1e-4)``.
+
+Identity (unit tested): ``total = spot + carry + cost`` elementwise, with
+``cost <= 0``. No lookahead: P&L booked at ``t`` uses prices up to ``t`` and
+positions decided before ``t``. A detector test perturbs prices after day
+``k`` and asserts P&L through ``k`` is unchanged.
 """
 
 from __future__ import annotations
@@ -40,12 +46,44 @@ from .signals import Trade, generate_positions, zscore
 from .universe import pip_size as _pip_size
 
 __all__ = [
+    "ExecutionConfig",
     "BacktestResult",
     "run_backtest",
     "WalkForwardWindow",
     "WalkForwardResult",
     "walk_forward_backtest",
 ]
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """When and at what price a decision taken at the close of ``t`` fills.
+
+    Parameters
+    ----------
+    mode : str
+        ``"next"``: fill at the modelled t+1 price ``p_t + f (p_{t+1} - p_t)``.
+        ``"close_auction"``: fill at ``p_t`` and pay ``auction_cost_bp`` per
+        unit of traded notional on top of the half spread.
+    fill_fraction : float
+        ``f`` in (0, 1]; 1 is the next close. Used by ``"next"`` only.
+    auction_cost_bp : float
+        Extra cost of a close-auction fill, basis points of traded notional.
+    """
+
+    mode: str = "next"
+    fill_fraction: float = 0.5
+    auction_cost_bp: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("next", "close_auction"):
+            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
+        require_finite(fill_fraction=self.fill_fraction,
+                       auction_cost_bp=self.auction_cost_bp)
+        if not 0.0 < self.fill_fraction <= 1.0:
+            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
+        if self.auction_cost_bp < 0:
+            raise ValueError("auction_cost_bp must be non-negative")
 
 
 @dataclass
@@ -99,6 +137,7 @@ def run_backtest(
     basis: float = 365.0,
     carry_method: str = "swap",
     trades: list[Trade] | None = None,
+    execution: ExecutionConfig | None = None,
 ) -> BacktestResult:
     """Run the daily pairs backtest (see module docstring for accounting).
 
@@ -107,7 +146,7 @@ def run_backtest(
     p1, p2 : pandas.Series
         Spot prices of the two currency pairs on a common date index.
     positions : array-like
-        Spread position (float, spread units) held from close t to close t+1.
+        Spread position (float, spread units) decided at the close of t.
     beta : float or pandas.Series
         Hedge ratio (pair-2 units per pair-1 unit).
     pair1, pair2 : str
@@ -126,6 +165,9 @@ def run_backtest(
         ``"swap"`` (exact swap points) or ``"linear"``.
     trades : list, optional
         Trade list from the signal generator, carried through for metrics.
+    execution : ExecutionConfig, optional
+        Fill convention; default ``ExecutionConfig()`` (next-period modelled
+        fill, ``f = 0.5``).
 
     Returns
     -------
@@ -158,13 +200,15 @@ def run_backtest(
     lp1 = np.log(finite_series(p1.to_numpy(dtype=float), "p1", positive=True))
     lp2 = np.log(finite_series(p2.to_numpy(dtype=float), "p2", positive=True))
 
+    ex = execution if execution is not None else ExecutionConfig()
+    if not isinstance(ex, ExecutionConfig):
+        raise ValueError("execution must be an ExecutionConfig")
+    px1 = p1.to_numpy(dtype=float)
+    px2 = p2.to_numpy(dtype=float)
+
     n1 = pos
     n2 = pos * beta_s
-
-    spot = np.zeros(n)
-    spot[1:] = n1[:-1] * np.diff(lp1) - n2[:-1] * np.diff(lp2)
-
-    car = np.zeros(n)
+    accr1 = accr2 = None
     if rates is not None:
         for key in ("rb1", "rq1", "rb2", "rq2"):
             if key not in rates:
@@ -175,13 +219,35 @@ def run_backtest(
                                         basis=basis, method=carry_method)
         accr2 = carry_mod.carry_accrual(rates["rb2"], rates["rq2"], index,
                                         basis=basis, method=carry_method)
-        car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * accr2[1:]
+    ps1 = 0.5 * pip_spread_1 * _pip_size(pair1)
+    ps2 = 0.5 * pip_spread_2 * _pip_size(pair2)
 
-    hs1 = 0.5 * pip_spread_1 * _pip_size(pair1) / p1.to_numpy(dtype=float)
-    hs2 = 0.5 * pip_spread_2 * _pip_size(pair2) / p2.to_numpy(dtype=float)
-    dn1 = np.abs(np.diff(np.concatenate([[0.0], n1])))
-    dn2 = np.abs(np.diff(np.concatenate([[0.0], n2])))
-    cost = -(dn1 * hs1 + dn2 * hs2)
+    spot = np.zeros(n)
+    car = np.zeros(n)
+    cost = np.zeros(n)
+    if ex.mode == "close_auction":
+        spot[1:] = n1[:-1] * np.diff(lp1) - n2[:-1] * np.diff(lp2)
+        if accr1 is not None:
+            car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * accr2[1:]
+        dn1 = np.abs(np.diff(np.concatenate([[0.0], n1])))
+        dn2 = np.abs(np.diff(np.concatenate([[0.0], n2])))
+        auc = ex.auction_cost_bp * 1e-4
+        cost = -(dn1 * (ps1 / px1 + auc) + dn2 * (ps2 / px2 + auc))
+    else:
+        f = ex.fill_fraction
+        # held before / after the fill inside period t (t = 1..n-1)
+        old1 = np.concatenate([[0.0], n1[:-2]])
+        old2 = np.concatenate([[0.0], n2[:-2]])
+        new1, new2 = n1[:-1], n2[:-1]
+        q1 = px1[:-1] + f * np.diff(px1)
+        q2 = px2[:-1] + f * np.diff(px2)
+        lq1, lq2 = np.log(q1), np.log(q2)
+        spot[1:] = (old1 * (lq1 - lp1[:-1]) + new1 * (lp1[1:] - lq1)
+                    - old2 * (lq2 - lp2[:-1]) - new2 * (lp2[1:] - lq2))
+        if accr1 is not None:
+            car[1:] = ((f * old1 + (1 - f) * new1) * accr1[1:]
+                       - (f * old2 + (1 - f) * new2) * accr2[1:])
+        cost[1:] = -(np.abs(new1 - old1) * ps1 / q1 + np.abs(new2 - old2) * ps2 / q2)
 
     spot_pnl = pd.Series(spot * notional, index=index, name="spot_pnl")
     carry_pnl = pd.Series(car * notional, index=index, name="carry_pnl")

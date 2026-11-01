@@ -11,7 +11,7 @@ Price levels of any two upward-drifting non-stationary series are almost
 always highly correlated: correlation of two independent random walks does
 not converge to zero as the sample grows (spurious correlation, Granger &
 Newbold 1974). Two independent random walks routinely show |price
-correlation| > 0.8 while their *returns* — which are stationary — have
+correlation| > 0.8 while their *returns*: which are stationary: have
 correlation ~ 0. A price-level correlation screen therefore selects pairs
 that merely share a drift, not pairs that co-move. We screen on daily log
 returns; the (still imperfect, see METHODOLOGY.md) premise is that names
@@ -57,7 +57,7 @@ def candidate_pairs(
     sectors : mapping ticker -> sector tag, optional
         Required when ``same_sector_only`` is True.
     same_sector_only : bool
-        If True (default), only emit pairs whose two legs share a sector tag —
+        If True (default), only emit pairs whose two legs share a sector tag : 
         the standard economic prior that cointegration needs a common driver.
 
     Returns
@@ -106,7 +106,7 @@ def pair_correlations(
     pairs : sequence of (a, b)
         Candidate pairs.
     on : {"returns", "prices"}
-        "returns" (default) correlates daily log returns — the statistically
+        "returns" (default) correlates daily log returns: the statistically
         meaningful choice. "prices" correlates raw levels and exists only to
         demonstrate the spurious-correlation trap (see module docstring).
 

@@ -76,7 +76,7 @@ def test_position_uses_previous_day_regime():
 
 
 def test_spot_pnl_hand_check():
-    """Single-day spot P&L equals w . r exactly on a constructed case."""
+    """Single-day spot P&L equals w . R (simple return) when the book is unchanged."""
     idx = pd.bdate_range("2020-01-01", periods=80)
     ccys = ["AUD", "NZD", "JPY", "CHF"]
     rets = pd.DataFrame(0.001, index=idx, columns=ccys)
@@ -90,16 +90,19 @@ def test_spot_pnl_hand_check():
     t = 10
     w = bt.weights.iloc[t]
     date = bt.weights.index[t]
+    assert (bt.weights.iloc[t - 1] == w).all()
     assert bt.ledger["spot"].iloc[t] == pytest.approx(
-        float(w @ rets.loc[date]), abs=1e-15
+        float(w @ np.expm1(rets.loc[date])), abs=1e-15
     )
     # risk_off book: equal returns cancel (long havens = short risk)
     assert bt.ledger["spot"].iloc[t] == pytest.approx(0.0, abs=1e-12)
     # carry: known rates -> hand value  0.5*(0+(-0.01)) - 0.5*(0.04+0.05)
     # differential vs USD: 0.5*(-0.02-0.03) - 0.5*(0.02+0.03) = -0.05 p.a.
+    # ACT/365 on the calendar gap since the previous close
     scale = w["JPY"] / 0.5
+    gap = (date - bt.weights.index[t - 1]).days
     assert bt.ledger["carry"].iloc[t] == pytest.approx(
-        -0.05 / 252 * scale, rel=1e-9
+        -0.05 * gap / 365 * scale, rel=1e-9
     )
 
 

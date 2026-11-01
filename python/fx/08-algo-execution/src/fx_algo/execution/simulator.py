@@ -152,6 +152,8 @@ class ExecutionResult:
     arrival_mid: float
     final_mid: float
     venue: str
+    sigma_bucket_pips: Optional[np.ndarray] = None
+    perm_total_pips: float = 0.0
 
     @property
     def total_qty(self) -> float:
@@ -381,4 +383,6 @@ class MarketSimulator:
             arrival_mid=float(self.profile.s0),
             final_mid=final_mid,
             venue=getattr(venue, "name", "unknown"),
+            sigma_bucket_pips=self.sigma_bucket_pips.copy(),
+            perm_total_pips=float(np.sum(perm_pips)),
         )

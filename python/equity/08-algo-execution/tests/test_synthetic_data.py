@@ -42,7 +42,7 @@ def test_planted_reversal_negative_relationship(panel):
 
 
 def test_vol_clustering_present(panel):
-    """Lag-1 autocorrelation of squared returns is positive on average —
+    """Lag-1 autocorrelation of squared returns is positive on average:
     the AR(1) log-vol process produces clustering."""
     r2 = (panel.returns.iloc[1:] ** 2)
     acs = [r2[c].autocorr(lag=1) for c in r2.columns]
@@ -56,7 +56,7 @@ def test_structure_and_consistency(panel):
     assert (panel.prices > 0).all().all()
     assert (panel.volumes > 0).all().all()
     pd.testing.assert_frame_equal(panel.returns, panel.prices.pct_change())
-    assert (panel.adv_dollars > 0).all()
+    assert (panel.trailing_adv_dollars(21).dropna() > 0).all().all()
 
 
 def test_generator_validation():

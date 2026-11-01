@@ -1,4 +1,4 @@
-"""eq_algo — equity algorithmic trading & execution modeling.
+"""eq_algo, equity algorithmic trading & execution modeling.
 
 Alpha layer (daily): point-in-time features -> signal combination -> long-
 short backtest with linear + square-root costs -> IC / deflated-Sharpe /
@@ -15,7 +15,7 @@ from .signals import (forward_returns, information_coefficient,
                       combine_equal_weight, combine_ic_weighted, signal_decay,
                       decile_portfolios, freeze_signal, apply_rebalance_band,
                       turnover)
-from .backtest import BacktestConfig, BacktestResult, long_short_weights, run_backtest
+from .backtest import ExecutionConfig, BacktestConfig, capacity_backtest, BacktestResult, long_short_weights, run_backtest
 from .evaluation import (newey_west_se, newey_west_tstat, ic_summary,
                          quantile_monotonicity, sharpe_ratio, sortino_ratio,
                          max_drawdown, perf_summary, probabilistic_sharpe_ratio,
@@ -39,7 +39,7 @@ __all__ = [
     "combine_ic_weighted", "signal_decay", "decile_portfolios",
     "freeze_signal", "apply_rebalance_band", "turnover",
     # backtest
-    "BacktestConfig", "BacktestResult", "long_short_weights", "run_backtest",
+    "ExecutionConfig", "BacktestConfig", "capacity_backtest", "BacktestResult", "long_short_weights", "run_backtest",
     # evaluation
     "newey_west_se", "newey_west_tstat", "ic_summary", "quantile_monotonicity",
     "sharpe_ratio", "sortino_ratio", "max_drawdown", "perf_summary",
