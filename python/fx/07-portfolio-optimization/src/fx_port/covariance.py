@@ -194,10 +194,12 @@ def psd_repair(
     """Repair a covariance matrix by symmetrising and clipping eigenvalues.
 
     Eigenvalues below ``min_eig`` are raised to ``min_eig``.  With
-    ``min_eig = 0`` this is the Frobenius-nearest PSD matrix (Higham
-    projection for symmetric input); a small positive floor (e.g. 1e-10)
-    additionally makes the matrix invertible — needed when the universe
-    contains a pegged (zero-vol) currency.
+    ``min_eig = 0`` this is the Frobenius-nearest PSD matrix to the
+    symmetrised input (Higham 1988). With a positive floor (e.g. 1e-10) it
+    is plain eigenvalue clipping: the result is invertible, which a pegged
+    (zero-vol) currency needs, but it is no longer the nearest such matrix
+    and the variances on the diagonal can change. It is not Higham's
+    (2002) nearest-correlation algorithm.
 
     Parameters
     ----------

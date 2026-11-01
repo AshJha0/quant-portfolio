@@ -36,6 +36,8 @@ from .metrics import (
     max_drawdown,
     realized_risk_contributions,
     sharpe_lo,
+    sharpe_difference_test,
+    SharpeDiffResult,
     sharpe_ratio,
     sortino_ratio,
     summary_table,
@@ -44,6 +46,8 @@ from .mvo import (
     FrontierResult,
     efficient_frontier,
     max_sharpe_constrained,
+    max_sharpe_qp,
+    MaxSharpeResult,
     min_variance_constrained,
     min_variance_weights,
     portfolio_return,
@@ -79,7 +83,7 @@ __all__ = [
     "single_factor_cov", "psd_repair", "condition_number", "is_psd",
     # mvo
     "min_variance_weights", "tangency_weights", "min_variance_constrained",
-    "max_sharpe_constrained", "target_return_portfolio", "target_risk_portfolio",
+    "max_sharpe_constrained", "max_sharpe_qp", "MaxSharpeResult", "target_return_portfolio", "target_risk_portfolio",
     "efficient_frontier", "FrontierResult", "portfolio_vol", "portfolio_return",
     # risk parity
     "risk_contributions", "erc_weights", "inverse_vol_weights", "vol_target_overlay",
@@ -88,7 +92,7 @@ __all__ = [
     "make_min_variance_strategy", "make_tangency_strategy", "make_erc_strategy",
     "make_static_strategy",
     # metrics
-    "annualized_return", "annualized_vol", "sharpe_ratio", "sharpe_lo",
+    "annualized_return", "annualized_vol", "sharpe_ratio", "sharpe_lo", "sharpe_difference_test", "SharpeDiffResult",
     "LoSharpeResult", "sortino_ratio", "max_drawdown", "calmar_ratio",
     "diversification_ratio", "effective_n", "realized_risk_contributions",
     "summary_table",

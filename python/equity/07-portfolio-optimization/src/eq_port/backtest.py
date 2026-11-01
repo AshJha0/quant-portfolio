@@ -1,7 +1,7 @@
 """Walk-forward backtester with strict no-lookahead estimation, drifted
 weights between rebalances, and exact turnover / transaction-cost
 accounting, plus the standard strategy zoo (equal weight, min-variance,
-tangency raw/shrunk, ERC, static 60/40-style benchmark).
+tangency raw/shrunk, ERC, static fixed-weight benchmark).
 
 Mechanics (per day, oldest first; simple returns):
 
@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 from .covariance import ledoit_wolf_cc, psd_repair, sample_cov
-from .mvo import max_sharpe_constrained, min_variance_constrained
+from .mvo import max_sharpe_qp, min_variance_constrained
 from .returns_est import james_stein_mean, sample_mean
 from .risk_parity import erc_weights
 
@@ -219,18 +219,26 @@ def make_tangency_strategy(
     """Long-only maximum-Sharpe strategy.
 
     ``shrink_mean=False`` uses the raw sample mean (the classic error
-    maximizer); ``shrink_mean=True`` uses the James-Stein shrunk mean.
+    maximizer). ``shrink_mean=True`` uses the James-Stein shrunk mean.
+
+    When no estimated mean exceeds ``rf`` the maximum-Sharpe problem has no
+    meaningful long-only solution and the strategy holds the long-only
+    minimum-variance portfolio (see :func:`eq_port.mvo.max_sharpe_qp`).
+    The returned callable carries a ``stats`` dict with the number of
+    ``calls`` and ``fallbacks`` so a backtest can report how often this
+    happened.
     """
+    stats = {"calls": 0, "fallbacks": 0}
 
     def _strategy(est: pd.DataFrame) -> np.ndarray:
         mu = james_stein_mean(est).mean if shrink_mean else sample_mean(est)
         sigma = _cov_estimate(est, use_lw)
-        try:
-            return max_sharpe_constrained(mu, sigma, rf=rf, bounds=(0.0, 1.0))
-        except ValueError:
-            # all estimated excess returns <= rf: park in min-variance
-            return min_variance_constrained(sigma, bounds=(0.0, 1.0))
+        res = max_sharpe_qp(mu, sigma, rf=rf, bounds=(0.0, 1.0))
+        stats["calls"] += 1
+        stats["fallbacks"] += int(res.fallback)
+        return res.weights
 
+    _strategy.stats = stats  # type: ignore[attr-defined]
     return _strategy
 
 
@@ -244,7 +252,7 @@ def make_erc_strategy(use_lw: bool = True) -> Strategy:
 
 
 def make_static_strategy(weights: np.ndarray) -> Strategy:
-    """Static benchmark (e.g. 60/40-style): the same fixed target weights
+    """Static fixed-weight benchmark: the same fixed target weights
     at every rebalance (still drifts between rebalances and pays costs)."""
     w = np.asarray(weights, dtype=float).ravel()
 

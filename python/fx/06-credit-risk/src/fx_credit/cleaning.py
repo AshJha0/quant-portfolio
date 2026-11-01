@@ -37,7 +37,7 @@ __all__ = [
 _REQUIRED = ("country", "year", "default")
 
 #: Physically-impossible value bounds; violations are set to NaN (not clipped,
-#: so the WOE missing bin can pick them up honestly).
+#: so the WOE missing bin can pick them up).
 _VALID_RANGES: dict[str, tuple[float, float]] = {
     "reserves_import_cover": (0.0, 60.0),
     "ext_debt_gdp": (0.0, 1000.0),
@@ -57,7 +57,7 @@ def clean_panel(df: pd.DataFrame) -> pd.DataFrame:
     impossible values per ``_VALID_RANGES``; coerce ``year`` to int and the
     outcome to {0,1}; sort by (country, year).
 
-    Missing values are deliberately *kept* — the WOE layer assigns them an
+    Missing values are *kept* — the WOE layer assigns them an
     explicit missing bin, which is itself informative (data gaps correlate
     with weak institutions).
 

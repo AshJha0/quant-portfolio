@@ -32,7 +32,7 @@ def _validate_cov(cov: np.ndarray) -> np.ndarray:
         raise ValueError(f"cov must be square, got shape {sigma.shape}")
     if not np.all(np.isfinite(sigma)):
         raise ValueError("cov contains NaN or infinite values")
-    if not np.allclose(sigma, sigma.T, atol=1e-8):
+    if np.max(np.abs(sigma - sigma.T), initial=0.0) > 1e-10 * np.max(np.abs(sigma), initial=0.0):
         raise ValueError("cov must be symmetric")
     return 0.5 * (sigma + sigma.T)
 

@@ -48,13 +48,25 @@ def _to_arrays(
 
 
 def _solve(sigma: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Solve Sigma x = b by Cholesky.
+
+    Cholesky fails unless Sigma is positive definite, so an indefinite or
+    singular matrix raises instead of returning weights from a
+    meaningless "covariance".
+    """
     try:
-        return np.linalg.solve(sigma, b)
+        c = np.linalg.cholesky(sigma)
     except np.linalg.LinAlgError as exc:
         raise ValueError(
-            "sigma is singular; apply psd_repair(min_eig>0) first "
-            "(e.g. pegged currency in the universe)"
+            "sigma is not positive definite (singular or indefinite); apply "
+            "psd_repair(min_eig>0) first (e.g. pegged currency in the universe)"
         ) from exc
+    return np.linalg.solve(c.T, np.linalg.solve(c, b))
+
+
+def _raise_on_failure(res, where: str) -> None:
+    if not bool(res.success):
+        raise ValueError(f"SLSQP failed in {where}: {res.message}")
 
 
 def min_variance_weights(sigma: pd.DataFrame) -> pd.Series:
@@ -369,6 +381,7 @@ def max_utility(
             options={"maxiter": 1000, "ftol": 1e-14},
         )
         w_arr = res.x
+    _raise_on_failure(res, "max_utility")
     w = pd.Series(w_arr, index=labels, name="max_utility")
     return MVOResult(
         weights=w,
@@ -396,7 +409,7 @@ def min_variance_slsqp(
     m, s, labels = _to_arrays(mu, sigma)
     n = len(s)
     _check_feasible(sum_to, gross_limit, bounds, n)
-    # Scale-invariant objective (see max_utility): keeps SLSQP's ftol honest.
+    # Scale-invariant objective (see max_utility): keeps SLSQP's ftol meaningful.
     scale = 1.0 / max(float(np.mean(np.diag(s))), 1e-300)
     s_sc = s * scale
     if target_return is not None and m is None:
@@ -436,6 +449,7 @@ def min_variance_slsqp(
             options={"maxiter": 1000, "ftol": 1e-16},
         )
         w_arr = res.x
+    _raise_on_failure(res, "min_variance_slsqp")
     w = pd.Series(w_arr, index=labels, name="min_var_slsqp")
     er = float(m @ w_arr) if m is not None else float("nan")
     return MVOResult(
@@ -467,6 +481,11 @@ def efficient_frontier(
         One row per target: columns ``target_return``, ``volatility`` and one
         weight column per currency.  Volatility is non-decreasing in the
         target above the min-var point (tested).
+
+    Raises
+    ------
+    ValueError
+        If the solver fails at any target. Points are never dropped.
     """
     if n_points < 2:
         raise ValueError(f"n_points must be >= 2, got {n_points}")
@@ -500,8 +519,7 @@ def efficient_frontier(
                 target_return=float(tgt),
                 mu=mu,
             )
-            if r.success:
-                rows.append([tgt, r.volatility, *r.weights.to_numpy()])
+            rows.append([tgt, r.volatility, *r.weights.to_numpy()])
     return pd.DataFrame(
         rows, columns=["target_return", "volatility", *labels]
     )

@@ -1,6 +1,6 @@
-# 07 — FX Portfolio Optimization & Currency Risk Allocation
+# 07: FX Portfolio Optimization and Currency Risk Allocation
 
-Style-based currency allocation done properly: currency **total returns**
+Style-based currency allocation: currency **total returns**
 (spot + carry), the three classic FX styles (**CARRY / MOMENTUM / VALUE**) as
 dollar-neutral long-short portfolios, shrinkage covariance, mean-variance and
 risk-parity allocation, **CVaR-constrained sizing** (Rockafellar–Uryasev LP)
@@ -43,42 +43,52 @@ Return Estimation ──> Covariance Modeling ──> Mean-Variance ──> Effi
 ```bash
 cd python/fx/07-portfolio-optimization
 pip install -e .[dev]     # or just have numpy/scipy/pandas on the path
-pytest -q                 # 172 tests, offline, ~10 s
-python examples/run_pipeline.py   # full pipeline, ~26 s
+pytest -q                 # 187 tests, offline, about 40 s
+python examples/run_pipeline.py   # full pipeline, about 60 s
 ```
 
 ## Headline numbers (seed 123, 3 024 business days, synthetic G10+EM panel)
 
-Style sleeves (dollar-neutral, gross 2.0, one-day implementation lag):
+All numbers are from `python examples/run_pipeline.py` on synthetic data.
+The value signal uses the exact PPP anchor that the synthetic spots revert
+to, and momentum is a planted AR(1) trend. Style performance is therefore a
+property of the generator, not evidence that the styles work.
 
-| Style     | Ann. ret | Vol    | Sharpe | Skew   | MDD    | CVaR95/day |
-|-----------|---------:|-------:|-------:|-------:|-------:|-----------:|
-| CARRY     |  6.46%   | 13.28% |  0.49  | −1.73  | 18.20% | 1.90%      |
-| MOMENTUM  |  4.18%   |  8.47% |  0.49  | −0.14  | 13.90% | 1.07%      |
-| VALUE     |  6.56%   |  9.88% |  0.66  | −1.34  | 19.66% | 1.38%      |
+Style sleeves (dollar-neutral, gross 2.0, one-day lag), net of 5 bp per
+unit of currency-level turnover:
+
+| Style | Ann. ret | Vol | Sharpe (iid SE) | Gross Sharpe | Turnover/yr | Skew | MDD | CVaR95/day |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| CARRY | 6.25% | 13.28% | 0.47 (0.29) | 0.49 | 4.2x | -1.73 | 18.43% | 1.90% |
+| MOMENTUM | 1.90% | 8.47% | 0.22 (0.30) | 0.49 | 45.5x | -0.14 | 19.90% | 1.08% |
+| VALUE | 5.66% | 9.88% | 0.57 (0.29) | 0.66 | 17.9x | -1.33 | 23.82% | 1.38% |
 
 - **Skew-aware carry sizing**: a 0.50%/day CVaR95 budget cuts the carry book
-  30% below naive 5%-vol-target sizing (0.26x vs 0.37x). The multi-style
-  RU-LP cuts tail CVaR 81% (2.11% → 0.40%/day) for an 8.0%/yr expected-return
+  30% below 5%-vol-target sizing (0.26x vs 0.37x). The multi-style RU-LP
+  cuts tail CVaR 86% (2.87% to 0.40%/day) for an 8.1%/yr expected-return
   give-up against the unconstrained mean-chaser.
-- **Optimal hedging** (intl equity portfolio): h\* = {EUR 1.15, JPY −1.40,
-  GBP 1.56, AUD 3.71, CHF −0.42}; optimal hedge cuts variance 4.9% vs 1.2%
-  for the naive full hedge — safe havens are underhedged (even bought), the
-  classic result.
-- **Walk-forward race** (est. 504d, monthly, 5 bps, carry accrued):
-  EW SR 0.87 | MVO SR 1.07 | ERC SR 0.91 | CVaR-constrained SR 0.89 —
-  MVO's win rests on unusually estimable synthetic means; see
-  docs/VALIDATION.md before believing it out of sample.
+- **Hedging** (synthetic international equity portfolio): in-sample
+  h* = {EUR 1.15, JPY -1.40, GBP 1.56, AUD 3.71, CHF -0.42}, with OLS
+  standard errors 0.18 to 0.44. Split-sample estimates move CHF from -1.42
+  to +0.59 and AUD from 2.75 to 4.71. Out of sample, the first-half h*
+  cuts second-half variance 4.1% against 2.1% for a full hedge. The AUD
+  ratio is an equity cross-hedge, not a currency hedge. Forward carry
+  raises the full-hedge mean from 4.33% to 5.01% a year.
+- **Walk-forward race** (est. 504d, monthly, 5 bp allocation costs plus
+  sleeve costs, Ledoit-Wolf covariance, carry accrued): EW SR 0.73, MVO
+  0.78, ERC 0.70, CVaR-constrained 0.75, each with SE about 0.33. The
+  differences are well inside one standard error.
 - **GBP-base reporting**: dollar-neutral sleeves are base-invariant to
-  1.4e-17 (exact for log returns); the net-long book's Sharpe moves
-  0.87 → 0.74 switching USD → GBP — net books are not base-invariant.
+  1.4e-17 for log returns. Every combination of the sleeves is also
+  dollar-neutral. Adding an unhedged USD collateral account moves the EW
+  Sharpe from 0.73 to 0.63 on a GBP base.
 
 ## Layout
 
 ```
 src/fx_port/            returns_est, covariance, mvo, risk_parity,
                         hedging, cvar_opt, backtest, metrics, data/
-tests/                  172 offline seeded tests (identities to 1e-12)
+tests/                  187 offline seeded tests
 examples/run_pipeline.py
 docs/                   METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```

@@ -1,7 +1,8 @@
-# Desk Guide — Equity Portfolio Optimization & Risk Allocation
+# Desk Guide: Equity Portfolio Optimization and Risk Allocation
 
-How this stack is actually used, by whom, with what controls — and what
-goes wrong in real markets.
+How this kind of stack is used, by whom, with what controls, and what
+goes wrong in markets. The numbers quoted here come from the synthetic
+panels in `examples/run_pipeline.py`.
 
 ## 1. Who consumes these numbers
 
@@ -20,8 +21,9 @@ goes wrong in real markets.
   diversification ratio are governance metrics in the IPS.
 - **Risk management**: consumes realized risk contributions (are we
   actually running the budgets we claim?), Lo-adjusted Sharpe SEs (is
-  that manager's track record distinguishable from zero? usually not —
-  SE ≈ 0.4 on 8 years of data), and the crisis subperiod diagnostics.
+  that track record distinguishable from zero? usually not: SE ≈ 0.35
+  on 8.5 years of daily data), the Jobson-Korkie/Memmel test for
+  comparing two strategies, and the crisis subperiod diagnostics.
 
 ## 2. Daily / monthly workflow
 
@@ -54,17 +56,18 @@ goes wrong in real markets.
   first-rebalance/drift machinery in `run_backtest` (drifted weights are
   the turnover baseline) is exactly what a band monitor needs.
 - Practice: calendar review with band triggers, plus a turnover budget
-  (e.g. ≤ 2x/yr for an allocation product — note raw-mean tangency's
-  8.3x in the race would blow any such budget; that alone disqualifies
-  it operationally, before performance is even discussed).
+  (e.g. ≤ 2x/yr for an allocation product). Raw-mean tangency averaged
+  6.8x/yr in the synthetic race and James-Stein tangency 2.7x/yr, so
+  both would breach such a budget without a turnover constraint, which
+  the optimisers here do not have.
 
 ## 4. Capacity and liquidity
 
 - Turnover × AUM = dollars traded; the linear bps model in the
   backtester is a lower bound. Real impact is convex (≈ σ·√(trade/ADV)),
-  so strategy capacity is set by turnover and concentration: effective
-  N 1.6 (raw tangency) means the book is ~2 names — capacity is tiny and
-  exit risk is severe. ERC/EW books (eff. N ≈ 8) scale.
+  so strategy capacity is set by turnover and concentration. Raw
+  tangency averaged an effective N of 1.9 on the seed-1 synthetic panel,
+  about two names. ERC and EW books (effective N about 8) scale.
 - Liquidity is regime-dependent: the cost assumption fails worst in the
   crisis subperiod, precisely when vol-target overlays and risk limits
   force trading (see §5).
@@ -97,8 +100,8 @@ turnover ledger under 5x cost stress.
 
 - **2008 (all correlations → 1).** Reproduced by the regime generator
   (crisis correlations 0.87). Every long-only book draws down together;
-  min-variance loses least (−20% vs −31% EW in our subperiod table);
-  concentrated MVO loses most (−37%). Lesson encoded in VALIDATION §5:
+  min-variance loses least (-20% vs -31% EW in the seed-1 synthetic
+  subperiod); concentrated raw-mean MVO loses most (-35%). VALIDATION §6:
   diversification is a calm-market quantity; size risk off the crisis
   covariance, not the calm one.
 - **2020 crash (speed).** 120-day crisis window with −120%/yr drift:
@@ -106,15 +109,10 @@ turnover ledger under 5x cost stress.
   crash — vol targeting and risk limits, not the optimizer, determine
   the realized drawdown. Weekly monitoring with band triggers is the
   compromise.
-- **2022 stock-bond correlation flip.** The 60/40-style static book and
-  risk parity both rely on a negative stock-bond correlation for their
-  risk numbers; 2022 flipped it positive (inflation shock) and both drew
-  down together — a *slow* correlation breakdown that vol multipliers do
-  not capture. In-model: rerun ERC with the off-diagonal block sign-
-  flipped; the ERC weights barely move (it budgets vol, not direction)
-  but the *portfolio* vol jumps — the product's risk target, not its
-  weights, is what breaks. This is why RP desks monitor rolling
-  stock-bond correlation as a named risk factor.
+- **2022 stock-bond correlation flip.** Static stock-bond books and risk
+  parity rely on a negative stock-bond correlation. In 2022 it turned
+  positive and both drew down together. This project has no bond assets
+  and no code for this scenario.
 - **Estimation-regime trap.** A 252-day window ending three months after
   a crisis contains 120 crisis days: covariance is dominated by the
   crisis, the optimizer de-risks exactly when premia are highest. Known,

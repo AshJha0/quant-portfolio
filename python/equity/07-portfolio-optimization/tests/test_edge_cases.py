@@ -182,3 +182,25 @@ def test_generate_panel_deterministic_given_seed():
     a = generate_panel(n_assets=3, n_periods=50, seed=42).returns
     b = generate_panel(n_assets=3, n_periods=50, seed=42).returns
     pd.testing.assert_frame_equal(a, b)
+
+
+def test_symmetry_check_is_relative_to_scale():
+    # 9e-9 asymmetry on a daily covariance (entries ~1e-4) is a 1e-4
+    # relative error; the old absolute 1e-8 tolerance accepted it.
+    from eq_port import min_variance_weights
+
+    cov = np.array([[1e-4, 2e-5], [2e-5 + 9e-9, 1e-4]])
+    with pytest.raises(ValueError, match="symmetric"):
+        min_variance_weights(cov)
+    with pytest.raises(ValueError, match="symmetric"):
+        erc_weights(cov)
+    # rounding-level asymmetry is still accepted
+    ok = np.array([[1e-4, 2e-5], [2e-5 * (1 + 1e-15), 1e-4]])
+    assert np.isfinite(min_variance_weights(ok)).all()
+
+
+def test_ledoit_wolf_degenerate_guard_is_scale_free():
+    x = RNG.normal(0.0, 1.0, size=(200, 3)) @ np.array([[1, .5, 0], [0, 1, .2], [0, 0, 1.]])
+    a = ledoit_wolf_cc(x)
+    b = ledoit_wolf_cc(x * 1e-6)
+    assert a.intensity == pytest.approx(b.intensity, rel=1e-9)

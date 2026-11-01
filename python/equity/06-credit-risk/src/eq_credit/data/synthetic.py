@@ -11,7 +11,7 @@ True log-odds specification (all effects on the 1-year default log-odds)
                + f_roa(roa) + f_size(log_assets) + f_beh(behavioral_score)
                + sector_effect[sector]                     (+ calibration_shift)
 
-with deliberately *nonlinear* components so that WOE binning has something
+with *nonlinear* components so that WOE binning has something
 real to find that a linear logit on raw features misses:
 
 * ``f_lev``  — piecewise-linear, **capped**: risk increases in leverage up to

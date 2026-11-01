@@ -1,39 +1,40 @@
-# 07 — Equity Portfolio Optimization & Risk Allocation (`eq_port`)
+# 07: Equity Portfolio Optimization and Risk Allocation (`eq_port`)
 
-Flagship-quality implementation of the classical portfolio construction
-stack, built around one theme: **naive Markowitz is an estimation-error
-maximizer, and everything that works in practice — shrinkage,
-Black-Litterman, risk parity, constraints — is a defense against that.**
+A from-scratch implementation of the classical portfolio construction
+stack. The theme: mean-variance optimisation amplifies estimation error,
+and shrinkage, Black-Litterman, risk parity and constraints are defences
+against that.
 
 ```
 Return Estimation ──► Covariance Modeling ──► Mean-Variance Optimization
- (sample / EWMA /      (sample / EWMA /        (closed forms + SLSQP:
-  James-Stein /         Ledoit-Wolf 2004        min-var, tangency,
-  reverse-opt /         from scratch /          target-return/-risk,
-  Black-Litterman)      1-factor / PSD repair)  long-only & box bounds)
+ (sample / EWMA /      (sample / EWMA /        (closed forms, convex-QP
+  James-Stein /         Ledoit-Wolf 2004        max-Sharpe, SLSQP for
+  reverse-opt /         from scratch /          min-var, target-return/-risk,
+  Black-Litterman)      1-factor / PSD repair)  long-only and box bounds)
         │                                             │
         ▼                                             ▼
  Efficient Frontier ◄── Risk Parity (ERC, CCD) ──► Sharpe & Risk Metrics
- (analytic two-fund      + inverse-vol,            (Lo-adjusted SE,
-  + numeric constrained)   vol-target overlay)      Sortino, MDD, DR, effN)
-                              │
+ (analytic two-fund      + inverse-vol,            (Lo-adjusted SE, Sharpe-
+  + numeric constrained)   vol-target overlay)      difference test, Sortino,
+                              │                     MDD, DR, effN)
                               ▼
               Walk-Forward Backtest (no lookahead, exact
-              turnover & transaction-cost ledger, strategy race)
+              turnover and transaction-cost ledger, strategy race)
 ```
 
-Optimization uses `scipy.optimize` (SLSQP) and closed forms only — no
-cvxpy; the QPs here are small and smooth, every solver output is
-cross-checked against closed forms in the tests, and the dependency
-weight isn't justified (see docs/METHODOLOGY.md §4).
+Optimisation uses closed forms and `scipy.optimize` (SLSQP). The
+maximum-Sharpe problem is solved as a convex QP after the substitution
+y = κw, with analytic gradients and a KKT check on the result. When no
+feasible portfolio has a positive expected excess return, it returns the
+long-only minimum-variance portfolio and reports `fallback=True`.
 
 ## Quickstart
 
 ```bash
 cd python/equity/07-portfolio-optimization
 pip install -e .[dev]
-pytest -q                        # 150 tests, ~3 s, offline
-python examples/run_pipeline.py  # full pipeline, ~15 s, seeded
+pytest -q                        # 170 tests, about 16 s, offline
+python examples/run_pipeline.py  # full pipeline, about 90 s, seeded
 ```
 
 ```python
@@ -45,53 +46,80 @@ r = panel.returns                      # (T, N) daily simple returns
 
 lw  = ep.ledoit_wolf_cc(r)             # shrunk covariance, delta in [0,1]
 mu  = ep.james_stein_mean(r).mean      # shrunk mean
-w   = ep.max_sharpe_constrained(mu, ep.psd_repair(lw.cov), bounds=(0, 1))
+res = ep.max_sharpe_qp(mu, ep.psd_repair(lw.cov), bounds=(0, 1))
+print(res.weights, res.fallback, res.kkt_residual)
 erc = ep.erc_weights(lw.cov)           # equal risk contribution (mean-free)
-res = ep.run_backtest(r, ep.make_erc_strategy(), window=252,
+bt  = ep.run_backtest(r, ep.make_erc_strategy(), window=252,
                       rebalance_every=21, cost_bps=10.0)
-print(ep.summary_table({"ERC": res.net_returns}))
+print(ep.summary_table({"ERC": bt.net_returns}))
 ```
 
-## Headline results (from `examples/run_pipeline.py`, seeded)
+## Headline results
 
-**The estimation-error problem, in numbers** — 20 disjoint 252-day
-windows, portfolios evaluated under the *true* moments (achievable
-tangency Sharpe 0.452, equal weight 0.326):
+All numbers come from `python examples/run_pipeline.py` on synthetic
+panels. The intervals are 95% t-intervals across independent synthetic
+panels.
 
-| Estimated portfolio | mean true Sharpe |
-|---|---|
-| Tangency, raw sample mean, unconstrained | **0.141** (16.2x avg gross leverage, fails 8/20 windows) |
-| Tangency, raw mean, long-only | 0.300 (below EW in 11/20 windows) |
-| Tangency, James-Stein mean | 0.313 |
-| Min-variance (Ledoit-Wolf) | **0.339** |
-| ERC (Ledoit-Wolf) | 0.333 (tightest spread: 0.328–0.339) |
+**Estimation error.** 20 disjoint 252-day windows on each of 10 synthetic
+panels (seeds 7-16). Each estimated portfolio is scored under the true
+moments of its panel. Mean achievable (true tangency) Sharpe is 0.427.
 
-**Walk-forward race** (monthly rebalance, 10bp costs, mean net Sharpe
-across 6 independent 2400-day panels with a crisis regime):
-MinVar **+0.03** > TanJS −0.00 > ERC −0.04 > EW −0.05 > Static 60/40
-−0.06 > **Tangency-raw −0.06 with 8.3x/yr turnover and the worst
-drawdowns** — the classic result: raw-mean MVO loses to naive 1/N while
-mean-free allocators do fine.
+| Estimated portfolio | mean true Sharpe | 95% CI |
+|---|---|---|
+| Tangency, raw mean, unconstrained | 0.115 | 0.068 to 0.161 |
+| Tangency, raw mean, long-only | 0.279 | 0.250 to 0.309 |
+| Tangency, James-Stein mean, long-only | 0.328 | 0.286 to 0.370 |
+| Min-variance, Ledoit-Wolf, long-only | 0.333 | 0.289 to 0.377 |
+| ERC, Ledoit-Wolf | 0.322 | 0.304 to 0.340 |
+| Equal weight | 0.314 | 0.301 to 0.327 |
 
-**Ledoit-Wolf from scratch**: closed-form 2004 intensity, δ ∈ [0,1]
-always; cond(sample) 20.8 → 16.9 on 252×8; still invertible when T < N.
+Raw-mean tangency is worse than min-variance (paired difference -0.054,
+CI -0.078 to -0.030). James-Stein tangency, ERC and equal weight are not
+distinguishable from min-variance on these synthetic panels. James-Stein
+tangency fell back to min-variance in 73 of 200 windows because no
+shrunk mean was positive.
 
-**Black-Litterman**: reverse-optimization round trip exact to 3.5e-16;
-one +3%/yr relative view moves the posterior sensibly (viewed asset
-+0.6%, counter-asset −1.7%, correlated assets adjust) and the long-only
-tangency weight 0.24 → 0.42.
+**Walk-forward race.** Monthly rebalance, 10 bp costs, 20 synthetic
+2400-day panels with a crisis regime (seeds 1-20). Mean net Sharpe:
 
-**Crisis regime** (correlations 0.47 → 0.87): concentrated raw tangency
-suffers most (crisis MaxDD 0.47, eff. N 1.6); ERC/EW degrade gracefully;
-min-variance loses least. Details in docs/VALIDATION.md.
+| Strategy | mean net Sharpe | 95% CI | diff vs MinVar | annual turnover |
+|---|---|---|---|---|
+| MinVar (LW) | -0.083 | -0.252 to 0.087 | | 1.32 |
+| Tangency JS | -0.105 | -0.260 to 0.051 | -0.022 (-0.069 to 0.025) | 2.68 |
+| ERC (LW) | -0.107 | -0.260 to 0.046 | -0.024 (-0.093 to 0.045) | 0.60 |
+| EqualWeight | -0.114 | -0.266 to 0.038 | -0.032 (-0.108 to 0.045) | 0.57 |
+| Static tilt | -0.120 | -0.267 to 0.027 | -0.037 (-0.114 to 0.040) | 0.57 |
+| Tangency raw | -0.200 | -0.330 to -0.070 | -0.117 (-0.239 to 0.004) | 6.76 |
+
+No strategy's Sharpe is statistically different from min-variance at 5%
+on these synthetic panels. Raw-mean tangency has the lowest mean and
+about five times the turnover of min-variance. The Jobson-Korkie/Memmel
+test on the main panel gives p > 0.2 for every pair against min-variance.
+"Static tilt" is a fixed 15%/10% split over the eight synthetic equity
+assets. It contains no bonds.
+
+**Ledoit-Wolf from scratch.** Closed-form 2004 intensity, δ in [0, 1];
+the matrix stays invertible when T < N.
+
+**Black-Litterman.** The reverse-optimisation round trip is exact to
+3.6e-16. One +3%/yr relative view moves the long-only tangency weight on
+the viewed asset from 0.24 to 0.42 (synthetic panel).
+
+## Limitations
+
+- Every result above is on synthetic data from a factor model with a
+  planted crisis regime.
+- The James-Stein estimator is the isotropic grand-mean form, not
+  Jorion's Bayes-Stein.
+- There are no turnover, tracking-error or leverage constraints in the
+  optimisers. Costs enter only in the backtest.
 
 ## Layout
 
 ```
 src/eq_port/          returns_est, covariance, mvo, risk_parity,
                       backtest, metrics, data/{synthetic,live}
-tests/                150 offline seeded tests (identities, solver
-                      cross-checks, no-lookahead, edge cases)
-examples/run_pipeline.py   reproduces every number above
+tests/                170 offline seeded tests
+examples/run_pipeline.py   reproduces every number above (prints only)
 docs/                 METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```

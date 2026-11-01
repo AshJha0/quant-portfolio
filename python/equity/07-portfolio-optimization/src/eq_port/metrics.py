@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.stats import norm
 import pandas as pd
 
 __all__ = [
@@ -20,6 +21,8 @@ __all__ = [
     "sharpe_ratio",
     "sharpe_lo",
     "LoSharpeResult",
+    "sharpe_difference_test",
+    "SharpeDiffResult",
     "sortino_ratio",
     "max_drawdown",
     "calmar_ratio",
@@ -113,7 +116,14 @@ def sharpe_lo(
     Serially correlated returns break the sqrt-time Sharpe annualisation:
     positive autocorrelation (e.g. from stale pricing / smoothing)
     overstates the annual Sharpe. Lo's factor replaces sqrt(q) with
-    ``q / sqrt(q + 2 sum_{k=1}^{q-1} (q - k) rho_k)`` for q = ppy.
+    ``q / sqrt(q + 2 sum_{k=1}^{L} (q - k) b_k rho_k)`` for q = ppy.
+
+    Summing all q - 1 sample autocorrelations (Lo's formula taken
+    literally at q = 252) adds hundreds of noisy terms: on iid data the
+    adjusted-to-raw ratio then spans roughly 0.76 to 1.54. The sum is
+    therefore truncated at L lags with Bartlett weights
+    b_k = 1 - k / (L + 1) (Newey and West 1987), which keeps the
+    variance-ratio estimate non-negative and its noise small.
 
     Parameters
     ----------
@@ -124,7 +134,8 @@ def sharpe_lo(
     periods_per_year : float
         Aggregation horizon q (252 for daily -> annual).
     n_lags : int, optional
-        Autocorrelation lags used (default min(ppy - 1, T // 4)).
+        Truncation lag L (default floor(T ** (1/3)), capped at q - 1).
+        ``n_lags=0`` gives the iid scaling.
 
     Returns
     -------
@@ -139,14 +150,19 @@ def sharpe_lo(
         return LoSharpeResult(0.0, 0.0, float(np.sqrt(1.0 / t * periods_per_year)), 0)
     sr_p = float(np.mean(r)) / sd  # per-period Sharpe
     q = int(round(periods_per_year))
-    k_max = min(q - 1, t // 4) if n_lags is None else int(n_lags)
-    k_max = max(k_max, 0)
+    if n_lags is None:
+        k_max = int(np.floor(t ** (1.0 / 3.0)))
+    else:
+        if n_lags < 0:
+            raise ValueError(f"n_lags must be >= 0, got {n_lags}")
+        k_max = int(n_lags)
+    k_max = min(k_max, q - 1, t - 1)
     rc = r - r.mean()
     denom = float(rc @ rc)
     adj = float(q)
     for k in range(1, k_max + 1):
         rho_k = float(rc[k:] @ rc[:-k]) / denom
-        adj += 2.0 * (q - k) * rho_k
+        adj += 2.0 * (q - k) * (1.0 - k / (k_max + 1.0)) * rho_k
     adj = max(adj, 1e-12)  # guard against pathological negative sums
     eta = q / np.sqrt(adj)
     se_ann = float(np.sqrt((1.0 + 0.5 * sr_p**2) / t) * eta)
@@ -156,6 +172,67 @@ def sharpe_lo(
         se=se_ann,
         n_lags=k_max,
     )
+
+
+
+@dataclass(frozen=True)
+class SharpeDiffResult:
+    """Jobson-Korkie test of equal Sharpe ratios, Memmel (2003) form.
+
+    Attributes
+    ----------
+    diff : float
+        Annualised Sharpe of series 1 minus series 2.
+    se : float
+        Annualised standard error of ``diff`` under iid normal returns.
+    z : float
+        Test statistic (per-period difference over its standard error).
+    p_value : float
+        Two-sided p-value from the standard normal.
+    """
+
+    diff: float
+    se: float
+    z: float
+    p_value: float
+
+
+def sharpe_difference_test(
+    r1: np.ndarray | pd.Series,
+    r2: np.ndarray | pd.Series,
+    periods_per_year: float = 252.0,
+) -> SharpeDiffResult:
+    """Test H0: SR1 = SR2 for two return series observed on the same dates.
+
+    Memmel's (2003) correction of the Jobson-Korkie (1981) statistic:
+
+        Var(SR1 - SR2) = (1/T) [2 - 2 rho + (SR1^2 + SR2^2 - 2 SR1 SR2 rho^2) / 2]
+
+    with per-period Sharpe ratios and rho the correlation of the two
+    series. It assumes iid normal returns. Use a block bootstrap when the
+    returns are serially correlated or fat-tailed.
+    """
+    a = _as_vector(r1)
+    b = _as_vector(r2)
+    if a.shape != b.shape:
+        raise ValueError(f"series lengths differ: {a.size} vs {b.size}")
+    t = a.size
+    if t < 3:
+        raise ValueError(f"need at least 3 observations, got {t}")
+    sa, sb = float(np.std(a, ddof=1)), float(np.std(b, ddof=1))
+    if sa == 0.0 or sb == 0.0:
+        raise ValueError("a series has zero variance")
+    s1, s2 = float(np.mean(a)) / sa, float(np.mean(b)) / sb
+    rho = float(np.corrcoef(a, b)[0, 1])
+    var = (2.0 - 2.0 * rho + 0.5 * (s1**2 + s2**2 - 2.0 * s1 * s2 * rho**2)) / t
+    se = float(np.sqrt(max(var, 0.0)))
+    if se == 0.0:
+        z = 0.0 if s1 == s2 else float(np.sign(s1 - s2) * np.inf)
+    else:
+        z = (s1 - s2) / se
+    p = float(2.0 * norm.sf(abs(z)))
+    ann = float(np.sqrt(periods_per_year))
+    return SharpeDiffResult((s1 - s2) * ann, se * ann, float(z), p)
 
 
 def sortino_ratio(

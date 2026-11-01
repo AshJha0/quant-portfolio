@@ -8,7 +8,7 @@ Weights sum to 1 (fully invested) unless stated otherwise.
 Optimization backend: closed forms where they exist (unconstrained
 min-variance / tangency / frontier via the two-fund theorem) and
 ``scipy.optimize.minimize(method="SLSQP")`` for inequality-constrained
-problems. cvxpy is deliberately NOT a dependency: the QPs here are small
+problems. cvxpy is not a dependency: the QPs here are small
 (N ~ 10-100), smooth and well-scaled, SLSQP solves them to ~1e-9 KKT
 tolerance in milliseconds, and every SLSQP solution is cross-checked
 against closed forms in the tests — so a heavyweight conic-solver stack
@@ -27,6 +27,8 @@ __all__ = [
     "tangency_weights",
     "min_variance_constrained",
     "max_sharpe_constrained",
+    "max_sharpe_qp",
+    "MaxSharpeResult",
     "target_return_portfolio",
     "target_risk_portfolio",
     "efficient_frontier",
@@ -56,7 +58,7 @@ def _validate(cov: np.ndarray, mu: np.ndarray | None = None) -> tuple[np.ndarray
         raise ValueError(f"cov must be a square matrix, got shape {sigma.shape}")
     if not np.all(np.isfinite(sigma)):
         raise ValueError("cov contains NaN or infinite values")
-    if not np.allclose(sigma, sigma.T, atol=1e-8):
+    if np.max(np.abs(sigma - sigma.T), initial=0.0) > 1e-10 * np.max(np.abs(sigma), initial=0.0):
         raise ValueError("cov must be symmetric")
     m = None
     if mu is not None:
@@ -354,45 +356,216 @@ def target_risk_portfolio(
     return res.x
 
 
+@dataclass(frozen=True)
+class MaxSharpeResult:
+    """Outcome of :func:`max_sharpe_qp`.
+
+    Attributes
+    ----------
+    weights : np.ndarray
+        (N,) weights summing to 1.
+    fallback : bool
+        True when no feasible portfolio has a positive expected excess
+        return. The maximum-Sharpe problem then has no meaningful solution
+        and the constrained minimum-variance portfolio is returned.
+    sharpe : float
+        Per-period Sharpe ratio (w'mu - rf) / sqrt(w'Sigma w) of ``weights``.
+    kkt_residual : float
+        Largest violation of the first-order conditions of the
+        fully-invested, box-constrained Sharpe problem, divided by the
+        Sharpe ratio (0 for a fallback).
+    """
+
+    weights: np.ndarray
+    fallback: bool
+    sharpe: float
+    kkt_residual: float
+
+
+def _lp_max_excess(excess: np.ndarray, bl: list[tuple[float, float]]) -> np.ndarray:
+    """argmax w'excess over sum(w) = 1 and the box.
+
+    Exact greedy solution of this LP: every asset starts at its lower
+    bound and the remaining budget goes to assets in decreasing order of
+    excess return.
+    """
+    lo = np.array([b[0] for b in bl])
+    hi = np.array([b[1] for b in bl])
+    if lo.sum() > 1.0 + 1e-12 or hi.sum() < 1.0 - 1e-12:
+        raise ValueError("box bounds are infeasible with sum(w) = 1")
+    w = lo.copy()
+    rest = 1.0 - lo.sum()
+    for i in np.argsort(-excess, kind="stable"):
+        if rest <= 0:
+            break
+        add = min(hi[i] - lo[i], rest)
+        w[i] += add
+        rest -= add
+    return w
+
+
+def _sharpe_kkt_residual(
+    w: np.ndarray, excess: np.ndarray, sigma: np.ndarray,
+    bl: list[tuple[float, float]] | None,
+) -> float:
+    """First-order optimality residual of max S(w) s.t. sum(w) = 1 and box.
+
+    g = dS/dw = (excess * var - (w'excess) * Sigma w) / var^1.5. At the
+    maximum there is a scalar nu with g_i = nu on free assets, g_i <= nu
+    at a lower bound and g_i >= nu at an upper bound. Returns the largest
+    violation relative to |S|.
+    """
+    var = float(w @ sigma @ w)
+    sr = float(w @ excess) / np.sqrt(var)
+    g = (excess * var - float(w @ excess) * (sigma @ w)) / var**1.5
+    if bl is None:
+        at_lo = np.zeros_like(w, dtype=bool)
+        at_hi = at_lo.copy()
+    else:
+        lo = np.array([b[0] for b in bl])
+        hi = np.array([b[1] for b in bl])
+        at_lo = w <= lo + 1e-9
+        at_hi = w >= hi - 1e-9
+    free = ~(at_lo | at_hi)
+    if free.any():
+        nu = float(np.mean(g[free]))
+    else:  # every asset at a bound: any nu in [max g_lo, min g_hi] works
+        lo_nu = float(np.max(g[at_lo])) if at_lo.any() else -np.inf
+        hi_nu = float(np.min(g[at_hi])) if at_hi.any() else np.inf
+        if np.isfinite(lo_nu) and np.isfinite(hi_nu):
+            nu = 0.5 * (lo_nu + hi_nu)
+        else:
+            nu = lo_nu if np.isfinite(lo_nu) else hi_nu
+    viol = np.zeros_like(g)
+    viol[free] = np.abs(g[free] - nu)
+    only_lo = at_lo & ~at_hi
+    only_hi = at_hi & ~at_lo
+    viol[only_lo] = np.maximum(g[only_lo] - nu, 0.0)
+    viol[only_hi] = np.maximum(nu - g[only_hi], 0.0)
+    return float(np.max(viol)) / max(abs(sr), 1e-300)
+
+
+def max_sharpe_qp(
+    mu: np.ndarray,
+    cov: np.ndarray,
+    rf: float = 0.0,
+    bounds: _Bounds = (0.0, 1.0),
+) -> MaxSharpeResult:
+    """Maximum-Sharpe fully-invested portfolio, solved as a convex QP.
+
+    The ratio max (w'mu - rf) / sqrt(w'Sigma w) is not convex in w. With
+    excess returns e = mu - rf and the substitution y = kappa * w with
+    kappa > 0 (Cornuejols and Tutuncu 2007, sec. 8.2) it becomes
+
+        min y'Sigma y  s.t.  e'y = 1,  sum(y) = kappa,
+                             lo_i kappa <= y_i <= hi_i kappa,  kappa >= 0.
+
+    This is a convex QP in (y, kappa), so its KKT point is the global
+    optimum. The substitution needs a feasible w with e'w > 0. When none
+    exists (long-only: max(mu) <= rf) every feasible Sharpe ratio is
+    non-positive, and maximising it would push the book into the most
+    volatile corner. The function then returns the constrained
+    minimum-variance portfolio with ``fallback=True``.
+
+    Gradients are analytic. The solution is checked against the
+    first-order conditions of the original ratio problem, and the
+    function raises ``ValueError`` if the relative KKT residual exceeds
+    1e-6.
+
+    With ``bounds=None`` the closed-form tangency portfolio is returned
+    (it needs 1'Sigma^-1 e > 0).
+    """
+    sigma, m = _validate(cov, mu)
+    assert m is not None
+    if not np.isfinite(rf):
+        raise ValueError(f"rf must be finite, got {rf}")
+    n = sigma.shape[0]
+    bl = _bounds_list(bounds, n)
+    excess = m - float(rf)
+
+    if bl is None:
+        x = _solve_spd(sigma, excess)
+        if not float(x.sum()) > 0:
+            raise ValueError(
+                "unconstrained tangency is undefined: 1'Sigma^-1 (mu - rf) <= 0"
+            )
+        w = x / float(x.sum())
+    else:
+        w_lp = _lp_max_excess(excess, bl)
+        if not float(w_lp @ excess) > 0.0:
+            w = min_variance_constrained(sigma, bounds=bounds)
+            var = float(w @ sigma @ w)
+            sr = float(w @ excess) / float(np.sqrt(var)) if var > 0 else 0.0
+            return MaxSharpeResult(w, True, sr, 0.0)
+        lo = np.array([b[0] for b in bl])
+        hi = np.array([b[1] for b in bl])
+        s = _scale(sigma)
+        sig_s = sigma / s
+        # e'y = c for any c > 0 gives the same w = y / kappa (homogeneity).
+        # c = e'w_lp makes (y, kappa) = (w_lp, 1) feasible and O(1).
+        e_s = excess / float(w_lp @ excess)
+        z0 = np.append(w_lp, 1.0)
+
+        def obj(z: np.ndarray) -> float:
+            y = z[:n]
+            return float(y @ sig_s @ y)
+
+        def jac(z: np.ndarray) -> np.ndarray:
+            return np.append(2.0 * sig_s @ z[:n], 0.0)
+
+        a_e = np.append(e_s, 0.0)
+        a_b = np.append(np.ones(n), -1.0)
+        cons = [
+            {"type": "eq", "fun": lambda z: float(a_e @ z) - 1.0, "jac": lambda z: a_e},
+            {"type": "eq", "fun": lambda z: float(a_b @ z), "jac": lambda z: a_b},
+        ]
+        rows = []
+        idx = np.flatnonzero(np.isfinite(lo))
+        if idx.size:  # y_i - lo_i kappa >= 0
+            a = np.zeros((idx.size, n + 1))
+            a[np.arange(idx.size), idx] = 1.0
+            a[:, n] = -lo[idx]
+            rows.append(a)
+        idx = np.flatnonzero(np.isfinite(hi))
+        if idx.size:  # hi_i kappa - y_i >= 0
+            a = np.zeros((idx.size, n + 1))
+            a[np.arange(idx.size), idx] = -1.0
+            a[:, n] = hi[idx]
+            rows.append(a)
+        if rows:
+            a_in = np.vstack(rows)
+            cons.append({"type": "ineq", "fun": lambda z: a_in @ z, "jac": lambda z: a_in})
+        zb = [(None, None)] * n + [(0.0, None)]
+        res = minimize(obj, z0, jac=jac, bounds=zb, constraints=cons,
+                       method="SLSQP", options={"maxiter": 1000, "ftol": 1e-15})
+        if not res.success:
+            raise ValueError(f"SLSQP failed in max_sharpe_qp: {res.message}")
+        kappa = float(res.x[n])
+        if not kappa > 0:
+            raise ValueError("max_sharpe_qp: degenerate solution with kappa <= 0")
+        w = np.clip(res.x[:n] / kappa, lo, hi)  # remove ~1e-15 bound overshoot
+    var = float(w @ sigma @ w)
+    sr = float(w @ excess) / float(np.sqrt(var))
+    kkt = _sharpe_kkt_residual(w, excess, sigma, bl)
+    if kkt > 1e-6:
+        raise ValueError(f"max_sharpe_qp: KKT residual {kkt:.2e} exceeds 1e-6")
+    return MaxSharpeResult(w, False, sr, kkt)
+
+
 def max_sharpe_constrained(
     mu: np.ndarray,
     cov: np.ndarray,
     rf: float = 0.0,
     bounds: _Bounds = (0.0, 1.0),
 ) -> np.ndarray:
-    """Maximum-Sharpe fully-invested portfolio under box bounds (SLSQP).
+    """Maximum-Sharpe fully-invested portfolio under box bounds.
 
-    Maximises (w'mu - rf) / sqrt(w'Sigma w) subject to sum(w) = 1 and
-    bounds. The objective is smooth away from w'Sigma w = 0; with a PD
-    covariance and a feasible simplex start this is a well-behaved
-    problem for SLSQP (cross-checked against the closed form when
-    bounds are inactive).
-
-    Returns
-    -------
-    np.ndarray
-        (N,) optimal weights summing to 1.
+    Returns the weights from :func:`max_sharpe_qp`. When no feasible
+    portfolio has a positive excess return this is the constrained
+    minimum-variance portfolio. Call :func:`max_sharpe_qp` to see whether
+    that fallback fired.
     """
-    sigma, m = _validate(cov, mu)
-    assert m is not None
-    n = sigma.shape[0]
-    bl = _bounds_list(bounds, n)
-    w0 = _feasible_start(bl, n)
-
-    def neg_sharpe(w: np.ndarray) -> float:
-        var = float(w @ sigma @ w)
-        if var <= 0:
-            return 0.0
-        return -(float(w @ m) - rf) / np.sqrt(var)
-
-    cons = [{"type": "eq", "fun": lambda w: w.sum() - 1.0, "jac": lambda w: np.ones(n)}]
-    res = minimize(
-        neg_sharpe, w0, bounds=bl, constraints=cons, method="SLSQP",
-        options={"maxiter": 1000, "ftol": 1e-14},
-    )
-    if not res.success:
-        raise ValueError(f"SLSQP failed in max_sharpe_constrained: {res.message}")
-    return res.x
+    return max_sharpe_qp(mu, cov, rf=rf, bounds=bounds).weights
 
 
 @dataclass(frozen=True)

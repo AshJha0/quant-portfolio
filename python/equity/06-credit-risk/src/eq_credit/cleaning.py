@@ -191,6 +191,7 @@ def train_oot_split(
             f"train/OOT split at {cutoff_ts.date()} leaves an empty side "
             f"(train={len(train)}, oot={len(oot)})"
         )
-    assert pd.to_datetime(train[date_col]).max() < cutoff_ts
-    assert pd.to_datetime(oot[date_col]).min() >= cutoff_ts
+    if not (pd.to_datetime(train[date_col]).max() < cutoff_ts
+            and pd.to_datetime(oot[date_col]).min() >= cutoff_ts):
+        raise ValueError("train/OOT split integrity check failed")  # survives python -O
     return train, oot

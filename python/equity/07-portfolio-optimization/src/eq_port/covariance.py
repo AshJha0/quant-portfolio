@@ -179,7 +179,7 @@ def ledoit_wolf_cc(returns: np.ndarray | pd.DataFrame) -> LedoitWolfResult:
     np.fill_diagonal(f, np.diag(s))
 
     gamma = float(np.sum((f - s) ** 2))
-    if gamma < 1e-20:
+    if gamma <= (1e-12 * float(np.sqrt(np.sum(s**2)))) ** 2:  # relative: scale-free
         return LedoitWolfResult(s.copy(), 0.0, f, s)
 
     # pi_hat: (1/T) sum_t (x_ti x_tj - s_ij)^2 summed over i, j
@@ -251,6 +251,11 @@ def psd_repair(cov: np.ndarray, eps: float = 1e-10) -> np.ndarray:
     """Repair a symmetric matrix to be positive semi-definite by
     eigenvalue clipping: eigenvalues below ``eps * max_eigenvalue`` are
     floored at that level and the matrix is rebuilt and re-symmetrised.
+
+    This is eigenvalue clipping, not Higham's (2002) nearest-correlation
+    projection: with a positive floor the diagonal (the variances) can
+    change, and the result is the nearest PSD matrix in Frobenius norm
+    only when ``eps = 0``.
 
     Parameters
     ----------

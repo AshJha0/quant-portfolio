@@ -1,12 +1,12 @@
-# Validation — Equity Portfolio Optimization & Risk Allocation
+# Validation: Equity Portfolio Optimization and Risk Allocation
 
-All numbers below are produced by `python examples/run_pipeline.py`
-(seeded, offline, ~15 s) and the pytest suite (`pytest -q`, 150 tests,
-~3 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
+All numbers below come from `python examples/run_pipeline.py` (seeded,
+offline, synthetic data, about 90 s) and the pytest suite (`pytest -q`,
+170 tests, about 16 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
 1e-10–1e-8 (most hold to machine precision), solver-vs-closed-form to
 documented tolerance.
 
-## 1. Analytic identities (unit-tested, exact or near machine precision)
+## 1. Analytic identities
 
 | Identity | Tolerance | Test |
 |---|---|---|
@@ -30,135 +30,140 @@ documented tolerance.
 | Backtest cost ledger on hand-computed 2-rebalance scenario | 1e-15 | `test_hand_computed_two_rebalance_cost_ledger` |
 | No lookahead: estimation window ends strictly before rebalance; spike on rebalance day uncapturable | exact | `test_no_lookahead_*` |
 
-## 2. The estimation-error study (pipeline §2)
+## 2. Maximum-Sharpe solver checks
 
-20 disjoint 252-day windows from a calm 21-year panel with known true
-moments; each window's estimated portfolio is evaluated under the TRUE
-moments (no evaluation noise). Achievable (true tangency) Sharpe 0.452;
-equal weight 0.326.
+| Check | Tolerance | Test |
+|---|---|---|
+| All means below rf, long-only: returns the min-variance portfolio, `fallback=True` | 1e-9 | `test_all_negative_means_returns_min_variance_not_max_vol` |
+| Inactive box: QP equals closed-form tangency | 1e-7 in weights | `test_inactive_bounds_match_closed_form_tangency` |
+| Long-only, N = 2..6, 60 random problems: Sharpe equals the exact optimum from support-set enumeration | 1e-7 relative | `test_long_only_matches_support_enumeration` (hypothesis) |
+| Box cap 0.3 to 0.6: KKT residual of the ratio problem < 1e-6, and no random feasible point beats it | 1e-9 | `test_box_cap_kkt_and_dominates_random_feasible_points` (hypothesis) |
+| Backtest strategies count fallbacks | exact | `test_tangency_strategy_logs_fallbacks` |
+| Lo-adjusted Sharpe on iid data: 5-95% range of adjusted/raw within [0.85, 1.15], median within 0.03 of 1 | 200 simulations | `test_lo_sharpe_on_iid_data_is_close_to_iid_scaling` |
+| Jobson-Korkie/Memmel test size at 5% under H0 | [0.03, 0.07], about 3 MC standard errors | `test_sharpe_difference_test_size_under_null` |
 
-| Strategy | mean true Sharpe | min | max |
-|---|---|---|---|
-| Tangency, raw mean, unconstrained | **0.141** | −0.125 | 0.325 |
-| Tangency, raw mean, long-only | 0.300 | 0.159 | 0.416 |
-| Tangency, James-Stein mean, long-only | 0.313 | 0.191 | 0.406 |
-| Min-variance, Ledoit-Wolf, long-only | **0.339** | 0.317 | 0.371 |
-| ERC, Ledoit-Wolf | 0.333 | 0.328 | 0.339 |
+## 3. The estimation-error study (pipeline §2)
 
-Raw-mean tangency fell below equal weight in 11/20 windows; the
-unconstrained version averaged **16.2x gross leverage** (max 58.7x) and
-the closed form failed outright (`1'Σ⁻¹μ ≤ 0`) in 8/20 windows. Note the
-min/max columns: mean-free allocators (min-var, ERC) are not just better
-on average, they are *dramatically more stable* (ERC spans 0.328–0.339
-across windows; raw tangency spans −0.125–0.325). Average shrinkage
-intensities: James-Stein φ = 0.96 (the data beg to ignore sample means),
-Ledoit-Wolf δ = 0.15.
+20 disjoint 252-day windows on each of 10 calm synthetic 21-year panels
+(seeds 7-16). Each window's estimated portfolio is evaluated under the
+true moments of its panel. Intervals are 95% t-intervals across the 10
+panel means. Mean achievable (true tangency) Sharpe is 0.427.
 
-## 3. Ledoit-Wolf conditioning numbers
+| Strategy | mean true Sharpe | 95% CI | paired diff vs MinVar LW | 95% CI |
+|---|---|---|---|---|
+| Tangency, raw mean, unconstrained | 0.115 | 0.068 to 0.161 | -0.218 | -0.258 to -0.179 |
+| Tangency, raw mean, long-only | 0.279 | 0.250 to 0.309 | -0.054 | -0.078 to -0.030 |
+| Tangency, James-Stein mean, long-only | 0.328 | 0.286 to 0.370 | -0.005 | -0.012 to 0.001 |
+| Min-variance, Ledoit-Wolf, long-only | 0.333 | 0.289 to 0.377 | | |
+| ERC, Ledoit-Wolf | 0.322 | 0.304 to 0.340 | -0.011 | -0.038 to 0.016 |
+| Equal weight | 0.314 | 0.301 to 0.327 | -0.019 | -0.051 to 0.013 |
 
-- 252×8 window: cond(sample) 20.8 → cond(shrunk) 16.9, δ = 0.15.
-- 12×10 panel (N close to T): conditioning improvement tested
+- Raw-mean tangency is worse than min-variance, long-only or not.
+- James-Stein tangency, ERC and equal weight cannot be told apart from
+  min-variance on these synthetic panels.
+- The min-variance fallback fired in 16 of 200 windows for raw tangency
+  and 73 of 200 for James-Stein tangency. The average James-Stein
+  intensity is 0.94, so a negative grand mean often makes every shrunk
+  mean negative.
+- The unconstrained raw tangency closed form is undefined
+  (`1'Σ⁻¹μ ≤ 0`) in 69 of 200 windows. Where it exists its gross
+  leverage averages 26.2x.
+- The average Ledoit-Wolf intensity is 0.33.
+
+## 4. Ledoit-Wolf conditioning
+
+- One 252x8 synthetic window: cond(sample) 16.2 to cond(shrunk) 14.0.
+- 12x10 panel (N close to T): conditioning improvement tested
   (`test_lw_improves_conditioning_when_n_close_to_t`).
-- 5×8 panel (**T < N, sample singular, cond = ∞**): LW returns a finite-
-  condition PSD matrix and long-only min-variance solves on it
+- 5x8 panel (T < N, sample singular): LW returns a finite-condition PSD
+  matrix and long-only min-variance solves on it
   (`test_short_window_singular_sample_but_lw_invertible`).
-- Degenerate case: single asset ⇒ target = sample ⇒ δ = 0, shrinkage is
-  a no-op (`test_lw_degenerate_single_asset_returns_sample`).
+- The degenerate-shrinkage guard is relative, so the intensity does not
+  depend on the units of the returns
+  (`test_ledoit_wolf_degenerate_guard_is_scale_free`).
 
-## 4. Out-of-sample walk-forward race (pipeline §6)
+## 5. Out-of-sample walk-forward race (pipeline §6)
 
-2400-day 8-asset panel with a 120-day crisis (market vol ×3, −120%/yr
-market drift during crisis), 252-day window, monthly rebalance, 10bp
-costs. Main panel (seed 1), net of costs:
+2400-day 8-asset synthetic panels with a 120-day crisis (market vol x3,
+-120%/yr market drift during the crisis), 252-day window, monthly
+rebalance, 10 bp costs. Main panel (seed 1), net of costs:
 
 | Strategy | AnnRet | AnnVol | Sharpe | MaxDD | AnnTurnover | AvgEffN |
 |---|---|---|---|---|---|---|
-| EqualWeight | −0.041 | 0.201 | −0.110 | 0.490 | 0.57 | 8.00 |
-| MinVar (LW) | −0.031 | 0.181 | −0.083 | 0.384 | 1.47 | 3.68 |
-| Tangency raw | **−0.114** | 0.251 | **−0.354** | **0.658** | **8.27** | **1.57** |
-| Tangency JS | −0.019 | 0.245 | 0.044 | 0.494 | 8.61 | 2.26 |
-| ERC (LW) | −0.040 | 0.196 | −0.109 | 0.468 | 0.61 | 7.82 |
-| Static 60/40 | −0.046 | 0.204 | −0.131 | 0.508 | 0.57 | 7.69 |
+| EqualWeight | -0.041 | 0.201 | -0.110 | 0.490 | 0.57 | 8.00 |
+| MinVar (LW) | -0.031 | 0.181 | -0.083 | 0.384 | 1.47 | 3.68 |
+| Tangency raw | -0.101 | 0.241 | -0.320 | 0.682 | 7.28 | 1.92 |
+| Tangency JS | -0.031 | 0.182 | -0.081 | 0.387 | 2.57 | 3.60 |
+| ERC (LW) | -0.040 | 0.196 | -0.109 | 0.468 | 0.61 | 7.82 |
+| Static tilt | -0.046 | 0.204 | -0.131 | 0.508 | 0.57 | 7.69 |
 
-Because a single panel is one noisy draw, the race is repeated on six
-independent panels (seeds 1–6); mean net Sharpe:
+Jobson-Korkie/Memmel p-values against min-variance on this panel are all
+above 0.2.
 
-| EqualWeight | MinVar (LW) | Tangency raw | Tangency JS | ERC (LW) | Static 60/40 |
+Across 20 independent synthetic panels (seeds 1-20):
+
+| Strategy | mean net Sharpe | 95% CI | diff vs MinVar | 95% CI | panels above MinVar |
 |---|---|---|---|---|---|
-| −0.049 | **+0.028** | **−0.064** | −0.002 | −0.038 | −0.060 |
+| MinVar (LW) | -0.083 | -0.252 to 0.087 | | | |
+| Tangency JS | -0.105 | -0.260 to 0.051 | -0.022 | -0.069 to 0.025 | 7 of 20 |
+| ERC (LW) | -0.107 | -0.260 to 0.046 | -0.024 | -0.093 to 0.045 | 10 of 20 |
+| EqualWeight | -0.114 | -0.266 to 0.038 | -0.032 | -0.108 to 0.045 | 9 of 20 |
+| Static tilt | -0.120 | -0.267 to 0.027 | -0.037 | -0.114 to 0.040 | 8 of 20 |
+| Tangency raw | -0.200 | -0.330 to -0.070 | -0.117 | -0.239 to 0.004 | 6 of 20 |
 
-The classic result, reproduced: **raw-mean tangency is the worst
-strategy in the race — below naive equal weight — while the mean-free
-allocators (min-variance, ERC) and the shrunk-mean tangency do fine.**
-Raw tangency also pays ~15x the transaction costs of EW (8.3 vs 0.57
-annual turnover). Absolute Sharpes are low because each 8.5-year span
-contains a crisis and one realized market-mean draw (Lo-adjusted SE of
-every Sharpe is ≈ 0.4–0.5 — none of the absolute levels is
-statistically distinguishable from zero, which is itself Merton's point).
+No difference from min-variance is significant at 5%. Raw tangency has
+the lowest mean, and its interval only just reaches zero. Mean annual
+turnover is 6.76 for raw tangency, 2.68 for James-Stein tangency, 1.32
+for min-variance and about 0.6 for ERC, equal weight and the static
+tilt. James-Stein tangency sat in the min-variance fallback at 45.1% of
+rebalances. Absolute Sharpes are negative because each synthetic panel
+contains a crisis with a large negative market drift. "Static tilt" is a
+fixed 15%/10% split over eight synthetic equity assets and contains no
+bonds.
 
-## 5. Failure modes
+## 6. Failure modes
 
-1. **Correlation breakdown in crises** (pipeline §7). Realized average
-   pairwise correlation 0.470 (calm) → **0.867** (crisis). Subperiod
-   numbers, seed-1 panel:
+1. **Correlation breakdown in crises** (pipeline §7). Realised average
+   pairwise correlation is 0.470 calm and 0.867 in the crisis (seed-1
+   synthetic panel):
 
    | Strategy | Crisis AnnVol | Crisis MaxDD | Crisis TotRet |
    |---|---|---|---|
-   | EqualWeight | 0.467 | 0.399 | −0.311 |
-   | MinVar (LW) | **0.380** | **0.308** | **−0.202** |
-   | Tangency raw | **0.568** | **0.470** | **−0.368** |
-   | Tangency JS | 0.555 | 0.407 | −0.327 |
-   | ERC (LW) | 0.452 | 0.386 | −0.298 |
-   | Static 60/40 | 0.472 | 0.407 | −0.319 |
+   | EqualWeight | 0.467 | 0.399 | -0.311 |
+   | MinVar (LW) | 0.380 | 0.308 | -0.202 |
+   | Tangency raw | 0.542 | 0.448 | -0.347 |
+   | Tangency JS | 0.380 | 0.308 | -0.202 |
+   | ERC (LW) | 0.452 | 0.386 | -0.298 |
+   | Static tilt | 0.472 | 0.407 | -0.319 |
 
-   With correlations → 1, diversification dies for everyone (all books'
-   vol is ~2.5–3x calm levels), but broad books (ERC eff. N 7.8; EW 8)
-   degrade gracefully while the concentrated raw-mean tangency book
-   (eff. N 1.57) carries idiosyncratic risk it can no longer diversify:
-   worst vol, worst drawdown, worst crisis return. Risk parity is hurt
-   *less* than concentrated MVO — but note it is NOT hurt less than
-   min-variance, which holds the low-beta corner by construction.
-2. **Mean estimation error dominating** — the central failure mode; §2
-   quantifies it (0.141 vs 0.452 true Sharpe). It does not shrink with
-   more assets and shrinks only with calendar time (σ/√Y).
-3. **Turnover/cost sensitivity.** Cost drag scales linearly in turnover
-   (tested exactly): at 10bp, raw tangency loses 71bp/span vs 5bp for
-   EW; at 50bp institutional-stress costs the gap is 5x wider. Mean-
-   driven strategies are cost-fragile because their signals churn.
-4. **Concentration under constraints.** Long-only caps leverage but
-   concentrates: frontier max weight reaches 0.74 at the top of the
-   long-only frontier (§3 table) and long-only frontier vol ≥
-   unconstrained vol at every target return (dominance tested).
-5. **Numerical limits.** Perfectly correlated or T ≤ N sample matrices
-   are singular: closed forms raise informative `ValueError`s directing
-   to `psd_repair`/`ledoit_wolf_cc` (tested); after eigenvalue-floor
-   repair all solvers run. Zero-vol assets: ERC/inverse-vol raise (risk
-   contributions undefined — tested); repaired min-variance correctly
-   allocates ~everything to the (near-)riskless asset.
-6. **Smoothed returns overstate Sharpe.** Lo-adjusted annualisation is
-   reported next to iid Sharpe; an AR(1)-smoothed test series shows
-   `sharpe_lo < sharpe` (`test_lo_sharpe_penalizes_positive_autocorrelation`).
+   This is one panel. James-Stein tangency equals min-variance here
+   because it was in the fallback for the whole crisis.
+2. **Mean estimation error.** §3 quantifies it. It shrinks only with
+   calendar time (σ/√Y), not with sampling frequency.
+3. **Turnover and cost sensitivity.** Cost drag is linear in turnover
+   (tested exactly). Raw tangency trades about five times as much as
+   min-variance.
+4. **Concentration under constraints.** The long-only frontier ends at
+   max(μ). Above it the long-only column of the pipeline §3 table is
+   NaN, because no long-only portfolio reaches that return.
+5. **Numerical limits.** Singular sample matrices make the closed forms
+   raise a `ValueError` that points to `psd_repair` or `ledoit_wolf_cc`.
+   Zero-vol assets make ERC and inverse-vol raise.
+6. **Smoothed returns overstate Sharpe.** `sharpe_lo` reports the
+   Bartlett-truncated Lo adjustment next to the iid Sharpe.
 
-## 6. Test suite
+## 7. Test suite
 
-`pytest -q`: **150 tests, all passing, ~3 s, fully offline, seeded.**
-Coverage: analytic identities (above), SLSQP-vs-closed-form
-cross-checks, property tests (frontier monotonicity, DR ≥ 1, RC Euler),
-no-lookahead and exact cost accounting, and the edge-case contract:
-single asset, two-asset closed forms, perfectly correlated (singular)
-covariances, zero-vol assets, all-negative means under long-only,
-T < N windows, NaN inputs, dimension mismatches.
+`pytest -q`: 170 tests, all passing, about 16 s, offline and seeded
+(measured 2026-11-01). Coverage: the identities in §1, the solver checks
+in §2, property tests (frontier monotonicity, DR ≥ 1, RC Euler),
+no-lookahead and exact cost accounting, and the edge cases: single
+asset, two-asset closed forms, singular covariances, zero-vol assets,
+all-negative means under long-only, T < N windows, NaN inputs,
+dimension mismatches, and relative symmetry checks.
 
-Hardening additions (`test_infeasible_and_properties.py`):
-
-- **Infeasible constraint sets raise informative `ValueError`s**: target
-  return outside the box-achievable range (pre-checked analytically with
-  the achievable interval reported in the message), per-asset caps that
-  cannot sum to the budget (4 assets × 10% cap vs budget 1), and a vol
-  cap below the constrained minimum-variance vol.
-- **Portfolio invariants as property tests over random SPD inputs**:
-  weight-sum-to-budget across all solvers (min-variance, max-Sharpe,
-  ERC), long-only feasibility, frontier variance exactly quadratic in the
-  target return (constant, positive second differences — the Merton
-  closed form), frontier vol discretely convex, and ERC equal risk
-  contributions + exact Euler identity on random matrices.
+`test_infeasible_and_properties.py` checks that infeasible constraint
+sets raise `ValueError` (target return outside the box-achievable range,
+caps that cannot sum to the budget, a vol cap below the constrained
+minimum-variance vol) and runs portfolio invariants over random SPD
+inputs.
