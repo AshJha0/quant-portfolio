@@ -198,7 +198,7 @@ def price_cos(
     params: HestonParams,
     cp: int = 1,
     N: int = 1024,
-    L: float = 14.0,
+    L: float = 24.0,
 ) -> np.ndarray | float:
     """Heston vanilla via the COS method, vectorised over strikes.
 
@@ -208,6 +208,13 @@ def price_cos(
     ``[a_K, b_K] = x + c1 -+ L sqrt(|c2|)`` with ``x = ln(S/K)`` (the
     density of y is centred at ``x + c1``); the interval *width* is
     strike-independent, so the CF grid is shared across strikes.
+
+    The interval uses c2 only (no c4 term), so it must be wide.  At
+    ``L = 14`` the 1y EURUSD-like case carried a 1e-6 truncation bias in
+    price (about 5e-6 in vol) against the Gil-Pelaez quadrature; at the
+    default ``L = 24`` with ``N = 1024`` the difference is below 1e-9
+    (tests/test_heston.py).  A wider interval needs more terms: keep
+    ``N >= 512`` at ``L = 24``.
 
     Returns a scalar for scalar ``K``, else an ndarray.
     """
@@ -249,13 +256,23 @@ def price_cos(
     terms = np.real(np.exp(1j * np.outer(x - a, u)) * cf_z[None, :]) * Vk
     terms[:, 0] *= 0.5  # first term halved
     put = math.exp(-r_d * T) * K * np.sum(terms, axis=1)
-    put = np.maximum(put, 0.0)
     if cp == -1:
         out = put
     else:
         F = gk_forward(S, T, r_d, r_f)
-        # exact parity, floored at zero (COS noise ~1e-6 at >8-sigma strikes)
-        out = np.maximum(put + math.exp(-r_d * T) * (F - K), 0.0)
+        out = put + math.exp(-r_d * T) * (F - K)  # exact parity
+    # Negative values within round-off of zero are set to zero.  Anything
+    # more negative is an integration failure: return NaN with a warning
+    # rather than a floored price that hides it.
+    tiny = 1e-12 * K
+    bad = out < -tiny
+    if np.any(bad):
+        import warnings
+        warnings.warn(
+            f"COS price negative beyond round-off at K={K[bad]}: widen L or raise N",
+            RuntimeWarning, stacklevel=2,
+        )
+    out = np.where(bad, np.nan, np.maximum(out, 0.0))
     return float(out[0]) if scalar else out
 
 

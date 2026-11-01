@@ -28,7 +28,7 @@ import numpy as np
 
 from ..calibration import CalibrationSlice
 from ..garman_kohlhagen import gk_forward, implied_vol
-from ..heston import HestonParams, price_cos
+from ..heston import HestonParams, price_gil_pelaez
 from ..smile_from_quotes import (
     PILLAR_LABELS,
     SmileQuotes,
@@ -192,9 +192,18 @@ def em_high_vol_market(noise: float = 0.0, seed: int = 0) -> FXMarketData:
 # ----------------------------------------------------------------------
 
 def _heston_vol_fn(S, T, r_d, r_f, params, N=512):
+    """Ground-truth smile priced with the Gil-Pelaez P1/P2 quadrature.
+
+    Calibration prices with COS, so generating the targets with a
+    different pricer keeps recovery tests from sharing a pricer bug with
+    the calibrator.  The OTM option is inverted at every strike.
+    """
+    F = S * math.exp((r_d - r_f) * T)
+
     def vol(K: float) -> float:
-        pr = float(price_cos(S, K, T, r_d, r_f, params, cp=-1, N=N))
-        return implied_vol(pr, S, K, T, r_d, r_f, cp=-1)
+        cp = 1 if K >= F else -1
+        pr = float(price_gil_pelaez(S, K, T, r_d, r_f, params, cp=cp))
+        return implied_vol(pr, S, K, T, r_d, r_f, cp=cp)
 
     return vol
 

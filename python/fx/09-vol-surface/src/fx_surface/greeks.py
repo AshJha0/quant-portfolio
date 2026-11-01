@@ -101,7 +101,7 @@ def heston_greeks_fd(
 
     Notes
     -----
-    A large fixed COS grid (N=1024, L=14) keeps the FD differences well
+    A large fixed COS grid (N=1024, default L=24) keeps the FD differences well
     above the pricing noise floor; the step sizes are validated for
     stability in tests (halving steps changes Greeks by < 0.5%).
     """

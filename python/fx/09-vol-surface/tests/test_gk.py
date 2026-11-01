@@ -145,3 +145,33 @@ def test_invalid_inputs_raise():
         gk_price(S, 1.1, T, RD, RF, SIG, 0)
     with pytest.raises(ValueError, match="convention"):
         gk_delta(S, 1.1, T, RD, RF, SIG, 1, "delta50")
+
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    sigma=st.floats(0.01, 1.5),
+    m=st.floats(-0.5, 0.5),
+    T=st.floats(0.02, 5.0),
+    cp=st.sampled_from([1, -1]),
+)
+def test_implied_vol_round_trip_or_refuses(sigma, m, T, cp):
+    """Property: inverting a GK price returns the vol to 1e-8, or NaN when the
+    price carries no vol information (time value below round-off); never a
+    bracket-edge number."""
+    import math as _m
+
+    from fx_surface import gk_price, implied_vol
+
+    S, rd, rf = 1.10, 0.04, 0.02
+    K = S * _m.exp(m)
+    px = gk_price(S, K, T, rd, rf, sigma, cp)
+    iv = implied_vol(px, S, K, T, rd, rf, cp, on_fail="nan")
+    if _m.isnan(iv):
+        intrinsic = max(cp * (S * _m.exp(-rf * T) - K * _m.exp(-rd * T)), 0.0)
+        assert px - intrinsic < 1e-10
+    else:
+        assert iv == pytest.approx(sigma, abs=1e-8)

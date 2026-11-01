@@ -90,6 +90,10 @@ class SVISmile:
         self.params = params
         self.F = F
         self.T = T
+        #: Parameters pinned at a box bound by :meth:`fit` (empty if none).
+        self.active_bounds: tuple[str, ...] = ()
+        #: Largest |fitted vol - input vol| over the fit points (0 if not fitted).
+        self.max_abs_vol_residual: float = 0.0
 
     # -- total variance and analytic derivatives ------------------------
     def total_variance(self, k: np.ndarray | float) -> np.ndarray | float:
@@ -143,8 +147,13 @@ class SVISmile:
     ) -> "SVISmile":
         """Least-squares fit of raw SVI through (strikes, vols).
 
-        Five points / five parameters: for clean data this is (near-)
-        exact interpolation.  Multi-start trust-region-reflective with
+        Five points / five parameters: when an SVI through the points
+        exists inside the box this is exact interpolation.  When it does
+        not (for example a call wing that keeps falling past 10 delta,
+        which raw SVI cannot produce), the fit is least squares and the
+        miss is reported in ``max_abs_vol_residual``; parameters pinned
+        at a box bound are listed in ``active_bounds``.  No butterfly
+        constraint is imposed: check :meth:`is_butterfly_arbitrage_free`.  Multi-start trust-region-reflective with
         bounds; a flat input smile (max-min vol < 1e-8) short-circuits
         to the degenerate flat SVI (``b = 0``), which is otherwise an
         unidentifiable ridge in (rho, m, s).
@@ -194,11 +203,29 @@ class SVISmile:
                 break
         if best is None:
             raise RuntimeError("SVI fit failed from all starts")
+        if len(k) == 5 and best.cost < 1e-14:
+            # Five points, five parameters and a near-zero residual: polish
+            # to an exact interpolant with a Newton solve on the square
+            # system (least_squares stalls near 1e-9 in vol on its tolerances).
+            from scipy.optimize import root
+            pol = root(residuals, best.x, method="lm", tol=1e-15)
+            x = pol.x
+            if (np.all(np.isfinite(x)) and np.all(x > np.asarray(lb)) and np.all(x < np.asarray(ub))
+                    and 0.5 * float(np.sum(residuals(x) ** 2)) < best.cost
+                    and x[0] + x[1] * x[4] * math.sqrt(max(1.0 - x[2] ** 2, 0.0)) > 0.0):
+                best.x, best.cost = x, 0.5 * float(np.sum(residuals(x) ** 2))
         a, b, rho, m, s = best.x
         # Keep parameters strictly inside the valid region.
         b = max(b, 0.0)
         params = SVIParams(a=float(a), b=float(b), rho=float(rho), m=float(m), s=float(s))
-        return cls(params, F, T)
+        out = cls(params, F, T)
+        names = ("a", "b", "rho", "m", "s")
+        out.active_bounds = tuple(
+            n for n, x, l, u in zip(names, best.x, lb, ub)
+            if abs(x - l) <= 1e-9 * max(1.0, abs(l)) or abs(x - u) <= 1e-9 * max(1.0, abs(u))
+        )
+        out.max_abs_vol_residual = float(np.max(np.abs(out.vol(strikes) - vols)))
+        return out
 
 
 class VannaVolgaSmile:

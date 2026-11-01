@@ -5,9 +5,11 @@ Both schemes simulate under the domestic risk-neutral measure with drift
 within 3 Monte Carlo standard errors (tests).  Full-truncation Euler
 (Lord et al. 2010) is the robust baseline but needs fine time steps;
 QE (Andersen 2008) matches the first two conditional moments of the
-CIR transition and is accurate even on coarse grids - the standard
-production choice when the Feller condition fails (as it usually does
-for calibrated FX smiles).
+CIR transition and is accurate on coarse grids, the usual choice when
+the Feller condition fails (as it usually does for calibrated FX
+smiles).  QE uses Andersen's martingale correction by default, so the
+discounted simulated forward has mean exactly ``S`` up to Monte Carlo
+error at any step size.
 
 Every function takes an explicit ``seed`` (or Generator) and is fully
 deterministic given it.
@@ -44,6 +46,7 @@ def simulate_terminal(
     scheme: str = "qe",
     seed: Union[int, np.random.Generator] = 0,
     antithetic: bool = True,
+    martingale_correction: bool = True,
 ) -> np.ndarray:
     """Simulate terminal spots ``S_T`` under Heston.
 
@@ -56,6 +59,13 @@ def simulate_terminal(
         variance draw uses the same antithetic normals via inverse
         transform on the quadratic branch and independent uniforms on
         the exponential branch).
+    martingale_correction : bool
+        QE only.  Andersen (2008, section 4.4.3) drift correction that
+        makes ``E[exp(x_{t+dt}) | x_t, v_t] = exp(x_t + (r_d - r_f) dt)``
+        exactly for the discretised variance.  Where the moment generating
+        function needed for it does not exist (``A >= 1/(2a)`` on the
+        quadratic branch or ``A >= beta`` on the exponential branch, which
+        needs very large steps) the uncorrected drift is used on that path.
 
     Returns
     -------
@@ -129,6 +139,8 @@ def simulate_terminal(
             zx = np.concatenate([zx, -zx])[:n_paths]
 
         v_next = np.empty_like(v)
+        drift = k0 + k1 * v  # uncorrected drift (central discretisation)
+        A = k2 + 0.5 * k4
         quad_branch = psi <= _PSI_C
         # Quadratic branch: v' = a (b + Z)^2
         if np.any(quad_branch):
@@ -137,6 +149,14 @@ def simulate_terminal(
             b2 = inv2 - 1.0 + np.sqrt(inv2 * np.maximum(inv2 - 1.0, 0.0))
             a = m[quad_branch] / (1.0 + b2)
             v_next[quad_branch] = a * (np.sqrt(b2) + zv[quad_branch]) ** 2
+            if martingale_correction:
+                ok = A < 0.5 / a
+                one_m = np.where(ok, 1.0 - 2.0 * A * a, 1.0)
+                logM = A * b2 * a / one_m - 0.5 * np.log(one_m)
+                vq = v[quad_branch]
+                corr = -logM - 0.5 * k3 * vq  # K0* + K1 v, K0* = -ln M - (K1 + K3/2) v
+                dq = drift[quad_branch]
+                drift[quad_branch] = np.where(ok, corr, dq)
         # Exponential branch: mass at zero + exponential tail
         if np.any(~quad_branch):
             psi_e = psi[~quad_branch]
@@ -147,9 +167,15 @@ def simulate_terminal(
             tail = ue > pmass
             ve[tail] = np.log((1.0 - pmass[tail]) / (1.0 - ue[tail])) / beta[tail]
             v_next[~quad_branch] = ve
+            if martingale_correction:
+                ok = A < beta
+                M = pmass + beta * (1.0 - pmass) / np.where(ok, beta - A, 1.0)
+                ve0 = v[~quad_branch]
+                corr = -np.log(M) - 0.5 * k3 * ve0
+                drift[~quad_branch] = np.where(ok, corr, drift[~quad_branch])
 
         x = (
-            x + mu * dt + k0 + k1 * v + k2 * v_next
+            x + mu * dt + drift + k2 * v_next
             + np.sqrt(np.maximum(k3 * v + k4 * v_next, 0.0)) * zx
         )
         v = v_next
@@ -169,6 +195,7 @@ def mc_price(
     scheme: str = "qe",
     seed: Union[int, np.random.Generator] = 0,
     antithetic: bool = True,
+    martingale_correction: bool = True,
 ) -> tuple[float, float]:
     """Monte Carlo vanilla price.
 
@@ -184,7 +211,8 @@ def mc_price(
     if K <= 0:
         raise ValueError("strike must be positive")
     ST = simulate_terminal(
-        S, T, r_d, r_f, params, n_paths, n_steps, scheme, seed, antithetic
+        S, T, r_d, r_f, params, n_paths, n_steps, scheme, seed, antithetic,
+        martingale_correction,
     )
     payoff = np.maximum(cp * (ST - K), 0.0) * math.exp(-r_d * T)
     if antithetic:

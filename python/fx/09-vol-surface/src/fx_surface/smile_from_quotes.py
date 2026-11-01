@@ -9,23 +9,21 @@ broker screen shows five numbers in *delta space*:
   ``(sigma(25dC) + sigma(25dP))/2 - sigma_ATM``,
 * ``RR10``, ``BF10`` - same at 10 delta.
 
-Broker-strangle vs smile-strangle (honesty note)
-------------------------------------------------
-We use the *simplified* ("smile") butterfly definition above, under which
-the map {ATM, RR, BF} <-> five smile vols is exactly linear:
+Broker (market) strangles
+-------------------------
+:class:`SmileQuotes` carries *smile* butterflies, under which the map
+{ATM, RR, BF} <-> five smile vols is linear:
 
     sigma_C = ATM + BF + RR/2,      sigma_P = ATM + BF - RR/2.
 
-The true broker quote is a *one-vol* (market) strangle: the single vol
-``sigma_1v = ATM + BF_1v`` such that a strangle priced entirely at
-``sigma_1v`` matches the market price of the two-vol strangle whose legs
-are struck at their own smile vols.  Recovering smile vols from a one-vol
-strangle requires a nonlinear solve and the two BFs differ by O(RR^2 /
-ATM) - a fraction of a vol point at 25d for G10, but material at 10d for
-heavily skewed pairs (USDJPY 10d BF can differ by 0.3-1.0 vol pts).  All
-quotes generated and consumed in this package are *smile* BFs; consuming
-true broker one-vol strangles as if they were smile BFs is a documented
-failure mode (docs/VALIDATION.md).
+A broker screen quotes the *one-vol market strangle*: the single vol
+``sigma_ms = ATM + BF_ms`` at which a strangle struck at the
+``sigma_ms``-delta strikes has the same premium as the same two strikes
+priced on the smile.  :func:`smile_quotes_from_broker` converts broker
+quotes to smile quotes (a two-equation root solve on a five-point SVI
+smile), and :func:`broker_strangle_from_smile` computes the broker
+quote implied by a smile.  The two butterflies differ by a fraction of a
+vol point at 25 delta for G10 and more at 10 delta for skewed pairs.
 
 Delta -> strike
 ---------------
@@ -70,6 +68,8 @@ __all__ = [
     "pa_call_delta_max",
     "strike_from_delta_pa_candidates",
     "solve_pillar_strikes",
+    "broker_strangle_from_smile",
+    "smile_quotes_from_broker",
 ]
 
 PILLAR_LABELS = ("10p", "25p", "atm", "25c", "10c")
@@ -79,8 +79,8 @@ PILLAR_LABELS = ("10p", "25p", "atm", "25c", "10c")
 class SmileQuotes:
     """One expiry of broker quotes, all in vol decimals (0.01 = 1 vol pt).
 
-    ``bf`` quotes use the simplified *smile* butterfly definition (see
-    module docstring for the one-vol broker strangle caveat).
+    ``bf`` quotes use the *smile* butterfly definition.  Convert broker
+    one-vol strangles first with :func:`smile_quotes_from_broker`.
     """
 
     atm: float
@@ -349,3 +349,101 @@ def solve_pillar_strikes(
             f"{dict(zip(PILLAR_LABELS, ks))}"
         )
     return strikes
+
+
+def _strangle_premium(
+    K_put: float, K_call: float, sig_put: float, sig_call: float,
+    S: float, T: float, r_d: float, r_f: float,
+) -> float:
+    from .garman_kohlhagen import gk_price
+    return (gk_price(S, K_call, T, r_d, r_f, sig_call, +1)
+            + gk_price(S, K_put, T, r_d, r_f, sig_put, -1))
+
+
+def broker_strangle_from_smile(
+    vol_fn, atm: float, delta: float, S: float, T: float,
+    r_d: float, r_f: float, convention: str = "spot",
+) -> float:
+    """One-vol market strangle quote ``BF_ms`` implied by a smile.
+
+    Solves for ``BF_ms`` such that the strangle struck at the
+    ``delta``-call and ``delta``-put strikes computed at the single vol
+    ``atm + BF_ms`` has the same premium at ``atm + BF_ms`` as it has
+    when each leg is priced at its own smile vol ``vol_fn(K)``.
+    """
+    if not 0.0 < delta < 0.5:
+        raise ValueError(f"strangle delta must be in (0, 0.5), got {delta}")
+    if not (math.isfinite(atm) and atm > 0.0):
+        raise ValueError(f"atm must be positive and finite, got {atm}")
+
+    def f(bf: float) -> float:
+        sig = atm + bf
+        Kc = strike_from_delta(delta, +1, sig, S, T, r_d, r_f, convention)
+        Kp = strike_from_delta(delta, -1, sig, S, T, r_d, r_f, convention)
+        return (_strangle_premium(Kp, Kc, sig, sig, S, T, r_d, r_f)
+                - _strangle_premium(Kp, Kc, float(vol_fn(Kp)), float(vol_fn(Kc)),
+                                    S, T, r_d, r_f))
+
+    lo, hi = -0.5 * atm, 0.5 * atm
+    if f(lo) * f(hi) > 0.0:
+        raise ValueError("market strangle not bracketed within +-50% of ATM vol")
+    return brentq(f, lo, hi, xtol=1e-15, rtol=4.0 * np.finfo(float).eps)
+
+
+def smile_quotes_from_broker(
+    atm: float, rr25: float, bf25_ms: float, rr10: float, bf10_ms: float,
+    S: float, T: float, r_d: float, r_f: float, convention: str = "spot",
+    tol: float = 1e-12,
+) -> SmileQuotes:
+    """Convert broker quotes (one-vol market strangles) to smile quotes.
+
+    Risk reversals and ATM are the same in both conventions.  The two
+    smile butterflies are solved jointly so that the five-point SVI
+    smile through the resulting pillar vols reprices both market
+    strangles (25 and 10 delta).  Raises ``ValueError`` if the solve does
+    not converge to ``tol`` in premium.
+
+    The interpolating smile matters: the 25d market strangle strikes lie
+    between pillars, so a different interpolant gives slightly different
+    smile butterflies.  SVI is the interpolant used by
+    :func:`fx_surface.surface.build_slice`.
+    """
+    from scipy.optimize import root
+
+    from .smile import SVISmile
+
+    for name, v in (("atm", atm), ("rr25", rr25), ("bf25_ms", bf25_ms),
+                    ("rr10", rr10), ("bf10_ms", bf10_ms)):
+        if not math.isfinite(v):
+            raise ValueError(f"{name} must be finite, got {v}")
+    F = gk_forward(S, T, r_d, r_f)
+
+    def smile_for(bf25: float, bf10: float):
+        q = SmileQuotes(atm, rr25, bf25, rr10, bf10)
+        vols = vols_from_quotes(q)
+        ks = solve_pillar_strikes(vols, S, T, r_d, r_f, convention)
+        return q, SVISmile.fit(np.array([ks[p] for p in PILLAR_LABELS]),
+                               np.array([vols[p] for p in PILLAR_LABELS]), F, T)
+
+    def resid(x: np.ndarray) -> np.ndarray:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _, sm = smile_for(float(x[0]), float(x[1]))
+        out = []
+        for d, bf_ms in ((0.25, bf25_ms), (0.10, bf10_ms)):
+            sig = atm + bf_ms
+            Kc = strike_from_delta(d, +1, sig, S, T, r_d, r_f, convention)
+            Kp = strike_from_delta(d, -1, sig, S, T, r_d, r_f, convention)
+            vega_scale = S * math.sqrt(T)
+            out.append((_strangle_premium(Kp, Kc, float(sm.vol(Kp)), float(sm.vol(Kc)),
+                                          S, T, r_d, r_f)
+                        - _strangle_premium(Kp, Kc, sig, sig, S, T, r_d, r_f)) / vega_scale)
+        return np.array(out)
+
+    sol = root(resid, np.array([bf25_ms, bf10_ms]), method="hybr", tol=1e-14)
+    if not np.all(np.isfinite(sol.x)) or np.max(np.abs(resid(sol.x))) > tol:
+        raise ValueError(
+            f"broker strangle conversion did not converge: {sol.message} "
+            f"(residual {np.max(np.abs(resid(sol.x))):.2e})"
+        )
+    return SmileQuotes(atm, rr25, float(sol.x[0]), rr10, float(sol.x[1]))
