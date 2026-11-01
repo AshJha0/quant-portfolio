@@ -54,6 +54,7 @@
 pub mod binomial;
 pub mod black76;
 pub mod deltas;
+pub mod fast;
 pub mod forwards;
 pub mod garman_kohlhagen;
 pub mod golden;
