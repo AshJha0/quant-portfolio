@@ -32,7 +32,7 @@ def test_prices_strictly_positive():
 def test_dates_are_ascending_business_days():
     df = generate(n_days=50, seed=3)
     assert df["Date"].is_monotonic_increasing
-    assert df["Date"].dt.dayofweek.isin([0, 1, 2, 3, 4]).all()
+    assert df["Date"].dt.day_of_week.isin([0, 1, 2, 3, 4]).all()
 
 
 def test_generator_accepts_explicit_rng():

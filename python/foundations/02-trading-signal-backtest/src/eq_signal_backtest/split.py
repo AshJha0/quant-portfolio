@@ -28,7 +28,7 @@ from typing import Any, Iterable, Optional
 
 import pandas as pd
 
-from .engine import performance_stats, strategy_returns
+from .engine import ExecutionConfig, performance_stats, strategy_returns
 from .sensitivity import parameter_grid
 from .signals import ma_crossover_signal
 
@@ -109,6 +109,7 @@ def select_best_params(
     fast_range: Iterable[int],
     slow_range: Iterable[int],
     cost_bps: float = 5.0,
+    execution: Optional[ExecutionConfig] = None,
 ) -> tuple[int, int, pd.DataFrame]:
     """Grid-search (fast, slow) Sharpe on ``train_prices`` ONLY.
 
@@ -129,6 +130,8 @@ def select_best_params(
         :func:`eq_signal_backtest.sensitivity.parameter_grid`.
     cost_bps : float, default 5.0
         Transaction cost assumption used during selection.
+    execution : ExecutionConfig, optional
+        Fill model used during selection.
 
     Returns
     -------
@@ -146,7 +149,7 @@ def select_best_params(
         loudly matters here: the alternative is silently "selecting" an
         arbitrary corner of the grid and trading it.
     """
-    grid = parameter_grid(train_prices, fast_range, slow_range, cost_bps)
+    grid = parameter_grid(train_prices, fast_range, slow_range, cost_bps, execution)
     # ``.dropna()`` is load-bearing, not defensive tidying: pandas >= 3
     # keeps NaN cells when stacking (older versions dropped them), so
     # without it an all-NaN grid reaches ``idxmax`` and raises pandas'
@@ -290,6 +293,7 @@ def walk_forward_backtest(
     trading: int,
     cost_bps: float = 5.0,
     step: Optional[int] = None,
+    execution: Optional[ExecutionConfig] = None,
 ) -> WalkForwardResult:
     """Walk-forward validation: re-select parameters on a rolling window.
 
@@ -298,7 +302,7 @@ def walk_forward_backtest(
     over formation+trading combined so the moving averages have a proper
     warm-up (no look-ahead is introduced by this -- the signal still only
     uses prices up to and including the day it is computed on, and is
-    still executed with a one-day lag), then keep only the trading-window
+    still filled on the next day), then keep only the trading-window
     portion of the resulting daily returns. Those out-of-sample-only
     segments are concatenated across all windows into one continuous
     equity curve.
@@ -306,7 +310,7 @@ def walk_forward_backtest(
     Parameters selected for window *k* are frozen for the entirety of
     trading window *k*: they are never re-fit using any day inside that
     trading window, which is the property that makes the stitched curve
-    an honest out-of-sample track record rather than a sequence of
+    an out-of-sample track record rather than a sequence of
     in-sample fits.
 
     Parameters
@@ -325,6 +329,8 @@ def walk_forward_backtest(
     step : int, optional
         See :func:`walk_forward_windows`. Defaults to ``trading``
         (contiguous, gapless stitching).
+    execution : ExecutionConfig, optional
+        Fill model used in selection and in the trading windows.
 
     Returns
     -------
@@ -353,14 +359,14 @@ def walk_forward_backtest(
         context = prices.iloc[w.formation_start : w.trading_end + 1]
         train = prices.iloc[w.formation_start : w.formation_end + 1]
         best_fast, best_slow, _ = select_best_params(
-            train, fast_range, slow_range, cost_bps
+            train, fast_range, slow_range, cost_bps, execution
         )
 
         signal = ma_crossover_signal(context, best_fast, best_slow)
         # Same engine as the single-shot backtest -- execution lag, costs
         # and the -1.0 floor all come from one place.
         strat_rets_full, _position, trades = strategy_returns(
-            context, signal, cost_bps
+            context, signal, cost_bps, execution
         )
         rets = context.pct_change().fillna(0.0)
 

@@ -1,28 +1,33 @@
-"""End-to-end pipeline: synthetic data -> in-sample parameter selection ->
-out-of-sample backtest -> cost-free comparison -> walk-forward validation
--> parameter-sensitivity heatmap -> report.
+"""End-to-end pipeline: synthetic data, in-sample parameter selection,
+out-of-sample backtest, fill and cost variants, deflated Sharpe and PBO,
+walk-forward validation, parameter sensitivity, and a multi-seed
+distribution of every headline number.
 
-Reproduces (and extends) the legacy ``analysis.py`` script's four key
-numbers, using the packaged ``eq_signal_backtest`` API instead of inline
-script logic. Runs entirely offline on the bundled synthetic generator.
+Runs offline on the bundled synthetic generator. Every number it prints is
+a property of that generator, not of any market.
 
 Usage
 -----
     python examples/run_pipeline.py                  # bundled synthetic data
-    python examples/run_pipeline.py --ticker SPY      # real data (needs
-                                                       # `pip install
-                                                       # eq-signal-backtest[live]`
-                                                       # and network access)
+    python examples/run_pipeline.py --seeds 20       # fewer seeds, faster
+    python examples/run_pipeline.py --out DIR        # where to write files
+    python examples/run_pipeline.py --ticker SPY     # real data (needs
+                                                     # `pip install
+                                                     # eq-signal-backtest[live]`
+                                                     # and network access)
 
-Outputs: ``output/report.txt`` and ``output/figures/backtest_overview.png``
-(paths relative to this project's root, not the current working directory).
+Outputs: ``report.txt`` and ``figures/*.png`` under ``--out`` (default: a
+new directory under the system temp dir). Nothing is written into the
+repository.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,10 +38,20 @@ import pandas as pd
 
 from eq_signal_backtest import (
     TRADING_DAYS,
-    performance_stats,
+    ExecutionConfig,
     run_backtest,
+    strategy_returns,
 )
-from eq_signal_backtest.data.synthetic import generate
+from eq_signal_backtest.data.synthetic import _DEFAULT_SEED, generate
+from eq_signal_backtest.research_stats import (
+    TrialLog,
+    block_bootstrap_ci,
+    deflated_sharpe_ratio,
+    lo_sharpe_se,
+    pbo_cscv,
+    seed_distribution,
+    sharpe_ratio,
+)
 from eq_signal_backtest.signals import ma_crossover_signal
 from eq_signal_backtest.split import (
     select_best_params,
@@ -47,6 +62,17 @@ from eq_signal_backtest.split import (
 FAST_RANGE = range(10, 71, 10)
 SLOW_RANGE = range(100, 251, 25)
 COST_BPS = 5.0
+N_SEEDS = 100
+FORMATION, TRADING = 756, 252  # about 3y formation, 1y trading
+
+
+def default_out_dir() -> Path:
+    """A fresh directory under the system temp dir, never inside the repo."""
+    return Path(tempfile.mkdtemp(prefix="eq_signal_backtest_"))
+
+
+def source_label(ticker: str | None) -> str:
+    return ticker if ticker else f"bundled synthetic (seed={_DEFAULT_SEED})"
 
 
 def hr(title: str) -> None:
@@ -69,9 +95,28 @@ def load_prices(source: str | None) -> pd.Series:
     return _load_live(source)
 
 
-def main(ticker: str | None = None) -> None:
+def one_seed(seed: int) -> dict:
+    """Selection, out-of-sample and walk-forward Sharpe on one synthetic path."""
+    px = generate(seed=seed).set_index("Date")["Adj Close"].astype(float)
+    sp = train_test_split(px, train_frac=0.7)
+    f, s, _ = select_best_params(sp.train, FAST_RANGE, SLOW_RANGE, cost_bps=COST_BPS)
+    res_is = run_backtest(sp.train, ma_crossover_signal(sp.train, f, s), COST_BPS)
+    res_oos = run_backtest(sp.test, ma_crossover_signal(sp.test, f, s), COST_BPS)
+    wf = walk_forward_backtest(px, FAST_RANGE, SLOW_RANGE, FORMATION, TRADING, COST_BPS)
+    return {
+        "seed": seed,
+        "is": res_is.stats["sharpe"],
+        "oos": res_oos.stats["sharpe"],
+        "oos_bh": res_oos.stats["benchmark"]["sharpe"],
+        "wf": wf.stats["sharpe"],
+        "wf_bh": wf.stats["benchmark"]["sharpe"],
+    }
+
+
+def main(ticker: str | None = None, out_dir: Path | None = None,
+         n_seeds: int = N_SEEDS) -> None:
     t0 = time.time()
-    out_dir = ROOT / "output"
+    out_dir = Path(out_dir) if out_dir is not None else default_out_dir()
     fig_dir = out_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,12 +126,13 @@ def main(ticker: str | None = None) -> None:
     # ---------------------------------------------------------------- 1
     hr("1) DATA")
     prices = load_prices(ticker)
-    source_label = ticker if ticker else "bundled synthetic (seed=2)"
-    print(f"source: {source_label}")
+    label = source_label(ticker)
+    print(f"source: {label}")
     print(f"{len(prices)} rows, {prices.index[0].date()} .. {prices.index[-1].date()}")
     add("=" * 72)
-    add("TRADING SIGNAL BACKTEST -- MA CROSSOVER (long/flat)")
-    add(f"Data: {source_label} | {prices.index[0].date()} to {prices.index[-1].date()}")
+    add("TRADING SIGNAL BACKTEST: MA CROSSOVER (long/flat)")
+    add(f"Data: {label} | {prices.index[0].date()} to {prices.index[-1].date()}")
+    add("Fill: decision at close t, fill at p_t + 0.5 (p_{t+1} - p_t), 5 bp per trade")
     add("=" * 72)
 
     # ---------------------------------------------------------------- 2
@@ -95,123 +141,140 @@ def main(ticker: str | None = None) -> None:
     best_fast, best_slow, grid = select_best_params(
         split.train, FAST_RANGE, SLOW_RANGE, cost_bps=COST_BPS
     )
-    print(f"train/test split at {split.split_date.date()}")
-    print(f"parameters selected on training data: fast={best_fast}, slow={best_slow}")
-    print(
-        "(argmax of an in-sample Sharpe grid is itself a mild form of "
-        "selection bias -- see docs/METHODOLOGY.md. The number that "
-        "matters is the OUT-OF-SAMPLE row below.)"
-    )
     add(f"\nTrain/test split at {split.split_date.date()} (70/30)")
     add(f"Parameters selected on training data: fast={best_fast}, slow={best_slow}")
-    add("(Selected by grid-search Sharpe on the training window. The grid")
-    add("search itself is a source of selection bias, so the number that")
-    add("matters is the OUT-OF-SAMPLE row below.)")
+    add("(Grid-search argmax on the training window. The search itself is a")
+    add("source of selection bias; the deflated Sharpe below accounts for it.)")
+    print("\n".join(lines[-3:]))
 
     # ---------------------------------------------------------------- 3
-    hr("3) IN-SAMPLE / OUT-OF-SAMPLE / FULL-PERIOD / COST-FREE BACKTESTS")
+    hr("3) IN-SAMPLE / OUT-OF-SAMPLE / FULL-PERIOD / FILL AND COST VARIANTS")
 
-    def evaluate(px: pd.Series, cost_bps: float = COST_BPS):
+    def evaluate(px: pd.Series, cost_bps: float = COST_BPS, execution=None):
         sig = ma_crossover_signal(px, best_fast, best_slow)
-        return run_backtest(px, sig, cost_bps=cost_bps)
+        return run_backtest(px, sig, cost_bps=cost_bps, execution=execution)
 
     res_train = evaluate(split.train)
     res_test = evaluate(split.test)
     res_full = evaluate(prices)
     res_free = evaluate(prices, cost_bps=0.0)
+    res_next1 = evaluate(prices, execution=ExecutionConfig("next", 1.0))
+    res_auc = evaluate(prices, execution=ExecutionConfig("close_auction"))
 
-    add("\n--- Performance ---")
+    add("\n--- Performance (one synthetic path) ---")
     add(f"In-sample   strategy : {fmt(res_train.stats)}")
     add(f"In-sample   buy&hold : {fmt(res_train.stats['benchmark'])}")
     add(f"Out-sample  strategy : {fmt(res_test.stats)}")
     add(f"Out-sample  buy&hold : {fmt(res_test.stats['benchmark'])}")
     add(f"Full period strategy : {fmt(res_full.stats)}  ({res_full.n_trades} trades)")
     add(f"Full, zero costs     : {fmt(res_free.stats)}")
+    add(f"Full, next-close fill: {fmt(res_next1.stats)}")
+    add(f"Full, close auction  : {fmt(res_auc.stats)}  (10 bp auction cost)")
     cost_drag = res_free.stats["cagr"] - res_full.stats["cagr"]
     add(f"Transaction cost drag: {cost_drag:.2%} CAGR at {COST_BPS:.0f} bps per trade")
-    for line in lines[-8:]:
-        print(line)
+    print("\n".join(lines[-10:]))
 
     is_sh = res_train.stats["sharpe"]
     oos_sh = res_test.stats["sharpe"]
-    add("\n--- Honest read (Key Number 1: in-sample vs out-of-sample Sharpe) ---")
-    add(f"Sharpe decay in-sample -> out-of-sample: {is_sh:.2f} -> {oos_sh:.2f}")
-    if oos_sh < is_sh * 0.5:
-        add("Substantial decay: much of the in-sample edge was likely")
-        add("fitted noise rather than a persistent effect.")
-    else:
-        add("Decay is moderate, but one out-of-sample window is weak")
-        add("evidence -- walk-forward analysis (section 4) is more convincing.")
-    print(f"\nKey number 1 -- in-sample Sharpe {is_sh:.2f} -> out-of-sample Sharpe {oos_sh:.2f}")
-    print(
-        f"Key number 2 -- strategy vs buy&hold (full period): "
-        f"maxDD {res_full.stats['max_drawdown']:.2%} vs "
-        f"{res_full.stats['benchmark']['max_drawdown']:.2%}"
+    oos_r, _, _ = strategy_returns(
+        split.test, ma_crossover_signal(split.test, best_fast, best_slow), COST_BPS
     )
-    print(f"Key number 3 -- transaction cost drag: {cost_drag:.2%} CAGR")
+    se = lo_sharpe_se(oos_r.to_numpy(), TRADING_DAYS)
+    _, b_lo, b_hi = block_bootstrap_ci(
+        oos_r.to_numpy(), lambda x: sharpe_ratio(x, TRADING_DAYS), n_boot=1000, seed=1
+    )
+    add("\n--- One synthetic path: in-sample vs out-of-sample Sharpe ---")
+    add(f"Sharpe in-sample -> out-of-sample: {is_sh:.2f} -> {oos_sh:.2f}")
+    add(f"Out-of-sample Sharpe: Lo/Newey-West SE {se:.2f}; "
+        f"block-bootstrap 95% CI [{b_lo:.2f}, {b_hi:.2f}]")
+
+    # Every grid cell is a trial: log it, then deflate the selected Sharpe.
+    log = TrialLog()
+    grid_rets: dict[tuple[int, int], np.ndarray] = {}
+    for fa in FAST_RANGE:
+        for sl in SLOW_RANGE:
+            if fa >= sl:
+                continue
+            r_, _, _ = strategy_returns(
+                split.train, ma_crossover_signal(split.train, fa, sl), COST_BPS
+            )
+            x = r_.to_numpy()
+            sd = x.std(ddof=1)
+            log.log(f"ma_{fa}_{sl}", float(x.mean() / sd) if sd > 0 else None,
+                    fast=fa, slow=sl)
+            grid_rets[(fa, sl)] = x
+    dsr = deflated_sharpe_ratio(grid_rets[(best_fast, best_slow)], log.n_trials,
+                                log.sharpes())
+    full_mat = np.column_stack([
+        strategy_returns(prices, ma_crossover_signal(prices, fa, sl), COST_BPS)[0].to_numpy()
+        for (fa, sl) in grid_rets
+    ])
+    pbo = pbo_cscv(full_mat[max(SLOW_RANGE):], n_splits=16)
+    add(f"Trials logged in the grid search: {log.n_trials}")
+    add(f"Deflated Sharpe of the selected in-sample result: {dsr:.3f}")
+    add(f"PBO (CSCV, 16 blocks, full sample, {log.n_trials} configurations): {pbo:.2f}")
+    print("\n".join(lines[-6:]))
 
     # ---------------------------------------------------------------- 4
     hr("4) WALK-FORWARD VALIDATION (re-select every window, trade frozen params)")
-    formation, trading = 756, 252  # ~3y formation, 1y trading
     wf = walk_forward_backtest(
-        prices, FAST_RANGE, SLOW_RANGE, formation=formation, trading=trading,
+        prices, FAST_RANGE, SLOW_RANGE, formation=FORMATION, trading=TRADING,
         cost_bps=COST_BPS,
     )
     print(wf.windows.to_string(index=False))
-    print(f"\nwalk-forward (stitched OOS): {fmt(wf.stats)}  ({wf.n_trades} trades)")
-    print(f"walk-forward buy&hold      : {fmt(wf.stats['benchmark'])}")
-    add("\n--- Walk-forward validation (formation "
-        f"{formation}d -> trading {trading}d) ---")
+    add(f"\n--- Walk-forward validation (formation {FORMATION}d -> trading {TRADING}d) ---")
     add(wf.windows.to_string(index=False))
-    add(f"Walk-forward (stitched OOS) strategy: {fmt(wf.stats)}")
+    add(f"Walk-forward (stitched OOS) strategy: {fmt(wf.stats)}  ({wf.n_trades} trades)")
     add(f"Walk-forward buy&hold               : {fmt(wf.stats['benchmark'])}")
+    print("\n".join(lines[-2:]))
 
     # ---------------------------------------------------------------- 5
-    hr("5) PARAMETER SENSITIVITY (Key Number 4: plateau vs spike)")
-    grid_range = grid.to_numpy()
-    finite = grid_range[np.isfinite(grid_range)]
-    spread = finite.max() - finite.min() if finite.size else np.nan
+    hr("5) PARAMETER SENSITIVITY (in-sample grid)")
+    finite = grid.to_numpy()[np.isfinite(grid.to_numpy())]
     near_best = np.abs(finite - finite.max()) < 0.25 * max(abs(finite.max()), 1e-9)
-    plateau_share = near_best.mean() if finite.size else np.nan
-    print(f"grid Sharpe range (in-sample): [{finite.min():.2f}, {finite.max():.2f}]")
-    print(f"share of cells within 25% of the best Sharpe: {plateau_share:.0%}")
-    if plateau_share > 0.3:
-        character = "a broad plateau -- consistent with a robust effect"
-    else:
-        character = "a narrow spike -- consistent with curve-fitting"
-    print(f"character: {character}")
-    # A plateau is evidence about the SHAPE of the in-sample surface, not
-    # about out-of-sample performance. Saying so explicitly matters: the
-    # two can, and here do, point in different directions.
-    reconciliation = (
-        "Note: the grid is measured in-sample only. A plateau means the "
-        f"in-sample result is not one lucky cell -- it does NOT mean the "
-        f"effect survives out-of-sample. Here the out-of-sample Sharpe is "
-        f"{oos_sh:.2f} against an in-sample {is_sh:.2f}, so the plateau is "
-        "a plateau of equally over-fitted parameters, not evidence of a "
-        "tradeable edge."
-        if plateau_share > 0.3 and oos_sh < is_sh * 0.5
-        else "Note: the grid is measured in-sample only; read it alongside "
-        "the out-of-sample and walk-forward rows above, never instead of them."
-    )
-    print(reconciliation)
+    plateau_share = near_best.mean()
     add("\n--- Parameter sensitivity ---")
     add(f"In-sample grid Sharpe range: [{finite.min():.2f}, {finite.max():.2f}]; "
-        f"{plateau_share:.0%} of cells within 25% of the best -> {character}.")
-    add(reconciliation)
-    add("Where this class of strategy works: sustained trends (it stays")
-    add("invested) and prolonged bear markets (it steps aside).")
-    add("Where it fails: choppy, range-bound markets, where every")
-    add("crossover is a whipsaw that pays costs and captures no move.")
-
-    report = "\n".join(lines)
-    (out_dir / "report.txt").write_text(report + "\n")
-    print(f"\nReport written to {out_dir / 'report.txt'}")
+        f"{plateau_share:.0%} of cells within 25% of the best.")
+    add("The grid is in-sample only. Its shape says nothing about out-of-sample")
+    add("performance; read it with the deflated Sharpe, PBO and the multi-seed section.")
+    print("\n".join(lines[-3:]))
 
     # ---------------------------------------------------------------- 6
-    hr("6) FIGURES")
+    hr(f"6) MULTI-SEED DISTRIBUTION ({n_seeds} synthetic seeds, 1..{n_seeds})")
+    with ProcessPoolExecutor(max_workers=4) as ex:
+        rows = list(ex.map(one_seed, range(1, n_seeds + 1)))
+    df = pd.DataFrame(rows)
+    # A strategy that never trades in a window has no return variance and an
+    # undefined Sharpe; it earned nothing, so it is scored 0 and counted.
+    n_flat = int(df[["is", "oos", "wf"]].isna().any(axis=1).sum())
+    df[["is", "oos", "wf"]] = df[["is", "oos", "wf"]].fillna(0.0)
+    df["oos_minus_bh"] = df["oos"] - df["oos_bh"]
+    df["wf_minus_bh"] = df["wf"] - df["wf_bh"]
+    add(f"\n--- Multi-seed (synthetic, {n_seeds} seeds): mean [95% CI] (sd) ---")
+    names = {
+        "is": "In-sample Sharpe (selected)",
+        "oos": "Out-of-sample Sharpe",
+        "oos_bh": "Out-of-sample buy&hold Sharpe",
+        "oos_minus_bh": "Out-of-sample strategy minus B&H",
+        "wf": "Walk-forward Sharpe",
+        "wf_bh": "Walk-forward buy&hold Sharpe",
+        "wf_minus_bh": "Walk-forward strategy minus B&H",
+    }
+    for k, name in names.items():
+        add(f"{name:34s}: {seed_distribution(df[k].to_numpy()).fmt(2)}")
+    add(f"Seeds where OOS strategy Sharpe beats B&H: {(df['oos_minus_bh'] > 0).mean():.0%}")
+    add(f"Seeds where WF strategy Sharpe beats B&H : {(df['wf_minus_bh'] > 0).mean():.0%}")
+    add(f"Seeds with a flat (never invested) window, Sharpe scored 0: {n_flat}")
+    print("\n".join(lines[-11:]))
+
+    (out_dir / "report.txt").write_text("\n".join(lines) + "\n")
+    print(f"\nReport written to {out_dir / 'report.txt'}")
+
+    # ---------------------------------------------------------------- 7
+    hr("7) FIGURES")
     _save_figures(prices, split, res_full, res_test, grid, wf, fig_dir)
-    print(f"Figures written to {fig_dir}/")
+    print(f"Figures written to {fig_dir}")
 
     hr("DONE")
     print(f"total runtime: {time.time() - t0:.1f}s")
@@ -235,13 +298,13 @@ def _save_figures(prices, split, res_full, res_test, grid, wf, fig_dir: Path) ->
     ax.plot(res_full.benchmark, lw=1.0, label="buy & hold")
     ax.axvline(split.split_date, color="k", ls=":", lw=1, label="train/test split")
     ax.legend()
-    ax.set_title("Equity curves, full period")
+    ax.set_title("Equity curves, full period (synthetic)")
 
     ax = axes[0, 1]
     ax.plot(res_test.equity, lw=1.0, label="strategy")
     ax.plot(res_test.benchmark, lw=1.0, label="buy & hold")
     ax.legend()
-    ax.set_title("Out-of-sample only")
+    ax.set_title("Out-of-sample only (synthetic)")
 
     ax = axes[1, 0]
     dd = res_full.equity / res_full.equity.cummax() - 1
@@ -272,7 +335,7 @@ def _save_figures(prices, split, res_full, res_test, grid, wf, fig_dir: Path) ->
     for _, row in wf.windows.iterrows():
         ax2.axvline(row["trading_start"], color="k", ls=":", lw=0.5, alpha=0.5)
     ax2.legend()
-    ax2.set_title("Walk-forward: stitched out-of-sample equity")
+    ax2.set_title("Walk-forward: stitched out-of-sample equity (synthetic)")
     fig2.tight_layout()
     fig2.savefig(fig_dir / "walk_forward.png", dpi=130)
     plt.close(fig2)
@@ -283,5 +346,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ticker", default=None, help="Yahoo Finance ticker for live data (optional)"
     )
+    parser.add_argument("--out", type=Path, default=None,
+                        help="output directory (default: a new temp dir)")
+    parser.add_argument("--seeds", type=int, default=N_SEEDS,
+                        help="number of synthetic seeds for the multi-seed section")
     args = parser.parse_args()
-    main(args.ticker)
+    main(args.ticker, args.out, args.seeds)

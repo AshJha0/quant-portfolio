@@ -12,7 +12,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from .engine import run_backtest
+from .engine import ExecutionConfig, run_backtest
 from .signals import ma_crossover_signal
 
 __all__ = ["parameter_grid"]
@@ -23,6 +23,7 @@ def parameter_grid(
     fast_range: Iterable[int],
     slow_range: Iterable[int],
     cost_bps: float = 5.0,
+    execution: "ExecutionConfig | None" = None,
 ) -> pd.DataFrame:
     """Sharpe ratio for every valid (fast, slow) pair.
 
@@ -38,6 +39,8 @@ def parameter_grid(
     cost_bps : float, default 5.0
         One-way transaction cost in basis points, passed through to
         :func:`eq_signal_backtest.engine.run_backtest`.
+    execution : ExecutionConfig, optional
+        Fill model, passed through to ``run_backtest``.
 
     Returns
     -------
@@ -53,7 +56,7 @@ def parameter_grid(
             if fast >= slow:
                 continue
             sig = ma_crossover_signal(prices, fast, slow)
-            res = run_backtest(prices, sig, cost_bps)
+            res = run_backtest(prices, sig, cost_bps, execution)
             rows.append({"fast": fast, "slow": slow, "sharpe": res.stats["sharpe"]})
     if not rows:
         return pd.DataFrame()
