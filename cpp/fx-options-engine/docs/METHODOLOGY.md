@@ -15,26 +15,27 @@ not, however, what runs inside an FX e-trading stack, for three reasons:
    ~0.15 ms without any parallelism.
 2. **RFQ response budgets.** Multi-dealer platforms effectively rank
    dealers by response time; an RFQ answer that takes tens of milliseconds
-   loses flow to one that takes hundreds of microseconds. The full RFQ path
-   — strike from quoted delta, vol from the smile, premium, hedge deltas —
-   is a handful of engine calls, i.e. single-digit microseconds here,
-   leaving the latency budget for the credit/limit checks and transport.
+   loses flow to one that takes hundreds of microseconds. The pieces of an RFQ path this
+   engine covers (strike from a quoted delta at a given vol, premium, hedge
+   deltas) are a few engine calls, single-digit microseconds here. There is
+   no smile and no smile-consistent strike-from-delta in this engine.
 3. **Determinism and deployability.** No interpreter, no GIL, no dependency
-   on a scipy build; a static library with bit-reproducible Monte Carlo
+   on a scipy build; a static library with reproducible (per toolchain) Monte Carlo
    (explicit `mt19937_64` seed + inverse-CDF normals, no
    implementation-defined `std::normal_distribution`) that risk can rerun
-   and reconcile byte-for-byte.
+   and reconcile on the same toolchain.
 
-The division of labour is deliberate: **Python defines the semantics, C++
+The division of labour: **Python defines the semantics, C++
 reproduces them fast.** Any behavioural question ("what is theta's sign
 convention?", "which PA-delta branch?") is answered by the Python source,
-and the golden-vector suite proves the C++ engine gives the same answer.
+and the mpmath golden vectors plus the differential test check that the
+C++ engine gives the same answer within stated tolerances.
 
 ## Model choice (recap; full discussion in the Python METHODOLOGY)
 
 * **Garman–Kohlhagen** for European vanillas: Black–Scholes with the
   foreign rate as a continuous yield. Chosen over local/stochastic vol
-  because vanilla FX quoting happens *in GK implied-vol space* — the model
+  because vanilla FX quoting happens *in GK implied-vol space*, the model
   is the market's coordinate system, not a claim about dynamics. Chosen
   over numerical-only engines because closed forms give exact Greeks and
   microsecond latency.
@@ -59,8 +60,8 @@ and the golden-vector suite proves the C++ engine gives the same answer.
 * **Errors are exceptions.** `std::invalid_argument` mirrors the Python
   `ValueError` contract exactly (same conditions, similar messages), so the
   two implementations reject the same inputs. Validation is *total* at the
-  API boundary: every entry point rejects NaN/Inf in any argument —
-  including the two rates and the observed premium — because a single
+  API boundary: every entry point rejects NaN/Inf in any argument -
+  including the two rates and the observed premium, because a single
   non-finite quote propagating through a book-level aggregate is far more
   expensive to find than an exception in the service log.
 * **Statistics are only reported when they exist.** The Monte Carlo
@@ -74,13 +75,14 @@ and the golden-vector suite proves the C++ engine gives the same answer.
   precision in both tails); `N^{-1}(p)` via Acklam's rational approximation
   polished with two Halley steps (~1e-15). No dependence on any math
   library beyond `<cmath>`.
-* **Root finding.** Implied vol uses safeguarded Newton (fast when vega is
-  healthy) with a bracketed Brent fallback (guaranteed); premium-adjusted
+* **Root finding.** Implied vol uses the shared core (`iv_core.hpp`):
+  normalised Black solved on the out-of-the-money side by safeguarded
+  Halley iteration, at most 10 evaluations, the same algorithm and
+  constants as the Python and Rust engines. Premium-adjusted
   strike-from-delta locates the fold of `K·N(d2(K))` analytically-in-d2 and
-  Brent-solves on the market-standard decreasing branch — bit-matching the
-  Python reference's scipy `brentq` strategy.
+  Brent-solves on the market-standard decreasing branch. The Brent routine is a Numerical-Recipes-style zbrent (not scipy's implementation) and throws when it does not converge.
 * **Limits handled explicitly**: `T = 0` returns intrinsic;
-  `sigma·sqrt(T) <= 1e-12` returns discounted forward intrinsic — the same
+  `sigma·sqrt(T) <= 1e-12` returns discounted forward intrinsic, the same
   constants and branches as the Python module, so the two engines agree even
   at the edges.
 * **`-Wall -Wextra -Werror -O2`**, C++20, no external dependencies beyond
