@@ -1,6 +1,6 @@
 # Methodology
 
-C++20 FX VaR/ES engine. It is the linear-book port of the Python engine
+C++23 FX VaR/ES engine. It is the linear-book port of the Python engine
 `python/fx/03-var-es-engine` (`fx_var`): cash, spot and forwards with full
 revaluation, no options. This file states the conventions, the reasons for
 a compiled engine, the model choices, and the assumptions. The Python
@@ -31,8 +31,7 @@ a compiled engine, the model choices, and the assumptions. The Python
 
 - **Intraday books.** The compiled book (struct-of-arrays legs, one `exp()`
   per leg per scenario) revalues a synthetic 250-position / 50-factor book
-  under 500 historical scenarios in about 3 ms. A full Monte Carlo with
-  100k paths and a bootstrap SE takes about 1.2 s on one core.
+  scenario by scenario; the README carries measured per-call latencies.
 - **Batch windows.** One binary, no interpreter start-up, flat memory.
 - **Executable contract with the Python engine.** Golden values generated
   by the Python engine are compiled into the tests; any drift fails the
@@ -104,6 +103,20 @@ revalues a leg as v0 exp(dfx - T dr): spot S exp(r) on log returns.
   check; it now forwards to `cholesky`.
 - **Scale-relative guards.** The PSD test in `portfolio_sigma` and the
   Cholesky symmetry test are relative to the magnitudes involved.
+- **Two API layers.** The throwing API validates and throws
+  `std::invalid_argument`. Under it, `fxvar/kernels.hpp` exposes `noexcept`
+  kernels that return `std::expected<T, fxvar::Error>` and work in
+  caller-provided buffers, so a caller on a latency budget sizes its
+  buffers once and never allocates or throws per call. The arithmetic is
+  shared, so both layers return the same bits.
+- **Selection, not sorting.** Uniform-weight VaR/ES and the KDE standard
+  error's interquartile range use `std::nth_element` (O(n)). Only the
+  weighted VaR/ES sorts, because the cumulative weight must be walked in
+  loss order.
+- **Row-major linear algebra.** Matrices are dense row-major. Mat-vec,
+  quadratic form, Cholesky and the scenario product L z read rows
+  contiguously. Summation order is never changed for speed, since that
+  would change results in the last bits.
 - **Special functions in the library.** Acklam plus Halley inverse normal,
   Lanczos `log_gamma` (thread-safe; `std::lgamma` writes glibc's global
   `signgam`), incomplete gamma and beta, binomial CDF by pmf recursion.

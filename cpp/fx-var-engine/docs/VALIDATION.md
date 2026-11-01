@@ -2,9 +2,12 @@
 
 How the C++ engine is validated: analytic identities, golden values from
 the Python engine, ordering tests, an input fuzz walk, and known failure
-modes. Every claim below is enforced by `ctest --test-dir build`: 114 tests
-in 11 executables, about 3 s serial, passing under GCC 15.2 and Clang 21.1
-with `-DFXVAR_WERROR=ON` and under GCC with `-fsanitize=address,undefined`.
+modes. Every claim below is enforced by `ctest --test-dir build`: 121 tests
+in 13 executables, about 3 s serial, passing under GCC 15.2 and Clang 21.1
+with `-DFXVAR_WERROR=ON` and under GCC 15.2 and Clang 21.1 with
+`-fsanitize=address,undefined` (119 tests there: the allocation-counting
+binary replaces `operator new`, which the sanitizer runtimes also define,
+so sanitizer builds skip it).
 
 ## 1. Analytic identities
 
@@ -124,19 +127,32 @@ python3 tools/gen_golden_header.py                      # rewrite tests/golden_v
 | indefinite Sigma beyond the jitter cap | `std::runtime_error` naming the most negative eigenvalue |
 | NaN or inf in Sigma, exposures, returns, shocks, positions or rates | `std::invalid_argument` |
 
-## 6. Benchmark
+## 6. Low-latency API and benchmark
 
-See the README for the table (synthetic 250-position / 50-factor book,
-history drawn from a full-rank AR(1) covariance, GCC 15.2 Release, one
-thread). MC normal 99 % VaR 272 386 against parametric 273 191, with a
-bootstrap SE of 1 624.
+| Claim | Check |
+| --- | --- |
+| Every `try_*` kernel is `noexcept` | `static_assert`s in `tests/test_latency_api.cpp` |
+| `try_*` results equal the throwing API bit for bit | `LatencyApi.*` (VaR/ES and SE on 5 sample sizes x 5 alphas, closed forms, mat-vec, quadratic form, sigma, var-covar, Cholesky, normal and t simulation) |
+| Batch book revaluation equals `CompiledBook::pnl(ReturnsMatrix)` bit for bit | `BatchApi.BookRevaluationEqualsLegacyBitForBit` (5,000 Student-t scenarios) |
+| Errors carry the throwing API's message text | `LatencyApi.ErrorsCarryTheThrowingMessage` |
+| No heap allocation on the kernel success path | `test_no_alloc` (counting global `operator new`) |
+| No numerical change from the refactor | 87,761 hex-float results and exception texts of the legacy API are identical against the old and new library, GCC 15.2 and Clang 21.1 (a scratch program; not part of ctest) |
+
+`var_standard_error` used to sort a copy of the sample to read two
+interquartile order statistics. It now reads them with `std::nth_element`
+plus a minimum over the upper part, which returns the same two numbers in
+O(n). The bootstrap SE reuses one selection buffer across replicates
+instead of allocating a loss vector per replicate.
+
+The README describes the benchmark (synthetic book, per-call latency
+percentiles) and carries the measured table.
 
 ## 7. Reproducing
 
 ```bash
 cmake -S . -B build && cmake --build build -j
 ctest --test-dir build --output-on-failure
-./build/fxvar_bench
+./build/fxvar_bench --out /tmp/fxvar_latency.json
 ```
 
 No network beyond the optional GoogleTest fetch and no data files: every

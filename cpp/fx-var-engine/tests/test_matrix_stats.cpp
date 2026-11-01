@@ -155,7 +155,7 @@ TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
   CholeskyResult r;
   ASSERT_NO_THROW(r = cholesky(big));
   EXPECT_FALSE(r.jittered);
-  // Genuinely asymmetric input is still rejected.
+  // Asymmetric input is still rejected.
   Matrix asym = big;
   asym(1, 0) = 5e11 * 1.01;
   EXPECT_THROW(robust_cholesky(asym), std::invalid_argument);

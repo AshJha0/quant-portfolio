@@ -1,4 +1,4 @@
-# FX VaR & ES Engine (C++20)
+# FX VaR & ES Engine (C++23)
 
 Value-at-Risk and Expected Shortfall for a multi-currency FX book. It is
 the linear-book port of the Python engine
@@ -34,6 +34,7 @@ throws. `docs/METHODOLOGY.md` has the full table.
 | `fxvar/monte_carlo.hpp` | Multivariate normal, covariance-matched Student-t, and a jump mixture (Poisson number of common jumps over the horizon, size per currency) with full revaluation. Seeded `mt19937_64` with library-owned transforms. Bootstrap VaR SE (primary) and KDE SE (diagnostic). |
 | `fxvar/expected_shortfall.hpp` | Empirical VaR/ES (uniform or weighted), normal and standardised-t closed forms. |
 | `fxvar/backtest.hpp` | Kupiec POF (`KupiecInput`), Christoffersen independence and conditional coverage, Basel traffic light for any window and alpha, Acerbi-Szekely Z2. |
+| `fxvar/kernels.hpp` | noexcept kernel API: `try_*` functions returning `std::expected<T, fxvar::Error>`, no allocation, caller-provided buffers. See "Low-latency API" below. |
 | `fxvar/stress.hpp` | Joint scenarios (spot shocks, rate shifts, jumps), a scenario library, peg-break add-on, reverse stress (closed form for a linear book, checked against a numerical search). |
 
 ## Quickstart
@@ -41,13 +42,53 @@ throws. `docs/METHODOLOGY.md` has the full table.
 ```bash
 cmake -S . -B build                          # GTest from the system, else fetched (v1.15.2)
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # 114 tests, about 3 s serial
-./build/fxvar_bench
+ctest --test-dir build --output-on-failure   # 121 tests, about 3 s serial
+./build/fxvar_bench --out /tmp/fxvar_latency.json
 ```
 
 Options: `-DFXVAR_WERROR=ON` (warnings as errors on GCC/Clang),
-`-DBUILD_TESTING=OFF` (library only), `-DFXVAR_BUILD_BENCH=OFF`.
-`CMAKE_BUILD_TYPE` defaults to Release.
+`-DBUILD_TESTING=OFF` (library only), `-DFXVAR_BUILD_BENCH=OFF`,
+`-DFXVAR_NATIVE=ON` (adds `-O3 -march=native`; local latency work only,
+never CI), `-DFXVAR_LTO=ON` (link-time optimisation through
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION`), `-DFXVAR_VEC_REPORT=ON` (prints the
+compiler's vectorisation report for the hot sources). `CMAKE_CXX_FLAGS` is
+never modified. `CMAKE_BUILD_TYPE` defaults to Release.
+
+## Low-latency API
+
+`fxvar/kernels.hpp` and two `CompiledBook` members give a `noexcept`
+entry point for every per-call and per-scenario kernel. Each returns
+`std::expected<T, fxvar::Error>`. An `Error` holds a code, a pointer to a
+static (or book-owned) string and two numbers, so the error path does not
+allocate either. `fxvar::message(e)` gives the same text the throwing API
+puts in its `std::invalid_argument`.
+
+| Kernel | Caller storage | Same result as |
+| --- | --- | --- |
+| `try_empirical_var_es(pnl, alpha, ws)` | `ws`: `pnl.size()` doubles | `empirical_var_es` (uniform weights) |
+| `try_var_standard_error(pnl, alpha, ws)` | `ws`: `pnl.size()` doubles | `var_standard_error` |
+| `try_normal_var/es`, `try_t_var/es` | none | `normal_var/es`, `t_var/es` |
+| `try_matvec(A, x, y)`, `try_quad_form(w, A)` | `y`: `A.rows()` doubles | `matvec`, `quad_form` |
+| `try_portfolio_sigma`, `try_var_covar` | none | `portfolio_sigma`, `var_covar` |
+| `try_cholesky_lower(A, L)` | `L`: n*n doubles | `cholesky(A).lower` when no jitter is needed |
+| `try_simulate_factor_returns(L, k, n, dist, df, seed, out)` | `out`: n*k doubles | `simulate_factor_returns(...).data` for normal and Student-t |
+| `CompiledBook::try_pnl(shocks)` | none | `CompiledBook::pnl(const double*)` |
+| `CompiledBook::try_pnl_batch(scenarios, out)` | `out`: one double per scenario row | `CompiledBook::pnl(ReturnsMatrix)` |
+
+"Same result" means the same bits: the throwing functions are thin
+wrappers over these kernels where the two overlap, and
+`tests/test_latency_api.cpp` checks the rest. A program that prints 87,761
+results of the legacy API (with 1,525 exception texts) in hex-float gives
+identical output against the library before and after this API was added,
+with GCC 15.2 and with Clang 21.1. `tests/test_no_alloc.cpp` replaces the
+global `operator new` and checks that none of the kernels above allocates
+on its success path. The weighted VaR/ES path is not in the noexcept API:
+it stable-sorts index pairs, and `std::stable_sort` allocates a temporary
+buffer.
+
+## Latency
+
+<!-- LATENCY_TABLE -->
 
 ```cpp
 #include "fxvar/historical.hpp"
@@ -71,24 +112,15 @@ MonteCarloResult r = monte_carlo_var(book, market, sample_cov(returns), mc);
 // r.var, r.es, r.se_var (bootstrap), r.se_var_kde (diagnostic)
 ```
 
-## Benchmark
-
-Synthetic 250-position / 50-factor book (200 spots across 45 currencies and
-50 forwards; 45 FX and 5 IR factors). The 500-day history is drawn from a
-full-rank AR(1) covariance (rho = 0.5). Full revaluation, one thread, GCC
-15.2 Release (`-O3`), Intel Core 5 120U under WSL2 (`./build/fxvar_bench`):
-
-| Method | Scenarios | Wall time |
-| --- | --- | --- |
-| Historical simulation | 500 | 2.9 ms |
-| Parametric (FD exposures + var-covar) | n/a | 1.2 ms |
-| Cholesky 50 x 50 (no jitter needed) | n/a | 0.015 ms |
-| Monte Carlo, normal, with 200-replicate bootstrap SE | 100 000 | 1.20 s |
-| Monte Carlo, Student-t(5), with bootstrap SE | 100 000 | 1.04 s |
-
-Same run: MC normal 99 % VaR 272 386 (bootstrap SE 1 624, KDE SE 1 300)
-against the parametric closed form 273 191. The two paths share only the
-covariance.
+The benchmark book is synthetic: 250 positions (200 spots across 45
+currencies and 50 forwards; 45 FX and 5 IR factors), with histories of
+1,000 and 10,000 days drawn from a full-rank AR(1) covariance (rho = 0.5).
+`./build/fxvar_bench` times every kernel call by call after a warm-up and
+reports p50, p90, p99, p99.9 and max in nanoseconds; `--out FILE` writes
+the same numbers as JSON (engine, kernel, compiler, flags, cpu, date,
+percentiles), `--quick` runs a tenth of the iterations. Inputs change on
+every call. Under WSL2 the hypervisor adds scheduling jitter that shows in
+p99.9 and max.
 
 ## Validation summary
 
@@ -117,6 +149,8 @@ assumptions: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Desk use:
 - MC repeatability holds on one platform; other libms can change the last
   bits.
 - The bootstrap SE accounts for most of the MC time.
+- The scenario revaluation and the inverse normal CDF call scalar libm
+  `exp` and `log` per element, so those loops do not vectorise.
 
 ## Layout
 
@@ -125,7 +159,7 @@ fx-var-engine/
 +-- CMakeLists.txt
 +-- include/fxvar/         # public headers
 +-- src/                   # implementations
-+-- tests/                 # 11 GoogleTest executables, 114 tests
-+-- bench/bench_main.cpp   # 250 x 50 book timings
++-- tests/                 # 13 GoogleTest executables, 121 tests
++-- bench/                 # per-call latency harness (latency.hpp) and kernels
 +-- docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```

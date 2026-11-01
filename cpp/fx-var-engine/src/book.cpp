@@ -232,14 +232,52 @@ double CompiledBook::value_usd(const double* shocks) const {
   return total;
 }
 
-double CompiledBook::pnl(const double* shocks) const {
+Result<double> CompiledBook::try_pnl(std::span<const double> shocks) const noexcept {
+  if (shocks.size() < factors_.size()) [[unlikely]]
+    return std::unexpected(Error{Errc::kSizeMismatch, "CompiledBook::try_pnl",
+                                 static_cast<double>(shocks.size()),
+                                 static_cast<double>(factors_.size())});
   for (std::size_t j = 0; j < factors_.size(); ++j)
-    if (!std::isfinite(shocks[j]))
-      throw std::invalid_argument("shock for " + factors_[j] + " is not finite");
-  const double v1 = value_usd(shocks);
+    if (!std::isfinite(shocks[j])) [[unlikely]]
+      return std::unexpected(Error{Errc::kShockNonFinite, factors_[j].c_str()});
+  const double v1 = value_usd(shocks.data());
   const double s1_base =
       (base_fx_idx_ >= 0) ? s0_base_ * std::exp(shocks[base_fx_idx_]) : s0_base_;
   return v1 / s1_base - v0_usd_ / s0_base_;
+}
+
+double CompiledBook::pnl(const double* shocks) const {
+  return value_or_throw(try_pnl(std::span<const double>(shocks, factors_.size())));
+}
+
+Result<void> CompiledBook::try_pnl_batch(std::span<const double> scenarios,
+                                         std::span<double> out) const noexcept {
+  const std::size_t k = factors_.size();
+  const std::size_t n_scen = out.size();
+  if (scenarios.size() != n_scen * k) [[unlikely]]
+    return std::unexpected(Error{Errc::kSizeMismatch, "CompiledBook::try_pnl_batch",
+                                 static_cast<double>(scenarios.size()),
+                                 static_cast<double>(n_scen * k)});
+  // Branch-free finiteness count over the whole block (vectorises).
+  std::size_t bad = 0;
+  for (const double v : scenarios) bad += std::fabs(v) <= 1.7976931348623157e308 ? 0U : 1U;
+  if (bad != 0) [[unlikely]] return fail("scenario matrix contains NaN or inf");
+  const std::size_t n_legs = value0_.size();
+  const double v0_base = v0_usd_ / s0_base_;
+  for (std::size_t s = 0; s < n_scen; ++s) {
+    const double* row = scenarios.data() + s * k;
+    double v1 = 0.0;
+    for (std::size_t i = 0; i < n_legs; ++i) {
+      double shift = 0.0;
+      if (fx_idx_[i] >= 0) shift += row[fx_idx_[i]];
+      if (ir_idx_[i] >= 0) shift += neg_expiry_[i] * row[ir_idx_[i]];
+      v1 += (shift == 0.0) ? value0_[i] : value0_[i] * std::exp(shift);
+    }
+    const double s1_base =
+        (base_fx_idx_ >= 0) ? s0_base_ * std::exp(row[base_fx_idx_]) : s0_base_;
+    out[s] = v1 / s1_base - v0_base;
+  }
+  return {};
 }
 
 double CompiledBook::pnl(const std::map<std::string, double>& shocks) const {
