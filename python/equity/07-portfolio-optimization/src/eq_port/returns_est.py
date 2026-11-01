@@ -18,7 +18,7 @@ are roughly linear in Sigma^{-1} mu, so this noise is amplified into
 extreme, unstable portfolios ("error maximization", Michaud 1989).
 The estimators below attack that problem:
 
-* James-Stein / Bayes-Stein: shrink the sample mean vector toward the
+* James-Stein (isotropic, grand-mean target): shrink the sample mean vector toward the
   grand mean, trading a little bias for a large variance reduction.
 * Reverse optimization: discard the sample mean entirely and back out
   the returns implied by market-cap weights (the Black-Litterman prior).
@@ -124,6 +124,11 @@ class JamesSteinResult:
 
 def james_stein_mean(returns: np.ndarray | pd.DataFrame) -> JamesSteinResult:
     """James-Stein estimator: shrink sample means toward the grand mean.
+
+    This is the isotropic (Efron-Morris) form: it uses the average sample
+    variance and ignores the covariance matrix. It is not Jorion's (1986)
+    Bayes-Stein estimator, which shrinks toward the mean of the
+    minimum-variance portfolio using Sigma^-1.
 
     The estimator is the convex combination
 

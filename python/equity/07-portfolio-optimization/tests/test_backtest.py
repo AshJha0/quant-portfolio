@@ -76,7 +76,7 @@ def test_no_lookahead_cheat_detection():
         return w
 
     res = run_backtest(df, pick_best_mean, window=2, rebalance_every=1)
-    # a leaky backtester would return 1.0 here; the honest one holds asset 1
+    # a leaky backtester would return 1.0 here; a correct one holds asset 1
     assert res.net_returns.iloc[0] == pytest.approx(0.01, abs=1e-15)
 
 
