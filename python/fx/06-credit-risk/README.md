@@ -38,7 +38,7 @@ settlement.py: time-zone windows, gross vs CLS  (independent block 2)
 cd python/fx/06-credit-risk
 pip install -e .          # or rely on the repo conftest.py path shim
 pytest -q                 # 218 tests, offline, about 30 s
-python examples/run_pipeline.py   # full run, ~2 s
+python examples/run_pipeline.py   # full run, about 5 s
 ```
 
 ## Headline results (seed 42, reproduced by `examples/run_pipeline.py`)
