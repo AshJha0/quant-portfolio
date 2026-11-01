@@ -10,12 +10,12 @@ Journal of Econometrics 160) shows that only a specific class of losses is
 the proxy equals the ranking under the true conditional variance. MSE and
 QLIKE are the two canonical members:
 
-* ``QLIKE(f, p) = ln f + p / f`` — minimised in expectation at f = E[p]
+* ``QLIKE(f, p) = ln f + p / f``: minimised in expectation at f = E[p]
   (proved by first-order condition; empirically verified in tests). QLIKE
   weights errors multiplicatively, so it does not let a few high-variance days
-  dominate, and it penalises *under*-prediction more than over-prediction —
+  dominate, and it penalises *under*-prediction more than over-prediction:
   the asymmetry a risk desk wants.
-* ``MSE(f, p) = (f - p)^2`` — also robust, but its expectation is dominated
+* ``MSE(f, p) = (f - p)^2``: also robust, but its expectation is dominated
   by the (proxy-noise) level in high-variance episodes, making rankings far
   noisier in practice. We report both; QLIKE is the headline metric.
 
@@ -26,6 +26,9 @@ sign-bias test for unmodelled asymmetry.
 """
 
 from __future__ import annotations
+
+import math
+import warnings
 
 from typing import NamedTuple, Sequence
 
@@ -42,6 +45,7 @@ __all__ = [
     "mse_loss",
     "mincer_zarnowitz",
     "diebold_mariano",
+    "default_hac_lags",
     "DMResult",
     "MZResult",
     "ljung_box_squared",
@@ -67,7 +71,7 @@ def qlike_loss(forecast: np.ndarray, proxy: np.ndarray) -> np.ndarray:
     """Element-wise QLIKE loss ln(f) + p/f (Patton-robust; see module docs).
 
     ``forecast`` must be strictly positive; the proxy may contain zeros
-    (e.g. a zero return day), which this form handles gracefully — the
+    (e.g. a zero return day), which this form handles gracefully: the
     alternative normalised form p/f - ln(p/f) - 1 does not.
     """
     f, p = _validate_pair(forecast, proxy)
@@ -141,6 +145,11 @@ class DMResult(NamedTuple):
     mean_loss_diff: float
 
 
+def default_hac_lags(n: int, h: int = 1) -> int:
+    """Default Newey-West truncation ``max(h - 1, floor(4 (n/100)^(2/9)))``."""
+    return int(max(h - 1, math.floor(4.0 * (n / 100.0) ** (2.0 / 9.0))))
+
+
 def diebold_mariano(
     loss1: np.ndarray,
     loss2: np.ndarray,
@@ -152,15 +161,19 @@ def diebold_mariano(
 
     Parameters
     ----------
-    loss1, loss2 : array-like
+    loss1, loss2: array-like
         Per-period losses of the two competing forecasts (same loss function,
         same evaluation sample).
-    h : int
-        Forecast horizon; the default HAC lag is h - 1 (h-step optimal
-        forecast errors are MA(h-1) under correct specification).
-    hac_lags : int, optional
-        Override the Newey-West truncation lag (Bartlett kernel).
-    harvey_correction : bool
+    h: int
+        Forecast horizon.
+    hac_lags: int, optional
+        Newey-West truncation lag (Bartlett kernel). Default:
+        ``max(h - 1, floor(4 (n/100)^(2/9)))``, the Newey-West (1994) rule of
+        thumb. The ``h - 1`` lag alone is right only for optimal forecasts
+        (MA(h-1) errors); loss differentials of variance forecasts are
+        autocorrelated even at h = 1 (volatility clustering), so a
+        data-dependent lag is the default. Pass 0 for the i.i.d. variance.
+    harvey_correction: bool
         Apply the Harvey-Leybourne-Newbold (1997) small-sample scaling and
         use the t_{n-1} distribution instead of the normal.
     """
@@ -173,7 +186,9 @@ def diebold_mariano(
     if n < 10:
         raise ValueError(f"need at least 10 loss observations for DM, got {n}")
     if hac_lags is None:
-        hac_lags = max(h - 1, 0)
+        hac_lags = default_hac_lags(n, h)
+    if hac_lags < 0 or hac_lags >= n:
+        raise ValueError(f"hac_lags must be in [0, n), got {hac_lags}")
     d_c = d - d.mean()
     lrv = float(d_c @ d_c) / n
     for lag in range(1, hac_lags + 1):
@@ -223,7 +238,11 @@ def arch_lm_test(residuals: np.ndarray, lags: int = 10) -> dict[str, float]:
     x = np.asarray(residuals, dtype=float).ravel()
     if x.size <= 2 * lags:
         raise ValueError(f"need more than {2 * lags} observations for ARCH-LM({lags})")
-    lm, lm_pvalue, fstat, f_pvalue = het_arch(x, nlags=lags)
+    with warnings.catch_warnings():
+        # statsmodels >= 0.15 warns that the tuple return will change; the
+        # four-tuple unpacking is valid for 0.14 and 0.15.
+        warnings.simplefilter("ignore", FutureWarning)
+        lm, lm_pvalue, fstat, f_pvalue = het_arch(x, nlags=lags)
     return {"lm_stat": float(lm), "lm_pvalue": float(lm_pvalue), "f_stat": float(fstat), "f_pvalue": float(f_pvalue)}
 
 
@@ -232,7 +251,7 @@ def sign_bias_test(result: VolatilityFitResult) -> pd.DataFrame:
 
     Regress z_t^2 on [1, S_{t-1}, S_{t-1} r_{t-1}, (1-S_{t-1}) r_{t-1}] where
     S = 1[r < 0]. Significant coefficients mean the fitted model's variance
-    misses sign/size effects of lagged shocks — e.g. a symmetric GARCH fitted
+    misses sign/size effects of lagged shocks: e.g. a symmetric GARCH fitted
     to leveraged data fails the negative-size-bias row, while GJR/EGARCH fits
     pass. Returns a table with sign_bias, negative_size_bias,
     positive_size_bias and joint rows (t/F stats and p-values).
@@ -257,16 +276,17 @@ def forecast_race_table(
     proxy: np.ndarray,
     benchmark: str | None = None,
     h: int = 1,
+    hac_lags: int | None = None,
 ) -> pd.DataFrame:
     """Compare competing variance forecasts on QLIKE and MSE with DM tests.
 
     Parameters
     ----------
-    forecasts : dict
+    forecasts: dict
         Model name -> variance forecast array (aligned with ``proxy``).
-    proxy : array-like
+    proxy: array-like
         Realised variance proxy for the same dates.
-    benchmark : str, optional
+    benchmark: str, optional
         Model against which DM tests are run (default: first key). Negative
         DM stat = the row's model beats the benchmark on QLIKE.
 
@@ -275,7 +295,7 @@ def forecast_race_table(
     On *model confidence*: with a handful of models a full Model Confidence
     Set (Hansen-Lunde-Nash) is overkill; pairwise DM against a benchmark plus
     the loss ranking conveys the same message. Interpret |DM| < 2 as "no
-    significant difference" — on 500 observations only large accuracy gaps
+    significant difference": on 500 observations only large accuracy gaps
     are detectable, which is itself a desk-relevant fact.
     """
     if not forecasts:
@@ -292,7 +312,7 @@ def forecast_race_table(
         m = mse_loss(f, p)
         row = {"model": name, "qlike": float(q.mean()), "mse": float(m.mean())}
         if name != benchmark:
-            dm = diebold_mariano(q, bench_q, h=h)
+            dm = diebold_mariano(q, bench_q, h=h, hac_lags=hac_lags)
             row["dm_stat_vs_benchmark"] = dm.stat
             row["dm_pvalue"] = dm.pvalue
         else:

@@ -10,10 +10,10 @@ For a driftless GBM observed continuously, the relative sampling variances of
 one-day variance estimates are approximately:
 
 * close-to-close (squared return): efficiency 1.0 (baseline);
-* Parkinson (high-low): ~4.9x more efficient — the daily range contains far
+* Parkinson (high-low): ~4.9x more efficient: the daily range contains far
   more information about diffusion variance than the single close;
-* Garman-Klass (OHLC): ~7.4x more efficient — adds open/close information;
-* Rogers-Satchell (OHLC): ~6x more efficient *and* drift-robust — Parkinson
+* Garman-Klass (OHLC): ~7.4x more efficient: adds open/close information;
+* Rogers-Satchell (OHLC): ~6x more efficient *and* drift-robust: Parkinson
   and Garman-Klass are biased upward under non-zero drift, Rogers-Satchell is
   unbiased for any drift.
 
@@ -33,6 +33,7 @@ import pandas as pd
 from ._utils import TRADING_DAYS, validate_returns
 
 __all__ = [
+    "yang_zhang_var",
     "realized_vol",
     "close_to_close_var",
     "parkinson_var",
@@ -159,6 +160,38 @@ def rogers_satchell_var(
     return np.log(h / c) * np.log(h / o) + np.log(l / c) * np.log(l / o)
 
 
+def yang_zhang_var(
+    open_: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    window: int = 21,
+) -> np.ndarray:
+    """Yang-Zhang (2000) rolling variance per day from OHLC.
+
+    sigma2_YZ = sigma2_O + k sigma2_C + (1 - k) sigma2_RS over each window of
+    ``window`` days, with sigma2_O the sample variance of overnight returns
+    ln(O_t / C_{t-1}), sigma2_C the sample variance of open-to-close returns
+    ln(C_t / O_t), sigma2_RS the mean Rogers-Satchell variance and
+    ``k = 0.34 / (1.34 + (window + 1)/(window - 1))``. It is unbiased under
+    drift and opening gaps. The first value needs a previous close, so
+    entries ``0 .. window`` are NaN.
+    """
+    o, h, l, c = _validate_ohlc(open_, high, low, close)
+    if window < 2 or window > o.size - 1:
+        raise ValueError(f"window must be in [2, {o.size - 1}], got {window}")
+    on = np.full(o.size, np.nan)
+    on[1:] = np.log(o[1:] / c[:-1])
+    oc = np.log(c / o)
+    rs = rogers_satchell_var(o, h, l, c)
+    k = 0.34 / (1.34 + (window + 1.0) / (window - 1.0))
+    var_o = pd.Series(on).rolling(window).var(ddof=1).to_numpy()
+    var_c = np.array(pd.Series(oc).rolling(window).var(ddof=1))
+    var_c[: window] = np.nan
+    var_rs = pd.Series(rs).rolling(window).mean().to_numpy()
+    return var_o + k * var_c + (1.0 - k) * var_rs
+
+
 def range_vol(
     ohlc: pd.DataFrame,
     estimator: str = "parkinson",
@@ -171,7 +204,7 @@ def range_vol(
     ----------
     ohlc : pandas.DataFrame
         Columns ``open, high, low, close`` (case-insensitive).
-    estimator : {"parkinson", "garman_klass", "rogers_satchell"}
+    estimator : {"parkinson", "garman_klass", "rogers_satchell", "yang_zhang"}
     window : int
         Rolling mean window for the per-day variances.
     """
@@ -186,10 +219,12 @@ def range_vol(
         dv = garman_klass_var(o, h, l, c)
     elif estimator == "rogers_satchell":
         dv = rogers_satchell_var(o, h, l, c)
+    elif estimator == "yang_zhang":
+        return _ann_vol(yang_zhang_var(o, h, l, c, window), annualization)
     else:
         raise ValueError(
-            f"unknown estimator {estimator!r}; use 'parkinson', 'garman_klass' "
-            f"or 'rogers_satchell'"
+            f"unknown estimator {estimator!r}; use 'parkinson', 'garman_klass', "
+            f"'rogers_satchell' or 'yang_zhang'"
         )
     if window < 1 or window > dv.size:
         raise ValueError(f"window must be in [1, {dv.size}], got {window}")

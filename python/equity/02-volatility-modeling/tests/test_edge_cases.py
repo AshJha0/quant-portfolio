@@ -95,7 +95,7 @@ class TestShortSeries:
 
 class TestNaNPolicy:
     """Policy: NaN/inf inputs raise ValueError everywhere (documented in
-    eq_vol._utils.validate_returns) — never silently dropped or imputed."""
+    eq_vol._utils.validate_returns): never silently dropped or imputed."""
 
     @pytest.fixture()
     def nan_returns(self):

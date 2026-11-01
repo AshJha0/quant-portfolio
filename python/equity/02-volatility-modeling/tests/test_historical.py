@@ -111,7 +111,7 @@ class TestRangeEstimators:
 
     def test_unknown_estimator_raises(self, ohlc):
         with pytest.raises(ValueError, match="unknown estimator"):
-            range_vol(ohlc, estimator="yang_zhang")
+            range_vol(ohlc, estimator="not_an_estimator")
 
 
 class TestWindowSensitivity:
