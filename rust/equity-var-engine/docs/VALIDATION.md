@@ -21,7 +21,7 @@ with `round2(x) = floor(100 x + 0.5)/100` in every language.
 | `conv_var_a*`, `conv_es_a*` | S2 VaR and ES at alpha 0.010, 0.025, 0.050 (`k` = 2.5, 6.25, 12.5) | 1e-12 rel: same values summed in the same order on both sides |
 | `conv_basel_*` | zone, multiplier, `F(x)` for nine `(n, x, alpha)` cases | zone and multiplier exact; CDF 1e-13 abs (pmf recursion of at most 16 terms) |
 | `conv_kupiec_lr_*` | LR at (250, 5), (500, 9), (250, 0) | 1e-12 abs (difference of log-likelihoods of size 25) |
-| `conv_as_z2` | Z2 with VaR 1500, ES 1800, alpha 0.025 | 1e-12 abs |
+| `conv_as_z2` | Z2 with VaR 1000, ES 1300, alpha 0.025 | 1e-12 abs |
 | `conv_cf_valid_*` | five Cornish-Fisher validity flags | exact |
 | `conv_higham_*`, `conv_clip_*` | repaired entries of the 3x3 indefinite matrix | 1e-8 abs (spec) and 1e-12 rel (spec) |
 | `conv_ewma_sigma_last` | one-step-ahead EWMA vol of `P/1e5` | 1e-14 rel (250-step recursion with contraction 0.94) |

@@ -231,8 +231,8 @@ TEST(CrossLanguage, ConvKupiecAndAcerbiSzekely) {
     EXPECT_NEAR(kupiec_pof({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01}).lr,
                 golden::conv_kupiec_lr_n250_x0, 1e-10);
     const std::vector<double> p = conv_sample();
-    const std::vector<double> var = {1500.0};
-    const std::vector<double> es = {1800.0};
+    const std::vector<double> var = {1000.0};
+    const std::vector<double> es = {1300.0};
     EXPECT_NEAR(acerbi_szekely_z2(p, var, es, 0.025), golden::conv_as_z2, 1e-12);
 }
 

@@ -162,8 +162,8 @@
         ]
       ],
       "as": {
-        "var": 1500.0,
-        "es": 1800.0,
+        "var": 1000.0,
+        "es": 1300.0,
         "alpha": 0.025
       },
       "higham_input": [
@@ -264,7 +264,7 @@
     "conv_kupiec_lr_n250_x5": 1.956809788230622,
     "conv_kupiec_lr_n500_x9": 2.612570620003453,
     "conv_kupiec_lr_n250_x0": 5.025167926750726,
-    "conv_as_z2": 1.0,
+    "conv_as_z2": -3.1854547692307698,
     "conv_cf_valid_s0122_km0427": 1.0,
     "conv_cf_valid_s00_k00": 1.0,
     "conv_cf_valid_s10_k10": 1.0,

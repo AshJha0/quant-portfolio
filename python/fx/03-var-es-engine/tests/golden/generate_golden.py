@@ -187,7 +187,7 @@ def build_conv() -> dict[str, float]:
         out[f"conv_basel_cdf_{key}"] = tl.cumulative_prob
     for n, x in ((250, 5), (500, 9), (250, 0)):
         out[f"conv_kupiec_lr_n{n}_x{x}"] = kupiec_pof(n_obs=n, n_exceptions=x, alpha=0.01)[0]
-    out["conv_as_z2"] = acerbi_szekely_z2(p, np.full(250, 1500.0), np.full(250, 1800.0),
+    out["conv_as_z2"] = acerbi_szekely_z2(p, np.full(250, 1000.0), np.full(250, 1300.0),
                                           alpha=0.025, n_sims=1)["z2"]
     for (sk, ku, a), tag in (((0.122, -0.427, 0.01), "s0122_km0427"),
                              ((0.0, 0.0, 0.01), "s00_k00"),
@@ -287,7 +287,7 @@ def build() -> dict[str, object]:
                 "alphas": [0.010, 0.025, 0.050],
                 "basel": [list(t) for t in CONV_BASEL],
                 "kupiec": [[250, 5], [500, 9], [250, 0]],
-                "as": {"var": 1500.0, "es": 1800.0, "alpha": 0.025},
+                "as": {"var": 1000.0, "es": 1300.0, "alpha": 0.025},
                 "higham_input": CONV_HIGHAM_A,
                 "ewma": {"returns": "P_i / 1e5", "lambda": 0.94, "seed_window": 30},
             },

@@ -160,9 +160,12 @@ class TestConventionKeysAgainstHandComputation:
             assert committed["values"][f"conv_kupiec_lr_n{n}_x{x}"] == pytest.approx(lr(n, x), rel=1e-12)
 
     def test_as_z2(self, committed, losses):
-        # VaR 1500 exceeds every loss in P (max 1434.40): no exception, Z2 = 1.
-        assert losses[0] < 1500.0
-        assert committed["values"]["conv_as_z2"] == 1.0
+        # VaR 1000 is exceeded on several days of P, so the exception branch is exercised.
+        pnl = [-x for x in losses]
+        hits = [x for x in pnl if x < -1000.0]
+        assert len(hits) > 0
+        want = sum(x / 1300.0 for x in hits) / (250 * 0.025) + 1.0
+        assert committed["values"]["conv_as_z2"] == pytest.approx(want, abs=1e-12)
 
     def test_higham_and_clip(self, committed):
         # The nearest correlation matrix to A keeps the signs and puts 0.5 off the diagonal.

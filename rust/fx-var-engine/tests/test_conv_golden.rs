@@ -96,7 +96,7 @@ fn conv_kupiec() {
 
 #[test]
 fn conv_acerbi_szekely() {
-    let z2 = acerbi_szekely_z2(&sample_p(), &[1500.0], &[1800.0], 0.025).unwrap();
+    let z2 = acerbi_szekely_z2(&sample_p(), &[1000.0], &[1300.0], 0.025).unwrap();
     assert!((z2 - golden::CONV_AS_Z2).abs() < 1e-12, "{z2}");
 }
 

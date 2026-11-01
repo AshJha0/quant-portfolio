@@ -312,8 +312,8 @@ class TestConventionVectors:
         assert committed["values"][f"conv_kupiec_lr_n{n}_x{x}"] == pytest.approx(want, rel=1e-13)
 
     def test_as_z2_by_hand(self, committed, p):
-        hit = p < -1500.0
-        want = float(np.sum(p * hit / 1800.0)) / (250 * 0.025) + 1.0
+        hit = p < -1000.0
+        want = float(np.sum(p * hit / 1300.0)) / (250 * 0.025) + 1.0
         assert committed["values"]["conv_as_z2"] == pytest.approx(want, abs=1e-15)
 
     def test_ewma_by_hand(self, committed, p):

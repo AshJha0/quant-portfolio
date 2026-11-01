@@ -139,7 +139,7 @@ def build_conv() -> dict[str, float]:
         out[f"conv_basel_cdf_{tag}"] = r["cumulative_prob"]
     for n, x in ((250, 5), (500, 9), (250, 0)):
         out[f"conv_kupiec_lr_n{n}_x{x}"] = kupiec_pof(n_obs=n, n_exceptions=x, alpha=0.01)["lr"]
-    out["conv_as_z2"] = acerbi_szekely_z2(p, 1500.0, 1800.0, alpha=0.025, n_sims=1)["z2"]
+    out["conv_as_z2"] = acerbi_szekely_z2(p, 1000.0, 1300.0, alpha=0.025, n_sims=1)["z2"]
     for key, (s, k, a) in CONV_CF.items():
         out[key] = 1.0 if cornish_fisher_valid(s, k, a) else 0.0
     h = higham_nearest_correlation(np.array(CONV_A))
@@ -239,7 +239,7 @@ def build() -> dict[str, object]:
                 "var_es": "spec S2 on P at alpha 0.010 / 0.025 / 0.050",
                 "basel": "spec S4, (n, x, alpha) in the key; zone 0 green, 1 yellow, 2 red",
                 "kupiec": "spec S3 LR at alpha 0.01",
-                "as_z2": "spec S5 Z2 on P with VaR_t = 1500, ES_t = 1800, alpha 0.025",
+                "as_z2": "spec S5 Z2 on P with VaR_t = 1000, ES_t = 1300, alpha 0.025",
                 "cf_valid": "spec S6 flag (1 valid, 0 not); alpha 0.01 unless the key says a001",
                 "cholesky": "spec S7 repairs of A = [[1,.9,.9],[.9,1,-.9],[.9,-.9,1]]; "
                 "higham tolerance 1e-8 abs, clip 1e-12 rel",
