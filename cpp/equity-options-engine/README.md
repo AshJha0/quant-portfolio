@@ -29,14 +29,14 @@ results that overflow throw `std::invalid_argument`.
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # add -DEQOPT_WERROR=ON for -Werror
 cmake --build build -j
-ctest --test-dir build --output-on-failure        # 68 tests
+ctest --test-dir build --output-on-failure        # 66 tests
 ./build/eqopt_bench
 ```
 
 C++20, CMake >= 3.20. GoogleTest is found with `find_package(GTest)` and
 fetched (v1.15.2) when absent. Warnings: `-Wall -Wextra -Wpedantic` on
 GCC/Clang, `/W4` on MSVC. Built and tested with GCC 15.2, Clang 21.1 and a
-GCC ASan+UBSan build (68/68 each).
+GCC ASan+UBSan build (66/66 each).
 
 ## Validation
 
