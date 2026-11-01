@@ -198,7 +198,7 @@ TEST(Fhs, PerFactorHomogeneousAndSingleFactorMatchesPnlLevel) {
 
 TEST(MonteCarloSe, BootstrapNearAsymptoticAndNeedsTwoReplicates) {
     // N(0, 1) P&L, n = 100k: asymptotic SE = sqrt(a(1-a)/n) / phi(z_a).
-    const Matrix cov(1, 1, {1.0});
+    const Matrix cov(1, 1, std::vector<double>{1.0});
     const Matrix scen = simulate_factor_returns(cov, 100'000, Dist::Normal, 6.0, 11);
     std::vector<double> pnl(scen.data(), scen.data() + scen.size());
     const double a = 0.01;
