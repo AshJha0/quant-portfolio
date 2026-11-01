@@ -3,13 +3,13 @@
 Six features, each an FX desk staple for reading risk-on/risk-off:
 
 ``avg_vol``    Average rolling realised vol across G10 currencies vs USD,
-               annualised — a synthetic VXY analog.
+               annualised, a synthetic VXY analog.
 ``carry_ret``  Rolling return of the rank-carry basket (long high-yielders,
                short low-yielders, dollar-neutral), spot + carry accrual.
 ``haven_rs``   Safe-haven relative strength: rolling return of (JPY+CHF)/2
                minus (AUD+NZD)/2.  Spikes up in risk-off.
 ``usd_corr``   Average pairwise rolling correlation of the risk-block
-               (G10 carry + EM) currency-vs-USD returns — the
+               (G10 carry + EM) currency-vs-USD returns, the
                'one-trade market' gauge that spikes in unwinds.
 ``em_g10``     EM-vs-G10 spread: rolling EM basket return minus rolling
                G10 basket return.
@@ -51,7 +51,7 @@ FEATURE_COLUMNS = (
 class FeatureConfig:
     """Windows and basket sizes for the feature block.
 
-    Windows are deliberately SHORT (1-2 weeks): FX risk regimes last
+    Windows are SHORT (1-2 weeks): FX risk regimes last
     days-to-weeks, and longer windows smear regime transitions into a
     spurious 'transitional' state that an HMM will happily invent (see
     docs/VALIDATION.md).

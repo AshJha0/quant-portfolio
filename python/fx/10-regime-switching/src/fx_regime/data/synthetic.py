@@ -24,11 +24,11 @@ States
 ------
 0 ``risk_on``     : carry / EM currencies drift up vs USD, havens drift
                     down, vols low, correlations moderate.
-1 ``risk_off``    : violent carry unwind — carry / EM fall hard, JPY/CHF
+1 ``risk_off``    : violent carry unwind, carry / EM fall hard, JPY/CHF
                     rally, vols spike, risk-block correlations spike,
                     haven-vs-carry correlation turns strongly negative.
 2 ``usd_squeeze`` : (3-state variant only) everything falls against USD,
-                    havens included, with very high common correlation —
+                    havens included, with very high common correlation , 
                     a 2008 / March-2020 dollar-funding squeeze.
 """
 
@@ -72,23 +72,90 @@ MEAN_DEPOSIT_RATES: dict[str, float] = {
     "USD": 0.020,
 }
 
-#: Half-spread transaction costs per currency-vs-USD leg, in PIPS on a
-#: quote near 1.0 (1 pip = 1e-4 in price ≈ 1 bp of notional).  EM wider.
+#: Market quote convention per currency leg: (pair, usd_is_base, reference
+#: spot level). ``usd_is_base`` is True for USD/XXX quotes (USDJPY, USDMXN),
+#: where the currency-vs-USD return is minus the quote's log return.
+#: Reference levels are round 2024-2025 values; they set the price level at
+#: the start of a synthetic path, which then moves with the simulated returns.
+QUOTES: dict[str, tuple[str, bool, float]] = {
+    "AUD": ("AUDUSD", False, 0.66),
+    "NZD": ("NZDUSD", False, 0.60),
+    "NOK": ("USDNOK", True, 10.5),
+    "CAD": ("USDCAD", True, 1.36),
+    "EUR": ("EURUSD", False, 1.08),
+    "GBP": ("GBPUSD", False, 1.27),
+    "SEK": ("USDSEK", True, 10.5),
+    "JPY": ("USDJPY", True, 150.0),
+    "CHF": ("USDCHF", True, 0.88),
+    "MXN": ("USDMXN", True, 17.5),
+    "ZAR": ("USDZAR", True, 18.5),
+    "BRL": ("USDBRL", True, 5.0),
+}
+
+#: Pip size in quote units: 0.01 for JPY quotes, 0.0001 otherwise.
+PIP_SIZE: dict[str, float] = {c: (0.01 if c == "JPY" else 1e-4) for c in QUOTES}
+
+#: Half-spread per leg in MARKET PIPS of the quoted pair. The cost as a
+#: fraction of notional is ``pips * PIP_SIZE / quote_level`` (see
+#: :func:`half_spread_fraction`); at the reference levels this is about
+#: 0.5-1.7 bp for G10 and 3-10 bp for EM.
 SPREAD_PIPS: dict[str, float] = {
-    "AUD": 1.0,
-    "NZD": 1.5,
-    "NOK": 2.5,
-    "CAD": 1.0,
+    "AUD": 0.7,
+    "NZD": 1.0,
+    "NOK": 25.0,
+    "CAD": 1.4,
     "EUR": 0.5,
     "GBP": 0.8,
-    "SEK": 2.5,
-    "JPY": 0.8,
+    "SEK": 25.0,
+    "JPY": 1.0,
     "CHF": 1.0,
-    "MXN": 6.0,
-    "ZAR": 10.0,
-    "BRL": 12.0,
+    "MXN": 60.0,
+    "ZAR": 150.0,
+    "BRL": 50.0,
 }
-PIP_FRACTION = 1e-4  # 1 pip expressed as a fraction of notional
+#: Deprecated: the old flat conversion "1 pip = 1e-4 of notional", which is
+#: only right for quotes near 1.0. Kept for one release; use
+#: :func:`half_spread_fraction`.
+PIP_FRACTION = 1e-4
+
+
+def half_spread_fraction(ccy: str, pips: float, quote_level: float | None = None) -> float:
+    """Half-spread as a fraction of notional: ``pips * pip_size / quote_level``.
+
+    A pip is a fixed amount of the QUOTE currency per unit of base, so its
+    value relative to notional depends on the price level: 1 pip on USDJPY
+    at 150 is 0.01/150 = 0.67 bp, 60 pips on USDMXN at 17.5 is 3.4 bp.
+    ``quote_level`` defaults to the reference level in :data:`QUOTES`.
+    Unknown currencies use pip size 1e-4 and level 1.0.
+    """
+    if not np.isfinite(pips) or pips < 0:
+        raise ValueError(f"pips must be finite and >= 0, got {pips}")
+    pip = PIP_SIZE.get(ccy, 1e-4)
+    level = QUOTES[ccy][2] if (quote_level is None and ccy in QUOTES) else quote_level
+    if level is None:
+        level = 1.0
+    if not np.isfinite(level) or level <= 0:
+        raise ValueError(f"quote_level must be finite and positive, got {level}")
+    return float(pips * pip / level)
+
+
+def quote_levels(returns: pd.DataFrame) -> pd.DataFrame:
+    """Quote level path of each leg implied by currency-vs-USD log returns.
+
+    Row t is the level at the close of t, starting from the reference level
+    times the first day's move. For USD/XXX quotes the quote moves opposite
+    to the currency-vs-USD return.
+    """
+    out = {}
+    for c in returns.columns:
+        if c not in QUOTES:
+            out[c] = np.ones(len(returns))
+            continue
+        _, usd_base, ref = QUOTES[c]
+        sign = -1.0 if usd_base else 1.0
+        out[c] = ref * np.exp(sign * returns[c].cumsum().to_numpy())
+    return pd.DataFrame(out, index=returns.index)
+
 
 # --------------------------------------------------------------------------
 # Per-state annualised drift / vol tables (currency vs USD)
@@ -138,7 +205,7 @@ def state_correlation(state: str, currencies: tuple[str, ...] = CURRENCIES) -> n
 
     EM currencies share the risk block's correlation entries.  The matrix
     is symmetrised and, if needed, shifted to be positive definite (min
-    eigenvalue >= 1e-6) — the shift is tiny and re-normalised to unit
+    eigenvalue >= 1e-6), the shift is tiny and re-normalised to unit
     diagonal.
 
     Parameters
@@ -290,6 +357,7 @@ def generate_roro_panel(
     plant_flip_len: int = 45,
     plant_flip_state: int = 1,
     start: str = "2015-01-01",
+    equal_drift: bool = False,
 ) -> SyntheticPanel:
     """Generate a RORO currency-vs-USD return panel with known ground truth.
 
@@ -305,13 +373,20 @@ def generate_roro_panel(
         Overrides the default known transition matrix.
     plant_flip_at : optional int
         If given, force the hidden state to ``plant_flip_state`` for
-        ``plant_flip_len`` days starting at this index — a planted
+        ``plant_flip_len`` days starting at this index, a planted
         2008-style flip at a known date (the chain resumes from that
         state afterwards).
     plant_flip_len, plant_flip_state : int
         Length and state of the planted episode.
     start : str
         First business date of the index.
+    equal_drift : bool
+        If True every state gets ZERO spot drift: the vol and correlation
+        regimes (and the hidden chain, and every random draw) are the same
+        as with ``equal_drift=False`` for the same seed, but there is no
+        link between the state and the expected return. This is the
+        vol-clustering null used to separate vol timing from the planted
+        crash drift.
 
     Returns
     -------
@@ -352,7 +427,7 @@ def generate_roro_panel(
     chols = []
     for s, name in enumerate(state_names):
         mu_a, cov_a = state_moments(name)
-        means[s] = mu_a / 252.0
+        means[s] = 0.0 if equal_drift else mu_a / 252.0
         covs[s] = cov_a / 252.0
         chols.append(np.linalg.cholesky(covs[s]))
 
@@ -381,7 +456,7 @@ def generate_roro_panel(
 def generate_null_gbm_panel(
     n_periods: int = 2000, seed: int = 0, start: str = "2015-01-01"
 ) -> SyntheticPanel:
-    """Single-regime Gaussian ('null GBM') panel — no regime structure.
+    """Single-regime Gaussian ('null GBM') panel, no regime structure.
 
     Uses the risk_on moments for every day with zero drift.  Any regime
     filter run on this panel should find nothing exploitable; BIC should

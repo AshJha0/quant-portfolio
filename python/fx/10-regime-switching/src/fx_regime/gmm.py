@@ -47,7 +47,7 @@ class GMMResult:
     weights : (k,) mixing proportions.
     means : (k, p) component means.
     covs : (k, p, p) component covariances.
-    log_likelihood : float — total log-likelihood of the training data.
+    log_likelihood : float, total log-likelihood of the training data.
     log_likelihood_path : list of per-iteration log-likelihoods
         (monotone non-decreasing up to tolerance).
     converged : bool
@@ -238,7 +238,7 @@ def select_k_bic(
 
     Returns
     -------
-    (best_k, {k: bic}) — best_k has the lowest BIC.
+    (best_k, {k: bic}), best_k has the lowest BIC.
     """
     if k_max < 1:
         raise ValueError("k_max must be >= 1")

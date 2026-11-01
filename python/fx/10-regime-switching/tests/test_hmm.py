@@ -235,3 +235,36 @@ def test_short_series_and_bad_inputs_raise():
         log_forward(bad, np.zeros((10, 2)))
     with pytest.raises(ValueError):
         stationary_distribution(np.array([[0.5, 0.4], [0.5, 0.5]]))
+
+
+def test_reported_likelihood_is_that_of_returned_model_at_max_iter():
+    """Regression: at max_iter the fit returned post-M-step parameters with
+    the pre-M-step likelihood. The reported value must score the returned
+    parameters exactly."""
+    true = _known_model(sep=1.0)
+    X, _ = _sample(true, 600, seed=4)
+    m = fit_hmm(X, 2, seed=0, n_init=1, max_iter=3, tol=1e-12)
+    assert not m.converged
+    _, ll = log_forward(m, X)
+    assert m.log_likelihood == pytest.approx(ll, rel=0, abs=1e-9)
+    # restart comparison now ranks returned models by their own likelihood
+    m2 = fit_hmm(X, 2, seed=0, n_init=3, max_iter=3, tol=1e-12)
+    assert m2.log_likelihood == pytest.approx(log_forward(m2, X)[1], abs=1e-9)
+
+
+def test_scaled_recursions_match_brute_force_log_space():
+    """The scaled forward/backward equal the textbook log-space recursion."""
+    m = _known_model()
+    X, _ = _sample(m, 50, seed=9)
+    logb = m.emission_logprob(X)
+    la = np.empty_like(logb)
+    la[0] = np.log(m.startprob) + logb[0]
+    for t in range(1, len(X)):
+        la[t] = logsumexp(la[t - 1][:, None] + np.log(m.transmat), axis=0) + logb[t]
+    lb = np.zeros_like(logb)
+    for t in range(len(X) - 2, -1, -1):
+        lb[t] = logsumexp(np.log(m.transmat) + (logb[t + 1] + lb[t + 1])[None, :], axis=1)
+    got_a, ll = log_forward(m, X)
+    np.testing.assert_allclose(got_a, la, rtol=1e-11, atol=1e-9)
+    np.testing.assert_allclose(log_backward(m, X), lb, rtol=1e-11, atol=1e-9)
+    assert ll == pytest.approx(logsumexp(la[-1]), abs=1e-9)

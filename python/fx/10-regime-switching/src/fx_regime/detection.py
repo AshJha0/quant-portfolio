@@ -10,14 +10,14 @@ Design rules (each enforced by tests):
 2. **Economic labeling.**  HMM state indices are arbitrary; each refit
    maps them to economic labels from the state means in feature space:
    risk_on = lowest ``avg_vol`` mean; with k=3 the remaining two split by
-   ``haven_rs`` mean — risk_off = havens rallying (high haven_rs),
+   ``haven_rs`` mean, risk_off = havens rallying (high haven_rs),
    usd_squeeze = havens falling too (low haven_rs).  Risk-off is thus,
    by construction, the high-vol / high-correlation / haven-bid state.
 3. **Hysteresis + confirmation.**  Regime switches require the new
    regime's filtered probability to clear ``enter_threshold`` (or the
    incumbent's to fall below ``exit_threshold``) for
    ``min_duration`` consecutive days.  This kills flicker and cuts
-   turnover at the cost of detection lag — the lag is measured and
+   turnover at the cost of detection lag, the lag is measured and
    priced in :mod:`fx_regime.risk`.
 """
 
@@ -55,13 +55,17 @@ class DetectionConfig:
         Consecutive qualifying days required before a switch commits.
     max_iter, n_init : int
         EM controls for the underlying HMM fits.
+    cold_restart_every : int
+        Every this many refits, a cold fit (``n_init`` GMM-seeded starts)
+        competes with the warm-started fit and the higher likelihood on
+        the training window wins. This stops a bad early optimum from
+        propagating through every later warm start. 0 disables it.
     detect_columns : tuple of str
-        Feature columns the HMM is fitted on.  Defaults to the
-        mean-reverting, regime-informative subset; ``fwd_ts`` is
-        EXCLUDED by default because its expanding z-score is
-        near-unit-root and lets the HMM carve the sample into spurious
-        'early/late' epochs instead of RORO states (see
-        docs/VALIDATION.md failure modes).
+        Feature columns the HMM is fitted on. The default (five columns,
+        without ``usd_str`` and ``fwd_ts``) is the column set chosen on
+        the design seeds of ``examples/run_pipeline.py`` out of three
+        candidates; ``fwd_ts`` is a near-unit-root expanding z-score and
+        lets the HMM split the sample into early/late epochs.
     """
 
     n_states: int = 3
@@ -72,8 +76,9 @@ class DetectionConfig:
     min_duration: int = 2
     max_iter: int = 50
     n_init: int = 2
+    cold_restart_every: int = 4
     detect_columns: tuple[str, ...] = (
-        "avg_vol", "carry_ret", "haven_rs", "usd_corr", "em_g10", "usd_str"
+        "avg_vol", "carry_ret", "haven_rs", "usd_corr", "em_g10"
     )
 
     def __post_init__(self) -> None:
@@ -85,6 +90,8 @@ class DetectionConfig:
             raise ValueError("min_duration must be >= 1")
         if self.refit_every < 1:
             raise ValueError("refit_every must be >= 1")
+        if self.cold_restart_every < 0:
+            raise ValueError("cold_restart_every must be >= 0")
 
 
 def label_states(
@@ -223,9 +230,9 @@ def run_detection(
 
     At each refit date t0 (every ``refit_every`` days from
     ``min_train``), an HMM is fitted to ``features[:t0]`` (warm-started
-    from the previous fit).  For each t in the following block the
+    from the previous fit, with a periodic cold restart).  For each t in the following block the
     filtered probability P(s_t | x_{1..t}) is computed with that frozen
-    model via a single forward pass over ``features[:t+1]`` — causal for
+    model via a single forward pass over ``features[:t+1]``, causal for
     every t because the forward recursion at t never touches rows > t.
 
     Parameters
@@ -265,16 +272,33 @@ def run_detection(
     model: HMMModel | None = None
 
     t0 = cfg.min_train
+    n_refit = 0
     while t0 < T:
         train = X[:t0]
+        warm = model
         model = fit_hmm(
             train,
             cfg.n_states,
             seed=seed,
             n_init=cfg.n_init,
             max_iter=cfg.max_iter,
-            init_model=model,
+            init_model=warm,
         )
+        if (
+            warm is not None
+            and cfg.cold_restart_every > 0
+            and n_refit % cfg.cold_restart_every == 0
+        ):
+            cold = fit_hmm(
+                train,
+                cfg.n_states,
+                seed=seed + n_refit,
+                n_init=cfg.n_init,
+                max_iter=cfg.max_iter,
+            )
+            if cold.log_likelihood > model.log_likelihood:
+                model = cold
+        n_refit += 1
         labels = label_states(model.means, cols, cfg.n_states)
         refit_dates.append(features.index[t0])
         models[features.index[t0]] = model
