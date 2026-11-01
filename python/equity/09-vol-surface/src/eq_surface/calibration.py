@@ -243,7 +243,7 @@ def calibrate_heston(
     def residuals(x: np.ndarray) -> np.ndarray:
         v0, kappa, theta, rho, xi = x
         try:
-            p = HestonParams(v0, kappa, theta, rho, xi)
+            p = HestonParams(v0=v0, kappa=kappa, theta=theta, rho=rho, xi=xi)
         except ValueError:
             return np.full(n_quotes, 10.0)
         ivs, prices = [], []
@@ -302,7 +302,9 @@ def calibrate_heston(
         raise RuntimeError("Heston calibration failed from every starting point")
 
     v0, kappa, theta, rho, xi = best.x
-    params = HestonParams(float(v0), float(kappa), float(theta), float(rho), float(xi))
+    params = HestonParams(
+        v0=float(v0), kappa=float(kappa), theta=float(theta), rho=float(rho), xi=float(xi)
+    )
     feller = feller_condition(params, warn=True)  # warn-not-raise by design
 
     # Identifiability diagnostics from the optimum's Jacobian.

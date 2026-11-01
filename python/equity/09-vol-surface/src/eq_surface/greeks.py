@@ -127,7 +127,7 @@ def heston_greeks(
     f_S = lambda s: _price(s, K, T, r, q, p)
 
     def f_v(v0: float) -> float:
-        return _price(S, K, T, r, q, HestonParams(v0, p.kappa, p.theta, p.rho, p.xi))
+        return _price(S, K, T, r, q, HestonParams(v0=v0, kappa=p.kappa, theta=p.theta, rho=p.rho, xi=p.xi))
 
     f_r = lambda rr: _price(S, K, T, rr, q, p)
 
