@@ -222,5 +222,5 @@ Each item says what breaks if it is violated.
 8. **Basel plus factors** are the 1996 250-day table, mapped by equivalent
    count for other windows and alphas. That mapping is a convention of this
    repository, not a regulatory rule.
-9. **RNG stream is crate-specific.** Changing `rng.rs` changes every seeded
-   number.
+9. **RNG stream is crate-specific.** Changing `rng.rs` or
+   `qp_core::rng` changes every seeded number.

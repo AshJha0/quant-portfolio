@@ -97,7 +97,7 @@ control:
 2. `tools/gen_golden_rs.py` refreshes `src/golden.rs` (`--check` verifies
    it); the diff of that generated module is the reviewable surface of a
    contract change on the Rust side.
-3. CI runs `RUSTFLAGS="-D warnings" cargo test --release --locked`. A
+3. CI runs `cargo test --release --locked -p fx-options-engine` from `rust/`. A
    change that moves a golden number outside its tolerance fails the
    build. The differential test checks the Python, Rust and C++ engines
    against each other on seeded random inputs.

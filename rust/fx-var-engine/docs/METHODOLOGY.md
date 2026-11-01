@@ -105,7 +105,7 @@ repairs exist but the MC path never applies them on its own.
 | A6 | Covariance is stationary within the window. | Regime breaks; EWMA recovers with a lag. |
 | A7 | i.i.d. scenarios within the HS window (plain). | Clustering fails Christoffersen; use FHS. |
 | A8 | Pegs: the history contains no break. | HS and parametric VaR are near zero on a peg. The engine flags pegs and prices breaks with the jump overlay and peg-break scenarios. |
-| A9 | The crate-owned RNG drives every draw. | Changing `rng.rs` changes every seeded number. Results repeat on the same build and platform; no cross-platform claim. |
+| A9 | The crate-owned RNG drives every draw. | Changing `rng.rs` or `qp_core::rng` changes every seeded number. Results repeat on the same build and platform; no cross-platform claim. |
 | A10 | Linear instruments only. | Options need the Python GK layer. |
 | A11 | Jump overlay is uncompensated. | It shifts the mean as well as the tail; compare against a compensated model before attributing the VaR change to tail risk alone. |
 
