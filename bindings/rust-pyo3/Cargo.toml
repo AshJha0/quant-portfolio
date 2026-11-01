@@ -1,0 +1,26 @@
+[package]
+name = "qp-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "PyO3 bindings for the quant-portfolio Rust option and VaR engines"
+license = "MIT"
+
+# Not a member of rust/Cargo.toml: the engines stay free of PyO3 and numpy.
+[workspace]
+
+[lib]
+name = "qp_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py310"] }
+numpy = "0.30"
+eq-options-engine = { path = "../../rust/equity-options-engine" }
+fx-options-engine = { path = "../../rust/fx-options-engine" }
+eq-var-engine = { path = "../../rust/equity-var-engine" }
+fx-var-engine = { path = "../../rust/fx-var-engine" }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

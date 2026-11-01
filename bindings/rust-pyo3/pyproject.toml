@@ -1,0 +1,24 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "qp-rust"
+version = "0.1.0"
+description = "Python bindings (PyO3) for the quant-portfolio Rust option and VaR engines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "hypothesis>=6"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "qp_rust._core"
+features = ["pyo3/extension-module"]
+locked = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
