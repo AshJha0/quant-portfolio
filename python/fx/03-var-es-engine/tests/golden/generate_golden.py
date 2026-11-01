@@ -25,6 +25,23 @@ A  book revaluation + plain / age-weighted historical VaR & ES on
 B  closed-form parametric normal / Student-t VaR & ES from fixed exposures
    and covariance (``fx_var.parametric_var.var_covar``)
 C  Kupiec / Christoffersen / Basel traffic-light statistics
+conv_*  convention vectors shared by the equity and FX JSONs (spec S13):
+   order-statistic VaR and Acerbi-Tasche ES on the sample
+   ``P_i = round2(1000 sin(0.37 i + 0.1) (1 + 0.5 cos(0.11 i)))``,
+   ``round2(x) = floor(100 x + 0.5) / 100``, i = 0..249; Basel zones and
+   multipliers off the 250-day window; Kupiec LR; Acerbi-Szekely Z2;
+   Cornish-Fisher validity flags; Higham and clip PSD repair; EWMA vol.
+
+Tolerance
+---------
+The Python self-check compares the committed JSON with a fresh build to
+``GOLDEN_ULPS`` units in the last place of ``max(|value|, scale)``.  Case A
+values are P&L differences of book values of order 1e7 USD, so their
+rounding error is set by the gross value, not by the difference: the
+scale for ``a_*`` keys is 2e7.  ``conv_higham_*`` comes from an iterative
+solver stopped at 1e-12 relative change, so it is compared at 1e-8
+absolute.  Every other key is a short closed-form or order-statistic
+computation, compared at ``GOLDEN_ULPS`` ulps of its own magnitude.
 
 Usage::
 
@@ -41,10 +58,22 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from fx_var.backtesting import basel_traffic_light, christoffersen_independence, kupiec_pof
+import platform
+import warnings
+
+import scipy
+
+from fx_var.backtesting import (
+    acerbi_szekely_z2,
+    basel_traffic_light,
+    christoffersen_independence,
+    kupiec_pof,
+)
 from fx_var.book import Book, Forward, Market, Spot
-from fx_var.historical_var import historical_var
-from fx_var.parametric_var import var_covar
+from fx_var.expected_shortfall import empirical_var_es
+from fx_var.historical_var import ewma_volatility, historical_var
+from fx_var.monte_carlo_var import _repair
+from fx_var.parametric_var import cornish_fisher_valid, var_covar
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUT = HERE / "golden_vectors.json"
@@ -61,6 +90,16 @@ DESCRIPTION = (
 GOLDEN_FACTORS = ["FX:EUR", "FX:JPY", "IR:JPY", "IR:USD"]
 GOLDEN_SCALES = [0.006, 0.007, 0.0004, 0.0005]
 GOLDEN_N = 300
+
+#: ulp bound for the Python self-check (see module docstring).
+GOLDEN_ULPS = 16
+#: magnitude floor for case A keys: gross book value scale in USD.
+CASE_A_SCALE = 2e7
+
+CONV_BASEL = [(250, 4, 0.01), (250, 5, 0.01), (250, 9, 0.01), (250, 10, 0.01),
+              (500, 8, 0.01), (500, 9, 0.01), (500, 12, 0.01), (1000, 15, 0.01),
+              (250, 12, 0.025)]
+CONV_HIGHAM_A = [[1.0, 0.9, 0.9], [0.9, 1.0, -0.9], [0.9, -0.9, 1.0]]
 
 
 def golden_market() -> Market:
@@ -120,6 +159,57 @@ def golden_exceedances() -> np.ndarray:
     return e
 
 
+def round2(x: float) -> float:
+    """``floor(100 x + 0.5) / 100``: the same rounding in every language."""
+    return float(np.floor(x * 100.0 + 0.5) / 100.0)
+
+
+def conv_sample() -> np.ndarray:
+    """Spec S13 sample ``P``: 250 deterministic P&L values."""
+    return np.array([
+        round2(1000.0 * np.sin(0.37 * i + 0.1) * (1.0 + 0.5 * np.cos(0.11 * i)))
+        for i in range(250)
+    ])
+
+
+def build_conv() -> dict[str, float]:
+    """Convention vectors (keys identical in the equity and FX JSONs)."""
+    out: dict[str, float] = {}
+    p = conv_sample()
+    for a, tag in ((0.010, "a010"), (0.025, "a025"), (0.050, "a050")):
+        out[f"conv_var_{tag}"], out[f"conv_es_{tag}"] = empirical_var_es(p, a)
+    zone_code = {"green": 0.0, "yellow": 1.0, "red": 2.0}
+    for n, x, a in CONV_BASEL:
+        tl = basel_traffic_light(n_obs=n, n_exceptions=x, alpha=a)
+        key = f"n{n}_x{x}_a{round(1000 * a):03d}"
+        out[f"conv_basel_zone_{key}"] = zone_code[tl.zone]
+        out[f"conv_basel_k_{key}"] = tl.multiplier
+        out[f"conv_basel_cdf_{key}"] = tl.cumulative_prob
+    for n, x in ((250, 5), (500, 9), (250, 0)):
+        out[f"conv_kupiec_lr_n{n}_x{x}"] = kupiec_pof(n_obs=n, n_exceptions=x, alpha=0.01)[0]
+    out["conv_as_z2"] = acerbi_szekely_z2(p, np.full(250, 1500.0), np.full(250, 1800.0),
+                                          alpha=0.025, n_sims=1)["z2"]
+    for (sk, ku, a), tag in (((0.122, -0.427, 0.01), "s0122_km0427"),
+                             ((0.0, 0.0, 0.01), "s00_k00"),
+                             ((1.0, 1.0, 0.01), "s10_k10"),
+                             ((-0.0105, 8.0001, 0.01), "sm0105_k80001"),
+                             ((0.122, -0.427, 0.001), "a001_s0122_km0427")):
+        out[f"conv_cf_valid_{tag}"] = 1.0 if cornish_fisher_valid(sk, ku, a) else 0.0
+    a3 = np.array(CONV_HIGHAM_A)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        hi = _repair(a3, "higham")
+        cl = _repair(a3, "clip")
+    for i, j in ((0, 1), (0, 2), (1, 2)):
+        out[f"conv_higham_a{i}{j}"] = hi[i, j]
+    for i, j in ((0, 1), (0, 2), (1, 2)):
+        out[f"conv_clip_a{i}{j}"] = cl[i, j]
+    r = pd.DataFrame({"r": p / 1e5})
+    _, nxt = ewma_volatility(r, 0.94, seed_window=30)
+    out["conv_ewma_sigma_last"] = nxt["r"]
+    return {k: float(v) for k, v in out.items()}
+
+
 def build() -> dict[str, object]:
     """Compute every golden value.  Pure function of the fx_var package."""
     out: dict[str, object] = {}
@@ -128,37 +218,45 @@ def build() -> dict[str, object]:
     market, book, rets = golden_market(), golden_book(), golden_returns()
     assert book.factors(market) == GOLDEN_FACTORS
     out["a_book_pnl_scenario_17"] = book.pnl(market, rets.iloc[17])
-    r99 = historical_var(book, market, rets, alpha=0.99, method="plain")
+    r99 = historical_var(book, market, rets, alpha=0.01, method="plain")
     out["a_plain_var_99"], out["a_plain_es_99"] = r99.var, r99.es
-    r975 = historical_var(book, market, rets, alpha=0.975, method="plain")
+    r975 = historical_var(book, market, rets, alpha=0.025, method="plain")
     out["a_plain_var_975"], out["a_plain_es_975"] = r975.var, r975.es
-    rage = historical_var(book, market, rets, alpha=0.99, method="age", decay=0.995)
+    rage = historical_var(book, market, rets, alpha=0.01, method="age", decay=0.995)
     out["a_age_var_99_decay_0995"], out["a_age_es_99_decay_0995"] = rage.var, rage.es
 
     # ---- Case B: parametric closed form --------------------------------- #
     w = golden_exposures()
     cov = golden_cov(w)
-    out["b_normal_var_99_1d"], out["b_normal_es_99_1d"] = var_covar(w, cov, 0.99, 1.0, "normal")
-    out["b_t5_var_99_1d"], out["b_t5_es_99_1d"] = var_covar(w, cov, 0.99, 1.0, "t", 5.0)
+    out["b_normal_var_99_1d"], out["b_normal_es_99_1d"] = var_covar(w, cov, 0.01, 1.0, "normal")
+    out["b_t5_var_99_1d"], out["b_t5_es_99_1d"] = var_covar(w, cov, 0.01, 1.0, "t", 5.0)
     out["b_normal_var_99_10d"], out["b_normal_es_99_10d"] = var_covar(
-        w, cov, 0.99, 10.0, "normal"
+        w, cov, 0.01, 10.0, "normal"
     )
 
     # ---- Case C: backtest statistics ------------------------------------ #
-    out["c_kupiec_lr_8_250"], out["c_kupiec_p_8_250"] = kupiec_pof(8, 250, 0.99)
+    out["c_kupiec_lr_8_250"], out["c_kupiec_p_8_250"] = kupiec_pof(
+        n_obs=250, n_exceptions=8, alpha=0.01
+    )
     out["c_christoffersen_ind_lr"], out["c_christoffersen_ind_p"] = christoffersen_independence(
         golden_exceedances()
     )
     for x in (4, 5, 10):
-        tl = basel_traffic_light(x, 250, 0.99)
+        tl = basel_traffic_light(n_obs=250, n_exceptions=x, alpha=0.01)
         out[f"c_basel_cum_prob_{x}"] = tl.cumulative_prob
         out[f"c_basel_zone_{x}"] = tl.zone
         out[f"c_basel_multiplier_{x}"] = tl.multiplier
 
     values = {k: (v if isinstance(v, str) else float(v)) for k, v in out.items()}
+    values.update(build_conv())
     return {
         "description": DESCRIPTION,
         "source": "python/fx/03-var-es-engine (fx_var)",
+        "versions": {
+            "python": platform.python_version(),
+            "numpy": np.__version__,
+            "scipy": scipy.__version__,
+        },
         "inputs": {
             "case_a": {
                 "market": {
@@ -179,9 +277,19 @@ def build() -> dict[str, object]:
                 "cov": cov.values.tolist(),
             },
             "case_c": {
-                "kupiec": [8, 250, 0.99],
+                "kupiec": {"n_obs": 250, "n_exceptions": 8, "alpha": 0.01},
                 "exceptions": "t % 37 == 5 plus days 100 and 101 (9 in 250)",
-                "basel": [4, 5, 10],
+                "basel": {"n_obs": 250, "n_exceptions": [4, 5, 10], "alpha": 0.01},
+            },
+            "conv": {
+                "sample": "P_i = round2(1000 sin(0.37 i + 0.1) (1 + 0.5 cos(0.11 i))), i=0..249, "
+                          "round2(x) = floor(100 x + 0.5) / 100",
+                "alphas": [0.010, 0.025, 0.050],
+                "basel": [list(t) for t in CONV_BASEL],
+                "kupiec": [[250, 5], [500, 9], [250, 0]],
+                "as": {"var": 1500.0, "es": 1800.0, "alpha": 0.025},
+                "higham_input": CONV_HIGHAM_A,
+                "ewma": {"returns": "P_i / 1e5", "lambda": 0.94, "seed_window": 30},
             },
         },
         "tolerance": {
@@ -191,6 +299,9 @@ def build() -> dict[str, object]:
             "kupiec_p_abs": 1e-11,
             "christoffersen_abs": 1e-10,
             "basel_cum_prob_abs": 1e-12,
+            "python_self_check_ulps": GOLDEN_ULPS,
+            "conv_higham_abs": 1e-8,
+            "conv_clip_rel": 1e-12,
         },
         "values": values,
     }

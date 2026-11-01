@@ -97,19 +97,19 @@ class TestClosedFormTailGuards:
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_normal_rejects_non_finite_sigma(self, fn, bad) -> None:
         with pytest.raises(ValueError, match="sigma"):
-            fn(bad, 0.99)
+            fn(bad, 0.01)
 
     @pytest.mark.parametrize("fn", [normal_var, normal_es])
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_normal_rejects_non_finite_mean(self, fn, bad) -> None:
         with pytest.raises(ValueError, match="mean"):
-            fn(1000.0, 0.99, bad)
+            fn(1000.0, 0.01, bad)
 
     @pytest.mark.parametrize("fn", [t_var, t_es])
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_student_t_rejects_non_finite_sigma(self, fn, bad) -> None:
         with pytest.raises(ValueError, match="sigma"):
-            fn(bad, 0.99, 6.0)
+            fn(bad, 0.01, 6.0)
 
     @pytest.mark.parametrize("fn", [t_var, t_es])
     @pytest.mark.parametrize("bad", NON_FINITE)
@@ -117,13 +117,13 @@ class TestClosedFormTailGuards:
         # `if df <= 2: raise` alone lets NaN through into the sqrt((df-2)/df)
         # scaling and returns a NaN VaR.
         with pytest.raises(ValueError, match="df"):
-            fn(1000.0, 0.99, bad)
+            fn(1000.0, 0.01, bad)
 
     def test_finite_path_unchanged(self) -> None:
         # Sanity: the guards did not disturb the closed forms.
-        assert normal_var(1000.0, 0.99) == pytest.approx(2326.3478740408408,
+        assert normal_var(1000.0, 0.01) == pytest.approx(2326.3478740408408,
                                                         rel=1e-12)
-        assert t_var(1000.0, 0.99, 6.0) > normal_var(1000.0, 0.99)
+        assert t_var(1000.0, 0.01, 6.0) > normal_var(1000.0, 0.01)
 
 
 class TestParametricInputGuards:
@@ -141,7 +141,7 @@ class TestParametricInputGuards:
         cov = pd.DataFrame([[1e-4, 1e-5], [1e-5, 2e-4]],
                            index=w.index, columns=w.index)
         with pytest.raises(ValueError, match="exposures"):
-            var_covar(w, cov, 0.99)
+            var_covar(w, cov, 0.01)
 
     @pytest.mark.parametrize(
         "field", ["sigma", "skew", "excess_kurtosis", "mean"])
@@ -152,7 +152,7 @@ class TestParametricInputGuards:
                   "mean": 0.0}
         kwargs[field] = bad
         with pytest.raises(ValueError, match=field):
-            cornish_fisher_var(alpha=0.99, **kwargs)
+            cornish_fisher_var(alpha=0.01, **kwargs)
 
 
 class TestMonteCarloInputGuards:
@@ -309,8 +309,8 @@ class TestEndToEndNoNanEscapes:
             Forward("USDJPY", 4e6, 0.5),
             Option("EURUSD", 3e6, 1.12, 0.25, "call"),
         ])
-        hs = historical_var(book, market, returns, alpha=0.99)
-        pv = parametric_var(book, market, returns, alpha=0.99)
+        hs = historical_var(book, market, returns, alpha=0.01)
+        pv = parametric_var(book, market, returns, alpha=0.01)
         for r in (hs, pv):
             assert np.isfinite(r.var) and np.isfinite(r.es)
             assert r.es >= r.var > 0.0
@@ -331,7 +331,7 @@ class TestInfinityIsRefusedLikeNaN:
         pnl[42] = bad
         for fn in (empirical_var, empirical_es, empirical_var_es):
             with pytest.raises(ValueError, match="NaN or infinite"):
-                fn(pnl, 0.99)
+                fn(pnl, 0.01)
 
     @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
     def test_evaluate_var_backtest_refuses_non_finite_pnl_and_var(self, bad):
@@ -343,8 +343,8 @@ class TestInfinityIsRefusedLikeNaN:
         bad_pnl = pnl.copy()
         bad_pnl[7] = bad
         with pytest.raises(ValueError, match="NaN or infinite"):
-            evaluate_var_backtest(bad_pnl, var, 0.99)
+            evaluate_var_backtest(bad_pnl, var, 0.01)
         bad_var = var.copy()
         bad_var[200] = bad
         with pytest.raises(ValueError, match="NaN or infinite"):
-            evaluate_var_backtest(pnl, bad_var, 0.99)
+            evaluate_var_backtest(pnl, bad_var, 0.01)

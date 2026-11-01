@@ -212,7 +212,7 @@ class TestPeggedPairs:
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", PegBlindnessWarning)
-            res = historical_var(peg_book, mkt, rets, alpha=0.99)
+            res = historical_var(peg_book, mkt, rets, alpha=0.01)
         # 50m USDHKD notional (~6.4m USD equivalent) yet VaR is a few
         # thousand dollars -- under 0.05% of the leg.  That is the whole
         # point: HS is blind to the only risk that matters here.
@@ -226,7 +226,7 @@ class TestPeggedPairs:
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", PegBlindnessWarning)
-            hs = historical_var(peg_book, mkt, rets, alpha=0.99).var
+            hs = historical_var(peg_book, mkt, rets, alpha=0.01).var
         sc = peg_break_scenario("HKD", jump=-0.30)
         loss = -float(run_stress(peg_book, mkt, {"peg": sc})["pnl"].iloc[0])
         assert loss > 1_000 * hs        # orders of magnitude apart
@@ -259,8 +259,8 @@ class TestTinySamplesAndAlphas:
             empirical_var(np.array([]))
 
     def test_single_scenario_gives_that_scenario(self):
-        assert empirical_var(np.array([-100.0]), 0.99) == 100.0
-        assert empirical_es(np.array([-100.0]), 0.99) == 100.0
+        assert empirical_var(np.array([-100.0]), 0.01) == 100.0
+        assert empirical_es(np.array([-100.0]), 0.01) == 100.0
 
     def test_short_history_rejected_by_every_method(self, mkt):
         b = Book([Spot("EURUSD", 1_000_000)], base="USD")
@@ -270,7 +270,7 @@ class TestTinySamplesAndAlphas:
         with pytest.raises(ValueError, match="insufficient history"):
             parametric_var(b, mkt, rets)
 
-    @pytest.mark.parametrize("bad", [0.0, 1.0, -0.1, 1.5, 2.0])
+    @pytest.mark.parametrize("bad", [0.0, 0.5, 0.99, 1.0, -0.1, 1.5, 2.0, float("nan")])
     def test_alpha_outside_unit_interval_rejected(self, bad):
         with pytest.raises(ValueError, match="alpha"):
             empirical_var(np.array([-1.0, 0.0, 1.0]), bad)
@@ -287,26 +287,21 @@ class TestTinySamplesAndAlphas:
 
     def test_extreme_alpha_picks_the_single_worst_scenario(self):
         pnl = np.array([-10.0, -5.0, 0.0, 5.0, 10.0])
-        # 1-alpha below 1/n: the tail collapses onto the worst observation.
-        assert empirical_var(pnl, 0.999) == 10.0
-        assert empirical_es(pnl, 0.999) == 10.0
+        # alpha below 1/n: the tail collapses onto the worst observation.
+        assert empirical_var(pnl, 0.001) == 10.0
+        assert empirical_es(pnl, 0.001) == 10.0
 
-    def test_alpha_near_zero_averages_almost_the_whole_sample(self):
-        # With 1-alpha = 0.999 the Acerbi-Tasche estimator averages over
-        # 99.9% of the mass, dropping only a 0.1% sliver of the *best*
-        # outcome -- so ES sits just above the negative sample mean, never
-        # below it.
+    @pytest.mark.parametrize("old_confidence", [0.5, 0.9, 0.95, 0.99, 0.999])
+    def test_old_confidence_level_passed_positionally_raises(self, old_confidence):
+        # alpha is the tail probability now.  An old-style 0.99 must fail
+        # loudly, never be reinterpreted as a 99 % tail.
         pnl = np.array([-10.0, -5.0, 0.0, 5.0, 10.0])
-        var, es = empirical_var_es(pnl, 0.001)
-        assert es >= -pnl.mean()
-        assert es == pytest.approx(-pnl.mean(), abs=0.02)
-        # At 99.9% tail mass the boundary atom is the *best* outcome, so
-        # the reported "VaR" is a negative loss (i.e. a profit).
-        assert var == -10.0
+        with pytest.raises(ValueError, match="tail probability"):
+            empirical_var_es(pnl, old_confidence)
 
     def test_constant_pnl_gives_that_loss_at_every_alpha(self):
         pnl = np.full(500, -250.0)
-        for a in (0.90, 0.95, 0.99, 0.999):
+        for a in (0.10, 0.05, 0.01, 0.001):
             assert empirical_var(pnl, a) == 250.0
             assert empirical_es(pnl, a) == pytest.approx(250.0)
 
@@ -319,7 +314,7 @@ class TestEsCoherence:
         rng = np.random.default_rng(7)
         for _ in range(50):
             pnl = rng.standard_t(4, size=500) * 1000.0
-            for a in (0.90, 0.975, 0.99):
+            for a in (0.10, 0.025, 0.01):
                 v, e = empirical_var_es(pnl, a)
                 assert e >= v - 1e-9
 
@@ -332,27 +327,27 @@ class TestEsCoherence:
         rng = np.random.default_rng(11)
         a = np.where(rng.random(n) < 0.008, -100.0, 0.5)
         b = np.where(rng.random(n) < 0.008, -100.0, 0.5)
-        va, vb = empirical_var(a, 0.99), empirical_var(b, 0.99)
-        vab = empirical_var(a + b, 0.99)
+        va, vb = empirical_var(a, 0.01), empirical_var(b, 0.01)
+        vab = empirical_var(a + b, 0.01)
         assert vab > va + vb            # VaR is NOT subadditive here
-        ea, eb = empirical_es(a, 0.99), empirical_es(b, 0.99)
-        eab = empirical_es(a + b, 0.99)
+        ea, eb = empirical_es(a, 0.01), empirical_es(b, 0.01)
+        eab = empirical_es(a + b, 0.01)
         assert eab <= ea + eb + 1e-9    # ES is
 
     def test_weighted_es_matches_uniform_when_weights_are_flat(self):
         rng = np.random.default_rng(3)
         pnl = rng.standard_normal(1000) * 100
         w = np.full(1000, 7.5)  # constant, un-normalised
-        assert empirical_es(pnl, 0.99, w) == pytest.approx(
-            empirical_es(pnl, 0.99), rel=1e-12)
+        assert empirical_es(pnl, 0.01, w) == pytest.approx(
+            empirical_es(pnl, 0.01), rel=1e-12)
 
     def test_negative_weights_rejected(self):
         pnl = np.array([-1.0, 0.0, 1.0, 2.0])
         with pytest.raises(ValueError, match="weights"):
-            empirical_es(pnl, 0.99, np.array([-1.0, 1.0, 1.0, 1.0]))
+            empirical_es(pnl, 0.01, np.array([-1.0, 1.0, 1.0, 1.0]))
 
     def test_closed_form_normal_es_exceeds_var(self):
-        for a in (0.90, 0.95, 0.99, 0.999):
+        for a in (0.10, 0.05, 0.01, 0.001):
             assert normal_es(1.0, a) > normal_var(1.0, a)
 
 
@@ -371,7 +366,7 @@ class TestRegimeBehaviour:
     def test_var_increases_with_confidence_level(self, setup):
         book, mkt, rets = setup
         vals = [historical_var(book, mkt, rets, alpha=a).var
-                for a in (0.90, 0.95, 0.99)]
+                for a in (0.10, 0.05, 0.01)]
         assert vals[0] < vals[1] < vals[2]
 
     def test_var_scales_with_sqrt_of_horizon(self, setup):
@@ -389,25 +384,28 @@ class TestRegimeBehaviour:
 
     def test_t_var_exceeds_normal_var_in_the_tail(self, setup):
         book, mkt, rets = setup
-        n = parametric_var(book, mkt, rets, alpha=0.99, dist="normal").var
-        t = parametric_var(book, mkt, rets, alpha=0.99, dist="t", df=4).var
+        n = parametric_var(book, mkt, rets, alpha=0.01, dist="normal").var
+        t = parametric_var(book, mkt, rets, alpha=0.01, dist="t", df=4).var
         assert t > n  # equal sigma, fatter tail
 
     def test_t_and_normal_agree_near_the_centre(self, setup):
         # At the crossover the standardised-t quantile dips *below* normal;
         # they must agree closely at moderate confidence.
         book, mkt, rets = setup
-        n = parametric_var(book, mkt, rets, alpha=0.90, dist="normal").var
-        t = parametric_var(book, mkt, rets, alpha=0.90, dist="t", df=6).var
+        n = parametric_var(book, mkt, rets, alpha=0.10, dist="normal").var
+        t = parametric_var(book, mkt, rets, alpha=0.10, dist="t", df=6).var
         assert t == pytest.approx(n, rel=0.10)
 
-    def test_empty_book_has_zero_var_from_every_method(self, mkt):
+    def test_empty_book_raises_in_every_method(self, mkt):
         empty = Book([], base="USD")
         rets = pd.DataFrame({"FX:EUR": np.full(200, 0.001)})
-        assert historical_var(empty, mkt, rets).var == 0.0
-        assert parametric_var(empty, mkt, rets).var == 0.0
         cov = pd.DataFrame([[1e-4]], index=["FX:EUR"], columns=["FX:EUR"])
-        assert monte_carlo_var(empty, mkt, cov, n_scenarios=100).var == 0.0
+        with pytest.raises(ValueError, match="book has no positions"):
+            historical_var(empty, mkt, rets)
+        with pytest.raises(ValueError, match="book has no positions"):
+            parametric_var(empty, mkt, rets)
+        with pytest.raises(ValueError, match="book has no positions"):
+            monte_carlo_var(empty, mkt, cov, n_scenarios=100)
 
     def test_monte_carlo_matches_parametric_on_a_linear_book(self, mkt):
         # A pure spot book is exactly linear, so normal MC and the
@@ -416,7 +414,7 @@ class TestRegimeBehaviour:
         rng = np.random.default_rng(9)
         rets = pd.DataFrame({"FX:EUR": rng.standard_normal(1500) * 0.006})
         cov = rets.cov(ddof=1)
-        para = parametric_var(book, mkt, rets, alpha=0.99, dist="normal").var
-        mc = monte_carlo_var(book, mkt, cov, alpha=0.99, n_scenarios=200_000,
+        para = parametric_var(book, mkt, rets, alpha=0.01, dist="normal").var
+        mc = monte_carlo_var(book, mkt, cov, alpha=0.01, n_scenarios=200_000,
                              seed=3)
         assert abs(mc.var - para) < 4.0 * mc.se_var

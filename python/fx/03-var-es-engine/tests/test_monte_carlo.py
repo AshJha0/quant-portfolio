@@ -43,11 +43,11 @@ def test_mc_matches_closed_form_linear_pnl(cov2):
     scen = simulate_factor_returns(cov2, 200_000, dist="normal", seed=123)
     pnl = scen.to_numpy() @ w
     sigma = float(np.sqrt(w @ cov2.to_numpy() @ w))
-    exact = normal_var(sigma, 0.99)
+    exact = normal_var(sigma, 0.01)
     from fx_var import empirical_var
 
-    mc = empirical_var(pnl, 0.99)
-    se = var_standard_error(pnl, 0.99)
+    mc = empirical_var(pnl, 0.01)
+    se = var_standard_error(pnl, 0.01)
     assert abs(mc - exact) < 3 * se
 
 
@@ -59,8 +59,8 @@ def test_mc_full_reval_converges_to_parametric(market, cov2):
         simulate_factor_returns(cov2, 3000, dist="normal", seed=5),
         columns=FACTORS,
     )
-    param = parametric_var(book, market, rets, 0.99)
-    mc = monte_carlo_var(book, market, rets.cov(), 0.99, n_scenarios=200_000, seed=17)
+    param = parametric_var(book, market, rets, 0.01)
+    mc = monte_carlo_var(book, market, rets.cov(), 0.01, n_scenarios=200_000, seed=17)
     tol = 3 * mc.se_var + 0.01 * param.var  # 3 SE + 1% convexity allowance
     assert abs(mc.var - param.var) < tol
     assert mc.es >= mc.var
@@ -68,9 +68,9 @@ def test_mc_full_reval_converges_to_parametric(market, cov2):
 
 def test_mc_seed_reproducibility(market, cov2):
     book = Book([Spot("EURUSD", 1e7)])
-    a = monte_carlo_var(book, market, cov2, 0.99, n_scenarios=5000, seed=42)
-    b = monte_carlo_var(book, market, cov2, 0.99, n_scenarios=5000, seed=42)
-    c = monte_carlo_var(book, market, cov2, 0.99, n_scenarios=5000, seed=43)
+    a = monte_carlo_var(book, market, cov2, 0.01, n_scenarios=5000, seed=42)
+    b = monte_carlo_var(book, market, cov2, 0.01, n_scenarios=5000, seed=42)
+    c = monte_carlo_var(book, market, cov2, 0.01, n_scenarios=5000, seed=43)
     assert a.var == b.var
     assert a.var != c.var
 
@@ -79,8 +79,8 @@ def test_var_se_shrinks_with_n(cov2):
     rng = np.random.default_rng(0)
     small = rng.standard_normal(2_000)
     large = rng.standard_normal(200_000)
-    assert var_standard_error(large, 0.99) < var_standard_error(small, 0.99)
-    assert var_standard_error(small, 0.99) > 0
+    assert var_standard_error(large, 0.01) < var_standard_error(small, 0.01)
+    assert var_standard_error(small, 0.01) > 0
 
 
 class TestVarStandardErrorAccuracy:
@@ -104,28 +104,28 @@ class TestVarStandardErrorAccuracy:
         rng = np.random.default_rng(1)
         small = rng.standard_normal(2_000)
         large = rng.standard_normal(200_000)
-        se_small = var_standard_error_bootstrap(small, 0.99, n_boot=300, seed=1)
-        se_large = var_standard_error_bootstrap(large, 0.99, n_boot=300, seed=1)
+        se_small = var_standard_error_bootstrap(small, 0.01, n_boot=300, seed=1)
+        se_large = var_standard_error_bootstrap(large, 0.01, n_boot=300, seed=1)
         assert 0.0 < se_large < se_small
 
     def test_bootstrap_se_matches_true_sampling_se_at_default_scenario_count(self):
-        # alpha=0.99, n=50,000 (this module's default n_scenarios): both
+        # alpha=0.01, n=50,000 (this module's default n_scenarios): both
         # estimators should be close to the true SE here.
-        true_se = self._true_se(0.99, 50_000, n_rep=1200, seed=7)
+        true_se = self._true_se(0.01, 50_000, n_rep=1200, seed=7)
         x = np.random.default_rng(11).standard_normal(50_000)
-        se_kde = var_standard_error(x, 0.99)
-        se_boot = var_standard_error_bootstrap(x, 0.99, n_boot=400, seed=2)
+        se_kde = var_standard_error(x, 0.01)
+        se_boot = var_standard_error_bootstrap(x, 0.01, n_boot=400, seed=2)
         assert se_kde == pytest.approx(true_se, rel=0.35)
         assert se_boot == pytest.approx(true_se, rel=0.35)
 
     def test_kde_se_underestimates_true_se_in_deep_tail_or_small_sample(self):
         # Averaged over several independent draws (to separate genuine bias
-        # from single-trial noise): at alpha=0.99 with only 2,000
+        # from single-trial noise): at alpha=0.01 with only 2,000
         # scenarios, the KDE estimate is systematically below the true
         # sampling SE, i.e. directionally overconfident -- exactly the
         # regime the module docstring warns about. The bootstrap estimate
         # does not show the same one-sided bias.
-        alpha, n, n_trials = 0.99, 2_000, 20
+        alpha, n, n_trials = 0.01, 2_000, 20
         true_se = self._true_se(alpha, n, n_rep=4000, seed=13)
         kde_vals = [
             var_standard_error(np.random.default_rng(100 + t).standard_normal(n), alpha)
@@ -143,7 +143,7 @@ class TestVarStandardErrorAccuracy:
 
     def test_too_few_scenarios_rejected(self):
         with pytest.raises(ValueError, match="at least 10"):
-            var_standard_error_bootstrap(np.zeros(5), 0.99)
+            var_standard_error_bootstrap(np.zeros(5), 0.01)
 
 
 # ------------------------------------------------------------ fat tails / EM
@@ -157,8 +157,8 @@ def test_t_mc_exceeds_normal_mc_at_99_for_em_book(market):
     - normal MC underestimates EM tail risk at equal covariance."""
     book = demo_em_book()
     cov = _em_cov()
-    n = monte_carlo_var(book, market, cov, 0.99, n_scenarios=100_000, dist="normal", seed=7)
-    t5 = monte_carlo_var(book, market, cov, 0.99, n_scenarios=100_000, dist="t", df=5, seed=7)
+    n = monte_carlo_var(book, market, cov, 0.01, n_scenarios=100_000, dist="normal", seed=7)
+    t5 = monte_carlo_var(book, market, cov, 0.01, n_scenarios=100_000, dist="t", df=5, seed=7)
     assert t5.var > n.var * 1.05
     assert t5.es > n.es * 1.10
 
@@ -168,8 +168,8 @@ def test_jump_mc_exceeds_normal_mc_at_99_for_em_book(market):
     cov = _em_cov()
     jumps = JumpSpec(prob=0.02, mean={"FX:TRY": -0.15, "FX:BRL": -0.08},
                      std={"FX:TRY": 0.05, "FX:BRL": 0.03})
-    n = monte_carlo_var(book, market, cov, 0.99, n_scenarios=100_000, dist="normal", seed=7)
-    j = monte_carlo_var(book, market, cov, 0.99, n_scenarios=100_000, dist="jump",
+    n = monte_carlo_var(book, market, cov, 0.01, n_scenarios=100_000, dist="normal", seed=7)
+    j = monte_carlo_var(book, market, cov, 0.01, n_scenarios=100_000, dist="jump",
                         jumps=jumps, seed=7)
     assert j.var > n.var * 1.10
     assert j.es > n.es
@@ -246,9 +246,9 @@ def test_jump_spec_validation():
 def test_mc_missing_cov_columns_raises(market, cov2):
     book = Book([Spot("USDJPY", 1e6)])
     with pytest.raises(ValueError, match="FX:JPY"):
-        monte_carlo_var(book, market, cov2, 0.99, n_scenarios=100)
+        monte_carlo_var(book, market, cov2, 0.01, n_scenarios=100)
 
 
-def test_mc_empty_book(market, cov2):
-    res = monte_carlo_var(Book([]), market, cov2, 0.99, n_scenarios=100)
-    assert res.var == 0.0 and res.es == 0.0
+def test_mc_empty_book_raises(market, cov2):
+    with pytest.raises(ValueError, match="book has no positions"):
+        monte_carlo_var(Book([]), market, cov2, 0.01, n_scenarios=100)
