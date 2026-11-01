@@ -37,14 +37,16 @@ std::vector<double> simple_returns(std::span<const double> prices) {
 }
 
 std::vector<double> portfolio_pnl(const Matrix& returns, std::span<const double> exposures) {
-    if (exposures.empty()) {
-        throw std::invalid_argument(
-            "portfolio_pnl: empty portfolio (no exposures); nothing to revalue");
-    }
+    validate_exposures(exposures, "portfolio_pnl");
     if (returns.cols() != exposures.size()) {
         throw std::invalid_argument("portfolio_pnl: panel has " + std::to_string(returns.cols()) +
                                     " factors, portfolio has " + std::to_string(exposures.size()) +
                                     " exposures");
+    }
+    for (std::size_t i = 0; i < returns.size(); ++i) {
+        if (!std::isfinite(returns.data()[i])) {
+            throw std::invalid_argument("portfolio_pnl: returns contain NaN or inf");
+        }
     }
     return matvec(returns, exposures);
 }
@@ -62,9 +64,24 @@ void validate_pnl(std::span<const double> pnl, std::size_t min_obs) {
 
 void validate_alpha(double alpha) {
     if (!(alpha > 0.0 && alpha < 0.5)) {
-        throw std::invalid_argument("alpha must be in (0, 0.5) (tail probability), got " +
-                                    std::to_string(alpha));
+        throw std::invalid_argument(
+            "alpha is the tail probability (e.g. 0.01 for 99 %); must be in (0, 0.5), got " +
+            std::to_string(alpha));
     }
+}
+
+void validate_exposures(std::span<const double> exposures, const char* who) {
+    if (exposures.empty()) {
+        throw std::invalid_argument(std::string(who) + ": book has no positions");
+    }
+    bool any = false;
+    for (double w : exposures) {
+        if (!std::isfinite(w)) {
+            throw std::invalid_argument(std::string(who) + ": exposures must be finite");
+        }
+        any = any || w != 0.0;
+    }
+    if (!any) throw std::invalid_argument(std::string(who) + ": book has no positions");
 }
 
 }  // namespace eqvar

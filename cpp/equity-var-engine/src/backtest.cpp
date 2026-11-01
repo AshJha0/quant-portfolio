@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
 
 namespace eqvar {
@@ -47,36 +48,42 @@ std::vector<std::uint8_t> exceptions_from_pnl(std::span<const double> pnl,
     return ex;
 }
 
-KupiecResult kupiec_pof(int n_obs, int n_exceptions, double alpha) {
-    if (n_obs < 1) {
-        throw std::invalid_argument("kupiec_pof: n_obs must be >= 1, got " +
-                                    std::to_string(n_obs));
+namespace {
+
+void validate_counts(const KupiecInput& in, const char* who) {
+    validate_alpha(in.alpha);
+    if (in.n_obs < 1) {
+        throw std::invalid_argument(std::string(who) + ": n_obs must be >= 1, got " +
+                                    std::to_string(in.n_obs));
     }
-    if (n_exceptions < 0 || n_exceptions > n_obs) {
-        throw std::invalid_argument("kupiec_pof: n_exceptions must be in [0, n_obs]");
+    if (in.n_exceptions < 0 || in.n_exceptions > in.n_obs) {
+        throw std::invalid_argument(std::string(who) + ": n_exceptions must be in [0, n_obs], got " +
+                                    std::to_string(in.n_exceptions));
     }
-    if (!(alpha > 0.0 && alpha < 1.0)) {
-        throw std::invalid_argument("kupiec_pof: alpha must be in (0, 1), got " +
-                                    std::to_string(alpha));
-    }
-    const double t = static_cast<double>(n_obs);
-    const double x = static_cast<double>(n_exceptions);
+}
+
+}  // namespace
+
+KupiecResult kupiec_pof(const KupiecInput& in) {
+    validate_counts(in, "kupiec_pof");
+    const double alpha = in.alpha;
+    const double t = static_cast<double>(in.n_obs);
+    const double x = static_cast<double>(in.n_exceptions);
     const double pihat = x / t;
-
-    // Binomial log-likelihood at a given exception probability p.
-    const auto ll = [t, x](double p) {
-        return xlogy(t - x, 1.0 - p) + xlogy(x, p);
-    };
+    const auto ll = [t, x](double p) { return xlogy(t - x, 1.0 - p) + xlogy(x, p); };
     // Degenerate pihat in {0, 1}: the alternative's log-likelihood is 0.
-    const double ll_alt = (pihat == 0.0 || pihat == 1.0) ? 0.0 : ll(pihat);
+    const double ll_alt = (in.n_exceptions == 0 || in.n_exceptions == in.n_obs) ? 0.0 : ll(pihat);
     const double lr = std::max(-2.0 * (ll(alpha) - ll_alt), 0.0);
-
     KupiecResult res;
     res.lr = lr;
     res.pvalue = chi2_sf(lr, 1.0);
     res.expected = alpha * t;
     res.rate = pihat;
     return res;
+}
+
+KupiecResult kupiec_pof(int n_obs, int n_exceptions, double alpha) {
+    return kupiec_pof(KupiecInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
 }
 
 ChristoffersenResult christoffersen_independence(std::span<const std::uint8_t> exceptions) {
@@ -109,7 +116,8 @@ ConditionalCoverageResult christoffersen_cc(std::span<const std::uint8_t> except
                                             double alpha) {
     int count = 0;
     for (std::uint8_t e : exceptions) count += (e != 0) ? 1 : 0;
-    const KupiecResult uc = kupiec_pof(static_cast<int>(exceptions.size()), count, alpha);
+    const KupiecResult uc = kupiec_pof(KupiecInput{
+        .n_obs = static_cast<int>(exceptions.size()), .n_exceptions = count, .alpha = alpha});
     const ChristoffersenResult ind = christoffersen_independence(exceptions);
     ConditionalCoverageResult res;
     res.lr_uc = uc.lr;
@@ -119,28 +127,68 @@ ConditionalCoverageResult christoffersen_cc(std::span<const std::uint8_t> except
     return res;
 }
 
-BaselResult basel_traffic_light(int n_exceptions, int n_obs) {
-    if (n_exceptions < 0) {
-        throw std::invalid_argument("basel_traffic_light: n_exceptions must be >= 0");
-    }
-    if (n_obs < 1) throw std::invalid_argument("basel_traffic_light: n_obs must be >= 1");
+BaselResult basel_traffic_light(const BaselInput& in) {
+    validate_counts(in, "basel_traffic_light");
     BaselResult res;
-    double addon;
-    if (n_exceptions <= 4) {
+    res.cumulative_prob = binomial_cdf(in.n_exceptions, in.n_obs, in.alpha);
+    const double f = res.cumulative_prob;
+    if (f < 0.95) {
         res.zone = BaselZone::Green;
-        addon = 0.0;
-    } else if (n_exceptions <= 9) {
+        res.plus_factor = 0.0;
+    } else if (f < 0.9999) {
         res.zone = BaselZone::Yellow;
-        // Regulatory add-on schedule for 5..9 exceptions.
-        static constexpr double kYellowAddon[] = {0.40, 0.50, 0.65, 0.75, 0.85};
-        addon = kYellowAddon[n_exceptions - 5];
+        static constexpr double kPlus[] = {0.40, 0.50, 0.65, 0.75, 0.85};
+        int x_eq = 9;
+        for (int xp = 5; xp <= 9; ++xp) {
+            if (binomial_cdf(xp, 250, 0.01) >= f - 1e-12) {
+                x_eq = xp;
+                break;
+            }
+        }
+        res.plus_factor = kPlus[x_eq - 5];
     } else {
         res.zone = BaselZone::Red;
-        addon = 1.0;
+        res.plus_factor = 1.0;
     }
-    res.multiplier = 3.0 + addon;
-    res.cumulative_prob = binomial_cdf(std::min(n_exceptions, n_obs), n_obs, 0.01);
+    res.multiplier = 3.0 + res.plus_factor;
     return res;
+}
+
+BaselResult basel_traffic_light(int n_exceptions, int n_obs) {
+    return basel_traffic_light(
+        BaselInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = 0.01});
+}
+
+double acerbi_szekely_z2(std::span<const double> pnl, std::span<const double> var,
+                         std::span<const double> es, double alpha) {
+    validate_alpha(alpha);
+    if (pnl.empty()) throw std::invalid_argument("acerbi_szekely_z2: empty pnl");
+    const std::size_t n = pnl.size();
+    if ((var.size() != 1 && var.size() != n) || (es.size() != 1 && es.size() != n)) {
+        throw std::invalid_argument(
+            "acerbi_szekely_z2: var and es must have size 1 or one entry per day");
+    }
+    for (double v : pnl) {
+        if (!std::isfinite(v)) throw std::invalid_argument("acerbi_szekely_z2: pnl must be finite");
+    }
+    for (double v : var) {
+        if (!std::isfinite(v) || v < 0.0) {
+            throw std::invalid_argument("acerbi_szekely_z2: VaR must be finite and >= 0");
+        }
+    }
+    for (double v : es) {
+        if (!std::isfinite(v) || !(v > 0.0)) {
+            throw std::invalid_argument("acerbi_szekely_z2: ES must be finite and > 0");
+        }
+    }
+    const double t = static_cast<double>(n);
+    double sum = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double v = var.size() == 1 ? var[0] : var[i];
+        const double e = es.size() == 1 ? es[0] : es[i];
+        if (pnl[i] < -v) sum += pnl[i] / (t * alpha * e);
+    }
+    return sum + 1.0;
 }
 
 std::string to_string(BaselZone zone) {

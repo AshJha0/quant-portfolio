@@ -152,22 +152,15 @@ TEST(EdgeCases, MinObsGuardExactBoundary) {
 }
 
 TEST(EdgeCases, DeepTailAlphaOnSmallSample) {
-    // alpha far below 1/n: the type-7 quantile interpolates just above the
-    // sample minimum (h = (n-1) alpha < 1) — the tail is unresolvable and the
-    // estimate is pinned to the worst observed loss, never extrapolated
-    // beyond it.  Documented failure mode (docs/VALIDATION.md).
+    // alpha far below 1/n: k = n alpha < 1, m clamps to 1 and VaR is the
+    // worst observed loss, never extrapolated beyond it. ES equals VaR there
+    // (the whole tail mass sits on the single atom L(1)).
     std::vector<double> pnl(100);
     for (int t = 0; t < 100; ++t) pnl[t] = 10.0 * std::sin(2.3 * t) - (t == 50 ? 500.0 : 0.0);
-    const double v = historical_var(pnl, 1e-6);
-    std::vector<double> sorted = pnl;
-    std::sort(sorted.begin(), sorted.end());
-    const double h = 99.0 * 1e-6;  // (n-1) q, entirely inside the first gap
-    const double expected = -(sorted[0] + h * (sorted[1] - sorted[0]));
-    EXPECT_NEAR(v, expected, 1e-12 * std::abs(expected));
-    EXPECT_LE(v, -sorted.front());   // never exceeds the worst observed loss
-    EXPECT_GT(v, -sorted[1]);        // ... but stays pinned to it
+    const double worst = -*std::min_element(pnl.begin(), pnl.end());
+    EXPECT_EQ(historical_var(pnl, 1e-6), worst);
+    EXPECT_EQ(var_es_order_statistic(pnl, 1e-6).es, worst);
 }
-
 
 TEST(EdgeCases, SingleElementAndTwoElementSamples) {
     // One-element arrays: the low-level primitives must degrade gracefully

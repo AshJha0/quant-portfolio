@@ -51,6 +51,10 @@ namespace eqvar {
 /// Regularized incomplete beta I_x(a, b), a, b > 0, x in [0, 1].
 /// Continued-fraction (modified Lentz) evaluation with the symmetry
 /// I_x(a,b) = 1 - I_{1-x}(b,a) for fast convergence.
+/// Natural log of Gamma(x) for finite x > 0 (Lanczos g=7, ~1e-15 relative).
+/// Thread-safe replacement for std::lgamma, which writes glibc's signgam.
+[[nodiscard]] double log_gamma(double x);
+
 [[nodiscard]] double betainc_reg(double a, double b, double x);
 
 /// Regularized lower incomplete gamma P(a, x), a > 0, x >= 0.

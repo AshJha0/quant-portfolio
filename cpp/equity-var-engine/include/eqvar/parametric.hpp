@@ -43,22 +43,24 @@ enum class Dist { Normal, StudentT };
 /// with skewness S and EXCESS kurtosis K.  Reduces to z when S = K = 0.
 [[nodiscard]] double cornish_fisher_z(double z, double skew, double excess_kurt);
 
-/// True when the CF quantile map is monotone (dz_cf/dz > 0) on
-/// [-z_range, z_range] — outside this region the fourth-order expansion is
-/// not a quantile function (the implied density goes negative) and CF "VaR"
-/// is nonsense.  |z| <= 3.5 covers alpha >= 0.02 %.
-/// Checked exactly via the closed-form minimum of the (quadratic-in-z)
-/// derivative on the interval, not by sampling a grid (see parametric.cpp
-/// for why a grid is unsafe here). `n_grid` is kept for API compatibility
-/// and still validated (>= 2) but no longer affects the result.
-/// Throws std::invalid_argument unless z_range > 0, n_grid >= 2 and the
-/// moments are finite.
+/// Cornish-Fisher validity at tail probability alpha: the map g(z) is
+/// monotone (g' > 0) on the closed interval [-z_a, z_a], z_a = Phi^{-1}(1-alpha).
+/// Closed form (g' is quadratic in z). Non-finite input throws.
+/// Example: (S, K) = (0.122, -0.427) is concave in g', so its smallest g' sits
+/// at the left endpoint. It is valid at alpha = 0.01 and 0.001 and fails only
+/// once z_a approaches 4 (g'(-4) = -9e-4), i.e. alpha below about 3e-5.
+[[nodiscard]] bool cornish_fisher_valid(double skew, double excess_kurt, double alpha);
+
+/// Old predicate: monotone on the fixed interval [-z_range, z_range].
+[[deprecated("fixed z_range ignores alpha; use cornish_fisher_valid(skew, excess_kurt, alpha). "
+             "Removed next release.")]]
 [[nodiscard]] bool cornish_fisher_domain_ok(double skew, double excess_kurt,
                                             double z_range = 3.5, int n_grid = 2001);
 
-/// Cornish-Fisher VaR: -(mean + z_cf(alpha) sigma).  With
+/// Cornish-Fisher VaR: -(mean + z_cf(alpha) sigma). With
 /// `check_domain = true` (default) throws std::invalid_argument when
-/// (skew, excess_kurt) lie outside the monotonicity region.
+/// cornish_fisher_valid(skew, excess_kurt, alpha) is false. Non-finite
+/// moments always throw.
 [[nodiscard]] double cornish_fisher_var(double sigma, double alpha = 0.01, double skew = 0.0,
                                         double excess_kurt = 0.0, double mean = 0.0,
                                         bool check_domain = true);

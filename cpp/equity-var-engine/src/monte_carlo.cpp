@@ -1,6 +1,7 @@
 #include "eqvar/monte_carlo.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -10,24 +11,6 @@
 #include "eqvar/historical.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
-
-namespace {
-
-// Type-7 linear-interpolation VaR quantile (positive for a loss) on an
-// ALREADY-SORTED sample. Shared by mc_tail_metrics (point estimate) and
-// mc_bootstrap_se (each bootstrap resample) so both use exactly the same
-// quantile convention.
-double var_from_sorted(const std::vector<double>& sorted, double alpha) {
-    const std::size_t n = sorted.size();
-    const double h = alpha * static_cast<double>(n - 1);
-    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
-    const double frac = h - static_cast<double>(lo);
-    const double q = (lo + 1 < n) ? sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
-                                  : sorted.back();
-    return -q;
-}
-
-}  // namespace
 
 namespace eqvar {
 
@@ -41,7 +24,9 @@ double RandomStream::uniform() {
 double RandomStream::gaussian() { return normal_ppf(uniform()); }
 
 double RandomStream::gamma(double shape) {
-    if (!(shape > 0.0)) throw std::invalid_argument("RandomStream::gamma: shape must be > 0");
+    if (!(shape > 0.0) || !std::isfinite(shape)) {
+        throw std::invalid_argument("RandomStream::gamma: shape must be finite and > 0");
+    }
     if (shape < 1.0) {
         // Boost: Gamma(a) = Gamma(a + 1) * U^{1/a}.
         const double u = uniform();
@@ -65,17 +50,19 @@ double RandomStream::gamma(double shape) {
 }
 
 double RandomStream::chi_squared(double df) {
-    if (!(df > 0.0)) throw std::invalid_argument("RandomStream::chi_squared: df must be > 0");
+    if (!(df > 0.0) || !std::isfinite(df)) {
+        throw std::invalid_argument("RandomStream::chi_squared: df must be finite and > 0");
+    }
     return 2.0 * gamma(0.5 * df);
 }
 
 Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist, double df,
-                               std::uint64_t seed) {
+                               std::uint64_t seed, Repair repair) {
     if (n_paths < 1) throw std::invalid_argument("simulate_factor_returns: n_paths must be >= 1");
     const std::size_t n = cov.rows();
     Matrix scale = cov;
     if (dist == Dist::StudentT) {
-        if (df <= 2.0) {
+        if (!(df > 2.0) || !std::isfinite(df)) {
             throw std::invalid_argument(
                 "simulate_factor_returns: Student-t df must be > 2 for finite variance, got " +
                 std::to_string(df));
@@ -83,7 +70,7 @@ Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist
         // Scale matrix cov * (df-2)/df so the simulated covariance equals cov.
         for (std::size_t i = 0; i < n * n; ++i) scale.data()[i] *= (df - 2.0) / df;
     }
-    const Matrix chol = cholesky(scale).lower;  // jitter fallback inside
+    const Matrix chol = cholesky(scale, repair).lower;  // capped jitter, optional repair
     RandomStream rng(seed);
     Matrix out(n_paths, n);
     std::vector<double> z(n);
@@ -106,49 +93,20 @@ Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist
     return out;
 }
 
-MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha) {
-    validate_alpha(alpha);
-    if (pnl.size() < 100) {
-        throw std::invalid_argument("mc_tail_metrics: need at least 100 scenarios, got " +
-                                    std::to_string(pnl.size()));
-    }
-    const std::size_t n = pnl.size();
-    std::vector<double> sorted(pnl.begin(), pnl.end());
-    std::sort(sorted.begin(), sorted.end());
+namespace {
 
-    MonteCarloResult res;
-    res.n_paths = n;
-
-    // VaR: linear-interpolated (type 7) quantile on the sorted sample.
-    const double h = alpha * static_cast<double>(n - 1);
-    res.var = var_from_sorted(sorted, alpha);
-
-    // ES: exact tail integral of the step CDF (same as expected_shortfall).
-    const double an = alpha * static_cast<double>(n);
-    const std::size_t k = static_cast<std::size_t>(std::floor(an));
-    double tail_sum = 0.0;
-    for (std::size_t i = 0; i < k; ++i) tail_sum += sorted[i];
-    const double f2 = an - static_cast<double>(k);
-    if (f2 > 0.0 && k < n) tail_sum += f2 * sorted[k];
-    res.es = -tail_sum / an;
-
-    // Order-statistic SE: asymptotic quantile variance alpha(1-alpha)/(n f^2)
-    // with f estimated by a symmetric order-statistic finite difference of
-    // bandwidth m = ceil(sqrt(alpha n)) around the quantile rank.
-    const std::size_t rank = std::min(n - 1, static_cast<std::size_t>(std::llround(h)));
-    const std::size_t m = std::max<std::size_t>(
-        1, static_cast<std::size_t>(std::ceil(std::sqrt(alpha * static_cast<double>(n)))));
-    const std::size_t ilo = (rank > m) ? rank - m : 0;
-    const std::size_t ihi = std::min(n - 1, rank + m);
-    const double dx = sorted[ihi] - sorted[ilo];
-    if (dx > 0.0) {
-        const double f_hat = (static_cast<double>(ihi - ilo) / static_cast<double>(n)) / dx;
-        res.var_se = std::sqrt(alpha * (1.0 - alpha) / static_cast<double>(n)) / f_hat;
-    } else {
-        res.var_se = 0.0;  // degenerate (e.g. zero-variance portfolio)
-    }
-    return res;
+std::size_t tail_rank(std::size_t n, double alpha) {
+    const double mc = std::ceil(static_cast<double>(n) * alpha - 1e-9);
+    return mc < 1.0 ? 1 : std::min(n, static_cast<std::size_t>(mc));
 }
+
+void require_finite_pnl(std::span<const double> pnl, const char* who) {
+    for (double v : pnl) {
+        if (!std::isfinite(v)) throw std::invalid_argument(std::string(who) + ": pnl contains NaN or inf");
+    }
+}
+
+}  // namespace
 
 double mc_bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
                        std::uint64_t seed) {
@@ -157,45 +115,93 @@ double mc_bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_
         throw std::invalid_argument("mc_bootstrap_se: need at least 10 observations, got " +
                                     std::to_string(pnl.size()));
     }
+    if (n_boot < 2) throw std::invalid_argument("mc_bootstrap_se: n_boot must be >= 2");
+    require_finite_pnl(pnl, "mc_bootstrap_se");
     const std::size_t n = pnl.size();
+    const std::size_t m = tail_rank(n, alpha);
     RandomStream rng(seed);
-    std::vector<double> resample(n);
-    std::vector<double> boot_vars(n_boot);
+    // One resample buffer reused per replicate: memory O(n), never n_boot x n.
+    std::vector<double> loss(n);
+    double sum = 0.0, sum_sq_dev = 0.0;  // Welford
     for (std::size_t b = 0; b < n_boot; ++b) {
         for (std::size_t i = 0; i < n; ++i) {
             const std::size_t idx =
                 std::min(n - 1, static_cast<std::size_t>(rng.uniform() * static_cast<double>(n)));
-            resample[i] = pnl[idx];
+            loss[i] = -pnl[idx];
         }
-        std::sort(resample.begin(), resample.end());
-        boot_vars[b] = var_from_sorted(resample, alpha);
+        std::nth_element(loss.begin(), loss.begin() + static_cast<std::ptrdiff_t>(m - 1), loss.end(),
+                         std::greater<double>());
+        const double v = loss[m - 1];
+        const double prev_mean = (b == 0) ? 0.0 : sum / static_cast<double>(b);
+        sum += v;
+        const double mean = sum / static_cast<double>(b + 1);
+        sum_sq_dev += (v - prev_mean) * (v - mean);
     }
-    // ddof = 1 sample standard deviation of the bootstrap VaR estimates,
-    // matching numpy.std(..., ddof=1) in the Python reference.
-    double sum = 0.0;
-    for (double v : boot_vars) sum += v;
-    const double m = sum / static_cast<double>(n_boot);
+    return std::sqrt(std::max(sum_sq_dev, 0.0) / static_cast<double>(n_boot - 1));
+}
+
+double kde_var_se(std::span<const double> pnl, double alpha) {
+    validate_alpha(alpha);
+    if (pnl.size() < 10) {
+        throw std::invalid_argument("kde_var_se: need at least 10 observations, got " +
+                                    std::to_string(pnl.size()));
+    }
+    require_finite_pnl(pnl, "kde_var_se");
+    const std::size_t n = pnl.size();
+    const double q = -var_es_order_statistic(pnl, alpha).var;  // reported S2 quantile (P&L units)
+    double mu = 0.0;
+    for (double v : pnl) mu += v;
+    mu /= static_cast<double>(n);
     double ss = 0.0;
-    for (double v : boot_vars) {
-        const double d = v - m;
-        ss += d * d;
+    for (double v : pnl) ss += (v - mu) * (v - mu);
+    const double sd = std::sqrt(ss / static_cast<double>(n - 1));
+    std::vector<double> work(pnl.begin(), pnl.end());
+    const auto order_stat = [&work](std::size_t i) {
+        std::nth_element(work.begin(), work.begin() + static_cast<std::ptrdiff_t>(i), work.end());
+        return work[i];
+    };
+    const double q25 = order_stat(static_cast<std::size_t>(0.25 * static_cast<double>(n - 1)));
+    const double q75 = order_stat(static_cast<std::size_t>(0.75 * static_cast<double>(n - 1)));
+    double spread = sd;
+    if (q75 - q25 > 0.0) spread = std::min(sd, (q75 - q25) / 1.34);
+    if (!(spread > 0.0)) return 0.0;  // degenerate (zero-variance) sample
+    const double h = 0.9 * spread * std::pow(static_cast<double>(n), -0.2);  // Silverman
+    double dens = 0.0;
+    for (double x : pnl) dens += normal_pdf((q - x) / h);
+    dens /= static_cast<double>(n) * h;
+    return std::sqrt(alpha * (1.0 - alpha) / static_cast<double>(n)) / std::max(dens, 1e-300);
+}
+
+MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha, std::size_t n_boot,
+                                 std::uint64_t seed) {
+    validate_alpha(alpha);
+    if (pnl.size() < 100) {
+        throw std::invalid_argument("mc_tail_metrics: need at least 100 scenarios, got " +
+                                    std::to_string(pnl.size()));
     }
-    return std::sqrt(ss / static_cast<double>(n_boot - 1));
+    require_finite_pnl(pnl, "mc_tail_metrics");
+    const TailRisk tr = var_es_order_statistic(pnl, alpha);
+    MonteCarloResult res;
+    res.n_paths = pnl.size();
+    res.var = tr.var;
+    res.es = tr.es;
+    res.var_se = mc_bootstrap_se(pnl, alpha, n_boot, seed);
+    res.var_se_kde = kde_var_se(pnl, alpha);
+    return res;
 }
 
 MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix& cov,
                                  double alpha, std::size_t n_paths, Dist dist, double df,
-                                 std::uint64_t seed) {
-    if (exposures.empty()) {
-        throw std::invalid_argument("monte_carlo_var: empty portfolio (no exposures)");
-    }
+                                 std::uint64_t seed, std::size_t n_boot, Repair repair) {
+    validate_exposures(exposures, "monte_carlo_var");
     if (!cov.square() || cov.rows() != exposures.size()) {
         throw std::invalid_argument("monte_carlo_var: covariance shape does not match exposures");
     }
     validate_alpha(alpha);
-    const Matrix scen = simulate_factor_returns(cov, n_paths, dist, df, seed);
+    // Simulate once; VaR, ES and both SEs come from the same scenarios.
+    const Matrix scen = simulate_factor_returns(cov, n_paths, dist, df, seed, repair);
     const std::vector<double> pnl = portfolio_pnl(scen, exposures);
-    return mc_tail_metrics(pnl, alpha);
+    return mc_tail_metrics(pnl, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL);
 }
 
 }  // namespace eqvar
