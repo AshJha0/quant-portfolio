@@ -223,15 +223,12 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/rust"
           cargo test --release --locked 2>&1 | tee "$RUNNER_TEMP/rust/cargo-test.log"
-      # fmt and clippy are report-only this round: the crates have not yet been
-      # brought to rustfmt / clippy -D warnings cleanliness. Remove
-      # continue-on-error once the Phase 2 cleanup lands.
-      - name: cargo fmt --check (report-only)
-        continue-on-error: true
+      # Generated golden modules carry #[rustfmt::skip] so their layout matches
+      # tools/gen_golden_rs.py and the goldens --check job.
+      - name: cargo fmt --check
         working-directory: rust/${{ matrix.crate }}
         run: cargo fmt --check
-      - name: cargo clippy -D warnings (report-only)
-        continue-on-error: true
+      - name: cargo clippy -D warnings
         working-directory: rust/${{ matrix.crate }}
         run: cargo clippy --release --all-targets --locked -- -D warnings
       - name: Upload cargo test log
