@@ -28,7 +28,7 @@
 //! than `control_variate` alone on some inputs.
 //!
 //! Determinism: draws come from the crate's own
-//! [`Xoshiro256StarStar`](crate::rng::Xoshiro256StarStar) seeded with an
+//! [`Xoshiro256StarStar`] seeded with an
 //! explicit `u64`, and normals are produced by inverse-CDF transform —
 //! the same seed gives identical results on a given target and toolchain
 //! (asserted in the test suite). Across targets the last bits can differ:

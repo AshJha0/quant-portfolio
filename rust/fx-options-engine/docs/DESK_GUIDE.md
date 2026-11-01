@@ -12,7 +12,7 @@ The engine is the inner loop of the market-making tile. On every spot tick
 or curve/vol update the tile re-prices its ladder, per pair, both sides,
 all quoted tenors and strikes, and republishes. Practical notes:
 
-* At about 17M prices/s (bench, test machine) a 2,000-instrument tile refresh is well under a
+* At about 60 ns per price at p50 (bench, test machine) a 2,000-instrument tile refresh is well under a
   millisecond single-threaded; pairs can be sharded across cores because
   every pricing function is a pure function over immutable market data -
   and here that is a *compiler-checked* claim, not a code-review

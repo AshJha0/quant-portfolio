@@ -74,6 +74,24 @@ pub fn bs_greeks(
     option_type: OptionType,
 ) -> Result<BsGreeks, PricingError> {
     let (d1, d2) = d1_d2(s, k, t, r, sigma, q)?;
+    Ok(bs_greeks_core(s, k, t, r, sigma, q, option_type, d1, d2))
+}
+
+/// Analytic Greeks for validated, strictly positive inputs with `d1`, `d2`
+/// already computed. Shared by [`bs_greeks`] and the non-allocating API.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+pub(crate) fn bs_greeks_core(
+    s: f64,
+    k: f64,
+    t: f64,
+    r: f64,
+    sigma: f64,
+    q: f64,
+    option_type: OptionType,
+    d1: f64,
+    d2: f64,
+) -> BsGreeks {
     let sqrt_t = t.sqrt();
     let df_q = (-q * t).exp();
     let df_r = (-r * t).exp();
@@ -107,8 +125,7 @@ pub fn bs_greeks(
             )
         }
     };
-
-    Ok(BsGreeks {
+    BsGreeks {
         price,
         delta,
         gamma,
@@ -117,7 +134,7 @@ pub fn bs_greeks(
         rho,
         vanna,
         volga,
-    })
+    }
 }
 
 /// Central finite-difference Greeks for *any* pricer with the BS signature.

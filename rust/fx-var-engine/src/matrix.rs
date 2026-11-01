@@ -97,6 +97,12 @@ impl Matrix {
         &self.data
     }
 
+    /// Whole storage as a flat, mutable row-major slice.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [f64] {
+        &mut self.data
+    }
+
     /// True when every entry is finite (no NaN, no infinity).
     ///
     /// Used as an explicit pre-check by the factorisations: a NaN entry
@@ -147,7 +153,7 @@ impl Matrix {
     /// `|a_ij - a_ji| <= rtol * max(1, max|a|)`.
     ///
     /// This is what covariance inputs of unknown magnitude want. With an
-    /// absolute tolerance, a genuinely symmetric covariance expressed in
+    /// absolute tolerance, a symmetric covariance expressed in
     /// currency units (entries ~1e12 for a multi-billion book) is rejected
     /// purely because its two triangles were summed in different orders and
     /// differ in the last ulp — roughly 1e-4 in absolute terms at that
@@ -181,8 +187,17 @@ impl Matrix {
         if !self.all_finite() || w.iter().any(|v| !v.is_finite()) {
             return Err(FxVarError::invalid("quad_form: matrix and vector must be finite"));
         }
-        let aw = self.matvec(w)?;
-        Ok(w.iter().zip(&aw).map(|(a, b)| a * b).sum())
+        // `A w` is formed lazily, one row at a time, so the quadratic form
+        // allocates nothing. Each row product and the outer sum run in the
+        // same order as the old `matvec` then dot, so the bits are equal.
+        let aw = self.as_slice().chunks_exact(self.cols.max(1)).map(|row| {
+            let mut acc = 0.0;
+            for (a, b) in row.iter().zip(w) {
+                acc += a * b;
+            }
+            acc
+        });
+        Ok(w.iter().zip(aw).map(|(a, b)| a * b).sum())
     }
 
     /// Lower-triangular Cholesky factor `L` with `L L' = A`.

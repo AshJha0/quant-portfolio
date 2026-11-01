@@ -26,8 +26,8 @@ use fx_var_engine::returns::*;
 use fx_var_engine::rng::Rng;
 use fx_var_engine::stats::*;
 use fx_var_engine::stress::*;
-use fx_var_engine::tail::{tail_rank, weighted_var_es};
-use fx_var_engine::{FxVarError, McDist, TailDist};
+use fx_var_engine::tail::{empirical_var_es_into, empirical_var_into, tail_rank, weighted_var_es};
+use fx_var_engine::{FxVarError, KernelError, McDist, TailDist};
 use proptest::prelude::*;
 
 macro_rules! check {
@@ -394,6 +394,39 @@ proptest! {
         let e = FxVarError::invalid("x");
         check!(matches!(e, FxVarError::Invalid(_)));
         check!(matches!(FxVarError::numerical("y"), FxVarError::Numerical(_)));
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// The allocation-free kernels reject poisoned input with a typed
+    /// error and never panic.
+    #[test]
+    fn latency_kernels_reject_poison(x in bad(), a in bad_alpha(), i in 0usize..1000) {
+        let p = pnl(50);
+        let mut ws = vec![0.0; 50];
+        check!(empirical_var_es_into(&poison(p.clone(), i, x), 0.05, &mut ws) == Err(KernelError::NonFinite));
+        check!(empirical_var_into(&poison(p.clone(), i, x), 0.05, &mut ws) == Err(KernelError::NonFinite));
+        check!(empirical_var_es_into(&p, a, &mut ws) == Err(KernelError::BadAlpha));
+        check!(empirical_var_into(&p, a, &mut ws) == Err(KernelError::BadAlpha));
+        check!(empirical_var_es_into(&p, 0.05, &mut ws[..10]) == Err(KernelError::ScratchTooSmall));
+        check!(empirical_var_es_into(&[], 0.05, &mut ws) == Err(KernelError::EmptySample));
+        let cb = CompiledBook::new(&book(), &market()).unwrap();
+        let k = cb.factors().len();
+        check!(cb.pnl_row(&poison(vec![0.001; k], i, x)) == Err(KernelError::NonFinite));
+        check!(cb.pnl_row(&vec![0.001; k + 1]) == Err(KernelError::LengthMismatch));
+        let r = rets_poison(20, i, x);
+        let mut out = vec![0.0; 20];
+        check!(cb.pnl_aligned_into(&r.data, &mut out) == Err(KernelError::NonFinite));
+        check!(cb.pnl_aligned_into(&rets(20).data, &mut out[..19]) == Err(KernelError::LengthMismatch));
+        let mut m = Matrix::zeros(2, 2);
+        m.as_mut_slice()[i % 4] = x;
+        check!(!m.all_finite());
+        let opts = MonteCarloOptions { alpha: a, n_scenarios: 100, ..Default::default() };
+        check!(monte_carlo_var_with_threads(&book(), &market(), &cov(), &opts, 3).is_err());
+        check!(var_standard_error_bootstrap_with_threads(&poison(p.clone(), i, x), 0.05, 50, 1, 4).is_err());
+        check!(var_standard_error_bootstrap_with_threads(&p, a, 50, 1, 4).is_err());
     }
 }
 

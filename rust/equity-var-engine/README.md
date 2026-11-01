@@ -93,28 +93,75 @@ cd ../../../rust/equity-var-engine
 python3 tools/gen_golden_rs.py && python3 tools/gen_golden_rs.py --check
 ```
 
-## Benchmark
+## Allocation-free API (`fast`)
 
-250-day x 100-asset panel (one market factor plus seeded noise, full-rank
-covariance), alpha 1 %, 100k MC paths, single thread, release + LTO, best of
-R runs (`src/bin/bench.rs`). Measured 2026-11-01 on the development laptop
-(Windows 11, MSVC toolchain).
+`eq_var_engine::fast` holds the hot paths for latency-sensitive callers.
+Each function returns the same `f64` bits as its main-API counterpart.
+It allocates nothing on the success path and never panics. Errors are a
+`Copy` enum, `VarFault`, with no `String`.
 
-| stage | best ms |
-|---|---|
-| sample covariance (250 x 100 -> 100 x 100) | 0.70 |
-| EWMA covariance (lam 0.94) | 1.26 |
-| historical VaR 99 % (250 scenarios) | 0.001 |
-| BRW VaR 99 % | 0.009 |
-| FHS per factor VaR 99 % | 0.14 |
-| empirical ES 97.5 % | 0.001 |
-| parametric VaR 99 % normal / t(6) | 0.010 / 0.020 |
-| Cholesky 100 x 100 | 0.19 |
-| MC VaR + ES + bootstrap SE (200 resamples), normal, one simulation | 657 |
-| same, Student-t df 6 | 1744 |
+| fast function | main API counterpart | scratch |
+|---|---|---|
+| `historical_var_ws` | `historical_var` | `&mut [f64]`, len >= n |
+| `expected_shortfall_ws` | `expected_shortfall` | same |
+| `empirical_var_es_ws` | `tail::empirical_var_es` | same |
+| `var_bootstrap_se_ws` | `var_bootstrap_se` | `buf` len >= n, `est` len >= n_boot |
+| `portfolio_sigma_fast` | `portfolio_sigma` | none |
+| `parametric_var_fast` / `parametric_es_fast` | `parametric_var` / `parametric_es` | none |
+| `McWorkspace::run` / `::var` | `monte_carlo_run` / `monte_carlo_var` | the workspace |
 
-Check printed by the bench: MC normal VaR 444 614 vs parametric 444 396,
-bootstrap SE 2 110, KDE SE 2 157.
+`McWorkspace::new(n, max_paths, max_boot)` sizes the buffers.
+`prepare(cov, tail)` factors the covariance once; this step allocates.
+After that, `run` and `var` allocate nothing. The workspace revalues the
+book path by path and never builds the `n_paths x n` scenario panel.
+
+`tests/test_fast_equiv.rs` checks bit equality with the main API.
+`tests/test_fast_alloc.rs` counts heap allocations with a global allocator
+and requires zero for every call above.
+
+The MC draw stays on one thread. The RNG is one serial xoshiro256++
+stream, and splitting it across threads would change the numbers. Books
+are independent, so run one workspace per book per core instead.
+
+## Latency
+
+`cargo run --release --bin bench` times each kernel call by call after a
+warm-up, over 16 rotating inputs, and writes `bench/results.json`. Calls
+under a few microseconds are timed in batches of K and divided by K. The
+main-API rows are the "before" numbers (that code is unchanged). The
+`fast` rows are the "after" numbers.
+
+Numbers from this machine: Intel Core 5 120U, WSL2 on Windows 11,
+rustc 1.99.1, release profile (opt-level 3, fat LTO, one codegen unit),
+2026-11-01. WSL2 adds scheduler jitter, so read p99.9 and max as upper
+bounds. Sibling builds shared the machine during the run.
+
+| kernel | before p50 / p99 / p99.9 ns | after p50 / p99 / p99.9 ns |
+|---|---|---|
+| historical VaR, n = 250 | 725 / 2 358 / 6 323 | 541 / 1 786 / 4 139 |
+| historical VaR, n = 1000 | 2 456 / 5 175 / 16 079 | 1 968 / 5 608 / 15 948 |
+| empirical ES 97.5 %, n = 250 | 737 / 2 208 / 7 360 | 581 / 893 / 4 109 |
+| parametric VaR normal, 100 assets | 9 504 / 29 060 / 64 916 | 5 502 / 15 222 / 46 006 |
+| parametric VaR t(6), 100 assets | 16 866 / 47 069 / 111 335 | 13 468 / 31 496 / 66 041 |
+| bootstrap SE, n = 250, B = 200 | 261 361 / 540 601 / 1 449 138 | 226 851 / 506 750 / 900 697 |
+| MC run, 20 factors x 10k paths, B = 50 | 9.59 / 21.5 / 25.6 ms | 7.08 / 19.2 / 24.8 ms |
+| MC VaR only, 20 factors x 10k paths | 5.83 / 9.05 / 9.96 ms | 3.91 / 10.4 / 11.9 ms |
+
+Where the time goes:
+
+- Historical VaR and ES: the gain is the removed loss-vector allocation.
+  The selection itself (`select_nth_unstable`) is the floor.
+- Parametric: `w' S w` runs four matrix rows side by side. Each row keeps
+  its own left-to-right sum, so the bits match `Matrix::matvec`. The
+  finite check over the covariance and the t quantile solve are the rest.
+- MC: the Box-Muller draws (`ln`, `sqrt`, `sin`, `cos`) dominate. The
+  workspace saves the panel allocation and the second pass over it.
+
+Vectorisation (`RUSTFLAGS=-Cremark=loop-vectorize`, LTO off so remarks
+print): the negate-and-copy and finite-check loops vectorise (SSE2, width
+2). The dot products, the `L z` product and the sums do not: LLVM may not
+reorder floating-point adds, and reordering would change the bits.
+Selection and sort loops branch on data and do not vectorise.
 
 ## Layout
 
@@ -126,12 +173,13 @@ src/
   parametric.rs          sigma_p, normal / t VaR, Cornish-Fisher
   expected_shortfall.rs  empirical and closed-form ES
   monte_carlo.rs         simulation, monte_carlo_run, bootstrap and KDE SE
+  fast.rs                allocation-free kernels, McWorkspace, VarFault
   backtest.rs            Kupiec, Christoffersen, Basel, Acerbi-Szekely Z2
   matrix.rs              dense Matrix, covariance estimators
   psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
   stats.rs               special functions, moments
   rng.rs                 xoshiro256++, Box-Muller, Marsaglia-Tsang
-  bin/bench.rs
-tests/                   12 integration files; golden/mod.rs is generated
+  bin/bench.rs           per-call latency distribution, writes bench/results.json
+tests/                   14 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE
 ```

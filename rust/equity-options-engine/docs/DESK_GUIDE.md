@@ -24,8 +24,9 @@ hurt most and a GC'd language is disqualified by latency:
   sub-second on a modest box; Rust's compile-time race checking means the
   obvious parallelisation (shard positions across threads, share the
   read-only surface) is safe by construction, not by code review. No GC
-  removes one source of latency spikes; no latency distribution has been
-  measured for this crate.
+  removes one source of latency spikes. The README has a measured
+  per-call latency table (p50, p99, p99.9) and the `fast` module has a
+  heap-free API for the hot path.
 - **Safety-critical pipelines.** Anything wired into pre-trade checks,
   margin, or automated hedging, where a memory-corruption bug that
   *silently perturbs a number* is worse than a crash. The borrow checker

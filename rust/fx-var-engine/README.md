@@ -44,7 +44,7 @@ Zero runtime dependencies (`proptest` is a test-only dependency).
 ## Quickstart
 
 ```bash
-cargo test --release      # 71 unit + 55 integration + 7 doctests
+cargo test --release      # 71 unit + 61 integration + 8 doctests
 cargo clippy --all-targets -- -D warnings
 cargo run --release --bin bench
 ```
@@ -93,19 +93,66 @@ let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 })?;
 
 250 positions (200 spots across 45 currencies, 50 forwards), 50 factors
 (45 FX, 5 IR), 500-day history (sinusoid plus seeded noise, full-rank
-covariance), full revaluation, single thread, release build. Measured
-2026-11-01 on the development laptop (Windows 11, MSVC toolchain):
+covariance), full revaluation, release build with `lto = "fat"` and
+`codegen-units = 1`. `cargo run --release --bin bench` times each kernel
+call by call after a warm-up, cycling through varied inputs, and writes
+`bench/results.json` (p50, p90, p99, p99.9, max in ns). The closed-form
+kernel is timed in batches of 64 calls and reported per call
+(`calls_per_sample` in the JSON).
 
-```
-historical  VaR (500 scen): var=436774 es=488533      1.660 ms
-parametric  VaR (normal)  : var=424010 es=485774      0.898 ms
-monte carlo VaR 100k normal: var=424401 es=485813 se=2067 (kde 2032)     2525.3 ms
-monte carlo VaR 100k t(5)  : var=473404 es=620076 se=4082 (kde 3722)     6325.8 ms
-```
+Numbers from this machine: Intel Core 5 120U (12 threads) under WSL2,
+rustc 1.99.1, 2026-11-01. The run waited for the 1-minute load average to
+fall below 1.5, but other crates were building in the same VM, so the
+tails (p99, p99.9) include scheduler and VM jitter. "Before" is the same
+bench on the pre-change code (opt-level 3, no LTO), run right after.
 
-Each MC line is one simulation plus 200 bootstrap resamples of 100k
-scenarios. MC normal VaR is within one bootstrap SE of the parametric value
-(the book is near-linear at this horizon).
+| Kernel | Before p50 | After p50 | After p99 | After p99.9 |
+|---|---:|---:|---:|---:|
+| `CompiledBook::pnl`, one scenario | 1.83 us | 2.03 us | 4.1 us | 10.8 us |
+| `portfolio_sigma`, 50 factors | 2.58 us | 3.09 us | 3.4 us | 17 us |
+| `normal_var` (per call, batch of 64) | 281 ns | 307 ns | 468 ns | 928 ns |
+| `empirical_var_es`, 100k | 240 us | 274 us | 440 us | 570 us |
+| `empirical_var_es_into`, 100k | n/a | 228 us | 466 us | 0.99 ms |
+| `pnl_aligned_into`, 500 scenarios | n/a | 1.17 ms | 3.19 ms | 4.13 ms |
+| `historical_var`, 500 scenarios | 1.25 ms | 1.23 ms | 2.38 ms | 2.71 ms |
+| `parametric_var`, normal | 676 us | 595 us | 695 us | 1.23 ms |
+| `var_standard_error_bootstrap`, 100k x 200 | 90 ms | 54.5 ms | 74 ms | 74 ms |
+| `monte_carlo_var`, 100k normal | 961 ms | 346 ms | 437 ms | 437 ms |
+| `monte_carlo_var`, 100k t(5) | 943 ms | 312 ms | 378 ms | 378 ms |
+
+Monte Carlo is 2.8x (normal) to 3.0x (t) faster at p50. The serial RNG
+pass bounds the gain. The bootstrap splits its replicates into one
+contiguous chunk per thread. A serial pass only advances the generator to
+record each chunk's start state, then each thread redraws its own
+indices, so the bits match the serial loop. It stays serial below 2^19
+index draws (measured crossover, see `BOOT_PAR_MIN_DRAWS`). Small kernels
+in this run sit within the run-to-run spread of the before numbers.
+Each MC call is one simulation plus 200 bootstrap resamples and the KDE
+standard error on the same 100k scenarios.
+
+### Where the time goes and what changed
+
+- Monte Carlo draws its one RNG stream serially, in the reference order,
+  into the scenario matrix as raw uniforms. The inverse normal CDF, the
+  Cholesky product, the Student-t scale or jump overlay and the
+  revaluation then run on a fixed contiguous partition of rows inside
+  one `std::thread::scope`. Every row depends only on itself, so the
+  result is the same bits for any thread count
+  (`tests/test_latency_determinism.rs`).
+- The bootstrap draws each batch of resample indices serially, then runs
+  the selections in parallel, one replicate per thread.
+- The KDE standard error uses two selections instead of a full sort.
+- The allocation-free kernels (`empirical_var_es_into`,
+  `empirical_var_into`, `CompiledBook::pnl_row`,
+  `CompiledBook::pnl_aligned_into`) take a caller workspace and return a
+  small `Copy` `KernelError`. `Matrix::quad_form` and so
+  `portfolio_sigma` no longer allocate. `tests/test_latency_alloc.rs`
+  counts heap allocations with a global allocator.
+- No loop in the crate auto-vectorises (`-Cremark=loop-vectorize`). The
+  revaluation loop calls `exp()` and gathers factor columns. The dot
+  products and sums are ordered reductions, and reordering them would
+  change the bits. The inverse CDF calls `ln` and `erfc`. Speed comes
+  from threads, not SIMD.
 
 ## Validation summary
 

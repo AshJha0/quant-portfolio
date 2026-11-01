@@ -115,6 +115,8 @@ pub mod stats;
 pub mod stress;
 pub mod tail;
 
+mod par;
+
 use std::fmt;
 
 /// Errors returned by the engine.
@@ -162,6 +164,47 @@ impl std::error::Error for FxVarError {}
 /// Crate-wide result alias.
 pub type Result<T> = std::result::Result<T, FxVarError>;
 
+/// Small `Copy` error returned by the allocation-free kernels
+/// ([`tail::empirical_var_es_into`], [`tail::empirical_var_into`],
+/// [`book::CompiledBook::pnl_row`], [`book::CompiledBook::pnl_aligned_into`]).
+///
+/// It carries no message, so building it never allocates. Convert it into
+/// [`FxVarError`] with `?` or `.into()` when a message is wanted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KernelError {
+    /// `alpha` is outside `(0, 0.5)`.
+    BadAlpha,
+    /// The sample is empty.
+    EmptySample,
+    /// An input contains NaN or an infinity.
+    NonFinite,
+    /// Input lengths do not agree (shock vector, matrix width, output).
+    LengthMismatch,
+    /// The caller-supplied workspace is shorter than the sample.
+    ScratchTooSmall,
+}
+
+impl fmt::Display for KernelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg = match self {
+            KernelError::BadAlpha => "alpha must lie in (0, 0.5)",
+            KernelError::EmptySample => "sample is empty",
+            KernelError::NonFinite => "input contains NaN or infinite values",
+            KernelError::LengthMismatch => "input lengths do not agree",
+            KernelError::ScratchTooSmall => "workspace is shorter than the sample",
+        };
+        f.write_str(msg)
+    }
+}
+
+impl std::error::Error for KernelError {}
+
+impl From<KernelError> for FxVarError {
+    fn from(e: KernelError) -> Self {
+        FxVarError::Invalid(e.to_string())
+    }
+}
+
 /// Tail distribution for parametric VaR/ES ([`parametric`],
 /// [`expected_shortfall`]). Mirrors C++ `fxvar::TailDist`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,8 +250,8 @@ pub mod prelude {
     pub use crate::historical::{historical_var, HistoricalOptions, HistoricalResult, HsMethod};
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
-        monte_carlo_var, simulate_factor_returns, simulate_factor_returns_jitter,
-        var_standard_error, var_standard_error_bootstrap, JumpSpec, MonteCarloOptions,
+        monte_carlo_var, monte_carlo_var_with_threads, simulate_factor_returns, simulate_factor_returns_jitter,
+        var_standard_error, var_standard_error_bootstrap, var_standard_error_bootstrap_with_threads, JumpSpec, MonteCarloOptions,
         MonteCarloResult,
     };
     pub use crate::parametric::{
@@ -233,8 +276,8 @@ pub mod prelude {
         reverse_stress_linear, reverse_stress_numerical, run_stress, simple_to_log,
         usd_broad_move, ReverseStress, Scenario, StressRow,
     };
-    pub use crate::tail::{tail_rank, weighted_var_es};
-    pub use crate::{FxVarError, McDist, TailDist};
+    pub use crate::tail::{empirical_var_es_into, empirical_var_into, tail_rank, weighted_var_es};
+    pub use crate::{FxVarError, KernelError, McDist, TailDist};
     /// Deprecated entry points, kept in the prelude for one release.
     #[allow(deprecated)]
     pub use crate::{

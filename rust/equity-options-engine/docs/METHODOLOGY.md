@@ -17,7 +17,7 @@ implementation answers a different question.
 | Criterion | Python (`eq_options`) | C++ (`eqopt`) | **Rust (this crate)** |
 |---|---|---|---|
 | Role | Research reference, golden-vector source | Incumbent low-latency production shape | Memory-safe production engine for new services |
-| Throughput (1 core, test machine, single runs) | ~0.25M prices/sec (scalar, 4 µs/call) | ~12M prices/sec | ~17M prices/sec |
+| Throughput (1 core, test machine, single runs) | ~0.25M prices/sec (scalar, 4 µs/call) | ~12M prices/sec | ~23M prices/sec (44 ns p50 per call) |
 | Memory safety | GC'd, safe | Manual; UB possible (dangling refs, data races) | Compiler-enforced, **without** a garbage collector |
 | Latency profile | GC pauses + interpreter jitter | Deterministic | Deterministic, no GC, no runtime |
 | Concurrency | GIL-bound | Possible but races are on the programmer | "Fearless": `Send`/`Sync` checked at compile time |

@@ -75,6 +75,7 @@
 
 pub mod backtest;
 pub mod expected_shortfall;
+pub mod fast;
 pub mod historical;
 pub mod matrix;
 pub mod monte_carlo;
@@ -175,6 +176,11 @@ pub mod prelude {
         stdev, student_t_cdf, student_t_pdf, student_t_ppf,
     };
     pub use crate::tail::{empirical_var, empirical_var_es, tail_rank, weighted_var_es};
+    pub use crate::fast::{
+        empirical_var_es_ws, expected_shortfall_ws, historical_var_ws, parametric_es_fast,
+        parametric_var_fast, portfolio_sigma_fast, var_bootstrap_se_ws, FastResult, McStats,
+        McWorkspace, VarFault,
+    };
     pub use crate::{EqVarError, TailModel};
     /// Deprecated entry points, kept in the prelude for one release.
     #[allow(deprecated)]

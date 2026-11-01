@@ -26,8 +26,13 @@ path = "src/bin/eq_jsonl.rs"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"
 codegen-units = 1
 
 [dev-dependencies]
 proptest = { version = "1", default-features = false, features = ["std"] }
+
+# `--cfg before` builds the bench against the pre-change API only (used to
+# record before/after numbers with one bench source).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(before)"] }

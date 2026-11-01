@@ -19,6 +19,7 @@
 //! | [`black76`] | Options on forwards/futures: price + Greeks; exactly equals BSM at `F = S e^{(r-q)T}` |
 //! | [`monte_carlo`] | GBM exact scheme; antithetic pairs + control variate fitted on pair averages; explicit `u64` seed |
 //! | [`rng`] | SplitMix64-seeded xoshiro256++ with Box-Muller normal sampling (std-only, deterministic) |
+//! | [`fast`] | Non-allocating API: `try_*` pricers with a `Copy` [`fast::ErrorCode`], workspaces for the tree and Monte Carlo, struct-of-arrays batch pricers |
 //! | [`golden`] | GENERATED mpmath golden vectors (do not edit; run `tools/gen_golden_rs.py`) |
 //!
 //! ## Conventions (identical to the Python reference)
@@ -65,6 +66,7 @@
 pub mod binomial;
 pub mod black76;
 pub mod black_scholes;
+pub mod fast;
 pub mod golden;
 pub mod greeks;
 pub mod implied_vol;
@@ -72,11 +74,11 @@ pub mod iv_core;
 pub mod monte_carlo;
 pub mod rng;
 
-pub use binomial::{crr_price, early_exercise_premium, Exercise};
+pub use binomial::{crr_price, early_exercise_premium, CrrWorkspace, Exercise};
 pub use black76::{b76_d1_d2, black76_greeks, black76_price, Black76Greeks};
 pub use black_scholes::{
     bs_price, d1_d2, forward_price, intrinsic_value, OptionType, PricingError,
 };
 pub use greeks::{bs_greeks, fd_greeks, BsGreeks};
 pub use implied_vol::implied_vol;
-pub use monte_carlo::{mc_price, McResult};
+pub use monte_carlo::{mc_price, McResult, McWorkspace};

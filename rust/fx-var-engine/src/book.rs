@@ -43,7 +43,8 @@
 use std::collections::HashMap;
 
 use crate::returns::ReturnsMatrix;
-use crate::{FxVarError, Result};
+use crate::matrix::Matrix;
+use crate::{FxVarError, KernelError, Result};
 
 /// `(base, quote)` legs of a 6-letter pair, upper-cased.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -419,6 +420,43 @@ impl Book {
     }
 }
 
+/// Rows per thread below which scenario revaluation stays serial.
+const PAR_MIN_ROWS: usize = 4096;
+
+/// USD value of the compiled legs under one shock row. `fx` / `ir` hold
+/// the column of each leg's factor in `row`, or -1 for none. The loop
+/// order and arithmetic are the reference ones, so every caller gets the
+/// same bits.
+#[inline]
+fn reval_usd(value0: &[f64], fx: &[i64], ir: &[i64], neg_expiry: &[f64], row: &[f64]) -> f64 {
+    debug_assert!(fx.len() == value0.len() && ir.len() == value0.len() && neg_expiry.len() == value0.len());
+    let mut total = 0.0;
+    for (((&v0, &f), &r), &ne) in value0.iter().zip(fx).zip(ir).zip(neg_expiry) {
+        let mut shift = 0.0;
+        if f >= 0 {
+            debug_assert!((f as usize) < row.len());
+            shift += row.get(f as usize).copied().unwrap_or(0.0);
+        }
+        if r >= 0 {
+            debug_assert!((r as usize) < row.len());
+            shift += ne * row.get(r as usize).copied().unwrap_or(0.0);
+        }
+        total += if shift == 0.0 { v0 } else { v0 * shift.exp() };
+    }
+    total
+}
+
+/// Base-currency USD price after the shock row (`col` = -1 for USD base).
+#[inline]
+fn base_spot(s0_base: f64, col: i64, row: &[f64]) -> f64 {
+    if col >= 0 {
+        debug_assert!((col as usize) < row.len());
+        s0_base * row.get(col as usize).copied().unwrap_or(0.0).exp()
+    } else {
+        s0_base
+    }
+}
+
 /// Struct-of-arrays compiled book: the revaluation hot path.
 ///
 /// Each position is flattened into discounted USD legs with unshocked
@@ -546,29 +584,67 @@ impl CompiledBook {
         if shocks.iter().any(|v| !v.is_finite()) {
             return Err(FxVarError::invalid("shock vector contains NaN or infinite values"));
         }
-        let mut total = 0.0;
-        for i in 0..self.value0.len() {
-            let mut shift = 0.0;
-            if self.fx_idx[i] >= 0 {
-                shift += shocks[self.fx_idx[i] as usize];
-            }
-            if self.ir_idx[i] >= 0 {
-                shift += self.neg_expiry[i] * shocks[self.ir_idx[i] as usize];
-            }
-            total += if shift == 0.0 { self.value0[i] } else { self.value0[i] * shift.exp() };
+        Ok(reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, shocks))
+    }
+
+    /// Allocation-free P&L of one shock row aligned with
+    /// [`CompiledBook::factors`]. Same bits as [`CompiledBook::pnl`].
+    ///
+    /// # Errors
+    /// [`KernelError::LengthMismatch`] when `shocks.len() != factors().len()`,
+    /// [`KernelError::NonFinite`] for a NaN or infinite shock.
+    #[inline]
+    pub fn pnl_row(&self, shocks: &[f64]) -> std::result::Result<f64, KernelError> {
+        if shocks.len() != self.factors.len() {
+            return Err(KernelError::LengthMismatch);
         }
-        Ok(total)
+        if !shocks.iter().fold(true, |ok, v| ok & v.is_finite()) {
+            return Err(KernelError::NonFinite);
+        }
+        Ok(self.pnl_row_unchecked(shocks))
+    }
+
+    /// P&L of a row already checked for length and finiteness.
+    #[inline]
+    fn pnl_row_unchecked(&self, row: &[f64]) -> f64 {
+        let v1 = reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, row);
+        let s1_base = base_spot(self.s0_base, self.base_fx_idx, row);
+        v1 / s1_base - self.v0_usd / self.s0_base
+    }
+
+    /// Allocation-free P&L of every row of `scenarios`, whose columns are
+    /// in [`CompiledBook::factors`] order (for example a Monte Carlo draw
+    /// from `cov.select(compiled.factors())`). Writes `out[s]` for each
+    /// row `s`, single-threaded. Same bits as
+    /// [`CompiledBook::pnl_scenarios`] on the same data.
+    ///
+    /// # Errors
+    /// [`KernelError::LengthMismatch`] when the matrix width differs from
+    /// `factors().len()` or `out.len()` differs from the row count;
+    /// [`KernelError::NonFinite`] for a NaN or infinite entry.
+    pub fn pnl_aligned_into(&self, scenarios: &Matrix, out: &mut [f64]) -> std::result::Result<(), KernelError> {
+        if scenarios.cols() != self.factors.len() || out.len() != scenarios.rows() {
+            return Err(KernelError::LengthMismatch);
+        }
+        if !scenarios.all_finite() {
+            return Err(KernelError::NonFinite);
+        }
+        let k = self.factors.len();
+        let v0_base = self.v0_usd / self.s0_base;
+        let data = scenarios.as_slice();
+        for (s, o) in out.iter_mut().enumerate() {
+            let row = data.get(s * k..(s + 1) * k).unwrap_or(&[]);
+            let v1 = reval_usd(&self.value0, &self.fx_idx, &self.ir_idx, &self.neg_expiry, row);
+            *o = v1 / base_spot(self.s0_base, self.base_fx_idx, row) - v0_base;
+        }
+        Ok(())
     }
 
     /// Base-ccy P&L of one scenario (shocks aligned with
     /// [`CompiledBook::factors`]).
     pub fn pnl(&self, shocks: &[f64]) -> Result<f64> {
         let v1 = self.value_usd(shocks)?;
-        let s1_base = if self.base_fx_idx >= 0 {
-            self.s0_base * shocks[self.base_fx_idx as usize].exp()
-        } else {
-            self.s0_base
-        };
+        let s1_base = base_spot(self.s0_base, self.base_fx_idx, shocks);
         Ok(v1 / s1_base - self.v0_usd / self.s0_base)
     }
 
@@ -629,25 +705,21 @@ impl CompiledBook {
             return Err(FxVarError::invalid("scenario matrix contains NaN or infinite values"));
         }
         let n_scen = scenarios.n_obs();
-        let n_legs = self.value0.len();
         let v0_base = self.v0_usd / self.s0_base;
         let mut out = vec![0.0; n_scen];
-        for s in 0..n_scen {
-            let row = scenarios.data.row(s);
-            let mut v1 = 0.0;
-            for i in 0..n_legs {
-                let mut shift = 0.0;
-                if fx_col[i] >= 0 {
-                    shift += row[fx_col[i] as usize];
-                }
-                if ir_col[i] >= 0 {
-                    shift += self.neg_expiry[i] * row[ir_col[i] as usize];
-                }
-                v1 += if shift == 0.0 { self.value0[i] } else { self.value0[i] * shift.exp() };
+        let width = scenarios.n_factors();
+        let data = scenarios.data.as_slice();
+        // Rows are independent, so a fixed contiguous partition over
+        // threads gives the same bits as the serial loop. Small inputs
+        // (historical windows) stay on the caller's thread.
+        crate::par::for_row_chunks(&mut out, 1, PAR_MIN_ROWS, crate::par::default_threads(), |first, chunk| {
+            for (i, o) in chunk.iter_mut().enumerate() {
+                let start = (first + i) * width;
+                let row = data.get(start..start + width).unwrap_or(&[]);
+                let v1 = reval_usd(&self.value0, &fx_col, &ir_col, &self.neg_expiry, row);
+                *o = v1 / base_spot(self.s0_base, base_col, row) - v0_base;
             }
-            let s1_base = if base_col >= 0 { self.s0_base * row[base_col as usize].exp() } else { self.s0_base };
-            out[s] = v1 / s1_base - v0_base;
-        }
+        });
         Ok(out)
     }
 

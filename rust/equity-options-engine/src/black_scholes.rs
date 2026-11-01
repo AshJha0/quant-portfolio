@@ -23,6 +23,8 @@
 
 use std::fmt;
 
+use crate::fast::ErrorCode;
+
 /// Square root of 2*pi, used by the normal PDF.
 pub(crate) const SQRT_2PI: f64 = 2.506_628_274_631_000_5;
 const FRAC_1_SQRT_2: f64 = std::f64::consts::FRAC_1_SQRT_2;
@@ -193,6 +195,7 @@ pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
 /// assert!((erfc(1.0) - 0.15729920705028513).abs() < 1e-14);
 /// assert!((erfc(-1.0) - 1.8427007929497148).abs() < 1e-14);
 /// ```
+#[inline]
 pub fn erfc(x: f64) -> f64 {
     // Regime 0.46875 < |x| <= 4: erfc(x) = exp(-x^2) P(x)/Q(x).
     const C: [f64; 9] = [
@@ -292,6 +295,7 @@ const CODY_B: [f64; 4] = [
 ];
 
 /// Cody's direct `erf(x) = x P(x^2)/Q(x^2)` for `|x| <= 0.46875`.
+#[inline]
 fn erf_small(x: f64) -> f64 {
     let y = x.abs();
     let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
@@ -421,9 +425,7 @@ pub fn d1_d2(
              got S={s}, K={k}, T={t}, sigma={sigma}"
         )));
     }
-    let sqrt_t = t.sqrt();
-    let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
-    Ok((d1, d1 - sigma * sqrt_t))
+    Ok(d1_d2_core(s, k, t, r, sigma, q))
 }
 
 /// Black-Scholes-Merton price of a European option with dividend yield.
@@ -466,12 +468,59 @@ pub fn bs_price(
 ) -> Result<f64, PricingError> {
     validate_inputs(s, k, t, sigma)?;
     validate_rates(r, q)?;
+    finite_result(bs_price_core(s, k, t, r, sigma, q, option_type), "bs_price")
+}
+
+/// Check the four non-negative inputs without allocating.
+///
+/// Rejects exactly the inputs [`validate_inputs`] rejects.
+#[inline]
+pub(crate) fn check_inputs(s: f64, k: f64, t: f64, sigma: f64) -> Result<(), ErrorCode> {
+    for value in [s, k, t, sigma] {
+        if value.is_nan() {
+            return Err(ErrorCode::NanInput);
+        }
+        if value.is_infinite() {
+            return Err(ErrorCode::InfiniteInput);
+        }
+        if value < 0.0 {
+            return Err(ErrorCode::NegativeInput);
+        }
+    }
+    Ok(())
+}
+
+/// Check the two rates without allocating. Rejects exactly the inputs
+/// [`validate_rates`] rejects.
+#[inline]
+pub(crate) fn check_rates(r: f64, q: f64) -> Result<(), ErrorCode> {
+    if r.is_finite() && q.is_finite() {
+        Ok(())
+    } else {
+        Err(ErrorCode::NonFiniteRate)
+    }
+}
+
+/// Black-Scholes price for inputs that already passed validation.
+///
+/// Shared by [`bs_price`] and the non-allocating API, so both return the
+/// same bits. The result can be non-finite; callers check it.
+#[inline]
+pub(crate) fn bs_price_core(
+    s: f64,
+    k: f64,
+    t: f64,
+    r: f64,
+    sigma: f64,
+    q: f64,
+    option_type: OptionType,
+) -> f64 {
     if t == 0.0 {
-        return Ok(intrinsic_value(s, k, option_type));
+        return intrinsic_value(s, k, option_type);
     }
     let disc_s = s * (-q * t).exp();
     let disc_k = k * (-r * t).exp();
-    let value = if k == 0.0 {
+    if k == 0.0 {
         // Zero-strike call is a (dividend-adjusted) forward on the stock.
         match option_type {
             OptionType::Call => disc_s,
@@ -487,13 +536,21 @@ pub fn bs_price(
         // forward itself overflows when (r - q) T > 709.
         (option_type.sign() * (disc_s - disc_k)).max(0.0)
     } else {
-        let (d1, d2) = d1_d2(s, k, t, r, sigma, q)?;
+        let (d1, d2) = d1_d2_core(s, k, t, r, sigma, q);
         match option_type {
             OptionType::Call => disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2),
             OptionType::Put => disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1),
         }
-    };
-    finite_result(value, "bs_price")
+    }
+}
+
+/// `d1`, `d2` for strictly positive, validated inputs (same expression
+/// as [`d1_d2`]).
+#[inline]
+pub(crate) fn d1_d2_core(s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64) -> (f64, f64) {
+    let sqrt_t = t.sqrt();
+    let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
+    (d1, d1 - sigma * sqrt_t)
 }
 
 /// Return `value`, or [`PricingError::InvalidInput`] if it is not finite
