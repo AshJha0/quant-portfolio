@@ -162,3 +162,41 @@ def test_invalid_queries_raise():
         surf.vol(100.0, 0.0)
     with pytest.raises(ValueError, match="strikes must be positive"):
         surf.vol(-100.0, 0.5)
+
+
+# -- butterfly re-check at interpolated expiries and after enforcement -------
+def test_butterfly_report_covers_pillars_and_midpoints():
+    Ts, slices = make_slices()
+    surf = VolSurface(Ts, slices, S, R, Q)
+    rep = surf.butterfly_report()
+    assert [r["T"] for r in rep] == [0.25, 0.625, 1.0]
+    # Smooth arbitrage-free slices: g > 0 up to the O(h^2) FD error.
+    assert all(r["min_g"] > -1e-6 for r in rep)
+
+
+def test_butterfly_report_flags_arbitrageable_pillar_and_its_neighbourhood():
+    """Vogt's slice has negative density near k = 0.5 (Gatheral-Jacquier).
+    The surface check must flag it at the pillar and at an interpolated
+    expiry where that slice dominates the blend."""
+    vogt = SVIParams(a=-0.0410, b=0.1331, rho=0.3060, m=0.3586, sigma=0.4153)
+    later = SVIParams(a=-0.035, b=0.1331, rho=0.3060, m=0.3586, sigma=0.4153)
+    surf = VolSurface(np.array([1.0, 2.0]), [vogt, later], S, R, Q)
+    rep = {r["T"]: r for r in surf.butterfly_report(np.array([1.0, 1.1]))}
+    assert rep[1.0]["min_g"] < 0.0
+    assert rep[1.1]["min_g"] < 0.0
+
+
+def test_enforced_surface_is_c1_in_k_and_rechecked():
+    p1 = SVIParams(a=0.040, b=0.05, rho=-0.4, m=0.0, sigma=0.15)
+    p2 = SVIParams(a=0.010, b=0.05, rho=-0.4, m=0.0, sigma=0.15)
+    with pytest.warns(UserWarning, match="running-max"):
+        surf = VolSurface(np.array([0.25, 1.0]), [p1, p2], S, R, Q, enforce_calendar=True)
+    assert surf.butterfly_after_enforcement is not None
+    assert len(surf.butterfly_after_enforcement) == 3  # 2 pillars + 1 midpoint
+    # PCHIP: one-sided slopes at an interior node agree to O(delta); the old
+    # piecewise-linear interpolant had a slope jump of O(grid curvature).
+    k0, d = float(surf.k_grid[120]), 1e-7
+    w = lambda x: float(surf.total_variance(x, 1.0))
+    right = (w(k0 + d) - w(k0)) / d
+    left = (w(k0) - w(k0 - d)) / d
+    assert abs(right - left) < 1e-4

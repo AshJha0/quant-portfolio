@@ -263,7 +263,7 @@ def heston_call_p1p2(
     P1 = 0.5 + i1 / np.pi
     P2 = 0.5 + i2 / np.pi
     price = S * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
-    return float(max(price, 0.0))
+    return float(_floor_roundoff(price, max(S, K)))
 
 
 def _damped_integrand_factory(S, K, T, r, q, p, alpha):
@@ -310,7 +310,7 @@ def heston_call_damped(
     umax = _u_max(T, p, S, r, q, alpha)
     integral, _ = quad(integrand, 0.0, umax, limit=400)
     price = np.exp(-alpha * np.log(K)) / np.pi * integral
-    return float(max(price, 0.0))
+    return float(_floor_roundoff(price, max(S, K)))
 
 
 # Cache Gauss-Legendre nodes by size (they are expensive to regenerate).
@@ -374,7 +374,7 @@ def heston_call_gl(
     kernel = np.exp(-1j * np.outer(lnK, u))  # (nK, n_nodes)
     integral = kernel @ (psi * w_scaled)
     prices = np.exp(-alpha * lnK) / np.pi * np.real(integral)
-    prices = np.maximum(prices, 0.0)
+    prices = _floor_roundoff(prices, np.maximum(S, K_arr))
     return prices if np.ndim(K) else float(prices[0])
 
 
@@ -413,7 +413,27 @@ def heston_put(
     """
     call = heston_call(S, K, T, r, q, p, method=method)
     put = call - S * np.exp(-q * T) + K * np.exp(-r * T)
-    return float(max(put, 0.0))
+    return float(_floor_roundoff(put, max(S, K)))
+
+
+def _floor_roundoff(price, scale):
+    """Set negatives within integration tolerance of zero to zero; anything
+    more negative is an integration failure, returned as NaN with a
+    RuntimeWarning rather than hidden by a floor.
+
+    The tolerance is ``1e-7 * max(S, K)``: ``scipy.integrate.quad``'s default
+    absolute tolerance is 1.5e-8 per probability integral, i.e. about
+    ``1e-8 * S`` in price, so 1e-7 leaves a 10x margin.
+    """
+    price = np.asarray(price, dtype=float)
+    bad = price < -1e-7 * np.asarray(scale, dtype=float)
+    if np.any(bad):
+        warnings.warn(
+            "Heston Fourier price negative beyond round-off; returning NaN "
+            "(integration error, not a market price)",
+            RuntimeWarning, stacklevel=3,
+        )
+    return np.where(bad, np.nan, np.maximum(price, 0.0))
 
 
 def _validate_option(S: float, K: float, T: float) -> None:

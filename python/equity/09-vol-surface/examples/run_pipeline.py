@@ -70,7 +70,9 @@ for T, Ks, ivs in zip(expiries, strikes_by_T, ivs_by_T):
     rows.append({
         "T": T, "a": p.a, "b": p.b, "rho": p.rho, "m": p.m, "sigma": p.sigma,
         "rmse_vp": fit.rmse_vol * 100, "min_g": fit.min_g,
-        "butterfly_free": fit.arb_free, "quad_delta_rmse_vp": quad.rmse_vol * 100,
+        "butterfly_free": fit.arb_free, "lee_ok": fit.lee_ok,
+        "active": ",".join(fit.active_constraints) or "-",
+        "quad_delta_rmse_vp": quad.rmse_vol * 100,
     })
 svi_table = pd.DataFrame(rows)
 print(svi_table.to_string(index=False))
@@ -164,10 +166,11 @@ for K in [90.0, 100.0, 110.0]:
         "gamma_H": g.gamma, "gamma_BS": bse["gamma"], "vega_v0": g.vega_v0,
         "rho_rate": g.rho_rate, "delta_sticky_K": sm["delta_sticky_strike"],
         "delta_sticky_mny": sm["delta_sticky_moneyness"],
+        "delta_lv_rule": sm["delta_local_vol_approx"],
     })
 print(pd.DataFrame(rows).to_string(index=False))
-print("(delta_sticky_mny > delta_sticky_K: negative skew raises call delta when")
-print(" the smile rides the forward -- see docs/METHODOLOGY.md)")
+print("(Heston delta_H sits on delta_sticky_mny: Heston is sticky-moneyness at fixed v0.")
+print(" The local-vol rule delta_lv_rule is below sticky-strike under negative skew.)")
 
 # --------------------------------------------------------------------------- #
 hr("8. Monte Carlo vs Fourier cross-check (calibrated parameters)")
@@ -175,7 +178,8 @@ rows = []
 for K, T in [(90.0, 0.5), (100.0, 0.5), (110.0, 0.5), (100.0, 1.0)]:
     fourier = float(es.heston_call_gl(S, K, T, r, q, p_cal))
     mc_qe = es.heston_mc_price(S, K, T, r, q, p_cal, n_paths=200_000, n_steps=32,
-                               scheme="qe", seed=SEED)
+                               scheme="qe", seed=SEED, antithetic=True,
+                               control_variate=True)
     mc_eu = es.heston_mc_price(S, K, T, r, q, p_cal, n_paths=200_000, n_steps=256,
                                scheme="euler_ft", seed=SEED)
     rows.append({
@@ -184,6 +188,8 @@ for K, T in [(90.0, 0.5), (100.0, 0.5), (110.0, 0.5), (100.0, 1.0)]:
         "euler_256": mc_eu.price, "eu_dev_se": (mc_eu.price - fourier) / mc_eu.stderr,
     })
 print(pd.DataFrame(rows).to_string(index=False))
-print("(dev_se = (MC - Fourier)/SE; |dev| < 3 is agreement within Monte Carlo noise)")
+print("(dev_se = (MC - Fourier)/SE; |dev| < 3 is agreement within Monte Carlo noise.")
+print(" QE uses the martingale correction, antithetics and a terminal-spot control")
+print(" variate; Euler is plain.  Rows share one seed, so their deviations correlate.)")
 
 print(f"\npipeline total: {time.time()-t_start:.1f}s")

@@ -1,4 +1,4 @@
-"""Heston Monte Carlo: full-truncation Euler and (simplified) Andersen QE.
+"""Heston Monte Carlo: full-truncation Euler and Andersen QE.
 
 Discretisation bias (documented, measured in tests and docs/VALIDATION.md)
 --------------------------------------------------------------------------
@@ -20,6 +20,15 @@ Broadie-Kaya decomposition with central weights gamma1 = gamma2 = 1/2).  QE's
 weak bias at coarse steps is typically an order of magnitude below Euler's at
 the same step count -- the comparative bias test in the suite demonstrates
 this on a Feller-violating parameter set.
+
+QE applies Andersen's martingale correction by default (section 4.4.3 of
+Andersen 2008), so the discounted simulated forward has mean ``S e^{-qT}``
+up to Monte Carlo error at any step size.
+
+Variance reduction: ``antithetic=True`` mirrors every Gaussian (and every
+uniform as ``1-u``) and the price SE is computed on pair averages;
+``control_variate=True`` regresses the discounted payoff on the discounted
+terminal spot, whose mean ``S e^{-qT}`` is known exactly.
 
 Both schemes store only non-negative variances (Euler stores ``v+``), are
 driven by an explicit ``numpy.random.Generator`` seed, and share the same
@@ -84,6 +93,8 @@ def simulate_heston_terminal(
     n_steps: int,
     scheme: Scheme = "qe",
     seed: int | np.random.Generator = 0,
+    antithetic: bool = False,
+    martingale_correction: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Simulate terminal spot and variance under Heston.
 
@@ -104,6 +115,13 @@ def simulate_heston_terminal(
         central log-spot weights.
     seed : int or numpy.random.Generator
         Seed for reproducibility (explicit, per the testing contract).
+    antithetic : bool
+        Mirror every random draw; path ``i + n_paths/2`` is the antithetic
+        partner of path ``i``.  Requires an even ``n_paths``.
+    martingale_correction : bool
+        QE only: Andersen's drift correction (see module docstring).  Where
+        the required moment generating function does not exist on a path
+        (very coarse steps), that path keeps the uncorrected drift.
 
     Returns
     -------
@@ -111,6 +129,11 @@ def simulate_heston_terminal(
         Terminal spot and terminal (non-negative) variance.
     """
     _validate_mc(S, T, n_paths, n_steps)
+    if antithetic and n_paths % 2:
+        raise ValueError(
+            f"n_paths must be even when antithetic=True (an odd count leaves one "
+            f"draw without its mirror), got {n_paths}"
+        )
     rng = np.random.default_rng(seed) if not isinstance(seed, np.random.Generator) else seed
     dt = T / n_steps
     sq_dt = np.sqrt(dt)
@@ -121,10 +144,22 @@ def simulate_heston_terminal(
     v = np.full(n_paths, v0)
     drift = (r - q) * dt
 
+    def normal() -> np.ndarray:
+        if antithetic:
+            z = rng.standard_normal(n_paths // 2)
+            return np.concatenate([z, -z])
+        return rng.standard_normal(n_paths)
+
+    def uniform() -> np.ndarray:
+        if antithetic:
+            uu = rng.uniform(size=n_paths // 2)
+            return np.concatenate([uu, 1.0 - uu])
+        return rng.uniform(size=n_paths)
+
     if scheme == "euler_ft":
         for _ in range(n_steps):
-            z_v = rng.standard_normal(n_paths)
-            z_s = rho * z_v + rho_bar * rng.standard_normal(n_paths)
+            z_v = normal()
+            z_s = rho * z_v + rho_bar * normal()
             v_plus = np.maximum(v, 0.0)
             sqv = np.sqrt(v_plus)
             x = x + drift - 0.5 * v_plus * dt + sqv * sq_dt * z_s
@@ -141,7 +176,7 @@ def simulate_heston_terminal(
         v_det = theta + (v0 - theta) * np.exp(-kappa * t_grid)
         for i in range(n_steps):
             v_mid = 0.5 * (v_det[i] + v_det[i + 1])
-            z = rng.standard_normal(n_paths)
+            z = normal()
             x = x + drift - 0.5 * v_mid * dt + np.sqrt(v_mid * dt) * z
         return np.exp(x), np.full(n_paths, v_det[-1])
 
@@ -164,8 +199,10 @@ def simulate_heston_terminal(
             psi = np.where(m > 0.0, s2 / np.maximum(m * m, 1e-300), np.inf)
 
         v_next = np.empty_like(v)
-        z_v = rng.standard_normal(n_paths)
-        u = rng.uniform(size=n_paths)
+        z_v = normal()
+        u = uniform()
+        step_drift = k0 + k1 * v  # uncorrected (central discretisation)
+        A = k2 + 0.5 * k4
 
         low = psi <= psi_c
         # Quadratic branch: v' = a (b + Z)^2
@@ -175,6 +212,12 @@ def simulate_heston_terminal(
             b2 = inv2 - 1.0 + np.sqrt(inv2 * np.maximum(inv2 - 1.0, 0.0))
             a = m[low] / (1.0 + b2)
             v_next[low] = a * (np.sqrt(b2) + z_v[low]) ** 2
+            if martingale_correction:
+                # E[exp(A v')] = exp(A b^2 a / (1 - 2 A a)) / sqrt(1 - 2 A a)
+                ok = A < 0.5 / a
+                one_m = np.where(ok, 1.0 - 2.0 * A * a, 1.0)
+                log_m = A * b2 * a / one_m - 0.5 * np.log(one_m)
+                step_drift[low] = np.where(ok, -log_m - 0.5 * k3 * v[low], step_drift[low])
         # Exponential branch: point mass at zero + exponential tail
         high = ~low
         if high.any():
@@ -184,13 +227,18 @@ def simulate_heston_terminal(
             uh = u[high]
             v_h = np.where(uh <= pp, 0.0, np.log((1.0 - pp) / np.maximum(1.0 - uh, 1e-300)) / beta)
             v_next[high] = v_h
+            if martingale_correction:
+                # E[exp(A v')] = p + beta (1 - p) / (beta - A)
+                ok = A < beta
+                mgf = pp + beta * (1.0 - pp) / np.where(ok, beta - A, 1.0)
+                step_drift[high] = np.where(ok, -np.log(mgf) - 0.5 * k3 * v[high],
+                                            step_drift[high])
 
-        z_x = rng.standard_normal(n_paths)
+        z_x = normal()
         x = (
             x
             + drift
-            + k0
-            + k1 * v
+            + step_drift
             + k2 * v_next
             + np.sqrt(np.maximum(k3 * v + k4 * v_next, 0.0)) * z_x
         )
@@ -211,6 +259,9 @@ def heston_mc_price(
     scheme: Scheme = "qe",
     seed: int | np.random.Generator = 0,
     kind: Literal["call", "put"] = "call",
+    antithetic: bool = False,
+    control_variate: bool = False,
+    martingale_correction: bool = True,
 ) -> MCResult:
     """Price a European option by Heston Monte Carlo.
 
@@ -218,19 +269,33 @@ def heston_mc_price(
     -------
     MCResult
         Price, standard error and simulation metadata.  The estimator is the
-        discounted sample mean of the payoff; ``stderr`` is the sample
-        standard deviation of the discounted payoff divided by
-        ``sqrt(n_paths)``, so "agreement within 3 stderr" is the appropriate
-        acceptance band versus the Fourier price.
+        discounted sample mean of the payoff (on antithetic pair averages
+        when ``antithetic=True``).  With ``control_variate=True`` the
+        discounted terminal spot, whose mean ``S e^{-qT}`` is known, is used
+        as a control with the regression coefficient estimated from the
+        same paths (an O(1/n) bias, negligible at these path counts).
+        ``stderr`` is the standard deviation of the per-sample estimator
+        divided by the square root of the number of independent samples.
     """
     if K <= 0.0:
         raise ValueError(f"strike must be positive, got {K}")
     if kind not in ("call", "put"):
         raise ValueError(f"kind must be 'call' or 'put', got {kind!r}")
-    s_T, _ = simulate_heston_terminal(S, T, r, q, p, n_paths, n_steps, scheme, seed)
+    s_T, _ = simulate_heston_terminal(S, T, r, q, p, n_paths, n_steps, scheme, seed,
+                                      antithetic=antithetic,
+                                      martingale_correction=martingale_correction)
     payoff = np.maximum(s_T - K, 0.0) if kind == "call" else np.maximum(K - s_T, 0.0)
     df = np.exp(-r * T)
-    disc = df * payoff
-    price = float(disc.mean())
-    stderr = float(disc.std(ddof=1) / np.sqrt(n_paths))
+    y = df * payoff
+    c = df * s_T  # control: E[c] = S exp(-qT)
+    if antithetic:
+        h = n_paths // 2
+        y = 0.5 * (y[:h] + y[h:])
+        c = 0.5 * (c[:h] + c[h:])
+    if control_variate:
+        cc = c - c.mean()
+        beta = float(np.dot(cc, y - y.mean()) / np.dot(cc, cc))
+        y = y - beta * (c - S * np.exp(-q * T))
+    price = float(y.mean())
+    stderr = float(y.std(ddof=1) / np.sqrt(y.size))
     return MCResult(price=price, stderr=stderr, n_paths=n_paths, n_steps=n_steps, scheme=scheme)

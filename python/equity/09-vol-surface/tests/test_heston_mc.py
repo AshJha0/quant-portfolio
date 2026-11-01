@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from eq_surface.black_scholes import bs_price
-from eq_surface.heston import heston_call_gl
+from eq_surface.heston import HestonParams, heston_call_gl
 from eq_surface.heston_mc import heston_mc_price, simulate_heston_terminal
 
 S, R, Q = 100.0, 0.02, 0.01
@@ -126,3 +126,44 @@ def test_invalid_inputs_raise(mild_heston):
         heston_mc_price(S, -1.0, 1.0, R, Q, mild_heston)
     with pytest.raises(ValueError, match="kind"):
         heston_mc_price(S, 100.0, 1.0, R, Q, mild_heston, kind="chooser")
+
+
+# -- martingale correction, antithetics, control variate ---------------------
+def _forward_z(martingale_correction, n_steps):
+    from eq_surface.heston_mc import simulate_heston_terminal
+
+    p = HestonParams(v0=0.04, kappa=0.5, theta=0.04, rho=-0.9, xi=1.5)
+    S0, T, r, q = 100.0, 5.0, 0.03, 0.01
+    s_T, _ = simulate_heston_terminal(S0, T, r, q, p, 400_000, n_steps, "qe", seed=1,
+                                      antithetic=True,
+                                      martingale_correction=martingale_correction)
+    y = s_T * np.exp(-(r - q) * T)
+    pair = 0.5 * (y[:200_000] + y[200_000:])
+    return (pair.mean() - S0) / (pair.std(ddof=1) / np.sqrt(pair.size))
+
+
+@pytest.mark.parametrize("n_steps", [2, 5])
+def test_qe_martingale_correction_removes_forward_bias(n_steps):
+    """xi=1.5, rho=-0.9, T=5, 2-5 steps: uncorrected QE misses the forward
+    by more than 5 SE; corrected it is inside 4 SE (two-sided false-alarm
+    rate 6e-5 per case)."""
+    assert abs(_forward_z(True, n_steps)) < 4.0
+    assert abs(_forward_z(False, n_steps)) > 5.0
+
+
+def test_odd_n_paths_with_antithetic_raises(mild_heston):
+    with pytest.raises(ValueError, match="even"):
+        heston_mc_price(S, 100.0, 1.0, R, Q, mild_heston, n_paths=1001, n_steps=4,
+                        antithetic=True)
+
+
+def test_variance_reduction_keeps_price_and_cuts_stderr(mild_heston):
+    ref = heston_call_gl(S, 100.0, 1.0, R, Q, mild_heston)
+    plain = heston_mc_price(S, 100.0, 1.0, R, Q, mild_heston, n_paths=100_000,
+                            n_steps=32, seed=5)
+    vr = heston_mc_price(S, 100.0, 1.0, R, Q, mild_heston, n_paths=100_000,
+                         n_steps=32, seed=5, antithetic=True, control_variate=True)
+    assert abs(vr.price - ref) < 3.0 * vr.stderr
+    # ATM call vs terminal spot: the SE ratio is sqrt(1 - corr^2) on top of the
+    # antithetic gain; measured 0.65 at this seed, so 0.75 is a fixed-seed bound.
+    assert vr.stderr < 0.75 * plain.stderr
