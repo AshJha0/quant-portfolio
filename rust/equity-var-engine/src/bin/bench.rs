@@ -14,7 +14,8 @@
 //! code is unchanged by the latency work, so its rows are the "before"
 //! numbers and the `fast` rows are the "after" numbers.
 //!
-//! Output: a table on stdout and `bench/results.json` (crate-relative).
+//! Output: a table on stdout and `bench/results.json` (crate-relative, or
+//! the path given with `--out <path>`).
 //! Run with `cargo run --release --bin bench`.
 
 use std::hint::black_box;
@@ -305,10 +306,37 @@ fn main() {
         ));
     }
     json.push_str("]\n");
-    let _ = std::fs::create_dir_all("bench");
-    match std::fs::write("bench/results.json", &json) {
-        Ok(()) => println!("\nwrote bench/results.json"),
-        Err(e) => println!("\ncould not write bench/results.json: {e}"),
-    }
+    write_results(&out_path(), &json);
     println!("{json}");
+}
+
+/// Where to write the JSON: `--out <path>` (or `--out=<path>`) if given,
+/// otherwise `bench/results.json` inside this crate.
+fn out_path() -> std::path::PathBuf {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--out" {
+            if let Some(p) = args.next() {
+                return p.into();
+            }
+        } else if let Some(p) = a.strip_prefix("--out=") {
+            return p.into();
+        }
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bench")
+        .join("results.json")
+}
+
+/// Write `json` to `path`, creating the parent directory.
+fn write_results(path: &std::path::Path, json: &str) {
+    let written = match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => std::fs::create_dir_all(dir),
+        _ => Ok(()),
+    }
+    .and_then(|()| std::fs::write(path, json));
+    match written {
+        Ok(()) => eprintln!("wrote {}", path.display()),
+        Err(e) => eprintln!("could not write {}: {e}", path.display()),
+    }
 }

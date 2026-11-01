@@ -14,7 +14,8 @@
 //! percentiles describe 16-call averages, not single calls.
 //! `std::hint::black_box` keeps the optimiser from deleting the work.
 //!
-//! Writes `bench/results.json` (crate-relative) and prints it.
+//! Writes `bench/results.json` (crate-relative, or the path given with
+//! `--out <path>`) and prints it.
 //!
 //! Built with `RUSTFLAGS="--cfg before"`, only the kernels of the
 //! pre-change API are measured, so the same source gives comparable
@@ -275,12 +276,7 @@ fn main() {
     }
     json.push_str("]\n");
     print!("{json}");
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bench");
-    let written = std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::write(dir.join("results.json"), &json));
-    if let Err(e) = written {
-        eprintln!("could not write bench/results.json: {e}");
-    }
+    write_results(&out_path(), &json);
 }
 
 /// Kernels of the non-allocating API (absent from the previous version).
@@ -467,4 +463,35 @@ fn per_row(mut s: Stat) -> Stat {
     s.p999 /= n;
     s.max /= n;
     s
+}
+
+/// Where to write the JSON: `--out <path>` (or `--out=<path>`) if given,
+/// otherwise `bench/results.json` inside this crate.
+fn out_path() -> std::path::PathBuf {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--out" {
+            if let Some(p) = args.next() {
+                return p.into();
+            }
+        } else if let Some(p) = a.strip_prefix("--out=") {
+            return p.into();
+        }
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bench")
+        .join("results.json")
+}
+
+/// Write `json` to `path`, creating the parent directory.
+fn write_results(path: &std::path::Path, json: &str) {
+    let written = match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => std::fs::create_dir_all(dir),
+        _ => Ok(()),
+    }
+    .and_then(|()| std::fs::write(path, json));
+    match written {
+        Ok(()) => eprintln!("wrote {}", path.display()),
+        Err(e) => eprintln!("could not write {}: {e}", path.display()),
+    }
 }
