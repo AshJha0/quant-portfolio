@@ -21,7 +21,8 @@ VaR.
 Each engine is deterministic for a fixed seed on the same build, so a rerun
 of the same book gives the same number. HS, parametric and stress cost a few
 milliseconds per book on the 250-position bench book; one MC run with its
-bootstrap SE costs 2.5 s (normal) to 6.3 s (t) at 100k scenarios. Data
+bootstrap SE costs about 0.35 s to 0.45 s at 100k scenarios on
+a 12-thread laptop. The result is the same for any thread count. Data
 readiness, not compute, sets the schedule.
 
 **Intraday**: rerun `historical_var` and the stress library on material

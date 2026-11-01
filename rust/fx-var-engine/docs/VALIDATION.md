@@ -110,6 +110,15 @@ nothing).
 
 ## 7. Benchmarks
 
-See the README. On 2026-11-01: historical 1.7 ms, parametric 0.9 ms, MC 100k
-normal 2.5 s and t(5) 6.3 s, each including 200 bootstrap resamples of the
-100k scenarios. MC normal VaR 424 401 against parametric 424 010.
+See the README for the per-kernel latency table and the command. On
+2026-11-01 (Intel Core 5 120U under WSL2), p50: historical 1.2 ms,
+parametric 0.63 ms, MC 100k normal 0.45 s and t(5) 0.35 s, each MC call including 200 bootstrap resamples of the 100k
+scenarios. MC normal VaR 424 401 against parametric 424 010.
+
+The parallel Monte Carlo and the workspace kernels changed no result.
+`tests/test_latency_determinism.rs` pins VaR, ES and both standard
+errors to the bits printed by the serial code for normal, Student-t and
+jump draws, checks thread counts 1 to 64 give the same P&L vector, and
+checks each workspace kernel against its allocating twin with
+`to_bits`. `tests/test_latency_alloc.rs` checks that the hot kernels make
+no heap allocation on success.
