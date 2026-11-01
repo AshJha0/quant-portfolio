@@ -24,7 +24,7 @@ from Python (GCC 15 build): prices 5.7e-14 abs, Greeks 4.5e-13 abs, strikes
 Agreement is per toolchain within these tolerances, not bit for bit:
 libm `exp`/`erfc` differ by ulps between platforms.
 
-## Identity and property tests (70 CTest cases)
+## Identity and property tests (87 CTest cases)
 
 | Category | Check | Tolerance |
 |---|---|---|
@@ -72,9 +72,30 @@ libm `exp`/`erfc` differ by ulps between platforms.
   `sigma` smaller than its own central bump, is rejected up front, the
   down-bumped volatility would be negative.
 
-## Benchmark table
+## Low-latency API checks
 
-See the README (`./build/fxopt_bench`, GCC 15.2 Release, WSL2, single
-run). Precomputing the node spots took the 2000-step American tree from
-23 ms to 0.9 ms; the shared implied-vol core took a solve from 2.1 µs to
-0.8 µs.
+| Check | Test | Result |
+|---|---|---|
+| `try_*` equals the throwing API bit for bit on a grid of quotes, including edge cases | `NoexceptApi.*` (`tests/test_latency_api.cpp`) | exact |
+| Error codes and messages match the exception text | `NoexceptApi.ErrorsCarryTheThrowingMessage` | exact |
+| Batch price and all ten Greeks equal the scalar kernel bit for bit | `BatchApi.*` | exact |
+| Single-stream `try_mc_price` equals `mc_price` (price, SE, method, path count) | `ThreadPoolMc.SingleStreamEqualsLegacyApi` | exact |
+| Chunked MC identical across pools of 0, 1, 3 and 7 workers and repeated runs; within 5 combined SE of the single stream | `ThreadPoolMc.ChunkedResultIndependentOfPoolAndRuns` | exact / statistical |
+| Every pool task runs once per job over 500 jobs | `ThreadPool.RunsEveryTaskOnceUnderRepeatedUse` | exact |
+| Zero heap allocations on every kernel success path (counting `operator new`) | `fxopt_alloc_tests` | 0 allocations |
+| Kernel entry points are `noexcept` | `static_assert`s in `test_latency_api.cpp` | compile time |
+
+The thread pool also passes the full suite under Clang ThreadSanitizer.
+
+No numerical result changed with the low-latency rewrite. A program that
+calls only the legacy API (prices, Greeks, Black-76, implied vol, trees,
+deltas, strike-from-delta, forwards, Monte Carlo across every
+antithetic/control-variate setting and path counts from 1 to 20,000,
+including invalid inputs) printed 181,543 results and exception texts in
+hex-float; the output against the previous library and the current one is
+identical with GCC 15.2 and with Clang 21.1.
+
+## Latency
+
+Per-call latency percentiles are in the README Latency table, measured
+with `./build/fxopt_bench` (see `bench/latency.hpp` for the method).

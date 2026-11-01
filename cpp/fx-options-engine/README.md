@@ -1,4 +1,4 @@
-# FX Options Pricing Engine (C++20)
+# FX Options Pricing Engine (C++23)
 
 C++ port of the Python reference project
 [`python/fx/01-options-pricing`](../../python/fx/01-options-pricing/). It
@@ -17,13 +17,17 @@ mpmath and against the Python and Rust engines on seeded random inputs.
 * Theta is per year; vega per unit of vol.
 * Invalid inputs and non-finite results throw `std::invalid_argument`;
   solver non-convergence throws `std::runtime_error`.
+* Every pricing kernel also has a `noexcept` form, `try_*`, that returns
+  `std::expected<T, fxopt::Error>` and never throws or allocates. The
+  throwing functions are thin wrappers over it.
 
 ## Layout
 
 ```
 fx-options-engine/
-├── CMakeLists.txt              # C++20, per-compiler warnings, FXOPT_WERROR, GTest
+├── CMakeLists.txt              # C++23, warnings, FXOPT_WERROR/NATIVE/LTO/VEC_REPORT, GTest
 ├── include/fxopt/
+│   ├── error.hpp               # Errc, Error, Result<T> = std::expected<T, Error>
 │   ├── common.hpp              # OptionType, validation, N(x), n(x), N^{-1}(x)
 │   ├── garman_kohlhagen.hpp    # d1/d2, gk_price/gk_call/gk_put, limits
 │   ├── forwards.hpp            # CIP forward, forward points, synthetic forward
@@ -33,12 +37,14 @@ fx-options-engine/
 │   ├── implied_vol.hpp         # out-of-the-money-side solver (iv_core.hpp)
 │   ├── iv_core.hpp             # shared IV core, same algorithm as Python and Rust
 │   ├── binomial.hpp            # CRR tree, foreign rate as yield, Eur + Amer
-│   └── monte_carlo.hpp         # GBM under domestic measure, mt19937_64, Seed/McConfig
+│   ├── monte_carlo.hpp         # GBM under domestic measure, mt19937_64, McWorkspace
+│   ├── thread_pool.hpp         # persistent fixed-size pool for chunked MC
+│   └── batch.hpp               # structure-of-arrays price and Greeks batch
 ├── src/                        # implementations (+ internal brent.hpp)
 ├── tools/gen_golden_header.py  # golden JSON -> tests/golden_vectors.hpp (--check)
 ├── tools/jsonl_main.cpp        # fxopt_jsonl shim for the differential test
 ├── tests/                      # GoogleTest suite + generated golden_vectors.hpp
-├── bench/bench_main.cpp        # throughput benchmarks
+├── bench/                      # per-call latency harness (latency.hpp) and kernels
 └── docs/                       # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
@@ -47,13 +53,23 @@ fx-options-engine/
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # add -DFXOPT_WERROR=ON for -Werror
 cmake --build build -j
-ctest --test-dir build --output-on-failure        # 70 tests
-./build/fxopt_bench
+ctest --test-dir build --output-on-failure        # 87 tests
+./build/fxopt_bench --out /tmp/fxopt.json         # latency percentiles, JSON
 ```
 
-C++20, CMake >= 3.20. GoogleTest is found with `find_package(GTest)` and
+Build options: `FXOPT_NATIVE` adds `-O3 -march=native` (off by default,
+for local latency work only, never in CI), `FXOPT_LTO` turns on
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION`, `FXOPT_VEC_REPORT` prints the
+compiler vectorisation report for the batch, tree and Monte Carlo files.
+`CMAKE_CXX_FLAGS` is never modified. The 87 CTest cases are 86 GoogleTest
+cases (including the separate `fxopt_alloc_tests` binary) plus the shim
+smoke test; sanitizer builds skip `fxopt_alloc_tests` (82 cases), because
+the sanitizer runtimes define `operator new` themselves.
+
+C++23, CMake >= 3.20. GoogleTest is found with `find_package(GTest)` and
 fetched (v1.15.2) when absent. Built and tested with GCC 15.2, Clang 21.1
-and a GCC ASan+UBSan build.
+and ASan+UBSan builds with both compilers, plus a Clang TSan build for
+the thread pool.
 
 ## Quick example
 
@@ -90,28 +106,66 @@ MCResult mc = mc_price(1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925, OptionType::Call
 - Parity, GK == Black-76, foreign-domestic symmetry, delta relations,
   tree convergence, MC within 3 SE: see [docs/VALIDATION.md](docs/VALIDATION.md).
 
-## Benchmark results
+## Low-latency API
 
-`./build/fxopt_bench`, GCC 15.2 `-O3` (CMake Release), WSL2 on an Intel
-Core 5 120U, single run:
+```cpp
+#include "fxopt/batch.hpp"
+#include "fxopt/binomial.hpp"
+#include "fxopt/monte_carlo.hpp"
 
-| Benchmark | Throughput |
-|---|---|
-| Garman-Kohlhagen vanilla price | 14.1 M prices/s (1M prices in 0.071 s) |
-| Strike-from-delta, spot / forward (analytic `N^{-1}`) | 8.4 - 9.4 M solves/s |
-| Strike-from-delta, premium-adjusted (Brent, branch-aware) | 0.68 - 0.79 M solves/s |
-| Monte Carlo, antithetic + control variate | 12.6 M paths/s (1M paths in 0.079 s, SE 9.4e-6) |
-| Implied vol (8 quotes, scratch timing loop) | 0.8 µs per solve (was 2.1 µs) |
-| CRR American, 2000 steps | 0.9 ms (was 23 ms) |
+// Scalar, noexcept: a value or an Error (code, field, numbers; no heap).
+const fxopt::Result<double> px =
+    fxopt::try_gk_price(1.0850, 1.10, 0.5, 0.045, 0.030, 0.08, fxopt::OptionType::Call);
+if (!px) log(fxopt::message(px.error()));     // formats only on the error path
 
-Single runs on a laptop; expect variation of a factor of about 2.
+// Tree and MC on caller-owned buffers, sized once at start-up.
+std::vector<double> tree(fxopt::binomial_workspace_size(1000));
+auto am = fxopt::try_binomial_price(1.0850, 1.10, 0.5, 0.045, 0.030, 0.08,
+                                    fxopt::OptionType::Put, 1000,
+                                    fxopt::Exercise::American, tree);
+fxopt::ThreadPool pool(3);                    // threads created once
+fxopt::McWorkspace ws;
+ws.reserve(1'000'000, true);
+auto mc = fxopt::try_mc_price(1.0850, 1.10, 0.5, 0.045, 0.030, 0.08,
+                              fxopt::OptionType::Call, 1'000'000, fxopt::Seed{7},
+                              true, true, /*threads=*/4, ws, &pool);
+
+// Structure of arrays: every output equals the scalar kernel bit for bit.
+fxopt::GkBatchInputs in{S, K, T, r_d, r_f, sigma, type};   // std::span each
+auto ok = fxopt::gk_price_batch(in, prices);                // BatchError on failure
+```
+
+* `try_gk_price`, `try_d1`, `try_analytic_greeks`, `try_black76_price`,
+  `try_implied_vol`, `try_binomial_price` and `try_mc_price` are `noexcept`
+  and allocate nothing on success or failure. The checks, their order and
+  the error messages are the same as in the throwing API.
+* `try_mc_price` with `threads = 1` draws the legacy single stream
+  (`mt19937_64(seed)`) and equals `mc_price` bit for bit. With
+  `threads > 1` the draws are split into `threads` chunks, chunk `c`
+  seeded with `splitmix64(seed + k c)`; the result is fixed for a given
+  `(seed, threads)` whichever pool runs it, and is statistically
+  equivalent to, not bit-equal with, the single stream.
+* `gk_price_batch` and `gk_greeks_batch` validate the whole batch in one
+  vectorised pass, then price element by element with the scalar inline
+  kernel. The pricing loop is not vectorised: `erfc`, `exp` and `log` are
+  scalar libm calls, and vector libm variants return different bits.
+* `strike_from_delta`, `delta` and the forward helpers keep only the
+  throwing form.
+
+No numerical result changed: a program printing 181,543 legacy-API results
+and exception texts in hex-float gives identical output against the
+previous and the current library, with GCC 15.2 and Clang 21.1.
+
+## Latency
+
+<!-- LATENCY_TABLE -->
 
 ## Docs
 
 * [docs/METHODOLOGY.md](docs/METHODOLOGY.md): why a C++ engine, design
   choices, model assumptions (register lives with the Python reference).
 * [docs/VALIDATION.md](docs/VALIDATION.md): golden and differential
-  validation, identity tests, convergence, failure modes, bench table.
+  validation, identity tests, convergence, failure modes.
 * [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md): where this engine could sit in
   an FX workflow; delta-convention pitfalls; golden regression as a
   release gate.
