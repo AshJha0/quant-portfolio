@@ -108,10 +108,8 @@ impl std::error::Error for PricingError {}
 /// checked here — see [`validate_rates`] for the finiteness check on
 /// rates).
 ///
-/// Note: the Python reference rejects NaN but lets `inf` flow through
-/// (producing `inf`/NaN outputs); this crate is strictly tighter and
-/// rejects all non-finite inputs so that garbage can never propagate
-/// silently into a risk number.
+/// All non-finite inputs are rejected, as in the Python and C++ engines,
+/// so garbage cannot propagate silently into a risk number.
 ///
 /// # Errors
 ///
@@ -179,8 +177,8 @@ pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
 /// Complementary error function `erfc(x) = 1 - erf(x)`.
 ///
 /// Rust's `std` has no `erfc`, so this is W. J. Cody's rational Chebyshev
-/// approximation (SIAM 1969; the netlib `CALERF` algorithm that underlies
-/// most libm implementations): three regimes (`|x| <= 0.46875`,
+/// approximation (SIAM 1969; the netlib `CALERF` algorithm; glibc and most
+/// libms use a different, fdlibm-derived approximation): three regimes (`|x| <= 0.46875`,
 /// `0.46875 < |x| <= 4`, `|x| > 4`) with the `exp(-x^2)` factor split as
 /// `exp(-y16^2) exp(-(x-y16)(x+y16))` for tail accuracy. Verified against
 /// reference values to better than `2e-15` relative error over
@@ -196,20 +194,6 @@ pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
 /// assert!((erfc(-1.0) - 1.8427007929497148).abs() < 1e-14);
 /// ```
 pub fn erfc(x: f64) -> f64 {
-    // Cody's coefficients, regime |x| <= 0.46875: erf(x) = x P(x^2)/Q(x^2).
-    const A: [f64; 5] = [
-        3.161_123_743_870_565_6e0,
-        1.138_641_541_510_501_6e2,
-        3.774_852_376_853_020_2e2,
-        3.209_377_589_138_469_5e3,
-        1.857_777_061_846_031_5e-1,
-    ];
-    const B: [f64; 4] = [
-        2.360_129_095_234_412_1e1,
-        2.440_246_379_344_441_7e2,
-        1.282_616_526_077_372_3e3,
-        2.844_236_833_439_170_6e3,
-    ];
     // Regime 0.46875 < |x| <= 4: erfc(x) = exp(-x^2) P(x)/Q(x).
     const C: [f64; 9] = [
         5.641_884_969_886_700_9e-1,
@@ -254,15 +238,7 @@ pub fn erfc(x: f64) -> f64 {
 
     let y = x.abs();
     if y <= THRESH {
-        // erfc = 1 - erf, erf via the rational approximation in x^2.
-        let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
-        let mut xnum = A[4] * ysq;
-        let mut xden = ysq;
-        for i in 0..3 {
-            xnum = (xnum + A[i]) * ysq;
-            xden = (xden + B[i]) * ysq;
-        }
-        return 1.0 - x * (xnum + A[3]) / (xden + B[3]);
+        return 1.0 - erf_small(x);
     }
 
     let result = if y <= 4.0 {
@@ -297,6 +273,56 @@ pub fn erfc(x: f64) -> f64 {
         2.0 - result
     } else {
         result
+    }
+}
+
+    // Cody's coefficients, regime |x| <= 0.46875: erf(x) = x P(x^2)/Q(x^2).
+const CODY_A: [f64; 5] = [
+    3.161_123_743_870_565_6e0,
+    1.138_641_541_510_501_6e2,
+    3.774_852_376_853_020_2e2,
+    3.209_377_589_138_469_5e3,
+    1.857_777_061_846_031_5e-1,
+];
+const CODY_B: [f64; 4] = [
+    2.360_129_095_234_412_1e1,
+    2.440_246_379_344_441_7e2,
+    1.282_616_526_077_372_3e3,
+    2.844_236_833_439_170_6e3,
+];
+
+/// Cody's direct `erf(x) = x P(x^2)/Q(x^2)` for `|x| <= 0.46875`.
+fn erf_small(x: f64) -> f64 {
+    let y = x.abs();
+    let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
+    let mut xnum = CODY_A[4] * ysq;
+    let mut xden = ysq;
+    for i in 0..3 {
+        xnum = (xnum + CODY_A[i]) * ysq;
+        xden = (xden + CODY_B[i]) * ysq;
+    }
+    x * (xnum + CODY_A[3]) / (xden + CODY_B[3])
+}
+
+/// Error function `erf(x)`.
+///
+/// For `|x| <= 0.46875` this is Cody's direct rational approximation
+/// `x P(x^2)/Q(x^2)` (full relative precision near zero, unlike
+/// `1 - erfc(x)`); beyond that `1 - erfc(x)` loses nothing because
+/// `erfc(x) <= 0.51`.
+///
+/// # Examples
+///
+/// ```
+/// use eq_options_engine::black_scholes::erf;
+/// assert!((erf(1e-10) - 1.1283791670955126e-10).abs() < 1e-25);
+/// assert!((erf(1.0) - 0.8427007929497149).abs() < 1e-15);
+/// ```
+pub fn erf(x: f64) -> f64 {
+    if x.abs() <= 0.46875 {
+        erf_small(x)
+    } else {
+        1.0 - erfc(x)
     }
 }
 
@@ -443,30 +469,41 @@ pub fn bs_price(
     if t == 0.0 {
         return Ok(intrinsic_value(s, k, option_type));
     }
-    if k == 0.0 {
-        // Zero-strike call is a (dividend-adjusted) forward on the stock.
-        return Ok(match option_type {
-            OptionType::Call => s * (-q * t).exp(),
-            OptionType::Put => 0.0,
-        });
-    }
-    if s == 0.0 {
-        return Ok(match option_type {
-            OptionType::Call => 0.0,
-            OptionType::Put => k * (-r * t).exp(),
-        });
-    }
-    if sigma == 0.0 {
-        let forward = forward_price(s, t, r, q);
-        let sign = option_type.sign();
-        return Ok((-r * t).exp() * (sign * (forward - k)).max(0.0));
-    }
-
-    let (d1, d2) = d1_d2(s, k, t, r, sigma, q)?;
     let disc_s = s * (-q * t).exp();
     let disc_k = k * (-r * t).exp();
-    Ok(match option_type {
-        OptionType::Call => disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2),
-        OptionType::Put => disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1),
-    })
+    let value = if k == 0.0 {
+        // Zero-strike call is a (dividend-adjusted) forward on the stock.
+        match option_type {
+            OptionType::Call => disc_s,
+            OptionType::Put => 0.0,
+        }
+    } else if s == 0.0 {
+        match option_type {
+            OptionType::Call => 0.0,
+            OptionType::Put => disc_k,
+        }
+    } else if sigma == 0.0 {
+        // e^{-rT} max(+-(F - K), 0) written as S e^{-qT} - K e^{-rT}: the
+        // forward itself overflows when (r - q) T > 709.
+        (option_type.sign() * (disc_s - disc_k)).max(0.0)
+    } else {
+        let (d1, d2) = d1_d2(s, k, t, r, sigma, q)?;
+        match option_type {
+            OptionType::Call => disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2),
+            OptionType::Put => disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1),
+        }
+    };
+    finite_result(value, "bs_price")
+}
+
+/// Return `value`, or [`PricingError::InvalidInput`] if it is not finite
+/// (a discount factor or forward overflowed for finite inputs).
+pub(crate) fn finite_result(value: f64, what: &str) -> Result<f64, PricingError> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(PricingError::InvalidInput(format!(
+            "{what}: result is not representable as a finite double              (a discount factor or forward overflows)"
+        )))
+    }
 }

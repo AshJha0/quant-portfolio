@@ -20,9 +20,9 @@ import math
 from dataclasses import dataclass, fields
 from typing import Callable
 
-from scipy.stats import norm
 
-from .black_scholes import OptionType, bs_price, d1_d2, validate_inputs
+
+from .black_scholes import OptionType, _check_rates, _ncdf, bs_price, d1_d2, validate_inputs
 
 __all__ = [
     "BSGreeks",
@@ -114,15 +114,15 @@ def bs_greeks(
     common_theta = -S * df_q * pdf_d1 * sigma / (2.0 * sqrt_t)
 
     if option_type == "call":
-        price = S * df_q * norm.cdf(d1) - K * df_r * norm.cdf(d2)
-        delta_ = df_q * norm.cdf(d1)
-        theta_ = common_theta + q * S * df_q * norm.cdf(d1) - r * K * df_r * norm.cdf(d2)
-        rho_ = K * T * df_r * norm.cdf(d2)
+        price = S * df_q * _ncdf(d1) - K * df_r * _ncdf(d2)
+        delta_ = df_q * _ncdf(d1)
+        theta_ = common_theta + q * S * df_q * _ncdf(d1) - r * K * df_r * _ncdf(d2)
+        rho_ = K * T * df_r * _ncdf(d2)
     elif option_type == "put":
-        price = K * df_r * norm.cdf(-d2) - S * df_q * norm.cdf(-d1)
-        delta_ = -df_q * norm.cdf(-d1)
-        theta_ = common_theta - q * S * df_q * norm.cdf(-d1) + r * K * df_r * norm.cdf(-d2)
-        rho_ = -K * T * df_r * norm.cdf(-d2)
+        price = K * df_r * _ncdf(-d2) - S * df_q * _ncdf(-d1)
+        delta_ = -df_q * _ncdf(-d1)
+        theta_ = common_theta - q * S * df_q * _ncdf(-d1) + r * K * df_r * _ncdf(-d2)
+        rho_ = -K * T * df_r * _ncdf(-d2)
     else:
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 

@@ -56,15 +56,9 @@ class TestPeggedManagedPairs:
         # engine must produce clean numbers, however unhedgeable the move.
         p = gk_put(S=0.9850, K=1.2010, T=0.25, r_d=-0.0075, r_f=-0.0050,
                    sigma=0.30)
-        intrinsic_fwd = math.exp(0.0075 * 0.25) * (
-            1.2010 * math.exp(-0.0075 * 0.25)
-            - 0.9850 * math.exp(0.0050 * 0.25))
         assert p > 0.21  # deep ITM
         assert math.isfinite(p)
-        assert p >= math.exp(-(-0.0075) * 0.25) * 0.0  # trivially no-arb
-        assert p >= (1.2010 * math.exp(0.0075 * 0.25)
-                     - 0.9850 * math.exp(0.0050 * 0.25)) * 0.99 or True
-        # tighter: price >= discounted forward intrinsic
+        # price >= discounted forward intrinsic
         F = cip_forward(0.9850, 0.25, -0.0075, -0.0050)
         assert p >= math.exp(0.0075 * 0.25) * (1.2010 - F) - 1e-12
 

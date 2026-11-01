@@ -9,13 +9,15 @@
 //   * Antithetic variates -- pairs (Z, -Z), estimator averaged per pair.
 //   * Control variate -- the discounted terminal spot e^{-r_d T} S_T has
 //     known mean S e^{-r_f T} (the value today of one unit of foreign
-//     currency delivered at T); the optimal coefficient is estimated from
-//     the sample covariance.
+//     currency delivered at T); the coefficient is fitted on the antithetic
+//     pair averages, the independent samples.
 //
 // Determinism: every run takes an explicit std::mt19937_64 seed, draws
 // normals by inverse-CDF transform of the raw generator output (no
 // implementation-defined std::normal_distribution), and is single-threaded
-// -- identical seeds give bit-identical results on any platform.
+// -- identical seeds give identical results on the same toolchain. Across
+// platforms the last bits can differ (libm exp/log are not correctly
+// rounded; compilers may contract to FMA).
 
 #pragma once
 
@@ -36,20 +38,45 @@ struct MCResult {
     std::string method;    ///< variance-reduction techniques applied
 };
 
-/// Monte Carlo GK price of a European FX vanilla.  Requires T > 0 and
-/// n_paths >= 2 (throws otherwise).  n_paths is rounded up to even when
+/// Monte Carlo GK price of a European FX vanilla.  Requires T > 0 and at
+/// least two independent samples (throws otherwise).  n_paths is rounded up to even when
 /// antithetic.  The RNG is std::mt19937_64 with the given seed;
 /// single-threaded and fully deterministic.
 ///
 /// The standard error is computed from *independent* samples: the pair
 /// averages when antithetic (mirrored draws are perfectly dependent), the
-/// raw payoffs otherwise.  Fewer than two independent samples (i.e.
-/// n_paths <= 2 with antithetic on) leaves the SE unestimable; it is
-/// reported as 0.0 and the CI collapses to the point estimate, so use at
-/// least 4 antithetic paths if the error bar matters.
+/// raw payoffs otherwise.  Fewer than two independent samples (three with
+/// the control variate, whose fit uses one degree of freedom) throws
+/// std::invalid_argument: one antithetic pair has no standard error.
+/// Explicit RNG seed. The constructor is explicit so that a bool or an
+/// integer meant for another parameter cannot bind to the seed:
+/// `mc_price(..., 100000, true, true, 42)` does not compile.
+struct Seed {
+    std::uint64_t value;
+    constexpr explicit Seed(std::uint64_t v) noexcept : value(v) {}
+};
+
+/// Monte Carlo settings as one strongly typed value.
+struct McConfig {
+    std::int64_t n_paths = 100'000;  ///< draws (antithetic pairs count as 2)
+    Seed seed{0};                     ///< RNG seed
+    bool antithetic = true;           ///< mirror each draw z -> -z
+    bool control_variate = true;      ///< discounted terminal spot as control
+};
+
+MCResult mc_price(double S, double K, double T, double r_d, double r_f,
+                  double sigma, OptionType type, const McConfig& config);
+
 MCResult mc_price(double S, double K, double T, double r_d, double r_f,
                   double sigma, OptionType type,
-                  std::int64_t n_paths = 100'000, std::uint64_t seed = 0,
+                  std::int64_t n_paths = 100'000, Seed seed = Seed{0},
                   bool antithetic = true, bool control_variate = true);
+
+/// Former positional signature with a raw integer seed: deleted, because a
+/// bool argument converted to it silently. Use Seed{...} or McConfig.
+MCResult mc_price(double S, double K, double T, double r_d, double r_f,
+                  double sigma, OptionType type, std::int64_t n_paths,
+                  std::uint64_t seed, bool antithetic = true,
+                  bool control_variate = true) = delete;
 
 }  // namespace fxopt

@@ -1,4 +1,4 @@
-# Desk Guide — where a C++ engine sits on an FX options desk
+# Desk Guide, where a C++ engine sits on an FX options desk
 
 The Python twin's DESK_GUIDE covers the daily *model* workflow (marking,
 P&L attribution, governance). This guide covers what is specific to the
@@ -7,8 +7,8 @@ P&L attribution, governance). This guide covers what is specific to the
 ## Role 1: pricing tiles and streaming quotes
 
 The engine is the inner loop of the market-making tile. On every spot tick
-or curve/vol update the tile re-prices its ladder — per pair, both sides,
-all quoted tenors and strikes — and republishes. Practical notes:
+or curve/vol update the tile re-prices its ladder, per pair, both sides,
+all quoted tenors and strikes, and republishes. Practical notes:
 
 * At ~13M prices/s a 2,000-instrument tile refresh is ~0.15 ms
   single-threaded; pairs can simply be sharded across cores because every
@@ -19,25 +19,25 @@ all quoted tenors and strikes — and republishes. Practical notes:
   of scope here) supplies the vol, `gk_price` the premium, and
   `analytic_greeks` the hedge ratios published alongside.
 * The DNS ATM strike (`atm_dns_strike`) is what "ATM" means for most pairs
-  — note it is *convention-dependent* (`F e^{+σ²T/2}` unadjusted vs
+ , note it is *convention-dependent* (`F e^{+σ²T/2}` unadjusted vs
   `F e^{−σ²T/2}` premium-adjusted), which is the first place a
   mis-configured pair bites.
 
 ## Role 2: risk service
 
-End-of-day and intraday risk runs call the same library — not a reimplementation:
+End-of-day and intraday risk runs call the same library, not a reimplementation:
 
 * `analytic_greeks` gives the full ladder (both rhos, vanna, volga) per
   position; bucketed smile risk maps onto vanna (risk reversals) and volga
   (butterflies) directly.
 * The templated `finite_difference_greeks` comparator lets risk control
   verify any pricer (tree, MC, or a new payoff) against bump-and-revalue
-  with one line — the standard "analytic Greeks lie exactly once" check.
-* Monte Carlo runs are bit-reproducible from the recorded seed
+  with one line, the standard "analytic Greeks lie exactly once" check.
+* Monte Carlo runs are reproducible from the recorded seed on the same toolchain
   (`mt19937_64` + inverse-CDF normals, single-threaded), so an overnight
   number can be reproduced to the last bit during a P&L dispute.
 * Both rhos matter in FX: hedging only `rho_d` and ignoring `rho_f` leaves
-  the book exposed to the foreign leg of every cross — the engine returns
+  the book exposed to the foreign leg of every cross, the engine returns
   them separately and the tests pin their signs.
 
 ## Delta-convention pitfalls across counterparties
@@ -53,7 +53,7 @@ choose the right one:
 | Premium-adjusted vs unadjusted (premium paid in base ccy: USDJPY, most EM; unadjusted: EURUSD-style) | hedge off by `V/S`; strike breaks on the call wing | `SpotPa`/`ForwardPa` conventions; `premium_adjust_spot_delta` |
 | PA call branch ambiguity (two strikes share one PA delta) | counterparty confirms the *other* strike | solver returns the market-standard high-strike branch; unattainable deltas throw instead of guessing |
 | ATM definition (ATM-forward vs DNS, and DNS itself flips with premium adjustment) | ATM strike off by `F σ² T` | `atm_forward_strike` vs `atm_dns_strike(convention)` |
-| Which currency's notional / premium | prices per unit *foreign* notional in *domestic* ccy — flipping the pair flips both | foreign–domestic symmetry identity is unit-tested; use it to re-express |
+| Which currency's notional / premium | prices per unit *foreign* notional in *domestic* ccy, flipping the pair flips both | foreign–domestic symmetry identity is unit-tested; use it to re-express |
 
 Rule of thumb encoded in the tests: for every quote confirm **(1) spot or
 forward, (2) premium-adjusted or not, (3) which ATM** before touching a
@@ -72,13 +72,12 @@ control:
    diff of that generated header *is* the reviewable surface of the model
    change on the C++ side.
 3. CI runs the full CTest suite with `-Werror`. A C++ change that moves any
-   golden number by more than 1e-9 fails the build — so an "optimisation"
-   can never silently change a price. An intentional model change without a
-   regenerated golden file fails too, which forces the Python and C++
-   engines to move in lockstep.
-4. Release artefacts record the golden-file hash; production incident
-   triage starts by confirming the running binary passed the golden gate
-   for the model version risk signed off.
+   golden number outside its tolerance fails the build. The golden values
+   come from mpmath, so they pin the engines to the mathematics rather
+   than to each other; the differential test then checks the Python, Rust
+   and C++ engines against each other on seeded random inputs.
+4. Nothing in this repository records the golden-file hash in release
+   artefacts yet; a release process should.
 
 This is the cross-language analogue of a model-validation sign-off: fast
 code is only trusted because, case by case, it is provably the slow,

@@ -203,40 +203,21 @@ fn rng_stream_is_reproducible_and_well_behaved() {
 }
 
 #[test]
-fn minimum_path_counts_produce_a_finite_standard_error() {
-    // n_paths = 2 with antithetic sampling leaves exactly ONE independent
-    // sample (the single antithetic pair average). The sample-variance
-    // denominator (n - 1) is then 0: a naive estimator computes 0/0 and
-    // reports a NaN standard error, which silently poisons every
-    // downstream confidence check. The estimator must instead report
-    // SE = 0 and a degenerate (point) confidence interval.
-    for &n in &[2usize, 3, 4] {
-        let r = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, n, true, true, 11)
-            .unwrap();
-        assert!(r.price.is_finite(), "n={n}: price {} not finite", r.price);
-        assert!(
-            r.std_error.is_finite() && r.std_error >= 0.0,
-            "n={n}: std_error {} must be a finite non-negative number",
-            r.std_error
-        );
-        assert!(r.ci_low.is_finite() && r.ci_high.is_finite(), "n={n}: CI not finite");
-        assert!(r.ci_low <= r.ci_high, "n={n}: inverted CI");
-        assert!(r.contains(r.price), "n={n}: CI must contain its own point estimate");
+fn too_few_independent_samples_is_an_error() {
+    // n_paths = 2 with antithetic sampling is one independent sample: no
+    // standard error exists, so the call must fail rather than report
+    // SE = 0. With the control variate, two samples fit the regression
+    // exactly, so three are needed.
+    let mc = |n, anti, cv| mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, n, anti, cv, 11);
+    assert!(mc(2, true, false).is_err());
+    assert!(mc(1, false, false).is_err());
+    assert!(mc(4, true, true).is_err());
+    assert!(mc(2, false, true).is_err());
+    for (n, anti, cv) in [(3, true, false), (2, false, false), (6, true, true), (3, false, true)] {
+        let r = mc(n, anti, cv).unwrap();
+        assert!(r.std_error.is_finite() && r.std_error > 0.0, "n={n}: SE {}", r.std_error);
+        assert!(r.contains(r.price));
     }
-    // The single-pair case specifically: one sample => SE is exactly 0,
-    // not NaN, and the interval degenerates to the point estimate.
-    let one_pair =
-        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 2, true, false, 11).unwrap();
-    assert_eq!(one_pair.std_error, 0.0);
-    assert_eq!(one_pair.ci_low, one_pair.price);
-    assert_eq!(one_pair.ci_high, one_pair.price);
-    assert_eq!(one_pair.n_paths, 2);
-    // Without antithetic sampling, 2 paths give 2 samples and a genuine
-    // (strictly positive, finite) standard error.
-    let two =
-        mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 2, false, false, 11).unwrap();
-    assert!(two.std_error.is_finite());
-    assert!(two.ci_low < two.ci_high || two.std_error == 0.0);
 }
 
 #[test]

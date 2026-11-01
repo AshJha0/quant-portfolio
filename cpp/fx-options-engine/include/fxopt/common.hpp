@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cmath>
+#include <format>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -57,8 +58,20 @@ inline void require_finite(double value, const char* name) {
     if (!std::isfinite(value)) {
         throw std::invalid_argument(std::string(name) +
                                     " must be finite, got " +
-                                    std::to_string(value));
+                                    std::format("{}", value));
     }
+}
+
+/// Return `value`, or throw std::invalid_argument naming `what` when a
+/// finite input produced a non-finite result (a discount factor or forward
+/// overflowed).
+inline double finite_result(double value, const char* what) {
+    if (!std::isfinite(value)) {
+        throw std::invalid_argument(
+            std::string(what) +
+            ": result is not representable as a finite double (a discount factor or forward overflows)");
+    }
+    return value;
 }
 
 }  // namespace detail
@@ -77,20 +90,20 @@ inline void validate_inputs(double S, double K, double T, double r_d,
     detail::require_finite(sigma, "sigma");
     if (S <= 0.0) {
         throw std::invalid_argument("Spot S must be positive, got " +
-                                    std::to_string(S));
+                                    std::format("{}", S));
     }
     if (K <= 0.0) {
         throw std::invalid_argument("Strike K must be positive, got " +
-                                    std::to_string(K));
+                                    std::format("{}", K));
     }
     if (T < 0.0) {
         throw std::invalid_argument(
-            "Time to expiry T must be non-negative, got " + std::to_string(T));
+            "Time to expiry T must be non-negative, got " + std::format("{}", T));
     }
     if (sigma < 0.0) {
         throw std::invalid_argument(
             "Volatility sigma must be non-negative, got " +
-            std::to_string(sigma));
+            std::format("{}", sigma));
     }
 }
 

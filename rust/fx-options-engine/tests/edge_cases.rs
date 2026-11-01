@@ -29,9 +29,9 @@ fn deep_itm_call_approaches_discounted_forward_minus_strike() {
 #[test]
 fn deep_otm_option_is_essentially_worthless_but_nonnegative() {
     let px = gk_call(1.0, 5.0, 0.25, 0.03, 0.01, 0.10).unwrap();
-    assert!(px >= 0.0 && px < 1e-12, "deep OTM call {px}");
+    assert!((0.0..1e-12).contains(&px), "deep OTM call {px}");
     let pp = gk_put(5.0, 1.0, 0.25, 0.03, 0.01, 0.10).unwrap();
-    assert!(pp >= 0.0 && pp < 1e-12, "deep OTM put {pp}");
+    assert!((0.0..1e-12).contains(&pp), "deep OTM put {pp}");
 }
 
 #[test]

@@ -11,12 +11,13 @@
 //!   computed on the *pair averages* (the correct estimator for
 //!   correlated pairs).
 //! * **Control variate**: the discounted terminal stock `exp(-rT) S_T`
-//!   with known mean `S exp(-qT)` (martingale property); the optimal
-//!   coefficient is estimated from the sample covariance.
+//!   with known mean `S exp(-qT)` (martingale property); the coefficient
+//!   is fitted on the antithetic pair averages, the independent samples.
 //!
 //! Every entry point takes an explicit `u64` seed feeding the in-crate
 //! SplitMix64 -> xoshiro256++ generator ([`crate::rng`]). Same seed =>
-//! **bit-identical** result on every platform.
+//! identical result on a given target and toolchain (`f64::exp`/`ln` come
+//! from the platform libm, so other targets can differ in the last bits).
 //!
 //! Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 //! `t` in years, `sigma` annualised.
@@ -118,8 +119,8 @@ fn summary(samples: &[f64], n_paths: usize) -> McResult {
 ///   `antithetic`), in `[2, MAX_PATHS]`.
 /// * `antithetic` — use antithetic pairs `(Z, -Z)`.
 /// * `control_variate` — use the discounted terminal stock as a control
-///   variate with the sample-optimal coefficient.
-/// * `seed` — explicit RNG seed; same seed => bit-identical result.
+///   variate, coefficient fitted on the antithetic pair averages.
+/// * `seed` — explicit RNG seed; same seed => identical result on one target.
 ///
 /// `t == 0` or `sigma == 0` are deterministic; the exact Black-Scholes
 /// value is returned with `std_error = 0`.
@@ -155,9 +156,14 @@ pub fn mc_price(
 ) -> Result<McResult, PricingError> {
     validate_inputs(s, k, t, sigma)?;
     validate_rates(r, q)?;
-    if n_paths < 2 {
+    // A standard error needs two independent samples (paths, or antithetic
+    // pairs) left after fitting: three with the control variate, since two
+    // points fit the regression line exactly and leave a zero residual.
+    let units = if antithetic { n_paths.div_ceil(2) } else { n_paths };
+    let needed = if control_variate { 3 } else { 2 };
+    if units < needed {
         return Err(PricingError::InvalidInput(format!(
-            "n_paths must be >= 2, got {n_paths}"
+            "n_paths = {n_paths} gives {units} independent sample(s); at least              {needed} are needed for a standard error"
         )));
     }
     if n_paths > MAX_PATHS {
@@ -201,41 +207,59 @@ pub fn mc_price(
         (z, n_paths)
     };
 
-    let mut payoff: Vec<f64> = z
-        .iter()
-        .map(|&zi| disc * (sign * (terminal(zi) - k)).max(0.0))
-        .collect();
+    let mut payoff = Vec::with_capacity(n_eff);
+    let mut control = Vec::with_capacity(if control_variate { n_eff } else { 0 });
+    for &zi in &z {
+        let s_t = terminal(zi);
+        if !s_t.is_finite() {
+            return Err(PricingError::InvalidInput(
+                "simulated terminal prices overflow a double; drift or vol too large".into(),
+            ));
+        }
+        payoff.push(disc * (sign * (s_t - k)).max(0.0));
+        if control_variate {
+            control.push(disc * s_t);
+        }
+    }
+
+    // Reduce to one value per independent draw first (the antithetic pair
+    // average), then fit the control-variate beta on those same units:
+    // the optimal beta for the pair-average estimator is
+    // Cov(pair payoff, pair control) / Var(pair control).
+    let (mut samples, control) = if antithetic {
+        let half = n_eff / 2;
+        let pair = |v: &[f64]| -> Vec<f64> {
+            (0..half).map(|i| 0.5 * (v[i] + v[half + i])).collect()
+        };
+        let c = if control_variate { pair(&control) } else { control };
+        (pair(&payoff), c)
+    } else {
+        (payoff, control)
+    };
 
     if control_variate {
         // Control: discounted terminal stock, known mean S exp(-qT).
-        let control: Vec<f64> = z.iter().map(|&zi| disc * terminal(zi)).collect();
         let control_mean = s * (-q * t).exp();
-        let n = n_eff as f64;
-        let mean_p = payoff.iter().sum::<f64>() / n;
+        let n = samples.len() as f64;
+        let mean_p = samples.iter().sum::<f64>() / n;
         let mean_c = control.iter().sum::<f64>() / n;
         let mut cov_pc = 0.0;
         let mut var_c = 0.0;
-        for i in 0..n_eff {
-            let dp = payoff[i] - mean_p;
-            let dc = control[i] - mean_c;
-            cov_pc += dp * dc;
+        for (p, c) in samples.iter().zip(&control) {
+            let dc = c - mean_c;
+            cov_pc += (p - mean_p) * dc;
             var_c += dc * dc;
         }
-        cov_pc /= n - 1.0;
-        var_c /= n - 1.0;
         let beta = if var_c > 0.0 { cov_pc / var_c } else { 0.0 };
-        for i in 0..n_eff {
-            payoff[i] -= beta * (control[i] - control_mean);
+        for (p, c) in samples.iter_mut().zip(&control) {
+            *p -= beta * (c - control_mean);
         }
     }
-
-    if antithetic {
-        let half = n_eff / 2;
-        let samples: Vec<f64> = (0..half)
-            .map(|i| 0.5 * (payoff[i] + payoff[half + i]))
-            .collect();
-        Ok(summary(&samples, n_eff))
-    } else {
-        Ok(summary(&payoff, n_eff))
+    let res = summary(&samples, n_eff);
+    if !(res.price.is_finite() && res.std_error.is_finite()) {
+        return Err(PricingError::InvalidInput(
+            "Monte Carlo estimate is not finite".into(),
+        ));
     }
+    Ok(res)
 }

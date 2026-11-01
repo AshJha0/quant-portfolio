@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <format>
+#include <stdexcept>
 #include <vector>
 
 #include "fxopt/garman_kohlhagen.hpp"
@@ -15,7 +18,7 @@ double binomial_price(double S, double K, double T, double r_d, double r_f,
     validate_inputs(S, K, T, r_d, r_f, sigma);
     if (steps < 1) {
         throw std::invalid_argument("steps must be a positive integer, got " +
-                                    std::to_string(steps));
+                                    std::format("{}", steps));
     }
     if (T == 0.0) {
         return std::max(p_sign * (S - K), 0.0);
@@ -26,17 +29,16 @@ double binomial_price(double S, double K, double T, double r_d, double r_f,
         if (exercise == Exercise::European) {
             return gk_price(S, K, T, r_d, r_f, sigma, type);
         }
-        const double drift = r_d - r_f;
         double best = 0.0;
         for (int i = 0; i <= steps; ++i) {
             const double t = T * static_cast<double>(i) /
                              static_cast<double>(steps);
-            const double value =
-                std::exp(-r_d * t) *
-                std::max(p_sign * (S * std::exp(drift * t) - K), 0.0);
+            // Discounted payoff without forming the forward (overflow-safe).
+            const double value = std::max(
+                p_sign * (S * std::exp(-r_f * t) - K * std::exp(-r_d * t)), 0.0);
             best = std::max(best, value);
         }
-        return best;
+        return detail::finite_result(best, "binomial_price");
     }
 
     const double dt = T / static_cast<double>(steps);
@@ -46,35 +48,31 @@ double binomial_price(double S, double K, double T, double r_d, double r_f,
     const double p = (growth - d) / (u - d);
     if (!(p >= 0.0 && p <= 1.0)) {
         throw std::invalid_argument(
-            "risk-neutral probability " + std::to_string(p) +
-            " outside [0, 1]; increase steps (dt too large for |r_d - r_f| "
-            "vs sigma)");
+            std::format("risk-neutral probability {} outside [0, 1]; increase steps "
+                        "(dt too large for |r_d - r_f| vs sigma)", p));
     }
     const double disc = std::exp(-r_d * dt);
 
-    // Terminal nodes, low -> high: spot_j = S u^{2j - steps}.
-    std::vector<double> values(static_cast<std::size_t>(steps) + 1);
-    for (int j = 0; j <= steps; ++j) {
-        const double spot = S * std::pow(u, 2.0 * j - steps);
-        values[static_cast<std::size_t>(j)] =
-            std::max(p_sign * (spot - K), 0.0);
+    // Node spots S u^m, m = -n..n, computed once (O(n) powers); step i,
+    // node j sits at m = 2j - i, so backward induction does no pow().
+    const std::size_t n = static_cast<std::size_t>(steps);
+    std::vector<double> exercise_value(2 * n + 1);
+    for (std::size_t idx = 0; idx <= 2 * n; ++idx) {
+        const double m = static_cast<double>(idx) - static_cast<double>(n);
+        exercise_value[idx] = p_sign * (S * std::pow(u, m) - K);
     }
+    std::vector<double> values(n + 1);
+    for (std::size_t j = 0; j <= n; ++j) values[j] = std::max(exercise_value[2 * j], 0.0);
 
-    for (int step = steps - 1; step >= 0; --step) {
-        for (int j = 0; j <= step; ++j) {
-            const std::size_t sj = static_cast<std::size_t>(j);
-            values[sj] = disc * (p * values[sj + 1] + (1.0 - p) * values[sj]);
-        }
-        if (exercise == Exercise::American) {
-            for (int j = 0; j <= step; ++j) {
-                const double spot = S * std::pow(u, 2.0 * j - step);
-                values[static_cast<std::size_t>(j)] =
-                    std::max(values[static_cast<std::size_t>(j)],
-                             p_sign * (spot - K));
-            }
+    const bool american = exercise == Exercise::American;
+    for (std::size_t step = n; step-- > 0;) {
+        const std::size_t offset = n - step;  // index of m = -step
+        for (std::size_t j = 0; j <= step; ++j) {
+            const double v = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
+            values[j] = american ? std::max(v, exercise_value[offset + 2 * j]) : v;
         }
     }
-    return values[0];
+    return detail::finite_result(values[0], "binomial_price");
 }
 
 }  // namespace fxopt

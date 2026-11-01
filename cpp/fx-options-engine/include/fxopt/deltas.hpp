@@ -38,6 +38,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "fxopt/common.hpp"
 
 namespace fxopt {
@@ -93,5 +95,12 @@ double atm_dns_strike(double S, double T, double r_d, double r_f, double sigma,
 double strike_from_delta(double target_delta, double S, double T, double r_d,
                          double r_f, double sigma, OptionType type,
                          DeltaConvention convention = DeltaConvention::Spot);
+
+/// ln N(x) without underflow (series below x = -37). Exposed for tests.
+double log_norm_cdf(double x);
+
+/// Derived bracket [x_lo, x_hi] for the PA-call fold equation
+/// ln N(x) + ln v - ln n(x) = 0, valid for every v = sigma sqrt(T) > 0.
+std::pair<double, double> pa_fold_bracket(double v);
 
 }  // namespace fxopt

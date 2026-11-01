@@ -78,7 +78,7 @@ int main() {
         constexpr std::int64_t n_paths = 1'000'000;
         const auto t0 = Clock::now();
         const MCResult r = mc_price(S, 1.12, T, rd, rf, 0.0925,
-                                    OptionType::Call, n_paths, 0);
+                                    OptionType::Call, n_paths, Seed{0});
         const double dt = seconds_since(t0);
         std::printf("Monte Carlo        : %lld paths in %.3f s -> "
                     "%.2f M paths/s (price %.8f, SE %.2e, %s)\n",

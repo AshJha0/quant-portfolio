@@ -37,6 +37,7 @@ the measure/numeraire choice explicit:
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 
 import numpy as np
@@ -91,27 +92,56 @@ def _terminal_spots(S: float, T: float, r_d: float, r_f: float, sigma: float,
         z = np.concatenate([z, -z])[:2 * half]
     else:
         z = rng.standard_normal(n_paths)
-    return S * np.exp(drift + vol * z)
+    with np.errstate(over="ignore"):
+        s_t = S * np.exp(drift + vol * z)
+    if not np.all(np.isfinite(s_t)):
+        raise ValueError("simulated spots overflow a double; drift or vol too large")
+    return s_t
+
+
+def _check_paths(n_paths: int, antithetic: bool, control_variate: bool) -> None:
+    """Require two independent samples after fitting (three with the CV).
+
+    An antithetic pair is one independent sample. With the control
+    variate the coefficient is fitted on the same samples, and two
+    points fit a line exactly, leaving a zero residual.
+    """
+    if not isinstance(n_paths, numbers.Integral) or isinstance(n_paths, bool):
+        raise ValueError(f"n_paths must be an integer, got {n_paths!r}")
+    units = (int(n_paths) + 1) // 2 if antithetic else int(n_paths)
+    needed = 3 if control_variate else 2
+    if units < needed:
+        raise ValueError(
+            f"n_paths={n_paths!r} gives {units} independent sample(s); at "
+            f"least {needed} are needed for a standard error")
 
 
 def _estimate(discounted: np.ndarray, antithetic: bool,
               control: np.ndarray | None, control_mean: float | None,
               method: str) -> MCResult:
-    if control is not None:
-        cov = np.cov(discounted, control, ddof=1)
-        var_c = cov[1, 1]
-        beta = cov[0, 1] / var_c if var_c > 0 else 0.0
-        discounted = discounted - beta * (control - control_mean)
+    # Reduce to independent units first (antithetic pair averages), then
+    # fit the control-variate beta on those same units: the optimal beta
+    # for the pair-average estimator is Cov(pair payoff, pair control) /
+    # Var(pair control), not the raw-draw coefficient.
+    n_draws = int(discounted.size)
     if antithetic:
-        # SE from independent pair averages.
-        half = discounted.size // 2
+        half = n_draws // 2
         samples = 0.5 * (discounted[:half] + discounted[half:])
+        if control is not None:
+            control = 0.5 * (control[:half] + control[half:])
     else:
         samples = discounted
+    if control is not None:
+        dc = control - control.mean()
+        var_c = float(np.dot(dc, dc))
+        beta = float(np.dot(samples - samples.mean(), dc)) / var_c if var_c > 0 else 0.0
+        samples = samples - beta * (control - control_mean)
     price = float(samples.mean())
     se = float(samples.std(ddof=1) / math.sqrt(samples.size))
+    if not (math.isfinite(price) and math.isfinite(se)):
+        raise ValueError("Monte Carlo estimate is not finite (simulated spots overflow)")
     return MCResult(price=price, std_error=se, ci_low=price - 1.96 * se,
-                    ci_high=price + 1.96 * se, n_paths=int(discounted.size),
+                    ci_high=price + 1.96 * se, n_paths=n_draws,
                     method=method)
 
 
@@ -143,10 +173,9 @@ def mc_price(S: float, K: float, T: float, r_d: float, r_f: float,
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T <= 0.0:
         raise ValueError("mc_price requires T > 0")
-    if not isinstance(n_paths, int) or n_paths < 2:
-        raise ValueError(f"n_paths must be an integer >= 2, got {n_paths!r}")
+    _check_paths(n_paths, antithetic, control_variate)
     gen = _resolve_rng(rng)
-    s_t = _terminal_spots(S, T, r_d, r_f, sigma, n_paths, gen, antithetic)
+    s_t = _terminal_spots(S, T, r_d, r_f, sigma, int(n_paths), gen, antithetic)
     df_d = math.exp(-r_d * T)
     payoff = df_d * np.maximum(phi * (s_t - K), 0.0)
     control = df_d * s_t if control_variate else None
@@ -204,15 +233,14 @@ def mc_digital_price(S: float, K: float, T: float, r_d: float, r_f: float,
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T <= 0.0:
         raise ValueError("mc_digital_price requires T > 0")
-    if not isinstance(n_paths, int) or n_paths < 2:
-        raise ValueError(f"n_paths must be an integer >= 2, got {n_paths!r}")
+    _check_paths(n_paths, antithetic, False)
     if payout_currency not in ("domestic", "foreign"):
         raise ValueError(
             f"payout_currency must be 'domestic' or 'foreign', "
             f"got {payout_currency!r}"
         )
     gen = _resolve_rng(rng)
-    s_t = _terminal_spots(S, T, r_d, r_f, sigma, n_paths, gen, antithetic)
+    s_t = _terminal_spots(S, T, r_d, r_f, sigma, int(n_paths), gen, antithetic)
     itm = (phi * (s_t - K) > 0).astype(float)
     df_d = math.exp(-r_d * T)
     if payout_currency == "domestic":

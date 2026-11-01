@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 #include "fxopt/forwards.hpp"
 #include "fxopt/garman_kohlhagen.hpp"
@@ -18,20 +19,20 @@ double black76_price(double F, double K, double T, double r_d, double sigma,
     detail::require_finite(sigma, "sigma");
     if (F <= 0.0) {
         throw std::invalid_argument("Forward F must be positive, got " +
-                                    std::to_string(F));
+                                    std::format("{}", F));
     }
     if (K <= 0.0) {
         throw std::invalid_argument("Strike K must be positive, got " +
-                                    std::to_string(K));
+                                    std::format("{}", K));
     }
     if (T < 0.0) {
         throw std::invalid_argument(
-            "Time to expiry T must be non-negative, got " + std::to_string(T));
+            "Time to expiry T must be non-negative, got " + std::format("{}", T));
     }
     if (sigma < 0.0) {
         throw std::invalid_argument(
             "Volatility sigma must be non-negative, got " +
-            std::to_string(sigma));
+            std::format("{}", sigma));
     }
 
     const double df = std::exp(-r_d * T);

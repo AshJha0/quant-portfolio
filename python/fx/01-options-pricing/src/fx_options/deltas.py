@@ -6,7 +6,7 @@ the *meaning* of delta is part of the quote.  Two independent choices:
 1. **Spot vs forward hedge**: hedge with spot (delta includes the foreign
    discount factor) or with an outright forward.
 2. **Premium adjustment**: if the premium is paid in the *base* (foreign)
-   currency — standard for USDJPY and most EM/non-EURUSD pairs — the
+   currency â€” standard for USDJPY and most EM/non-EURUSD pairs â€” the
    premium itself is a position in the underlying and must be subtracted
    from the hedge.
 
@@ -28,7 +28,7 @@ Relations: ``delta_forward = delta_spot * e^{r_f T}`` and
 premium-adjusted *calls* the map K -> delta is **not monotone** (it rises
 then falls; (K/F)N(d2) -> 0 both as K -> 0 and K -> inf), so the equation
 has zero, one, or two solutions.  Market convention takes the solution on
-the *right* (decreasing) branch, i.e. the larger strike — implemented here
+the *right* (decreasing) branch, i.e. the larger strike â€” implemented here
 by locating the peak of K N(d2) and Brent-solving on [K_peak, K_max].
 Premium-adjusted put deltas are monotone in K and Brent-solve directly.
 
@@ -48,7 +48,7 @@ import math
 from scipy.optimize import brentq
 from scipy.stats import norm
 
-from ._common import validate_inputs, validate_option_type
+from ._common import finite_result, validate_inputs, validate_option_type
 from .garman_kohlhagen import d1 as _d1_fn
 
 __all__ = [
@@ -168,21 +168,67 @@ def atm_dns_strike(S: float, T: float, r_d: float, r_f: float, sigma: float,
     return F * math.exp(sign * 0.5 * sigma * sigma * T)
 
 
+_LN_SQRT_2PI = 0.9189385332046728
+
+
+def _log_ncdf(x: float) -> float:
+    """``ln N(x)`` without underflow.
+
+    Direct for x > -37 (N(-37) ~ 6e-300 is still a normal double). Below
+    that, the Mills-ratio series
+    ``ln N(x) = -x^2/2 - ln(-x) - ln sqrt(2 pi) + ln(1 - 1/x^2 + 3/x^4 - 15/x^6 + 105/x^8)``
+    has absolute error below 945/x^10 < 2.1e-13.
+    """
+    if x > -37.0:
+        return math.log(0.5 * math.erfc(-x / math.sqrt(2.0)))
+    x2 = 1.0 / (x * x)
+    series = 1.0 - x2 * (1.0 - x2 * (3.0 - x2 * (15.0 - 105.0 * x2)))
+    return -0.5 * x * x - math.log(-x) - _LN_SQRT_2PI + math.log(series)
+
+
+def _pa_fold_bracket(v: float) -> tuple[float, float]:
+    """Bracket for the root of ``h(x) = ln N(x) + ln v - ln n(x)`` (v = sigma sqrt T).
+
+    h is increasing. Lower end: for x < 0, N(x) < n(x)/|x| (Mills), so
+    h(x) < ln(v/|x|) < 0 whenever |x| > v; take x_lo = -(v + 1).
+    Upper end: for x >= 0, N(x) >= 1/2, so h(x) > 0 once
+    n(x) < v/2, i.e. x > sqrt(2 ln(2 / (v sqrt(2 pi)))); take that plus 1
+    (and at least 1). Both ends are valid for every v > 0.
+    """
+    x_lo = -(v + 1.0)
+    arg = 2.0 / (v * math.sqrt(2.0 * math.pi))
+    x_hi = 1.0 + (math.sqrt(2.0 * math.log(arg)) if arg > 1.0 else 0.0)
+    return x_lo, x_hi
+
+
+def _brentq(f, a: float, b: float, xtol: float) -> float:
+    """scipy ``brentq`` that raises ``ValueError`` when it does not converge."""
+    root, info = brentq(f, a, b, xtol=xtol, maxiter=200, full_output=True,
+                        disp=False)
+    if not info.converged:
+        raise ValueError(f"Brent root finder did not converge: {info.flag}")
+    return float(root)
+
+
 def _pa_peak_strike(F: float, T: float, sigma: float) -> float:
     """Strike maximising K*N(d2(K)) — the fold point of the PA call delta.
 
     Setting d/dK [K N(d2)] = 0 gives ``N(d2) sigma sqrt(T) = n(d2)``,
     a one-dimensional root in d2 (unique: LHS increasing, RHS
     log-concave with a single crossing), then
-    ``K = F exp(-d2 sigma sqrt(T) - sigma^2 T / 2)``.
+    ``K = F exp(-d2 sigma sqrt(T) - sigma^2 T / 2)``. The root is found
+    in log form, ``ln N(x) + ln v - ln n(x) = 0``, on a bracket derived in
+    :func:`_pa_fold_bracket`, so no term underflows for any v.
     """
     v = sigma * math.sqrt(T)
+    log_v = math.log(v)
 
-    def g(x: float) -> float:
-        return norm.cdf(x) * v - norm.pdf(x)
+    def h(x: float) -> float:
+        return _log_ncdf(x) + log_v + 0.5 * x * x + _LN_SQRT_2PI
 
-    root = brentq(g, -20.0, 20.0, xtol=1e-14)
-    return F * math.exp(-root * v - 0.5 * v * v)
+    x_lo, x_hi = _pa_fold_bracket(v)
+    root = _brentq(h, x_lo, x_hi, xtol=1e-14)
+    return finite_result(F * math.exp(-root * v - 0.5 * v * v), "PA fold strike")
 
 
 def strike_from_delta(target_delta: float, S: float, T: float, r_d: float,
@@ -265,21 +311,21 @@ def strike_from_delta(target_delta: float, S: float, T: float, r_d: float,
                 "for these market inputs"
             )
         k_hi = k_peak
-        while pa_fwd_delta(k_hi) > fwd_delta and k_hi < F * math.exp(30 * v):
+        while pa_fwd_delta(k_hi) > fwd_delta and math.log(k_hi / F) < 30.0 * v and math.isfinite(2.0 * k_hi):
             k_hi *= 2.0
-        return float(brentq(lambda K: pa_fwd_delta(K) - fwd_delta,
-                            k_peak, k_hi, xtol=1e-14, maxiter=200))
+        return _brentq(lambda K: pa_fwd_delta(K) - fwd_delta, k_peak, k_hi,
+                       xtol=1e-14)
 
     # put: |PA delta| strictly increasing in K -> unique root
     if not -1.0 < fwd_delta < 0.0:
         # |put PA fwd delta| < (K/F)N(-d2) can exceed... it is bounded by
-        # K/F which is unbounded, but for sensible quotes require (−1, 0).
+        # K/F which is unbounded, but for sensible quotes require (âˆ’1, 0).
         raise ValueError(
             f"premium-adjusted put forward delta {fwd_delta} outside (-1, 0)"
         )
-    k_lo = F * math.exp(-30 * v)
+    k_lo = F * math.exp(-min(30.0 * v, 700.0))
     k_hi = F
-    while pa_fwd_delta(k_hi) > fwd_delta and k_hi < F * math.exp(30 * v):
+    while pa_fwd_delta(k_hi) > fwd_delta and math.log(k_hi / F) < 30.0 * v and math.isfinite(2.0 * k_hi):
         k_hi *= 2.0
-    return float(brentq(lambda K: pa_fwd_delta(K) - fwd_delta,
-                        k_lo, k_hi, xtol=1e-14, maxiter=200))
+    return _brentq(lambda K: pa_fwd_delta(K) - fwd_delta, k_lo, k_hi,
+                   xtol=1e-14)

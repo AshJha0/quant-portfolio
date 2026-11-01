@@ -32,28 +32,18 @@ fn round_trip_with_negative_rates() {
 #[test]
 fn round_trip_short_dated_wings() {
     let (s, t, rd, rf, sig) = (1.10, 0.02, 0.0425, 0.0290, 0.12);
-    // K=1.00, T=0.02 (~7.3 days) is a genuine IEEE-754 floor case, not a
-    // solver deficiency: the ITM call price S e^{-r_f T} N(d1) -
-    // K e^{-r_d T} N(d2) is a difference of two O(1) terms giving an O(0.1)
-    // result (~1 digit of cancellation), while the wing's vega is ~7.6e-9.
-    // The objective sigma -> price(sigma) - price is therefore a staircase
-    // in sigma with ULP-sized flats ~1.4e-8 to 2.4e-8 wide near the root
-    // (verified by scanning the objective and by re-seeding Brent with
-    // arbitrarily tight brackets around the true vol — every variant lands
-    // within this same band, because many adjacent sigma values round to
-    // the identical price double).  No root finder operating on this exact
-    // price residual can resolve the root more tightly than that flat is
-    // wide.  The equivalent unfixed C++ engine (`cpp/fx-options-engine`)
-    // reproduces an error of the same order (2.5e-7, worse, since it still
-    // has the premature-Newton-exit bug fixed here in
-    // `src/implied_vol.rs`) confirming this isn't Rust-specific.  Other
-    // strikes/types in this grid round-trip to <1e-12; only this one wing
-    // needs the wider, still-tight, tolerance.
+    // K=1.00, T=0.02: the ITM call carries little vol information (its
+    // vega is ~7.6e-9, so one ulp of the price moves the vol by ~3e-8);
+    // the OTM put at the same strike carries full information. Tolerance:
+    // a few ulps of the quote's magnitude mapped through vega, plus the
+    // solver's 1e-12 relative floor.
     for &k in &[1.00, 1.20] {
         for ty in [OptionType::Call, OptionType::Put] {
             let px = gk_price(s, k, t, rd, rf, sig, ty).unwrap();
             let iv = implied_vol(px, s, k, t, rd, rf, ty).unwrap();
-            assert_close(iv, sig, 2e-8, &format!("short-dated wing K={k} {ty:?}"));
+            let vega = fx_options_engine::analytic_greeks(s, k, t, rd, rf, sig, ty).unwrap().vega;
+            let tol = 8.0 * f64::EPSILON * f64::max(s, k) / vega + 2e-12 * sig;
+            assert_close(iv, sig, tol, &format!("short-dated wing K={k} {ty:?}"));
         }
     }
 }
@@ -74,14 +64,8 @@ fn zero_time_value_returns_zero_vol() {
     let (s, k, t, rd, rf): (f64, f64, f64, f64, f64) = (1.10, 0.80, 0.25, 0.0425, 0.0290);
     // Deep ITM call priced exactly at discounted forward intrinsic.  Build
     // the forward with the *same* arithmetic `implied_vol` uses internally
-    // (F = S * df_f / df_d, i.e. two separate `exp` calls and a division)
-    // rather than the mathematically-equivalent `S * exp((r_d - r_f) * T)`
-    // — the two expressions are not bit-identical in floating point, and
-    // `implied_vol`'s near-intrinsic detection (`price - lower <= 1e-16 *
-    // lower.max(1.0)`) is deliberately a last-ULP check, so it only fires
-    // when the caller's price matches its internal `lower` to the bit.
-    // (Mirrors the C++ engine's `ZeroTimeValueReturnsZeroVol`, which
-    // documents and relies on the identical construction.)
+    // (F = S * df_f / df_d) so the quote equals the engine's own intrinsic
+    // bound; a time value within 4 eps df_d max(F, K) of it returns 0.0.
     let df_d = (-rd * t).exp();
     let df_f = (-rf * t).exp();
     let forward = s * df_f / df_d;

@@ -3,8 +3,8 @@
 //! # Algorithm choice (documented per the engine conventions)
 //!
 //! * **State generator: xoshiro256++** (Blackman & Vigna, 2019). 256-bit
-//!   state, period 2^256 - 1, passes BigCrush, ~1 ns per `u64` — the same
-//!   family NumPy uses for its default `Generator` bit stream. Chosen over
+//!   state, period 2^256 - 1, passes BigCrush, ~1 ns per `u64`. (NumPy's
+//!   default `Generator` uses PCG64, a different family.) Chosen over
 //!   `std`-only alternatives because Rust's standard library ships **no**
 //!   RNG at all, and over a bare LCG/PCG32 because 64-bit output with a
 //!   large state gives comfortable headroom for 10^6-10^8-path Monte
@@ -23,10 +23,10 @@
 //!   reproducible: consuming exactly two `u64` draws per pair makes the
 //!   stream layout easy to reason about for bit-reproducibility tests.
 //!
-//! Same seed => bit-identical stream, on every platform (no
-//! `std::collections::HashMap` iteration order, no threading, no libm
-//! dispatch in the hot path beyond `ln`/`sqrt`/`sin`/`cos`, which are
-//! correctly-rounded-enough and deterministic on a given target).
+//! Same seed => identical `u64` stream on every platform. The normal
+//! deviates go through `ln`/`sin`/`cos` from the platform libm, which is
+//! deterministic on a given target but not correctly rounded, so normals
+//! can differ in the last bits between targets.
 
 use std::f64::consts::PI;
 

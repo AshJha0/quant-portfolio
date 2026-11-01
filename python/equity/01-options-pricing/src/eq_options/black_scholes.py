@@ -25,8 +25,9 @@ from __future__ import annotations
 import math
 from typing import Literal
 
-from scipy.optimize import brentq
-from scipy.stats import norm
+import warnings
+
+from ._iv_core import black_implied_vol
 
 OptionType = Literal["call", "put"]
 
@@ -40,6 +41,33 @@ __all__ = [
 ]
 
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
+_SQRT2 = math.sqrt(2.0)
+
+
+def _ncdf(x: float) -> float:
+    """Standard normal CDF via ``erfc``: full relative precision in the lower tail."""
+    return 0.5 * math.erfc(-x / _SQRT2)
+
+
+def _check_rates(**rates: float) -> None:
+    """Raise ``ValueError`` unless every rate is a finite real number."""
+    for name, value in rates.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value!r}")
+
+
+def _exp(x: float, what: str) -> float:
+    """``math.exp`` that raises ``ValueError`` (not ``OverflowError``) on overflow."""
+    try:
+        return math.exp(x)
+    except OverflowError:
+        raise ValueError(f"{what}: exp({x!r}) overflows a double") from None
+
+
+def _finite(value: float, what: str) -> float:
+    if not math.isfinite(value):
+        raise ValueError(f"{what} is not representable as a finite double")
+    return value
 
 
 def validate_inputs(
@@ -147,6 +175,7 @@ def d1_d2(
         If ``S``, ``K``, ``T`` or ``sigma`` is not strictly positive.
     """
     validate_inputs(S, K, T, sigma)
+    _check_rates(r=r, q=q)
     if S <= 0.0 or K <= 0.0 or T <= 0.0 or sigma <= 0.0:
         raise ValueError(
             "d1/d2 require strictly positive S, K, T and sigma; "
@@ -204,30 +233,37 @@ def bs_price(
     discounted intrinsic on the forward, ``exp(-rT) max(±(F - K), 0)``.
     """
     validate_inputs(S, K, T, sigma, option_type)
+    _check_rates(r=r, q=q)
     if T == 0.0:
         return intrinsic_value(S, K, option_type)
     if K == 0.0:
         # Zero-strike call is a (dividend-adjusted) forward on the stock.
-        return S * math.exp(-q * T) if option_type == "call" else 0.0
+        return _finite(S * _exp(-q * T, "bs_price"), "bs_price") if option_type == "call" else 0.0
     if S == 0.0:
-        return 0.0 if option_type == "call" else K * math.exp(-r * T)
+        return 0.0 if option_type == "call" else _finite(K * _exp(-r * T, "bs_price"), "bs_price")
+    disc_s = S * _exp(-q * T, "bs_price")
+    disc_k = K * _exp(-r * T, "bs_price")
     if sigma == 0.0:
-        forward = forward_price(S, T, r, q)
+        # exp(-rT) max(+-(F - K), 0) written as S e^{-qT} - K e^{-rT}: the
+        # forward itself can overflow when (r - q) T > 709.
         sign = 1.0 if option_type == "call" else -1.0
-        return math.exp(-r * T) * max(sign * (forward - K), 0.0)
+        return _finite(max(sign * (disc_s - disc_k), 0.0), "bs_price")
 
     d1, d2 = d1_d2(S, K, T, r, sigma, q)
-    disc_s = S * math.exp(-q * T)
-    disc_k = K * math.exp(-r * T)
     if option_type == "call":
-        return disc_s * norm.cdf(d1) - disc_k * norm.cdf(d2)
-    return disc_k * norm.cdf(-d2) - disc_s * norm.cdf(-d1)
+        value = disc_s * _ncdf(d1) - disc_k * _ncdf(d2)
+    else:
+        value = disc_k * _ncdf(-d2) - disc_s * _ncdf(-d1)
+    return _finite(value, "bs_price")
 
 
 def _bs_vega(S: float, K: float, T: float, r: float, sigma: float, q: float) -> float:
     """Analytic vega dV/dsigma (per unit of vol, i.e. per 100 vol points)."""
     d1, _ = d1_d2(S, K, T, r, sigma, q)
     return S * math.exp(-q * T) * math.exp(-0.5 * d1 * d1) / _SQRT_2PI * math.sqrt(T)
+
+
+_IV_DEPRECATED_DEFAULTS = {"tol": 1e-12, "max_iter": 100, "sigma_lo": 1e-9, "sigma_hi": 10.0}
 
 
 def implied_vol(
@@ -238,30 +274,32 @@ def implied_vol(
     r: float,
     q: float = 0.0,
     option_type: OptionType = "call",
-    tol: float = 1e-12,
-    max_iter: int = 100,
-    sigma_lo: float = 1e-9,
-    sigma_hi: float = 10.0,
+    tol: float | None = None,
+    max_iter: int | None = None,
+    sigma_lo: float | None = None,
+    sigma_hi: float | None = None,
 ) -> float:
-    """Implied Black-Scholes volatility via bracketed Newton with bisection fallback.
+    """Implied Black-Scholes volatility, solved on the out-of-the-money side.
 
-    Newton iterations use analytic vega; every step is kept inside a
-    maintained bracket, and if Newton stalls (tiny vega deep ITM/OTM, or a
-    step outside the bracket) the algorithm falls back to bisection /
-    Brent's method, so it is robust across moneyness 0.5x-2.0x and
-    expiries from days to years. The Newton loop always finishes with a
-    Brent refinement on its final bracket rather than returning as soon as
-    the price residual is within ``tol`` -- see the "flat vega" note below.
+    The quote is mapped to normalised Black form
+    ``b = price / (e^{-rT} sqrt(F K))`` with ``x = -|ln(F/K)|``. An
+    in-the-money quote is converted to its out-of-the-money counterpart
+    by subtracting the discounted forward intrinsic, so the solver always
+    works on time value. The equation ``b(x, s) = beta`` in the total vol
+    ``s = sigma sqrt(T)`` is solved by safeguarded Halley iteration on one
+    of three transformed objectives (``1/ln b`` below the inflection point
+    ``s_c = sqrt(2|x|)``, ``ln b`` or ``ln(b_max - b)`` above it), from an
+    asymptotic initial guess, with a relative stopping rule. The same
+    algorithm runs in the C++ and Rust engines (``_iv_core.py``).
 
-    Known hard regime: very long-dated *and* very high vol (e.g. T > 10y
-    with sigma > 200%) pushes ``|d1|``, ``|d2|`` large enough that vega
-    ``~ S sqrt(T) phi(d1)`` underflows towards zero and the price sits
-    within double-precision noise of the ``sigma -> inf`` arbitrage bound.
-    There the price-to-vol map is genuinely ill-conditioned (a tiny price
-    residual corresponds to a large sigma residual): recovered vol is only
-    accurate to the 1e-4-1e-3 level in that corner rather than the 1e-8
-    achieved elsewhere, no matter how the residual tolerance is set. This
-    is a property of the inverse problem itself, not a fixable solver bug.
+    Accuracy: the recovered vol is within ``max(eps * price / vega,
+    1e-12 * sigma)`` of the true root over T in [1e-7, 50], sigma in
+    [1e-4, 5] and |ln(F/K)| up to 5; at most 10 evaluations, typically 2-4.
+    For a deep in-the-money quote the price itself carries the
+    information limit: with S=100, K=90, T=0.02, sigma=10% one ulp of the
+    call price (1.8e-15) moves the vol by about 5e-4, so the returned vol
+    reprices the quote to within a few ulps but cannot be closer to 10%
+    than that. Quote the out-of-the-money side when the vol matters.
 
     Parameters
     ----------
@@ -270,15 +308,11 @@ def implied_vol(
         the no-arbitrage bounds (discounted intrinsic on the forward, and
         ``S exp(-qT)`` for calls / ``K exp(-rT)`` for puts).
     S, K, T, r, q : float
-        As in :func:`bs_price`. ``T`` must be strictly positive.
+        As in :func:`bs_price`. ``S``, ``K`` and ``T`` must be strictly positive.
     option_type : {"call", "put"}
         Option payoff direction.
-    tol : float
-        Absolute price tolerance for convergence.
-    max_iter : int
-        Maximum Newton iterations before switching to Brent.
-    sigma_lo, sigma_hi : float
-        Initial volatility bracket, annualised.
+    tol, max_iter, sigma_lo, sigma_hi
+        Deprecated and ignored. The solver has no tuning parameters.
 
     Returns
     -------
@@ -288,11 +322,21 @@ def implied_vol(
     Raises
     ------
     ValueError
-        If ``price`` is at or below the ``sigma -> 0`` lower bound
-        (discounted forward intrinsic), above the upper bound, if ``T == 0``,
-        or if any underlying input is invalid.
+        If ``price`` is at or below the ``sigma -> 0`` bound or at or above
+        the ``sigma -> inf`` bound, if ``T == 0``, if any input is invalid,
+        or if the solver fails to converge.
     """
+    for name, value in (("tol", tol), ("max_iter", max_iter),
+                        ("sigma_lo", sigma_lo), ("sigma_hi", sigma_hi)):
+        if value is not None:
+            warnings.warn(
+                f"implied_vol({name}=...) is deprecated and ignored; "
+                "the solver has no tuning parameters",
+                DeprecationWarning,
+                stacklevel=2,
+            )
     validate_inputs(S, K, T, 0.0, option_type)
+    _check_rates(r=r, q=q)
     if not math.isfinite(price):
         raise ValueError(f"price must be finite, got {price!r}")
     if T <= 0.0:
@@ -300,8 +344,10 @@ def implied_vol(
     if S <= 0.0 or K <= 0.0:
         raise ValueError("implied_vol requires S > 0 and K > 0")
 
+    df = _exp(-r * T, "implied_vol")
+    forward = _finite(S * _exp((r - q) * T, "implied_vol"), "forward")
     lower = bs_price(S, K, T, r, 0.0, q, option_type)  # discounted fwd intrinsic
-    upper = S * math.exp(-q * T) if option_type == "call" else K * math.exp(-r * T)
+    upper = S * _exp(-q * T, "implied_vol") if option_type == "call" else K * df
     if price <= lower:
         raise ValueError(
             f"price {price!r} is at or below the sigma->0 arbitrage bound "
@@ -312,49 +358,4 @@ def implied_vol(
             f"price {price!r} is at or above the sigma->inf bound {upper:.10g}; "
             "implied vol is undefined"
         )
-
-    def objective(sig: float) -> float:
-        return bs_price(S, K, T, r, sig, q, option_type) - price
-
-    lo, hi = sigma_lo, sigma_hi
-    f_lo, f_hi = objective(lo), objective(hi)
-    # Expand the top of the bracket if needed (extremely high premiums).
-    while f_hi < 0.0 and hi < 1e3:
-        hi *= 2.0
-        f_hi = objective(hi)
-    if f_lo > 0.0 or f_hi < 0.0:
-        raise ValueError("failed to bracket implied volatility in [1e-9, 1e3]")
-
-    # Bracketed Newton: start from the midpoint, never leave [lo, hi].
-    sigma = 0.5 * (lo + hi)
-    for _ in range(max_iter):
-        diff = objective(sigma)
-        if abs(diff) < tol:
-            break
-        if diff > 0.0:
-            hi = sigma
-        else:
-            lo = sigma
-        vega = _bs_vega(S, K, T, r, sigma, q)
-        if vega > 1e-14:
-            step = diff / vega
-            candidate = sigma - step
-        else:
-            candidate = math.nan
-        if not (lo < candidate < hi):
-            candidate = 0.5 * (lo + hi)  # bisection fallback
-        if abs(candidate - sigma) < 1e-16:
-            break
-        sigma = candidate
-
-    # Always finish with Brent on the maintained bracket, even when Newton
-    # exited on the `tol` price-residual check above. That check alone is
-    # not a reliable stopping rule: in a flat-vega region (e.g. very
-    # long-dated + very high vol, where d1/d2 blow up and vega ~ exp(-d1^2/2)
-    # underflows towards the bracket's arbitrage bound) the price can sit
-    # within `tol` of the target while sigma is still off by whole vol
-    # points, because a tiny price residual maps through a tiny vega to a
-    # large sigma residual. Brent on the bracket costs at most a few extra
-    # evaluations in the well-conditioned case and recovers full bracket
-    # precision in the ill-conditioned one.
-    return float(brentq(objective, lo, hi, xtol=1e-16, rtol=8.9e-16, maxiter=200))
+    return black_implied_vol(price, forward, K, T, df, option_type == "call")

@@ -22,7 +22,7 @@ constexpr double S = 1.10, K = 1.12, T = 0.5, RD = 0.0425, RF = 0.0290,
 TEST(MonteCarlo, PriceWithinThreeStandardErrors) {
     for (const auto type : {OptionType::Call, OptionType::Put}) {
         const double analytic = gk_price(S, K, T, RD, RF, SIG, type);
-        const MCResult r = mc_price(S, K, T, RD, RF, SIG, type, 200'000, 7);
+        const MCResult r = mc_price(S, K, T, RD, RF, SIG, type, 200'000, Seed{7});
         EXPECT_NEAR(r.price, analytic, 3.0 * r.std_error)
             << "type " << static_cast<int>(type);
         EXPECT_GT(r.std_error, 0.0);
@@ -51,7 +51,7 @@ TEST(MonteCarlo, StdErrorScalesAsInverseSqrtNFitted) {
                 1000003ULL * static_cast<std::uint64_t>(n) +
                 static_cast<std::uint64_t>(rep);
             reps.push_back(mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                    n, seed, false, false)
+                                    n, Seed{seed}, false, false)
                               .price);
         }
         const double mean =
@@ -78,11 +78,11 @@ TEST(MonteCarlo, StdErrorScalesAsInverseSqrtNFitted) {
 
 TEST(MonteCarlo, VarianceReductionShrinksStandardError) {
     const MCResult plain = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                    100'000, 11, false, false);
+                                    100'000, Seed{11}, false, false);
     const MCResult anti = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                   100'000, 11, true, false);
+                                   100'000, Seed{11}, true, false);
     const MCResult full = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                   100'000, 11, true, true);
+                                   100'000, Seed{11}, true, true);
     EXPECT_LT(anti.std_error, plain.std_error);
     EXPECT_LT(full.std_error, anti.std_error);
     EXPECT_EQ(plain.method, "plain");
@@ -91,11 +91,11 @@ TEST(MonteCarlo, VarianceReductionShrinksStandardError) {
 
 TEST(MonteCarlo, SeedDeterminism) {
     const MCResult a = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                50'000, 42);
+                                50'000, Seed{42});
     const MCResult b = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                50'000, 42);
+                                50'000, Seed{42});
     const MCResult c = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                50'000, 43);
+                                50'000, Seed{43});
     EXPECT_EQ(a.price, b.price);  // bit-identical
     EXPECT_EQ(a.std_error, b.std_error);
     EXPECT_NE(a.price, c.price);
@@ -103,14 +103,14 @@ TEST(MonteCarlo, SeedDeterminism) {
 
 TEST(MonteCarlo, AntitheticPathCountRoundsUpToEven) {
     const MCResult r = mc_price(S, K, T, RD, RF, SIG, OptionType::Call,
-                                10'001, 1, true, false);
+                                10'001, Seed{1}, true, false);
     EXPECT_EQ(r.n_paths, 10'002);
 }
 
 TEST(MonteCarlo, ThrowsOnBadInputs) {
     EXPECT_THROW(mc_price(S, K, 0.0, RD, RF, SIG, OptionType::Call),
                  std::invalid_argument);
-    EXPECT_THROW(mc_price(S, K, T, RD, RF, SIG, OptionType::Call, 1),
+    EXPECT_THROW(mc_price(S, K, T, RD, RF, SIG, OptionType::Call, 1, Seed{0}),
                  std::invalid_argument);
     EXPECT_THROW(mc_price(-1.0, K, T, RD, RF, SIG, OptionType::Call),
                  std::invalid_argument);

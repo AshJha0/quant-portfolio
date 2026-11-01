@@ -23,12 +23,12 @@ double deterministic_price(double S, double K, double T, double r, double q,
     for (int i = 0; i <= n_steps; ++i) {
         const double t = T * static_cast<double>(i) /
                          static_cast<double>(n_steps);
-        const double s_t = S * std::exp((r - q) * t);
+        // Discounted payoff without forming the forward (overflow-safe).
         const double value =
-            std::exp(-r * t) * std::fmax(sign * (s_t - K), 0.0);
+            std::fmax(sign * (S * std::exp(-q * t) - K * std::exp(-r * t)), 0.0);
         best = std::fmax(best, value);
     }
-    return best;
+    return require_finite_result(best, "crr_price");
 }
 
 }  // namespace
@@ -50,13 +50,15 @@ double crr_price(double S, double K, double T, double r, double sigma,
     }
     if (S == 0.0) {
         if (type == OptionType::Call) return 0.0;
-        return exercise == ExerciseStyle::American ? K : K * std::exp(-r * T);
+        // Exercise now pays K; waiting pays K e^{-rT}, larger when r < 0.
+        const double european = require_finite_result(K * std::exp(-r * T), "crr_price");
+        return exercise == ExerciseStyle::American ? std::fmax(K, european) : european;
     }
     if (K == 0.0) {
         if (type == OptionType::Put) return 0.0;
         // Zero-strike call: American early exercise is optimal iff q > 0.
         if (exercise == ExerciseStyle::American && q > 0.0) return S;
-        return S * std::exp(-q * T);
+        return require_finite_result(S * std::exp(-q * T), "crr_price");
     }
     if (sigma == 0.0) {
         return deterministic_price(S, K, T, r, q, type, exercise, n_steps);
@@ -79,30 +81,28 @@ double crr_price(double S, double K, double T, double r, double sigma,
     const double pd = disc * (1.0 - p);
     const double log_s0 = std::log(S);
 
-    // Terminal payoffs S * u^j * d^(n-j), j = 0..n, evaluated in log space
-    // for numerical stability at large n. Single value vector, updated in
-    // place during backward induction: O(n) memory.
-    std::vector<double> values(static_cast<std::size_t>(n_steps) + 1);
-    for (int j = 0; j <= n_steps; ++j) {
-        const double log_s = log_s0 + (2.0 * j - n_steps) * log_u;
-        values[static_cast<std::size_t>(j)] =
-            std::fmax(sign * (std::exp(log_s) - K), 0.0);
+    // Every node spot is S u^m for m = -n..n; form the exercise values once
+    // in log space (O(n) exps) so backward induction does no transcendental
+    // work. Step i, node j sits at m = 2j - i.
+    const std::size_t n = static_cast<std::size_t>(n_steps);
+    std::vector<double> exercise_value(2 * n + 1);
+    for (std::size_t idx = 0; idx <= 2 * n; ++idx) {
+        const double m = static_cast<double>(idx) - static_cast<double>(n);
+        exercise_value[idx] = sign * (std::exp(log_s0 + m * log_u) - K);
     }
+    std::vector<double> values(n + 1);
+    for (std::size_t j = 0; j <= n; ++j) values[j] = std::fmax(exercise_value[2 * j], 0.0);
 
     const bool american = exercise == ExerciseStyle::American;
-    for (int i = n_steps - 1; i >= 0; --i) {
-        for (int j = 0; j <= i; ++j) {
-            const std::size_t sj = static_cast<std::size_t>(j);
-            double cont = pu * values[sj + 1] + pd * values[sj];
-            if (american) {
-                const double node =
-                    std::exp(log_s0 + (2.0 * j - i) * log_u);
-                cont = std::fmax(cont, sign * (node - K));
-            }
-            values[sj] = cont;
+    for (std::size_t i = n; i-- > 0;) {
+        const std::size_t offset = n - i;  // index of m = -i
+        for (std::size_t j = 0; j <= i; ++j) {
+            double cont = pu * values[j + 1] + pd * values[j];
+            if (american) cont = std::fmax(cont, exercise_value[offset + 2 * j]);
+            values[j] = cont;
         }
     }
-    return values[0];
+    return require_finite_result(values[0], "crr_price");
 }
 
 double early_exercise_premium(double S, double K, double T, double r,

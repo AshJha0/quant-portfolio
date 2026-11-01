@@ -15,8 +15,10 @@ Conventions (used everywhere in this package)
 from __future__ import annotations
 
 import math
+import numbers
 
-__all__ = ["validate_inputs", "validate_option_type", "OTHER_TYPE", "PHI"]
+__all__ = ["validate_inputs", "validate_option_type", "OTHER_TYPE", "PHI",
+           "ncdf", "safe_exp", "finite_result"]
 
 #: Map option type to its opposite (used by foreign-domestic symmetry).
 OTHER_TYPE = {"call": "put", "put": "call"}
@@ -81,7 +83,8 @@ def validate_inputs(
     """
     for name, value in (("S", S), ("K", K), ("T", T), ("r_d", r_d),
                         ("r_f", r_f), ("sigma", sigma)):
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
+        # numbers.Real covers int, float and numpy integer/floating scalars.
+        if not isinstance(value, numbers.Real) or isinstance(value, bool):
             raise ValueError(f"{name} must be a real number, got {value!r}")
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite, got {value!r}")
@@ -93,3 +96,26 @@ def validate_inputs(
         raise ValueError(f"Time to expiry T must be non-negative, got {T}")
     if sigma < 0.0:
         raise ValueError(f"Volatility sigma must be non-negative, got {sigma}")
+
+
+_SQRT2 = math.sqrt(2.0)
+
+
+def ncdf(x: float) -> float:
+    """Standard normal CDF via ``erfc``: full relative precision in the lower tail."""
+    return 0.5 * math.erfc(-x / _SQRT2)
+
+
+def safe_exp(x: float, what: str) -> float:
+    """``math.exp`` that raises ``ValueError`` instead of ``OverflowError``."""
+    try:
+        return math.exp(x)
+    except OverflowError:
+        raise ValueError(f"{what}: exp({x!r}) overflows a double") from None
+
+
+def finite_result(value: float, what: str) -> float:
+    """Return ``value`` or raise ``ValueError`` if it is not finite."""
+    if not math.isfinite(value):
+        raise ValueError(f"{what} is not representable as a finite double")
+    return value

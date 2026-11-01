@@ -1,5 +1,6 @@
 #include "eqopt/monte_carlo.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <random>
@@ -83,8 +84,15 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
                   unsigned threads) {
     validate_inputs(S, K, T, sigma);
     validate_rates(r, q);
-    if (n_paths < 2) {
-        throw std::invalid_argument("n_paths must be >= 2");
+    // A standard error needs two independent samples (paths, or antithetic
+    // pairs) left after fitting: three with the control variate, since two
+    // points fit the regression line exactly and leave a zero residual.
+    const std::size_t units = antithetic ? (n_paths + 1) / 2 : n_paths;
+    const std::size_t needed = control_variate ? 3 : 2;
+    if (units < needed) {
+        throw std::invalid_argument(
+            "n_paths gives too few independent samples for a standard error "
+            "(need 2, or 3 with the control variate; an antithetic pair is one)");
     }
     if (threads == 0) {
         throw std::invalid_argument("threads must be >= 1");
@@ -139,48 +147,41 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
         for (auto& t : pool) t.join();
     }
 
+    // Reduce to one value per independent draw first (the antithetic pair
+    // average), then fit the control-variate beta on those same units: the
+    // optimal beta for the pair-average estimator is
+    // Cov(pair payoff, pair control) / Var(pair control).
+    std::size_t n_samples = n_eff;
+    if (antithetic) {
+        for (std::size_t i = 0; i < half; ++i) {
+            payoff[i] = 0.5 * (payoff[i] + payoff[half + i]);
+            if (control_variate) control[i] = 0.5 * (control[i] + control[half + i]);
+        }
+        n_samples = half;
+    }
     if (control_variate) {
-        // Sample-optimal coefficient beta = cov(payoff, control)/var(control).
         double mean_p = 0.0;
         double mean_c = 0.0;
-        for (std::size_t i = 0; i < n_eff; ++i) {
+        for (std::size_t i = 0; i < n_samples; ++i) {
             mean_p += payoff[i];
             mean_c += control[i];
         }
-        mean_p /= static_cast<double>(n_eff);
-        mean_c /= static_cast<double>(n_eff);
+        mean_p /= static_cast<double>(n_samples);
+        mean_c /= static_cast<double>(n_samples);
         double cov_pc = 0.0;
         double var_c = 0.0;
-        for (std::size_t i = 0; i < n_eff; ++i) {
-            const double dp = payoff[i] - mean_p;
+        for (std::size_t i = 0; i < n_samples; ++i) {
             const double dc = control[i] - mean_c;
-            cov_pc += dp * dc;
+            cov_pc += (payoff[i] - mean_p) * dc;
             var_c += dc * dc;
         }
-        cov_pc /= static_cast<double>(n_eff - 1);
-        var_c /= static_cast<double>(n_eff - 1);
         const double beta = var_c > 0.0 ? cov_pc / var_c : 0.0;
         const double control_mean = S * std::exp(-q * T);  // martingale mean
-        for (std::size_t i = 0; i < n_eff; ++i) {
+        for (std::size_t i = 0; i < n_samples; ++i) {
             payoff[i] -= beta * (control[i] - control_mean);
         }
     }
-
-    // Antithetic pairs are correlated: build i.i.d. samples from pair means.
-    std::size_t n_samples;
-    const double* samples;
-    std::vector<double> pair_means;
-    if (antithetic) {
-        pair_means.resize(half);
-        for (std::size_t i = 0; i < half; ++i) {
-            pair_means[i] = 0.5 * (payoff[i] + payoff[half + i]);
-        }
-        samples = pair_means.data();
-        n_samples = half;
-    } else {
-        samples = payoff.data();
-        n_samples = n_eff;
-    }
+    const double* samples = payoff.data();
 
     double mean = 0.0;
     for (std::size_t i = 0; i < n_samples; ++i) mean += samples[i];
@@ -190,11 +191,12 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
         const double d = samples[i] - mean;
         var += d * d;
     }
-    const double se =
-        n_samples > 1
-            ? std::sqrt(var / static_cast<double>(n_samples - 1) /
-                        static_cast<double>(n_samples))
-            : 0.0;
+    const double se = std::sqrt(var / static_cast<double>(n_samples - 1) /
+                                static_cast<double>(n_samples));
+    if (!std::isfinite(mean) || !std::isfinite(se)) {
+        throw std::invalid_argument(
+            "Monte Carlo estimate is not finite (simulated prices overflow)");
+    }
     return MCResult{mean, se, mean - kZ95 * se, mean + kZ95 * se, n_eff};
 }
 

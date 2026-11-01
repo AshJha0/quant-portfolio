@@ -14,7 +14,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use eq_options_engine::{
-    bs_greeks, bs_price, crr_price, mc_price, Exercise, OptionType,
+    bs_greeks, bs_price, crr_price, implied_vol, mc_price, Exercise, OptionType,
 };
 
 fn main() {
@@ -132,6 +132,36 @@ fn main() {
         println!(
             "    price {:.6}  se {:.6}  ci [{:.6}, {:.6}]  (BS: 10.450584)",
             res.price, res.std_error, res.ci_low, res.ci_high
+        );
+    }
+    // Implied vol: 8 quotes (ATM/OTM/ITM, 1 week to 1 year), 100,000 solves.
+    {
+        let cases = [
+            (100.0, 100.0, 1.0, 0.2),
+            (100.0, 120.0, 0.5, 0.25),
+            (100.0, 80.0, 0.25, 0.3),
+            (100.0, 90.0, 0.02, 0.1),
+        ];
+        let mut quotes = Vec::new();
+        for &(s, k, t, v) in &cases {
+            for ot in [OptionType::Call, OptionType::Put] {
+                quotes.push((bs_price(s, k, t, 0.03, v, 0.0, ot).unwrap(), s, k, t, ot));
+            }
+        }
+        const N: usize = 100_000;
+        let start = Instant::now();
+        let mut acc = 0.0_f64;
+        for i in 0..N {
+            let (p, s, k, t, ot) = quotes[i % quotes.len()];
+            acc += implied_vol(black_box(p), s, k, t, 0.03, 0.0, ot).unwrap_or(0.0);
+        }
+        black_box(acc);
+        let dt = start.elapsed();
+        println!(
+            "Implied vol                | {:>9} solves | {:8.1} ms | {:6.0} ns/solve",
+            N,
+            dt.as_secs_f64() * 1e3,
+            dt.as_secs_f64() * 1e9 / N as f64
         );
     }
 }

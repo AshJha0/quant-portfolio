@@ -139,59 +139,23 @@ fn invalid_inputs_err() {
 }
 
 #[test]
-fn minimum_path_counts_never_produce_a_nan_standard_error() {
-    // `n_paths = 2` with antithetic pairing collapses to exactly ONE
-    // independent sample, so the (n - 1) sample-variance denominator is
-    // zero. A naive estimator computes 0/0, reports `std_error = NaN`,
-    // and every downstream `|mc - analytic| < 3 SE` check then silently
-    // passes (`x < NaN` is false, `x > NaN` is false — neither branch
-    // fires). The estimator must report SE = 0 and a degenerate interval
-    // instead.
+fn too_few_independent_samples_is_an_error() {
+    // n_paths = 2 with antithetic pairing is one independent sample: no
+    // standard error exists, so the call fails instead of reporting SE = 0.
+    // With the control variate, two samples fit the regression exactly and
+    // leave a zero residual, so three are needed.
     let (s, k, t, rd, rf, sig) = MKT;
-    for &(n, anti, cv) in &[
-        (2u64, true, false),
-        (2, true, true),
-        (2, false, false),
-        (2, false, true),
-        (3, true, true),
-        (4, true, true),
-        (5, false, true),
-    ] {
-        let mc = mc_price(s, k, t, rd, rf, sig, OptionType::Call, n, 3, anti, cv).unwrap();
-        assert!(
-            mc.price.is_finite(),
-            "n={n} anti={anti} cv={cv}: price {} not finite",
-            mc.price
-        );
-        assert!(
-            mc.std_error.is_finite() && mc.std_error >= 0.0,
-            "n={n} anti={anti} cv={cv}: std_error {} must be finite and >= 0",
-            mc.std_error
-        );
-        assert!(
-            mc.ci_low.is_finite() && mc.ci_high.is_finite() && mc.ci_low <= mc.ci_high,
-            "n={n} anti={anti} cv={cv}: CI [{}, {}]",
-            mc.ci_low,
-            mc.ci_high
-        );
-        // Without a control variate the estimator is an average of
-        // non-negative payoffs and cannot go negative. WITH one it can:
-        // the CV adjustment `X - beta (C - E[C])` is unbiased but not
-        // pathwise non-negative, and at n = 2 the fitted beta is pure
-        // noise. That is a property of the estimator, not a bug — but it
-        // is exactly why a desk should not run a CV estimator at
-        // single-digit path counts.
-        if !cv {
-            assert!(mc.price >= -1e-15, "n={n} plain: negative price {}", mc.price);
-        }
+    let mc = |n: u64, anti: bool, cv: bool| {
+        mc_price(s, k, t, rd, rf, sig, OptionType::Call, n, 3, anti, cv)
+    };
+    for &(n, anti, cv) in &[(2u64, true, false), (2, true, true), (4, true, true), (2, false, true)] {
+        assert!(mc(n, anti, cv).is_err(), "n={n} anti={anti} cv={cv}");
     }
-    // The single-pair case specifically: SE is exactly zero, and the
-    // interval degenerates to the point estimate.
-    let one = mc_price(s, k, t, rd, rf, sig, OptionType::Call, 2, 3, true, false).unwrap();
-    assert_eq!(one.std_error, 0.0);
-    assert_eq!(one.ci_low, one.price);
-    assert_eq!(one.ci_high, one.price);
-    assert_eq!(one.n_paths, 2);
+    for &(n, anti, cv) in &[(3u64, true, false), (2, false, false), (5, true, true), (3, false, true)] {
+        let r = mc(n, anti, cv).unwrap();
+        assert!(r.std_error.is_finite() && r.std_error > 0.0, "n={n}: SE {}", r.std_error);
+        assert!(r.ci_low <= r.price && r.price <= r.ci_high);
+    }
 }
 
 #[test]

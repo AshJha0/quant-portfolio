@@ -8,9 +8,9 @@
 //! * Standard normal draws by **inverse-CDF transform** of a 53-bit
 //!   uniform ([`crate::norm_ppf`]).  Unlike Box–Muller or ziggurat
 //!   variants, the inverse-CDF map consumes exactly one `u64` per normal
-//!   and involves no rejection loops, so streams are **bit-reproducible**
-//!   across platforms and releases — the property the Monte Carlo engine
-//!   (and its regression tests) rely on.
+//!   and involves no rejection loops, so the `u64` stream is identical on
+//!   every platform; the normals go through `ln`/`exp` from the platform
+//!   libm and repeat exactly on a given target.
 //!
 //! ```
 //! use fx_options_engine::rng::Xoshiro256StarStar;
@@ -54,7 +54,7 @@ impl SplitMix64 {
 /// xoshiro256** 1.0 (Blackman & Vigna 2018), seeded via [`SplitMix64`].
 ///
 /// Passes BigCrush; period 2^256 - 1.  Used by the Monte Carlo engine
-/// with an explicit `u64` seed for bit-reproducible pricing runs.
+/// with an explicit `u64` seed for reproducible pricing runs.
 #[derive(Debug, Clone)]
 pub struct Xoshiro256StarStar {
     s: [u64; 4],
@@ -102,8 +102,8 @@ impl Xoshiro256StarStar {
     }
 
     /// Standard normal draw by inverse-CDF transform of
-    /// [`Self::next_open01`] — exactly one `u64` consumed per draw,
-    /// bit-reproducible across platforms.
+    /// [`Self::next_open01`]: exactly one `u64` consumed per draw,
+    /// reproducible on a given target.
     #[inline]
     pub fn next_normal(&mut self) -> f64 {
         norm_ppf(self.next_open01())

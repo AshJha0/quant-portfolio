@@ -144,7 +144,7 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
     // up front, by fd_greeks itself.
     let mut called = false;
     let unvalidating = |s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64, ot: OptionType| {
-        // Deliberately no validation: prices at whatever sigma it is given.
+        // No validation on purpose: prices at whatever sigma it is given.
         let sqrt_t = t.sqrt();
         let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
         let d2 = d1 - sigma * sqrt_t;
@@ -161,7 +161,7 @@ fn fd_greeks_reject_a_vol_smaller_than_the_bump() {
             "sigma={sigma}: expected InvalidInput, got {via_bs:?}"
         );
         let via_closure =
-            fd_greeks(&unvalidating, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
+            fd_greeks(unvalidating, 100.0, 100.0, 1.0, 0.05, sigma, 0.0, OptionType::Call);
         assert!(
             matches!(via_closure, Err(PricingError::InvalidInput(_))),
             "sigma={sigma} with a non-validating pricer: expected InvalidInput, \

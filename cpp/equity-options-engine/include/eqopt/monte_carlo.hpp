@@ -17,7 +17,9 @@
 /// deviates are produced by an in-house inverse-CDF transform (Acklam
 /// initial guess + one Halley refinement against the erfc-based CDF) rather
 /// than std::normal_distribution, whose algorithm is implementation-defined.
-/// Same (seed, threads) => bit-identical results, across standard libraries.
+/// Same (seed, threads) => identical results on a given compiler and libm.
+/// Across platforms the last bits can differ (libm exp/log are not
+/// correctly rounded; compilers may contract to FMA).
 /// Multithreading partitions the paths into per-thread chunks with
 /// independently seeded (splitmix64-derived) RNG streams, so the result is
 /// deterministic for a given thread count.
@@ -74,17 +76,20 @@ double normal_from_u64(std::uint64_t u64) noexcept;
 ///              `antithetic` is set).
 /// \param antithetic Use antithetic pairs `(Z, -Z)`.
 /// \param control_variate Use the discounted terminal stock as a control
-///              variate with the sample-optimal coefficient.
+///              variate; the coefficient is fitted on the antithetic pair
+///              averages (the independent samples).
 /// \param seed  Explicit std::mt19937_64 seed. Same (seed, threads) =>
-///              bit-identical result.
+///              identical result on the same toolchain.
 /// \param threads Worker threads for draw/payoff generation, `>= 1`.
 ///              Each thread owns a disjoint, deterministically assigned
 ///              chunk of paths with its own splitmix64-derived RNG stream;
 ///              different thread counts use different streams (statistically
 ///              equivalent, not bit-equal).
 /// \return Price estimate with standard error and 95% CI.
-/// \throws std::invalid_argument on invalid inputs, `n_paths < 2`, or
-///         `threads == 0`.
+/// \throws std::invalid_argument on invalid inputs, fewer than two
+///         independent samples (three with the control variate; an
+///         antithetic pair is one sample), `threads == 0`, or simulated
+///         prices that overflow.
 /// \note `T == 0` or `sigma == 0` are deterministic; the exact
 ///       Black–Scholes value is returned with `std_error = 0`.
 MCResult mc_price(double S, double K, double T, double r, double sigma,
