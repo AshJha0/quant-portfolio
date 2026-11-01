@@ -1,30 +1,26 @@
 # quant-portfolio docs
 
-This folder is the portfolio-wide documentation layer — how the 31
-sub-projects fit together, how to learn the material, and how to actually
-use the code. It complements, and does not repeat, the per-project
-documentation every one of those 31 sub-projects carries in its own
-`docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
+This folder holds the documentation that spans all 31 sub-projects. Each
+sub-project also has its own `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
+All results quoted here come from seeded synthetic data unless a page names a
+dataset.
 
-| File | What it's for |
+| File | What it is for |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | The project map: what lives where, the package/engine tables, the cross-language golden-vector validation pipeline, and the design invariants worth knowing before you change anything. |
-| [DIAGRAMS.md](DIAGRAMS.md) | The same architecture as Mermaid diagrams — the portfolio shape, the golden-vector pipeline, per-area data flows, and the numerical-robustness bug case studies as pictures. |
-| [LEARN.md](LEARN.md) | The teaching companion: a plain-language tour of all 13 areas (Part I), why the portfolio is engineered the way it is (Part II), a suggested learning path by background (Part III), and a 481-question self-test bank organized into 18 rounds (Part IV). |
-| [COOKBOOK.md](COOKBOOK.md) | 63 copy-pasteable, verified-runnable "how do I..." recipes spanning every project area, from pricing an option to rebuilding a Rust engine from a clean checkout. |
-| [MARKET_RISK.md](MARKET_RISK.md) | The VaR/ES/backtesting workflow the risk engines are built to support, end to end — the daily cycle, the limit structure, stress testing, and where equity and FX genuinely diverge. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Layout, package and engine tables, risk conventions, the golden and differential test pipeline, CI jobs. |
+| [DIAGRAMS.md](DIAGRAMS.md) | The same structure as Mermaid diagrams. |
+| [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 481 self-test questions in 18 rounds (Part IV). |
+| [COOKBOOK.md](COOKBOOK.md) | 63 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
+| [MARKET_RISK.md](MARKET_RISK.md) | How the VaR, ES and backtesting code fits together, and its conventions. |
 
-**Where to start** depends on what you're after:
+Where to start:
 
-- New to quant finance entirely → [LEARN.md](LEARN.md) Part III, Path A.
-- Know the math, new to this codebase → [LEARN.md](LEARN.md) Part III, Path B.
-- Comfortable with code, want the cross-language engineering story →
-  [LEARN.md](LEARN.md) Part III, Path C.
-- Just want to run something → [COOKBOOK.md](COOKBOOK.md).
-- Need the big picture before touching code → [ARCHITECTURE.md](ARCHITECTURE.md)
-  and [DIAGRAMS.md](DIAGRAMS.md).
+- New to quant finance: [LEARN.md](LEARN.md) Part III, Path A.
+- Know the maths, new to this code: [LEARN.md](LEARN.md) Part III, Path B.
+- Interested in the C++ and Rust ports: [LEARN.md](LEARN.md) Part III, Path C.
+- Want to run something: [COOKBOOK.md](COOKBOOK.md).
+- Want the overall layout first: [ARCHITECTURE.md](ARCHITECTURE.md) and
+  [DIAGRAMS.md](DIAGRAMS.md).
 
-The top-level [`../README.md`](../README.md) is still the source of truth
-for what the portfolio contains and its verified test counts (6,446 passing
-tests, reproduced from a clean build); this folder is the map and the
-teaching material layered on top of it.
+Test counts are not typed into these pages. The CI `counts` job writes them
+to `counts.json` and to the run summary.
