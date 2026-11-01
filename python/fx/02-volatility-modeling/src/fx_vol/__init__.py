@@ -1,4 +1,4 @@
-"""fx_vol -- FX volatility modeling & forecasting.
+"""fx_vol: FX volatility modeling & forecasting.
 
 Pipeline: FX return construction -> historical/realized estimators -> EWMA ->
 GARCH(1,1)/GARCH-X -> EGARCH -> GJR-GARCH -> forecasting -> evaluation ->
@@ -10,7 +10,7 @@ annualization factor 252 by default (260 = FX 24h5d alternative, see
 fx_vol.historical).
 """
 
-from ._mle import FitResult
+from ._mle import ConvergenceError, FitResult
 from .returns import (
     cross_pair_signs,
     cross_volatility,
@@ -30,11 +30,12 @@ from .historical import (
 )
 from .ewma import ewma_forecast, ewma_variance, ewma_weights
 from .garch import fit_garch, garch_filter
-from .egarch import egarch_filter, fit_egarch
+from .egarch import egarch_filter, egarch_unconditional_variance, fit_egarch
 from .gjr import fit_gjr, gjr_filter
 from .forecasting import forecast_egarch_simulated, forecast_variance, rolling_one_step
 from .evaluation import (
     arch_lm,
+    default_hac_lags,
     diebold_mariano,
     ljung_box,
     mincer_zarnowitz,
@@ -53,7 +54,7 @@ from .vol_premium import (
 __version__ = "1.0.0"
 
 __all__ = [
-    "FitResult",
+    "FitResult", "ConvergenceError",
     # returns
     "log_returns", "invert_prices", "invert_returns", "pair_currencies",
     "cross_pair_signs", "triangulate_prices", "triangulate_returns", "cross_volatility",
@@ -63,12 +64,12 @@ __all__ = [
     # ewma
     "ewma_variance", "ewma_forecast", "ewma_weights",
     # models
-    "garch_filter", "fit_garch", "egarch_filter", "fit_egarch", "gjr_filter", "fit_gjr",
+    "garch_filter", "fit_garch", "egarch_filter", "fit_egarch", "egarch_unconditional_variance", "gjr_filter", "fit_gjr",
     # forecasting
     "forecast_variance", "forecast_egarch_simulated", "rolling_one_step",
     # evaluation
     "qlike_loss", "mse_loss", "mincer_zarnowitz", "newey_west_variance",
-    "diebold_mariano", "ljung_box", "arch_lm", "sign_bias_test",
+    "diebold_mariano", "default_hac_lags", "ljung_box", "arch_lm", "sign_bias_test",
     # vol premium
     "realized_vol_forward", "vol_risk_premium", "variance_swap_pnl", "premium_summary",
 ]

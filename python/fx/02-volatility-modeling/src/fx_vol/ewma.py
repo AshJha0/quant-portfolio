@@ -10,7 +10,7 @@ information up to t-1 (one-step-ahead convention, matching the GARCH modules).
 The classic daily decay is ``lambda = 0.94``; RiskMetrics monthly uses 0.97.
 
 Because persistence is exactly 1, the EWMA multi-step forecast is *flat*:
-``E[sigma2_{T+h}] = sigma2_{T+1}`` for every h -- there is no mean reversion,
+``E[sigma2_{T+h}] = sigma2_{T+1}`` for every h: there is no mean reversion,
 which is the main modelling difference vs GARCH(1,1) and is unit-tested.
 """
 
@@ -77,7 +77,7 @@ def ewma_forecast(
     lam: float = 0.94,
     init: float | None = None,
 ) -> np.ndarray:
-    """Multi-step EWMA variance forecast -- flat at the next-step value.
+    """Multi-step EWMA variance forecast: flat at the next-step value.
 
     ``sigma2_{T+1} = lam * sigma2_T + (1 - lam) * r_T^2`` repeated for every
     horizon 1..H, because the EWMA/IGARCH persistence is exactly 1.

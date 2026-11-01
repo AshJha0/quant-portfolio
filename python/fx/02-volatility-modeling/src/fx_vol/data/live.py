@@ -7,7 +7,7 @@ than crashing at import time.
 
 ECB reference rates are once-a-day (~16:00 CET) fixings, EUR-based; they are
 fine for daily realized-vol studies but are NOT tradable prices and carry no
-intraday information (no highs/lows -- range estimators cannot be used).
+intraday information (no highs/lows: range estimators cannot be used).
 """
 
 from __future__ import annotations

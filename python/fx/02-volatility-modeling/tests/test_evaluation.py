@@ -32,7 +32,7 @@ class TestLosses:
 
     def test_qlike_asymmetry_penalizes_underprediction(self):
         """Under-forecasting variance by 50% costs more than over-forecasting
-        by 50% -- the risk-management-friendly asymmetry."""
+        by 50%: the risk-management-friendly asymmetry."""
         rng = np.random.default_rng(92)
         sigma2 = 1e-4
         r2 = sigma2 * rng.standard_normal(100_000) ** 2
@@ -102,10 +102,11 @@ class TestDieboldMariano:
 
     def test_size_under_null(self):
         """Two equally good (noisy) forecasts: rejection rate at the 10% level
-        should be near 10% across replications (loose statistical tolerance)."""
+        should be near 10%. 2000 replications give an MC SE of 0.67 pp, so
+        [0.075, 0.125] is a +-3.7 SE band (measured: 0.100)."""
         rng = np.random.default_rng(95)
         rejections = 0
-        n_reps = 300
+        n_reps = 2000
         for _ in range(n_reps):
             sigma2 = 1e-4
             r2 = sigma2 * rng.standard_normal(300) ** 2
@@ -114,7 +115,7 @@ class TestDieboldMariano:
             out = diebold_mariano(qlike_loss(f1, r2), qlike_loss(f2, r2))
             rejections += out["pvalue"] < 0.10
         rate = rejections / n_reps
-        assert 0.04 <= rate <= 0.18  # ~3 sigma band around 0.10 plus asymptotic slack
+        assert 0.075 <= rate <= 0.125
 
     def test_symmetry(self, garch_sim):
         r, sigma2 = garch_sim

@@ -2,7 +2,8 @@
 
 Everything here is implemented from scratch (numpy/scipy only): innovation
 log-densities, arch-style exponential backcast initialization, numerical
-Hessian standard errors, and the common fitted-model result container.
+classic and sandwich standard errors, and the common fitted-model result
+container.
 
 Scaling convention
 ------------------
@@ -29,6 +30,10 @@ import numpy as np
 
 __all__ = [
     "FitResult",
+    "ConvergenceError",
+    "loglik_obs",
+    "mle_covariances",
+    "map_std_errors",
     "validate_filter_params",
     "validate_returns",
     "backcast",
@@ -46,11 +51,19 @@ MIN_NU = 2.05          # Student-t dof lower bound (variance must exist)
 LOG2PI = log(2.0 * pi)
 
 
+class ConvergenceError(RuntimeError):
+    """Raised when a maximum-likelihood optimisation fails to converge.
+
+    Pass ``raise_on_failure=False`` to a fitter to receive the result with
+    ``converged=False`` instead.
+    """
+
+
 def validate_returns(returns, min_obs: int = MIN_OBS) -> np.ndarray:
     """Validate a return series for MLE fitting.
 
     Raises ``ValueError`` on NaN/inf (explicit NaN policy: reject), on series
-    shorter than ``min_obs`` and on constant series (zero variance -- the
+    shorter than ``min_obs`` and on constant series (zero variance: the
     likelihood is degenerate; pegged pairs with tiny-but-nonzero vol are fine
     thanks to internal rescaling).
     """
@@ -60,7 +73,7 @@ def validate_returns(returns, min_obs: int = MIN_OBS) -> np.ndarray:
     if not np.isfinite(arr).all():
         raise ValueError(
             "returns contain NaN or infinite values; fx_vol rejects rather than "
-            "imputes -- clean the series explicitly first"
+            "imputes: clean the series explicitly first"
         )
     if arr.size < min_obs:
         raise ValueError(
@@ -87,7 +100,7 @@ def validate_filter_params(**params: float) -> None:
     The filters guard their parameters with inequalities such as
     ``if omega <= 0 or alpha < 0: raise``.  Those tests are False for NaN
     (every comparison with NaN is False), so a NaN parameter would slip
-    through and produce an all-NaN conditional-variance path -- a silent
+    through and produce an all-NaN conditional-variance path: a silent
     failure that then propagates into forecasts, VaR and P&L attribution.
     Call this first so NaN/Inf raise loudly instead.
 
@@ -184,12 +197,11 @@ def numerical_hessian(f: Callable[[np.ndarray], float], x: np.ndarray, rel_step:
 
 
 def hessian_std_errors(nll_natural: Callable[[np.ndarray], float], theta: np.ndarray) -> np.ndarray:
-    """Standard errors from the inverse Hessian of the negative log-likelihood.
+    """Classic standard errors from the inverse Hessian of the negative log-likelihood.
 
     Evaluated in the *natural* (untransformed) parameter space at the optimum.
     Returns NaNs where the Hessian is not positive definite (typical at
-    boundaries, e.g. IGARCH-like fits on pegged series -- documented rather
-    than hidden).
+    boundaries, e.g. IGARCH-like fits on pegged series).
     """
     try:
         H = numerical_hessian(nll_natural, theta)
@@ -199,6 +211,71 @@ def hessian_std_errors(nll_natural: Callable[[np.ndarray], float], theta: np.nda
         return np.sqrt(diag)
     except (np.linalg.LinAlgError, ValueError, FloatingPointError):
         return np.full(theta.size, np.nan)
+
+
+def loglik_obs(y: np.ndarray, sigma2: np.ndarray, dist: str, nu: float | None = None) -> np.ndarray:
+    """Per-observation log-likelihood contributions (sum = total log-likelihood).
+
+    All-NaN when the variance path or ``nu`` is invalid, so a finite
+    difference that leaves the parameter space shows up as NaN.
+    """
+    if not (np.all(sigma2 > 0) and np.all(np.isfinite(sigma2))):
+        return np.full(y.size, np.nan)
+    if dist == "gaussian":
+        return -0.5 * (LOG2PI + np.log(sigma2) + y * y / sigma2)
+    if nu is None or not nu > 2.0:
+        return np.full(y.size, np.nan)
+    const = lgamma((nu + 1.0) / 2.0) - lgamma(nu / 2.0) - 0.5 * log(pi * (nu - 2.0))
+    return const - 0.5 * np.log(sigma2) - (nu + 1.0) / 2.0 * np.log1p(y * y / sigma2 / (nu - 2.0))
+
+
+def mle_covariances(
+    nll_natural: Callable[[np.ndarray], float],
+    ll_obs_natural: Callable[[np.ndarray], np.ndarray],
+    theta: np.ndarray,
+    rel_step: float = 1e-4,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Classic and Bollerslev-Wooldridge (1992) robust covariance matrices.
+
+    ``A`` is the numerical Hessian of the negative log-likelihood and
+    ``B = S'S`` the outer product of per-observation scores (central
+    differences, same steps as the Hessian). Classic: ``A^-1``. Robust
+    (sandwich): ``A^-1 B A^-1``, valid for Gaussian QMLE under fat-tailed
+    innovations. NaN matrices if a step leaves the parameter space.
+    """
+    theta = np.asarray(theta, dtype=float)
+    k = theta.size
+    nan = np.full((k, k), np.nan)
+    try:
+        a_inv = np.linalg.pinv(numerical_hessian(nll_natural, theta, rel_step))
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+        return nan, nan
+    h = np.maximum(np.abs(theta) * rel_step, 1e-6)
+    cols = []
+    for i in range(k):
+        e = np.zeros(k)
+        e[i] = h[i]
+        cols.append((ll_obs_natural(theta + e) - ll_obs_natural(theta - e)) / (2.0 * h[i]))
+    S = np.column_stack(cols)
+    if not np.all(np.isfinite(S)):
+        return a_inv, nan
+    return a_inv, a_inv @ (S.T @ S) @ a_inv
+
+
+def map_std_errors(cov: np.ndarray, jac: np.ndarray) -> np.ndarray:
+    """Standard errors of ``g(theta)`` by the delta method: ``sqrt(diag(J C J'))``.
+
+    ``jac`` is the Jacobian of the map from the scaled-data parameters to
+    the reported parameters. Non-positive variances give NaN.
+    """
+    bad = ~np.isfinite(np.diag(cov))
+    c = jac @ np.nan_to_num(cov, nan=0.0) @ jac.T
+    d = np.diag(c).copy()
+    # a reported parameter is NaN if it loads on any parameter whose
+    # variance is not available
+    d[(jac[:, bad] != 0).any(axis=1)] = np.nan
+    with np.errstate(invalid="ignore"):
+        return np.where(d > 0, np.sqrt(np.abs(d)), np.nan)
 
 
 @dataclass
@@ -214,7 +291,9 @@ class FitResult:
     params : dict[str, float]
         Natural-scale estimates (omega in return-variance units).
     std_errors : dict[str, float]
-        Hessian standard errors (NaN where the Hessian is singular).
+        Classic standard errors from the inverse Hessian (NaN where the
+        Hessian is singular). Valid only if the innovation density is
+        correctly specified.
     loglik : float
         Maximized log-likelihood in the *caller's* return units.
     sigma2 : numpy.ndarray
@@ -229,6 +308,9 @@ class FitResult:
         Number of observations.
     persistence : float
         Model-specific persistence (alpha+beta; alpha+gamma/2+beta; beta).
+    robust_std_errors : dict[str, float]
+        Bollerslev-Wooldridge sandwich standard errors. Valid under a
+        misspecified density; use these for inference.
     unconditional_variance : float
         Implied long-run variance (exogenous terms at zero); ``inf`` if
         persistence >= 1.
@@ -247,6 +329,7 @@ class FitResult:
     persistence: float
     unconditional_variance: float
     extra: dict = field(default_factory=dict)
+    robust_std_errors: dict[str, float] = field(default_factory=dict)
 
     @property
     def std_resid(self) -> np.ndarray:
@@ -266,5 +349,6 @@ class FitResult:
         ]
         for k, v in self.params.items():
             se = self.std_errors.get(k, np.nan)
-            lines.append(f"  {k:>10s} = {v: .6g}  (se {se:.3g})")
+            rse = self.robust_std_errors.get(k, np.nan)
+            lines.append(f"  {k:>10s} = {v: .6g}  (se {se:.3g}, robust se {rse:.3g})")
         return "\n".join(lines)

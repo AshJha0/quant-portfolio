@@ -104,9 +104,9 @@ class TestConstantAndZeroInputs:
 class TestQuoteDirectionAsymmetry:
     """Asymmetry is a property of the quote direction, not of the market."""
 
-    @staticmethod
     @pytest.fixture(scope="class")
-    def em():
+    @classmethod
+    def em(cls):
         # USD/EM direction: vol rises when the pair RISES (EM sells off).
         return syn.simulate_em_series(6000, seed=311)
 
@@ -118,21 +118,26 @@ class TestQuoteDirectionAsymmetry:
         assert after_up > after_down
 
     def test_gjr_gamma_flips_side_under_inversion(self, em):
-        # GJR constrains gamma >= 0 and loads it on NEGATIVE returns.  On
-        # the USD/EM quote the asymmetry sits on positive returns, so gamma
-        # pins at the 0 boundary and the fit is strictly worse; inverting
-        # the pair moves the asymmetry onto the side GJR can represent.
-        # Fitted with the t likelihood: on jumpy EM data the Gaussian MLE
-        # chases outliers and obscures the effect (docs/VALIDATION.md §4).
+        # GJR's constraint is alpha >= 0, alpha + gamma >= 0, so gamma may be
+        # negative. On the USD/EM quote the asymmetry sits on positive
+        # returns: gamma < 0. Inversion swaps the two loadings exactly
+        # (alpha' = alpha + gamma, gamma' = -gamma) and leaves the likelihood
+        # unchanged, so both fits describe the same model.
+        # Tolerances: two separate L-BFGS-B optimisations of the same
+        # likelihood surface; 2e-3 in parameters and 1e-3 in loglik covers
+        # the optimiser stopping tolerance on 6000 observations.
         quoted = fit_gjr(em, dist="t")
         inverted = fit_gjr(invert_returns(em), dist="t")
-        assert quoted.params["gamma"] == pytest.approx(0.0, abs=1e-6)
-        assert inverted.params["gamma"] > 0.02
-        assert inverted.loglik > quoted.loglik
+        assert quoted.params["gamma"] < -0.02
+        assert inverted.params["gamma"] == pytest.approx(-quoted.params["gamma"], abs=2e-3)
+        assert inverted.params["alpha"] == pytest.approx(
+            quoted.params["alpha"] + quoted.params["gamma"], abs=2e-3
+        )
+        assert inverted.loglik == pytest.approx(quoted.loglik, abs=1e-3)
 
     def test_egarch_leverage_sign_flips_exactly_under_inversion(self, em):
         # EGARCH's gamma is sign-unconstrained, so inversion flips its sign
-        # exactly and leaves everything else -- including the likelihood --
+        # exactly and leaves everything else: including the likelihood:
         # untouched.  This is why EGARCH, not GJR, is the quote-direction-
         # agnostic choice for FX.
         a = fit_egarch(em, dist="t")
@@ -153,9 +158,9 @@ class TestQuoteDirectionAsymmetry:
 class TestManagedBandRegime:
     """A tightly managed pair (CNY-style band) has vol but no GARCH story."""
 
-    @staticmethod
     @pytest.fixture(scope="class")
-    def band():
+    @classmethod
+    def band(cls):
         return syn.simulate_pegged(2500, band_vol=1.5e-4, seed=313)
 
     def test_all_fitters_survive_the_band(self, band):
@@ -310,9 +315,9 @@ class TestVolPremiumInCrisis:
 
 
 class TestForecastHorizonLimits:
-    @staticmethod
     @pytest.fixture(scope="class")
-    def fit():
+    @classmethod
+    def fit(cls):
         return fit_garch(syn.simulate_garch(5000, 1e-6, 0.05, 0.92, seed=322))
 
     def test_horizon_zero_rejected(self, fit):
