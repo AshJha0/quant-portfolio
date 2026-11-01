@@ -21,7 +21,7 @@
 #include "eqopt/greeks.hpp"
 #include "eqopt/implied_vol.hpp"
 #include "eqopt/monte_carlo.hpp"
-#include "latency.hpp"
+#include "qp/bench/latency.hpp"
 
 #if __has_include("eqopt/batch.hpp")
 #include "eqopt/batch.hpp"

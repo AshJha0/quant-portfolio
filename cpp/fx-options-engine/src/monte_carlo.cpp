@@ -1,5 +1,7 @@
 #include "fxopt/monte_carlo.hpp"
 
+#include "qp/rng.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -22,12 +24,7 @@ inline double normal_draw(std::mt19937_64& rng) noexcept {
 }
 
 /// splitmix64 mix step: per-chunk seeds for threads > 1.
-std::uint64_t splitmix64(std::uint64_t x) noexcept {
-    x += 0x9e3779b97f4a7c15ULL;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-    return x ^ (x >> 31);
-}
+using qp::splitmix64;
 
 struct McTask {
     double S, K, df_d, p_sign, drift, vol;

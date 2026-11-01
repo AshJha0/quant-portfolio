@@ -17,16 +17,17 @@
 #include <string>
 #include <vector>
 
+#include "qp/matrix.hpp"
+
 namespace fxvar {
 
-/// Dense row-major matrix of double.
-class Matrix {
+/// Dense row-major matrix of double: qp::Matrix (cpp/core) plus the fxvar
+/// accessors. Constructors: (), (rows, cols, fill = 0.0) and (rows, cols,
+/// row-major data). rows(), cols(), operator()(i, j) and row(i) come from
+/// qp::Matrix.
+class Matrix : public qp::Matrix {
  public:
-  Matrix() = default;
-
-  /// rows x cols matrix filled with `fill`.
-  Matrix(std::size_t rows, std::size_t cols, double fill = 0.0)
-      : rows_(rows), cols_(cols), data_(rows * cols, fill) {}
+  using qp::Matrix::Matrix;
 
   /// Build from nested rows (throws std::invalid_argument on ragged input).
   static Matrix from_rows(const std::vector<std::vector<double>>& rows);
@@ -34,27 +35,12 @@ class Matrix {
   /// n x n identity.
   static Matrix identity(std::size_t n);
 
-  std::size_t rows() const { return rows_; }
-  std::size_t cols() const { return cols_; }
-
-  double& operator()(std::size_t i, std::size_t j) { return data_[i * cols_ + j]; }
-  double operator()(std::size_t i, std::size_t j) const { return data_[i * cols_ + j]; }
-
-  /// Pointer to the start of row i (contiguous, cols() doubles).
-  const double* row(std::size_t i) const { return data_.data() + i * cols_; }
-  double* row(std::size_t i) { return data_.data() + i * cols_; }
-
   Matrix transpose() const;
 
   /// True if any element is NaN (the engine's NaN policy is refuse).
   bool has_nan() const;
 
   const std::vector<double>& data() const { return data_; }
-
- private:
-  std::size_t rows_ = 0;
-  std::size_t cols_ = 0;
-  std::vector<double> data_;
 };
 
 /// C = A B (throws std::invalid_argument on dimension mismatch).

@@ -32,6 +32,9 @@
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 #include <x86intrin.h>
 #define QP_BENCH_TSC 1
+#elif defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#define QP_BENCH_TSC 1
 #endif
 
 #ifndef QP_BENCH_FLAGS
@@ -126,6 +129,8 @@ inline std::string compiler_id() {
     return "clang " __clang_version__;
 #elif defined(__GNUC__)
     return "gcc " __VERSION__;
+#elif defined(_MSC_VER)
+    return "msvc " + std::to_string(_MSC_FULL_VER);
 #else
     return "unknown";
 #endif
@@ -134,7 +139,13 @@ inline std::string compiler_id() {
 inline std::string today() {
     const std::time_t t = std::time(nullptr);
     char buf[16];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d", std::gmtime(&t));
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &tm);
     return buf;
 }
 

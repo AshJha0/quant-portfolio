@@ -23,7 +23,7 @@
 #include "fxvar/monte_carlo.hpp"
 #include "fxvar/parametric.hpp"
 #include "fxvar/stress.hpp"
-#include "latency.hpp"
+#include "qp/bench/latency.hpp"
 
 #if __has_include("fxvar/kernels.hpp")
 #include "fxvar/kernels.hpp"

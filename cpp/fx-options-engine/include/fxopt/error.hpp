@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+
+#include "qp/expected.hpp"
 #include <type_traits>
 #include <utility>
 
@@ -52,7 +54,7 @@ struct Error {
 
 /// Result of a noexcept kernel.
 template <class T>
-using Result = std::expected<T, Error>;
+using Result = qp::Result<T, Error>;
 
 /// Message identical to the exception text of the throwing API.
 /// Allocates; call it on the error path only.
@@ -62,11 +64,7 @@ std::string message(const Error& e);
 /// NoConvergence, std::invalid_argument otherwise.
 [[noreturn]] void throw_error(const Error& e);
 
-/// Unwrap a result or throw. Used by the throwing wrappers.
-template <class T>
-T value_or_throw(Result<T>&& r) {
-    if (!r) [[unlikely]] throw_error(r.error());
-    if constexpr (!std::is_void_v<T>) return std::move(*r);
-}
+/// Unwrap a result or throw (qp/expected.hpp). Used by the throwing wrappers.
+using qp::value_or_throw;
 
 }  // namespace fxopt

@@ -19,13 +19,21 @@
 # Sanitizers and other instrumentation are passed through CMAKE_CXX_FLAGS
 # and CMAKE_EXE_LINKER_FLAGS; this file never overwrites them.
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(fx_options_engine
         VERSION 1.1.0
         DESCRIPTION "FX options pricing engine"
         LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+# C++23 floor. QP_CXX26=ON compiles with C++26 and turns on the features
+# qp::core guards with feature-test macros (contracts, std::simd); the
+# results are the same either way.
+option(QP_CXX26 "Compile with C++26 and enable C++26 features where supported" OFF)
+if(QP_CXX26)
+  set(CMAKE_CXX_STANDARD 26)
+else()
+  set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -78,10 +86,14 @@ add_library(fxopt STATIC
   src/binomial.cpp
   src/monte_carlo.cpp
   src/batch.cpp
-  src/thread_pool.cpp
 )
 target_include_directories(fxopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(fxopt PUBLIC Threads::Threads fxopt_tuning PRIVATE fxopt_warnings)
+# Shared numerical core (cpp/core, header-only target qp::core).
+if(NOT TARGET qp::core)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/qp_core)
+endif()
+target_link_libraries(fxopt PUBLIC qp::core)
 # The batch kernels: errno is never read, so -fno-math-errno lets the
 # compiler inline sqrt and vectorise; it changes no returned value.
 set_source_files_properties(src/batch.cpp PROPERTIES COMPILE_OPTIONS
@@ -123,6 +135,7 @@ if(FXOPT_TESTS)
     FetchContent_Declare(googletest
       URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.tar.gz)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
   endif()
 

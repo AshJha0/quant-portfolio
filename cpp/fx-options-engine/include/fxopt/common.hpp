@@ -24,6 +24,7 @@
 #include <string>
 
 #include "fxopt/error.hpp"
+#include "qp/normal.hpp"
 
 namespace fxopt {
 
@@ -40,16 +41,9 @@ constexpr OptionType other_type(OptionType type) noexcept {
     return type == OptionType::Call ? OptionType::Put : OptionType::Call;
 }
 
-/// Standard normal PDF n(x).
-inline double norm_pdf(double x) noexcept {
-    constexpr double inv_sqrt_2pi = 0.3989422804014326779399461;
-    return inv_sqrt_2pi * std::exp(-0.5 * x * x);
-}
-
-/// Standard normal CDF N(x), via erfc for full double precision in both tails.
-inline double norm_cdf(double x) noexcept {
-    return 0.5 * std::erfc(-x / std::numbers::sqrt2);
-}
+/// Standard normal PDF n(x) and CDF N(x) (via erfc): qp/normal.hpp.
+using qp::norm_cdf;
+using qp::norm_pdf;
 
 /// Inverse standard normal CDF (Acklam/Moro-style rational approximation
 /// refined with two Halley steps -> ~1e-15 absolute accuracy).

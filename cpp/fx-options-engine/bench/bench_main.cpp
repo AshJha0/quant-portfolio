@@ -22,7 +22,7 @@
 #include "fxopt/greeks.hpp"
 #include "fxopt/implied_vol.hpp"
 #include "fxopt/monte_carlo.hpp"
-#include "latency.hpp"
+#include "qp/bench/latency.hpp"
 
 #if __has_include("fxopt/batch.hpp")
 #include "fxopt/batch.hpp"

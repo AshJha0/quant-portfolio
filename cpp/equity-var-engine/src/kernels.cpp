@@ -140,24 +140,7 @@ TailRisk order_statistic(std::span<const double> pnl, double alpha, double* loss
 }
 
 /// Plain Cholesky on raw row-major storage; false at a non-positive pivot.
-bool cholesky_raw(const double* a, std::size_t n, double* l) noexcept {
-    std::fill(l, l + n * n, 0.0);
-    for (std::size_t j = 0; j < n; ++j) {
-        const double* lj = l + j * n;
-        double diag = a[j * n + j];
-        for (std::size_t k = 0; k < j; ++k) diag -= lj[k] * lj[k];
-        if (!(diag > 0.0)) return false;  // also catches NaN
-        const double ljj = std::sqrt(diag);
-        l[j * n + j] = ljj;
-        for (std::size_t i = j + 1; i < n; ++i) {
-            const double* li = l + i * n;
-            double s = a[i * n + j];
-            for (std::size_t k = 0; k < j; ++k) s -= li[k] * lj[k];
-            l[i * n + j] = s / ljj;
-        }
-    }
-    return true;
-}
+using qp::cholesky_raw;
 
 Result<double> bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
                             std::uint64_t seed, double* loss) noexcept {
@@ -305,35 +288,7 @@ Result<void> try_matvec(const Matrix& a, std::span<const double> x,
     if (y.size() != rows) [[unlikely]] {
         return fail(Errc::WorkspaceTooSmall, "try_matvec", 0.0, y.size(), rows);
     }
-    const double* d = a.data();
-    const double* xv = x.data();
-    std::size_t i = 0;
-    // Four rows at a time: four independent accumulators for instruction-
-    // level parallelism, each summed in the original left-to-right order.
-    for (; i + 4 <= rows; i += 4) {
-        const double* r0 = d + i * cols;
-        const double* r1 = r0 + cols;
-        const double* r2 = r1 + cols;
-        const double* r3 = r2 + cols;
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0, a3 = 0.0;
-        for (std::size_t j = 0; j < cols; ++j) {
-            const double xj = xv[j];
-            a0 += r0[j] * xj;
-            a1 += r1[j] * xj;
-            a2 += r2[j] * xj;
-            a3 += r3[j] * xj;
-        }
-        y[i] = a0;
-        y[i + 1] = a1;
-        y[i + 2] = a2;
-        y[i + 3] = a3;
-    }
-    for (; i < rows; ++i) {
-        const double* row = d + i * cols;
-        double acc = 0.0;
-        for (std::size_t j = 0; j < cols; ++j) acc += row[j] * xv[j];
-        y[i] = acc;
-    }
+    qp::matvec_rows(a.data(), rows, cols, x.data(), y.data());
     return {};
 }
 

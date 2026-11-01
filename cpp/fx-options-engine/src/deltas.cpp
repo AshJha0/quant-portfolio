@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "fxopt/garman_kohlhagen.hpp"
-#include "brent.hpp"
+#include "qp/brent.hpp"
 
 namespace fxopt {
 
@@ -56,7 +56,7 @@ double pa_peak_strike(double F, double T, double sigma) {
         return log_norm_cdf(x) + log_v + 0.5 * x * x + kLnSqrt2Pi;
     };
     const auto [x_lo, x_hi] = pa_fold_bracket(v);
-    const double root = detail::brentq(h, x_lo, x_hi, 1e-14);
+    const double root = qp::brentq(h, x_lo, x_hi, 1e-14);
     return detail::finite_result(F * std::exp(-root * v - 0.5 * v * v), "PA fold strike");
 }
 
@@ -177,7 +177,7 @@ double strike_from_delta(double target_delta, double S, double T, double r_d,
         while (pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && std::isfinite(2.0 * k_hi)) {
             k_hi *= 2.0;
         }
-        return detail::brentq(
+        return qp::brentq(
             [&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_peak,
             k_hi, 1e-14, 200);
     }
@@ -194,7 +194,7 @@ double strike_from_delta(double target_delta, double S, double T, double r_d,
     while (pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && std::isfinite(2.0 * k_hi)) {
         k_hi *= 2.0;
     }
-    return detail::brentq(
+    return qp::brentq(
         [&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_lo, k_hi,
         1e-14, 200);
 }

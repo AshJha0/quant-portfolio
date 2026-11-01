@@ -8,6 +8,7 @@
 #include "fxvar/expected_shortfall.hpp"
 #include "fxvar/kernels.hpp"
 #include "fxvar/stats.hpp"
+#include "qp/rng.hpp"
 
 namespace fxvar {
 
@@ -15,8 +16,7 @@ namespace fxvar {
 double Rng::uniform() {
   // 53-bit mantissa in (0, 1): (x >> 11) in [0, 2^53), +0.5 keeps the
   // result strictly inside the open interval so norm_ppf never sees 0/1.
-  const std::uint64_t x = engine_();
-  return (static_cast<double>(x >> 11) + 0.5) * 0x1.0p-53;
+  return qp::uniform_open53(engine_());
 }
 
 double Rng::normal() { return norm_ppf(uniform()); }
@@ -24,26 +24,9 @@ double Rng::normal() { return norm_ppf(uniform()); }
 double Rng::gamma(double shape) {
   if (!(shape > 0.0) || !std::isfinite(shape))
     throw std::invalid_argument("gamma: shape must be finite and > 0");
-  if (shape < 1.0) {
-    // Boost: Gamma(a) = Gamma(a + 1) * U^(1/a).
-    const double u = uniform();
-    return gamma(shape + 1.0) * std::pow(u, 1.0 / shape);
-  }
-  // Marsaglia-Tsang squeeze method.
-  const double d = shape - 1.0 / 3.0;
-  const double c = 1.0 / std::sqrt(9.0 * d);
-  for (;;) {
-    double x, v;
-    do {
-      x = normal();
-      v = 1.0 + c * x;
-    } while (v <= 0.0);
-    v = v * v * v;
-    const double u = uniform();
-    const double x2 = x * x;
-    if (u < 1.0 - 0.0331 * x2 * x2) return d * v;
-    if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return d * v;
-  }
+  auto u = [this] { return uniform(); };
+  auto z = [this] { return normal(); };
+  return qp::gamma_marsaglia_tsang(shape, u, z);
 }
 
 long Rng::poisson(double mu) {

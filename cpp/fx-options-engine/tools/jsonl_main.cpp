@@ -11,7 +11,7 @@
 #include "fxopt/garman_kohlhagen.hpp"
 #include "fxopt/greeks.hpp"
 #include "fxopt/implied_vol.hpp"
-#include "jsonl.hpp"
+#include "qp/tools/jsonl.hpp"
 
 namespace {
 

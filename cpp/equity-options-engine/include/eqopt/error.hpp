@@ -15,6 +15,8 @@
 #include <expected>
 #include <string>
 
+#include "qp/expected.hpp"
+
 namespace eqopt {
 
 /// What went wrong. Each code maps to one exception message.
@@ -49,7 +51,7 @@ struct Error {
 
 /// Result of a noexcept kernel.
 template <class T>
-using Result = std::expected<T, Error>;
+using Result = qp::Result<T, Error>;
 
 /// \brief Human-readable message, identical to the exception text of the
 ///        throwing API. Allocates; call it on the error path only.
@@ -60,12 +62,8 @@ std::string message(const Error& e);
 ///        otherwise.
 [[noreturn]] void throw_error(const Error& e);
 
-/// \brief Unwrap a result or throw. Used by the throwing wrappers.
-template <class T>
-T value_or_throw(Result<T>&& r) {
-    if (!r) [[unlikely]] throw_error(r.error());
-    return std::move(*r);
-}
+/// Unwrap a result or throw (qp/expected.hpp). Used by the throwing wrappers.
+using qp::value_or_throw;
 
 }  // namespace eqopt
 

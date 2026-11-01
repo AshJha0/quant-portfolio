@@ -23,7 +23,7 @@
 #include "eqvar/monte_carlo.hpp"
 #include "eqvar/parametric.hpp"
 #include "eqvar/returns.hpp"
-#include "latency.hpp"
+#include "qp/bench/latency.hpp"
 
 #if __has_include("eqvar/kernels.hpp")
 #include "eqvar/kernels.hpp"

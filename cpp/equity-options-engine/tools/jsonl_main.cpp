@@ -10,7 +10,7 @@
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/greeks.hpp"
 #include "eqopt/implied_vol.hpp"
-#include "jsonl.hpp"
+#include "qp/tools/jsonl.hpp"
 
 namespace {
 

@@ -26,6 +26,7 @@
 #include <utility>
 
 #include "eqopt/error.hpp"
+#include "qp/normal.hpp"
 
 namespace eqopt {
 
@@ -39,17 +40,12 @@ enum class OptionType { Call, Put };
 /// form loses all precision below ~x = -6.
 /// \param x Evaluation point.
 /// \return `P(Z <= x)` for `Z ~ N(0, 1)`.
-inline double norm_cdf(double x) noexcept {
-    return 0.5 * std::erfc(-x * 0.7071067811865475244008443621048490393);
-}
+inline double norm_cdf(double x) noexcept { return qp::norm_cdf_rcp(x); }
 
 /// \brief Standard normal PDF `exp(-x^2/2) / sqrt(2*pi)`.
 /// \param x Evaluation point.
 /// \return Density value.
-inline double norm_pdf(double x) noexcept {
-    constexpr double inv_sqrt_2pi = 0.3989422804014326779399460599343819;
-    return inv_sqrt_2pi * std::exp(-0.5 * x * x);
-}
+inline double norm_pdf(double x) noexcept { return qp::norm_pdf(x); }
 
 /// \brief Validate common Black–Scholes inputs.
 ///

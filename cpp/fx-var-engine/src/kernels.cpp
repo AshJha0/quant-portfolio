@@ -1,5 +1,7 @@
 #include "fxvar/kernels.hpp"
 
+#include "qp/matrix.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -273,22 +275,9 @@ Result<void> try_cholesky_lower(const Matrix& a, std::span<double> lower) noexce
   for (double v : a.data())
     if (!std::isfinite(v)) [[unlikely]]
       return fail("try_cholesky_lower: matrix contains NaN or infinite entries");
-  double* l = lower.data();
-  std::fill(l, l + n * n, 0.0);
   // Same loop order and arithmetic as cholesky()'s plain factorisation.
-  for (std::size_t j = 0; j < n; ++j) {
-    double diag = a(j, j);
-    for (std::size_t k = 0; k < j; ++k) diag -= l[j * n + k] * l[j * n + k];
-    if (!(diag > 0.0)) [[unlikely]]
-      return fail("try_cholesky_lower: matrix is not positive definite");
-    const double ljj = std::sqrt(diag);
-    l[j * n + j] = ljj;
-    for (std::size_t i = j + 1; i < n; ++i) {
-      double s = a(i, j);
-      for (std::size_t k = 0; k < j; ++k) s -= l[i * n + k] * l[j * n + k];
-      l[i * n + j] = s / ljj;
-    }
-  }
+  if (!qp::cholesky_raw(a.data().data(), n, lower.data())) [[unlikely]]
+    return fail("try_cholesky_lower: matrix is not positive definite");
   return {};
 }
 
