@@ -30,8 +30,9 @@
 //! Determinism: draws come from the crate's own
 //! [`Xoshiro256StarStar`](crate::rng::Xoshiro256StarStar) seeded with an
 //! explicit `u64`, and normals are produced by inverse-CDF transform —
-//! the same seed gives **bit-identical** results on every platform and
-//! release (asserted in the test suite).
+//! the same seed gives identical results on a given target and toolchain
+//! (asserted in the test suite). Across targets the last bits can differ:
+//! `f64::exp`/`ln` come from the platform libm.
 
 use crate::rng::Xoshiro256StarStar;
 use crate::{invalid, validate_inputs, FxResult, OptionType};
@@ -75,11 +76,10 @@ fn mean_of(x: &[f64]) -> f64 {
 ///   requires `t > 0`.
 /// * `option_type` — call or put on the base currency.
 /// * `n_paths` — number of terminal draws, in `[2, MAX_PATHS]` (rounded
-///   up to even when antithetic). With `antithetic` and `n_paths = 2`
-///   there is a single independent unit, so `std_error` is reported as
-///   `0.0` (no sample variance exists) and the confidence interval
-///   collapses to the point estimate.
-/// * `seed` — explicit RNG seed; the same seed is bit-reproducible.
+///   up to even when antithetic). At least two independent samples are
+///   required (an antithetic pair is one), three with the control
+///   variate; fewer return `InvalidInput`.
+/// * `seed` — explicit RNG seed; the same seed repeats on one target.
 /// * `antithetic`, `control_variate` — variance-reduction switches.
 ///
 /// # Errors
