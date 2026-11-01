@@ -4,12 +4,12 @@ These constrain the *structure* of the library rather than point values, so
 they hold for any correct implementation and catch sign flips, scale bugs and
 look-ahead leaks that point checks miss:
 
-* metric invariances — Sharpe/Sortino scale-invariant, drawdown homogeneous;
-* OU/spread algebra — affine equivariance, OLS/MLE agreement, half-life
+* metric invariances: Sharpe/Sortino scale-invariant, drawdown homogeneous;
+* OU/spread algebra: affine equivariance, OLS/MLE agreement, half-life
   recovery, kappa monotonicity;
-* cointegration — size and power, MacKinnon critical-value ordering;
-* signal state machine — sign symmetry, threshold monotonicity, arming;
-* backtest identities — cost decomposition, P&L homogeneity in gross,
+* cointegration: size and power, MacKinnon critical-value ordering;
+* signal state machine: sign symmetry, threshold monotonicity, arming;
+* backtest identities: cost decomposition, P&L homogeneity in gross,
   direction antisymmetry, and the no-look-ahead guarantee.
 """
 
@@ -163,24 +163,28 @@ class TestSpreadAlgebra:
         assert fit.kappa == pytest.approx(kappa, rel=0.15)
         assert fit.half_life == pytest.approx(np.log(2) / kappa, rel=0.15)
 
-    def test_ols_kappa_is_biased_downward_and_worse_for_slow_reversion(self):
-        """The Dickey-Fuller/Kendall small-sample bias: OLS on the AR(1)
-        under-estimates kappa, so estimated half-lives are too LONG. The bias
-        grows as reversion slows. Measured at n=12,000:
+    @pytest.mark.parametrize("n,kappa", [(12_000, 0.01), (2_000, 0.03)])
+    def test_ols_kappa_is_biased_upward_over_many_seeds(self, n, kappa):
+        """Kendall (1954): the AR(1) coefficient estimated with a fitted mean
+        is biased DOWN, E[phi_hat] - phi ~ -(1 + 3 phi) / n. kappa = -ln(phi)
+        is therefore biased UP and half-lives come out too SHORT.
 
-            true kappa   0.01    0.03    0.08    0.20
-            rel. bias   -20.5%  -10.5%  -5.9%   -3.5%
-
-        A desk must know the sign: a time stop set at k x the *estimated*
-        half-life is systematically too loose, letting losers run.
+        Monte Carlo over 200 seeds. The mean relative bias must
+        be positive by more than 3 Monte Carlo standard errors and agree with
+        the first-order Kendall value within 3 SE (plus 1 percentage point
+        for the second-order term).
         """
-        biases = []
-        for k in (0.01, 0.03, 0.08, 0.20):
-            fit = fit_ou_ols(syn.simulate_ou(12_000, kappa=k, sigma=1.0, seed=25))
-            biases.append(fit.kappa / k - 1.0)
-        assert all(b < 0 for b in biases)                  # always downward
-        assert all(a < b for a, b in zip(biases, biases[1:]))  # worse when slower
-        assert biases[0] < -0.10                            # materially so at k=0.01
+        reps = 200
+        rel = np.array([
+            fit_ou_ols(syn.simulate_ou(n, kappa=kappa, sigma=1.0, seed=5000 + s)).kappa
+            / kappa - 1.0
+            for s in range(reps)
+        ])
+        mean, se = rel.mean(), rel.std(ddof=1) / np.sqrt(reps)
+        assert mean > 3.0 * se
+        phi = np.exp(-kappa)
+        kendall = ((1.0 + 3.0 * phi) / n) / phi / kappa  # d kappa = -d phi / phi
+        assert abs(mean - kendall) < 3.0 * se + 0.01
 
     def test_faster_mean_reversion_gives_shorter_half_life(self):
         hls = [
@@ -209,7 +213,7 @@ class TestSpreadAlgebra:
         rather than the OU half-life: on a *pure random walk* OLS returns
         b slightly below 1 (finite-sample bias ~ -1.5/n), so the fit reports
         `mean_reverting=True` with a spurious half-life of several hundred
-        days. Nothing in the OU fit flags this — `engle_granger` must.
+        days. Nothing in the OU fit flags this: `engle_granger` must.
         """
         spurious = []
         for k in range(5):
@@ -220,7 +224,7 @@ class TestSpreadAlgebra:
             spurious.append(fit.half_life)
         # the "half-lives" are absurdly long - the tell a desk must screen on
         assert min(spurious) > 100.0
-        # and the honest gate does reject them as tradeable
+        # and the Engle-Granger gate does reject them as tradeable
         rw_a = np.cumsum(np.random.default_rng(500).standard_normal(1200))
         rw_b = np.cumsum(np.random.default_rng(501).standard_normal(1200))
         assert not engle_granger(rw_a, rw_b).cointegrated("5%")
@@ -250,7 +254,7 @@ class TestCointegrationProperties:
         # the size distortion this prevents is ~0.5 of a t-unit at 5%
         assert c1["5%"] - c2["5%"] > 0.4
 
-    def test_power_rejects_a_genuinely_cointegrated_pair(self):
+    def test_power_rejects_a_planted_cointegrated_pair(self):
         prices, truth = syn.cointegrated_pair(n=1500, beta=1.5, kappa=0.05, seed=31)
         res = engle_granger(prices.iloc[:, 0], prices.iloc[:, 1])
         assert res.cointegrated("5%")
@@ -265,7 +269,9 @@ class TestCointegrationProperties:
             prices, _ = syn.correlated_random_walks(n=800, rho=0.9, seed=100 + k)
             res = engle_granger(prices.iloc[:, 0], prices.iloc[:, 1])
             rejects += bool(res.cointegrated("5%"))
-        assert rejects <= trials * 0.25  # generous bound, but far from 100%
+        # 5% test, 40 trials: P(Binomial(40, 0.05) > 6) = 0.34%, so more than
+        # 6 rejections (15%) signals a size problem, not bad luck.
+        assert rejects <= 6
 
     def test_hedge_ratio_recovers_the_true_beta(self):
         prices, truth = syn.cointegrated_pair(n=2000, beta=2.25, seed=32)
@@ -283,7 +289,7 @@ class TestCointegrationProperties:
         assert adf_test(ou).stat < adf_test(rw).stat
 
     def test_engle_granger_is_direction_dependent(self):
-        """Regressing y on x and x on y are different tests — a documented
+        """Regressing y on x and x on y are different tests: a documented
         asymmetry of the two-step procedure (unlike Johansen)."""
         prices, _ = syn.cointegrated_pair(n=1200, beta=1.5, seed=35)
         y, x = prices.iloc[:, 0], prices.iloc[:, 1]

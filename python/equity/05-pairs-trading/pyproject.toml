@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "eq-pairs"
 version = "1.0.0"
-description = "Equity statistical pairs trading: correlation/SSD screens, Engle-Granger cointegration with MacKinnon EG critical values, Ornstein-Uhlenbeck spread modelling, z-score signals, event-driven backtest with transaction costs, walk-forward validation."
+description = "Equity statistical pairs trading on synthetic data: correlation/SSD screens, Engle-Granger cointegration with MacKinnon critical values, Ornstein-Uhlenbeck spreads, z-score signals, next-period-fill backtest with impact, borrow and financing costs, walk-forward validation, deflated Sharpe and PBO."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -14,13 +14,12 @@ dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "pandas>=2.0",
-    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]
 live = ["yfinance>=0.2"]
 plots = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "hypothesis>=6.100", "statsmodels>=0.14"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

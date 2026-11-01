@@ -53,7 +53,7 @@ class TestCorrelation:
 
     def test_price_corr_spurious_return_corr_not(self):
         """Two INDEPENDENT random walks: price-level correlation is
-        spuriously high while return correlation is ~0 — the reason the
+        spuriously high while return correlation is ~0: the reason the
         screen runs on returns (Granger-Newbold spurious correlation)."""
         price_corrs, ret_corrs = [], []
         for seed in range(8):
@@ -65,7 +65,7 @@ class TestCorrelation:
                 abs(pair_correlations(df, [("A", "B")], on="returns").iloc[0, 0])
             )
         assert np.mean(price_corrs) > 0.45  # spuriously large
-        assert np.mean(ret_corrs) < 0.10  # honest: near zero
+        assert np.mean(ret_corrs) < 0.10  # near zero
         assert np.mean(price_corrs) > 4 * np.mean(ret_corrs)
 
     def test_correlated_increments_pass_returns_screen(self):

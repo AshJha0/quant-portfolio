@@ -18,12 +18,12 @@ sigma / sqrt(2 kappa) in dollars.
 
 Two estimators are provided and cross-validated in tests:
 
-* :func:`fit_ou_ols` — OLS on the discretised AR(1) (closed form).
-* :func:`fit_ou_mle` — exact Gaussian maximum likelihood (numerical),
+* :func:`fit_ou_ols`: OLS on the discretised AR(1) (closed form).
+* :func:`fit_ou_mle`: exact Gaussian maximum likelihood (numerical),
   conditioning on s_0. For the AR(1) with freely-varying (c, b, variance)
   the conditional MLE point estimates of c and b coincide with OLS; the MLE
   differs only in the variance normalisation (1/n vs 1/(n-2)), so the two
-  must agree closely — a useful implementation check.
+  must agree closely: a useful implementation check.
 
 Adaptive hedge ratio ("Kalman-lite")
 ------------------------------------

@@ -48,6 +48,14 @@ class TestWindows:
         with pytest.raises(ValueError, match="step"):
             walk_forward_windows(500, formation=252, trading=63, step=0)
 
+    def test_partial_last_window_is_kept_on_request(self):
+        n = 252 + 63 * 4 + 51
+        full = walk_forward_windows(n, formation=252, trading=63)
+        part = walk_forward_windows(n, formation=252, trading=63, allow_partial=True)
+        assert len(full) == 4 and len(part) == 5
+        assert part[-1].trading_end == n - 1
+        assert part[-1].trading_start == full[-1].trading_end + 1
+
     def test_too_short_sample_no_windows(self):
         assert walk_forward_windows(200, formation=252, trading=63) == []
 
@@ -73,31 +81,37 @@ class TestWalkForwardPair:
         assert (windows["formation_end"] < windows["trading_start"]).all()
 
     def test_parameters_frozen_during_trading_window(self):
-        """Reconstruct a traded window's P&L from the recorded FORMATION
-        parameters only; it must match the walk-forward output exactly.
-        If any parameter were re-estimated inside the trading window the
-        reconstruction would diverge."""
+        """Mutation test. Scramble the prices inside one trading window: the
+        parameters recorded for that window (fitted on its formation window)
+        must not move, and the P&L of every earlier window must not move.
+        A re-estimate inside the trading window, or any use of future data,
+        would change one of them."""
         df, _ = self._pair()
         res, windows = walk_forward_pair(
             df["Y"], df["X"], formation=252, trading=63, costs=ZERO_COSTS
         )
-        y, x = align_pair(df["Y"], df["X"])
         traded = windows[windows["traded"]]
-        assert len(traded) > 0
-        row = traded.iloc[0]
-        y_t = y.loc[row["trading_start"] : row["trading_end"]]
-        x_t = x.loc[row["trading_start"] : row["trading_end"]]
-        s = compute_spread(y_t, x_t, row["beta"], row["alpha"])
-        z = (s - row["mu"]) / row["stat_std"]
-        rules = SignalRules(max_holding=time_stop_bars(row["half_life"], k=3.0))
-        target = generate_signals(z, rules)["position"]
-        recon = backtest_pair(
-            y_t, x_t, target, beta=row["beta"], costs=ZERO_COSTS
+        assert len(traded) >= 2
+        row = traded.iloc[1]
+        mutated = df.copy()
+        rng = np.random.default_rng(0)
+        mask = (mutated.index >= row["trading_start"]) & (mutated.index <= row["trading_end"])
+        mutated.loc[mask, "Y"] *= np.exp(rng.normal(0.0, 0.05, mask.sum()))
+        res2, windows2 = walk_forward_pair(
+            mutated["Y"], mutated["X"], formation=252, trading=63, costs=ZERO_COSTS
         )
-        got = res.daily.loc[row["trading_start"] : row["trading_end"], "net_pnl"]
-        np.testing.assert_allclose(
-            got.to_numpy(), recon.daily["net_pnl"].to_numpy(), atol=1e-9
+        k = row.name
+        for col in ("beta", "alpha", "mu", "stat_std", "half_life"):
+            assert windows2.loc[k, col] == windows.loc[k, col]
+        before = res.daily.index < row["trading_start"]
+        np.testing.assert_array_equal(
+            res.daily.loc[before, "net_pnl"].to_numpy(),
+            res2.daily.loc[res2.daily.index < row["trading_start"], "net_pnl"].to_numpy(),
         )
+        # and the mutation did reach the trading window
+        win = slice(row["trading_start"], row["trading_end"])
+        assert not np.allclose(res.daily.loc[win, "net_pnl"].to_numpy(),
+                               res2.daily.loc[win, "net_pnl"].to_numpy())
 
     def test_frozen_beta_recovers_truth(self):
         df, truth = self._pair()
@@ -160,3 +174,59 @@ class TestWalkForwardPortfolio:
         prices, truth = mixed_panel(n=100, seed=94)
         with pytest.raises(ValueError, match="too short"):
             walk_forward_portfolio(prices, [("CO0_Y", "CO0_X")], formation=252, trading=63)
+
+
+class TestDynamicHedgeAndScreens:
+    """The rolling-OLS and RLS hedge ratios and the SSD screen are wired into
+    walk_forward_portfolio and reported by the pipeline."""
+
+    def _panel(self):
+        from eq_pairs.universe import candidate_pairs
+
+        prices, truth = mixed_panel(n=900, seed=95)
+        return prices, candidate_pairs(list(prices.columns), truth.sectors)
+
+    @pytest.mark.parametrize("hedge", ["rolling", "rls"])
+    def test_dynamic_hedge_is_causal(self, hedge):
+        """Scrambling the last 40 days of the sample must not change any
+        position decided before them."""
+        prices, pairs = self._panel()
+        port, _ = walk_forward_portfolio(prices, pairs, formation=252, trading=63,
+                                         costs=ZERO_COSTS, max_pairs=4, hedge=hedge)
+        cut = prices.index[-40]
+        mutated = prices.copy()
+        rng = np.random.default_rng(1)
+        mutated.loc[cut:] *= np.exp(rng.normal(0, 0.05, mutated.loc[cut:].shape))
+        port2, _ = walk_forward_portfolio(mutated, pairs, formation=252, trading=63,
+                                          costs=ZERO_COSTS, max_pairs=4, hedge=hedge)
+        assert port is not None and port2 is not None
+        for a, b in zip(port.pairs, port2.pairs):
+            assert a.name == b.name
+            before = a.daily.index < cut
+            np.testing.assert_array_equal(a.daily.loc[before, "position"],
+                                          b.daily.loc[b.daily.index < cut, "position"])
+
+    def test_hedge_variants_trade_differently(self):
+        prices, pairs = self._panel()
+        res = {
+            h: walk_forward_portfolio(prices, pairs, formation=252, trading=63,
+                                      costs=ZERO_COSTS, max_pairs=4, hedge=h)[0]
+            for h in ("static", "rolling", "rls")
+        }
+        pnl = {h: r.net_pnl for h, r in res.items()}
+        assert len({round(v, 6) for v in pnl.values()}) == 3
+
+    def test_ssd_screen_keeps_top_n(self):
+        prices, pairs = self._panel()
+        _, rec = walk_forward_portfolio(prices, pairs, formation=252, trading=63,
+                                        costs=ZERO_COSTS, screen="ssd", ssd_top_n=5)
+        assert (rec["n_corr_survivors"] == 5).all()
+
+    def test_bad_options_raise(self):
+        prices, pairs = self._panel()
+        with pytest.raises(ValueError, match="hedge"):
+            walk_forward_portfolio(prices, pairs, hedge="kalman")
+        with pytest.raises(ValueError, match="screen"):
+            walk_forward_portfolio(prices, pairs, screen="cluster")
+        with pytest.raises(ValueError, match="hedge_window"):
+            walk_forward_portfolio(prices, pairs, hedge="rolling", hedge_window=5)

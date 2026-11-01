@@ -3,10 +3,9 @@
 Conventions: daily data, 252 trading days/year, returns are simple daily
 returns on allocated capital (net P&L / capital). Sharpe and Sortino are
 annualised with sqrt(252). The Sharpe standard error is reported both under
-the iid assumption and with a Lo (2002)-style correction for serial
-correlation (GMM variance with Bartlett/Newey-West weights): mean-reverting
-strategies produce autocorrelated daily P&L, and the iid SE overstates
-significance exactly when it matters.
+the iid assumption and with the Lo (2002) GMM correction for serial
+correlation (Newey-West weights, truncated lag window). Mean-reverting
+strategies produce autocorrelated daily P&L, where the iid SE is too small.
 """
 
 from __future__ import annotations
@@ -15,6 +14,8 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+
+from .research_stats import lo_sharpe_se
 
 __all__ = [
     "sharpe_ratio",
@@ -30,6 +31,8 @@ __all__ = [
 ]
 
 ArrayLike = Union[np.ndarray, pd.Series, list]
+
+_COST_COLUMNS = ("commission", "slippage", "impact", "borrow", "financing", "auction")
 
 
 def _to_array(returns: ArrayLike, min_len: int = 2) -> np.ndarray:
@@ -47,7 +50,7 @@ def sharpe_ratio(returns: ArrayLike, periods_per_year: int = 252) -> float:
     """Annualised Sharpe ratio mean/std * sqrt(periods) (rf = 0).
 
     Returns NaN when the return standard deviation is zero (all-cash or
-    constant P&L stream — a Sharpe is meaningless, not infinite).
+    constant P&L stream: a Sharpe is meaningless, not infinite).
     """
     r = _to_array(returns)
     if np.all(r == r[0]):  # constant stream: std is 0 up to rounding
@@ -69,17 +72,13 @@ def sharpe_se(
     iid case (lo_adjust=False): SE = sqrt((1 + SR_p^2 / 2) / T) * sqrt(P)
     with SR_p the per-period Sharpe (Lo 2002, eq. 12).
 
-    lo_adjust=True: the variance of the mean is scaled by the Bartlett
-    (Newey-West) long-run variance ratio
-    VR = 1 + 2 sum_{k=1}^{q} (1 - k/(q+1)) rho_k, i.e.
-    SE = sqrt((VR + SR_p^2 / 2) / T) * sqrt(P). With positively
-    autocorrelated P&L (typical of mean-reversion books) VR > 1 and the
-    adjusted SE exceeds the iid SE. Default q = floor(T^(1/3)).
+    lo_adjust=True: Lo (2002) GMM delta method with a Newey-West (Bartlett)
+    long-run variance truncated at ``q`` lags (default
+    ``floor(4 (T/100)^(2/9))``). Delegates to
+    :func:`eq_pairs.research_stats.lo_sharpe_se`. With positively
+    autocorrelated P&L (typical of mean-reversion books) it exceeds the iid SE.
 
-    Notes
-    -----
-    VR is floored at 0.05 to keep the SE defined under extreme negative
-    autocorrelation in tiny samples.
+    Returns NaN for a constant stream (the Sharpe ratio is undefined).
     """
     r = _to_array(returns, min_len=3)
     t = len(r)
@@ -88,20 +87,12 @@ def sharpe_se(
     sd = r.std(ddof=1)
     if sd == 0.0:
         return np.nan
-    sr_p = r.mean() / sd
-    vr = 1.0
     if lo_adjust:
-        if q is None:
-            q = max(1, int(np.floor(t ** (1.0 / 3.0))))
-        if q >= t:
+        if q is not None and q >= t:
             raise ValueError(f"q must be < T, got q={q}, T={t}")
-        d = r - r.mean()
-        denom = float(d @ d)
-        for k in range(1, q + 1):
-            rho_k = float(d[k:] @ d[:-k]) / denom
-            vr += 2.0 * (1.0 - k / (q + 1.0)) * rho_k
-        vr = max(vr, 0.05)
-    return float(np.sqrt((vr + 0.5 * sr_p**2) / t) * np.sqrt(periods_per_year))
+        return lo_sharpe_se(r, periods_per_year, lag=q)
+    sr_p = r.mean() / sd
+    return float(np.sqrt((1.0 + 0.5 * sr_p**2) / t) * np.sqrt(periods_per_year))
 
 
 def sortino_ratio(
@@ -215,7 +206,8 @@ def summary(
     ret = daily["net_pnl"].to_numpy(dtype=float) / capital
     equity = capital + daily["net_pnl"].cumsum().to_numpy(dtype=float)
     n = len(ret)
-    costs_total = float(daily[["commission", "slippage", "borrow"]].to_numpy().sum())
+    cost_cols = [c for c in _COST_COLUMNS if c in daily.columns]
+    costs_total = float(daily[cost_cols].to_numpy().sum())
     traded = float(ledger["notional"].sum()) if len(ledger) else 0.0
     all_cash = bool(np.all(ret == 0.0))
     return {
