@@ -168,7 +168,58 @@ to (`docs/VALIDATION.md`).
 
 ## Latency
 
-<!-- LATENCY_TABLE -->
+Per-call latency, `./build/bench_eqvar --out results.json` (raw records for
+every run, both compilers, before and after, are in
+[bench/results.json](bench/results.json)). Sizes and inputs are in
+`bench/bench_main.cpp`. Inputs are synthetic: P&L samples rotate through 16
+synthetic series and alpha steps through 0.5% to 5%, so no call repeats the
+previous one.
+
+| Kernel | Compiler | p50 before | p50 after | p99 before | p99 after | p99.9 after | max after |
+|---|---|---|---|---|---|---|---|
+| `historical_var n=1000` | GCC 15.2 | 5.6 µs | 5.5 µs | 12.3 µs | 12.3 µs | 40.7 µs | 479.5 µs |
+| `historical_var n=1000` | Clang 21.1 | 5.7 µs | 4.2 µs | 18.5 µs | 9.2 µs | 18.8 µs | 504.5 µs |
+| `historical_var n=10000` | GCC 15.2 | 74.8 µs | 70.6 µs | 227.2 µs | 169.9 µs | 258.1 µs | 1.51 ms |
+| `historical_var n=10000` | Clang 21.1 | 70.7 µs | 54.9 µs | 124.6 µs | 160.8 µs | 284.1 µs | 594.8 µs |
+| `expected_shortfall n=10000` | GCC 15.2 | 74.5 µs | 69.3 µs | 147.0 µs | 162.2 µs | 322.4 µs | 591.2 µs |
+| `expected_shortfall n=10000` | Clang 21.1 | 73.0 µs | 52.7 µs | 145.4 µs | 122.2 µs | 275.5 µs | 592.0 µs |
+| `age_weighted_var n=1000` | GCC 15.2 | 62.8 µs | 60.1 µs | 93.2 µs | 101.6 µs | 164.4 µs | 3.45 ms |
+| `age_weighted_var n=1000` | Clang 21.1 | 65.4 µs | 55.6 µs | 102.2 µs | 121.3 µs | 166.1 µs | 312.7 µs |
+| `parametric_var normal 50 assets` | GCC 15.2 | 2.1 µs | 2.1 µs | 3.1 µs | 3.4 µs | 17.4 µs | 280.2 µs |
+| `parametric_var normal 50 assets` | Clang 21.1 | 1.8 µs | 1.8 µs | 3.4 µs | 2.8 µs | 10.5 µs | 507.1 µs |
+| `parametric_var student-t 50 assets` | GCC 15.2 | 13.2 µs | 13.4 µs | 29.0 µs | 25.9 µs | 43.0 µs | 259.3 µs |
+| `parametric_var student-t 50 assets` | Clang 21.1 | 16.0 µs | 15.2 µs | 36.7 µs | 34.4 µs | 49.7 µs | 223.6 µs |
+| `cholesky 50x50` | GCC 15.2 | 9.3 µs | 9.8 µs | 16.0 µs | 17.2 µs | 33.2 µs | 73.3 µs |
+| `cholesky 50x50` | Clang 21.1 | 11.6 µs | 11.4 µs | 26.6 µs | 25.6 µs | 43.2 µs | 251.4 µs |
+| `cholesky 200x200` | GCC 15.2 | 612.0 µs | 607.3 µs | 1.01 ms | 1.68 ms | 2.09 ms | 2.16 ms |
+| `cholesky 200x200` | Clang 21.1 | 625.4 µs | 616.5 µs | 1.40 ms | 866.5 µs | 1.63 ms | 1.80 ms |
+| `portfolio_pnl 10000x50` | GCC 15.2 | 653.6 µs | 652.8 µs | 1.07 ms | 1.61 ms | 2.63 ms | 4.18 ms |
+| `portfolio_pnl 10000x50` | Clang 21.1 | 494.7 µs | 467.1 µs | 1.51 ms | 1.76 ms | 2.12 ms | 2.23 ms |
+| `monte_carlo_var 10k scen 50 assets` | GCC 15.2 | 42.64 ms | 42.72 ms | 54.92 ms | 69.88 ms | 69.88 ms | 75.28 ms |
+| `monte_carlo_var 10k scen 50 assets` | Clang 21.1 | 42.62 ms | 57.49 ms | 83.49 ms | 60.83 ms | 60.83 ms | 116.21 ms |
+| `kupiec + christoffersen n=1000` | GCC 15.2 | 2.7 µs | 2.3 µs | 6.5 µs | 6.7 µs | 12.8 µs | 94.9 µs |
+| `kupiec + christoffersen n=1000` | Clang 21.1 | 2.4 µs | 2.4 µs | 4.7 µs | 3.7 µs | 11.8 µs | 229.5 µs |
+| `try_historical_var n=1000 (ws)` | GCC 15.2 | - | 4.5 µs | - | 8.1 µs | 16.4 µs | 174.1 µs |
+| `try_historical_var n=1000 (ws)` | Clang 21.1 | - | 5.1 µs | - | 9.3 µs | 19.7 µs | 432.3 µs |
+| `try_historical_var n=10000 (ws)` | GCC 15.2 | - | 64.1 µs | - | 147.3 µs | 255.8 µs | 498.0 µs |
+| `try_historical_var n=10000 (ws)` | Clang 21.1 | - | 68.3 µs | - | 121.3 µs | 147.8 µs | 585.1 µs |
+| `try_parametric_var normal 50 assets` | GCC 15.2 | - | 1.9 µs | - | 5.0 µs | 10.7 µs | 100.9 µs |
+| `try_parametric_var normal 50 assets` | Clang 21.1 | - | 1.8 µs | - | 2.9 µs | 10.8 µs | 225.8 µs |
+| `try_cholesky_lower 50x50 (ws)` | GCC 15.2 | - | 9.5 µs | - | 16.4 µs | 31.3 µs | 79.4 µs |
+| `try_cholesky_lower 50x50 (ws)` | Clang 21.1 | - | 11.5 µs | - | 18.0 µs | 34.2 µs | 238.9 µs |
+| `try_cholesky_lower 200x200 (ws)` | GCC 15.2 | - | 606.7 µs | - | 1.14 ms | 1.32 ms | 1.39 ms |
+| `try_cholesky_lower 200x200 (ws)` | Clang 21.1 | - | 616.9 µs | - | 1.44 ms | 1.60 ms | 1.66 ms |
+| `try_matvec scenario pnl 10000x50` | GCC 15.2 | - | 376.2 µs | - | 1.02 ms | 1.28 ms | 1.47 ms |
+| `try_matvec scenario pnl 10000x50` | Clang 21.1 | - | 301.6 µs | - | 522.6 µs | 1.25 ms | 1.43 ms |
+| `try_monte_carlo_var_factored 10k 50` | GCC 15.2 | - | 39.52 ms | - | 57.94 ms | 57.94 ms | 74.16 ms |
+| `try_monte_carlo_var_factored 10k 50` | Clang 21.1 | - | 50.93 ms | - | 70.01 ms | 70.01 ms | 72.67 ms |
+
+Median of 3 runs per cell; each run times every call separately after a warm-up. Intel Core 5 120U (12 logical CPUs) under WSL2 on a shared laptop, process pinned to logical CPUs 2-9 with `taskset`; timer: rdtscp calibrated against steady_clock, with the median cost of an empty timed call (17-20 ns) subtracted; CMake Release (`-O3 -DNDEBUG`), no `-march=native`; 2026-11-01. "Before" is the previous commit of this engine built with the same benchmark source.
+
+How to read it. WSL2 and a shared machine add scheduling jitter: on
+sub-microsecond kernels, p50 differences below about 20% between "before"
+and "after" are inside run-to-run noise, and `max` is dominated by
+hypervisor preemption, not by the kernel. The selection-based VaR/ES and the Cholesky were already allocation-free in their inner loops and are unchanged within noise. The scenario P&L kernel `try_matvec` (four rows per pass) is about 1.5-1.7x faster than the old `portfolio_pnl`. The Monte Carlo VaR no longer stores the scenario panel (80 MB at 100k paths x 100 assets); at 10k x 50 its time is dominated by the normal draws, and single-run medians range from 33 to 85 ms for both the old and the new code, so the table does not resolve a difference.
 
 Run `./build/bench_eqvar [--out FILE] [--label NAME] [--quick]`. Each kernel
 is timed call by call with the time-stamp counter (calibrated against
