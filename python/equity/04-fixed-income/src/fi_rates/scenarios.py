@@ -14,20 +14,25 @@ shock; see docs/DESK_GUIDE.md for sources and narrative):
   +130bp (≈1.6% → ≈2.9%), front end anchored by the Fed.
 * ``hiking_2022`` — bear flattener, calendar 2022: 2y roughly +370bp,
   10y roughly +235bp as the Fed hiked; curve inverted.
-* ``gfc_2008`` — bull steepener flight-to-quality, 2008: 2y roughly -250bp
-  as cuts were priced in, 10y roughly -145bp, long end down less.
+* ``gfc_2008``: calendar 2008 flight to quality. Year-end 2007 to year-end
+  2008 changes in US Treasury constant-maturity yields (FRED series DGS3MO,
+  DGS2, DGS5, DGS10, DGS30), rounded: 3m -325bp, 2y -229bp, 5y -190bp,
+  10y -179bp, 30y -176bp. The long end rallied almost as much as the 10y.
 
-Carry & roll-down
------------------
-:func:`carry_rolldown` decomposes the horizon P&L of a bond **under an
-unchanged (static) curve**:
+Carry and roll-down
+-------------------
+:func:`carry_rolldown` decomposes the horizon P&L of a bond under an
+unchanged (static) curve:
 
-* carry     = coupons received over the horizon + change in accrued interest
-* roll-down = change in clean price as the bond "rolls down" the static curve
+* coupon income = coupons received over the horizon + change in accrued
+* funding       = dirty price x repo rate x ACT/360 horizon fraction
+* carry         = coupon income - funding
+* roll-down     = change in clean price on the static curve, split into
+  pull-to-par (clean price change at the bond's own constant yield) and
+  curve roll-down (the rest)
 
-Their sum equals the full static-curve horizon P&L (dirty-to-dirty plus
-cashflows) — the pull-to-par identity, tested in ``tests/test_scenarios.py``.
-Coupons are not reinvested (documented simplification).
+``carry + rolldown`` equals the static-curve horizon P&L of the position
+net of financing. Coupons are not reinvested.
 """
 
 from __future__ import annotations
@@ -133,9 +138,9 @@ HISTORICAL_SCENARIOS: dict[str, Scenario] = {
     "gfc_2008": Scenario(
         "gfc_2008",
         (0.25, 2.0, 5.0, 10.0, 30.0),
-        (-280.0, -250.0, -190.0, -145.0, -75.0),
-        "Bull steepener flight-to-quality, 2008 (approx.): front end -~250bp "
-        "on emergency easing; long end down less on supply/inflation.",
+        (-325.0, -229.0, -190.0, -179.0, -176.0),
+        "Flight to quality, calendar 2008: year-end 2007 to year-end 2008 "
+        "changes in UST CMT yields (FRED DGS3MO/DGS2/DGS5/DGS10/DGS30), rounded.",
     ),
 }
 
@@ -154,10 +159,11 @@ def scenario_pnl_table(
     """Full-revaluation scenario P&L vs the duration/convexity estimate.
 
     The estimate uses the portfolio's aggregate modified duration and
-    convexity with each scenario's *market-value-weighted average* pillar
-    shift as the proxy parallel move — deliberately crude for non-parallel
-    scenarios, to expose where duration-based estimates fail
-    (docs/VALIDATION.md).
+    convexity with one parallel-equivalent move per scenario: the average
+    pillar shift weighted by ``P(t_i) * t_i``, the DV01 of a unit zero-coupon
+    bond at each curve pillar. The weights belong to the curve, not to the
+    portfolio, so the estimate is crude for non-parallel scenarios. That is
+    the point of the comparison (docs/VALIDATION.md).
 
     Columns: ``pnl_full, pnl_dur_conv, error, avg_shift_bp``.
     """
@@ -169,7 +175,7 @@ def scenario_pnl_table(
     for sc in scenarios:
         shocked = apply_scenario(curve, sc)
         pnl_full = portfolio_value(positions, settlement, shocked) - base_mv
-        # DV01-weighted average shift as the parallel-equivalent move
+        # unit-ZCB-DV01 (P(t) * t) weighted average pillar shift
         shifts = sc.pillar_shifts(curve.times)
         weights = np.asarray(curve.df(curve.times)) * curve.times
         avg_dy = float(np.sum(shifts * weights) / np.sum(weights))
@@ -192,6 +198,7 @@ def carry_rolldown(
     horizon: dt.date,
     curve: DiscountCurve,
     z_spread: float = 0.0,
+    repo_rate: float = 0.0,
 ) -> dict[str, float]:
     """Carry and roll-down over ``[settlement, horizon]`` on a static curve.
 
@@ -199,14 +206,21 @@ def carry_rolldown(
     *same* curve with times measured from the horizon date (static-curve /
     unchanged-world assumption; no coupon reinvestment).
 
+    ``repo_rate`` (simple, ACT/360) finances the dirty price over the
+    horizon. The default 0 reproduces unfunded carry.
+
     Returns
     -------
     dict with keys
         ``price_start, price_horizon`` (dirty), ``coupons`` received in
-        ``(settlement, horizon]``, ``carry`` (coupons + accrued change),
-        ``rolldown`` (clean price change), ``total`` (= carry + rolldown =
-        full static horizon P&L).
+        ``(settlement, horizon]``, ``coupon_income`` (coupons + accrued
+        change), ``funding`` (repo cost), ``carry`` (coupon income -
+        funding), ``rolldown`` (clean price change), ``pull_to_par`` (clean
+        price change at constant own yield), ``curve_rolldown``
+        (rolldown - pull_to_par), ``total`` (= carry + rolldown).
     """
+    if not np.isfinite(repo_rate):
+        raise ValueError(f"repo_rate must be finite, got {repo_rate}")
     if not settlement < horizon <= bond.maturity:
         raise ValueError(
             f"require settlement < horizon <= maturity, got "
@@ -226,13 +240,42 @@ def carry_rolldown(
         )
     acc0 = accrued_interest(bond, settlement)
     acc_h = accrued_interest(bond, horizon)
-    carry = coupons + (acc_h - acc0)
+    coupon_income = coupons + (acc_h - acc0)
+    funding = dirty0 * repo_rate * (horizon - settlement).days / 360.0
+    carry = coupon_income - funding
     rolldown = (dirty_h - acc_h) - (dirty0 - acc0)
+    pull = _pull_to_par(bond, settlement, horizon, dirty0, acc0, acc_h)
     return {
         "price_start": dirty0,
         "price_horizon": dirty_h,
         "coupons": coupons,
+        "coupon_income": coupon_income,
+        "funding": funding,
         "carry": carry,
         "rolldown": rolldown,
+        "pull_to_par": pull,
+        "curve_rolldown": rolldown - pull,
         "total": carry + rolldown,
     }
+
+
+def _pull_to_par(
+    bond: FixedRateBond,
+    settlement: dt.date,
+    horizon: dt.date,
+    dirty0: float,
+    acc0: float,
+    acc_h: float,
+) -> float:
+    """Clean-price change at the bond's own constant continuous yield."""
+    from scipy.optimize import brentq
+
+    flows = bond_cashflows(bond, settlement)
+    t = np.array([(d - settlement).days / 365.0 for d, _ in flows])
+    cf = np.array([a for _, a in flows])
+    y = brentq(lambda r: float(np.sum(cf * np.exp(-r * t))) - dirty0, -0.5, 5.0,
+               xtol=1e-15)
+    keep = np.array([d > horizon for d, _ in flows])
+    th = t[keep] - (horizon - settlement).days / 365.0
+    dirty_h = float(np.sum(cf[keep] * np.exp(-y * th)))
+    return (dirty_h - acc_h) - (dirty0 - acc0)

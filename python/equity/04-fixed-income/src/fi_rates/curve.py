@@ -22,8 +22,11 @@ Interpolation schemes
     Linear in zero rate ``z(t)``.  Simple but produces the well-known
     sawtooth in the forward curve (demonstrated in ``docs/VALIDATION.md``).
 ``pchip_zero``
-    Monotone cubic (PCHIP) on zero rates — a "monotone-convex-lite" scheme:
-    C1 forwards without the overshoot of a natural cubic spline.
+    Monotone cubic (PCHIP) on zero rates. The zero curve is C1 and has no
+    spline overshoot. The instantaneous forward ``f = z + t z'`` is only C0:
+    it is continuous but kinks at the pillars. PCHIP is non-local, so a
+    pillar bump moves the two neighbouring segments as well. It is not
+    Hagan-West monotone-convex and does not guarantee positive forwards.
 
 Extrapolation policy
 --------------------
