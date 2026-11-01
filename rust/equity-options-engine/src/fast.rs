@@ -293,7 +293,7 @@ pub fn try_crr_price(
 ) -> Result<f64, ErrorCode> {
     check_inputs(s, k, t, sigma)?;
     check_rates(r, q)?;
-    if n_steps < 1 || n_steps > MAX_STEPS {
+    if !(1..=MAX_STEPS).contains(&n_steps) {
         return Err(ErrorCode::StepsOutOfRange);
     }
     let sign = option_type.sign();

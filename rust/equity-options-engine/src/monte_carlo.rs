@@ -311,8 +311,8 @@ impl PathParams {
 /// must start at an even stream position.
 #[inline]
 fn normals_from_raw(raw: &[u64], out: &mut [f64]) {
-    for (pair, u) in out.chunks_mut(2).zip(raw.chunks_exact(2)) {
-        let (z0, z1) = box_muller(uniform_from_bits(u[0]), uniform_from_bits(u[1]));
+    for (pair, &[u0, u1]) in out.chunks_mut(2).zip(raw.as_chunks::<2>().0) {
+        let (z0, z1) = box_muller(uniform_from_bits(u0), uniform_from_bits(u1));
         match pair {
             [a, b] => {
                 *a = z0;
