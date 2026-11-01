@@ -20,6 +20,9 @@
 #ifndef EQOPT_BINOMIAL_HPP
 #define EQOPT_BINOMIAL_HPP
 
+#include <cstddef>
+#include <span>
+
 #include "eqopt/black_scholes.hpp"
 
 namespace eqopt {
@@ -70,6 +73,23 @@ double early_exercise_premium(double S, double K, double T, double r,
                               double sigma, double q = 0.0,
                               OptionType type = OptionType::Put,
                               int n_steps = 500);
+
+/// \brief Doubles of workspace try_crr_price() needs for `n_steps`:
+///        `3 n + 2` (2n+1 node exercise values plus n+1 option values).
+constexpr std::size_t crr_workspace_size(int n_steps) noexcept {
+    return n_steps < 1 ? 0 : 3 * static_cast<std::size_t>(n_steps) + 2;
+}
+
+/// \brief noexcept CRR price in a caller-owned workspace.
+///
+/// Same arguments, value and error policy as crr_price(); the tree arrays
+/// live in `workspace`, which must hold at least crr_workspace_size(n_steps)
+/// doubles (Errc::WorkspaceTooSmall otherwise). No allocation, so a desk
+/// process sizes one buffer for its largest tree at start-up and reuses it.
+[[nodiscard]] Result<double> try_crr_price(double S, double K, double T, double r,
+                                           double sigma, double q, OptionType type,
+                                           ExerciseStyle exercise, int n_steps,
+                                           std::span<double> workspace) noexcept;
 
 }  // namespace eqopt
 

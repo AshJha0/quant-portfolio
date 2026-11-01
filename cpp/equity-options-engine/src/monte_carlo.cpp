@@ -4,9 +4,6 @@
 #include <cmath>
 #include <cstddef>
 #include <random>
-#include <stdexcept>
-#include <thread>
-#include <vector>
 
 #include "eqopt/black_scholes.hpp"
 
@@ -78,73 +75,107 @@ double normal_from_u64(std::uint64_t u64) noexcept {
     return x;
 }
 
-MCResult mc_price(double S, double K, double T, double r, double sigma,
-                  double q, OptionType type, std::size_t n_paths,
-                  bool antithetic, bool control_variate, std::uint64_t seed,
-                  unsigned threads) {
-    validate_inputs(S, K, T, sigma);
-    validate_rates(r, q);
+namespace {
+
+struct McTask {
+    double S, K, disc, sign, drift, vol_sqrt_t;
+    std::uint64_t seed;
+    std::size_t base, half;
+    unsigned n_chunks;
+    double* payoff;
+    double* control;
+};
+
+/// One deterministic chunk of draws. Antithetic and control-variate choices
+/// are template parameters, so the inner loop has no per-path branch.
+/// `x > 0 ? x : 0` is std::fmax(x, 0.0) for every x (NaN gives 0 in both;
+/// -0.0 gives +0.0, which sums identically) and compiles to one maxsd.
+template <bool Antithetic, bool Control>
+void simulate_chunk(const McTask& k, unsigned c) noexcept {
+    const std::size_t lo = k.base * c / k.n_chunks;
+    const std::size_t hi = k.base * (c + 1) / k.n_chunks;
+    std::mt19937_64 rng(splitmix64(k.seed + 0x51ed2701ULL * c));
+    for (std::size_t i = lo; i < hi; ++i) {
+        const double z = normal_from_u64(rng());
+        const double s_up = k.S * std::exp(k.drift + k.vol_sqrt_t * z);
+        const double x_up = k.sign * (s_up - k.K);
+        k.payoff[i] = k.disc * (x_up > 0.0 ? x_up : 0.0);
+        if constexpr (Control) k.control[i] = k.disc * s_up;
+        if constexpr (Antithetic) {
+            const double s_dn = k.S * std::exp(k.drift - k.vol_sqrt_t * z);
+            const double x_dn = k.sign * (s_dn - k.K);
+            k.payoff[k.half + i] = k.disc * (x_dn > 0.0 ? x_dn : 0.0);
+            if constexpr (Control) k.control[k.half + i] = k.disc * s_dn;
+        }
+    }
+}
+
+template <bool Antithetic, bool Control>
+void chunk_entry(void* ctx, unsigned c) noexcept {
+    simulate_chunk<Antithetic, Control>(*static_cast<const McTask*>(ctx), c);
+}
+
+}  // namespace
+
+Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma,
+                              double q, OptionType type, std::size_t n_paths,
+                              bool antithetic, bool control_variate, std::uint64_t seed,
+                              unsigned threads, McWorkspace& ws, ThreadPool* pool) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
     const std::size_t units = antithetic ? (n_paths + 1) / 2 : n_paths;
     const std::size_t needed = control_variate ? 3 : 2;
-    if (units < needed) {
-        throw std::invalid_argument(
-            "n_paths gives too few independent samples for a standard error "
-            "(need 2, or 3 with the control variate; an antithetic pair is one)");
-    }
-    if (threads == 0) {
-        throw std::invalid_argument("threads must be >= 1");
-    }
+    if (units < needed) [[unlikely]] return std::unexpected(Error{Errc::TooFewPaths});
+    if (threads == 0) [[unlikely]] return std::unexpected(Error{Errc::BadThreads});
     if (T == 0.0 || sigma == 0.0) {
-        const double exact = bs_price(S, K, T, r, sigma, q, type);
-        return MCResult{exact, 0.0, exact, exact, n_paths};
+        const auto exact = try_bs_price(S, K, T, r, sigma, q, type);
+        if (!exact) return std::unexpected(exact.error());
+        return MCResult{*exact, 0.0, *exact, *exact, n_paths};
     }
-
-    const double disc = std::exp(-r * T);
-    const double sign = type == OptionType::Call ? 1.0 : -1.0;
-    const double drift = (r - q - 0.5 * sigma * sigma) * T;
-    const double vol_sqrt_t = sigma * std::sqrt(T);
 
     // `base` independent draws; with antithetic each is mirrored to -Z.
     const std::size_t half = antithetic ? (n_paths + 1) / 2 : 0;
     const std::size_t base = antithetic ? half : n_paths;
     const std::size_t n_eff = antithetic ? 2 * half : n_paths;
-
-    std::vector<double> payoff(n_eff);
-    std::vector<double> control;
-    if (control_variate) control.resize(n_eff);
+    if (ws.payoff_.size() < n_eff || (control_variate && ws.control_.size() < n_eff))
+        [[unlikely]] {
+        return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_mc_price",
+                                     static_cast<double>(ws.payoff_.size()),
+                                     static_cast<double>(n_eff)});
+    }
+    double* payoff = ws.payoff_.data();
+    double* control = control_variate ? ws.control_.data() : nullptr;
 
     // Deterministic chunking: chunk c covers [c*base/W, (c+1)*base/W) with
     // its own RNG stream seeded from splitmix64(seed, c). For a fixed
-    // (seed, threads) the draws — and therefore every output bit — are
-    // identical run-to-run.
-    const unsigned n_workers = static_cast<unsigned>(
-        std::min<std::size_t>(threads, base));
-    auto worker = [&](unsigned c) {
-        const std::size_t lo = base * c / n_workers;
-        const std::size_t hi = base * (c + 1) / n_workers;
-        std::mt19937_64 rng(splitmix64(seed + 0x51ed2701ULL * c));
-        for (std::size_t i = lo; i < hi; ++i) {
-            const double z = normal_from_u64(rng());
-            const double s_up = S * std::exp(drift + vol_sqrt_t * z);
-            payoff[i] = disc * std::fmax(sign * (s_up - K), 0.0);
-            if (control_variate) control[i] = disc * s_up;
-            if (antithetic) {
-                const double s_dn = S * std::exp(drift - vol_sqrt_t * z);
-                payoff[half + i] = disc * std::fmax(sign * (s_dn - K), 0.0);
-                if (control_variate) control[half + i] = disc * s_dn;
-            }
-        }
-    };
-    if (n_workers == 1) {
-        worker(0);
+    // (seed, threads) the draws, and therefore every output bit, are the
+    // same run to run and whatever pool executes the chunks.
+    McTask task{S,
+                K,
+                std::exp(-r * T),
+                type == OptionType::Call ? 1.0 : -1.0,
+                (r - q - 0.5 * sigma * sigma) * T,
+                sigma * std::sqrt(T),
+                seed,
+                base,
+                half,
+                static_cast<unsigned>(std::min<std::size_t>(threads, base)),
+                payoff,
+                control};
+    ThreadPool::TaskFn fn = antithetic
+                                ? (control_variate ? &chunk_entry<true, true>
+                                                   : &chunk_entry<true, false>)
+                                : (control_variate ? &chunk_entry<false, true>
+                                                   : &chunk_entry<false, false>);
+    if (pool != nullptr && task.n_chunks > 1) {
+        pool->run(task.n_chunks, fn, &task);
     } else {
-        std::vector<std::thread> pool;
-        pool.reserve(n_workers);
-        for (unsigned c = 0; c < n_workers; ++c) pool.emplace_back(worker, c);
-        for (auto& t : pool) t.join();
+        for (unsigned c = 0; c < task.n_chunks; ++c) fn(&task, c);
     }
 
     // Reduce to one value per independent draw first (the antithetic pair
@@ -155,7 +186,11 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
     if (antithetic) {
         for (std::size_t i = 0; i < half; ++i) {
             payoff[i] = 0.5 * (payoff[i] + payoff[half + i]);
-            if (control_variate) control[i] = 0.5 * (control[i] + control[half + i]);
+        }
+        if (control_variate) {
+            for (std::size_t i = 0; i < half; ++i) {
+                control[i] = 0.5 * (control[i] + control[half + i]);
+            }
         }
         n_samples = half;
     }
@@ -181,7 +216,7 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
             payoff[i] -= beta * (control[i] - control_mean);
         }
     }
-    const double* samples = payoff.data();
+    const double* samples = payoff;
 
     double mean = 0.0;
     for (std::size_t i = 0; i < n_samples; ++i) mean += samples[i];
@@ -193,11 +228,24 @@ MCResult mc_price(double S, double K, double T, double r, double sigma,
     }
     const double se = std::sqrt(var / static_cast<double>(n_samples - 1) /
                                 static_cast<double>(n_samples));
-    if (!std::isfinite(mean) || !std::isfinite(se)) {
-        throw std::invalid_argument(
-            "Monte Carlo estimate is not finite (simulated prices overflow)");
+    if (!std::isfinite(mean) || !std::isfinite(se)) [[unlikely]] {
+        return std::unexpected(Error{Errc::McNotFinite});
     }
     return MCResult{mean, se, mean - kZ95 * se, mean + kZ95 * se, n_eff};
+}
+
+MCResult mc_price(double S, double K, double T, double r, double sigma,
+                  double q, OptionType type, std::size_t n_paths,
+                  bool antithetic, bool control_variate, std::uint64_t seed,
+                  unsigned threads) {
+    McWorkspace ws;
+    // Validation errors take precedence over sizing, as before.
+    if (auto e = try_validate_inputs(S, K, T, sigma); !e) throw_error(e.error());
+    if (auto e = try_validate_rates(r, q); !e) throw_error(e.error());
+    ws.reserve(n_paths, control_variate);
+    ThreadPool* pool = threads > 1 ? &default_thread_pool() : nullptr;
+    return value_or_throw(try_mc_price(S, K, T, r, sigma, q, type, n_paths, antithetic,
+                                       control_variate, seed, threads, ws, pool));
 }
 
 }  // namespace eqopt

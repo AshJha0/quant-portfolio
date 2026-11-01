@@ -25,6 +25,8 @@
 #include <cmath>
 #include <utility>
 
+#include "eqopt/error.hpp"
+
 namespace eqopt {
 
 /// Option payoff direction.
@@ -121,9 +123,102 @@ std::pair<double, double> d1_d2(double S, double K, double T, double r,
 double bs_price(double S, double K, double T, double r, double sigma,
                 double q = 0.0, OptionType type = OptionType::Call);
 
-/// rief Return `value`, or throw std::invalid_argument naming `what` if it
+/// \brief Return `value`, or throw std::invalid_argument naming `what` if it
 /// is not finite (a discount factor or forward overflowed for finite inputs).
 double require_finite_result(double value, const char* what);
+
+// ------------------------------------------------------------------------
+// noexcept kernel API. Same conventions, edge cases and arithmetic as the
+// throwing functions above (which are thin wrappers over these), so the
+// returned values are bit-for-bit the same. No allocation, no exceptions.
+// ------------------------------------------------------------------------
+
+/// \brief Check `x >= 0` and finite; on failure the error names `field`.
+[[nodiscard]] inline Result<void> try_check_nonneg(double x, const char* field) noexcept {
+    if (!std::isfinite(x) || x < 0.0) [[unlikely]] {
+        return std::unexpected(Error{Errc::NegativeOrNonFinite, field, x});
+    }
+    return {};
+}
+
+/// \brief noexcept form of validate_inputs().
+[[nodiscard]] inline Result<void> try_validate_inputs(double S, double K, double T,
+                                                      double sigma) noexcept {
+    if (auto e = try_check_nonneg(S, "S"); !e) [[unlikely]] return e;
+    if (auto e = try_check_nonneg(K, "K"); !e) [[unlikely]] return e;
+    if (auto e = try_check_nonneg(T, "T"); !e) [[unlikely]] return e;
+    return try_check_nonneg(sigma, "sigma");
+}
+
+/// \brief noexcept form of validate_rates().
+[[nodiscard]] inline Result<void> try_validate_rates(double r, double q = 0.0) noexcept {
+    if (!std::isfinite(r) || !std::isfinite(q)) [[unlikely]] {
+        return std::unexpected(Error{Errc::NonFiniteRate, "r", r, q});
+    }
+    return {};
+}
+
+/// \brief noexcept form of require_finite_result().
+[[nodiscard]] inline Result<double> try_finite(double value, const char* what) noexcept {
+    if (!std::isfinite(value)) [[unlikely]] {
+        return std::unexpected(Error{Errc::NonFiniteResult, what});
+    }
+    return value;
+}
+
+/// \brief `(d1, d2)` without validation; caller guarantees S, K, T, sigma > 0.
+inline std::pair<double, double> d1_d2_unchecked(double S, double K, double T, double r,
+                                                 double sigma, double q) noexcept {
+    const double sqrt_t = std::sqrt(T);
+    const double d1 =
+        (std::log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t);
+    return {d1, d1 - sigma * sqrt_t};
+}
+
+/// \brief noexcept form of d1_d2().
+[[nodiscard]] inline Result<std::pair<double, double>> try_d1_d2(
+    double S, double K, double T, double r, double sigma, double q = 0.0) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) [[unlikely]] {
+        return std::unexpected(Error{Errc::NotStrictlyPositive, "", S, K, T, sigma});
+    }
+    return d1_d2_unchecked(S, K, T, r, sigma, q);
+}
+
+/// \brief Black-Scholes-Merton price on inputs the caller has validated
+///        (finite; S, K, T, sigma >= 0; r, q finite). Returns the raw value,
+///        which is non-finite if a discount factor overflows.
+inline double bs_price_unchecked(double S, double K, double T, double r, double sigma,
+                                 double q, OptionType type) noexcept {
+    if (T == 0.0) [[unlikely]] return intrinsic_value(S, K, type);
+    const double disc_s = S * std::exp(-q * T);
+    const double disc_k = K * std::exp(-r * T);
+    const bool call = type == OptionType::Call;
+    if (K == 0.0) [[unlikely]] return call ? disc_s : 0.0;
+    if (S == 0.0) [[unlikely]] return call ? 0.0 : disc_k;
+    if (sigma == 0.0) [[unlikely]] {
+        const double sign = call ? 1.0 : -1.0;
+        return std::fmax(sign * (disc_s - disc_k), 0.0);
+    }
+    const auto [d1, d2] = d1_d2_unchecked(S, K, T, r, sigma, q);
+    return call ? disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2)
+                : disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1);
+}
+
+/// \brief noexcept form of bs_price(): the same value, or the error the
+///        throwing form raises.
+[[nodiscard]] inline Result<double> try_bs_price(double S, double K, double T, double r,
+                                                 double sigma, double q = 0.0,
+                                                 OptionType type = OptionType::Call) noexcept {
+    if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
+        return std::unexpected(e.error());
+    }
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    return try_finite(bs_price_unchecked(S, K, T, r, sigma, q, type), "bs_price");
+}
 
 }  // namespace eqopt
 
