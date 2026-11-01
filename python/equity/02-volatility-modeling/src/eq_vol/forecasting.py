@@ -18,7 +18,7 @@ Forecast conventions
   persistent beta; the simulation estimator is unbiased, general, and exactly
   reproducible via the explicit seed (package policy: every stochastic
   component is seeded).
-* EWMA forecasts are flat at sigma2_{T+1} (IGARCH with zero intercept — no
+* EWMA forecasts are flat at sigma2_{T+1} (IGARCH with zero intercept: no
   level to mean-revert to; see :mod:`eq_vol.ewma`).
 * Historical forecasts are flat at the trailing ``window`` mean of squared
   returns (the implicit "model" of a rolling realized-vol desk estimate).
@@ -60,7 +60,7 @@ def _persistence_recursion(v1: float, omega: float, p: float, horizon: int) -> n
     """E_T[sigma2_{T+k}] for k=1..h via v_k = omega + p v_{k-1}.
 
     Monotone convergence to omega/(1-p) for p < 1; linear drift for p = 1
-    (IGARCH); explosive for p > 1 — the recursion is exact in all cases.
+    (IGARCH); explosive for p > 1: the recursion is exact in all cases.
     """
     out = np.empty(horizon)
     out[0] = v1
@@ -178,8 +178,8 @@ def term_structure(
     Returns
     -------
     pandas.DataFrame indexed by horizon k with:
-        forward_vol_annual — sqrt(252 * E_T[sigma2_{T+k}]) (per-period);
-        avg_vol_annual — sqrt(252 * mean(E_T[sigma2_{T+1..k}])), the constant
+        forward_vol_annual: sqrt(252 * E_T[sigma2_{T+k}]) (per-period);
+        avg_vol_annual: sqrt(252 * mean(E_T[sigma2_{T+1..k}])), the constant
         vol over [T, T+k] consistent with the cumulative forecast variance
         (the number an option desk compares to implied vol of expiry k).
     """
@@ -206,7 +206,7 @@ class RollingForecastResult(NamedTuple):
     test_returns : realised returns at those positions
     n_refits : number of successful re-estimations
     n_failed_refits : refits that failed to converge (previous parameters
-        were reused — surfaced here, never silent)
+        were reused: surfaced here, never silent)
     """
 
     forecasts: np.ndarray
@@ -226,6 +226,7 @@ def _one_step_variance(
     lam: float,
     hist_window: int,
     init_method: str,
+    dist: str = "normal",
 ) -> float:
     """One-step-ahead variance forecast given fixed parameters and history."""
     if model == "historical":
@@ -241,7 +242,7 @@ def _one_step_variance(
         a_eff = params["alpha"] + (params["gamma"] if hist[-1] < 0 else 0.0)
         return float(params["omega"] + a_eff * hist[-1] ** 2 + params["beta"] * s2[-1])
     if model == "egarch":
-        eaz = expected_abs_z("normal")
+        eaz = expected_abs_z(dist, params.get("nu", np.nan))
         s2 = egarch_recursion(
             hist, params["omega"], params["alpha"], params["gamma"], params["beta"], b, eaz
         )
@@ -268,6 +269,7 @@ def rolling_one_step_forecasts(
     lam: float = 0.94,
     hist_window: int = 21,
     init_method: str = "backcast",
+    dist: str = "normal",
 ) -> RollingForecastResult:
     """Rolling out-of-sample 1-step-ahead variance forecasts.
 
@@ -275,7 +277,7 @@ def rolling_one_step_forecasts(
     sigma2_t using only returns[0..t-1] (expanding scheme) or the last
     ``window`` returns (rolling scheme). GARCH-family parameters are
     re-estimated every ``refit_every`` days (desk-realistic cadence: daily
-    refits are unnecessary — parameters move slowly — while the conditional
+    refits are unnecessary: parameters move slowly: while the conditional
     variance recursion *is* updated every day with the fixed parameters).
 
     Parameters
@@ -288,6 +290,15 @@ def rolling_one_step_forecasts(
     refit_every : int
         Re-estimation frequency in days (ignored for historical/ewma, which
         have no estimated parameters).
+    init_method : {"backcast", "sample"}
+        Pre-sample variance convention, used for both the fits and the
+        daily filter.
+    dist : {"normal", "t"}
+        Innovation distribution of the GARCH-family fits.
+
+    Each day re-runs the variance recursion over the full history, so the
+    cost is O(n^2) in the sample length. That is fine for a few thousand
+    days of one series and slow for a large cross-section.
 
     Raises
     ------
@@ -305,6 +316,8 @@ def rolling_one_step_forecasts(
             f"unknown model {model!r}; use 'historical', 'ewma', 'garch', "
             f"'egarch' or 'gjr'"
         )
+    if dist not in ("normal", "t"):
+        raise ValueError(f"unknown dist {dist!r}; use 'normal' or 't'")
     if refit_every < 1:
         raise ValueError(f"refit_every must be >= 1, got {refit_every}")
     n = r.size
@@ -318,11 +331,15 @@ def rolling_one_step_forecasts(
         lo = max(0, t - window) if scheme == "rolling" else 0
         hist = r[lo:t]
         if needs_fit and i % refit_every == 0:
-            res = _FIT_FUNCS[model](hist, raise_on_failure=(i == 0))
+            res = _FIT_FUNCS[model](
+                hist, dist=dist, init_method=init_method, raise_on_failure=(i == 0)
+            )
             if res.converged:
                 params = res.params
                 n_refits += 1
             else:
-                n_failed += 1  # keep previous params — surfaced in the result
-        forecasts[i] = _one_step_variance(model, params, hist, lam, hist_window, init_method)
+                n_failed += 1  # keep previous params: surfaced in the result
+        forecasts[i] = _one_step_variance(
+            model, params, hist, lam, hist_window, init_method, dist
+        )
     return RollingForecastResult(forecasts, test_index, r[test_index], n_refits, n_failed)

@@ -24,7 +24,8 @@ class TestRecursion:
         omega, alpha, gamma, beta, b = -0.5, 0.12, -0.06, 0.94, 1e-4
         eaz = math.sqrt(2 / math.pi)
         fast = egarch_recursion(r, omega, alpha, gamma, beta, b, eaz)
-        ls = math.log(b)
+        # pre-sample shock at its expectation: ln sigma2_0 = omega + beta ln b
+        ls = omega + beta * math.log(b)
         slow = np.empty(r.size)
         slow[0] = math.exp(ls)
         for tt in range(1, r.size):

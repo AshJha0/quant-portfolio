@@ -103,3 +103,19 @@ def test_slice_accessor_and_invalid_inputs():
         generate_chain(moneyness_lo=-0.5)
     with pytest.raises(ValueError, match="expiries"):
         generate_chain(expiries=(0.0, 1.0))
+
+
+def test_heston_chain_is_priced_independently_of_the_calibrator(monkeypatch):
+    """Calibration prices with the Gauss-Legendre fast path; the ground-truth
+    chain must come from a different pricer so a shared pricer bug cannot
+    cancel out of the recovery test.  Fails if generation calls the GL path."""
+    import eq_surface.data.synthetic as syn
+    import eq_surface.heston as hz
+
+    def boom(*a, **k):
+        raise AssertionError("generator used the calibrator's pricer")
+
+    monkeypatch.setattr(hz, "heston_call_gl", boom)
+    monkeypatch.setattr(syn, "heston_call_gl", boom, raising=False)
+    chain = generate_chain(mode="heston", seed=1, expiries=(0.25, 1.0))
+    assert len(chain.df) > 0

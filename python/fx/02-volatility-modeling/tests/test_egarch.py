@@ -48,7 +48,7 @@ class TestRecovery:
         assert egarch_fit.params["gamma"] < -2.0 * se
 
     def test_positive_leverage_recovered_too(self):
-        """Asymmetry of the opposite sign (EM depreciation) -- gamma > 0."""
+        """Asymmetry of the opposite sign (EM depreciation): gamma > 0."""
         r = syn.simulate_egarch(10_000, omega=-0.6, alpha=0.15, gamma=0.10, beta=0.94, seed=64)
         fit = fit_egarch(r)
         assert fit.params["gamma"] == pytest.approx(0.10, abs=0.04)
@@ -56,7 +56,7 @@ class TestRecovery:
 
     def test_leverage_sign_flips_under_pair_inversion(self, egarch_sim, egarch_fit):
         """Inverting the pair negates returns, so the fitted gamma flips sign
-        while alpha/beta are unchanged -- the safe-haven quote-direction fact."""
+        while alpha/beta are unchanged: the safe-haven quote-direction fact."""
         fit_inv = fit_egarch(-egarch_sim)
         assert fit_inv.params["gamma"] == pytest.approx(-egarch_fit.params["gamma"], abs=0.01)
         assert fit_inv.params["alpha"] == pytest.approx(egarch_fit.params["alpha"], abs=0.01)

@@ -14,6 +14,7 @@ import pytest
 from fx_rates.arbitrage import CIPQuotes, detect_cip_arbitrage, no_arb_bounds
 from fx_rates.bootstrap import (
     basis_adjusted_curve,
+    basis_swap_par_spread,
     bootstrap_curve,
     curve_from_fx_forwards,
     df_from_deposit,
@@ -67,8 +68,12 @@ class TestMarketStateImmutability:
         f0 = market_forward(simple_market, 5.0)
         wide = simple_market.replace(basis_spreads=((1.0, -0.05), (5.0, -0.05)))
         f1 = market_forward(wide, 5.0)
-        # -50bp of basis over 5y must move the 5y forward materially...
-        assert f1 / f0 == pytest.approx(np.exp(0.0475 * 5.0), rel=1e-9)
+        # the replaced copy must price exactly like a freshly built market...
+        fresh = MarketState(simple_market.spot, simple_market.domestic_curve,
+                            simple_market.foreign_curve, ((1.0, -0.05), (5.0, -0.05)),
+                            simple_market.pair)
+        assert f1 == market_forward(fresh, 5.0)
+        assert f1 / f0 > 1.2  # -500bp of basis moves the 5y forward materially
         # ...and must not disturb the original object.
         assert market_forward(simple_market, 5.0) == pytest.approx(f0, abs=0.0)
 
@@ -258,6 +263,10 @@ class TestBasisEconomics:
                                                             simple_market):
         tenors = (0.5, 1.0, 2.0, 5.0)
         fwds = [(t, market_forward(simple_market, t)) for t in tenors]
+        # the forward inversion is the zero-spread definition of the basis
+        with pytest.warns(DeprecationWarning):
+            legacy = simple_market.replace(basis_model="zero_spread")
+        fwds = [(t, market_forward(legacy, t)) for t in tenors]
         implied = implied_basis_from_forwards(
             simple_market.spot, simple_market.domestic_curve,
             simple_market.foreign_curve, fwds)
@@ -276,9 +285,15 @@ class TestBasisEconomics:
                                implied_curve, t) == pytest.approx(f, rel=1e-14)
 
     def test_basis_table_recovers_the_quoted_spread(self, simple_market):
+        # the table's forward-implied spread is the zero-spread equivalent;
+        # the float-float par spread is recovered by basis_swap_par_spread
         tab = forward_points_table(simple_market, [1.0, 5.0])
-        assert tab.loc[0, "basis_spread_bp"] == pytest.approx(-15.0, abs=1e-8)
-        assert tab.loc[1, "basis_spread_bp"] == pytest.approx(-25.0, abs=1e-8)
+        assert tab.loc[0, "basis_spread_bp"] == pytest.approx(-15.0, abs=0.5)
+        assert tab.loc[1, "basis_spread_bp"] == pytest.approx(-25.0, abs=0.5)
+        for t, s in ((1.0, -0.0015), (5.0, -0.0025)):
+            assert basis_swap_par_spread(simple_market.foreign_curve,
+                                         simple_market.foreign_curve_adjusted,
+                                         t) == pytest.approx(s, abs=1e-13)
         # Negative basis => market points above CIP points.
         assert (tab["basis_points_effect"] > 0).all()
 

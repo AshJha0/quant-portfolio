@@ -75,7 +75,7 @@ class TestStructure:
     def test_seasonal_returns_business_days_only(self):
         r = syn.simulate_seasonal_returns(500, seed=128)
         assert isinstance(r.index, pd.DatetimeIndex)
-        assert (r.index.dayofweek < 5).all()
+        assert (r.index.day_of_week < 5).all()
 
     def test_validation(self):
         with pytest.raises(ValueError):

@@ -4,7 +4,7 @@ Two generation modes:
 
 * ``mode="heston"`` -- prices generated from a *known* Heston parameter set
   (:data:`DEFAULT_TRUE_HESTON` by default) via the Fourier pricer.  This gives
-  calibration a ground truth to recover, which is the only honest way to
+  calibration a ground truth to recover, which is the only way to
   validate a calibrator.
 * ``mode="svi"`` -- implied vols generated from hand-built arbitrage-free SVI
   slices with a realistic equity shape: mild put skew, smile curvature, skew
@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from ..black_scholes import bs_price
-from ..heston import HestonParams, heston_call_gl
+from ..heston import HestonParams, heston_call_p1p2
 from ..smile import SVIParams, svi_total_variance
 
 __all__ = ["ChainData", "generate_chain", "DEFAULT_TRUE_HESTON", "default_svi_slices"]
@@ -170,7 +170,11 @@ def generate_chain(
         k = np.log(strikes / F)
 
         if mode == "heston":
-            mids = np.asarray(heston_call_gl(spot, strikes, float(T), rate, div_yield, p_true))
+            # Adaptive P1/P2 quadrature: an independent pricer from the
+            # Gauss-Legendre fast path the calibrator uses, so recovery tests
+            # do not share a pricer bug with the calibration.
+            mids = np.array([heston_call_p1p2(spot, float(kk), float(T), rate, div_yield, p_true)
+                             for kk in strikes])
         else:
             w = np.asarray(svi_total_variance(k, svi_true[float(T)]))
             vols = np.sqrt(w / T)

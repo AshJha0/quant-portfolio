@@ -4,8 +4,12 @@ basis-adjusted curve construction."""
 import numpy as np
 import pytest
 
+from fx_rates.fxforward import market_forward
+
 from fx_rates.bootstrap import (
     basis_adjusted_curve,
+    basis_discount_curve,
+    basis_swap_par_spread,
     bootstrap_curve,
     curve_from_fx_forwards,
     deposit_rate_from_df,
@@ -107,12 +111,22 @@ class TestBasisAdjustedCurve:
         )
         bt = np.array([t for t, _ in quotes.basis_spreads])
         bv = np.array([s for _, s in quotes.basis_spreads])
+        # The forward inversion gives the zero-spread equivalent of the
+        # float-float par spread. The two definitions differ by the gap
+        # between T and the spread annuity: measured < 0.3bp in the normal
+        # regime and 2.3bp in the crisis regime.
         for t, s in implied:
-            assert s == pytest.approx(float(np.interp(t, bt, bv)), abs=1e-12)
+            assert s == pytest.approx(float(np.interp(t, bt, bv)), abs=0.5e-4)
+        # The float-float bootstrap reprices every quoted basis swap at par.
+        disc = basis_discount_curve(quotes.true_foreign, quotes.basis_spreads)
+        for t, s in quotes.basis_spreads:
+            assert basis_swap_par_spread(quotes.true_foreign, disc, t) == pytest.approx(
+                s, abs=1e-14)
 
     def test_curve_from_fx_forwards_matches_adjusted_curve(self, quotes, market):
+        fwds = [(t, market_forward(market, t)) for t, _ in quotes.fx_forward_quotes]
         implied_curve = curve_from_fx_forwards(
-            market.spot, market.domestic_curve, quotes.fx_forward_quotes
+            market.spot, market.domestic_curve, fwds
         )
         t = implied_curve.times
         assert np.max(

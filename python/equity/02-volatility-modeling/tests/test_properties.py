@@ -3,9 +3,9 @@
 Complements test_edge_cases.py (which covers degenerate/NaN/short/crisis
 inputs) with checks that constrain the *shape* of the estimators:
 
-* scale equivariance — multiplying returns by c must multiply every variance
+* scale equivariance: multiplying returns by c must multiply every variance
   estimate by c^2 and leave alpha/beta/persistence untouched;
-* monotonicity — EWMA responsiveness in lambda, realized vol in the scale of
+* monotonicity: EWMA responsiveness in lambda, realized vol in the scale of
   the data, the GARCH forecast term structure in the horizon;
 * news-impact-curve geometry (asymmetry direction, minimum location);
 * vol -> 0 and vol -> infinity regimes (contract item 6);
@@ -188,7 +188,7 @@ class TestNewsImpactGeometry:
 class TestExtremeVolRegimes:
     def test_near_zero_vol_series_fits_without_underflow(self):
         """1e-6 annualised vol: daily variance ~4e-15. Everything must stay
-        positive and finite — no underflow to zero variance."""
+        positive and finite: no underflow to zero variance."""
         r = syn.simulate_gbm_returns(1500, sigma_annual=1e-6, seed=712)
         res = fit_garch(r)
         assert res.converged

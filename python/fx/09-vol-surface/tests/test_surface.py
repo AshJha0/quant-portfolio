@@ -33,13 +33,20 @@ def test_delta_interpolation_exact_at_pillars(eurusd):
 
 
 def test_vol_strike_vs_vol_delta_round_trip(eurusd_surface):
+    """At the fixed point, K's delta in each bracketing slice's own
+    convention reads back the vol that produced it (1y spot / 2y forward
+    brackets mix conventions)."""
     surf = eurusd_surface
     for K, T in [(1.05, 0.2), (1.10, 0.6), (1.16, 1.4), (1.25, 0.8)]:
         v = surf.vol(K, T)
         r_d, r_f = surf.rates(T)
         cp = 1 if K >= surf.forward(T) else -1
-        d = gk_delta(surf.S, K, T, r_d, r_f, v, cp, surf.delta_convention)
-        assert surf.vol_delta(abs(d), T, cp) == pytest.approx(v, abs=1e-9)
+        sls, wts = surf._bracket(T)
+        w = 0.0
+        for sl, lam in zip(sls, wts):
+            d = gk_delta(surf.S, K, T, r_d, r_f, v, cp, surf.slice_convention(sl))
+            w += lam * surf._slice_vol_at_delta(sl, abs(d), cp) ** 2 * sl.T
+        assert math.sqrt(w / T) == pytest.approx(v, abs=1e-9)
 
 
 def test_total_variance_interp_between_pillars(eurusd_surface):
@@ -79,8 +86,10 @@ def test_planted_calendar_arbitrage_detected():
     surf = build_surface(market)
     report = surf.calendar_arbitrage_report()
     assert len(report) > 0
-    assert any(v["coordinate"] == "atm" for v in report)
+    assert any(abs(v["k"]) < 0.05 for v in report)  # near-ATM moneyness
     assert all(v["w_to"] < v["w_from"] for v in report)
+    delta_view = surf.delta_calendar_report()
+    assert any(v["coordinate"] == "atm" for v in delta_view)
 
 
 def test_single_expiry_surface():

@@ -141,7 +141,10 @@ for pair, surf in (("EURUSD", surf_eur), ("USDJPY", surf_jpy)):
     atm_ts = {sl.label: surf.vol_atm(sl.T) * 100 for sl in surf.slices}
     print(f"{pair}: ATM term structure (%): "
           + "  ".join(f"{k}={v:.2f}" for k, v in atm_ts.items()))
-    print(f"{pair}: calendar-arbitrage violations at fixed delta: {len(report)}")
+    miss = max(abs(surf.vol_atm(sl.T) - sl.vols["atm"]) for sl in surf.slices)
+    print(f"{pair}: max |surface ATM - quoted ATM| = {miss * 1e4:.2f} bp "
+          f"(SVI pillar misfit {max(sl.pillar_fit_error for sl in surf.slices) * 1e4:.2f} bp)")
+    print(f"{pair}: calendar-arbitrage violations at fixed forward moneyness: {len(report)}")
 q = [(1.12, 0.4), (1.05, 1.5)]
 print("Query API: " + ", ".join(
     f"vol(K={K}, T={T:.2f}y) = {surf_eur.vol(K, T):.4%}" for K, T in q))
@@ -175,7 +178,7 @@ print("kappa/xi ridge: vanillas pin xi^2/kappa, not each separately "
       f"{res_gt.params.xi ** 2 / res_gt.params.kappa:.4f}).")
 
 # ------------------------------------------------------------- 6. digitals
-hdr("6. Digital (one-touch approx): flat GK vs vanna-volga vs Heston")
+hdr("6. European digital: flat GK vs vanna-volga vs Heston")
 h_eur = results["EURUSD"].params
 T_d, K_d = 0.5, 1.15  # topside digital, ~15d region
 ms6 = eur.slices[3]  # 6m slice

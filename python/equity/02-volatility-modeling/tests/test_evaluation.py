@@ -71,7 +71,7 @@ class TestMincerZarnowitz:
 
     def test_r2_positive_for_informative_forecast(self, het_data):
         # note: R^2 is heavily attenuated by proxy noise (var(z^2) = 2 for
-        # Gaussian z) even for the TRUE conditional variance — this is why
+        # Gaussian z) even for the TRUE conditional variance: this is why
         # low MZ R^2 does not mean a bad vol forecast (see docs)
         sigma2, proxy = het_data
         assert mincer_zarnowitz(sigma2, proxy).r2 > 0.01
@@ -98,7 +98,7 @@ class TestDieboldMariano:
         rate = rejections / reps
         assert 0.02 < rate < 0.09  # near nominal 5%, loose tolerance
 
-    def test_detects_genuinely_better_forecast(self, het_data):
+    def test_detects_better_forecast(self, het_data):
         sigma2, proxy = het_data
         good = qlike_loss(sigma2, proxy)
         bad = qlike_loss(np.full_like(sigma2, sigma2.mean()), proxy)

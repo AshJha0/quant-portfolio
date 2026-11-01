@@ -15,26 +15,31 @@ Vega convention: under Heston the natural first-order vol sensitivity is
 ``dV/dv0 = vega_BS * d(sigma_imp)/d(v0)``; ATM and short-dated,
 ``sigma_imp ~ sqrt(v0)`` so ``d sigma/d v0 ~ 1/(2 sqrt(v0))``.
 
-Sticky-strike vs sticky-delta smile dynamics (and the delta correction)
------------------------------------------------------------------------
-When spot moves, what happens to the smile?
+Smile dynamics and the delta correction
+---------------------------------------
+When spot moves, what happens to the smile?  The hedge ratio depends on
+the answer.
 
-* **Sticky-strike**: the vol at each *fixed strike K* is unchanged;
-  the hedger's delta is the plain BS delta at sigma(K).  Typical of
-  short-horizon, range-bound markets.
-* **Sticky-delta / sticky-moneyness**: the smile is a function of moneyness
-  ``k = ln(K/F)`` and *rides along with the forward*; a spot move re-prices
-  each strike at a new point on the same moneyness smile.  Then
+* Sticky-strike: the vol at each fixed strike K is unchanged.  The delta
+  is the plain BS delta at sigma(K).
+* Sticky-moneyness (sticky-delta): the smile is a function of
+  ``k = ln(K/F)`` and moves with the forward.  Then
+  ``d(sigma)/dS = -(1/S) d(sigma)/dk`` and
+  ``dV/dS = delta_BS + vega_BS * d(sigma)/dS``.  With negative equity skew
+  (``d sigma/dk < 0``) this delta is above the sticky-strike delta.
+  Heston is homogeneous of degree one in (S, K), so at fixed v0 its smile
+  is sticky-moneyness and its spot delta sits on the sticky-moneyness
+  value (tests/test_greeks.py pins this).
+* Local vol: implied vol at K is roughly the local vol averaged between
+  S and K (Hagan et al. 2002), so ``d(sigma)/dS ~ +(1/S) d(sigma)/dk``.
+  The smile moves against spot, and with negative skew the local-vol
+  delta is below the sticky-strike delta: the opposite of sticky-moneyness.
 
-      dV/dS = delta_BS + vega_BS * d(sigma)/dS,
-      d(sigma)/dS = (d sigma/d k) * (dk/dS) = -(1/S) * d(sigma)/dk,
-
-  so with the usual negative equity skew (d sigma/dk < 0) the sticky-
-  moneyness delta is *higher* than sticky-strike delta for calls.  Local-vol
-  models imply smile dynamics of roughly this type (Derman's "sticky local
-  vol" regimes); Heston's own dynamics sit in between.
-  :func:`smile_adjusted_delta` computes both deltas from a smile slope so
-  the desk can see the size of the correction.
+Empirically, equity index skew in a sell-off behaves closer to local vol
+than to sticky-moneyness: implied vols at fixed strike rise as spot falls.
+The minimum-variance delta for index options therefore sits below the BS
+delta.  :func:`smile_adjusted_delta` returns all three deltas from the
+smile slope.
 """
 
 from __future__ import annotations
@@ -184,12 +189,17 @@ def smile_adjusted_delta(
     dict
         ``delta_sticky_strike`` (plain BS delta -- smile fixed in K),
         ``delta_sticky_moneyness`` (BS delta + vega * dsigma/dS with
-        ``dsigma/dS = -dsigma_dk / S`` -- smile fixed in moneyness, i.e. the
-        local-vol-style regime), and ``adjustment`` (their difference).
-        With negative skew the adjustment is positive for calls.
+        ``dsigma/dS = -dsigma_dk / S``: smile fixed in moneyness, which is
+        Heston's regime at fixed v0), ``adjustment`` (sticky-moneyness minus
+        sticky-strike; positive for calls under negative skew) and
+        ``delta_local_vol_approx`` (BS delta + vega * dsigma_dk / S: the
+        Hagan et al. 2002 first-order local-vol rule, below sticky-strike
+        under negative skew).
     """
-    if sigma <= 0.0:
-        raise ValueError(f"sigma must be positive, got {sigma}")
+    if not (np.isfinite(sigma) and sigma > 0.0):
+        raise ValueError(f"sigma must be positive and finite, got {sigma}")
+    if not np.isfinite(dsigma_dk):
+        raise ValueError(f"dsigma_dk must be finite, got {dsigma_dk}")
     delta_ss = bs_delta(S, K, T, r, q, sigma, "call")
     vega = bs_vega(S, K, T, r, q, sigma)
     dsig_dS = -dsigma_dk / S
@@ -198,4 +208,5 @@ def smile_adjusted_delta(
         "delta_sticky_strike": float(delta_ss),
         "delta_sticky_moneyness": float(delta_sm),
         "adjustment": float(delta_sm - delta_ss),
+        "delta_local_vol_approx": float(delta_ss + vega * dsigma_dk / S),
     }

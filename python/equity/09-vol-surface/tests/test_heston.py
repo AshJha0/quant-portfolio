@@ -192,3 +192,17 @@ def test_invalid_pricing_inputs_raise(mild_heston):
         heston_call_damped(S, 100.0, 1.0, R, Q, mild_heston, alpha=0.0)
     with pytest.raises(ValueError, match="method"):
         heston_call(S, 100.0, 1.0, R, Q, mild_heston, method="fft2")
+
+
+def test_negative_price_beyond_roundoff_is_nan_not_zero():
+    """The old code floored any negative Fourier price at 0, hiding an
+    integration failure; only round-off negatives are floored now."""
+    import warnings as _w
+
+    from eq_surface.heston import _floor_roundoff
+
+    assert float(_floor_roundoff(-1e-14, 100.0)) == 0.0
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        assert np.isnan(float(_floor_roundoff(-1e-3, 100.0)))
+    assert any(issubclass(r.category, RuntimeWarning) for r in rec)

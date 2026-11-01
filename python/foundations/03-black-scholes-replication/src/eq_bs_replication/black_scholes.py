@@ -1,23 +1,19 @@
 """Black-Scholes-Merton pricing, built from scratch.
 
-This module deliberately depends on nothing but the standard library
-``math`` module (specifically ``math.erf`` for the standard normal CDF).
-No ``scipy.stats.norm``, no ``numpy``. That is a documented methodology
-decision (see ``docs/METHODOLOGY.md``), not an oversight: the point of
-this project is to *prove out* the model by re-deriving it from theory,
-and importing ``scipy.stats.norm.cdf`` would let the normal-CDF piece of
-the derivation go unexamined. ``math.erf`` is itself a from-scratch
-numerical primitive (Abramowitz-Stegun-style rational approximation
-under the hood in CPython), so building on it -- rather than on a
-pre-packaged option-pricing routine -- keeps the whole chain from "why
-does the price come out this way" down to a single well-understood
-special function.
+This module depends on nothing but the standard library ``math`` module
+(``math.erfc`` for the standard normal CDF). No ``scipy.stats.norm``,
+no ``numpy``. The point of this project is to re-derive the model from
+theory, so the normal CDF is written out here instead of imported.
+``math.erfc`` comes from the platform C library. The CDF is written as
+``0.5 * erfc(-x / sqrt(2))`` so the left tail keeps full relative
+accuracy: the form ``0.5 * (1 + erf(x / sqrt(2)))`` cancels to zero
+below about x = -8.3.
 
 This module also intentionally works with **scalar Python floats**, not
 NumPy arrays. That is the right trade-off *here*: readability and a
 direct, one-line-per-formula mapping to the maths, at the cost of being
 slow if you wanted to price an entire chain in a hot loop. A vectorised,
-production-grade sibling of this exact model (batched arrays, analytic
+faster sibling of this exact model (batched arrays, analytic
 Greeks including vanna/volga, CRR/Black-76/Monte Carlo cross-validation,
 C++/Rust performance twins) lives at
 ``python/equity/01-options-pricing``; use that for anything
@@ -69,7 +65,7 @@ __all__ = [
 
 
 def _norm_cdf(x: float) -> float:
-    """Standard normal CDF N(x), computed via ``math.erf``.
+    """Standard normal CDF N(x), computed via ``math.erfc``.
 
     Parameters
     ----------
@@ -83,11 +79,11 @@ def _norm_cdf(x: float) -> float:
 
     Notes
     -----
-    N(x) = 0.5 * (1 + erf(x / sqrt(2))). No scipy needed for pricing --
-    this is the entire dependency-minimalism design decision in one
-    line.
+    N(x) = 0.5 * erfc(-x / sqrt(2)). This keeps full relative accuracy
+    in the left tail. The algebraically equal 0.5 * (1 + erf(x / sqrt(2)))
+    loses all relative accuracy below x = -8 and returns 0 below -8.3.
     """
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+    return 0.5 * math.erfc(-x / math.sqrt(2.0))
 
 
 def _norm_pdf(x: float) -> float:
@@ -371,74 +367,61 @@ def put_greeks(S: float, K: float, r: float, sigma: float, T: float) -> Greeks:
 
 
 def implied_volatility(price: float, S: float, K: float, r: float, T: float,
-                       tol: float = 1e-8, max_iter: int = 100) -> float:
-    """Invert the call formula for sigma via Newton-Raphson.
+                       tol: float = 1e-8, max_iter: int = 100,
+                       option_type: str = "call") -> float:
+    """Implied volatility of a European call or put.
 
-    Vega is the derivative of price w.r.t. sigma, so the Newton update
-    is ``sigma -= (model_price - market_price) / vega``.
+    The quote is first mapped to the out-of-the-money side by put-call
+    parity (``P = C - S + K exp(-rT)``). An in-the-money option's price is
+    mostly intrinsic value, so inverting it directly gives a vol that
+    matches the price to tolerance but carries no information. The OTM
+    price holds the same time value without the intrinsic part.
 
-    Falls back to bisection when vega is tiny (deep ITM/OTM) or when
-    Newton fails to converge in ``max_iter`` steps. The bisection
-    bracket starts at ``[1e-6, 5.0]`` (0.0001% to 500% volatility) and
-    is **doubled upward** until it contains the target price, so a quote
-    implying a volatility above 500% is still inverted rather than
-    silently pinned to the bracket's edge.
+    The OTM price is then inverted by Newton-Raphson on vega, with a
+    bisection fallback whose upper bracket doubles from 5.0 until it
+    spans the target.
 
-    Conditioning -- the part that matters more than the algorithm
-    ------------------------------------------------------------------
-    Implied volatility is only as well-determined as vega is large.
-    Near either no-arbitrage bound, vega collapses toward zero and a
-    whole range of volatilities reprices the option to within any
-    reasonable tolerance:
-
-    - **At (or just above) intrinsic value**, the true implied vol is 0,
-      but ``|dPrice/dsigma|`` is so small that the returned sigma can be
-      of order 1e-2 while still matching the input price to ``1e-8``.
-      The number is *correct to tolerance* and *meaningless as a vol*.
-    - **At the upper bound ``C = S``**, the true implied vol is infinite;
-      the routine returns whatever large finite value first matches to
-      tolerance.
-
-    Both are documented in ``docs/VALIDATION.md`` and unit-tested. A desk
-    would not quote either: the practical rule is that implied vol from a
-    quote whose vega is below some floor (a few cents per vol point) is
-    not information, and such strikes are dropped from surface fits
-    rather than fitted with a wide error bar.
+    If the time value is below what double precision can resolve
+    (``64 * eps * max(S, K)``), the vol is not determined by the quote.
+    The function then warns (``RuntimeWarning``) and returns ``nan``.
 
     Parameters
     ----------
     price : float
-        Observed (market) call price to invert.
+        Observed option price.
     S, K, r, T : float
         See :func:`call_price`.
     tol : float, default 1e-8
-        Convergence tolerance on the **price residual** (not on sigma)
-        for the Newton-Raphson stage. See the conditioning note above:
-        a tight price tolerance does not imply a tight vol tolerance.
+        Absolute cap on the OTM price residual of the Newton stage. The
+        stage also requires the residual to be below
+        ``1e-10 * OTM price + 64 eps max(S, K)``, so a small OTM price is
+        still matched to about ten significant figures.
     max_iter : int, default 100
-        Maximum Newton-Raphson iterations before falling back to
-        bisection.
+        Newton iterations before falling back to bisection.
+    option_type : {"call", "put"}, default "call"
+        Which option ``price`` refers to.
 
     Returns
     -------
     float
-        Implied annualised volatility sigma such that
-        ``call_price(S, K, r, sigma, T) == price`` (to tolerance).
+        Implied annualised volatility, or ``nan`` (with a warning) when
+        the quote has no resolvable time value.
 
     Raises
     ------
     ValueError
-        If ``price`` violates the model-free no-arbitrage bounds for a
-        call, ``max(S - K*exp(-rT), 0) <= C <= S``. A price outside
-        these bounds cannot correspond to any volatility, so refusing
-        to invent one is intentional (see ``docs/VALIDATION.md``
-        numerical-limits section). Also raised for non-positive ``S``,
-        ``K`` or ``T``, and for rate/maturity combinations whose
-        discount factor overflows.
+        For non-finite inputs, non-positive ``S``, ``K`` or ``T``, an
+        unknown ``option_type``, or a price outside the no-arbitrage
+        bounds (call: ``max(S - K e^{-rT}, 0) <= C <= S``; put:
+        ``max(K e^{-rT} - S, 0) <= P <= K e^{-rT}``).
     """
+    import warnings
+
     for name, value in (("price", price), ("S", S), ("K", K), ("r", r), ("T", T)):
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite, got {value}")
+    if option_type not in ("call", "put"):
+        raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
     if S <= 0 or K <= 0:
         raise ValueError(f"S and K must be strictly positive (got S={S}, K={K})")
     if T <= 0:
@@ -446,37 +429,60 @@ def implied_volatility(price: float, S: float, K: float, r: float, T: float,
             f"T must be strictly positive (got T={T}); at expiry the price is "
             "intrinsic value and carries no volatility information at all"
         )
-    # No-arbitrage bounds for a call: max(S - K e^{-rT}, 0) <= C <= S
-    intrinsic = max(S - K * _discount_factor(r, T), 0.0)
-    if price < intrinsic - 1e-12 or price > S + 1e-12:
+    kdf = K * _discount_factor(r, T)
+    if option_type == "call":
+        lower, upper = max(S - kdf, 0.0), S
+    else:
+        lower, upper = max(kdf - S, 0.0), kdf
+    if price < lower - 1e-12 or price > upper + 1e-12:
         raise ValueError(
             f"price {price} violates no-arbitrage bounds "
-            f"[{intrinsic}, {S}] for S={S}, K={K}, r={r}, T={T}"
+            f"[{lower}, {upper}] for {option_type} S={S}, K={K}, r={r}, T={T}"
         )
 
-    sigma = 0.2  # standard starting guess
+    # Map to the OTM side by parity.
+    use_put = kdf < S  # call is ITM when S > K e^{-rT}
+    if option_type == "call":
+        otm_price = price - S + kdf if use_put else price
+    else:
+        otm_price = price if use_put else price + S - kdf
+    pricer = put_price if use_put else call_price
+    otm_upper = kdf if use_put else S
+
+    resolution = 64.0 * 2.220446049250313e-16 * max(S, K)
+    if otm_price <= resolution:
+        warnings.warn(
+            f"time value {otm_price:.3e} is below numerical resolution "
+            f"{resolution:.1e}; implied vol is not determined, returning nan",
+            RuntimeWarning, stacklevel=2,
+        )
+        return math.nan
+    if otm_price >= otm_upper - resolution:
+        warnings.warn(
+            "price is at the upper no-arbitrage bound; implied vol is "
+            "unbounded, returning nan",
+            RuntimeWarning, stacklevel=2,
+        )
+        return math.nan
+
+    sigma = 0.2
     for _ in range(max_iter):
-        diff = call_price(S, K, r, sigma, T) - price
-        if abs(diff) < tol:
+        diff = pricer(S, K, r, sigma, T) - otm_price
+        if abs(diff) <= min(tol, 1e-10 * otm_price + resolution):
             return sigma
-        vega = call_greeks(S, K, r, sigma, T).vega
+        vega = call_greeks(S, K, r, sigma, T).vega  # same for put and call
         if vega < 1e-10:
-            break  # Newton unreliable -> bisection below
+            break
         sigma = max(1e-6, sigma - diff / vega)
 
-    # Bisection fallback. Expand the upper bracket until it spans the
-    # target price, so an extreme quote is inverted rather than clamped
-    # to an arbitrary 500% ceiling. The call price is increasing in sigma
-    # and bounded above by S, so this terminates unless price == S (which
-    # the bound check above has already narrowed to the degenerate case).
     lo, hi = 1e-6, 5.0
     for _ in range(20):
-        if call_price(S, K, r, hi, T) >= price:
+        if pricer(S, K, r, hi, T) >= otm_price:
             break
         lo, hi = hi, hi * 2.0
     for _ in range(200):
         mid = 0.5 * (lo + hi)
-        if call_price(S, K, r, mid, T) > price:
+        if pricer(S, K, r, mid, T) > otm_price:
             hi = mid
         else:
             lo = mid

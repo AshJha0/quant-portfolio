@@ -82,10 +82,12 @@ class TestParameterRecovery:
         assert res.params["nu"] == pytest.approx(8.0, abs=1.5)
         assert res.params["alpha"] == pytest.approx(0.05, abs=0.02)
 
-    def test_variance_targeting_matches_sample_variance(self, garch_sim):
+    def test_variance_targeting_matches_sample_second_moment(self, garch_sim):
+        # The zero-mean recursion runs on r^2, so the target is mean(r^2),
+        # not the demeaned np.var (which differs by mean(r)^2).
         res = fit_garch(garch_sim.returns, variance_targeting=True)
         assert res.extra["unconditional_variance"] == pytest.approx(
-            float(np.var(garch_sim.returns)), rel=1e-10
+            float(np.mean(garch_sim.returns ** 2)), rel=1e-10
         )
         assert np.isnan(res.std_errors["omega"])  # not freely estimated
         assert np.isfinite(res.std_errors["alpha"]) and res.std_errors["alpha"] > 0

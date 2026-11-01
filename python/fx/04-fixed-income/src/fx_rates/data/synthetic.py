@@ -1,6 +1,6 @@
 """Seeded synthetic two-currency market quote sets and sample position books.
 
-Quotes are generated from analytic Nelson–Siegel "true" zero curves, so the
+Quotes are generated from analytic Nelson-Siegel "true" zero curves, so the
 bootstrap can be validated by an exact round trip: par quotes are computed
 *from* the true discount factors, hence bootstrapping the quotes must recover
 the true DFs at every pillar to machine precision.
@@ -10,7 +10,7 @@ Regimes
 - ``normal``       : upward-sloping USD (≈3.5→4.5%) above EUR (≈2.2→2.9%),
                      basis ≈ -12…-30 bp (post-2015 average conditions).
 - ``inverted``     : late-cycle inverted USD curve (≈5.4→4.1%).
-- ``negative_eur`` : 2019-style — EUR front end at ≈-0.5% (negative deposit
+- ``negative_eur`` : 2019-style, EUR front end at ≈-0.5% (negative deposit
                      rates), USD ≈2%, basis ≈-15…-40 bp.
 - ``crisis``       : 2008-style wide basis: front-end basis ≈-180 bp
                      decaying to ≈-55 bp at 10y.
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..bootstrap import bootstrap_curve, par_swap_rate
+from ..bootstrap import basis_discount_curve, bootstrap_curve, par_swap_rate
 from ..curve import DiscountCurve
 from ..fxforward import FXForward, FXSwap, MarketState, market_forward
 from ..xccy import CrossCurrencySwap, solve_par_rate_quote
@@ -43,14 +43,14 @@ __all__ = [
 REGIMES = ("normal", "inverted", "negative_eur", "crisis")
 
 # A complete annual par-swap strip (2..10y).  Real markets quote a sparse set
-# (2,3,4,5,7,10) and interpolate the missing par rates — using the complete
+# (2,3,4,5,7,10) and interpolate the missing par rates, using the complete
 # strip here keeps the bootstrap round trip against the true generator curve
 # exact at every pillar, which is what the validation suite asserts.
 DEPOSIT_TENORS = (0.25, 0.5, 1.0)
 SWAP_TENORS = (2, 3, 4, 5, 6, 7, 8, 9, 10)
 FORWARD_TENORS = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
-# Nelson–Siegel parameters (beta0, beta1, beta2, tau_ns) per regime/ccy,
+# Nelson-Siegel parameters (beta0, beta1, beta2, tau_ns) per regime/ccy,
 # and basis spread pillars (T, bp).
 _PARAMS = {
     "normal": {
@@ -97,8 +97,10 @@ class SyntheticMarket:
 
     ``true_domestic`` / ``true_foreign`` are the exact generator curves used
     only for round-trip validation; production code sees only the quotes.
-    Basis spreads are decimal; FX forward quotes are basis-consistent:
-    ``F_mkt(T) = spot * DF_f(T) * exp(-s(T) T) / DF_d(T)``.
+    Basis spreads are decimal float-float basis-swap par spreads; FX forward
+    quotes are consistent with them:
+    ``F_mkt(T) = spot * D_EUR(T) / DF_USD(T)`` with ``D_EUR`` bootstrapped
+    from the basis quotes on the true EUR curve.
     """
 
     regime: str
@@ -152,18 +154,9 @@ def generate_market_quotes(regime: str = "normal", seed: int = 0) -> SyntheticMa
     usd_deps, usd_swps = _quotes_from_curve(true_usd)
     eur_deps, eur_swps = _quotes_from_curve(true_eur)
     basis = tuple((t, bp * 1e-4) for t, bp in p["basis_bp"])
-    bt = np.asarray([t for t, _ in basis])
-    bv = np.asarray([s for _, s in basis])
+    eur_disc = basis_discount_curve(true_eur, basis)
     forwards = tuple(
-        (
-            t,
-            float(
-                spot * true_eur.df(t)
-                * np.exp(-np.interp(t, bt, bv) * t)
-                / true_usd.df(t)
-            ),
-        )
-        for t in FORWARD_TENORS
+        (t, float(spot * eur_disc.df(t) / true_usd.df(t))) for t in FORWARD_TENORS
     )
     return SyntheticMarket(
         regime=regime,

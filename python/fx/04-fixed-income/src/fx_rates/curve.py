@@ -10,7 +10,7 @@ Conventions
   before the first pillar the forward from 0 to the first pillar is used.
 - Zero rates are **continuously compounded, annualised**:
   ``z(t) = -ln(DF(t)) / t``.
-- Discount factors must be strictly positive but may exceed 1.0 — negative
+- Discount factors must be strictly positive but may exceed 1.0, negative
   rates (EUR 2015-2022, JPY, CHF) are first-class citizens.
 """
 
@@ -155,7 +155,7 @@ class DiscountCurve:
 
         With log-linear DF interpolation this key-rate bump only affects
         discount factors strictly between the neighbouring pillars
-        (locality — tested in ``tests/test_risk.py``).
+        (locality, tested in ``tests/test_risk.py``).
         """
         if not (0 <= index < self.n_pillars):
             raise ValueError(f"pillar index {index} out of range [0, {self.n_pillars})")

@@ -8,7 +8,7 @@ Conventions (see CONVENTIONS.md at the portfolio root):
   (daily unless stated otherwise). Annualization conventions live in
   :mod:`fx_vol.historical`.
 * Inverting a pair maps ``S -> 1/S`` and therefore flips the *sign* of every
-  log return, leaving all even moments -- in particular volatility --
+  log return, leaving all even moments: in particular volatility:
   invariant. This is an FX-specific identity with no equity analogue and is
   unit-tested (``tests/test_returns.py``).
 * Triangulation: for a cross built from two legs sharing a common currency,
@@ -49,7 +49,7 @@ def _as_1d_array(values: Sequence[float] | np.ndarray | pd.Series, name: str) ->
     if not np.isfinite(arr).all():
         raise ValueError(
             f"{name} contains NaN or infinite values; fx_vol rejects rather than "
-            "silently imputes -- clean or forward-fill the series explicitly first"
+            "silently imputes: clean or forward-fill the series explicitly first"
         )
     return arr
 
@@ -201,7 +201,7 @@ def cross_volatility(
     ----------
     vol1, vol2 : float
         Leg volatilities (any common unit: daily or annualized, decimal or
-        percent -- the output inherits the unit).
+        percent: the output inherits the unit).
     corr : float
         Correlation of the two legs' log returns *as quoted*, in [-1, 1].
     pair1, pair2, cross : str, optional

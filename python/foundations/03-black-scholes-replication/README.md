@@ -1,52 +1,47 @@
 # Black-Scholes Replication (`eq_bs_replication`)
 
-A from-scratch, **zero-scipy** Black-Scholes-Merton replication: closed-
-form call/put pricing and the five analytic Greeks built on nothing but
-`math.erf`, an independent Monte Carlo pricer under the same
-risk-neutral dynamics, a Newton-Raphson (with bisection fallback)
-implied-vol solver, and a controlled experiment that makes the
-volatility smile *emerge* from fat-tailed pricing read back through the
-model — all cross-validated against theory rather than against a
-reference library.
+A from-scratch, zero-scipy Black-Scholes-Merton replication. It has
+closed-form call and put pricing and the five analytic Greeks built on
+`math.erfc`, an independent Monte Carlo pricer under the same
+risk-neutral dynamics, an implied-vol solver for calls and puts, and a
+controlled experiment in which a volatility smile appears when
+fat-tailed prices are read back through the model. Everything is
+checked against theory, not against a reference library.
 
-This is deliberately a small, pedagogical, single-asset equity project,
-not a pricing library — see `docs/DESK_GUIDE.md` for what it is
-actually useful for on a desk (model-validation reference, new-quant
-teaching artifact), and `python/equity/01-options-pricing` for the
-flagship, vectorised, multi-model pricing engine (with C++/Rust
-performance twins) this project's discipline is a warm-up for.
+This is a small teaching project for a single equity asset, not a
+pricing library. `docs/DESK_GUIDE.md` describes its use as a
+model-validation reference. The vectorised, multi-model pricing engine
+with C++ and Rust twins is `python/equity/01-options-pricing`.
 
 ```
-closed-form pricing (math.erf only)   Monte Carlo (same risk-neutral GBM)
+closed-form pricing (math.erfc only)  Monte Carlo (same risk-neutral GBM)
         │  put-call parity                    │  antithetic variates
         │  analytic Greeks                    │  standard error
         ▼                                      ▼
         └──────────► agree to O(1/√n) ◄────────┘
                           │
                           ▼
-         implied-vol round trip (Newton + bisection)
+     implied-vol round trip (OTM side, Newton + bisection)
                           │
                           ▼
    model-breakdown demo: fat-tailed MC price → BS implied vol → SMILE
 ```
 
-**Conventions:** `r` continuously compounded, annualised; `T` in years
-(ACT/365F); `sigma` annualised vol of log-returns; no dividends
-(q=0 — see `docs/METHODOLOGY.md` §1.3 for the one-line extension).
-Every stochastic routine (`mc_call_price`) takes an explicit seed.
-Negative rates are supported; `T<=0` and `sigma<=0` raise `ValueError`
-with an informative message rather than silently returning NaN, in both
-the closed form **and** the Monte Carlo pricer (the two deliberately
-share one input contract, so a cross-check can never be comparing two
-different notions of a valid contract).
+**Conventions:** `r` continuously compounded and annualised; `T` in
+years (ACT/365F); `sigma` annualised vol of log-returns; no dividends
+(q=0, see `docs/METHODOLOGY.md` §1.3 for the one-line extension).
+`mc_call_price` takes an explicit seed. Negative rates are supported.
+`T<=0`, `sigma<=0` and non-finite inputs raise `ValueError` in both the
+closed form and the Monte Carlo pricer, which share one input contract.
 
 ## Quickstart
 
 ```bash
 cd python/foundations/03-black-scholes-replication
-pip install -e ".[dev,plots]"        # numpy (core), matplotlib (plots), pytest (dev)
-pytest -q                            # 200 tests, offline, seeded, ~2s
-python examples/run_pipeline.py      # report + figures under output/
+pip install -e ".[test]"             # numpy (core), pytest + hypothesis (test)
+pytest -q                            # 304 tests, offline, seeded, ~3 s
+python examples/run_pipeline.py      # report to stdout, writes nothing
+python examples/run_pipeline.py --out /tmp/bs --plot   # report + figure; needs .[plots]
 ```
 
 ```python
@@ -55,77 +50,61 @@ from eq_bs_replication import call_price, put_price, call_greeks, put_greeks, im
 call_price(100, 105, 0.03, 0.25, 0.75)          # 7.467460
 put_greeks(100, 105, 0.03, 0.25, 0.75).delta    # -0.5053 (via put-call parity)
 implied_volatility(7.467460, 100, 105, 0.03, 0.75)  # 0.25000000
+implied_volatility(10.131340, 100, 105, 0.03, 0.75, option_type="put")  # 0.25000000
 mc_call_price(100, 105, 0.03, 0.25, 0.75, n_paths=1_000_000, seed=7)  # (7.4517, 0.0112)
 ```
 
-## Results summary (reference contract `S=100, K=105, r=3%, sigma=25%, T=0.75y`)
+## Results summary
 
-**Identities hold exactly:** put-call parity error **0.00e+00** on the
-reference contract; < 1e-9 across a 270-point grid including zero and
-negative rates.
+Reference contract `S=100, K=105, r=3%, sigma=25%, T=0.75y`. All
+numbers come from `python examples/run_pipeline.py`.
 
-**Two independent implementations agree, at the theoretical rate:**
-closed-form call price **7.467460**; Monte Carlo converges to it with
-`SE·√n ≈ 11.0` constant across 1k–1M paths (the **O(n^{-1/2})** law,
-measured, not assumed) — full table in `docs/VALIDATION.md` §2. The
-antithetic standard error is computed from **pair averages**, not from
-the mirrored draws treated as independent: the latter overstates the
-error by ~33% on this contract, and is a mistake that hides inside a
-passing test suite, because every "within 3 standard errors" check keeps
-passing against a bar that is too loose — `docs/VALIDATION.md` §2.1.
+| Check | Result |
+|---|---|
+| Put-call parity, reference contract | 0.00e+00 |
+| Put-call parity, 270-point grid incl. zero and negative rates | < 1e-9 |
+| Closed-form call | 7.467460 |
+| Monte Carlo SE·√n, 1k to 1M paths | 10.4 to 11.2 (constant, O(n^-1/2)) |
+| Delta / vega / gamma vs central differences | 9.3e-14 / 5.2e-08 / 2.1e-10 |
+| Implied-vol round trip, sigma 8% to 120% | ≤ 4.4e-16 |
+| Fat-tailed (Student-t df=4) smile, synthetic: K=70 / 105 / 140 | 27.6% / 22.9% / 28.6% |
 
-**Greeks match finite differences:** delta, vega, gamma all agree with
-central finite differences to ≤1e-6 (relative); put Greeks are derived
-via put-call-parity relations from call Greeks and independently
-cross-checked against those same identities to <1e-12 —
-`docs/VALIDATION.md` §3.
+The antithetic standard error is computed from pair averages. Treating
+the mirrored draws as independent overstates it by about 33% on this
+contract (`docs/VALIDATION.md` §2.1).
 
-**Implied vol round-trips cleanly** across sigma 8%–120% (< 1e-11
-error), and now also above 500% vol (the bisection bracket expands
-instead of clamping). It degrades exactly where theory says it must:
-wherever vega is small, implied vol is barely identified. At a quote
-sitting *exactly* on the discounted-intrinsic bound — where the true
-implied vol is 0 — the solver returns 0.0092 and still reprices to
-within 1e-8; at a quote sitting exactly at spot, where the true implied
-vol is infinite, it returns a large finite number. Both are tested and
-documented rather than papered over, because the practical lesson is
-that such strikes must be *dropped* from a surface fit, not fitted with
-a wide error bar — `docs/VALIDATION.md` §4, §4.1.
+Implied vol is solved on the out-of-the-money side: an in-the-money
+quote is converted by put-call parity first, so the solver sees only
+time value. When the time value is below what double precision can
+resolve, or the price sits on the upper bound, the solver warns and
+returns `nan` (`docs/VALIDATION.md` §4.1).
 
-**The model breaks on purpose, and the break is measured:** pricing a
-strike ladder by Monte Carlo under a fat-tailed (Student-t, df=4)
-return distribution and reading the prices back through Black-Scholes
-produces a **5.2-vol-point smile** (27.6% at K=70, 22.9% at K=105, 28.6%
-at K=140) instead of the flat line constant-vol GBM predicts — the same
-qualitative shape real option markets have shown persistently since
-1987. Full experiment and numbers in `docs/VALIDATION.md` §5; figure in
-`output/figures/black_scholes_overview.png`.
+The smile from synthetic fat-tailed prices is 5.2 vol points wide
+(wing average minus ATM). Listed option markets have shown a smile or
+skew since 1987.
 
 ## Layout
 
 ```
-src/eq_bs_replication/   black_scholes.py (math.erf-only closed form + Greeks
-                         + implied vol), monte_carlo.py (independent MC cross-check)
-tests/                   200 offline, seeded pytest tests across 6 files
-examples/run_pipeline.py end-to-end report + figures reproducing every number above
+src/eq_bs_replication/   black_scholes.py (erfc-based closed form, Greeks,
+                         implied vol), monte_carlo.py (independent MC cross-check)
+tests/                   304 offline, seeded pytest tests across 9 files
+examples/run_pipeline.py report reproducing every number above (--out, --plot)
 docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```
 
-## Documentation contract
+## Documentation
 
-- **Why Black-Scholes, vs alternatives (CRR tree, local vol); why
-  Monte Carlo cross-check, not closed-form alone; why `math.erf` and
-  not scipy** — [docs/METHODOLOGY.md](docs/METHODOLOGY.md) §1
-- **Assumptions register (A1–A4, each with "what breaks")** — [docs/METHODOLOGY.md](docs/METHODOLOGY.md) §2
-- **Validation evidence** (identities, MC convergence, Greeks vs FD,
-  implied-vol round trips, the smile experiment) — [docs/VALIDATION.md](docs/VALIDATION.md) §1–5
-- **Failure modes** (vol smile — demonstrated; jumps, discrete-hedging
-  frictions, early exercise — precisely specified, pointing to
-  `python/equity/01-options-pricing` where each is built) — [docs/VALIDATION.md](docs/VALIDATION.md) §6
-- **Numerical limits** (T→0, sigma→0, deep ITM/OTM, negative rates,
-  30-year maturities, strikes from 1e-10 to 1e10, discount-factor
-  overflow, extreme-vol saturation, minimum Monte Carlo sample sizes,
-  invalid inputs — every one unit-tested) — [docs/VALIDATION.md](docs/VALIDATION.md) §7
-- **Desk usage**: not a pricing library — a model-validation reference
-  and teaching artifact, with a concrete new-pricer-onboarding scenario
-  — [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md)
+- Why Black-Scholes, against a CRR tree and local vol; why a Monte
+  Carlo cross-check; why `math.erfc` and not scipy:
+  [docs/METHODOLOGY.md](docs/METHODOLOGY.md) §1
+- Assumptions register (A1 to A4, each with what breaks):
+  [docs/METHODOLOGY.md](docs/METHODOLOGY.md) §2
+- Validation evidence (identities, MC convergence, Greeks vs FD,
+  implied-vol round trips, the smile experiment):
+  [docs/VALIDATION.md](docs/VALIDATION.md) §1 to §5
+- Failure modes (smile demonstrated; jumps, discrete hedging and early
+  exercise specified): [docs/VALIDATION.md](docs/VALIDATION.md) §6
+- Numerical limits, each unit-tested:
+  [docs/VALIDATION.md](docs/VALIDATION.md) §7
+- Desk usage as a validation reference: [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md)

@@ -37,9 +37,21 @@ Calendar enforcement
 --------------------
 ``enforce_calendar=True`` replaces the pillar matrix with its running maximum
 along ``T`` on the sampled ``k`` grid (monotone adjustment).  Queries then
-interpolate the adjusted grid bilinearly (linear in ``k``, linear in ``w``
-across ``T``).  Without enforcement, queries evaluate the SVI slices exactly
-in ``k`` (grid only used for diagnostics), so pillar values are exact.
+interpolate the adjusted grid with a shape-preserving PCHIP in ``k`` (so the
+implied density stays finite between nodes, unlike a piecewise-linear
+interpolant whose density is a sum of point masses) and linearly in ``w``
+across ``T``.  Without enforcement, queries evaluate the SVI slices exactly
+in ``k``, so pillar values are exact.
+
+Butterfly re-check
+------------------
+Each SVI pillar can be butterfly-free while the surface is not: the
+running-max adjustment changes slice shapes, and a linear-in-T blend of two
+butterfly-free slices is not butterfly-free in general.
+:meth:`VolSurface.butterfly_report` evaluates Durrleman's ``g`` from the
+surface itself (finite differences in k) at the pillars and at interpolated
+expiries.  It runs at construction after calendar enforcement and warns on
+a violation.
 """
 
 from __future__ import annotations
@@ -178,8 +190,24 @@ class VolSurface:
                 warnings.warn(msg + "; applying monotone (running-max) adjustment", UserWarning)
             else:
                 warnings.warn(msg + "; pass enforce_calendar=True to adjust", UserWarning)
+        self._pchip = None
+        self.butterfly_after_enforcement: list[dict] | None = None
         if enforce_calendar:
+            from scipy.interpolate import PchipInterpolator
+
             self.w_grid = np.maximum.accumulate(self.w_grid, axis=0)
+            self._pchip = [PchipInterpolator(self.k_grid, row, extrapolate=False)
+                           for row in self.w_grid]
+            mids = 0.5 * (self.expiries[1:] + self.expiries[:-1])
+            rep = self.butterfly_report(np.concatenate([self.expiries, mids]))
+            self.butterfly_after_enforcement = rep
+            bad = [r for r in rep if r["min_g"] < 0.0]
+            if bad:
+                warnings.warn(
+                    f"calendar-enforced surface has butterfly arbitrage at {len(bad)} of "
+                    f"{len(rep)} checked expiries (worst g = {min(r['min_g'] for r in bad):.3e})",
+                    UserWarning,
+                )
 
     # ------------------------------------------------------------------ #
 
@@ -194,7 +222,9 @@ class VolSurface:
             # Interpolate the (adjusted) grid linearly in k; linear wings beyond.
             out = np.empty((self.expiries.size, k.size))
             for i in range(self.expiries.size):
-                out[i] = np.interp(k, self.k_grid, self.w_grid[i])
+                inside = (k >= self.k_grid[0]) & (k <= self.k_grid[-1])
+                out[i] = 0.0
+                out[i, inside] = self._pchip[i](k[inside])
                 # extrapolate linearly using edge slopes
                 lo = k < self.k_grid[0]
                 hi = k > self.k_grid[-1]
@@ -268,3 +298,36 @@ class VolSurface:
         k = np.log(K_arr / self.forward(T))
         out = np.asarray(self.vol_k(k, T))
         return out if np.ndim(K) else float(out[0])
+
+    def butterfly_report(
+        self,
+        expiries: np.ndarray | None = None,
+        k_grid: np.ndarray | None = None,
+        h: float = 1e-3,
+    ) -> list[dict]:
+        """Durrleman ``g`` of the surface at given expiries.
+
+        ``w'`` and ``w''`` are central differences of :meth:`total_variance`
+        in k with step ``h`` (truncation O(h^2), about 1e-6 relative for
+        smooth slices).  Default expiries: the pillars and the midpoints
+        between them.  Default k grid: 241 points on the surface's k grid
+        range.  Returns one record per expiry with ``T``, ``min_g`` and
+        ``k_at_min``; ``min_g < 0`` means butterfly arbitrage at that expiry.
+        """
+        if expiries is None:
+            mids = 0.5 * (self.expiries[1:] + self.expiries[:-1])
+            expiries = np.sort(np.concatenate([self.expiries, mids]))
+        if k_grid is None:
+            k_grid = np.linspace(self.k_grid[0] + 2 * h, self.k_grid[-1] - 2 * h, 241)
+        k = np.asarray(k_grid, dtype=float)
+        out = []
+        for T in np.asarray(expiries, dtype=float):
+            w0 = np.asarray(self.total_variance(k, float(T)))
+            wp_ = np.asarray(self.total_variance(k + h, float(T)))
+            wm_ = np.asarray(self.total_variance(k - h, float(T)))
+            d1 = (wp_ - wm_) / (2.0 * h)
+            d2 = (wp_ - 2.0 * w0 + wm_) / (h * h)
+            g = (1.0 - k * d1 / (2.0 * w0)) ** 2 - 0.25 * d1 * d1 * (1.0 / w0 + 0.25) + 0.5 * d2
+            j = int(np.argmin(g))
+            out.append({"T": float(T), "min_g": float(g[j]), "k_at_min": float(k[j])})
+        return out

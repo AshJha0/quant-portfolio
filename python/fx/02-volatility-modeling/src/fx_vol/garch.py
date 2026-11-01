@@ -6,7 +6,7 @@ Model (zero-mean returns r_t, information set F_{t-1}):
     sigma2_t = omega + alpha * r_{t-1}^2 + beta * sigma2_{t-1} + gamma_x' x_t
 
 The exogenous regressors ``x_t`` (GARCH-X) are **variance dummies known at
-t-1** -- e.g. scheduled central-bank event days (FOMC, ECB, BoJ): the
+t-1**: e.g. scheduled central-bank event days (FOMC, ECB, BoJ): the
 announcement calendar is public, so the extra variance ``gamma_x`` on event
 day t is in the t-1 information set. This is the natural FX specification:
 event risk is calendar-driven and priced ex ante (overnight implied vols
@@ -14,16 +14,17 @@ routinely double before FOMC).
 
 Estimation is maximum likelihood implemented from scratch:
 
-* constraint transforms -- ``omega = exp(u)``; stationarity enforced via
+* constraint transforms: ``omega = exp(u)``; stationarity enforced via
   persistence ``p = expit(u_p) in (0,1)`` split as ``alpha = p*s``,
   ``beta = p*(1-s)`` with ``s = expit(u_s)``; ``gamma_x = exp(u)`` (>= 0 keeps
   variance positive); ``nu = 2.05 + exp(u)``;
 * multi-start L-BFGS-B on the unconstrained parameters;
-* standard errors from the numerical Hessian in natural parameter space;
-* optional variance targeting (``omega`` fixed by the sample variance).
+* classic (inverse Hessian) and Bollerslev-Wooldridge robust standard
+  errors in natural parameter space;
+* optional variance targeting (``omega`` fixed by the sample second moment).
 
 The `arch` package is used in the test suite ONLY to cross-validate the
-estimates -- see tests/test_arch_crosscheck.py.
+estimates: see tests/test_arch_crosscheck.py.
 """
 
 from __future__ import annotations
@@ -42,7 +43,10 @@ from ._mle import (
     FitResult,
     backcast,
     gaussian_loglik,
-    hessian_std_errors,
+    ConvergenceError,
+    loglik_obs,
+    map_std_errors,
+    mle_covariances,
     student_t_loglik,
     validate_filter_params,
     validate_returns,
@@ -137,31 +141,32 @@ def garch_filter(
     elif gamma_x is not None:
         raise ValueError(
             "gamma_x was supplied without x; exogenous coefficients have no "
-            "regressors to multiply -- pass x as well or drop gamma_x"
+            "regressors to multiply: pass x as well or drop gamma_x"
         )
     sigma2, _ = lfilter([1.0], [1.0, -beta], u, zi=np.array([beta * b]))
     return sigma2
 
 
-def _nll_scaled(theta_nat: np.ndarray, y: np.ndarray, x: np.ndarray | None, dist: str, b: float) -> float:
-    """Negative log-likelihood in natural parameter space on unit-variance data."""
+def _ll_obs_scaled(theta_nat: np.ndarray, y: np.ndarray, x: np.ndarray | None, dist: str, b: float) -> np.ndarray:
+    """Per-observation log-likelihood in natural parameter space on unit-variance data.
+
+    All-NaN outside the admissible region.
+    """
     k = 0 if x is None else x.shape[1]
     omega, alpha, beta = theta_nat[0], theta_nat[1], theta_nat[2]
     gamma_x = theta_nat[3 : 3 + k] if k else None
+    bad = np.full(y.size, np.nan)
     if omega <= 0 or alpha < 0 or beta < 0 or beta >= 1 or alpha + beta >= 1:
-        return 1e10
+        return bad
     if k and (gamma_x < 0).any():
-        return 1e10
+        return bad
     sigma2 = garch_filter(y, omega, alpha, beta, gamma_x, x, initial_variance=b)
-    if not np.all(sigma2 > 0) or not np.all(np.isfinite(sigma2)):
-        return 1e10
-    if dist == "gaussian":
-        ll = gaussian_loglik(y, sigma2)
-    else:
-        nu = theta_nat[3 + k]
-        if nu <= 2.0:
-            return 1e10
-        ll = student_t_loglik(y, sigma2, nu)
+    return loglik_obs(y, sigma2, dist, theta_nat[3 + k] if dist == "t" else None)
+
+
+def _nll_scaled(theta_nat: np.ndarray, y: np.ndarray, x: np.ndarray | None, dist: str, b: float) -> float:
+    """Negative log-likelihood in natural parameter space on unit-variance data."""
+    ll = float(np.sum(_ll_obs_scaled(theta_nat, y, x, dist, b)))
     return -ll if np.isfinite(ll) else 1e10
 
 
@@ -171,35 +176,45 @@ def fit_garch(
     x: Sequence[float] | np.ndarray | None = None,
     variance_targeting: bool = False,
     min_obs: int = MIN_OBS,
+    raise_on_failure: bool = True,
 ) -> FitResult:
     """Fit GARCH(1,1) (or GARCH-X) by maximum likelihood, from scratch.
 
     Parameters
     ----------
     returns : array-like
-        Zero-mean log returns (decimal or percent -- internally rescaled to
+        Zero-mean log returns (decimal or percent: internally rescaled to
         unit variance; estimates are mapped back to the caller's units).
         NaNs raise; series shorter than ``min_obs`` raise; constant series
         raise (degenerate likelihood).
     dist : {'gaussian', 't'}
         Innovation distribution. 't' is the standardized Student-t and adds a
-        dof parameter ``nu`` -- the workhorse for G10 FX, whose returns are
+        dof parameter ``nu``: the workhorse for G10 FX, whose returns are
         fat-tailed but (for most pairs) close to symmetric.
     x : array-like, optional
         (n,) or (n, k) non-negative exogenous variance regressors known at
         t-1, e.g. central-bank event dummies (GARCH-X).
     variance_targeting : bool
-        Fix ``omega = Var(r) * (1 - alpha - beta)`` instead of estimating it
-        (one fewer parameter; the implied unconditional variance matches the
-        sample variance exactly). Not available together with ``x``.
+        Fix ``omega = mean(r^2) * (1 - alpha - beta)`` instead of estimating
+        it (one fewer parameter; the implied unconditional variance equals
+        the sample second moment, the quantity the zero-mean recursion
+        targets). omega's standard error is NaN in this mode. Not available
+        together with ``x``.
     min_obs : int
         Minimum sample size (default 100).
+    raise_on_failure : bool
+        Raise :class:`~fx_vol._mle.ConvergenceError` if the best start did
+        not converge (default). With False the result carries
+        ``converged=False``.
 
     Returns
     -------
     FitResult
-        Parameters ``omega, alpha, beta [, gamma_x_i][, nu]`` with Hessian
-        standard errors, log-likelihood, conditional-variance path.
+        Parameters ``omega, alpha, beta [, gamma_x_i][, nu]`` with classic
+        and robust standard errors, log-likelihood, conditional-variance
+        path. ``extra["at_boundary"]`` is True when persistence is within
+        1e-3 of 1 or alpha is below 1e-6; standard errors there are not
+        meaningful.
     """
     if dist not in ("gaussian", "t"):
         raise ValueError(f"dist must be 'gaussian' or 't', got {dist!r}")
@@ -213,7 +228,7 @@ def fit_garch(
     s = float(np.std(r))
     y = r / s
     b = backcast(y)
-    var_y = float(np.var(y))
+    var_y = float(np.mean(y * y))
 
     def unpack(u: np.ndarray) -> tuple[float, float, float, np.ndarray | None, float | None]:
         u = np.clip(u, -_CLIP, _CLIP)
@@ -264,7 +279,7 @@ def fit_garch(
     sigma2_y = garch_filter(y, omega, alpha, beta, gamma_x, xm, initial_variance=b)
     ll_y = -best.fun
 
-    # ----- natural-space Hessian standard errors (on scaled data) -----
+    # ----- natural-space parameter vector (on scaled data) -----
     theta_nat = [omega, alpha, beta]
     names = ["omega", "alpha", "beta"]
     if k:
@@ -274,20 +289,43 @@ def fit_garch(
         theta_nat.append(nu)
         names.append("nu")
     theta_nat = np.array(theta_nat)
-    se_nat = hessian_std_errors(lambda t: _nll_scaled(t, y, xm, dist, b), theta_nat)
+    if not best.success and raise_on_failure:
+        raise ConvergenceError(
+            f"GARCH MLE failed to converge: {best.message} (nit={best.nit})"
+        )
+    if variance_targeting:
+        # omega is a function of (alpha, beta): differentiate over the free
+        # parameters only, then report NaN for omega.
+        def full(t: np.ndarray) -> np.ndarray:
+            return np.concatenate(([var_y * (1.0 - t[0] - t[1])], t))
+
+        cov_c, cov_r = mle_covariances(
+            lambda t: _nll_scaled(full(t), y, xm, dist, b),
+            lambda t: _ll_obs_scaled(full(t), y, xm, dist, b),
+            theta_nat[1:],
+        )
+        pad = lambda c: np.pad(c, ((1, 0), (1, 0)), constant_values=np.nan)  # noqa: E731
+        cov_c, cov_r = pad(cov_c), pad(cov_r)
+    else:
+        cov_c, cov_r = mle_covariances(
+            lambda t: _nll_scaled(t, y, xm, dist, b),
+            lambda t: _ll_obs_scaled(t, y, xm, dist, b),
+            theta_nat,
+        )
 
     # ----- map back to the caller's return units -----
     scale2 = s * s
+    jac = np.diag([scale2, 1.0, 1.0] + [scale2] * k + ([1.0] if dist == "t" else []))
+    se_c = map_std_errors(cov_c, jac)
+    se_r = map_std_errors(cov_r, jac)
     params = {"omega": omega * scale2, "alpha": alpha, "beta": beta}
-    se = {"omega": se_nat[0] * scale2, "alpha": se_nat[1], "beta": se_nat[2]}
     if k:
         for i in range(k):
-            nm = names[3 + i]
-            params[nm] = float(gamma_x[i] * scale2)
-            se[nm] = float(se_nat[3 + i] * scale2)
+            params[names[3 + i]] = float(gamma_x[i] * scale2)
     if dist == "t":
         params["nu"] = float(nu)
-        se["nu"] = float(se_nat[-1])
+    se = dict(zip(names, [float(v) for v in se_c]))
+    robust = dict(zip(names, [float(v) for v in se_r]))
 
     persistence = alpha + beta
     uncond = params["omega"] / (1.0 - persistence) if persistence < 1.0 else np.inf
@@ -304,5 +342,10 @@ def fit_garch(
         n_obs=n,
         persistence=float(persistence),
         unconditional_variance=float(uncond),
-        extra={"variance_targeting": variance_targeting, "backcast": b * scale2},
+        extra={
+            "variance_targeting": variance_targeting,
+            "backcast": b * scale2,
+            "at_boundary": bool(persistence > 0.999 or alpha < 1e-6),
+        },
+        robust_std_errors=robust,
     )

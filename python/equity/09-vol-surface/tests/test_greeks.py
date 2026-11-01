@@ -109,3 +109,24 @@ def test_invalid_inputs_raise(mild_heston):
         heston_greeks(S, 100.0, 0.5, R, Q, mild_heston, rel_bump=0.5)
     with pytest.raises(ValueError, match="sigma"):
         smile_adjusted_delta(S, 100.0, 0.5, R, Q, sigma=-0.2, dsigma_dk=0.0)
+
+
+@pytest.mark.parametrize("K", [90.0, 100.0])
+def test_heston_delta_is_sticky_moneyness_not_between_regimes(extreme_heston, K):
+    """Heston is homogeneous of degree one in (S, K) at fixed v0, so its
+    spot delta equals the sticky-moneyness delta built from its own smile
+    slope.  With rho < 0 it sits above sticky-strike, and the local-vol rule
+    sits below sticky-strike.  The smile slope is a central difference in k
+    with h = 1e-3 (O(h^2) ~ 1e-6 error), so 2e-3 on delta is a loose bound
+    on FD error, while the regime gaps are > 3e-2 at these strikes (beyond
+    110 the call wing is nearly flat and the regimes coincide)."""
+    T = 0.5
+    g = heston_greeks(S, K, T, R, Q, extreme_heston, richardson=True)
+    iv = bs_equivalent_greeks(S, K, T, R, Q, extreme_heston)["implied_vol"]
+    h = 1e-3
+    iv_up = bs_equivalent_greeks(S, K * np.exp(h), T, R, Q, extreme_heston)["implied_vol"]
+    iv_dn = bs_equivalent_greeks(S, K * np.exp(-h), T, R, Q, extreme_heston)["implied_vol"]
+    sm = smile_adjusted_delta(S, K, T, R, Q, iv, (iv_up - iv_dn) / (2.0 * h))
+    assert abs(g.delta - sm["delta_sticky_moneyness"]) < 2e-3
+    assert g.delta - sm["delta_sticky_strike"] > 3e-2
+    assert sm["delta_local_vol_approx"] < sm["delta_sticky_strike"] - 3e-2

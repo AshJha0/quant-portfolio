@@ -8,16 +8,16 @@ variance more than positive ones.
 FX-specific reading of the asymmetry (see docs/METHODOLOGY.md): for G10
 pairs the equity-style leverage story does not apply and gamma is usually
 small and can take either sign depending on which currency is the risk /
-safe-haven leg -- e.g. USDJPY *falls* in risk-off (safe-haven yen bid), so
+safe-haven leg: e.g. USDJPY *falls* in risk-off (safe-haven yen bid), so
 the asymmetry appears on negative USDJPY returns, but on JPYUSD the same
 economics flips the sign. EM pairs quoted EM-per-USD (USDMXN, USDTRY)
 typically show strong positive gamma: depreciation of the EM currency (pair
 rallies... note the pair *rises* when MXN weakens, so risk-off shows up on
-*positive* returns of USDMXN -- quote direction matters; fit the pair the
-desk trades and check the sign). This estimator constrains ``gamma >= 0``
-(sufficient for positivity); to capture asymmetry of the opposite sign,
-either invert the pair (log-return sign flip, :func:`fx_vol.returns.invert_returns`)
-or use EGARCH, whose leverage parameter is unconstrained in sign.
+*positive* returns of USDMXN: quote direction matters; fit the pair the
+desk trades and check the sign). Positivity of the variance needs
+``alpha >= 0`` and ``alpha + gamma >= 0`` only, so ``gamma`` may take either
+sign. The estimator imposes exactly those constraints, so asymmetry of
+either sign is estimated on the pair as quoted.
 
 Stationarity (symmetric innovations, so ``E 1[z<0] = 1/2``):
 ``alpha + gamma/2 + beta < 1``, enforced by transform.
@@ -39,7 +39,10 @@ from ._mle import (
     FitResult,
     backcast,
     gaussian_loglik,
-    hessian_std_errors,
+    ConvergenceError,
+    loglik_obs,
+    map_std_errors,
+    mle_covariances,
     student_t_loglik,
     validate_filter_params,
     validate_returns,
@@ -67,9 +70,9 @@ def gjr_filter(
     y = np.asarray(returns, dtype=float)
     validate_filter_params(omega=omega, alpha=alpha, gamma=gamma, beta=beta,
                            initial_variance=initial_variance)
-    if omega <= 0 or alpha < 0 or gamma < 0 or beta < 0 or beta >= 1:
+    if omega <= 0 or alpha < 0 or alpha + gamma < 0 or beta < 0 or beta >= 1:
         raise ValueError(
-            f"require omega > 0, alpha, gamma >= 0, 0 <= beta < 1; got "
+            f"require omega > 0, alpha >= 0, alpha + gamma >= 0, 0 <= beta < 1; got "
             f"omega={omega}, alpha={alpha}, gamma={gamma}, beta={beta}"
         )
     b = backcast(y) if initial_variance is None else float(initial_variance)
@@ -84,22 +87,19 @@ def gjr_filter(
     return sigma2
 
 
-def _nll_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> float:
+def _ll_obs_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> np.ndarray:
     omega, alpha, gamma, beta = theta[0], theta[1], theta[2], theta[3]
-    if omega <= 0 or alpha < 0 or gamma < 0 or beta < 0 or beta >= 1:
-        return 1e10
+    bad = np.full(y.size, np.nan)
+    if omega <= 0 or alpha < 0 or alpha + gamma < 0 or beta < 0 or beta >= 1:
+        return bad
     if alpha + 0.5 * gamma + beta >= 1:
-        return 1e10
+        return bad
     sigma2 = gjr_filter(y, omega, alpha, gamma, beta, initial_variance=b)
-    if not np.all(sigma2 > 0):
-        return 1e10
-    if dist == "gaussian":
-        ll = gaussian_loglik(y, sigma2)
-    else:
-        nu = theta[4]
-        if nu <= 2.0:
-            return 1e10
-        ll = student_t_loglik(y, sigma2, nu)
+    return loglik_obs(y, sigma2, dist, theta[4] if dist == "t" else None)
+
+
+def _nll_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> float:
+    ll = float(np.sum(_ll_obs_natural(theta, y, dist, b)))
     return -ll if np.isfinite(ll) else 1e10
 
 
@@ -107,14 +107,18 @@ def fit_gjr(
     returns: Sequence[float] | np.ndarray,
     dist: str = "gaussian",
     min_obs: int = MIN_OBS,
+    raise_on_failure: bool = True,
 ) -> FitResult:
     """Fit GJR-GARCH(1,1,1) by from-scratch MLE.
 
     Same conventions as :func:`fx_vol.garch.fit_garch`: internal unit-variance
-    rescaling, constraint transforms (persistence ``p = expit`` split across
-    ``alpha``, ``gamma/2``, ``beta`` by a softmax, guaranteeing
-    ``alpha + gamma/2 + beta < 1`` and non-negativity), multi-start L-BFGS-B,
-    natural-space Hessian standard errors.
+    rescaling, multi-start L-BFGS-B, classic and robust standard errors,
+    ``raise_on_failure``. Transforms: persistence ``p = expit(u1)`` is split
+    into the average ARCH loading ``a = alpha + gamma/2`` and ``beta``; ``a``
+    is then split into the positive-shock loading ``alpha = 2 a w`` and the
+    negative-shock loading ``alpha + gamma = 2 a (1 - w)``. This imposes
+    ``alpha >= 0``, ``alpha + gamma >= 0`` and ``alpha + gamma/2 + beta < 1``
+    and nothing else, so gamma can be negative.
 
     Returns
     -------
@@ -135,9 +139,11 @@ def fit_gjr(
         u = np.clip(u, -_CLIP, _CLIP)
         omega = np.exp(u[0])
         p = expit(u[1])
-        e = np.exp(np.array([u[2], u[3], 0.0]))
-        w = e / e.sum()                      # softmax shares (alpha, gamma/2, beta)
-        alpha, gamma, beta = p * w[0], 2.0 * p * w[1], p * w[2]
+        avg = p * expit(u[2])               # alpha + gamma/2
+        beta = p - avg
+        w = expit(u[3])
+        alpha = 2.0 * avg * w               # loading on positive shocks
+        gamma = 2.0 * avg * (1.0 - 2.0 * w)  # (alpha + gamma) - alpha
         nu = MIN_NU + np.exp(u[4]) if dist == "t" else None
         return float(omega), float(alpha), float(gamma), float(beta), nu
 
@@ -150,12 +156,11 @@ def fit_gjr(
         return -ll if np.isfinite(ll) else 1e10
 
     starts = []
-    for a0, g0, b0 in ((0.03, 0.08, 0.88), (0.05, 0.0, 0.90), (0.08, 0.15, 0.75)):
-        p0 = a0 + 0.5 * max(g0, 1e-3) + b0
-        wa = a0 / p0
-        wg = 0.5 * max(g0, 1e-3) / p0
-        wb = 1.0 - wa - wg
-        u0 = [log(var_y * (1.0 - p0)), logit(p0), log(wa / wb), log(wg / wb)]
+    for a0, g0, b0 in ((0.03, 0.08, 0.88), (0.05, 0.0, 0.90), (0.08, -0.06, 0.85)):
+        avg0 = a0 + 0.5 * g0
+        p0 = avg0 + b0
+        w0 = a0 / (2.0 * avg0)
+        u0 = [log(var_y * (1.0 - p0)), logit(p0), logit(avg0 / p0), logit(w0)]
         if dist == "t":
             u0.append(log(8.0 - MIN_NU))
         starts.append(np.array(u0))
@@ -168,17 +173,22 @@ def fit_gjr(
     omega, alpha, gamma, beta, nu = unpack(best.x)
     sigma2_y = gjr_filter(y, omega, alpha, gamma, beta, initial_variance=b)
 
-    theta_nat = [omega, alpha, gamma, beta] + ([nu] if dist == "t" else [])
-    se_nat = hessian_std_errors(
-        lambda t: _nll_natural(t, y, dist, b), np.array(theta_nat)
+    if not best.success and raise_on_failure:
+        raise ConvergenceError(f"GJR MLE failed to converge: {best.message} (nit={best.nit})")
+    names = ["omega", "alpha", "gamma", "beta"] + (["nu"] if dist == "t" else [])
+    theta_nat = np.array([omega, alpha, gamma, beta] + ([nu] if dist == "t" else []))
+    cov_c, cov_r = mle_covariances(
+        lambda t: _nll_natural(t, y, dist, b),
+        lambda t: _ll_obs_natural(t, y, dist, b),
+        theta_nat,
     )
-
     scale2 = s * s
+    jac = np.diag([scale2, 1.0, 1.0, 1.0] + ([1.0] if dist == "t" else []))
+    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)]))
+    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)]))
     params = {"omega": omega * scale2, "alpha": alpha, "gamma": gamma, "beta": beta}
-    se = {"omega": se_nat[0] * scale2, "alpha": se_nat[1], "gamma": se_nat[2], "beta": se_nat[3]}
     if dist == "t":
         params["nu"] = float(nu)
-        se["nu"] = float(se_nat[4])
 
     persistence = alpha + 0.5 * gamma + beta
     uncond = params["omega"] / (1.0 - persistence) if persistence < 1.0 else np.inf
@@ -195,5 +205,9 @@ def fit_gjr(
         n_obs=n,
         persistence=float(persistence),
         unconditional_variance=float(uncond),
-        extra={"backcast": b * scale2},
+        extra={
+            "backcast": b * scale2,
+            "at_boundary": bool(persistence > 0.999 or alpha < 1e-6 or alpha + gamma < 1e-6),
+        },
+        robust_std_errors=robust,
     )

@@ -145,3 +145,18 @@ def test_params_validation():
         heston_price(S, 1.1, 1.0, RD, RF, PARAMS, 1, method="fft")
     with pytest.raises(ValueError, match="cp"):
         price_cos(S, 1.1, 1.0, RD, RF, PARAMS, 0)
+
+
+@pytest.mark.parametrize("K", [0.9, 1.0, 1.1, 1.2, 1.3])
+def test_cos_default_matches_gil_pelaez_quadrature(K):
+    """Two independent inversions of the same CF.  At the old L=14 the COS
+    put carried a 9.7e-7 truncation bias here; at L=24, N=1024 the gap is
+    7e-10, so 5e-9 leaves a 7x margin for quadrature error."""
+    from fx_surface import HestonParams, price_cos, price_gil_pelaez
+
+    p = HestonParams(v0=0.0064, kappa=1.8, theta=0.008, xi=0.45, rho=-0.35)
+    S, T, rd, rf = 1.1, 1.0, 0.045, 0.033
+    cos = float(price_cos(S, K, T, rd, rf, p, -1))
+    gp = price_gil_pelaez(S, K, T, rd, rf, p, -1)
+    assert abs(cos - gp) < 5e-9
+    assert abs(float(price_cos(S, K, T, rd, rf, p, -1, L=14.0)) - gp) > 5e-7

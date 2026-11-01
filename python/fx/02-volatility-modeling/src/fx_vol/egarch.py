@@ -6,12 +6,13 @@
 
 Why EGARCH matters for FX: the leverage parameter ``gamma`` is
 **unconstrained in sign** (the log form guarantees positive variance without
-any positivity constraints), which is exactly what FX asymmetry requires --
+any positivity constraints), which is exactly what FX asymmetry requires:
 G10 asymmetry is weak and can point either way (USDJPY: safe-haven yen
 buying makes *negative* pair returns the high-vol direction, gamma < 0 in
 this quote direction; invert the pair and gamma flips sign), while EM pairs
-quoted USD/EM show strong asymmetry on EM depreciation. GJR constrains its
-asymmetry term to be non-negative for positivity; EGARCH does not need to.
+quoted USD/EM show strong asymmetry on EM depreciation. GJR needs
+``alpha >= 0`` and ``alpha + gamma >= 0`` for positivity; EGARCH needs no
+sign constraint at all.
 
 Stationarity of ln sigma2 requires ``|beta| < 1`` (enforced via tanh
 transform). ``E|z| = sqrt(2/pi)`` for Gaussian innovations and the analytic
@@ -36,14 +37,17 @@ from ._mle import (
     FitResult,
     backcast,
     gaussian_loglik,
-    hessian_std_errors,
+    ConvergenceError,
+    loglik_obs,
+    map_std_errors,
+    mle_covariances,
     student_t_abs_moment,
     student_t_loglik,
     validate_filter_params,
     validate_returns,
 )
 
-__all__ = ["egarch_filter", "fit_egarch", "GAUSSIAN_ABS_MOMENT"]
+__all__ = ["egarch_filter", "fit_egarch", "egarch_unconditional_variance", "GAUSSIAN_ABS_MOMENT"]
 
 GAUSSIAN_ABS_MOMENT = sqrt(2.0 / np.pi)
 _CLIP = 30.0
@@ -61,9 +65,9 @@ def egarch_filter(
 ) -> np.ndarray:
     """Run the EGARCH(1,1) log-variance recursion.
 
-    ``sigma2[0]`` is the backcast (arch convention:
-    ``ln sigma2_0 = ln(backcast)``); subsequent values follow the recursion in
-    the module docstring.
+    ``ln sigma2[0] = omega + beta ln(b)`` with backcast ``b`` (the pre-sample
+    shock at its expectation, the ``arch`` package convention); subsequent
+    values follow the recursion in the module docstring.
 
     Parameters
     ----------
@@ -87,8 +91,10 @@ def egarch_filter(
         raise ValueError(f"initial variance must be positive, got {b!r}")
     n = y.size
     sigma2 = np.empty(n)
-    ls2 = log(b)
-    sigma2[0] = b
+    # pre-sample shock at its expectation: ln sigma2_0 = omega + beta ln b
+    # (arch's convention; GARCH uses the same one-step-from-backcast rule)
+    ls2 = min(max(omega + beta * log(b), -_LOGS2_BOUND), _LOGS2_BOUND)
+    sigma2[0] = exp(ls2)
     yl = y.tolist()  # scalar-math loop is ~4x faster than numpy scalars
     for t in range(1, n):
         z = yl[t - 1] / sqrt(sigma2[t - 1])
@@ -101,43 +107,85 @@ def egarch_filter(
     return sigma2
 
 
-def _nll_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> float:
+def _ll_obs_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> np.ndarray:
     omega, alpha, gamma, beta = theta[0], theta[1], theta[2], theta[3]
     if not abs(beta) < 1.0:
-        return 1e10
+        return np.full(y.size, np.nan)
     if dist == "t":
         nu = theta[4]
         if nu <= 2.0:
-            return 1e10
+            return np.full(y.size, np.nan)
         am = student_t_abs_moment(nu)
     else:
         nu, am = None, GAUSSIAN_ABS_MOMENT
     sigma2 = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
-    ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, nu)
+    return loglik_obs(y, sigma2, dist, nu)
+
+
+def _nll_natural(theta: np.ndarray, y: np.ndarray, dist: str, b: float) -> float:
+    ll = float(np.sum(_ll_obs_natural(theta, y, dist, b)))
     return -ll if np.isfinite(ll) else 1e10
+
+
+def egarch_unconditional_variance(
+    omega: float, alpha: float, gamma: float, beta: float, dist: str = "gaussian"
+) -> float:
+    """Exact unconditional mean ``E[sigma2]`` of a stationary EGARCH(1,1).
+
+    With ``g(z) = alpha (|z| - E|z|) + gamma z`` (Nelson 1991):
+    ``E[sigma2] = exp(omega/(1-beta)) prod_i E[exp(beta^i g(z))]``. For
+    Gaussian z each factor is closed form; the product is truncated once
+    ``|beta|^i < 1e-16``. For Student-t innovations ``E exp(c|z|)`` is
+    infinite, so ``E[sigma2]`` does not exist (``inf``) unless
+    ``alpha = gamma = 0``. ``exp(omega/(1-beta))`` is the median-type level
+    and is below ``E[sigma2]`` by Jensen's inequality.
+    """
+    from scipy.special import log_ndtr
+
+    if not abs(beta) < 1.0:
+        raise ValueError(f"|beta| must be < 1, got {beta}")
+    level = omega / (1.0 - beta)
+    if alpha == 0.0 and gamma == 0.0:
+        return float(exp(level))
+    if dist == "t":
+        return float("inf")
+    if dist != "gaussian":
+        raise ValueError(f"dist must be 'gaussian' or 't', got {dist!r}")
+    log_e, c = level, 1.0
+    while abs(c) >= 1e-16:
+        a, d = c * alpha, c * gamma
+        log_e += -a * GAUSSIAN_ABS_MOMENT + float(np.logaddexp(
+            0.5 * (a + d) ** 2 + log_ndtr(a + d), 0.5 * (a - d) ** 2 + log_ndtr(a - d)
+        ))
+        c *= beta
+    return float(exp(log_e))
 
 
 def fit_egarch(
     returns: Sequence[float] | np.ndarray,
     dist: str = "gaussian",
     min_obs: int = MIN_OBS,
+    raise_on_failure: bool = True,
 ) -> FitResult:
     """Fit EGARCH(1,1) by from-scratch MLE.
 
     Same conventions as :func:`fx_vol.garch.fit_garch`: internal unit-variance
     rescaling (``omega`` maps back via ``omega_r = omega_y + (1-beta) ln s^2``
-    -- additive in log-variance space), transforms (``beta = tanh(u)``;
-    ``alpha``, ``gamma`` unconstrained -- the log form needs no positivity
-    constraints), multi-start L-BFGS-B, natural-space Hessian standard errors.
+   : additive in log-variance space), transforms (``beta = tanh(u)``;
+    ``alpha``, ``gamma`` unconstrained: the log form needs no positivity
+    constraints), multi-start L-BFGS-B, classic and robust standard errors.
+    Because ``omega_r`` depends on ``beta``, its standard error comes from
+    the delta method: ``Var(omega_r) = Var(omega_y) + L^2 Var(beta)
+    - 2 L Cov(omega_y, beta)`` with ``L = ln s^2``.
 
     Returns
     -------
     FitResult
         Parameters ``omega, alpha, gamma, beta [, nu]``; ``persistence`` is
-        ``beta``; ``unconditional_variance`` is the log-normal-corrected
-        Gaussian approximation ``exp(omega/(1-beta))`` reported for
-        orientation only (exact only in the median sense -- use the
-        simulation-based forecaster for long horizons).
+        ``beta``; ``unconditional_variance`` is the exact ``E[sigma2]``
+        (:func:`egarch_unconditional_variance`: closed form for Gaussian
+        innovations, ``inf`` for Student-t where it does not exist);
+        ``extra["median_variance"]`` is ``exp(omega/(1-beta))``.
     """
     if dist not in ("gaussian", "t"):
         raise ValueError(f"dist must be 'gaussian' or 't', got {dist!r}")
@@ -162,6 +210,10 @@ def fit_egarch(
 
     def nll_u(u: np.ndarray) -> float:
         omega, alpha, gamma, beta, nu, am = unpack(u)
+        if not abs(beta) < 1.0:
+            # tanh saturates to exactly +-1 in float64 for |u| > ~19; treat
+            # the saturated region as infeasible instead of raising
+            return 1e10
         sigma2 = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
         ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, nu)
         return -ll if np.isfinite(ll) else 1e10
@@ -174,28 +226,52 @@ def fit_egarch(
             u0.append(log(8.0 - MIN_NU))
         starts.append(np.array(u0))
 
+    # L-BFGS-B on the average NLL from each start. On some samples its line
+    # search stalls at the start point (the first trial step overshoots into
+    # the explosive region and it reports "convergence" after one or two
+    # iterations); those starts are re-run with BFGS and central-difference
+    # gradients. Convergence is judged by the optimiser flag or a gradient
+    # below 1e-5 on the average scale (BFGS often reports precision loss at
+    # an optimum where the Student-t nu direction is flat).
+    def avg(u: np.ndarray) -> float:
+        return nll_u(u) / n
+
     best = None
     for u0 in starts:
-        res = minimize(nll_u, u0, method="L-BFGS-B", options={"maxiter": 500})
+        res = minimize(avg, u0, method="L-BFGS-B", options={"maxiter": 500})
+        if res.nit <= 2 or not res.success:
+            res = minimize(avg, res.x, method="BFGS", jac="3-point",
+                           options={"maxiter": 400, "gtol": 1e-6})
+            res.success = bool(res.success or np.max(np.abs(res.jac)) < 1e-5)
+        res.fun = res.fun * n
         if best is None or res.fun < best.fun:
             best = res
     omega, alpha, gamma, beta, nu, am = unpack(best.x)
     sigma2_y = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
 
-    theta_nat = [omega, alpha, gamma, beta] + ([nu] if dist == "t" else [])
-    se_nat = hessian_std_errors(lambda t: _nll_natural(t, y, dist, b), np.array(theta_nat))
+    if not best.success and raise_on_failure:
+        raise ConvergenceError(f"EGARCH MLE failed to converge: {best.message} (nit={best.nit})")
+    names = ["omega", "alpha", "gamma", "beta"] + (["nu"] if dist == "t" else [])
+    theta_nat = np.array([omega, alpha, gamma, beta] + ([nu] if dist == "t" else []))
+    cov_c, cov_r = mle_covariances(
+        lambda t: _nll_natural(t, y, dist, b),
+        lambda t: _ll_obs_natural(t, y, dist, b),
+        theta_nat,
+    )
 
     # omega maps additively: ln sigma2_r = ln sigma2_y + ln s^2, so
     # omega_r = omega_y + (1 - beta) * ln s^2; alpha/gamma/beta/nu invariant.
     log_s2 = log(s * s)
     omega_r = omega + (1.0 - beta) * log_s2
+    jac = np.eye(theta_nat.size)
+    jac[0, 3] = -log_s2
+    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)]))
+    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)]))
     params = {"omega": omega_r, "alpha": alpha, "gamma": gamma, "beta": beta}
-    se = {"omega": se_nat[0], "alpha": se_nat[1], "gamma": se_nat[2], "beta": se_nat[3]}
     if dist == "t":
         params["nu"] = float(nu)
-        se["nu"] = float(se_nat[4])
 
-    uncond = exp(omega_r / (1.0 - beta))
+    uncond = egarch_unconditional_variance(omega_r, alpha, gamma, beta, dist)
     return FitResult(
         model="egarch",
         dist=dist,
@@ -209,5 +285,11 @@ def fit_egarch(
         n_obs=n,
         persistence=float(beta),
         unconditional_variance=float(uncond),
-        extra={"abs_moment": am, "backcast": b * s * s},
+        extra={
+            "abs_moment": am,
+            "backcast": b * s * s,
+            "median_variance": exp(omega_r / (1.0 - beta)),
+            "at_boundary": bool(abs(beta) > 0.999),
+        },
+        robust_std_errors=robust,
     )

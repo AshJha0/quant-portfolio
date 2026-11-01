@@ -314,15 +314,21 @@ def implied_vol(
         )
     # Clip prices inside the slack band onto the bounds.
     price = min(max(price, lower), upper)
-    if price - lower < 1e-14:  # effectively intrinsic -> vol ~ 0
-        return lo
 
     def objective(sigma: float) -> float:
         return gk_price(S, K, T, r_d, r_f, sigma, cp) - price
 
-    f_lo = objective(lo)
-    if f_lo > 0.0:  # price below the sigma=lo price: vol under the bracket
-        return lo
+    # A price at (or numerically indistinguishable from) intrinsic, or below
+    # the sigma=lo price, has no implied vol inside the bracket.  Returning
+    # the bracket edge would be a plausible-looking wrong number, so the
+    # solver reports failure instead (NaN or ValueError per ``on_fail``).
+    if price - lower < 1e-14 or objective(lo) > 0.0:
+        if on_fail == "nan":
+            return math.nan
+        raise ValueError(
+            f"implied vol below bracket {lo} (price {price} at or within "
+            f"round-off of intrinsic {lower}) for K={K}, T={T}"
+        )
     b = 0.5
     while objective(b) < 0.0:
         b *= 2.0

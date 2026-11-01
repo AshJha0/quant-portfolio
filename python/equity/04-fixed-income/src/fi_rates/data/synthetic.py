@@ -1,6 +1,6 @@
 """Seeded synthetic market data: deposit/swap quote sets and a bond portfolio.
 
-Everything here is deterministic given ``seed`` and fully offline — this is
+Everything here is deterministic given ``seed`` and fully offline, this is
 the only data source the tests and the example pipeline use.
 
 Curve variants
@@ -92,7 +92,7 @@ def sample_portfolio(settlement: dt.date, seed: int = 42) -> list[Position]:
 
     Governments carry zero z-spread; corporates carry seeded z-spreads in
     roughly the 80-250bp range (spread risk handled as a z-spread over the
-    single discount curve — see METHODOLOGY assumptions register).
+    single discount curve, see METHODOLOGY assumptions register).
 
     Quantities are in bonds (face 100 each).
     """
@@ -110,10 +110,10 @@ def sample_portfolio(settlement: dt.date, seed: int = 42) -> list[Position]:
         )
 
     govts = [
-        ("GOVT_2Y", _mk(2.0, 0.0325, 2, "ACT/ACT-ISDA"), 5000.0),
-        ("GOVT_5Y", _mk(5.0, 0.0350, 2, "ACT/ACT-ISDA"), 4000.0),
-        ("GOVT_10Y", _mk(10.0, 0.0400, 2, "ACT/ACT-ISDA"), 3000.0),
-        ("GOVT_30Y", _mk(29.8, 0.0450, 2, "ACT/ACT-ISDA"), 1500.0),
+        ("GOVT_2Y", _mk(2.0, 0.0325, 2, "ACT/ACT-ICMA"), 5000.0),
+        ("GOVT_5Y", _mk(5.0, 0.0350, 2, "ACT/ACT-ICMA"), 4000.0),
+        ("GOVT_10Y", _mk(10.0, 0.0400, 2, "ACT/ACT-ICMA"), 3000.0),
+        ("GOVT_30Y", _mk(29.8, 0.0450, 2, "ACT/ACT-ICMA"), 1500.0),
     ]
     corps = [
         ("CORP_A_3Y", _mk(3.1, 0.0475, 2, "30/360US")),

@@ -145,7 +145,7 @@ def test_vol_to_zero_and_large_vol_prices():
 
 
 def test_atm_delta_neutrality_all_expiries(usdjpy_surface):
-    """The ATM strike is genuinely delta-neutral under the native pa
+    """The ATM strike is delta-neutral under the native pa
     convention at every tenor."""
     for sl in usdjpy_surface.slices:
         dc = gk_delta(sl.S, sl.strikes["atm"], sl.T, sl.r_d, sl.r_f,

@@ -5,23 +5,26 @@ Loss functions
 * **QLIKE**: ``L = log f + r/f`` for forecast variance f and realized proxy r
   (here r_t^2). QLIKE is *robust* in the Patton (2011) sense: its expected
   loss is minimized at the true conditional variance even when the realized
-  proxy is noisy -- the reason it is the standard loss for variance forecast
+  proxy is noisy: the reason it is the standard loss for variance forecast
   races. It also penalizes *under*-prediction more than over-prediction,
   matching desk risk preferences (an under-forecast blows the VaR).
-* **MSE**: ``(f - r)^2`` -- robust but heavily driven by high-variance days;
-  reported alongside QLIKE.
+* **MSE**: ``(f - r)^2``: also Patton-robust. It is driven by the few
+  high-variance days, so tests on it have lower power. Reported alongside
+  QLIKE.
 
 Tests
 -----
 * Mincer-Zarnowitz calibration regression (HAC/Newey-West covariance),
 * Diebold-Mariano equal-predictive-accuracy test with a from-scratch
-  Newey-West long-run variance,
+  Newey-West long-run variance (default truncation ``floor(4 (n/100)^(2/9))``)
+  and the Harvey-Leybourne-Newbold small-sample correction,
 * Ljung-Box, ARCH-LM and Engle-Ng sign-bias diagnostics on standardized
   residuals (statsmodels used for the auxiliary OLS regressions).
 """
 
 from __future__ import annotations
 
+import warnings
 from typing import Sequence
 
 import numpy as np
@@ -35,6 +38,7 @@ __all__ = [
     "mincer_zarnowitz",
     "newey_west_variance",
     "diebold_mariano",
+    "default_hac_lags",
     "ljung_box",
     "arch_lm",
     "sign_bias_test",
@@ -130,27 +134,39 @@ def newey_west_variance(d: Sequence[float], lags: int) -> float:
     return lrv
 
 
+def default_hac_lags(n: int, h: int = 1) -> int:
+    """Default Newey-West truncation ``max(h - 1, floor(4 (n/100)^(2/9)))``."""
+    return int(max(h - 1, np.floor(4.0 * (n / 100.0) ** (2.0 / 9.0))))
+
+
 def diebold_mariano(
     loss1: Sequence[float],
     loss2: Sequence[float],
     h: int = 1,
     lags: int | None = None,
+    harvey_correction: bool = True,
 ) -> dict:
     """Diebold-Mariano test of equal predictive accuracy.
 
     Tests H0: ``E[loss1 - loss2] = 0`` using the Newey-West long-run variance
-    of the loss differential; the statistic is asymptotically N(0,1). A
-    *negative* statistic favours model 1 (lower loss).
+    of the loss differential. A *negative* statistic favours model 1 (lower
+    loss). With ``harvey_correction`` (default) the statistic is scaled by
+    ``sqrt((n + 1 - 2h + h(h-1)/n) / n)`` and compared with t_{n-1}
+    (Harvey, Leybourne and Newbold 1997); otherwise with N(0,1).
 
     Parameters
     ----------
     loss1, loss2 : array-like
         Aligned per-period losses (e.g. QLIKE series) of the two models.
     h : int
-        Forecast horizon; sets the default truncation ``lags = h - 1``
-        (h-step optimal forecast errors are MA(h-1)).
+        Forecast horizon.
     lags : int, optional
-        Override the Newey-West truncation.
+        Newey-West truncation. Default ``max(h - 1, floor(4 (n/100)^(2/9)))``
+        (Newey-West 1994 rule of thumb). ``h - 1`` alone is right only for
+        optimal forecasts; QLIKE differentials of variance forecasts are
+        autocorrelated even at h = 1. Pass 0 for the i.i.d. variance.
+    harvey_correction : bool
+        Apply the HLN small-sample correction (default True).
 
     Returns
     -------
@@ -164,12 +180,16 @@ def diebold_mariano(
     n = d.size
     if n < 10:
         raise ValueError(f"need at least 10 loss observations, got {n}")
-    L = (h - 1) if lags is None else lags
+    L = default_hac_lags(n, h) if lags is None else lags
     lrv = newey_west_variance(d, L)
     if lrv <= 0:
-        raise ValueError("non-positive long-run variance -- losses may be identical")
+        raise ValueError("non-positive long-run variance: losses may be identical")
     stat = float(d.mean() / np.sqrt(lrv / n))
-    pvalue = float(2.0 * stats.norm.sf(abs(stat)))
+    if harvey_correction:
+        stat *= float(np.sqrt((n + 1 - 2 * h + h * (h - 1) / n) / n))
+        pvalue = float(2.0 * stats.t.sf(abs(stat), df=n - 1))
+    else:
+        pvalue = float(2.0 * stats.norm.sf(abs(stat)))
     return {"stat": stat, "pvalue": pvalue, "mean_diff": float(d.mean()), "n": n, "lags": L}
 
 
@@ -196,7 +216,11 @@ def arch_lm(x: Sequence[float], lags: int = 10) -> dict:
     arr = np.asarray(x, dtype=float)
     if not np.isfinite(arr).all():
         raise ValueError("input contains NaN or infinite values")
-    lm, lm_pval, f, f_pval = het_arch(arr, nlags=lags)
+    with warnings.catch_warnings():
+        # statsmodels >= 0.15 warns that the tuple return will change; the
+        # four-tuple unpacking below is valid for 0.14 and 0.15.
+        warnings.simplefilter("ignore", FutureWarning)
+        lm, lm_pval, f, f_pval = het_arch(arr, nlags=lags)
     return {"stat": float(lm), "pvalue": float(lm_pval), "f_stat": float(f), "f_pvalue": float(f_pval), "lags": lags}
 
 
@@ -210,7 +234,7 @@ def sign_bias_test(returns: Sequence[float], sigma2: Sequence[float]) -> dict:
     with ``S- = 1[e_{t-1} < 0]``, ``e`` the (raw) residual. Significant b1 =
     sign bias; b2/b3 = negative/positive size bias. The joint F-test is the
     standard pre-test for whether an asymmetric model (GJR/EGARCH) is needed
-    -- for G10 FX it typically fails to reject, for EM pairs it rejects
+   : for G10 FX it typically fails to reject, for EM pairs it rejects
     strongly (see docs/METHODOLOGY.md).
 
     Returns
