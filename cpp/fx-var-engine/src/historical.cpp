@@ -65,7 +65,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
       sum += weights[i];
     }
     for (double& w : weights) w /= sum;
-  } else {  // kFiltered
+  } else {  // kFiltered: per-factor FHS
     const EwmaVolatility ev = ewma_volatility(rets, opts.ewma_lambda);
     for (std::size_t i = 0; i < n; ++i)
       for (std::size_t j = 0; j < rets.n_factors(); ++j)

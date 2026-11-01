@@ -94,12 +94,12 @@ TEST(GoldenPython, CaseA_PlainHistoricalVarEs) {
   const Market m = golden_market();
   const ReturnsMatrix rets = golden_returns();
   HistoricalOptions o99;
-  o99.alpha = 0.99;
+  o99.alpha = 0.01;
   const auto r99 = historical_var(golden_book(), m, rets, o99);
   EXPECT_NEAR(r99.var, golden::a_plain_var_99, golden::tol_case_a_abs);
   EXPECT_NEAR(r99.es, golden::a_plain_es_99, golden::tol_case_a_abs);
   HistoricalOptions o975;
-  o975.alpha = 0.975;
+  o975.alpha = 0.025;
   const auto r975 = historical_var(golden_book(), m, rets, o975);
   EXPECT_NEAR(r975.var, golden::a_plain_var_975, golden::tol_case_a_abs);
   EXPECT_NEAR(r975.es, golden::a_plain_es_975, golden::tol_case_a_abs);
@@ -110,7 +110,7 @@ TEST(GoldenPython, CaseA_AgeWeightedHistoricalVarEs) {
   //   var99 = 61874.26268531149   es99 = 61977.52496594109
   const Market m = golden_market();
   HistoricalOptions o;
-  o.alpha = 0.99;
+  o.alpha = 0.01;
   o.method = HsMethod::kAge;
   o.decay = 0.995;
   const auto r = historical_var(golden_book(), m, golden_returns(), o);
@@ -131,20 +131,20 @@ TEST(GoldenPython, CaseB_ParametricClosedForm) {
   const Matrix cov = Matrix::from_rows({{3.6e-5, 1.1e-5, -2.0e-6},
                                         {1.1e-5, 4.9e-5, -1.0e-6},
                                         {-2.0e-6, -1.0e-6, 2.5e-7}});
-  const VarEs n1 = var_covar(w, cov, 0.99, 1.0, TailDist::kNormal);
+  const VarEs n1 = var_covar(w, cov, 0.01, 1.0, TailDist::kNormal);
   EXPECT_NEAR(n1.var, golden::b_normal_var_99_1d, golden::tol_case_b_rel * n1.var);
   EXPECT_NEAR(n1.es, golden::b_normal_es_99_1d, golden::tol_case_b_rel * n1.es);
-  const VarEs t5 = var_covar(w, cov, 0.99, 1.0, TailDist::kStudentT, 5.0);
+  const VarEs t5 = var_covar(w, cov, 0.01, 1.0, TailDist::kStudentT, 5.0);
   EXPECT_NEAR(t5.var, golden::b_t5_var_99_1d, golden::tol_case_b_rel * t5.var);
   EXPECT_NEAR(t5.es, golden::b_t5_es_99_1d, golden::tol_case_b_rel * t5.es);
-  const VarEs n10 = var_covar(w, cov, 0.99, 10.0, TailDist::kNormal);
+  const VarEs n10 = var_covar(w, cov, 0.01, 10.0, TailDist::kNormal);
   EXPECT_NEAR(n10.var, golden::b_normal_var_99_10d, golden::tol_case_b_rel * n10.var);
   EXPECT_NEAR(n10.es, golden::b_normal_es_99_10d, golden::tol_case_b_rel * n10.es);
 }
 
 TEST(GoldenPython, CaseC_BacktestStatistics) {
   // Python fx_var.backtesting:
-  //   kupiec_pof(8, 250, 0.99)   -> LR = 7.7335507244945205
+  //   kupiec_pof(8, 250, 0.01)   -> LR = 7.7335507244945205
   //                                 p  = 0.0054204051941277994
   //   christoffersen on the fixed pattern (t % 37 == 5, plus 100,101;
   //   9 exceptions in 250)       -> LR = 1.0063610339314124
@@ -152,7 +152,7 @@ TEST(GoldenPython, CaseC_BacktestStatistics) {
   //   basel cum prob: P(X<=5)  = 0.9588168159301514  (yellow, 3.40)
   //                   P(X<=4)  = 0.8921876269036249  (green,  3.00)
   //                   P(X<=10) = 0.999946101370953   (red,    4.00)
-  const LrTest k = kupiec_pof(8, 250, 0.99);
+  const LrTest k = kupiec_pof(8, 250, 0.01);
   EXPECT_NEAR(k.lr, golden::c_kupiec_lr_8_250, golden::tol_kupiec_lr_abs);
   EXPECT_NEAR(k.p, golden::c_kupiec_p_8_250, golden::tol_kupiec_p_abs);
 
@@ -168,15 +168,15 @@ TEST(GoldenPython, CaseC_BacktestStatistics) {
   EXPECT_NEAR(c.lr, golden::c_christoffersen_ind_lr, golden::tol_christoffersen_abs);
   EXPECT_NEAR(c.p, golden::c_christoffersen_ind_p, golden::tol_christoffersen_abs);
 
-  const TrafficLight t5 = basel_traffic_light(5, 250, 0.99);
+  const TrafficLight t5 = basel_traffic_light(5, 250, 0.01);
   EXPECT_NEAR(t5.cumulative_prob, golden::c_basel_cum_prob_5, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t5.zone, Zone::kYellow);
   EXPECT_DOUBLE_EQ(t5.multiplier, golden::c_basel_multiplier_5);
-  const TrafficLight t4 = basel_traffic_light(4, 250, 0.99);
+  const TrafficLight t4 = basel_traffic_light(4, 250, 0.01);
   EXPECT_NEAR(t4.cumulative_prob, golden::c_basel_cum_prob_4, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t4.zone, Zone::kGreen);
   EXPECT_DOUBLE_EQ(t4.multiplier, golden::c_basel_multiplier_4);
-  const TrafficLight t10 = basel_traffic_light(10, 250, 0.99);
+  const TrafficLight t10 = basel_traffic_light(10, 250, 0.01);
   EXPECT_NEAR(t10.cumulative_prob, golden::c_basel_cum_prob_10, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t10.zone, Zone::kRed);
   EXPECT_DOUBLE_EQ(t10.multiplier, golden::c_basel_multiplier_10);

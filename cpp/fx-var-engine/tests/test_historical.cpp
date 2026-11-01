@@ -42,7 +42,7 @@ TEST(HistoricalVar, PlainMatchesDirectQuantileOfRevaluedPnl) {
   Book book({SpotPosition{"EURUSD", 10e6, {}}});
   const ReturnsMatrix rets = synthetic_returns(300, {"FX:EUR"}, {0.006});
   HistoricalOptions opts;
-  opts.alpha = 0.99;
+  opts.alpha = 0.01;
   const HistoricalResult res = historical_var(book, m, rets, opts);
   ASSERT_EQ(res.pnl.size(), 300u);
   // With 300 scenarios at 99%, VaR is the 3rd worst loss - recompute by

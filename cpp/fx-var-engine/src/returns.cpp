@@ -1,5 +1,6 @@
 #include "fxvar/returns.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
@@ -92,9 +93,11 @@ void validate_returns(const ReturnsMatrix& returns,
     for (const auto& f : missing) msg << " " << f;
     throw std::invalid_argument(msg.str());
   }
-  if (returns.data.has_nan())
+  bool bad = false;
+  for (double v : returns.data.data()) bad = bad || !std::isfinite(v);
+  if (bad)
     throw std::invalid_argument(
-        "returns contains NaNs; clean or drop them explicitly before "
+        "returns contains NaN or inf; clean or drop them explicitly before "
         "calling the engine (NaN policy: refuse, never impute silently)");
 }
 
@@ -103,6 +106,11 @@ FactorCov sample_cov(const ReturnsMatrix& returns) {
   const std::size_t k = returns.n_factors();
   if (n < 2)
     throw std::invalid_argument("sample_cov: need at least 2 observations");
+  if (returns.data.cols() != k)
+    throw std::invalid_argument("sample_cov: factor labels do not match the data");
+  for (double v : returns.data.data())
+    if (!std::isfinite(v))
+      throw std::invalid_argument("sample_cov: returns contain NaN or inf");
   std::vector<double> mean(k, 0.0);
   for (std::size_t i = 0; i < n; ++i)
     for (std::size_t j = 0; j < k; ++j) mean[j] += returns.data(i, j);
@@ -152,19 +160,20 @@ EwmaVolatility ewma_volatility(const ReturnsMatrix& returns, double lam) {
   const std::size_t k = returns.n_factors();
   if (n < 2)
     throw std::invalid_argument("ewma_volatility: need at least 2 observations");
-  // Seed with the ddof=1 sample variance per factor, floored at 1e-18.
-  std::vector<double> mean(k, 0.0);
-  for (std::size_t i = 0; i < n; ++i)
-    for (std::size_t j = 0; j < k; ++j) mean[j] += returns.data(i, j);
-  for (std::size_t j = 0; j < k; ++j) mean[j] /= static_cast<double>(n);
+  for (double v : returns.data.data())
+    if (!std::isfinite(v))
+      throw std::invalid_argument("ewma_volatility: returns contain NaN or inf");
+  // RiskMetrics zero-mean seed: s2_0 = mean of r^2 over the first
+  // w = min(30, n) rows (no full-sample seed), floored at 1e-18.
+  const std::size_t w = std::min<std::size_t>(kEwmaSeedWindow, n);
   std::vector<double> sig2(k, 0.0);
-  for (std::size_t i = 0; i < n; ++i)
+  for (std::size_t i = 0; i < w; ++i)
     for (std::size_t j = 0; j < k; ++j) {
-      const double d = returns.data(i, j) - mean[j];
-      sig2[j] += d * d;
+      const double r = returns.data(i, j);
+      sig2[j] += r * r;
     }
   for (std::size_t j = 0; j < k; ++j)
-    sig2[j] = std::max(sig2[j] / (static_cast<double>(n) - 1.0), 1e-18);
+    sig2[j] = std::max(sig2[j] / static_cast<double>(w), 1e-18);
 
   EwmaVolatility out;
   out.sigma = Matrix(n, k);
@@ -182,6 +191,8 @@ EwmaVolatility ewma_volatility(const ReturnsMatrix& returns, double lam) {
 
 std::vector<std::string> flag_peg_factors(const ReturnsMatrix& returns,
                                           double threshold) {
+  if (!(threshold >= 0.0) || !std::isfinite(threshold))
+    throw std::invalid_argument("peg threshold must be finite and >= 0");
   std::vector<std::string> flagged;
   const std::size_t n = returns.n_obs();
   if (n < 2) return flagged;
