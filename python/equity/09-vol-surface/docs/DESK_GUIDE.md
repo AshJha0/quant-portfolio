@@ -147,3 +147,14 @@ slope times 0.005.
 Five valid quotes per expiry is the floor (SVI has five parameters;
 `fit_svi` refuses fewer). For thinner names, borrow the index smile shape
 (fix b, rho and sigma from the index slice and fit a and m only).
+
+## 5. Round 3 models: when to use which
+
+- SSVI for a quick, arbitrage-free surface across expiries from a handful of
+  parameters; eSSVI when the skew flattens with maturity and one rho is not
+  enough.
+- Dupire local vol for path-dependent payoffs priced consistently with the
+  vanilla surface. It reprices vanillas by construction, but its forward
+  smile is too flat, so do not rely on it alone for forward-start or cliquet
+  risk.
+- Bates when short-dated skew is steeper than Heston can produce.

@@ -155,3 +155,14 @@ Each assumption states what breaks if violated.
 - Basis spreads: decimal; reported in bp.
 - Forward points: `(F - S) * 1e4`, or `* 1e2` for JPY-quoted pairs.
 - PVs, deltas and DV01s in the quote currency; DV01s are signed per +1bp.
+
+## Round 3 addition: float-float cross-currency swaps
+
+Each leg pays its index plus a spread, projected on its own curve and
+discounted on its collateral-consistent curve (Fujii, Shimada and Takahashi
+2010). The resetting (MtM) leg is a strip of one-period exchanges whose
+notional is `N_base x S(t_{i-1})`; with deterministic curves that spot is
+worth `S_0 D_base(t_{i-1})` today. Its value is therefore proportional to
+spot, and at par it has no FX delta. Assumptions: no FX-rates correlation,
+so no MtM convexity adjustment (Fujii et al., Section 4); the swap is valued
+on a reset date.

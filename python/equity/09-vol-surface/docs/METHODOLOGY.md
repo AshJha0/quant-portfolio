@@ -257,3 +257,29 @@ dedicated unit test; edge cases are in `tests/test_edge_cases.py`.
     would report 100 vol points instead of the flat short-end vol. Any clamp
     applied to total variance rather than variance has this failure mode.
     (T: pinned from `T = 1e-14` upward.)
+
+## 5. Round 3 additions: SSVI/eSSVI, Dupire, Bates
+
+**SSVI.** One formula for the whole surface: total variance at log-moneyness
+k is `theta/2 (1 + rho phi k + sqrt((phi k + rho)^2 + 1 - rho^2))`, where
+theta is the ATM total variance of the expiry and `phi(theta)` is a power law
+(Gatheral and Jacquier 2014, eq. 4.1, Remark 4.5). Each slice is a raw SVI
+slice, so the existing SVI tools apply. If `eta (1 + |rho|) <= 2` the surface
+has no static arbitrage (Theorem 4.1, Remark 4.4). eSSVI lets rho move with
+theta (Hendriks and Martini 2019); here rho is linear in theta between two
+anchors, and calendar arbitrage is checked on a grid rather than proved.
+
+**Dupire.** Local variance is the time slope of total variance divided by a
+convexity term in k (Gatheral 2006, eq. 1.10), or, equivalently, from call
+prices (Dupire 1994; Gatheral 2006, eq. 1.4). Both use central finite
+differences. If the numerator or the denominator goes negative, the input
+surface has arbitrage there, and the code raises `LocalVolArbitrageError`
+instead of clipping.
+
+**Bates.** Heston plus compound-Poisson lognormal jumps in the log price.
+The characteristic function is the Heston one times the jump factor, with a
+compensator that keeps the forward a martingale (Bates 1996; Gatheral 2006,
+eq. 5.6). Pricing uses the Lewis (2001) single integral.
+
+Assumptions: jumps independent of the diffusion; constant jump parameters;
+eSSVI calendar no-arbitrage is checked numerically, not guaranteed.

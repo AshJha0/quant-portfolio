@@ -203,3 +203,16 @@ such a book. Pinned by
   2008 shock, PCHIP smoothness, mid-period FRN.
 * `test_edge_cases.py`, `test_input_hardening.py`: edge cases and input
   validation.
+
+## Round 3 oracle tests (`tests/test_round3_rates.py`)
+
+| Item | Oracle | Tolerance |
+|---|---|---|
+| OIS, projection | the bootstrap reprices every input quote | 1e-13 |
+| Projection | OIS quotes used as swap quotes give back the OIS curve | 1e-12 |
+| Black, Bachelier | put-call parity, ATM closed forms, implied-vol round trip | 1e-14 / 1e-10 |
+| Swaption, cap | payer - receiver = annuity x (F - K); cap - floor = swap | 1e-14 |
+| Hull-White | zero bonds reprice the initial curve | 1e-7 rel |
+| Hull-White | bond-option parity; Jamshidian payer-receiver parity | 1e-13 |
+| Hull-White | exact-OU MC (200k paths): bond, caplet, swaption | 4 SE + 2e-5 |
+| Hull-White | sigma -> 0 caplet is intrinsic; small a gives normal vol ~ sigma | 1e-6 / 2e-3 rel |

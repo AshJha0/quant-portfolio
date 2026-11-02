@@ -264,3 +264,14 @@ documented.
   Proxies*, J. Econometrics 160(1).
 * Corsi (2009), *A Simple Approximate Long-Memory Model of Realized
   Volatility* (HAR), J. Financial Econometrics.
+
+## Round 3 addition: HAR-RV
+
+Tomorrow's realised variance is regressed on today's, the past week's mean
+and the past month's mean (Corsi 2009, eq. 8). Three averages at different
+horizons mimic long memory without a fractional model. Estimation is OLS
+with Newey-West (Bartlett, 22 lags) standard errors, because the weekly and
+monthly regressors overlap. Forecasts beyond one day feed forecasts back in.
+Daily RV is the sum of squared intraday log returns (Andersen et al. 2003,
+eq. 4). Assumption: no microstructure-noise correction, so use 5-minute or
+coarser returns.

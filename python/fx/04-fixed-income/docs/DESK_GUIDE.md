@@ -94,3 +94,9 @@ December.
 | Basis DV01 and basis scenarios | Trader, treasury | EOD, weekly |
 | Carry table | Forward roll desk | Weekly |
 | CIP monitor | Treasury | EOD |
+
+## Round 3: which cross-currency swap
+
+For the major pairs the quoted basis is on the MtM (resetting) form; mark it
+with `FloatFloatXccy(mtm_reset=True)`. Use the constant-notional form for
+trades booked that way, with `notional_quote` set at trade.

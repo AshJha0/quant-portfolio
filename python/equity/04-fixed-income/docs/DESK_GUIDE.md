@@ -104,3 +104,10 @@ Two episodes are discussed but not encoded as shift vectors:
   forward impact (VALIDATION §4.1); single-curve discounting is the
   largest known limitation (METHODOLOGY §7).
 * Calendars are partial (weekend plus fixed-date holidays).
+
+## Round 3: rates products
+
+Build the OIS curve first, then one projection curve per index tenor. Quote
+caps and swaptions in normal vol when rates are near zero. Hull-White is for
+callable and path-dependent work once a and sigma are calibrated; the
+calibration to a swaption grid is not built yet.

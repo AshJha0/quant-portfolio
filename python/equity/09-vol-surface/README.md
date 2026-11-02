@@ -91,3 +91,14 @@ docs/                METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 
 METHODOLOGY covers model choice and assumptions, VALIDATION the evidence
 and failure modes, DESK_GUIDE the workflow, controls and scenarios.
+
+## Round 3 additions
+
+- `ssvi.py`: SSVI and eSSVI surfaces with the Gatheral-Jacquier no-arbitrage
+  checks, a calendar check and a least-squares fit.
+- `dupire.py`: Dupire local vol from total variance or from call prices, and
+  a local-vol Monte Carlo for repricing checks.
+- `bates.py`: Bates (Heston plus lognormal jumps) by the Lewis integral, with
+  the Merton series as a closed-form special case.
+
+Tests: `tests/test_round3_volsurface.py` (15 tests).

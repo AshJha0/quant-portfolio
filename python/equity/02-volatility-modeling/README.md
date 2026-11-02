@@ -119,3 +119,9 @@ proxy, because the package has no intraday data. HAR-RV, the Model
 Confidence Set and the Giacomini-White test are not implemented. The
 rolling harness re-runs the recursion over the full history every day,
 which is O(n^2).
+
+## Round 3 additions
+
+- `har_rv.py`: realised variance from intraday returns and the HAR-RV model
+  of Corsi (2009), fitted by OLS with Newey-West standard errors, with
+  iterated multi-day forecasts. Tests: `tests/test_har_rv.py` (5 tests).
