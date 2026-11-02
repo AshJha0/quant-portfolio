@@ -137,3 +137,31 @@ cross-language tolerances listed in the module docstring, checked over
 | `smile` (broker strangle) | Converts a broker (market) 25-delta butterfly into the smile butterfly and back | The smile reprices the broker strangle to 1e-12; RR = 0 gives equal butterflies; round trip to 1e-13 (`tests/test_fx_strangle_holidays.py`) |
 | `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut; `holidays="auto"` uses the shipped calendars | Hand-checked dates, end-of-month rule, DST shifts |
 | `holidays` | Rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD, 2010 to 2099, no network; since round 4 a re-export of `qp_core.holidays`, which also adds one-off closures | Full 2026 lists checked against the Fed, gov.uk, ECB and Cabinet Office of Japan lists (`tests/test_fx_strangle_holidays.py`) |
+
+## Array entry points
+
+**The plain idea.** `gk_price` prices one option per call, about 5.9 µs each
+from Python. `gk_price_array` takes NumPy arrays (anything that broadcasts) and
+prices the whole book (there is no Greeks array form yet) in one call.
+
+**Formal statement.** Arguments after `K` are keyword-only, so swapping two
+floats such as `T` and `sigma` raises `TypeError` instead of returning a
+wrong price. Validation is per element and the `ValueError` names the field
+and the first flat index. Agreement with the scalar function is
+`|array - scalar| <= 1e-12 * max(1, S, K)` on a grid covering every boundary
+branch (`tests/test_arrays.py`); it is not bit identity. The scalar API is
+unchanged.
+
+**Worked example.**
+
+```python
+import numpy as np
+from fx_options import gk_price_array
+K = np.linspace(80, 120, 41)
+p = gk_price_array(1.10, K / 100, T=0.5, r_d=0.03, r_f=0.01, sigma=0.08, option_type="call")
+```
+
+Measured on an i5-120U (Windows, Python 3.12, NumPy 2.4, best of 7, 10 000
+options): the scalar loop took 5.9 µs per option and `bs_price_array`
+0.31 µs, about 19x faster (equity package; `gk_price_array` uses the same
+NumPy approach and was not timed separately).

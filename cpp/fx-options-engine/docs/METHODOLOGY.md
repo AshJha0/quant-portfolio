@@ -119,3 +119,49 @@ authority:
 [`python/fx/01-options-pricing/docs/METHODOLOGY.md`](../../../python/fx/01-options-pricing/docs/METHODOLOGY.md).
 This engine inherits every one of those assumptions verbatim; nothing in the
 C++ port adds or relaxes any of them.
+
+## Vectorised batch pricing (`gk_price_batch_fast`)
+
+**The plain idea.** Pricing a thousand options one at a time spends most of
+its time in `std::log`, `std::exp` and `std::erfc`, which are library calls
+the compiler cannot vectorise. `gk_price_batch_fast` replaces them with the
+branch-free versions in `qp/vmath.hpp` so the compiler can price two (SSE2)
+or four (AVX2) options per instruction. The price is not bit-identical to
+`gk_price`; `gk_price_batch` stays the bit-exact batch and is unchanged.
+
+**Formal statement.** Same validation, the same `BatchError` for the same
+first bad index, and the same `NonFiniteResult` check as `gk_price_batch`.
+For every element, `|fast - exact| <= 1e-13 * max(1, S, K)`
+(`BatchApi.FastPricesWithinDocumentedBound`, 100 000 random quotes plus the
+boundary grid). Elements with `T = 0`, `sigma sqrt(T) <= kMinVol`, or `S / K` outside
+the normal double range, go through `gk_price_unchecked` and
+match `gk_price` bit for bit. On x86-64 Linux with GCC or Clang the kernel is
+built twice (`target_clones("avx2", "default")`) and the loader picks the
+AVX2 copy where the CPU has it; AVX2 does not enable FMA, so both copies
+return the same bits. MSVC builds the default copy only and its loop has not
+been checked for vectorisation.
+
+Three changes were needed before the loop vectorised, each confirmed with
+`-fopt-info-vec` / `-Rpass=loop-vectorize`: the erfc reflection
+`x < 0 ? 2 - r : r` became a bit-mask blend (GCC turned it into a branch
+under the default `-ftrapping-math`), the Clenshaw loop is fully unrolled,
+and the `qp::vm` kernels are `always_inline` (Clang otherwise kept `erfc1` as
+a call). `qp::vm::log_batch` was added for `log(S / K)` (fdlibm reduction,
+tested within 2 ulp).
+
+**Worked example (measured).** `eqopt_batch_bench` (tools/batch_bench.cpp):
+1024 random quotes, median of 21 runs of 2000 batches, steady_clock,
+i5-120U under WSL2 with other jobs running (load average about 7, so the
+spread is wide). Release build, no `-march=native`:
+
+| Compiler | `try_bs_price` loop | `gk_price_batch` | `gk_price_batch_fast` | Speed-up over `gk_price_batch` |
+|---|---|---|---|---|
+| GCC 15.2 | 161 ns (130-244) | 135 ns (122-179) | 33 ns (30-41) | about 4x |
+| Clang 21.1 | 122-182 ns | 108-260 ns | 57-125 ns (47-318) | 1.2x to 2.4x, noisy |
+
+With `EQOPT_NATIVE=ON` (AVX2 and FMA) GCC measured 16-38 ns per option.
+Before the three fixes above the fast kernel was scalar and no faster than
+`gk_price_batch` (about 159 ns against 137 ns). The Greeks batch is not
+vectorised yet. The numbers above are for the equity kernel (`eqopt_batch_bench`); the FX
+kernel is the same loop with `r_f` in place of `q` and was not benchmarked
+separately.

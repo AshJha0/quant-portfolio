@@ -4,11 +4,14 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <random>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -186,6 +189,65 @@ TEST(BatchApi, GreeksEqualScalarApiBitForBit) {
                                 g.theta, g.rho,   g.vanna, g.volga};
         for (int f = 0; f < 8; ++f) EXPECT_TRUE(same_bits(o[f][i], want[f])) << i << " " << f;
     }
+}
+
+// The fast batch is not bit-exact; the documented bound is
+// |fast - exact| <= 1e-13 * max(1, S, K). Degenerate elements (a zero T,
+// sigma, S or K) take the scalar path and must match bit for bit.
+TEST(BatchApi, FastPricesWithinDocumentedBound) {
+    std::vector<double> S, K, T, r, sig, q;
+    std::vector<OptionType> ty;
+    auto add = [&](double s, double k, double t, double rr, double v, double qq, OptionType o) {
+        S.push_back(s);
+        K.push_back(k);
+        T.push_back(t);
+        r.push_back(rr);
+        sig.push_back(v);
+        q.push_back(qq);
+        ty.push_back(o);
+    };
+    for (const Q& x : grid()) add(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type);
+    std::mt19937_64 g(2026);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    for (int i = 0; i < 100000; ++i) {
+        add(100.0 * std::exp(2.0 * u(g) - 1.0), 100.0, 1e-3 + 5.0 * u(g), 0.1 * u(g) - 0.02,
+            0.01 + 2.0 * u(g), 0.05 * u(g), u(g) < 0.5 ? OptionType::Call : OptionType::Put);
+    }
+    const std::size_t n = S.size();  // not a multiple of the internal block
+    std::vector<double> fast(n), exact(n);
+    ASSERT_TRUE(bs_price_batch({S, K, T, r, sig, q, ty}, exact).has_value());
+    ASSERT_TRUE(bs_price_batch_fast({S, K, T, r, sig, q, ty}, fast).has_value());
+    double worst = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double scale = std::max({1.0, S[i], K[i]});
+        worst = std::max(worst, std::abs(fast[i] - exact[i]) / scale);
+        if (S[i] == 0.0 || K[i] == 0.0 || T[i] == 0.0 || sig[i] == 0.0) {
+            EXPECT_TRUE(same_bits(fast[i], exact[i])) << i;
+        }
+    }
+    EXPECT_LE(worst, 1e-13);
+    RecordProperty("worst_scaled_abs_err", std::to_string(worst));
+}
+
+TEST(BatchApi, FastReportsTheSameErrorsAsExact) {
+    std::vector<double> S{100, 100, -1, 100}, K(4, 100), T(4, 1), r(4, 0), sig(4, 0.2), q(4, 0),
+        out(4, 7.0);
+    std::vector<OptionType> ty(4, OptionType::Call);
+    const auto res = bs_price_batch_fast({S, K, T, r, sig, q, ty}, out);
+    ASSERT_FALSE(res.has_value());
+    EXPECT_EQ(res.error().index, 2U);
+    EXPECT_EQ(res.error().error.code, Errc::NegativeOrNonFinite);
+    for (double v : out) EXPECT_EQ(v, 7.0);
+    S[2] = 100.0;
+    r[1] = -800.0;  // exp(800) overflows the discounted strike
+    const auto ovf = bs_price_batch_fast({S, K, T, r, sig, q, ty}, out);
+    ASSERT_FALSE(ovf.has_value());
+    EXPECT_EQ(ovf.error().index, 1U);
+    EXPECT_EQ(ovf.error().error.code, Errc::NonFiniteResult);
+    std::vector<double> short_out(3);
+    EXPECT_EQ(bs_price_batch_fast({S, K, T, r, sig, q, ty}, short_out).error().error.code,
+              Errc::SizeMismatch);
+    EXPECT_TRUE(bs_price_batch_fast({{}, {}, {}, {}, {}, {}, {}}, {}).has_value());
 }
 
 TEST(BatchApi, ReportsFirstBadIndexAndWritesNothing) {

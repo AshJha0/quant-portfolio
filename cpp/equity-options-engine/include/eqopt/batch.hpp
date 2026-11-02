@@ -48,6 +48,16 @@ struct BatchError {
 [[nodiscard]] std::expected<void, BatchError> bs_price_batch(const BsBatchInputs& in,
                                                              std::span<double> out) noexcept;
 
+/// \brief Throughput form of bs_price_batch(): the same validation and the
+///        same errors, but the pricing loop uses the branch-free exp, log and
+///        erfc of qp/vmath.hpp so the compiler can vectorise it. Prices are
+///        NOT bit-identical to bs_price(); docs/METHODOLOGY.md states the
+///        tested bound (|fast - exact| <= 1e-13 * max(1, S, K) on the test
+///        grids). Elements with T, sigma, S or K equal to zero go through the
+///        scalar formula and match bs_price() bit for bit.
+[[nodiscard]] std::expected<void, BatchError> bs_price_batch_fast(const BsBatchInputs& in,
+                                                                  std::span<double> out) noexcept;
+
 /// \brief Greeks for every element; each field equals try_bs_greeks()
 ///        exactly. Inputs must satisfy the bs_greeks() domain
 ///        (S, K, T, sigma > 0; r, q finite).

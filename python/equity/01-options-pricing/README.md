@@ -142,3 +142,30 @@ New modules, each with an oracle test in `tests/test_phase5_models.py`:
 
 Import them from their modules (for example `from eq_options.alo import alo_price`);
 the package `__init__` is unchanged this round.
+
+## Array entry points
+
+**The plain idea.** `bs_price` prices one option per call, about 5.9 µs each
+from Python. `bs_price_array / bs_greeks_array` takes NumPy arrays (anything that broadcasts) and
+prices the whole book in one call.
+
+**Formal statement.** Arguments after `K` are keyword-only, so swapping two
+floats such as `T` and `sigma` raises `TypeError` instead of returning a
+wrong price. Validation is per element and the `ValueError` names the field
+and the first flat index. Agreement with the scalar function is
+`|array - scalar| <= 1e-12 * max(1, S, K)` on a grid covering every boundary
+branch (`tests/test_arrays.py`); it is not bit identity. The scalar API is
+unchanged.
+
+**Worked example.**
+
+```python
+import numpy as np
+from eq_options import bs_price_array
+K = np.linspace(80, 120, 41)
+p = bs_price_array(100.0, K, T=0.5, r=0.03, sigma=0.2, option_type="put")
+```
+
+Measured on an i5-120U (Windows, Python 3.12, NumPy 2.4, best of 7, 10 000
+options): the scalar loop took 5.9 µs per option and `bs_price_array`
+0.31 µs, about 19x faster.

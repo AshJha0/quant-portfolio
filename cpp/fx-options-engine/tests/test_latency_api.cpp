@@ -4,11 +4,14 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <random>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -215,6 +218,59 @@ TEST(BatchApi, ReportsFirstBadIndexAndWritesNothing) {
     std::vector<double> short_out(3);
     EXPECT_EQ(gk_price_batch({S, K, T, rd, rf, sig, ty}, short_out).error().error.code,
               Errc::SizeMismatch);
+}
+
+// The fast batch is not bit-exact; the documented bound is
+// |fast - exact| <= 1e-13 * max(1, S, K). Elements the fast formula does not
+// cover (T = 0, sigma = 0) take the scalar path and must match bit for bit.
+TEST(BatchApi, FastPricesWithinDocumentedBound) {
+    std::vector<double> S, K, T, rd, rf, sig;
+    std::vector<OptionType> ty;
+    auto add = [&](double s, double k, double t, double d, double f, double v, OptionType o) {
+        S.push_back(s);
+        K.push_back(k);
+        T.push_back(t);
+        rd.push_back(d);
+        rf.push_back(f);
+        sig.push_back(v);
+        ty.push_back(o);
+    };
+    for (const Q& x : grid()) add(x.S, x.K, x.T, x.rd, x.rf, x.sigma, x.type);
+    std::mt19937_64 g(2026);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    for (int i = 0; i < 100000; ++i) {
+        add(1.1 * std::exp(2.0 * u(g) - 1.0), 1.1, 1e-3 + 5.0 * u(g), 0.1 * u(g) - 0.02,
+            0.1 * u(g) - 0.02, 0.01 + 2.0 * u(g),
+            u(g) < 0.5 ? OptionType::Call : OptionType::Put);
+    }
+    const std::size_t n = S.size();
+    std::vector<double> fast(n), exact(n);
+    ASSERT_TRUE(gk_price_batch({S, K, T, rd, rf, sig, ty}, exact).has_value());
+    ASSERT_TRUE(gk_price_batch_fast({S, K, T, rd, rf, sig, ty}, fast).has_value());
+    double worst = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        worst = std::max(worst, std::abs(fast[i] - exact[i]) / std::max({1.0, S[i], K[i]}));
+        if (T[i] == 0.0 || sig[i] == 0.0) {
+            EXPECT_TRUE(same_bits(fast[i], exact[i])) << i;
+        }
+    }
+    EXPECT_LE(worst, 1e-13);
+    RecordProperty("worst_scaled_abs_err", std::to_string(worst));
+}
+
+TEST(BatchApi, FastReportsTheSameErrorsAsExact) {
+    std::vector<double> S{1.1, 1.1, -1, 1.1}, K(4, 1.1), T(4, 1), rd(4, 0), rf(4, 0), sig(4, 0.2),
+        out(4, 7.0);
+    std::vector<OptionType> ty(4, OptionType::Call);
+    const auto res = gk_price_batch_fast({S, K, T, rd, rf, sig, ty}, out);
+    ASSERT_FALSE(res.has_value());
+    EXPECT_EQ(res.error().index, 2U);
+    EXPECT_EQ(res.error().error.code, Errc::SpotNonPositive);
+    for (double v : out) EXPECT_EQ(v, 7.0);
+    std::vector<double> short_out(3);
+    EXPECT_EQ(gk_price_batch_fast({S, K, T, rd, rf, sig, ty}, short_out).error().error.code,
+              Errc::SizeMismatch);
+    EXPECT_TRUE(gk_price_batch_fast({{}, {}, {}, {}, {}, {}, {}}, {}).has_value());
 }
 
 TEST(ThreadPoolMc, SingleStreamEqualsLegacyApi) {
