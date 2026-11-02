@@ -246,3 +246,12 @@ fx-var-engine/
 +-- bench/                 # per-call latency harness (harness: qp/bench/latency.hpp in cpp/core) and kernels
 +-- docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
+
+## Option revaluation (Round 3)
+
+`option_reval` adds Black-Scholes-Merton pricing with a carry yield
+(foreign rate, so Garman-Kohlhagen), closed-form Greeks (delta, gamma, vega, vanna, volga, theta), full
+revaluation P&L per scenario and the delta-gamma approximation. It mirrors
+`fx_var.revaluation`; the tests pin golden values from the Python module to
+1e-11. It is self-contained (its own normal CDF call) and does not use the
+batch kernel API, so adapting it to the Round 3 kernels is integration work.

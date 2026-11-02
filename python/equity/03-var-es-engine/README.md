@@ -104,3 +104,29 @@ Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
 modes), [DESK_GUIDE.md](docs/DESK_GUIDE.md) (workflow, capital link, stress
 review).
+
+## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
+
+Eight new modules. They are asset-agnostic, ship as the same file in
+`eq_var` and `fx_var`, and are imported from their submodule (they are not
+re-exported from the package root yet):
+
+| Module | What it gives you |
+|---|---|
+| `eq_var.risk_attribution` | Euler marginal, component and incremental VaR and ES, closed form and from scenarios |
+| `eq_var.frtb_ima` | Liquidity-horizon ES cascade, stressed ES, IMCC, IMA capital, desk backtest, PLA test |
+| `eq_var.stressed_var` | Basel 2.5 stress-window search, stressed VaR, the VaR + sVaR capital formula |
+| `eq_var.evt` | Peaks-over-threshold GPD fit, POT VaR and ES, mean-excess function |
+| `eq_var.copula_mc` | Student-t copula Monte Carlo VaR and ES with any marginals |
+| `eq_var.revaluation` | Full revaluation of option books under scenarios, Greek approximations, P&L explain |
+| `eq_var.limits` | Limit hierarchy with utilisation, warning and breach status |
+
+```python
+import numpy as np
+from eq_var.risk_attribution import parametric_attribution
+a = parametric_attribution([1e6, -4e5], np.array([[4e-4, 1.2e-4], [1.2e-4, 2.25e-4]]), 0.01)
+a.total, a.component, a.percent   # components sum to the total (Euler)
+```
+
+The compiled VaR engines gain the option revaluation part only
+(`option_reval` in C++ and Rust); see their READMEs.

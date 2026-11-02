@@ -64,6 +64,7 @@ add_library(fxvar
   src/backtest.cpp
   src/stress.cpp
   src/kernels.cpp
+  src/option_reval.cpp
 )
 target_include_directories(fxvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(fxvar PRIVATE ${FXVAR_WARNINGS})
@@ -109,6 +110,7 @@ if(BUILD_TESTING)
     test_conventions
     test_fuzz
     test_latency_api
+    test_option_reval
   )
   foreach(t IN LISTS FXVAR_TESTS)
     add_executable(${t} tests/${t}.cpp)

@@ -178,3 +178,20 @@ of 1500, so that key does not exercise the exception branch.
 - No comparison against live market data.
 - The GARCH generator is a data-generating device, not a calibrated model.
 - Stress shocks approximate published episode moves.
+
+## Round 3 validation
+
+Every new model has at least one oracle test. Files under `tests/`:
+
+| Test file | Oracle | Evidence class |
+|---|---|---|
+| `test_risk_attribution.py` | hand two-asset example; Euler sum to 1e-13; marginal vs central finite difference; incremental vs marginal for a small trade; scenario ES and VaR contributions converge to the closed form on 400,000 draws | closed form, convergence |
+| `test_frtb_ima.py` | hand-computed cascade; sqrt(12) telescoping; plus-factor table; capital by hand; desk thresholds at 12/13 and 30/31; Spearman and KS equal scipy to 1e-12; PLA zones | closed form, published table, library cross-check |
+| `test_stressed_var.py` | planted 250-day crisis found; window VaR equals the 3rd-worst loss at alpha n = 3; capital by hand | closed form, planted signal |
+| `test_evt.py` | POT VaR equals the exact GPD quantile and POT ES the integrated quantile, for xi in (-0.2, 0, 0.25, 0.6); MLE recovers xi and beta on 200,000 draws; t_4 tail gives xi near 1/4; flat mean excess for the exponential | closed form, convergence |
+| `test_copula_mc.py` | Kendall tau = (2/pi) arcsin(rho); empirical tail dependence vs the closed form; Gaussian limit VaR vs closed form | closed form, convergence |
+| `test_revaluation.py` | Greeks vs finite differences; put-call parity; cross-check against the package's own Black-Scholes `bs_price`/`bs_greeks`; linear book exact; explain residual scales by about 8 when moves halve | closed form, library cross-check, convergence |
+| `test_limits.py` | statuses, ordering and aggregation by hand | exact |
+
+Compiled `option_reval` (C++ and Rust, both VaR engines): golden values from
+`eq_var.revaluation` to 1e-11, put-call parity, input rejection.

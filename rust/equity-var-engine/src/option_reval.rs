@@ -1,0 +1,215 @@
+//! Option revaluation under VaR scenarios.
+//!
+//! Black-Scholes-Merton with a continuous carry yield (dividend yield for
+//! equity, foreign rate for FX, which gives Garman-Kohlhagen), closed-form
+//! Greeks (Hull, *Options, Futures and Other Derivatives*, 11th ed., ch. 19),
+//! full revaluation P&L per scenario and the delta-gamma approximation.
+//! Mirrors `eq_var.revaluation`; the golden values in
+//! `tests/test_option_reval.rs` come from that module.
+//!
+//! Scenario layout: row-major `n_scenarios x n_factors` spot log returns;
+//! vol shocks (absolute, decimal) in the same layout, or empty for none.
+
+use crate::stats::{normal_cdf as ncdf, normal_pdf as npdf};
+use crate::{EqVarError, Result};
+
+/// Call or put.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OptionKind {
+    /// European call.
+    Call,
+    /// European put.
+    Put,
+}
+
+/// European option on scenario factor `factor`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OptionLeg {
+    /// Signed number of contracts.
+    pub quantity: f64,
+    /// Call or put.
+    pub kind: OptionKind,
+    /// Spot today, `> 0`.
+    pub spot: f64,
+    /// Strike, `> 0`.
+    pub strike: f64,
+    /// Years, `> 0`.
+    pub tau: f64,
+    /// Domestic rate, continuously compounded.
+    pub rate: f64,
+    /// Dividend yield or foreign rate.
+    pub carry: f64,
+    /// Annualised implied vol, `> 0`.
+    pub vol: f64,
+    /// Column of the scenario matrix that moves this leg's spot.
+    pub factor: usize,
+}
+
+/// Greeks per unit quantity; vega, vanna and volga per 1.00 of vol, theta = `-dV/dtau`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BsmGreeks {
+    /// `dV/dS`.
+    pub delta: f64,
+    /// `d2V/dS2`.
+    pub gamma: f64,
+    /// `dV/dsigma`.
+    pub vega: f64,
+    /// `d2V/dS dsigma`.
+    pub vanna: f64,
+    /// `d2V/dsigma2`.
+    pub volga: f64,
+    /// `-dV/dtau` per year.
+    pub theta: f64,
+}
+
+fn require(ok: bool, what: &str) -> Result<()> {
+    if ok {
+        Ok(())
+    } else {
+        Err(EqVarError::InvalidInput(format!("option_reval: {what}")))
+    }
+}
+
+fn check_leg(l: &OptionLeg) -> Result<()> {
+    require(
+        l.quantity.is_finite() && l.rate.is_finite() && l.carry.is_finite(),
+        "quantity, rate and carry must be finite",
+    )?;
+    require(l.spot.is_finite() && l.spot > 0.0, "spot must be > 0")?;
+    require(l.strike.is_finite() && l.strike > 0.0, "strike must be > 0")?;
+    require(l.tau.is_finite() && l.tau > 0.0, "tau must be > 0")?;
+    require(l.vol.is_finite() && l.vol > 0.0, "vol must be > 0")
+}
+
+fn check_scenarios(legs: &[OptionLeg], x: &[f64], dv: &[f64], nf: usize) -> Result<usize> {
+    require(!legs.is_empty(), "legs must not be empty")?;
+    require(
+        nf > 0 && x.len().is_multiple_of(nf),
+        "scenario size must be a multiple of n_factors",
+    )?;
+    require(
+        dv.is_empty() || dv.len() == x.len(),
+        "vol_shocks must match spot_log_returns",
+    )?;
+    for l in legs {
+        check_leg(l)?;
+        require(l.factor < nf, "leg factor index out of range")?;
+    }
+    require(
+        x.iter().all(|v| v.is_finite()),
+        "spot_log_returns must be finite",
+    )?;
+    require(
+        dv.iter().all(|v| v.is_finite()),
+        "vol_shocks must be finite",
+    )?;
+    Ok(x.len() / nf)
+}
+
+fn sign(kind: OptionKind) -> f64 {
+    match kind {
+        OptionKind::Call => 1.0,
+        OptionKind::Put => -1.0,
+    }
+}
+
+fn price_unchecked(s_: f64, k: f64, t: f64, r: f64, b: f64, v: f64, kind: OptionKind) -> f64 {
+    let s = sign(kind);
+    if t <= 0.0 {
+        return (s * (s_ - k)).max(0.0);
+    }
+    let v = v.max(1e-12);
+    let sq = v * t.sqrt();
+    let d1 = ((s_ / k).ln() + (r - b + 0.5 * v * v) * t) / sq;
+    let d2 = d1 - sq;
+    s * (s_ * (-b * t).exp() * ncdf(s * d1) - k * (-r * t).exp() * ncdf(s * d2))
+}
+
+/// BSM price; intrinsic value when `tau <= 0`.
+pub fn bsm_price(
+    spot: f64,
+    strike: f64,
+    tau: f64,
+    rate: f64,
+    carry: f64,
+    vol: f64,
+    kind: OptionKind,
+) -> Result<f64> {
+    require(
+        spot.is_finite() && spot > 0.0 && strike.is_finite() && strike > 0.0,
+        "spot and strike must be > 0",
+    )?;
+    require(
+        tau.is_finite() && rate.is_finite() && carry.is_finite(),
+        "non-finite input",
+    )?;
+    require(vol.is_finite() && vol > 0.0, "vol must be > 0")?;
+    Ok(price_unchecked(spot, strike, tau, rate, carry, vol, kind))
+}
+
+/// Closed-form Greeks per unit quantity.
+pub fn bsm_greeks(l: &OptionLeg) -> Result<BsmGreeks> {
+    check_leg(l)?;
+    let s = sign(l.kind);
+    let rt = l.tau.sqrt();
+    let sq = l.vol * rt;
+    let d1 = ((l.spot / l.strike).ln() + (l.rate - l.carry + 0.5 * l.vol * l.vol) * l.tau) / sq;
+    let d2 = d1 - sq;
+    let eb = (-l.carry * l.tau).exp();
+    let er = (-l.rate * l.tau).exp();
+    let pdf = npdf(d1);
+    let vega = l.spot * eb * pdf * rt;
+    Ok(BsmGreeks {
+        delta: s * eb * ncdf(s * d1),
+        gamma: eb * pdf / (l.spot * sq),
+        vega,
+        vanna: -eb * pdf * d2 / l.vol,
+        volga: vega * d1 * d2 / l.vol,
+        theta: -l.spot * eb * pdf * l.vol / (2.0 * rt) + s * l.carry * l.spot * eb * ncdf(s * d1)
+            - s * l.rate * l.strike * er * ncdf(s * d2),
+    })
+}
+
+/// Exact book P&L per scenario by repricing every leg; `dt` (years) ages
+/// the options, floored at expiry.
+pub fn full_revaluation_pnl(
+    legs: &[OptionLeg],
+    spot_log_returns: &[f64],
+    vol_shocks: &[f64],
+    n_factors: usize,
+    dt: f64,
+) -> Result<Vec<f64>> {
+    let n = check_scenarios(legs, spot_log_returns, vol_shocks, n_factors)?;
+    require(dt.is_finite() && dt >= 0.0, "dt must be >= 0")?;
+    let mut pnl = vec![0.0; n];
+    for l in legs {
+        let p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
+        let t1 = (l.tau - dt).max(0.0);
+        for (i, p) in pnl.iter_mut().enumerate() {
+            let j = i * n_factors + l.factor;
+            let s1 = l.spot * spot_log_returns[j].exp();
+            let v1 = l.vol + vol_shocks.get(j).copied().unwrap_or(0.0);
+            *p +=
+                l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
+        }
+    }
+    Ok(pnl)
+}
+
+/// Delta-gamma P&L per scenario: `Delta dS + Gamma dS^2 / 2`, `dS = S (e^x - 1)`.
+pub fn delta_gamma_pnl(
+    legs: &[OptionLeg],
+    spot_log_returns: &[f64],
+    n_factors: usize,
+) -> Result<Vec<f64>> {
+    let n = check_scenarios(legs, spot_log_returns, &[], n_factors)?;
+    let mut pnl = vec![0.0; n];
+    for l in legs {
+        let g = bsm_greeks(l)?;
+        for (i, p) in pnl.iter_mut().enumerate() {
+            let ds = l.spot * spot_log_returns[i * n_factors + l.factor].exp_m1();
+            *p += l.quantity * (g.delta * ds + 0.5 * g.gamma * ds * ds);
+        }
+    }
+    Ok(pnl)
+}
