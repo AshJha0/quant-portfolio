@@ -310,10 +310,12 @@ def momentum_study(px: pd.DataFrame, p: dict = MOMENTUM) -> dict:
 # ---- driver --------------------------------------------------------------
 
 def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict,
-           params: dict | None = None, kind: str = "train", metric: dict | None = None) -> Path:
+           params: dict | None = None, kind: str = "train", git: tuple | None = None, metric: dict | None = None) -> Path:
     """Write ``results/<name>.json`` and append the run to ``trials.jsonl``."""
     reg = prereg.load(PREREG / reg_file)
-    git = trials.git_state(REPO)  # read before the result file dirties the tree
+    # Callers pass the git state read at the start of the run, before any
+    # output exists; reading it here is the fallback for single writes.
+    git = git if git is not None else trials.git_state(REPO)
     RESULTS.mkdir(parents=True, exist_ok=True)
     doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": reg.sha256,
            "registration_signed": reg.signed, "mode": kind,
@@ -330,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("which", nargs="?", default="all", choices=["pairs", "momentum", "all"])
     a = ap.parse_args(argv)
+    git = trials.git_state(REPO)  # before the run writes anything
     from qp_fetch import RAW_DIR, fetch_ecb_fx, parse_ecb_csv
 
     cached = RAW_DIR / f"ecb_exr_1999-01-01_{TRAIN_END}.csv"
@@ -338,10 +341,10 @@ def main(argv: list[str] | None = None) -> int:
     period = (str(px.index.min().date()), str(px.index.max().date()))
     if a.which in ("pairs", "all"):
         print(_write("pairs_fx_g10_v2_train", "pairs-fx-g10-v2.md", period, pairs_v2_study(px),
-                     params=PAIRS_V2))
+                     params=PAIRS_V2, git=git))
     if a.which in ("momentum", "all"):
         print(_write("momentum_fx_g10_train", "momentum-fx-g10.md", period, momentum_study(px),
-                     params=MOMENTUM))
+                     params=MOMENTUM, git=git))
     return 0
 
 

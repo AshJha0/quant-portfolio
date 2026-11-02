@@ -85,10 +85,12 @@ def usd_prices(eur_rates: pd.DataFrame) -> pd.DataFrame:
 
 
 def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict,
-           params: dict | None = None, kind: str = "train") -> Path:
+           params: dict | None = None, kind: str = "train", git: tuple | None = None) -> Path:
     """Write ``results/<name>.json`` and append the run to ``trials.jsonl``."""
     reg = prereg.load(PREREG / reg_file)
-    git = trials.git_state(REPO)  # read before the result file dirties the tree
+    # Callers pass the git state read at the start of the run, before any
+    # output exists; reading it here is the fallback for single writes.
+    git = git if git is not None else trials.git_state(REPO)
     RESULTS.mkdir(parents=True, exist_ok=True)
     doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": reg.sha256,
            "registration_signed": reg.signed, "period": {"start": period[0], "end": period[1]},
@@ -340,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="hold-out path on synthetic data, no network")
     ap.add_argument("--out", type=Path, default=None, help="output directory (dry run: a temp dir)")
     a = ap.parse_args(argv)
+    git = trials.git_state(REPO)  # before the run writes anything
     if a.dry_run:
         out = a.out or Path(tempfile.mkdtemp(prefix="qp_holdout_dryrun_"))
         if out.resolve() == RESULTS.resolve():
@@ -375,10 +378,10 @@ def train(which: str) -> None:
     period = (str(px.index.min().date()), str(px.index.max().date()))
     if which in ("pairs", "all"):
         print(_write("pairs_fx_g10_train", "pairs-fx-g10.md", period, pairs_study(px),
-                     params=PAIRS))
+                     params=PAIRS, git=git))
     if which in ("regime", "all"):
         print(_write("regime_fx_basket_train", "regime-fx-basket.md", period, regime_study(px),
-                     params=REGIME))
+                     params=REGIME, git=git))
 
 
 if __name__ == "__main__":

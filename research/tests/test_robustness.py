@@ -18,6 +18,7 @@ import prereg  # noqa: E402
 import robustness as rb  # noqa: E402
 import trials  # noqa: E402
 
+LOG_ANCHOR = "ANCHOR"  # commit that replaced the one dirty calibration line
 CCY = ["AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "NOK", "NZD", "SEK"]
 
 
@@ -176,3 +177,55 @@ def test_robustness_refuses_holdout_data():
 
     with pytest.raises(HoldoutViolation):
         rb.cost_event_stress(_walks(300, 8, start="2021-06-01"))
+
+
+def test_write_records_the_git_state_it_is_given(tmp_path, monkeypatch):
+    log = tmp_path / "trials.jsonl"
+    monkeypatch.setenv(trials.ENV, str(log))
+    monkeypatch.setattr(fs, "RESULTS", tmp_path)
+    fs._write("momentum_fx_g10_train", "momentum-fx-g10.md", ("2000-01-03", "2021-12-31"), {},
+              git=("a" * 40, False))
+    assert trials.read(log)[0]["git_commit"] == "a" * 40 and trials.read(log)[0]["git_dirty"] is False
+
+
+def test_driver_reads_git_state_once_before_any_output(tmp_path, monkeypatch):
+    """The state is read at the start of the run; a tree made dirty by the
+    run's own result files must not show up in the log."""
+    import qp_fetch
+
+    log = tmp_path / "trials.jsonl"
+    monkeypatch.setenv(trials.ENV, str(log))
+    monkeypatch.setattr(fs, "RESULTS", tmp_path)
+    calls = []
+
+    def fake_state(repo=None):
+        calls.append(sorted(p.name for p in tmp_path.glob("*.json")))
+        return ("b" * 40, bool(calls[-1]))  # dirty once any result file exists
+
+    monkeypatch.setattr(trials, "git_state", fake_state)
+    monkeypatch.setattr(qp_fetch, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(qp_fetch, "parse_ecb_csv", lambda text: pd.DataFrame(
+        {"USD": [1.1, 1.2], **{c: [1.0, 1.0] for c in CCY if c != "EUR"}},
+        index=pd.to_datetime(["2005-01-03", "2005-01-04"])))
+    (tmp_path / f"ecb_exr_1999-01-01_{fs.TRAIN_END}.csv").write_text("x", encoding="utf-8")
+    stub = {"pairs_v2": {"1bp": {v: {"sharpe": 0.0} for v in ("base", "exclude", "adverse")}},
+            "momentum": {"1bp": {v: {"sharpe": 0.0} for v in ("base", "exclude", "adverse")}}, "events": {}}
+    monkeypatch.setattr(rb, "cost_event_stress", lambda px: stub)
+    assert rb.main(["stress"]) == 0
+    rows = trials.read(log)
+    assert calls == [[]] and len(rows) == 2 and all(r["git_dirty"] is False for r in rows)
+
+
+def test_committed_log_only_grows():
+    """Append-only from the anchor commit on: the committed log must start
+    with the log as it stood at ``LOG_ANCHOR``."""
+    import subprocess
+
+    try:
+        old = subprocess.run(["git", "show", f"{LOG_ANCHOR}:research/results/trials.jsonl"], cwd=REPO,
+                             check=True, capture_output=True, text=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("anchor commit not available")
+    norm = trials.LOG.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert norm.startswith(old.replace("\r\n", "\n"))
+    assert all(r["git_dirty"] is False for r in trials.read(trials.LOG))

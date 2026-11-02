@@ -35,6 +35,7 @@ REPO = HERE.parents[1]
 sys.path[:0] = [str(HERE), str(REPO / "research" / "tools"), str(REPO / "data" / "fetch")]
 
 import forward_studies as fs  # noqa: E402
+import trials  # noqa: E402
 from fx_pairs.cointegration import engle_granger  # noqa: E402
 from fx_studies import pairs_fold_masks, usd_prices  # noqa: E402
 from models import johansen_trace, training_only  # noqa: E402
@@ -232,6 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("which", nargs="?", default="all", choices=["calibration", "stress", "all"])
     ap.add_argument("--perms", type=int, default=N_PERMS)
     a = ap.parse_args(argv)
+    git = trials.git_state(REPO)  # before the run writes anything
     from qp_fetch import RAW_DIR, fetch_ecb_fx, parse_ecb_csv
 
     cached = RAW_DIR / f"ecb_exr_1999-01-01_{fs.TRAIN_END}.csv"
@@ -243,17 +245,17 @@ def main(argv: list[str] | None = None) -> int:
         print(fs._write("pairs_selection_calibration", "pairs-fx-g10-v2.md", period, res,
                         params={**fs.PAIRS_V2, "n_perms": a.perms, "fdr_q": FDR_Q}, kind="calibration",
                         metric={k: res[k] for k in ("total_selected", "total_null_mean", "total_perm_pvalue",
-                                                    "total_bh_selected")}))
+                                                    "total_bh_selected")}, git=git))
     if a.which in ("stress", "all"):
         res = cost_event_stress(px)
         params = {"costs_bp": list(COSTS_BP), "event_sigma": EVENT_SIGMA, "event_window": EVENT_WINDOW,
                   "gap_days": GAP_DAYS}
         print(fs._write("pairs_fx_g10_v2_stress", "pairs-fx-g10-v2.md", period,
                         {"stress": res["pairs_v2"], "events": res["events"]},
-                        params={**fs.PAIRS_V2, **params}, kind="stress", metric=_headline(res["pairs_v2"])))
+                        params={**fs.PAIRS_V2, **params}, kind="stress", metric=_headline(res["pairs_v2"]), git=git))
         print(fs._write("momentum_fx_g10_stress", "momentum-fx-g10.md", period,
                         {"stress": res["momentum"], "events": res["events"]},
-                        params={**fs.MOMENTUM, **params}, kind="stress", metric=_headline(res["momentum"])))
+                        params={**fs.MOMENTUM, **params}, kind="stress", metric=_headline(res["momentum"]), git=git))
     return 0
 
 
