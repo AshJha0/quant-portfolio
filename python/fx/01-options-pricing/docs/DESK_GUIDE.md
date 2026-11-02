@@ -135,3 +135,12 @@ independent checker used in model validation sign-off.
   cross-checks; P&L attribution inputs.
 - **Model validation / quant dev**: `finite_difference_greeks`,
   convergence tables, golden vectors (release-gated).
+
+## 7. Round 3 tools
+
+Build the smile from the broker's ATM/RR/BF run with `smile_from_quotes`,
+then read strikes for any delta (10-delta wings, 35-delta) with
+`Smile3.strike_from_delta`. Quote premium in the pair's market style with
+`convert_premium`. Book expiry and delivery from the tenor with
+`expiry_and_delivery`, passing the joint holiday set of both currencies,
+and compute `T` to the cut with `time_to_expiry`, not to midnight.

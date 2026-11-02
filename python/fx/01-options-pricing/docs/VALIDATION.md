@@ -184,3 +184,11 @@ Smile construction (RR/BF to strike vols), stochastic vol and rates,
 jumps: projects 9 and later. The golden vectors in
 `tests/golden/golden_vectors.json` are consumed by the Python, C++ and Rust
 engines.
+
+## 6. Round 3 additions
+
+`tests/test_phase5_fx.py`, 19 tests: smile pillars reproduce ATM, RR and BF
+to 1e-15 and the ATM strike is delta neutral, under all four delta
+conventions; smile-consistent strikes round-trip delta to 1e-12; foreign
+pips equal the inverse-pair GK price to 1e-13; spot, tenor, end-of-month
+and holiday dates against hand-checked calendars; cut instants across DST.

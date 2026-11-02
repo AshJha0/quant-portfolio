@@ -127,3 +127,11 @@ or `pip install ./bindings/rust-pyo3`). An unknown name raises
 command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
+
+## Phase 5 additions (Round 3)
+
+| Module | What it does | Oracle (`tests/test_phase5_fx.py`) |
+|---|---|---|
+| `smile` | ATM/25-delta RR/BF to a three-point smile; smile-consistent strike from delta | The quotes are recovered exactly; delta round trip to 1e-12 under all four delta conventions |
+| `premium` | Four premium styles and conversions; cash premium amount | Foreign pips equals the inverse-pair GK price |
+| `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut | Hand-checked dates, end-of-month rule, DST shifts |

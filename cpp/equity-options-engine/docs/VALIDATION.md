@@ -116,3 +116,11 @@ GCC 15.2 and with Clang 21.1. The 66 pre-existing tests pass unchanged.
 ## 7. Performance
 
 See the README latency table (`./build/eqopt_bench`).
+
+## Phase 5 ports (Round 3)
+
+Golden values printed from the Python reference (`repr`) for four LR cases
+(European and American, negative rate), two Bachelier Greek sets and two
+higher-Greek sets; LR error ratio per doubling in (3, 5); Bachelier
+implied-vol round trip on both sides of the money; speed against a finite
+difference of gamma. The models' own oracles are in the Python suite.

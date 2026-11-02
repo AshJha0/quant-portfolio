@@ -165,3 +165,11 @@ restated here.
    OTM" must clamp to a large finite number instead, since the
    alternative is a NaN that survives aggregation into a book-level
    risk figure.
+
+## Phase 5 ports (Round 3)
+
+Straight ports of the Python formulas, same constants and branches. The LR
+tree recomputes node spots in the American loop (O(n^2) `exp`); a
+precomputed spot table, as in the CRR kernel, is left for the perf lane.
+Bachelier's implied vol inverts the out-of-the-money side so in-the-money
+quotes keep their digits.

@@ -180,3 +180,11 @@ what breaks when each is violated. Additional engine-level assumptions:
    64,203 legacy-API results and exception texts in hex-float gives the
    same output against the library before and after this change, with GCC
    15.2 and Clang 21.1.
+
+## Phase 5 ports (Round 3)
+
+Straight ports of the Python formulas, same constants and branches. The LR
+tree recomputes node spots in the American loop (O(n^2) `exp`); a
+precomputed spot table, as in the CRR kernel, is left for the perf lane.
+Bachelier's implied vol inverts the out-of-the-money side so in-the-money
+quotes keep their digits.
