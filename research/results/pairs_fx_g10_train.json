@@ -1,7 +1,7 @@
 {
   "prereg": "research/prereg/pairs-fx-g10.md",
   "prereg_sha256": "dfca5c7ae8ea15c6483ed8c3a9b6946f23bcfa0aea71f45b8e499908ae953dcc",
-  "registration_signed": false,
+  "registration_signed": true,
   "period": {
     "start": "1999-01-04",
     "end": "2021-12-31"
@@ -15,7 +15,11 @@
         "CAD/JPY",
         "GBP/NZD"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.6250987650604913
     },
     {
       "year": 2004,
@@ -23,7 +27,11 @@
         "NZD/SEK",
         "NZD/EUR"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.6191241228775948
     },
     {
       "year": 2005,
@@ -32,7 +40,11 @@
         "NZD/EUR",
         "SEK/EUR"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.861761908470633
     },
     {
       "year": 2006,
@@ -40,31 +52,51 @@
         "AUD/NOK",
         "JPY/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.2468846630184178
     },
     {
       "year": 2007,
       "pairs": [
         "GBP/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.2410765583044674
     },
     {
       "year": 2008,
       "pairs": [
         "GBP/SEK"
       ],
-      "net_return": 0.019560076252145873
+      "net_return": 0.019560076252145873,
+      "entry_signal_days": 8,
+      "entries": 3,
+      "pair_days_in_market": 16,
+      "max_abs_z": 3.652892008942568
     },
     {
       "year": 2009,
       "pairs": [],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": null
     },
     {
       "year": 2010,
       "pairs": [],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": null
     },
     {
       "year": 2011,
@@ -72,7 +104,11 @@
         "AUD/CAD",
         "CAD/NZD"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.5040703516682261
     },
     {
       "year": 2012,
@@ -80,7 +116,11 @@
         "GBP/EUR",
         "NOK/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 0.8251659504733093
     },
     {
       "year": 2013,
@@ -93,21 +133,33 @@
         "GBP/NOK",
         "GBP/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.5927444206713857
     },
     {
       "year": 2014,
       "pairs": [
         "CAD/NOK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.7069112465564817
     },
     {
       "year": 2015,
       "pairs": [
         "CHF/NZD"
       ],
-      "net_return": 0.08939446350181598
+      "net_return": 0.08939446350181598,
+      "entry_signal_days": 22,
+      "entries": 3,
+      "pair_days_in_market": 48,
+      "max_abs_z": 6.021160053251488
     },
     {
       "year": 2016,
@@ -118,7 +170,11 @@
         "JPY/NOK",
         "JPY/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.8246776421676
     },
     {
       "year": 2017,
@@ -130,7 +186,11 @@
         "CHF/EUR",
         "SEK/EUR"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.665511545470158
     },
     {
       "year": 2018,
@@ -145,7 +205,11 @@
         "CHF/SEK",
         "CHF/EUR"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.3127938592076374
     },
     {
       "year": 2019,
@@ -156,14 +220,22 @@
         "CHF/NOK",
         "CHF/SEK"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.5065831989257985
     },
     {
       "year": 2020,
       "pairs": [
         "CHF/NZD"
       ],
-      "net_return": 0.010344372527366558
+      "net_return": 0.010344372527366558,
+      "entry_signal_days": 3,
+      "entries": 1,
+      "pair_days_in_market": 9,
+      "max_abs_z": 2.799575770882582
     },
     {
       "year": 2021,
@@ -171,7 +243,11 @@
         "CAD/GBP",
         "SEK/EUR"
       ],
-      "net_return": 0.0
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "pair_days_in_market": 0,
+      "max_abs_z": 1.4051069157219587
     }
   ],
   "candidate_pairs": 36,
@@ -184,5 +260,16 @@
   "ci95": [
     -0.1747475582725665,
     0.4561703018426657
-  ]
+  ],
+  "deflated_sharpe": {
+    "n_trials": 3,
+    "trial_sr_variance": "1/(n-1), null sampling variance",
+    "sr_per_period": 0.015159650994767704,
+    "skew": 44.466225292395315,
+    "kurtosis": 2745.0333211032553,
+    "n_obs": 4867,
+    "sr0_per_period": 0.012225409893844517,
+    "dsr": 0.6157525576676608,
+    "z": 0.29434422142629074
+  }
 }
