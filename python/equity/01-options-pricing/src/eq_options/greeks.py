@@ -16,11 +16,12 @@ All rates continuously compounded, annualised; ``T`` in years (ACT/365F).
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from dataclasses import dataclass, fields
 
-from .black_scholes import OptionType, _ncdf, bs_price, d1_d2, validate_inputs
+from qp_core.black_scholes import carry_greeks
+
+from .black_scholes import OptionType, bs_price, d1_d2, validate_inputs
 
 __all__ = [
     "BSGreeks",
@@ -35,8 +36,6 @@ __all__ = [
     "vega",
     "volga",
 ]
-
-_SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 Pricer = Callable[..., float]
 
@@ -99,40 +98,19 @@ def bs_greeks(
         If inputs are invalid or ``S``, ``K``, ``T``, ``sigma`` are not
         strictly positive (Greeks are singular at the boundary).
     """
-    d1, d2 = d1_d2(S, K, T, r, sigma, q)
-    sqrt_t = math.sqrt(T)
-    df_q = math.exp(-q * T)
-    df_r = math.exp(-r * T)
-    pdf_d1 = math.exp(-0.5 * d1 * d1) / _SQRT_2PI
-
-    gamma_ = df_q * pdf_d1 / (S * sigma * sqrt_t)
-    vega_ = S * df_q * pdf_d1 * sqrt_t
-    vanna_ = -df_q * pdf_d1 * d2 / sigma
-    volga_ = vega_ * d1 * d2 / sigma
-    common_theta = -S * df_q * pdf_d1 * sigma / (2.0 * sqrt_t)
-
-    if option_type == "call":
-        price = S * df_q * _ncdf(d1) - K * df_r * _ncdf(d2)
-        delta_ = df_q * _ncdf(d1)
-        theta_ = common_theta + q * S * df_q * _ncdf(d1) - r * K * df_r * _ncdf(d2)
-        rho_ = K * T * df_r * _ncdf(d2)
-    elif option_type == "put":
-        price = K * df_r * _ncdf(-d2) - S * df_q * _ncdf(-d1)
-        delta_ = -df_q * _ncdf(-d1)
-        theta_ = common_theta - q * S * df_q * _ncdf(-d1) + r * K * df_r * _ncdf(-d2)
-        rho_ = -K * T * df_r * _ncdf(-d2)
-    else:
+    d1_d2(S, K, T, r, sigma, q)  # validates; raises at the boundary
+    if option_type not in ("call", "put"):
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
-
+    g = carry_greeks(S, K, T, r, q, sigma, option_type == "call")
     return BSGreeks(
-        price=price,
-        delta=delta_,
-        gamma=gamma_,
-        vega=vega_,
-        theta=theta_,
-        rho=rho_,
-        vanna=vanna_,
-        volga=volga_,
+        price=g.price,
+        delta=g.delta,
+        gamma=g.gamma,
+        vega=g.vega,
+        theta=g.theta,
+        rho=g.rho,
+        vanna=g.vanna,
+        volga=g.volga,
     )
 
 

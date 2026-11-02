@@ -588,7 +588,7 @@ Black-Scholes (and Garman-Kohlhagen) give price as a function of sigma, `price(s
 
 **Q2. What equation is `implied_vol` actually solving?**
 
-Both `python/equity/01-options-pricing/src/eq_options/black_scholes.py::implied_vol` and `python/fx/01-options-pricing/src/fx_options/garman_kohlhagen.py::implied_vol` map the quote to normalised Black form and call the shared core `_iv_core.total_vol`. With forward `F`, discount factor `df` and `x = -|ln(F/K)| <= 0`, the out-of-the-money time value is normalised as `beta = (price - lower) / (df * sqrt(F K))`, and the solver finds the total volatility `s = sigma * sqrt(T)` with `b(x, s) = beta`, where `b(x, s) = e^{x/2} N(x/s + s/2) - e^{-x/2} N(x/s - s/2)` is the normalised out-of-the-money call. The answer is `sigma = s / sqrt(T)`. Because `b` is strictly increasing in `s`, the root is unique. The same algorithm, constants and branch thresholds run in the C++ (`eqopt/iv_core.hpp`) and Rust engines, so all six engines solve the same equation the same way.
+Both `python/equity/01-options-pricing/src/eq_options/black_scholes.py::implied_vol` and `python/fx/01-options-pricing/src/fx_options/garman_kohlhagen.py::implied_vol` map the quote to normalised Black form and call the shared core `qp_core.iv_core.total_vol` (`python/core/src/qp_core/iv_core.py`). With forward `F`, discount factor `df` and `x = -|ln(F/K)| <= 0`, the out-of-the-money time value is normalised as `beta = (price - lower) / (df * sqrt(F K))`, and the solver finds the total volatility `s = sigma * sqrt(T)` with `b(x, s) = beta`, where `b(x, s) = e^{x/2} N(x/s + s/2) - e^{-x/2} N(x/s - s/2)` is the normalised out-of-the-money call. The answer is `sigma = s / sqrt(T)`. Because `b` is strictly increasing in `s`, the root is unique. The same algorithm, constants and branch thresholds run in the C++ (`eqopt/iv_core.hpp`) and Rust engines, so all six engines solve the same equation the same way.
 
 **Q3. Why does the solver always work on the out-of-the-money side?**
 
@@ -596,7 +596,7 @@ An in-the-money price is mostly intrinsic value, and the vol only lives in the s
 
 **Q4. Write out the Newton and Halley update rules, and say which one this solver uses.**
 
-Newton: `s_{n+1} = s_n - f/f'`. Halley adds a curvature correction: `s_{n+1} = s_n - (f/f') / (1 - (f/f') f'' / (2 f'))`. In `_iv_core.total_vol` this is literally `newton = f / fp; den = 1 - 0.5 * newton * fpp / fp; s_new = s - newton / den`. The solver takes the Halley step when `den > 0.5` and the step stays inside the current bracket; otherwise it falls back to a Newton step, and only then to a bracket step (Q9). Newton converges quadratically near the root (correct digits roughly double each step); Halley converges cubically (they roughly triple), which is why the solver needs at most 10 evaluations and typically 2-4.
+Newton: `s_{n+1} = s_n - f/f'`. Halley adds a curvature correction: `s_{n+1} = s_n - (f/f') / (1 - (f/f') f'' / (2 f'))`. In `qp_core.iv_core.total_vol` this is literally `newton = f / fp; den = 1 - 0.5 * newton * fpp / fp; s_new = s - newton / den`. The solver takes the Halley step when `den > 0.5` and the step stays inside the current bracket; otherwise it falls back to a Newton step, and only then to a bracket step (Q9). Newton converges quadratically near the root (correct digits roughly double each step); Halley converges cubically (they roughly triple), which is why the solver needs at most 10 evaluations and typically 2-4.
 
 **Q5. Where do the derivatives come from: analytic or finite differences?**
 
@@ -648,7 +648,7 @@ Nothing: they are deprecated and ignored, and passing any of them raises a `Depr
 
 **Q17. Why is the same implied-vol algorithm shared by all six options engines rather than each engine choosing its own?**
 
-Because the C++ and Rust engines mirror the Python reference (`CONVENTIONS.md`: "Engines mirror the Python reference implementations and are cross-validated against them"), and one algorithm is easier to validate than six. The equity and FX Python engines share `_iv_core.py`, and the C++ and Rust engines implement the same constants and branch thresholds. The risk of sharing is that a design weakness would be reproduced everywhere, which is why the goldens are not generated from the shared code: the implied-vol golden cases invert an mpmath-computed quote whose true vol is known by construction (Set 15, Q3), and the differential tests compare Python, Rust and C++ on seeded random inputs through JSON-lines shims (`tests/test_differential.py`).
+Because the C++ and Rust engines mirror the Python reference (`CONVENTIONS.md`: "Engines mirror the Python reference implementations and are cross-validated against them"), and one algorithm is easier to validate than six. The equity and FX Python engines share `qp_core/iv_core.py`, and the C++ and Rust engines implement the same constants and branch thresholds. The risk of sharing is that a design weakness would be reproduced everywhere, which is why the goldens are not generated from the shared code: the implied-vol golden cases invert an mpmath-computed quote whose true vol is known by construction (Set 15, Q3), and the differential tests compare Python, Rust and C++ on seeded random inputs through JSON-lines shims (`tests/test_differential.py`).
 
 **Q18. Confirm: do the C++ and Rust equity engines document the same algorithm and accuracy as the Python reference?**
 
@@ -2351,7 +2351,7 @@ It has only two exits: a converged step (the relative step test, or a bracket na
 
 **Q12. Spot-checking the equity Python engine, where does `implied_vol` in `black_scholes.py` delegate the actual solve, and what does it do itself?**
 
-`implied_vol` validates the inputs, checks the quote against the no-arbitrage bounds, maps it to normalised Black form on the out-of-the-money side, and calls `_iv_core.black_implied_vol`, which runs `total_vol` (Set 3). Its old `tol`, `max_iter`, `sigma_lo` and `sigma_hi` keywords are deprecated and ignored with a `DeprecationWarning`, because the solver has no tuning parameters.
+`implied_vol` validates the inputs, checks the quote against the no-arbitrage bounds, maps it to normalised Black form on the out-of-the-money side, and calls `qp_core.iv_core.black_implied_vol`, which runs `total_vol` (Set 3). Its old `tol`, `max_iter`, `sigma_lo` and `sigma_hi` keywords are deprecated and ignored with a `DeprecationWarning`, because the solver has no tuning parameters.
 
 ---
 

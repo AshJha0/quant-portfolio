@@ -5,7 +5,13 @@ Python, C++ and Rust engines. Inputs to :func:`total_vol` are the normalised
 OTM time value ``beta``, its complement ``u = b_max - beta`` and
 ``x = -|ln(F/K)| <= 0``; the result is the total volatility
 ``s = sigma sqrt(T)``. One evaluation is one pass of the iteration loop.
+
+The equity and FX option packages call :func:`black_implied_vol` after
+checking the quote against their own no-arbitrage bounds; the C++ engines
+use ``qp/iv_core.hpp`` and the Rust engines ``qp_core::iv``.
 """
+from __future__ import annotations
+
 import math
 
 from qp_core.normal import norm_cdf, norm_pdf
@@ -17,10 +23,17 @@ SQRT_2PI = 2.5066282746310002
 EPS = 2.220446049250313e-16
 MAX_ITER = 100
 
+__all__ = [
+    "MAX_ITER",
+    "acklam_guess",
+    "black_implied_vol",
+    "normalised_otm_call",
+    "normalised_otm_call_complement",
+    "total_vol",
+]
 
 
-
-def normalised_otm_call(x, s):
+def normalised_otm_call(x: float, s: float) -> float:
     """b(x,s) = e^{x/2} N(x/s+s/2) - e^{-x/2} N(x/s-s/2) for x <= 0, s > 0,
     written as cosh(x/2) A + sinh(x/2) (N(d1)+N(d2)), A = N(d1) - N(d2)."""
     h = x / s
@@ -58,14 +71,14 @@ def normalised_otm_call(x, s):
     return math.cosh(0.5 * x) * a + math.sinh(0.5 * x) * (norm_cdf(d1) + norm_cdf(d2))
 
 
-def normalised_otm_call_complement(x, s):
+def normalised_otm_call_complement(x: float, s: float) -> float:
     """b_max - b = e^{x/2} N(-d1) + e^{-x/2} N(d2): a sum, no cancellation."""
     d1 = x / s + 0.5 * s
     d2 = x / s - 0.5 * s
     return math.exp(0.5 * x) * norm_cdf(-d1) + math.exp(-0.5 * x) * norm_cdf(d2)
 
 
-def acklam_guess(p):
+def acklam_guess(p: float) -> float:
     """Acklam inverse normal, no refinement: used for the initial guess only."""
     a = (-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
          1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00)
@@ -86,7 +99,7 @@ def acklam_guess(p):
     return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1.0)
 
 
-def total_vol(beta, u, x, counter=None):
+def total_vol(beta: float, u: float, x: float, counter: list[int] | None = None) -> float:
     """Solve b(x, s) = beta for s. Requires beta > 0, u > 0, x <= 0."""
     b_max = math.exp(0.5 * x)
     s_c = math.sqrt(-2.0 * x)                     # inflection point of b in s
@@ -94,7 +107,8 @@ def total_vol(beta, u, x, counter=None):
     if beta < b_c:
         mode = 0                                  # lower: f = 1/ln(beta) - 1/ln b(s)
         ln_target = math.log(beta)
-        lo, hi = 0.0, s_c
+        lo: float = 0.0
+        hi: float = s_c
         # Mills-ratio asymptotic, y = s^2:
         # ln b ~ -x^2/(2y) - y/8 - ln sqrt(2pi) + 1.5 ln y - ln(x^2 - y^2/4)
         y = x * x / (-2.0 * ln_target)
@@ -184,7 +198,15 @@ def total_vol(beta, u, x, counter=None):
     raise ValueError("implied vol: no convergence in 100 iterations")
 
 
-def black_implied_vol(price, F, K, T, df, is_call, counter=None):
+def black_implied_vol(
+    price: float,
+    F: float,
+    K: float,
+    T: float,
+    df: float,
+    is_call: bool,
+    counter: list[int] | None = None,
+) -> float:
     """Caller has validated inputs and checked lower < price < upper."""
     lower = df * max((F - K) if is_call else (K - F), 0.0)
     upper = df * F if is_call else df * K

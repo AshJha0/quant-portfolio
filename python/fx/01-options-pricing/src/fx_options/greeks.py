@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 
+from qp_core.black_scholes import CarryGreeks, carry_greeks
 from scipy.stats import norm
 
 from ._common import validate_inputs, validate_option_type
@@ -63,24 +64,26 @@ class GreeksResult:
 
 
 def _core(S: float, K: float, T: float, r_d: float, r_f: float,
-          sigma: float) -> tuple[float, float, float, float]:
-    _d1 = _d1_fn(S, K, T, r_d, r_f, sigma)
-    _d2 = _d1 - sigma * math.sqrt(T)
-    return _d1, _d2, math.exp(-r_f * T), math.exp(-r_d * T)
+          sigma: float, is_call: bool = True) -> CarryGreeks:
+    """Validate (as :func:`d1` does) and return the shared carry-form Greeks.
+
+    Garman-Kohlhagen is Black-Scholes in cost-of-carry form with the
+    foreign rate as the carry yield (``qp_core.black_scholes``).
+    """
+    _d1_fn(S, K, T, r_d, r_f, sigma)
+    return carry_greeks(S, K, T, r_d, r_f, sigma, is_call)
 
 
 def gamma(S: float, K: float, T: float, r_d: float, r_f: float,
           sigma: float) -> float:
     """Spot gamma ``d2V/dS2 = e^{-r_f T} n(d1) / (S sigma sqrt(T))``."""
-    _d1, _, df_f, _ = _core(S, K, T, r_d, r_f, sigma)
-    return df_f * norm.pdf(_d1) / (S * sigma * math.sqrt(T))
+    return _core(S, K, T, r_d, r_f, sigma).gamma
 
 
 def vega(S: float, K: float, T: float, r_d: float, r_f: float,
          sigma: float) -> float:
     """Vega ``dV/dsigma = S e^{-r_f T} n(d1) sqrt(T)`` (call = put)."""
-    _d1, _, df_f, _ = _core(S, K, T, r_d, r_f, sigma)
-    return S * df_f * norm.pdf(_d1) * math.sqrt(T)
+    return _core(S, K, T, r_d, r_f, sigma).vega
 
 
 def vanna(S: float, K: float, T: float, r_d: float, r_f: float,
@@ -89,8 +92,7 @@ def vanna(S: float, K: float, T: float, r_d: float, r_f: float,
 
     The sensitivity a 25-delta risk reversal position monetises.
     """
-    _d1, _d2, df_f, _ = _core(S, K, T, r_d, r_f, sigma)
-    return -df_f * norm.pdf(_d1) * _d2 / sigma
+    return _core(S, K, T, r_d, r_f, sigma).vanna
 
 
 def volga(S: float, K: float, T: float, r_d: float, r_f: float,
@@ -99,8 +101,7 @@ def volga(S: float, K: float, T: float, r_d: float, r_f: float,
 
     The sensitivity a 25-delta butterfly position monetises.
     """
-    _d1, _d2, _, _ = _core(S, K, T, r_d, r_f, sigma)
-    return vega(S, K, T, r_d, r_f, sigma) * _d1 * _d2 / sigma
+    return _core(S, K, T, r_d, r_f, sigma).volga
 
 
 def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
@@ -125,11 +126,17 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T <= 0.0 or sigma <= 0.0:
         raise ValueError("analytic_greeks requires T > 0 and sigma > 0")
-    _d1, _d2, df_f, df_d = _core(S, K, T, r_d, r_f, sigma)
+    g = _core(S, K, T, r_d, r_f, sigma, phi > 0)
+    # gamma, vega, vanna and volga come from the shared kernel. The terms in
+    # N(phi d1) and N(phi d2) still use scipy's norm.cdf, as they always have
+    # here; the kernel's 0.5 erfc(-x / sqrt 2) differs from it in the last
+    # bits (docs/METHODOLOGY.md, "Shared Black-Scholes kernel").
     sqrt_t = math.sqrt(T)
-    n_d1 = norm.pdf(_d1)
-    N_pd1 = norm.cdf(phi * _d1)
-    N_pd2 = norm.cdf(phi * _d2)
+    df_f = math.exp(-r_f * T)
+    df_d = math.exp(-r_d * T)
+    n_d1 = norm.pdf(g.d1)
+    N_pd1 = norm.cdf(phi * g.d1)
+    N_pd2 = norm.cdf(phi * g.d2)
 
     price = phi * (S * df_f * N_pd1 - K * df_d * N_pd2)
     delta_spot = phi * df_f * N_pd1
@@ -139,13 +146,13 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
         price=price,
         delta_spot=delta_spot,
         delta_forward=phi * N_pd1,
-        gamma=df_f * n_d1 / (S * sigma * sqrt_t),
-        vega=S * df_f * n_d1 * sqrt_t,
+        gamma=g.gamma,
+        vega=g.vega,
         theta=theta,
         rho_domestic=phi * K * T * df_d * N_pd2,
         rho_foreign=-phi * S * T * df_f * N_pd1,
-        vanna=-df_f * n_d1 * _d2 / sigma,
-        volga=S * df_f * n_d1 * sqrt_t * _d1 * _d2 / sigma,
+        vanna=g.vanna,
+        volga=g.volga,
     )
 
 

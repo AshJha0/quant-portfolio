@@ -15,21 +15,28 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.special import erfc
+from qp_core.black_scholes import carry_price_array, carry_terms_array
 
 from .garman_kohlhagen import _MIN_VOL
 
 __all__ = ["gk_greeks_array", "gk_price_array"]
 
-_RSQRT2 = 1.0 / np.sqrt(2.0)
-_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
-
-
 def _first_bad(mask: NDArray[np.bool_]) -> int:
     return int(np.flatnonzero(mask.ravel())[0])
 
 
-def _prepare(S, K, T, r_d, r_f, sigma, option_type):
+_F64 = NDArray[np.float64]
+
+
+def _prepare(
+    S: ArrayLike,
+    K: ArrayLike,
+    T: ArrayLike,
+    r_d: ArrayLike,
+    r_f: ArrayLike,
+    sigma: ArrayLike,
+    option_type: str | ArrayLike,
+) -> tuple[_F64, _F64, _F64, _F64, _F64, _F64, _F64]:
     arrs = np.broadcast_arrays(*(np.asarray(a, dtype=np.float64) for a in (S, K, T, r_d, r_f, sigma)))
     S, K, T, r_d, r_f, sigma = (np.ascontiguousarray(a) for a in arrs)
     ot = np.asarray(option_type)
@@ -87,10 +94,8 @@ def gk_price_array(
         vst_raw = sigma * np.sqrt(T)
         general = vst_raw > _MIN_VOL
         Tg, vg = np.where(general, T, 1.0), np.where(general, sigma, 1.0)
-        vst = vg * np.sqrt(Tg)
-        d1 = (np.log(S / K) + (r_d - r_f + 0.5 * vg * vg) * Tg) / vst
-        d2 = d1 - vst
-        bs = phi * (disc_s * 0.5 * erfc(-phi * d1 * _RSQRT2) - disc_k * 0.5 * erfc(-phi * d2 * _RSQRT2))
+        # Shared carry-form kernel: the foreign rate is the carry yield.
+        bs = carry_price_array(S, K, Tg, r_d, r_f, vg, phi, disc_s, disc_k)
         price = np.select(
             [T == 0.0, ~general],
             [np.maximum(phi * (S - K), 0.0), np.maximum(phi * (disc_s - disc_k), 0.0)],
@@ -128,14 +133,9 @@ def gk_greeks_array(
     if bad.any():
         raise ValueError(f"d1 undefined: sigma sqrt(T) <= {_MIN_VOL} at index {_first_bad(bad)}")
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        sqrt_t = np.sqrt(T)
-        d1 = (np.log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t)
-        d2 = d1 - sigma * sqrt_t
-        df_f = np.exp(-r_f * T)
-        df_d = np.exp(-r_d * T)
-        n_d1 = np.exp(-0.5 * d1 * d1) * _INV_SQRT_2PI
-        n_pd1 = 0.5 * erfc(-phi * d1 * _RSQRT2)
-        n_pd2 = 0.5 * erfc(-phi * d2 * _RSQRT2)
+        t = carry_terms_array(S, K, T, r_d, r_f, sigma, phi)
+        sqrt_t, d1, d2, df_f, df_d = t.sqrt_t, t.d1, t.d2, t.df_q, t.df_r
+        n_d1, n_pd1, n_pd2 = t.pdf, t.n1, t.n2
         vega = S * df_f * n_d1 * sqrt_t
         out = {
             "price": phi * (S * df_f * n_pd1 - K * df_d * n_pd2),

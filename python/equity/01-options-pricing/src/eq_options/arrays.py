@@ -18,24 +18,28 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.special import erfc
+from qp_core.black_scholes import carry_greeks_array, carry_price_array
 
 __all__ = ["bs_greeks_array", "bs_price_array"]
-
-_RSQRT2 = 1.0 / np.sqrt(2.0)
-_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
-
-
-def _ncdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
-    # Same formula as the scalar norm_cdf: 0.5 erfc(-x / sqrt 2).
-    return 0.5 * erfc(-x * _RSQRT2)
-
 
 def _first_bad(mask: NDArray[np.bool_]) -> int:
     return int(np.flatnonzero(mask.ravel())[0])
 
 
-def _prepare(S, K, T, r, sigma, q, option_type, *, strict: bool):
+_F64 = NDArray[np.float64]
+
+
+def _prepare(
+    S: ArrayLike,
+    K: ArrayLike,
+    T: ArrayLike,
+    r: ArrayLike,
+    sigma: ArrayLike,
+    q: ArrayLike,
+    option_type: str | ArrayLike,
+    *,
+    strict: bool,
+) -> tuple[_F64, _F64, _F64, _F64, _F64, _F64, NDArray[np.bool_]]:
     arrs = np.broadcast_arrays(*(np.asarray(a, dtype=np.float64) for a in (S, K, T, r, sigma, q)))
     S, K, T, r, sigma, q = (np.ascontiguousarray(a) for a in arrs)
     ot = np.asarray(option_type)
@@ -99,12 +103,10 @@ def bs_price_array(
         # Harmless stand-ins where the general formula does not apply.
         Sg, Kg = np.where(general, S, 1.0), np.where(general, K, 1.0)
         Tg, vg = np.where(general, T, 1.0), np.where(general, sigma, 1.0)
-        vst = vg * np.sqrt(Tg)
-        d1 = (np.log(Sg / Kg) + (r - q + 0.5 * vg * vg) * Tg) / vst
-        d2 = d1 - vst
-        call = disc_s * _ncdf(d1) - disc_k * _ncdf(d2)
-        put = disc_k * _ncdf(-d2) - disc_s * _ncdf(-d1)
         sign = np.where(is_call, 1.0, -1.0)
+        # Shared carry-form kernel (qp_core.black_scholes); + 0.0 keeps the
+        # +0.0 a put worth exactly zero has always returned.
+        bs = carry_price_array(Sg, Kg, Tg, r, q, vg, sign, disc_s, disc_k) + 0.0
         price = np.select(
             [T == 0.0, K == 0.0, S == 0.0, sigma == 0.0],
             [
@@ -113,7 +115,7 @@ def bs_price_array(
                 np.where(is_call, 0.0, disc_k),
                 np.maximum(sign * (disc_s - disc_k), 0.0),
             ],
-            default=np.where(is_call, call, put),
+            default=bs,
         )
     _check_finite("bs_price", price)
     return price
@@ -137,32 +139,12 @@ def bs_greeks_array(
     """
     S, K, T, r, sigma, q, is_call = _prepare(S, K, T, r, sigma, q, option_type, strict=True)
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        sqrt_t = np.sqrt(T)
-        d1 = (np.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t)
-        d2 = d1 - sigma * sqrt_t
-        df_q = np.exp(-q * T)
-        df_r = np.exp(-r * T)
-        pdf = np.exp(-0.5 * d1 * d1) * _INV_SQRT_2PI
-        gamma = df_q * pdf / (S * sigma * sqrt_t)
-        vega = S * df_q * pdf * sqrt_t
-        vanna = -df_q * pdf * d2 / sigma
-        volga = vega * d1 * d2 / sigma
-        common_theta = -S * df_q * pdf * sigma / (2.0 * sqrt_t)
-        n1, n2, m1, m2 = _ncdf(d1), _ncdf(d2), _ncdf(-d1), _ncdf(-d2)
-        out = {
-            "price": np.where(is_call, S * df_q * n1 - K * df_r * n2, K * df_r * m2 - S * df_q * m1),
-            "delta": np.where(is_call, df_q * n1, -df_q * m1),
-            "gamma": gamma,
-            "vega": vega,
-            "theta": np.where(
-                is_call,
-                common_theta + q * S * df_q * n1 - r * K * df_r * n2,
-                common_theta - q * S * df_q * m1 + r * K * df_r * m2,
-            ),
-            "rho": np.where(is_call, K * T * df_r * n2, -K * T * df_r * m2),
-            "vanna": vanna,
-            "volga": volga,
-        }
+        g = carry_greeks_array(S, K, T, r, q, sigma, np.where(is_call, 1.0, -1.0))
+        keys = ("price", "delta", "gamma", "vega", "theta", "rho", "vanna", "volga")
+        out = {k: g[k] for k in keys}
+        # + 0.0: the put price this function used to evaluate (K e^{-rT}
+        # N(-d2) - S e^{-qT} N(-d1)) never returned -0.0; the phi form can.
+        out["price"] = out["price"] + 0.0
     for name, a in out.items():
         _check_finite(f"bs_greeks.{name}", a)
     return out

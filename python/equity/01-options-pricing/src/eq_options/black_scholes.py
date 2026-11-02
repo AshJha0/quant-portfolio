@@ -26,9 +26,9 @@ import math
 import warnings
 from typing import Literal
 
+from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value, finite, safe_exp
+from qp_core.iv_core import black_implied_vol
 from qp_core.normal import norm_cdf
-
-from ._iv_core import black_implied_vol
 
 OptionType = Literal["call", "put"]
 
@@ -41,9 +41,6 @@ __all__ = [
     "validate_inputs",
 ]
 
-_SQRT_2PI = math.sqrt(2.0 * math.pi)
-
-
 # Standard normal CDF via ``erfc``: full relative precision in the lower tail.
 _ncdf = norm_cdf
 
@@ -55,18 +52,9 @@ def _check_rates(**rates: float) -> None:
             raise ValueError(f"{name} must be finite, got {value!r}")
 
 
-def _exp(x: float, what: str) -> float:
-    """``math.exp`` that raises ``ValueError`` (not ``OverflowError``) on overflow."""
-    try:
-        return math.exp(x)
-    except OverflowError:
-        raise ValueError(f"{what}: exp({x!r}) overflows a double") from None
-
-
-def _finite(value: float, what: str) -> float:
-    if not math.isfinite(value):
-        raise ValueError(f"{what} is not representable as a finite double")
-    return value
+# Overflow-to-ValueError exp and the finite-result guard live in qp_core.
+_exp = safe_exp
+_finite = finite
 
 
 def validate_inputs(
@@ -180,10 +168,7 @@ def d1_d2(
             "d1/d2 require strictly positive S, K, T and sigma; "
             f"got S={S}, K={K}, T={T}, sigma={sigma}"
         )
-    sqrt_t = math.sqrt(T)
-    d1 = (math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t)
-    d2 = d1 - sigma * sqrt_t
-    return d1, d2
+    return carry_d1_d2(S, K, T, r, q, sigma)
 
 
 def bs_price(
@@ -240,8 +225,7 @@ def bs_price(
         return _finite(S * _exp(-q * T, "bs_price"), "bs_price") if option_type == "call" else 0.0
     if S == 0.0:
         return 0.0 if option_type == "call" else _finite(K * _exp(-r * T, "bs_price"), "bs_price")
-    disc_s = S * _exp(-q * T, "bs_price")
-    disc_k = K * _exp(-r * T, "bs_price")
+    disc_s, disc_k = carry_discounts(S, K, T, r, q, "bs_price")
     if sigma == 0.0:
         # exp(-rT) max(+-(F - K), 0) written as S e^{-qT} - K e^{-rT}: the
         # forward itself can overflow when (r - q) T > 709.
@@ -249,17 +233,10 @@ def bs_price(
         return _finite(max(sign * (disc_s - disc_k), 0.0), "bs_price")
 
     d1, d2 = d1_d2(S, K, T, r, sigma, q)
-    if option_type == "call":
-        value = disc_s * _ncdf(d1) - disc_k * _ncdf(d2)
-    else:
-        value = disc_k * _ncdf(-d2) - disc_s * _ncdf(-d1)
-    return _finite(value, "bs_price")
-
-
-def _bs_vega(S: float, K: float, T: float, r: float, sigma: float, q: float) -> float:
-    """Analytic vega dV/dsigma (per unit of vol, i.e. per 100 vol points)."""
-    d1, _ = d1_d2(S, K, T, r, sigma, q)
-    return S * math.exp(-q * T) * math.exp(-0.5 * d1 * d1) / _SQRT_2PI * math.sqrt(T)
+    phi = 1.0 if option_type == "call" else -1.0
+    # + 0.0 maps the -0.0 that phi = -1 gives for a put worth exactly zero to
+    # +0.0, the value this function has always returned; nothing else moves.
+    return _finite(carry_value(disc_s, disc_k, d1, d2, phi) + 0.0, "bs_price")
 
 
 _IV_DEPRECATED_DEFAULTS = {"tol": 1e-12, "max_iter": 100, "sigma_lo": 1e-9, "sigma_hi": 10.0}
@@ -289,7 +266,7 @@ def implied_vol(
     of three transformed objectives (``1/ln b`` below the inflection point
     ``s_c = sqrt(2|x|)``, ``ln b`` or ``ln(b_max - b)`` above it), from an
     asymptotic initial guess, with a relative stopping rule. The same
-    algorithm runs in the C++ and Rust engines (``_iv_core.py``).
+    algorithm runs in the C++ and Rust engines (``qp_core.iv_core``).
 
     Accuracy: the recovered vol is within ``max(eps * price / vega,
     1e-12 * sigma)`` of the true root over T in [1e-7, 50], sigma in

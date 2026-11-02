@@ -137,7 +137,7 @@ Each assumption states what breaks when it is violated.
   solved on the out-of-the-money side by safeguarded Halley iteration on
   transformed objectives, from an asymptotic initial guess, with a relative
   stopping rule; at most 10 evaluations. The same algorithm and constants
-  run in the equity engine and in C++ and Rust (`_iv_core.py`). Accuracy:
+  run in the equity engine and in C++ and Rust (`qp_core.iv_core`). Accuracy:
   `max(eps price / vega, 1e-12 sigma)` against mpmath.
 - **Limits**: `T = 0` returns intrinsic; `σ = 0` returns discounted forward
   intrinsic, both exact, both unit-tested, no NaNs.

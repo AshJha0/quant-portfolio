@@ -24,7 +24,11 @@ def test_lower_tail_keeps_relative_precision():
 
 
 def test_option_packages_use_the_shared_definition():
-    eq_iv = pytest.importorskip("eq_options._iv_core")
-    fx_iv = pytest.importorskip("fx_options._iv_core")
-    assert eq_iv.norm_cdf is norm_cdf
-    assert fx_iv.norm_cdf is norm_cdf
+    import qp_core.iv_core as iv
+
+    eq_bs = pytest.importorskip("eq_options.black_scholes")
+    fx_common = pytest.importorskip("fx_options._common")
+    assert iv.norm_cdf is norm_cdf
+    assert eq_bs._ncdf is norm_cdf
+    assert fx_common.ncdf is norm_cdf
+    assert eq_bs.black_implied_vol is iv.black_implied_vol

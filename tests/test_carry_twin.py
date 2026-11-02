@@ -22,7 +22,6 @@ shared kernel must not loosen any of them.
 from __future__ import annotations
 
 import itertools
-import math
 
 import numpy as np
 import pytest

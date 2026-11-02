@@ -27,10 +27,10 @@ import math
 import numbers
 import warnings
 
-from scipy.stats import norm
+from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value
+from qp_core.iv_core import black_implied_vol
 
-from ._common import finite_result, ncdf, safe_exp, validate_inputs, validate_option_type
-from ._iv_core import black_implied_vol
+from ._common import finite_result, safe_exp, validate_inputs, validate_option_type
 
 _EPS = 2.220446049250313e-16
 
@@ -69,7 +69,7 @@ def d1(S: float, K: float, T: float, r_d: float, r_f: float,
         raise ValueError(
             f"d1 undefined for sigma*sqrt(T)={vol_sqrt_t}; need sigma>0, T>0"
         )
-    return (math.log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t
+    return carry_d1_d2(S, K, T, r_d, r_f, sigma)[0]
 
 
 def d2(S: float, K: float, T: float, r_d: float, r_f: float,
@@ -117,16 +117,13 @@ def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T == 0.0:
         return max(phi * (S - K), 0.0)
-    disc_s = S * safe_exp(-r_f * T, "gk_price")
-    disc_k = K * safe_exp(-r_d * T, "gk_price")
+    disc_s, disc_k = carry_discounts(S, K, T, r_d, r_f, "gk_price")
     if sigma * math.sqrt(T) <= _MIN_VOL:
         # e^{-r_d T} max(phi (F - K), 0) as S e^{-r_f T} - K e^{-r_d T}:
         # the forward itself can overflow when (r_d - r_f) T > 709.
         return finite_result(max(phi * (disc_s - disc_k), 0.0), "gk_price")
-    _d1 = d1(S, K, T, r_d, r_f, sigma)
-    _d2 = _d1 - sigma * math.sqrt(T)
-    return finite_result(
-        phi * (disc_s * ncdf(phi * _d1) - disc_k * ncdf(phi * _d2)), "gk_price")
+    _d1, _d2 = carry_d1_d2(S, K, T, r_d, r_f, sigma)
+    return finite_result(carry_value(disc_s, disc_k, _d1, _d2, phi), "gk_price")
 
 
 def gk_call(S: float, K: float, T: float, r_d: float, r_f: float,
@@ -141,13 +138,6 @@ def gk_put(S: float, K: float, T: float, r_d: float, r_f: float,
     return gk_price(S, K, T, r_d, r_f, sigma, "put")
 
 
-def _vega(S: float, K: float, T: float, r_d: float, r_f: float,
-          sigma: float) -> float:
-    """GK vega (dV/dsigma), same for calls and puts."""
-    _d1 = d1(S, K, T, r_d, r_f, sigma)
-    return S * math.exp(-r_f * T) * norm.pdf(_d1) * math.sqrt(T)
-
-
 def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
                 r_f: float, option_type: str, tol: float | None = None,
                 max_iter: int | None = None) -> float:
@@ -157,7 +147,7 @@ def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
     out-of-the-money side (an in-the-money quote is converted by parity)
     with safeguarded Halley iteration and a relative stopping rule. The
     algorithm is shared with the equity engine and the C++ and Rust
-    engines (``_iv_core.py``): at most 10 evaluations, accuracy
+    engines (``qp_core.iv_core``): at most 10 evaluations, accuracy
     ``max(eps * price / vega, 1e-12 * sigma)``.
 
     Bounds use scale-aware tolerances: ``tau_lo = 4 eps df max(F, K)`` (zero when out of the money) and

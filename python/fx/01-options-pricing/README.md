@@ -87,7 +87,7 @@ atm = atm_dns_strike(147.5, 0.5, 0.0050, 0.0525, 0.1075, "forward_pa")
 ├── src/fx_options/
 │   ├── __init__.py          # public API
 │   ├── _common.py           # validation + conventions
-│   ├── garman_kohlhagen.py  # GK price, d1/d2, implied vol (shared core in _iv_core.py)
+│   ├── garman_kohlhagen.py  # GK price, d1/d2, implied vol (shared core in qp_core.iv_core)
 │   ├── forwards.py          # CIP forward, forward points, synthetic forward
 │   ├── deltas.py            # 4 delta conventions, strike-from-delta, ATM/DNS
 │   ├── binomial.py          # CRR tree, European + American, convergence
