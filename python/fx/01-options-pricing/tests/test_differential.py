@@ -8,7 +8,9 @@ reference.
 Locating the shims: ``QP_RS_FX_JSONL`` and ``QP_CPP_FX_JSONL`` hold a
 command (it may be a prefix such as ``wsl /home/u/build/fx-gcc/fxopt_jsonl``).
 Without ``QP_RS_FX_JSONL`` the Rust release binary under
-``rust/fx-options-engine/target/release`` is used if it exists. A
+``rust/target/release`` (the Cargo workspace target directory) is used if
+it exists. The C++ shim defaults to ``cpp/<engine>/build/`` and then
+``cpp/<engine>/build/gcc/`` (the gcc preset). A
 missing shim skips its test.
 
 Tolerances. Every engine uses erfc-based normal CDFs and the same
@@ -33,7 +35,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from fx_options import _jsonl, gk_price
 
 EPS = 2.220446049250313e-16
@@ -43,7 +44,9 @@ ROOT = Path(__file__).resolve().parents[4]
 def _requests(seed: int = 20261101) -> list[dict]:
     rng = random.Random(seed)
     reqs: list[dict] = []
-    spot = lambda: rng.choice([rng.uniform(0.5, 2.0), rng.uniform(80, 200)])  # EURUSD- or USDJPY-like
+    def spot():  # EURUSD- or USDJPY-like
+        return rng.choice([rng.uniform(0.5, 2.0), rng.uniform(80, 200)])
+
     for _ in range(300):
         S = spot()
         reqs.append(dict(fn="gk", S=S, K=S * math.exp(rng.uniform(-0.8, 0.8)),
@@ -96,12 +99,13 @@ def _run_shim(cmd: list[str], reqs: list[dict]) -> list[dict]:
     return lines
 
 
-def _shim(env: str, default: Path) -> list[str] | None:
+def _shim(env: str, *defaults: Path) -> list[str] | None:
     if os.environ.get(env):
         return shlex.split(os.environ[env])
-    for cand in (default, default.with_suffix(".exe")):
-        if cand.exists():
-            return [str(cand)]
+    for default in defaults:
+        for cand in (default, default.with_suffix(".exe")):
+            if cand.exists():
+                return [str(cand)]
     return None
 
 
@@ -136,7 +140,7 @@ def _tolerance(req: dict, name: str, ref: float, py_out: dict) -> float:
 def _compare(label: str, reqs: list[dict], got: list[dict]) -> None:
     worst: dict[tuple[str, str], tuple[float, float]] = {}
     failures = []
-    for req, other in zip(reqs, got):
+    for req, other in zip(reqs, got, strict=False):
         py = json.loads(_jsonl.respond(_wire(req)))
         assert other["id"] == req["id"]
         if not py["ok"]:
@@ -185,14 +189,17 @@ def test_python_shim_as_subprocess(requests_) -> None:
 
 
 def test_rust_matches_python(requests_) -> None:
-    cmd = _shim("QP_RS_FX_JSONL", ROOT / "rust/fx-options-engine/target/release/fx_jsonl")
+    cmd = _shim("QP_RS_FX_JSONL", ROOT / "rust/target/release/fx_jsonl")
     if cmd is None:
         pytest.skip("Rust shim not built (cargo build --release) and QP_RS_FX_JSONL unset")
     _compare("rust", requests_, _run_shim(cmd, requests_))
 
 
 def test_cpp_matches_python(requests_) -> None:
-    cmd = _shim("QP_CPP_FX_JSONL", ROOT / "cpp/fx-options-engine/build/fxopt_jsonl")
+    cmd = _shim("QP_CPP_FX_JSONL",
+        ROOT / "cpp/fx-options-engine/build/fxopt_jsonl",
+        ROOT / "cpp/fx-options-engine/build/gcc/fxopt_jsonl",
+    )
     if cmd is None:
         pytest.skip("C++ shim not built and QP_CPP_FX_JSONL unset")
     _compare("cpp", requests_, _run_shim(cmd, requests_))
