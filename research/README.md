@@ -28,12 +28,17 @@ more training data, so the code makes the first run auditable and a second
 run impossible.
 
 ```bash
-python research/studies/fx_studies.py all --mode holdout
+python research/studies/fx_studies.py regime --mode holdout
 ```
+
+The pairs registration was withdrawn before the hold-out (DR-R4-5 below):
+`pairs` is refused, `all` means `regime` alone, and `prereg.py check`
+refuses any pairs hold-out result.
 
 Before it reads a byte of data, it refuses (exit code 3, `REFUSED: ...`) if
 
-- either registration is not signed, or its hash is not the one in
+- the study is withdrawn (pairs, DR-R4-5);
+- the registration is not signed, or its hash is not the one in
   `fx_studies.SIGNED_SHA256` (the hashes signed in commit 35d351a);
 - `git status --porcelain` shows anything, untracked files included;
 - `research/results/pairs_fx_g10_holdout.json` or
@@ -100,6 +105,30 @@ records were added in the commit that follows it.
   day from 1999-01-04 to 31 December of the previous year. Why: that is the
   registered expanding window; the 2003 start applies to the training run.
 
+### DR-R4-5: pairs registration withdrawn (2026-11-02)
+
+Decided by the owner on 2026-11-02, recorded here before any 2022-2025 data
+had been fetched or scored. `prereg/pairs-fx-g10.md` (signed, hash
+dfca5c7a...) is withdrawn; its file is left untouched so the hash and
+signature still verify. Its hold-out will never be run: the harness refuses
+`pairs`, and `prereg.py check` refuses a pairs hold-out result.
+
+Why: the registered test cannot detect the effect it is meant to test. The
+Kalman hedge's state noise (delta = 1e-6) lets alpha absorb the
+mean-reverting spread, so z measures a one-day surprise, not the spread
+level. On 200 simulated, truly cointegrated pairs per row (OU spread, sd 2 %,
+half-life 20 days, the registered parameters), |z| > 2 on 0.54 % of days
+with the second leg near log level 0 and 0.00 % for a JPY-like leg
+(log level -4.7); a static OLS residual z crosses 2 on 22 % and 6 % of days
+(evidence class: simulation, `review/2026-11-02/area-quant.md` C1). The
+training run agrees: max |z| stayed below 2 in 16 of 19 folds, 79 of 4,867
+days active. The training Sharpe of 0.24 is about 75 % one fold (CHF/NZD
+2015, the SNB de-peg), with skew 44.5 and raw kurtosis 2745, so the Lo
+standard error and the deflated Sharpe built on it are not valid. A
+hold-out result from this design would be uninformative whichever way it
+fell. Its replacement, `pairs-fx-g10-v2` (level-based z, simulated power
+check before signing), is scored on forward data only.
+
 ### Dry run
 
 ```bash
@@ -141,7 +170,7 @@ python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
 
 | Registration | Status | Training result |
 |---|---|---|
-| `prereg/pairs-fx-g10.md` | signed 2026-11-02; hold-out code ready, not run | `results/pairs_fx_g10_train.json` |
+| `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out code ready, not run | `results/regime_fx_basket_train.json` |
 | `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
 

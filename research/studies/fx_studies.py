@@ -9,8 +9,10 @@ Run: ``python research/studies/fx_studies.py [pairs|regime|all]``. The ECB
 file is downloaded once into ``data/raw/`` by ``data/fetch/qp_fetch.py``.
 
 Hold-out (single use, 2022-01-01 to 2025-12-31):
-``python research/studies/fx_studies.py all --mode holdout``. It refuses
-unless both registrations are signed with the hashes in ``SIGNED_SHA256``,
+``python research/studies/fx_studies.py regime --mode holdout``. The pairs
+registration was withdrawn before the hold-out (DR-R4-5), so ``pairs`` is
+refused and ``all`` means ``regime``. It refuses
+unless the registration is signed with the hashes in ``SIGNED_SHA256``,
 the git tree is clean and no ``*_holdout.json`` exists yet. ``--dry-run``
 runs the same path on a seeded synthetic file with fake 2012-2025 dates and
 writes to a temporary directory; it never reads real data or the network.
@@ -57,6 +59,20 @@ SIGNED_SHA256 = {
 }
 STUDIES = {"pairs": ("pairs_fx_g10", "pairs-fx-g10.md"),
            "regime": ("regime_fx_basket", "regime-fx-basket.md")}
+# Registrations withdrawn before any hold-out data was seen (research/README.md,
+# DR-R4-5). Their hold-out is never run; ``all`` in hold-out mode skips them.
+WITHDRAWN = {"pairs": "DR-R4-5 (2026-11-02): withdrawn before the hold-out; the signal has "
+                      "near-zero power as registered"}
+
+
+def holdout_studies(which: str) -> list[str]:
+    """Studies a hold-out run of ``which`` scores. Refuses a withdrawn study."""
+    if which in WITHDRAWN:
+        raise ho.HoldoutRefused(f"{which}: registration withdrawn, {WITHDRAWN[which]}")
+    names = [n for n in STUDIES if n not in WITHDRAWN] if which == "all" else [which]
+    if which not in STUDIES and which != "all":
+        raise ho.HoldoutRefused(f"unknown study {which!r}")
+    return names
 
 
 def usd_prices(eur_rates: pd.DataFrame) -> pd.DataFrame:
@@ -263,7 +279,7 @@ def holdout_prices(eur: pd.DataFrame) -> pd.DataFrame:
 def check_holdout_ready(which: str, out_dir: Path, dry_run: bool, repo: Path = REPO,
                         prereg_dir: Path = PREREG) -> tuple[dict, dict, dict]:
     """Every refusal, made before any data is read or downloaded."""
-    names = ["pairs", "regime"] if which == "all" else [which]
+    names = holdout_studies(which)
     regs = {n: ho.signed_registration(prereg_dir / STUDIES[n][1], SIGNED_SHA256[STUDIES[n][1]])
             for n in names}
     git = ho.git_state(repo)
