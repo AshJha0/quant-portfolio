@@ -1,0 +1,188 @@
+{
+  "prereg": "research/prereg/pairs-fx-g10.md",
+  "prereg_sha256": "dfca5c7ae8ea15c6483ed8c3a9b6946f23bcfa0aea71f45b8e499908ae953dcc",
+  "registration_signed": false,
+  "period": {
+    "start": "1999-01-04",
+    "end": "2021-12-31"
+  },
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "folds": [
+    {
+      "year": 2003,
+      "pairs": [
+        "AUD/SEK",
+        "CAD/JPY",
+        "GBP/NZD"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2004,
+      "pairs": [
+        "NZD/SEK",
+        "NZD/EUR"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2005,
+      "pairs": [
+        "NZD/SEK",
+        "NZD/EUR",
+        "SEK/EUR"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2006,
+      "pairs": [
+        "AUD/NOK",
+        "JPY/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2007,
+      "pairs": [
+        "GBP/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2008,
+      "pairs": [
+        "GBP/SEK"
+      ],
+      "net_return": 0.019560076252145873
+    },
+    {
+      "year": 2009,
+      "pairs": [],
+      "net_return": 0.0
+    },
+    {
+      "year": 2010,
+      "pairs": [],
+      "net_return": 0.0
+    },
+    {
+      "year": 2011,
+      "pairs": [
+        "AUD/CAD",
+        "CAD/NZD"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2012,
+      "pairs": [
+        "GBP/EUR",
+        "NOK/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2013,
+      "pairs": [
+        "CAD/CHF",
+        "CAD/GBP",
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/NOK",
+        "GBP/NOK",
+        "GBP/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2014,
+      "pairs": [
+        "CAD/NOK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2015,
+      "pairs": [
+        "CHF/NZD"
+      ],
+      "net_return": 0.08939446350181598
+    },
+    {
+      "year": 2016,
+      "pairs": [
+        "CHF/GBP",
+        "CHF/NZD",
+        "CHF/EUR",
+        "JPY/NOK",
+        "JPY/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2017,
+      "pairs": [
+        "CAD/CHF",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR",
+        "SEK/EUR"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2018,
+      "pairs": [
+        "AUD/CHF",
+        "CAD/CHF",
+        "CAD/NOK",
+        "CHF/GBP",
+        "CHF/JPY",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2019,
+      "pairs": [
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/GBP",
+        "CHF/NOK",
+        "CHF/SEK"
+      ],
+      "net_return": 0.0
+    },
+    {
+      "year": 2020,
+      "pairs": [
+        "CHF/NZD"
+      ],
+      "net_return": 0.010344372527366558
+    },
+    {
+      "year": 2021,
+      "pairs": [
+        "CAD/GBP",
+        "SEK/EUR"
+      ],
+      "net_return": 0.0
+    }
+  ],
+  "candidate_pairs": 36,
+  "trial_count": 3,
+  "primary_metric": "annualised net Sharpe, walk-forward test years",
+  "n_days": 4867,
+  "active_days": 79,
+  "sharpe": 0.2406519989681297,
+  "sharpe_se_lo": 0.15393436174136432,
+  "ci95": [
+    -0.1747475582725665,
+    0.4561703018426657
+  ]
+}
