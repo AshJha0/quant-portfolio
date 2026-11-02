@@ -1,0 +1,19 @@
+{
+  "prereg": "research/prereg/regime-fx-basket.md",
+  "prereg_sha256": "bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687",
+  "registration_signed": false,
+  "period": {
+    "start": "1999-01-04",
+    "end": "2021-12-31"
+  },
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "primary_metric": "mean next-day basket return in the predicted high-vol state",
+  "trial_count": 1,
+  "high_vol_days": 1370,
+  "all_days": 4848,
+  "mean_ann_high": 0.012070157373267203,
+  "mean_ann_low": 0.003242611582074789,
+  "hac_t_high": 0.26729610610250615,
+  "hac_lag": 7,
+  "negative_mean_supported": false
+}
