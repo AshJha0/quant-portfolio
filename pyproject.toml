@@ -1,0 +1,99 @@
+# Workspace definition for the Python projects. This file is not a package.
+#
+#   python -m uv lock                 # resolve every member into uv.lock
+#   python -m uv sync --all-packages  # install all members into .venv
+#
+# Outside uv, install python/core first (pip install -e python/core), then a
+# project (pip install -e python/<area>/<project>).
+
+[tool.uv.workspace]
+members = [
+    "python/core",
+    "python/equity/01-options-pricing",
+    "python/equity/02-volatility-modeling",
+    "python/equity/03-var-es-engine",
+    "python/equity/04-fixed-income",
+    "python/equity/05-pairs-trading",
+    "python/equity/06-credit-risk",
+    "python/equity/07-portfolio-optimization",
+    "python/equity/08-algo-execution",
+    "python/equity/09-vol-surface",
+    "python/equity/10-regime-switching",
+    "python/foundations/01-risk-metrics",
+    "python/foundations/02-trading-signal-backtest",
+    "python/foundations/03-black-scholes-replication",
+    "python/fx/01-options-pricing",
+    "python/fx/02-volatility-modeling",
+    "python/fx/03-var-es-engine",
+    "python/fx/04-fixed-income",
+    "python/fx/05-pairs-trading",
+    "python/fx/06-credit-risk",
+    "python/fx/07-portfolio-optimization",
+    "python/fx/08-algo-execution",
+    "python/fx/09-vol-surface",
+    "python/fx/10-regime-switching",
+]
+
+[tool.uv.sources]
+qp-core = { workspace = true }
+
+[tool.mypy]
+# Default (non-strict) checking for the projects; python/core is strict.
+files = ["python/core/src", "python/core/tests", "python/*/[0-9]*/src"]
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = [
+    "python/core/src",
+    "python/equity/01-options-pricing/src",
+    "python/equity/02-volatility-modeling/src",
+    "python/equity/03-var-es-engine/src",
+    "python/equity/04-fixed-income/src",
+    "python/equity/05-pairs-trading/src",
+    "python/equity/06-credit-risk/src",
+    "python/equity/07-portfolio-optimization/src",
+    "python/equity/08-algo-execution/src",
+    "python/equity/09-vol-surface/src",
+    "python/equity/10-regime-switching/src",
+    "python/foundations/01-risk-metrics/src",
+    "python/foundations/02-trading-signal-backtest/src",
+    "python/foundations/03-black-scholes-replication/src",
+    "python/fx/01-options-pricing/src",
+    "python/fx/02-volatility-modeling/src",
+    "python/fx/03-var-es-engine/src",
+    "python/fx/04-fixed-income/src",
+    "python/fx/05-pairs-trading/src",
+    "python/fx/06-credit-risk/src",
+    "python/fx/07-portfolio-optimization/src",
+    "python/fx/08-algo-execution/src",
+    "python/fx/09-vol-surface/src",
+    "python/fx/10-regime-switching/src",
+]
+warn_unused_configs = true
+warn_redundant_casts = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["qp_core", "qp_core.*"]
+# The per-module equivalent of --strict (strict itself is global-only).
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+
+# Third-party packages that ship no type information.
+[[tool.mypy.overrides]]
+module = [
+    "statsmodels.*", # statsmodels ships no py.typed marker
+    "sklearn.*",     # scikit-learn ships no py.typed marker
+    "yfinance.*",    # optional live-data extra, not installed in the lint venv
+    "requests.*",    # optional live-data extra; types-requests is not a project dependency
+]
+ignore_missing_imports = true
