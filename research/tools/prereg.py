@@ -16,7 +16,11 @@ refuses a result when
 
 - the hash in the result does not match the pre-registration as committed;
 - the result's period reaches the hold-out (on or after ``HOLDOUT_START``)
-  and the pre-registration is not signed with that same hash.
+  and the pre-registration is not signed with that same hash;
+- it is a hold-out result (``"mode": "holdout"`` or a ``*_holdout*.json``
+  name) and its ``provenance`` block is missing a field, records a dirty
+  tree, lists no input-file hash, disagrees with ``prereg_sha256``, or is a
+  dry run (dry runs never belong in ``research/results``).
 
 Usage: ``python research/tools/prereg.py check [results_dir]`` exits 1 and
 prints one line per refused file.
@@ -82,6 +86,29 @@ def touches_holdout(period: dict) -> bool:
     return date.fromisoformat(str(period["end"])[:10]) >= HOLDOUT_START
 
 
+PROVENANCE_FIELDS = ("git_commit", "git_dirty", "input_sha256", "prereg_sha256",
+                     "timestamp_utc", "packages", "dry_run")
+
+
+def check_holdout_provenance(res: dict, claimed: str) -> list[str]:
+    prov = res.get("provenance")
+    if not isinstance(prov, dict):
+        return ["hold-out result has no provenance block"]
+    missing = [f for f in PROVENANCE_FIELDS if f not in prov]
+    if missing:
+        return [f"hold-out provenance missing {', '.join(missing)}"]
+    errors = []
+    if prov["git_dirty"] is not False:
+        errors.append("hold-out result was produced on a dirty git tree")
+    if prov["dry_run"] is not False:
+        errors.append("dry-run result in the results directory")
+    if not prov["input_sha256"]:
+        errors.append("hold-out provenance lists no input-file hash")
+    if prov["prereg_sha256"].get(res["prereg"]) != claimed:
+        errors.append("provenance prereg hash disagrees with prereg_sha256")
+    return errors
+
+
 def check_result(result_path: Path, repo: Path = REPO) -> list[str]:
     """Return the reasons to refuse ``result_path`` (empty list = accepted)."""
     try:
@@ -103,9 +130,11 @@ def check_result(result_path: Path, repo: Path = REPO) -> list[str]:
     try:
         holdout = touches_holdout(period)
     except (KeyError, ValueError) as exc:
-        return errors + [f"bad period: {exc!r}"]
+        return [*errors, f"bad period: {exc!r}"]
     if holdout and not reg.signed:
         errors.append("period reaches the 2022-2025 hold-out but the registration is not signed")
+    if res.get("mode") == "holdout" or "_holdout" in result_path.name:
+        errors += check_holdout_provenance(res, claimed)
     return errors
 
 

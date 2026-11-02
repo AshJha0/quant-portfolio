@@ -7,14 +7,23 @@ check`` can verify it.
 
 Run: ``python research/studies/fx_studies.py [pairs|regime|all]``. The ECB
 file is downloaded once into ``data/raw/`` by ``data/fetch/qp_fetch.py``.
+
+Hold-out (single use, 2022-01-01 to 2025-12-31):
+``python research/studies/fx_studies.py all --mode holdout``. It refuses
+unless both registrations are signed with the hashes in ``SIGNED_SHA256``,
+the git tree is clean and no ``*_holdout.json`` exists yet. ``--dry-run``
+runs the same path on a seeded synthetic file with fake 2012-2025 dates and
+writes to a temporary directory; it never reads real data or the network.
 """
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import json
 import math
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -24,11 +33,11 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path[:0] = [str(HERE), str(REPO / "research" / "tools"), str(REPO / "data" / "fetch")]
 
+import holdout as ho  # noqa: E402
 import prereg  # noqa: E402
-from models import johansen_trace, kalman_hedge, training_only  # noqa: E402
-
 from fx_pairs.cointegration import engle_granger  # noqa: E402
 from fx_regime.hmm import filtered_probabilities, fit_hmm  # noqa: E402
+from models import johansen_trace, kalman_hedge, training_only  # noqa: E402
 from qp_core.stats import block_bootstrap_ci, lo_sharpe_se, sharpe_ratio  # noqa: E402
 
 PREREG = REPO / "research" / "prereg"
@@ -39,6 +48,15 @@ TRAIN_START, TRAIN_END = "1999-01-04", "2021-12-31"
 PAIRS = dict(formation_years=3, embargo_days=5, first_test_year=2003, eg_level="5%",
              delta=1e-6, entry_z=2.0, exit_z=0.5, cost_bp=1.0, lags=1)
 REGIME = dict(first_test_year=2003, n_states=2, seed=0, n_init=5, threshold=0.5)
+
+# The registration hashes this code was written against (signed in 35d351a).
+# A hold-out run refuses unless prereg.py reports each file signed with this hash.
+SIGNED_SHA256 = {
+    "pairs-fx-g10.md": "dfca5c7ae8ea15c6483ed8c3a9b6946f23bcfa0aea71f45b8e499908ae953dcc",
+    "regime-fx-basket.md": "bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687",
+}
+STUDIES = {"pairs": ("pairs_fx_g10", "pairs-fx-g10.md"),
+           "regime": ("regime_fx_basket", "regime-fx-basket.md")}
 
 
 def usd_prices(eur_rates: pd.DataFrame) -> pd.DataFrame:
@@ -104,16 +122,28 @@ def pair_returns(ly: pd.Series, lx: pd.Series, test_mask: np.ndarray, p: dict) -
     return (gross - cost)[test_mask]
 
 
-def pairs_study(px: pd.DataFrame, p: dict = PAIRS) -> dict:
-    px = training_only(px)
-    logp = np.log(px)
-    years = range(p["first_test_year"], logp.index.max().year + 1)
+def pairs_fold_masks(index: pd.DatetimeIndex, year: int, p: dict = PAIRS) -> tuple[np.ndarray, np.ndarray]:
+    """(formation, test) row masks for test ``year``: formation is the
+    ``formation_years`` calendar years before it, ending ``embargo_days``
+    business days before its first day."""
+    test = np.asarray(index.year == year)
+    form_end = np.flatnonzero(test)[0] - p["embargo_days"]
+    form = np.asarray(index.year >= year - p["formation_years"]) & (np.arange(len(index)) < form_end)
+    return form, test
+
+
+def pairs_study(px: pd.DataFrame, p: dict = PAIRS, years: tuple[int, ...] | None = None) -> dict:
+    """Walk-forward pairs study. ``years=None`` is the training run (guarded
+    by ``training_only``); hold-out callers pass the years after the
+    signature check in ``run_holdout``."""
+    if years is None:
+        px = training_only(px)
+        years = tuple(range(p["first_test_year"], px.index.max().year + 1))
+    logp = pd.DataFrame(np.log(px))
     names = list(px.columns)
     folds, daily = [], []
     for year in years:
-        test = logp.index.year == year
-        form_end = np.flatnonzero(test)[0] - p["embargo_days"]
-        form = (logp.index.year >= year - p["formation_years"]) & (np.arange(len(logp)) < form_end)
+        form, test = pairs_fold_masks(pd.DatetimeIndex(logp.index), year, p)
         selected = []
         for a, b in itertools.combinations(names, 2):
             fy, fx = logp[a][form], logp[b][form]
@@ -129,25 +159,30 @@ def pairs_study(px: pd.DataFrame, p: dict = PAIRS) -> dict:
                       "net_return": float(port.sum())})
     r = np.concatenate(daily)
     return {"folds": folds, "candidate_pairs": math.comb(len(names), 2), "trial_count": 3,
-            "primary_metric": "annualised net Sharpe, walk-forward test years", **_sharpe_block(r)}
+            "primary_metric": "annualised net Sharpe, walk-forward test years", **_sharpe_block(r),
+            "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=3)}
 
 
 def usd_basket_returns(px: pd.DataFrame) -> pd.Series:
     """Equal-weight daily log return of holding the G10 currencies against USD."""
-    return np.log(px).diff().dropna().mean(axis=1)
+    return pd.DataFrame(np.log(px)).diff().dropna().mean(axis=1)
 
 
-def regime_study(px: pd.DataFrame, p: dict = REGIME) -> dict:
-    r = usd_basket_returns(training_only(px))
-    years = range(p["first_test_year"], r.index.max().year + 1)
+def regime_study(px: pd.DataFrame, p: dict = REGIME, years: tuple[int, ...] | None = None) -> dict:
+    """Yearly expanding-window HMM refit. ``years=None`` is the training run."""
+    if years is None:
+        px = training_only(px)
+        years = tuple(range(p["first_test_year"], px.index.max().year + 1))
+    r = usd_basket_returns(px)
+    ryear = pd.DatetimeIndex(r.index).year
     next_ret, in_high = [], []
     for year in years:
-        fit = r[r.index.year < year].to_numpy()[:, None]
+        fit = r[ryear < year].to_numpy()[:, None]
         model = fit_hmm(fit, p["n_states"], seed=p["seed"], n_init=p["n_init"])
         high = int(np.argmax(model.covs[:, 0, 0]))
-        upto = r[r.index.year <= year]
+        upto = r[ryear <= year]
         prob = filtered_probabilities(model, upto.to_numpy()[:, None])[:, high]
-        mask = (upto.index.year == year)[:-1]  # state at close t, return of t+1
+        mask = np.asarray(pd.DatetimeIndex(upto.index).year == year)[:-1]  # state at close t, return of t+1
         flag = prob[:-1][mask] > p["threshold"]
         nxt = upto.to_numpy()[1:][mask]
         next_ret.append(nxt)
@@ -165,8 +200,132 @@ def regime_study(px: pd.DataFrame, p: dict = REGIME) -> dict:
             "negative_mean_supported": bool(t_stat < -1.645)}
 
 
-def main(which: str) -> None:
-    from qp_fetch import fetch_ecb_fx, parse_ecb_csv, RAW_DIR
+def pairs_decision(res: dict) -> dict:
+    """Pairs decision rule: reject H0 if the one-sided 95 % lower bound of the
+    hold-out net Sharpe is above zero. Primary bound: Sharpe - 1.645 x the Lo
+    (2002) Newey-West SE. The bootstrap interval's lower end is reported beside it."""
+    sr, se, ci = res.get("sharpe"), res.get("sharpe_se_lo"), res.get("ci95")
+    if sr is None or se is None:
+        return {"rule": "Sharpe - 1.645 * Lo NW SE > 0", "h0_rejected": False,
+                "note": "no trading in the hold-out; H0 not rejected"}
+    lower = sr - 1.645 * se
+    return {"rule": "Sharpe - 1.645 * Lo NW SE > 0", "lower_bound_95_one_sided": lower,
+            "h0_rejected": bool(lower > 0),
+            "bootstrap_ci95_lower": None if ci is None else ci[0],
+            "bootstrap_ci95_lower_above_zero": None if ci is None else bool(ci[0] > 0)}
+
+
+def regime_decision(res: dict) -> dict:
+    return {"rule": "HAC t-statistic of the high-vol mean < -1.645",
+            "h0_rejected": bool(res["hac_t_high"] < -1.645)}
+
+
+def load_ecb(path: Path) -> tuple[pd.DataFrame, str]:
+    """Read an ECB csvdata file and hash exactly the bytes that were parsed."""
+    from qp_fetch import parse_ecb_csv
+
+    payload = path.read_bytes()
+    return parse_ecb_csv(payload.decode("utf-8")), ho.sha256_bytes(payload)
+
+
+def holdout_prices(eur: pd.DataFrame) -> pd.DataFrame:
+    """USD prices cut at the hold-out end. Refuses data that does not reach
+    December 2025 or starts too late for the 2022 formation window."""
+    px = usd_prices(eur)
+    px = px[px.index <= ho.HOLDOUT_END]
+    if px.empty or px.index.max() < pd.Timestamp("2025-12-01"):
+        raise ho.HoldoutRefused("input data does not reach December 2025")
+    if px.index.min() > pd.Timestamp("2018-12-31"):
+        raise ho.HoldoutRefused("input data starts after 2018; the 2022 formation window needs 2019-2021")
+    return px
+
+
+def check_holdout_ready(which: str, out_dir: Path, dry_run: bool, repo: Path = REPO,
+                        prereg_dir: Path = PREREG) -> tuple[dict, dict, dict]:
+    """Every refusal, made before any data is read or downloaded."""
+    names = ["pairs", "regime"] if which == "all" else [which]
+    regs = {n: ho.signed_registration(prereg_dir / STUDIES[n][1], SIGNED_SHA256[STUDIES[n][1]])
+            for n in names}
+    git = ho.git_state(repo)
+    if git["dirty"] and not dry_run:
+        raise ho.HoldoutRefused(f"git tree is dirty ({', '.join(git['dirty_paths'][:5])}); commit first")
+    suffix = "_holdout_dryrun.json" if dry_run else "_holdout.json"
+    targets = {n: out_dir / f"{STUDIES[n][0]}{suffix}" for n in names}
+    for t in targets.values():
+        if t.exists():
+            raise ho.HoldoutRefused(f"{t} exists; the hold-out is single-use")
+    return regs, git, targets
+
+
+def run_holdout(which: str, data_path: Path, out_dir: Path, dry_run: bool,
+                repo: Path = REPO, prereg_dir: Path = PREREG) -> list[Path]:
+    """The single hold-out run: years 2022-2025, each fold formed and fitted
+    only on data before it, scored by the registration's metric and rule."""
+    regs, git, targets = check_holdout_ready(which, out_dir, dry_run, repo, prereg_dir)
+    eur, sha = load_ecb(data_path)
+    px = holdout_prices(eur)
+    test_px = px[px.index >= ho.HOLDOUT_START]
+    period = (str(test_px.index.min().date()), str(test_px.index.max().date()))
+    try:
+        data_name = data_path.resolve().relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        data_name = data_path.name
+    reg_hashes = {f"research/prereg/{STUDIES[n][1]}": regs[n].sha256 for n in targets}
+    written = []
+    for n, target in targets.items():
+        if n == "pairs":
+            res = pairs_study(px, years=ho.HOLDOUT_YEARS)
+            res["decision"] = pairs_decision(res)
+        else:
+            res = regime_study(px, years=ho.HOLDOUT_YEARS)
+            res["decision"] = regime_decision(res)
+        reg_file = STUDIES[n][1]
+        doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": regs[n].sha256,
+               "registration_signed": regs[n].signed, "mode": "holdout",
+               "period": {"start": period[0], "end": period[1]},
+               "data_start": str(px.index.min().date()),
+               "dataset": ("SYNTHETIC (dry run, fake dates)" if dry_run
+                           else "ECB euro foreign exchange reference rates (EXR), daily"),
+               "provenance": ho.provenance(git, {data_name: sha}, reg_hashes, dry_run), **res}
+        written.append(ho.write_once(target, doc))
+    return written
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("which", nargs="?", default="all", choices=["pairs", "regime", "all"])
+    ap.add_argument("--mode", default="train", choices=["train", "holdout"])
+    ap.add_argument("--dry-run", action="store_true", help="hold-out path on synthetic data, no network")
+    ap.add_argument("--out", type=Path, default=None, help="output directory (dry run: a temp dir)")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        out = a.out or Path(tempfile.mkdtemp(prefix="qp_holdout_dryrun_"))
+        if out.resolve() == RESULTS.resolve():
+            raise ho.HoldoutRefused("a dry run never writes into research/results")
+        out.mkdir(parents=True, exist_ok=True)
+        data = out / "synthetic_ecb_2012-2025.csv"
+        if not data.exists():
+            data.write_text(ho.synthetic_ecb_csv(), encoding="utf-8", newline="\n")
+        for path in run_holdout(a.which, data, out, dry_run=True):
+            print(path)
+        return 0
+    if a.mode == "holdout":
+        from qp_fetch import RAW_DIR, fetch_ecb_fx
+
+        out = a.out or RESULTS
+        check_holdout_ready(a.which, out, dry_run=False)  # refuse before any download
+        data = RAW_DIR / "ecb_exr_1999-01-01_2025-12-31.csv"
+        if not data.exists():
+            fetch_ecb_fx(end="2025-12-31")
+        for path in run_holdout(a.which, data, out, dry_run=False):
+            print(path)
+        return 0
+    train(a.which)
+    return 0
+
+
+def train(which: str) -> None:
+    from qp_fetch import RAW_DIR, fetch_ecb_fx, parse_ecb_csv
 
     cached = RAW_DIR / f"ecb_exr_1999-01-01_{TRAIN_END}.csv"
     eur = parse_ecb_csv(cached.read_text()) if cached.exists() else fetch_ecb_fx(end=TRAIN_END)
@@ -179,4 +338,8 @@ def main(which: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "all")
+    try:
+        sys.exit(main())
+    except ho.HoldoutRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        sys.exit(3)

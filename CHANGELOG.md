@@ -16,6 +16,8 @@ come from seeded synthetic data.
 
 ### Added
 
+- Research hold-out entry point: `fx_studies.py --mode holdout` scores 2022-2025 once, behind signed-hash, clean-tree and write-once guards, with provenance in every result; `--dry-run` runs the same path on synthetic fake-dated data; the pairs study now reports the deflated Sharpe (trial count 3). `prereg.py check` validates hold-out provenance.
+
 #### Round 3: engine switch (lane A)
 
 - `qp_core.engines` (`check_engine`, `load_engine`, `engine_available`) and
