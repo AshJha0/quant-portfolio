@@ -43,8 +43,9 @@ add_library(fxvar_tuning INTERFACE)
 target_compile_options(fxvar_tuning INTERFACE
   $<$<AND:$<BOOL:${FXVAR_NATIVE}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-O3 -march=native>)
 
-# Warnings for GCC/Clang only; MSVC keeps its defaults.
+# Warnings: -Wall -Wextra -Wpedantic (GCC/Clang), /W4 /permissive- (MSVC).
 set(FXVAR_WARNINGS
+  $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
   $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic>
   $<$<AND:$<BOOL:${FXVAR_WERROR}>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:-Werror>
   $<$<AND:$<BOOL:${FXVAR_WERROR}>,$<CXX_COMPILER_ID:MSVC>>:/WX>
@@ -114,7 +115,8 @@ if(BUILD_TESTING)
     target_link_libraries(${t} PRIVATE fxvar GTest::gtest GTest::gtest_main)
     target_compile_options(${t} PRIVATE ${FXVAR_WARNINGS}
       # The tests exercise the deprecated entry points on purpose.
-      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>)
+      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>
+      $<$<CXX_COMPILER_ID:MSVC>:/wd4834;/wd4996>)
     gtest_discover_tests(${t})
   endforeach()
 

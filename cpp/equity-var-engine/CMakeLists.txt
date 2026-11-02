@@ -44,8 +44,9 @@ add_library(eqvar_tuning INTERFACE)
 target_compile_options(eqvar_tuning INTERFACE
   $<$<AND:$<BOOL:${EQVAR_NATIVE}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-O3 -march=native>)
 
-# Warnings for GCC/Clang only; MSVC keeps its defaults.
+# Warnings: -Wall -Wextra -Wpedantic (GCC/Clang), /W4 /permissive- (MSVC).
 set(EQVAR_WARNINGS
+  $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
   $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic>
   $<$<AND:$<BOOL:${EQVAR_WERROR}>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:-Werror>
   $<$<AND:$<BOOL:${EQVAR_WERROR}>,$<CXX_COMPILER_ID:MSVC>>:/WX>
@@ -113,7 +114,8 @@ if(BUILD_TESTING)
     target_compile_options(${t} PRIVATE ${EQVAR_WARNINGS}
       # EXPECT_THROW(f(x), ...) discards [[nodiscard]] results by design, and
       # the tests exercise the deprecated entry points on purpose.
-      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>)
+      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>
+      $<$<CXX_COMPILER_ID:MSVC>:/wd4834;/wd4996>)
     gtest_discover_tests(${t})
   endforeach()
 

@@ -124,7 +124,8 @@ string(STRIP "${_fxopt_flags}" _fxopt_flags)
 target_compile_definitions(fxopt_bench PRIVATE QP_BENCH_FLAGS="${_fxopt_flags}")
 
 # ------------------------------------------------------------------ tests ----
-if(FXOPT_TESTS)
+# BUILD_TESTING=OFF (CTest convention) also turns the suite off.
+if(FXOPT_TESTS AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
   enable_testing()
   find_package(GTest CONFIG QUIET)
   if(NOT GTest_FOUND)
