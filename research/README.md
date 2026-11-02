@@ -171,7 +171,7 @@ python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
 | Registration | Status | Training result |
 |---|---|---|
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
-| `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out code ready, not run | `results/regime_fx_basket_train.json` |
+| `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out run once 2026-11-02: H0 not rejected | `results/regime_fx_basket_train.json`, `results/regime_fx_basket_holdout.json` |
 | `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
 
 The two FX registrations were signed by the maintainer under owner decision
@@ -191,6 +191,21 @@ smaller (typically 0.6-1.5 % against a forecast SD of 1.5-3 %), and |z|
 seldom reaches 2.0. Per pair and year the result file now records entry
 signal days, entries, pair-days in the market and the largest |z|.
 Changing the variance rule would be a new registration.
+
+### Regime hold-out result (run once, 2026-11-02)
+
+The regime hold-out ran once, on commit 68ae51c with a clean tree, on the
+ECB file for 1999-01-04 to 2025-12-31 (sha256 eff207fe...). Test days
+2022-01-03 to 2025-12-31: 161 of 1,019 days were classified high-vol. The
+annualised mean next-day basket return on those days was +12.5 % (low-vol
+days -4.0 %), HAC t = +0.94 with 4 lags. The registered rule rejects H0
+only if t < -1.645, so **H0 is not rejected**: the hold-out gives no
+support for the hypothesis that the basket earns a negative return in the
+predicted high-vol state. The sign is the opposite of the hypothesis, but
+t = 0.94 is not evidence of a positive effect either. Training gave the
+same answer (t = +0.27, 1999-2021). Evidence class: single pre-registered
+out-of-sample test, trial count 1. The hold-out is now spent and will not
+be rerun.
 
 Training results (ECB data, 1999-2021) are numbers from the training
 period only. They are not out-of-sample evidence; the hold-out decides.
