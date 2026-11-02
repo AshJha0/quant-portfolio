@@ -179,6 +179,8 @@ See [forward/README.md](forward/README.md) for why and how to read it.
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out run once 2026-11-02: H0 not rejected | `results/regime_fx_basket_train.json`, `results/regime_fx_basket_holdout.json` |
 | `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
+| `prereg/pairs-fx-g10-v2.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/pairs_fx_g10_v2_train.json` |
+| `prereg/momentum-fx-g10.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/momentum_fx_g10_train.json` |
 
 The two FX registrations were signed by the maintainer under owner decision
 9, which delegated pre-registration signing. The signature records the hash
@@ -215,6 +217,45 @@ be rerun.
 
 Training results (ECB data, 1999-2021) are numbers from the training
 period only. They are not out-of-sample evidence; the hold-out decides.
+
+## Forward hold-out registrations
+
+The 2022-2025 window can be used once, and the two signed registrations use
+it. New questions on the same free ECB data therefore need data nobody has
+seen: fixes from the signing date onward. Two drafts do that.
+
+- `prereg/pairs-fx-g10-v2.md` keeps the signed pairs selection and replaces
+  the Kalman one-step z with a level z: a static OLS hedge fitted on the
+  formation window and the spread divided by its formation SD. Why: the
+  Kalman intercept follows the spread and absorbs it. On simulated pairs
+  that are cointegrated by construction (`studies/pairs_power.py`,
+  `power/pairs_v2_power.json`) the Kalman z passes 2 on 0.3 % of test days
+  or fewer and never at a JPY-like price level, and the decision rule
+  rejects H0 in 0-47 % of runs; the level z rejects in 100 % (10-day
+  half-life) and 54 % (30-day), with size under 1 % when there is no
+  cointegration. Training (1999-2021) net Sharpe is -0.107 (Lo SE 0.234),
+  trading in 17 of 19 years. Trial count 7: every pairs variant scored on
+  this training data, including a Kalman observation-variance menu tried
+  first and kept in the result file.
+- `prereg/momentum-fx-g10.md`: long the three G10 currencies with the best
+  63-day spot return, short the worst three, monthly. One variant, taken
+  from Menkhoff et al. (2012) before any data was run. Training net
+  Sharpe -0.20 (Lo SE 0.20), so the training period weighs against it; the
+  forward data decides.
+
+Formation and lookback history comes from one ECB file of 1999-01-04 to
+2026-11-02 fixes, fetched at signing after the 2022-2025 hold-out has been
+run; nothing dated before 2026-11-03 is scored. Both are evaluated once, on
+2026-11-03 to 2028-11-02, by
+Sharpe - 1.645 x Lo SE > 0. With about 500 daily returns that can only
+detect a true Sharpe above roughly 1.2, which the registrations state. The
+forward log that supplies the data is specified in `forward/SPEC.md`.
+Training runs:
+
+```bash
+python research/studies/forward_studies.py all
+python research/studies/pairs_power.py        # synthetic power check
+```
 
 ## Models added here
 

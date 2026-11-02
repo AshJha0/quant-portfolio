@@ -1,0 +1,132 @@
+{
+  "what": "simulated power check for prereg/pairs-fx-g10-v2.md; synthetic data only",
+  "formation_days": 756,
+  "test_days": 504,
+  "spread_sd": 0.01,
+  "beta": 0.8,
+  "x_daily_sd": 0.006,
+  "cost_bp_per_leg": 1.0,
+  "decision_rule": "Sharpe - 1.645 * Lo NW SE > 0",
+  "cells": [
+    {
+      "half_life_days": 10,
+      "log_level_x": 0.1,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.9983333333333333,
+      "level": {
+        "rejection_rate": 1.0,
+        "mean_sharpe": 2.9847614651427516,
+        "share_test_days_abs_z_above_2": 0.08596230158730159,
+        "entries_per_selected_pair_year": 2.7262103505843074
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.47,
+        "mean_sharpe": 0.8105090794455699,
+        "share_test_days_abs_z_above_2": 0.0028306878306878307,
+        "entries_per_selected_pair_year": 0.4340567612687813
+      },
+      "level_name": "eur_like"
+    },
+    {
+      "half_life_days": 10,
+      "log_level_x": -5.005647752585217,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.9983333333333333,
+      "level": {
+        "rejection_rate": 1.0,
+        "mean_sharpe": 2.992586942226775,
+        "share_test_days_abs_z_above_2": 0.0891683201058201,
+        "entries_per_selected_pair_year": 2.7687813021702836
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.0,
+        "mean_sharpe": 0.0,
+        "share_test_days_abs_z_above_2": 0.0,
+        "entries_per_selected_pair_year": 0.0
+      },
+      "level_name": "jpy_like"
+    },
+    {
+      "half_life_days": 30,
+      "log_level_x": 0.1,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.465,
+      "level": {
+        "rejection_rate": 0.54,
+        "mean_sharpe": 1.1304407120118172,
+        "share_test_days_abs_z_above_2": 0.20529998693578944,
+        "entries_per_selected_pair_year": 1.8476702508960574
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.005,
+        "mean_sharpe": 0.012190126264929537,
+        "share_test_days_abs_z_above_2": 5.919720425893265e-05,
+        "entries_per_selected_pair_year": 0.010752688172043012
+      },
+      "level_name": "eur_like"
+    },
+    {
+      "half_life_days": 30,
+      "log_level_x": -5.005647752585217,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.4033333333333333,
+      "level": {
+        "rejection_rate": 0.54,
+        "mean_sharpe": 1.0682055597475246,
+        "share_test_days_abs_z_above_2": 0.19461533681332338,
+        "entries_per_selected_pair_year": 1.9731404958677685
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.0,
+        "mean_sharpe": 0.0,
+        "share_test_days_abs_z_above_2": 0.0,
+        "entries_per_selected_pair_year": 0.0
+      },
+      "level_name": "jpy_like"
+    },
+    {
+      "half_life_days": null,
+      "log_level_x": 0.1,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.025,
+      "level": {
+        "rejection_rate": 0.005,
+        "mean_sharpe": 0.00926420616549735,
+        "share_test_days_abs_z_above_2": 0.6411019536019537,
+        "entries_per_selected_pair_year": 1.1
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.0,
+        "mean_sharpe": -0.007994612237468848,
+        "share_test_days_abs_z_above_2": 0.0015262515262515263,
+        "entries_per_selected_pair_year": 0.2
+      },
+      "level_name": "eur_like"
+    },
+    {
+      "half_life_days": null,
+      "log_level_x": -5.005647752585217,
+      "reps": 200,
+      "n_pairs": 3,
+      "selection_rate": 0.041666666666666664,
+      "level": {
+        "rejection_rate": 0.0,
+        "mean_sharpe": -0.026136911258844323,
+        "share_test_days_abs_z_above_2": 0.6491815476190477,
+        "entries_per_selected_pair_year": 0.9
+      },
+      "kalman_v1": {
+        "rejection_rate": 0.0,
+        "mean_sharpe": 0.0,
+        "share_test_days_abs_z_above_2": 0.0,
+        "entries_per_selected_pair_year": 0.0
+      },
+      "level_name": "jpy_like"
+    }
+  ]
+}

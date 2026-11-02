@@ -1,0 +1,61 @@
+{
+  "what": "simulated power check for prereg/momentum-fx-g10.md; synthetic data only",
+  "lookback_days": 63,
+  "test_days": 504,
+  "daily_sd": 0.006,
+  "monthly_drift_phi": 0.9,
+  "cost_bp": 1.0,
+  "decision_rule": "Sharpe - 1.645 * Lo NW SE > 0",
+  "seed": 0,
+  "cells": [
+    {
+      "drift_sd_annual": 0.0,
+      "truth": "null",
+      "reps": 200,
+      "rejection_rate": 0.015,
+      "mean_sharpe": -0.05115166264481166
+    },
+    {
+      "drift_sd_annual": 0.02,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.04,
+      "mean_sharpe": -0.03617596372651795
+    },
+    {
+      "drift_sd_annual": 0.04,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.065,
+      "mean_sharpe": 0.11575421268221757
+    },
+    {
+      "drift_sd_annual": 0.06,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.13,
+      "mean_sharpe": 0.36098700070858974
+    },
+    {
+      "drift_sd_annual": 0.08,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.28,
+      "mean_sharpe": 0.6660908858495358
+    },
+    {
+      "drift_sd_annual": 0.12,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.53,
+      "mean_sharpe": 1.2858280529553832
+    },
+    {
+      "drift_sd_annual": 0.16,
+      "truth": "planted momentum",
+      "reps": 200,
+      "rejection_rate": 0.785,
+      "mean_sharpe": 2.064060956950788
+    }
+  ]
+}
