@@ -43,18 +43,15 @@ LrTest kupiec_pof(const KupiecInput& in) {
 }
 
 LrTest kupiec_pof(int n_exceptions, int n_obs, double alpha) {
-  return kupiec_pof(
-      KupiecInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
+  return kupiec_pof(KupiecInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
 }
 
 LrTest christoffersen_independence(const std::vector<int>& exceedances) {
   if (exceedances.size() < 2)
-    throw std::invalid_argument(
-        "need at least 2 observations for the independence test");
+    throw std::invalid_argument("need at least 2 observations for the independence test");
   for (int e : exceedances)
     if (e != 0 && e != 1)
-      throw std::invalid_argument(
-          "exceedances must be a 0/1 (or boolean) series");
+      throw std::invalid_argument("exceedances must be a 0/1 (or boolean) series");
   double n00 = 0, n01 = 0, n10 = 0, n11 = 0;
   for (std::size_t t = 1; t < exceedances.size(); ++t) {
     const int prev = exceedances[t - 1];
@@ -68,8 +65,8 @@ LrTest christoffersen_independence(const std::vector<int>& exceedances) {
   const double pi11 = (n10 + n11 > 0) ? n11 / (n10 + n11) : 0.0;
   const double pi = (n01 + n11) / (n00 + n01 + n10 + n11);
   const double ll0 = xlogy(n00 + n10, 1.0 - pi) + xlogy(n01 + n11, pi);
-  const double ll1 = xlogy(n00, 1.0 - pi01) + xlogy(n01, pi01) +
-                     xlogy(n10, 1.0 - pi11) + xlogy(n11, pi11);
+  const double ll1 =
+      xlogy(n00, 1.0 - pi01) + xlogy(n01, pi01) + xlogy(n10, 1.0 - pi11) + xlogy(n11, pi11);
   double lr = -2.0 * (ll0 - ll1);
   lr = std::isfinite(lr) ? std::max(lr, 0.0) : 0.0;
   return {lr, chi2_sf(lr, 1.0)};
@@ -125,8 +122,7 @@ TrafficLight basel_traffic_light(int n_exceptions, int n_obs, double alpha) {
       BaselInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
 }
 
-double acerbi_szekely_z2(const std::vector<double>& pnl,
-                         const std::vector<double>& var,
+double acerbi_szekely_z2(const std::vector<double>& pnl, const std::vector<double>& var,
                          const std::vector<double>& es, double alpha) {
   validate_alpha(alpha);
   if (pnl.empty()) throw std::invalid_argument("acerbi_szekely_z2: empty pnl");
@@ -135,15 +131,14 @@ double acerbi_szekely_z2(const std::vector<double>& pnl,
     throw std::invalid_argument(
         "acerbi_szekely_z2: var and es must have size 1 or one entry per day");
   for (double v : pnl)
-    if (!std::isfinite(v))
-      throw std::invalid_argument("acerbi_szekely_z2: pnl must be finite");
+    if (!std::isfinite(v)) throw std::invalid_argument("acerbi_szekely_z2: pnl must be finite");
   for (double v : var)
     if (!std::isfinite(v) || v < 0.0)
       throw std::invalid_argument("acerbi_szekely_z2: VaR must be finite and >= 0");
   for (double v : es)
     if (!std::isfinite(v) || !(v > 0.0))
       throw std::invalid_argument("acerbi_szekely_z2: ES must be finite and > 0");
-  const double t = static_cast<double>(n);
+  const auto t = static_cast<double>(n);
   double sum = 0.0;
   for (std::size_t i = 0; i < n; ++i) {
     const double v = var.size() == 1 ? var[0] : var[i];
@@ -154,17 +149,14 @@ double acerbi_szekely_z2(const std::vector<double>& pnl,
 }
 
 BacktestResult evaluate_var_backtest(const std::vector<double>& pnl,
-                                     const std::vector<double>& var_forecasts,
-                                     double alpha) {
+                                     const std::vector<double>& var_forecasts, double alpha) {
   validate_alpha(alpha);
   if (pnl.size() != var_forecasts.size())
     throw std::invalid_argument("pnl and var_forecasts must have equal length");
-  if (pnl.size() < 2)
-    throw std::invalid_argument("need at least 2 observations to backtest");
+  if (pnl.size() < 2) throw std::invalid_argument("need at least 2 observations to backtest");
   for (std::size_t i = 0; i < pnl.size(); ++i) {
     if (!std::isfinite(pnl[i]) || !std::isfinite(var_forecasts[i]))
-      throw std::invalid_argument(
-          "backtest inputs contain NaN or inf (NaN policy: refuse)");
+      throw std::invalid_argument("backtest inputs contain NaN or inf (NaN policy: refuse)");
     if (var_forecasts[i] < 0.0)
       throw std::invalid_argument("VaR forecasts must be positive losses (>= 0)");
   }
@@ -180,8 +172,8 @@ BacktestResult evaluate_var_backtest(const std::vector<double>& pnl,
   res.n_exceptions = x;
   res.exception_rate = static_cast<double>(x) / static_cast<double>(pnl.size());
   res.expected_rate = alpha;
-  const KupiecInput counts{.n_obs = static_cast<int>(pnl.size()), .n_exceptions = x,
-                           .alpha = alpha};
+  const KupiecInput counts{
+      .n_obs = static_cast<int>(pnl.size()), .n_exceptions = x, .alpha = alpha};
   res.kupiec = kupiec_pof(counts);
   res.independence = christoffersen_independence(res.exceedances);
   const double lr_cc = res.kupiec.lr + res.independence.lr;

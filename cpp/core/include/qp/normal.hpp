@@ -28,25 +28,21 @@ namespace qp {
 /// The same cdf written as a multiplication by the rounded 1/sqrt(2). It
 /// can differ from norm_cdf() in the last bit. The equity options engine
 /// has always used this form and its golden values are pinned to it.
-[[nodiscard]] inline double norm_cdf_rcp(double x) noexcept
-    QP_POST(r, !(r < 0.0) && !(r > 1.0)) {
+[[nodiscard]] inline double norm_cdf_rcp(double x) noexcept QP_POST(r, !(r < 0.0) && !(r > 1.0)) {
     return 0.5 * std::erfc(-x * kInvSqrt2);
 }
 
 /// Acklam's rational approximation to the inverse normal cdf, without
 /// refinement. The caller guarantees 0 < p < 1.
 [[nodiscard]] inline double acklam_ppf(double p) noexcept QP_PRE(p > 0.0 && p < 1.0) {
-    constexpr double a[6] = {-3.969683028665376e+01, 2.209460984245205e+02,
-                             -2.759285104469687e+02, 1.383577518672690e+02,
-                             -3.066479806614716e+01, 2.506628277459239e+00};
-    constexpr double b[5] = {-5.447609879822406e+01, 1.615858368580409e+02,
-                             -1.556989798598866e+02, 6.680131188771972e+01,
-                             -1.328068155288572e+01};
-    constexpr double c[6] = {-7.784894002430293e-03, -3.223964580411365e-01,
-                             -2.400758277161838e+00, -2.549732539343734e+00,
-                             4.374664141464968e+00,  2.938163982698783e+00};
-    constexpr double d[4] = {7.784695709041462e-03, 3.224671290700398e-01,
-                             2.445134137142996e+00, 3.754408661907416e+00};
+    constexpr double a[6] = {-3.969683028665376e+01, 2.209460984245205e+02,  -2.759285104469687e+02,
+                             1.383577518672690e+02,  -3.066479806614716e+01, 2.506628277459239e+00};
+    constexpr double b[5] = {-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+                             6.680131188771972e+01, -1.328068155288572e+01};
+    constexpr double c[6] = {-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+                             -2.549732539343734e+00, 4.374664141464968e+00,  2.938163982698783e+00};
+    constexpr double d[4] = {7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+                             3.754408661907416e+00};
     constexpr double p_low = 0.02425;
     if (p < p_low) {
         const double q = std::sqrt(-2.0 * std::log(p));

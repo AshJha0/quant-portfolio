@@ -48,7 +48,7 @@ inline double normalised_otm_call(double x, double s) noexcept {
             he_prev = he_cur;
             he_cur = he_next;
             // he_prev is now He_{2k}
-            const double kf = static_cast<double>(k);
+            const auto kf = static_cast<double>(k);
             term *= tt / ((2.0 * kf) * (2.0 * kf + 1.0));
             const double c = he_prev * term;
             acc += c;
@@ -81,8 +81,7 @@ enum class IvStatus { Ok, AtBound, NoConvergence };
 // Solve b(x, s) = beta for s. Requires beta > 0, u > 0, x <= 0. `evals` is
 // incremented once per iteration. noexcept: writes the root to `out` and
 // returns IvStatus::Ok, or returns IvStatus::NoConvergence.
-inline IvStatus total_vol_nx(double beta, double u, double x, int& evals,
-                             double& out) noexcept {
+inline IvStatus total_vol_nx(double beta, double u, double x, int& evals, double& out) noexcept {
     const double b_max = std::exp(0.5 * x);
     const double s_c = std::sqrt(-2.0 * x);  // inflection point of b in s
     const double b_c = s_c > 0.0 ? normalised_otm_call(x, s_c) : 0.0;
@@ -125,7 +124,7 @@ inline IvStatus total_vol_nx(double beta, double u, double x, int& evals,
     for (int it = 0; it < kMaxIter; ++it) {
         ++evals;
         const double d1 = x / s + 0.5 * s;
-        const double bp = b_max * norm_pdf(d1);         // db/ds
+        const double bp = b_max * norm_pdf(d1);            // db/ds
         const double r2 = x * x / (s * s * s) - 0.25 * s;  // b''/b'
         double f, fp, fpp;
         if (mode == 0) {
@@ -212,19 +211,21 @@ inline IvStatus black_implied_vol_nx(double price, double F, double K, double T,
     const double norm = df * std::sqrt(F * K);
     const double beta = (price - lower) / norm;
     const double u = (upper - price) / norm;
-    if (!(beta > 0.0 && u > 0.0)) [[unlikely]] return IvStatus::AtBound;
+    if (!(beta > 0.0 && u > 0.0)) [[unlikely]]
+        return IvStatus::AtBound;
     const double x = -std::fabs(std::log1p((F - K) / K));  // F-K exact near the money
     double s = 0.0;
     const IvStatus st = total_vol_nx(beta, u, x, evals, s);
-    if (st != IvStatus::Ok) [[unlikely]] return st;
+    if (st != IvStatus::Ok) [[unlikely]]
+        return st;
     out = s / std::sqrt(T);
     return IvStatus::Ok;
 }
 
 // Throwing form: std::invalid_argument when the quote is within rounding
 // of a bound, std::runtime_error on non-convergence.
-inline double black_implied_vol(double price, double F, double K, double T, double df,
-                                bool is_call, int& evals) {
+inline double black_implied_vol(double price, double F, double K, double T, double df, bool is_call,
+                                int& evals) {
     double out = 0.0;
     switch (black_implied_vol_nx(price, F, K, T, df, is_call, evals, out)) {
         case IvStatus::Ok:

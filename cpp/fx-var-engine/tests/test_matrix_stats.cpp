@@ -34,15 +34,13 @@ TEST(Matrix, BasicOpsAndMatmul) {
 }
 
 TEST(Cholesky, ReconstructsPositiveDefinite) {
-  const Matrix cov = Matrix::from_rows(
-      {{4.0, 2.0, 0.6}, {2.0, 3.0, 0.4}, {0.6, 0.4, 1.0}});
+  const Matrix cov = Matrix::from_rows({{4.0, 2.0, 0.6}, {2.0, 3.0, 0.4}, {0.6, 0.4, 1.0}});
   const CholeskyResult res = robust_cholesky(cov);
   EXPECT_FALSE(res.jittered);
   EXPECT_EQ(res.jitter, 0.0);
   const Matrix rec = matmul(res.lower, res.lower.transpose());
   for (std::size_t i = 0; i < 3; ++i)
-    for (std::size_t j = 0; j < 3; ++j)
-      EXPECT_NEAR(rec(i, j), cov(i, j), 1e-12);
+    for (std::size_t j = 0; j < 3; ++j) EXPECT_NEAR(rec(i, j), cov(i, j), 1e-12);
 }
 
 TEST(Cholesky, SingularCovarianceGetsJitterAndWarning) {
@@ -58,8 +56,7 @@ TEST(Cholesky, SingularCovarianceGetsJitterAndWarning) {
 }
 
 TEST(Cholesky, RejectsAsymmetricAndNonSquare) {
-  EXPECT_THROW(robust_cholesky(Matrix::from_rows({{1.0, 0.5}, {0.2, 1.0}})),
-               std::invalid_argument);
+  EXPECT_THROW(robust_cholesky(Matrix::from_rows({{1.0, 0.5}, {0.2, 1.0}})), std::invalid_argument);
   EXPECT_THROW(robust_cholesky(Matrix(2, 3)), std::invalid_argument);
 }
 
@@ -93,8 +90,7 @@ TEST(Gamma, RegularisedIncompleteAndChi2) {
   // chi2(1) sf at the 5% critical value (scipy chi2.isf(0.05, 1)).
   EXPECT_NEAR(chi2_sf(3.8414588206941285, 1.0), 0.05, 1e-10);
   // chi2(2) sf(x) = exp(-x/2) exactly.
-  EXPECT_NEAR(chi2_sf(5.991464547107983, 2.0),
-              std::exp(-5.991464547107983 / 2.0), 1e-12);
+  EXPECT_NEAR(chi2_sf(5.991464547107983, 2.0), std::exp(-5.991464547107983 / 2.0), 1e-12);
   EXPECT_NEAR(chi2_sf(5.991464547107983, 2.0), 0.05, 1e-10);
 }
 
@@ -105,8 +101,7 @@ TEST(StudentT, CdfQuantileRoundTripAndKnownValues) {
   EXPECT_NEAR(t_ppf(0.5, 7.0), 0.0, 1e-15);
   // t(1) is Cauchy: quantile(0.75) = 1 exactly.
   EXPECT_NEAR(t_ppf(0.75, 1.0), 1.0, 1e-10);
-  for (double p : {0.01, 0.2, 0.5, 0.8, 0.99})
-    EXPECT_NEAR(t_cdf(t_ppf(p, 4.5), 4.5), p, 1e-11);
+  for (double p : {0.01, 0.2, 0.5, 0.8, 0.99}) EXPECT_NEAR(t_cdf(t_ppf(p, 4.5), 4.5), p, 1e-11);
   EXPECT_THROW(t_ppf(1.2, 5.0), std::invalid_argument);
 }
 
@@ -141,7 +136,6 @@ TEST(Validation, AlphaAndHorizonBounds) {
   EXPECT_DOUBLE_EQ(validate_horizon(10.0), 10.0);
 }
 
-
 TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
   // Regression: a covariance quoted in large units (unscaled notional
   // variances) is only ever symmetric to ~1e-16 RELATIVE.  An absolute
@@ -150,7 +144,7 @@ TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
   big(0, 0) = 1e12;
   big(1, 1) = 1e12;
   big(0, 1) = 5e11;
-  big(1, 0) = 5e11 * (1.0 + 1e-15);  // 5.5e-4 absolute, 1.1e-15 relative
+  big(1, 0) = 5e11 * (1.0 + 1e-15);                   // 5.5e-4 absolute, 1.1e-15 relative
   EXPECT_GT(std::abs(big(1, 0) - big(0, 1)), 1e-12);  // fails an absolute test
   CholeskyResult r;
   ASSERT_NO_THROW(r = cholesky(big));
@@ -185,10 +179,8 @@ TEST(Validation, AlphaExtremesInsideTheOpenInterval) {
   EXPECT_DOUBLE_EQ(validate_alpha(1e-6), 1e-6);
   EXPECT_DOUBLE_EQ(validate_alpha(0.5 - 1e-12), 0.5 - 1e-12);
   EXPECT_THROW(validate_alpha(1.0 - 1e-12), std::invalid_argument);
-  EXPECT_THROW(validate_alpha(std::numeric_limits<double>::quiet_NaN()),
-               std::invalid_argument);
-  EXPECT_THROW(validate_horizon(std::numeric_limits<double>::quiet_NaN()),
-               std::invalid_argument);
+  EXPECT_THROW(validate_alpha(std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
+  EXPECT_THROW(validate_horizon(std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
   EXPECT_THROW(validate_horizon(-1.0), std::invalid_argument);
   // norm_ppf stays finite and ordered at the extremes it will see.
   EXPECT_LT(norm_ppf(1e-8), norm_ppf(1e-6));

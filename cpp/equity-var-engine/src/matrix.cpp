@@ -30,7 +30,8 @@ namespace {
 
 void require_finite_span(std::span<const double> x, const char* who) {
     for (double v : x) {
-        if (!std::isfinite(v)) throw std::invalid_argument(std::string(who) + ": input contains NaN or inf");
+        if (!std::isfinite(v))
+            throw std::invalid_argument(std::string(who) + ": input contains NaN or inf");
     }
 }
 
@@ -133,7 +134,7 @@ Matrix sample_covariance(const Matrix& returns) {
             }
         }
     }
-    const double denom = static_cast<double>(t - 1);
+    const auto denom = static_cast<double>(t - 1);
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i; j < n; ++j) {
             cov(i, j) /= denom;

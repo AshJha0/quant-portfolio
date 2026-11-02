@@ -30,8 +30,7 @@ TEST(EmpiricalEs, DominatesVarOnSameSample) {
         pnl[t] = 1.0e4 * std::sin(2.1 * t) + 3.0e3 * std::cos(0.37 * t * t);
     }
     for (double alpha : {0.01, 0.025, 0.05, 0.10}) {
-        EXPECT_GE(expected_shortfall(pnl, alpha), historical_var(pnl, alpha))
-            << "alpha=" << alpha;
+        EXPECT_GE(expected_shortfall(pnl, alpha), historical_var(pnl, alpha)) << "alpha=" << alpha;
     }
 }
 

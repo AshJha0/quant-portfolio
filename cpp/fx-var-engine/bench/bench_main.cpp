@@ -104,112 +104,163 @@ int main(int argc, char** argv) {
 
   HistoricalOptions hopt;
   hopt.warn_pegs = false;
-  b.run("historical_var 1k obs 250 pos", [&](std::size_t i) {
-    const ReturnsMatrix w = window(hist, i % 2000, 1000);
-    acc += historical_var(book, market, w, hopt).var;
-  }, 10, 200);
+  b.run(
+      "historical_var 1k obs 250 pos",
+      [&](std::size_t i) {
+        const ReturnsMatrix w = window(hist, i % 2000, 1000);
+        acc += historical_var(book, market, w, hopt).var;
+      },
+      10, 200);
 
-  b.run("empirical_var_es n=1000", [&](std::size_t i) {
-    acc += empirical_var_es(rotated(pnl1k, i), 0.01).second;
-  }, 100, 20000);
-  b.run("empirical_var_es n=10000", [&](std::size_t i) {
-    acc += empirical_var_es(rotated(pnl10k, i), 0.01).second;
-  }, 50, 5000);
-  b.run("var_standard_error n=10000", [&](std::size_t i) {
-    acc += var_standard_error(rotated(pnl10k, i), 0.01);
-  }, 20, 2000);
+  b.run(
+      "empirical_var_es n=1000",
+      [&](std::size_t i) { acc += empirical_var_es(rotated(pnl1k, i), 0.01).second; }, 100, 20000);
+  b.run(
+      "empirical_var_es n=10000",
+      [&](std::size_t i) { acc += empirical_var_es(rotated(pnl10k, i), 0.01).second; }, 50, 5000);
+  b.run(
+      "var_standard_error n=10000",
+      [&](std::size_t i) { acc += var_standard_error(rotated(pnl10k, i), 0.01); }, 20, 2000);
 
   ParametricOptions popt;
   popt.warn_pegs = false;
-  b.run("parametric_var 1k obs 50 factors", [&](std::size_t i) {
-    const ReturnsMatrix w = window(hist, i % 2000, 1000);
-    acc += parametric_var(book, market, w, popt).var;
-  }, 10, 300);
+  b.run(
+      "parametric_var 1k obs 50 factors",
+      [&](std::size_t i) {
+        const ReturnsMatrix w = window(hist, i % 2000, 1000);
+        acc += parametric_var(book, market, w, popt).var;
+      },
+      10, 300);
   std::vector<double> e2(expo);
-  b.run("var_covar 50 factors", [&](std::size_t i) {
-    e2[i % k] = expo[i % k] * (1.0 + 1e-6 * static_cast<double>(i % 97));
-    acc += var_covar(e2, cov.cov, 0.01, 10.0).es;
-  }, 1000, 100000);
+  b.run(
+      "var_covar 50 factors",
+      [&](std::size_t i) {
+        e2[i % k] = expo[i % k] * (1.0 + 1e-6 * static_cast<double>(i % 97));
+        acc += var_covar(e2, cov.cov, 0.01, 10.0).es;
+      },
+      1000, 100000);
 
   Matrix c2 = cov.cov;
-  b.run("cholesky 50x50", [&](std::size_t i) {
-    c2(0, 0) = cov.cov(0, 0) * (1.0 + 1e-9 * static_cast<double>(i % 101));
-    acc += cholesky(c2).lower(k - 1, k - 1);
-  }, 100, 20000);
-  b.run("matvec 50x50", [&](std::size_t i) {
-    e2[i % k] = expo[i % k] + static_cast<double>(i % 13);
-    acc += matvec(cov.cov, e2)[0];
-  }, 1000, 200000);
+  b.run(
+      "cholesky 50x50",
+      [&](std::size_t i) {
+        c2(0, 0) = cov.cov(0, 0) * (1.0 + 1e-9 * static_cast<double>(i % 101));
+        acc += cholesky(c2).lower(k - 1, k - 1);
+      },
+      100, 20000);
+  b.run(
+      "matvec 50x50",
+      [&](std::size_t i) {
+        e2[i % k] = expo[i % k] + static_cast<double>(i % 13);
+        acc += matvec(cov.cov, e2)[0];
+      },
+      1000, 200000);
 
   MonteCarloOptions mopt;
   mopt.n_scenarios = 10000;
   mopt.n_boot = 50;
-  b.run("monte_carlo_var 10k scen normal", [&](std::size_t i) {
-    mopt.seed = i;
-    acc += monte_carlo_var(book, market, cov, mopt).var;
-  }, 3, 60);
-  b.run("compiled pnl 10k scen 250 pos", [&](std::size_t i) {
-    const ReturnsMatrix w = window(hist, i % 2000, 10000);
-    acc += compiled.pnl(w)[5];
-  }, 3, 60);
+  b.run(
+      "monte_carlo_var 10k scen normal",
+      [&](std::size_t i) {
+        mopt.seed = i;
+        acc += monte_carlo_var(book, market, cov, mopt).var;
+      },
+      3, 60);
+  b.run(
+      "compiled pnl 10k scen 250 pos",
+      [&](std::size_t i) {
+        const ReturnsMatrix w = window(hist, i % 2000, 10000);
+        acc += compiled.pnl(w)[5];
+      },
+      3, 60);
 
   const auto scen = historical_scenarios();
-  b.run("run_stress library", [&](std::size_t) {
-    acc += run_stress(book, market, scen).front().pnl;
-  }, 50, 2000);
+  b.run(
+      "run_stress library", [&](std::size_t) { acc += run_stress(book, market, scen).front().pnl; },
+      50, 2000);
 
   std::vector<double> var_fc(1000);
-  for (std::size_t i = 0; i < var_fc.size(); ++i) var_fc[i] = 2.3 * 1e6 * (1.0 + 0.1 * std::sin(0.1 * static_cast<double>(i)));
-  b.run("evaluate_var_backtest 1000 days", [&](std::size_t i) {
-    acc += evaluate_var_backtest(rotated(pnl1k, i), var_fc, 0.01).kupiec.p;
-  }, 50, 5000);
+  for (std::size_t i = 0; i < var_fc.size(); ++i)
+    var_fc[i] = 2.3 * 1e6 * (1.0 + 0.1 * std::sin(0.1 * static_cast<double>(i)));
+  b.run(
+      "evaluate_var_backtest 1000 days",
+      [&](std::size_t i) {
+        acc += evaluate_var_backtest(rotated(pnl1k, i), var_fc, 0.01).kupiec.p;
+      },
+      50, 5000);
 
 #ifdef FXVAR_BENCH_NEW_API
   std::vector<double> ws(pnl10k.size());
-  b.run("try_empirical_var_es n=1000 (ws)", [&](std::size_t i) {
-    acc += try_empirical_var_es(rotated(pnl1k, i), 0.01, ws)->second;
-  }, 100, 20000);
-  b.run("try_empirical_var_es n=10000 (ws)", [&](std::size_t i) {
-    acc += try_empirical_var_es(rotated(pnl10k, i), 0.01, ws)->second;
-  }, 50, 5000);
-  b.run("try_var_standard_error n=10000", [&](std::size_t i) {
-    acc += *try_var_standard_error(rotated(pnl10k, i), 0.01, ws);
-  }, 20, 2000);
-  b.run("try_var_covar 50 factors", [&](std::size_t i) {
-    e2[i % k] = expo[i % k] * (1.0 + 1e-6 * static_cast<double>(i % 97));
-    acc += try_var_covar(e2, cov.cov, 0.01, 10.0)->es;
-  }, 1000, 100000);
+  b.run(
+      "try_empirical_var_es n=1000 (ws)",
+      [&](std::size_t i) { acc += try_empirical_var_es(rotated(pnl1k, i), 0.01, ws)->second; }, 100,
+      20000);
+  b.run(
+      "try_empirical_var_es n=10000 (ws)",
+      [&](std::size_t i) { acc += try_empirical_var_es(rotated(pnl10k, i), 0.01, ws)->second; }, 50,
+      5000);
+  b.run(
+      "try_var_standard_error n=10000",
+      [&](std::size_t i) { acc += *try_var_standard_error(rotated(pnl10k, i), 0.01, ws); }, 20,
+      2000);
+  b.run(
+      "try_var_covar 50 factors",
+      [&](std::size_t i) {
+        e2[i % k] = expo[i % k] * (1.0 + 1e-6 * static_cast<double>(i % 97));
+        acc += try_var_covar(e2, cov.cov, 0.01, 10.0)->es;
+      },
+      1000, 100000);
   std::vector<double> lower(k * k), y(k);
-  b.run("try_cholesky_lower 50x50", [&](std::size_t i) {
-    c2(0, 0) = cov.cov(0, 0) * (1.0 + 1e-9 * static_cast<double>(i % 101));
-    acc += try_cholesky_lower(c2, lower).has_value() ? lower[k * k - 1] : 0.0;
-  }, 100, 20000);
-  b.run("try_matvec 50x50", [&](std::size_t i) {
-    e2[i % k] = expo[i % k] + static_cast<double>(i % 13);
-    acc += try_matvec(cov.cov, e2, y).has_value() ? y[0] : 0.0;
-  }, 1000, 200000);
+  b.run(
+      "try_cholesky_lower 50x50",
+      [&](std::size_t i) {
+        c2(0, 0) = cov.cov(0, 0) * (1.0 + 1e-9 * static_cast<double>(i % 101));
+        acc += try_cholesky_lower(c2, lower).has_value() ? lower[k * k - 1] : 0.0;
+      },
+      100, 20000);
+  b.run(
+      "try_matvec 50x50",
+      [&](std::size_t i) {
+        e2[i % k] = expo[i % k] + static_cast<double>(i % 13);
+        acc += try_matvec(cov.cov, e2, y).has_value() ? y[0] : 0.0;
+      },
+      1000, 200000);
   std::vector<double> sims(10000 * k), out(10000);
   (void)try_cholesky_lower(cov.cov, lower);
-  b.run("try_simulate 10k scen 50 factors", [&](std::size_t i) {
-    acc += try_simulate_factor_returns(lower, k, 10000, McDist::kNormal, 6.0, i, sims).has_value()
-               ? sims[7]
-               : 0.0;
-  }, 3, 60);
-  b.run("try_pnl_batch 10k scen 250 pos", [&](std::size_t i) {
-    const std::size_t off = (i % 2000) * k;
-    acc += compiled.try_pnl_batch(std::span<const double>(hist.data.data()).subspan(off, 10000 * k), out)
-                   .has_value()
-               ? out[5]
-               : 0.0;
-  }, 3, 60);
-  b.run("try_pnl 1 scen 250 pos", [&](std::size_t i) {
-    acc += *compiled.try_pnl(std::span<const double>(hist.data.row(i % 12000), k));
-  }, 1000, 200000);
-  b.run("MC VaR pipeline 10k (try_*, ws)", [&](std::size_t i) {
-    (void)try_simulate_factor_returns(lower, k, 10000, McDist::kNormal, 6.0, i, sims);
-    (void)compiled.try_pnl_batch(sims, out);
-    acc += try_empirical_var_es(out, 0.01, ws)->first;
-  }, 3, 60);
+  b.run(
+      "try_simulate 10k scen 50 factors",
+      [&](std::size_t i) {
+        acc +=
+            try_simulate_factor_returns(lower, k, 10000, McDist::kNormal, 6.0, i, sims).has_value()
+                ? sims[7]
+                : 0.0;
+      },
+      3, 60);
+  b.run(
+      "try_pnl_batch 10k scen 250 pos",
+      [&](std::size_t i) {
+        const std::size_t off = (i % 2000) * k;
+        acc += compiled.try_pnl_batch(
+                           std::span<const double>(hist.data.data()).subspan(off, 10000 * k), out)
+                       .has_value()
+                   ? out[5]
+                   : 0.0;
+      },
+      3, 60);
+  b.run(
+      "try_pnl 1 scen 250 pos",
+      [&](std::size_t i) {
+        acc += *compiled.try_pnl(std::span<const double>(hist.data.row(i % 12000), k));
+      },
+      1000, 200000);
+  b.run(
+      "MC VaR pipeline 10k (try_*, ws)",
+      [&](std::size_t i) {
+        (void)try_simulate_factor_returns(lower, k, 10000, McDist::kNormal, 6.0, i, sims);
+        (void)compiled.try_pnl_batch(sims, out);
+        acc += try_empirical_var_es(out, 0.01, ws)->first;
+      },
+      3, 60);
 #endif
 
   qpbench::g_sink = acc;

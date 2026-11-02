@@ -32,9 +32,7 @@ namespace fxopt {
 enum class OptionType { Call, Put };
 
 /// Sign convention: +1.0 for a call (on the base currency), -1.0 for a put.
-constexpr double phi(OptionType type) noexcept {
-    return type == OptionType::Call ? 1.0 : -1.0;
-}
+constexpr double phi(OptionType type) noexcept { return type == OptionType::Call ? 1.0 : -1.0; }
 
 /// The opposite option type (used by foreign-domestic symmetry).
 constexpr OptionType other_type(OptionType type) noexcept {
@@ -74,18 +72,26 @@ double norm_ppf_unchecked(double p) noexcept;
 }
 
 /// noexcept form of validate_inputs().
-[[nodiscard]] inline Result<void> try_validate_inputs(double S, double K, double T,
-                                                      double r_d, double r_f,
-                                                      double sigma) noexcept {
-    if (auto e = try_require_finite(S, "S"); !e) [[unlikely]] return e;
-    if (auto e = try_require_finite(K, "K"); !e) [[unlikely]] return e;
-    if (auto e = try_require_finite(T, "T"); !e) [[unlikely]] return e;
-    if (auto e = try_require_finite(r_d, "r_d"); !e) [[unlikely]] return e;
-    if (auto e = try_require_finite(r_f, "r_f"); !e) [[unlikely]] return e;
-    if (auto e = try_require_finite(sigma, "sigma"); !e) [[unlikely]] return e;
-    if (S <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::SpotNonPositive, "S", S});
-    if (K <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::StrikeNonPositive, "K", K});
-    if (T < 0.0) [[unlikely]] return std::unexpected(Error{Errc::NegativeExpiry, "T", T});
+[[nodiscard]] inline Result<void> try_validate_inputs(double S, double K, double T, double r_d,
+                                                      double r_f, double sigma) noexcept {
+    if (auto e = try_require_finite(S, "S"); !e) [[unlikely]]
+        return e;
+    if (auto e = try_require_finite(K, "K"); !e) [[unlikely]]
+        return e;
+    if (auto e = try_require_finite(T, "T"); !e) [[unlikely]]
+        return e;
+    if (auto e = try_require_finite(r_d, "r_d"); !e) [[unlikely]]
+        return e;
+    if (auto e = try_require_finite(r_f, "r_f"); !e) [[unlikely]]
+        return e;
+    if (auto e = try_require_finite(sigma, "sigma"); !e) [[unlikely]]
+        return e;
+    if (S <= 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::SpotNonPositive, "S", S});
+    if (K <= 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::StrikeNonPositive, "K", K});
+    if (T < 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::NegativeExpiry, "T", T});
     if (sigma < 0.0) [[unlikely]] {
         return std::unexpected(Error{Errc::NegativeVol, "sigma", sigma});
     }
@@ -111,8 +117,7 @@ inline double finite_result(double value, const char* what) {
 ///
 /// S, K must be positive and finite; T >= 0; sigma >= 0; rates finite
 /// (negative rates are allowed).
-inline void validate_inputs(double S, double K, double T, double r_d,
-                            double r_f, double sigma) {
+inline void validate_inputs(double S, double K, double T, double r_d, double r_f, double sigma) {
     value_or_throw(try_validate_inputs(S, K, T, r_d, r_f, sigma));
 }
 

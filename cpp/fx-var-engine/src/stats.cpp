@@ -49,8 +49,7 @@ double norm_pdf(double x) { return qp::norm_pdf(x); }
 double norm_cdf(double x) { return qp::norm_cdf(x); }
 
 double norm_ppf(double p) {
-  if (!(p > 0.0 && p < 1.0))
-    throw std::invalid_argument("norm_ppf: p must be in (0, 1)");
+  if (!(p > 0.0 && p < 1.0)) throw std::invalid_argument("norm_ppf: p must be in (0, 1)");
 
   // Acklam plus one Halley step: takes the ~1e-9 approximation to < 1e-13.
   return qp::norm_ppf_unchecked<1>(p);
@@ -90,8 +89,7 @@ double chi2_sf(double x, double df) {
 double reg_inc_beta(double a, double b, double x) {
   if (!(a > 0.0) || !(b > 0.0) || !std::isfinite(a) || !std::isfinite(b))
     throw std::invalid_argument("reg_inc_beta: require finite a, b > 0");
-  if (!(x >= 0.0 && x <= 1.0))
-    throw std::invalid_argument("reg_inc_beta: x must be in [0, 1]");
+  if (!(x >= 0.0 && x <= 1.0)) throw std::invalid_argument("reg_inc_beta: x must be in [0, 1]");
   if (x == 0.0) return 0.0;
   if (x == 1.0) return 1.0;
   return qp::betainc_unchecked(a, b, x, kEps, kBetaMaxIter);
@@ -101,9 +99,8 @@ double reg_inc_beta(double a, double b, double x) {
 double t_pdf(double x, double df) {
   if (!(df > 0.0) || !std::isfinite(df) || !std::isfinite(x))
     throw std::invalid_argument("t_pdf: need finite x and finite df > 0");
-  const double lognorm = log_gamma(0.5 * (df + 1.0)) -
-                         log_gamma(0.5 * df) -
-                         0.5 * std::log(df * kPi);
+  const double lognorm =
+      log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) - 0.5 * std::log(df * kPi);
   return std::exp(lognorm - 0.5 * (df + 1.0) * std::log1p(x * x / df));
 }
 
@@ -118,8 +115,7 @@ double t_cdf(double x, double df) {
 }
 
 double t_ppf(double p, double df) {
-  if (!(p > 0.0 && p < 1.0))
-    throw std::invalid_argument("t_ppf: p must be in (0, 1)");
+  if (!(p > 0.0 && p < 1.0)) throw std::invalid_argument("t_ppf: p must be in (0, 1)");
   if (!(df > 0.0) || !std::isfinite(df))
     throw std::invalid_argument("t_ppf: df must be finite and > 0");
   if (p == 0.5) return 0.0;
@@ -154,8 +150,7 @@ double t_ppf(double p, double df) {
 
 double binom_cdf(int k, int n, double p) {
   if (n < 0) throw std::invalid_argument("binom_cdf: n must be >= 0");
-  if (!(p >= 0.0 && p <= 1.0))
-    throw std::invalid_argument("binom_cdf: p must be in [0, 1]");
+  if (!(p >= 0.0 && p <= 1.0)) throw std::invalid_argument("binom_cdf: p must be in [0, 1]");
   if (k < 0) return 0.0;
   if (k >= n) return 1.0;
   if (p == 0.0) return 1.0;
@@ -165,12 +160,10 @@ double binom_cdf(int k, int n, double p) {
 
 Moments sample_moments(const std::vector<double>& x) {
   const std::size_t n = x.size();
-  if (n < 2)
-    throw std::invalid_argument("sample_moments: need at least 2 observations");
+  if (n < 2) throw std::invalid_argument("sample_moments: need at least 2 observations");
   for (double v : x)
-    if (!std::isfinite(v))
-      throw std::invalid_argument("sample_moments: input contains NaN or inf");
-  const double dn = static_cast<double>(n);
+    if (!std::isfinite(v)) throw std::invalid_argument("sample_moments: input contains NaN or inf");
+  const auto dn = static_cast<double>(n);
   double mean = 0.0;
   for (double v : x) mean += v;
   mean /= dn;
@@ -195,8 +188,6 @@ Moments sample_moments(const std::vector<double>& x) {
   return out;
 }
 
-double sample_std(const std::vector<double>& x) {
-  return sample_moments(x).stdev;
-}
+double sample_std(const std::vector<double>& x) { return sample_moments(x).stdev; }
 
 }  // namespace fxvar

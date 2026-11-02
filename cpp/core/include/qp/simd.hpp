@@ -61,9 +61,8 @@ inline std::size_t matvec_rows_simd(const double* d, std::size_t rows, std::size
         const double* base = d + i * cols;
         vdouble acc(0.0);
         for (std::size_t j = 0; j < cols; ++j) {
-            const vdouble col([base, cols, j](auto k) {
-                return base[static_cast<std::size_t>(k) * cols + j];
-            });
+            const vdouble col(
+                [base, cols, j](auto k) { return base[static_cast<std::size_t>(k) * cols + j]; });
             const vdouble prod = col * vdouble(xv[j]);
             acc = acc + prod;
         }

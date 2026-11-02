@@ -36,8 +36,10 @@ std::map<std::string, double> evaluate(const GoldenRecord& r) {
         return {{"price", g.price},
                 {"delta_spot", g.delta_spot},
                 {"delta_fwd", g.delta_forward},
-                {"delta_spot_pa", delta(x[0], x[1], x[2], x[3], x[4], x[5], r.type, DeltaConvention::SpotPa)},
-                {"delta_fwd_pa", delta(x[0], x[1], x[2], x[3], x[4], x[5], r.type, DeltaConvention::ForwardPa)},
+                {"delta_spot_pa",
+                 delta(x[0], x[1], x[2], x[3], x[4], x[5], r.type, DeltaConvention::SpotPa)},
+                {"delta_fwd_pa",
+                 delta(x[0], x[1], x[2], x[3], x[4], x[5], r.type, DeltaConvention::ForwardPa)},
                 {"gamma", g.gamma},
                 {"vega", g.vega},
                 {"theta", g.theta},
@@ -65,9 +67,7 @@ std::map<std::string, double> evaluate(const GoldenRecord& r) {
     return {};
 }
 
-TEST(GoldenVectors, CoverageAndSize) {
-    EXPECT_GE(kRecords.size(), 400u);
-}
+TEST(GoldenVectors, CoverageAndSize) { EXPECT_GE(kRecords.size(), 400u); }
 
 TEST(GoldenVectors, AllRecordsMatchOracle) {
     double worst = 0.0;
@@ -78,8 +78,8 @@ TEST(GoldenVectors, AllRecordsMatchOracle) {
             const auto& o = r.out[static_cast<std::size_t>(k)];
             const double v = got.at(o.name);
             EXPECT_LE(std::fabs(v - o.value), o.tol)
-                << "record " << i << " (" << r.fn << ") output " << o.name << ": " << v
-                << " vs " << o.value;
+                << "record " << i << " (" << r.fn << ") output " << o.name << ": " << v << " vs "
+                << o.value;
             worst = std::max(worst, std::fabs(v - o.value) / o.tol);
         }
     }

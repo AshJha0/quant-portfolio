@@ -35,10 +35,10 @@ namespace fxopt {
 
 /// Monte Carlo estimate with sampling-error diagnostics.
 struct MCResult {
-    double price;      ///< point estimate, domestic ccy per foreign notional
-    double std_error;  ///< standard error of the estimate
-    double ci_low;     ///< 95% CI lower bound (price - 1.96 SE)
-    double ci_high;    ///< 95% CI upper bound (price + 1.96 SE)
+    double price;          ///< point estimate, domestic ccy per foreign notional
+    double std_error;      ///< standard error of the estimate
+    double ci_low;         ///< 95% CI lower bound (price - 1.96 SE)
+    double ci_high;        ///< 95% CI upper bound (price + 1.96 SE)
     std::int64_t n_paths;  ///< underlying draws (antithetic pairs count as 2)
     std::string method;    ///< variance-reduction techniques applied
 };
@@ -64,24 +64,22 @@ struct Seed {
 /// Monte Carlo settings as one strongly typed value.
 struct McConfig {
     std::int64_t n_paths = 100'000;  ///< draws (antithetic pairs count as 2)
-    Seed seed{0};                     ///< RNG seed
-    bool antithetic = true;           ///< mirror each draw z -> -z
-    bool control_variate = true;      ///< discounted terminal spot as control
+    Seed seed{0};                    ///< RNG seed
+    bool antithetic = true;          ///< mirror each draw z -> -z
+    bool control_variate = true;     ///< discounted terminal spot as control
 };
 
-MCResult mc_price(double S, double K, double T, double r_d, double r_f,
-                  double sigma, OptionType type, const McConfig& config);
+MCResult mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                  OptionType type, const McConfig& config);
 
-MCResult mc_price(double S, double K, double T, double r_d, double r_f,
-                  double sigma, OptionType type,
-                  std::int64_t n_paths = 100'000, Seed seed = Seed{0},
+MCResult mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                  OptionType type, std::int64_t n_paths = 100'000, Seed seed = Seed{0},
                   bool antithetic = true, bool control_variate = true);
 
 /// Former positional signature with a raw integer seed: deleted, because a
 /// bool argument converted to it silently. Use Seed{...} or McConfig.
-MCResult mc_price(double S, double K, double T, double r_d, double r_f,
-                  double sigma, OptionType type, std::int64_t n_paths,
-                  std::uint64_t seed, bool antithetic = true,
+MCResult mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                  OptionType type, std::int64_t n_paths, std::uint64_t seed, bool antithetic = true,
                   bool control_variate = true) = delete;
 
 /// Monte Carlo estimate without the std::string of MCResult (the method is
@@ -111,8 +109,8 @@ public:
 
 private:
     friend Result<McEstimate> try_mc_price(double, double, double, double, double, double,
-                                           OptionType, std::int64_t, Seed, bool, bool,
-                                           unsigned, McWorkspace&, ThreadPool*) noexcept;
+                                           OptionType, std::int64_t, Seed, bool, bool, unsigned,
+                                           McWorkspace&, ThreadPool*) noexcept;
     std::vector<double> discounted_;
     std::vector<double> control_;
 };
@@ -128,10 +126,9 @@ private:
 /// not bit-equal with, the single stream. `ws` must have been reserved for
 /// `n_paths` (Errc::WorkspaceTooSmall otherwise). No allocation, no thread
 /// creation.
-[[nodiscard]] Result<McEstimate> try_mc_price(double S, double K, double T, double r_d,
-                                              double r_f, double sigma, OptionType type,
-                                              std::int64_t n_paths, Seed seed,
-                                              bool antithetic, bool control_variate,
+[[nodiscard]] Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double r_f,
+                                              double sigma, OptionType type, std::int64_t n_paths,
+                                              Seed seed, bool antithetic, bool control_variate,
                                               unsigned threads, McWorkspace& ws,
                                               ThreadPool* pool) noexcept;
 

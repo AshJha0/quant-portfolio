@@ -12,8 +12,7 @@ namespace fxopt {
 // (qp::norm_ppf_unchecked<2>), about 1e-15 absolute in z.
 double norm_ppf(double p) {
     if (!(p > 0.0 && p < 1.0)) {
-        throw std::invalid_argument("norm_ppf requires p in (0, 1), got " +
-                                    std::format("{}", p));
+        throw std::invalid_argument("norm_ppf requires p in (0, 1), got " + std::format("{}", p));
     }
     return norm_ppf_unchecked(p);
 }
@@ -47,9 +46,10 @@ std::string message(const Error& e) {
             return "steps must be a positive integer, got " +
                    std::format("{}", static_cast<int>(e.a));
         case Errc::ProbabilityOutOfRange:
-            return std::format("risk-neutral probability {} outside [0, 1]; increase steps "
-                               "(dt too large for |r_d - r_f| vs sigma)",
-                               e.a);
+            return std::format(
+                "risk-neutral probability {} outside [0, 1]; increase steps "
+                "(dt too large for |r_d - r_f| vs sigma)",
+                e.a);
         case Errc::WorkspaceTooSmall:
             return std::format("{}: workspace holds {} doubles, needs {}", e.field,
                                static_cast<std::int64_t>(e.a), static_cast<std::int64_t>(e.b));

@@ -39,45 +39,46 @@ std::string handle(const jsonl::Request& r, const std::string& id) {
                      rf = r.num("rf"), sig = r.num("sigma");
         const OptionType ot = option_type(r);
         const GreeksResult g = analytic_greeks(S, K, T, rd, rf, sig, ot);
-        return jsonl::ok(id, {{"price", g.price},
-                              {"delta_spot", g.delta_spot},
-                              {"delta_fwd", g.delta_forward},
-                              {"delta_spot_pa", delta(S, K, T, rd, rf, sig, ot, DeltaConvention::SpotPa)},
-                              {"delta_fwd_pa", delta(S, K, T, rd, rf, sig, ot, DeltaConvention::ForwardPa)},
-                              {"gamma", g.gamma},
-                              {"vega", g.vega},
-                              {"theta", g.theta},
-                              {"rho_d", g.rho_domestic},
-                              {"rho_f", g.rho_foreign},
-                              {"vanna", g.vanna},
-                              {"volga", g.volga}});
+        return jsonl::ok(
+            id, {{"price", g.price},
+                 {"delta_spot", g.delta_spot},
+                 {"delta_fwd", g.delta_forward},
+                 {"delta_spot_pa", delta(S, K, T, rd, rf, sig, ot, DeltaConvention::SpotPa)},
+                 {"delta_fwd_pa", delta(S, K, T, rd, rf, sig, ot, DeltaConvention::ForwardPa)},
+                 {"gamma", g.gamma},
+                 {"vega", g.vega},
+                 {"theta", g.theta},
+                 {"rho_d", g.rho_domestic},
+                 {"rho_f", g.rho_foreign},
+                 {"vanna", g.vanna},
+                 {"volga", g.volga}});
     }
     if (fn == "iv") {
-        return jsonl::ok(id, {{"sigma", implied_vol(r.num("price"), r.num("S"), r.num("K"),
-                                                    r.num("T"), r.num("rd"), r.num("rf"),
-                                                    option_type(r))}});
+        return jsonl::ok(id,
+                         {{"sigma", implied_vol(r.num("price"), r.num("S"), r.num("K"), r.num("T"),
+                                                r.num("rd"), r.num("rf"), option_type(r))}});
     }
     if (fn == "strike") {
-        return jsonl::ok(id, {{"K", strike_from_delta(r.num("delta"), r.num("S"), r.num("T"),
-                                                      r.num("rd"), r.num("rf"), r.num("sigma"),
-                                                      option_type(r),
-                                                      convention(r.str("convention")))}});
+        return jsonl::ok(
+            id, {{"K", strike_from_delta(r.num("delta"), r.num("S"), r.num("T"), r.num("rd"),
+                                         r.num("rf"), r.num("sigma"), option_type(r),
+                                         convention(r.str("convention")))}});
     }
     if (fn == "dns_atm") {
         const auto conv = r.flag("pa") ? DeltaConvention::SpotPa : DeltaConvention::Spot;
-        return jsonl::ok(id, {{"K", atm_dns_strike(r.num("S"), r.num("T"), r.num("rd"),
-                                                   r.num("rf"), r.num("sigma"), conv)}});
+        return jsonl::ok(id, {{"K", atm_dns_strike(r.num("S"), r.num("T"), r.num("rd"), r.num("rf"),
+                                                   r.num("sigma"), conv)}});
     }
     if (fn == "crr") {
         const auto ex = r.flag("american") ? Exercise::American : Exercise::European;
-        return jsonl::ok(id, {{"price", binomial_price(r.num("S"), r.num("K"), r.num("T"),
-                                                       r.num("rd"), r.num("rf"), r.num("sigma"),
-                                                       option_type(r),
-                                                       static_cast<int>(r.num("steps")), ex)}});
+        return jsonl::ok(id,
+                         {{"price", binomial_price(r.num("S"), r.num("K"), r.num("T"), r.num("rd"),
+                                                   r.num("rf"), r.num("sigma"), option_type(r),
+                                                   static_cast<int>(r.num("steps")), ex)}});
     }
     if (fn == "fwd") {
-        return jsonl::ok(id, {{"forward", cip_forward(r.num("S"), r.num("T"), r.num("rd"),
-                                                      r.num("rf"))}});
+        return jsonl::ok(
+            id, {{"forward", cip_forward(r.num("S"), r.num("T"), r.num("rd"), r.num("rf"))}});
     }
     throw std::invalid_argument("unknown fn: " + fn);
 }

@@ -15,10 +15,9 @@ double portfolio_sigma(std::span<const double> exposures, const Matrix& cov) {
     return value_or_throw(try_portfolio_sigma(exposures, cov));
 }
 
-double parametric_var(std::span<const double> exposures, const Matrix& cov, double alpha,
-                      Dist dist, double df, double mean, int horizon_days) {
-    return value_or_throw(
-        try_parametric_var(exposures, cov, alpha, dist, df, mean, horizon_days));
+double parametric_var(std::span<const double> exposures, const Matrix& cov, double alpha, Dist dist,
+                      double df, double mean, int horizon_days) {
+    return value_or_throw(try_parametric_var(exposures, cov, alpha, dist, df, mean, horizon_days));
 }
 
 double cornish_fisher_z(double z, double skew, double excess_kurt) {
@@ -52,7 +51,8 @@ double cf_min_derivative(double skew, double excess_kurt, double r) {
 
 bool cornish_fisher_valid(double skew, double excess_kurt, double alpha) {
     if (!std::isfinite(skew) || !std::isfinite(excess_kurt) || !std::isfinite(alpha)) {
-        throw std::invalid_argument("cornish_fisher_valid: skew, excess_kurt and alpha must be finite");
+        throw std::invalid_argument(
+            "cornish_fisher_valid: skew, excess_kurt and alpha must be finite");
     }
     validate_alpha(alpha);
     const double z_a = normal_ppf(1.0 - alpha);
@@ -71,14 +71,15 @@ bool cornish_fisher_domain_ok(double skew, double excess_kurt, double z_range, i
     return cf_min_derivative(skew, excess_kurt, z_range) > 0.0;
 }
 
-double cornish_fisher_var(double sigma, double alpha, double skew, double excess_kurt,
-                          double mean, bool check_domain) {
+double cornish_fisher_var(double sigma, double alpha, double skew, double excess_kurt, double mean,
+                          bool check_domain) {
     validate_alpha(alpha);
     if (!(sigma >= 0.0) || !std::isfinite(sigma)) {
         throw std::invalid_argument("cornish_fisher_var: sigma must be finite and >= 0, got " +
                                     std::to_string(sigma));
     }
-    if (!std::isfinite(mean)) throw std::invalid_argument("cornish_fisher_var: mean must be finite");
+    if (!std::isfinite(mean))
+        throw std::invalid_argument("cornish_fisher_var: mean must be finite");
     // Non-finite moments throw inside cornish_fisher_valid even when the
     // domain check is off.
     const bool valid = cornish_fisher_valid(skew, excess_kurt, alpha);

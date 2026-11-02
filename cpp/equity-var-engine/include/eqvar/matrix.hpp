@@ -99,8 +99,8 @@ struct CholeskyResult {
 
 /// Old signature with a caller-chosen jitter start and try count. Both are
 /// ignored: the ladder is fixed at 1e-12 .. 1e-6 x mean(diag).
-[[deprecated("use cholesky(cov, Repair). Removed next release.")]]
-[[nodiscard]] CholeskyResult cholesky(const Matrix& cov, double jitter, int max_tries = 12);
+[[deprecated("use cholesky(cov, Repair). Removed next release.")]] [[nodiscard]] CholeskyResult
+cholesky(const Matrix& cov, double jitter, int max_tries = 12);
 
 /// Unbiased (ddof = 1) sample covariance of a (T x n) returns panel.
 /// Throws std::invalid_argument if T < 2.

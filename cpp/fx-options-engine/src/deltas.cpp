@@ -52,9 +52,7 @@ namespace {
 double pa_peak_strike(double F, double T, double sigma) {
     const double v = sigma * std::sqrt(T);
     const double log_v = std::log(v);
-    const auto h = [log_v](double x) {
-        return log_norm_cdf(x) + log_v + 0.5 * x * x + kLnSqrt2Pi;
-    };
+    const auto h = [log_v](double x) { return log_norm_cdf(x) + log_v + 0.5 * x * x + kLnSqrt2Pi; };
     const auto [x_lo, x_hi] = pa_fold_bracket(v);
     const double root = qp::brentq(h, x_lo, x_hi, 1e-14);
     return detail::finite_result(F * std::exp(-root * v - 0.5 * v * v), "PA fold strike");
@@ -62,8 +60,8 @@ double pa_peak_strike(double F, double T, double sigma) {
 
 }  // namespace
 
-double delta(double S, double K, double T, double r_d, double r_f,
-             double sigma, OptionType type, DeltaConvention convention) {
+double delta(double S, double K, double T, double r_d, double r_f, double sigma, OptionType type,
+             DeltaConvention convention) {
     const double p = phi(type);
     const double d1v = d1(S, K, T, r_d, r_f, sigma);  // validates S,K,T,sigma
     const double d2v = d1v - sigma * std::sqrt(T);
@@ -116,43 +114,37 @@ double atm_dns_strike(double S, double T, double r_d, double r_f, double sigma,
     return F * std::exp(sign * 0.5 * sigma * sigma * T);
 }
 
-double strike_from_delta(double target_delta, double S, double T, double r_d,
-                         double r_f, double sigma, OptionType type,
-                         DeltaConvention convention) {
+double strike_from_delta(double target_delta, double S, double T, double r_d, double r_f,
+                         double sigma, OptionType type, DeltaConvention convention) {
     const double p = phi(type);
     validate_inputs(S, S, T, r_d, r_f, sigma);
     if (T <= 0.0 || sigma <= 0.0) {
-        throw std::invalid_argument(
-            "strike_from_delta requires T > 0 and sigma > 0");
+        throw std::invalid_argument("strike_from_delta requires T > 0 and sigma > 0");
     }
     detail::require_finite(target_delta, "target_delta");
     if (p * target_delta <= 0.0) {
-        throw std::invalid_argument(
-            "delta must have sign " + std::format("{}", static_cast<int>(p)) +
-            ", got " + std::format("{}", target_delta));
+        throw std::invalid_argument("delta must have sign " +
+                                    std::format("{}", static_cast<int>(p)) + ", got " +
+                                    std::format("{}", target_delta));
     }
 
     const double F = S * std::exp((r_d - r_f) * T);
     const double v = sigma * std::sqrt(T);
 
-    if (convention == DeltaConvention::Spot ||
-        convention == DeltaConvention::Forward) {
-        const double fwd_delta = convention == DeltaConvention::Spot
-                                     ? target_delta * std::exp(r_f * T)
-                                     : target_delta;
+    if (convention == DeltaConvention::Spot || convention == DeltaConvention::Forward) {
+        const double fwd_delta =
+            convention == DeltaConvention::Spot ? target_delta * std::exp(r_f * T) : target_delta;
         if (!(p * fwd_delta > 0.0 && p * fwd_delta < 1.0)) {
-            throw std::invalid_argument(
-                "forward-equivalent delta " + std::format("{}", fwd_delta) +
-                " outside (0, 1) range");
+            throw std::invalid_argument("forward-equivalent delta " + std::format("{}", fwd_delta) +
+                                        " outside (0, 1) range");
         }
         const double z = norm_ppf(p * fwd_delta);  // z = phi * d1
         return F * std::exp(-p * z * v + 0.5 * v * v);
     }
 
     // Premium-adjusted: solve phi (K/F) N(phi d2(K)) = fwd-equivalent delta.
-    const double fwd_delta = convention == DeltaConvention::SpotPa
-                                 ? target_delta * std::exp(r_f * T)
-                                 : target_delta;
+    const double fwd_delta =
+        convention == DeltaConvention::SpotPa ? target_delta * std::exp(r_f * T) : target_delta;
 
     const auto pa_fwd_delta = [F, v, p](double K) {
         const double d2v = (std::log(F / K) - 0.5 * v * v) / v;
@@ -163,13 +155,10 @@ double strike_from_delta(double target_delta, double S, double T, double r_d,
         const double k_peak = pa_peak_strike(F, T, sigma);
         const double max_delta = pa_fwd_delta(k_peak);
         if (fwd_delta > max_delta + 1e-14) {
-            const double scale = convention == DeltaConvention::SpotPa
-                                     ? std::exp(-r_f * T)
-                                     : 1.0;
+            const double scale = convention == DeltaConvention::SpotPa ? std::exp(-r_f * T) : 1.0;
             throw std::invalid_argument(
                 "premium-adjusted call delta " + std::format("{}", target_delta) +
-                " exceeds the maximum attainable " +
-                std::format("{}", max_delta * scale) +
+                " exceeds the maximum attainable " + std::format("{}", max_delta * scale) +
                 " for these market inputs");
         }
         double k_hi = k_peak;
@@ -177,16 +166,14 @@ double strike_from_delta(double target_delta, double S, double T, double r_d,
         while (pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && std::isfinite(2.0 * k_hi)) {
             k_hi *= 2.0;
         }
-        return qp::brentq(
-            [&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_peak,
-            k_hi, 1e-14, 200);
+        return qp::brentq([&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_peak, k_hi,
+                          1e-14, 200);
     }
 
     // put: |PA delta| strictly increasing in K -> unique root
     if (!(fwd_delta > -1.0 && fwd_delta < 0.0)) {
-        throw std::invalid_argument(
-            "premium-adjusted put forward delta " + std::format("{}", fwd_delta) +
-            " outside (-1, 0)");
+        throw std::invalid_argument("premium-adjusted put forward delta " +
+                                    std::format("{}", fwd_delta) + " outside (-1, 0)");
     }
     const double k_lo = F * std::exp(-std::min(30.0 * v, 700.0));
     double k_hi = F;
@@ -194,9 +181,8 @@ double strike_from_delta(double target_delta, double S, double T, double r_d,
     while (pa_fwd_delta(k_hi) > fwd_delta && k_hi < k_max && std::isfinite(2.0 * k_hi)) {
         k_hi *= 2.0;
     }
-    return qp::brentq(
-        [&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_lo, k_hi,
-        1e-14, 200);
+    return qp::brentq([&](double K) { return pa_fwd_delta(K) - fwd_delta; }, k_lo, k_hi, 1e-14,
+                      200);
 }
 
 }  // namespace fxopt

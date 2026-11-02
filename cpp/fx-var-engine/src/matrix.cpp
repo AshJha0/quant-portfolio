@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
-#include <string>
 #include <stdexcept>
+#include <string>
 
 #include "fxvar/kernels.hpp"
 
@@ -15,8 +15,7 @@ Matrix Matrix::from_rows(const std::vector<std::vector<double>>& rows) {
   const std::size_t c = r ? rows.front().size() : 0;
   Matrix m(r, c);
   for (std::size_t i = 0; i < r; ++i) {
-    if (rows[i].size() != c)
-      throw std::invalid_argument("Matrix::from_rows: ragged rows");
+    if (rows[i].size() != c) throw std::invalid_argument("Matrix::from_rows: ragged rows");
     for (std::size_t j = 0; j < c; ++j) m(i, j) = rows[i][j];
   }
   return m;
@@ -42,8 +41,7 @@ bool Matrix::has_nan() const {
 }
 
 Matrix matmul(const Matrix& a, const Matrix& b) {
-  if (a.cols() != b.rows())
-    throw std::invalid_argument("matmul: inner dimensions do not match");
+  if (a.cols() != b.rows()) throw std::invalid_argument("matmul: inner dimensions do not match");
   Matrix c(a.rows(), b.cols(), 0.0);
   for (std::size_t i = 0; i < a.rows(); ++i) {
     for (std::size_t k = 0; k < a.cols(); ++k) {
@@ -58,8 +56,7 @@ Matrix matmul(const Matrix& a, const Matrix& b) {
 }
 
 std::vector<double> matvec(const Matrix& a, const std::vector<double>& x) {
-  if (a.cols() != x.size())
-    throw std::invalid_argument("matvec: dimension mismatch");
+  if (a.cols() != x.size()) throw std::invalid_argument("matvec: dimension mismatch");
   std::vector<double> y(a.rows(), 0.0);
   value_or_throw(try_matvec(a, x, y));
   return y;

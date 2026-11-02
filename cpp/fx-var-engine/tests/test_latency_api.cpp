@@ -106,7 +106,8 @@ TEST(LatencyApi, ClosedFormAndLinearAlgebraEqualThrowingApi) {
     }
   const Matrix cov = ar1_cov(40);
   std::vector<double> w(40), y(40);
-  for (std::size_t i = 0; i < 40; ++i) w[i] = (i % 3 ? -1.0 : 1.0) * (1e6 + 1e4 * static_cast<double>(i));
+  for (std::size_t i = 0; i < 40; ++i)
+    w[i] = (i % 3 ? -1.0 : 1.0) * (1e6 + 1e4 * static_cast<double>(i));
   ASSERT_TRUE(try_matvec(cov, w, y).has_value());
   const auto y0 = matvec(cov, w);
   for (std::size_t i = 0; i < 40; ++i) EXPECT_TRUE(same(y[i], y0[i]));
@@ -159,8 +160,8 @@ TEST(BatchApi, BookRevaluationEqualsLegacyBitForBit) {
   const auto legacy = cb.pnl(scen);
   for (std::size_t s = 0; s < out.size(); ++s) {
     ASSERT_TRUE(same(out[s], legacy[s])) << s;
-    ASSERT_TRUE(same(*cb.try_pnl(std::span<const double>(scen.data.row(s), k)),
-                     cb.pnl(scen.data.row(s))));
+    ASSERT_TRUE(
+        same(*cb.try_pnl(std::span<const double>(scen.data.row(s), k)), cb.pnl(scen.data.row(s))));
   }
   std::vector<double> poisoned(scen.data.data());
   poisoned[7] = std::numeric_limits<double>::infinity();

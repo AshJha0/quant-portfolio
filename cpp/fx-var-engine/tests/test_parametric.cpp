@@ -16,8 +16,7 @@ using namespace fxvar;
 namespace {
 
 Market test_market() {
-  return Market({{"EUR", 1.10}, {"JPY", 0.0090}},
-                {{"USD", 0.050}, {"EUR", 0.030}, {"JPY", 0.001}});
+  return Market({{"EUR", 1.10}, {"JPY", 0.0090}}, {{"USD", 0.050}, {"EUR", 0.030}, {"JPY", 0.001}});
 }
 
 }  // namespace
@@ -25,8 +24,7 @@ Market test_market() {
 TEST(VarCovar, ClosedFormMatchesHandComputation) {
   // Two factors, hand-computable: sigma_p^2 = w' Sigma w.
   const std::vector<double> w{1e6, -5e5};
-  const Matrix cov =
-      Matrix::from_rows({{4e-5, 1e-5}, {1e-5, 9e-5}});
+  const Matrix cov = Matrix::from_rows({{4e-5, 1e-5}, {1e-5, 9e-5}});
   const double sig2 = 1e12 * 4e-5 - 2.0 * 1e6 * 5e5 * 1e-5 + 2.5e11 * 9e-5;
   const double sig = std::sqrt(sig2);
   const VarEs ve = var_covar(w, cov, 0.01, 1.0, TailDist::kNormal);
@@ -63,8 +61,7 @@ TEST(ParametricVar, FullPipelineMatchesExposureClosedForm) {
   // parametric_var(book) must equal var_covar(linear exposures, sample
   // cov) - the driver adds nothing but wiring.
   const Market m = test_market();
-  Book book({SpotPosition{"EURUSD", 10e6, {}},
-             ForwardPosition{"USDJPY", 5e6, 0.5, {}}});
+  Book book({SpotPosition{"EURUSD", 10e6, {}}, ForwardPosition{"USDJPY", 5e6, 0.5, {}}});
   ReturnsMatrix rets;
   rets.factors = {"FX:EUR", "FX:JPY", "IR:JPY", "IR:USD"};
   rets.data = Matrix(250, 4);
@@ -134,7 +131,6 @@ TEST(ParametricVar, PegFlagSurfacedThroughDriver) {
   EXPECT_EQ(res.flagged_peg_factors[0], "FX:HKD");
 }
 
-
 TEST(PortfolioSigma, HedgedBillionDollarBookAgainstRankDeficientCovariance) {
   // Regression: five factors driven by one common shock (a pegged bloc)
   // and a hedged multi-billion book.  The true variance is 0, but the
@@ -149,7 +145,7 @@ TEST(PortfolioSigma, HedgedBillionDollarBookAgainstRankDeficientCovariance) {
   std::vector<double> w{7.3e9, -5.1e9, 3.7e9, -2.9e9, 0.0};
   double s = 0.0;
   for (std::size_t i = 0; i < 4; ++i) s += w[i] * beta[i];
-  w[4] = -s / beta[4];  // annihilate the common driver exactly
+  w[4] = -s / beta[4];                // annihilate the common driver exactly
   EXPECT_LT(quad_form(w, cov), 0.0);  // the rounding really is negative
   double sigma = -1.0;
   ASSERT_NO_THROW(sigma = portfolio_sigma(w, cov));

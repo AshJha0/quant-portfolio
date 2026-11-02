@@ -14,8 +14,7 @@ std::string message(const Error& e) {
             oss << e.field << " must be finite and >= 0, got " << e.a;
             break;
         case Errc::NonFiniteRate:
-            oss << "r and q must be finite (NaN/Inf rejected), got r=" << e.a
-                << ", q=" << e.b;
+            oss << "r and q must be finite (NaN/Inf rejected), got r=" << e.a << ", q=" << e.b;
             break;
         case Errc::NotStrictlyPositive:
             oss << "d1/d2 require strictly positive S, K, T and sigma; got S=" << e.a
@@ -75,8 +74,8 @@ std::string message(const Error& e) {
             oss << "Monte Carlo estimate is not finite (simulated prices overflow)";
             break;
         case Errc::SizeMismatch:
-            oss << e.field << ": span lengths differ (" << static_cast<long long>(e.a)
-                << " vs " << static_cast<long long>(e.b) << ")";
+            oss << e.field << ": span lengths differ (" << static_cast<long long>(e.a) << " vs "
+                << static_cast<long long>(e.b) << ")";
             break;
     }
     return oss.str();
@@ -106,13 +105,11 @@ void validate_rates(double r, double q) {
     if (auto e = try_validate_rates(r, q); !e) throw_error(e.error());
 }
 
-std::pair<double, double> d1_d2(double S, double K, double T, double r,
-                                double sigma, double q) {
+std::pair<double, double> d1_d2(double S, double K, double T, double r, double sigma, double q) {
     return value_or_throw(try_d1_d2(S, K, T, r, sigma, q));
 }
 
-double bs_price(double S, double K, double T, double r, double sigma,
-                double q, OptionType type) {
+double bs_price(double S, double K, double T, double r, double sigma, double q, OptionType type) {
     return value_or_throw(try_bs_price(S, K, T, r, sigma, q, type));
 }
 

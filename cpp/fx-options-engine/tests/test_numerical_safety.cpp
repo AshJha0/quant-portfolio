@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "../src/brent.hpp"
 #include "fxopt/binomial.hpp"
 #include "fxopt/deltas.hpp"
 #include "fxopt/forwards.hpp"
@@ -14,7 +15,6 @@
 #include "fxopt/implied_vol.hpp"
 #include "fxopt/iv_core.hpp"
 #include "fxopt/monte_carlo.hpp"
-#include "../src/brent.hpp"
 
 using namespace fxopt;
 
@@ -26,25 +26,26 @@ constexpr double kEps = std::numeric_limits<double>::epsilon();
 // antithetic = true and control_variate = (42 -> true).
 template <class... A>
 concept CanCallMc = requires(A... a) { mc_price(a...); };
-static_assert(!CanCallMc<double, double, double, double, double, double, OptionType, int, bool,
-                         bool, int>);
-static_assert(!CanCallMc<double, double, double, double, double, double, OptionType, int,
-                         std::uint64_t>);
-static_assert(CanCallMc<double, double, double, double, double, double, OptionType, int, Seed,
-                        bool, bool>);
+static_assert(
+    !CanCallMc<double, double, double, double, double, double, OptionType, int, bool, bool, int>);
+static_assert(
+    !CanCallMc<double, double, double, double, double, double, OptionType, int, std::uint64_t>);
+static_assert(
+    CanCallMc<double, double, double, double, double, double, OptionType, int, Seed, bool, bool>);
 
 }  // namespace
 
 TEST(NumericalSafety, SigmaZeroWithOverflowingForwardIsFinite) {
     EXPECT_EQ(gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call), 1.0);
     EXPECT_EQ(gk_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Put), 0.0);
-    EXPECT_EQ(binomial_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call, 100,
-                             Exercise::American),
-              1.0);
+    EXPECT_EQ(
+        binomial_price(1.0, 1.0, 1000.0, 0.8, 0.0, 0.0, OptionType::Call, 100, Exercise::American),
+        1.0);
 }
 
 TEST(NumericalSafety, NonFiniteResultsThrow) {
-    EXPECT_THROW(gk_price(1.0, 1.0, 1000.0, -0.8, 0.0, 0.2, OptionType::Put), std::invalid_argument);
+    EXPECT_THROW(gk_price(1.0, 1.0, 1000.0, -0.8, 0.0, 0.2, OptionType::Put),
+                 std::invalid_argument);
     EXPECT_THROW(cip_forward(1.0, 1000.0, 0.8, 0.0), std::invalid_argument);
     EXPECT_THROW(forward_points(1.1, 1.0, 0.03, 0.01, std::numeric_limits<double>::infinity()),
                  std::invalid_argument);
@@ -80,8 +81,9 @@ TEST(NumericalSafety, PaFoldBracketValidForAnyTotalVol) {
 }
 
 TEST(NumericalSafety, McNeedsIndependentSamples) {
-    EXPECT_THROW(mc_price(1.1, 1.1, 1.0, 0.03, 0.01, 0.1, OptionType::Call, 2, Seed{1}, true, false),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        mc_price(1.1, 1.1, 1.0, 0.03, 0.01, 0.1, OptionType::Call, 2, Seed{1}, true, false),
+        std::invalid_argument);
     EXPECT_THROW(mc_price(1.1, 1.1, 1.0, 0.03, 0.01, 0.1, OptionType::Call, 4, Seed{1}, true, true),
                  std::invalid_argument);
     const McConfig cfg{6, Seed{1}, true, true};
@@ -118,7 +120,8 @@ TEST(ImpliedVolCore, BoundsContract) {
     EXPECT_EQ(implied_vol(lower, S, K, T, rd, rf, OptionType::Call), 0.0);
     EXPECT_THROW(implied_vol(S * std::exp(-rf * T), S, K, T, rd, rf, OptionType::Call),
                  std::invalid_argument);
-    EXPECT_THROW(implied_vol(lower - 1e-9, S, K, T, rd, rf, OptionType::Call), std::invalid_argument);
+    EXPECT_THROW(implied_vol(lower - 1e-9, S, K, T, rd, rf, OptionType::Call),
+                 std::invalid_argument);
 }
 
 TEST(ImpliedVolCore, AtMostTenEvaluations) {
@@ -129,8 +132,8 @@ TEST(ImpliedVolCore, AtMostTenEvaluations) {
                 const double k = std::exp(lk);
                 const bool is_call = k >= 1.0;
                 const double r = -std::log(df) / t;
-                const double price = gk_price(1.0, k, t, r, r, sigma,
-                                              is_call ? OptionType::Call : OptionType::Put);
+                const double price =
+                    gk_price(1.0, k, t, r, r, sigma, is_call ? OptionType::Call : OptionType::Put);
                 if (!(price > 1e-300)) continue;
                 int evals = 0;
                 iv_core::black_implied_vol(price, 1.0, k, t, df, is_call, evals);

@@ -33,7 +33,8 @@ const double kBad[] = {kNaN, kInf, -kInf};
 
 std::vector<double> good_pnl(std::size_t n = 200) {
     std::vector<double> v(n);
-    for (std::size_t i = 0; i < n; ++i) v[i] = 100.0 * std::sin(0.37 * static_cast<double>(i) + 0.1);
+    for (std::size_t i = 0; i < n; ++i)
+        v[i] = 100.0 * std::sin(0.37 * static_cast<double>(i) + 0.1);
     return v;
 }
 
@@ -52,8 +53,7 @@ Matrix good_returns(std::size_t t = 120, std::size_t n = 2) {
 
 Matrix cov2() { return Matrix(2, 2, {1.0, 0.3, 0.3, 2.0}); }
 
-#define EXPECT_INVALID(expr)                                                  \
-    EXPECT_THROW((void)(expr), std::invalid_argument) << #expr
+#define EXPECT_INVALID(expr) EXPECT_THROW((void)(expr), std::invalid_argument) << #expr
 
 }  // namespace
 
@@ -127,7 +127,8 @@ TEST(Fuzz, Historical) {
         EXPECT_INVALID(var_es_order_statistic(bad, 0.01));
         EXPECT_INVALID(var_es_order_statistic(pnl, b));
         EXPECT_INVALID(var_es_weighted(bad, std::vector<double>(pnl.size(), 1.0), 0.01));
-        EXPECT_INVALID(var_es_weighted(pnl, with_bad(std::vector<double>(pnl.size(), 1.0), b), 0.01));
+        EXPECT_INVALID(
+            var_es_weighted(pnl, with_bad(std::vector<double>(pnl.size(), 1.0), b), 0.01));
         EXPECT_INVALID(quantile_linear(bad, 0.5));
         EXPECT_INVALID(quantile_linear(pnl, b));
         EXPECT_INVALID(historical_var(bad, 0.01));
@@ -229,7 +230,8 @@ TEST(Fuzz, Backtest) {
         EXPECT_INVALID(exceptions_from_pnl(pnl, std::vector<double>{b}));
         EXPECT_INVALID(kupiec_pof({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
         EXPECT_INVALID(kupiec_pof(250, 3, b));
-        EXPECT_INVALID(basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = 3, .alpha = b}));
+        EXPECT_INVALID(
+            basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = 3, .alpha = b}));
         EXPECT_INVALID(christoffersen_cc(std::vector<std::uint8_t>(10, 0), b));
         EXPECT_INVALID(acerbi_szekely_z2(with_bad(pnl, b), var, es, 0.025));
         EXPECT_INVALID(acerbi_szekely_z2(pnl, std::vector<double>{b}, es, 0.025));

@@ -1,8 +1,8 @@
 #include "eqvar/monte_carlo.hpp"
 
 #include <algorithm>
-#include <functional>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -75,10 +75,5 @@ Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist
     }
     return out;
 }
-
-
-
-
-
 
 }  // namespace eqvar

@@ -10,8 +10,7 @@
 namespace fxvar {
 
 HistoricalResult historical_var(const Book& book, const Market& market,
-                                const ReturnsMatrix& returns,
-                                const HistoricalOptions& opts) {
+                                const ReturnsMatrix& returns, const HistoricalOptions& opts) {
   validate_alpha(opts.alpha);
   validate_horizon(opts.horizon_days);
   const CompiledBook compiled(book, market);  // throws on empty book
@@ -26,8 +25,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
     // Pure base-ccy (or USD-in-USD-book) cash: zero risk by construction.
     res.pnl.assign(returns.n_obs(), 0.0);
     res.weights.assign(returns.n_obs(),
-                       returns.n_obs() ? 1.0 / static_cast<double>(returns.n_obs())
-                                       : 0.0);
+                       returns.n_obs() ? 1.0 / static_cast<double>(returns.n_obs()) : 0.0);
     return res;
   }
 
@@ -38,8 +36,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
     res.flagged_peg_factors = flag_peg_factors(rets);
     for (const auto& f : res.flagged_peg_factors) {
       std::ostringstream msg;
-      msg << "peg blindness: factor " << f << " has daily vol < "
-          << kPegVolThreshold
+      msg << "peg blindness: factor " << f << " has daily vol < " << kPegVolThreshold
           << " (pegged/managed currency). Historical and parametric VaR are "
              "blind to peg-break risk; add the peg-break stress add-on "
              "(fxvar::peg_break_scenario).";
@@ -60,7 +57,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
     weights.resize(n);
     double sum = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
-      const double age = static_cast<double>(n - 1 - i);  // last row = age 0
+      const auto age = static_cast<double>(n - 1 - i);  // last row = age 0
       weights[i] = std::pow(opts.decay, age);
       sum += weights[i];
     }

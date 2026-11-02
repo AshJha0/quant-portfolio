@@ -74,7 +74,6 @@ double betainc_reg(double a, double b, double x) {
 // Regularized incomplete gamma
 // --------------------------------------------------------------------------
 
-
 double regularized_gamma_p(double a, double x) {
     if (!(a > 0.0) || !std::isfinite(a)) {
         throw std::invalid_argument("regularized_gamma_p: a must be finite and > 0");
@@ -83,7 +82,8 @@ double regularized_gamma_p(double a, double x) {
         throw std::invalid_argument("regularized_gamma_p: x must be finite and >= 0");
     }
     if (x == 0.0) return 0.0;
-    return (x < a + 1.0) ? qp::gamma_p_series(a, x, kGammaEps) : 1.0 - qp::gamma_q_cf(a, x, kGammaEps);
+    return (x < a + 1.0) ? qp::gamma_p_series(a, x, kGammaEps)
+                         : 1.0 - qp::gamma_q_cf(a, x, kGammaEps);
 }
 
 double regularized_gamma_q(double a, double x) {
@@ -94,7 +94,8 @@ double regularized_gamma_q(double a, double x) {
         throw std::invalid_argument("regularized_gamma_q: x must be finite and >= 0");
     }
     if (x == 0.0) return 1.0;
-    return (x < a + 1.0) ? 1.0 - qp::gamma_p_series(a, x, kGammaEps) : qp::gamma_q_cf(a, x, kGammaEps);
+    return (x < a + 1.0) ? 1.0 - qp::gamma_p_series(a, x, kGammaEps)
+                         : qp::gamma_q_cf(a, x, kGammaEps);
 }
 
 double chi2_sf(double x, double df) {
@@ -127,8 +128,7 @@ double student_t_pdf(double x, double df) {
     if (!(df > 0.0) || !std::isfinite(df) || !std::isfinite(x)) {
         throw std::invalid_argument("student_t_pdf: need finite x and finite df > 0");
     }
-    const double ln = log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) -
-                      0.5 * std::log(df * kPi) -
+    const double ln = log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) - 0.5 * std::log(df * kPi) -
                       0.5 * (df + 1.0) * std::log1p(x * x / df);
     return std::exp(ln);
 }
@@ -145,8 +145,7 @@ double student_t_cdf(double x, double df) {
 
 double student_t_ppf(double p, double df) {
     if (!(p > 0.0 && p < 1.0)) {
-        throw std::invalid_argument("student_t_ppf: p must be in (0, 1), got " +
-                                    std::to_string(p));
+        throw std::invalid_argument("student_t_ppf: p must be in (0, 1), got " + std::to_string(p));
     }
     if (!(df > 0.0) || !std::isfinite(df)) {
         throw std::invalid_argument("student_t_ppf: df must be finite and > 0");
@@ -190,7 +189,7 @@ void require_finite(std::span<const double> x, const char* who) {
 }
 
 void central_moments(std::span<const double> x, double& mu, double& m2, double& m3, double& m4) {
-    const double n = static_cast<double>(x.size());
+    const auto n = static_cast<double>(x.size());
     mu = 0.0;
     for (double v : x) mu += v;
     mu /= n;

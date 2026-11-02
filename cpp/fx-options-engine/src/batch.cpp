@@ -20,9 +20,8 @@ bool same_length(const GkBatchInputs& in, std::size_t n) noexcept {
 inline int ok_price_inputs(const GkBatchInputs& in, std::size_t i) noexcept {
     const double S = in.S[i], K = in.K[i], T = in.T[i], v = in.sigma[i];
     const double rd = in.r_d[i], rf = in.r_f[i];
-    return static_cast<int>(S > 0.0) & static_cast<int>(S <= kMax) &
-           static_cast<int>(K > 0.0) & static_cast<int>(K <= kMax) &
-           static_cast<int>(T >= 0.0) & static_cast<int>(T <= kMax) &
+    return static_cast<int>(S > 0.0) & static_cast<int>(S <= kMax) & static_cast<int>(K > 0.0) &
+           static_cast<int>(K <= kMax) & static_cast<int>(T >= 0.0) & static_cast<int>(T <= kMax) &
            static_cast<int>(v >= 0.0) & static_cast<int>(v <= kMax) &
            static_cast<int>(std::fabs(rd) <= kMax) & static_cast<int>(std::fabs(rf) <= kMax);
 }
@@ -52,20 +51,20 @@ std::expected<void, BatchError> gk_price_batch(const GkBatchInputs& in,
                                                std::span<double> out) noexcept {
     const std::size_t n = out.size();
     if (!same_length(in, n)) [[unlikely]] {
-        return std::unexpected(BatchError{
-            0, Error{Errc::SizeMismatch, "gk_price_batch", static_cast<double>(in.S.size()),
-                     static_cast<double>(n)}});
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "gk_price_batch",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
     if (any_bad<false>(in, n) != 0) [[unlikely]] {
         for (std::size_t i = 0; i < n; ++i) {
-            const auto r = try_validate_inputs(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i],
-                                               in.sigma[i]);
+            const auto r =
+                try_validate_inputs(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i], in.sigma[i]);
             if (!r) return std::unexpected(BatchError{i, r.error()});
         }
     }
     for (std::size_t i = 0; i < n; ++i) {
-        out[i] = gk_price_unchecked(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i],
-                                    in.sigma[i], in.type[i]);
+        out[i] = gk_price_unchecked(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i], in.sigma[i],
+                                    in.type[i]);
     }
     unsigned non_finite = 0;
     for (std::size_t i = 0; i < n; ++i) {
@@ -90,9 +89,9 @@ std::expected<void, BatchError> gk_greeks_batch(const GkBatchInputs& in,
                        out.rho_domestic.size() == n && out.rho_foreign.size() == n &&
                        out.vanna.size() == n && out.volga.size() == n;
     if (!sizes) [[unlikely]] {
-        return std::unexpected(BatchError{
-            0, Error{Errc::SizeMismatch, "gk_greeks_batch", static_cast<double>(in.S.size()),
-                     static_cast<double>(n)}});
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "gk_greeks_batch",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
     if (any_bad<true>(in, n) != 0) [[unlikely]] {
         for (std::size_t i = 0; i < n; ++i) {

@@ -27,8 +27,7 @@ double brentq(F&& f, double a, double b, double xtol = 1e-14, int max_iter = 200
     if (fa == 0.0) return a;
     if (fb == 0.0) return b;
     if (fa * fb > 0.0) {
-        throw std::invalid_argument(
-            std::format("brentq: root not bracketed on [{}, {}]", a, b));
+        throw std::invalid_argument(std::format("brentq: root not bracketed on [{}, {}]", a, b));
     }
     double c = a, fc = fa;
     double e = b - a, dstep = e;
@@ -41,8 +40,7 @@ double brentq(F&& f, double a, double b, double xtol = 1e-14, int max_iter = 200
             fb = fc;
             fc = fa;
         }
-        const double tol1 = 2.0 * 2.220446049250313e-16 * std::abs(b) +
-                            0.5 * xtol;
+        const double tol1 = 2.0 * 2.220446049250313e-16 * std::abs(b) + 0.5 * xtol;
         const double xm = 0.5 * (c - b);
         if (std::abs(xm) <= tol1 || fb == 0.0) return b;
         if (std::abs(e) >= tol1 && std::abs(fa) > std::abs(fb)) {

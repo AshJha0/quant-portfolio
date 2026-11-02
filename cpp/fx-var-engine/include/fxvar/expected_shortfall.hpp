@@ -35,9 +35,8 @@ double empirical_es(const std::vector<double>& pnl, double alpha = 0.01,
                     const std::vector<double>& weights = {});
 
 /// (VaR, ES) from one pass over the sample.
-std::pair<double, double> empirical_var_es(
-    const std::vector<double>& pnl, double alpha = 0.01,
-    const std::vector<double>& weights = {});
+std::pair<double, double> empirical_var_es(const std::vector<double>& pnl, double alpha = 0.01,
+                                           const std::vector<double>& weights = {});
 
 /// Closed-form Normal VaR: -mean + sigma * Phi^{-1}(1 - alpha).
 double normal_var(double sigma, double alpha = 0.01, double mean = 0.0);
@@ -47,12 +46,10 @@ double normal_es(double sigma, double alpha = 0.01, double mean = 0.0);
 
 /// Standardised Student-t VaR with P&L std sigma (unit-variance scaling
 /// sqrt((df-2)/df)); df must be finite and > 2.
-double t_var(double sigma, double alpha = 0.01, double df = 6.0,
-             double mean = 0.0);
+double t_var(double sigma, double alpha = 0.01, double df = 6.0, double mean = 0.0);
 
 /// Standardised Student-t ES: f(q) (df + q^2) / (alpha (df-1)) for the
 /// standard t at q = t^{-1}(1 - alpha), rescaled to unit variance.
-double t_es(double sigma, double alpha = 0.01, double df = 6.0,
-            double mean = 0.0);
+double t_es(double sigma, double alpha = 0.01, double df = 6.0, double mean = 0.0);
 
 }  // namespace fxvar

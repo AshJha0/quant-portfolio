@@ -28,19 +28,18 @@ namespace fxopt {
 /// Throws std::invalid_argument if the price lies outside
 /// (lower - tau_lo, upper - tau), T = 0 or an input is invalid;
 /// std::runtime_error if the solver does not converge.
-double implied_vol(double price, double S, double K, double T, double r_d,
-                   double r_f, OptionType type);
+double implied_vol(double price, double S, double K, double T, double r_d, double r_f,
+                   OptionType type);
 
 /// Former signature with solver tuning parameters, which the solver no
 /// longer has. The extra arguments are ignored.
 [[deprecated("tol and max_iter are ignored; use the 7-argument overload")]]
-double implied_vol(double price, double S, double K, double T, double r_d,
-                   double r_f, OptionType type, double tol, int max_iter = 100);
+double implied_vol(double price, double S, double K, double T, double r_d, double r_f,
+                   OptionType type, double tol, int max_iter = 100);
 
 /// noexcept form of implied_vol(): the same root, or the error the throwing
 /// form raises. No allocation.
-[[nodiscard]] Result<double> try_implied_vol(double price, double S, double K, double T,
-                                             double r_d, double r_f,
-                                             OptionType type) noexcept;
+[[nodiscard]] Result<double> try_implied_vol(double price, double S, double K, double T, double r_d,
+                                             double r_f, OptionType type) noexcept;
 
 }  // namespace fxopt

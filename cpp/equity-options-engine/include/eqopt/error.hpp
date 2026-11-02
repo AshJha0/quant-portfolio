@@ -21,25 +21,25 @@ namespace eqopt {
 
 /// What went wrong. Each code maps to one exception message.
 enum class Errc : std::uint8_t {
-    NegativeOrNonFinite,   ///< `field` (a) is NaN, Inf or negative.
-    NonFiniteRate,         ///< r (a) or q (b) is NaN or Inf.
-    NotStrictlyPositive,   ///< d1/d2: S, K, T, sigma = a, b, c, d.
-    B76NotStrictlyPositive,///< b76_d1_d2: F, K, T, sigma = a, b, c, d.
-    NonFiniteResult,       ///< `field` names the kernel whose result overflowed.
-    BadSteps,              ///< n_steps (a) < 1.
-    ProbabilityOutOfRange, ///< CRR risk-neutral p (a) outside (0, 1).
-    WorkspaceTooSmall,     ///< workspace size (a) below the required (b).
-    PriceNotFinite,        ///< implied vol: quote is NaN or Inf.
-    Expired,               ///< implied vol: T <= 0.
-    NonPositiveSpotStrike, ///< implied vol: S <= 0 or K <= 0.
-    BelowLowerBound,       ///< implied vol: price (a) <= lower bound (b).
-    AboveUpperBound,       ///< implied vol: price (a) >= upper bound (b).
-    AtBound,               ///< implied vol: within rounding of a bound.
-    NoConvergence,         ///< implied vol: root finder did not converge.
-    TooFewPaths,           ///< MC: too few independent samples.
-    BadThreads,            ///< MC: threads == 0.
-    McNotFinite,           ///< MC: estimate overflowed.
-    SizeMismatch,          ///< batch: input/output spans differ in length.
+    NegativeOrNonFinite,     ///< `field` (a) is NaN, Inf or negative.
+    NonFiniteRate,           ///< r (a) or q (b) is NaN or Inf.
+    NotStrictlyPositive,     ///< d1/d2: S, K, T, sigma = a, b, c, d.
+    B76NotStrictlyPositive,  ///< b76_d1_d2: F, K, T, sigma = a, b, c, d.
+    NonFiniteResult,         ///< `field` names the kernel whose result overflowed.
+    BadSteps,                ///< n_steps (a) < 1.
+    ProbabilityOutOfRange,   ///< CRR risk-neutral p (a) outside (0, 1).
+    WorkspaceTooSmall,       ///< workspace size (a) below the required (b).
+    PriceNotFinite,          ///< implied vol: quote is NaN or Inf.
+    Expired,                 ///< implied vol: T <= 0.
+    NonPositiveSpotStrike,   ///< implied vol: S <= 0 or K <= 0.
+    BelowLowerBound,         ///< implied vol: price (a) <= lower bound (b).
+    AboveUpperBound,         ///< implied vol: price (a) >= upper bound (b).
+    AtBound,                 ///< implied vol: within rounding of a bound.
+    NoConvergence,           ///< implied vol: root finder did not converge.
+    TooFewPaths,             ///< MC: too few independent samples.
+    BadThreads,              ///< MC: threads == 0.
+    McNotFinite,             ///< MC: estimate overflowed.
+    SizeMismatch,            ///< batch: input/output spans differ in length.
 };
 
 /// A kernel error. Trivially copyable, never allocates.

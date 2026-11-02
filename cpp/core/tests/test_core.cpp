@@ -28,8 +28,9 @@ namespace {
 
 TEST(Normal, CdfKnownValues) {
     EXPECT_EQ(qp::norm_cdf(0.0), 0.5);
-    // mpmath: ncdf(1.96) = 0.97500210485177952...
-    EXPECT_NEAR(qp::norm_cdf(1.96), 0.9750021048517795, 1e-16);
+    // mpmath: ncdf(1.96) = 0.97500210485177952... erfc is not correctly
+    // rounded in glibc or the MSVC CRT, so allow 2 ulp (ulp = 1.1e-16 here).
+    EXPECT_NEAR(qp::norm_cdf(1.96), 0.9750021048517795, 2.3e-16);
     // Left tail keeps relative accuracy: Mills ratio bound
     // n(x)/|x| (1 - 1/x^2) < N(x) < n(x)/|x| for x < 0.
     const double x = -30.0;

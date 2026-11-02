@@ -49,8 +49,7 @@ TEST(Christoffersen, HandComputedMarkovTest) {
   // exception count.
   const std::vector<int> clustered{1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   const std::vector<int> spread{1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-  EXPECT_GT(christoffersen_independence(clustered).lr,
-            christoffersen_independence(spread).lr);
+  EXPECT_GT(christoffersen_independence(clustered).lr, christoffersen_independence(spread).lr);
   // Degenerate all-zero series: LR = 0.
   EXPECT_NEAR(christoffersen_independence({0, 0, 0, 0}).lr, 0.0, 1e-15);
   EXPECT_THROW(christoffersen_independence({1}), std::invalid_argument);
@@ -76,12 +75,9 @@ TEST(Chi2, SurvivalFunctionSpotChecks) {
 TEST(Basel, ExactRegulatoryBoundaries) {
   // 250-day, 99% window: green 0-4, yellow 5-9, red >= 10 - exact zone
   // boundaries from the cumulative binomial, not a lookup table.
-  for (int x = 0; x <= 4; ++x)
-    EXPECT_EQ(basel_traffic_light(x).zone, Zone::kGreen) << "x=" << x;
-  for (int x = 5; x <= 9; ++x)
-    EXPECT_EQ(basel_traffic_light(x).zone, Zone::kYellow) << "x=" << x;
-  for (int x : {10, 11, 15, 25})
-    EXPECT_EQ(basel_traffic_light(x).zone, Zone::kRed) << "x=" << x;
+  for (int x = 0; x <= 4; ++x) EXPECT_EQ(basel_traffic_light(x).zone, Zone::kGreen) << "x=" << x;
+  for (int x = 5; x <= 9; ++x) EXPECT_EQ(basel_traffic_light(x).zone, Zone::kYellow) << "x=" << x;
+  for (int x : {10, 11, 15, 25}) EXPECT_EQ(basel_traffic_light(x).zone, Zone::kRed) << "x=" << x;
   // 1996 table multipliers.
   EXPECT_DOUBLE_EQ(basel_traffic_light(0).multiplier, 3.0);
   EXPECT_DOUBLE_EQ(basel_traffic_light(4).multiplier, 3.0);
@@ -103,11 +99,7 @@ TEST(EvaluateBacktest, EndToEndCountsAndConvention) {
   EXPECT_EQ(r.exceedances, expect_exc);
   EXPECT_NEAR(r.exception_rate, 2.0 / 6.0, 1e-15);
   EXPECT_NEAR(r.conditional.lr, r.kupiec.lr + r.independence.lr, 1e-12);
-  EXPECT_THROW(evaluate_var_backtest({1.0}, {1.0}, 0.01),
-               std::invalid_argument);
-  EXPECT_THROW(evaluate_var_backtest({1.0, 2.0}, {1.0}, 0.01),
-               std::invalid_argument);
-  EXPECT_THROW(
-      evaluate_var_backtest({1.0, std::nan("")}, {1.0, 1.0}, 0.01),
-      std::invalid_argument);
+  EXPECT_THROW(evaluate_var_backtest({1.0}, {1.0}, 0.01), std::invalid_argument);
+  EXPECT_THROW(evaluate_var_backtest({1.0, 2.0}, {1.0}, 0.01), std::invalid_argument);
+  EXPECT_THROW(evaluate_var_backtest({1.0, std::nan("")}, {1.0, 1.0}, 0.01), std::invalid_argument);
 }

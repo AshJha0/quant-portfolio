@@ -23,9 +23,8 @@ bool same_length(const BsBatchInputs& in, std::size_t n) noexcept {
 inline int ok_price_inputs(const BsBatchInputs& in, std::size_t i) noexcept {
     const double S = in.S[i], K = in.K[i], T = in.T[i], v = in.sigma[i];
     const double r = in.r[i], q = in.q[i];
-    return static_cast<int>(S >= 0.0) & static_cast<int>(S <= kMax) &
-           static_cast<int>(K >= 0.0) & static_cast<int>(K <= kMax) &
-           static_cast<int>(T >= 0.0) & static_cast<int>(T <= kMax) &
+    return static_cast<int>(S >= 0.0) & static_cast<int>(S <= kMax) & static_cast<int>(K >= 0.0) &
+           static_cast<int>(K <= kMax) & static_cast<int>(T >= 0.0) & static_cast<int>(T <= kMax) &
            static_cast<int>(v >= 0.0) & static_cast<int>(v <= kMax) &
            static_cast<int>(std::fabs(r) <= kMax) & static_cast<int>(std::fabs(q) <= kMax);
 }
@@ -33,9 +32,8 @@ inline int ok_price_inputs(const BsBatchInputs& in, std::size_t i) noexcept {
 inline int ok_greeks_inputs(const BsBatchInputs& in, std::size_t i) noexcept {
     const double S = in.S[i], K = in.K[i], T = in.T[i], v = in.sigma[i];
     const double r = in.r[i], q = in.q[i];
-    return static_cast<int>(S > 0.0) & static_cast<int>(S <= kMax) &
-           static_cast<int>(K > 0.0) & static_cast<int>(K <= kMax) &
-           static_cast<int>(T > 0.0) & static_cast<int>(T <= kMax) &
+    return static_cast<int>(S > 0.0) & static_cast<int>(S <= kMax) & static_cast<int>(K > 0.0) &
+           static_cast<int>(K <= kMax) & static_cast<int>(T > 0.0) & static_cast<int>(T <= kMax) &
            static_cast<int>(v > 0.0) & static_cast<int>(v <= kMax) &
            static_cast<int>(std::fabs(r) <= kMax) & static_cast<int>(std::fabs(q) <= kMax);
 }
@@ -57,14 +55,14 @@ std::expected<void, BatchError> bs_price_batch(const BsBatchInputs& in,
                                                std::span<double> out) noexcept {
     const std::size_t n = out.size();
     if (!same_length(in, n)) [[unlikely]] {
-        return std::unexpected(BatchError{
-            0, Error{Errc::SizeMismatch, "bs_price_batch", static_cast<double>(in.S.size()),
-                     static_cast<double>(n)}});
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "bs_price_batch",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
     if (count_bad<false>(in, n) != 0) [[unlikely]] {
         for (std::size_t i = 0; i < n; ++i) {
-            const auto r = try_bs_price(in.S[i], in.K[i], in.T[i], in.r[i], in.sigma[i],
-                                        in.q[i], in.type[i]);
+            const auto r =
+                try_bs_price(in.S[i], in.K[i], in.T[i], in.r[i], in.sigma[i], in.q[i], in.type[i]);
             if (!r) return std::unexpected(BatchError{i, r.error()});
         }
     }
@@ -91,20 +89,20 @@ std::expected<void, BatchError> bs_greeks_batch(const BsBatchInputs& in,
                        out.vega.size() == n && out.theta.size() == n && out.rho.size() == n &&
                        out.vanna.size() == n && out.volga.size() == n;
     if (!sizes) [[unlikely]] {
-        return std::unexpected(BatchError{
-            0, Error{Errc::SizeMismatch, "bs_greeks_batch", static_cast<double>(in.S.size()),
-                     static_cast<double>(n)}});
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "bs_greeks_batch",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
     if (count_bad<true>(in, n) != 0) [[unlikely]] {
         for (std::size_t i = 0; i < n; ++i) {
-            const auto r = try_bs_greeks(in.S[i], in.K[i], in.T[i], in.r[i], in.sigma[i],
-                                         in.q[i], in.type[i]);
+            const auto r =
+                try_bs_greeks(in.S[i], in.K[i], in.T[i], in.r[i], in.sigma[i], in.q[i], in.type[i]);
             if (!r) return std::unexpected(BatchError{i, r.error()});
         }
     }
     for (std::size_t i = 0; i < n; ++i) {
-        const BSGreeks g = bs_greeks_unchecked(in.S[i], in.K[i], in.T[i], in.r[i],
-                                               in.sigma[i], in.q[i], in.type[i]);
+        const BSGreeks g = bs_greeks_unchecked(in.S[i], in.K[i], in.T[i], in.r[i], in.sigma[i],
+                                               in.q[i], in.type[i]);
         out.price[i] = g.price;
         out.delta[i] = g.delta;
         out.gamma[i] = g.gamma;

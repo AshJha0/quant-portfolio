@@ -13,9 +13,9 @@
 #include <expected>
 #include <string>
 
-#include "qp/expected.hpp"
 #include <type_traits>
 #include <utility>
+#include "qp/expected.hpp"
 
 namespace fxopt {
 

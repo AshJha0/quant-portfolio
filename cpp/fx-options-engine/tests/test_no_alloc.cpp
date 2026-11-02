@@ -91,8 +91,8 @@ TEST(NoAlloc, BinomialWithWorkspace) {
     std::vector<double> ws(binomial_workspace_size(500));
     double acc = 0.0;
     EXPECT_EQ(allocations([&](int i) {
-                  acc += *try_binomial_price(1.05 + 0.001 * i, 1.1, 1, 0.03, 0.01, 0.15, kPut,
-                                             500, Exercise::American, ws);
+                  acc += *try_binomial_price(1.05 + 0.001 * i, 1.1, 1, 0.03, 0.01, 0.15, kPut, 500,
+                                             Exercise::American, ws);
               }),
               0);
     EXPECT_GT(acc, 0.0);
@@ -121,13 +121,12 @@ TEST(NoAlloc, MonteCarloWithPoolAndWorkspace) {
     double acc = 0.0;
     EXPECT_EQ(allocations([&](int i) {
                   acc += try_mc_price(1.1, 1.1, 1, 0.03, 0.01, 0.1, kCall, 50000,
-                                      Seed{static_cast<std::uint64_t>(i)}, true, true, 4, ws,
-                                      &pool)
+                                      Seed{static_cast<std::uint64_t>(i)}, true, true, 4, ws, &pool)
                              ->price;
-                  acc += try_mc_price(1.1, 1.1, 1, 0.03, 0.01, 0.1, kCall, 50000,
-                                      Seed{static_cast<std::uint64_t>(i)}, true, true, 1, ws,
-                                      nullptr)
-                             ->price;
+                  acc +=
+                      try_mc_price(1.1, 1.1, 1, 0.03, 0.01, 0.1, kCall, 50000,
+                                   Seed{static_cast<std::uint64_t>(i)}, true, true, 1, ws, nullptr)
+                          ->price;
               }),
               0);
     EXPECT_GT(acc, 0.0);

@@ -31,26 +31,19 @@ TEST(PutCallParity, HoldsTo1e12AcrossGrid) {
                 for (double sigma : vols)
                     for (double r : rates)
                         for (double q : divs) {
-                            const double c =
-                                bs_price(S, K, T, r, sigma, q, OptionType::Call);
-                            const double p =
-                                bs_price(S, K, T, r, sigma, q, OptionType::Put);
-                            const double rhs = S * std::exp(-q * T) -
-                                               K * std::exp(-r * T);
+                            const double c = bs_price(S, K, T, r, sigma, q, OptionType::Call);
+                            const double p = bs_price(S, K, T, r, sigma, q, OptionType::Put);
+                            const double rhs = S * std::exp(-q * T) - K * std::exp(-r * T);
                             EXPECT_NEAR(c - p, rhs, 1e-12 * std::max(1.0, S))
-                                << "S=" << S << " K=" << K << " T=" << T
-                                << " sigma=" << sigma << " r=" << r
-                                << " q=" << q;
+                                << "S=" << S << " K=" << K << " T=" << T << " sigma=" << sigma
+                                << " r=" << r << " q=" << q;
                         }
 }
 
 TEST(EdgeCases, ZeroExpiryReturnsIntrinsic) {
-    EXPECT_DOUBLE_EQ(bs_price(110.0, 100.0, 0.0, 0.05, 0.2, 0.0,
-                              OptionType::Call), 10.0);
-    EXPECT_DOUBLE_EQ(bs_price(90.0, 100.0, 0.0, 0.05, 0.2, 0.0,
-                              OptionType::Call), 0.0);
-    EXPECT_DOUBLE_EQ(bs_price(90.0, 100.0, 0.0, 0.05, 0.2, 0.0,
-                              OptionType::Put), 10.0);
+    EXPECT_DOUBLE_EQ(bs_price(110.0, 100.0, 0.0, 0.05, 0.2, 0.0, OptionType::Call), 10.0);
+    EXPECT_DOUBLE_EQ(bs_price(90.0, 100.0, 0.0, 0.05, 0.2, 0.0, OptionType::Call), 0.0);
+    EXPECT_DOUBLE_EQ(bs_price(90.0, 100.0, 0.0, 0.05, 0.2, 0.0, OptionType::Put), 10.0);
 }
 
 TEST(EdgeCases, ZeroVolReturnsDiscountedForwardIntrinsic) {
@@ -67,14 +60,12 @@ TEST(EdgeCases, ZeroVolReturnsDiscountedForwardIntrinsic) {
 
 TEST(EdgeCases, ZeroStrikeAndZeroSpotLimits) {
     // Zero-strike call is a dividend-adjusted forward on the stock.
-    EXPECT_DOUBLE_EQ(bs_price(100.0, 0.0, 2.0, 0.05, 0.2, 0.03,
-                              OptionType::Call), 100.0 * std::exp(-0.03 * 2.0));
-    EXPECT_DOUBLE_EQ(bs_price(100.0, 0.0, 2.0, 0.05, 0.2, 0.03,
-                              OptionType::Put), 0.0);
-    EXPECT_DOUBLE_EQ(bs_price(0.0, 100.0, 2.0, 0.05, 0.2, 0.0,
-                              OptionType::Call), 0.0);
-    EXPECT_DOUBLE_EQ(bs_price(0.0, 100.0, 2.0, 0.05, 0.2, 0.0,
-                              OptionType::Put), 100.0 * std::exp(-0.05 * 2.0));
+    EXPECT_DOUBLE_EQ(bs_price(100.0, 0.0, 2.0, 0.05, 0.2, 0.03, OptionType::Call),
+                     100.0 * std::exp(-0.03 * 2.0));
+    EXPECT_DOUBLE_EQ(bs_price(100.0, 0.0, 2.0, 0.05, 0.2, 0.03, OptionType::Put), 0.0);
+    EXPECT_DOUBLE_EQ(bs_price(0.0, 100.0, 2.0, 0.05, 0.2, 0.0, OptionType::Call), 0.0);
+    EXPECT_DOUBLE_EQ(bs_price(0.0, 100.0, 2.0, 0.05, 0.2, 0.0, OptionType::Put),
+                     100.0 * std::exp(-0.05 * 2.0));
 }
 
 TEST(EdgeCases, HugeVolApproachesUpperBound) {
@@ -92,13 +83,11 @@ TEST(EdgeCases, HugeVolApproachesUpperBound) {
 
 TEST(EdgeCases, DeepWingsAreExactAndFinite) {
     // erfc-based CDF: deep OTM prices underflow gracefully to ~0, never NaN.
-    const double deep_otm =
-        bs_price(100.0, 10000.0, 0.1, 0.02, 0.1, 0.0, OptionType::Call);
+    const double deep_otm = bs_price(100.0, 10000.0, 0.1, 0.02, 0.1, 0.0, OptionType::Call);
     EXPECT_TRUE(std::isfinite(deep_otm));
     EXPECT_GE(deep_otm, 0.0);
     EXPECT_LT(deep_otm, 1e-100);
-    const double deep_itm =
-        bs_price(100.0, 1e-8, 1.0, 0.02, 0.2, 0.0, OptionType::Call);
+    const double deep_itm = bs_price(100.0, 1e-8, 1.0, 0.02, 0.2, 0.0, OptionType::Call);
     EXPECT_NEAR(deep_itm, 100.0 - 1e-8 * std::exp(-0.02), 1e-9);
 }
 
@@ -120,44 +109,32 @@ TEST(Validation, InfiniteInputsThrowInvalidArgument) {
     constexpr double kInf = std::numeric_limits<double>::infinity();
     EXPECT_THROW(bs_price(kInf, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
     EXPECT_THROW(bs_price(100.0, kInf, 1.0, 0.05, 0.2), std::invalid_argument);
-    EXPECT_THROW(bs_price(100.0, 100.0, kInf, 0.05, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, kInf),
-                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, kInf, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, kInf), std::invalid_argument);
     // Rates/yields may be negative but must be finite.
-    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kInf, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kNan, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kInf),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kNan),
-                 std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kInf, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, kNan, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kInf), std::invalid_argument);
+    EXPECT_THROW(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, kNan), std::invalid_argument);
 }
 
 TEST(EdgeCases, ExtremeMoneyness100xIsPinnedToParityBounds) {
     // S/K = 100x and 0.01x: prices collapse to their arbitrage limits and
     // parity still holds to machine precision.
     const double T = 1.0, r = 0.03, q = 0.01, sigma = 0.2;
-    const double deep_itm_call =
-        bs_price(100.0, 1.0, T, r, sigma, q, OptionType::Call);
-    EXPECT_NEAR(deep_itm_call,
-                100.0 * std::exp(-q * T) - 1.0 * std::exp(-r * T), 1e-10);
-    const double deep_otm_call =
-        bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Call);
+    const double deep_itm_call = bs_price(100.0, 1.0, T, r, sigma, q, OptionType::Call);
+    EXPECT_NEAR(deep_itm_call, 100.0 * std::exp(-q * T) - 1.0 * std::exp(-r * T), 1e-10);
+    const double deep_otm_call = bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Call);
     EXPECT_GE(deep_otm_call, 0.0);
     EXPECT_LT(deep_otm_call, 1e-100);
-    const double deep_itm_put =
-        bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Put);
-    EXPECT_NEAR(deep_itm_put,
-                100.0 * std::exp(-r * T) - 1.0 * std::exp(-q * T), 1e-10);
+    const double deep_itm_put = bs_price(1.0, 100.0, T, r, sigma, q, OptionType::Put);
+    EXPECT_NEAR(deep_itm_put, 100.0 * std::exp(-r * T) - 1.0 * std::exp(-q * T), 1e-10);
     // Parity at both wings.
     for (double S : {1.0, 100.0}) {
         for (double K : {1.0, 100.0}) {
             const double c = bs_price(S, K, T, r, sigma, q, OptionType::Call);
             const double p = bs_price(S, K, T, r, sigma, q, OptionType::Put);
-            EXPECT_NEAR(c - p,
-                        S * std::exp(-q * T) - K * std::exp(-r * T), 1e-12);
+            EXPECT_NEAR(c - p, S * std::exp(-q * T) - K * std::exp(-r * T), 1e-12);
         }
     }
 }
@@ -166,18 +143,14 @@ TEST(EdgeCases, VeryLongExpiryStaysWithinBounds) {
     // 30y and 100y: no overflow, prices pinned inside no-arbitrage bounds,
     // call converges towards S e^{-qT} as T grows (sigma sqrt(T) large).
     for (double T : {30.0, 100.0}) {
-        const double c = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01,
-                                  OptionType::Call);
-        const double p = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01,
-                                  OptionType::Put);
+        const double c = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01, OptionType::Call);
+        const double p = bs_price(100.0, 100.0, T, 0.03, 0.25, 0.01, OptionType::Put);
         ASSERT_TRUE(std::isfinite(c));
         ASSERT_TRUE(std::isfinite(p));
         EXPECT_GT(c, 0.0);
         EXPECT_LE(c, 100.0 * std::exp(-0.01 * T) * (1.0 + 1e-12));
         EXPECT_LE(p, 100.0 * std::exp(-0.03 * T) * (1.0 + 1e-12));
-        EXPECT_NEAR(c - p,
-                    100.0 * std::exp(-0.01 * T) - 100.0 * std::exp(-0.03 * T),
-                    1e-10);
+        EXPECT_NEAR(c - p, 100.0 * std::exp(-0.01 * T) - 100.0 * std::exp(-0.03 * T), 1e-10);
     }
 }
 
@@ -189,12 +162,9 @@ TEST(Validation, NegativeRatesAndYieldsAreSupported) {
 }
 
 TEST(Validation, D1D2RejectDegenerateInputs) {
-    EXPECT_THROW(eqopt::d1_d2(0.0, 100.0, 1.0, 0.05, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(eqopt::d1_d2(100.0, 100.0, 0.0, 0.05, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(eqopt::d1_d2(100.0, 100.0, 1.0, 0.05, 0.0),
-                 std::invalid_argument);
+    EXPECT_THROW(eqopt::d1_d2(0.0, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(eqopt::d1_d2(100.0, 100.0, 0.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(eqopt::d1_d2(100.0, 100.0, 1.0, 0.05, 0.0), std::invalid_argument);
 }
 
 TEST(DomainScan, NoNansOrNegativePricesAcrossWideDomain) {
@@ -210,17 +180,13 @@ TEST(DomainScan, NoNansOrNegativePricesAcrossWideDomain) {
             for (double T : expiries)
                 for (double sigma : vols)
                     for (double r : rates)
-                        for (OptionType type :
-                             {OptionType::Call, OptionType::Put}) {
-                            const double v =
-                                bs_price(S, K, T, r, sigma, 0.01, type);
-                            ASSERT_TRUE(std::isfinite(v))
-                                << "S=" << S << " K=" << K << " T=" << T
-                                << " sigma=" << sigma << " r=" << r;
+                        for (OptionType type : {OptionType::Call, OptionType::Put}) {
+                            const double v = bs_price(S, K, T, r, sigma, 0.01, type);
+                            ASSERT_TRUE(std::isfinite(v)) << "S=" << S << " K=" << K << " T=" << T
+                                                          << " sigma=" << sigma << " r=" << r;
                             ASSERT_GE(v, 0.0);
-                            const double upper = type == OptionType::Call
-                                                     ? S * std::exp(-0.01 * T)
-                                                     : K * std::exp(-r * T);
+                            const double upper = type == OptionType::Call ? S * std::exp(-0.01 * T)
+                                                                          : K * std::exp(-r * T);
                             ASSERT_LE(v, upper * (1.0 + 1e-12) + 1e-12);
                         }
 }

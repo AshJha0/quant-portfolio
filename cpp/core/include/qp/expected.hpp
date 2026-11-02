@@ -22,7 +22,8 @@ using Result = std::expected<T, E>;
 /// Unwrap a result or throw. `throw_error(e)` is looked up in E's namespace.
 template <class T, class E>
 T value_or_throw(std::expected<T, E>&& r) {
-    if (!r) [[unlikely]] throw_error(r.error());
+    if (!r) [[unlikely]]
+        throw_error(r.error());
     if constexpr (!std::is_void_v<T>) return std::move(*r);
 }
 

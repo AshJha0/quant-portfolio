@@ -56,10 +56,11 @@ private:
 
 /// Result of a Monte Carlo tail-risk estimation.
 struct MonteCarloResult {
-    double var = 0.0;       ///< VaR, positive for a loss (order statistic L(m)).
-    double es = 0.0;        ///< Expected Shortfall, positive for a loss.
-    double var_se = 0.0;      ///< Bootstrap standard error of the VaR (primary).
-    double var_se_kde = 0.0;  ///< Silverman-KDE asymptotic SE at the reported quantile (diagnostic).
+    double var = 0.0;     ///< VaR, positive for a loss (order statistic L(m)).
+    double es = 0.0;      ///< Expected Shortfall, positive for a loss.
+    double var_se = 0.0;  ///< Bootstrap standard error of the VaR (primary).
+    double var_se_kde =
+        0.0;  ///< Silverman-KDE asymptotic SE at the reported quantile (diagnostic).
     std::size_t n_paths = 0;
 };
 
@@ -69,8 +70,7 @@ struct MonteCarloResult {
 /// platform and libm. Throws std::invalid_argument on bad inputs.
 [[nodiscard]] Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths,
                                              Dist dist = Dist::Normal, double df = 6.0,
-                                             std::uint64_t seed = 0,
-                                             Repair repair = Repair::None);
+                                             std::uint64_t seed = 0, Repair repair = Repair::None);
 
 /// VaR + ES (order statistic, see historical.hpp) + bootstrap SE (primary,
 /// mc_bootstrap_se with n_boot >= 2) + KDE SE (diagnostic) from one scenario
@@ -97,9 +97,8 @@ struct MonteCarloResult {
 /// and both SEs come from the same scenarios. Throws std::invalid_argument on
 /// an empty or all-zero book, shape mismatch, alpha outside (0, 0.5), or
 /// df <= 2 for the Student-t model.
-[[nodiscard]] MonteCarloResult monte_carlo_var(std::span<const double> exposures,
-                                               const Matrix& cov, double alpha = 0.01,
-                                               std::size_t n_paths = 100'000,
+[[nodiscard]] MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix& cov,
+                                               double alpha = 0.01, std::size_t n_paths = 100'000,
                                                Dist dist = Dist::Normal, double df = 6.0,
                                                std::uint64_t seed = 0, std::size_t n_boot = 200,
                                                Repair repair = Repair::None);

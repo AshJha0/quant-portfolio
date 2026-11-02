@@ -16,44 +16,41 @@ double simple_to_log(double pct) {
   // than all of its value, and an infinite shock would silently poison a
   // whole stress report.
   if (!(pct > -1.0) || !std::isfinite(pct))
-    throw std::invalid_argument(
-        "simple_to_log: percentage move must be finite and > -100%");
+    throw std::invalid_argument("simple_to_log: percentage move must be finite and > -100%");
   return std::log1p(pct);
 }
 
 std::map<std::string, Scenario> historical_scenarios() {
   std::map<std::string, Scenario> lib;
-  lib["brexit_2016"] = Scenario{
-      "GBP flash - Brexit referendum (24 Jun 2016)",
-      {
-          {fx_factor("GBP"), simple_to_log(-0.081)},
-          {fx_factor("EUR"), simple_to_log(-0.024)},
-          {fx_factor("JPY"), simple_to_log(+0.039)},
-          {fx_factor("CHF"), simple_to_log(+0.015)},
-          {fx_factor("AUD"), simple_to_log(-0.019)},
-          {ir_factor("GBP"), -0.0025},  // BoE easing repricing
-      },
-      "Cable -8.1% in a day; safe havens bid; front-end GBP rates "
-      "reprice 25bp lower."};
-  lib["chf_depeg_2015"] = Scenario{
-      "CHF depeg - SNB floor removal (15 Jan 2015)",
-      {
-          {fx_factor("CHF"), simple_to_log(+0.149)},
-          {fx_factor("EUR"), simple_to_log(-0.014)},
-          {fx_factor("JPY"), simple_to_log(+0.012)},
-          {ir_factor("CHF"), -0.0050},  // SNB cut to -0.75%
-      },
-      "CHF +14.9% vs USD close-to-close (intraday >+30%); the peg-break "
-      "archetype - invisible to a 250d HS window."};
-  lib["jpy_1998"] = Scenario{
-      "JPY carry unwind (7-8 Oct 1998)",
-      {
-          {fx_factor("JPY"), simple_to_log(+0.115)},
-          {fx_factor("AUD"), simple_to_log(-0.040)},
-          {fx_factor("NZD"), simple_to_log(-0.040)},
-          {fx_factor("CHF"), simple_to_log(+0.020)},
-      },
-      "USDJPY 131 -> 117 in two sessions as levered carry unwound."};
+  lib["brexit_2016"] = Scenario{"GBP flash - Brexit referendum (24 Jun 2016)",
+                                {
+                                    {fx_factor("GBP"), simple_to_log(-0.081)},
+                                    {fx_factor("EUR"), simple_to_log(-0.024)},
+                                    {fx_factor("JPY"), simple_to_log(+0.039)},
+                                    {fx_factor("CHF"), simple_to_log(+0.015)},
+                                    {fx_factor("AUD"), simple_to_log(-0.019)},
+                                    {ir_factor("GBP"), -0.0025},  // BoE easing repricing
+                                },
+                                "Cable -8.1% in a day; safe havens bid; front-end GBP rates "
+                                "reprice 25bp lower."};
+  lib["chf_depeg_2015"] =
+      Scenario{"CHF depeg - SNB floor removal (15 Jan 2015)",
+               {
+                   {fx_factor("CHF"), simple_to_log(+0.149)},
+                   {fx_factor("EUR"), simple_to_log(-0.014)},
+                   {fx_factor("JPY"), simple_to_log(+0.012)},
+                   {ir_factor("CHF"), -0.0050},  // SNB cut to -0.75%
+               },
+               "CHF +14.9% vs USD close-to-close (intraday >+30%); the peg-break "
+               "archetype - invisible to a 250d HS window."};
+  lib["jpy_1998"] = Scenario{"JPY carry unwind (7-8 Oct 1998)",
+                             {
+                                 {fx_factor("JPY"), simple_to_log(+0.115)},
+                                 {fx_factor("AUD"), simple_to_log(-0.040)},
+                                 {fx_factor("NZD"), simple_to_log(-0.040)},
+                                 {fx_factor("CHF"), simple_to_log(+0.020)},
+                             },
+                             "USDJPY 131 -> 117 in two sessions as levered carry unwound."};
   return lib;
 }
 
@@ -69,8 +66,7 @@ Scenario usd_broad_move(const std::vector<std::string>& ccys, double pct) {
   sc.description = "Uniform USD move against all book currencies.";
   for (const auto& c : ccys) {
     std::string u = c;
-    for (char& ch : u) ch = static_cast<char>(std::toupper(
-        static_cast<unsigned char>(ch)));
+    for (char& ch : u) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
     if (u == "USD") continue;
     // USD +pct vs CCY means CCYUSD falls by pct/(1+pct) in simple terms.
     sc.shocks[fx_factor(u)] = simple_to_log(-pct / (1.0 + pct));
@@ -86,19 +82,18 @@ Scenario peg_break_scenario(const std::string& ccy, double jump,
   sc.shocks[fx_factor(ccy)] = simple_to_log(jump);
   for (const auto& [c, m] : contagion) sc.shocks[fx_factor(c)] = simple_to_log(m);
   std::string u = ccy;
-  for (char& ch : u) ch = static_cast<char>(std::toupper(
-      static_cast<unsigned char>(ch)));
+  for (char& ch : u) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
   const char* direction = (jump < 0) ? "devaluation" : "revaluation";
   {
     std::ostringstream name;
-    name << u << " peg break (" << (jump >= 0 ? "+" : "") << jump * 100.0
-         << "% " << direction << ")";
+    name << u << " peg break (" << (jump >= 0 ? "+" : "") << jump * 100.0 << "% " << direction
+         << ")";
     sc.name = name.str();
   }
   {
     std::ostringstream desc;
-    desc << "Managed-currency regime break: " << u << " gaps "
-         << (jump >= 0 ? "+" : "") << jump * 100.0
+    desc << "Managed-currency regime break: " << u << " gaps " << (jump >= 0 ? "+" : "")
+         << jump * 100.0
          << "% vs USD with no intermediate prints; HS/parametric VaR see "
             "none of it.";
     sc.description = desc.str();
@@ -106,12 +101,10 @@ Scenario peg_break_scenario(const std::string& ccy, double jump,
   return sc;
 }
 
-std::vector<StressRow> run_stress(
-    const Book& book, const Market& market,
-    const std::map<std::string, Scenario>& scenarios) {
+std::vector<StressRow> run_stress(const Book& book, const Market& market,
+                                  const std::map<std::string, Scenario>& scenarios) {
   const CompiledBook compiled(book, market);  // throws on empty book
-  const std::set<std::string> factors(compiled.factors().begin(),
-                                      compiled.factors().end());
+  const std::set<std::string> factors(compiled.factors().begin(), compiled.factors().end());
   std::vector<StressRow> rows;
   rows.reserve(scenarios.size());
   for (const auto& [key, sc] : scenarios) {
@@ -132,36 +125,33 @@ double checked_sigma_p(const std::vector<double>& w, const Matrix& cov) {
   const double sp2 = quad_form(w, cov);
   const double sp = std::sqrt(std::max(sp2, 0.0));
   if (!(sp > 0.0))
-    throw std::invalid_argument(
-        "book has zero linear risk; reverse stress undefined");
+    throw std::invalid_argument("book has zero linear risk; reverse stress undefined");
   return sp;
 }
 
 }  // namespace
 
-ReverseStress reverse_stress_linear(const std::vector<double>& exposures,
-                                    const Matrix& cov, double radius) {
+ReverseStress reverse_stress_linear(const std::vector<double>& exposures, const Matrix& cov,
+                                    double radius) {
   if (!(radius > 0.0) || !std::isfinite(radius))
     throw std::invalid_argument("radius / loss_target must be finite and positive");
   const double sp = checked_sigma_p(exposures, cov);
   const std::vector<double> sw = matvec(cov, exposures);
   ReverseStress out;
   out.shocks.resize(exposures.size());
-  for (std::size_t i = 0; i < exposures.size(); ++i)
-    out.shocks[i] = -radius * sw[i] / sp;
+  for (std::size_t i = 0; i < exposures.size(); ++i) out.shocks[i] = -radius * sw[i] / sp;
   out.loss = radius * sp;
   return out;
 }
 
-ReverseStress reverse_stress_for_loss(const std::vector<double>& exposures,
-                                      const Matrix& cov, double loss_target) {
+ReverseStress reverse_stress_for_loss(const std::vector<double>& exposures, const Matrix& cov,
+                                      double loss_target) {
   const double sp = checked_sigma_p(exposures, cov);
   return reverse_stress_linear(exposures, cov, loss_target / sp);
 }
 
-ReverseStress reverse_stress_numerical(const std::vector<double>& exposures,
-                                       const Matrix& cov, double radius,
-                                       std::uint64_t seed) {
+ReverseStress reverse_stress_numerical(const std::vector<double>& exposures, const Matrix& cov,
+                                       double radius, std::uint64_t seed) {
   if (!(radius > 0.0) || !std::isfinite(radius))
     throw std::invalid_argument("radius must be finite and positive");
   checked_sigma_p(exposures, cov);
@@ -219,8 +209,7 @@ ReverseStress reverse_stress_numerical(const std::vector<double>& exposures,
     if (gnorm == 0.0) break;
     bool improved = false;
     while (step > 1e-14 * radius) {
-      for (std::size_t j = 0; j < n; ++j)
-        trial[j] = y[j] + step * radius * grad[j] / gnorm;
+      for (std::size_t j = 0; j < n; ++j) trial[j] = y[j] + step * radius * grad[j] / gnorm;
       project(trial);
       const double cand = loss_of(trial);
       if (cand > best) {

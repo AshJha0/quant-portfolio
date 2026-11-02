@@ -20,11 +20,10 @@ namespace qp {
 /// writes the global signgam, which is not thread-safe.
 [[nodiscard]] inline double log_gamma_lanczos(double x) noexcept {
     if (x < 0.5) return std::log(kPi / std::sin(kPi * x)) - log_gamma_lanczos(1.0 - x);
-    static constexpr double c[] = {0.99999999999980993,  676.5203681218851,
-                                   -1259.1392167224028,  771.32342877765313,
-                                   -176.61502916214059,  12.507343278686905,
-                                   -0.13857109526572012, 9.9843695780195716e-6,
-                                   1.5056327351493116e-7};
+    static constexpr double c[] = {
+        0.99999999999980993,  676.5203681218851,     -1259.1392167224028,
+        771.32342877765313,   -176.61502916214059,   12.507343278686905,
+        -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7};
     const double z = x - 1.0;
     double a = c[0];
     const double t = z + 7.5;
@@ -45,7 +44,7 @@ namespace qp {
     d = 1.0 / d;
     double h = d;
     for (int m = 1; m <= max_iter; ++m) {
-        const double dm = static_cast<double>(m);
+        const auto dm = static_cast<double>(m);
         const double m2 = 2.0 * dm;
         double aa = dm * (b - dm) * x / ((qam + m2) * (a + m2));
         d = 1.0 + aa * d;
@@ -70,8 +69,8 @@ namespace qp {
 /// I_x(a, b) for finite a, b > 0 and x in (0, 1).
 [[nodiscard]] inline double betainc_unchecked(double a, double b, double x, double eps,
                                               int max_iter) noexcept {
-    const double ln_front = log_gamma_lanczos(a + b) - log_gamma_lanczos(a) -
-                            log_gamma_lanczos(b) + a * std::log(x) + b * std::log1p(-x);
+    const double ln_front = log_gamma_lanczos(a + b) - log_gamma_lanczos(a) - log_gamma_lanczos(b) +
+                            a * std::log(x) + b * std::log1p(-x);
     const double front = std::exp(ln_front);
     if (x < (a + 1.0) / (a + b + 2.0)) return front * betacf(a, b, x, eps, max_iter) / a;
     return 1.0 - front * betacf(b, a, 1.0 - x, eps, max_iter) / b;

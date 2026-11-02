@@ -10,13 +10,13 @@
 #include <stdexcept>
 #include <vector>
 
+#include "eqvar/backtest.hpp"
 #include "eqvar/expected_shortfall.hpp"
 #include "eqvar/historical.hpp"
 #include "eqvar/matrix.hpp"
 #include "eqvar/monte_carlo.hpp"
 #include "eqvar/parametric.hpp"
 #include "eqvar/returns.hpp"
-#include "eqvar/backtest.hpp"
 #include "eqvar/stats.hpp"
 
 using namespace eqvar;
@@ -177,8 +177,7 @@ TEST(EdgeCases, SingleElementAndTwoElementSamples) {
     // The desk-level estimators refuse a 1-element sample outright.
     EXPECT_THROW(historical_var(one, 0.01), std::invalid_argument);
     EXPECT_THROW(expected_shortfall(one, 0.01), std::invalid_argument);
-    EXPECT_THROW(christoffersen_independence(std::vector<std::uint8_t>{0}),
-                 std::invalid_argument);
+    EXPECT_THROW(christoffersen_independence(std::vector<std::uint8_t>{0}), std::invalid_argument);
     // Two elements: the interpolation is exercised on the smallest real grid.
     const std::vector<double> two = {-10.0, 30.0};
     EXPECT_DOUBLE_EQ(quantile_linear(two, 0.0), -10.0);
@@ -204,8 +203,9 @@ TEST(EdgeCases, NonFiniteCovarianceRejectedNotSilentlyNan) {
     EXPECT_THROW(cholesky(cov_inf), std::invalid_argument);
     EXPECT_THROW(monte_carlo_var(w, cov_nan, 0.01, 1000), std::invalid_argument);
     // A non-finite exposure is rejected too.
-    EXPECT_THROW(portfolio_sigma(std::vector<double>{nan, 1.0}, Matrix(2, 2, {1e-4, 0.0, 0.0, 1e-4})),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        portfolio_sigma(std::vector<double>{nan, 1.0}, Matrix(2, 2, {1e-4, 0.0, 0.0, 1e-4})),
+        std::invalid_argument);
 }
 
 TEST(EdgeCases, RankDeficientAndIndefiniteCovariance) {
@@ -240,8 +240,8 @@ TEST(EdgeCases, RankDeficientAndIndefiniteCovariance) {
     EXPECT_THROW(monte_carlo_var(std::vector<double>{1.0e6, -1.0e6}, indefinite, 0.01, 1000),
                  std::runtime_error);
     // A legitimately near-singular PSD matrix is still repaired silently.
-    const Matrix near_singular(2, 2, {vol * vol, vol * vol * (1.0 - 1e-15),
-                                      vol * vol * (1.0 - 1e-15), vol * vol});
+    const Matrix near_singular(
+        2, 2, {vol * vol, vol * vol * (1.0 - 1e-15), vol * vol * (1.0 - 1e-15), vol * vol});
     EXPECT_NO_THROW(cholesky(near_singular));
 }
 
@@ -253,8 +253,7 @@ TEST(EdgeCases, BacktestRejectsNonFiniteInputs) {
     EXPECT_THROW(exceptions_from_pnl(pnl, std::vector<double>{nan}), std::invalid_argument);
     EXPECT_THROW(exceptions_from_pnl(pnl, std::vector<double>{nan, nan, nan}),
                  std::invalid_argument);
-    EXPECT_THROW(exceptions_from_pnl(std::vector<double>{1.0, nan, 2.0},
-                                     std::vector<double>{2.0}),
+    EXPECT_THROW(exceptions_from_pnl(std::vector<double>{1.0, nan, 2.0}, std::vector<double>{2.0}),
                  std::invalid_argument);
     EXPECT_THROW(exceptions_from_pnl(pnl, std::vector<double>{-1.0}), std::invalid_argument);
     // Sanity: the finite case still flags the one breach.

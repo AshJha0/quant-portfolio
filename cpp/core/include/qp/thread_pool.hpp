@@ -92,7 +92,7 @@ inline ThreadPool::ThreadPool(unsigned workers, std::chrono::microseconds spin) 
 
 inline ThreadPool::~ThreadPool() {
     {
-        std::lock_guard<std::mutex> lk(mutex_);
+        std::scoped_lock lk(mutex_);
         stop_ = true;
         generation_.fetch_add(1, std::memory_order_release);
     }
@@ -105,7 +105,7 @@ inline void ThreadPool::drain(TaskFn fn, void* ctx, unsigned n) noexcept {
          t = next_.fetch_add(1, std::memory_order_relaxed)) {
         fn(ctx, t);
         if (done_.fetch_add(1, std::memory_order_acq_rel) + 1 == n) {
-            std::lock_guard<std::mutex> lk(mutex_);
+            std::scoped_lock lk(mutex_);
             done_cv_.notify_all();
         }
     }
@@ -125,9 +125,8 @@ inline void ThreadPool::worker_loop() noexcept {
         }
         {
             std::unique_lock<std::mutex> lk(mutex_);
-            wake_.wait(lk, [&] {
-                return stop_ || generation_.load(std::memory_order_acquire) != seen;
-            });
+            wake_.wait(
+                lk, [&] { return stop_ || generation_.load(std::memory_order_acquire) != seen; });
             if (stop_) return;
             seen = generation_.load(std::memory_order_acquire);
             fn = fn_;
@@ -136,7 +135,7 @@ inline void ThreadPool::worker_loop() noexcept {
             ++active_;
         }
         drain(fn, ctx, n);
-        std::lock_guard<std::mutex> lk(mutex_);
+        std::scoped_lock lk(mutex_);
         if (--active_ == 0) done_cv_.notify_all();
     }
 }
@@ -147,7 +146,7 @@ inline void ThreadPool::run(unsigned n_tasks, TaskFn fn, void* ctx) noexcept {
         for (unsigned t = 0; t < n_tasks; ++t) fn(ctx, t);
         return;
     }
-    std::lock_guard<std::mutex> job(run_mutex_);
+    std::scoped_lock job(run_mutex_);
     {
         // A worker that woke late for the previous job may still be inside
         // drain() with that job's parameters; let it leave first.
@@ -165,9 +164,8 @@ inline void ThreadPool::run(unsigned n_tasks, TaskFn fn, void* ctx) noexcept {
     // Wait until every task is done and no worker is still inside drain(),
     // so the next job cannot be observed half-set-up.
     std::unique_lock<std::mutex> lk(mutex_);
-    done_cv_.wait(lk, [&] {
-        return done_.load(std::memory_order_acquire) == n_tasks && active_ == 0;
-    });
+    done_cv_.wait(lk,
+                  [&] { return done_.load(std::memory_order_acquire) == n_tasks && active_ == 0; });
 }
 
 inline ThreadPool& default_thread_pool() {
@@ -177,6 +175,4 @@ inline ThreadPool& default_thread_pool() {
     return pool;
 }
 
-
 }  // namespace qp
-

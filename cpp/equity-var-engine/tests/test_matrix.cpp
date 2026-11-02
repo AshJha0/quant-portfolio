@@ -12,10 +12,7 @@ namespace {
 
 Matrix spd3() {
     // SPD matrix built as A = B B^T + I from a fixed B.
-    return Matrix(3, 3,
-                  {4.0, 2.0, 0.6,
-                   2.0, 5.0, 1.5,
-                   0.6, 1.5, 3.0});
+    return Matrix(3, 3, {4.0, 2.0, 0.6, 2.0, 5.0, 1.5, 0.6, 1.5, 3.0});
 }
 
 Matrix reconstruct(const Matrix& l) {
@@ -61,8 +58,9 @@ TEST(Cholesky, JitterPathOnZeroVarianceAsset) {
 }
 
 TEST(Cholesky, RejectsBadInput) {
-    EXPECT_THROW(cholesky(Matrix(2, 3, 1.0)), std::invalid_argument);           // non-square
-    EXPECT_THROW(cholesky(Matrix(2, 2, {1.0, 0.5, -0.5, 1.0})), std::invalid_argument);  // asymmetric
+    EXPECT_THROW(cholesky(Matrix(2, 3, 1.0)), std::invalid_argument);  // non-square
+    EXPECT_THROW(cholesky(Matrix(2, 2, {1.0, 0.5, -0.5, 1.0})),
+                 std::invalid_argument);  // asymmetric
     // Badly indefinite: jitter cannot rescue a huge negative eigenvalue.
     EXPECT_THROW(cholesky(Matrix(2, 2, {1.0, 1e8, 1e8, 1.0})), std::runtime_error);
 }

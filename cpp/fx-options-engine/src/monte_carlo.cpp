@@ -18,8 +18,7 @@ namespace {
 // constructed uniform is bit-reproducible everywhere.  The top 53 bits map
 // to u in (0, 1) strictly (offset by half an ULP so u is never 0 or 1).
 inline double normal_draw(std::mt19937_64& rng) noexcept {
-    const double u =
-        (static_cast<double>(rng() >> 11) + 0.5) * 0x1.0p-53;
+    const double u = (static_cast<double>(rng() >> 11) + 0.5) * 0x1.0p-53;
     return fxopt::norm_ppf_unchecked(u);
 }
 
@@ -76,16 +75,17 @@ double mean_of(const double* x, std::size_t n) noexcept {
 
 }  // namespace
 
-Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double r_f,
-                                double sigma, OptionType type, std::int64_t n_paths,
-                                Seed seed_value, bool antithetic, bool control_variate,
-                                unsigned threads, McWorkspace& ws, ThreadPool* pool) noexcept {
+Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                                OptionType type, std::int64_t n_paths, Seed seed_value,
+                                bool antithetic, bool control_variate, unsigned threads,
+                                McWorkspace& ws, ThreadPool* pool) noexcept {
     const std::uint64_t seed = seed_value.value;
     const double p_sign = phi(type);
     if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (T <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::McExpired});
+    if (T <= 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::McExpired});
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
@@ -93,10 +93,10 @@ Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double
     const std::int64_t needed = control_variate ? 3 : 2;
     if (units < needed) [[unlikely]] {
         return std::unexpected(Error{Errc::TooFewPaths, "", static_cast<double>(n_paths),
-                                     static_cast<double>(units),
-                                     static_cast<double>(needed)});
+                                     static_cast<double>(units), static_cast<double>(needed)});
     }
-    if (threads == 0) [[unlikely]] return std::unexpected(Error{Errc::BadThreads});
+    if (threads == 0) [[unlikely]]
+        return std::unexpected(Error{Errc::BadThreads});
 
     // Layout [z_0..z_{h-1}, -z_0..-z_{h-1}] when antithetic, so pair i is
     // (i, i + half).
@@ -130,11 +130,9 @@ Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double
                 static_cast<unsigned>(std::min<std::size_t>(threads, base)),
                 discounted,
                 control};
-    ThreadPool::TaskFn fn = antithetic
-                                ? (control_variate ? &chunk_entry<true, true>
-                                                   : &chunk_entry<true, false>)
-                                : (control_variate ? &chunk_entry<false, true>
-                                                   : &chunk_entry<false, false>);
+    ThreadPool::TaskFn fn =
+        antithetic ? (control_variate ? &chunk_entry<true, true> : &chunk_entry<true, false>)
+                   : (control_variate ? &chunk_entry<false, true> : &chunk_entry<false, false>);
     if (pool != nullptr && task.n_chunks > 1) {
         pool->run(task.n_chunks, fn, &task);
     } else {
@@ -183,37 +181,33 @@ Result<McEstimate> try_mc_price(double S, double K, double T, double r_d, double
         const double d = samples[i] - price;
         ss += d * d;
     }
-    const double n = static_cast<double>(n_samples);
+    const auto n = static_cast<double>(n_samples);
     // At least two independent samples are guaranteed by the check above.
     const double se = std::sqrt(ss / (n - 1.0)) / std::sqrt(n);
 
-    const char* method = antithetic ? (control_variate ? "antithetic+control_variate"
-                                                       : "antithetic+plain")
-                                    : (control_variate ? "control_variate" : "plain");
-    return McEstimate{price,
-                      se,
-                      price - 1.96 * se,
-                      price + 1.96 * se,
-                      static_cast<std::int64_t>(total),
-                      method};
+    const char* method = antithetic
+                             ? (control_variate ? "antithetic+control_variate" : "antithetic+plain")
+                             : (control_variate ? "control_variate" : "plain");
+    return McEstimate{
+        price, se, price - 1.96 * se, price + 1.96 * se, static_cast<std::int64_t>(total), method};
 }
 
-MCResult mc_price(double S, double K, double T, double r_d, double r_f,
-                  double sigma, OptionType type, const McConfig& config) {
-    return mc_price(S, K, T, r_d, r_f, sigma, type, config.n_paths, config.seed,
-                    config.antithetic, config.control_variate);
+MCResult mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                  OptionType type, const McConfig& config) {
+    return mc_price(S, K, T, r_d, r_f, sigma, type, config.n_paths, config.seed, config.antithetic,
+                    config.control_variate);
 }
 
-MCResult mc_price(double S, double K, double T, double r_d, double r_f,
-                  double sigma, OptionType type, std::int64_t n_paths,
-                  Seed seed_value, bool antithetic, bool control_variate) {
+MCResult mc_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                  OptionType type, std::int64_t n_paths, Seed seed_value, bool antithetic,
+                  bool control_variate) {
     // Validation errors take precedence over sizing, as before.
     value_or_throw(try_validate_inputs(S, K, T, r_d, r_f, sigma));
     McWorkspace ws;
     if (n_paths > 0) ws.reserve(n_paths, control_variate);
-    const McEstimate e = value_or_throw(try_mc_price(S, K, T, r_d, r_f, sigma, type, n_paths,
-                                                     seed_value, antithetic, control_variate,
-                                                     1, ws, nullptr));
+    const McEstimate e =
+        value_or_throw(try_mc_price(S, K, T, r_d, r_f, sigma, type, n_paths, seed_value, antithetic,
+                                    control_variate, 1, ws, nullptr));
     return MCResult{e.price, e.std_error, e.ci_low, e.ci_high, e.n_paths, e.method};
 }
 

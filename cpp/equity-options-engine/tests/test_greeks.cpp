@@ -18,10 +18,8 @@ using eqopt::fd_greeks;
 using eqopt::OptionType;
 
 // rel tolerance with absolute floor: |a-b| <= tol * max(|b|, floor)
-void expect_rel(double actual, double expected, double tol, double floor,
-                const char* what) {
-    EXPECT_NEAR(actual, expected, tol * std::max(std::abs(expected), floor))
-        << what;
+void expect_rel(double actual, double expected, double tol, double floor, const char* what) {
+    EXPECT_NEAR(actual, expected, tol * std::max(std::abs(expected), floor)) << what;
 }
 
 struct Case {
@@ -43,12 +41,10 @@ TEST(FdGreeks, MatchAnalyticTo1e6Rel) {
         // Second-derivative bump 1e-4: balances truncation O(h^2) against
         // round-off O(ulp-noise/h^2) so both are < 1e-6 rel here, keeping the full
         // Greek set including vanna/volga inside tolerance.
-        const auto num = fd_greeks(
-            [](double S, double K, double T, double r, double sigma, double q,
-               OptionType type) {
-                return bs_price(S, K, T, r, sigma, q, type);
-            },
-            c.S, c.K, c.T, c.r, c.sigma, c.q, c.type, 1e-5, 1e-4);
+        const auto num =
+            fd_greeks([](double S, double K, double T, double r, double sigma, double q,
+                         OptionType type) { return bs_price(S, K, T, r, sigma, q, type); },
+                      c.S, c.K, c.T, c.r, c.sigma, c.q, c.type, 1e-5, 1e-4);
         expect_rel(num.price, ana.price, 1e-12, 1.0, "price");
         expect_rel(num.delta, ana.delta, 1e-6, 1e-2, "delta");
         expect_rel(num.gamma, ana.gamma, 1e-6, 1e-2, "gamma");
@@ -61,8 +57,7 @@ TEST(FdGreeks, MatchAnalyticTo1e6Rel) {
 }
 
 TEST(Greeks, CallPutIdentities) {
-    const double S = 100.0, K = 105.0, T = 0.75, r = 0.04, q = 0.02,
-                 sigma = 0.25;
+    const double S = 100.0, K = 105.0, T = 0.75, r = 0.04, q = 0.02, sigma = 0.25;
     const auto call = bs_greeks(S, K, T, r, sigma, q, OptionType::Call);
     const auto put = bs_greeks(S, K, T, r, sigma, q, OptionType::Put);
     // Gamma / vega / vanna / volga are identical for calls and puts.
@@ -77,50 +72,39 @@ TEST(Greeks, CallPutIdentities) {
 }
 
 TEST(Greeks, RangesAndSigns) {
-    const auto g = bs_greeks(100.0, 100.0, 1.0, 0.05, 0.2, 0.01,
-                             OptionType::Call);
+    const auto g = bs_greeks(100.0, 100.0, 1.0, 0.05, 0.2, 0.01, OptionType::Call);
     EXPECT_GT(g.delta, 0.0);
     EXPECT_LT(g.delta, 1.0);
     EXPECT_GT(g.gamma, 0.0);
     EXPECT_GT(g.vega, 0.0);
     EXPECT_LT(g.theta, 0.0);  // long ATM call decays
     EXPECT_GT(g.rho, 0.0);
-    const auto p = bs_greeks(100.0, 100.0, 1.0, 0.05, 0.2, 0.01,
-                             OptionType::Put);
+    const auto p = bs_greeks(100.0, 100.0, 1.0, 0.05, 0.2, 0.01, OptionType::Put);
     EXPECT_LT(p.delta, 0.0);
     EXPECT_LT(p.rho, 0.0);
 }
 
 TEST(Greeks, DegenerateInputsThrow) {
-    EXPECT_THROW(bs_greeks(100.0, 100.0, 0.0, 0.05, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_greeks(100.0, 100.0, 1.0, 0.05, 0.0),
-                 std::invalid_argument);
-    EXPECT_THROW(bs_greeks(-1.0, 100.0, 1.0, 0.05, 0.2),
-                 std::invalid_argument);
+    EXPECT_THROW(bs_greeks(100.0, 100.0, 0.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(bs_greeks(100.0, 100.0, 1.0, 0.05, 0.0), std::invalid_argument);
+    EXPECT_THROW(bs_greeks(-1.0, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
 }
 
 TEST(FdGreeks, TinySigmaThrowsOnVegaBump) {
     // sigma smaller than the central vega/volga bump must be rejected with a
     // clear message, not silently priced at negative volatility.
-    EXPECT_THROW(fd_greeks(
-                     [](double S, double K, double T, double r, double sigma,
-                        double q, OptionType type) {
-                         return bs_price(S, K, T, r, sigma, q, type);
-                     },
-                     100.0, 100.0, 1.0, 0.05, 1e-6, 0.0, OptionType::Call),
+    EXPECT_THROW(fd_greeks([](double S, double K, double T, double r, double sigma, double q,
+                              OptionType type) { return bs_price(S, K, T, r, sigma, q, type); },
+                           100.0, 100.0, 1.0, 0.05, 1e-6, 0.0, OptionType::Call),
                  std::invalid_argument);
 }
 
 TEST(FdGreeks, TinyExpiryThrowsOnThetaBump) {
     // T smaller than the central theta bump must be rejected, not silently
     // priced at negative expiry.
-    EXPECT_THROW(fd_greeks(
-                     [](double S, double K, double T, double r, double sigma,
-                        double q, OptionType type) {
-                         return bs_price(S, K, T, r, sigma, q, type);
-                     },
-                     100.0, 100.0, 1e-9, 0.05, 0.2, 0.0, OptionType::Call),
+    EXPECT_THROW(fd_greeks([](double S, double K, double T, double r, double sigma, double q,
+                              OptionType type) { return bs_price(S, K, T, r, sigma, q, type); },
+                           100.0, 100.0, 1e-9, 0.05, 0.2, 0.0, OptionType::Call),
                  std::invalid_argument);
 }
 

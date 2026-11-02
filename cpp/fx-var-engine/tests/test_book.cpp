@@ -46,11 +46,9 @@ TEST(Market, SpotCrossForwardAndValidation) {
 }
 
 TEST(Book, FactorEnumeration) {
-  Book book({SpotPosition{"EURUSD", 1e6, {}},
-             ForwardPosition{"USDJPY", 2e6, 0.5, {}}});
+  Book book({SpotPosition{"EURUSD", 1e6, {}}, ForwardPosition{"USDJPY", 2e6, 0.5, {}}});
   const auto f = book.factors();
-  const std::vector<std::string> expected{"FX:EUR", "FX:JPY", "IR:JPY",
-                                          "IR:USD"};
+  const std::vector<std::string> expected{"FX:EUR", "FX:JPY", "IR:JPY", "IR:USD"};
   EXPECT_EQ(f, expected);
 }
 
@@ -60,12 +58,10 @@ TEST(Book, TriangulationIdentityEURJPY) {
   const Market m = test_market();
   const double n = 7'000'000.0;
   Book cross({SpotPosition{"EURJPY", n, {}}});
-  Book legs({SpotPosition{"EURUSD", n, {}},
-             SpotPosition{"USDJPY", n * m.cross("EURUSD"), {}}});
+  Book legs({SpotPosition{"EURUSD", n, {}}, SpotPosition{"USDJPY", n * m.cross("EURUSD"), {}}});
   const CompiledBook cb_cross(cross, m);
   const CompiledBook cb_legs(legs, m);
-  const std::map<std::string, double> shocks{{"FX:EUR", 0.013},
-                                             {"FX:JPY", -0.021}};
+  const std::map<std::string, double> shocks{{"FX:EUR", 0.013}, {"FX:JPY", -0.021}};
   const double p_cross = cb_cross.pnl(shocks);
   const double p_legs = cb_legs.pnl(shocks);
   EXPECT_NEAR(p_cross, p_legs, 1e-12 * std::abs(p_cross) + 1e-12);
@@ -82,8 +78,8 @@ TEST(Book, ForwardZeroValueAtInceptionAndCip) {
   const double k = 1.08;
   Book struck({ForwardPosition{"EURUSD", 5e6, 0.75, k}});
   const CompiledBook cb2(struck, m);
-  const double expect = 5e6 * std::exp(-0.030 * 0.75) * 1.10 -
-                        5e6 * k * std::exp(-0.050 * 0.75) * 1.0;
+  const double expect =
+      5e6 * std::exp(-0.030 * 0.75) * 1.10 - 5e6 * k * std::exp(-0.050 * 0.75) * 1.0;
   EXPECT_NEAR(cb2.value0_usd(), expect, 1e-10 * std::abs(expect));
 }
 
@@ -157,21 +153,16 @@ TEST(Book, UsdShockRejectedAndUnknownFactorsIgnored) {
   const Market m = test_market();
   Book book({SpotPosition{"EURUSD", 1e6, {}}});
   const CompiledBook cb(book, m);
-  EXPECT_THROW(cb.pnl(std::map<std::string, double>{{"FX:USD", 0.01}}),
-               std::invalid_argument);
+  EXPECT_THROW(cb.pnl(std::map<std::string, double>{{"FX:USD", 0.01}}), std::invalid_argument);
   // Shocks for factors the book does not carry are ignored (scenario
   // library convention).
-  EXPECT_DOUBLE_EQ(cb.pnl(std::map<std::string, double>{{"FX:TRY", -0.3}}),
-                   0.0);
+  EXPECT_DOUBLE_EQ(cb.pnl(std::map<std::string, double>{{"FX:TRY", -0.3}}), 0.0);
 }
 
 TEST(Book, PositionValidation) {
-  EXPECT_THROW(Book({SpotPosition{"EURUSD", 1e6, -1.0}}),
-               std::invalid_argument);
-  EXPECT_THROW(Book({ForwardPosition{"EURUSD", 1e6, -0.5, {}}}),
-               std::invalid_argument);
-  EXPECT_THROW(Book({ForwardPosition{"EURUSD", 1e6, 0.5, 0.0}}),
-               std::invalid_argument);
+  EXPECT_THROW(Book({SpotPosition{"EURUSD", 1e6, -1.0}}), std::invalid_argument);
+  EXPECT_THROW(Book({ForwardPosition{"EURUSD", 1e6, -0.5, {}}}), std::invalid_argument);
+  EXPECT_THROW(Book({ForwardPosition{"EURUSD", 1e6, 0.5, 0.0}}), std::invalid_argument);
   EXPECT_THROW(Book({SpotPosition{"E2RUSD", 1e6, {}}}), std::invalid_argument);
 }
 
@@ -185,24 +176,19 @@ TEST(Book, SingleCurrencyBookSpotExposureIsNotional) {
   EXPECT_NEAR(w[0], 10e6 * 1.10, 1e-3);
 }
 
-
 TEST(Market, TriangulationIdentitiesAreExact) {
   // The USD-pivot factor set makes cross rates consistent by construction:
   // EURJPY = EURUSD * USDJPY, and a pair times its inverse is 1.
   const Market m = test_market();
-  EXPECT_NEAR(m.cross("EURJPY"), m.cross("EURUSD") * m.cross("USDJPY"),
-              1e-12 * m.cross("EURJPY"));
+  EXPECT_NEAR(m.cross("EURJPY"), m.cross("EURUSD") * m.cross("USDJPY"), 1e-12 * m.cross("EURJPY"));
   EXPECT_NEAR(m.cross("EURUSD") * m.cross("USDEUR"), 1.0, 1e-15);
   EXPECT_NEAR(m.cross("JPYUSD") * m.cross("USDJPY"), 1.0, 1e-15);
   // Triangulating through a third currency gives the same cross.
-  EXPECT_NEAR(m.cross("EURJPY"),
-              m.cross("EURUSD") / m.cross("JPYUSD"),
-              1e-12 * m.cross("EURJPY"));
+  EXPECT_NEAR(m.cross("EURJPY"), m.cross("EURUSD") / m.cross("JPYUSD"), 1e-12 * m.cross("EURJPY"));
   // Forward triangulation is consistent with CIP through the same pivot.
   const double t = 1.5;
   EXPECT_NEAR(m.forward("EURJPY", t),
-              m.cross("EURJPY") *
-                  std::exp((m.rate("JPY") - m.rate("EUR")) * t),
+              m.cross("EURJPY") * std::exp((m.rate("JPY") - m.rate("EUR")) * t),
               1e-10 * m.forward("EURJPY", t));
 }
 
@@ -216,8 +202,7 @@ TEST(Book, SingleCurrencyBookInNonUsdBaseHasNoFxRisk) {
   ASSERT_EQ(w.size(), 1u);
   EXPECT_NEAR(w[0], 0.0, 1e-3);
   for (const double shock : {-0.25, -0.01, 0.0, 0.02, 0.30}) {
-    EXPECT_NEAR(cb.pnl(std::map<std::string, double>{{"FX:EUR", shock}}), 0.0,
-                1e-6);
+    EXPECT_NEAR(cb.pnl(std::map<std::string, double>{{"FX:EUR", shock}}), 0.0, 1e-6);
   }
   // The same balance held in a USD-base book is fully exposed.
   Book usd_book({CashPosition{"EUR", 4.2e6}}, "USD");

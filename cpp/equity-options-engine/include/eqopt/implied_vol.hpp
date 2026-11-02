@@ -32,20 +32,19 @@ namespace eqopt {
 /// 	hrows std::invalid_argument on invalid inputs, T == 0, or a price at
 ///         or outside the bounds; std::runtime_error if the solver does not
 ///         converge in 100 iterations.
-double implied_vol(double price, double S, double K, double T, double r,
-                   double q = 0.0, OptionType type = OptionType::Call);
+double implied_vol(double price, double S, double K, double T, double r, double q = 0.0,
+                   OptionType type = OptionType::Call);
 
 /// rief Former signature with solver tuning parameters, which the new
 /// solver does not have. The extra arguments are ignored.
 [[deprecated("tol, max_iter, sigma_lo and sigma_hi are ignored; use the 7-argument overload")]]
-double implied_vol(double price, double S, double K, double T, double r,
-                   double q, OptionType type, double tol, int max_iter = 200,
-                   double sigma_lo = 1e-9, double sigma_hi = 10.0);
+double implied_vol(double price, double S, double K, double T, double r, double q, OptionType type,
+                   double tol, int max_iter = 200, double sigma_lo = 1e-9, double sigma_hi = 10.0);
 
 /// \brief noexcept form of implied_vol(): the same root, or the error the
 ///        throwing form raises. No allocation.
-[[nodiscard]] Result<double> try_implied_vol(double price, double S, double K, double T,
-                                             double r, double q = 0.0,
+[[nodiscard]] Result<double> try_implied_vol(double price, double S, double K, double T, double r,
+                                             double q = 0.0,
                                              OptionType type = OptionType::Call) noexcept;
 
 }  // namespace eqopt

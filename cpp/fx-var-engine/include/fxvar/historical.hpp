@@ -35,11 +35,11 @@ namespace fxvar {
 enum class HsMethod { kPlain, kAge, kFiltered };
 
 struct HistoricalOptions {
-  double alpha = 0.01;  ///< tail probability (0.01 = 99 % VaR)
+  double alpha = 0.01;        ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;  ///< > 1 uses sqrt-time scaling
   HsMethod method = HsMethod::kPlain;
-  double decay = 0.995;        ///< BRW age-weight decay (method kAge)
-  double ewma_lambda = 0.94;   ///< FHS devolatilisation (method kFiltered)
+  double decay = 0.995;       ///< BRW age-weight decay (method kAge)
+  double ewma_lambda = 0.94;  ///< FHS devolatilisation (method kFiltered)
   std::size_t min_obs = 60;
   bool warn_pegs = true;
 };
@@ -68,7 +68,6 @@ struct HistoricalResult {
 /// std::invalid_argument; a non-empty book with no risk factors (pure
 /// base-ccy cash) reports exactly zero VaR/ES.
 HistoricalResult historical_var(const Book& book, const Market& market,
-                                const ReturnsMatrix& returns,
-                                const HistoricalOptions& opts = {});
+                                const ReturnsMatrix& returns, const HistoricalOptions& opts = {});
 
 }  // namespace fxvar

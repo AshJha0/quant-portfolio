@@ -73,21 +73,24 @@ void chunk_entry(void* ctx, unsigned c) noexcept {
 
 }  // namespace
 
-Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma,
-                              double q, OptionType type, std::size_t n_paths,
-                              bool antithetic, bool control_variate, std::uint64_t seed,
-                              unsigned threads, McWorkspace& ws, ThreadPool* pool) noexcept {
+Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma, double q,
+                              OptionType type, std::size_t n_paths, bool antithetic,
+                              bool control_variate, std::uint64_t seed, unsigned threads,
+                              McWorkspace& ws, ThreadPool* pool) noexcept {
     if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]]
+        return std::unexpected(e.error());
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
     const std::size_t units = antithetic ? (n_paths + 1) / 2 : n_paths;
     const std::size_t needed = control_variate ? 3 : 2;
-    if (units < needed) [[unlikely]] return std::unexpected(Error{Errc::TooFewPaths});
-    if (threads == 0) [[unlikely]] return std::unexpected(Error{Errc::BadThreads});
+    if (units < needed) [[unlikely]]
+        return std::unexpected(Error{Errc::TooFewPaths});
+    if (threads == 0) [[unlikely]]
+        return std::unexpected(Error{Errc::BadThreads});
     if (T == 0.0 || sigma == 0.0) {
         const auto exact = try_bs_price(S, K, T, r, sigma, q, type);
         if (!exact) return std::unexpected(exact.error());
@@ -98,8 +101,7 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
     const std::size_t half = antithetic ? (n_paths + 1) / 2 : 0;
     const std::size_t base = antithetic ? half : n_paths;
     const std::size_t n_eff = antithetic ? 2 * half : n_paths;
-    if (ws.payoff_.size() < n_eff || (control_variate && ws.control_.size() < n_eff))
-        [[unlikely]] {
+    if (ws.payoff_.size() < n_eff || (control_variate && ws.control_.size() < n_eff)) [[unlikely]] {
         return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_mc_price",
                                      static_cast<double>(ws.payoff_.size()),
                                      static_cast<double>(n_eff)});
@@ -123,11 +125,9 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
                 static_cast<unsigned>(std::min<std::size_t>(threads, base)),
                 payoff,
                 control};
-    ThreadPool::TaskFn fn = antithetic
-                                ? (control_variate ? &chunk_entry<true, true>
-                                                   : &chunk_entry<true, false>)
-                                : (control_variate ? &chunk_entry<false, true>
-                                                   : &chunk_entry<false, false>);
+    ThreadPool::TaskFn fn =
+        antithetic ? (control_variate ? &chunk_entry<true, true> : &chunk_entry<true, false>)
+                   : (control_variate ? &chunk_entry<false, true> : &chunk_entry<false, false>);
     if (pool != nullptr && task.n_chunks > 1) {
         pool->run(task.n_chunks, fn, &task);
     } else {
@@ -182,17 +182,16 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
         const double d = samples[i] - mean;
         var += d * d;
     }
-    const double se = std::sqrt(var / static_cast<double>(n_samples - 1) /
-                                static_cast<double>(n_samples));
+    const double se =
+        std::sqrt(var / static_cast<double>(n_samples - 1) / static_cast<double>(n_samples));
     if (!std::isfinite(mean) || !std::isfinite(se)) [[unlikely]] {
         return std::unexpected(Error{Errc::McNotFinite});
     }
     return MCResult{mean, se, mean - kZ95 * se, mean + kZ95 * se, n_eff};
 }
 
-MCResult mc_price(double S, double K, double T, double r, double sigma,
-                  double q, OptionType type, std::size_t n_paths,
-                  bool antithetic, bool control_variate, std::uint64_t seed,
+MCResult mc_price(double S, double K, double T, double r, double sigma, double q, OptionType type,
+                  std::size_t n_paths, bool antithetic, bool control_variate, std::uint64_t seed,
                   unsigned threads) {
     McWorkspace ws;
     // Validation errors take precedence over sizing, as before.

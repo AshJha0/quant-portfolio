@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 
 #include "eqopt/binomial.hpp"
@@ -43,9 +44,9 @@ TEST(NumericalSafety, AmericanPutAtZeroSpotWaitsWhenRatesAreNegative) {
         const double expected = 100.0 * std::exp(-r);
         EXPECT_NEAR(v, expected, 4.0 * kEps * expected);
     }
-    EXPECT_EQ(crr_price(0.0, 100.0, 1.0, 0.03, 0.2, 0.0, OptionType::Put,
-                        ExerciseStyle::American, 100),
-              100.0);
+    EXPECT_EQ(
+        crr_price(0.0, 100.0, 1.0, 0.03, 0.2, 0.0, OptionType::Put, ExerciseStyle::American, 100),
+        100.0);
 }
 
 TEST(NumericalSafety, McNeedsIndependentSamples) {
@@ -65,10 +66,10 @@ TEST(NumericalSafety, AntitheticPlusCvBeatsCvAloneAcrossSeeds) {
     // Fitting beta on raw draws and pairing afterwards gave SE 0.0247 at
     // 100k paths here, worse than the control variate alone (0.0177).
     for (std::uint64_t seed = 1; seed <= 7; ++seed) {
-        const auto both = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 100000,
-                                   true, true, seed);
-        const auto cv = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 100000,
-                                 false, true, seed);
+        const auto both =
+            mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 100000, true, true, seed);
+        const auto cv = mc_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call, 100000, false,
+                                 true, seed);
         EXPECT_LE(both.std_error, cv.std_error) << "seed " << seed;
         EXPECT_LT(both.std_error, 0.6 * 0.0246) << "seed " << seed;
         const double exact = bs_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call);
@@ -107,7 +108,8 @@ TEST(ImpliedVolCore, AtMostTenEvaluationsAndConditionBoundAccuracy) {
                 // Out-of-the-money quote: one rounding of the price over vega.
                 const double v = sigma * std::sqrt(t);
                 const double d1 = (std::log(1.0 / k)) / v + 0.5 * v;
-                const double vega = df * std::exp(-0.5 * d1 * d1) / std::sqrt(2.0 * M_PI) * std::sqrt(t);
+                const double vega = df * std::exp(-0.5 * d1 * d1) /
+                                    std::sqrt(2.0 * std::numbers::pi) * std::sqrt(t);
                 const double tol = 4.0 * std::fmax(kEps * price / vega, 1e-12 * sigma);
                 EXPECT_NEAR(iv, sigma, tol) << lk << " " << t << " " << sigma;
             }
