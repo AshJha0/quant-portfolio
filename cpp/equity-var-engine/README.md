@@ -200,6 +200,8 @@ every run, both compilers, before and after, are in
 synthetic series and alpha steps through 0.5% to 5%, so no call repeats the
 previous one.
 
+> **How these figures were timed.** Old harness: each call timed on its own with rdtscp, empty-call overhead subtracted. They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | Compiler | p50 before | p50 after | p99 before | p99 after | p99.9 after | max after |
 |---|---|---|---|---|---|---|---|
 | `historical_var n=1000` | GCC 15.2 | 5.6 µs | 5.5 µs | 12.3 µs | 12.3 µs | 40.7 µs | 479.5 µs |

@@ -2,7 +2,7 @@
 //
 //   ./bench_eqvar [--out results.json] [--label after] [--quick]
 //
-// Every kernel is timed call by call (see latency.hpp). Inputs vary per
+// Every kernel is timed with the shared harness (see latency.hpp). Inputs vary per
 // call: P&L samples rotate through a table of synthetic series and alpha
 // steps through 0.5 % to 5 %, so selection and branch predictors see a
 // realistic mix. Sizes: 1,000 and 10,000-observation P&L, a 50-asset book,

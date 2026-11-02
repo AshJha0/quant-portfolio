@@ -145,6 +145,8 @@ rustc 1.99.1, release profile (opt-level 3, fat LTO, one codegen unit),
 2026-11-01. WSL2 adds scheduler jitter, so read p99.9 and max as upper
 bounds. Sibling builds shared the machine during the run.
 
+> **How these figures were timed.** Old harness: `std::time::Instant` over a fixed batch per sample (16 or 64 calls for fast kernels, 1 for slow ones). They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | kernel | before p50 / p99 / p99.9 ns | after p50 / p99 / p99.9 ns |
 |---|---|---|
 | historical VaR, n = 250 | 725 / 2 358 / 6 323 | 541 / 1 786 / 4 139 |

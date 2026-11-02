@@ -72,6 +72,38 @@ counting version and checks that every kernel success path makes zero heap
 allocations. The throwing `crr_price` and `mc_price` still allocate their
 buffers per call, as before; use the kernels on a latency path.
 
+### Monte Carlo threading crossover
+Splitting a small simulation across threads makes it slower. Handing work
+to the pool costs a wake-up and a join, roughly 100 to 200 us on a WSL2
+host, and a 10,000-path price takes only about 400 us on one thread. So
+`try_mc_price` sends its chunks to the pool only when there are at least
+`kMcParallelMinDraws` (16,384) independent draws (paths, or antithetic
+pairs); below that the same chunks run one after another on the calling
+thread. The chunking and the RNG streams depend only on `(seed, threads)`,
+so the result is bit-identical either way
+(`ThreadPoolMc.ParallelThresholdKeepsBitsOnBothSides`).
+
+Measured before the threshold was added (Core 5 120U, 12 logical CPUs,
+WSL2 Ubuntu, GCC 15.2 `-O3`, equity engine, antithetic and control
+variate, `default_thread_pool()`, median of 201 calls, 15 for 1M paths):
+
+| paths | 1 thread | 2 threads | 4 threads |
+|---:|---:|---:|---:|
+| 1,000 | 34 us | 150 us | 126 us |
+| 10,000 | 424 us | 626 us | 531 us |
+| 20,000 | 898 us | 1,068 us | 746 us |
+| 50,000 | 2,099 us | 1,999 us | 1,462 us |
+| 1,000,000 | 62.8 ms | 43.9 ms | 30.2 ms |
+
+Worked example: 10,000 antithetic paths are 5,000 draws, under the
+threshold, so `threads = 4` now runs four chunks inline at the one-thread
+cost (about 0.42 ms rather than 0.53 ms) and returns the same bits as
+before. 50,000 paths (25,000 draws) still use the pool. The threshold is
+conservative: at 20,000 paths four threads were 17% faster on this host,
+but two were slower, and the wake-up cost differs by host. Scaling stays
+well below linear even at 1M paths (2.1x on 4 threads); the serial
+control-variate and variance passes are part of that and are not split.
+
 ### Batch API
 `bs_price_batch(BsBatchInputs, out)` and `bs_greeks_batch` take one
 `std::span` per field. Each element is priced by the same inline kernel as

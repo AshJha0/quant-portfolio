@@ -19,7 +19,7 @@
 #   cmake install  cpp/ installed as one CMake package; find_package consumer
 #   wheels       cibuildwheel wheels for both bindings (artefacts only, not
 #                gated by ci-ok, never published)
-#   bench        Release benches vs committed bench/results.json (2x rule)
+#   bench        same-runner base-vs-head bench gate (bench_ab.py)
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
 #   research     research/tools/prereg.py check, then pytest research/tests
@@ -751,20 +751,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # CI runner numbers are not the published numbers in the engine READMEs.
-  # The job fails only on a p50 regression worse than 2.0x on a kernel whose
-  # committed p50 is above 1 us; everything else is report-only. See
-  # .github/scripts/bench_compare.py.
+  # Same-runner A/B latency gate. The base commit (pull request target, or
+  # the previous commit on a push) and the head are built on this runner
+  # and their benches run in alternating rounds. A kernel fails only when
+  # the head median is more than 25% above the base and head p10 is above
+  # base p90. See .github/scripts/bench_ab.py and docs/BENCHMARKS.md. The
+  # uploaded artifact is the source of the README latency figures.
   bench:
     name: bench
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -773,50 +776,31 @@ jobs:
       - name: Install the toolchain from rust/rust-toolchain.toml
         working-directory: rust
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust -> target
-          key: bench-${{ hashFiles('rust/Cargo.lock') }}
-      - name: C++ benches (preset gcc, Release)
+      - name: Build base and head, run interleaved rounds
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/bench"
-          mkdir -p "$out"
-          for pair in equity-options-engine:eqopt_bench equity-var-engine:bench_eqvar \
-                      fx-options-engine:fxopt_bench fx-var-engine:fxvar_bench; do
-            engine="${pair%%:*}"
-            target="${pair##*:}"
-            (
-              cd "cpp/$engine"
-              cmake --preset gcc -DCMAKE_BUILD_TYPE=Release
-              cmake --build --preset gcc --target "$target" -j 4
-              "build/gcc/$target" --label ci --out "$out/cpp-$engine.json"
-            )
-          done
-      - name: Rust benches (release)
-        working-directory: rust
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/bench"
-          for pair in equity-options-engine:eq-options-engine equity-var-engine:eq-var-engine \
-                      fx-options-engine:fx-options-engine fx-var-engine:fx-var-engine; do
-            crate="${pair%%:*}"
-            package="${pair##*:}"
-            cargo run --release --locked -p "$package" --bin bench -- --out "$out/rust-$crate.json"
-          done
-      - name: Compare p50 with the committed results
+          base="$BASE_SHA"
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          echo "base $base, head $(git rev-parse HEAD)"
+          bash .github/scripts/bench_ab_run.sh "$base" "$RUNNER_TEMP/bench" 3
+      - name: Compare head with base
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/bench"
           args=()
           for lang in cpp rust; do
             for engine in equity-options-engine equity-var-engine fx-options-engine fx-var-engine; do
-              args+=(--pair "$lang/$engine" "$lang/$engine/bench/results.json" "$out/$lang-$engine.json")
+              args+=(--engine "$lang/$engine"
+                     --base "$out"/r*/base/"$lang-$engine.json"
+                     --head "$out"/r*/head/"$lang-$engine.json")
             done
           done
           rc=0
-          python .github/scripts/bench_compare.py "${args[@]}" \
-            --summary "$out/summary.md" --json "$out/comparison.json" > /dev/null || rc=$?
+          python .github/scripts/bench_ab.py "${args[@]}"             --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
           cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Upload bench JSON
@@ -960,7 +944,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
           PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --group test
-      - name: CI helper scripts (bench_compare, aggregate_counts, discover)
+      - name: CI helper scripts (bench_ab, aggregate_counts, discover)
         run: |
           python -m pytest -p no:cacheprovider -q tests/test_ci_scripts.py
       - name: CI install scripts (hashed_install, check_constraints_lock)

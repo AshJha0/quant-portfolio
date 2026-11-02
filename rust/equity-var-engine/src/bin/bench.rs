@@ -1,13 +1,10 @@
 //! bench: per-call latency distribution of the `eq_var_engine` kernels.
 //!
-//! Each kernel runs a warm-up, then many timed calls over a rotating set of
-//! inputs (different P&L samples, books and seeds). The tool reports p50,
-//! p90, p99, p99.9 and max in nanoseconds per call.
-//!
-//! Kernels that finish in under a microsecond are timed in batches of
-//! `calls_per_sample` calls and the batch time is divided by that count.
-//! The timer (`std::time::Instant`) resolves about 20-30 ns, so a single
-//! call of that size would read as noise.
+//! Every kernel is timed with the method shared with the C++ benches
+//! (`qp_core::bench`, docs/BENCHMARKS.md) over a rotating set of inputs
+//! (different P&L samples, books and seeds): a calibrated batch of
+//! back-to-back calls per sample (at least 2 us), reported as ns per call
+//! with the median and p10/p90 spread, plus p99, p99.9 and max.
 //!
 //! Every kernel runs twice: through the main API (allocating, `String`
 //! errors) and through `eq_var_engine::fast` (no allocation). The main API
@@ -19,7 +16,6 @@
 //! Run with `cargo run --release --bin bench`.
 
 use std::hint::black_box;
-use std::time::Instant;
 
 use eq_var_engine::fast::*;
 use eq_var_engine::prelude::*;
@@ -28,15 +24,12 @@ struct Row {
     kernel: String,
     n_iter: usize,
     k: usize,
-    p: [f64; 5],
+    /// p10, p50, p90, p99, p99.9, max (ns per call).
+    p: [f64; 6],
 }
 
-fn pct(sorted: &[f64], q: f64) -> f64 {
-    let i = ((sorted.len() as f64 - 1.0) * q).round() as usize;
-    sorted[i.min(sorted.len() - 1)]
-}
-
-/// Time `n_iter` samples of `k` calls each after `warm` warm-up calls.
+/// Time `f(i)` with the shared method (`qp_core::bench`): `warm` calls,
+/// then a call budget of `n_iter * k`; the batch size is calibrated.
 /// `f(i)` runs call number `i`; it picks its input from `i`.
 fn measure<F: FnMut(usize) -> f64>(
     kernel: &str,
@@ -45,32 +38,14 @@ fn measure<F: FnMut(usize) -> f64>(
     warm: usize,
     mut f: F,
 ) -> Row {
-    let mut sink = 0.0;
-    for i in 0..warm {
-        sink += f(i);
-    }
-    let mut t = Vec::with_capacity(n_iter);
-    let mut c = 0usize;
-    for _ in 0..n_iter {
-        let t0 = Instant::now();
-        for _ in 0..k {
-            sink += f(black_box(c));
-            c += 1;
-        }
-        t.push(t0.elapsed().as_nanos() as f64 / k as f64);
-    }
-    black_box(sink);
-    t.sort_by(f64::total_cmp);
-    let p = [
-        pct(&t, 0.5),
-        pct(&t, 0.9),
-        pct(&t, 0.99),
-        pct(&t, 0.999),
-        t[t.len() - 1],
-    ];
+    let s = qp_core::bench::measure(warm, n_iter * k, |i| {
+        black_box(f(i));
+    });
+    let (n_iter, k) = (s.samples, s.calls_per_sample);
+    let p = [s.p10, s.p50, s.p90, s.p99, s.p999, s.max];
     println!(
-        "| {kernel:<44} | {:>9.0} | {:>9.0} | {:>9.0} | {:>9.0} | {:>10.0} | {k:>3} |",
-        p[0], p[1], p[2], p[3], p[4]
+        "| {kernel:<44} | {:>9.0} | {:>9.0} | {:>9.0} | {:>9.0} | {:>10.0} | {k:>4} |",
+        p[0], p[1], p[2], p[3], p[5]
     );
     Row {
         kernel: kernel.to_string(),
@@ -141,8 +116,8 @@ fn main() {
 
     println!("eq_var_engine per-call latency, ns (single thread)\n");
     println!(
-        "| {:<44} | {:>9} | {:>9} | {:>9} | {:>9} | {:>10} | {:>3} |",
-        "kernel", "p50", "p90", "p99", "p99.9", "max", "K"
+        "| {:<44} | {:>9} | {:>9} | {:>9} | {:>9} | {:>10} | {:>4} |",
+        "kernel", "p10", "p50", "p90", "p99", "max", "B"
     );
     println!(
         "|{}|{}|{}|{}|{}|{}|{}|",
@@ -152,7 +127,7 @@ fn main() {
         "-".repeat(11),
         "-".repeat(11),
         "-".repeat(12),
-        "-".repeat(5)
+        "-".repeat(6)
     );
 
     let mut rows = Vec::new();
@@ -300,8 +275,8 @@ fn main() {
     let mut json = String::from("[\n");
     for (i, r) in rows.iter().enumerate() {
         json.push_str(&format!(
-            "  {{\"engine\": \"rust/equity-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{toolchain}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
-            r.kernel, r.n_iter, r.k, r.p[0], r.p[1], r.p[2], r.p[3], r.p[4],
+            "  {{\"engine\": \"rust/equity-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{toolchain}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+            r.kernel, r.n_iter, r.k, r.p[0], r.p[1], r.p[2], r.p[3], r.p[4], r.p[5],
             if i + 1 < rows.len() { "," } else { "" }
         ));
     }

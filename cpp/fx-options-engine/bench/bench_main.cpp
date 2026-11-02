@@ -2,7 +2,7 @@
 //
 //   ./fxopt_bench [--out results.json] [--label after] [--quick]
 //
-// Every kernel is timed call by call (see latency.hpp) over inputs drawn
+// Every kernel is timed with the shared harness (see latency.hpp) over inputs drawn
 // from a fixed pseudo-random table, so branch predictors and caches see a
 // realistic mix rather than one repeated quote. Numbers depend on the
 // machine; under WSL2 the hypervisor adds scheduling jitter that shows up in

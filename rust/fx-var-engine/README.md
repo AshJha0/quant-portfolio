@@ -117,6 +117,8 @@ fall below 1.5, but other crates were building in the same VM, so the
 tails (p99, p99.9) include scheduler and VM jitter. "Before" is the same
 bench on the pre-change code (opt-level 3, no LTO), run right after.
 
+> **How these figures were timed.** Old harness: `std::time::Instant` over a fixed batch per sample (16 or 64 calls for fast kernels, 1 for slow ones). They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | Before p50 | After p50 | After p99 | After p99.9 |
 |---|---:|---:|---:|---:|
 | `CompiledBook::pnl`, one scenario | 1.83 us | 2.03 us | 4.1 us | 10.8 us |

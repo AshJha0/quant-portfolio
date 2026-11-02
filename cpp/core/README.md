@@ -76,9 +76,11 @@ The engines' existing generators are unchanged, because switching them
 would move every Monte Carlo golden. Moving an engine to Philox is a
 release that regenerates those goldens.
 
-Latency. `bench_core` (built with the tests) prints p50, p90, p99, p99.9,
-max and mean per call for each new kernel next to the code it replaces. It
-records compiler, flags, CPU model and timer with each line, and writes
+Latency. `bench_core` (built with the tests) prints the batch size B and
+p10, p50, p90, p99 and max per call for each new kernel next to the code it
+replaces, timed with the method shared with the Rust benches
+([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). It records compiler,
+flags and CPU model with each line, and writes
 JSON with `--out`. The harness does not pin the thread to a core. Use
 `taskset -c 2 ./bench_core` for a pinned run.
 
