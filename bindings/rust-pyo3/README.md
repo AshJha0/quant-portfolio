@@ -38,6 +38,7 @@ later. maturin is fetched by pip as the build backend. Lint with
 | `eq_implied_vol_batch` | loop over `fast::try_implied_vol` in Rust |
 | `eq_crr_price`, `eq_mc_price` | `fast::try_crr_price`, `fast::try_mc_price` |
 | `fx_gk_price`, `fx_gk_greeks`, `fx_implied_vol` | `fast::gk_price_k`, `greeks_k`, `implied_vol_k` |
+| `fx_implied_vol_batch` | loop over `fast::implied_vol_k` in Rust |
 | `fx_gk_price_batch`, `fx_gk_greeks_batch` | `fast::gk_price_batch`, `greeks_batch` |
 | `fx_binomial_price`, `fx_mc_price` | `fast::binomial_price_ws`, `fast::mc_price_par` |
 | `eq_historical_var`, `eq_expected_shortfall` | `historical::historical_var`, `expected_shortfall::expected_shortfall` |

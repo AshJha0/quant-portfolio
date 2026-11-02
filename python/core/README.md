@@ -9,6 +9,9 @@ pip install -e python/core
 python -m pytest -p no:cacheprovider python/core
 ```
 
+`qp-core` is also a member of the root uv workspace, so `uv sync --all-packages`
+from the repository root installs it with every project that depends on it.
+
 ## Modules
 
 | Module | What it holds | Used by |

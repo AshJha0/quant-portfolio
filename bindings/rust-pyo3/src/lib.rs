@@ -330,8 +330,8 @@ fn eq_mc_price<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let ot = eq_ot(parse_call(option_type)?);
     if threads == 0 {
-        // The Rust engine treats 0 as 1; the C++ engine rejects it. The
-        // bindings expose one rule: threads must be >= 1.
+        // Both engines reject 0 (Rust: ErrorCode::BadThreads); checking here
+        // gives the same Python error message as the C++ binding.
         return Err(PyValueError::new_err("threads must be >= 1, got 0"));
     }
     let res = py

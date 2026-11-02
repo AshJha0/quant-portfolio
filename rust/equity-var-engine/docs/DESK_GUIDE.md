@@ -61,7 +61,7 @@ overnight batch.
 ## 5. Gates for every commit
 
 1. `cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings` and `#![deny(missing_docs)]`.
-2. `cargo test --release --locked -p eq-var-engine` (from `rust/`): 126 integration tests and 16 doctests, including
+2. `cargo test --release --locked -p eq-var-engine` (from `rust/`): 127 integration tests and 16 doctests, including
    the fuzz walk and its registry of public functions.
 3. Goldens: `tools/gen_golden_rs.py --check`, `test_conv_golden.rs`,
    `test_cross_language.rs`. Any drift is an unported methodology change or

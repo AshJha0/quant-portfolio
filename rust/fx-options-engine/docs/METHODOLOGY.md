@@ -72,8 +72,8 @@ review surface small and self-contained:
   normalised Black solved on the out-of-the-money side with safeguarded
   Halley iteration, at most 10 evaluations, the same algorithm and constants
   as the Python and C++ engines. Premium-adjusted strikes use Brent
-  (an NR-style zbrent that errors on non-convergence) implemented directly in
-  `src/lib.rs`; premium-adjusted strike-from-delta locates the fold of
+  (`brentq` semantics, an error on non-convergence) in `qp_core::roots`,
+  wrapped in `src/lib.rs`; premium-adjusted strike-from-delta locates the fold of
   `K N(d2(K))` analytically and Brent-solves on the market-standard
   decreasing branch.
 

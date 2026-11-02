@@ -116,7 +116,8 @@ callers. Results equal the classic API bit for bit (tested with
   `Result<_, ErrorCode>`. `ErrorCode` is a one-byte `Copy` enum, so no
   path builds a `String`. It converts into `PricingError` with `.into()`.
 - `try_crr_price` takes a `CrrWorkspace`; `try_mc_price` takes a
-  `McWorkspace` and a thread count. A sized workspace makes repeated
+  `McWorkspace` and a thread count (0 is rejected as
+  `ErrorCode::BadThreads`, as in the C++ engine). A sized workspace makes repeated
   calls heap-free (`tests/zero_alloc.rs` counts allocations).
 - `bs_price_batch` and `bs_greeks_batch` price struct-of-arrays slices
   (`BsBatch`, `GreeksOut`) and report the first failing row.

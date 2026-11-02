@@ -76,7 +76,7 @@ products is the symptom of hedging with the wrong smile-dynamics regime.
 
 * Arbitrage flags block publication: no surface goes out with an unreviewed
   butterfly or calendar violation.
-* Parameter-stability monitor: time series of (v0, kappa, theta, rho, xi)
+* Parameter-stability monitor: time series of (v0, kappa, theta, xi, rho)
   with the condition number. Kappa and xi are monitored jointly through
   xi^2/kappa, which vanillas pin, rather than individually.
 * Model reserve for parameters vanillas cannot pin: kappa and xi move

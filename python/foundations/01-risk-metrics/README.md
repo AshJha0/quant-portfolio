@@ -56,7 +56,7 @@ extension.
 cd python/foundations/01-risk-metrics
 pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e ".[dev,plots]"        # numpy, pandas, scipy + pytest, hypothesis, matplotlib
-pytest -q                            # 217 tests, offline, seeded, ~45 s
+pytest -q                            # 221 tests, offline, seeded, ~45 s
 python examples/run_pipeline.py      # full report + figures on bundled synthetic data
 ```
 
@@ -136,7 +136,7 @@ splits are already folded into the return series.
 ```
 src/eq_risk_metrics/     volatility, var_es, performance, diagnostics,
                          backtest, data/{synthetic,live}
-tests/                   217 offline seeded pytest tests
+tests/                   221 offline seeded pytest tests
 examples/run_pipeline.py end-to-end report + figures reproducing the
                          numbers above
 docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
