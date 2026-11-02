@@ -142,7 +142,7 @@ exactly this bar, area by area.
 
 Every model in this portfolio has a Python reference implementation, full
 stop, including the four areas (options pricing/Greeks, VaR/ES, both equity
-and FX) that also have C++ and Rust performance ports (the VaR engines port the linear-book path only). Python is not a
+and FX) that also have C++ and Rust performance ports (the VaR engines port the linear book plus full option repricing per scenario). Python is not a
 prototype language here; it is the *source of truth*. The C++/Rust engines are
 required to match it, not the other way around, because Python's expressiveness
 makes the modeling logic auditable in a way that a hand-optimized C++ kernel
@@ -1041,7 +1041,7 @@ It splits VaR and ES into Euler marginal, component and incremental contribution
 
 **Q32. Why does `eq_var.revaluation` exist when the VaR engines already handle linear books?**
 
-An option book is not linear: delta-only P&L misses gamma and vega, and delta-gamma misses more in large moves. `full_revaluation_pnl` reprices each option under every scenario; `taylor_pnl` gives the delta, delta-gamma and full Taylor approximations; `pnl_explain` splits P&L into delta, gamma, vega, vanna, volga, theta and unexplained. The C++ and Rust VaR engines gained `option_reval` for single options, matched to Python to 1e-11, but their VaR pipelines do not call it yet.
+An option book is not linear: delta-only P&L misses gamma and vega, and delta-gamma misses more in large moves. `full_revaluation_pnl` reprices each option under every scenario; `taylor_pnl` gives the delta, delta-gamma and full Taylor approximations; `pnl_explain` splits P&L into delta, gamma, vega, vanna, volga, theta and unexplained. The C++ and Rust VaR engines gained `option_reval`, matched to Python to 1e-11, and their historical and Monte Carlo VaR use it to reprice every option leg in every scenario (vol held at today's level).
 
 
 ## Round 7: Expected Shortfall, Backtesting & Basel

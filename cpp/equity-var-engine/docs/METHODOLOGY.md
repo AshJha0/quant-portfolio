@@ -1,6 +1,8 @@
 # Methodology
 
-This engine is the linear-book port of the Python engine `eq_var`. The
+This engine is the C++ port of the Python engine `eq_var` (linear
+exposures plus European options repriced in full per scenario, see the
+README's Option VaR section). The
 Python engine revalues each position in full. This engine takes a vector of
 linear factor exposures `w` and uses `P&L = w . r`. This file states the
 conventions, the maths, the model choices and the assumptions.

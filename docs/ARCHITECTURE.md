@@ -26,7 +26,8 @@ The portfolio has 10 project areas. Each area has an equity project and an FX
 project, written as two separate Python codebases. Two areas, options pricing
 and market-risk VaR/ES, also have C++ and Rust ports of the Python design for
 both asset classes. That makes four compiled engines per language. The VaR
-engines are linear-book ports: they do not yet revalue options. A smaller
+engines revalue linear books and European options (full repricing per
+scenario, vol held fixed); vol shocks and P&L explain stay in Python. A smaller
 3-project foundations tier predates the 10-area build. It covers the same core
 techniques for a single asset in Python only.
 
@@ -226,7 +227,7 @@ package `docs/VALIDATION.md` and in the README table.
 | `fx_credit` | `xva`, `saccr` |
 | `eq_port`, `fx_port` (same files) | `hrp`, `robust_mvo`, `cost_qp`, `factor_model`, `tracking_error`, `sharpe_tests` |
 | C++ `eqopt`, Rust `eq-options-engine` | `lr_tree`, `bachelier`, `greeks_higher` (matched to Python to 1e-12 relative, 1e-13 for Bachelier) |
-| C++ and Rust VaR engines (all four) | `option_reval`: BSM price, Greeks, full-revaluation and delta-gamma P&L, matched to Python to 1e-11; not called by the VaR pipelines yet |
+| C++ and Rust VaR engines (all four) | `option_reval`: BSM price, Greeks, full-revaluation and delta-gamma P&L, matched to Python to 1e-11; called by historical and Monte Carlo VaR for option legs |
 
 Rates curves now build in two layers: `fi_rates.multicurve` (OIS discount
 curve, then projection curves) feeds `fi_rates.rate_options` and

@@ -79,7 +79,7 @@ paths on the demo book takes 0.03 s (`monte_carlo_pnl(..., method="full")`).
 
 `tests/test_fuzz_public_api.py` sends NaN, infinities, empty arrays and
 out-of-domain values to every name in `eq_var.__all__`. Golden vectors for
-the C++ and Rust linear-book ports are in `tests/golden/`.
+the C++ and Rust ports are in `tests/golden/`.
 
 ## Layout
 
@@ -97,11 +97,12 @@ src/eq_var/
   data/                  seeded synthetic generators and the demo book; live.py (guarded)
 ```
 
-The C++ and Rust equity engines are linear-book ports: they share the
-conventions and golden vectors, and their VaR pipelines revalue linear
-exposures only. Since Round 3 each also has an `option_reval` module (BSM
-price, Greeks, full-revaluation and delta-gamma P&L for single options),
-which is not yet wired into the VaR pipeline.
+The C++ and Rust equity engines share the conventions and golden vectors.
+Their historical and Monte Carlo VaR also take European options, repriced in
+full in every scenario by `option_reval` (BSM), with parity to
+`eq_var.revaluation` pinned at 1e-11 for historical VaR/ES. They hold vol
+fixed per scenario; vol shocks, Taylor approximations and P&L explain stay
+in Python.
 
 Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
@@ -146,4 +147,5 @@ a.total, a.component, a.percent   # components sum to the total (Euler)
 ```
 
 The compiled VaR engines gain the option revaluation part only
-(`option_reval` in C++ and Rust); see their READMEs.
+(`option_reval` in C++ and Rust, used by their historical and Monte Carlo
+VaR); see their READMEs.

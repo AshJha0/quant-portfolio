@@ -66,7 +66,7 @@ packages expose the compiled engines to Python:
 |---|------|--------|-----|
 | 1 | Options pricing and Greeks | `python/equity/01-options-pricing` (+ C++/Rust) | `python/fx/01-options-pricing` (+ C++/Rust) |
 | 2 | Volatility modelling and forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` |
-| 3 | Market risk: VaR and expected shortfall | `python/equity/03-var-es-engine` (+ C++/Rust linear-book ports) | `python/fx/03-var-es-engine` (+ C++/Rust linear-book ports) |
+| 3 | Market risk: VaR and expected shortfall | `python/equity/03-var-es-engine` (+ C++/Rust ports, linear and option books) | `python/fx/03-var-es-engine` (+ C++/Rust ports, linear and option books) |
 | 4 | Fixed income pricing and risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` |
 | 5 | Statistical pairs trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` |
 | 6 | Credit risk and PD modelling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` |
@@ -204,8 +204,9 @@ The C++ and Rust equity options engines also gained Leisen-Reimer,
 Bachelier and the higher-order Greeks, checked against the Python values to
 1e-12 relative (1e-13 for Bachelier). All four compiled VaR engines gained
 `option_reval` (BSM price, Greeks, full-revaluation and delta-gamma P&L),
-checked against Python goldens to 1e-11; their VaR pipelines still take
-linear exposures only. Each package's `docs/VALIDATION.md`
+checked against Python goldens to 1e-11, and their historical and Monte
+Carlo VaR now reprice option legs with it in every scenario (historical
+VaR/ES matched to Python at 1e-11). Each package's `docs/VALIDATION.md`
 has the full oracle list and tolerances.
 
 ### Phase 6 performance kernels

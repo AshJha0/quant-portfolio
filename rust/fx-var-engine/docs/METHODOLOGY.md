@@ -1,6 +1,6 @@
 # Methodology
 
-Rust FX VaR/ES engine: the linear-book port of the Python package
+Rust FX VaR/ES engine: the port of the Python package
 `python/fx/03-var-es-engine` (`fx_var`), alongside the C++ engine
 `cpp/fx-var-engine` (`fxvar`). Books hold cash, spot and forwards. FX
 options (Garman-Kohlhagen) are revalued in the Python package only. This

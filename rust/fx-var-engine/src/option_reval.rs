@@ -10,6 +10,16 @@
 //! Scenario layout: row-major `n_scenarios x n_factors` spot log returns;
 //! vol shocks (absolute, decimal) in the same layout, or empty for none.
 
+//!
+//! [`layout_option_book`] and [`option_book_pnl`] let
+//! [`crate::historical::historical_option_var`] and
+//! [`crate::monte_carlo::monte_carlo_option_var`] reprice every option leg in
+//! full in every scenario (Jorion, *Value at Risk*, 3rd ed., ch. 10). Options
+//! are on CCYUSD: spot in USD per unit of CCY, domestic rate `r_USD`, carry
+//! `r_CCY`, P&L in USD, so a book holding options must report in USD.
+
+use crate::book::{Book, CompiledBook, Market};
+use crate::returns::ReturnsMatrix;
 use crate::stats::{norm_cdf as ncdf, norm_pdf as npdf};
 use crate::{FxVarError, Result};
 
@@ -209,6 +219,97 @@ pub fn delta_gamma_pnl(
         for (i, p) in pnl.iter_mut().enumerate() {
             let ds = l.spot * spot_log_returns[i * n_factors + l.factor].exp_m1();
             *p += l.quantity * (g.delta * ds + 0.5 * g.gamma * ds * ds);
+        }
+    }
+    Ok(pnl)
+}
+
+/// A linear book plus option legs on one factor axis: `factors` lists the
+/// book's own factors first ([`CompiledBook`] order), then any option factor
+/// the book does not carry; `legs` have `factor` re-indexed into `factors`.
+#[derive(Debug)]
+pub struct OptionBookLayout {
+    /// Union factor axis.
+    pub factors: Vec<String>,
+    /// The compiled linear book, `None` when the book is empty.
+    pub linear: Option<CompiledBook>,
+    /// Option legs, `factor` indexing `factors`.
+    pub legs: Vec<OptionLeg>,
+}
+
+/// Build the layout. `options[k].factor` indexes `option_factors`, whose
+/// names must be `"FX:CCY"` (CCY != USD).
+///
+/// # Errors
+/// No options, a bad factor index or name, invalid legs, or a non-USD base.
+pub fn layout_option_book(
+    book: &Book,
+    market: &Market,
+    options: &[OptionLeg],
+    option_factors: &[String],
+) -> Result<OptionBookLayout> {
+    require(!options.is_empty(), "no option legs")?;
+    let mut factors = Vec::new();
+    let mut linear = None;
+    if !book.is_empty() {
+        require(
+            book.base() == "USD",
+            "a book holding options must report in USD",
+        )?;
+        let c = CompiledBook::new(book, market)?;
+        factors = c.factors().to_vec();
+        linear = Some(c);
+    }
+    for name in option_factors {
+        require(
+            name.len() > 3 && name.starts_with("FX:") && name != "FX:USD",
+            "option factors must be named FX:CCY with CCY != USD",
+        )?;
+    }
+    let mut legs = options.to_vec();
+    for l in legs.iter_mut() {
+        check_leg(l)?;
+        require(
+            l.factor < option_factors.len(),
+            "leg factor index out of range",
+        )?;
+        let name = &option_factors[l.factor];
+        let idx = match factors.iter().position(|f| f == name) {
+            Some(i) => i,
+            None => {
+                factors.push(name.clone());
+                factors.len() - 1
+            }
+        };
+        l.factor = idx;
+    }
+    Ok(OptionBookLayout {
+        factors,
+        linear,
+        legs,
+    })
+}
+
+/// Scenario P&L (USD): [`CompiledBook::pnl_scenarios`] for the linear legs
+/// plus [`full_revaluation_pnl`] for the options. `scenarios` must carry every
+/// factor in `layout.factors` (re-selected into that order; extras ignored).
+///
+/// # Errors
+/// Missing factors, non-finite scenarios, negative `dt`.
+pub fn option_book_pnl(
+    layout: &OptionBookLayout,
+    scenarios: &ReturnsMatrix,
+    dt: f64,
+) -> Result<Vec<f64>> {
+    let rets = scenarios.select(&layout.factors)?;
+    let nf = layout.factors.len();
+    let mut pnl = full_revaluation_pnl(&layout.legs, rets.data.as_slice(), &[], nf, dt)?;
+    if let Some(c) = &layout.linear {
+        if !c.factors().is_empty() {
+            let lin = c.pnl_scenarios(&rets)?;
+            for (p, l) in pnl.iter_mut().zip(lin) {
+                *p += l;
+            }
         }
     }
     Ok(pnl)

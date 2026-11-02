@@ -45,6 +45,7 @@ use std::collections::HashMap;
 use crate::book::{Book, CompiledBook, Market};
 use crate::expected_shortfall::empirical_var_es;
 use crate::matrix::Matrix;
+use crate::option_reval::{layout_option_book, option_book_pnl, OptionLeg};
 use crate::returns::{FactorCov, ReturnsMatrix};
 use crate::rng::Rng;
 use crate::stats::{inv_norm_cdf_unchecked, validate_alpha, validate_horizon};
@@ -717,6 +718,75 @@ pub fn monte_carlo_var_with_threads(
     )?;
     res.se_var_kde = var_standard_error(&res.pnl, opts.alpha)?;
     Ok(res)
+}
+
+/// Monte Carlo VaR/ES with full option revaluation: the scenarios are
+/// simulated on the union of the book's and the options' factors (same
+/// model, seed, horizon and bootstrap seed offset as [`monte_carlo_var`]),
+/// the linear book is revalued through [`CompiledBook`] and every option leg
+/// (`leg.factor` indexes `option_factors`) is repriced by Garman-Kohlhagen,
+/// aged by `dt` years. The book may be empty; if not, its base must be USD.
+/// With no options this is [`monte_carlo_var`], unchanged.
+///
+/// # Errors
+/// As [`monte_carlo_var`], plus [`crate::option_reval::layout_option_book`]
+/// errors.
+pub fn monte_carlo_option_var(
+    book: &Book,
+    market: &Market,
+    options: &[OptionLeg],
+    option_factors: &[String],
+    cov: &FactorCov,
+    opts: &MonteCarloOptions,
+    dt: f64,
+) -> Result<MonteCarloResult> {
+    if options.is_empty() {
+        return monte_carlo_var(book, market, cov, opts);
+    }
+    let threads = crate::par::default_threads();
+    validate_alpha(opts.alpha)?;
+    validate_horizon(opts.horizon_days)?;
+    if opts.n_boot < 2 {
+        return Err(FxVarError::invalid(format!(
+            "n_boot must be >= 2, got {}",
+            opts.n_boot
+        )));
+    }
+    let layout = layout_option_book(book, market, options, option_factors)?;
+    let sub = cov.select(&layout.factors)?;
+    let (scen, warning, jitter) = simulate_threads(
+        &sub,
+        opts.n_scenarios,
+        opts.dist,
+        opts.df,
+        &opts.jumps,
+        opts.seed,
+        opts.horizon_days,
+        threads,
+    )?;
+    let pnl = option_book_pnl(&layout, &scen, dt)?;
+    let (var, es) = empirical_var_es(&pnl, opts.alpha, None)?;
+    let se_var = bootstrap_se_threads(
+        &pnl,
+        opts.alpha,
+        opts.n_boot,
+        opts.seed ^ 0x9E37_79B9_7F4A_7C15,
+        threads,
+    )?;
+    let se_var_kde = var_standard_error(&pnl, opts.alpha)?;
+    Ok(MonteCarloResult {
+        var,
+        es,
+        alpha: opts.alpha,
+        horizon_days: opts.horizon_days,
+        dist: opts.dist,
+        n_scenarios: opts.n_scenarios,
+        se_var,
+        se_var_kde,
+        jitter,
+        pnl,
+        cholesky_warning: warning,
+    })
 }
 
 #[cfg(test)]

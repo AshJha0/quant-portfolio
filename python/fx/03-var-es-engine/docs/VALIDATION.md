@@ -326,7 +326,7 @@ both historical and parametric methods.
 ### 4.2 Cross-language golden vectors (`tests/test_golden_vectors.py`)
 
 `tests/golden/generate_golden.py` writes `golden_vectors.json`, which the C++
-and Rust linear-book ports assert. The JSON records the Python, numpy and
+and Rust ports assert. The JSON records the Python, numpy and
 scipy versions. The Python test rebuilds the JSON and compares every value
 to 16 ulps of `max(|value|, scale)`. The scale is 2e7 for case A, because
 those values are P&L differences of book values near 1e7 USD and their
@@ -364,4 +364,11 @@ Every new model has at least one oracle test. Files under `tests/`:
 | `test_limits.py` | statuses, ordering and aggregation by hand | exact |
 
 Compiled `option_reval` (C++ and Rust, both VaR engines): golden values from
-`fx_var.revaluation` to 1e-11, put-call parity, input rejection.
+`fx_var.revaluation` to 1e-11, put-call parity, input rejection. Compiled
+option VaR (`test_option_var` in all four engines): historical VaR, ES and
+scenario P&L against `fx_var.revaluation.full_revaluation_pnl` plus the S2
+order statistic at 1e-11 relative (goldens from
+`cpp/equity-var-engine/tools/gen_option_var_golden.py`); Monte Carlo VaR
+within 4 bootstrap SEs of the closed-form quantile of a monotone one-factor
+book; a book with no options gives bit-identical results to the linear
+path.

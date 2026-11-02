@@ -1,10 +1,12 @@
 # FX VaR & ES Engine (Rust)
 
-A multi-currency FX VaR and ES engine: the linear-book port of the Python
+A multi-currency FX VaR and ES engine: the Rust port of the Python
 package [`python/fx/03-var-es-engine`](../../python/fx/03-var-es-engine/)
 (`fx_var`), alongside [`cpp/fx-var-engine`](../../cpp/fx-var-engine/). Books
 hold cash, spot and outright forwards and are revalued in full under factor
-scenarios. FX options are revalued in the Python package only.
+scenarios. European FX options are repriced by Garman-Kohlhagen in every
+historical or Monte Carlo scenario (see
+[Option VaR](#option-var-full-revaluation)).
 
 Zero runtime dependencies (`proptest` is a test-only dependency).
 
@@ -181,11 +183,29 @@ Full detail: [`docs/VALIDATION.md`](docs/VALIDATION.md). Model choices:
 [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Desk usage:
 [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md).
 
-## Option revaluation (Round 3)
+## Option VaR (full revaluation)
 
-`option_reval` adds Black-Scholes-Merton pricing with a carry yield
-(foreign rate, so Garman-Kohlhagen), closed-form Greeks (delta, gamma, vega, vanna, volga, theta), full
-revaluation P&L per scenario and the delta-gamma approximation. It mirrors
-`fx_var.revaluation`; the tests pin golden values from the Python module to
-1e-11. It is self-contained (its own normal CDF call) and does not use the
-batch kernel API, so adapting it to the Round 3 kernels is integration work.
+`option_reval` prices European options by Garman-Kohlhagen (Black-Scholes-
+Merton with the foreign rate as carry), with closed-form Greeks and
+full-revaluation and delta-gamma P&L, mirroring `fx_var.revaluation`. The
+VaR entry points are `historical::historical_option_var` and
+`monte_carlo::monte_carlo_option_var`: the same arguments as `historical_var`
+/ `monte_carlo_var` plus `options`, `option_factors` (leg `factor` indexes
+this list, e.g. `"FX:EUR"`) and `dt` (years of ageing). The book may be
+empty. Options are on CCYUSD with P&L in USD, so a book holding them must
+report in USD; historical `horizon_days` must be 1, since square-root-of-time
+scaling is wrong for a non-linear book. Options are held at today's implied
+vol (no vol factor yet).
+
+Parity with Python. The historical numbers are pinned to the Python
+reference (`fx_var.revaluation.full_revaluation_pnl` followed by the S2 order
+statistic) at 1e-11 relative, for an options-only book and for options plus
+a linear book, with and without ageing (`dt = 1/252`). The goldens come from
+[`cpp/equity-var-engine/tools/gen_option_var_golden.py`](../../cpp/equity-var-engine/tools/gen_option_var_golden.py),
+which builds a closed-form scenario panel so no RNG is shared. Monte Carlo
+cannot match numpy draw for draw, so its test uses a case with a known
+answer: a long call on one normal factor has P&L monotone in the factor, so
+the exact VaR is minus the P&L at sigma z_alpha and the exact ES is a
+one-dimensional integral. The engine must land within 4 bootstrap standard
+errors (ES within 2 %). A book with no option legs goes down the unchanged
+linear path, and the tests check the two give identical bits.

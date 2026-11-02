@@ -97,7 +97,20 @@ come from seeded synthetic data.
   (option full revaluation, Taylor P&L, P&L explain), `limits`.
 - `option_reval` in all four compiled VaR engines (C++ and Rust): BSM price,
   Greeks, full-revaluation and delta-gamma P&L, matched to Python goldens to
-  1e-11. Not yet called by the VaR pipelines.
+  1e-11.
+- Option VaR in all four compiled VaR engines (fix round): historical and
+  Monte Carlo VaR/ES reprice every option leg in full in every scenario
+  (BSM for equity, Garman-Kohlhagen for FX), with the linear path unchanged
+  for books without options. Equity: `historical_option_var_es`,
+  `monte_carlo_option_var` (C++) / `monte_carlo_option_run` (Rust),
+  `option_book_pnl`. FX: option overloads of `historical_var` and
+  `monte_carlo_var` (C++), `historical_option_var` and
+  `monte_carlo_option_var` (Rust). Historical VaR, ES and scenario P&L match
+  the Python revaluation at 1e-11 relative (goldens from
+  `cpp/equity-var-engine/tools/gen_option_var_golden.py`); Monte Carlo VaR
+  lands within 4 bootstrap SEs of a closed-form quantile. Vol is held at
+  today's level per scenario; FX option books must report in USD and
+  historical option VaR takes `horizon_days = 1` only.
 - The BCBS MAR paragraph numbers quoted in `frtb_ima` have not been
   re-checked against the bis.org text.
 

@@ -1,8 +1,8 @@
 // Multi-currency FX book: positions, base-currency P&L, triangulation.
 //
 // Mirrors python/fx/03-var-es-engine fx_var.book (spot + forward + cash
-// subset; options stay in the Python research stack - see
-// docs/METHODOLOGY.md).
+// subset). European options sit beside the book: option_reval.hpp and the
+// option overloads of historical_var / monte_carlo_var.
 //
 // Factor representation
 // ---------------------
