@@ -27,6 +27,22 @@ Interpolation schemes
     it is continuous but kinks at the pillars. PCHIP is non-local, so a
     pillar bump moves the two neighbouring segments as well. It is not
     Hagan-West monotone-convex and does not guarantee positive forwards.
+``monotone_convex``
+    Hagan and West (2006), "Interpolation methods for curve construction",
+    Applied Mathematical Finance 13(2), 89-129, Section 5 (the "monotone
+    convex" method, without the amelioration step). The instantaneous
+    forward is interpolated, not the zero rate. On each segment it is the
+    discrete forward ``f^d_i = (r_i t_i - r_{i-1} t_{i-1}) / (t_i - t_{i-1})``
+    plus a correction ``g(x)`` that integrates to zero, so every pillar
+    reprices exactly. The node forwards are the time-weighted averages of
+    the neighbouring discrete forwards (their eq. 21-23), and ``g`` is one of
+    the four piecewise quadratics of their Section 5.2 chosen so the forward
+    stays between its node values (no spurious oscillation). The forward is
+    continuous, it is monotone wherever the discrete forwards are, and it is
+    local: a pillar bump moves at most the two neighbouring segments on each
+    side. The first segment ``(0, t_1]`` is part of the scheme, so the short
+    end differs slightly from the other three schemes (the pillar still
+    reprices).
 
 Extrapolation policy
 --------------------
@@ -51,7 +67,7 @@ from scipy.interpolate import PchipInterpolator
 
 __all__ = ["INTERPOLATIONS", "DiscountCurve", "ExtrapolationWarning"]
 
-INTERPOLATIONS: tuple[str, ...] = ("loglinear_df", "linear_zero", "pchip_zero")
+INTERPOLATIONS: tuple[str, ...] = ("loglinear_df", "linear_zero", "pchip_zero", "monotone_convex")
 
 _TMIN = 1e-10  # below this, treat t as "now" (df = 1, zero rate = short-end zero)
 
@@ -103,6 +119,9 @@ class DiscountCurve:
         self._pchip: PchipInterpolator | None = None
         if interpolation == "pchip_zero" and t.size >= 2:
             self._pchip = PchipInterpolator(t, self._zeros, extrapolate=False)
+        self._mc: _MonotoneConvex | None = None
+        if interpolation == "monotone_convex":
+            self._mc = _MonotoneConvex(t, -np.log(p))
 
     # ------------------------------------------------------------------ ctors
     @classmethod
@@ -142,6 +161,10 @@ class DiscountCurve:
             z = np.interp(tc, self.times, self._zeros)
         elif self.interpolation == "pchip_zero":
             z = np.asarray(self._pchip(tc), dtype=float)  # type: ignore[misc]
+        elif self.interpolation == "monotone_convex":
+            assert self._mc is not None
+            tc = np.clip(t_arr, _TMIN, self.times[-1])
+            z = self._mc.integral(tc) / tc
         else:  # loglinear_df: linear in ln P = -z*t, with node (0, ln P = 0)
             knots_t = np.concatenate(([0.0], self.times))
             knots_lnp = np.concatenate(([0.0], np.log(self.dfs)))
@@ -211,6 +234,26 @@ class DiscountCurve:
         annuity = float(alpha * dfs.sum())
         return (1.0 - float(dfs[-1])) / annuity
 
+    def instantaneous_forward(self, t: float | np.ndarray) -> float | np.ndarray:
+        """Instantaneous forward ``f(t) = -d ln P / dt``.
+
+        Exact for ``monotone_convex`` (the interpolated object itself); for
+        the other schemes a central difference of ``ln P`` with step 1e-6.
+        Beyond the last pillar the flat-zero extrapolation gives ``z_n``.
+        """
+        t_arr = np.atleast_1d(np.asarray(t, dtype=float))
+        if self._mc is not None:
+            inside = np.clip(t_arr, 0.0, self.times[-1])
+            f = np.where(t_arr > self.times[-1], self._zeros[-1], self._mc.forward(inside))
+        else:
+            h = 1e-6
+            lo = np.maximum(t_arr - h, 0.0)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ExtrapolationWarning)
+                f = -(np.log(np.asarray(self.df(t_arr + h), dtype=float))
+                      - np.log(np.asarray(self.df(lo), dtype=float))) / (t_arr + h - lo)
+        return float(f[0]) if np.isscalar(t) or np.ndim(t) == 0 else f
+
     # ----------------------------------------------------------------- bumps
     def bumped_parallel(self, shift: float) -> DiscountCurve:
         """New curve with all pillar zero rates shifted by ``shift`` (absolute,
@@ -241,3 +284,78 @@ class DiscountCurve:
             f"span=[{self.times[0]:.3f}, {self.times[-1]:.3f}]y, "
             f"interp={self.interpolation!r})"
         )
+
+
+class _MonotoneConvex:
+    """Hagan-West (2006) monotone-convex forward on pillars ``t`` with
+    ``y = -ln P(t) = r t``. ``integral(t)`` returns ``int_0^t f``."""
+
+    def __init__(self, t: np.ndarray, y: np.ndarray) -> None:
+        tau = np.concatenate(([0.0], t))
+        yy = np.concatenate(([0.0], y))
+        dt = np.diff(tau)
+        fd = np.diff(yy) / dt  # discrete forwards f^d_1..f^d_n
+        n = fd.size
+        f = np.empty(n + 1)  # node forwards f_0..f_n (Hagan-West eq. 21-23)
+        if n == 1:
+            f[:] = fd[0]
+        else:
+            w = dt[:-1] / (dt[:-1] + dt[1:])
+            f[1:n] = w * fd[1:] + (1.0 - w) * fd[:-1]
+            f[0] = fd[0] - 0.5 * (f[1] - fd[0])
+            f[n] = fd[-1] - 0.5 * (f[n - 1] - fd[-1])
+        self.tau, self.yy, self.dt, self.fd, self.f = tau, yy, dt, fd, f
+
+    @staticmethod
+    def _g(g0: float, g1: float, x: float) -> tuple[float, float]:
+        """(G(x), int_0^x G) for one segment; Hagan-West Section 5.2."""
+        if g0 == 0.0 and g1 == 0.0:
+            return 0.0, 0.0
+        if (g0 < 0 and -0.5 * g0 <= g1 <= -2.0 * g0) or (g0 > 0 and -0.5 * g0 >= g1 >= -2.0 * g0):
+            # region (i): plain quadratic
+            G = g0 * (1 - 4 * x + 3 * x * x) + g1 * (-2 * x + 3 * x * x)
+            I = g0 * (x - 2 * x * x + x**3) + g1 * (-x * x + x**3)
+            return G, I
+        if (g0 < 0 and g1 > -2.0 * g0) or (g0 > 0 and g1 < -2.0 * g0):
+            # region (ii): flat then quadratic
+            eta = (g1 + 2 * g0) / (g1 - g0)
+            if x <= eta:
+                return g0, g0 * x
+            u = (x - eta) / (1 - eta)
+            return g0 + (g1 - g0) * u * u, g0 * x + (g1 - g0) * (x - eta) * u * u / 3.0
+        if (g0 > 0 and 0 > g1 > -0.5 * g0) or (g0 < 0 and 0 < g1 < -0.5 * g0):
+            # region (iii): quadratic then flat
+            eta = 3 * g1 / (g1 - g0)
+            if x < eta:
+                v = (eta - x) / eta
+                return g1 + (g0 - g1) * v * v, g1 * x + (g0 - g1) * eta / 3.0 * (1 - v**3)
+            return g1, g1 * x + (g0 - g1) * eta / 3.0
+        # region (iv): g0, g1 of the same sign; two quadratics meeting at A
+        eta = g1 / (g1 + g0)
+        A = -g0 * g1 / (g0 + g1)
+        if x < eta:
+            v = (eta - x) / eta
+            return A + (g0 - A) * v * v, A * x + (g0 - A) * eta / 3.0 * (1 - v**3)
+        u = (x - eta) / (1 - eta)
+        return (A + (g1 - A) * u * u,
+                A * x + (g0 - A) * eta / 3.0 + (g1 - A) * (x - eta) * u * u / 3.0)
+
+    def _eval(self, t: np.ndarray, want_integral: bool) -> np.ndarray:
+        out = np.empty_like(t, dtype=float)
+        for k, tk in enumerate(t.ravel()):
+            i = int(np.searchsorted(self.tau, tk, side="left"))
+            i = min(max(i, 1), self.fd.size)
+            x = (tk - self.tau[i - 1]) / self.dt[i - 1]
+            fd = self.fd[i - 1]
+            G, I = self._g(self.f[i - 1] - fd, self.f[i] - fd, x)
+            if want_integral:
+                out.flat[k] = self.yy[i - 1] + self.dt[i - 1] * (fd * x + I)
+            else:
+                out.flat[k] = fd + G
+        return out
+
+    def integral(self, t: np.ndarray) -> np.ndarray:
+        return self._eval(np.asarray(t, dtype=float), True)
+
+    def forward(self, t: np.ndarray) -> np.ndarray:
+        return self._eval(np.asarray(t, dtype=float), False)

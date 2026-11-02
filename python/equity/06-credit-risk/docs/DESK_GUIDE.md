@@ -107,4 +107,4 @@ Per SR 11-7 / EBA model-governance expectations:
 
 - Pillar 1 PD: `calibration.calibrate_with_moc`. The ranking model alone is not enough, because the MoC and the floor are part of the regulatory PD.
 - IFRS 9 lifetime PD: `migration.cumulative_pd`. It assumes the chain is time-homogeneous, so overlay forward-looking scenarios separately.
-- A market-implied PD comes from `cds.bootstrap_hazards`, which is risk-neutral. Do not mix it with the through-the-cycle PDs above.
+- A market-implied PD comes from `isda_cds.bootstrap_isda` (dealer conventions) or `cds.bootstrap_hazards` (simplified), both risk-neutral. Do not mix it with the through-the-cycle PDs above.

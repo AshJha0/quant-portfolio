@@ -146,6 +146,25 @@ come from seeded synthetic data.
 - The BCBS MAR paragraph numbers quoted in `frtb_ima` have not been
   re-checked against the bis.org text.
 
+#### Round 3 fixes: rates and credit
+
+- `fi_rates.curve`: `monotone_convex` interpolation (Hagan and West 2006,
+  Section 5) and `DiscountCurve.instantaneous_forward`. Pillars reprice
+  exactly; the forward is continuous, local and keeps the monotonicity of
+  the inputs.
+- `fi_rates.hull_white`: two-curve swaptions (OIS discounting, separate
+  forward curve, Henrard 2010 deterministic spread) and
+  `calibrate_hull_white` to a swaption vol grid (normal or Black), with
+  `(a, sigma)` or `sigma` alone; checked by Monte Carlo and round trip.
+- `fx_rates.xccy_float`: MtM convexity adjustment (`MtmConvexity`:
+  lognormal spot, Hull-White quote rate, correlation; checked by Monte
+  Carlo) and seasoned valuation between resets (`elapsed` with the current
+  fixings).
+- `eq_credit.isda_cds`: CDS on ISDA standard-model conventions (dated IMM
+  schedule, step-in, ACT/360, exact accrual on default, a real discount
+  curve), dated par-spread bootstrap and quoted-spread to upfront
+  conversion. Not checked against ISDA's licensed test grids.
+
 #### Round 3: performance kernels, Phase 6 (lane B)
 
 - `qp::core` and `qp-core`: Philox4x32-10 (Random123 known-answer vectors

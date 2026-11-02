@@ -2191,8 +2191,10 @@ res = bilateral_cva(times, epe, ene, cpty.survival(times), own.survival(times), 
 print(round(res.cva, 2), round(res.dva, 2))        # 5121.83 1526.72
 ```
 
-The CDS model uses a flat discount rate and not the ISDA standard-model
-dates. For collateral, build the exposure with `collateralised_exposure`.
+`eq_credit.cds` uses a flat discount rate and year-fraction maturities.
+For dated contracts on the ISDA standard-model conventions (step-in, ACT/360,
+exact accrual on default, a real discount curve) use
+`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. For collateral, build the exposure with `collateralised_exposure`.
 
 ### How do I calibrate PDs to a central tendency with a margin of conservatism?
 

@@ -15,16 +15,38 @@ and Practice", 2nd ed., Section 3.3:
   (eq. 3.42)
 - swaption by Jamshidian (1989) decomposition (eq. 3.44-3.45).
 
-Single-curve: the model is fitted to one discount curve. The tests check
-it against a Monte Carlo of the same dynamics.
+Two-curve setup. The short rate drives the OIS discount curve ``D``. A
+floating leg projected on a separate forward curve ``P_f`` uses the
+deterministic multiplicative spread of Henrard (2010), "The irony in
+derivatives discounting part II: the crisis", Wilmott Journal 2(6),
+301-316, Section 3. For a float period ``[s_{j-1}, s_j]`` the ratio
+``beta_j = (P_f(0,s_{j-1}) / P_f(0,s_j)) * (D(0,s_j) / D(0,s_{j-1}))`` is
+held fixed, so at expiry ``T`` the float leg is worth
+``sum_j (beta_j P(T,s_{j-1}) - P(T,s_j))``. The payer swaption is then a
+put, struck at ``beta_1``, on a coupon bond with coefficient ``K tau`` on
+fixed dates, ``1`` at the end and ``-(beta_{j+1} - 1)`` on float dates.
+Jamshidian's split stays exact for the negative coefficients too: every
+zero bond falls as ``r`` rises, so when the coupon bond crosses its strike
+once (the root search checks this) all the pieces change sign together.
+With ``forward_curve=None`` every ``beta_j = 1`` and the single-curve
+formula comes back.
+
+Calibration (``calibrate_hull_white``) fits ``(a, sigma)``, or ``sigma``
+alone with ``a`` fixed, to a grid of European swaptions by least squares,
+each swaption priced with the analytic Jamshidian formula (Brigo and
+Mercurio 2006, Section 3.3.2). Market prices come from normal or Black
+vols through the annuity formula in ``rate_options``. The tests check the
+model against a Monte Carlo of the same dynamics and recover known
+parameters from synthetic swaption grids.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import brentq
+from scipy.optimize import brentq, least_squares
 from scipy.stats import norm
 
 from .curve import DiscountCurve
@@ -86,19 +108,59 @@ class HullWhite:
         t = np.arange(0, int(round(maturity * frequency)) + 1) / frequency
         return float(sum(self.caplet(t0, t1, K, floor) for t0, t1 in zip(t[1:-1], t[2:], strict=False)))
 
+    def _swaption_bond(self, expiry: float, tenor: float, K: float, frequency: int,
+                       forward_curve: DiscountCurve | None,
+                       float_frequency: int | None) -> tuple[np.ndarray, np.ndarray, float]:
+        """Coupon-bond times, coefficients and strike of the payer swaption."""
+        n_fix = tenor * frequency
+        if abs(n_fix - round(n_fix)) > 1e-9 or round(n_fix) < 1:
+            raise ValueError("tenor * frequency must be a positive integer")
+        ti = expiry + np.arange(1, int(round(n_fix)) + 1) / frequency
+        coef: dict[float, float] = {}
+
+        def add(t: float, c: float) -> None:
+            key = round(float(t), 12)
+            coef[key] = coef.get(key, 0.0) + c
+
+        for t in ti:
+            add(t, K / frequency)
+        add(ti[-1], 1.0)
+        strike = 1.0
+        if forward_curve is not None:
+            ff = frequency if float_frequency is None else float_frequency
+            n_fl = tenor * ff
+            if abs(n_fl - round(n_fl)) > 1e-9 or round(n_fl) < 1:
+                raise ValueError("tenor * float_frequency must be a positive integer")
+            s = expiry + np.arange(0, int(round(n_fl)) + 1) / ff
+            pf = np.asarray(forward_curve.df(s), dtype=float)
+            pd = np.asarray(self.curve.df(s), dtype=float)
+            beta = (pf[:-1] / pf[1:]) * (pd[1:] / pd[:-1])
+            strike = float(beta[0])
+            for j in range(1, s.size - 1):
+                add(s[j], -(beta[j] - 1.0))
+        times = np.array(sorted(coef))
+        return times, np.array([coef[t] for t in times]), strike
+
     def swaption(self, expiry: float, tenor: float, K: float, frequency: int = 1,
-                 payer: bool = True) -> float:
-        """European swaption by Jamshidian decomposition (eq. 3.44-3.45)."""
-        ti = expiry + np.arange(1, int(round(tenor * frequency)) + 1) / frequency
-        c = np.full(ti.size, K / frequency)
-        c[-1] += 1.0
+                 payer: bool = True, forward_curve: DiscountCurve | None = None,
+                 float_frequency: int | None = None) -> float:
+        """European swaption by Jamshidian decomposition (eq. 3.44-3.45).
+
+        ``forward_curve`` (optional) projects the floating leg, paid
+        ``float_frequency`` times a year (default ``frequency``), in the
+        deterministic-spread two-curve setup of the module docstring.
+        """
+        ti, c, strike = self._swaption_bond(expiry, tenor, K, frequency,
+                                            forward_curve, float_frequency)
 
         def g(r: float) -> float:
-            return float(np.sum(c * self.zcb(expiry, ti, r))) - 1.0
+            return float(np.sum(c * self.zcb(expiry, ti, r))) - strike
 
+        if not g(-1.0) > 0.0 > g(1.0):
+            raise ValueError("coupon bond does not cross its strike on r in [-1, 1]")
         r_star = brentq(g, -1.0, 1.0, xtol=1e-14)
         Ki = self.zcb(expiry, ti, r_star)
-        # payer swaption = put on the coupon bond struck at par
+        # payer swaption = put on the coupon bond struck at beta_1
         return float(sum(ci * self.bond_option(expiry, s, k, call=not payer)
                          for ci, s, k in zip(c, ti, Ki, strict=False)))
 
@@ -123,3 +185,90 @@ class HullWhite:
             integral += 0.5 * (r_prev + r) * dt
             r_prev = r
         return r_prev, integral
+
+
+# ------------------------------------------------------------ calibration
+@dataclass(frozen=True)
+class SwaptionQuote:
+    """One market swaption. ``vol`` is normal (``model="normal"``) or Black.
+
+    ``strike=None`` means at the money (the forward swap rate).
+    """
+
+    expiry: float
+    tenor: float
+    vol: float
+    strike: float | None = None
+    payer: bool = True
+    model: str = "normal"
+    fixed_frequency: int = 1
+    float_frequency: int = 4
+
+
+@dataclass(frozen=True)
+class HullWhiteCalibration:
+    model: HullWhite
+    market_prices: np.ndarray
+    model_prices: np.ndarray
+    success: bool
+
+    @property
+    def max_abs_error(self) -> float:
+        return float(np.max(np.abs(self.model_prices - self.market_prices)))
+
+
+def calibrate_hull_white(
+    curve: DiscountCurve,
+    quotes: Sequence[SwaptionQuote],
+    forward_curve: DiscountCurve | None = None,
+    a: float | None = None,
+    a0: float = 0.05,
+    sigma0: float = 0.01,
+) -> HullWhiteCalibration:
+    """Fit Hull-White to a swaption grid by least squares on prices.
+
+    ``curve`` is the OIS discount curve the model is fitted to;
+    ``forward_curve`` (default: ``curve``) projects the floating legs. With
+    ``a`` given only ``sigma`` is fitted, the usual desk choice because a
+    single expiry column barely identifies ``a``. Residuals are price errors
+    divided by the annuity (rate units), so long and short tenors weigh
+    alike. Model prices use the analytic Jamshidian formula.
+    """
+    from .rate_options import forward_swap_rate, swap_annuity, swaption_price
+
+    if len(quotes) == 0:
+        raise ValueError("need at least one swaption quote")
+    proj = curve if forward_curve is None else forward_curve
+    strikes, mkt, ann = [], [], []
+    for q in quotes:
+        if q.model not in ("normal", "black"):
+            raise ValueError(f"model must be 'normal' or 'black', got {q.model!r}")
+        K = q.strike
+        if K is None:
+            K = forward_swap_rate(curve, proj, q.expiry, q.tenor,
+                                  q.fixed_frequency, q.float_frequency)
+        strikes.append(float(K))
+        mkt.append(swaption_price(curve, proj, q.expiry, q.tenor, K, q.vol, q.payer,
+                                  q.model, q.fixed_frequency, q.float_frequency))
+        ann.append(swap_annuity(curve, q.expiry, q.tenor, q.fixed_frequency)[1])
+    market = np.array(mkt)
+    annuity = np.array(ann)
+
+    def model_prices(av: float, sv: float) -> np.ndarray:
+        hw = HullWhite(av, sv, curve)
+        return np.array([hw.swaption(q.expiry, q.tenor, K, q.fixed_frequency, q.payer,
+                                     forward_curve, q.float_frequency)
+                         for q, K in zip(quotes, strikes, strict=True)])
+
+    if a is None:
+        def res(x: np.ndarray) -> np.ndarray:
+            return (model_prices(float(np.exp(x[0])), float(np.exp(x[1]))) - market) / annuity
+        sol = least_squares(res, np.log([a0, sigma0]), xtol=1e-15, ftol=1e-15, gtol=1e-15)
+        av, sv = float(np.exp(sol.x[0])), float(np.exp(sol.x[1]))
+    else:
+        def res1(x: np.ndarray) -> np.ndarray:
+            return (model_prices(a, float(np.exp(x[0]))) - market) / annuity
+        sol = least_squares(res1, np.log([sigma0]), xtol=1e-15, ftol=1e-15, gtol=1e-15)
+        av, sv = a, float(np.exp(sol.x[0]))
+    return HullWhiteCalibration(HullWhite(av, sv, curve), market, model_prices(av, sv),
+                                bool(sol.success))
