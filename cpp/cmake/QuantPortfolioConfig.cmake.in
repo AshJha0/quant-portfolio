@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+# The engines and qp::core link Threads::Threads publicly.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/QuantPortfolioTargets.cmake")
+check_required_components(QuantPortfolio)

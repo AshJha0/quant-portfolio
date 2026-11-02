@@ -314,6 +314,25 @@ Projects that import `qp_core` need `python/core` installed first
 the uv workspace: `uv sync --all-packages` from the root installs
 `python/core` and all 23 projects from `uv.lock`.
 
+### Using the C++ engines from another CMake project
+
+The four engines and `qp::core` install as one CMake package,
+`QuantPortfolio`, with targets `qp::core`, `qp::eqopt`, `qp::eqvar`,
+`qp::fxopt` and `qp::fxvar`:
+
+```bash
+cmake -S cpp -B build/cpp-install -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpp-install -j
+cmake --install build/cpp-install --prefix "$HOME/.local/qp"
+```
+
+A consumer then needs only `find_package(QuantPortfolio 1.0 CONFIG REQUIRED)`
+and `-DCMAKE_PREFIX_PATH=$HOME/.local/qp`. `cpp/tests/find_package_consumer`
+is that consumer; the `cmake install` CI job builds it against a fresh
+prefix with the source tree moved aside, so a build-tree path leaking into
+the exported files fails the job. Python wheels for the bindings are built
+by the `wheels` CI job and kept as artefacts (see `bindings/*/README.md`).
+
 ## How it is tested
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request. The

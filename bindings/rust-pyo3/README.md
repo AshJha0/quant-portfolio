@@ -29,6 +29,33 @@ later. maturin is fetched by pip as the build backend. Lint with
 `cargo clippy --release --locked --all-targets -- -D warnings` and
 `cargo fmt --check` from this directory.
 
+## Wheels
+
+The plain idea: CI turns this package into installable wheel files so a
+user does not need a Rust toolchain on their machine. The wheels are kept as CI
+artefacts only; nothing is uploaded to PyPI.
+
+Formally, the `wheels` job in `.github/workflows/ci.yml` runs cibuildwheel
+3.1.4 with the settings under `[tool.cibuildwheel]` in `pyproject.toml`:
+CPython 3.11, 3.12 and 3.13 on manylinux_2_34 x86_64 and Windows amd64.
+Each wheel is installed into a clean environment and checked by
+`bindings/wheel_smoke.py`, which imports the module and prices one
+contract. The extension uses the stable ABI (abi3), so one wheel per platform serves every Python from 3.11 up; cibuildwheel builds it once and tests it on each version. Inside the Linux container rustup installs the channel pinned in `rust/rust-toolchain.toml`. The full test suite above is not run against the wheel,
+because it needs the Python reference packages.
+
+Worked example, the same check by hand on Linux with Python 3.14
+(2026-11-02, WSL Ubuntu, Rust 1.99.1):
+
+```
+python -m build --wheel --outdir dist bindings/rust-pyo3
+python -m venv /tmp/clean && /tmp/clean/bin/pip install dist/qp_rust-0.1.0-cp310-abi3-linux_x86_64.whl
+cd /tmp && /tmp/clean/bin/python <repo>/bindings/wheel_smoke.py qp_rust
+# qp_rust 0.1.0: ok (eq_bs_price = 10.450583572185565)
+```
+
+Download a CI wheel from the run's artefacts (`wheels-rust-pyo3-<os>`) and
+`pip install` the file that matches your Python and platform.
+
 ## What is exposed
 
 | Function | Engine call |

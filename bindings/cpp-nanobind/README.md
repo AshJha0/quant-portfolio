@@ -23,6 +23,33 @@ CMake 3.26 or later and Python 3.11 or later. scikit-build-core and nanobind
 are fetched by pip. On Windows run the install from a shell where
 `vcvars64.bat` has been called.
 
+## Wheels
+
+The plain idea: CI turns this package into installable wheel files so a
+user does not need a C++23 compiler on their machine. The wheels are kept as CI
+artefacts only; nothing is uploaded to PyPI.
+
+Formally, the `wheels` job in `.github/workflows/ci.yml` runs cibuildwheel
+3.1.4 with the settings under `[tool.cibuildwheel]` in `pyproject.toml`:
+CPython 3.11, 3.12 and 3.13 on manylinux_2_34 x86_64 and Windows amd64.
+Each wheel is installed into a clean environment and checked by
+`bindings/wheel_smoke.py`, which imports the module and prices one
+contract. On Linux the build installs gcc-toolset-15 in the container, since the engines need C++23 features the image's default compiler lacks. The full test suite above is not run against the wheel,
+because it needs the Python reference packages.
+
+Worked example, the same check by hand on Linux with Python 3.14
+(2026-11-02, WSL Ubuntu, GCC 15.2):
+
+```
+python -m build --wheel --outdir dist bindings/cpp-nanobind
+python -m venv /tmp/clean && /tmp/clean/bin/pip install dist/qp_cpp-0.1.0-cp314-cp314-linux_x86_64.whl
+cd /tmp && /tmp/clean/bin/python <repo>/bindings/wheel_smoke.py qp_cpp
+# qp_cpp 0.1.0: ok (eq_bs_price = 10.450583572185565)
+```
+
+Download a CI wheel from the run's artefacts (`wheels-cpp-nanobind-<os>`) and
+`pip install` the file that matches your Python and platform.
+
 ## What is exposed
 
 Functions are prefixed by engine. Every engine error raises `ValueError`

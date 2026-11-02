@@ -87,7 +87,8 @@ add_library(fxopt STATIC
   src/monte_carlo.cpp
   src/batch.cpp
 )
-target_include_directories(fxopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(fxopt PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_link_libraries(fxopt PUBLIC Threads::Threads fxopt_tuning PRIVATE fxopt_warnings)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)
