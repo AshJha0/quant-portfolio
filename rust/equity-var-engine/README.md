@@ -191,3 +191,12 @@ src/
 tests/                   14 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE
 ```
+
+## Option revaluation (Round 3)
+
+`option_reval` adds Black-Scholes-Merton pricing with a carry yield
+(dividend yield), closed-form Greeks (delta, gamma, vega, vanna, volga, theta), full
+revaluation P&L per scenario and the delta-gamma approximation. It mirrors
+`eq_var.revaluation`; the tests pin golden values from the Python module to
+1e-11. It is self-contained (its own normal CDF call) and does not use the
+batch kernel API, so adapting it to the Round 3 kernels is integration work.

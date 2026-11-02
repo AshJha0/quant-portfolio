@@ -79,6 +79,7 @@ pub mod fast;
 pub mod historical;
 pub mod matrix;
 pub mod monte_carlo;
+pub mod option_reval;
 pub mod parametric;
 pub mod psd;
 pub mod rng;
