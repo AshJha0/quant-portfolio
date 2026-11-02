@@ -12,7 +12,32 @@ runs on a live book.
 - `alpha` is the tail probability, in (0, 0.5). A 99% VaR is `alpha=0.01`. A
   97.5% ES is `alpha=0.025`.
 - Historical VaR is the order statistic L(ceil(n * alpha)): the m-th largest
-  loss with m = ceil(n * alpha). There is no interpolation.
+  loss with m = ceil(n * alpha). There is no interpolation. This is the
+  inverse of the empirical distribution function, type 1 in Hyndman and Fan
+  (1996), "Sample quantiles in statistical packages", *The American
+  Statistician* 50(4), 361-365, and the lower-quantile VaR that Acerbi and
+  Tasche (2002), "On the coherence of expected shortfall", *Journal of
+  Banking & Finance* 26(7), 1487-1503, build ES on. Every historical path
+  uses it: plain, age-weighted, filtered (including the deprecated P&L-level
+  `filtered_historical_var`), stressed, in Python, C++ and Rust, equity and
+  FX. Picking it means ES and VaR come from the same sorted tail, and the
+  number is an observed P&L, so it is identical across languages.
+
+  Worked example. Draw 1,000 N(0,1) P&L values (numpy seed 0) and take 99 %
+  VaR, so n alpha = 10. Plain historical VaR is the 10th worst loss, 2.506.
+  The deprecated P&L-level FHS used to read its tail with numpy's type-7
+  interpolation (position alpha (n - 1) = 9.99 from the bottom) and gave
+  2.778; with the order statistic it gives 2.815. Some of the old gap was
+  the convention, so the two numbers were not like for like; now the whole
+  gap is the volatility filter.
+
+  | Value (deprecated P&L-level FHS) | Before (type 7) | After (order statistic) |
+  |---|---|---|
+  | Golden `a_fhs_var_5pct_lam094` (case A, n = 100, 95 %) | 109.3777910164513 | 112.05212695060598 |
+  | N(0,1), n = 1000, seed 0, 99 % | 2.778 | 2.815 |
+
+  No other golden moved: every other VaR path already used the order
+  statistic.
 - Expected Shortfall is the exact Acerbi-Tasche estimator, including the
   fractional atom at the VaR rank.
 - EWMA volatility is seeded with the mean of r^2 over the first min(30, n)

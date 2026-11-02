@@ -170,7 +170,7 @@ independently. Selected values:
 | quantity (input) | Python value | tolerance |
 |---|---|---|
 | historical VaR 99 % (case A) | 141.75681075495305 | 1e-9 rel |
-| FHS VaR 95 %, deprecated P&L-level (case A) | 109.3777910164513 | 1e-9 rel |
+| FHS VaR 95 %, deprecated P&L-level (case A) | 112.05212695060598 | 1e-9 rel |
 | parametric VaR 99 % normal (case B) | 23176.07650751402 | 1e-9 rel |
 | Cornish-Fisher VaR 99 % (case B) | 28230.62626871169 | 1e-9 rel |
 | Kupiec LR (250 obs, 7 exceptions) | 5.496990447792697 | 1e-9 rel |

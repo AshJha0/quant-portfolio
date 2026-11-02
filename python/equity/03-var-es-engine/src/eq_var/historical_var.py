@@ -214,8 +214,10 @@ def factor_filtered_historical_var(
 def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.94) -> float:
     """Deprecated P&L-level FHS. Use ``factor_filtered_historical_var``.
 
-    Kept for one release with its old arithmetic unchanged (full-sample EWMA
-    seed, type-7 interpolated quantile) so existing numbers do not move.
+    Kept for one release with its full-sample EWMA seed. The tail is read
+    with the same order statistic as every other VaR path
+    (``eq_var._tail.var_es``, ``m = ceil(n alpha)``). It used numpy type-7
+    interpolation before, so FHS and HS numbers were not like for like.
     Filtering portfolio P&L ignores option convexity and mixes position
     changes with market volatility.
     """
@@ -231,7 +233,7 @@ def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0
     sigma = np.sqrt(np.maximum(_ewma_var_path(arr, lam, float(np.var(arr)))[:-1], 1e-32))
     z = arr / sigma
     sigma_next = np.sqrt(lam * sigma[-1] ** 2 + (1.0 - lam) * arr[-1] ** 2)
-    return float(-np.quantile(z * sigma_next, alpha, method="linear"))
+    return _tail.var_es(z * sigma_next, alpha)[0]
 
 
 def scale_var_sqrt_time(var_1d: float, horizon_days: int) -> float:

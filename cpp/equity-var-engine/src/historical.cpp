@@ -173,9 +173,9 @@ TailRisk filtered_historical_var_es(const Matrix& factor_returns, std::span<cons
 }
 
 double filtered_historical_var(std::span<const double> pnl, double alpha, double lam) {
-    // Deprecated: kept with its old behaviour for one release (full-sample
-    // population-variance seed, type-7 quantile), matching the Python
-    // reference, so its numbers do not move.
+    // Deprecated: kept for one release with its full-sample population-variance
+    // seed. The tail is the same order statistic as every other VaR path
+    // (m = ceil(n alpha)), matching the Python reference.
     validate_alpha(alpha);
     validate_lam(lam, "filtered_historical_var");
     validate_pnl(pnl, kMinHistObs);
@@ -195,13 +195,7 @@ double filtered_historical_var(std::span<const double> pnl, double alpha, double
     const double next = std::sqrt(lam * sigma[n - 1] * sigma[n - 1] + (1.0 - lam) * last * last);
     std::vector<double> scenarios(n);
     for (std::size_t t = 0; t < n; ++t) scenarios[t] = pnl[t] / sigma[t] * next;
-    std::sort(scenarios.begin(), scenarios.end());
-    const double h = alpha * static_cast<double>(n - 1);
-    const auto lo = static_cast<std::size_t>(std::floor(h));
-    const double q = (lo + 1 < n) ? scenarios[lo] + (h - static_cast<double>(lo)) *
-                                                        (scenarios[lo + 1] - scenarios[lo])
-                                  : scenarios[n - 1];
-    return -q;
+    return var_es_order_statistic(scenarios, alpha).var;
 }
 
 double scale_var_sqrt_time(double var_1d, int horizon_days) {
