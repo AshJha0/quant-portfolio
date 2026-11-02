@@ -54,8 +54,8 @@ bash .github/scripts/hashed_install.sh --group test --extra dev \
     --editable python/core python/fx/05-pairs-trading
 ```
 
-`uv export` resolves `qp-core` and `fx-pairs` with the `dev` extra to about
-30 locked packages; on Python 3.13 the markers select `numpy==2.5.4` and
+`uv export` resolves `qp-core` and `fx-pairs` with the `dev` extra to 23
+locked packages (counted across markers); on Python 3.13 the markers select `numpy==2.5.4` and
 `scipy==1.18.1`. Each is downloaded and hash-checked, then the two local
 projects go in editable.
 
