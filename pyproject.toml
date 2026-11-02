@@ -50,7 +50,7 @@ lint = [
     "scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'",
 ]
 backend = ["setuptools>=68"]
-build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0"]
+build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0", "cibuildwheel==3.1.4"]
 
 [tool.uv.sources]
 qp-core = { workspace = true }
