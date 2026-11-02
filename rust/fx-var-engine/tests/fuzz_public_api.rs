@@ -20,7 +20,7 @@ use fx_var_engine::expected_shortfall::*;
 use fx_var_engine::historical::*;
 use fx_var_engine::matrix::Matrix;
 use fx_var_engine::monte_carlo::*;
-use fx_var_engine::option_reval::{OptionKind, OptionLeg};
+use fx_var_engine::option_reval::{OptionKind, OptionLeg, VolMode, VolScenarios};
 use fx_var_engine::parametric::*;
 use fx_var_engine::psd::*;
 use fx_var_engine::returns::*;
@@ -242,6 +242,12 @@ proptest! {
         check!(historical_option_var(&book(), &market(), &eur_call(0.1), &eur_name(), &rets_poison(120, i, x), &d, 0.0).is_err());
         check!(historical_option_var(&book(), &market(), &eur_call(0.1), &eur_name(), &rets(120), &d, l).is_err());
         check!(historical_option_var(&Book::empty(), &market(), &eur_call(0.1), &eur_name(), &rets(10), &d, 0.0).is_err());
+        // Vol scenarios: no option legs, a panel without the VOL:EUR column, a poisoned skew.
+        let vs = VolScenarios::default();
+        check!(historical_option_var_vol(&book(), &market(), &[], &[], &rets(120), &d, 0.0, &vs).is_err());
+        check!(historical_option_var_vol(&book(), &market(), &eur_call(0.1), &eur_name(), &rets(120), &d, 0.0, &vs).is_err());
+        let vsk = VolScenarios { mode: VolMode::StickyDelta, skews: vec![x] };
+        check!(historical_option_var_vol(&book(), &market(), &eur_call(0.1), &eur_name(), &rets(120), &d, 0.0, &vsk).is_err());
         let o = HistoricalOptions { horizon_days: x, ..Default::default() };
         check!(historical_var(&book(), &market(), &rets(120), &o).is_err());
         let o = HistoricalOptions { method: HsMethod::Age, decay: l, ..Default::default() };
@@ -306,6 +312,9 @@ proptest! {
         check!(monte_carlo_option_var(&book(), &market(), &eur_call(0.1), &eur_name(), &cp, &o, 0.0).is_err());
         let oa = MonteCarloOptions { n_scenarios: 500, alpha: a, ..Default::default() };
         check!(monte_carlo_option_var(&Book::empty(), &market(), &eur_call(0.1), &eur_name(), &c, &oa, 0.0).is_err());
+        let vs = VolScenarios::default();
+        check!(monte_carlo_option_var_vol(&book(), &market(), &[], &[], &c, &o, 0.0, &vs).is_err());
+        check!(monte_carlo_option_var_vol(&book(), &market(), &eur_call(0.1), &eur_name(), &c, &o, 0.0, &vs).is_err());
         let p = pnl(100);
         check!(var_standard_error(&poison(p.clone(), i, x), 0.01).is_err());
         check!(var_standard_error(&p, a).is_err());
