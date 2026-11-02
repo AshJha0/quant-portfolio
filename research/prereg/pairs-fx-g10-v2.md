@@ -150,6 +150,6 @@ net return.
 
 ## Signature
 
-signed_by:
-signed_on:
-sha256:
+signed_by: Claude (maintainer), under owner decision 9 (2026-11-02)
+signed_on: 2026-11-02
+sha256: 78da5f57e0225e2ee47e870bd782ffa03172805ff183f976f346b24ad6c5042b

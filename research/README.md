@@ -179,8 +179,8 @@ See [forward/README.md](forward/README.md) for why and how to read it.
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out run once 2026-11-02: H0 not rejected | `results/regime_fx_basket_train.json`, `results/regime_fx_basket_holdout.json` |
 | `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
-| `prereg/pairs-fx-g10-v2.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/pairs_fx_g10_v2_train.json` |
-| `prereg/momentum-fx-g10.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/momentum_fx_g10_train.json` |
+| `prereg/pairs-fx-g10-v2.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/pairs_fx_g10_v2_train.json` |
+| `prereg/momentum-fx-g10.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/momentum_fx_g10_train.json` |
 
 The two FX registrations were signed by the maintainer, to whom the
 repository owner delegated pre-registration signing. The signature records the hash

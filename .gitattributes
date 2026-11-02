@@ -1,0 +1,2 @@
+research/forward/history_*.csv -text
+research/forward/history_*.csv.sha256 -text
