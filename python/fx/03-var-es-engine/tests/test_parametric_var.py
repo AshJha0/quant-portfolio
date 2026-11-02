@@ -3,8 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.stats import norm
-
 from fx_var import (
     Book,
     PegBlindnessWarning,
@@ -17,10 +15,10 @@ from fx_var import (
     normal_es,
     parametric_var,
     sample_cov,
-    t_var,
     var_covar,
 )
 from fx_var.data.synthetic import demo_market
+from scipy.stats import norm
 
 
 @pytest.fixture()

@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_regime.strategy import (
     build_weights,
     hysteresis_regime,

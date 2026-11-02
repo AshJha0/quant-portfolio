@@ -13,9 +13,8 @@ from __future__ import annotations
 import datetime as dt
 import math
 
-import pytest
-
 import fi_rates as fr
+import pytest
 
 NON_FINITE = [math.nan, math.inf, -math.inf]
 D = dt.date

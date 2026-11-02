@@ -43,6 +43,7 @@ rate (0 by default).
 
 ```bash
 cd python/equity/10-regime-switching
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 pytest -q                              # 195 tests, about 5 minutes
 python examples/run_pipeline.py        # about 18 minutes with 10 workers

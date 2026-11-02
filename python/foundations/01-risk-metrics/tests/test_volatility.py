@@ -4,7 +4,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_risk_metrics import (
     TRADING_DAYS,
     annualised_volatility,
@@ -81,7 +80,7 @@ def test_rolling_volatility_window_two_hand_computed() -> None:
         abs(0.02 - (-0.01)) / np.sqrt(2) * np.sqrt(TRADING_DAYS),
         abs(-0.02 - 0.02) / np.sqrt(2) * np.sqrt(TRADING_DAYS),
     ]
-    for got, exp in zip(roll.iloc[1:], expected):
+    for got, exp in zip(roll.iloc[1:], expected, strict=False):
         assert got == pytest.approx(exp, rel=1e-12)
 
 

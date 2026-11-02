@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-__all__ = ["u_shaped_profile", "IntradayConfig", "ExecutionResult", "IntradayMarket"]
+__all__ = ["ExecutionResult", "IntradayConfig", "IntradayMarket", "u_shaped_profile"]
 
 
 def u_shaped_profile(n_buckets: int, curvature: float = 3.0) -> np.ndarray:

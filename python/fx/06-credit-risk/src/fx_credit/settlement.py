@@ -55,11 +55,11 @@ __all__ = [
     "SettlementExposure",
     "at_risk_window_hours",
     "bcbs_window_hours",
-    "time_zone_gap_matrix",
-    "settlement_exposure",
+    "book_settlement_report",
     "gross_settlement_exposure",
     "net_settlement_exposure",
-    "book_settlement_report",
+    "settlement_exposure",
+    "time_zone_gap_matrix",
 ]
 
 #: Payment-system operating hours in UTC (open, close) on the value date.

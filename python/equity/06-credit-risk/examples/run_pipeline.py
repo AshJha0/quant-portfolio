@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 import time
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -21,11 +20,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from eq_credit.cleaning import (
+    LeakageError,
     apply_winsor,
     check_leakage,
     drop_duplicate_loans,
     fit_winsor_bounds,
-    LeakageError,
 )
 from eq_credit.data.synthetic import generate_loan_book, generate_oot_sample
 from eq_credit.model import (
@@ -49,17 +48,17 @@ from eq_credit.portfolio_risk import (
 from eq_credit.validation import (
     bootstrap_auc_ci,
     brier_score,
+    decile_table,
     gini,
     hosmer_lemeshow,
-    pd_backtest_by_grade,
     ks_statistic,
+    pd_backtest_by_grade,
     psi,
     psi_report,
     psi_status,
-    decile_table,
     roc_auc,
 )
-from eq_credit.woe import WOETransformer, fit_numeric_binning
+from eq_credit.woe import WOETransformer
 
 pd.set_option("display.width", 140)
 pd.set_option("display.float_format", lambda v: f"{v:,.4f}")

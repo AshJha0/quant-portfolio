@@ -1,8 +1,6 @@
 """Model-comparison harness and convergence tables."""
 
 import numpy as np
-import pytest
-
 from eq_options import (
     bs_price,
     compare_models,

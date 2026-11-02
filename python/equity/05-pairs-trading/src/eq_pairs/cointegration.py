@@ -36,30 +36,29 @@ unrealistic); ``engle_granger(intercept=False)`` therefore reuses the N=2
 Johansen's ML procedure is the standard alternative for systems of 3+ series
 (it estimates cointegration rank and avoids EG's arbitrary choice of
 dependent variable). For two-leg pairs, EG is standard, transparent, and
-directly yields the tradeable hedge ratio; Johansen is out of scope here : 
+directly yields the tradeable hedge ratio; Johansen is out of scope here :
 see docs/METHODOLOGY.md for the comparison.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
 
 __all__ = [
+    "ADFResult",
+    "EGResult",
     "OLSFit",
-    "ols",
+    "adf_test",
+    "engle_granger",
     "hedge_ratio",
     "mackinnon_crit",
-    "ADFResult",
-    "adf_test",
-    "EGResult",
-    "engle_granger",
+    "ols",
 ]
 
-ArrayLike = Union[np.ndarray, pd.Series, list]
+ArrayLike = np.ndarray | pd.Series | list
 
 
 # --------------------------------------------------------------------------
@@ -320,8 +319,8 @@ def _adf_design(
 def adf_test(
     y: ArrayLike,
     regression: str = "c",
-    lags: Optional[int] = None,
-    max_lags: Optional[int] = None,
+    lags: int | None = None,
+    max_lags: int | None = None,
     n_series: int = 1,
 ) -> ADFResult:
     """Augmented Dickey-Fuller test with AIC lag selection, from scratch.
@@ -450,8 +449,8 @@ def engle_granger(
     y: ArrayLike,
     x: ArrayLike,
     intercept: bool = True,
-    lags: Optional[int] = None,
-    max_lags: Optional[int] = None,
+    lags: int | None = None,
+    max_lags: int | None = None,
 ) -> EGResult:
     """Engle-Granger two-step cointegration test for a pair.
 

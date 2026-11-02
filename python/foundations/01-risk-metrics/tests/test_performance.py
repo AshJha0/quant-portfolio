@@ -4,7 +4,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_risk_metrics import max_drawdown, sharpe_ratio, sortino_ratio
 
 

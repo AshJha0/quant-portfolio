@@ -25,17 +25,18 @@ the two paths tracked each other over the formation window.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from itertools import combinations
-from typing import Mapping, Optional, Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
 
 __all__ = [
     "candidate_pairs",
+    "correlation_screen",
     "log_returns",
     "pair_correlations",
-    "correlation_screen",
     "ssd_distances",
     "ssd_screen",
 ]
@@ -45,7 +46,7 @@ Pair = tuple[str, str]
 
 def candidate_pairs(
     tickers: Sequence[str],
-    sectors: Optional[Mapping[str, str]] = None,
+    sectors: Mapping[str, str] | None = None,
     same_sector_only: bool = True,
 ) -> list[Pair]:
     """Enumerate candidate pairs, optionally restricted to same-sector names.
@@ -57,7 +58,7 @@ def candidate_pairs(
     sectors : mapping ticker -> sector tag, optional
         Required when ``same_sector_only`` is True.
     same_sector_only : bool
-        If True (default), only emit pairs whose two legs share a sector tag : 
+        If True (default), only emit pairs whose two legs share a sector tag :
         the standard economic prior that cointegration needs a common driver.
 
     Returns
@@ -75,7 +76,7 @@ def candidate_pairs(
             raise ValueError(f"tickers missing sector tags: {missing}")
     pairs = []
     for a, b in combinations(sorted(tickers), 2):
-        if same_sector_only and sectors[a] != sectors[b]:
+        if same_sector_only and sectors is not None and sectors[a] != sectors[b]:
             continue
         pairs.append((a, b))
     return pairs
@@ -89,7 +90,7 @@ def log_returns(prices: pd.DataFrame) -> pd.DataFrame:
     arr = prices.to_numpy(dtype=float)
     if np.any(~np.isfinite(arr) & ~np.isnan(arr)) or np.nanmin(arr) <= 0.0:
         raise ValueError("prices must be strictly positive and finite")
-    return np.log(prices).diff().iloc[1:]
+    return cast(pd.DataFrame, np.log(prices)).diff().iloc[1:]
 
 
 def pair_correlations(

@@ -24,19 +24,17 @@ sigma*sqrt(T) = 0) returns the discounted intrinsic on the forward,
 from __future__ import annotations
 
 import math
-
-from scipy.stats import norm
-
 import numbers
 import warnings
 
-from ._common import (finite_result, ncdf, safe_exp, validate_inputs,
-                      validate_option_type)
+from scipy.stats import norm
+
+from ._common import finite_result, ncdf, safe_exp, validate_inputs, validate_option_type
 from ._iv_core import black_implied_vol
 
 _EPS = 2.220446049250313e-16
 
-__all__ = ["d1", "d2", "gk_price", "gk_call", "gk_put", "implied_vol"]
+__all__ = ["d1", "d2", "gk_call", "gk_price", "gk_put", "implied_vol"]
 
 _MIN_VOL = 1e-12
 

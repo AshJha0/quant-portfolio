@@ -11,13 +11,24 @@ from __future__ import annotations
 import time
 
 import pandas as pd
-
-from fx_options import (analytic_greeks, atm_dns_strike, atm_forward_strike,
-                        binomial_convergence_table, binomial_price,
-                        cip_forward, compare_models, delta, forward_points,
-                        gk_price, hedge_frequency_study, implied_vol,
-                        mc_convergence_table, simulate_delta_hedge,
-                        strike_from_delta, synthetic_forward_from_options)
+from fx_options import (
+    analytic_greeks,
+    atm_dns_strike,
+    atm_forward_strike,
+    binomial_convergence_table,
+    binomial_price,
+    cip_forward,
+    compare_models,
+    delta,
+    forward_points,
+    gk_price,
+    hedge_frequency_study,
+    implied_vol,
+    mc_convergence_table,
+    simulate_delta_hedge,
+    strike_from_delta,
+    synthetic_forward_from_options,
+)
 from fx_options.data.synthetic import synthetic_vol_quotes
 
 pd.set_option("display.float_format", lambda x: f"{x:,.8f}")

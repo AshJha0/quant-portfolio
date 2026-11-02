@@ -3,8 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.optimize import minimize_scalar
-
 from fx_port import (
     carry_sizing,
     empirical_cvar,
@@ -12,6 +10,7 @@ from fx_port import (
     max_return_cvar_constrained,
     min_cvar,
 )
+from scipy.optimize import minimize_scalar
 
 
 def _toy_scenarios(seed=0, n=500):
@@ -138,7 +137,7 @@ def test_min_cvar_return_floor():
 def test_infeasible_lp_raises():
     idx = pd.bdate_range("2020-01-01", periods=50)
     scen = pd.DataFrame({"loser": np.full(50, -0.05)}, index=idx)
-    with pytest.raises(ValueError, match="infeasible|failed"):
+    with pytest.raises(ValueError, match=r"infeasible|failed"):
         max_return_cvar_constrained(
             scen, alpha=0.9, cvar_limit=0.001, sum_to=1.0, gross_limit=1.0
         )

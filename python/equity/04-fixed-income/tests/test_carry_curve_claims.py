@@ -2,10 +2,9 @@
 
 import datetime as dt
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 
 D = dt.date
 
@@ -48,7 +47,7 @@ def test_gfc_2008_long_end_rallied_with_the_10y():
     The old encoding had 30y -75bp, understating long-end P&L by ~100bp.
     """
     sc = fr.HISTORICAL_SCENARIOS["gfc_2008"]
-    shifts = dict(zip(sc.tenors, sc.shifts_bp))
+    shifts = dict(zip(sc.tenors, sc.shifts_bp, strict=False))
     assert abs(shifts[30.0] - shifts[10.0]) <= 10.0
     assert shifts[30.0] <= -150.0
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.backtest import ZERO_COSTS, CostModel, backtest_pair
 from eq_pairs.cointegration import adf_test, engle_granger, hedge_ratio, mackinnon_crit
 from eq_pairs.data import business_index
@@ -30,8 +29,8 @@ from eq_pairs.metrics import (
     sharpe_se,
     sortino_ratio,
 )
-from eq_pairs.signals import SignalRules, generate_signals, time_stop_bars, size_positions
-from eq_pairs.spread import compute_spread, fit_ou_ols, fit_ou_mle, half_life_from_kappa
+from eq_pairs.signals import SignalRules, generate_signals, size_positions, time_stop_bars
+from eq_pairs.spread import compute_spread, fit_ou_mle, fit_ou_ols, half_life_from_kappa
 
 
 @pytest.fixture(scope="module")
@@ -191,7 +190,7 @@ class TestSpreadAlgebra:
             fit_ou_ols(syn.simulate_ou(8000, kappa=k, sigma=1.0, seed=26)).half_life
             for k in (0.01, 0.03, 0.10, 0.30)
         ]
-        assert all(b < a for a, b in zip(hls, hls[1:]))
+        assert all(b < a for a, b in zip(hls, hls[1:], strict=False))
 
     def test_half_life_formula_and_degenerate_kappa(self):
         assert half_life_from_kappa(np.log(2)) == pytest.approx(1.0, rel=1e-12)
@@ -275,7 +274,7 @@ class TestCointegrationProperties:
 
     def test_hedge_ratio_recovers_the_true_beta(self):
         prices, truth = syn.cointegrated_pair(n=2000, beta=2.25, seed=32)
-        beta, alpha, resid = hedge_ratio(
+        beta, _alpha, resid = hedge_ratio(
             prices.iloc[:, 0].to_numpy(), prices.iloc[:, 1].to_numpy()
         )
         assert beta == pytest.approx(truth.beta, rel=0.05)
@@ -328,7 +327,7 @@ class TestSignalProperties:
         for entry in (1.0, 1.5, 2.0, 3.0):
             sig = generate_signals(z, SignalRules(entry_z=entry, stop_z=entry + 3.0))
             counts.append(int((sig["event"].str.startswith("entry")).sum()))
-        assert all(b <= a for a, b in zip(counts, counts[1:]))
+        assert all(b <= a for a, b in zip(counts, counts[1:], strict=False))
 
     def test_no_position_while_z_stays_inside_the_entry_band(self):
         z = self._z(np.linspace(-1.9, 1.9, 200))
@@ -464,7 +463,7 @@ class TestBacktestIdentities:
             res = backtest_pair(y, x, target, beta=1.5,
                                 costs=CostModel(bps, 0.0, 0.0))
             nets.append(res.net_pnl)
-        assert all(b <= a + 1e-9 for a, b in zip(nets, nets[1:]))
+        assert all(b <= a + 1e-9 for a, b in zip(nets, nets[1:], strict=False))
 
     def test_gross_pnl_is_homogeneous_in_the_gross_target(self):
         """Doubling the book size doubles every P&L line exactly."""

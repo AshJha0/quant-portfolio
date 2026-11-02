@@ -22,33 +22,20 @@ wrong answer rather than an exception:
    not test at all.
 
 Use :func:`require_finite` for scalars and :func:`finite_series` for arrays.
+Both are built on :mod:`qp_core.validation`.
 """
 
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
+from qp_core.validation import finite_series as _finite_series
+from qp_core.validation import require_finite
 
-__all__ = ["require_finite", "finite_series"]
-
-
-def require_finite(**values) -> None:
-    """Raise ``ValueError`` if any named scalar/array value is NaN or Inf.
-
-    ``None`` values are skipped so optional arguments pass straight through.
-
-    Raises
-    ------
-    ValueError
-        Naming the first non-finite argument found.
-    """
-    for name, value in values.items():
-        if value is None:
-            continue
-        if not np.all(np.isfinite(np.asarray(value, dtype=float))):
-            raise ValueError(f"{name} must be finite, got {value!r}")
+__all__ = ["finite_series", "require_finite"]
 
 
-def finite_series(values, name: str, *, positive: bool = False) -> np.ndarray:
+def finite_series(values: ArrayLike, name: str, *, positive: bool = False) -> NDArray[np.float64]:
     """Coerce to a finite 1-D float array, raising on NaN/Inf.
 
     Parameters
@@ -62,28 +49,16 @@ def finite_series(values, name: str, *, positive: bool = False) -> np.ndarray:
         which are logged downstream: a non-positive price would become
         ``-inf`` or ``nan`` inside ``log``).
 
-    Returns
-    -------
-    numpy.ndarray
-        1-D float array.
-
     Raises
     ------
     ValueError
         On non-1-D input, on NaN/Inf, or on a non-positive value when
         ``positive`` is set.
     """
-    arr = np.asarray(values, dtype=float)
-    if arr.ndim != 1:
-        raise ValueError(f"{name} must be one-dimensional, got ndim={arr.ndim}")
-    if not np.isfinite(arr).all():
-        raise ValueError(
-            f"{name} contains NaN or infinite values; clean the series first "
-            "(fx_pairs rejects rather than imputing)"
-        )
-    if positive and np.any(arr <= 0.0):
-        raise ValueError(
-            f"{name} must be strictly positive (FX price levels are logged "
-            f"downstream), found min={arr.min()}"
-        )
-    return arr
+    return _finite_series(
+        values,
+        name,
+        positive=positive,
+        nonfinite_hint="; clean the series first (fx_pairs rejects rather than imputing)",
+        positive_reason=" (FX price levels are logged downstream)",
+    )

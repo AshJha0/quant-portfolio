@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-import numpy as np
-import pytest
-
 import fi_rates as fr
+import pytest
 
 D = dt.date
 
@@ -46,7 +44,7 @@ class TestDurationIdentities:
                 daycount="30/360US",
             )
             durs.append(fr.modified_duration(bond, settlement, cpn))  # at par
-        assert all(a > b for a, b in zip(durs, durs[1:]))
+        assert all(a > b for a, b in zip(durs, durs[1:], strict=False))
 
     def test_duration_increasing_in_maturity(self, settlement):
         durs = []
@@ -58,7 +56,7 @@ class TestDurationIdentities:
                 frequency=2,
             )
             durs.append(fr.modified_duration(bond, settlement, 0.04))
-        assert all(a < b for a, b in zip(durs, durs[1:]))
+        assert all(a < b for a, b in zip(durs, durs[1:], strict=False))
 
 
 class TestAnalyticVsNumerical:

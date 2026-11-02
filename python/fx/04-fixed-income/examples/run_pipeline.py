@@ -6,7 +6,7 @@ values a sample book, produces the full risk report (FX delta, per-currency
 DV01/KRD ladders, basis DV01), runs joint scenarios including the 2008-style
 basis blowout, shows forward carry, and runs the CIP arbitrage detector.
 
-Run from the project root:  python examples/run_pipeline.py   
+Run from the project root:  python examples/run_pipeline.py
 """
 
 import os
@@ -15,16 +15,13 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
-import numpy as np
 import pandas as pd
-
 from fx_rates import (
     BasisSwap,
-    position_risk,
     CIPQuotes,
     FXForward,
     Scenario,
-    apply_scenario,
+    book_risk_report,
     carry_table,
     cip_forward,
     detect_cip_arbitrage,
@@ -33,7 +30,7 @@ from fx_rates import (
     key_rate_dv01,
     market_forward,
     no_arb_bounds,
-    book_risk_report,
+    position_risk,
     reprice_deposits,
     reprice_swaps,
     scenario_table,
@@ -83,7 +80,7 @@ print(f"Difference: {(f_mkt - f_cip) * 1e4:,.1f} pips "
 fwd_100m = FXForward(100e6, f_mkt, 5.0, label="100m 5y fwd @ market")
 pv_true = fwd_100m.value(market)
 pv_cip = fwd_100m.value(market.replace(basis_spreads=()))
-print(f"100m EUR 5y forward struck at market forward:")
+print("100m EUR 5y forward struck at market forward:")
 print(f"   PV with basis curve   : ${pv_true:,.2f}   (par by construction)")
 print(f"   PV ignoring the basis : ${pv_cip:,.2f}   <-- fictitious 'edge'")
 
@@ -123,10 +120,7 @@ print(krd[(krd.abs() > 1e-6).any(axis=1)].to_string())
 
 # ------------------------------------------------------------------ #
 hr("6. SCENARIO TABLE (joint spot / curves / basis shocks)")
-scens = historical_scenarios() + [
-    Scenario("Spot -10% only", spot_pct=-10.0),
-    Scenario("USD +50bp only", domestic_bp=50.0),
-]
+scens = [*historical_scenarios(), Scenario("Spot -10% only", spot_pct=-10.0), Scenario("USD +50bp only", domestic_bp=50.0)]
 sc_tbl = scenario_table(book, market, scens)
 print(sc_tbl.to_string())
 print(f"\nBase book PV: ${sc_tbl.attrs['base_pv']:,.2f}")

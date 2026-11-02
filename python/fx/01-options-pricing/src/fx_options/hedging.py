@@ -33,7 +33,7 @@ from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import gk_price
 from .greeks import analytic_greeks
 
-__all__ = ["HedgeResult", "simulate_delta_hedge", "hedge_frequency_study"]
+__all__ = ["HedgeResult", "hedge_frequency_study", "simulate_delta_hedge"]
 
 
 @dataclass(frozen=True)

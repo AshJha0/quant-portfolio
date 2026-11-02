@@ -19,9 +19,9 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = [
-    "risk_contributions",
     "erc_weights",
     "inverse_vol_weights",
+    "risk_contributions",
     "vol_target_overlay",
 ]
 

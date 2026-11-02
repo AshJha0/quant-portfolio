@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 from fi_rates.bootstrap import FRA, BondQuote, Deposit, ParSwap
 from fi_rates.data import CURVE_VARIANTS, market_quotes
 

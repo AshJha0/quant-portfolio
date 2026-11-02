@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qp-core"
+version = "1.0.0"
+description = "Shared statistics, fill model, calendars, day counts, input guards and performance metrics for the quant-portfolio Python projects"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "hypothesis>=6.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+qp_core = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/qp_core"]
+addopts = "-q --doctest-modules --import-mode=importlib"

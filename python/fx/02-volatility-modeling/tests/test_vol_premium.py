@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_vol import (
     premium_summary,
     realized_vol_forward,

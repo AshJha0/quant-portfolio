@@ -13,11 +13,10 @@ from __future__ import annotations
 import time
 import warnings
 
+import eq_surface as es
 import numpy as np
 import pandas as pd
-
-import eq_surface as es
-from eq_surface.data import DEFAULT_TRUE_HESTON, generate_chain
+from eq_surface.data import generate_chain
 
 pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda v: f"{v:10.6f}")
@@ -60,7 +59,7 @@ for T in sorted(chain.df.expiry.unique()):
 hr("3. SVI slice fits: params, RMSE, Durrleman butterfly check")
 svi_fits: dict[float, es.SVIFitResult] = {}
 rows = []
-for T, Ks, ivs in zip(expiries, strikes_by_T, ivs_by_T):
+for T, Ks, ivs in zip(expiries, strikes_by_T, ivs_by_T, strict=False):
     F = S * np.exp((r - q) * T)
     k = np.log(Ks / F)
     fit = es.fit_svi(k, ivs**2 * T, T, n_restarts=6, seed=SEED)

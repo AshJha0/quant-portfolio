@@ -8,7 +8,7 @@ is applied by the backtester to the ``t -> t+1`` return.
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -16,11 +16,11 @@ import pandas as pd
 from .sessions import session_of_hour
 
 __all__ = [
-    "rolling_zscore",
-    "combine_signals",
-    "vol_target_positions",
-    "session_filter",
     "carry_gate",
+    "combine_signals",
+    "rolling_zscore",
+    "session_filter",
+    "vol_target_positions",
 ]
 
 

@@ -10,27 +10,27 @@ strategies produce autocorrelated daily P&L, where the iid SE is too small.
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_equity
+from qp_core.metrics import drawdown_series as _drawdown_series
 
 from .research_stats import lo_sharpe_se
 
 __all__ = [
+    "avg_holding_period",
+    "cost_drag",
+    "drawdown_series",
+    "hit_rate",
+    "max_drawdown",
     "sharpe_ratio",
     "sharpe_se",
     "sortino_ratio",
-    "drawdown_series",
-    "max_drawdown",
-    "hit_rate",
-    "avg_holding_period",
-    "turnover",
-    "cost_drag",
     "summary",
+    "turnover",
 ]
 
-ArrayLike = Union[np.ndarray, pd.Series, list]
+ArrayLike = np.ndarray | pd.Series | list
 
 _COST_COLUMNS = ("commission", "slippage", "impact", "borrow", "financing", "auction")
 
@@ -65,7 +65,7 @@ def sharpe_se(
     returns: ArrayLike,
     periods_per_year: int = 252,
     lo_adjust: bool = False,
-    q: Optional[int] = None,
+    q: int | None = None,
 ) -> float:
     """Standard error of the annualised Sharpe ratio.
 
@@ -105,8 +105,7 @@ def sortino_ratio(
     MAR (undefined, not infinite).
     """
     r = _to_array(returns)
-    downside = np.minimum(r - mar, 0.0)
-    dd = np.sqrt(np.mean(downside**2))
+    dd = downside_deviation(r, mar)
     if dd == 0.0:
         return np.nan
     return float((r.mean() - mar) / dd * np.sqrt(periods_per_year))
@@ -114,9 +113,7 @@ def sortino_ratio(
 
 def drawdown_series(equity: ArrayLike) -> np.ndarray:
     """Drawdown from running peak, in the units of ``equity`` (<= 0)."""
-    e = _to_array(equity, min_len=1)
-    peak = np.maximum.accumulate(e)
-    return e - peak
+    return _drawdown_series(_to_array(equity, min_len=1))
 
 
 def max_drawdown(equity: ArrayLike) -> float:
@@ -127,7 +124,7 @@ def max_drawdown(equity: ArrayLike) -> float:
     minimum is ``0.0`` would otherwise yield ``-0.0``, which prints as a
     negative drawdown in reports).
     """
-    return float(-drawdown_series(equity).min()) + 0.0
+    return max_drawdown_from_equity(_to_array(equity, min_len=1))
 
 
 def hit_rate(trade_pnls: ArrayLike) -> float:
@@ -228,7 +225,7 @@ def summary(
         "avg_holding_days": avg_holding_period(trades["bars_held"])
         if len(trades)
         else np.nan,
-        "n_trades": int(len(trades)),
+        "n_trades": len(trades),
         "turnover": turnover(traded, capital, n, days_per_year) if n > 0 else np.nan,
         "cost_drag": cost_drag(costs_total, capital, n, days_per_year)
         if n > 0

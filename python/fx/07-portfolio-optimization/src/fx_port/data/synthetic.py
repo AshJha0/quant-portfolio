@@ -87,8 +87,8 @@ class FXPanel:
     spots: pd.DataFrame
     rates: pd.DataFrame
     ppp: pd.DataFrame
-    crash_days: pd.Series = field(repr=False, default=None)  # type: ignore[assignment]
-    risk_factor: pd.Series = field(repr=False, default=None)  # type: ignore[assignment]
+    crash_days: pd.Series | None = field(repr=False, default=None)
+    risk_factor: pd.Series | None = field(repr=False, default=None)
 
 
 def make_panel(
@@ -204,7 +204,7 @@ def make_panel(
 
     spots = pd.DataFrame(np.exp(log_s), index=idx, columns=ccys)
     ppp = pd.DataFrame(np.exp(log_ppp), index=idx, columns=ccys)
-    rates_df = pd.DataFrame(rates, index=idx, columns=ccys + ["USD"])
+    rates_df = pd.DataFrame(rates, index=idx, columns=[*ccys, "USD"])
 
     if include_peg:
         spots["PEG"] = 0.1282 * np.exp(

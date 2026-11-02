@@ -4,13 +4,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import stats
-
 from eq_risk_metrics import (
     count_var_exceptions,
     kupiec_pof_test,
     var_historical,
 )
+from scipy import stats
 
 
 def _dates(n: int) -> pd.DatetimeIndex:

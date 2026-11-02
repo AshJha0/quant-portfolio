@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_rates.bootstrap import basis_discount_curve, basis_swap_par_spread
 from fx_rates.curve import DiscountCurve
 from fx_rates.fxforward import MarketState
@@ -143,7 +142,7 @@ class TestConventionFixes:
                       for_rate_ask=0.04)
         # GBPUSD 182 days: USD ACT/360, GBP ACT/365F
         q = CIPQuotes(**common, tau=182 / 360, tau_dom=182 / 360, tau_for=182 / 365)
-        lo, hi = no_arb_bounds(q)
+        lo, _hi = no_arb_bounds(q)
         assert lo == pytest.approx(1.27 * (1 + 0.05 * 182 / 360) / (1 + 0.04 * 182 / 365),
                                    rel=1e-15)
         assert CIPQuotes(**common, tau=0.5).tau_for == 0.5

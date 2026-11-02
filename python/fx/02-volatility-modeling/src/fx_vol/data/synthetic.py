@@ -15,6 +15,7 @@ single-day jump).
 from __future__ import annotations
 
 from math import sqrt
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -24,14 +25,14 @@ from .._mle import student_t_abs_moment
 __all__ = [
     "as_generator",
     "simulate_constant_vol",
-    "simulate_garch",
-    "simulate_gjr",
-    "simulate_egarch",
-    "simulate_garch_x",
     "simulate_correlated_pairs",
-    "simulate_em_series",
-    "simulate_pegged",
     "simulate_depeg",
+    "simulate_egarch",
+    "simulate_em_series",
+    "simulate_garch",
+    "simulate_garch_x",
+    "simulate_gjr",
+    "simulate_pegged",
     "simulate_seasonal_returns",
 ]
 
@@ -148,7 +149,7 @@ def simulate_egarch(
     rng = as_generator(seed)
     total = n + burn
     z = _innovations(rng, total, dist, nu)
-    am = sqrt(2.0 / np.pi) if dist == "gaussian" else student_t_abs_moment(nu)
+    am = sqrt(2.0 / np.pi) if dist == "gaussian" else student_t_abs_moment(cast(float, nu))
     sigma2 = np.empty(total)
     r = np.empty(total)
     ls2 = omega / (1.0 - beta)
@@ -198,6 +199,7 @@ def simulate_garch_x(
     z = _innovations(rng, total, dist, nu)
     r = np.empty(total)
     s2 = (omega + gamma_x * event_prob) / (1.0 - alpha - beta)
+    s2_prev = s2
     for t in range(total):
         s2_t = s2 if t == 0 else omega + gamma_x * x[t] + alpha * r[t - 1] ** 2 + beta * s2_prev
         r[t] = sqrt(s2_t) * z[t]

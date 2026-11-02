@@ -48,7 +48,7 @@ def load_fred_cmt(
     api_key: str | None = None,
     start: str = "2020-01-01",
     timeout: float = 30.0,
-) -> "pd.DataFrame":  # pragma: no cover - network path, never run in tests
+) -> pd.DataFrame:  # pragma: no cover - network path, never run in tests
     """Load Treasury CMT par yields from FRED.
 
     Parameters

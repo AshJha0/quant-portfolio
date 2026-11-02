@@ -3,10 +3,8 @@ zero volatility, single-day series, cost_bps=0, and live-data import guard."""
 
 import numpy as np
 import pandas as pd
-
-from eq_signal_backtest import ExecutionConfig
 import pytest
-
+from eq_signal_backtest import ExecutionConfig
 from eq_signal_backtest.data import live as live_module
 from eq_signal_backtest.engine import run_backtest
 from eq_signal_backtest.signals import ma_crossover_signal
@@ -217,7 +215,7 @@ class TestSignalValidation:
         prices = _prices(n=20)
         signal = pd.Series(1.0, index=prices.index)
         signal.iloc[7] = bad_value
-        with pytest.raises(ValueError, match="0.0 or 1.0"):
+        with pytest.raises(ValueError, match=r"0.0 or 1.0"):
             run_backtest(prices, signal, cost_bps=5.0)
 
 
@@ -259,7 +257,7 @@ class TestExtremeTransactionCosts:
             run_backtest(prices, signal, cost_bps=c).equity.iloc[-1]
             for c in (0.0, 5.0, 50.0, 500.0, 5_000.0, 20_000.0)
         ]
-        assert all(a >= b - 1e-15 for a, b in zip(finals, finals[1:]))
+        assert all(a >= b - 1e-15 for a, b in zip(finals, finals[1:], strict=False))
 
     def test_hundred_percent_round_trip_cost_is_survivable_but_brutal(self):
         """5,000 bps one-way = 50% per leg, 100% round trip: each trade

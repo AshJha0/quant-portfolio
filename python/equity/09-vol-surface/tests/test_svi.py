@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_surface.smile import (
     SVIParams,
     check_butterfly,
@@ -44,7 +43,9 @@ def test_analytic_first_derivative_matches_numerical(good_svi):
 
 def test_analytic_second_derivative_matches_numerical(good_svi):
     k = np.linspace(-1.2, 1.2, 41)
-    w = lambda x: np.asarray(svi_total_variance(x, good_svi))
+    def w(x):
+        return np.asarray(svi_total_variance(x, good_svi))
+
 
     def second(h):
         return (w(k + h) - 2 * w(k) + w(k - h)) / (h * h)

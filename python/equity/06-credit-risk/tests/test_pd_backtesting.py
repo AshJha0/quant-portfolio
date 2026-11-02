@@ -6,7 +6,6 @@ import math
 
 import numpy as np
 import pytest
-
 from eq_credit import fit_logistic, hosmer_lemeshow, pd_backtest_by_grade
 from eq_credit.validation import roc_auc
 
@@ -45,7 +44,7 @@ def test_hl_unset_mode_warns_and_keeps_old_df():
     p = rng.uniform(0.05, 0.2, 1000)
     y = (rng.uniform(size=1000) < p).astype(float)
     with pytest.warns(DeprecationWarning, match="out_of_sample"):
-        chi2, pv, _ = hosmer_lemeshow(y, p)
+        _chi2, pv, _ = hosmer_lemeshow(y, p)
     assert pv == pytest.approx(hosmer_lemeshow(y, p, out_of_sample=False)[1], rel=1e-15)
     assert hosmer_lemeshow(y, p, out_of_sample=True)[1] > pv  # more df, larger p
 

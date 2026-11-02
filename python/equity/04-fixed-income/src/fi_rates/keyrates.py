@@ -57,11 +57,11 @@ from .risk import Position, portfolio_value
 
 __all__ = [
     "DEFAULT_KEY_TENORS",
-    "triangle_weights",
-    "key_rate_dv01s",
-    "key_rate_durations",
     "key_rate_convexities",
+    "key_rate_durations",
+    "key_rate_dv01s",
     "krd_report",
+    "triangle_weights",
 ]
 
 DEFAULT_KEY_TENORS: tuple[float, ...] = (2.0, 5.0, 10.0, 30.0)

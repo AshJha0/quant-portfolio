@@ -5,7 +5,6 @@ means under long-only, and T < N estimation windows."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_port.covariance import (
     condition_number,
     is_psd,
@@ -14,6 +13,7 @@ from eq_port.covariance import (
     sample_cov,
 )
 from eq_port.data import generate_panel
+from eq_port.metrics import annualized_return, max_drawdown, sharpe_ratio
 from eq_port.mvo import (
     max_sharpe_constrained,
     min_variance_constrained,
@@ -21,7 +21,6 @@ from eq_port.mvo import (
     tangency_weights,
 )
 from eq_port.risk_parity import erc_weights, inverse_vol_weights
-from eq_port.metrics import annualized_return, max_drawdown, sharpe_ratio
 
 RNG = np.random.default_rng(99)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 
 from .cvar_opt import empirical_cvar, empirical_var
 
@@ -109,7 +110,7 @@ def sortino_ratio(
     ``min(r - mar, 0)`` (not just loss days), the standard convention.
     """
     x = _arr(returns) - mar
-    downside = np.sqrt(np.mean(np.minimum(x, 0.0) ** 2))
+    downside = downside_deviation(x)
     if downside <= _degenerate_scale(x):
         raise ValueError("no downside observations: Sortino undefined")
     return float(x.mean() / downside * np.sqrt(periods))
@@ -124,10 +125,11 @@ def max_drawdown(returns: pd.Series | np.ndarray, log_returns: bool = True) -> f
         If True (default) compound via ``exp(cumsum)``; else via
         ``cumprod(1+r)``.
     """
-    x = _arr(returns)
-    curve = np.exp(np.cumsum(x)) if log_returns else np.cumprod(1.0 + x)
-    peak = np.maximum.accumulate(curve)
-    return float((1.0 - curve / peak).max())
+    # Peak taken over post-return wealth only (the start at 1 is excluded),
+    # the historical convention of this project; see qp_core.metrics.
+    return max_drawdown_from_returns(
+        _arr(returns), "log" if log_returns else "simple", include_start=False
+    )
 
 
 def skewness(returns: pd.Series | np.ndarray) -> float:

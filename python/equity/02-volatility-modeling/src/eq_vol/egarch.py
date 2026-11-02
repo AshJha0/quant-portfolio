@@ -44,11 +44,11 @@ from .garch import gaussian_loglik, loglik_obs, student_t_loglik
 
 __all__ = [
     "egarch_recursion",
-    "fit_egarch",
     "egarch_unconditional_logvar",
     "egarch_unconditional_variance",
-    "news_impact_curve",
     "expected_abs_z",
+    "fit_egarch",
+    "news_impact_curve",
 ]
 
 _BMAX = 0.9999
@@ -100,11 +100,12 @@ def egarch_recursion(
     out = np.empty(n)
     r_list = r.tolist()
     ls = omega + beta * math.log(init_var)
-    exp_, log_, sqrt_ = math.exp, math.log, math.sqrt
+    exp_, sqrt_ = math.exp, math.sqrt
     clip = _LOG_CLIP
+    z = 0.0  # set at the end of each step; read from t = 1 on
     for t in range(n):
         if t > 0:
-            ls = omega + beta * ls + alpha * (abs(z) - e_abs_z) + gamma * z  # noqa: F821
+            ls = omega + beta * ls + alpha * (abs(z) - e_abs_z) + gamma * z
         if ls > clip:
             ls = clip
         elif ls < -clip:
@@ -225,12 +226,12 @@ def fit_egarch(
     # L-BFGS-B polish from the SLSQP optimum tightens the solution. The
     # objective is scaled to the *average* NLL so tolerances are sample-size
     # independent.
-    u0 = [s["omega"], s["alpha"], s["gamma"], min(max(s["beta"], -_BMAX), _BMAX)]
+    u0_list = [s["omega"], s["alpha"], s["gamma"], min(max(s["beta"], -_BMAX), _BMAX)]
     bounds = [(None, None), (None, None), (None, None), (-_BMAX, _BMAX)]
     if dist == "t":
-        u0.append(s["nu"])
+        u0_list.append(s["nu"])
         bounds.append((2.1, 200.0))
-    u0 = np.array(u0)
+    u0 = np.array(u0_list)
 
     n_obs = r.size
 
@@ -259,7 +260,7 @@ def fit_egarch(
         )
 
     names = ["omega", "alpha", "gamma", "beta"] + (["nu"] if dist == "t" else [])
-    params = dict(zip(names, [float(x) for x in theta]))
+    params = dict(zip(names, [float(x) for x in theta], strict=False))
     nu = params.get("nu", np.nan)
     eaz = expected_abs_z(dist, nu)
     sigma2 = egarch_recursion(r, params["omega"], params["alpha"], params["gamma"], params["beta"], b, eaz)
@@ -276,8 +277,8 @@ def fit_egarch(
     # own size; the others are dimensionless.
     floor = np.array([max(abs(params["omega"]), 1e-2)] + [1e-2] * (len(names) - 1))
     se, rse = mle_std_errors(nll_theta, ll_obs_theta, np.array(list(theta)), floor=floor)
-    std_errors = dict(zip(names, [float(x) for x in se]))
-    robust = dict(zip(names, [float(x) for x in rse]))
+    std_errors = dict(zip(names, [float(x) for x in se], strict=False))
+    robust = dict(zip(names, [float(x) for x in rse], strict=False))
 
     extra: dict[str, float] = {"persistence": params["beta"]}
     if abs(params["beta"]) < 1:

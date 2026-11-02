@@ -1,20 +1,20 @@
 """Backtest engine: no-lookahead proof, exact cost accounting, hand-checked P&L."""
 
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.backtest import (
     COST_COLUMNS,
+    ZERO_COSTS,
     CostModel,
     ExecutionConfig,
-    ZERO_COSTS,
     align_pair,
     backtest_pair,
     backtest_portfolio,
 )
 from eq_pairs.data import business_index
-
 
 # The hand-computed scenarios below were built for a next-close fill (f = 1),
 # which is one valid point of the execution convention. Fill-fraction and
@@ -228,8 +228,8 @@ class TestImpactAndFinancing:
 class TestHandComputedScenario:
     """Three round trips with hand-computed P&L, matched exactly."""
 
-    PY = [100.0, 100.0, 102.0, 104.0, 100.0, 100.0, 98.0, 100.0, 100.0, 100.0, 101.0, 100.0]
-    TGT = [0, -1, -1, 0, 0, 1, 1, 0, 0, -1, -1, -1]
+    PY: ClassVar[list] = [100.0, 100.0, 102.0, 104.0, 100.0, 100.0, 98.0, 100.0, 100.0, 100.0, 101.0, 100.0]
+    TGT: ClassVar[list] = [0, -1, -1, 0, 0, 1, 1, 0, 0, -1, -1, -1]
 
     def _run(self, costs):
         y = _series(self.PY)
@@ -423,7 +423,7 @@ class TestAlignPair:
         y = pd.Series(np.arange(100.0, 110.0), index=idx)
         y.iloc[4:6] = np.nan
         x = pd.Series(np.full(10, 50.0), index=idx)
-        ya, xa = align_pair(y, x, policy="ffill", limit=5)
+        ya, _xa = align_pair(y, x, policy="ffill", limit=5)
         assert ya.notna().all()
         assert ya.iloc[4] == ya.iloc[3]  # stale-filled
 

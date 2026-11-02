@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_pairs.metrics import (
     hit_rate,
     max_drawdown,
@@ -30,7 +29,7 @@ class TestSharpe:
         sqrt((1 + SR^2/2)/T) for Gaussian data."""
         rng = np.random.default_rng(0)
         r = 0.001 + 0.01 * rng.standard_normal(5000)
-        sr_ann, se = sharpe_se_lo(r, q=0)
+        _sr_ann, se = sharpe_se_lo(r, q=0)
         z = (r - r.mean()) / r.std()
         sr = r.mean() / r.std()
         m3, m4 = np.mean(z**3), np.mean(z**4)

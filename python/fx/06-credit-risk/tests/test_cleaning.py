@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_credit.cleaning import (
     LEAKY_FIELDS,
     assert_no_leaky_fields,

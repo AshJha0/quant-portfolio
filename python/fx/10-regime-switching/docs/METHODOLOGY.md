@@ -148,7 +148,8 @@ Configurations are chosen on design seeds and judged on fresh seeds:
 4. Benchmarks: an oracle that knows the true state, static carry, and the
    strategy's own regime path shifted to random times (same occupancy and
    spell lengths, so equal exposure to each book).
-5. Statistics come from `research_stats.py`: Lo (2002) Sharpe standard
+5. Statistics come from `research_stats.py` (a re-export of
+   `qp_core.stats`): Lo (2002) Sharpe standard
    errors with a Newey-West lag window, the deflated Sharpe ratio at the
    logged trial count, PBO, circular block-bootstrap CIs, and Student-t
    CIs across seeds.

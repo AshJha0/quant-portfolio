@@ -4,10 +4,18 @@ values on tiny series, cross-sectional utilities, winsorisation bounds."""
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_algo import (cs_rank, cs_zscore, generate_daily_panel, ma_crossover,
-                     momentum, realized_vol, rsi, short_term_reversal,
-                     turnover_zscore, winsorize)
+from eq_algo import (
+    cs_rank,
+    cs_zscore,
+    generate_daily_panel,
+    ma_crossover,
+    momentum,
+    realized_vol,
+    rsi,
+    short_term_reversal,
+    turnover_zscore,
+    winsorize,
+)
 
 
 @pytest.fixture(scope="module")

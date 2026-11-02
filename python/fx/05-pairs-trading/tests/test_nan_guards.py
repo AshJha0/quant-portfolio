@@ -31,11 +31,10 @@ that looks like a correct one.
 
 from __future__ import annotations
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 from fx_pairs.data import synthetic as syn
 
 NON_FINITE = [float("nan"), float("inf"), float("-inf")]
@@ -51,7 +50,7 @@ def pair():
 
 @pytest.fixture(scope="module")
 def spread(pair):
-    p1, p2, truth = pair
+    p1, p2, _truth = pair
     return fp.log_spread(p1, p2, beta=1.0)
 
 
@@ -184,7 +183,7 @@ class TestOuAndHedgeGuards:
         with pytest.raises(ValueError, match="kappa"):
             fp.half_life_days(float("nan"))
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1.0])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -1.0])
     def test_half_life_rejects_bad_dt(self, bad) -> None:
         with pytest.raises(ValueError, match="dt"):
             fp.half_life_days(5.0, dt=bad)
@@ -201,7 +200,7 @@ class TestOuAndHedgeGuards:
     def test_rls_rejects_non_finite_observation(self, bad) -> None:
         rls = fp.RLSHedge(lam=0.99)
         rls.update(0.1, 0.2)
-        with pytest.raises(ValueError, match="log_p1|log_p2"):
+        with pytest.raises(ValueError, match=r"log_p1|log_p2"):
             rls.update(bad, 0.2)
 
     def test_rls_state_survives_a_rejected_update(self) -> None:
@@ -216,7 +215,7 @@ class TestOuAndHedgeGuards:
         assert (rls.alpha, rls.beta, rls.n_obs) == before
         assert np.isfinite(rls.alpha) and np.isfinite(rls.beta)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1.0])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -1.0])
     def test_rls_rejects_bad_delta(self, bad) -> None:
         with pytest.raises(ValueError, match="delta"):
             fp.RLSHedge(lam=0.99, delta=bad)
@@ -327,7 +326,7 @@ class TestScreenAndMetricGuards:
         assert {top["pair_1"], top["pair_2"]} == {"EURUSD", "GBPUSD"}
         assert abs(top["corr"]) >= 0.5
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -252.0])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -252.0])
     def test_metrics_reject_bad_annualisation_factor(self, bad) -> None:
         from fx_pairs.metrics import (
             sharpe_ratio,

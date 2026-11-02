@@ -54,6 +54,7 @@ extension.
 
 ```bash
 cd python/foundations/01-risk-metrics
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e ".[dev,plots]"        # numpy, pandas, scipy + pytest, hypothesis, matplotlib
 pytest -q                            # 217 tests, offline, seeded, ~45 s
 python examples/run_pipeline.py      # full report + figures on bundled synthetic data

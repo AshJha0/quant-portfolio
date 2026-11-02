@@ -154,7 +154,7 @@ def one_factor_cov(returns: pd.DataFrame) -> OneFactorModel:
     x = returns.to_numpy()
     xc = x - x.mean(axis=0)
     s = xc.T @ xc / len(x)
-    eigval, eigvec = np.linalg.eigh(s)
+    _eigval, eigvec = np.linalg.eigh(s)
     v1 = eigvec[:, -1]
     f = xc @ v1
     ew = xc.mean(axis=1)

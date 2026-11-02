@@ -6,11 +6,10 @@ offline, the test suite depends only on this module, never on live data.
 
 from __future__ import annotations
 
+import warnings
 from typing import Literal
 
 import numpy as np
-
-import warnings
 
 from ..monte_carlo_var import cholesky, simulate_factor_returns
 from ..portfolio import (
@@ -23,10 +22,10 @@ from ..portfolio import (
 
 __all__ = [
     "default_covariance",
-    "simulate_returns",
-    "simulate_garch_returns",
-    "demo_portfolio",
     "demo_covariance",
+    "demo_portfolio",
+    "simulate_garch_returns",
+    "simulate_returns",
 ]
 
 

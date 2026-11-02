@@ -18,6 +18,7 @@ per-period covariance; utility is ``mu'w - (gamma/2) w'Sigma w``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -89,6 +90,7 @@ def tangency_weights(
         frontier; the normalised formula is meaningless there).
     """
     m, s, labels = _to_arrays(mu, sigma)
+    assert m is not None
     ex = m - rf
     z = _solve(s, ex)
     denom = float(np.ones(len(s)) @ z)
@@ -108,6 +110,7 @@ def frontier_weights(
     C=1'S^-1 1, D=BC-A^2.
     """
     m, s, labels = _to_arrays(mu, sigma)
+    assert m is not None
     ones = np.ones(len(s))
     si_mu, si_one = _solve(s, m), _solve(s, ones)
     a, b, c = float(ones @ si_mu), float(m @ si_mu), float(ones @ si_one)
@@ -131,6 +134,7 @@ def dollar_neutral_weights(
     if gamma <= 0:
         raise ValueError(f"gamma must be > 0, got {gamma}")
     m, s, labels = _to_arrays(mu, sigma)
+    assert m is not None
     ones = np.ones(len(s))
     si_mu, si_one = _solve(s, m), _solve(s, ones)
     w = (si_mu - (ones @ si_mu) / (ones @ si_one) * si_one) / gamma
@@ -153,8 +157,8 @@ class MVOResult:
     message: str
 
 
-def _constraints(n: int, sum_to: float | None) -> list[dict]:
-    cons: list[dict] = []
+def _constraints(n: int, sum_to: float | None) -> list[Any]:
+    cons: list[Any] = []
     if sum_to is not None:
         cons.append(
             {
@@ -196,7 +200,7 @@ def _solve_split_qp(
         g = gamma * s @ w - m
         return np.concatenate([g + eps, -g + eps])
 
-    cons: list[dict] = [
+    cons: list[Any] = [
         {
             "type": "ineq",
             "fun": lambda x: gross_limit - x.sum(),
@@ -333,6 +337,7 @@ def max_utility(
     if gamma <= 0:
         raise ValueError(f"gamma must be > 0, got {gamma}")
     m, s, labels = _to_arrays(mu, sigma)
+    assert m is not None
     n = len(s)
     _check_feasible(sum_to, gross_limit, bounds, n)
     if gross_limit is not None and gross_limit == 0:
@@ -417,7 +422,7 @@ def min_variance_slsqp(
 
     if gross_limit is not None:
         extra = (
-            [(m.copy(), float(target_return))] if target_return is not None else None
+            [(cast(np.ndarray, m).copy(), float(target_return))] if target_return is not None else None
         )
         w_arr, res = _solve_split_qp(
             np.zeros(n), s_sc, 2.0, sum_to, gross_limit, bounds, extra_eq=extra
@@ -490,6 +495,7 @@ def efficient_frontier(
     if n_points < 2:
         raise ValueError(f"n_points must be >= 2, got {n_points}")
     m, s, labels = _to_arrays(mu, sigma)
+    assert m is not None
     # The closed-form two-fund frontier assumes sum(w) = 1; any other net
     # budget or extra constraints go through SLSQP.
     unconstrained = gross_limit is None and bounds is None and sum_to == 1.0

@@ -8,10 +8,6 @@ import math
 
 import numpy as np
 import pytest
-from scipy.signal import lfilter
-from hypothesis import given, settings
-from hypothesis import strategies as hst
-
 from fx_regime.research_stats import (
     TrialLog,
     block_bootstrap_ci,
@@ -23,6 +19,9 @@ from fx_regime.research_stats import (
     seed_distribution,
     sharpe_ratio,
 )
+from hypothesis import given, settings
+from hypothesis import strategies as hst
+from scipy.signal import lfilter
 
 
 def test_newey_west_lag_rule():

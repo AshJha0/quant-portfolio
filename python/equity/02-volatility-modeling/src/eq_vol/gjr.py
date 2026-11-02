@@ -27,6 +27,8 @@ recovery is a genuine test, while positivity and stationarity always hold.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy.optimize import minimize
 from scipy.signal import lfilter
@@ -42,9 +44,9 @@ from ._utils import (
 from .garch import _logit, _sigmoid, gaussian_loglik, loglik_obs, se_floor, student_t_loglik
 
 __all__ = [
-    "gjr_recursion",
     "fit_gjr",
     "gjr_persistence",
+    "gjr_recursion",
     "gjr_unconditional_variance",
     "news_impact_curve",
 ]
@@ -126,7 +128,7 @@ def fit_gjr(
     if starting:
         s.update(starting)
 
-    def unpack(u: np.ndarray) -> tuple[float, ...]:
+    def unpack(u: np.ndarray) -> tuple[Any, ...]:
         omega = float(np.exp(u[0]))
         p = _PMAX * _sigmoid(u[1])
         avg = p * _sigmoid(u[2])          # (alpha + (alpha+gamma)) / 2
@@ -141,15 +143,15 @@ def fit_gjr(
 
     p0 = gjr_persistence(s["alpha"], s["gamma"], s["beta"])
     avg0 = s["alpha"] + 0.5 * s["gamma"]
-    u0 = [
+    u0_list = [
         np.log(s["omega"]),
         _logit(p0 / _PMAX),
         _logit(avg0 / p0),
         _logit(s["alpha"] / (2.0 * avg0)),
     ]
     if dist == "t":
-        u0.append(np.log(s["nu"] - 2.05))
-    u0 = np.array(u0)
+        u0_list.append(np.log(s["nu"] - 2.05))
+    u0 = np.array(u0_list)
 
     def nll_theta(th) -> float:
         sigma2 = gjr_recursion(r, th[0], th[1], th[2], th[3], b)
@@ -172,7 +174,7 @@ def fit_gjr(
         )
 
     names = ["omega", "alpha", "gamma", "beta"] + (["nu"] if dist == "t" else [])
-    params = dict(zip(names, [float(x) for x in theta]))
+    params = dict(zip(names, [float(x) for x in theta], strict=False))
     sigma2 = gjr_recursion(r, params["omega"], params["alpha"], params["gamma"], params["beta"], b)
     ll = (
         gaussian_loglik(r, sigma2)
@@ -187,8 +189,8 @@ def fit_gjr(
     se, rse = mle_std_errors(
         nll_theta, ll_obs_theta, np.array(list(theta)), floor=se_floor(names, params)
     )
-    std_errors = dict(zip(names, [float(x) for x in se]))
-    robust = dict(zip(names, [float(x) for x in rse]))
+    std_errors = dict(zip(names, [float(x) for x in se], strict=False))
+    robust = dict(zip(names, [float(x) for x in rse], strict=False))
 
     pers = gjr_persistence(params["alpha"], params["gamma"], params["beta"])
     extra = {"persistence": pers, "at_boundary": float(pers > 0.999 * _PMAX)}

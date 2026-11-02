@@ -4,9 +4,8 @@ import itertools
 
 import numpy as np
 import pytest
-from scipy.special import logsumexp
-
 from fx_regime import (
+    TRANSITION_2,
     HMMModel,
     expected_durations,
     filtered_probabilities,
@@ -18,9 +17,9 @@ from fx_regime import (
     smoothed_probabilities,
     stationary_distribution,
     viterbi,
-    TRANSITION_2,
 )
 from fx_regime.gmm import gaussian_logpdf
+from scipy.special import logsumexp
 
 
 def _known_model(sep=4.0):

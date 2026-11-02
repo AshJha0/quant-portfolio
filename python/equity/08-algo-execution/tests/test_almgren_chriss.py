@@ -3,12 +3,19 @@ frontier monotonicity, exact share conservation, simulator horse race."""
 
 import numpy as np
 import pytest
+from eq_algo import (
+    ACParams,
+    IntradayConfig,
+    IntradayMarket,
+    ac_cost_moments,
+    ac_kappa,
+    ac_trades,
+    ac_trajectory,
+    efficient_frontier,
+    evaluate_schedules,
+    twap_schedule,
+)
 from scipy import stats
-
-from eq_algo import (ACParams, IntradayConfig, IntradayMarket, ac_cost_moments,
-                     ac_kappa, ac_trades, ac_trajectory, efficient_frontier,
-                     evaluate_schedules, twap_schedule)
-
 
 P = ACParams(total_shares=100_000.0, n_slices=20, total_time=1.0,
              sigma=2.0, eta=2.5e-6, gamma=1e-6, epsilon=0.0025)
@@ -55,7 +62,7 @@ def test_trajectory_monotone_decreasing():
 def test_higher_risk_aversion_front_loads():
     lams = [0.0, 1e-6, 1e-5, 1e-4, 1e-3]
     first = [ac_trades(P, lam)[0] for lam in lams]
-    assert all(b > a for a, b in zip(first, first[1:]))
+    assert all(b > a for a, b in zip(first, first[1:], strict=False))
     # lambda -> inf: essentially everything in the first slice
     n_inf = ac_trades(P, 10.0)
     assert n_inf[0] > 0.999 * P.total_shares
@@ -70,7 +77,7 @@ def test_total_executed_equals_parent_exactly():
 def test_kappa_zero_at_lambda_zero_and_increasing():
     assert ac_kappa(P, 0.0) == 0.0
     ks = [ac_kappa(P, lam) for lam in (1e-7, 1e-6, 1e-5, 1e-4)]
-    assert all(b > a for a, b in zip(ks, ks[1:]))
+    assert all(b > a for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_efficient_frontier_monotone_tradeoff():

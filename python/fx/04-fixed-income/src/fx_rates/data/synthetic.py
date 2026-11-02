@@ -23,6 +23,7 @@ parameters* (a few bp), never to individual quotes, so internal consistency
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -34,8 +35,8 @@ from ..xccy import CrossCurrencySwap, solve_par_rate_quote
 __all__ = [
     "REGIMES",
     "SyntheticMarket",
-    "generate_market_quotes",
     "build_market_state",
+    "generate_market_quotes",
     "sample_book",
     "third_currency_curve",
 ]
@@ -52,7 +53,7 @@ FORWARD_TENORS = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 
 # Nelson-Siegel parameters (beta0, beta1, beta2, tau_ns) per regime/ccy,
 # and basis spread pillars (T, bp).
-_PARAMS = {
+_PARAMS: dict[str, dict[str, Any]] = {
     "normal": {
         "USD": (0.045, -0.010, -0.004, 1.8),
         "EUR": (0.029, -0.007, -0.003, 1.8),

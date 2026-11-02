@@ -1,9 +1,7 @@
 """WOE/IV: exact hand-computed tables, missing bin, monotone merge, leakage flag."""
 
 import numpy as np
-import pandas as pd
 import pytest
-
 from fx_credit.data.synthetic import generate_sovereign_panel
 from fx_credit.woe import (
     flag_leaky_iv,
@@ -194,7 +192,7 @@ def test_leaky_feature_iv_flagged_on_panel():
     )
     flagged = set(rep.loc[rep["leaky_flag"], "feature"])
     assert flagged == {"devaluation_next_year_pct"}
-    ivs = dict(zip(rep["feature"], rep["iv"]))
+    ivs = dict(zip(rep["feature"], rep["iv"], strict=False))
     assert ivs["devaluation_next_year_pct"] > 2.0  # absurd IV = leakage signature
 
 

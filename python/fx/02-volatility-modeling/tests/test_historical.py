@@ -4,7 +4,6 @@ annualization conventions, day-of-week seasonality."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_vol import (
     close_to_close_vol,
     day_of_week_vol_factors,
@@ -22,7 +21,10 @@ def _intraday_ohlc(n_days: int, daily_vol: float, m: int, seed: int):
     log_paths = np.cumsum(steps, axis=1)
     log_open = np.concatenate([[0.0], np.cumsum(log_paths[:-1, -1])])[:n_days]
     lp = log_open[:, None] + np.concatenate([np.zeros((n_days, 1)), log_paths], axis=1)
-    o = np.exp(lp[:, 0]); h = np.exp(lp.max(axis=1)); l = np.exp(lp.min(axis=1)); c = np.exp(lp[:, -1])
+    o = np.exp(lp[:, 0])
+    h = np.exp(lp.max(axis=1))
+    l = np.exp(lp.min(axis=1))
+    c = np.exp(lp[:, -1])
     return o, h, l, c
 
 
@@ -63,7 +65,7 @@ class TestCloseToClose:
 class TestRangeEstimators:
     def test_parkinson_recovers_true_vol(self):
         daily_vol = 0.006
-        o, h, l, c = _intraday_ohlc(252, daily_vol, m=780, seed=25)
+        _o, h, l, _c = _intraday_ohlc(252, daily_vol, m=780, seed=25)
         est = parkinson_vol(h, l, periods_per_year=252)
         # discrete monitoring biases the range slightly low; 780 steps ~ few %
         assert est == pytest.approx(daily_vol * np.sqrt(252), rel=0.07)
@@ -80,7 +82,7 @@ class TestRangeEstimators:
         daily_vol = 0.006
         cc, pk = [], []
         for k in range(30):
-            o, h, l, c = _intraday_ohlc(60, daily_vol, m=390, seed=100 + k)
+            _o, h, l, c = _intraday_ohlc(60, daily_vol, m=390, seed=100 + k)
             r = np.diff(np.log(c))
             cc.append(close_to_close_vol(r))
             pk.append(parkinson_vol(h, l))

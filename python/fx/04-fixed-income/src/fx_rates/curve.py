@@ -64,7 +64,7 @@ class DiscountCurve:
     # constructors / accessors
     # ------------------------------------------------------------------ #
     @classmethod
-    def from_zero_rates(cls, times, zeros, name: str = "") -> "DiscountCurve":
+    def from_zero_rates(cls, times, zeros, name: str = "") -> DiscountCurve:
         """Build a curve from continuously compounded annualised zero rates."""
         t = np.atleast_1d(np.asarray(times, dtype=float))
         z = np.atleast_1d(np.asarray(zeros, dtype=float))
@@ -143,14 +143,14 @@ class DiscountCurve:
     # ------------------------------------------------------------------ #
     # bumping (risk)
     # ------------------------------------------------------------------ #
-    def parallel_shift(self, bp: float) -> "DiscountCurve":
+    def parallel_shift(self, bp: float) -> DiscountCurve:
         """New curve with all pillar zero rates shifted by ``bp`` basis points."""
         if not np.isfinite(bp):
             raise ValueError(f"parallel shift bp must be finite, got {bp!r}")
         z = self.zero_rates + bp * 1e-4
         return DiscountCurve.from_zero_rates(self.times, z, name=self.name)
 
-    def pillar_shift(self, index: int, bp: float) -> "DiscountCurve":
+    def pillar_shift(self, index: int, bp: float) -> DiscountCurve:
         """New curve with the zero rate of pillar ``index`` shifted by ``bp`` bp.
 
         With log-linear DF interpolation this key-rate bump only affects

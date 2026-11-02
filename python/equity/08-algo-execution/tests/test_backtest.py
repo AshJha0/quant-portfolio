@@ -4,9 +4,15 @@ full pipeline, exposure and cap enforcement, dollar neutrality, cost model."""
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_algo import (BacktestConfig, ExecutionConfig, cs_zscore, generate_daily_panel,
-                     long_short_weights, momentum, run_backtest)
+from eq_algo import (
+    BacktestConfig,
+    ExecutionConfig,
+    cs_zscore,
+    generate_daily_panel,
+    long_short_weights,
+    momentum,
+    run_backtest,
+)
 
 
 def _toy():

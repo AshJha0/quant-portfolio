@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_signal_backtest.split import (
     WalkForwardWindow,
     select_best_params,
@@ -95,7 +94,7 @@ class TestWalkForwardWindows:
 
     def test_default_step_gives_contiguous_trading_windows(self):
         wins = walk_forward_windows(1000, formation=252, trading=63)
-        for a, b in zip(wins[:-1], wins[1:]):
+        for a, b in zip(wins[:-1], wins[1:], strict=False):
             assert b.trading_start == a.trading_end + 1
 
     def test_window_count(self):
@@ -120,7 +119,7 @@ class TestWalkForwardWindows:
     def test_custom_step_can_overlap_trading_windows(self):
         wins = walk_forward_windows(1000, formation=252, trading=63, step=21)
         assert len(wins) > len(walk_forward_windows(1000, 252, 63))
-        for a, b in zip(wins[:-1], wins[1:]):
+        for a, b in zip(wins[:-1], wins[1:], strict=False):
             assert b.formation_start == a.formation_start + 21
 
 

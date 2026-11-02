@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.data import business_index, correlated_random_walks
 from eq_pairs.universe import (
     candidate_pairs,

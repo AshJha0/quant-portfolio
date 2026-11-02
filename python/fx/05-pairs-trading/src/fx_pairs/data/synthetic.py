@@ -35,14 +35,14 @@ import pandas as pd
 
 __all__ = [
     "business_days",
-    "simulate_ou",
+    "make_carry_flip_pair",
     "make_cointegrated_pair",
     "make_correlated_walks",
-    "make_two_block_panel",
-    "make_floor_then_break",
-    "make_carry_flip_pair",
     "make_deposit_rate_panel",
+    "make_floor_then_break",
     "make_pegged_pair",
+    "make_two_block_panel",
+    "simulate_ou",
 ]
 
 _DT = 1.0 / 252.0
@@ -259,7 +259,7 @@ def make_floor_then_break(
     lp1 = beta * lp2 + s
     p1 = pd.Series(np.exp(lp1), index=idx, name="PEGGED")
     p2 = pd.Series(np.exp(lp2), index=idx, name="ANCHOR")
-    meta = {"break_idx": n_pre, "stat_sd": float(stat_sd), "jump": jump,
+    meta: dict[str, object] = {"break_idx": n_pre, "stat_sd": float(stat_sd), "jump": jump,
             "beta": beta}
     return p1, p2, meta
 

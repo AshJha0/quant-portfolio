@@ -4,7 +4,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_risk_metrics import normality_report
 
 
@@ -66,7 +65,7 @@ def test_normality_report_on_exactly_constant_series_raises() -> None:
     ],
 )
 def test_normality_report_near_constant_series_raises(values: list[float]) -> None:
-    with pytest.raises(ValueError, match="constant|not finite"):
+    with pytest.raises(ValueError, match=r"constant|not finite"):
         normality_report(pd.Series(values))
 
 

@@ -10,9 +10,6 @@ import warnings
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
-
 from eq_surface.smile import (
     LEE_SLOPE_MAX,
     SVIParams,
@@ -20,6 +17,8 @@ from eq_surface.smile import (
     fit_svi,
     svi_total_variance,
 )
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def _dense_min_g(p: SVIParams, k_lo: float, k_hi: float) -> float:

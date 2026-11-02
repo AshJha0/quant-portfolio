@@ -42,7 +42,8 @@ Return Estimation ──> Covariance Modeling ──> Mean-Variance ──> Effi
 
 ```bash
 cd python/fx/07-portfolio-optimization
-pip install -e .[dev]     # or just have numpy/scipy/pandas on the path
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
+pip install -e .[dev]
 pytest -q                 # 187 tests, offline, about 40 s
 python examples/run_pipeline.py   # full pipeline, about 60 s
 ```

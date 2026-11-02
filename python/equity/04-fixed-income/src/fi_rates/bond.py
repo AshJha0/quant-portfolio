@@ -42,17 +42,17 @@ from .daycount import (
 __all__ = [
     "FixedRateBond",
     "ZeroCouponBond",
-    "bond_cashflows",
     "accrued_interest",
+    "annuity_pv",
+    "bond_cashflows",
     "clean_price_from_curve",
+    "curve_time",
     "dirty_price_from_curve",
+    "frn_price_from_curve",
     "price_from_ytm",
     "ytm_from_price",
     "z_spread_from_price",
     "zcb_price_from_curve",
-    "frn_price_from_curve",
-    "annuity_pv",
-    "curve_time",
 ]
 
 _CURVE_DCC = "ACT/365F"  # date -> curve-time mapping convention (documented)
@@ -151,9 +151,9 @@ class FixedRateBond:
             -step * len(dates),
             eom=self.eom and is_month_end(self.maturity),
         )
-        starts = [self.effective] + dates[:-1]
-        refs = [first_ref] + dates[:-1]
-        return list(zip(starts, dates, refs))
+        starts = [self.effective, *dates[:-1]]
+        refs = [first_ref, *dates[:-1]]
+        return list(zip(starts, dates, refs, strict=False))
 
     def accrual_fraction(
         self, start: dt.date, end: dt.date, ref_start: dt.date, upto: dt.date

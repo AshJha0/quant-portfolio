@@ -10,11 +10,17 @@ import warnings
 
 import numpy as np
 import pytest
-
 from eq_surface.black_scholes import bs_price, bs_vega, implied_vol
-from eq_surface.smile import (SVIParams, check_butterfly, durrleman_g, fit_svi,
-                              svi_d2w_dk2, svi_dw_dk, svi_implied_vol,
-                              svi_total_variance)
+from eq_surface.smile import (
+    SVIParams,
+    check_butterfly,
+    durrleman_g,
+    fit_svi,
+    svi_d2w_dk2,
+    svi_dw_dk,
+    svi_implied_vol,
+    svi_total_variance,
+)
 from eq_surface.surface import VolSurface, check_calendar
 
 
@@ -186,7 +192,7 @@ def test_call_price_convex_in_strike_for_arb_free_slice():
     K = np.linspace(0.5 * F, 1.8 * F, 200)
     vols = np.asarray(s.vol(K, T))
     C = np.array([bs_price(100.0, k_, T, 0.02, 0.01, v, "call")
-                  for k_, v in zip(K, vols)])
+                  for k_, v in zip(K, vols, strict=False)])
     second = np.diff(C, 2)
     assert np.all(second > -1e-10), f"negative density, min d2C = {second.min():.3e}"
     # Calls are also decreasing in strike.

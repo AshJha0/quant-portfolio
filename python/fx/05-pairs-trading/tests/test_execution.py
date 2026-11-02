@@ -4,11 +4,10 @@ These tests fail if the engine fills a decision taken at the close of t at
 that same close (the convention used by this project before the change).
 """
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 
 
 def _single_leg(prices):

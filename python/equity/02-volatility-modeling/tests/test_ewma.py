@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_vol.data import synthetic as syn
 from eq_vol.ewma import (
     ewma_forecast,

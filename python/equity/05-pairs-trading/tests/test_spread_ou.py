@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.cointegration import hedge_ratio
 from eq_pairs.data import business_index, simulate_ou
 from eq_pairs.spread import (
@@ -108,7 +107,7 @@ class TestOURecovery:
         with pytest.raises(ValueError, match="n >= 10"):
             fit_ou_ols(np.arange(5.0))
         with pytest.raises(ValueError, match="NaN"):
-            fit_ou_ols(np.array([np.nan] + list(np.arange(20.0))))
+            fit_ou_ols(np.array([np.nan, *list(np.arange(20.0))]))
         with pytest.raises(ValueError, match="zero variance"):
             fit_ou_ols(np.full(50, 3.0))
         with pytest.raises(ValueError, match="dt"):

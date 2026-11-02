@@ -18,23 +18,24 @@ buys nothing but install weight for this project.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize
 
 __all__ = [
-    "min_variance_weights",
-    "tangency_weights",
-    "min_variance_constrained",
+    "FrontierResult",
+    "MaxSharpeResult",
+    "efficient_frontier",
     "max_sharpe_constrained",
     "max_sharpe_qp",
-    "MaxSharpeResult",
+    "min_variance_constrained",
+    "min_variance_weights",
+    "portfolio_return",
+    "portfolio_vol",
+    "tangency_weights",
     "target_return_portfolio",
     "target_risk_portfolio",
-    "efficient_frontier",
-    "FrontierResult",
-    "portfolio_vol",
-    "portfolio_return",
 ]
 
 _Bounds = tuple[float, float] | list[tuple[float, float]] | None
@@ -211,7 +212,7 @@ def min_variance_constrained(
     def jac(w: np.ndarray) -> np.ndarray:
         return 2.0 * sig_s @ w
 
-    cons = [{"type": "eq", "fun": lambda w: w.sum() - budget, "jac": lambda w: np.ones(n)}]
+    cons: list[Any] = [{"type": "eq", "fun": lambda w: w.sum() - budget, "jac": lambda w: np.ones(n)}]
     res = minimize(
         obj, w0, jac=jac, bounds=bl, constraints=cons, method="SLSQP",
         options={"maxiter": 500, "ftol": 1e-14},
@@ -278,7 +279,7 @@ def target_return_portfolio(
     m_s = m / m_scale
     t_s = target / m_scale
 
-    cons = [
+    cons: list[Any] = [
         {"type": "eq", "fun": lambda w: w.sum() - budget, "jac": lambda w: np.ones(n)},
         {"type": "eq", "fun": lambda w: float(w @ m_s) - t_s, "jac": lambda w: m_s},
     ]
@@ -339,13 +340,19 @@ def target_risk_portfolio(
     m_scale = float(np.max(np.abs(m))) or 1.0
     m_s = m / m_scale
 
-    cons = [
+    cons: list[Any] = [
         {"type": "eq", "fun": lambda w: w.sum() - budget, "jac": lambda w: np.ones(n)},
         {"type": "ineq", "fun": lambda w: v2_s - float(w @ sig_s @ w),
          "jac": lambda w: -2.0 * sig_s @ w},
     ]
+    def neg_return(w: np.ndarray) -> float:
+        return -float(w @ m_s)
+
+    def neg_return_grad(w: np.ndarray) -> np.ndarray:
+        return -m_s
+
     res = minimize(
-        lambda w: -float(w @ m_s), w0, jac=lambda w: -m_s, bounds=bl,
+        neg_return, w0, jac=neg_return_grad, bounds=bl,
         constraints=cons, method="SLSQP", options={"maxiter": 500, "ftol": 1e-14},
     )
     if not res.success:
@@ -515,7 +522,7 @@ def max_sharpe_qp(
 
         a_e = np.append(e_s, 0.0)
         a_b = np.append(np.ones(n), -1.0)
-        cons = [
+        cons: list[Any] = [
             {"type": "eq", "fun": lambda z: float(a_e @ z) - 1.0, "jac": lambda z: a_e},
             {"type": "eq", "fun": lambda z: float(a_b @ z), "jac": lambda z: a_b},
         ]

@@ -180,7 +180,8 @@ pipeline). The same base is used in sample and walk-forward.
 ## 6. Research statistics
 
 `eq_pairs.research_stats` holds the statistics every reported number goes
-through. The same file is used by the other alpha projects.
+through. It re-exports `qp_core.stats`, which the other alpha projects use
+too.
 
 - **Sharpe SE.** Lo (2002) GMM delta method. The per-period Sharpe
   `s = mu / sigma` has influence function

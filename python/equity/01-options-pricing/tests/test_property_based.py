@@ -2,10 +2,9 @@
 
 import math
 
+from eq_options import bs_greeks, bs_price, implied_vol
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
-from eq_options import bs_greeks, bs_price, implied_vol
 
 spot = st.floats(1.0, 1000.0)
 moneyness = st.floats(0.5, 2.0)

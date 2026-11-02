@@ -23,8 +23,9 @@ module factors it into two testable, reusable pieces:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, cast
 
 import pandas as pd
 
@@ -34,12 +35,12 @@ from .signals import ma_crossover_signal
 
 __all__ = [
     "TrainTestSplit",
-    "train_test_split",
-    "select_best_params",
-    "WalkForwardWindow",
-    "walk_forward_windows",
     "WalkForwardResult",
+    "WalkForwardWindow",
+    "select_best_params",
+    "train_test_split",
     "walk_forward_backtest",
+    "walk_forward_windows",
 ]
 
 
@@ -109,7 +110,7 @@ def select_best_params(
     fast_range: Iterable[int],
     slow_range: Iterable[int],
     cost_bps: float = 5.0,
-    execution: Optional[ExecutionConfig] = None,
+    execution: ExecutionConfig | None = None,
 ) -> tuple[int, int, pd.DataFrame]:
     """Grid-search (fast, slow) Sharpe on ``train_prices`` ONLY.
 
@@ -162,7 +163,7 @@ def select_best_params(
             "parameter grid is empty or all-NaN; widen fast_range/slow_range "
             "or lengthen train_prices"
         )
-    best_fast, best_slow = stacked.idxmax()
+    best_fast, best_slow = cast(tuple[int, int], stacked.idxmax())
     return int(best_fast), int(best_slow), grid
 
 
@@ -193,7 +194,7 @@ class WalkForwardWindow:
 
 
 def walk_forward_windows(
-    n: int, formation: int, trading: int, step: Optional[int] = None
+    n: int, formation: int, trading: int, step: int | None = None
 ) -> list[WalkForwardWindow]:
     """Tile ``[0, n)`` into non-overlapping (formation, trading) windows.
 
@@ -292,8 +293,8 @@ def walk_forward_backtest(
     formation: int,
     trading: int,
     cost_bps: float = 5.0,
-    step: Optional[int] = None,
-    execution: Optional[ExecutionConfig] = None,
+    step: int | None = None,
+    execution: ExecutionConfig | None = None,
 ) -> WalkForwardResult:
     """Walk-forward validation: re-select parameters on a rolling window.
 
@@ -398,7 +399,7 @@ def walk_forward_backtest(
     equity = (1 + stitched_strat).cumprod()
     benchmark = (1 + stitched_bench).cumprod()
 
-    stats = performance_stats(stitched_strat, equity)
+    stats: dict[str, Any] = dict(performance_stats(stitched_strat, equity))
     stats["benchmark"] = performance_stats(stitched_bench, benchmark)
 
     windows_df = pd.DataFrame(records)

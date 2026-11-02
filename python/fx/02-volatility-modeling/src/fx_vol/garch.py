@@ -29,8 +29,9 @@ estimates: see tests/test_arch_crosscheck.py.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import log
-from typing import Sequence
+from typing import Any, cast
 
 import numpy as np
 from scipy.optimize import minimize
@@ -40,10 +41,10 @@ from scipy.special import expit, logit
 from ._mle import (
     MIN_NU,
     MIN_OBS,
+    ConvergenceError,
     FitResult,
     backcast,
     gaussian_loglik,
-    ConvergenceError,
     loglik_obs,
     map_std_errors,
     mle_covariances,
@@ -52,7 +53,7 @@ from ._mle import (
     validate_returns,
 )
 
-__all__ = ["garch_filter", "fit_garch"]
+__all__ = ["fit_garch", "garch_filter"]
 
 _CLIP = 30.0  # bound on unconstrained parameters (expit/exp saturation guard)
 
@@ -158,7 +159,7 @@ def _ll_obs_scaled(theta_nat: np.ndarray, y: np.ndarray, x: np.ndarray | None, d
     bad = np.full(y.size, np.nan)
     if omega <= 0 or alpha < 0 or beta < 0 or beta >= 1 or alpha + beta >= 1:
         return bad
-    if k and (gamma_x < 0).any():
+    if k and np.any(cast(np.ndarray, gamma_x) < 0):
         return bad
     sigma2 = garch_filter(y, omega, alpha, beta, gamma_x, x, initial_variance=b)
     return loglik_obs(y, sigma2, dist, theta_nat[3 + k] if dist == "t" else None)
@@ -233,13 +234,15 @@ def fit_garch(
     def unpack(u: np.ndarray) -> tuple[float, float, float, np.ndarray | None, float | None]:
         u = np.clip(u, -_CLIP, _CLIP)
         if variance_targeting:
-            p = expit(u[0]); sh = expit(u[1])
+            p = expit(u[0])
+            sh = expit(u[1])
             alpha, beta = p * sh, p * (1.0 - sh)
             omega = var_y * (1.0 - p)
             rest = 2
         else:
             omega = np.exp(u[0])
-            p = expit(u[1]); sh = expit(u[2])
+            p = expit(u[1])
+            sh = expit(u[2])
             alpha, beta = p * sh, p * (1.0 - sh)
             rest = 3
         gamma_x = np.exp(u[rest : rest + k]) if k else None
@@ -256,7 +259,7 @@ def fit_garch(
         if dist == "gaussian":
             ll = gaussian_loglik(y, sigma2)
         else:
-            ll = student_t_loglik(y, sigma2, nu)
+            ll = student_t_loglik(y, sigma2, cast(float, nu))
         return -ll if np.isfinite(ll) else 1e10
 
     starts = []
@@ -275,20 +278,21 @@ def fit_garch(
         res = minimize(nll_u, u0, method="L-BFGS-B", options={"maxiter": 500})
         if best is None or res.fun < best.fun:
             best = res
+    assert best is not None
     omega, alpha, beta, gamma_x, nu = unpack(best.x)
     sigma2_y = garch_filter(y, omega, alpha, beta, gamma_x, xm, initial_variance=b)
     ll_y = -best.fun
 
     # ----- natural-space parameter vector (on scaled data) -----
-    theta_nat = [omega, alpha, beta]
+    theta_list: list[Any] = [omega, alpha, beta]
     names = ["omega", "alpha", "beta"]
     if k:
-        theta_nat += list(gamma_x)
+        theta_list += list(cast(np.ndarray, gamma_x))
         names += [f"gamma_x{i}" for i in range(k)] if k > 1 else ["gamma_x"]
     if dist == "t":
-        theta_nat.append(nu)
+        theta_list.append(nu)
         names.append("nu")
-    theta_nat = np.array(theta_nat)
+    theta_nat = np.array(theta_list)
     if not best.success and raise_on_failure:
         raise ConvergenceError(
             f"GARCH MLE failed to converge: {best.message} (nit={best.nit})"
@@ -321,11 +325,11 @@ def fit_garch(
     params = {"omega": omega * scale2, "alpha": alpha, "beta": beta}
     if k:
         for i in range(k):
-            params[names[3 + i]] = float(gamma_x[i] * scale2)
+            params[names[3 + i]] = float(cast(np.ndarray, gamma_x)[i] * scale2)
     if dist == "t":
-        params["nu"] = float(nu)
-    se = dict(zip(names, [float(v) for v in se_c]))
-    robust = dict(zip(names, [float(v) for v in se_r]))
+        params["nu"] = float(cast(float, nu))
+    se = dict(zip(names, [float(v) for v in se_c], strict=False))
+    robust = dict(zip(names, [float(v) for v in se_r], strict=False))
 
     persistence = alpha + beta
     uncond = params["omega"] / (1.0 - persistence) if persistence < 1.0 else np.inf

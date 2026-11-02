@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_credit.exposure import (
     FXForward,
     expected_exposure_loss,

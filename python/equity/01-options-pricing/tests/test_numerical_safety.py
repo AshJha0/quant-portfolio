@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import (
     black76_greeks,
     bs_price,

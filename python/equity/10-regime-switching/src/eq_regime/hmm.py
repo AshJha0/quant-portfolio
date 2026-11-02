@@ -30,12 +30,12 @@ from .gmm import _log_gaussian_pdf, kmeans_lite
 
 __all__ = [
     "HMMFit",
-    "fit_hmm",
-    "forward_filter",
-    "forward_backward",
-    "viterbi",
-    "stationary_distribution",
     "expected_durations",
+    "fit_hmm",
+    "forward_backward",
+    "forward_filter",
+    "stationary_distribution",
+    "viterbi",
 ]
 
 
@@ -415,7 +415,7 @@ def fit_hmm(
         history: list[float] = []
         converged = False
         it = 0
-        for it in range(1, max_iter + 1):
+        for it in range(1, max_iter + 1):  # noqa: B007  (it is read after the loop)
             log_b = _log_emissions(x, means, covs)
             alpha_hat, ll = _scaled_forward(log_b, startprob, transmat)
             history.append(ll)

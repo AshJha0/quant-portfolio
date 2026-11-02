@@ -1,11 +1,10 @@
 """Backtest engine: hand ledger, decomposition identities, costs, no-lookahead,
 walk-forward integrity, edge cases."""
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 from fx_pairs.carry import carry_accrual
 from fx_pairs.data import synthetic as syn
 
@@ -76,7 +75,7 @@ class TestHandLedger:
 class TestIdentities:
     def test_total_equals_spot_plus_carry_plus_cost(self, coint_pair):
         p1, p2, _ = coint_pair
-        pos, trades, eg = _signal_positions(p1, p2)
+        pos, _trades, eg = _signal_positions(p1, p2)
         rates = {"rb1": 0.04, "rq1": 0.01, "rb2": 0.02, "rq2": 0.01}
         res = fp.run_backtest(p1, p2, pos, eg.beta, pip_spread_1=0.7,
                               pip_spread_2=1.0, rates=rates)
@@ -135,7 +134,7 @@ class TestCosts:
 
     def test_hedge_leg_cost_scales_with_beta(self, coint_pair):
         p1, p2, _ = coint_pair
-        pos, _, eg = _signal_positions(p1, p2)
+        pos, _, _eg = _signal_positions(p1, p2)
         # cost only on leg 2: compare beta and 2*beta
         ra = fp.run_backtest(p1, p2, pos, 1.0, pip_spread_1=0.0,
                              pip_spread_2=1.0)

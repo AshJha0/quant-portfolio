@@ -20,14 +20,14 @@ import numpy as np
 from .intraday import ExecutionResult
 
 __all__ = [
-    "vwap",
-    "twap",
     "arrival_price",
-    "slippage_bps",
     "benchmark_slippage",
-    "twap_schedule",
-    "vwap_schedule",
     "pov_schedule",
+    "slippage_bps",
+    "twap",
+    "twap_schedule",
+    "vwap",
+    "vwap_schedule",
 ]
 
 

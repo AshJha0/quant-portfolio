@@ -32,15 +32,15 @@ from .portfolio import Portfolio
 __all__ = [
     "cholesky",
     "higham_nearest_correlation",
+    "monte_carlo_pnl",
+    "monte_carlo_risk",
+    "monte_carlo_var",
     "repair_covariance",
     "safe_cholesky",
     "simulate_factor_returns",
-    "monte_carlo_pnl",
-    "monte_carlo_var",
-    "monte_carlo_risk",
+    "var_confidence_interval",
     "var_standard_error_bootstrap",
     "var_standard_error_kde",
-    "var_confidence_interval",
 ]
 
 JITTER_START = 1e-12

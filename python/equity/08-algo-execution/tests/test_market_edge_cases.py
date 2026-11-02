@@ -3,12 +3,18 @@ Almgren-Chriss high-urgency numerical-stability regression."""
 
 import numpy as np
 import pytest
-
-from eq_algo import (ACParams, IntradayConfig, IntradayMarket, ac_trades,
-                     ac_trajectory, pov_schedule, twap_schedule, vwap_schedule)
+from eq_algo import (
+    ACParams,
+    IntradayConfig,
+    IntradayMarket,
+    ac_trades,
+    ac_trajectory,
+    pov_schedule,
+    twap_schedule,
+    vwap_schedule,
+)
 from eq_algo.benchmarks import benchmark_slippage, twap, vwap
 from eq_algo.tca import is_decomposition, tca_report
-
 
 # ---------------------------------------------------------------------------
 # Almgren-Chriss numerical stability

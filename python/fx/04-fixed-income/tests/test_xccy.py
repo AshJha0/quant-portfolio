@@ -3,7 +3,6 @@
 from dataclasses import replace
 
 import pytest
-
 from fx_rates.xccy import (
     CrossCurrencySwap,
     solve_par_basis,

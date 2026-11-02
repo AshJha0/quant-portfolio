@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import fx_port as fp
+import fx_port.mvo as mvo_mod
 import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from scipy.optimize import OptimizeResult
-
-import fx_port as fp
-import fx_port.mvo as mvo_mod
 
 INDEFINITE = pd.DataFrame(np.array([[1.0, 0.9, 0.7], [0.9, 1.0, 0.9], [0.7, 0.9, 0.6]]),
                           index=list("abc"), columns=list("abc"))

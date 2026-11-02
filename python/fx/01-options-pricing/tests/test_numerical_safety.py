@@ -2,12 +2,10 @@
 
 import math
 
+import fx_options.deltas as deltas_mod
 import numpy as np
 import pytest
-
-import fx_options.deltas as deltas_mod
-from fx_options import (analytic_greeks, cip_forward, forward_points, gk_price,
-                        mc_price, strike_from_delta)
+from fx_options import analytic_greeks, cip_forward, forward_points, gk_price, mc_price, strike_from_delta
 from fx_options.deltas import _log_ncdf, _pa_fold_bracket, _pa_peak_strike
 
 

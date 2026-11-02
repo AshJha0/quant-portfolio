@@ -21,18 +21,20 @@ Conventions
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 
 __all__ = [
-    "momentum",
-    "short_term_reversal",
-    "realized_vol",
-    "ma_crossover",
-    "rsi",
-    "turnover_zscore",
     "cs_rank",
     "cs_zscore",
+    "ma_crossover",
+    "momentum",
+    "realized_vol",
+    "rsi",
+    "short_term_reversal",
+    "turnover_zscore",
     "winsorize",
 ]
 
@@ -91,7 +93,7 @@ def realized_vol(prices: pd.DataFrame, window: int = 63, annualize: bool = True)
     _check_frame(prices, "prices")
     if window < 2:
         raise ValueError("window must be >= 2")
-    logret = np.log(prices / prices.shift(1))
+    logret = cast(pd.DataFrame, np.log(prices / prices.shift(1)))
     vol = logret.rolling(window, min_periods=window).std(ddof=1)
     if annualize:
         vol = vol * np.sqrt(252.0)
@@ -144,7 +146,7 @@ def turnover_zscore(volumes: pd.DataFrame, window: int = 63) -> pd.DataFrame:
     _check_frame(volumes, "volumes")
     if window < 2:
         raise ValueError("window must be >= 2")
-    logv = np.log(volumes.mask(volumes <= 0.0))
+    logv = cast(pd.DataFrame, np.log(volumes.mask(volumes <= 0.0)))
     mu = logv.rolling(window, min_periods=window).mean()
     sd = logv.rolling(window, min_periods=window).std(ddof=1)
     return (logv - mu) / sd.mask(sd == 0.0)

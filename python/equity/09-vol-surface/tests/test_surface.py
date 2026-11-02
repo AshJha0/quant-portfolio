@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_surface.smile import SVIParams, svi_total_variance
 from eq_surface.surface import VolSurface, check_calendar
 
@@ -21,7 +20,7 @@ def make_slices():
 def test_interpolation_exact_at_pillars():
     Ts, slices = make_slices()
     surf = VolSurface(Ts, slices, S, R, Q)
-    for T, p in zip(Ts, slices):
+    for T, p in zip(Ts, slices, strict=False):
         F = surf.forward(T)
         for K in [80.0, 100.0, 115.0]:
             k = np.log(K / F)
@@ -196,7 +195,9 @@ def test_enforced_surface_is_c1_in_k_and_rechecked():
     # PCHIP: one-sided slopes at an interior node agree to O(delta); the old
     # piecewise-linear interpolant had a slope jump of O(grid curvature).
     k0, d = float(surf.k_grid[120]), 1e-7
-    w = lambda x: float(surf.total_variance(x, 1.0))
+    def w(x):
+        return float(surf.total_variance(x, 1.0))
+
     right = (w(k0 + d) - w(k0)) / d
     left = (w(k0) - w(k0 - d)) / d
     assert abs(right - left) < 1e-4

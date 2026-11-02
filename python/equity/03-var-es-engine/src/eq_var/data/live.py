@@ -13,7 +13,7 @@ __all__ = ["load_returns_yfinance"]
 
 def load_returns_yfinance(
     tickers: list[str], period: str = "2y", interval: str = "1d"
-) -> "np.ndarray":
+) -> np.ndarray:
     """Download adjusted-close simple returns for ``tickers`` via yfinance.
 
     Returns a (T, n) array aligned on common dates.  Raises ``ImportError``
@@ -21,7 +21,7 @@ def load_returns_yfinance(
     ``RuntimeError`` when the download comes back empty (offline).
     """
     try:
-        import yfinance as yf  # noqa: PLC0415
+        import yfinance as yf
     except ImportError as exc:  # pragma: no cover - depends on environment
         raise ImportError(
             "yfinance is required for live data: pip install eq-var[live]"

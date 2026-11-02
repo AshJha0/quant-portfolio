@@ -7,7 +7,6 @@ that same close (the convention used before this module existed).
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime import ExecutionConfig, StrategyConfig, run_backtest
 
 CCYS = ["AUD", "JPY"]
@@ -78,7 +77,7 @@ def test_perfect_foresight_signal_earns_nothing_with_next_close_fill():
 
 def test_close_auction_charges_exactly_the_auction_cost():
     """(c) close_auction cost = spread cost + auction_cost_bp * turnover."""
-    idx, rets, rates, cfg = _two_leg_case(n=200, seed=5)
+    idx, rets, rates, _cfg = _two_leg_case(n=200, seed=5)
     regimes = pd.Series(np.where(np.arange(200) % 30 < 15, "risk_on", "usd_squeeze"), index=idx)
     cfg_cost = StrategyConfig(
         cov_window=20, n_carry_long=1, n_carry_short=1, rebalance_every=1,

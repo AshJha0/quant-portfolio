@@ -8,7 +8,8 @@ signal (the backtester never sees them).
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -16,14 +17,14 @@ import pandas as pd
 from .features import cs_zscore
 
 __all__ = [
-    "forward_returns",
-    "information_coefficient",
+    "apply_rebalance_band",
     "combine_equal_weight",
     "combine_ic_weighted",
-    "signal_decay",
     "decile_portfolios",
+    "forward_returns",
     "freeze_signal",
-    "apply_rebalance_band",
+    "information_coefficient",
+    "signal_decay",
     "turnover",
 ]
 
@@ -58,7 +59,7 @@ def information_coefficient(signal: pd.DataFrame, fwd: pd.DataFrame,
     rs_d = rs.sub(rs.mean(axis=1), axis=0)
     rf_d = rf.sub(rf.mean(axis=1), axis=0)
     num = (rs_d * rf_d).sum(axis=1)
-    den = np.sqrt((rs_d**2).sum(axis=1) * (rf_d**2).sum(axis=1))
+    den = cast(pd.Series, np.sqrt((rs_d**2).sum(axis=1) * (rf_d**2).sum(axis=1)))
     ic = num / den.mask(den == 0.0)
     ic[n < min_names] = np.nan
     ic.name = "ic"
@@ -130,7 +131,8 @@ def combine_ic_weighted(features: Mapping[str, pd.DataFrame], fwd: pd.DataFrame,
         contrib = z.fillna(0.0).mul(weights[k], axis=0)
         total = contrib if total is None else total + contrib
         wtot = wk if wtot is None else wtot + wk
-    return total / wtot.mask(wtot == 0.0)
+    tot, wt = cast(pd.DataFrame, total), cast(pd.DataFrame, wtot)
+    return tot / wt.mask(wt == 0.0)
 
 
 def signal_decay(signal: pd.DataFrame, prices: pd.DataFrame,

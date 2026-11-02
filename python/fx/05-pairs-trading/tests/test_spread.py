@@ -1,11 +1,9 @@
 """Spread modelling: OU recovery (OLS & MLE), half-life, RLS hedge tracking."""
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
-
 from fx_pairs.data import synthetic as syn
 from fx_pairs.spread import (
     RLSHedge,
@@ -89,7 +87,7 @@ class TestOUValidation:
 
 class TestRLS:
     def test_converges_to_ols_on_stable_relation(self):
-        p1, p2, truth = syn.make_cointegrated_pair(n=1500, beta=1.4, alpha=0.2,
+        p1, p2, _truth = syn.make_cointegrated_pair(n=1500, beta=1.4, alpha=0.2,
                                                    seed=21)
         rls = RLSHedge(lam=1.0, delta=1e8)  # no forgetting = recursive OLS
         path = rls.fit_path(p2, p1)

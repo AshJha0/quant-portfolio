@@ -43,23 +43,22 @@ docs/METHODOLOGY.md for the trade-off discussion.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
 __all__ = [
-    "compute_spread",
     "OUFit",
-    "fit_ou_ols",
+    "compute_spread",
     "fit_ou_mle",
+    "fit_ou_ols",
     "half_life_from_kappa",
     "rls_hedge_ratio",
     "rolling_ols_hedge_ratio",
 ]
 
-ArrayLike = Union[np.ndarray, pd.Series, list]
+ArrayLike = np.ndarray | pd.Series | list
 
 #: AR(1) coefficient at/above which the spread is treated as non-mean-reverting.
 _UNIT_ROOT_B = 1.0 - 1e-10
@@ -67,7 +66,7 @@ _UNIT_ROOT_B = 1.0 - 1e-10
 
 def compute_spread(
     y: ArrayLike, x: ArrayLike, beta: float, alpha: float = 0.0
-) -> np.ndarray:
+) -> np.ndarray | pd.Series:
     """Dollar spread s_t = y_t - beta x_t - alpha.
 
     Accepts pandas Series (returns Series preserving the index) or arrays.

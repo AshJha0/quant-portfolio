@@ -5,9 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.decomposition import PCA as SkPCA
-
 from eq_regime.pca import fit_pca, project, rolling_pca, scree_table
+from sklearn.decomposition import PCA as SkPCA
 
 
 @pytest.fixture(scope="module")

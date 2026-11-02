@@ -4,7 +4,6 @@ missing-value strategies, train/OOT temporal split."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_credit.cleaning import (
     FORBIDDEN_POST_OUTCOME_FIELDS,
     LeakageError,

@@ -2,17 +2,25 @@
 docs/METHODOLOGY.md / VALIDATION.md and unit-tested here."""
 
 import math
+from typing import ClassVar
 
 import pytest
-
-from fx_options import (analytic_greeks, binomial_price, delta, gk_call,
-                        gk_price, gk_put, implied_vol, mc_price)
+from fx_options import (
+    analytic_greeks,
+    binomial_price,
+    delta,
+    gk_call,
+    gk_price,
+    gk_put,
+    implied_vol,
+    mc_price,
+)
 
 
 class TestNegativeRates:
     """EUR/CHF era: both rates negative must work end to end."""
 
-    ARGS = dict(S=1.08, K=1.08, T=1.0, r_d=-0.0075, r_f=-0.0050,
+    ARGS: ClassVar[dict] = dict(S=1.08, K=1.08, T=1.0, r_d=-0.0075, r_f=-0.0050,
                 sigma=0.065)
 
     def test_pricing_and_parity(self):

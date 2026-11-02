@@ -18,12 +18,12 @@ from scipy.signal import lfilter
 from ._utils import validate_returns
 
 __all__ = [
+    "ewma_forecast",
     "ewma_variance",
     "ewma_variance_recursive",
     "ewma_weights",
-    "lambda_to_halflife",
     "halflife_to_lambda",
-    "ewma_forecast",
+    "lambda_to_halflife",
 ]
 
 

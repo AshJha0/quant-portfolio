@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_port import (
     base_conversion_returns,
     convert_base,
@@ -104,7 +103,7 @@ def test_no_lookahead_weight_func_sees_only_history():
         seen.append(hist.index[-1])
         return pd.Series(0.5, index=dec.total.columns)
 
-    res = run_backtest(dec.spot, dec.carry, wf, est_window=50, rebalance_every=10)
+    run_backtest(dec.spot, dec.carry, wf, est_window=50, rebalance_every=10)
     # every history endpoint strictly precedes the first day those weights earn P&L
     for i, t_seen in enumerate(seen):
         applied_from = dec.total.index[49 + 10 * i + 1]
@@ -152,7 +151,7 @@ def test_backtest_input_validation():
     with pytest.raises(ValueError, match="rebalance"):
         run_backtest(spot, carry, lambda h: pd.Series(), est_window=3,
                      rebalance_every=0)
-    with pytest.raises(ValueError, match="NaN|missing"):
+    with pytest.raises(ValueError, match=r"NaN|missing"):
         run_backtest(spot, carry, lambda h: pd.Series({"AUD": 1.0}), est_window=3)
     with pytest.raises(ValueError, match="cost"):
         run_backtest(spot, carry,
@@ -191,7 +190,7 @@ def test_base_switch_adds_base_ccy_own_return(gbp_setup):
 
 def test_dollar_neutral_log_returns_invariant_to_base(gbp_setup):
     """sum(w)=0 kills the common conversion term exactly (log-return version)."""
-    panel, dec, conv = gbp_setup
+    _panel, dec, conv = gbp_setup
     rng = np.random.default_rng(2)
     w = pd.Series(rng.standard_normal(dec.total.shape[1]), index=dec.total.columns)
     w -= w.mean()  # dollar-neutral
@@ -202,7 +201,7 @@ def test_dollar_neutral_log_returns_invariant_to_base(gbp_setup):
 
 
 def test_net_long_portfolio_shifts_by_conversion(gbp_setup):
-    panel, dec, conv = gbp_setup
+    _panel, dec, conv = gbp_setup
     w = pd.Series(1.0 / dec.total.shape[1], index=dec.total.columns)  # sum = 1
     port_usd = dec.total @ w
     port_gbp = convert_base(dec.total, conv) @ w

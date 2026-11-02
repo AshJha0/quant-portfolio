@@ -10,16 +10,12 @@ Run from the project root:  python examples/run_pipeline.py   (< 150 s)
 
 from __future__ import annotations
 
-import math
 import time
 
-import numpy as np
 import pandas as pd
-
 from fx_surface import (
     HestonParams,
     calibrate_heston,
-    gk_delta,
     gk_digital,
     gk_forward,
     gk_greeks,
@@ -70,7 +66,7 @@ for pair, mkt in markets.items():
 # ------------------------------------------------- 2. delta -> strike table
 hdr("2. Strike solving: USDJPY 1y, premium-adjusted vs unadjusted")
 jpy = markets["USDJPY"]
-ms = [s for s in jpy.slices if s.label == "1y"][0]
+ms = next(s for s in jpy.slices if s.label == "1y")
 v = vols_from_quotes(ms.quotes)
 k_pa = solve_pillar_strikes(v, jpy.S, ms.T, ms.r_d, ms.r_f, "spot_pa")
 k_un = solve_pillar_strikes(v, jpy.S, ms.T, ms.r_d, ms.r_f, "spot")

@@ -3,7 +3,6 @@
 
 import numpy as np
 import pytest
-
 from conftest import EGARCH_TRUE
 from fx_vol import egarch_filter, fit_egarch
 from fx_vol._mle import student_t_abs_moment

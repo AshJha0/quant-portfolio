@@ -6,7 +6,6 @@ and pairing afterwards gave SE 1.39e-4 for this contract at 100k paths
 """
 
 import pytest
-
 from fx_options import gk_price, mc_price
 
 SEEDS = [1, 2, 3, 4, 5, 6, 7]

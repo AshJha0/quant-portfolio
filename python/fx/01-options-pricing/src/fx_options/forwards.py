@@ -17,10 +17,10 @@ import math
 from ._common import finite_result, safe_exp, validate_inputs
 
 __all__ = [
+    "PIP_FACTORS",
     "cip_forward",
     "forward_points",
     "synthetic_forward_from_options",
-    "PIP_FACTORS",
 ]
 
 #: Standard pip scaling: price decimal places quoted by convention.

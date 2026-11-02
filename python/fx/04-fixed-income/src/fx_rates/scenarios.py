@@ -17,8 +17,9 @@ See docs/DESK_GUIDE.md for how a desk uses each scenario.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace as _dc_replace
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 
 import pandas as pd
 
@@ -29,10 +30,10 @@ from .risk import Position, book_value
 __all__ = [
     "Scenario",
     "apply_scenario",
-    "scenario_table",
-    "historical_scenarios",
-    "forward_carry",
     "carry_table",
+    "forward_carry",
+    "historical_scenarios",
+    "scenario_table",
 ]
 
 

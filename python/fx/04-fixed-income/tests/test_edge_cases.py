@@ -4,10 +4,9 @@ basis-mispricing demonstration."""
 
 import datetime as dt
 
-import numpy as np
 import pytest
-
 from fx_rates.curve import DiscountCurve
+from fx_rates.data.live import network_allowed
 from fx_rates.daycount import spot_date, year_fraction
 from fx_rates.fxforward import (
     FXForward,
@@ -18,7 +17,6 @@ from fx_rates.fxforward import (
     market_forward,
 )
 from fx_rates.risk import basis_dv01, book_risk_report, dv01, fx_delta
-from fx_rates.data.live import network_allowed
 
 
 class TestNegativeRatesEra:

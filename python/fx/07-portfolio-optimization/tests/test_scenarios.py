@@ -4,9 +4,7 @@ Every case here is also documented in docs/VALIDATION.md.
 """
 
 import numpy as np
-import pandas as pd
 import pytest
-
 from fx_port import (
     carry_signal,
     empirical_cvar,
@@ -106,7 +104,7 @@ def test_crisis_regime_correlations_flip_up():
     """Risk-on currencies decouple in calm markets, co-crash in stress."""
     calm = make_panel(seed=11, n_days=1500, crash_prob=0.0)
     stressed = make_panel(seed=11, n_days=1500, crash_prob=0.05)
-    for p, label in ((calm, "calm"), (stressed, "stress")):
+    for p, _label in ((calm, "calm"), (stressed, "stress")):
         p.corr = total_log_returns(p.spots, p.rates).spot[["AUD", "TRY"]].corr().iloc[0, 1]
     # crash co-movement pushes high-carry correlations up in the stressed world
     assert stressed.corr > calm.corr

@@ -35,7 +35,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pandas as pd
-
 from eq_signal_backtest import (
     TRADING_DAYS,
     ExecutionConfig,

@@ -13,7 +13,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface.garman_kohlhagen import (
     gk_delta,
     gk_forward,
@@ -67,7 +66,7 @@ def test_extreme_skew_still_produces_ordered_pillar_strikes():
     vols = vols_from_quotes(SmileQuotes(0.18, 0.06, 0.012, 0.11, 0.035))
     strikes = solve_pillar_strikes(vols, S0, 0.5, RD, RF, "spot")
     ks = [strikes[k] for k in ("10p", "25p", "atm", "25c", "10c")]
-    assert all(a < b for a, b in zip(ks, ks[1:]))
+    assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_quote_set_driving_a_wing_negative_is_rejected():
@@ -94,7 +93,7 @@ def test_strike_from_delta_is_monotone_decreasing_in_call_delta():
         strike_from_delta(d, +1, 0.10, S0, 1.0, RD, RF, "spot")
         for d in (0.40, 0.25, 0.10, 0.05)
     ]
-    assert all(a < b for a, b in zip(ks, ks[1:]))
+    assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_strike_from_delta_is_monotone_increasing_in_put_delta():
@@ -102,7 +101,7 @@ def test_strike_from_delta_is_monotone_increasing_in_put_delta():
         strike_from_delta(d, -1, 0.10, S0, 1.0, RD, RF, "spot")
         for d in (0.05, 0.10, 0.25, 0.40)
     ]
-    assert all(a < b for a, b in zip(ks, ks[1:]))
+    assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_higher_vol_pushes_wing_strikes_further_from_the_forward():
@@ -148,7 +147,7 @@ def test_butterfly_arbitrage_appears_as_curvature_is_pushed_up():
         svi = SVISmile(SVIParams(a=0.010, b=b, rho=-0.3, m=0.0, s=0.05), F=1.10, T=1.0)
         results.append(svi.is_butterfly_arbitrage_free()[1])
     # min g is decreasing in b, and the most extreme case is an arb violation
-    assert all(a >= b for a, b in zip(results, results[1:]))
+    assert all(a >= b for a, b in zip(results, results[1:], strict=False))
     assert results[-1] < 0.0
 
 
@@ -246,7 +245,7 @@ def test_delta_approaches_step_function_as_expiry_vanishes():
 
 def test_vega_vanishes_as_expiry_vanishes():
     vegas = [gk_vega(S0, S0, T, RD, RF, 0.10) for T in (1e-2, 1e-4, 1e-6, 1e-8)]
-    assert all(a > b > 0 for a, b in zip(vegas, vegas[1:]))
+    assert all(a > b > 0 for a, b in zip(vegas, vegas[1:], strict=False))
     assert vegas[-1] < 1e-4
 
 

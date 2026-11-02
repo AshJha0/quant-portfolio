@@ -51,7 +51,7 @@ import numpy as np
 from .black_scholes import bs_delta, bs_gamma, bs_vega, implied_vol
 from .heston import HestonParams, heston_call_gl
 
-__all__ = ["HestonGreeks", "heston_greeks", "bs_equivalent_greeks", "smile_adjusted_delta"]
+__all__ = ["HestonGreeks", "bs_equivalent_greeks", "heston_greeks", "smile_adjusted_delta"]
 
 
 @dataclass(frozen=True)
@@ -124,12 +124,14 @@ def heston_greeks(
     hv = max(rel_bump * p.v0, 1e-6)
     hr = max(rel_bump * max(abs(r), 0.01), 1e-6)
 
-    f_S = lambda s: _price(s, K, T, r, q, p)
+    def f_S(s: float) -> float:
+        return _price(s, K, T, r, q, p)
 
     def f_v(v0: float) -> float:
-        return _price(S, K, T, r, q, HestonParams(v0, p.kappa, p.theta, p.rho, p.xi))
+        return _price(S, K, T, r, q, HestonParams(v0=v0, kappa=p.kappa, theta=p.theta, rho=p.rho, xi=p.xi))
 
-    f_r = lambda rr: _price(S, K, T, rr, q, p)
+    def f_r(rr: float) -> float:
+        return _price(S, K, T, rr, q, p)
 
     d1 = _richardson1 if richardson else _central
     d2 = _richardson2 if richardson else _second

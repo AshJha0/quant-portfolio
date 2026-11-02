@@ -92,8 +92,8 @@ Sharpe `mean/std(ddof=1) sqrt(252)`, `NaN` when the standard deviation is
 zero; max drawdown `min(equity / running max - 1)`; exposure
 `mean(returns != 0)`.
 
-**Research statistics** (`research_stats.py`, identical across the alpha
-projects):
+**Research statistics** (`research_stats.py`, a re-export of
+`qp_core.stats`):
 
 - Sharpe SE: Lo (2002) delta method with a Newey-West (Bartlett) long-run
   variance, lag `floor(4 (n/100)^(2/9))`.

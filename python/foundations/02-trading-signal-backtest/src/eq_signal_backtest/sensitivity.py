@@ -8,7 +8,7 @@ plateau of similar Sharpe values is what robustness looks like.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -23,7 +23,7 @@ def parameter_grid(
     fast_range: Iterable[int],
     slow_range: Iterable[int],
     cost_bps: float = 5.0,
-    execution: "ExecutionConfig | None" = None,
+    execution: ExecutionConfig | None = None,
 ) -> pd.DataFrame:
     """Sharpe ratio for every valid (fast, slow) pair.
 

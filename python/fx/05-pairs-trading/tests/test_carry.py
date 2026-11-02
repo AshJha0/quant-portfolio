@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_pairs.carry import (
     carry_accrual,
     carry_adjusted_log_price,

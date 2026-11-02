@@ -16,7 +16,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pandas as pd
-
 from eq_signal_backtest import run_backtest
 from eq_signal_backtest.data.synthetic import generate
 from eq_signal_backtest.signals import ma_crossover_signal

@@ -1,18 +1,17 @@
 """Tests for eq_risk_metrics.var_es: VaR (3 methods) and Expected Shortfall."""
 from __future__ import annotations
 
+import eq_risk_metrics.var_es as var_es_module
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import stats
-
 from eq_risk_metrics import (
     expected_shortfall,
     var_cornish_fisher,
     var_historical,
     var_parametric,
 )
-import eq_risk_metrics.var_es as var_es_module
+from scipy import stats
 
 
 # ---------------------------------------------------------------------

@@ -3,10 +3,11 @@ critical one for the whole project."""
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_regime.detection import (
     expanding_fit_detect,
     filtered_probabilities,
@@ -186,7 +187,7 @@ class TestRefitBoundary:
     which is produced by the *new* model on the boundary day.
     """
 
-    KW = dict(n_states=3, min_train=300, refit_every=150,
+    KW: ClassVar[dict] = dict(n_states=3, min_train=300, refit_every=150,
               seed=0, n_init=1, max_iter=40, n_pca=2)
 
     @pytest.mark.parametrize("k", [1, 2, 10])

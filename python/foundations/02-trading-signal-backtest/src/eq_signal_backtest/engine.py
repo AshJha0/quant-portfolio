@@ -26,57 +26,24 @@ Design decisions that matter (expanded in ``docs/METHODOLOGY.md``):
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from qp_core.execution import ExecutionConfig
 
 TRADING_DAYS = 252
 
 __all__ = [
     "TRADING_DAYS",
-    "ExecutionConfig",
     "BacktestResult",
-    "strategy_returns",
-    "run_backtest",
+    "ExecutionConfig",
     "performance_stats",
+    "run_backtest",
+    "strategy_returns",
 ]
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """How a decision taken at the close of day t is filled.
-
-    Parameters
-    ----------
-    mode : {"next", "close_auction"}
-        ``"next"`` (default) fills at the modelled t+1 price
-        ``p_t + fill_fraction * (p_{t+1} - p_t)``. ``"close_auction"``
-        fills at ``p_t`` and pays ``auction_cost_bp`` per unit of traded
-        notional on top of ``cost_bps``.
-    fill_fraction : float, default 0.5
-        Share of the next day's price move that has happened by the fill,
-        in (0, 1]. 1.0 is a next-close fill. 0.5 stands in for a
-        next-open or early-session fill when only closes exist.
-    auction_cost_bp : float, default 10.0
-        Extra cost per unit of traded notional in ``"close_auction"`` mode.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        f = float(self.fill_fraction)
-        if not math.isfinite(f) or not (0.0 < f <= 1.0):
-            raise ValueError(f"fill_fraction must be finite and in (0, 1], got {self.fill_fraction!r}")
-        a = float(self.auction_cost_bp)
-        if not math.isfinite(a) or a < 0:
-            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp!r}")
 
 
 def _validate_inputs(prices: pd.Series, signal: pd.Series, cost_bps: float) -> None:
@@ -151,7 +118,7 @@ def strategy_returns(
     prices: pd.Series,
     signal: pd.Series,
     cost_bps: float,
-    execution: Optional[ExecutionConfig] = None,
+    execution: ExecutionConfig | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Daily net strategy returns, executed position, and trade flags.
 
@@ -247,7 +214,7 @@ def run_backtest(
     prices: pd.Series,
     signal: pd.Series,
     cost_bps: float = 5.0,
-    execution: Optional[ExecutionConfig] = None,
+    execution: ExecutionConfig | None = None,
 ) -> BacktestResult:
     """Backtest a 0/1 signal with a modelled t+1 fill and transaction costs.
 
@@ -295,7 +262,7 @@ def run_backtest(
     equity = (1 + strat_rets).cumprod()
     benchmark = (1 + rets).cumprod()
 
-    stats = performance_stats(strat_rets, equity)
+    stats: dict[str, Any] = dict(performance_stats(strat_rets, equity))
     stats["benchmark"] = performance_stats(rets, benchmark)
     return BacktestResult(
         equity=equity,

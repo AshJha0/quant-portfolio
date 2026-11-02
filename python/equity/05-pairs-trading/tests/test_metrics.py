@@ -1,9 +1,7 @@
 """Hand-checked performance metrics and the Lo-adjusted Sharpe SE."""
 
 import numpy as np
-import pandas as pd
 import pytest
-
 from eq_pairs.metrics import (
     avg_holding_period,
     cost_drag,

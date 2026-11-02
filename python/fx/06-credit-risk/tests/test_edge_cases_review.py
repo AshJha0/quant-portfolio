@@ -6,9 +6,7 @@ entry point, tiny/constant samples, and settlement-book degenerate cases.
 """
 
 import numpy as np
-import pandas as pd
 import pytest
-
 from fx_credit import (
     FXForward,
     FXTrade,

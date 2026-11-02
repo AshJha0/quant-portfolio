@@ -59,17 +59,17 @@ from .garman_kohlhagen import (
 )
 
 __all__ = [
-    "SmileQuotes",
     "PILLAR_LABELS",
-    "vols_from_quotes",
-    "quotes_from_vols",
+    "SmileQuotes",
     "atm_dns_strike",
-    "strike_from_delta",
-    "pa_call_delta_max",
-    "strike_from_delta_pa_candidates",
-    "solve_pillar_strikes",
     "broker_strangle_from_smile",
+    "pa_call_delta_max",
+    "quotes_from_vols",
     "smile_quotes_from_broker",
+    "solve_pillar_strikes",
+    "strike_from_delta",
+    "strike_from_delta_pa_candidates",
+    "vols_from_quotes",
 ]
 
 PILLAR_LABELS = ("10p", "25p", "atm", "25c", "10c")
@@ -343,10 +343,10 @@ def solve_pillar_strikes(
         "10c": strike_from_delta(0.10, +1, vols["10c"], S, T, r_d, r_f, convention),
     }
     ks = [strikes[label] for label in PILLAR_LABELS]
-    if not all(a < b for a, b in zip(ks, ks[1:])):
+    if not all(a < b for a, b in zip(ks, ks[1:], strict=False)):
         raise ValueError(
             f"pillar strikes not strictly ordered K10P < K25P < KATM < K25C < K10C: "
-            f"{dict(zip(PILLAR_LABELS, ks))}"
+            f"{dict(zip(PILLAR_LABELS, ks, strict=False))}"
         )
     return strikes
 

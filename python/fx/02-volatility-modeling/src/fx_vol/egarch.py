@@ -25,8 +25,9 @@ likelihood costs ~5 ms, keeping from-scratch MLE practical.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import exp, log, sqrt
-from typing import Sequence
+from typing import cast
 
 import numpy as np
 from scipy.optimize import minimize
@@ -34,10 +35,10 @@ from scipy.optimize import minimize
 from ._mle import (
     MIN_NU,
     MIN_OBS,
+    ConvergenceError,
     FitResult,
     backcast,
     gaussian_loglik,
-    ConvergenceError,
     loglik_obs,
     map_std_errors,
     mle_covariances,
@@ -47,7 +48,7 @@ from ._mle import (
     validate_returns,
 )
 
-__all__ = ["egarch_filter", "fit_egarch", "egarch_unconditional_variance", "GAUSSIAN_ABS_MOMENT"]
+__all__ = ["GAUSSIAN_ABS_MOMENT", "egarch_filter", "egarch_unconditional_variance", "fit_egarch"]
 
 GAUSSIAN_ABS_MOMENT = sqrt(2.0 / np.pi)
 _CLIP = 30.0
@@ -215,7 +216,7 @@ def fit_egarch(
             # the saturated region as infeasible instead of raising
             return 1e10
         sigma2 = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
-        ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, nu)
+        ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, cast(float, nu))
         return -ll if np.isfinite(ll) else 1e10
 
     var_y = float(np.var(y))
@@ -237,15 +238,16 @@ def fit_egarch(
         return nll_u(u) / n
 
     best = None
-    for u0 in starts:
-        res = minimize(avg, u0, method="L-BFGS-B", options={"maxiter": 500})
+    for start in starts:
+        res = minimize(avg, start, method="L-BFGS-B", options={"maxiter": 500})
         if res.nit <= 2 or not res.success:
             res = minimize(avg, res.x, method="BFGS", jac="3-point",
                            options={"maxiter": 400, "gtol": 1e-6})
-            res.success = bool(res.success or np.max(np.abs(res.jac)) < 1e-5)
+            res.success = bool(res.success or np.max(np.abs(np.asarray(res.jac))) < 1e-5)
         res.fun = res.fun * n
         if best is None or res.fun < best.fun:
             best = res
+    assert best is not None
     omega, alpha, gamma, beta, nu, am = unpack(best.x)
     sigma2_y = egarch_filter(y, omega, alpha, gamma, beta, abs_moment=am, initial_variance=b)
 
@@ -265,11 +267,11 @@ def fit_egarch(
     omega_r = omega + (1.0 - beta) * log_s2
     jac = np.eye(theta_nat.size)
     jac[0, 3] = -log_s2
-    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)]))
-    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)]))
+    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)], strict=False))
+    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)], strict=False))
     params = {"omega": omega_r, "alpha": alpha, "gamma": gamma, "beta": beta}
     if dist == "t":
-        params["nu"] = float(nu)
+        params["nu"] = float(cast(float, nu))
 
     uncond = egarch_unconditional_variance(omega_r, alpha, gamma, beta, dist)
     return FitResult(

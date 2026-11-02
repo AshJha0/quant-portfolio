@@ -4,8 +4,6 @@ calibration, PSI exactness and drift detection, rank ordering, bootstrap."""
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import stats
-
 from eq_credit.data.synthetic import generate_loan_book
 from eq_credit.validation import (
     bootstrap_auc_ci,
@@ -28,7 +26,6 @@ from eq_credit.validation import (
 def test_auc_matches_sklearn_to_1e12() -> None:
     from sklearn.metrics import roc_auc_score
 
-    rng = np.random.default_rng(0)
     for seed in range(5):
         r = np.random.default_rng(seed)
         y = (r.uniform(size=500) < 0.3).astype(float)
@@ -124,7 +121,7 @@ def test_hosmer_lemeshow_detects_miscalibration() -> None:
     rng = np.random.default_rng(7)
     p = rng.uniform(0.01, 0.3, 5_000)
     y = (rng.uniform(size=5_000) < np.clip(2.0 * p, 0, 1)).astype(float)
-    chi2, pval, _ = hosmer_lemeshow(y, p, out_of_sample=True)  # half the true PD
+    _chi2, pval, _ = hosmer_lemeshow(y, p, out_of_sample=True)  # half the true PD
     assert pval < 1e-6
 
 

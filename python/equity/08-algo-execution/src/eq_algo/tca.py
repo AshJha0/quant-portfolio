@@ -19,16 +19,21 @@ notional ``X * p_d``.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import numpy as np
 import pandas as pd
 
 from .intraday import ExecutionResult
 
-__all__ = ["ISReport", "is_decomposition", "tca_report", "slippage_attribution",
-           "aggregate_tca"]
+__all__ = [
+    "ISReport",
+    "aggregate_tca",
+    "is_decomposition",
+    "slippage_attribution",
+    "tca_report",
+]
 
 
 @dataclass(frozen=True)
@@ -63,7 +68,8 @@ class ISReport:
 
 def is_decomposition(side: int, parent_qty: float, decision_price: float,
                      arrival_price: float, final_price: float,
-                     fill_qty: Sequence[float], fill_price: Sequence[float]) -> ISReport:
+                     fill_qty: Sequence[float] | np.ndarray,
+                     fill_price: Sequence[float] | np.ndarray) -> ISReport:
     """Perold IS decomposition of one parent order (see module docstring).
 
     Raises ``ValueError`` on inconsistent inputs (overfill, negative prices).

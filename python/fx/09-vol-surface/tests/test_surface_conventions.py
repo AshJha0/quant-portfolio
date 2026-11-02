@@ -11,7 +11,6 @@ import math
 import warnings
 
 import pytest
-
 from fx_surface import (
     SmileQuotes,
     SurfaceConvergenceError,

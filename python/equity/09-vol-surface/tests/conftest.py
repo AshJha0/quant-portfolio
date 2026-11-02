@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import warnings
 
+import eq_surface as es
 import numpy as np
 import pytest
-
-import eq_surface as es
 
 # Market conventions used across the suite.
 S0, R, Q = 100.0, 0.02, 0.01

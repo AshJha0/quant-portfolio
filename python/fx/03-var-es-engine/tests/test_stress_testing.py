@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_var import (
     Book,
     Option,
@@ -167,7 +166,7 @@ def test_reverse_stress_numerical_confirms_closed_form():
 def test_reverse_stress_loss_target_inversion():
     w, cov = _toy_linear()
     target = 1_000_000.0
-    shocks, loss = reverse_stress_linear(w, cov, loss_target=target)
+    _shocks, loss = reverse_stress_linear(w, cov, loss_target=target)
     assert loss == pytest.approx(target, rel=1e-12)
 
 

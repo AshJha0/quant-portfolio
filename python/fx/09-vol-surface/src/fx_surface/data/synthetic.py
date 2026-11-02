@@ -21,8 +21,8 @@ Optional quote noise is Gaussian, seeded, in vol points.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Union
 
 import numpy as np
 
@@ -40,13 +40,13 @@ from ..smile_from_quotes import (
 )
 
 __all__ = [
-    "MarketSlice",
     "FXMarketData",
-    "eurusd_market",
-    "usdjpy_market",
-    "em_high_vol_market",
-    "market_from_heston",
+    "MarketSlice",
     "calibration_slices",
+    "em_high_vol_market",
+    "eurusd_market",
+    "market_from_heston",
+    "usdjpy_market",
 ]
 
 TENORS: tuple[tuple[str, float], ...] = (
@@ -249,7 +249,7 @@ def market_from_heston(
     S: float = 1.10,
     r_d: Sequence[float] | None = None,
     r_f: Sequence[float] | None = None,
-    conventions: Union[str, Sequence[str]] = "spot",
+    conventions: str | Sequence[str] = "spot",
     tenors: Sequence[tuple[str, float]] = TENORS,
     noise: float = 0.0,
     seed: int = 0,

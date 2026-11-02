@@ -29,7 +29,6 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-
 from eq_regime.backtest import walk_forward_backtest
 from eq_regime.data import equal_drift_params, make_gbm_panel, make_regime_panel
 from eq_regime.gmm import select_k_bic

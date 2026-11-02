@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.cointegration import adf_test, engle_granger
 from eq_pairs.data import (
     business_index,

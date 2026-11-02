@@ -17,10 +17,9 @@ from __future__ import annotations
 import datetime as dt
 import warnings
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 from fi_rates.curve import ExtrapolationWarning
 from fi_rates.risk import ZeroNetValueWarning
 
@@ -155,7 +154,7 @@ class TestBondShape:
     def test_price_strictly_decreasing_in_yield(self, settlement, bond_5y):
         ys = [-0.02, 0.0, 0.02, 0.04, 0.06, 0.10, 0.20]
         ps = [fr.price_from_ytm(bond_5y, settlement, y) for y in ys]
-        assert all(b < a for a, b in zip(ps, ps[1:]))
+        assert all(b < a for a, b in zip(ps, ps[1:], strict=False))
 
     def test_price_convex_in_yield(self, settlement, bond_5y):
         """Positive convexity: the second difference in yield is positive."""
@@ -212,7 +211,7 @@ class TestBondShape:
         for years_out in (5, 3, 1):
             s = D(2031 - years_out, 8, 18)
             cleans.append(fr.clean_price_from_curve(bond, s, curve))
-        assert all(b > a for a, b in zip(cleans, cleans[1:]))
+        assert all(b > a for a, b in zip(cleans, cleans[1:], strict=False))
         assert all(c < 100.0 for c in cleans)
 
     def test_longer_maturity_has_longer_duration(self, settlement):
@@ -222,7 +221,7 @@ class TestBondShape:
                 effective=settlement, maturity=D(year, 8, 18), coupon=0.04, frequency=2
             )
             durations.append(fr.modified_duration(bond, settlement, 0.04))
-        assert all(b > a for a, b in zip(durations, durations[1:]))
+        assert all(b > a for a, b in zip(durations, durations[1:], strict=False))
 
     def test_lower_coupon_has_longer_duration_at_the_same_maturity(self, settlement):
         durations = []
@@ -231,7 +230,7 @@ class TestBondShape:
                 effective=settlement, maturity=D(2046, 8, 18), coupon=coupon, frequency=2
             )
             durations.append(fr.modified_duration(bond, settlement, 0.04))
-        assert all(b > a for a, b in zip(durations, durations[1:]))
+        assert all(b > a for a, b in zip(durations, durations[1:], strict=False))
 
     def test_macaulay_exceeds_modified_duration_for_positive_yield(self, settlement, bond_5y):
         mac = fr.macaulay_duration(bond_5y, settlement, 0.04)
@@ -300,7 +299,7 @@ class TestRiskConsistency:
             bond_5y, settlement, 0.04, shocks_bp=(25, 50, 100, 200, 400)
         )
         errs = tbl["err_duration"].abs().to_numpy()
-        assert all(b > a for a, b in zip(errs, errs[1:]))
+        assert all(b > a for a, b in zip(errs, errs[1:], strict=False))
 
 
 # --------------------------------------------------------------------------- #
@@ -615,7 +614,7 @@ class TestDayCountProperties:
     def test_year_fraction_increases_with_the_end_date(self, conv):
         a = D(2025, 1, 1)
         fracs = [_yf(a, D(2025 + k, 1, 1), conv) for k in (1, 2, 5, 10)]
-        assert all(b > a_ for a_, b in zip(fracs, fracs[1:]))
+        assert all(b > a_ for a_, b in zip(fracs, fracs[1:], strict=False))
 
     def test_act365f_exact_day_counts(self):
         assert fr.year_fraction(D(2025, 1, 1), D(2026, 1, 1), "ACT/365F") == pytest.approx(
@@ -654,7 +653,7 @@ class TestDayCountProperties:
     def test_schedule_ends_at_maturity_and_is_increasing(self, freq):
         dates = fr.generate_schedule(D(2025, 3, 10), D(2031, 3, 10), freq)
         assert dates[-1] == D(2031, 3, 10)
-        assert all(b > a for a, b in zip(dates, dates[1:]))
+        assert all(b > a for a, b in zip(dates, dates[1:], strict=False))
         assert all(d > D(2025, 3, 10) for d in dates)
         assert len(dates) == 6 * freq
 

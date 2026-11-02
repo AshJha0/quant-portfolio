@@ -19,11 +19,11 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tests"))
 
-from eq_vol import fit_egarch, fit_garch, fit_gjr  # noqa: E402
-from eq_vol.data import synthetic as syn  # noqa: E402
-from eq_vol.egarch import egarch_recursion, expected_abs_z  # noqa: E402
-from eq_vol.garch import garch_loglik, gaussian_loglik  # noqa: E402
-from true_params import EGARCH_TRUE, GARCH_TRUE, GJR_TRUE  # noqa: E402
+from eq_vol import fit_egarch, fit_garch, fit_gjr
+from eq_vol.data import synthetic as syn
+from eq_vol.egarch import egarch_recursion, expected_abs_z
+from eq_vol.garch import garch_loglik, gaussian_loglik
+from true_params import EGARCH_TRUE, GARCH_TRUE, GJR_TRUE
 
 
 def recovery_table(title: str, fit, truth: dict) -> None:

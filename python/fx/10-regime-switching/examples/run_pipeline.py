@@ -37,7 +37,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fx_regime import (  # noqa: E402
+from fx_regime import (
     CURRENCIES,
     EM,
     G10_CARRY,
@@ -67,8 +67,8 @@ from fx_regime import (  # noqa: E402
     static_carry_regimes,
     viterbi,
 )
-from fx_regime.features import FeatureConfig  # noqa: E402
-from fx_regime.research_stats import (  # noqa: E402
+from fx_regime.features import FeatureConfig
+from fx_regime.research_stats import (
     TrialLog,
     block_bootstrap_ci,
     deflated_sharpe_ratio,
@@ -220,9 +220,9 @@ def section_illustration() -> None:
     panel = generate_roro_panel(N_DAYS, n_states=3, seed=11)
     freq = np.bincount(panel.states, minlength=3) / N_DAYS
     print(f"{N_DAYS} business days, {len(CURRENCIES)} currencies vs USD (synthetic)")
-    print(f"true state frequencies : {dict(zip(panel.state_names, freq.round(3)))}")
+    print(f"true state frequencies : {dict(zip(panel.state_names, freq.round(3), strict=False))}")
     print(f"expected durations (d) : "
-          f"{dict(zip(panel.state_names, expected_durations(TRANSITION_3).round(1)))}")
+          f"{dict(zip(panel.state_names, expected_durations(TRANSITION_3).round(1), strict=False))}")
     X = panel.returns.to_numpy()
     Xs = (X - X.mean(0)) / X.std(0)
     pca = fit_pca(Xs, 3)
@@ -258,7 +258,7 @@ def section_design(pool) -> tuple[tuple[str, str, str], TrialLog]:
     jobs = [(s, w, c) for s in DESIGN_SEEDS for w in WINDOWS for c in COLUMNS]
     results = list(pool.map(design_worker, jobs))
     nets: dict[tuple[str, str, str], list[pd.Series]] = {}
-    for seed, w, c, out in results:
+    for _seed, w, c, out in results:
         for b, net in out.items():
             nets.setdefault((w, c, b), []).append(net)
     log = TrialLog()
@@ -307,11 +307,11 @@ def section_evaluation(pool, best, log: TrialLog) -> None:
 
     print("Sharpe ratio across 8 seeds, mean [95% CI] (synthetic, planted crash drift):")
     for k in ("oracle", "filtered", "static_carry", "random_timing"):
-        print(f"  {k:<14s} {dist(planted, lambda r: r['sharpe'][k]).fmt()}")
+        print(f"  {k:<14s} {dist(planted, lambda r, k=k: r['sharpe'][k]).fmt()}")
     print("annual return and max drawdown (additive, return units), mean [95% CI]:")
     for k in ("oracle", "filtered", "static_carry"):
-        print(f"  {k:<14s} ret {dist(planted, lambda r: r['ann_return'][k]).fmt(3)}"
-              f"   maxDD {dist(planted, lambda r: r['max_dd'][k]).fmt(3)}")
+        print(f"  {k:<14s} ret {dist(planted, lambda r, k=k: r['ann_return'][k]).fmt(3)}"
+              f"   maxDD {dist(planted, lambda r, k=k: r['max_dd'][k]).fmt(3)}")
 
     print("\nEdge decomposition, Sharpe differences, mean [95% CI] over 8 seeds (synthetic):")
     rows = [
@@ -322,7 +322,7 @@ def section_evaluation(pool, best, log: TrialLog) -> None:
         ("  part due to planted drift (paired difference)",
          [p["sharpe"]["filtered"] - p["sharpe"]["static_carry"]
           - (q["sharpe"]["filtered"] - q["sharpe"]["static_carry"])
-          for p, q in zip(planted, null)]),
+          for p, q in zip(planted, null, strict=False)]),
         ("filtered - random timing, planted drift",
          [r["sharpe"]["filtered"] - r["sharpe"]["random_timing"] for r in planted]),
         ("filtered - random timing, zero drift",
@@ -344,7 +344,7 @@ def section_evaluation(pool, best, log: TrialLog) -> None:
     hr("4. EXECUTION, DETECTION LAG, CARRY FRONT-LOADING (8 evaluation seeds, synthetic)")
     print("filtered Sharpe by fill model, mean [95% CI]:")
     for k in planted[0]["exec"]:
-        print(f"  {k:<20s} {dist(planted, lambda r: r['exec'][k]).fmt()}")
+        print(f"  {k:<20s} {dist(planted, lambda r, k=k: r['exec'][k]).fmt()}")
     print("\nhysteresis calibrations, mean [95% CI]:")
     for k in planted[0]["lag"]:
         print(f"  {k}")

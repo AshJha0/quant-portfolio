@@ -20,20 +20,20 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
-from eq_vol.data import synthetic as syn  # noqa: E402
-from eq_vol import egarch as eg  # noqa: E402
-from eq_vol import gjr as gj  # noqa: E402
-from eq_vol.evaluation import (  # noqa: E402
+from eq_vol import egarch as eg
+from eq_vol import gjr as gj
+from eq_vol.data import synthetic as syn
+from eq_vol.evaluation import (
     arch_lm_test,
     forecast_race_table,
     ljung_box_squared,
     mincer_zarnowitz,
     sign_bias_test,
 )
-from eq_vol.ewma import ewma_variance, lambda_to_halflife  # noqa: E402
-from eq_vol.forecasting import rolling_one_step_forecasts, term_structure  # noqa: E402
-from eq_vol.garch import fit_garch  # noqa: E402
-from eq_vol.historical import realized_vol, window_sensitivity  # noqa: E402
+from eq_vol.ewma import ewma_variance, lambda_to_halflife
+from eq_vol.forecasting import rolling_one_step_forecasts, term_structure
+from eq_vol.garch import fit_garch
+from eq_vol.historical import realized_vol, window_sensitivity
 
 pd.set_option("display.width", 110)
 pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
@@ -76,7 +76,7 @@ def main() -> None:
         "EGARCH": eg.fit_egarch(train),
         "GJR": gj.fit_gjr(train),
     }
-    for name, res in fits.items():
+    for res in fits.values():
         print()
         print(res.summary())
 

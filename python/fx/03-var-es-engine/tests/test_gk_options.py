@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_var import Book, Market, Option
 from fx_var.gk import gk_delta, gk_gamma, gk_price, gk_vega
 
@@ -91,7 +90,7 @@ def test_gamma_term_improves_mapping(market):
         full = book.pnl(market, sh, option_method="full")
         errs_dv.append(abs(book.pnl(market, sh, option_method="delta_vega") - full))
         errs_dvg.append(abs(book.pnl(market, sh, option_method="delta_vega_gamma") - full))
-    for dv, dvg in zip(errs_dv, errs_dvg):
+    for dv, dvg in zip(errs_dv, errs_dvg, strict=False):
         assert dvg < dv
     # doubling the shock ~quadruples the delta-only error (convexity)
     assert errs_dv[1] / errs_dv[0] == pytest.approx(4.0, rel=0.35)

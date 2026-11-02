@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_var import (
     HISTORICAL_SCENARIOS,
     EquityPosition,

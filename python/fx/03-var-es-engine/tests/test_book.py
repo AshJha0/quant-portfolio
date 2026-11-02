@@ -5,8 +5,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
-
-from fx_var import NumericalWarning, Book, Cash, Forward, Market, Option, Spot, split_pair
+from fx_var import Book, Cash, Forward, Market, NumericalWarning, Option, Spot, split_pair
 
 
 @pytest.fixture()

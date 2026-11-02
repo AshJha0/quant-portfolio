@@ -2,24 +2,23 @@
 
 import numpy as np
 import pytest
-from scipy.stats import norm
-
 from eq_var import (
     EquityPosition,
     Portfolio,
     RiskFactor,
-    monte_carlo_pnl,
-    monte_carlo_var,
-    parametric_var,
     cholesky,
     higham_nearest_correlation,
+    monte_carlo_pnl,
     monte_carlo_risk,
+    monte_carlo_var,
+    parametric_var,
     safe_cholesky,
-    var_standard_error_kde,
     simulate_factor_returns,
     var_confidence_interval,
     var_standard_error_bootstrap,
+    var_standard_error_kde,
 )
+from scipy.stats import norm
 
 
 def linear_portfolio() -> Portfolio:
@@ -139,7 +138,7 @@ class TestSafeCholesky:
     def test_indefinite_matrix_raises_instead_of_silent_10x_jitter(self):
         """C-1: eigenvalues -0.8, 1.9, 1.9. The old safe_cholesky returned L
         with L L' - A = I (jitter = 100 % of the mean variance) and no warning."""
-        with pytest.raises(np.linalg.LinAlgError, match="-0.8"):
+        with pytest.raises(np.linalg.LinAlgError, match=r"-0.8"):
             cholesky(self.A)
         with pytest.deprecated_call(), pytest.raises(np.linalg.LinAlgError):
             safe_cholesky(self.A)

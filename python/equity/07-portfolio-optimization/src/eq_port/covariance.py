@@ -21,14 +21,14 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "sample_cov",
-    "ewma_cov",
-    "ledoit_wolf_cc",
     "LedoitWolfResult",
-    "single_factor_cov",
-    "psd_repair",
     "condition_number",
+    "ewma_cov",
     "is_psd",
+    "ledoit_wolf_cc",
+    "psd_repair",
+    "sample_cov",
+    "single_factor_cov",
 ]
 
 

@@ -44,7 +44,7 @@ import numpy as np
 
 from .heston import HestonParams
 
-__all__ = ["MCResult", "simulate_heston_terminal", "heston_mc_price"]
+__all__ = ["MCResult", "heston_mc_price", "simulate_heston_terminal"]
 
 Scheme = Literal["euler_ft", "qe"]
 
