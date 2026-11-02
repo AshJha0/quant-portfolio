@@ -16,6 +16,23 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 4: CDS business-day calendars
+
+- `qp_core.holidays`: the rules-based settlement calendars (USD, EUR, GBP,
+  JPY, CHF, CAD, AUD, 2010 to 2099) moved here from `fx_options.holidays`,
+  which is now a thin re-export, so `eq_credit` can use them without an FX
+  dependency. New `is_business_day`, `adjust_following` and
+  `add_business_days` take a centre or joint code (`"USD"`, `"EURGBP"`).
+  One-off closures: `add_closure` / `clear_closures` at runtime and the
+  `extra_closures` context manager as a test hook; the docstring gives the
+  procedure for making a closure permanent.
+- `eq_credit.isda_cds`: `IsdaCds`, `bootstrap_isda` and
+  `upfront_from_quoted_spread` take `calendar=`; coupon payment dates, the
+  accrual start and `T + 3` cash settlement roll over that centre's
+  holidays. Default `None` keeps the earlier weekends-only behaviour, so
+  existing results are unchanged. `eq_credit` now depends on `qp-core`.
+  fx_credit has no CDS instrument, so nothing changed there.
+
 #### Round 3 fixes: options lane
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`

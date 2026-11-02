@@ -42,8 +42,23 @@ Quotes. A par spread is the coupon at which the clean upfront is zero. The
 bootstraps a flat hazard from the quoted spread and prices the standard
 coupon on it.
 
-Not done: holiday calendars (weekends only), and the comparison with the
-ISDA-published test grids, which are distributed under a licence click-through
+Calendars. ``IsdaCds(calendar=...)`` takes a settlement centre code
+(``"USD"``, ``"EUR"``, ``"GBP"``, ``"JPY"``, ``"CHF"``, ``"CAD"``,
+``"AUD"``) or a joint code such as ``"EURGBP"``; the rules-based
+calendars come from :mod:`qp_core.holidays` (sources listed there). The
+standard contracts use the currency's centre: USD New York, EUR TARGET,
+GBP London, JPY Tokyo (ISDA Standard CDS Converter, "holiday calendar"
+input; the Standard North American and European Corporate contract
+specifications). Coupon dates, the accrual start and ``T + 3`` cash
+settlement then roll over holidays as well as weekends. The default
+``calendar=None`` keeps weekends only, which is what earlier versions did
+and what the weekend-only regression values in the tests pin.
+
+Worked example: trade Fri 2026-11-06, USD calendar. Weekends only, cash
+settles on Wed 11 Nov; with the USD calendar 11 Nov is Veterans Day, so it
+settles on Thu 12 Nov.
+
+Not done: the comparison with the ISDA-published test grids, which are distributed under a licence click-through
 and are not in this repository.
 """
 
@@ -54,6 +69,9 @@ from datetime import date, timedelta
 from typing import Any
 
 import numpy as np
+from qp_core.holidays import Calendar
+from qp_core.holidays import add_business_days as _add_bd
+from qp_core.holidays import adjust_following as _adj
 from scipy.optimize import brentq
 
 from .cds import HazardCurve
@@ -72,19 +90,17 @@ _DAY = 1.0 / 365.0
 
 
 # ----------------------------------------------------------------- dates
-def adjust_following(d: date) -> date:
-    """Following business-day rule on weekends (no holiday calendar)."""
-    while d.weekday() >= 5:
-        d += timedelta(days=1)
-    return d
+def adjust_following(d: date, calendar: Calendar = None) -> date:
+    """Following business-day rule; weekends only when ``calendar`` is None.
+
+    ``calendar`` is a centre code for :mod:`qp_core.holidays`.
+    """
+    return _adj(d, calendar)
 
 
-def add_business_days(d: date, n: int) -> date:
-    while n > 0:
-        d += timedelta(days=1)
-        if d.weekday() < 5:
-            n -= 1
-    return d
+def add_business_days(d: date, n: int, calendar: Calendar = None) -> date:
+    """``n`` business days after ``d``; weekends only when ``calendar`` is None."""
+    return _add_bd(d, n, calendar)
 
 
 def previous_coupon_date(d: date) -> date:
@@ -139,10 +155,13 @@ class IsdaCds:
     maturity: date
     coupon: float
     recovery: float = 0.4
+    calendar: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.recovery < 1.0:
             raise ValueError("recovery must lie in [0, 1)")
+        if self.calendar is not None:
+            _adj(self.trade_date, self.calendar)  # unknown code or year raises here
         if self.maturity <= self.trade_date + timedelta(days=1):
             raise ValueError("maturity must be after the step-in date")
 
@@ -152,11 +171,11 @@ class IsdaCds:
 
     @property
     def cash_settle(self) -> date:
-        return add_business_days(self.trade_date, 3)
+        return add_business_days(self.trade_date, 3, self.calendar)
 
     @property
     def accrual_start(self) -> date:
-        return adjust_following(previous_coupon_date(self.step_in))
+        return adjust_following(previous_coupon_date(self.step_in), self.calendar)
 
     def t(self, d: date) -> float:
         """Curve time of the start of day ``d``."""
@@ -172,10 +191,11 @@ class IsdaCds:
         rolls[-1] = min(rolls[-1], self.maturity)
         out = []
         for i in range(1, len(rolls)):
-            start = adjust_following(rolls[i - 1])
+            cal = self.calendar
+            start = adjust_following(rolls[i - 1], cal)
             last = i == len(rolls) - 1
-            end = self.maturity + timedelta(days=1) if last else adjust_following(rolls[i])
-            out.append((start, end, adjust_following(rolls[i])))
+            end = self.maturity + timedelta(days=1) if last else adjust_following(rolls[i], cal)
+            out.append((start, end, adjust_following(rolls[i], cal)))
         return out
 
     def accrued(self) -> float:
@@ -259,7 +279,8 @@ def par_spread(cds: IsdaCds, hazard: HazardCurve, disc: Any) -> float:
 
 
 def bootstrap_isda(trade_date: date, maturities: list[date], spreads: list[float],
-                   disc: Any, recovery: float = 0.4) -> HazardCurve:
+                   disc: Any, recovery: float = 0.4,
+                   calendar: str | None = None) -> HazardCurve:
     """Piecewise-flat hazard reproducing each par spread (clean upfront 0)."""
     if len(maturities) != len(spreads) or not maturities:
         raise ValueError("maturities and spreads must be non-empty and equal length")
@@ -270,7 +291,7 @@ def bootstrap_isda(trade_date: date, maturities: list[date], spreads: list[float
     times: list[float] = []
     hz: list[float] = []
     for m, s in zip(maturities, spreads, strict=True):
-        cds = IsdaCds(trade_date, m, s, recovery)
+        cds = IsdaCds(trade_date, m, s, recovery, calendar)
         tk = cds.t(m + timedelta(days=1))
         if times and tk <= times[-1]:
             raise ValueError("maturities must map to increasing curve times")
@@ -292,9 +313,10 @@ def bootstrap_isda(trade_date: date, maturities: list[date], spreads: list[float
 
 
 def upfront_from_quoted_spread(trade_date: date, maturity: date, quoted_spread: float,
-                               coupon: float, disc: Any, recovery: float = 0.4) -> dict[str, float]:
+                               coupon: float, disc: Any, recovery: float = 0.4,
+                               calendar: str | None = None) -> dict[str, float]:
     """Markit conversion: flat hazard from the quoted spread, then price the
     standard ``coupon`` on it."""
-    hz = bootstrap_isda(trade_date, [maturity], [quoted_spread], disc, recovery)
+    hz = bootstrap_isda(trade_date, [maturity], [quoted_spread], disc, recovery, calendar)
     flat = HazardCurve(hz.times, hz.hazards)
-    return legs(IsdaCds(trade_date, maturity, coupon, recovery), flat, disc)
+    return legs(IsdaCds(trade_date, maturity, coupon, recovery, calendar), flat, disc)
