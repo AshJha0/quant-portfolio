@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy.stats import norm
-
 from fx_credit.capital import (
     SOVEREIGN_RHO,
     basel_corporate_correlation,
@@ -13,6 +11,7 @@ from fx_credit.capital import (
     vasicek_capital,
     vasicek_conditional_pd,
 )
+from scipy.stats import norm
 
 
 def test_expected_loss_exact_tiny_book():

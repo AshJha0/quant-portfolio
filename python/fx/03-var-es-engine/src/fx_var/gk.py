@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.stats import norm
 
-__all__ = ["gk_price", "gk_delta", "gk_gamma", "gk_vega", "gk_d1_d2"]
+__all__ = ["gk_d1_d2", "gk_delta", "gk_gamma", "gk_price", "gk_vega"]
 
 _EPS_T = 1e-12
 _EPS_V = 1e-12

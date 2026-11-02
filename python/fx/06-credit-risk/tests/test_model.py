@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from sklearn.linear_model import LogisticRegression
-
 from fx_credit.data.synthetic import generate_logistic_data
 from fx_credit.model import (
     RATING_BANDS,
@@ -15,6 +13,7 @@ from fx_credit.model import (
     rating_midpoint_pd,
     score_from_pd,
 )
+from sklearn.linear_model import LogisticRegression
 
 TRUE_BETA = np.array([0.8, -0.5, 0.3])
 TRUE_INTERCEPT = -2.0
@@ -181,7 +180,7 @@ def test_band_mean_pd_monotone_on_grid():
     pds = np.geomspace(1e-5, 0.6, 500)
     letters = [assign_rating(p) for p in pds]
     means = {}
-    for letter, p in zip(letters, pds):
+    for letter, p in zip(letters, pds, strict=False):
         means.setdefault(letter, []).append(p)
     ordered = [np.mean(means[r]) for r in RATING_ORDER if r in means]
     assert np.all(np.diff(ordered) > 0)
@@ -201,7 +200,6 @@ def test_separation_guard_ignores_large_intercept():
 
 
 def test_non_convergence_warns():
-    import warnings as _w
 
     from fx_credit.model import ConvergenceWarning, fit_logistic_irls
 

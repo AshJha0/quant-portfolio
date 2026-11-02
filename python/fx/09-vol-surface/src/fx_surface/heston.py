@@ -36,10 +36,10 @@ from .garman_kohlhagen import gk_forward
 __all__ = [
     "HestonParams",
     "heston_cf",
-    "price_gil_pelaez",
-    "price_cos",
-    "heston_price",
     "heston_digital",
+    "heston_price",
+    "price_cos",
+    "price_gil_pelaez",
 ]
 
 
@@ -75,7 +75,7 @@ class HestonParams:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            for name, value in zip(self._ORDER, args):
+            for name, value in zip(self._ORDER, args, strict=False):
                 if name in kwargs:
                     raise TypeError(f"HestonParams got multiple values for argument {name!r}")
                 kwargs[name] = value
@@ -264,7 +264,7 @@ def price_cos(
 
     kk = np.arange(N)
     u = kk * math.pi / span  # shared CF grid (span is strike-independent)
-    cf_z = heston_cf(u, T, params, mu=mu, x0=0.0)  # CF of z = ln(S_T/S_0)
+    cf_z = np.asarray(heston_cf(u, T, params, mu=mu, x0=0.0))  # CF of z = ln(S_T/S_0)
 
     # Put payoff coefficients on [a, d] with d = min(0, b):
     # V_k = 2/span * K * (-chi_k(a, d) + psi_k(a, d))
@@ -315,7 +315,7 @@ def heston_price(
     if method == "gil_pelaez":
         if np.ndim(K) > 0:
             return np.array(
-                [price_gil_pelaez(S, float(k), T, r_d, r_f, params, cp) for k in K]
+                [price_gil_pelaez(S, float(k), T, r_d, r_f, params, cp) for k in np.asarray(K)]
             )
         return price_gil_pelaez(S, float(K), T, r_d, r_f, params, cp)
     raise ValueError(f"unknown method {method!r}; use 'cos' or 'gil_pelaez'")

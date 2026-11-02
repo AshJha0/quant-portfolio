@@ -18,7 +18,7 @@ import json
 import os
 import urllib.request
 
-__all__ = ["network_allowed", "load_frankfurter_spot", "load_fred_series"]
+__all__ = ["load_frankfurter_spot", "load_fred_series", "network_allowed"]
 
 _ENV_FLAG = "FX_RATES_ALLOW_NETWORK"
 

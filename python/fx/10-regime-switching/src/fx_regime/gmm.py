@@ -246,5 +246,5 @@ def select_k_bic(
     for k in range(1, k_max + 1):
         model = fit_gmm(X, k, seed=seed, n_init=n_init, max_iter=max_iter)
         bics[k] = model.bic(X)
-    best_k = min(bics, key=bics.get)
+    best_k = min(bics, key=bics.__getitem__)
     return best_k, bics

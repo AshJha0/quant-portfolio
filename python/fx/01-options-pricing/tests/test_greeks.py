@@ -3,9 +3,7 @@
 import math
 
 import pytest
-
-from fx_options import (analytic_greeks, finite_difference_greeks, gamma,
-                        gk_price, vanna, vega, volga)
+from fx_options import analytic_greeks, finite_difference_greeks, gamma, gk_price, vanna, vega, volga
 
 CASES = [
     dict(S=1.10, K=1.10, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825),

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import math
 
+import fx_credit as fc
 import numpy as np
 import pytest
-
-import fx_credit as fc
 from fx_credit.settlement import FXTrade
 
 

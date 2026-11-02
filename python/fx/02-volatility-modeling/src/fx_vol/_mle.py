@@ -22,28 +22,28 @@ near-zero volatility (HKD-style) without any special-casing.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from math import lgamma, log, pi, sqrt
-from typing import Callable
 
 import numpy as np
 
 __all__ = [
-    "FitResult",
+    "MIN_NU",
+    "MIN_OBS",
     "ConvergenceError",
-    "loglik_obs",
-    "mle_covariances",
-    "map_std_errors",
-    "validate_filter_params",
-    "validate_returns",
+    "FitResult",
     "backcast",
     "gaussian_loglik",
-    "student_t_loglik",
-    "student_t_abs_moment",
-    "numerical_hessian",
     "hessian_std_errors",
-    "MIN_OBS",
-    "MIN_NU",
+    "loglik_obs",
+    "map_std_errors",
+    "mle_covariances",
+    "numerical_hessian",
+    "student_t_abs_moment",
+    "student_t_loglik",
+    "validate_filter_params",
+    "validate_returns",
 ]
 
 MIN_OBS = 100          # minimum observations for any MLE fit
@@ -94,7 +94,7 @@ def validate_returns(returns, min_obs: int = MIN_OBS) -> np.ndarray:
     return arr
 
 
-def validate_filter_params(**params: float) -> None:
+def validate_filter_params(**params: float | None) -> None:
     """Reject non-finite variance-recursion parameters.
 
     The filters guard their parameters with inequalities such as
@@ -184,14 +184,24 @@ def numerical_hessian(f: Callable[[np.ndarray], float], x: np.ndarray, rel_step:
     for i in range(k):
         for j in range(i, k):
             if i == j:
-                xp = x.copy(); xp[i] += h[i]
-                xm = x.copy(); xm[i] -= h[i]
+                xp = x.copy()
+                xp[i] += h[i]
+                xm = x.copy()
+                xm[i] -= h[i]
                 H[i, i] = (f(xp) - 2.0 * f0 + f(xm)) / h[i] ** 2
             else:
-                xpp = x.copy(); xpp[i] += h[i]; xpp[j] += h[j]
-                xpm = x.copy(); xpm[i] += h[i]; xpm[j] -= h[j]
-                xmp = x.copy(); xmp[i] -= h[i]; xmp[j] += h[j]
-                xmm = x.copy(); xmm[i] -= h[i]; xmm[j] -= h[j]
+                xpp = x.copy()
+                xpp[i] += h[i]
+                xpp[j] += h[j]
+                xpm = x.copy()
+                xpm[i] += h[i]
+                xpm[j] -= h[j]
+                xmp = x.copy()
+                xmp[i] -= h[i]
+                xmp[j] += h[j]
+                xmm = x.copy()
+                xmm[i] -= h[i]
+                xmm[j] -= h[j]
                 H[i, j] = H[j, i] = (f(xpp) - f(xpm) - f(xmp) + f(xmm)) / (4.0 * h[i] * h[j])
     return H
 

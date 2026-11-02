@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from fx_options import gk_price
 from fx_options._jsonl import handle
 
@@ -21,7 +20,7 @@ DATA = json.loads(GOLDEN.read_text())
 
 def _request(record: dict) -> dict:
     names = DATA["schema"][record["fn"]]["in"]
-    req = dict(zip(names, record["in"]), fn=record["fn"], type=record["type"])
+    req = dict(zip(names, record["in"], strict=False), fn=record["fn"], type=record["type"])
     if record["fn"] == "crr":
         req["american"] = bool(record["flag"])
     if record["fn"] == "strike":

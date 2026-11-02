@@ -2,12 +2,16 @@
 order, attribution consistency, aggregation."""
 
 import numpy as np
-import pandas as pd
 import pytest
-
-from eq_algo import (IntradayConfig, IntradayMarket, aggregate_tca,
-                     is_decomposition, slippage_attribution, tca_report,
-                     twap_schedule)
+from eq_algo import (
+    IntradayConfig,
+    IntradayMarket,
+    aggregate_tca,
+    is_decomposition,
+    slippage_attribution,
+    tca_report,
+    twap_schedule,
+)
 
 
 def test_is_components_sum_to_total_exactly():

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import itertools
 import warnings
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -25,19 +26,19 @@ import pandas as pd
 from ._validation import require_finite
 
 __all__ = [
-    "G10_CURRENCIES",
-    "EM_CURRENCIES",
-    "USD_BASE_CURRENCIES",
     "DEFAULT_PIP_SPREADS",
+    "EM_CURRENCIES",
+    "G10_CURRENCIES",
+    "USD_BASE_CURRENCIES",
+    "cointegration_funnel",
+    "correlation_screen",
+    "enumerate_candidate_pairs",
+    "make_cross",
     "market_pair",
+    "market_price_from_legs",
     "pip_size",
     "pip_spread",
-    "cointegration_funnel",
-    "make_cross",
-    "market_price_from_legs",
     "triangular_spread",
-    "enumerate_candidate_pairs",
-    "correlation_screen",
 ]
 
 #: G10 currencies (USD included as numeraire).
@@ -206,7 +207,7 @@ def correlation_screen(
     # A NaN threshold makes every `abs(rho) >= min_abs_corr` comparison False
     # and returns an empty screen -- indistinguishable from "no candidates".
     require_finite(min_abs_corr=min_abs_corr, vol_tol=vol_tol)
-    rets = np.log(prices).diff().dropna(how="all")
+    rets = cast(pd.DataFrame, np.log(prices)).diff().dropna(how="all")
     stds = rets.std()
     pegged = [c for c in prices.columns if not np.isfinite(stds[c]) or stds[c] < vol_tol]
     if pegged:
@@ -219,7 +220,7 @@ def correlation_screen(
     corr = rets[keep].corr()
     rows = []
     for a, b in enumerate_candidate_pairs(keep):
-        rho = float(corr.loc[a, b])
+        rho = float(cast(float, corr.loc[a, b]))
         if abs(rho) >= min_abs_corr:
             rows.append((a, b, rho))
     out = pd.DataFrame(rows, columns=["pair_1", "pair_2", "corr"])

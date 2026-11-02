@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_pairs.data import synthetic as syn
 from fx_pairs.universe import (
     DEFAULT_PIP_SPREADS,

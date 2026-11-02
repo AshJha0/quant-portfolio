@@ -10,9 +10,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as hst
-
 from eq_regime.backtest import (
     ExecutionConfig,
     random_timing_weights,
@@ -20,6 +17,8 @@ from eq_regime.backtest import (
 )
 from eq_regime.risk import regimes_known_at_decision
 from eq_regime.strategy import build_weights, causal_min_duration
+from hypothesis import given, settings
+from hypothesis import strategies as hst
 
 
 def _rets(values):

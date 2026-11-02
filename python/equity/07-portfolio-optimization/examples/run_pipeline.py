@@ -20,8 +20,8 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import eq_port as ep  # noqa: E402
-from eq_port.data import generate_panel  # noqa: E402
+import eq_port as ep
+from eq_port.data import generate_panel
 
 PPY = 252.0
 SEED = 1  # main panel seed

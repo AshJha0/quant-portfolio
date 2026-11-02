@@ -19,9 +19,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..sessions import PairProfile, EURUSD
+from ..sessions import EURUSD, PairProfile
 
-__all__ = ["generate_ticks", "generate_daily_panel"]
+__all__ = ["generate_daily_panel", "generate_ticks"]
 
 
 def _as_rng(seed: int | np.random.Generator) -> np.random.Generator:

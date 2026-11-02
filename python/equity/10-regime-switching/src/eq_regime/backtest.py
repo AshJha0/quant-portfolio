@@ -31,10 +31,10 @@ execution and cost model.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig
 
 from .detection import expanding_fit_detect
@@ -44,15 +44,15 @@ from .strategy import build_weights, vol_target_scale
 TRADING_DAYS: int = 252
 
 __all__ = [
-    "ExecutionConfig",
     "BacktestResult",
-    "run_ledger",
-    "ma_timing_weights",
-    "walk_forward_backtest",
+    "ExecutionConfig",
     "backtest_from_detection",
+    "ma_timing_weights",
     "random_timing_weights",
-    "vol_target_weights",
+    "run_ledger",
     "summary_stats",
+    "vol_target_weights",
+    "walk_forward_backtest",
 ]
 
 
@@ -253,10 +253,10 @@ def backtest_from_detection(
     Lets several weight variants share one (expensive) walk-forward
     detection. All ledgers use the same dates, execution and cost model.
     """
-    asset_log_ret = np.log(prices / prices.shift(1)).iloc[1:]
+    asset_log_ret = cast(pd.DataFrame, np.log(prices / prices.shift(1))).iloc[1:]
     log_ret = asset_log_ret.mean(axis=1)
-    simple_ret = np.expm1(asset_log_ret).mean(axis=1)
-    led = dict(cost_bps=cost_bps, execution=execution, cash_rate=cash_rate,
+    simple_ret = cast(pd.DataFrame, np.expm1(asset_log_ret)).mean(axis=1)
+    led: dict[str, Any] = dict(cost_bps=cost_bps, execution=execution, cash_rate=cash_rate,
                borrow_spread_bps=borrow_spread_bps)
 
     weights = build_weights(detection, log_ret, enter=enter, exit_=exit_,

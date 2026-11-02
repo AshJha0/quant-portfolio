@@ -1,11 +1,10 @@
 """End-to-end scenario tests: SNB floor-break P&L shape, carry sign flip,
 triangular null case through the full funnel, funnel selectivity."""
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 from fx_pairs.data import synthetic as syn
 
 
@@ -36,7 +35,7 @@ def runs():
     p1, p2, meta = syn.make_carry_flip_pair(seed=4)
     kwargs = dict(form=252, entry=1.5, exit_=0.25, stop=None,
                   pip_spread_1=1.0, pip_spread_2=0.5)
-    p_spot, eg = _frozen_signal_run(p1, p2, **kwargs)
+    p_spot, _eg = _frozen_signal_run(p1, p2, **kwargs)
     p_carry, _ = _frozen_signal_run(p1, p2, rates=meta["rates"], **kwargs)
     return p_spot, p_carry
 

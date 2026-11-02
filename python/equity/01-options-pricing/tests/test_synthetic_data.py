@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from eq_options import bs_price, implied_vol
 from eq_options.data import gbm_paths, skew_vol, synthetic_chain
 
@@ -48,7 +47,6 @@ def test_skew_vol_shape_and_floor() -> None:
     F, T = 100.0, 0.5
     low = skew_vol(70.0, F, T)
     atm = skew_vol(100.0, F, T)
-    high = skew_vol(130.0, F, T)
     assert low > atm  # puts rich (classic equity skew)
     assert skew_vol(1e6, F, T) >= 0.05  # floor active far OTM
 

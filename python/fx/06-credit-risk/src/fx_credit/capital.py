@@ -35,12 +35,12 @@ from scipy.stats import norm
 __all__ = [
     "SOVEREIGN_RHO",
     "STANDARDIZED_SOVEREIGN_RW",
-    "expected_loss",
     "basel_corporate_correlation",
-    "vasicek_conditional_pd",
-    "vasicek_capital",
-    "standardized_rw",
     "capital_table",
+    "expected_loss",
+    "standardized_rw",
+    "vasicek_capital",
+    "vasicek_conditional_pd",
 ]
 
 #: Asset correlation for sovereign exposures in the economic-capital model.
@@ -169,7 +169,7 @@ def capital_table(
     sovereigns and a positive internal economic-capital number.
     """
     rows = []
-    for r, p in zip(ratings, pds):
+    for r, p in zip(ratings, pds, strict=False):
         rw = standardized_rw(r)
         rho_c = basel_corporate_correlation(p)
         rows.append(
@@ -180,7 +180,7 @@ def capital_table(
                 "std_rw": rw,
                 "std_capital": 0.08 * rw * ead,
                 "k_sovereign": vasicek_capital(p, lgd, SOVEREIGN_RHO, alpha) * ead,
-                "k_corp_rho": vasicek_capital(p, lgd, rho_c, alpha) * ead,
+                "k_corp_rho": vasicek_capital(p, lgd, float(rho_c), alpha) * ead,
             }
         )
     return pd.DataFrame(rows)

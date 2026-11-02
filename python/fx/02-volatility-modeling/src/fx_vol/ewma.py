@@ -16,14 +16,14 @@ which is the main modelling difference vs GARCH(1,1) and is unit-tested.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
 
 from .returns import _as_1d_array
 
-__all__ = ["ewma_variance", "ewma_forecast", "ewma_weights"]
+__all__ = ["ewma_forecast", "ewma_variance", "ewma_weights"]
 
 
 def ewma_variance(

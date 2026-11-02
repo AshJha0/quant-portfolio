@@ -20,26 +20,28 @@ docs/VALIDATION.md and the Diebold-Mariano tests in :mod:`fx_vol.evaluation`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import exp, log, sqrt
-from typing import Sequence
+from typing import cast
 
 import numpy as np
 
-from ._mle import ConvergenceError, FitResult, student_t_abs_moment
-from .egarch import GAUSSIAN_ABS_MOMENT, egarch_filter
+from ._mle import ConvergenceError, FitResult
+from .egarch import GAUSSIAN_ABS_MOMENT, egarch_filter, fit_egarch
 from .ewma import ewma_variance
 from .garch import fit_garch, garch_filter
 from .gjr import fit_gjr, gjr_filter
-from .egarch import fit_egarch
 
 __all__ = [
-    "forecast_variance",
     "forecast_egarch_simulated",
+    "forecast_variance",
     "rolling_one_step",
 ]
 
 
-def _garch_family_forecast(result: FitResult, horizon: int, x_future: np.ndarray | None) -> np.ndarray:
+def _garch_family_forecast(
+    result: FitResult, horizon: int, x_future: Sequence[float] | np.ndarray | None
+) -> np.ndarray:
     p = result.params
     omega, alpha, beta = p["omega"], p["alpha"], p["beta"]
     gamma = p.get("gamma", 0.0)  # GJR asymmetry; 0 for plain GARCH
@@ -61,16 +63,17 @@ def _garch_family_forecast(result: FitResult, horizon: int, x_future: np.ndarray
         if not gammas_x.size:
             raise ValueError("x_future supplied but the fitted model has no exogenous terms")
 
+    xf = cast(np.ndarray, x_future)
     out = np.empty(horizon)
     ind = 1.0 if r_T < 0 else 0.0
     s2 = omega + (alpha + gamma * ind) * r_T ** 2 + beta * s2_T
     if gammas_x.size:
-        s2 += float(x_future[0] @ gammas_x)
+        s2 += float(xf[0] @ gammas_x)
     out[0] = s2
     for h in range(1, horizon):
         s2 = omega + persistence * out[h - 1]
         if gammas_x.size:
-            s2 += float(x_future[h] @ gammas_x)
+            s2 += float(xf[h] @ gammas_x)
         out[h] = s2
     return out
 
@@ -255,7 +258,7 @@ def rolling_one_step(
             "egarch_t": lambda seg: fit_egarch(seg, dist="t", raise_on_failure=False),
         }
         if model not in fitters:
-            raise ValueError(f"unknown model {model!r}; choose from {sorted(fitters) + ['ewma']}")
+            raise ValueError(f"unknown model {model!r}; choose from {[*sorted(fitters), 'ewma']}")
         for t0 in range(oos_start, n, refit_every):
             t1 = min(t0 + refit_every, n)
             fit = fitters[model](r[t0 - window : t0])

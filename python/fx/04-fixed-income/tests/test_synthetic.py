@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_rates.data import (
     REGIMES,
     build_market_state,

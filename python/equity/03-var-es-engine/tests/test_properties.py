@@ -18,8 +18,6 @@ the C++/Rust engines cross-validate against.
 
 import numpy as np
 import pytest
-from scipy.stats import norm
-
 from eq_var import (
     EquityPosition,
     Portfolio,
@@ -49,6 +47,7 @@ from eq_var.historical_var import (
     scale_var_sqrt_time,
 )
 from eq_var.monte_carlo_var import var_confidence_interval, var_standard_error_bootstrap
+from scipy.stats import norm
 
 ALPHAS = [0.001, 0.01, 0.025, 0.05, 0.10]
 
@@ -80,7 +79,7 @@ class TestOrdering:
     def test_risk_measure_decreasing_in_alpha(self, pnl, fn):
         """A deeper tail (smaller alpha) can never give a smaller risk number."""
         vals = [fn(pnl, a) for a in ALPHAS]
-        assert all(b <= a + 1e-9 for a, b in zip(vals, vals[1:]))
+        assert all(b <= a + 1e-9 for a, b in zip(vals, vals[1:], strict=False))
 
     @pytest.mark.parametrize("alpha", [0.001, 0.01, 0.025])
     def test_student_t_tail_fatter_than_normal_in_the_deep_tail(self, alpha):
@@ -125,7 +124,7 @@ class TestOrdering:
             student_t_es(sigma, alpha, df=df) - normal_es(sigma, alpha)
             for df in (5.0, 15.0, 50.0, 500.0)
         ]
-        assert all(b < a for a, b in zip(gaps, gaps[1:]))
+        assert all(b < a for a, b in zip(gaps, gaps[1:], strict=False))
         assert gaps[-1] == pytest.approx(0.0, abs=0.01 * sigma)
 
     def test_es_strictly_above_var_for_a_continuous_distribution(self, pnl):
@@ -300,12 +299,12 @@ class TestBacktestProperties:
         n, alpha = 1000, 0.01
         assert kupiec_pof(n_obs=n, n_exceptions=10, alpha=alpha)["lr"] == pytest.approx(0.0, abs=1e-9)
         lrs = [kupiec_pof(n_obs=n, n_exceptions=x, alpha=alpha)["lr"] for x in (10, 15, 20, 30, 50)]
-        assert all(b > a for a, b in zip(lrs, lrs[1:]))
+        assert all(b > a for a, b in zip(lrs, lrs[1:], strict=False))
 
     def test_kupiec_pvalue_decreasing_in_exception_count_above_expectation(self):
         n, alpha = 250, 0.01
         ps = [kupiec_pof(n_obs=n, n_exceptions=x, alpha=alpha)["pvalue"] for x in (3, 6, 10, 15)]
-        assert all(b < a for a, b in zip(ps, ps[1:]))
+        assert all(b < a for a, b in zip(ps, ps[1:], strict=False))
 
     def test_kupiec_degenerate_counts_are_finite(self):
         for x in (0, 250):
@@ -338,7 +337,7 @@ class TestBacktestProperties:
         assert basel_traffic_light(n_obs=250, n_exceptions=9)["zone"] == "yellow"
         assert basel_traffic_light(n_obs=250, n_exceptions=10)["zone"] == "red"
         mults = [basel_traffic_light(n_obs=250, n_exceptions=x)["multiplier"] for x in range(0, 12)]
-        assert all(b >= a for a, b in zip(mults, mults[1:]))  # never decreases
+        assert all(b >= a for a, b in zip(mults, mults[1:], strict=False))  # never decreases
         assert mults[0] == 3.0 and mults[-1] == 4.0
 
     def test_acerbi_szekely_z2_flags_an_understated_es(self):
@@ -488,7 +487,7 @@ class TestEstimationError:
             var_standard_error_bootstrap(rng.normal(size=n), 0.01, n_boot=300, seed=1)
             for n in (250, 1000, 4000)
         ]
-        assert all(b < a for a, b in zip(ses, ses[1:]))
+        assert all(b < a for a, b in zip(ses, ses[1:], strict=False))
 
     def test_confidence_interval_brackets_the_point_estimate(self):
         rng = np.random.default_rng(91)

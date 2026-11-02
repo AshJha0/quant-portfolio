@@ -23,7 +23,7 @@ from .black76 import black76_price
 from .black_scholes import OptionType, bs_price, forward_price
 from .monte_carlo import mc_price
 
-__all__ = ["compare_models", "tree_convergence_table", "mc_convergence_table"]
+__all__ = ["compare_models", "mc_convergence_table", "tree_convergence_table"]
 
 
 def compare_models(

@@ -3,12 +3,11 @@ across test modules (keeps the suite well under the runtime budget)."""
 
 import numpy as np
 import pytest
-
 from eq_vol.data import synthetic as syn
 from eq_vol.egarch import fit_egarch
 from eq_vol.garch import fit_garch
 from eq_vol.gjr import fit_gjr
-from true_params import EGARCH_TRUE, GARCH_TRUE, GJR_TRUE  # noqa: F401
+from true_params import EGARCH_TRUE, GARCH_TRUE, GJR_TRUE
 
 
 @pytest.fixture(scope="session")

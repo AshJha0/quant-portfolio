@@ -38,9 +38,9 @@ from .fxforward import MarketState
 __all__ = [
     "BasisSwap",
     "CrossCurrencySwap",
-    "solve_par_rate_quote",
-    "solve_par_rate_base",
     "solve_par_basis",
+    "solve_par_rate_base",
+    "solve_par_rate_quote",
 ]
 
 

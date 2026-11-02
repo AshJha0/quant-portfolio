@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 
 D = dt.date
 
@@ -100,18 +99,18 @@ class TestHistoricalEpisodes:
 
     def test_taper_tantrum_is_bear_steepener(self):
         sc = fr.HISTORICAL_SCENARIOS["taper_tantrum_2013"]
-        s = dict(zip(sc.tenors, sc.shifts_bp))
+        s = dict(zip(sc.tenors, sc.shifts_bp, strict=False))
         assert s[10.0] == pytest.approx(130.0)  # ~+130bp 10y
         assert s[2.0] < s[10.0]  # steepening
 
     def test_hiking_2022_is_bear_flattener(self):
         sc = fr.HISTORICAL_SCENARIOS["hiking_2022"]
-        s = dict(zip(sc.tenors, sc.shifts_bp))
+        s = dict(zip(sc.tenors, sc.shifts_bp, strict=False))
         assert s[2.0] > s[10.0] > s[30.0] > 0
 
     def test_gfc_2008_is_bull_steepener(self):
         sc = fr.HISTORICAL_SCENARIOS["gfc_2008"]
-        s = dict(zip(sc.tenors, sc.shifts_bp))
+        s = dict(zip(sc.tenors, sc.shifts_bp, strict=False))
         assert s[2.0] < s[10.0] < s[30.0] < 0
 
     def test_episode_pnl_signs(self, settlement, curve, portfolio):

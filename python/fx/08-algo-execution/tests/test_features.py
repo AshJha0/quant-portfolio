@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_algo import (
     build_bars,
     carry_feature,

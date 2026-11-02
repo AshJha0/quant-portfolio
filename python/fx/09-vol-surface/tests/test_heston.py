@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface import (
     HestonParams,
     gk_forward,
@@ -96,7 +95,7 @@ def test_deep_itm_otm_limits():
 def test_vectorised_cos_matches_scalar():
     Ks = np.array([0.95, 1.05, 1.15, 1.25])
     vec = price_cos(S, Ks, 0.5, RD, RF, PARAMS, 1)
-    for K, v in zip(Ks, vec):
+    for K, v in zip(Ks, vec, strict=False):
         assert float(price_cos(S, float(K), 0.5, RD, RF, PARAMS, 1)) == pytest.approx(v, abs=1e-14)
 
 

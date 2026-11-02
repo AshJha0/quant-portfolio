@@ -5,7 +5,7 @@ tests use deterministic synthetic generators under ``data/``); this module
 exists so ``from eq_vol import simulate`` reads naturally in scripts.
 """
 
-from .data.synthetic import (  # noqa: F401
+from .data.synthetic import (
     SimulatedSeries,
     simulate_crisis,
     simulate_egarch,

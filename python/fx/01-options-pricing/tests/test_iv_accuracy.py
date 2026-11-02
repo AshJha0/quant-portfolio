@@ -10,7 +10,6 @@ import warnings
 
 import mpmath as mp
 import pytest
-
 from fx_options import gk_price, implied_vol
 from fx_options._iv_core import black_implied_vol
 

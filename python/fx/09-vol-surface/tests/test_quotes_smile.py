@@ -1,8 +1,6 @@
 """Quotes <-> five-vol smile: exact linear relations and conventions."""
 
-import numpy as np
 import pytest
-
 from fx_surface import SmileQuotes, quotes_from_vols, vols_from_quotes
 
 

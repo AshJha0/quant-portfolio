@@ -24,10 +24,18 @@ from dataclasses import asdict, dataclass
 from scipy.stats import norm
 
 from ._common import validate_inputs, validate_option_type
-from .garman_kohlhagen import d1 as _d1_fn, gk_price
+from .garman_kohlhagen import d1 as _d1_fn
+from .garman_kohlhagen import gk_price
 
-__all__ = ["GreeksResult", "analytic_greeks", "finite_difference_greeks",
-           "vega", "gamma", "vanna", "volga"]
+__all__ = [
+    "GreeksResult",
+    "analytic_greeks",
+    "finite_difference_greeks",
+    "gamma",
+    "vanna",
+    "vega",
+    "volga",
+]
 
 
 @dataclass(frozen=True)

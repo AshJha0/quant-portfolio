@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy.stats import norm
-
 from eq_var import (
     cornish_fisher_domain_ok,
     cornish_fisher_valid,
@@ -16,6 +14,7 @@ from eq_var import (
     portfolio_sigma,
     sample_covariance,
 )
+from scipy.stats import norm
 
 
 class TestClosedForm:

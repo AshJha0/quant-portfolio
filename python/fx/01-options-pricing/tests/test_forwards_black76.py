@@ -3,10 +3,16 @@
 import math
 
 import pytest
-
-from fx_options import (black76_from_spot, black76_price, cip_forward,
-                        forward_points, gk_call, gk_price, gk_put,
-                        synthetic_forward_from_options)
+from fx_options import (
+    black76_from_spot,
+    black76_price,
+    cip_forward,
+    forward_points,
+    gk_call,
+    gk_price,
+    gk_put,
+    synthetic_forward_from_options,
+)
 
 GRID = [
     (1.10, 1.10, 0.5, 0.0425, 0.0290, 0.0825),

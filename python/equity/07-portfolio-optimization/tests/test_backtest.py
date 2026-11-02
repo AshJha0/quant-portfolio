@@ -4,7 +4,6 @@ cost accounting, drift mechanics, and the strategy zoo."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_port.backtest import (
     make_erc_strategy,
     make_min_variance_strategy,
@@ -54,7 +53,7 @@ def test_no_lookahead_window_contents():
     run_backtest(RET, spy, window=window, rebalance_every=k)
     reb_positions = range(window, len(RET), k)
     assert len(windows) == len(list(reb_positions))
-    for est, t in zip(windows, reb_positions):
+    for est, t in zip(windows, reb_positions, strict=False):
         pd.testing.assert_frame_equal(est, RET.iloc[t - window : t])
         # last estimation date strictly before the rebalance date
         assert est.index[-1] < RET.index[t]

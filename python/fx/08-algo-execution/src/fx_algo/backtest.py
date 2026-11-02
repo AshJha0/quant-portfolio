@@ -30,24 +30,22 @@ Units
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig as _CoreExecutionConfig
 
+from .research_stats import lo_sharpe_se
 from .sessions import session_of_hour
 
-from .research_stats import lo_sharpe_se
-
 __all__ = [
+    "BARS_PER_YEAR",
     "BacktestConfig",
     "ExecutionConfig",
     "IntradayBacktester",
     "information_coefficient",
-    "BARS_PER_YEAR",
 ]
 
 #: Hourly bars per year used for annualisation: 24 bars x 261 weekdays.

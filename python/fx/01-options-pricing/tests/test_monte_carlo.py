@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-
-from fx_options import (digital_price, gk_price, mc_digital_price, mc_price)
+from fx_options import digital_price, gk_price, mc_digital_price, mc_price
 
 MKT = dict(S=1.10, K=1.12, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)
 
@@ -106,8 +105,9 @@ class TestDigitals:
         # Measure care: foreign-cash digital = S e^{-r_f T} N(d1); pricing
         # it as e^{-r_f T} N(d2) (the naive 'discount foreign cash at r_f'
         # error) misprices materially.
-        from fx_options import d1, d2
         import math
+
+        from fx_options import d1, d2
         from scipy.stats import norm
         good = digital_price(**MKT, option_type="call",
                              payout_currency="foreign")

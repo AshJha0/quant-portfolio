@@ -8,20 +8,20 @@ which is precisely the point of the carry decomposition).
 from __future__ import annotations
 
 import numpy as np
-from qp_core.metrics import downside_deviation, max_drawdown_from_pnl
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_pnl
 
 from . import research_stats as _rs
 
 __all__ = [
+    "hit_rate",
+    "max_drawdown",
     "sharpe_ratio",
     "sharpe_se_lo",
     "sortino_ratio",
-    "max_drawdown",
-    "hit_rate",
-    "turnover",
-    "trade_pnls",
     "summarize",
+    "trade_pnls",
+    "turnover",
 ]
 
 

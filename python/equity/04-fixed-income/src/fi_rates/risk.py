@@ -40,19 +40,19 @@ from .bond import (
 from .curve import DiscountCurve
 
 __all__ = [
+    "Position",
     "ZeroNetValueWarning",
-    "macaulay_duration",
-    "modified_duration",
     "convexity",
+    "convexity_curve",
     "dv01",
     "dv01_curve",
-    "convexity_curve",
-    "numerical_modified_duration",
+    "macaulay_duration",
+    "modified_duration",
     "numerical_convexity",
+    "numerical_modified_duration",
     "pnl_approximation_table",
-    "Position",
-    "portfolio_value",
     "portfolio_risk",
+    "portfolio_value",
 ]
 
 

@@ -26,9 +26,8 @@ Design decisions that matter (expanded in ``docs/METHODOLOGY.md``):
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,11 +37,11 @@ TRADING_DAYS = 252
 
 __all__ = [
     "TRADING_DAYS",
-    "ExecutionConfig",
     "BacktestResult",
-    "strategy_returns",
-    "run_backtest",
+    "ExecutionConfig",
     "performance_stats",
+    "run_backtest",
+    "strategy_returns",
 ]
 
 
@@ -119,7 +118,7 @@ def strategy_returns(
     prices: pd.Series,
     signal: pd.Series,
     cost_bps: float,
-    execution: Optional[ExecutionConfig] = None,
+    execution: ExecutionConfig | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Daily net strategy returns, executed position, and trade flags.
 
@@ -215,7 +214,7 @@ def run_backtest(
     prices: pd.Series,
     signal: pd.Series,
     cost_bps: float = 5.0,
-    execution: Optional[ExecutionConfig] = None,
+    execution: ExecutionConfig | None = None,
 ) -> BacktestResult:
     """Backtest a 0/1 signal with a modelled t+1 fill and transaction costs.
 
@@ -263,7 +262,7 @@ def run_backtest(
     equity = (1 + strat_rets).cumprod()
     benchmark = (1 + rets).cumprod()
 
-    stats = performance_stats(strat_rets, equity)
+    stats: dict[str, Any] = dict(performance_stats(strat_rets, equity))
     stats["benchmark"] = performance_stats(rets, benchmark)
     return BacktestResult(
         equity=equity,

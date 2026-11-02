@@ -2,19 +2,18 @@
 
 import numpy as np
 import pytest
-
 from eq_var import (
     age_weighted_var,
     brw_weights,
-    christoffersen_independence,
+    ewma_forecast,
     ewma_volatility,
+    factor_filtered_historical_var,
+    filtered_historical_scenarios,
     filtered_historical_var,
     historical_var,
     overlapping_horizon_pnl,
-    rolling_var_backtest,
     scale_var_sqrt_time,
 )
-from eq_var import ewma_forecast, factor_filtered_historical_var, filtered_historical_scenarios
 from eq_var.data import demo_covariance, demo_portfolio, simulate_garch_returns
 
 

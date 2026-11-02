@@ -19,10 +19,10 @@ from scipy import stats
 
 __all__ = [
     "cornish_fisher_valid",
+    "expected_shortfall",
+    "var_cornish_fisher",
     "var_historical",
     "var_parametric",
-    "var_cornish_fisher",
-    "expected_shortfall",
 ]
 
 

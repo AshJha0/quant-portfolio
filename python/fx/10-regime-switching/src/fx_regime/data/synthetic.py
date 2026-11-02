@@ -28,7 +28,7 @@ States
                     rally, vols spike, risk-block correlations spike,
                     haven-vs-carry correlation turns strongly negative.
 2 ``usd_squeeze`` : (3-state variant only) everything falls against USD,
-                    havens included, with very high common correlation , 
+                    havens included, with very high common correlation ,
                     a 2008 / March-2020 dollar-funding squeeze.
 """
 
@@ -338,7 +338,7 @@ def _simulate_rates(
     n_periods: int, rng: np.random.Generator, phi: float = 0.998, sigma: float = 0.0015
 ) -> pd.DataFrame:
     """AR(1) deposit-rate panel around persistent long-run means."""
-    cols = list(CURRENCIES) + ["USD"]
+    cols = [*list(CURRENCIES), "USD"]
     mu = np.array([MEAN_DEPOSIT_RATES[c] for c in cols])
     r = np.empty((n_periods, len(cols)))
     r[0] = mu

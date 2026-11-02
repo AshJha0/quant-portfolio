@@ -2,12 +2,10 @@
 
 import math
 
-import numpy as np
 import pytest
-
 from fx_surface import SmileQuotes, gk_delta
 from fx_surface.data import eurusd_market
-from fx_surface.data.synthetic import MarketSlice, FXMarketData
+from fx_surface.data.synthetic import FXMarketData, MarketSlice
 from fx_surface.surface import FXVolSurface, build_slice, build_surface
 
 
@@ -43,7 +41,7 @@ def test_vol_strike_vs_vol_delta_round_trip(eurusd_surface):
         cp = 1 if K >= surf.forward(T) else -1
         sls, wts = surf._bracket(T)
         w = 0.0
-        for sl, lam in zip(sls, wts):
+        for sl, lam in zip(sls, wts, strict=False):
             d = gk_delta(surf.S, K, T, r_d, r_f, v, cp, surf.slice_convention(sl))
             w += lam * surf._slice_vol_at_delta(sl, abs(d), cp) ** 2 * sl.T
         assert math.sqrt(w / T) == pytest.approx(v, abs=1e-9)

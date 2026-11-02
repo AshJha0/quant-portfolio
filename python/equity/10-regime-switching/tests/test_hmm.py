@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from hmmlearn.hmm import GaussianHMM as HLGaussianHMM
-
 from eq_regime.gmm import match_permutation
 from eq_regime.hmm import (
     expected_durations,
@@ -16,6 +14,7 @@ from eq_regime.hmm import (
     stationary_distribution,
     viterbi,
 )
+from hmmlearn.hmm import GaussianHMM as HLGaussianHMM
 
 
 def _fit_wellsep(wellsep_2state):
@@ -56,7 +55,7 @@ def test_transition_rows_sum_to_one(wellsep_fit):
 
 def test_recovery_of_known_parameters(wellsep_2state, wellsep_fit):
     """Transition matrix and state params recovered, permutation-matched."""
-    x, states, transition, means, sigmas = wellsep_2state
+    _x, _states, transition, means, sigmas = wellsep_2state
     perm = match_permutation(means[:, None], wellsep_fit.means)
     est_means = np.array([wellsep_fit.means[perm[i], 0] for i in range(2)])
     est_sig = np.array([np.sqrt(wellsep_fit.covariances[perm[i], 0, 0]) for i in range(2)])

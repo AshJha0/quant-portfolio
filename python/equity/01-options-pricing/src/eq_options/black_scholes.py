@@ -23,9 +23,8 @@ Edge-case policy (documented + unit tested)
 from __future__ import annotations
 
 import math
-from typing import Literal
-
 import warnings
+from typing import Literal
 
 from ._iv_core import black_implied_vol
 
@@ -34,10 +33,10 @@ OptionType = Literal["call", "put"]
 __all__ = [
     "bs_price",
     "d1_d2",
-    "implied_vol",
-    "validate_inputs",
-    "intrinsic_value",
     "forward_price",
+    "implied_vol",
+    "intrinsic_value",
+    "validate_inputs",
 ]
 
 _SQRT_2PI = math.sqrt(2.0 * math.pi)

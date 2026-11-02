@@ -31,6 +31,7 @@ it changes *which* trades are taken, never how existing ones are managed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -38,12 +39,12 @@ import pandas as pd
 from ._validation import require_finite
 
 __all__ = [
-    "zscore",
     "Trade",
-    "generate_positions",
     "carry_entry_veto",
-    "vol_target_scale",
+    "generate_positions",
     "hedged_vol_scale",
+    "vol_target_scale",
+    "zscore",
 ]
 
 
@@ -300,7 +301,7 @@ def hedged_vol_scale(
     if not b.index.equals(p1.index):
         raise ValueError("beta index must match price index")
     require_finite(beta=b.to_numpy())
-    r = np.log(p1.astype(float)).diff() - b * np.log(p2.astype(float)).diff()
+    r = cast(pd.Series, np.log(p1.astype(float))).diff() - b * cast(pd.Series, np.log(p2.astype(float))).diff()
     level = r.fillna(0.0).cumsum()
     return vol_target_scale(level, target_vol=target_vol, lookback=lookback,
                             max_leverage=max_leverage).fillna(0.0)

@@ -25,8 +25,9 @@ Stationarity (symmetric innovations, so ``E 1[z<0] = 1/2``):
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from math import log
-from typing import Sequence
+from typing import cast
 
 import numpy as np
 from scipy.optimize import minimize
@@ -36,10 +37,10 @@ from scipy.special import expit, logit
 from ._mle import (
     MIN_NU,
     MIN_OBS,
+    ConvergenceError,
     FitResult,
     backcast,
     gaussian_loglik,
-    ConvergenceError,
     loglik_obs,
     map_std_errors,
     mle_covariances,
@@ -48,7 +49,7 @@ from ._mle import (
     validate_returns,
 )
 
-__all__ = ["gjr_filter", "fit_gjr"]
+__all__ = ["fit_gjr", "gjr_filter"]
 
 _CLIP = 30.0
 
@@ -152,7 +153,7 @@ def fit_gjr(
         sigma2 = gjr_filter(y, omega, alpha, gamma, beta, initial_variance=b)
         if not np.all(sigma2 > 1e-12):
             return 1e10
-        ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, nu)
+        ll = gaussian_loglik(y, sigma2) if dist == "gaussian" else student_t_loglik(y, sigma2, cast(float, nu))
         return -ll if np.isfinite(ll) else 1e10
 
     starts = []
@@ -166,10 +167,11 @@ def fit_gjr(
         starts.append(np.array(u0))
 
     best = None
-    for u0 in starts:
-        res = minimize(nll_u, u0, method="L-BFGS-B", options={"maxiter": 500})
+    for start in starts:
+        res = minimize(nll_u, start, method="L-BFGS-B", options={"maxiter": 500})
         if best is None or res.fun < best.fun:
             best = res
+    assert best is not None
     omega, alpha, gamma, beta, nu = unpack(best.x)
     sigma2_y = gjr_filter(y, omega, alpha, gamma, beta, initial_variance=b)
 
@@ -184,11 +186,11 @@ def fit_gjr(
     )
     scale2 = s * s
     jac = np.diag([scale2, 1.0, 1.0, 1.0] + ([1.0] if dist == "t" else []))
-    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)]))
-    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)]))
+    se = dict(zip(names, [float(v) for v in map_std_errors(cov_c, jac)], strict=False))
+    robust = dict(zip(names, [float(v) for v in map_std_errors(cov_r, jac)], strict=False))
     params = {"omega": omega * scale2, "alpha": alpha, "gamma": gamma, "beta": beta}
     if dist == "t":
-        params["nu"] = float(nu)
+        params["nu"] = float(cast(float, nu))
 
     persistence = alpha + 0.5 * gamma + beta
     uncond = params["omega"] / (1.0 - persistence) if persistence < 1.0 else np.inf

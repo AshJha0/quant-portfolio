@@ -15,10 +15,9 @@ import sys
 import time
 import warnings
 
+import eq_surface as es
 import numpy as np
 import pandas as pd
-
-import eq_surface as es
 from eq_surface.data import generate_chain
 
 pd.set_option("display.width", 120)
@@ -66,7 +65,7 @@ def svi_failure_table() -> None:
         res = es.calibrate_heston(S, r, q, Ts, Ks, IVs, n_starts=3, seed=0)
     model = es.heston_model_ivs(S, r, q, Ts, Ks, res.params)
     rows = []
-    for T, K, iv, ivm in zip(Ts, Ks, IVs, model):
+    for T, K, iv, ivm in zip(Ts, Ks, IVs, model, strict=False):
         d = (ivm - iv) * 100.0
         F = S * np.exp((r - q) * T)
         j = int(np.argmin(np.abs(np.log(K / F))))

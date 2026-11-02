@@ -166,7 +166,7 @@ def generate_panel(
     names = [f"A{i+1}" for i in range(n_assets)]
     # Second resolution keeps very long synthetic panels inside the
     # timestamp range on pandas 2 (nanosecond default overflows ~2262).
-    idx = pd.bdate_range("2015-01-01", periods=n_periods, unit="s")
+    idx = pd.bdate_range("2015-01-01", periods=n_periods, unit="s")  # type: ignore[call-overload]  # pandas-stubs lacks unit=
     returns = pd.DataFrame(r, index=idx, columns=names)
 
     # cap-style market weights: strictly positive, decaying, sum to 1

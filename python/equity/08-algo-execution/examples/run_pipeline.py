@@ -27,13 +27,18 @@ from __future__ import annotations
 
 import time
 
+import eq_algo as ea
 import numpy as np
 import pandas as pd
-
-import eq_algo as ea
-from eq_algo.research_stats import (TrialLog, block_bootstrap_ci, deflated_sharpe_ratio,
-                                    lo_sharpe_se, pbo_cscv, seed_distribution,
-                                    sharpe_ratio)
+from eq_algo.research_stats import (
+    TrialLog,
+    block_bootstrap_ci,
+    deflated_sharpe_ratio,
+    lo_sharpe_se,
+    pbo_cscv,
+    seed_distribution,
+    sharpe_ratio,
+)
 
 pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda x: f"{x:,.4f}")

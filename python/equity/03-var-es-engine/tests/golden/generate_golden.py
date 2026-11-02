@@ -43,21 +43,24 @@ from pathlib import Path
 
 import numpy as np
 import scipy
-
-from eq_var.backtesting import acerbi_szekely_z2, basel_traffic_light
-from eq_var.historical_var import ewma_forecast
-from eq_var.monte_carlo_var import higham_nearest_correlation, repair_covariance
-from eq_var.parametric_var import cornish_fisher_valid
-
-from eq_var.backtesting import christoffersen_cc, christoffersen_independence, kupiec_pof
+from eq_var.backtesting import (
+    acerbi_szekely_z2,
+    basel_traffic_light,
+    christoffersen_cc,
+    christoffersen_independence,
+    kupiec_pof,
+)
 from eq_var.expected_shortfall import expected_shortfall, normal_es, student_t_es
 from eq_var.historical_var import (
     age_weighted_var,
     brw_weights,
+    ewma_forecast,
     filtered_historical_var,
     historical_var,
 )
+from eq_var.monte_carlo_var import higham_nearest_correlation, repair_covariance
 from eq_var.parametric_var import (
+    cornish_fisher_valid,
     cornish_fisher_var,
     ewma_covariance,
     parametric_var,

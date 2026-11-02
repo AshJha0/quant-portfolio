@@ -30,21 +30,23 @@ Units: vols annualised (ACT/252, log-returns); drawdown and trend fractional.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 
 TRADING_DAYS: int = 252
 
 __all__ = [
+    "average_pairwise_correlation",
+    "build_features",
+    "credit_proxy_spread",
+    "drawdown_depth",
     "expanding_zscore",
     "realized_vol",
     "return_dispersion",
-    "average_pairwise_correlation",
-    "drawdown_depth",
-    "trend_strength",
-    "credit_proxy_spread",
     "term_proxy",
-    "build_features",
+    "trend_strength",
 ]
 
 
@@ -326,7 +328,7 @@ def build_features(
             f"price history too short: {len(prices)} rows < required {min_len} "
             f"(max window + z-score warmup)"
         )
-    returns = np.log(prices / prices.shift(1)).iloc[1:]
+    returns = cast(pd.DataFrame, np.log(prices / prices.shift(1))).iloc[1:]
 
     feats = pd.concat(
         [
@@ -341,7 +343,7 @@ def build_features(
         axis=1,
     )
     if standardize:
-        feats = expanding_zscore(feats, min_periods=zscore_min_periods)
+        feats = cast(pd.DataFrame, expanding_zscore(feats, min_periods=zscore_min_periods))
     if dropna:
         feats = feats.dropna()
     return feats

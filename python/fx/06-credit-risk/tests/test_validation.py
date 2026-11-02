@@ -4,8 +4,6 @@ import warnings
 
 import numpy as np
 import pytest
-from sklearn.metrics import roc_auc_score
-
 from fx_credit.data.synthetic import generate_sovereign_panel
 from fx_credit.validation import (
     auc,
@@ -16,6 +14,7 @@ from fx_credit.validation import (
     psi,
     within_country_autocorrelation,
 )
+from sklearn.metrics import roc_auc_score
 
 
 def test_auc_matches_sklearn_continuous():
@@ -158,7 +157,7 @@ def test_bootstrap_ci_wide_for_low_default():
     y = (rng.random(n) < p).astype(float)
     if y.sum() < 5:
         y[:5] = 1.0
-    point, lo, hi = bootstrap_auc_ci(y, p, n_boot=300, seed=2)
+    _point, lo, hi = bootstrap_auc_ci(y, p, n_boot=300, seed=2)
     assert hi - lo > 0.10
 
 

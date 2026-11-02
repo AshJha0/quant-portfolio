@@ -20,7 +20,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_var.book import Book, Cash, Forward, Market, Option, Spot
 from fx_var.common import validate_horizon
 from fx_var.expected_shortfall import normal_es, normal_var, t_es, t_var
@@ -274,7 +273,7 @@ class TestStressScenarioGuards:
             peg_break_scenario("HKD", contagion={"SAR": bad})
 
     def test_contagion_below_minus_one_hundred_percent_rejected(self) -> None:
-        with pytest.raises(ValueError, match="contagion|-100"):
+        with pytest.raises(ValueError, match=r"contagion|-100"):
             peg_break_scenario("HKD", contagion={"SAR": -1.5})
 
     @pytest.mark.parametrize("bad", NON_FINITE)

@@ -2,13 +2,12 @@
 
 import numpy as np
 import pytest
-
 from fx_algo import (
     EURUSD,
     GBPUSD,
-    USDMXN,
     SESSION_BOUNDS,
     SESSION_NAMES,
+    USDMXN,
     fix_window_mask,
     make_time_grid,
     session_of_hour,

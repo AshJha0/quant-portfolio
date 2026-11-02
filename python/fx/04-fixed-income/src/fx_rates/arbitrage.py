@@ -23,7 +23,7 @@ The implied no-arbitrage band for the forward is::
     F_lower = spot_bid * (1 + r_d_bid tau) / (1 + r_f_ask tau)
     F_upper = spot_ask * (1 + r_d_ask tau) / (1 + r_f_bid tau)
 
-No detection fires while the tradeable forward sits inside the band , 
+No detection fires while the tradeable forward sits inside the band ,
 post-2008 the *observed* mid-CIP deviation routinely exceeds bid/ask and
 still is not free money once dealer balance-sheet costs are included
 (Du-Tepper-Verdelhan; see docs/VALIDATION.md).
@@ -32,10 +32,11 @@ still is not free money once dealer balance-sheet costs are included
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from ._validation import require_finite
 
-__all__ = ["CIPQuotes", "CIPArbitrageResult", "no_arb_bounds", "detect_cip_arbitrage"]
+__all__ = ["CIPArbitrageResult", "CIPQuotes", "detect_cip_arbitrage", "no_arb_bounds"]
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ class CIPQuotes:
             for_rate_bid=self.for_rate_bid, for_rate_ask=self.for_rate_ask,
             tau=self.tau, tau_dom=self.tau_dom, tau_for=self.tau_for,
         )
-        if min(self.tau, self.tau_dom, self.tau_for) <= 0.0:
+        if min(self.tau, cast(float, self.tau_dom), cast(float, self.tau_for)) <= 0.0:
             raise ValueError(f"tau must be > 0, got {self.tau}, {self.tau_dom}, {self.tau_for}")
         if min(self.spot_bid, self.spot_ask, self.fwd_bid, self.fwd_ask) <= 0.0:
             raise ValueError("spot and forward quotes must be > 0")
@@ -109,8 +110,8 @@ class CIPArbitrageResult:
 
 def no_arb_bounds(q: CIPQuotes) -> tuple[float, float]:
     """No-arbitrage band (F_lower, F_upper) for the tradeable forward."""
-    f_lower = q.spot_bid * (1.0 + q.dom_rate_bid * q.tau_dom) / (1.0 + q.for_rate_ask * q.tau_for)
-    f_upper = q.spot_ask * (1.0 + q.dom_rate_ask * q.tau_dom) / (1.0 + q.for_rate_bid * q.tau_for)
+    f_lower = q.spot_bid * (1.0 + q.dom_rate_bid * cast(float, q.tau_dom)) / (1.0 + q.for_rate_ask * cast(float, q.tau_for))
+    f_upper = q.spot_ask * (1.0 + q.dom_rate_ask * cast(float, q.tau_dom)) / (1.0 + q.for_rate_bid * cast(float, q.tau_for))
     return f_lower, f_upper
 
 
@@ -122,7 +123,7 @@ def detect_cip_arbitrage(q: CIPQuotes, min_pnl: float = 0.0) -> CIPArbitrageResu
     q : CIPQuotes
         Two-sided quotes at one tenor.
     min_pnl : float
-        Minimum P&L per unit domestic notional (at maturity) to flag , 
+        Minimum P&L per unit domestic notional (at maturity) to flag ,
         use this to encode residual costs (settlement, capital) beyond
         bid/ask.
 
@@ -135,11 +136,11 @@ def detect_cip_arbitrage(q: CIPQuotes, min_pnl: float = 0.0) -> CIPArbitrageResu
     """
     require_finite(min_pnl=min_pnl)
     f_lower, f_upper = no_arb_bounds(q)
-    pnl_sell = q.fwd_bid * (1.0 + q.for_rate_bid * q.tau_for) / q.spot_ask - (
-        1.0 + q.dom_rate_ask * q.tau_dom
+    pnl_sell = q.fwd_bid * (1.0 + q.for_rate_bid * cast(float, q.tau_for)) / q.spot_ask - (
+        1.0 + q.dom_rate_ask * cast(float, q.tau_dom)
     )
-    pnl_buy = (1.0 + q.dom_rate_bid * q.tau_dom) - q.fwd_ask * (
-        1.0 + q.for_rate_ask * q.tau_for
+    pnl_buy = (1.0 + q.dom_rate_bid * cast(float, q.tau_dom)) - q.fwd_ask * (
+        1.0 + q.for_rate_ask * cast(float, q.tau_for)
     ) / q.spot_bid
     best_pnl, direction = max((pnl_sell, "sell_forward"), (pnl_buy, "buy_forward"))
     if best_pnl > min_pnl:

@@ -30,15 +30,15 @@ With ``aum=None`` the impact term is off and the backtest is AUM-independent.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig
 
 from .signals import freeze_signal
 
-__all__ = ["ExecutionConfig", "BacktestConfig", "capacity_backtest", "BacktestResult", "long_short_weights", "run_backtest"]
+__all__ = ["BacktestConfig", "BacktestResult", "ExecutionConfig", "capacity_backtest", "long_short_weights", "run_backtest"]
 
 
 
@@ -242,9 +242,10 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
 
     def trade_cost(i_dec: int, dw: np.ndarray) -> float:
         if cfg.aum is not None:
-            sig_i = np.nan_to_num(sigma_np[i_dec], nan=0.0)
-            adv_i = np.where(np.isfinite(adv_np[i_dec]) & (adv_np[i_dec] > 0),
-                             adv_np[i_dec], np.inf)
+            sig_np, a_np = cast(np.ndarray, sigma_np), cast(np.ndarray, adv_np)
+            sig_i = np.nan_to_num(sig_np[i_dec], nan=0.0)
+            adv_i = np.where(np.isfinite(a_np[i_dec]) & (a_np[i_dec] > 0),
+                             a_np[i_dec], np.inf)
             c = _rebalance_cost(dw, sig_i, adv_i, cfg)
         else:
             c = _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)

@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_port import (
     dollar_neutral_weights,
     efficient_frontier,

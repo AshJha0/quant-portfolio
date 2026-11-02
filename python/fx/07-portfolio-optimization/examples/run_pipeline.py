@@ -22,8 +22,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import fx_port as fp  # noqa: E402
-from fx_port.data import make_equity_portfolio, make_panel  # noqa: E402
+import fx_port as fp
+from fx_port.data import make_equity_portfolio, make_panel
 
 SEED = 123
 N_DAYS = 3024  # ~12 years of business days

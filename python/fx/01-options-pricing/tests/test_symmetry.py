@@ -12,7 +12,6 @@ premium expressed in *foreign* currency and rescaled by S*K.
 import itertools
 
 import pytest
-
 from fx_options import delta, gk_price
 
 SPOTS = [0.65, 1.10, 147.5]

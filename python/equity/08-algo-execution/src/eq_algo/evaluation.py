@@ -11,26 +11,26 @@ N pure-noise strategies, not against zero (see docs/METHODOLOGY.md).
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
-from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 from scipy import stats
 
 __all__ = [
+    "capacity_curve",
+    "deflated_sharpe_ratio",
+    "expected_max_sharpe",
+    "ic_summary",
+    "max_drawdown",
     "newey_west_se",
     "newey_west_tstat",
-    "ic_summary",
+    "perf_summary",
+    "probabilistic_sharpe_ratio",
     "quantile_monotonicity",
     "sharpe_ratio",
     "sortino_ratio",
-    "max_drawdown",
-    "perf_summary",
-    "probabilistic_sharpe_ratio",
-    "expected_max_sharpe",
-    "deflated_sharpe_ratio",
-    "capacity_curve",
 ]
 
 _EULER_GAMMA = 0.5772156649015329

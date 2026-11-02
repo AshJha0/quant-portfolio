@@ -25,22 +25,22 @@ DV01 differs from its foreign-rate DV01 (tests/test_basis_swap.py).
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
-import numpy as np
 import pandas as pd
 
 from .fxforward import MarketState
 
 __all__ = [
     "Position",
-    "fx_delta",
-    "dv01",
-    "key_rate_dv01",
     "basis_dv01",
-    "position_risk",
-    "book_value",
     "book_risk_report",
+    "book_value",
+    "dv01",
+    "fx_delta",
+    "key_rate_dv01",
+    "position_risk",
 ]
 
 

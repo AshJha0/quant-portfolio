@@ -63,7 +63,7 @@ import numpy as np
 
 from .smile import SVIParams, svi_total_variance
 
-__all__ = ["VolSurface", "CalendarCheck", "check_calendar"]
+__all__ = ["CalendarCheck", "VolSurface", "check_calendar"]
 
 #: Minimum implied *variance* (vol^2) returned by the surface. The floor is
 #: applied as ``w >= _MIN_VARIANCE * T`` so it is a floor on implied vol
@@ -187,9 +187,9 @@ class VolSurface:
                 f"points (worst total-variance decrease {self.calendar.worst_violation:.3e})"
             )
             if enforce_calendar:
-                warnings.warn(msg + "; applying monotone (running-max) adjustment", UserWarning)
+                warnings.warn(msg + "; applying monotone (running-max) adjustment", UserWarning, stacklevel=2)
             else:
-                warnings.warn(msg + "; pass enforce_calendar=True to adjust", UserWarning)
+                warnings.warn(msg + "; pass enforce_calendar=True to adjust", UserWarning, stacklevel=2)
         self._pchip = None
         self.butterfly_after_enforcement: list[dict] | None = None
         if enforce_calendar:
@@ -206,7 +206,7 @@ class VolSurface:
                 warnings.warn(
                     f"calendar-enforced surface has butterfly arbitrage at {len(bad)} of "
                     f"{len(rep)} checked expiries (worst g = {min(r['min_g'] for r in bad):.3e})",
-                    UserWarning,
+                    UserWarning, stacklevel=2,
                 )
 
     # ------------------------------------------------------------------ #
@@ -219,6 +219,7 @@ class VolSurface:
         """Total variance at every pillar for the given k values, shape (nT, nk)."""
         k = np.atleast_1d(np.asarray(k, dtype=float))
         if self.enforced:
+            assert self._pchip is not None
             # Interpolate the (adjusted) grid linearly in k; linear wings beyond.
             out = np.empty((self.expiries.size, k.size))
             for i in range(self.expiries.size):

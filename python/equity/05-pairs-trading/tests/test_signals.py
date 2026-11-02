@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.data import business_index, simulate_ou
 from eq_pairs.signals import (
     SignalRules,

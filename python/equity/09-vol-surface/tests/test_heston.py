@@ -6,7 +6,6 @@ import warnings
 
 import numpy as np
 import pytest
-
 from eq_surface.black_scholes import bs_price
 from eq_surface.heston import (
     FellerWarning,

@@ -54,9 +54,9 @@ __all__ = [
     "SECTORS",
     "SECTOR_EFFECTS",
     "TRUE_COEFFS",
-    "true_log_odds",
     "generate_loan_book",
     "generate_oot_sample",
+    "true_log_odds",
 ]
 
 SECTORS: tuple[str, ...] = (

@@ -3,10 +3,9 @@ degenerate series, outliers, short samples, NaNs, convergence failures,
 crisis regime jumps. Every case here is also discussed in docs/VALIDATION.md.
 """
 
+import eq_vol.garch as garch_mod
 import numpy as np
 import pytest
-
-import eq_vol.garch as garch_mod
 from eq_vol._utils import ConvergenceError
 from eq_vol.data import synthetic as syn
 from eq_vol.egarch import fit_egarch

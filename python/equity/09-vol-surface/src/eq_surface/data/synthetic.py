@@ -31,7 +31,7 @@ from ..black_scholes import bs_price
 from ..heston import HestonParams, heston_call_p1p2
 from ..smile import SVIParams, svi_total_variance
 
-__all__ = ["ChainData", "generate_chain", "DEFAULT_TRUE_HESTON", "default_svi_slices"]
+__all__ = ["DEFAULT_TRUE_HESTON", "ChainData", "default_svi_slices", "generate_chain"]
 
 #: Ground-truth parameter set used by ``mode="heston"`` (equity-index-like:
 #: negative correlation, vol-of-vol high enough to violate Feller mildly).
@@ -159,8 +159,10 @@ def generate_chain(
     for T in expiries_arr:
         F = spot * np.exp((rate - div_yield) * T)
         if mode == "heston":
+            assert p_true is not None
             atm_vol = np.sqrt(max(p_true.v0, 0.5 * (p_true.v0 + p_true.theta)))
         else:
+            assert svi_true is not None
             atm_vol = float(np.sqrt(svi_total_variance(0.0, svi_true[float(T)]) / T))
         width = 3.3 * atm_vol * np.sqrt(T)
         mny = base_grid[(np.log(base_grid) >= -width) & (np.log(base_grid) <= width)]
@@ -173,13 +175,15 @@ def generate_chain(
             # Adaptive P1/P2 quadrature: an independent pricer from the
             # Gauss-Legendre fast path the calibrator uses, so recovery tests
             # do not share a pricer bug with the calibration.
+            assert p_true is not None
             mids = np.array([heston_call_p1p2(spot, float(kk), float(T), rate, div_yield, p_true)
                              for kk in strikes])
         else:
+            assert svi_true is not None
             w = np.asarray(svi_total_variance(k, svi_true[float(T)]))
             vols = np.sqrt(w / T)
             mids = np.array(
-                [bs_price(spot, kk, float(T), rate, div_yield, v, "call") for kk, v in zip(strikes, vols)]
+                [bs_price(spot, kk, float(T), rate, div_yield, v, "call") for kk, v in zip(strikes, vols, strict=False)]
             )
 
         if bid_ask:

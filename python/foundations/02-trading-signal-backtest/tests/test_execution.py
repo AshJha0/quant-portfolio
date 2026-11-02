@@ -11,10 +11,9 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
+from eq_signal_backtest import ExecutionConfig, run_backtest, strategy_returns
 from hypothesis import given, settings
 from hypothesis import strategies as hst
-
-from eq_signal_backtest import ExecutionConfig, run_backtest, strategy_returns
 
 
 def _series(values):

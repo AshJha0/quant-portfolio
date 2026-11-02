@@ -3,7 +3,6 @@ basis DV01, book aggregation."""
 
 import numpy as np
 import pytest
-
 from fx_rates.fxforward import FXForward, FXSwap, market_forward
 from fx_rates.risk import (
     basis_dv01,

@@ -3,8 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import stats
-
 from fx_port import (
     annualized_return,
     annualized_vol,
@@ -17,6 +15,7 @@ from fx_port import (
     style_attribution,
     summary,
 )
+from scipy import stats
 
 
 @pytest.fixture(scope="module")
@@ -90,11 +89,11 @@ def test_summary_keys_and_consistency(r):
 
 def test_zero_vol_raises():
     flat = np.zeros(10)
-    with pytest.raises(ValueError, match="olatility|variance"):
+    with pytest.raises(ValueError, match=r"olatility|variance"):
         sharpe_ratio(flat)
     with pytest.raises(ValueError, match="variance"):
         skewness(flat)
-    with pytest.raises(ValueError, match="downside|Sortino"):
+    with pytest.raises(ValueError, match=r"downside|Sortino"):
         sortino_ratio(np.full(10, 0.01))
 
 

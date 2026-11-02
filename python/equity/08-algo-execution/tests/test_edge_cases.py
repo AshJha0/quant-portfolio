@@ -4,11 +4,22 @@ described in docs/VALIDATION.md."""
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_algo import (ACParams, BacktestConfig, ExecutionConfig, IntradayConfig, IntradayMarket,
-                     ac_trades, ac_trajectory, cs_zscore, deflated_sharpe_ratio,
-                     generate_daily_panel, momentum, pov_schedule, run_backtest,
-                     twap_schedule)
+from eq_algo import (
+    ACParams,
+    BacktestConfig,
+    ExecutionConfig,
+    IntradayConfig,
+    IntradayMarket,
+    ac_trades,
+    ac_trajectory,
+    cs_zscore,
+    deflated_sharpe_ratio,
+    generate_daily_panel,
+    momentum,
+    pov_schedule,
+    run_backtest,
+    twap_schedule,
+)
 
 
 def test_one_day_backtest():

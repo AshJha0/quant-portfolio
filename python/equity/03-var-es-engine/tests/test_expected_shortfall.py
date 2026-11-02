@@ -2,9 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy.integrate import quad
-from scipy.stats import norm
-
 from eq_var import (
     es_standard_error_bootstrap,
     expected_shortfall,
@@ -14,6 +11,8 @@ from eq_var import (
     parametric_var,
     student_t_es,
 )
+from scipy.integrate import quad
+from scipy.stats import norm
 
 
 class TestEmpiricalES:

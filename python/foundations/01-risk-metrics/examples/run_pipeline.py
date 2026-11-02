@@ -32,8 +32,8 @@ from scipy import stats
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import eq_risk_metrics as rm  # noqa: E402
-from eq_risk_metrics.data import generate  # noqa: E402
+import eq_risk_metrics as rm
+from eq_risk_metrics.data import generate
 
 CONF_LEVELS = (0.95, 0.99)
 

@@ -32,7 +32,7 @@ from numpy.typing import ArrayLike, NDArray
 from qp_core.validation import finite_series as _finite_series
 from qp_core.validation import require_finite
 
-__all__ = ["require_finite", "finite_series"]
+__all__ = ["finite_series", "require_finite"]
 
 
 def finite_series(values: ArrayLike, name: str, *, positive: bool = False) -> NDArray[np.float64]:

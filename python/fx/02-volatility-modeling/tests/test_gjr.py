@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from conftest import GJR_TRUE
 from fx_vol import fit_gjr, gjr_filter
 from fx_vol.data import synthetic as syn

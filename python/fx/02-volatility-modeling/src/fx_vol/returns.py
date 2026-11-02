@@ -22,20 +22,20 @@ Conventions (see CONVENTIONS.md at the portfolio root):
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
 
 __all__ = [
-    "log_returns",
+    "cross_pair_signs",
+    "cross_volatility",
     "invert_prices",
     "invert_returns",
+    "log_returns",
     "pair_currencies",
-    "cross_pair_signs",
     "triangulate_prices",
     "triangulate_returns",
-    "cross_volatility",
 ]
 
 

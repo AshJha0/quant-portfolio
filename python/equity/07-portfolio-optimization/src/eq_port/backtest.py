@@ -22,8 +22,8 @@ Mechanics (per day, oldest first; simple returns):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -35,13 +35,13 @@ from .risk_parity import erc_weights
 
 __all__ = [
     "BacktestResult",
+    "make_erc_strategy",
+    "make_min_variance_strategy",
+    "make_static_strategy",
+    "make_tangency_strategy",
     "run_backtest",
     "run_race",
     "strategy_equal_weight",
-    "make_min_variance_strategy",
-    "make_tangency_strategy",
-    "make_erc_strategy",
-    "make_static_strategy",
 ]
 
 Strategy = Callable[[pd.DataFrame], np.ndarray]

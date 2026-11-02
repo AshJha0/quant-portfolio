@@ -119,7 +119,7 @@ for pair, r in [("EURUSD-like", eurusd), ("USDMXN-like", usdmxn)]:
 # same effect.
 gjr_inv = fv.fit_gjr(fv.invert_returns(usdmxn), dist="t")
 em_eg = fits["USDMXN-like"]["EGARCH-t"]
-print(f"\nQuote-direction check (EM asymmetry):")
+print("\nQuote-direction check (EM asymmetry):")
 print(f"  EGARCH-t on USDMXN:      gamma = {em_eg.params['gamma']:+.4f} "
       f"(se {em_eg.std_errors['gamma']:.4f}) : positive: EM depreciation raises vol")
 em_gjr = fits["USDMXN-like"]["GJR-t"]

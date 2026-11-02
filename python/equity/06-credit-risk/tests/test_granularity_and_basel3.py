@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_credit.portfolio_risk import (
     asset_correlation,
     basel_k,

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_vol import ewma_forecast, ewma_variance, ewma_weights
 from fx_vol.data import synthetic as syn
 

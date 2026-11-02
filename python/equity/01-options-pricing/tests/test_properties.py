@@ -10,7 +10,6 @@ wrong discounting, or broken limit handling immediately).
 import math
 
 import pytest
-
 from eq_options import (
     black76_price,
     bs_greeks,
@@ -67,21 +66,21 @@ def test_bs_price_homogeneous_degree_one(lam: float, otype: str) -> None:
 def test_put_monotone_increasing_in_vol() -> None:
     vols = [0.05, 0.1, 0.2, 0.4, 0.8, 1.6]
     prices = [bs_price(100, 100, 1, 0.02, v, 0.01, "put") for v in vols]
-    assert all(b > a for a, b in zip(prices, prices[1:]))
+    assert all(b > a for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_call_delta_monotone_in_spot() -> None:
     """Convexity in S: call delta is nondecreasing in S."""
     spots = [60.0, 80.0, 100.0, 120.0, 150.0]
     deltas = [bs_greeks(s, 100, 1, 0.03, 0.2, 0.0, "call").delta for s in spots]
-    assert all(b > a for a, b in zip(deltas, deltas[1:]))
+    assert all(b > a for a, b in zip(deltas, deltas[1:], strict=False))
 
 
 def test_call_price_monotone_in_expiry_q_zero() -> None:
     """With q=0 and r>=0 a European call is nondecreasing in T."""
     expiries = [0.05, 0.25, 0.5, 1.0, 2.0, 5.0]
     prices = [bs_price(100, 100, t, 0.03, 0.2, 0.0, "call") for t in expiries]
-    assert all(b > a for a, b in zip(prices, prices[1:]))
+    assert all(b > a for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_american_put_monotone_in_expiry() -> None:
@@ -91,7 +90,7 @@ def test_american_put_monotone_in_expiry() -> None:
         crr_price(100, 100, t, 0.05, 0.2, 0.01, "put", "american", 400)
         for t in expiries
     ]
-    assert all(b >= a - 1e-10 for a, b in zip(prices, prices[1:]))
+    assert all(b >= a - 1e-10 for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_implied_vol_monotone_in_price() -> None:
@@ -158,9 +157,9 @@ def test_black76_call_decreasing_convex_in_strike() -> None:
     F, T, r, sigma = 100.0, 1.0, 0.03, 0.25
     strikes = [70.0, 85.0, 100.0, 115.0, 130.0]
     calls = [black76_price(F, k, T, r, sigma, "call") for k in strikes]
-    assert all(b < a for a, b in zip(calls, calls[1:]))
+    assert all(b < a for a, b in zip(calls, calls[1:], strict=False))
     # discrete convexity on the equally spaced grid
-    for a, b, c in zip(calls, calls[1:], calls[2:]):
+    for a, b, c in zip(calls, calls[1:], calls[2:], strict=False):
         assert a - 2 * b + c >= -1e-12
 
 

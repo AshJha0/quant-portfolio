@@ -3,12 +3,9 @@ and performance_stats against hand-computable equity curves."""
 
 import numpy as np
 import pandas as pd
-
-from eq_signal_backtest import ExecutionConfig
 import pytest
-
+from eq_signal_backtest import ExecutionConfig
 from eq_signal_backtest.engine import performance_stats, run_backtest
-
 
 # ---------------------------------------------------------------------------
 # No-look-ahead

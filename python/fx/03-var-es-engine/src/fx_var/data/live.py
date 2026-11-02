@@ -16,13 +16,14 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+from typing import cast
 
 import numpy as np
 import pandas as pd
 
 from ..common import fx_factor
 
-__all__ = ["load_frankfurter", "frankfurter_factor_returns"]
+__all__ = ["frankfurter_factor_returns", "load_frankfurter"]
 
 _API = "https://api.frankfurter.app"
 
@@ -68,7 +69,7 @@ def load_frankfurter(
         raise ValueError("symbols must contain at least one non-USD currency")
     span = f"{start}..{end}" if end else f"{start}.."
     url = f"{_API}/{span}?from=USD&to={','.join(symbols)}"
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     rates = payload.get("rates", {})
     if not rates:
@@ -94,6 +95,6 @@ def frankfurter_factor_returns(
     docs/DESK_GUIDE.md on rate sourcing across time zones).
     """
     spots = load_frankfurter(symbols, start, end, allow_network=allow_network)
-    rets = np.log(spots).diff().dropna()
+    rets = cast(pd.DataFrame, np.log(spots)).diff().dropna()
     rets.columns = [fx_factor(c) for c in rets.columns]
     return rets

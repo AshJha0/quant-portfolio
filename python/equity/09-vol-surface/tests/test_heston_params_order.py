@@ -3,7 +3,6 @@
 import dataclasses
 
 import pytest
-
 from eq_surface import HestonParams
 
 KW = dict(v0=0.04, kappa=1.5, theta=0.045, xi=0.4, rho=-0.6)

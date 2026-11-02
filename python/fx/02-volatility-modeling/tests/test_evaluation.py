@@ -3,7 +3,6 @@ power, Newey-West, Ljung-Box / ARCH-LM / sign-bias diagnostics."""
 
 import numpy as np
 import pytest
-
 from fx_vol import (
     arch_lm,
     diebold_mariano,

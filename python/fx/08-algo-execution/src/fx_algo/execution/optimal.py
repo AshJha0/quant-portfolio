@@ -34,10 +34,10 @@ import numpy as np
 from scipy.linalg import solve
 
 __all__ = [
-    "eta_from_depth",
     "ac_closed_form_schedule",
-    "piecewise_ac_schedule",
     "ac_expected_cost",
+    "eta_from_depth",
+    "piecewise_ac_schedule",
 ]
 
 

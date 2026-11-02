@@ -18,10 +18,9 @@ from __future__ import annotations
 import time
 import warnings
 
+import fx_var as fv
 import numpy as np
 import pandas as pd
-
-import fx_var as fv
 from fx_var.data.synthetic import (
     demo_book,
     demo_em_book,
@@ -60,7 +59,7 @@ cross = fv.Book([fv.Spot("EURJPY", n)])
 legs = fv.Book([fv.Spot("EURUSD", n), fv.Spot("USDJPY", n * market.spot("EUR"))])
 sh = {"FX:EUR": -0.02, "FX:JPY": 0.015}
 p_cross, p_legs = cross.pnl(market, sh), legs.pnl(market, sh)
-print(f"\n   Triangulation demo: 10m EURJPY under EUR -2% / JPY +1.5% shocks")
+print("\n   Triangulation demo: 10m EURJPY under EUR -2% / JPY +1.5% shocks")
 print(f"     direct cross P&L      {money(p_cross)}")
 print(f"     EURUSD+USDJPY legs    {money(p_legs)}   (diff {p_cross - p_legs:+.2e})")
 
@@ -182,7 +181,7 @@ print(f"   HKD peg-break loss:    {money(peg_loss)}  "
 lad = fv.sensitivity_ladder(book, market, "FX:EUR")
 print("\n   EUR sensitivity ladder (USD P&L):")
 print("   " + "  ".join(f"{s:+.0%}:{p / 1e6:+.2f}m" for s, p in
-                        zip(lad["shock"].map(lambda x: np.expm1(x)), lad["pnl"])))
+                        zip(lad["shock"].map(lambda x: np.expm1(x)), lad["pnl"], strict=False)))
 
 # ------------------------------------------------------- 6. reverse stress
 hdr("6. REVERSE STRESS - worst joint move at the 99% Mahalanobis radius")

@@ -26,20 +26,20 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..book import Book, Cash, Forward, Market, Option, Spot
-from ..common import TRADING_DAYS_PER_YEAR, fx_factor, ir_factor, split_pair, vol_factor
+from ..book import Book, Cash, Forward, Market, Option, Position, Spot
+from ..common import TRADING_DAYS_PER_YEAR, fx_factor
 
 __all__ = [
-    "G10",
-    "EM",
-    "PEGGED",
     "ANNUAL_VOLS",
+    "EM",
+    "G10",
+    "PEGGED",
     "default_correlation",
-    "simulate_fx_returns",
-    "simulate_history",
-    "demo_market",
     "demo_book",
     "demo_em_book",
+    "demo_market",
+    "simulate_fx_returns",
+    "simulate_history",
 ]
 
 G10: list[str] = ["EUR", "JPY", "GBP", "CHF", "AUD", "NZD", "CAD", "SEK", "NOK"]
@@ -270,7 +270,7 @@ def demo_book(base: str = "USD") -> Book:
     position and a long-HKD peg position that makes the peg-blindness
     machinery observable end to end.
     """
-    positions = [
+    positions: list[Position] = [
         Spot("EURUSD", 25_000_000),          # long 25m EUR vs USD
         Spot("USDJPY", 15_000_000),          # long 15m USD vs JPY
         Spot("GBPUSD", -10_000_000),         # short 10m GBP vs USD

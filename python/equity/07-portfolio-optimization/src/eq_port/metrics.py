@@ -12,24 +12,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 from scipy.stats import norm
-import pandas as pd
 
 __all__ = [
+    "LoSharpeResult",
+    "SharpeDiffResult",
     "annualized_return",
     "annualized_vol",
-    "sharpe_ratio",
-    "sharpe_lo",
-    "LoSharpeResult",
-    "sharpe_difference_test",
-    "SharpeDiffResult",
-    "sortino_ratio",
-    "max_drawdown",
     "calmar_ratio",
     "diversification_ratio",
     "effective_n",
+    "max_drawdown",
     "realized_risk_contributions",
+    "sharpe_difference_test",
+    "sharpe_lo",
+    "sharpe_ratio",
+    "sortino_ratio",
     "summary_table",
 ]
 

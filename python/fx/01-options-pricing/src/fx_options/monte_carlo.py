@@ -46,7 +46,7 @@ from scipy.stats import norm
 from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import d1 as _d1_fn
 
-__all__ = ["MCResult", "mc_price", "mc_digital_price", "digital_price"]
+__all__ = ["MCResult", "digital_price", "mc_digital_price", "mc_price"]
 
 
 @dataclass(frozen=True)

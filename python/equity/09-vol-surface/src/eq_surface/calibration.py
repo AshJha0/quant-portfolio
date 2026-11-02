@@ -133,7 +133,7 @@ def heston_model_ivs(
     price cannot be inverted, e.g. worthless deep wings).
     """
     return [_otm_model_ivs(S, r, q, float(T), np.asarray(Ks, dtype=float), p)[0]
-            for T, Ks in zip(expiries, strikes_by_expiry)]
+            for T, Ks in zip(expiries, strikes_by_expiry, strict=False)]
 
 
 def _otm_model_ivs(
@@ -222,8 +222,8 @@ def calibrate_heston(
 
     # Vega weights from *market* vols (fixed during optimisation), mean-1.
     wts = []
-    for T, K, iv in zip(expiries, Ks, IVs):
-        w = np.array([bs_vega(S, k, float(T), r, q, v) for k, v in zip(K, iv)])
+    for T, K, iv in zip(expiries, Ks, IVs, strict=False):
+        w = np.array([bs_vega(S, k, float(T), r, q, v) for k, v in zip(K, iv, strict=False)])
         wts.append(w)
     w_all = np.concatenate(wts)
     w_all = w_all / max(w_all.mean(), 1e-12)
@@ -231,11 +231,11 @@ def calibrate_heston(
 
     # Market OTM prices for the price-space fallback residual.
     mkt_prices = []
-    for T, K, iv in zip(expiries, Ks, IVs):
+    for T, K, iv in zip(expiries, Ks, IVs, strict=False):
         F = S * np.exp((r - q) * float(T))
         mkt_prices.append(np.array([
             bs_price(S, k, float(T), r, q, v, "put" if k < F else "call")
-            for k, v in zip(K, iv)
+            for k, v in zip(K, iv, strict=False)
         ]))
     px_all = np.concatenate(mkt_prices)
     vega_mean = max(float(np.mean(np.concatenate(wts))), 1e-12)
@@ -247,7 +247,7 @@ def calibrate_heston(
         except ValueError:
             return np.full(n_quotes, 10.0)
         ivs, prices = [], []
-        for T, K in zip(expiries, Ks):
+        for T, K in zip(expiries, Ks, strict=False):
             iv_k, pr_k = _otm_model_ivs(S, r, q, float(T), K, p)
             ivs.append(iv_k)
             prices.append(pr_k)
@@ -308,14 +308,14 @@ def calibrate_heston(
     feller = feller_condition(params, warn=True)  # warn-not-raise by design
 
     # Identifiability diagnostics from the optimum's Jacobian.
-    sv = np.linalg.svd(best.jac, compute_uv=False)
+    sv = np.linalg.svd(np.asarray(best.jac), compute_uv=False)
     cond = float(sv[0] / max(sv[-1], 1e-300))
 
     # Reporting RMSEs: unweighted, in vol space.
     model_ivs = heston_model_ivs(S, r, q, expiries, Ks, params)
     rmse_by_expiry = {}
     sq_all = []
-    for T, iv_m, iv_k in zip(expiries, IVs, model_ivs):
+    for T, iv_m, iv_k in zip(expiries, IVs, model_ivs, strict=False):
         d = iv_k - iv_m
         d = d[np.isfinite(d)]
         rmse_by_expiry[float(T)] = float(np.sqrt(np.mean(d**2)) * 100.0)

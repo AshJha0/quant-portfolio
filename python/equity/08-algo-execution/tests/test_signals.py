@@ -4,13 +4,22 @@ banded rebalancing, combination utilities."""
 import numpy as np
 import pandas as pd
 import pytest
+from eq_algo import (
+    apply_rebalance_band,
+    combine_equal_weight,
+    combine_ic_weighted,
+    cs_zscore,
+    decile_portfolios,
+    forward_returns,
+    freeze_signal,
+    generate_daily_panel,
+    ic_summary,
+    information_coefficient,
+    momentum,
+    signal_decay,
+    turnover,
+)
 from scipy import stats
-
-from eq_algo import (apply_rebalance_band, combine_equal_weight,
-                     combine_ic_weighted, cs_zscore, decile_portfolios,
-                     forward_returns, freeze_signal, generate_daily_panel,
-                     information_coefficient, ic_summary, momentum,
-                     signal_decay, turnover)
 
 
 @pytest.fixture(scope="module")

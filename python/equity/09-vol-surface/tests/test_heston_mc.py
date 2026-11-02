@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
-from eq_surface.black_scholes import bs_price
 from eq_surface.heston import HestonParams, heston_call_gl
 from eq_surface.heston_mc import heston_mc_price, simulate_heston_terminal
 

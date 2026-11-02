@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import itertools
 import math
-from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -37,16 +37,16 @@ FloatArray = NDArray[np.float64]
 
 __all__ = [
     "FloatArray",
-    "newey_west_lag",
-    "sharpe_ratio",
-    "lo_sharpe_se",
-    "expected_max_sharpe",
-    "deflated_sharpe_ratio",
-    "pbo_cscv",
-    "block_bootstrap_ci",
-    "seed_distribution",
     "SeedSummary",
     "TrialLog",
+    "block_bootstrap_ci",
+    "deflated_sharpe_ratio",
+    "expected_max_sharpe",
+    "lo_sharpe_se",
+    "newey_west_lag",
+    "pbo_cscv",
+    "seed_distribution",
+    "sharpe_ratio",
 ]
 
 _EULER_GAMMA = 0.5772156649015329
@@ -74,7 +74,7 @@ def newey_west_lag(n: int) -> int:
     """Newey-West (1994) rule-of-thumb truncation lag ``floor(4 (n/100)^(2/9))``."""
     if n < 2:
         raise ValueError(f"n must be at least 2, got {n}")
-    return int(math.floor(4.0 * (n / 100.0) ** (2.0 / 9.0)))
+    return math.floor(float(4.0 * (n / 100.0) ** (2.0 / 9.0)))
 
 
 def sharpe_ratio(returns: ArrayLike, periods_per_year: float = 252.0) -> float:
@@ -251,7 +251,7 @@ def block_bootstrap_ci(
     r = _as_finite_1d(returns, "returns", min_len=4)
     n = r.size
     if block_length is None:
-        block_length = int(math.ceil(n ** (1.0 / 3.0)))
+        block_length = math.ceil(n ** (1.0 / 3.0))
     if not (1 <= block_length <= n):
         raise ValueError(f"block_length must be in [1, n], got {block_length}")
     if n_boot < 100:
@@ -259,7 +259,7 @@ def block_bootstrap_ci(
     if not (0.0 < alpha < 1.0):
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     rng = np.random.default_rng(seed)
-    n_blocks = int(math.ceil(n / block_length))
+    n_blocks = math.ceil(n / block_length)
     offsets = np.arange(block_length)
     point = float(statistic(r))
     draws: list[float] = []

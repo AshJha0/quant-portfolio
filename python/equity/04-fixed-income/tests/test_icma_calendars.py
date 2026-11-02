@@ -8,17 +8,19 @@ the period.
 import datetime as dt
 
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
-
 from fi_rates import bond as B
 from fi_rates.calendars import CALENDARS, get_calendar, joint_calendar
 from fi_rates.daycount import year_fraction
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 D = dt.date
 
 
-def _ust(coupon=0.04, eff=D(2024, 2, 15), mat=D(2029, 2, 15), dcc="ACT/ACT-ICMA"):
+_EFF, _MAT = D(2024, 2, 15), D(2029, 2, 15)
+
+
+def _ust(coupon=0.04, eff=_EFF, mat=_MAT, dcc="ACT/ACT-ICMA"):
     return B.FixedRateBond(eff, mat, coupon, 2, dcc)
 
 
@@ -76,7 +78,7 @@ class TestIcmaCoupons:
         eff = D(2020, month, day)
         mat = D(2020 + years, month, day)
         bond = B.FixedRateBond(eff, mat, coupon, 2, "ACT/ACT-ICMA")
-        dates = [eff] + bond.schedule()
+        dates = [eff, *bond.schedule()]
         settle = dates[min(k, len(dates) - 2)]
         assert B.price_from_ytm(bond, settle, coupon) == pytest.approx(100.0, abs=1e-9)
 

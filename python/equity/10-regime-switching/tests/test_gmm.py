@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from eq_regime.gmm import aic, bic, fit_gmm, gmm_log_likelihood, match_permutation, select_k_bic
 from scipy.stats import multivariate_normal
 from sklearn.mixture import GaussianMixture as SkGMM
-
-from eq_regime.gmm import aic, bic, fit_gmm, gmm_log_likelihood, match_permutation, select_k_bic
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +65,7 @@ def test_bic_selects_true_k_2(mix2d):
 
 
 def test_bic_selects_true_k_3(mix3_1d):
-    best_k, scores = select_k_bic(mix3_1d, k_range=(1, 2, 3, 4, 5), seed=0, n_init=2)
+    best_k, _scores = select_k_bic(mix3_1d, k_range=(1, 2, 3, 4, 5), seed=0, n_init=2)
     assert best_k == 3
 
 
@@ -89,7 +88,7 @@ def test_sklearn_same_params_same_loglik(mix2d):
     # independent evaluation with scipy
     dens = sum(
         w * multivariate_normal(m, c).pdf(x)
-        for w, m, c in zip(ours.weights, ours.means, ours.covariances)
+        for w, m, c in zip(ours.weights, ours.means, ours.covariances, strict=False)
     )
     assert manual == pytest.approx(np.log(dens).sum(), abs=1e-8)
 

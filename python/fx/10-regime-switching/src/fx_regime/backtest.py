@@ -22,12 +22,10 @@ Ledger identity (tested exactly): net = spot + carry - cost, row by row.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig
 
 from .data.synthetic import QUOTES, quote_levels

@@ -8,10 +8,8 @@ import math
 
 import numpy as np
 import pytest
-from scipy.signal import lfilter
 from hypothesis import given, settings
 from hypothesis import strategies as hst
-
 from qp_core.stats import (
     TrialLog,
     block_bootstrap_ci,
@@ -23,6 +21,7 @@ from qp_core.stats import (
     seed_distribution,
     sharpe_ratio,
 )
+from scipy.signal import lfilter
 
 
 def test_newey_west_lag_rule():

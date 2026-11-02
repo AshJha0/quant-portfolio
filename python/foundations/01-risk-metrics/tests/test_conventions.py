@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import math
 
+import eq_risk_metrics as rm
 import numpy as np
 import pandas as pd
 import pytest
-
-import eq_risk_metrics as rm
 
 
 def test_var_historical_is_order_statistic_not_interpolated() -> None:

@@ -171,7 +171,7 @@ def validate_horizon(horizon_days: float) -> float:
     return horizon_days
 
 
-def validate_finite(**values: float) -> None:
+def validate_finite(**values: float | np.ndarray | None) -> None:
     """Reject non-finite scalar inputs, naming the offending argument.
 
     Used wherever a bare scalar (sigma, df, jump size, notional, ...) would

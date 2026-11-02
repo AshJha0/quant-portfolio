@@ -26,28 +26,28 @@ Forecast conventions
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from ._results import VolatilityFitResult
-from ._utils import TRADING_DAYS, as_generator, validate_returns
+from ._utils import TRADING_DAYS, as_generator, initial_variance, validate_returns
 from .egarch import egarch_recursion, expected_abs_z, fit_egarch
 from .ewma import ewma_forecast
 from .garch import fit_garch, garch_recursion
 from .gjr import fit_gjr, gjr_persistence, gjr_recursion
-from ._utils import initial_variance
 
 __all__ = [
+    "RollingForecastResult",
+    "forecast",
+    "forecast_egarch",
     "forecast_garch",
     "forecast_gjr",
-    "forecast_egarch",
     "forecast_historical",
-    "forecast",
-    "term_structure",
     "rolling_one_step_forecasts",
-    "RollingForecastResult",
+    "term_structure",
 ]
 
 
@@ -216,7 +216,7 @@ class RollingForecastResult(NamedTuple):
     n_failed_refits: int
 
 
-_FIT_FUNCS = {"garch": fit_garch, "egarch": fit_egarch, "gjr": fit_gjr}
+_FIT_FUNCS: dict[str, Callable[..., Any]] = {"garch": fit_garch, "egarch": fit_egarch, "gjr": fit_gjr}
 
 
 def _one_step_variance(

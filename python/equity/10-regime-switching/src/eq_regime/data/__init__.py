@@ -13,7 +13,7 @@ __all__ = [
     "RegimePanel",
     "default_regime_params",
     "equal_drift_params",
-    "make_regime_panel",
     "make_gbm_panel",
+    "make_regime_panel",
     "simulate_markov_chain",
 ]

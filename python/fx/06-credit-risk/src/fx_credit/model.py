@@ -20,17 +20,17 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "LogisticFit",
-    "fit_logistic_irls",
-    "predict_pd",
-    "score_from_pd",
-    "pd_from_score",
     "RATING_BANDS",
     "RATING_ORDER",
-    "assign_rating",
-    "rating_midpoint_pd",
     "ConvergenceWarning",
+    "LogisticFit",
+    "assign_rating",
     "expected_sign_check",
+    "fit_logistic_irls",
+    "pd_from_score",
+    "predict_pd",
+    "rating_midpoint_pd",
+    "score_from_pd",
 ]
 
 
@@ -124,7 +124,7 @@ def fit_logistic_irls(
     beta = np.zeros(k + 1)
     converged = False
     it = 0
-    for it in range(1, max_iter + 1):
+    for it in range(1, max_iter + 1):  # noqa: B007  (it is read after the loop)
         eta = Xd @ beta
         p = _sigmoid(eta)
         w = p * (1.0 - p)

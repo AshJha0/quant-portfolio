@@ -7,7 +7,6 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as hst
 from hypothesis.extra.numpy import arrays
-
 from qp_core.execution import ExecutionConfig, fill_price
 from qp_core.metrics import (
     annualisation_factor,

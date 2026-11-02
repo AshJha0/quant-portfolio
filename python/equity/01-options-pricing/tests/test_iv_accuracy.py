@@ -10,7 +10,6 @@ import warnings
 
 import mpmath as mp
 import pytest
-
 from eq_options import bs_price, implied_vol
 from eq_options._iv_core import black_implied_vol
 

@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from statsmodels.tsa.stattools import adfuller, coint
-
 from fx_pairs.cointegration import (
     adf_test,
     engle_granger,
@@ -12,6 +10,7 @@ from fx_pairs.cointegration import (
 )
 from fx_pairs.data import synthetic as syn
 from fx_pairs.universe import make_cross, triangular_spread
+from statsmodels.tsa.stattools import adfuller, coint
 
 
 @pytest.fixture(scope="module")

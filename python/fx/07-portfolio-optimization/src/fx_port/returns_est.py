@@ -23,6 +23,7 @@ Conventions
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -60,7 +61,7 @@ def spot_log_returns(spots: pd.DataFrame) -> pd.DataFrame:
     """
     if (spots <= 0).any().any():
         raise ValueError("spot levels must be strictly positive")
-    return np.log(spots).diff().iloc[1:]
+    return cast(pd.DataFrame, np.log(spots)).diff().iloc[1:]
 
 
 def carry_log_returns(
@@ -154,7 +155,7 @@ def momentum_signal(
     """
     if skip < 0 or lookback <= skip:
         raise ValueError(f"need lookback > skip >= 0, got {lookback}, {skip}")
-    return np.log(spots.shift(skip) / spots.shift(lookback))
+    return cast(pd.DataFrame, np.log(spots.shift(skip) / spots.shift(lookback)))
 
 
 def value_signal(spots: pd.DataFrame, ppp: pd.DataFrame) -> pd.DataFrame:
@@ -165,7 +166,7 @@ def value_signal(spots: pd.DataFrame, ppp: pd.DataFrame) -> pd.DataFrame:
     """
     if list(spots.columns) != list(ppp.columns):
         raise ValueError("spots and ppp must share identical columns")
-    return np.log(ppp / spots)
+    return cast(pd.DataFrame, np.log(ppp / spots))
 
 
 # ---------------------------------------------------------------------------

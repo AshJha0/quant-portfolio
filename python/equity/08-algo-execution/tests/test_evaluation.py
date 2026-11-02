@@ -4,12 +4,19 @@ monotonicity, performance stats, capacity monotone in AUM."""
 import numpy as np
 import pandas as pd
 import pytest
+from eq_algo import (
+    capacity_curve,
+    deflated_sharpe_ratio,
+    expected_max_sharpe,
+    max_drawdown,
+    newey_west_se,
+    newey_west_tstat,
+    probabilistic_sharpe_ratio,
+    quantile_monotonicity,
+    sharpe_ratio,
+    sortino_ratio,
+)
 from scipy import stats
-
-from eq_algo import (capacity_curve, deflated_sharpe_ratio, expected_max_sharpe,
-                     max_drawdown, newey_west_se, newey_west_tstat,
-                     probabilistic_sharpe_ratio, quantile_monotonicity,
-                     sharpe_ratio, sortino_ratio)
 
 
 def _ar1(n=1000, rho=0.6, seed=0):
@@ -56,7 +63,7 @@ def test_psr_hand_checked_formula():
 def test_expected_max_sharpe_properties():
     assert expected_max_sharpe(1, 0.01) == 0.0
     vals = [expected_max_sharpe(n, 0.01) for n in (2, 5, 20, 100, 1000)]
-    assert all(b > a for a, b in zip(vals, vals[1:]))  # increasing in N
+    assert all(b > a for a, b in zip(vals, vals[1:], strict=False))  # increasing in N
     assert expected_max_sharpe(10, 0.04) == pytest.approx(
         2.0 * expected_max_sharpe(10, 0.01), rel=1e-12)  # scales with sqrt(V)
     # hand check the Bailey-LdP expression at N=10, V=1
@@ -69,7 +76,7 @@ def test_dsr_decreases_with_trials_and_equals_psr_at_one():
     rng = np.random.default_rng(11)
     r = pd.Series(rng.standard_normal(500) * 0.01 + 0.0006)
     out = [deflated_sharpe_ratio(r, n_trials=n)["dsr"] for n in (1, 2, 5, 10, 100)]
-    assert all(b < a for a, b in zip(out, out[1:]))  # strictly decreasing in N
+    assert all(b < a for a, b in zip(out, out[1:], strict=False))  # strictly decreasing in N
     d1 = deflated_sharpe_ratio(r, n_trials=1)
     assert d1["dsr"] == pytest.approx(d1["psr0"], rel=1e-12)  # DSR = PSR at N=1
     assert d1["sr_benchmark"] == 0.0

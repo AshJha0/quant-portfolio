@@ -20,7 +20,7 @@ def test_mc_standard_error_shrinks_like_inverse_sqrt_n():
     ns = [10_000, 100_000, 1_000_000]
     ses = [mc_call_price(S, K, r, sigma, T, n_paths=n, seed=7)[1] for n in ns]
     # SE * sqrt(n) should be roughly constant (the O(1/sqrt(n)) law).
-    products = [se * math.sqrt(n) for se, n in zip(ses, ns)]
+    products = [se * math.sqrt(n) for se, n in zip(ses, ns, strict=False)]
     mean_product = sum(products) / len(products)
     for p in products:
         assert abs(p - mean_product) / mean_product < 0.15, products

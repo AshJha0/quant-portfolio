@@ -12,13 +12,14 @@ Focus, per the FX portfolio-construction domain:
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_port import (
+    annualized_vol,
     empirical_cvar,
     empirical_var,
     erc_weights,
     is_psd,
     lw_shrinkage,
+    max_drawdown,
     max_utility,
     min_cvar,
     min_variance_slsqp,
@@ -28,8 +29,6 @@ from fx_port import (
     risk_contributions,
     sample_cov,
     sharpe_ratio,
-    annualized_vol,
-    max_drawdown,
     tangency_weights,
     vol_target,
 )
@@ -173,7 +172,7 @@ def test_feasible_box_at_the_boundary_still_solves():
 def test_cvar_lp_infeasible_return_floor_raises():
     rng = np.random.default_rng(0)
     sc = pd.DataFrame(rng.normal(0.0, 0.01, (250, 3)), columns=COLS)
-    with pytest.raises(ValueError, match="infeasible|failed"):
+    with pytest.raises(ValueError, match=r"infeasible|failed"):
         min_cvar(sc, sum_to=1.0, gross_limit=1.0, return_floor=10.0)
 
 

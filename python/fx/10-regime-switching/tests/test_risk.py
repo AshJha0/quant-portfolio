@@ -3,9 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime import (
-    random_timing_regimes,
     DetectionConfig,
     StrategyConfig,
     build_features,
@@ -13,12 +11,12 @@ from fx_regime import (
     comparison_table,
     detection_lag,
     detection_lag_report,
-    oracle_gap_decomposition,
-    generate_null_gbm_panel,
     generate_roro_panel,
+    oracle_gap_decomposition,
     oracle_regimes,
     per_regime_stats,
     perf_stats,
+    random_timing_regimes,
     regime_spells,
     run_backtest,
     run_detection,

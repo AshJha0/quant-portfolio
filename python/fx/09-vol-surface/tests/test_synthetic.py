@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_surface import HestonParams, implied_vol, price_cos
 from fx_surface.data import (
     calibration_slices,
@@ -18,9 +17,9 @@ def test_deterministic_given_seed():
     a = eurusd_market(noise=0.001, seed=42)
     b = eurusd_market(noise=0.001, seed=42)
     c = eurusd_market(noise=0.001, seed=43)
-    for sa, sb in zip(a.slices, b.slices):
+    for sa, sb in zip(a.slices, b.slices, strict=False):
         assert sa.quotes == sb.quotes
-    assert any(sa.quotes != sc.quotes for sa, sc in zip(a.slices, c.slices))
+    assert any(sa.quotes != sc.quotes for sa, sc in zip(a.slices, c.slices, strict=False))
 
 
 def test_noise_zero_is_exact_preset():
@@ -63,7 +62,7 @@ def test_ground_truth_quotes_consistent_with_heston():
     params = HestonParams(v0=0.0064, kappa=1.8, theta=0.008, xi=0.45, rho=-0.35)
     m = market_from_heston(params, tenors=(("3m", 91 / 365), ("1y", 1.0)))
     for cal in calibration_slices(m):
-        for K, v in zip(cal.strikes, cal.vols):
+        for K, v in zip(cal.strikes, cal.vols, strict=False):
             pr = float(price_cos(m.S, float(K), cal.T, cal.r_d, cal.r_f, params, -1))
             iv = implied_vol(pr, m.S, float(K), cal.T, cal.r_d, cal.r_f, -1)
             assert iv == pytest.approx(v, abs=5e-7)
@@ -81,7 +80,7 @@ def test_ground_truth_mode_seeded_noise():
 def test_calibration_slices_structure(eurusd):
     slices = calibration_slices(eurusd)
     assert len(slices) == 6
-    for cal, ms in zip(slices, eurusd.slices):
+    for cal, ms in zip(slices, eurusd.slices, strict=False):
         assert cal.T == ms.T
         assert cal.strikes.shape == cal.vols.shape == (5,)
         assert np.all(np.diff(cal.strikes) > 0)

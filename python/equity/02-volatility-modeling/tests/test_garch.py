@@ -2,9 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy import stats
-
-from true_params import GARCH_TRUE
 from eq_vol.data import synthetic as syn
 from eq_vol.garch import (
     fit_garch,
@@ -16,6 +13,8 @@ from eq_vol.garch import (
     unconditional_variance,
     vol_halflife,
 )
+from scipy import stats
+from true_params import GARCH_TRUE
 
 
 class TestRecursionAndLikelihood:
@@ -118,9 +117,9 @@ class TestDerivedQuantities:
         assert unconditional_variance(5e-6, 0.05, 0.90) == pytest.approx(1e-4, rel=1e-12)
 
     def test_unconditional_variance_igarch_raises(self):
-        with pytest.raises(ValueError, match="IGARCH|integrated"):
+        with pytest.raises(ValueError, match=r"IGARCH|integrated"):
             unconditional_variance(5e-6, 0.10, 0.90)  # alpha + beta = 1 exactly
-        with pytest.raises(ValueError, match="IGARCH|integrated"):
+        with pytest.raises(ValueError, match=r"IGARCH|integrated"):
             unconditional_variance(5e-6, 0.30, 0.75)  # explosive
 
     def test_unconditional_variance_bad_omega_raises(self):

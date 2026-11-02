@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-import pytest
-
 import fi_rates as fr
+import pytest
 from fi_rates.data import market_quotes, sample_portfolio
 
 SETTLEMENT = dt.date(2026, 8, 18)

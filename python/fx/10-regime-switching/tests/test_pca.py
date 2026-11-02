@@ -2,17 +2,14 @@
 
 import numpy as np
 import pytest
-from sklearn.decomposition import PCA as SkPCA
-
 from fx_regime import (
     EM,
     G10_CARRY,
     HAVENS,
-    build_features,
     fit_pca,
-    generate_roro_panel,
     roro_axis_check,
 )
+from sklearn.decomposition import PCA as SkPCA
 
 
 def _data(n=200, p=6, seed=0):
@@ -104,7 +101,7 @@ def test_roro_axis_on_feature_block(panel2, feats2):
 
     sub = feats2[["avg_vol", "carry_ret", "haven_rs", "usd_corr", "em_g10"]]
     res = fit_pca(sub.to_numpy(), 3)
-    pc1 = dict(zip(sub.columns, res.components[0]))
+    pc1 = dict(zip(sub.columns, res.components[0], strict=False))
     s = np.sign(pc1["carry_ret"])
     assert np.sign(pc1["em_g10"]) == s
     assert np.sign(pc1["haven_rs"]) == -s

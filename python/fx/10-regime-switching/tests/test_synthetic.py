@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime import (
     CURRENCIES,
     EM,
@@ -112,7 +111,7 @@ def test_markov_chain_transition_recovery():
     P = np.array([[0.9, 0.1], [0.3, 0.7]])
     states = simulate_markov_chain(P, 20000, rng)
     counts = np.zeros((2, 2))
-    for a, b in zip(states[:-1], states[1:]):
+    for a, b in zip(states[:-1], states[1:], strict=False):
         counts[a, b] += 1
     est = counts / counts.sum(axis=1, keepdims=True)
     assert np.abs(est - P).max() < 0.02

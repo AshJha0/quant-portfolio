@@ -8,10 +8,9 @@ variant fills at p_t and pays an auction cost.
 import numpy as np
 import pandas as pd
 import pytest
+from fx_algo import BacktestConfig, ExecutionConfig, IntradayBacktester
 from hypothesis import given, settings
 from hypothesis import strategies as hst
-
-from fx_algo import BacktestConfig, ExecutionConfig, IntradayBacktester
 
 PIP = 1e-4
 FLAT = {"asia": 0.4, "london": 0.4, "overlap": 0.4, "ny": 0.4, "late": 0.4}
@@ -37,7 +36,7 @@ def test_hand_ledger_fill_at_modelled_next_price():
     # closes 1.1000, 1.1010, 1.0990, 1.1005; buy 1 at close of bar 0.
     bars = toy_bars([8, 9, 10, 11], [1.1000, 1.1010, 1.0990, 1.1005])
     pos = pd.Series([1.0, -2.0, 0.0, 0.0], index=bars.index)
-    ledger, s = bt().run(bars, pos, execution=ExecutionConfig(fill_fraction=0.25))
+    ledger, _s = bt().run(bars, pos, execution=ExecutionConfig(fill_fraction=0.25))
     # fills: bar1 at 1.1000 + .25*.0010; bar2 at 1.1010 - .25*.0020; bar3 at 1.0990 + .25*.0015
     assert ledger["fill_price"].iloc[1] == pytest.approx(1.10025, abs=1e-12)
     assert ledger["fill_price"].iloc[2] == pytest.approx(1.1005, abs=1e-12)

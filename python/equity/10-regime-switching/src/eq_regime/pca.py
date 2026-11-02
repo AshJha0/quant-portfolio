@@ -16,11 +16,12 @@ not flip sign from one refit to the next).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
 
-__all__ = ["PCAModel", "fit_pca", "project", "scree_table", "rolling_pca"]
+__all__ = ["PCAModel", "fit_pca", "project", "rolling_pca", "scree_table"]
 
 
 @dataclass(frozen=True)
@@ -140,14 +141,13 @@ def project(X: pd.DataFrame | np.ndarray, model: PCAModel) -> pd.DataFrame | np.
     -------
     (T x n_components) scores.
     """
-    is_df = isinstance(X, pd.DataFrame)
-    arr = X.to_numpy(dtype=float) if is_df else np.asarray(X, dtype=float)
+    arr = X.to_numpy(dtype=float) if isinstance(X, pd.DataFrame) else np.asarray(X, dtype=float)
     if arr.shape[1] != len(model.mean):
         raise ValueError(
             f"feature count mismatch: X has {arr.shape[1]}, model fitted on {len(model.mean)}"
         )
     scores = ((arr - model.mean) / model.std) @ model.components
-    if is_df:
+    if isinstance(X, pd.DataFrame):
         cols = [f"PC{i + 1}" for i in range(model.n_components)]
         return pd.DataFrame(scores, index=X.index, columns=cols)
     return scores
@@ -225,5 +225,5 @@ def rolling_pca(
             feature_names=model.feature_names,
         )
         score_block = X.iloc[start : min(start + step, t_len)]
-        frames.append(project(score_block, model))
+        frames.append(cast(pd.DataFrame, project(score_block, model)))
     return pd.concat(frames)

@@ -2,7 +2,6 @@
 violations detected with exact P&L."""
 
 import pytest
-
 from fx_rates.arbitrage import (
     CIPQuotes,
     detect_cip_arbitrage,

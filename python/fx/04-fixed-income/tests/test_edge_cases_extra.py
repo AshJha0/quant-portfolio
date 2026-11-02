@@ -7,10 +7,10 @@ Complements tests/test_edge_cases.py; documented in docs/VALIDATION.md.
 
 import dataclasses
 import datetime as dt
+from typing import ClassVar
 
 import numpy as np
 import pytest
-
 from fx_rates.arbitrage import CIPQuotes, detect_cip_arbitrage, no_arb_bounds
 from fx_rates.bootstrap import (
     basis_adjusted_curve,
@@ -168,7 +168,7 @@ class TestCurveLimits:
 # CIP violations and the arbitrage band
 # --------------------------------------------------------------------------
 class TestCIPViolations:
-    BASE = dict(spot_bid=1.0849, spot_ask=1.0851,
+    BASE: ClassVar[dict] = dict(spot_bid=1.0849, spot_ask=1.0851,
                 dom_rate_bid=0.0525, dom_rate_ask=0.0535,
                 for_rate_bid=0.0375, for_rate_ask=0.0385, tau=0.25)
 
@@ -223,7 +223,7 @@ class TestCIPViolations:
         assert lo > 0 and hi > lo
 
     def test_crossed_market_rejected(self):
-        with pytest.raises(ValueError, match="bid .* exceeds ask"):
+        with pytest.raises(ValueError, match=r"bid .* exceeds ask"):
             CIPQuotes(spot_bid=1.0851, spot_ask=1.0849,
                       fwd_bid=1.089, fwd_ask=1.090,
                       dom_rate_bid=0.05, dom_rate_ask=0.055,

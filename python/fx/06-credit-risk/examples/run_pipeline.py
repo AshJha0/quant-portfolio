@@ -28,8 +28,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sklearn.linear_model import LogisticRegression  # cross-check only
-
 from fx_credit.capital import capital_table
 from fx_credit.cleaning import (
     assert_no_leaky_fields,
@@ -45,7 +43,6 @@ from fx_credit.data.synthetic import (
 )
 from fx_credit.exposure import FXForward, expected_exposure_loss_for_forward, netting_set_profile
 from fx_credit.model import (
-    RATING_BANDS,
     RATING_ORDER,
     assign_rating,
     expected_sign_check,
@@ -72,6 +69,7 @@ from fx_credit.validation import (
     within_country_autocorrelation,
 )
 from fx_credit.woe import iv_report, monotone_merge, woe_table, woe_transform
+from sklearn.linear_model import LogisticRegression  # cross-check only
 
 pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
@@ -255,7 +253,7 @@ def main() -> None:
     kw = dict(n_steps=24, n_paths=50_000, seed=2)
     net_p = netting_set_profile([fwd, sell], spot, vol, rd, rf, netting=True, **kw)
     gross_p = netting_set_profile([fwd, sell], spot, vol, rd, rf, netting=False, **kw)
-    print(f"\n-- Netting set: +10m and -10m EURUSD forwards --")
+    print("\n-- Netting set: +10m and -10m EURUSD forwards --")
     print(f"Peak PFE99 without netting agreement: USD {gross_p.peak_pfe(0.99):>13,.0f}")
     print(f"Peak PFE99 with netting agreement:    USD {net_p.peak_pfe(0.99):>13,.0f}")
 

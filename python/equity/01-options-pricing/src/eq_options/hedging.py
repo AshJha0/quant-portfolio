@@ -35,7 +35,7 @@ from scipy.stats import norm
 
 from .black_scholes import OptionType, bs_price, validate_inputs
 
-__all__ = ["HedgeResult", "simulate_delta_hedge", "pnl_std_vs_frequency"]
+__all__ = ["HedgeResult", "pnl_std_vs_frequency", "simulate_delta_hedge"]
 
 
 @dataclass(frozen=True)

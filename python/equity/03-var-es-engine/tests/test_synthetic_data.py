@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy.stats import kurtosis
-
 from eq_var.data import (
     default_covariance,
     demo_covariance,
@@ -11,6 +9,7 @@ from eq_var.data import (
     simulate_garch_returns,
     simulate_returns,
 )
+from scipy.stats import kurtosis
 
 
 class TestGenerators:

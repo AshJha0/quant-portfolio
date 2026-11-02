@@ -23,7 +23,7 @@ decimal log returns in, annualized decimal vol out).
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -32,10 +32,10 @@ from .returns import _as_1d_array
 
 __all__ = [
     "close_to_close_vol",
-    "rolling_close_vol",
-    "parkinson_vol",
-    "garman_klass_vol",
     "day_of_week_vol_factors",
+    "garman_klass_vol",
+    "parkinson_vol",
+    "rolling_close_vol",
 ]
 
 _MIN_OBS = 2

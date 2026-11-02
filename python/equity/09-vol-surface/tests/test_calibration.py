@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import eq_surface as es
 import numpy as np
 import pytest
-
-import eq_surface as es
 from eq_surface.heston import FellerWarning
 
 S0, R, Q = 100.0, 0.02, 0.01
@@ -40,7 +39,7 @@ def test_jacobian_condition_number_reported_and_large(clean_calibration):
 
 
 def test_feller_violation_warned_not_raised(clean_calibration):
-    res, true, caught = clean_calibration
+    res, _true, caught = clean_calibration
     # The DEFAULT_TRUE_HESTON truth violates Feller (ratio 0.8); the fitted
     # parameters land close to it, so calibration must have warned.
     assert res.feller_ratio < 1.0
@@ -77,7 +76,7 @@ def test_model_ivs_helper_matches_direct_inversion(calib_market):
     expiries, strikes, ivs, true = calib_market
     model = es.heston_model_ivs(S0, R, Q, expiries, strikes, true)
     # generation and re-inversion are the same operation -> near-exact match
-    for iv_in, iv_out in zip(ivs, model):
+    for iv_in, iv_out in zip(ivs, model, strict=False):
         assert np.allclose(iv_in, iv_out, atol=1e-10, equal_nan=True)
 
 

@@ -23,8 +23,9 @@ Conventions
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Sequence
+from typing import Literal
 
 import numpy as np
 from scipy.stats import norm
@@ -32,14 +33,14 @@ from scipy.stats import norm
 from ._validation import finite_array, finite_scalar
 
 __all__ = [
-    "RiskFactor",
-    "Position",
     "EquityPosition",
     "FuturePosition",
     "OptionPosition",
     "Portfolio",
-    "bs_price",
+    "Position",
+    "RiskFactor",
     "bs_greeks",
+    "bs_price",
 ]
 
 FactorKind = Literal["equity", "index", "vol"]

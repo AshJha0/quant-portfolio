@@ -18,18 +18,17 @@ deterministic given it.
 from __future__ import annotations
 
 import math
-from typing import Union
 
 import numpy as np
 
 from .heston import HestonParams
 
-__all__ = ["simulate_terminal", "mc_price"]
+__all__ = ["mc_price", "simulate_terminal"]
 
 _PSI_C = 1.5  # Andersen's switching threshold
 
 
-def _rng(seed: Union[int, np.random.Generator]) -> np.random.Generator:
+def _rng(seed: int | np.random.Generator) -> np.random.Generator:
     if isinstance(seed, np.random.Generator):
         return seed
     return np.random.default_rng(seed)
@@ -44,7 +43,7 @@ def simulate_terminal(
     n_paths: int = 50_000,
     n_steps: int = 100,
     scheme: str = "qe",
-    seed: Union[int, np.random.Generator] = 0,
+    seed: int | np.random.Generator = 0,
     antithetic: bool = True,
     martingale_correction: bool = True,
 ) -> np.ndarray:
@@ -193,7 +192,7 @@ def mc_price(
     n_paths: int = 50_000,
     n_steps: int = 100,
     scheme: str = "qe",
-    seed: Union[int, np.random.Generator] = 0,
+    seed: int | np.random.Generator = 0,
     antithetic: bool = True,
     martingale_correction: bool = True,
 ) -> tuple[float, float]:

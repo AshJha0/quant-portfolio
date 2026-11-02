@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_pairs.data import synthetic as syn
 from fx_pairs.signals import (
     carry_entry_veto,
@@ -95,7 +94,7 @@ class TestStateMachine:
     def test_entry_permission_masks_gate_entries_only(self):
         z = pd.Series([0.0, -2.5, -2.5, -0.1])
         allow_long = np.array([True, False, True, True])
-        pos, trades = generate_positions(z, entry=2.0, exit_=0.5,
+        pos, _trades = generate_positions(z, entry=2.0, exit_=0.5,
                                          allow_long=allow_long)
         # entry vetoed at t=1, taken at t=2
         assert list(pos) == [0, 0, 1, 0]
@@ -170,8 +169,8 @@ class TestCarryFilter:
                       + 0.5 * rng.standard_normal(400))
         allow_long, allow_short = carry_entry_veto(
             z, sigma_spread=0.01, carry_per_day=3e-4, half_life=15.0)
-        pos_all, trades_all = generate_positions(z, entry=2.0, exit_=0.5)
-        pos_f, trades_f = generate_positions(z, entry=2.0, exit_=0.5,
+        _pos_all, trades_all = generate_positions(z, entry=2.0, exit_=0.5)
+        _pos_f, trades_f = generate_positions(z, entry=2.0, exit_=0.5,
                                              allow_long=allow_long,
                                              allow_short=allow_short)
         assert len(trades_f) <= len(trades_all)

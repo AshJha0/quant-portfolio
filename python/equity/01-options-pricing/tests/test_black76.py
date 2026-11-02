@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import (
     b76_d1_d2,
     black76_greeks,
@@ -55,8 +54,10 @@ def test_black76_greeks_vs_finite_differences() -> None:
         g = black76_greeks(F, K, T, r, sigma, otype)
         h = 1e-5 * F
 
-        def price(f: float = F, t: float = T, rr: float = r, s: float = sigma) -> float:
-            return black76_price(f, K, t, rr, s, otype)
+        def price(
+            f: float = F, t: float = T, rr: float = r, s: float = sigma, ot: str = otype
+        ) -> float:
+            return black76_price(f, K, t, rr, s, ot)
 
         assert g.delta == pytest.approx(
             (price(f=F + h) - price(f=F - h)) / (2 * h), rel=1e-6

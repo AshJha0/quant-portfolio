@@ -4,7 +4,6 @@ all-cash periods, zero-trade backtests, tiny samples."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_pairs.backtest import ZERO_COSTS, backtest_pair, backtest_portfolio
 from eq_pairs.cointegration import adf_test, engle_granger, hedge_ratio
 from eq_pairs.data import business_index
@@ -53,12 +52,12 @@ class TestMissingData:
         y = pd.Series(np.linspace(100.0, 130.0, 30), index=idx)
         x = pd.Series(np.linspace(50.0, 60.0, 30), index=idx)
         y.iloc[10:13] = np.nan  # 3-day halt: within ffill limit
-        ya, xa = align_pair(y, x, policy="ffill", limit=5)
+        ya, _xa = align_pair(y, x, policy="ffill", limit=5)
         assert len(ya) == 30 and ya.notna().all()
         y.iloc[10:20] = np.nan  # 10-day halt: must NOT be silently filled
         with pytest.raises(ValueError, match="gap too long"):
             align_pair(y, x, policy="ffill", limit=5)
-        ya, xa = align_pair(y, x, policy="drop")
+        ya, _xa = align_pair(y, x, policy="drop")
         assert len(ya) == 20
 
     def test_leading_trailing_nans_trimmed(self):

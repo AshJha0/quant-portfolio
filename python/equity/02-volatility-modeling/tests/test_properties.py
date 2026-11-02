@@ -16,7 +16,6 @@ import math
 
 import numpy as np
 import pytest
-
 from eq_vol.data import synthetic as syn
 from eq_vol.egarch import egarch_recursion, fit_egarch
 from eq_vol.egarch import news_impact_curve as egarch_nic
@@ -27,7 +26,6 @@ from eq_vol.garch import fit_garch, garch_recursion, unconditional_variance
 from eq_vol.gjr import fit_gjr
 from eq_vol.gjr import news_impact_curve as gjr_nic
 from eq_vol.historical import realized_vol, window_sensitivity
-
 
 # ---------------------------------------------------------------------------
 # scale equivariance
@@ -104,12 +102,12 @@ class TestMonotonicity:
         for lam in (0.80, 0.90, 0.94, 0.99):
             s2 = ewma_variance(r, lam=lam)
             jumps.append(s2[101] - s2[100])
-        assert all(b < a for a, b in zip(jumps, jumps[1:]))
+        assert all(b < a for a, b in zip(jumps, jumps[1:], strict=False))
 
     def test_ewma_halflife_increasing_in_lambda(self):
         """Half-life is increasing in lambda (higher lambda = longer memory)."""
         hl = [lambda_to_halflife(lam) for lam in (0.80, 0.90, 0.94, 0.99)]
-        assert all(b > a for a, b in zip(hl, hl[1:]))
+        assert all(b > a for a, b in zip(hl, hl[1:], strict=False))
         assert lambda_to_halflife(1.0) == np.inf
 
     def test_garch_term_structure_monotone_toward_unconditional(self):
@@ -144,7 +142,7 @@ class TestMonotonicity:
         r = syn.simulate_gbm_returns(3000, sigma_annual=0.20, seed=711)
         tbl = window_sensitivity(r, windows=(10, 21, 63, 252))
         stds = tbl["std_of_estimate"].to_numpy()
-        assert all(b < a for a, b in zip(stds, stds[1:]))
+        assert all(b < a for a, b in zip(stds, stds[1:], strict=False))
         # and it tracks the theoretical sigma / sqrt(2 w) within a factor of 3
         ratio = stds / tbl["approx_sampling_std"].to_numpy()
         assert np.all((ratio > 0.3) & (ratio < 3.0))

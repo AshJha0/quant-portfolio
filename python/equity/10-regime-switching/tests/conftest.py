@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_regime.data import make_gbm_panel, make_regime_panel
 from eq_regime.features import build_features
 from eq_regime.hmm import fit_hmm

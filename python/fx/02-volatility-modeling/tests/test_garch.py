@@ -4,7 +4,6 @@ standard errors, input validation."""
 
 import numpy as np
 import pytest
-
 from conftest import GARCH_T_TRUE, GARCH_TRUE, GARCHX_TRUE
 from fx_vol import fit_garch, garch_filter
 from fx_vol.data import synthetic as syn
@@ -26,7 +25,8 @@ class TestFilter:
 
     def test_exogenous_term_adds_variance(self):
         r = syn.simulate_constant_vol(300, 0.006, seed=43)
-        x = np.zeros(300); x[100] = 1.0
+        x = np.zeros(300)
+        x[100] = 1.0
         s2_base = garch_filter(r, 2e-6, 0.05, 0.9)
         s2_x = garch_filter(r, 2e-6, 0.05, 0.9, gamma_x=[5e-5], x=x)
         assert s2_x[100] > s2_base[100] + 4e-5  # direct effect plus decay of past

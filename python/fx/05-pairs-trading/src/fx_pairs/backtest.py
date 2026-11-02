@@ -34,25 +34,24 @@ positions decided before ``t``. A detector test perturbs prices after day
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig
 
-from ._validation import finite_series, require_finite
-
 from . import carry as carry_mod
+from ._validation import finite_series, require_finite
 from .cointegration import engle_granger
-from .signals import Trade, generate_positions, zscore
+from .signals import Trade, generate_positions
 from .universe import pip_size as _pip_size
 
 __all__ = [
-    "ExecutionConfig",
     "BacktestResult",
-    "run_backtest",
-    "WalkForwardWindow",
+    "ExecutionConfig",
     "WalkForwardResult",
+    "WalkForwardWindow",
+    "run_backtest",
     "walk_forward_backtest",
 ]
 
@@ -200,7 +199,7 @@ def run_backtest(
     if ex.mode == "close_auction":
         spot[1:] = n1[:-1] * np.diff(lp1) - n2[:-1] * np.diff(lp2)
         if accr1 is not None:
-            car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * accr2[1:]
+            car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * cast(np.ndarray, accr2)[1:]
         dn1 = np.abs(np.diff(np.concatenate([[0.0], n1])))
         dn2 = np.abs(np.diff(np.concatenate([[0.0], n2])))
         auc = ex.auction_cost_bp * 1e-4
@@ -218,7 +217,7 @@ def run_backtest(
                     - old2 * (lq2 - lp2[:-1]) - new2 * (lp2[1:] - lq2))
         if accr1 is not None:
             car[1:] = ((f * old1 + (1 - f) * new1) * accr1[1:]
-                       - (f * old2 + (1 - f) * new2) * accr2[1:])
+                       - (f * old2 + (1 - f) * new2) * cast(np.ndarray, accr2)[1:])
         cost[1:] = -(np.abs(new1 - old1) * ps1 / q1 + np.abs(new2 - old2) * ps2 / q2)
 
     spot_pnl = pd.Series(spot * notional, index=index, name="spot_pnl")

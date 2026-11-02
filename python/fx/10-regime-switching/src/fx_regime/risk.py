@@ -240,7 +240,7 @@ def detection_lag_report(
         "median_lag_days": float(flips["lag_days"].median()),
         "mean_cost_per_flip": float(flips["lag_cost"].mean()),
         "total_lag_cost": float(flips["lag_cost"].sum()),
-        "n_flips": int(len(flips)),
+        "n_flips": len(flips),
         "detection_rate": float(flips["detected"].mean()),
     }
 
@@ -303,15 +303,16 @@ def carry_drawdown_decomposition(
     spells = regime_spells(reg)
     vals = carry_net.to_numpy()
     risk_spells = spells[spells["label"].isin(risk_labels)]
+    spans = [(int(a), int(b)) for a, b in zip(risk_spells["start"], risk_spells["end"], strict=True)]
     total_risk = float(
-        sum(vals[int(s.start) : int(s.end)].sum() for s in risk_spells.itertuples())
+        sum(vals[a:b].sum() for a, b in spans)
     )
     rows = {}
     for K in horizons:
         first_k = float(
             sum(
-                vals[int(s.start) : min(int(s.start) + K, int(s.end))].sum()
-                for s in risk_spells.itertuples()
+                vals[a : min(a + K, b)].sum()
+                for a, b in spans
             )
         )
         share = first_k / total_risk if total_risk != 0 else np.nan

@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from fx_options import hedge_frequency_study, simulate_delta_hedge
 
 ARGS = dict(S0=1.10, K=1.1075, T=0.5, r_d=0.0425, r_f=0.0290,

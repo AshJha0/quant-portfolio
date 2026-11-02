@@ -12,13 +12,12 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 
+import eq_risk_metrics as rm
 import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-
-import eq_risk_metrics as rm
 
 finite = st.floats(min_value=-0.5, max_value=0.5, allow_nan=False, allow_infinity=False)
 positive = st.floats(min_value=1.0, max_value=1e4, allow_nan=False, allow_infinity=False)

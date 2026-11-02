@@ -6,10 +6,9 @@ or docs/VALIDATION.md (failure modes).
 
 from __future__ import annotations
 
+import eq_surface as es
 import numpy as np
 import pytest
-
-import eq_surface as es
 from eq_surface.smile import SVIParams
 
 S, R, Q = 100.0, 0.02, 0.01

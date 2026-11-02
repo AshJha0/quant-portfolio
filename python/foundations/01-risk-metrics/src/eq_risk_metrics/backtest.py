@@ -190,7 +190,7 @@ def kupiec_pof_test(
             f"between 0 and 1 (e.g. 0.99), got {confidence!r}"
         )
     exceptions = count_var_exceptions(returns, var)
-    n = int(len(returns))
+    n = len(returns)
     x = int(exceptions.sum())
     p = 1.0 - confidence
     observed = x / n

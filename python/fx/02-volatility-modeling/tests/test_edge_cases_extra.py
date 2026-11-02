@@ -9,7 +9,6 @@ docs/VALIDATION.md §5.
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_vol import (
     close_to_close_vol,
     cross_volatility,

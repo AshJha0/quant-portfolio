@@ -8,7 +8,6 @@ offline.
 from __future__ import annotations
 
 import pytest
-
 from fx_surface import HestonParams, calibrate_heston
 from fx_surface.data import (
     calibration_slices,

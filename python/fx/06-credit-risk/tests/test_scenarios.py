@@ -8,7 +8,6 @@ settlement/exposure edge cases wired through realistic flows.
 
 import numpy as np
 import pytest
-
 from fx_credit.cleaning import (
     assert_no_leaky_fields,
     clean_panel,
@@ -105,7 +104,7 @@ def test_score_psi_stable_outside_contagion(pipeline):
 
 def test_country_with_no_crisis_history_scored(pipeline):
     """A country that never defaulted still gets a finite PD and a rating."""
-    panel, train, test, tables, fit = pipeline
+    panel, _train, test, tables, fit = pipeline
     totals = panel.groupby("country")["default"].sum()
     quiet = totals[totals == 0].index
     assert len(quiet) > 0  # such countries exist in the panel
@@ -157,7 +156,7 @@ def test_zero_notional_trade_in_book_is_harmless():
     book = generate_fx_trade_book()
     rates = {"USD": 1.0, "EUR": 1.08, "GBP": 1.27, "JPY": 1 / 148.0}
     base = gross_settlement_exposure(book, rates)
-    with_zero = book + [FXTrade("Z", "TokyoBank", "USDJPY", 0.0, 148.0, True)]
+    with_zero = [*book, FXTrade("Z", "TokyoBank", "USDJPY", 0.0, 148.0, True)]
     assert gross_settlement_exposure(with_zero, rates) == pytest.approx(base)
 
 

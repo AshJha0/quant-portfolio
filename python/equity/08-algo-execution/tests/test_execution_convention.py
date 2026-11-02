@@ -8,7 +8,6 @@ variant fills at p_t and pays an auction cost.
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_algo import BacktestConfig, ExecutionConfig, run_backtest
 
 

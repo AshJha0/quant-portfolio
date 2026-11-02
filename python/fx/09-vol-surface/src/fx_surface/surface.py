@@ -37,8 +37,8 @@ from __future__ import annotations
 
 import math
 import warnings
-from dataclasses import dataclass, field
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import brentq, minimize_scalar
@@ -55,8 +55,8 @@ from .smile_from_quotes import (
 )
 
 __all__ = [
-    "SmileSlice",
     "FXVolSurface",
+    "SmileSlice",
     "SurfaceConvergenceError",
     "build_slice",
     "build_surface",
@@ -96,7 +96,7 @@ class SmileSlice:
     convention: str
     vols: dict[str, float]
     strikes: dict[str, float]
-    smile: object
+    smile: SVISmile | VannaVolgaSmile
     #: Largest |smile vol - quoted vol| at the five pillar strikes.
     pillar_fit_error: float = 0.0
 
@@ -124,6 +124,7 @@ def build_slice(
     vols = vols_from_quotes(quotes)
     strikes = solve_pillar_strikes(vols, S, T, r_d, r_f, convention)
     F = gk_forward(S, T, r_d, r_f)
+    smile: SVISmile | VannaVolgaSmile
     if smile_model == "svi":
         ks = np.array([strikes[p] for p in PILLAR_LABELS])
         vs = np.array([vols[p] for p in PILLAR_LABELS])
@@ -136,6 +137,7 @@ def build_slice(
         )
     else:
         raise ValueError(f"unknown smile_model {smile_model!r}; use 'svi' or 'vv'")
+    labels: tuple[str, ...]
     if smile_model == "svi":
         labels = PILLAR_LABELS
     else:
@@ -315,7 +317,7 @@ class FXVolSurface:
         if len(sls) == 1:
             return self._slice_vol_at_delta(sls[0], delta, cp)
         w = sum(lam * self._slice_vol_at_delta(sl, delta, cp) ** 2 * sl.T
-                for sl, lam in zip(sls, wts))
+                for sl, lam in zip(sls, wts, strict=False))
         return math.sqrt(w / T)
 
     def vol_atm(self, T: float) -> float:
@@ -346,7 +348,7 @@ class FXVolSurface:
                 d = gk_delta(self.S, K, T, r_d, r_f, sigma, cp, self.slice_convention(sl))
                 return self._slice_vol_at_delta(sl, abs(d), cp)
             w = 0.0
-            for sl, lam in zip(sls, wts):
+            for sl, lam in zip(sls, wts, strict=False):
                 d = gk_delta(self.S, K, T, r_d, r_f, sigma, cp, self.slice_convention(sl))
                 w += lam * self._slice_vol_at_delta(sl, abs(d), cp) ** 2 * sl.T
             return math.sqrt(w / T)
@@ -390,7 +392,7 @@ class FXVolSurface:
             )
             return self.delta_calendar_report(deltas=deltas, tol=tol)
         violations = []
-        for s0, s1 in zip(self.slices, self.slices[1:]):
+        for s0, s1 in zip(self.slices, self.slices[1:], strict=False):
             if k_grid is None:
                 half = max(4.0 * s1.vols["atm"] * math.sqrt(s1.T), 0.3)
                 ks = np.linspace(-half, half, 121)
@@ -398,7 +400,7 @@ class FXVolSurface:
                 ks = np.asarray(k_grid, dtype=float)
             w0 = np.array([float(s0.smile.vol(s0.F * math.exp(k))) ** 2 * s0.T for k in ks])
             w1 = np.array([float(s1.smile.vol(s1.F * math.exp(k))) ** 2 * s1.T for k in ks])
-            for k, a, b in zip(ks, w0, w1):
+            for k, a, b in zip(ks, w0, w1, strict=False):
                 if b < a - tol:
                     violations.append(
                         {"k": float(k), "T_from": s0.T, "T_to": s1.T,
@@ -416,9 +418,9 @@ class FXVolSurface:
         quote-monitoring view, not a no-arbitrage test.
         """
         coords: list[tuple[str, float | None, int]] = [("atm", None, 1)]
-        for d in deltas:
-            coords.append((f"{int(round(d * 100))}p", d, -1))
-            coords.append((f"{int(round(d * 100))}c", d, +1))
+        for dlt in deltas:
+            coords.append((f"{int(round(dlt * 100))}p", dlt, -1))
+            coords.append((f"{int(round(dlt * 100))}c", dlt, +1))
         violations = []
         for name, d, cp in coords:
             w_prev = None

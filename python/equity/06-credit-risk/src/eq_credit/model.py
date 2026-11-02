@@ -20,19 +20,23 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
+if TYPE_CHECKING:
+    from .woe import FeatureBinning
+
 __all__ = [
-    "SeparationWarning",
     "LogisticFit",
-    "fit_logistic",
-    "crosscheck_sklearn",
-    "stepwise_select",
     "ScorecardScaling",
+    "SeparationWarning",
+    "crosscheck_sklearn",
+    "fit_logistic",
     "scorecard_points_table",
+    "stepwise_select",
 ]
 
 
@@ -180,7 +184,7 @@ def fit_logistic(
     converged = False
     separated = False
     it = 0
-    for it in range(1, max_iter + 1):
+    for it in range(1, max_iter + 1):  # noqa: B007  (it is read after the loop)
         eta = Xd @ beta
         p = _sigmoid(eta)
         w = p * (1.0 - p)
@@ -301,7 +305,7 @@ def stepwise_select(
     ]
     selected: list[str] = []
     for f in ranked:
-        trial = selected + [f]
+        trial = [*selected, f]
         fit = _fit(trial)
         if fit.p_values[-1] < p_max:
             selected = trial
@@ -369,7 +373,7 @@ class ScorecardScaling:
 
 def scorecard_points_table(
     fit: LogisticFit,
-    binnings: dict[str, "object"],
+    binnings: dict[str, FeatureBinning],
     scaling: ScorecardScaling,
 ) -> pd.DataFrame:
     """Per-bin points allocation for the scorecard.

@@ -12,7 +12,6 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from eq_bs_replication.black_scholes import (
     call_greeks,
     call_price,

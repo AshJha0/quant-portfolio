@@ -21,10 +21,13 @@ Case C: Kupiec / Christoffersen / Basel traffic-light statistics.
 
 from __future__ import annotations
 
+import importlib.util
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_var.backtesting import (
     basel_traffic_light,
     christoffersen_independence,
@@ -184,9 +187,6 @@ class TestCaseCBacktestStatistics:
 # produces from the live package, to the ulp bound documented in the
 # generator (not bit identity: libm and numpy versions move the last bits).
 # ---------------------------------------------------------------------------
-import importlib.util
-import json
-from pathlib import Path
 
 _GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 

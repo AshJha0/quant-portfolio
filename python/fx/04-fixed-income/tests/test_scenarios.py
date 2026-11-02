@@ -2,7 +2,6 @@
 carry / forward-points roll."""
 
 import pytest
-
 from fx_rates.fxforward import FXForward, market_forward
 from fx_rates.risk import book_value
 from fx_rates.scenarios import (

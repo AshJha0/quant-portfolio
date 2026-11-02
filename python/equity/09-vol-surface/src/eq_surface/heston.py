@@ -70,14 +70,14 @@ import numpy as np
 from scipy.integrate import quad
 
 __all__ = [
-    "HestonParams",
     "FellerWarning",
+    "HestonParams",
     "feller_condition",
-    "heston_cf",
-    "heston_call_p1p2",
+    "heston_call",
     "heston_call_damped",
     "heston_call_gl",
-    "heston_call",
+    "heston_call_p1p2",
+    "heston_cf",
     "heston_put",
 ]
 
@@ -127,7 +127,7 @@ class HestonParams:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            for name, value in zip(self._LEGACY_ORDER, args):
+            for name, value in zip(self._LEGACY_ORDER, args, strict=False):
                 if name in kwargs:
                     raise TypeError(f"HestonParams got multiple values for argument {name!r}")
                 kwargs[name] = value
@@ -175,7 +175,7 @@ def feller_condition(p: HestonParams, warn: bool = True) -> float:
             f"Feller condition violated: 2*kappa*theta/xi^2 = {ratio:.3f} < 1; "
             "variance process can touch zero (common in equity calibrations; "
             "pricing remains valid, MC schemes handle v=0)",
-            FellerWarning,
+            FellerWarning, stacklevel=2,
         )
     return float(ratio)
 

@@ -34,7 +34,7 @@ rho (devaluation skew on the call side).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -42,7 +42,7 @@ from scipy.optimize import least_squares
 from .garman_kohlhagen import gk_forward, gk_price, gk_vega, implied_vol
 from .heston import HestonParams, price_cos
 
-__all__ = ["CalibrationSlice", "CalibrationResult", "heston_smile_vols", "calibrate_heston"]
+__all__ = ["CalibrationResult", "CalibrationSlice", "calibrate_heston", "heston_smile_vols"]
 
 
 @dataclass(frozen=True)
@@ -198,7 +198,7 @@ def calibrate_heston(
                 np.array(
                     [
                         gk_vega(S, float(K), sl.T, sl.r_d, sl.r_f, float(v))
-                        for K, v in zip(sl.strikes, sl.vols)
+                        for K, v in zip(sl.strikes, sl.vols, strict=False)
                     ]
                 )
                 for sl in slices
@@ -239,6 +239,7 @@ def calibrate_heston(
             res = r
         if math.sqrt(2.0 * res.cost / len(mkt)) < 1e-8:
             break
+    assert res is not None
     params = HestonParams(v0=res.x[0], kappa=res.x[1], theta=res.x[2],
                           xi=res.x[3], rho=res.x[4])
     model = np.concatenate([heston_smile_vols(S, sl, params, N=N) for sl in slices])

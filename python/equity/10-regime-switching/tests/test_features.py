@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_regime.features import (
     average_pairwise_correlation,
     build_features,

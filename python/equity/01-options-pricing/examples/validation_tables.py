@@ -25,8 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from eq_options import bs_greeks, bs_price, mc_price, simulate_delta_hedge  # noqa: E402
-from eq_options.data import skew_vol  # noqa: E402
+from eq_options import bs_greeks, bs_price, mc_price, simulate_delta_hedge
+from eq_options.data import skew_vol
 
 
 def smile_table() -> None:

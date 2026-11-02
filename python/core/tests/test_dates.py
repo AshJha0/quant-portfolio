@@ -9,7 +9,6 @@ import datetime as dt
 import pytest
 from hypothesis import given
 from hypothesis import strategies as hst
-
 from qp_core.calendars import CALENDARS, ROLL_CONVENTIONS, get_calendar, joint_calendar
 from qp_core.daycount import (
     MONEY_MARKET_DAYCOUNT,
@@ -179,5 +178,5 @@ class TestSchedule:
         mat = add_months(eff, 12 * years + 1)
         got = generate_schedule(eff, mat, freq)
         assert got[-1] == mat
-        assert all(a < b for a, b in zip(got, got[1:]))
+        assert all(a < b for a, b in zip(got, got[1:], strict=False))
         assert got[0] > eff

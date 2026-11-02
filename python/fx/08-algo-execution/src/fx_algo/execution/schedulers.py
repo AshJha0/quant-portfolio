@@ -11,21 +11,19 @@ the parent quantity, with zeros on non-tradeable (weekend) buckets.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from ..sessions import FIX_HOUR_LONDON, FIX_WINDOW_MINUTES, fix_window_mask
 
 __all__ = [
-    "twap_schedule",
+    "fix_schedule",
     "liquidity_weighted_schedule",
     "pov_schedule",
-    "fix_schedule",
+    "twap_schedule",
 ]
 
 
-def _validate(parent_qty: float, n: int, tradeable: Optional[np.ndarray]) -> np.ndarray:
+def _validate(parent_qty: float, n: int, tradeable: np.ndarray | None) -> np.ndarray:
     if not np.isfinite(parent_qty):
         raise ValueError("parent_qty must be finite (no NaN/Inf)")
     if parent_qty == 0:
@@ -43,7 +41,7 @@ def _validate(parent_qty: float, n: int, tradeable: Optional[np.ndarray]) -> np.
 
 
 def twap_schedule(
-    parent_qty: float, n_buckets: int, tradeable: Optional[np.ndarray] = None
+    parent_qty: float, n_buckets: int, tradeable: np.ndarray | None = None
 ) -> np.ndarray:
     """Equal child quantities across all tradeable buckets.
 
@@ -68,7 +66,7 @@ def twap_schedule(
 
 
 def liquidity_weighted_schedule(
-    parent_qty: float, depths: np.ndarray, tradeable: Optional[np.ndarray] = None
+    parent_qty: float, depths: np.ndarray, tradeable: np.ndarray | None = None
 ) -> np.ndarray:
     """Child quantities proportional to the session depth profile.
 
@@ -106,7 +104,7 @@ def pov_schedule(
     parent_qty: float,
     volumes: np.ndarray,
     participation: float,
-    tradeable: Optional[np.ndarray] = None,
+    tradeable: np.ndarray | None = None,
 ) -> np.ndarray:
     """POV-analog: participate at a capped rate of modeled volume.
 

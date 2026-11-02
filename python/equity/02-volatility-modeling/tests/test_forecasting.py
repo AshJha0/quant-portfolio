@@ -2,9 +2,9 @@
 
 import numpy as np
 import pytest
-
 from eq_vol._results import VolatilityFitResult
 from eq_vol.data import synthetic as syn
+from eq_vol.ewma import ewma_forecast
 from eq_vol.forecasting import (
     forecast,
     forecast_egarch,
@@ -14,7 +14,6 @@ from eq_vol.forecasting import (
     rolling_one_step_forecasts,
     term_structure,
 )
-from eq_vol.ewma import ewma_forecast
 from eq_vol.garch import garch_recursion, unconditional_variance
 from eq_vol.gjr import gjr_unconditional_variance
 

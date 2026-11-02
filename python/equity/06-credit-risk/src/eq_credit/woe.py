@@ -26,14 +26,14 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "SuspiciousIVWarning",
     "IV_THRESHOLDS",
+    "FeatureBinning",
+    "SuspiciousIVWarning",
+    "WOETransformer",
+    "fit_categorical_binning",
+    "fit_numeric_binning",
     "iv_strength",
     "woe_iv_from_counts",
-    "FeatureBinning",
-    "fit_numeric_binning",
-    "fit_categorical_binning",
-    "WOETransformer",
 ]
 
 #: (upper_bound, label) IV interpretation thresholds.
@@ -314,7 +314,7 @@ def fit_numeric_binning(
     missing_woe = float(woe_all[-1]) if n_missing > 0 else 0.0
 
     labels = []
-    e = [-np.inf] + list(edges) + [np.inf]
+    e = [-np.inf, *list(edges), np.inf]
     for i in range(len(ga)):
         labels.append(f"({e[i]:.4g}, {e[i+1]:.4g}]")
     if n_missing > 0:
@@ -454,7 +454,7 @@ class WOETransformer:
         self.non_monotone_features = list(non_monotone_features or [])
         self.binnings_: dict[str, FeatureBinning] = {}
 
-    def fit(self, df: pd.DataFrame, target: str = "default") -> "WOETransformer":
+    def fit(self, df: pd.DataFrame, target: str = "default") -> WOETransformer:
         """Fit one binning per feature on ``df`` against ``target``."""
         y = df[target]
         for f in self.numeric_features:

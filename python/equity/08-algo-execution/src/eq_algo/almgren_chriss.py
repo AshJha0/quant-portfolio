@@ -30,16 +30,23 @@ everything in the first slice (urgency).  Both are tested.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 
 from .intraday import IntradayMarket
 
-__all__ = ["ACParams", "ac_kappa", "ac_trajectory", "ac_trades", "ac_cost_moments",
-           "efficient_frontier", "evaluate_schedules"]
+__all__ = [
+    "ACParams",
+    "ac_cost_moments",
+    "ac_kappa",
+    "ac_trades",
+    "ac_trajectory",
+    "efficient_frontier",
+    "evaluate_schedules",
+]
 
 
 @dataclass(frozen=True)

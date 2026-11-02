@@ -21,19 +21,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
 import pandas as pd
 
 __all__ = [
     "FORBIDDEN_POST_OUTCOME_FIELDS",
     "LeakageError",
-    "check_leakage",
-    "find_duplicates",
-    "drop_duplicate_loans",
-    "WinsorBounds",
-    "fit_winsor_bounds",
-    "apply_winsor",
     "MedianImputer",
+    "WinsorBounds",
+    "apply_winsor",
+    "check_leakage",
+    "drop_duplicate_loans",
+    "find_duplicates",
+    "fit_winsor_bounds",
     "train_oot_split",
 ]
 
@@ -149,7 +148,7 @@ class MedianImputer:
 
     medians: dict[str, float] = field(default_factory=dict)
 
-    def fit(self, df: pd.DataFrame, cols: list[str]) -> "MedianImputer":
+    def fit(self, df: pd.DataFrame, cols: list[str]) -> MedianImputer:
         """Store training medians (NaN ignored) for ``cols``."""
         self.medians = {c: float(df[c].median()) for c in cols}
         return self

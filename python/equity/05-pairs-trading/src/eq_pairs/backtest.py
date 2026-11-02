@@ -38,31 +38,31 @@ Accounting conventions (all dollars), for day t with fill price p_fill:
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
-
 from qp_core.execution import ExecutionConfig
 
 from .cointegration import engle_granger
 from .signals import SignalRules, generate_signals, size_positions, time_stop_bars
-from .spread import OUFit, compute_spread, fit_ou_ols
+from .spread import compute_spread, fit_ou_ols
 
 __all__ = [
+    "COST_COLUMNS",
     "CostModel",
     "ExecutionConfig",
     "PairResult",
     "PortfolioResult",
+    "WalkForwardWindow",
     "align_pair",
     "backtest_pair",
     "backtest_portfolio",
-    "WalkForwardWindow",
-    "walk_forward_windows",
     "walk_forward_pair",
     "walk_forward_portfolio",
-    "COST_COLUMNS",
+    "walk_forward_windows",
 ]
 
 COST_COLUMNS = ["commission", "slippage", "impact", "borrow", "financing", "auction"]
@@ -234,7 +234,7 @@ def backtest_pair(
     sizing: str = "dollar",
     close_at_end: bool = True,
     execution: ExecutionConfig = DEFAULT_EXECUTION,
-    leg_vol: Optional[tuple[float, float]] = None,
+    leg_vol: tuple[float, float] | None = None,
 ) -> PairResult:
     """Backtest one pair under the decide-at-t, fill-at-modelled-t+1 rule.
 
@@ -309,7 +309,7 @@ def backtest_pair(
 
     q_y = q_x = 0.0
     direction = 0
-    open_trade: Optional[dict] = None
+    open_trade: dict | None = None
 
     def execute_leg(t: int, leg: str, d_shares: float, price: float, sigma: float) -> dict:
         notional = abs(d_shares) * price
@@ -435,7 +435,7 @@ class PortfolioResult:
         idx = frames[0].index
         for f in frames[1:]:
             idx = idx.union(f.index)
-        agg = sum(f.reindex(idx).fillna(0.0) for f in frames)
+        agg = cast(pd.DataFrame, sum(f.reindex(idx).fillna(0.0) for f in frames))
         agg["n_positions"] = sum(
             (p.daily["position"] != 0).astype(int).reindex(idx).fillna(0)
             for p in self.pairs
@@ -533,7 +533,7 @@ def walk_forward_windows(
     n_obs: int,
     formation: int,
     trading: int,
-    step: Optional[int] = None,
+    step: int | None = None,
     allow_partial: bool = False,
 ) -> list[WalkForwardWindow]:
     """Rolling formation/trading splits over ``n_obs`` observations.
@@ -586,7 +586,7 @@ def _fit_formation(
     eg_level: str = "5%",
     min_half_life: float = 1.0,
     max_half_life: float = 126.0,
-) -> Optional[dict]:
+) -> dict | None:
     """Fit EG + OU on a formation window; None if the pair fails any gate.
 
     Gates: EG rejects no-cointegration at ``eg_level``; the OU fit is
@@ -630,7 +630,7 @@ def walk_forward_pair(
     x: pd.Series,
     formation: int = 252,
     trading: int = 63,
-    rules: Optional[SignalRules] = None,
+    rules: SignalRules | None = None,
     costs: CostModel = CostModel(),
     gross: float = 1_000_000.0,
     sizing: str = "dollar",
@@ -639,7 +639,7 @@ def walk_forward_pair(
     name: str = "pair",
     execution: ExecutionConfig = DEFAULT_EXECUTION,
     allow_partial: bool = False,
-) -> tuple[Optional[PairResult], pd.DataFrame]:
+) -> tuple[PairResult | None, pd.DataFrame]:
     """Walk-forward backtest of a single pair.
 
     Each split: fit hedge ratio + OU on the formation window; if the pair
@@ -729,7 +729,7 @@ def walk_forward_portfolio(
     trading: int = 63,
     max_pairs: int = 10,
     min_corr: float = 0.60,
-    rules: Optional[SignalRules] = None,
+    rules: SignalRules | None = None,
     costs: CostModel = CostModel(),
     gross_per_pair: float = 1_000_000.0,
     sizing: str = "dollar",
@@ -740,8 +740,8 @@ def walk_forward_portfolio(
     hedge_window: int = 60,
     screen: str = "corr",
     ssd_top_n: int = 20,
-    rule_overrides: Optional[dict] = None,
-) -> tuple[Optional[PortfolioResult], pd.DataFrame]:
+    rule_overrides: dict | None = None,
+) -> tuple[PortfolioResult | None, pd.DataFrame]:
     """Walk-forward portfolio: re-select and re-fit pairs each formation window.
 
     Per split: screen candidates on the formation window, run EG + OU gates,

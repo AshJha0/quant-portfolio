@@ -22,7 +22,7 @@ from scipy.stats import norm
 from ._common import validate_option_type
 from .forwards import cip_forward
 
-__all__ = ["black76_price", "black76_from_spot"]
+__all__ = ["black76_from_spot", "black76_price"]
 
 
 def black76_price(F: float, K: float, T: float, r_d: float, sigma: float,

@@ -28,8 +28,8 @@ Also provided:
 from __future__ import annotations
 
 import warnings
-
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -39,13 +39,13 @@ from .pca import fit_pca, project
 
 __all__ = [
     "RegimeLabels",
+    "expanding_fit_detect",
+    "filtered_probabilities",
+    "flip_flop_rate",
     "label_states",
     "labels_from_vol_means",
-    "filtered_probabilities",
-    "smoothed_probabilities",
-    "flip_flop_rate",
     "min_duration_filter",
-    "expanding_fit_detect",
+    "smoothed_probabilities",
 ]
 
 BULL, TRANSITION, BEAR = "bull", "transition", "bear"
@@ -105,7 +105,6 @@ def label_states(fit: HMMFit, vol_feature_index: int = 0) -> RegimeLabels:
     -------
     RegimeLabels
     """
-    k = fit.n_states
     if not 0 <= vol_feature_index < fit.means.shape[1]:
         raise ValueError(
             f"vol_feature_index {vol_feature_index} out of range for "
@@ -299,7 +298,7 @@ def expanding_fit_detect(
     for t0 in range(min_train, t_len, refit_every):
         if n_pca is not None:
             pca = fit_pca(x_all[:t0], n_pca)
-            obs = project(x_all, pca)  # row t uses only row t (causal)
+            obs = cast(np.ndarray, project(x_all, pca))  # row t uses only row t (causal)
         else:
             obs = x_all
         fit = fit_hmm(
@@ -320,13 +319,13 @@ def expanding_fit_detect(
         # One pass per block therefore yields the same filtered values as
         # re-running the filter day by day (mutation-test-enforced).
         probs_block = filtered_probabilities(fit, obs[:t1])[t0:t1]
-        for t, probs_t in zip(range(t0, t1), probs_block):
+        for t, probs_t in zip(range(t0, t1), probs_block, strict=False):
             agg = {BULL: 0.0, TRANSITION: 0.0, BEAR: 0.0}
             for s in range(n_states):
                 agg[labels.state_to_label[s]] += float(probs_t[s])
             rows.append(np.array([agg[BULL], agg[TRANSITION], agg[BEAR]]))
             dates.append(features.index[t])
-            regimes.append(max(agg, key=agg.get))
+            regimes.append(max(agg, key=agg.__getitem__))
     out = pd.DataFrame(rows, index=pd.Index(dates), columns=["p_bull", "p_transition", "p_bear"])
     out["regime"] = regimes
     return out

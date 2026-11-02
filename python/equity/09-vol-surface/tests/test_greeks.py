@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_surface.black_scholes import bs_delta
 from eq_surface.greeks import bs_equivalent_greeks, heston_greeks, smile_adjusted_delta
 

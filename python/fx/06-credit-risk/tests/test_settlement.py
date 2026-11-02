@@ -2,10 +2,8 @@
 
 import numpy as np
 import pytest
-
 from fx_credit.data.synthetic import generate_fx_trade_book
 from fx_credit.settlement import (
-    PAYMENT_SYSTEM_HOURS_UTC,
     FXTrade,
     at_risk_window_hours,
     book_settlement_report,

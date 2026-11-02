@@ -12,7 +12,6 @@ Focus, per the regime-switching domain:
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime.data.synthetic import (
     generate_null_gbm_panel,
     generate_roro_panel,

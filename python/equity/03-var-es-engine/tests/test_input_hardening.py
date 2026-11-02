@@ -17,17 +17,16 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_var import (
     acerbi_szekely_z2,
-    historical_var,
+    cholesky,
     cornish_fisher_var,
     ewma_covariance,
     exceptions_from_pnl,
+    historical_var,
     parametric_var,
     portfolio_sigma,
     rolling_var_backtest,
-    cholesky,
     sample_covariance,
     var_standard_error_bootstrap,
 )

@@ -27,7 +27,7 @@ def load_prices(tickers: list[str], start: str, end: str | None = None) -> pd.Da
         (T, N) adjusted close prices, columns = tickers.
     """
     try:
-        import yfinance as yf  # noqa: PLC0415
+        import yfinance as yf
     except ImportError as exc:  # pragma: no cover - network/optional
         raise ImportError(
             "yfinance is required for live data: pip install eq-port[live]. "

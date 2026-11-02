@@ -26,27 +26,27 @@ A positive ``notional_base`` means long the base currency forward
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace as _dc_replace
+import warnings
+from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from functools import cached_property
-from typing import Sequence
 
 import numpy as np
 import pandas as pd
 
 from ._validation import require_finite
-import warnings
-
 from .bootstrap import basis_adjusted_curve, basis_discount_curve
 from .curve import DiscountCurve
 
 __all__ = [
-    "MarketState",
-    "cip_forward",
-    "market_forward",
-    "forward_points",
-    "forward_points_table",
     "FXForward",
     "FXSwap",
+    "MarketState",
+    "cip_forward",
+    "forward_points",
+    "forward_points_table",
+    "market_forward",
 ]
 
 POINT_FACTORS = {"EURUSD": 1e4, "USDJPY": 1e2, "EURJPY": 1e2}
@@ -169,7 +169,7 @@ class MarketState:
         """Discount curve for quote-currency cashflows."""
         return self._discount(self.domestic_curve, self.quote_ccy)
 
-    def replace(self, **kwargs) -> "MarketState":
+    def replace(self, **kwargs) -> MarketState:
         """Return a copy with fields replaced (cached curve is rebuilt)."""
         return _dc_replace(self, **kwargs)
 

@@ -3,7 +3,6 @@ properties and input validation."""
 
 import numpy as np
 import pytest
-
 from eq_port.data import generate_panel
 from eq_port.mvo import (
     efficient_frontier,
@@ -154,7 +153,7 @@ def test_two_fund_theorem():
 
 def test_constrained_frontier_dominated_by_unconstrained():
     fr_c = efficient_frontier(MU, COV, n_points=8, bounds=(0.0, 1.0))
-    for r, v in zip(fr_c.returns, fr_c.vols):
+    for r, v in zip(fr_c.returns, fr_c.vols, strict=False):
         w_u = target_return_portfolio(MU, COV, float(r), bounds=None)
         assert portfolio_vol(w_u, COV) <= v + 1e-9
 

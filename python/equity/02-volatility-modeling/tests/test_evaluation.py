@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_vol.data import synthetic as syn
 from eq_vol.evaluation import (
     arch_lm_test,
@@ -114,7 +113,7 @@ class TestDieboldMariano:
 
     def test_degenerate_losses_raise(self):
         l = np.ones(100)
-        with pytest.raises(ValueError, match="degenerate|non-positive"):
+        with pytest.raises(ValueError, match=r"degenerate|non-positive"):
             diebold_mariano(l, l)
 
     def test_short_series_raises(self):

@@ -36,16 +36,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .black_scholes import OptionType, _check_rates, bs_price, intrinsic_value, validate_inputs
+from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
 
 __all__ = [
     "MCResult",
-    "mc_price",
-    "mc_delta_pathwise",
-    "mc_vega_pathwise",
     "mc_delta_lr",
-    "mc_vega_lr",
+    "mc_delta_pathwise",
     "mc_greek_fd",
+    "mc_price",
+    "mc_vega_lr",
+    "mc_vega_pathwise",
 ]
 
 _Z95 = 1.959963984540054  # two-sided 95% normal quantile

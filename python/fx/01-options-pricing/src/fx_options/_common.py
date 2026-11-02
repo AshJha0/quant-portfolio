@@ -17,8 +17,15 @@ from __future__ import annotations
 import math
 import numbers
 
-__all__ = ["validate_inputs", "validate_option_type", "OTHER_TYPE", "PHI",
-           "ncdf", "safe_exp", "finite_result"]
+__all__ = [
+    "OTHER_TYPE",
+    "PHI",
+    "finite_result",
+    "ncdf",
+    "safe_exp",
+    "validate_inputs",
+    "validate_option_type",
+]
 
 #: Map option type to its opposite (used by foreign-domestic symmetry).
 OTHER_TYPE = {"call": "put", "put": "call"}

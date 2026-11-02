@@ -4,7 +4,6 @@ informative ValueError instead of silently propagating garbage."""
 
 import numpy as np
 import pytest
-
 from eq_credit.model import ScorecardScaling, fit_logistic
 from eq_credit.portfolio_risk import (
     asset_correlation,

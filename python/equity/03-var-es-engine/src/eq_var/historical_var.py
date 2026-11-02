@@ -23,17 +23,17 @@ from . import _tail
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
-    "historical_var",
-    "age_weighted_var",
     "age_weighted_es",
+    "age_weighted_var",
     "brw_weights",
-    "ewma_volatility",
     "ewma_forecast",
-    "filtered_historical_scenarios",
+    "ewma_volatility",
     "factor_filtered_historical_var",
+    "filtered_historical_scenarios",
     "filtered_historical_var",
-    "scale_var_sqrt_time",
+    "historical_var",
     "overlapping_horizon_pnl",
+    "scale_var_sqrt_time",
 ]
 
 MIN_OBS = 50  # fewer observations than this cannot resolve a 1-5 % tail sensibly

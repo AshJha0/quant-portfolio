@@ -4,8 +4,6 @@ Vasicek one-factor loss distribution (analytic + Monte Carlo)."""
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.stats import norm
-
 from eq_credit.portfolio_risk import (
     asset_correlation,
     basel_k,
@@ -19,6 +17,7 @@ from eq_credit.portfolio_risk import (
     vasicek_cdf,
     vasicek_quantile,
 )
+from scipy.stats import norm
 
 
 # ------------------------------------------------------------------------- EL
@@ -32,7 +31,7 @@ def test_el_hand_computed_exact_tiny_book() -> None:
 
 
 def test_el_downturn_haircut() -> None:
-    el, total = expected_loss(0.02, 0.5, 1000.0, downturn_lgd_haircut=0.2)
+    _el, total = expected_loss(0.02, 0.5, 1000.0, downturn_lgd_haircut=0.2)
     assert total == pytest.approx(0.02 * 0.6 * 1000.0, abs=1e-12)
     # LGD capped at 1.
     _, t2 = expected_loss(0.02, 0.9, 1000.0, downturn_lgd_haircut=0.5)

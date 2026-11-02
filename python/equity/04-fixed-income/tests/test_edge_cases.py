@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 
 D = dt.date
 

@@ -5,7 +5,6 @@ import math
 
 import numpy as np
 import pytest
-
 from eq_options import (
     black76_price,
     bs_greeks,
@@ -14,7 +13,6 @@ from eq_options import (
     forward_price,
     mc_price,
 )
-
 
 # ---------- T = 0: intrinsic ----------
 

@@ -4,11 +4,10 @@ from __future__ import annotations
 from typing import TypedDict
 
 import numpy as np
-from qp_core.metrics import downside_deviation
 import pandas as pd
+from qp_core.metrics import downside_deviation
 
 from ._validate import finite_scalar, finite_series
-
 from .volatility import TRADING_DAYS
 
 __all__ = ["DrawdownResult", "max_drawdown", "sharpe_ratio", "sortino_ratio"]

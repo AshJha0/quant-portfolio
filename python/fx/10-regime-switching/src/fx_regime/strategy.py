@@ -24,9 +24,8 @@ price, so a pip on USDMXN at 17.5 is worth 1/17.5 of a pip on EURUSD).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import warnings
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd

@@ -9,8 +9,8 @@ for carry books the tail statistics ARE the risk report.
 from __future__ import annotations
 
 import numpy as np
-from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_returns
 
 from .cvar_opt import empirical_cvar, empirical_var
 
