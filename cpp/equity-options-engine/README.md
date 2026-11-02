@@ -68,7 +68,7 @@ ctest --test-dir build --output-on-failure        # 82 tests
 ./build/eqopt_bench --out results.json            # per-call latency, JSON
 ```
 
-C++23 (`std::expected`), CMake >= 3.20. GoogleTest is found with
+C++23 (`std::expected`), CMake >= 3.25. GoogleTest is found with
 `find_package(GTest)` and fetched (v1.15.2) when absent. Warnings:
 `-Wall -Wextra -Wpedantic` on GCC/Clang, `/W4` on MSVC. Options:
 
@@ -93,6 +93,29 @@ Measured on 2026-11-01 with `EQOPT_WERROR=ON`:
 
 The sanitizer builds skip `eqopt_alloc_tests` (5 tests): it replaces the
 global `operator new`, which the sanitizer runtimes also define.
+
+## Shared core, presets and C++26
+
+The normal cdf and inverse, the implied-vol core, splitmix64 seeding and the thread pool come from `qp::core`, the
+header-only library in `cpp/core` (see `cpp/core/README.md`). This engine
+keeps its own headers and API; moved names are using-declarations. The
+CMake file adds the core with `add_subdirectory(../core)` unless a parent
+project already did.
+
+`CMakePresets.json` defines the presets `gcc`, `clang`, `gcc16-cxx26`,
+`asan`, `tsan` and `msvc`. From this directory:
+
+```bash
+cmake --preset clang
+cmake --build --preset clang
+ctest --preset clang
+```
+
+Build trees go to `build/<preset>`. The presets turn `EQOPT_WERROR` on. `msvc`
+must run inside a Visual Studio developer prompt. `QP_CXX26=ON` (the
+`gcc16-cxx26` preset) compiles with C++26 and uses contracts and
+`std::simd` where the compiler reports them; results are the same as the
+C++23 build. CMake 3.25 or newer is required.
 
 ## Validation
 
@@ -173,7 +196,7 @@ equity-options-engine/
 ├── tools/gen_golden_header.py # golden JSON -> constexpr header (--check)
 ├── tools/jsonl_main.cpp       # eqopt_jsonl shim for the differential test
 ├── tests/                     # GoogleTest suite + generated golden_vectors.hpp
-├── bench/                     # per-call latency harness (latency.hpp), results.json
+├── bench/                     # per-call latency harness (harness: qp/bench/latency.hpp in cpp/core), results.json
 └── docs/                      # METHODOLOGY, VALIDATION, DESK_GUIDE
 ```
 

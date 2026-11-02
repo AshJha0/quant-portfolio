@@ -98,4 +98,4 @@ identical with GCC 15.2 and with Clang 21.1.
 ## Latency
 
 Per-call latency percentiles are in the README Latency table, measured
-with `./build/fxopt_bench` (see `bench/latency.hpp` for the method).
+with `./build/fxopt_bench` (see `cpp/core/include/qp/bench/latency.hpp` for the method).
