@@ -181,10 +181,10 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: uv.lock matches every pyproject.toml in the workspace
         run: uv lock --check
-      - name: Install the workspace from uv.lock, plus the pinned ruff and mypy
+      - name: Install the workspace from uv.lock, plus the pinned lint tools, stubs and test deps mypy imports
         run: |
           uv sync --all-packages --locked
-          uv pip install -c requirements/ci-constraints.txt ruff mypy pandas-stubs scipy-stubs
+          uv pip install -c requirements/ci-constraints.txt ruff mypy pandas-stubs scipy-stubs pytest hypothesis
       - name: ruff check python
         run: uv run --no-sync ruff check python
       # No arguments: the [tool.mypy] / mypy.ini config at the root decides

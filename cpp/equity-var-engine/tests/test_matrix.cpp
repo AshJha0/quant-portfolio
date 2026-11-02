@@ -97,8 +97,9 @@ TEST(EwmaCovariance, SinglePointLimitAndValidation) {
     // With lam -> 1 the EWMA forecast stays near the seed: the zero-mean
     // second moment mean(r r') of the first min(seed_window, T) rows.
     const Matrix r(3, 2, {0.01, 0.02, -0.01, 0.00, 0.03, 0.01});
-    const Matrix s(2, 2, {(1e-4 + 1e-4 + 9e-4) / 3.0, (2e-4 + 0.0 + 3e-4) / 3.0,
-                          (2e-4 + 0.0 + 3e-4) / 3.0, (4e-4 + 0.0 + 1e-4) / 3.0});
+    const Matrix s(2, 2,
+                   {(1e-4 + 1e-4 + 9e-4) / 3.0, (2e-4 + 0.0 + 3e-4) / 3.0,
+                    (2e-4 + 0.0 + 3e-4) / 3.0, (4e-4 + 0.0 + 1e-4) / 3.0});
     const Matrix e = ewma_covariance(r, 0.999999);
     EXPECT_LT(Matrix::max_abs_diff(e, s), 1e-8);
     // seed_window = 1: seed is r_0 r_0' only.

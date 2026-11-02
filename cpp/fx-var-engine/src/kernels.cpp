@@ -104,8 +104,7 @@ Result<std::pair<double, double>> try_empirical_var_es(std::span<const double> p
   const double k = static_cast<double>(n) * alpha;
   const double mc = std::ceil(k - 1e-9);
   const std::size_t m = mc < 1.0 ? 1 : std::min(n, static_cast<std::size_t>(mc));
-  std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n,
-                   std::greater<>());
+  std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n, std::greater<>());
   const double lm = loss[m - 1];
   double tail = 0.0;
   for (std::size_t i = 0; i + 1 < m; ++i) tail += loss[i];

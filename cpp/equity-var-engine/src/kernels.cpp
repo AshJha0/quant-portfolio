@@ -129,8 +129,7 @@ TailRisk order_statistic(std::span<const double> pnl, double alpha, double* loss
     const double mc = std::ceil(k - 1e-9);
     const std::size_t m = mc < 1.0 ? 1 : std::min(n, static_cast<std::size_t>(mc));
     // Partition so loss[0..m-1) are the m-1 largest and loss[m-1] = L(m).
-    std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n,
-                     std::greater<>());
+    std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n, std::greater<>());
     const double lm = loss[m - 1];
     double tail = 0.0;
     for (std::size_t i = 0; i + 1 < m; ++i) tail += loss[i];
