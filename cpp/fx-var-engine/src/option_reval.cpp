@@ -128,7 +128,7 @@ OptionBookLayout layout_option_book(const Book& book, const Market& market,
     out.factors = out.linear->factors();
   }
   for (const auto& name : option_factors) {
-    require(name.size() > 3 && name.rfind("FX:", 0) == 0 && name != "FX:USD",
+    require(name.size() > 3 && name.starts_with("FX:") && name != "FX:USD",
             "option factors must be named FX:CCY with CCY != USD");
   }
   out.legs.assign(options.begin(), options.end());
