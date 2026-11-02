@@ -109,6 +109,6 @@ short-leg returns separately.
 
 ## Signature
 
-signed_by:
-signed_on:
-sha256:
+signed_by: Claude (maintainer), under owner decision 9 (2026-11-02)
+signed_on: 2026-11-02
+sha256: 623f8034498c8baa47bcd421ab04b62c0696bd45a2ac8ece61722cbd01dab31a

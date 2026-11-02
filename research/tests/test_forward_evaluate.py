@@ -53,15 +53,15 @@ def _write_inputs(tmp: Path, log_end: str = "2028-11-02", seed: int = 0) -> tupl
     return lpath, hpath, hashlib.sha256(hpath.read_bytes()).hexdigest()
 
 
-def _signed_copies(tmp: Path) -> Path:
-    fake = tmp / "repo"
+def _signed_copies(tmp: Path, signed: bool = True) -> Path:
+    fake = tmp / ("repo" if signed else "repo_unsigned")
     (fake / "research" / "prereg").mkdir(parents=True)
     for name, _ in ev.REGS.values():
         src = (REPO / "research" / "prereg" / name).read_text(encoding="utf-8")
         body, _ = prereg._split(src)
         h = prereg.registration_hash(src)
-        (fake / "research" / "prereg" / name).write_text(
-            f"{body}## Signature\n\nsigned_by: t\nsigned_on: 2026-11-02\nsha256: {h}\n", encoding="utf-8")
+        sig = f"signed_by: t\nsigned_on: 2026-11-02\nsha256: {h}\n" if signed else "signed_by:\nsigned_on:\nsha256:\n"
+        (fake / "research" / "prereg" / name).write_text(f"{body}## Signature\n\n{sig}", encoding="utf-8")
     return fake
 
 
@@ -89,7 +89,8 @@ def test_interim_before_evaluation_date_gives_no_verdict(tmp_path):
 
 def test_full_window_after_date_still_not_final_while_unsigned(tmp_path):
     lpath, hpath, sha = _write_inputs(tmp_path)
-    reps = ev.evaluate(lpath, hpath, sha, "abc", today=dt.date(2028, 11, 13))
+    reps = ev.evaluate(lpath, hpath, sha, "abc", today=dt.date(2028, 11, 13),
+                       repo=_signed_copies(tmp_path, signed=False))
     for rep in reps.values():
         assert rep["not_final_because"] == ["registration is not signed"]
         assert rep["period"]["end"] == "2028-11-02"

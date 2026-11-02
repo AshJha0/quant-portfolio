@@ -30,9 +30,9 @@ def _px(n: int = 400, seed: int = 1, start: str = "2010-01-01") -> pd.DataFrame:
 # ---- registrations and committed results ---------------------------------
 
 @pytest.mark.parametrize("name", ["pairs-fx-g10-v2.md", "momentum-fx-g10.md"])
-def test_new_registrations_are_unsigned_drafts(name):
+def test_new_registrations_are_signed(name):
     reg = prereg.load(REPO / "research" / "prereg" / name)
-    assert not reg.signed and not reg.signed_by and not reg.signed_sha256
+    assert reg.signed and reg.signed_on == "2026-11-02"
 
 
 def test_training_results_match_registrations_and_stay_in_training():

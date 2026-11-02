@@ -16,6 +16,14 @@ dataset (the research entries use ECB reference rates).
 
 ### Added
 
+- Signed the forward-only registrations `research/prereg/pairs-fx-g10-v2.md`
+  (sha256 78da5f57...c6042b) and `research/prereg/momentum-fx-g10.md` (sha256
+  623f8034...dab31a) on 2026-11-02, both through the power gate in `prereg.py sign`;
+  decision rules unchanged. Only fixes from 2026-11-03 are scored; evaluation on
+  or after 2028-11-13. Their formation/lookback history is one ECB EXR file,
+  `research/forward/history_1999-01-04_2026-11-02.csv` (7,127 fixes, sha256
+  d2e62948442b8c42c3739f95f6db04ca4894bdb20cce11b50ea322c9a943b6ea), fetched at signing.
+
 #### Research results (ECB reference rates)
 
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read
