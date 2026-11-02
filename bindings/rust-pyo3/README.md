@@ -55,9 +55,11 @@ any error, `alpha` as the tail probability and keyword-only backtests.
 Error messages are the Rust engines' own text, which differs from the C++
 text.
 
-One rule is enforced by the binding rather than the engine: `eq_mc_price`
-rejects `threads=0`. The Rust engine treats 0 as 1 while the C++ engine
-rejects it. The binding keeps both packages on the C++ rule.
+`eq_mc_price` rejects `threads=0` with `ValueError`, as `qp_cpp` does. The
+engine function it calls, `fast::try_mc_price`, rejects 0 as well
+(`ErrorCode::BadThreads`); the binding checks first so the message is the
+same in both packages. CONVENTIONS.md lists how each engine entry point
+treats a thread count of 0.
 
 The Monte Carlo streams differ from the C++ engines and from NumPy, so MC
 results agree with them statistically, not by value.

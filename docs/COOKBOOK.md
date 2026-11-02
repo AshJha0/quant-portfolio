@@ -1842,39 +1842,44 @@ of running it rather than reporting one lucky train/test split.
 ### How do I build and test one C++ engine from a clean build directory?
 
 Every C++ engine is C++23 with `-Wall -Wextra`, GoogleTest and
-`gtest_discover_tests`. Warnings become errors when the engine's `*_WERROR`
-option is on (`EQOPT_WERROR` here), as CI sets it. Build and test
-`equity-options-engine` in a scratch build directory outside the checkout
-(the commands follow [CONTRIBUTING.md](../CONTRIBUTING.md)):
+`gtest_discover_tests`, and needs CMake 3.25. Warnings become errors when
+the engine's `*_WERROR` option is on (`EQOPT_WERROR` here), as CI sets it.
+Each engine ships a `CMakePresets.json` (`gcc`, `clang`, `gcc16-cxx26`,
+`asan`, `tsan`, `msvc`); the presets are the supported way to build. Build
+trees go under `build/<preset>` in the engine directory. Build and test
+`equity-options-engine` with the `gcc` preset (the commands follow
+[CONTRIBUTING.md](../CONTRIBUTING.md)):
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"   # the quant-portfolio checkout
-cmake -S cpp/equity-options-engine -B ~/build/equity-options-engine \
-      -DCMAKE_BUILD_TYPE=Release -DEQOPT_WERROR=ON
-cmake --build ~/build/equity-options-engine -j
-ctest --test-dir ~/build/equity-options-engine --output-on-failure
+cd "$(git rev-parse --show-toplevel)/cpp/equity-options-engine"
+cmake --preset gcc -DEQOPT_WERROR=ON
+cmake --build --preset gcc
+ctest --preset gcc
 ```
 
-Configure finds GoogleTest and `Threads`, the build compiles the engine
+Configure pulls in the header-only `qp::core` target from `cpp/core`, finds
+GoogleTest and `Threads`, and the build compiles the engine
 library plus its test and benchmark executables, and `ctest` runs every
 discovered test. The per-engine test count is in the README table, filled
 from the CI `counts` job.
 
 ### How do I build and test one Rust engine with warnings-as-errors?
 
-Rust engines are 2021-edition with zero external dependencies, and the CI
-profile (`.github/workflows/ci.yml`, job `rust`) denies warnings. Reproduce
-that locally with `RUSTFLAGS`:
+Rust engines are 2021-edition crates in one Cargo workspace under `rust/`,
+with no third-party dependencies outside tests. Their shared code is the
+workspace crate `qp-core`. The CI job `rust <crate>` in
+`.github/workflows/ci.yml` denies warnings. Reproduce that locally from
+`rust/`, naming the package with `-p`:
 
 ```bash
-cd "$(git rev-parse --show-toplevel)/rust/equity-options-engine"
-RUSTFLAGS="-D warnings" cargo test --release --locked
+cd "$(git rev-parse --show-toplevel)/rust"
+RUSTFLAGS="-D warnings" cargo test --release --locked -p eq-options-engine
 ```
 
 `cargo test` runs the integration-test binaries under `tests/` and then the
 rustdoc doc-tests on the public items. The doc-tests are the slow part,
-because each one builds a fresh binary. `cargo clean` removes `target/`
-afterwards. The per-engine count is in the README table, filled from the CI
+because each one builds a fresh binary. `cargo clean` removes `rust/target/`,
+the one target directory of the workspace, afterwards. The per-engine count is in the README table, filled from the CI
 `counts` job.
 
 ### How do I regenerate golden vectors for an engine, and how does the pipeline work?
@@ -1918,11 +1923,13 @@ golden value in the commit message.
 
 Use the commands in [CONTRIBUTING.md](../CONTRIBUTING.md). CI installs each
 project into its own fresh venv against `requirements/ci-constraints.txt` and
-runs pytest there, so repeat this per project to reproduce CI:
+runs pytest there, so repeat this per project to reproduce CI. CI installs
+`python/core` first, because 12 projects import `qp_core`:
 
 ```bash
 python -m venv ~/.venvs/qp-eqopt
 . ~/.venvs/qp-eqopt/bin/activate      # Windows: ~/.venvs/qp-eqopt/Scripts/activate
+python -m pip install -c requirements/ci-constraints.txt -e python/core
 cd python/equity/01-options-pricing
 python -m pip install -c ../../../requirements/ci-constraints.txt -e ".[test]" pytest hypothesis
 python -m pytest -p no:cacheprovider -q
@@ -1930,6 +1937,8 @@ python -m pytest -p no:cacheprovider -q
 
 A project that declares `dev` instead of `test` takes `".[dev]"`. A shared
 environment for all projects is faster but can hide a missing dependency.
+The uv workspace gives one: `uv sync --all-packages` from the root installs
+`python/core` and all 23 projects from `uv.lock`.
 The test counts quoted in the docs come from the CI `counts` job, which sums
 the executed pass counts into `counts.json` and then checks the docs against
 it.

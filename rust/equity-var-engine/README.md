@@ -71,6 +71,7 @@ let tl = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0
 | P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function deprecated, old arithmetic kept |
 | `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function deprecated |
 | EWMA vol seeded with full-sample variance | seeded with mean `r^2` of the first `min(30, n)` points |
+| EWMA covariance seeded with the full-sample covariance | seeded with mean `r r'` of the first `min(30, T)` rows |
 | `ln_gamma(x) -> f64` | `ln_gamma(x) -> Result<f64>` |
 | new | `acerbi_szekely_z2`, `monte_carlo_run`, `psd` module, `tail` module |
 

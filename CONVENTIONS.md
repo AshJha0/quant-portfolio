@@ -98,17 +98,44 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
   window and alpha.
 - EWMA variance is seeded with the mean squared return of the first
   min(30, n) observations.
+- The equity EWMA covariance is seeded the same way: the zero-mean second
+  moment mean(r r') of the first min(30, T) rows (convention S8), so the
+  forecast at any date uses no later data. Python
+  (`eq_var.parametric_var`), C++ (`cpp/equity-var-engine/src/matrix.cpp`) and
+  Rust follow it.
 - Cholesky adds jitter up to 1e-6 times the mean diagonal, warns when it does,
   and raises above that unless `repair="clip"` or `repair="higham"` is passed.
 
 ## C++ and Rust engines
 
-- C++23, CMake 3.20 or later, GoogleTest for tests. Warnings are errors when
-  the opt-in `<ENGINE>_WERROR` option is ON (EQOPT, FXOPT, EQVAR, FXVAR;
-  default OFF). CI turns it on.
-  No runtime dependencies beyond the standard library.
-- Rust 2021 edition, standard library only. CI runs
-  `cargo test --release --locked` and clippy with warnings denied.
+- C++23, CMake 3.25 or later, GoogleTest for tests. `QP_CXX26=ON` compiles
+  with C++26 and turns on contracts and `std::simd` where the compiler has
+  them. Each engine and `cpp/core` has a `CMakePresets.json` (`gcc`,
+  `clang`, `gcc16-cxx26`, `asan`, `tsan`, `msvc`); the presets are the build
+  instructions. Shared code (normal CDF, implied-vol core, RNG, special
+  functions, matrix and linear algebra, Brent, thread pool) lives in the
+  header-only `qp::core` target in `cpp/core`. Warnings are errors when the
+  opt-in `<ENGINE>_WERROR` option is ON (EQOPT, FXOPT, EQVAR, FXVAR; default
+  OFF). CI turns it on. Code is formatted by the root `.clang-format` and
+  checked with clang-tidy. No runtime dependencies beyond the standard
+  library.
+- Rust 2021 edition. `rust/` is one Cargo workspace: the shared `qp-core`
+  crate and the four engines, one `Cargo.lock`, toolchain pinned in
+  `rust/rust-toolchain.toml`. Library crates have no third-party
+  dependencies (`proptest` is test-only). Run commands from `rust/` with
+  `-p <crate>`. CI runs `cargo test --release --locked` and clippy with
+  warnings denied.
+- Monte Carlo thread counts. A thread count of 0 is not handled the same way
+  everywhere. This is documented rather than aligned:
+
+  | Entry point | `threads = 0` |
+  |---|---|
+  | C++ `eqopt` and `fxopt` `try_mc_price` | rejected, `Errc::BadThreads` |
+  | Rust eq-options `fast::try_mc_price` | rejected, `ErrorCode::BadThreads` |
+  | Rust fx-options `fast::mc_price_par` | rejected, `KernelError::Threads` |
+  | Rust fx-var `monte_carlo_var_with_threads`, `var_standard_error_bootstrap_with_threads` | treated as 1 |
+
+  Pass 1 or more and every entry point behaves the same.
 - The engines are ports of the Python design. The golden pipeline: the Python
   project's `tests/golden/generate_golden.py` writes
   `tests/golden/golden_vectors.json`. For options the reference values come
@@ -122,3 +149,17 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
   (`eq_options.bs_price(S, K, T, r, sigma, q, option_type)` against
   `fx_options.gk_price(S, K, T, r_d, r_f, sigma, option_type)`). Pass
   everything after the market inputs by keyword.
+
+## Shared Python code (`qp-core`)
+
+- Code used by more than one Python project lives in `python/core`
+  (distribution `qp-core`, import `qp_core`). Install it before the projects
+  that depend on it, or use `uv sync --all-packages` from the root. Old
+  import paths in the projects re-export it.
+- Downside deviation is sqrt(mean(min(r - mar, 0)^2)) over all observations,
+  not only the negative ones.
+- Drawdown is a fraction of the running peak of compounded wealth, which
+  starts at 1 by default (`include_start=True`).
+- `30/360` is an alias of `30/360US` (no end-of-February rule).
+- Python is checked with `ruff check python` and `mypy` (configuration in the
+  root `pyproject.toml`) in the CI `lint` job.

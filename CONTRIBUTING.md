@@ -8,7 +8,7 @@ for docs, and how to regenerate golden vectors.
 | Path | What it is |
 |---|---|
 | `python/core/` | `qp-core` (import `qp_core`): the shared statistics, execution, calendar, day-count, validation and metrics code. |
-| `python/{equity,fx,foundations}/NN-name/` | 23 Python projects. Each has its own `pyproject.toml`, `src/` and `tests/`, and depends on `qp-core`. |
+| `python/{equity,fx,foundations}/NN-name/` | 23 Python projects. Each has its own `pyproject.toml`, `src/` and `tests/`. Twelve of them depend on `qp-core`. |
 | `pyproject.toml`, `uv.lock` | The uv workspace: `python/core` and the 23 projects, locked together. |
 | `cpp/core/` | `qp::core`, a header-only CMake target shared by the engines. |
 | `cpp/<engine>/` | 4 C++ engines built with CMake presets. Tests use GoogleTest. |
