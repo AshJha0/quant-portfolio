@@ -26,6 +26,7 @@
 #include <utility>
 
 #include "eqopt/error.hpp"
+#include "qp/black_scholes.hpp"
 #include "qp/normal.hpp"
 
 namespace eqopt {
@@ -181,9 +182,8 @@ EQOPT_COLD Error rate_error(double r, double q) noexcept;
 /// \brief `(d1, d2)` without validation; caller guarantees S, K, T, sigma > 0.
 inline std::pair<double, double> d1_d2_unchecked(double S, double K, double T, double r,
                                                  double sigma, double q) noexcept {
-    const double sqrt_t = std::sqrt(T);
-    const double d1 = (std::log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t);
-    return {d1, d1 - sigma * sqrt_t};
+    const qp::CarryD d = qp::carry_d1_d2(S, K, T, r, q, sigma);
+    return {d.d1, d.d2};
 }
 
 /// \brief noexcept form of d1_d2().
@@ -219,9 +219,12 @@ inline double bs_price_unchecked(double S, double K, double T, double r, double 
         const double sign = call ? 1.0 : -1.0;
         return std::fmax(sign * (disc_s - disc_k), 0.0);
     }
-    const auto [d1, d2] = d1_d2_unchecked(S, K, T, r, sigma, q);
-    return call ? disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2)
-                : disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1);
+    // Shared carry-form kernel (qp/black_scholes.hpp) with this engine's
+    // N(x) = 0.5 erfc(-x * (1/sqrt 2)). The + 0.0 turns the -0.0 the phi
+    // form gives for a put worth exactly zero into the +0.0 this function
+    // has always returned; it changes no other value.
+    const qp::CarryD d = qp::carry_d1_d2(S, K, T, r, q, sigma);
+    return qp::carry_value<qp::NormCdfRcp>(disc_s, disc_k, d.d1, d.d2, call ? 1.0 : -1.0) + 0.0;
 }
 
 /// \brief noexcept form of bs_price(): the same value, or the error the

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "qp/vmath.hpp"
+#include "qp/black_scholes_vm.hpp"
 
 namespace eqopt {
 
@@ -87,7 +87,6 @@ QP_KERNEL_ATTR
 unsigned fast_block(const double* S, const double* K, const double* T, const double* r,
                     const double* v, const double* q, const OptionType* ty, double* o,
                     std::uint8_t* slow, std::size_t m) noexcept {
-    constexpr double kRsqrt2 = 0x1.6a09e667f3bcdp-1;
     unsigned any_slow = 0;
     for (std::size_t i = 0; i < m; ++i) {
         const double Si = S[i], Ki = K[i], Ti = T[i], ri = r[i], vi = v[i], qi = q[i];
@@ -100,15 +99,8 @@ unsigned fast_block(const double* S, const double* K, const double* T, const dou
         const double Ts = blend(mask, Ti, 1.0);
         const double vs = blend(mask, vi, 1.0);
         const double xs = blend(mask, ratio, 1.0);
-        const double sqrt_t = std::sqrt(Ts);
-        const double vst = vs * sqrt_t;
-        const double d1 = (qp::vm::detail::log1(xs) + (ri - qi + 0.5 * vs * vs) * Ts) / vst;
-        const double d2 = d1 - vst;
-        const double disc_s = Si * qp::vm::detail::exp1(-qi * Ts);
-        const double disc_k = Ki * qp::vm::detail::exp1(-ri * Ts);
-        const double n1 = 0.5 * qp::vm::detail::erfc1(-phi * d1 * kRsqrt2);
-        const double n2 = 0.5 * qp::vm::detail::erfc1(-phi * d2 * kRsqrt2);
-        o[i] = phi * (disc_s * n1 - disc_k * n2);
+        // Shared carry-form body (qp/black_scholes_vm.hpp).
+        o[i] = qp::carry_price_vm(Si, Ki, xs, Ts, ri, qi, vs, phi);
         slow[i] = static_cast<std::uint8_t>(ok ^ 1);
         any_slow |= static_cast<unsigned>(ok ^ 1);
     }
@@ -128,8 +120,6 @@ unsigned fast_greeks_block(const double* QP_RESTRICT S, const double* QP_RESTRIC
                            double* QP_RESTRICT o2, double* QP_RESTRICT o3, double* QP_RESTRICT o4,
                            double* QP_RESTRICT o5, double* QP_RESTRICT o6, double* QP_RESTRICT o7,
                            std::uint8_t* slow, std::size_t m) noexcept {
-    constexpr double kRsqrt2 = 0x1.6a09e667f3bcdp-1;
-    constexpr double kInvSqrt2Pi = 0x1.9884533d43651p-2;
     unsigned any_slow = 0;
     for (std::size_t i = 0; i < m; ++i) {
         const double Si = S[i], Ki = K[i], Ti = T[i], ri = r[i], vi = v[i], qi = q[i];
@@ -138,26 +128,16 @@ unsigned fast_greeks_block(const double* QP_RESTRICT S, const double* QP_RESTRIC
         const int ok = static_cast<int>(ratio >= 0x1p-1022) & static_cast<int>(ratio <= kMax);
         const std::uint64_t mask = std::uint64_t{0} - static_cast<std::uint64_t>(ok);
         const double xs = blend(mask, ratio, 1.0);
-        const double sqrt_t = std::sqrt(Ti);
-        const double vst = vi * sqrt_t;
-        const double d1 = (qp::vm::detail::log1(xs) + (ri - qi + 0.5 * vi * vi) * Ti) / vst;
-        const double d2 = d1 - vst;
-        const double df_q = qp::vm::detail::exp1(-qi * Ti);
-        const double df_r = qp::vm::detail::exp1(-ri * Ti);
-        const double pdf = kInvSqrt2Pi * qp::vm::detail::exp1(-0.5 * d1 * d1);
-        // N(phi d1) and N(phi d2): the call terms for phi = 1, the put terms for -1.
-        const double n1 = 0.5 * qp::vm::detail::erfc1(-phi * d1 * kRsqrt2);
-        const double n2 = 0.5 * qp::vm::detail::erfc1(-phi * d2 * kRsqrt2);
-        const double vega = Si * df_q * pdf * sqrt_t;
-        const double common_theta = -Si * df_q * pdf * vi / (2.0 * sqrt_t);
-        o0[i] = phi * (Si * df_q * n1 - Ki * df_r * n2);
-        o1[i] = phi * df_q * n1;
-        o2[i] = df_q * pdf / (Si * vst);
-        o3[i] = vega;
-        o4[i] = common_theta + phi * (qi * Si * df_q * n1 - ri * Ki * df_r * n2);
-        o5[i] = phi * Ki * Ti * df_r * n2;
-        o6[i] = -df_q * pdf * d2 / vi;
-        o7[i] = vega * d1 * d2 / vi;
+        // Shared carry-form body (qp/black_scholes_vm.hpp).
+        const qp::CarryGreeksVm g = qp::carry_greeks_vm(Si, Ki, xs, Ti, ri, qi, vi, phi);
+        o0[i] = g.price;
+        o1[i] = g.delta;
+        o2[i] = g.gamma;
+        o3[i] = g.vega;
+        o4[i] = g.theta;
+        o5[i] = g.rho;
+        o6[i] = g.vanna;
+        o7[i] = g.volga;
         slow[i] = static_cast<std::uint8_t>(ok ^ 1);
         any_slow |= static_cast<unsigned>(ok ^ 1);
     }

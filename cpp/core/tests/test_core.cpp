@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "qp/black_scholes.hpp"
+#include "qp/black_scholes_vm.hpp"
 #include "qp/brent.hpp"
 #include "qp/expected.hpp"
 #include "qp/iv_core.hpp"
@@ -24,6 +26,59 @@
 
 namespace {
 
+// ------------------------------------------------------------------ carry
+
+TEST(Carry, WorkedExample) {
+    // S = K = 100, T = 1, r = 5 %, q = 2 %, sigma = 20 %: d1 = 0.25, d2 = 0.05.
+    const qp::CarryD d = qp::carry_d1_d2(100.0, 100.0, 1.0, 0.05, 0.02, 0.2);
+    EXPECT_NEAR(d.d1, 0.25, 1e-15);
+    EXPECT_NEAR(d.d2, 0.05, 1e-15);
+    const double want =
+        100.0 * std::exp(-0.02) * qp::norm_cdf(0.25) - 100.0 * std::exp(-0.05) * qp::norm_cdf(0.05);
+    EXPECT_NEAR(qp::carry_price(100.0, 100.0, 1.0, 0.05, 0.02, 0.2, 1.0), want, 1e-13);
+    EXPECT_NEAR(want, 9.2270, 5e-5);
+    EXPECT_NEAR(qp::carry_price_vm(100.0, 100.0, 1.0, 1.0, 0.05, 0.02, 0.2, 1.0), want, 1e-13);
+}
+
+TEST(Carry, PutCallParity) {
+    for (double q : {-0.01, 0.0, 0.03}) {
+        const double S = 103.0, K = 97.0, T = 0.7, r = 0.04, v = 0.3;
+        const double c = qp::carry_price(S, K, T, r, q, v, 1.0);
+        const double p = qp::carry_price(S, K, T, r, q, v, -1.0);
+        EXPECT_NEAR(c - p, S * std::exp(-q * T) - K * std::exp(-r * T), 1e-12);
+    }
+}
+
+TEST(Carry, GreeksMatchFiniteDifferences) {
+    const double S = 100.0, K = 95.0, T = 0.5, r = 0.03, q = 0.01, v = 0.25, h = 1e-4;
+    for (double phi : {1.0, -1.0}) {
+        auto p = [&](double s, double t, double rr, double qq, double vv) {
+            return qp::carry_price(s, K, t, rr, qq, vv, phi);
+        };
+        const qp::CarryGreeks g = qp::carry_greeks(S, K, T, r, q, v, phi);
+        EXPECT_NEAR(g.price, p(S, T, r, q, v), 1e-13);
+        EXPECT_NEAR(g.delta, (p(S + h, T, r, q, v) - p(S - h, T, r, q, v)) / (2 * h), 1e-7);
+        EXPECT_NEAR(g.vega, (p(S, T, r, q, v + h) - p(S, T, r, q, v - h)) / (2 * h), 1e-6);
+        EXPECT_NEAR(g.theta, -(p(S, T + h, r, q, v) - p(S, T - h, r, q, v)) / (2 * h), 1e-6);
+        EXPECT_NEAR(g.rho, (p(S, T, r + h, q, v) - p(S, T, r - h, q, v)) / (2 * h), 1e-6);
+        EXPECT_NEAR(g.rho_q, (p(S, T, r, q + h, v) - p(S, T, r, q - h, v)) / (2 * h), 1e-6);
+        const qp::CarryGreeksVm f = qp::carry_greeks_vm(S, K, S / K, T, r, q, v, phi);
+        const double got[] = {f.price, f.delta, f.gamma, f.vega, f.theta,
+                              f.rho,   f.rho_q, f.vanna, f.volga};
+        const double want[] = {g.price, g.delta, g.gamma, g.vega, g.theta,
+                               g.rho,   g.rho_q, g.vanna, g.volga};
+        for (int i = 0; i < 9; ++i) {
+            EXPECT_NEAR(got[i], want[i], 1e-12 * std::fmax(1.0, std::fabs(want[i])));
+        }
+    }
+}
+
+TEST(Carry, CdfPolicyIsTheOnlyDifference) {
+    // NormCdfRcp and NormCdfDiv differ at most in the last bit of N.
+    const double a = qp::carry_price<qp::NormCdfRcp>(100.0, 90.0, 0.3, 0.02, 0.01, 0.4, -1.0);
+    const double b = qp::carry_price<qp::NormCdfDiv>(100.0, 90.0, 0.3, 0.02, 0.01, 0.4, -1.0);
+    EXPECT_NEAR(a, b, 1e-13);
+}
 // ------------------------------------------------------------------ normal
 
 TEST(Normal, CdfKnownValues) {

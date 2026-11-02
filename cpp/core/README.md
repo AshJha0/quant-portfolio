@@ -10,6 +10,8 @@ Header-only C++23 library shared by the four C++ engines
 |---|---|---|
 | `qp/normal.hpp` | `norm_pdf`, `norm_cdf` (erfc form), `norm_cdf_rcp`, `acklam_ppf`, `ppf_halley_step`, `norm_ppf_unchecked<Steps>` | all four |
 | `qp/iv_core.hpp` | implied volatility from normalised Black (`qp::iv_core`) | eqopt, fxopt |
+| `qp/black_scholes.hpp` | Black-Scholes in cost-of-carry form (`b = r - q = r_d - r_f`): `carry_d1_d2`, `carry_value`, `carry_price`, `carry_greeks`, templated on the normal cdf (`NormCdfRcp` for eqopt, `NormCdfDiv` for fxopt) | eqopt, fxopt |
+| `qp/black_scholes_vm.hpp` | the same kernel on the `qp/vmath.hpp` functions, force-inlined: the per-element body of the `_fast` batch pricers | eqopt, fxopt |
 | `qp/rng.hpp` | `splitmix64`, `uniform_open53`, `gamma_marsaglia_tsang` | all four |
 | `qp/special.hpp` | Lanczos `log_gamma_lanczos`, incomplete beta and gamma kernels, binomial cdf | eqvar, fxvar |
 | `qp/matrix.hpp` | `qp::Matrix`, `cholesky_raw`, `matvec_rows`, and in `qp::linalg` the validated Cholesky with jitter ladder, Jacobi eigen, eigenvalue-clip and Higham repair | eqvar, fxvar |

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "qp/vmath.hpp"
+#include "qp/black_scholes_vm.hpp"
 
 namespace fxopt {
 
@@ -82,7 +82,6 @@ QP_KERNEL_ATTR
 unsigned fast_block(const double* S, const double* K, const double* T, const double* rd,
                     const double* rf, const double* v, const OptionType* ty, double* o,
                     std::uint8_t* slow, std::size_t m) noexcept {
-    constexpr double kRsqrt2 = 0x1.6a09e667f3bcdp-1;
     unsigned any_slow = 0;
     for (std::size_t i = 0; i < m; ++i) {
         const double Si = S[i], Ki = K[i], Ti = T[i], rdi = rd[i], rfi = rf[i], vi = v[i];
@@ -95,14 +94,8 @@ unsigned fast_block(const double* S, const double* K, const double* T, const dou
         const double Ts = blend(mask, Ti, 1.0);
         const double vs = blend(mask, vi, 1.0);
         const double xs = blend(mask, ratio, 1.0);
-        const double vst = vs * std::sqrt(Ts);
-        const double d1 = (qp::vm::detail::log1(xs) + (rdi - rfi + 0.5 * vs * vs) * Ts) / vst;
-        const double d2 = d1 - vst;
-        const double disc_s = Si * qp::vm::detail::exp1(-rfi * Ts);
-        const double disc_k = Ki * qp::vm::detail::exp1(-rdi * Ts);
-        const double n1 = 0.5 * qp::vm::detail::erfc1(-p * d1 * kRsqrt2);
-        const double n2 = 0.5 * qp::vm::detail::erfc1(-p * d2 * kRsqrt2);
-        o[i] = p * (disc_s * n1 - disc_k * n2);
+        // Shared carry-form body (qp/black_scholes_vm.hpp); r_f is the carry yield.
+        o[i] = qp::carry_price_vm(Si, Ki, xs, Ts, rdi, rfi, vs, p);
         slow[i] = static_cast<std::uint8_t>(ok ^ 1);
         any_slow |= static_cast<unsigned>(ok ^ 1);
     }
@@ -124,8 +117,6 @@ unsigned fast_greeks_block(const double* QP_RESTRICT S, const double* QP_RESTRIC
                            double* QP_RESTRICT o5, double* QP_RESTRICT o6, double* QP_RESTRICT o7,
                            double* QP_RESTRICT o8, double* QP_RESTRICT o9, std::uint8_t* slow,
                            std::size_t m) noexcept {
-    constexpr double kRsqrt2 = 0x1.6a09e667f3bcdp-1;
-    constexpr double kInvSqrt2Pi = 0x1.9884533d43651p-2;
     unsigned any_slow = 0;
     for (std::size_t i = 0; i < m; ++i) {
         const double Si = S[i], Ki = K[i], Ti = T[i], rdi = rd[i], rfi = rf[i], vi = v[i];
@@ -134,27 +125,18 @@ unsigned fast_greeks_block(const double* QP_RESTRICT S, const double* QP_RESTRIC
         const int ok = static_cast<int>(ratio >= 0x1p-1022) & static_cast<int>(ratio <= kMax);
         const std::uint64_t mask = std::uint64_t{0} - static_cast<std::uint64_t>(ok);
         const double xs = blend(mask, ratio, 1.0);
-        const double sqrt_t = std::sqrt(Ti);
-        const double vst = vi * sqrt_t;
-        const double d1 = (qp::vm::detail::log1(xs) + (rdi - rfi + 0.5 * vi * vi) * Ti) / vst;
-        const double d2 = d1 - vst;
-        const double df_f = qp::vm::detail::exp1(-rfi * Ti);
-        const double df_d = qp::vm::detail::exp1(-rdi * Ti);
-        const double pdf = kInvSqrt2Pi * qp::vm::detail::exp1(-0.5 * d1 * d1);
-        const double n1 = 0.5 * qp::vm::detail::erfc1(-p * d1 * kRsqrt2);
-        const double n2 = 0.5 * qp::vm::detail::erfc1(-p * d2 * kRsqrt2);
-        const double vega = Si * df_f * pdf * sqrt_t;
-        o0[i] = p * (Si * df_f * n1 - Ki * df_d * n2);
-        o1[i] = p * df_f * n1;
-        o2[i] = p * n1;
-        o3[i] = df_f * pdf / (Si * vst);
-        o4[i] = vega;
-        o5[i] = -Si * df_f * pdf * vi / (2.0 * sqrt_t) +
-                p * (rfi * Si * df_f * n1 - rdi * Ki * df_d * n2);
-        o6[i] = p * Ki * Ti * df_d * n2;
-        o7[i] = -p * Si * Ti * df_f * n1;
-        o8[i] = -df_f * pdf * d2 / vi;
-        o9[i] = vega * d1 * d2 / vi;
+        // Shared carry-form body (qp/black_scholes_vm.hpp); r_f is the carry yield.
+        const qp::CarryGreeksVm g = qp::carry_greeks_vm(Si, Ki, xs, Ti, rdi, rfi, vi, p);
+        o0[i] = g.price;
+        o1[i] = g.delta;
+        o2[i] = g.delta_forward;
+        o3[i] = g.gamma;
+        o4[i] = g.vega;
+        o5[i] = g.theta;
+        o6[i] = g.rho;
+        o7[i] = g.rho_q;
+        o8[i] = g.vanna;
+        o9[i] = g.volga;
         slow[i] = static_cast<std::uint8_t>(ok ^ 1);
         any_slow |= static_cast<unsigned>(ok ^ 1);
     }
