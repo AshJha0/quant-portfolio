@@ -18,7 +18,7 @@ import prereg  # noqa: E402
 import robustness as rb  # noqa: E402
 import trials  # noqa: E402
 
-LOG_ANCHOR = "ANCHOR"  # commit that replaced the one dirty calibration line
+LOG_ANCHOR = "60447d2"  # commit that replaced the one dirty calibration line
 CCY = ["AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "NOK", "NZD", "SEK"]
 
 
