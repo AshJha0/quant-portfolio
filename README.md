@@ -300,9 +300,12 @@ Monte Carlo results do not match path by path across languages, because each
 language uses its own random number generator. Agreement there is
 statistical, within the tolerance stated in each engine's `docs/VALIDATION.md`.
 
-The compiled VaR engines revalue linear books only. Option revaluation in
-those engines is planned for stage three. Only the Python FX VaR engine
-reprices option positions.
+The compiled VaR engines (C++ and Rust, equity and FX) revalue the linear
+part of a book as a dot product and reprice each European option leg in
+full, by Black-Scholes, in every historical or Monte Carlo scenario. Implied
+vol is held at today's level in every scenario, FX option books must report
+in USD, and historical option VaR needs a one-day horizon. The historical
+numbers match the Python full revaluation to 1e-11 relative.
 
 ### Engine latency
 
@@ -362,8 +365,9 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
 - Not implemented: structural (Merton/KMV) PD, FRTB NMRF/SES and the
-  default risk charge, Hull-White calibration to a swaption grid, ISDA standard-model
-  CDS conventions.
+  default risk charge. CHANGELOG.md lists the other known issues (the ISDA
+  CDS module's weekends-only calendar, the missing ISDA test-grid comparison
+  and so on).
 - No result here is out-of-sample evidence yet. The research studies have
   training-period results only; the hold-out runs come next.
 - The bindings (`qp-cpp`, `qp-rust`) cover pricing, Greeks, implied vol,

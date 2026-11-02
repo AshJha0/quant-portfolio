@@ -2121,9 +2121,11 @@ now = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
 print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to the cut
 ```
 
-No holiday calendar ships; pass `holidays=` for the two currencies. The
-quoted butterfly is read as the smile strangle; converting a broker
-strangle is not implemented.
+Pass `holidays="auto"` to use the pair's joint settlement calendar from
+`fx_options.holidays` (rules-based, 2010 to 2099), or pass your own dates.
+The quoted butterfly is read as the smile strangle; if your broker quotes
+the market strangle, convert it first with
+`fx_options.smile.smile_strangle_from_broker`.
 
 ### How do I build OIS and projection curves and price a cap?
 

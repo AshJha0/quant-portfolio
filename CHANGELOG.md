@@ -320,6 +320,10 @@ come from seeded synthetic data.
 
 - Equity VaR sample covariance (C++ and Rust) runs on the blocked `D^T D`.
   Results are bit-identical; no golden changed.
+- `sharpe_diff_bootstrap` (equity and FX `sharpe_tests`) now studentises by
+  default, following Ledoit and Wolf (2008), so its p-value for the same
+  inputs differs from Round 2. Pass `studentize=False` to get the old
+  centred-bootstrap result.
 - No other existing function, golden or pinned number changed in Round 3.
 
 #### Round 2
@@ -445,7 +449,8 @@ come from seeded synthetic data.
   checks every quoted LEARN question count and COOKBOOK recipe count against
   the files, and fails on a hand-typed test total.
 - LEARN.md answers and COOKBOOK.md recipes follow the current APIs. The C++
-  and Rust VaR engines are described as linear-book ports.
+  and Rust VaR engines are described as revaluing linear positions and
+  repricing European option legs in full.
 
 ### Deprecated
 
@@ -494,6 +499,33 @@ Each stays for one release with a `DeprecationWarning` (Python),
   Cornish-Fisher grid text, dangling references, the "Real Data" title of a
   synthetic-data project, and the descriptions of CI and the count mechanism.
 
+### Known issues
+
+These are gaps in Round 3 work that a user can hit. Each is stated so the
+number it affects can be read with the right caveat.
+
+- The ISDA CDS standard model (`eq_credit.isda_cds`) has not been compared
+  with the ISDA published test grid, because downloading the grid needs a
+  licence click-through. Its checks are internal (identities and hand
+  examples).
+- The ISDA CDS module uses a weekends-only calendar, so a date that falls on
+  a public holiday is not rolled.
+- The rules-based holiday calendars omit one-off closures announced after the
+  code was written (a state funeral or a royal wedding, say).
+- The double-boundary Andersen-Lake-Offengelden price (`q < r < 0` put)
+  takes about 1 s per price, because it marches the two boundaries in time.
+- Option VaR holds implied vol at today's level in every scenario; there is
+  no vol factor. FX option books must report in USD, and historical option
+  VaR needs a one-day horizon (pass h-day returns for longer horizons).
+- The positivity collar of the monotone-convex curve (Hagan and West) is not
+  implemented, so forwards can go negative on steep inputs.
+- Dupire local vol, SSVI, Bates, HAR-RV and Euler attribution exist for
+  equity only; the FX packages do not have them.
+- The `pairs-fx-g10` pre-registered strategy is nearly dormant under its
+  registered variance rule: in training it trades in 3 of 19 test years (79
+  active days). That is the registered design, not a code fault; changing the
+  rule would be a new registration. The reasoning is in `research/README.md`.
+
 ### Known limitations
 
 - The `engine=` switch does not cover Monte Carlo pricing, MC VaR, the
@@ -502,16 +534,16 @@ Each stays for one release with a `DeprecationWarning` (Python),
 - Not done because the data needs an account: equity pairs on a
   point-in-time universe (Nasdaq Data Link) and the LOBSTER execution study,
   whose pre-registration is an unsigned draft.
-- No hold-out run yet. The research results are training-period only.
+- No hold-out run yet. The research results are training-period only. The
+  hold-out entry point exists and has only been run with `--dry-run`.
 - Engines do not use Philox or the batch kernels. Switching would change
   every Monte Carlo golden, and the batch kernels move prices by up to
   about 1e-15 relative.
 - FRTB NMRF/SES (an input), the default risk charge and risk-factor
   eligibility are not implemented.
-- The arbitrage-free SABR PDE, ALO with negative rates, broker-strangle
-  conversion, FX holiday calendars, Hull-White calibration, MtM xccy
-  convexity and the ISDA CDS date conventions are not implemented. The
-  new Python modules are not re-exported from the package `__init__`.
+- The Round 3 Python modules (for example `eq_options.sabr_pde`,
+  `fx_options.holidays`, `eq_credit.isda_cds`) are not re-exported from the
+  package `__init__`; import them by module path.
 - The bindings do not cover the FX VaR Monte Carlo, book-level VaR, deltas
   and strikes from delta, Black-76, Christoffersen or Acerbi-Szekely.
 - The `gcc16-cxx26` preset has not been run yet. GCC 16 is not installed

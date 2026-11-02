@@ -79,8 +79,9 @@ normal regime, 2.3bp in the crisis regime).
   currency's collateral-consistent curve. Par rates are closed-form.
   `solve_par_basis` solves a parallel shift of the basis quotes that zeroes
   the PV.
-- Float-float basis swap (`BasisSwap`): constant notionals; the
-  mark-to-market resetting variant is not implemented.
+- Float-float basis swap (`BasisSwap`): constant notionals. The
+  mark-to-market resetting variant, with its convexity adjustment, is
+  `FloatFloatXccy(mtm_reset=True)` in `fx_rates.xccy_float`.
 
 ### 1.5 Dates and day counts
 

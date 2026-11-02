@@ -135,7 +135,7 @@ GoogleTest. Each Rust engine's only `[dependencies]` entry is the workspace
 |---|------|--------|-----|---|
 | 1 | Options Pricing & Greeks | `python/equity/01-options-pricing` | `python/fx/01-options-pricing` | yes |
 | 2 | Volatility Modeling & Forecasting | `python/equity/02-volatility-modeling` | `python/fx/02-volatility-modeling` | no |
-| 3 | Market Risk VaR / Expected Shortfall | `python/equity/03-var-es-engine` | `python/fx/03-var-es-engine` | yes (linear book) |
+| 3 | Market Risk VaR / Expected Shortfall | `python/equity/03-var-es-engine` | `python/fx/03-var-es-engine` | yes (linear book plus European options) |
 | 4 | Fixed Income Pricing & Risk | `python/equity/04-fixed-income` | `python/fx/04-fixed-income` | no |
 | 5 | Statistical Pairs Trading | `python/equity/05-pairs-trading` | `python/fx/05-pairs-trading` | no |
 | 6 | Credit Risk / PD Modeling | `python/equity/06-credit-risk` | `python/fx/06-credit-risk` | no |

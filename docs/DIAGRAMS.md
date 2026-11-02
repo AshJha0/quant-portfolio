@@ -38,7 +38,7 @@ flowchart TB
     end
 
     A1 -.->|golden vectors| CPP & RUST
-    A3 -.->|"golden vectors<br/>(linear book)"| CPP & RUST
+    A3 -.->|"golden vectors<br/>(linear book, options)"| CPP & RUST
 
     style AREAS fill:#1f2937,color:#fff
     style FOUND fill:#374151,color:#fff

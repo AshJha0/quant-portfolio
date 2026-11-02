@@ -2,7 +2,9 @@
 
 How a market-risk team would run this engine: the daily batch, intraday
 use, who reads which number, the gates, and reconciliation with the Python
-engine. The engine handles linear books only.
+engine. The engine revalues linear positions as a dot product and reprices
+European option legs in full in each scenario, with implied vol held at
+today's level.
 
 ## 1. Where this engine sits
 

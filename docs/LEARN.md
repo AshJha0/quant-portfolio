@@ -1279,7 +1279,7 @@ Black-76 needs positive forward and strike; near or below zero rates it fails, s
 
 **Q28. What are the oracles for the Hull-White model in `fi_rates.hull_white`?**
 
-The model is fitted to today's curve, so zero bonds must reprice it. Bond-option parity and Jamshidian payer-receiver parity are checked to 1e-13. An exact Ornstein-Uhlenbeck Monte Carlo with 200,000 paths prices a bond, a caplet and a swaption within 4 standard errors. Limits close it off: as sigma goes to 0 a caplet is worth its intrinsic value, and small mean reversion gives a normal vol close to sigma. Calibration to a swaption grid is not implemented.
+The model is fitted to today's curve, so zero bonds must reprice it. Bond-option parity and Jamshidian payer-receiver parity are checked to 1e-13. An exact Ornstein-Uhlenbeck Monte Carlo with 200,000 paths prices a bond, a caplet and a swaption within 4 standard errors. Limits close it off: as sigma goes to 0 a caplet is worth its intrinsic value, and small mean reversion gives a normal vol close to sigma. `calibrate_hull_white` fits it to a swaption grid by least squares on prices, with mean reversion either fixed (the usual desk choice) or fitted.
 
 
 ## Round 9: Statistical Pairs Trading

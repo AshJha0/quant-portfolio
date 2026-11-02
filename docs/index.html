@@ -84,7 +84,7 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
     <div class="card"><span class="tag">03</span><h3>VaR / Expected Shortfall</h3>
       <p>Historical, age-weighted, parametric (Cornish-Fisher) and Monte Carlo VaR
          with full book revaluation; Kupiec and Christoffersen backtests and a Basel
-         traffic light for any window; Euler risk attribution, FRTB IMA pieces, stressed VaR, EVT and t-copula Monte Carlo, option P&amp;L explain and limits. C++ and Rust linear-book ports with single-option revaluation.</p></div>
+         traffic light for any window; Euler risk attribution, FRTB IMA pieces, stressed VaR, EVT and t-copula Monte Carlo, option P&amp;L explain and limits. C++ and Rust ports that reprice European option legs in full in each scenario.</p></div>
     <div class="card"><span class="tag">04</span><h3>Fixed Income</h3>
       <p>Bond pricing, yield-to-maturity solving, duration/convexity/DV01, yield
          curve construction, day-count conventions; OIS multi-curve, caps and swaptions, Hull-White, float-float cross-currency swaps.</p></div>
@@ -119,7 +119,7 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
     <div class="card"><span class="tag">C++ / Rust</span><h3>Compiled ports</h3>
       <p>C++23 and Rust ports of the options and VaR libraries. No runtime
          dependencies beyond the standard library; C++ tests use GoogleTest.
-         The VaR ports revalue linear books only. The Python packages call
+         The VaR ports revalue linear positions and reprice European option legs in full. The Python packages call
          them through <code>engine="cpp"</code> or <code>engine="rust"</code>.
          Phase 6 added Philox, O(n) quantiles and blocked GEMM to the shared
          core; the batch erfc and exp kernels were slower than libm on an SSE2
