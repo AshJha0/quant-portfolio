@@ -86,7 +86,8 @@ add_library(eqopt
   src/lr_tree.cpp
   src/bachelier.cpp
 )
-target_include_directories(eqopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(eqopt PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_link_libraries(eqopt PUBLIC Threads::Threads eqopt_tuning PRIVATE eqopt_warnings)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)

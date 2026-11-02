@@ -16,6 +16,9 @@
 #   rust         rust/ workspace: one entry per crate, cargo test + clippy
 #   rust fmt     cargo fmt --all --check over the workspace
 #   bindings     qp-cpp (nanobind) and qp-rust (PyO3) built and tested
+#   cmake install  cpp/ installed as one CMake package; find_package consumer
+#   wheels       cibuildwheel wheels for both bindings (artefacts only, not
+#                gated by ci-ok, never published)
 #   bench        Release benches vs committed bench/results.json (2x rule)
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
@@ -651,6 +654,98 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The four engines and qp::core installed as one CMake package (cpp/
+  # CMakeLists.txt), then cpp/tests/find_package_consumer built against the
+  # install prefix alone. Catches a header left out of the install, a target
+  # missing from the export set, or a build-tree path leaking into it.
+  cmake-install:
+    name: cmake install (${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gcc, clang]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install ${{ matrix.toolchain }} toolchain, CMake and Ninja
+        env:
+          CXX_KIND: ${{ matrix.toolchain }}
+        run: bash .github/scripts/install_cxx.sh "$CXX_KIND"
+      - name: Build and install into a fresh prefix
+        env:
+          CXX_KIND: ${{ matrix.toolchain }}
+        run: |
+          if [ "$CXX_KIND" = clang ]; then cxx=clang++-21; else cxx=g++-15; fi
+          cmake -S cpp -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$cxx"
+          cmake --build "$RUNNER_TEMP/build" -j 4
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/prefix"
+          echo "CXX_BIN=$cxx" >> "$GITHUB_ENV"
+      # The consumer sees only the prefix: the source tree is moved aside so
+      # an absolute path into it in the exported files would fail the build.
+      - name: Build and run the find_package consumer
+        run: |
+          cp -r cpp/tests/find_package_consumer "$RUNNER_TEMP/consumer"
+          mv cpp "$RUNNER_TEMP/cpp-moved"
+          cmake -S "$RUNNER_TEMP/consumer" -B "$RUNNER_TEMP/consumer-build" -G Ninja \
+            -DCMAKE_CXX_COMPILER="$CXX_BIN" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/prefix"
+          cmake --build "$RUNNER_TEMP/consumer-build"
+          ctest --test-dir "$RUNNER_TEMP/consumer-build" --output-on-failure
+          mv "$RUNNER_TEMP/cpp-moved" cpp
+
+  # Wheels for qp-cpp and qp-rust, CPython 3.11 to 3.13, manylinux x86_64
+  # and Windows amd64, built with cibuildwheel (settings under
+  # [tool.cibuildwheel] in each bindings/*/pyproject.toml). Each wheel is
+  # installed in a clean environment and run through bindings/wheel_smoke.py.
+  # The wheels are kept as workflow artefacts for 14 days; nothing is
+  # published to PyPI.
+  wheels:
+    name: wheels ${{ matrix.package }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [cpp-nanobind, rust-pyo3]
+        os: [ubuntu-24.04, windows-2025]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Read the pinned Rust channel
+        if: matrix.package == 'rust-pyo3'
+        shell: bash
+        run: |
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)
+          test -n "$channel"
+          echo "QP_RUST_CHANNEL=$channel" >> "$GITHUB_ENV"
+      - name: Install the pinned Rust toolchain (Windows)
+        if: matrix.package == 'rust-pyo3' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          rustup toolchain install "$QP_RUST_CHANNEL" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$QP_RUST_CHANNEL" >> "$GITHUB_ENV"
+      - name: cibuildwheel bindings/${{ matrix.package }}
+        shell: bash
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m pip install cibuildwheel==3.1.4
+          python -m cibuildwheel --output-dir wheelhouse "bindings/$PACKAGE"
+          ls -l wheelhouse
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.package }}-${{ matrix.os }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
   # CI runner numbers are not the published numbers in the engine READMEs.
   # The job fails only on a p50 regression worse than 2.0x on a kernel whose
   # committed p50 is above 1 us; everything else is report-only. See
@@ -912,6 +1007,7 @@ jobs:
       - rust
       - rust-fmt
       - bindings
+      - cmake-install
       - bench
       - engine-differential
       - research

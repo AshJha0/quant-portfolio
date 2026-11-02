@@ -27,7 +27,8 @@ find_package(Threads REQUIRED)
 
 add_library(qp_core INTERFACE)
 add_library(qp::core ALIAS qp_core)
-target_include_directories(qp_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(qp_core INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_link_libraries(qp_core INTERFACE Threads::Threads)
 if(QP_CXX26)
   target_compile_features(qp_core INTERFACE cxx_std_26)

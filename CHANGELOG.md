@@ -16,6 +16,20 @@ dataset (the research entries use ECB reference rates).
 
 ### Added
 
+#### Packaging
+
+- `cpp/CMakeLists.txt` installs the four C++ engines and `qp::core` as one
+  CMake package, `QuantPortfolio` 1.0.0 (targets `qp::core`, `qp::eqopt`,
+  `qp::eqvar`, `qp::fxopt`, `qp::fxvar`). The engines' include paths are now
+  wrapped in `BUILD_INTERFACE`/`INSTALL_INTERFACE`; standalone engine builds
+  are unchanged. A new required CI job, `cmake install`, builds
+  `cpp/tests/find_package_consumer` against the installed prefix with GCC 15
+  and Clang 21.
+- CI job `wheels`: cibuildwheel wheels for `qp-cpp` and `qp-rust`, CPython
+  3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, each smoke-tested
+  by `bindings/wheel_smoke.py`. Artefacts only, never published; not yet
+  gated by `ci-ok`.
+
 #### Research results (ECB reference rates)
 
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read

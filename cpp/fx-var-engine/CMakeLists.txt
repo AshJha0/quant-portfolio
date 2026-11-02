@@ -66,7 +66,8 @@ add_library(fxvar
   src/kernels.cpp
   src/option_reval.cpp
 )
-target_include_directories(fxvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(fxvar PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_compile_options(fxvar PRIVATE ${FXVAR_WARNINGS})
 target_link_libraries(fxvar PUBLIC fxvar_tuning)
 # Shared numerical core (cpp/core, header-only target qp::core).
