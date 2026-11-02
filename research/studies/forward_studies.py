@@ -35,6 +35,7 @@ sys.path[:0] = [str(HERE), str(REPO / "research" / "tools"), str(REPO / "data" /
 
 import holdout as ho  # noqa: E402
 import prereg  # noqa: E402
+import trials  # noqa: E402
 from fx_pairs.cointegration import engle_granger  # noqa: E402
 from fx_studies import PAIRS, _sharpe_block, pairs_fold_masks, usd_prices  # noqa: E402
 from models import johansen_trace, kalman_hedge, training_only  # noqa: E402
@@ -308,15 +309,20 @@ def momentum_study(px: pd.DataFrame, p: dict = MOMENTUM) -> dict:
 
 # ---- driver --------------------------------------------------------------
 
-def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict) -> Path:
+def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict,
+           params: dict | None = None, kind: str = "train", metric: dict | None = None) -> Path:
+    """Write ``results/<name>.json`` and append the run to ``trials.jsonl``."""
     reg = prereg.load(PREREG / reg_file)
+    git = trials.git_state(REPO)  # read before the result file dirties the tree
     RESULTS.mkdir(parents=True, exist_ok=True)
     doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": reg.sha256,
-           "registration_signed": reg.signed, "mode": "train",
+           "registration_signed": reg.signed, "mode": kind,
            "period": {"start": period[0], "end": period[1]},
            "dataset": "ECB euro foreign exchange reference rates (EXR), daily", **payload}
     path = RESULTS / f"{name}.json"
     path.write_text(json.dumps(doc, indent=2, default=float) + "\n", encoding="utf-8")
+    trials.append(name, kind, f"research/prereg/{reg_file}", reg.sha256, f"research/results/{name}.json",
+                  params or {}, metric if metric is not None else trials.metric_of(payload), git=git)
     return path
 
 
@@ -331,9 +337,11 @@ def main(argv: list[str] | None = None) -> int:
     px = training_only(usd_prices(eur))
     period = (str(px.index.min().date()), str(px.index.max().date()))
     if a.which in ("pairs", "all"):
-        print(_write("pairs_fx_g10_v2_train", "pairs-fx-g10-v2.md", period, pairs_v2_study(px)))
+        print(_write("pairs_fx_g10_v2_train", "pairs-fx-g10-v2.md", period, pairs_v2_study(px),
+                     params=PAIRS_V2))
     if a.which in ("momentum", "all"):
-        print(_write("momentum_fx_g10_train", "momentum-fx-g10.md", period, momentum_study(px)))
+        print(_write("momentum_fx_g10_train", "momentum-fx-g10.md", period, momentum_study(px),
+                     params=MOMENTUM))
     return 0
 
 

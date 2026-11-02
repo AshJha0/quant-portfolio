@@ -37,6 +37,7 @@ sys.path[:0] = [str(HERE), str(REPO / "research" / "tools"), str(REPO / "data" /
 
 import holdout as ho  # noqa: E402
 import prereg  # noqa: E402
+import trials  # noqa: E402
 from fx_pairs.cointegration import engle_granger  # noqa: E402
 from fx_regime.hmm import filtered_probabilities, fit_hmm  # noqa: E402
 from models import johansen_trace, kalman_hedge, training_only  # noqa: E402
@@ -83,14 +84,19 @@ def usd_prices(eur_rates: pd.DataFrame) -> pd.DataFrame:
     return out.dropna()
 
 
-def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict) -> Path:
+def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict,
+           params: dict | None = None, kind: str = "train") -> Path:
+    """Write ``results/<name>.json`` and append the run to ``trials.jsonl``."""
     reg = prereg.load(PREREG / reg_file)
+    git = trials.git_state(REPO)  # read before the result file dirties the tree
     RESULTS.mkdir(parents=True, exist_ok=True)
     doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": reg.sha256,
            "registration_signed": reg.signed, "period": {"start": period[0], "end": period[1]},
            "dataset": "ECB euro foreign exchange reference rates (EXR), daily", **payload}
     path = RESULTS / f"{name}.json"
     path.write_text(json.dumps(doc, indent=2, default=float) + "\n", encoding="utf-8")
+    trials.append(name, kind, f"research/prereg/{reg_file}", reg.sha256, f"research/results/{name}.json",
+                  params or {}, trials.metric_of(payload), git=git)
     return path
 
 
@@ -368,9 +374,11 @@ def train(which: str) -> None:
     px = usd_prices(eur)
     period = (str(px.index.min().date()), str(px.index.max().date()))
     if which in ("pairs", "all"):
-        print(_write("pairs_fx_g10_train", "pairs-fx-g10.md", period, pairs_study(px)))
+        print(_write("pairs_fx_g10_train", "pairs-fx-g10.md", period, pairs_study(px),
+                     params=PAIRS))
     if which in ("regime", "all"):
-        print(_write("regime_fx_basket_train", "regime-fx-basket.md", period, regime_study(px)))
+        print(_write("regime_fx_basket_train", "regime-fx-basket.md", period, regime_study(px),
+                     params=REGIME))
 
 
 if __name__ == "__main__":
