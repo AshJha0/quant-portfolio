@@ -95,6 +95,18 @@ decide. The number is published whatever it is.
 Per-month holdings, turnover, per-month net return, and the long-leg and
 short-leg returns separately.
 
+## Amendments (draft, before signing)
+
+- 2026-11-02: added a simulated power check, `research/studies/momentum_power.py`,
+  result `research/power/momentum-fx-g10.json` (200 reps per cell, 63 + 504
+  days, planted momentum as a monthly AR(1) drift, phi 0.9, daily noise sd
+  0.6 %, this rule and decision rule unchanged). Rejection rate: null 1.5 %;
+  drift sd 4 / 6 / 8 / 12 / 16 % a year (mean strategy Sharpe 0.12 / 0.36 /
+  0.67 / 1.29 / 2.06) gives 6.5 / 13 / 28 / 53 / 78.5 %. Power is low: at a
+  true Sharpe near 0.4, the size the literature reports for currency
+  momentum, the test rejects about 1 time in 7. Decision rule, window and
+  trial count are not changed.
+
 ## Signature
 
 signed_by:

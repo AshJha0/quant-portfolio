@@ -206,4 +206,4 @@ def test_real_drafts_power_gate(tmp_path):
     for name in ("pairs-fx-g10-v2.md", "momentum-fx-g10.md"):
         shutil.copy(REPO / "research" / "prereg" / name, tmp_path / name)
     assert prereg.power_errors((tmp_path / "pairs-fx-g10-v2.md").read_text(encoding="utf-8")) == []
-    assert prereg.power_errors((tmp_path / "momentum-fx-g10.md").read_text(encoding="utf-8"))
+    assert prereg.power_errors((tmp_path / "momentum-fx-g10.md").read_text(encoding="utf-8")) == []
