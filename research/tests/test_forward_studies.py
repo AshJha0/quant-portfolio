@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -58,17 +57,24 @@ def test_momentum_parameters_match_registration_text():
 def test_pairs_v2_text_matches_code_and_result():
     text = (REPO / "research" / "prereg" / "pairs-fx-g10-v2.md").read_text(encoding="utf-8")
     res = json.loads((REPO / "research" / "results" / "pairs_fx_g10_v2_train.json").read_text(encoding="utf-8"))
-    assert res["chosen_rule"] == "diff" and "(rule `diff` below)" in text
-    assert f"Trial count: {fs.PAIRS_V2_TRIALS}" in text
-    assert f"{fs.MIN_ACTIVE_YEAR_FRAC:.0%}".replace("%", " %") in text
-    assert set(fs.VAR_RULES) == set(res["variants"])
-    for rule, v in res["variants"].items():  # the table quotes the result file
-        row = re.search(rf"^\| {re.escape(rule)}[ (].*$", text, re.M)
-        assert row, rule
-        assert f"{v['sharpe']:.3f}" in row.group(0)
-        assert f"| {v['years_with_trades']} |" in row.group(0)
-    for k in ("delta", "entry_z", "exit_z", "cost_bp"):
+    assert f"Trial count {fs.PAIRS_V2_TRIALS}" in text and res["trial_count"] == fs.PAIRS_V2_TRIALS
+    assert f"net annualised Sharpe {res['sharpe']:.3f}" in text
+    assert f"trades in {res['years_with_trades']} of 19 years" in text
+    assert set(fs.VAR_RULES) == set(res["superseded_kalman_menu"]["variants"])
+    for k in ("delta", "entry_z", "exit_z", "cost_bp", "embargo_days"):
         assert fs.PAIRS_V2[k] == fx_studies.PAIRS[k]
+
+
+def test_power_table_quotes_the_power_file():
+    text = (REPO / "research" / "prereg" / "pairs-fx-g10-v2.md").read_text(encoding="utf-8")
+    doc = json.loads((REPO / "research" / "power" / "pairs_v2_power.json").read_text(encoding="utf-8"))
+    rows = [ln for ln in text.splitlines() if ln.startswith("| half-life") or ln.startswith("| no coint")]
+    assert len(rows) == len(doc["cells"]) == 6
+    for row, c in zip(rows, doc["cells"], strict=True):
+        cols = [x.strip() for x in row.strip("|").split("|")]
+        assert cols[2] == f"{100 * c['selection_rate']:.1f} %"
+        assert float(cols[3].rstrip(" %")) == pytest.approx(100 * c["level"]["rejection_rate"], abs=0.051)
+        assert float(cols[5].rstrip(" %")) == pytest.approx(100 * c["kalman_v1"]["rejection_rate"], abs=0.051)
 
 
 # ---- training guard -------------------------------------------------------
@@ -177,6 +183,54 @@ def test_flat_residual_is_refused():
     test[250:] = True
     with pytest.raises(ValueError):
         fs.pair_returns_rule(ly, lx, test, "diff")
+
+
+def test_level_z_ignores_price_level():
+    ly, lx, test = _pair()
+    r0, a0 = fs.pair_returns_level(ly, lx, test)
+    r1, a1 = fs.pair_returns_level(ly, lx + np.log(0.0067), test)  # JPY-sized quote for x
+    assert np.allclose(r0, r1, rtol=0, atol=1e-13)
+    assert a0.pop("max_abs_z") == pytest.approx(a1.pop("max_abs_z"), rel=1e-10) and a0 == a1
+
+
+def test_level_z_by_hand():
+    ly, lx, test = _pair()
+    form = ~test
+    b, a = np.polyfit(lx[form], ly[form], 1)
+    z = (ly - a - b * lx) / np.std(ly[form] - a - b * lx[form])
+    _, act = fs.pair_returns_level(ly, lx, test)
+    assert act["entry_signal_days"] == int((np.abs(z[test]) > 2.0).sum())
+    assert act["max_abs_z"] == pytest.approx(np.abs(z[test]).max(), rel=1e-9)
+
+
+def test_level_z_trades_where_kalman_does_not():
+    ly, lx, test = _pair()
+    _, lev = fs.pair_returns_level(ly, lx, test)
+    kal: dict = {}
+    fx_studies.pair_returns(pd.Series(ly), pd.Series(lx), test, fx_studies.PAIRS, kal)
+    assert lev["entries"] > kal["entries"]
+
+
+def test_level_z_no_lookahead():
+    ly, lx, test = _pair()
+    base, _ = fs.pair_returns_level(ly, lx, test)
+    ly2 = ly.copy()
+    ly2[800:] += 0.5
+    other, _ = fs.pair_returns_level(ly2, lx, test)
+    k = 800 - 650  # test rows before the change (return of row 800 uses its price)
+    assert np.allclose(base[:k], other[:k])
+
+
+def test_level_z_zero_residual_refused():
+    with pytest.raises(ValueError):
+        fs.pair_returns_level(np.full(300, 0.5), np.zeros(300), np.r_[np.zeros(250, bool), np.ones(50, bool)])
+
+
+def test_power_simulation_smoke():
+    import pairs_power as pp
+    cell = pp.run_cell(10, pp.LEVELS["jpy_like"], reps=3, n_pairs=2, seed=5)
+    assert 0.0 <= cell["selection_rate"] <= 1.0
+    assert cell["level"]["share_test_days_abs_z_above_2"] > cell["kalman_v1"]["share_test_days_abs_z_above_2"]
 
 
 def test_choose_rule_applies_the_activity_floor():

@@ -1,8 +1,10 @@
 """Training-period runs for the two forward-hold-out registrations.
 
-- ``pairs``: ``prereg/pairs-fx-g10-v2.md``. The signed pairs design with the
-  Kalman observation variance chosen on training data (1999-2021) from a
-  fixed menu of four rules, every rule counted as a trial.
+- ``pairs``: ``prereg/pairs-fx-g10-v2.md``. The signed pairs selection with a
+  level-based z: a static OLS hedge fitted on the formation window and the
+  spread scaled by its formation standard deviation. The Kalman
+  observation-variance menu tried first (``VAR_RULES``) is kept and re-run
+  because it counts in the trial total.
 - ``momentum``: ``prereg/momentum-fx-g10.md``. Cross-sectional spot momentum
   on the nine G10 currencies against USD, one variant fixed from the
   literature before any data was looked at.
@@ -51,7 +53,9 @@ VAR_RULES = {
 }
 # Trial count: the 4 rules above plus the 2 earlier v1 drafting variants that
 # were not the "levels" rule (pairs-fx-g10.md, primary metric section).
-PAIRS_V2_TRIALS = 6
+# Pairs trials on this training data: 3 v1 drafting variants, 3 further
+# variance rules from the menu, and the level-z design registered = 7.
+PAIRS_V2_TRIALS = 7
 # Activity floor: a rule must trade in at least this share of training test
 # years to be eligible. Added after the first run picked the dormant v1 rule
 # (see the registration, "How the rule was chosen"); disclosed, not hidden.
@@ -103,6 +107,83 @@ def pair_returns_rule(ly: np.ndarray, lx: np.ndarray, test_mask: np.ndarray, rul
     return (gross - cost)[test_mask], entries
 
 
+def pair_returns_level(ly: np.ndarray, lx: np.ndarray, test_mask: np.ndarray,
+                       p: dict = PAIRS_V2) -> tuple[np.ndarray, dict]:
+    """Net daily return of one pair over the test rows with a level-based z.
+
+    Fit log y = a + b log x + u by OLS on the formation rows (the rows that
+    are not ``test_mask``); z_t = (log y_t - a - b log x_t) / sd(u). Enter at
+    |z| > entry_z against the sign of z, exit at |z| < exit_z, flat outside
+    the test rows; position at close t earns the return of t+1; legs
+    1 / (1 + |b|) and -b / (1 + |b|); cost per unit of notional traded.
+
+    This is the distance-from-equilibrium signal of Engle and Granger (1987)
+    and Vidyamurthy (2004), Pairs Trading, ch. 8. Unlike the Kalman signal
+    of the signed design, whose time-varying intercept follows the spread
+    and absorbs it, the level z keeps the formation equilibrium for the
+    whole fold, so a spread that wanders away shows up. An intercept in the
+    OLS makes z invariant to the price level (a JPY-sized quote changes a,
+    not z). Returns the returns and activity counts."""
+    form = ~test_mask
+    a = np.column_stack([np.ones(int(form.sum())), lx[form]])
+    coef, *_ = np.linalg.lstsq(a, ly[form], rcond=None)
+    u = ly[form] - a @ coef
+    sd = float(np.std(u))
+    if not sd > 0:
+        raise ValueError("formation residual has zero variance")
+    z = (ly - coef[0] - coef[1] * lx) / sd
+    n = len(z)
+    pos = np.zeros(n)
+    for t in range(1, n):
+        prev = pos[t - 1]
+        if not test_mask[t]:
+            pos[t] = 0.0
+        elif prev == 0.0 and abs(z[t]) > p["entry_z"]:
+            pos[t] = -np.sign(z[t])
+        elif prev != 0.0 and abs(z[t]) < p["exit_z"]:
+            pos[t] = 0.0
+        else:
+            pos[t] = prev
+    b = float(coef[1])
+    wy, wx = pos / (1.0 + abs(b)), -pos * b / (1.0 + abs(b))
+    gross = np.zeros(n)
+    gross[1:] = wy[:-1] * np.diff(ly) + wx[:-1] * np.diff(lx)
+    cost = p["cost_bp"] * 1e-4 * (np.abs(np.diff(wy, prepend=0.0)) + np.abs(np.diff(wx, prepend=0.0)))
+    zt = np.abs(z[test_mask])
+    held = pos[test_mask] != 0.0
+    act = {"entry_signal_days": int((zt > p["entry_z"]).sum()),
+           "entries": int((held & ~np.concatenate([[False], held[:-1]])).sum()),
+           "days_in_market": int(held.sum()), "max_abs_z": float(zt.max()) if zt.size else 0.0}
+    return (gross - cost)[test_mask], act
+
+
+def pairs_level_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
+    """Walk-forward training run of the registered level-z design."""
+    px = training_only(px)
+    logp = pd.DataFrame(np.log(px))
+    idx = pd.DatetimeIndex(logp.index)
+    folds, daily = [], []
+    for year in range(p["first_test_year"], idx.max().year + 1):
+        form, test = pairs_fold_masks(idx, year, p)
+        selected = select_pairs(logp, form, p)
+        window = form | test
+        rets, acts = [], []
+        for a, b in selected:
+            r, act = pair_returns_level(logp[a].to_numpy()[window], logp[b].to_numpy()[window], test[window], p)
+            rets.append(r)
+            acts.append(act)
+        port = np.mean(rets, axis=0) if rets else np.zeros(int(test.sum()))
+        daily.append(port)
+        folds.append({"year": year, "pairs": [f"{a}/{b}" for a, b in selected], "net_return": float(port.sum()),
+                      **{k: sum(x[k] for x in acts) for k in ("entry_signal_days", "entries", "days_in_market")}})
+    r = np.concatenate(daily)
+    return {"primary_metric": "annualised net Sharpe, walk-forward test years (training)",
+            "design": "static OLS hedge on the formation window, level z = residual / formation sd",
+            "trial_count": PAIRS_V2_TRIALS, "folds": folds,
+            "years_with_trades": int(sum(f["entries"] > 0 or f["days_in_market"] > 0 for f in folds)),
+            **_sharpe_block(r), "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=PAIRS_V2_TRIALS)}
+
+
 def select_pairs(logp: pd.DataFrame, form: np.ndarray, p: dict = PAIRS_V2) -> list[tuple[str, str]]:
     """Engle-Granger at 5 % AND Johansen trace rank >= 1 on the formation rows."""
     out = []
@@ -123,9 +204,10 @@ def choose_rule(variants: dict, n_years: int, min_active_frac: float) -> str:
     return max(ok, key=lambda k: variants[k]["sharpe"])
 
 
-def pairs_v2_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
-    """Walk-forward training run of every rule in ``VAR_RULES``; the rule
-    with the highest training net Sharpe is the one registered."""
+def variance_menu_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
+    """Walk-forward training run of every Kalman rule in ``VAR_RULES``. Not
+    the registered design (see the registration); kept because these runs
+    count as trials."""
     px = training_only(px)
     logp = pd.DataFrame(np.log(px))
     idx = pd.DatetimeIndex(logp.index)
@@ -156,11 +238,16 @@ def pairs_v2_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
     chosen_unconstrained = choose_rule(variants, n_years, 0.0)
     chosen = choose_rule(variants, n_years, MIN_ACTIVE_YEAR_FRAC)
     r_best = np.concatenate(daily[chosen])
-    return {"primary_metric": "annualised net Sharpe, walk-forward test years (training)",
-            "trial_count": PAIRS_V2_TRIALS, "variants": variants, "test_years": n_years,
+    return {"note": "earlier Kalman variance menu; superseded by the level-z design, counted as trials",
+            "variants": variants, "test_years": n_years,
             "min_active_year_frac": MIN_ACTIVE_YEAR_FRAC, "chosen_rule": chosen,
             "chosen_rule_without_activity_floor": chosen_unconstrained,
             "deflated_sharpe_chosen": ho.deflated_sharpe_of(r_best, n_trials=PAIRS_V2_TRIALS)}
+
+
+def pairs_v2_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
+    """The registered level-z run plus the superseded variance menu."""
+    return {**pairs_level_study(px, p), "superseded_kalman_menu": variance_menu_study(px, p)}
 
 
 # ---- cross-sectional momentum --------------------------------------------

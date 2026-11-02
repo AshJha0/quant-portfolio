@@ -1,93 +1,82 @@
-# Forward log: what it records and why
+# Forward log: what the forward-hold-out registrations need from it
 
-Owner of this file: the prereg2 lane (pre-registrations with a forward
-hold-out). The forward lane's code (`research/forward/forward.py` and the
-daily workflow) writes the log; this file says what the registrations need
-from it. If the two disagree, this file is the contract and the code is
-fixed.
+Owner: the pre-registration lane. The log itself, its schema and its job are
+documented in `research/forward/README.md` (schema 1) and written by
+`research/forward/forward.py`. This file says what the two forward-hold-out
+registrations (`prereg/pairs-fx-g10-v2.md`, `prereg/momentum-fx-g10.md`)
+rely on. Field names below are schema 1's.
 
-## Why the log exists
+## Why it matters to these registrations
 
-Two registrations (`prereg/pairs-fx-g10-v2.md`, `prereg/momentum-fx-g10.md`)
-hold out data that does not exist yet: ECB fixes from 2026-11-03 onward.
-A forward hold-out is only worth something if nobody can later quietly pick
-which days count. So each day's fix is written down once, on the day, with
-the hash of the file it came from, on a branch (`forward-log`) where every
-append is a commit with a timestamp. At evaluation the returns are
-recomputed from those logged fixes, not from a fresh download.
+Their hold-out is data that does not exist yet: ECB fixes from 2026-11-03
+onward. A forward hold-out is only worth something if nobody can later pick
+which days count or what the rates were. The log writes each day once, on
+the day, with the hash of the response it came from, as a commit on the
+`forward-log` branch.
 
-## Hard rules
+## What the registrations use from schema 1
 
-1. No row is dated before 2026-11-03. The fetcher requests nothing earlier
-   (this also keeps the 2022-2025 hold-out of the signed registrations
-   untouched).
-2. One row per ECB business day, appended once. Re-running for a date that
-   is already in the log changes nothing (idempotent); a fix that differs
-   from the logged one is an error, reported, never overwritten.
-3. The log is append-only. A correction is a new row type, never an edit.
-4. The fixes and their hashes are the record. Signal fields are a
-   convenience for reading the log day by day; the evaluation recomputes
-   every signal and return from the logged fixes under the registration's
-   rules and fails if a logged signal disagrees.
+| Field | Used for |
+|---|---|
+| `date` | the scored day; every scored day is >= 2026-11-03 (the log's guard) |
+| `usd_per_unit` | the nine USD prices both registrations trade |
+| `rates_per_eur` | re-deriving `usd_per_unit` as a check |
+| `provenance.data_sha256`, `provenance.source` | tying each rate to the ECB response |
+| `provenance.code_commit`, `provenance.written_utc` | showing the row was written on the day |
 
-## Record (one JSON object per line, `forward-log` branch)
+The log's rules that the registrations depend on, all already in schema 1:
+one line per ECB date, never rewritten (first value wins on an ECB
+revision); no line dated before 2026-11-03; a day's line uses only that day
+and earlier lines.
 
-Fields the registrations rely on, with the names `forward.py` uses:
+Not used: the `regime` and `pairs` blocks. They are the signed
+registrations' rules, whose 3- and 4-year history requirements are counted
+on forward data only, so they show `warming_up` until 2030 and 2031.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `schema` | int | record version; bump on any field change |
-| `date` | `YYYY-MM-DD` | ECB fix date, >= 2026-11-03 |
-| `rates_per_eur` | object | raw ECB rates, one per currency incl. USD, as parsed |
-| `usd_per_unit` | object | USD per unit for AUD, CAD, CHF, EUR, GBP, JPY, NOK, NZD, SEK |
-| `provenance.code_commit` | str | commit of the code that wrote the row |
-| `provenance.data_sha256` | str | SHA-256 of the exact bytes parsed |
-| `provenance.source` | str | URL or file the bytes came from |
-| `provenance.written_utc` | str | UTC time of the append |
-| `provenance.prereg_sha256` | object | registration path -> hash at write time |
-| `regime`, `pairs` | object | the signed registrations' daily signals (forward lane) |
-| `momentum` | object or null | this lane's momentum signal, below |
-| `pairs_v2` | object or null | this lane's pairs v2 signal, below |
+## Formation and lookback history
 
-`momentum` and `pairs_v2` may be null until their registrations are signed;
-that loses nothing, because rule 4 recomputes them from the fixes.
+A rule that needs a 3-year formation window cannot score on forward data
+alone until about 2030. The two new registrations state their history rule
+explicitly:
 
-### `momentum` (prereg/momentum-fx-g10.md)
+- One ECB file of fixes 1999-01-04 to 2026-11-02 (the nine currencies plus
+  USD, same request format as `data/fetch/qp_fetch.py`), fetched once at
+  signing, after the signed registrations' 2022-2025 hold-out has been
+  run. Its SHA-256 goes in the signing commit; the file is stored as
+  `research/forward/history_1999-01-04_2026-11-02.csv` with its `.sha256`.
+- Formation windows (pairs v2) and lookbacks (momentum) read that file
+  followed by the log, as one contiguous series of ECB business days.
+- No fix dated before 2026-11-03 is ever scored.
 
-- `status`: `warming_up` until there are 64 logged fixes dated
-  2026-11-03 or later at a month end, then `scored`.
-- `rebalanced`: bool, true on the last ECB business day of a month once
-  scored.
-- `scores`: currency -> log return over the previous 63 fixes (on
-  rebalance days).
-- `weights`: currency -> target weight after the close (+-1/6 or 0).
-- `net_return`: the day's net return of the weights held from the previous
-  close, cost included.
+The history file is not part of the log and the log job never fetches it;
+the log's own guard stays as it is.
 
-Reference implementation: `research/studies/forward_studies.py:
-momentum_weights`, `momentum_returns`.
+## Strategy fields: not needed in the log
 
-### `pairs_v2` (prereg/pairs-fx-g10-v2.md)
-
-Same shape as `pairs` (`status`, `formation`, `selected`, `held` with
-`z`, `beta`, `w_y`, `w_x`, `net_return`), computed with the `diff`
-observation-variance rule (`forward_studies.VAR_RULES["diff"]`) and the
-forward folds of the registration (2026-11-03 to 2027-11-02, then
-2027-11-03 to 2028-11-02).
-
-Its formation windows need fixes from 2023-2026, which overlap the signed
-registrations' single-use hold-out. So `pairs_v2.status` stays
-`waiting_for_v1_holdout` until both `research/results/pairs_fx_g10_holdout.json`
-and `regime_fx_basket_holdout.json` exist on main. The formation fixes are
-then fetched once, hashed and stored beside the log as a separate,
-dated file; they are never scored.
+Schema 1 carries no `momentum` or `pairs_v2` block, and the registrations do
+not need one: the evaluation recomputes every signal and return from
+`usd_per_unit` and the history file, under the registration's code
+(`research/studies/forward_studies.py: momentum_weights`, `momentum_returns`,
+`pair_returns_level`, `select_pairs`). If daily readability is wanted later,
+a schema 2 may add them as a convenience; they would never be the source of
+truth.
 
 ## Evaluation
 
-At the evaluation dates in the registrations (pairs v2: on or after
-2028-11-13; momentum: on or after 2029-03-12) a script reads the log at a
-stated `forward-log` commit, checks every `data_sha256` it can re-derive,
-recomputes the daily returns over the registered window, and writes one
-result JSON with `prereg`, `prereg_sha256`, `period`, `mode: "forward"` and
-the log commit. That script is not written yet; it is the next piece of
-work after signing.
+Both registrations score 2026-11-03 to 2028-11-02 once, on or after
+2028-11-13. The evaluation script (not written yet; next work after
+signing) will
+
+1. read `forward/log.jsonl` at a stated `forward-log` commit and the
+   history file, and check the history file's SHA-256 against the signing
+   commit;
+2. refuse if any date in 2026-11-03 to 2028-11-02 that the ECB published is
+   missing from the log, or any `usd_per_unit` disagrees with
+   `rates_per_eur`;
+3. recompute the daily returns under each registration and write one result
+   JSON with `prereg`, `prereg_sha256`, `period`, `mode: "forward"`, the
+   log commit and the history hash.
+
+`prereg.py check` treats any period ending on or after 2022-01-01 as reaching the
+signed hold-out window, so a forward result will only pass once its
+registration is signed, which is the intended guard.

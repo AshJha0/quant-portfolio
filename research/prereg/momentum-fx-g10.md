@@ -29,11 +29,18 @@ that the forward data, not a re-tuned rule, answers the question.
   registration.
 - Training period: 1999-01-04 to 2021-12-31 (the only data this draft has
   scored; first scored year 2000, after a full lookback).
-- Hold-out: forward. Every ECB fix dated 2026-11-03 or later, as recorded
-  in the forward log (`research/forward/SPEC.md`), with the SHA-256 of the
-  file each fix came from. The forward computation reads no fix dated
-  before 2026-11-03, so it never touches the 2022-2025 hold-out of the
-  signed registrations.
+- Hold-out (scored): forward. Every ECB fix dated 2026-11-03 or later, as
+  recorded in the forward log (`research/forward/SPEC.md`), with the
+  SHA-256 of the response each fix came from.
+- Lookback history (never scored): the same ECB file of 1999-01-04 to
+  2026-11-02 fixes that `pairs-fx-g10-v2.md` uses, fetched once at signing
+  after the signed registrations' 2022-2025 hold-out has been run, its
+  SHA-256 recorded in the signing commit. It supplies the 63-fix lookback
+  for every rebalance whose lookback reaches before 2026-11-03, and the
+  weights set at the close of
+  2026-10-30. The series is contiguous: history file, then forward log. A
+  fix dated before 2026-11-03 is never scored. The 2026 fixes before
+  signing are not a hold-out of any registration.
 
 ## Parameters (fixed, one variant)
 
@@ -45,9 +52,10 @@ that the forward data, not a re-tuned rule, answers the question.
 - Weights at the close of day t earn the log return of day t+1 and hold
   until the next rebalance.
 - Cost: 1 bp per unit of gross weight traded, including the first build.
-- Forward start: the first rebalance is the first month end with at least
-  64 logged fixes dated 2026-11-03 or later (expected 2027-02-26). Before
-  it the position is flat and nothing is scored.
+- Forward start: the weights in force on 2026-11-03 are those set at the
+  close of 2026-10-30, the last ECB business day of October, from the
+  lookback history; scoring starts with the return of 2026-11-03. The
+  first-build cost is charged on 2026-11-03.
 
 Chosen before any data was looked at, from the paper's design (rank on past
 returns, long winners, short losers, monthly rebalance) with a 3-month
@@ -68,11 +76,10 @@ interval (reported). Deflated Sharpe reported with N = 1.
 
 ## Evaluation window and date
 
-- Window: every business day with an ECB fix from the day after the first
-  rebalance to 2029-02-28 inclusive (24 months if the first rebalance is
-  2027-02-26). With about 500 daily returns the one-sided test can detect a
+- Window: every ECB business day from 2026-11-03 to 2028-11-02 inclusive
+  (24 months). With about 500 daily returns the one-sided test can detect a
   true annualised Sharpe above about 1.2 and no smaller; stated as low power.
-- Evaluation date: on or after 2029-03-12, once the fix for 2029-02-28 is in
+- Evaluation date: on or after 2028-11-13, once the fix for 2028-11-02 is in
   the forward log. An interim 12-month figure may be published as
   descriptive only.
 - Scored once.

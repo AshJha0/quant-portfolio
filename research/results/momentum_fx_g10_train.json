@@ -1,6 +1,6 @@
 {
   "prereg": "research/prereg/momentum-fx-g10.md",
-  "prereg_sha256": "82e04aa7499f05d906a7537d8681e5a8479121cea5334eca03fff357889d60a7",
+  "prereg_sha256": "34c047081019e8a548e44a8efca773cccafb48c99091e853c9c29fdb72986533",
   "registration_signed": false,
   "mode": "train",
   "period": {
