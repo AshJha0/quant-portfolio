@@ -27,7 +27,7 @@ Measured on the development machine (2026-11-01, Python 3.12, numpy 2.5):
 
 | command | result | wall time |
 |---|---|---|
-| `python -m pytest tests -q` | 351 passed | 159 s |
+| `python -m pytest tests -q` | 360 passed | 39 s |
 | `python examples/run_pipeline.py` | exit 0 | 67 s |
 
 Without `arch` installed, `tests/test_arch_crosscheck.py` is skipped and the
@@ -66,11 +66,34 @@ nu = 3.7), and the Gaussian GARCH pins persistence at 1 (flagged
 constant series, NaNs, short samples) are in
 [docs/VALIDATION.md](docs/VALIDATION.md).
 
+## Round 4 addition: HAR-RV on the FX trading day
+
+`fx_vol.har_rv` (imported from the submodule) fits Corsi's (2009) HAR-RV
+model, the same regression as `eq_vol.har_rv`, and adds the FX part: what
+counts as one day. Spot FX trades round the clock on weekdays and rolls
+its value date at 17:00 New York, so `fx_daily_realized_variance` builds
+daily realised variance on 17:00-to-17:00 New York days from time-stamped
+prices. It follows daylight saving (17:00 New York is 21:00 UTC in summer
+and 22:00 UTC in winter), drops the return that spans a cut, and drops
+weekend days. `HARResult.forecast_vol` annualises with 260 FX trading
+days.
+
+```python
+from fx_vol.har_rv import fx_daily_realized_variance, fit_har
+rv = fx_daily_realized_variance(prices)   # tz-aware pd.Series of mid prices
+res = fit_har(rv)
+res.forecast(5), res.forecast_vol(5)
+```
+
+Tests (`tests/test_har_rv.py`, 9) cover the cut at both DST offsets, a hand
+rebuild of one day, exact parameter recovery on a noiseless series, and
+agreement with the equity twin to 1e-14.
+
 ## Layout
 
 ```
 src/fx_vol/            returns, historical, ewma, garch, egarch, gjr,
-                       forecasting, evaluation, vol_premium, data/{synthetic,live}
+                       forecasting, evaluation, vol_premium, har_rv, data/{synthetic,live}
 tests/                 offline seeded tests (arch cross-check optional)
 examples/run_pipeline.py
 docs/                  METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md

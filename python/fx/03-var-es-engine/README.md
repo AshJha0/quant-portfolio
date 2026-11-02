@@ -114,6 +114,37 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
+## Round 4 addition: FX Euler attribution (`fx_var.fx_attribution`)
+
+Euler attribution needs exposures. For an FX book they come from mapping
+each position to the currencies it is long or short, valued in the
+reporting currency (RiskMetrics 1996, s.6.2). Euler then splits VaR or ES
+across currencies, and any grouping (pair, desk, region) is the sum of
+its members.
+
+Options carry the one FX convention that matters here. If the book
+reports in the pair's quote currency, the exposure is `N S delta`; if it
+reports in the base currency (a USD book holding USDJPY options), the
+value is `V/S` and its sensitivity to `ln S` is the premium-adjusted
+delta. That is the same reason USDJPY is quoted in premium-adjusted
+deltas.
+
+```python
+from fx_var.fx_attribution import currency_exposures, fx_parametric_attribution
+ccy = ("EUR", "JPY", "GBP")
+e = currency_exposures({"EUR": 10e6, "JPY": -1.5e9}, {"EUR": 1.10, "JPY": 1/150, "GBP": 1.27}, ccy)
+a = fx_parametric_attribution(dict(zip(ccy, e)), cov, ccy, 0.01)
+a.component()   # USD VaR per currency; sums to a.total
+```
+
+Tests (`tests/test_fx_attribution.py`, 9): the Euler sum, the grouping
+identity, both option exposures against finite differences of the value
+(and the premium-adjusted closed form), agreement with
+`eq_var.risk_attribution` on the same exposures, and a 400,000-scenario
+check. There the delta map reproduces the parametric split within 5 %,
+and full revaluation of a long-option book gives a lower ES than the
+linear map, as convexity says it must.
+
 ## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
 
 Seven new public modules and one private helper (`_r3checks`). They are

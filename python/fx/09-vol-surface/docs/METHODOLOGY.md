@@ -181,6 +181,44 @@ convexity) far better than κ, ξ separately, recovery tolerances are
 set accordingly and the ridge is demonstrated numerically in
 `VALIDATION.md`.
 
+## 5a. Local vol, SSVI and Bates in FX terms (round 4)
+
+**Dupire** (`dupire.py`). Plain idea: choose the spot's instantaneous vol
+as a function of spot and time so that every vanilla on the surface is
+repriced. Formal statement: with `k = ln(K/F_T)` and
+`F_T = S exp((r_d - r_f) T)`, Gatheral (2006) eq. 1.10 gives local variance
+from total variance `w(k, T)`; from prices it is Dupire (1994) with the
+dividend yield replaced by `r_f`:
+`sigma^2 = (C_T + (r_d - r_f) K C_K + r_f C) / (K^2 C_KK / 2)`.
+Worked example: `test_dupire_two_routes_agree_with_fx_carry` (spot 1.10,
+USD 4.5 %, EUR 3.5 %; the two routes agree to 2e-4 at strikes 0.95, 1.10
+and 1.25). For a quoted delta, `local_vol_at_delta` first finds the
+smile-consistent strike (strike, then the vol at that strike, then the
+strike again, under the pair's delta convention) and evaluates local vol
+there.
+
+**SSVI and eSSVI** (`ssvi.py`). Gatheral and Jacquier (2014) eq. 4.1 with
+the power-law `phi`, and Hendriks and Martini (2019) for `rho(theta)`. The
+FX step is the ATM definition: the quoted ATM is the delta-neutral
+straddle, at `k = sigma^2 T / 2` (unadjusted) or `-sigma^2 T / 2`
+(premium-adjusted), so `theta` is not `sigma_ATM^2 T`.
+`fit_ssvi_from_pillars` interpolates the pillar total variances at `k = 0`
+instead.
+
+**Bates** (`bates.py`). Bates (1996) built this model for Deutsche Mark
+options. The characteristic function of `ln(S_T/S) - (r_d - r_f) T` is the
+Heston one times a compound-Poisson factor with the drift compensator
+`lam * kbar`; pricing is the Lewis (2001) integral with `q = r_f`. When the
+vol of vol is below 1e-6 the Heston factor is replaced by its exact
+deterministic-variance limit, because the little-trap form divides by
+`xi^2` and loses all its digits there.
+
+Equity code is not imported. `qp_core` holds conventions and statistics,
+not pricing models, and making `fx_surface` depend on `eq_surface` would
+couple two packages that ship separately. The FX modules are twins of the
+equity ones, and the tests import the equity versions from the source
+tree to check that the two agree.
+
 ## 6. Assumptions register
 
 | # | Assumption | What breaks if violated |
