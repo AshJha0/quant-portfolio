@@ -124,3 +124,7 @@ tests/                170 offline seeded tests
 examples/run_pipeline.py   reproduces every number above (prints only)
 docs/                 METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 ```
+
+## Round 3 models
+
+`hrp`, `robust_mvo` (resampled and robust MVO), `cost_qp` (cost- and turnover-penalised rebalance), `factor_model`, `tracking_error` and `sharpe_tests` (HAC and block-bootstrap Sharpe difference). See docs/METHODOLOGY.md and docs/VALIDATION.md.

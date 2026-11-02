@@ -71,3 +71,7 @@ seeded tests), `examples/run_pipeline.py`, `docs/`
 FX conventions: pairs quoted BASE/QUOTE (EURUSD = USD per EUR), domestic rate
 = quote-currency rate; all stochastic components take explicit seeds; no
 network access anywhere in library or tests (`data/live.py` is import-guarded).
+
+## Round 3 models
+
+`xva` (risk-neutral bilateral CVA/DVA, CSA with threshold, MTA and MPoR, Hull-White wrong-way risk) and `saccr` (SA-CCR EAD for FX netting sets, Basel CRE52). See docs/METHODOLOGY.md and docs/VALIDATION.md.

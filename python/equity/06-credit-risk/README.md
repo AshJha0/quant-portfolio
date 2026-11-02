@@ -89,3 +89,7 @@ Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (why WOE+logit vs GBM/structural,
 assumptions register, TTC-vs-PIT), [VALIDATION.md](docs/VALIDATION.md) (all
 evidence with numbers, failure modes), [DESK_GUIDE.md](docs/DESK_GUIDE.md)
 (cutoffs, pricing, IFRS 9, ICAAP, governance, COVID/2008 scenarios).
+
+## Round 3 models
+
+`lgd_ead` (workout LGD, CCF/EAD, beta LGD, downturn LGD), `calibration` (central tendency plus MoC A/B/C and the CRR floor), `migration` (cohort matrix, lifetime PD, IRW generator) and `cds` (hazard bootstrap). See docs/METHODOLOGY.md and docs/VALIDATION.md.

@@ -195,3 +195,16 @@ Hardening additions (`test_input_validation.py`, `test_edge_cases.py`):
   Vasicek quantile monotone in q; simulated loss rates bounded in [0, 1] with
   mean ≈ PD·LGD within 3 SE; Basel K bounded by LGD at M = 2.5; economic
   capital quantile gated to (0, 1].
+
+## Round 3 oracle tests (`tests/test_round3_credit.py`, 18 tests)
+
+| Model | Oracle |
+|---|---|
+| Workout LGD | Hand value at a 10% rate; the zero-rate case is undiscounted |
+| EAD / CCF | Round trip CCF -> EAD -> CCF; NaN when nothing was undrawn |
+| Beta LGD | Recovers (2, 5) from 200k draws within 3% |
+| Calibration | Mean PD equals the target to 1e-12; ranking unchanged; a single obligor is exact |
+| MoC C | Equals t_{0.9,n-1} s / sqrt(n) to 1e-14 |
+| Lifetime PD | Two-state chain: 1 - (1-p)^t to 1e-14 |
+| Generator | exp(Q) -> log round trip to 1e-10; fixed generator is valid |
+| CDS | Credit triangle s = lambda (1-R) as the premium grid is refined; flat-segment protection leg closed form; bootstrap reprices five tenors to 1e-12 |

@@ -166,3 +166,12 @@ Vasicek layer has the analytic loss CDF and quantile, an exact
 finite-portfolio quantile by quadrature, the Gordy-Lutkebohmert
 granularity adjustment, and seeded Monte Carlo with order-statistic
 confidence intervals. Numbers are in VALIDATION.md.
+
+## Round 3 additions: LGD/EAD, calibration, migration, CDS
+
+Each module's docstring holds the full statement and its references; this is the short version.
+
+- **Workout LGD** (`lgd_ead.workout_lgd`). Exposure minus the discounted net recoveries, divided by exposure (EBA/GL/2017/16 s6.3.1). `ead_from_ccf` and `realised_ccf` apply the Basel II para 316 conversion factor in each direction. `beta_moments_fit` fits a beta distribution by moments. `downturn_lgd` averages the LGD of the worst default-rate years.
+- **Central-tendency calibration** (`calibration`). Every PD is shifted by one constant in log-odds space, so the ranking and the AUC do not change, until the mean PD equals the long-run average default rate (EBA/GL/2017/16 s5.3.5). The category C margin of conservatism is the one-sided t half-width of that average. Categories A and B are add-ons the caller supplies. The 0.03% floor is CRR art. 160(1).
+- **Migration and lifetime PD** (`migration`). The cohort estimator follows Jafry and Schuermann (2004). The cumulative PD by year is the default column of P^t, as used for IFRS 9 lifetime PD. The generator is the matrix logarithm with the Israel, Rosenthal and Wei (2001) weighted fix, and it gives PDs at fractional horizons.
+- **CDS bootstrapping** (`cds`). Hazards are piecewise constant and the discount rate is flat. The protection leg is computed exactly on each segment. The premium leg includes accrual on default with the half-period approximation of O'Kane and Turnbull (2003). Each hazard is solved so its tenor prices at par. The bootstrap raises an error when a spread implies a negative hazard.

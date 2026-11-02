@@ -102,3 +102,9 @@ Per SR 11-7 / EBA model-governance expectations:
   PSI is 0.074 (stable) while *calibration* already failed: the documented
   lesson that PSI monitors the input mix, not correctness; both monitors are
   required.
+
+## Round 3: which number to use
+
+- Pillar 1 PD: `calibration.calibrate_with_moc`. The ranking model alone is not enough, because the MoC and the floor are part of the regulatory PD.
+- IFRS 9 lifetime PD: `migration.cumulative_pd`. It assumes the chain is time-homogeneous, so overlay forward-looking scenarios separately.
+- A market-implied PD comes from `cds.bootstrap_hazards`, which is risk-neutral. Do not mix it with the through-the-cycle PDs above.

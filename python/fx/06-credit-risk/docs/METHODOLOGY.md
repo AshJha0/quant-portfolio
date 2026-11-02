@@ -147,3 +147,14 @@ K(ρ_sov) > K(ρ_corp) is unit-tested across the PD range.
 - All Monte Carlo uses `numpy.random.default_rng(seed)`; GBM uses the exact
   lognormal scheme, so the martingale test is a 3-standard-error check, not a
   discretisation compromise.
+
+## Round 3 additions: desk CVA/DVA, CSA and MPoR, wrong-way risk, SA-CCR
+
+`exposure.expected_exposure_loss` is a real-world expected-loss measure and is not a CVA. `xva.py` is the risk-neutral version:
+
+- **Hazard.** The hazard comes from the CDS spread through the credit triangle, lambda = s/(1-R). A bootstrapped curve can be passed in as survival values instead.
+- **Bilateral CVA/DVA.** These are sums over the exposure grid with first-to-default weighting, assuming the two defaults are independent (Gregory 2020, eq. 14.3).
+- **CSA.** The collateral held at t is the value called at t - MPoR, net of the threshold, and set to zero when below the MTA (BCBS 189 para 41). With zero rates and no threshold, the EPE of a forward is N S0 (2 Phi(sigma sqrt(MPoR)/2) - 1).
+- **Wrong-way risk.** This follows Hull and White (2012): lambda = exp(a(t) + b V(t)). a(t) is calibrated so the average survival matches the CDS curve. b = 0 gives the independent CVA on the same paths.
+
+`saccr.py` covers the SA-CCR FX asset class from Basel CRE52. It includes the RC (unmargined and margined), the add-on per currency-pair hedging set with SF = 4%, the maturity factors, the PFE multiplier and EAD = 1.4 (RC + PFE). The margined EAD is capped at the unmargined EAD.
