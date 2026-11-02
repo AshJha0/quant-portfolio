@@ -83,12 +83,12 @@ alpha by the cumulative binomial probability (spec S4). On 250 days at 99 %:
 the synthetic GARCH backtest the unconditional models are red (13 and 10
 exceptions) and per-factor FHS is green (2).
 
-FRTB IMA pieces were added in Round 3 in `eq_var.frtb_ima`: the
+FRTB IMA pieces live in `eq_var.frtb_ima`: the
 liquidity-horizon ES cascade, stressed ES, IMCC, capital with the plus
 factor, the desk backtest and the P&L attribution test. NMRF/SES (taken as
 an input), the default risk charge and risk-factor eligibility are still
 not implemented, and the BCBS paragraph references have not been re-checked
-against the bis.org text. See the Round 3 section below.
+against the bis.org text. See "Which tool for which question" below.
 
 ## 5. Stress review
 
@@ -129,7 +129,7 @@ against the bis.org text. See the Round 3 section below.
 | Model validation | backtest p-values, method disagreement, CF validity flags | quarterly |
 | Finance | capital charge | monthly |
 
-## Round 3: which tool for which question
+## Which tool for which question
 
 * "Which trades drive our VaR?" `risk_attribution.parametric_attribution`
   for a quick read, `simulation_attribution` on the scenario P&L matrix for

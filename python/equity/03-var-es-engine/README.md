@@ -123,7 +123,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
+## Risk attribution, FRTB IMA, tails, revaluation and limits (risk attribution, FRTB IMA, tails, revaluation, limits)
 
 Seven new public modules and one private helper (`_r3checks`). They are
 asset-agnostic, ship as the same file in

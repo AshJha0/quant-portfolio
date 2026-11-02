@@ -79,8 +79,14 @@ class TestIcmaCoupons:
         eff = D(2020, month, day)
         mat = D(2020 + years, month, day)
         bond = B.FixedRateBond(eff, mat, coupon, 2, "ACT/ACT-ICMA")
-        dates = [eff, *bond.schedule()]
-        settle = dates[min(k, len(dates) - 2)]
+        # Settle on a coupon date. The effective date counts only when it starts
+        # a regular period: with eom=True a month-end maturity (28 Feb 2021)
+        # rolls the first coupon to 29 Feb 2020, so a 28 Feb 2020 effective
+        # date opens a one-day front stub, which is not a coupon date and is
+        # not priced at par by ICMA (same schedule as QuantLib backward EOM).
+        start, _, ref = bond.periods()[0]
+        dates = ([eff] if start == ref else []) + bond.schedule()[:-1]
+        settle = dates[min(k, len(dates) - 1)]
         assert B.price_from_ytm(bond, settle, coupon) == pytest.approx(100.0, abs=1e-9)
 
 

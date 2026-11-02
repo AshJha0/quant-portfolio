@@ -35,7 +35,7 @@ Plain idea: when spot moves, what happens to the implied vol of the
 option you hold? Three standard answers (Derman 1999, "Regimes of
 volatility", Risk 12(4), 55-59, for the first two):
 
-* ``"sticky_strike"`` (default, the behaviour before round 4): the vol of
+* ``"sticky_strike"`` (default, and the only mode in earlier releases): the vol of
   a given strike does not move with spot. ``sigma_1 = sigma_0 + dv``.
 * ``"sticky_delta"``: the smile moves with spot, so the vol depends on
   moneyness ``K / S`` only. With the leg's smile slope ``skew`` (the

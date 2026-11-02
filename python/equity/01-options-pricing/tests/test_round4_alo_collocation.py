@@ -98,15 +98,33 @@ def test_bad_method_and_node_counts_rejected():
         alo_double_boundary(100.0, 1.0, -0.005, 0.2, -0.02, method="x")
 
 
-def test_collocation_is_fast():
-    """Target: under 50 ms a price (best of seven, one core)."""
-    a = (100.0, 100.0, 1.0, -0.005, 0.2, -0.02, "put")
+def _best_time(fn, n):
     best = np.inf
-    for _ in range(7):
+    for _ in range(n):
         t0 = time.perf_counter()
-        alo_price(*a)
+        fn()
         best = min(best, time.perf_counter() - t0)
-    assert best < 0.05
+    return best
+
+
+def test_collocation_is_fast():
+    """Speed guard: about 15-20 ms a price on a quiet core, ~10x the march.
+
+    A fixed wall-clock bound alone failed on a busy machine (parallel test
+    runs pushed a 15 ms price to 70-150 ms), so the main check is relative:
+    collocation must beat the 400-step march, timed in the same process
+    and interleaved so both see the same load, by at least 3x. The loose
+    absolute bound still catches a fall back to the march or a fine grid.
+    """
+    a = (100.0, 100.0, 1.0, -0.005, 0.2, -0.02, "put")
+    alo_price(*a)  # warm-up: imports and first-call allocation
+    col, march = np.inf, np.inf
+    for _ in range(3):
+        col = min(col, _best_time(lambda: alo_price(*a), 5))
+        march = min(march, _best_time(
+            lambda: alo_price(*a, double_boundary_method="march"), 1))
+    assert col < march / 3.0
+    assert col < 0.5
 
 
 @pytest.mark.parametrize("n_march", [1600])

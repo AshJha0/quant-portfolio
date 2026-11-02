@@ -114,7 +114,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Round 4 addition: FX Euler attribution (`fx_var.fx_attribution`)
+## FX Euler attribution (`fx_var.fx_attribution`)
 
 Euler attribution needs exposures. For an FX book they come from mapping
 each position to the currencies it is long or short, valued in the
@@ -145,7 +145,7 @@ check. There the delta map reproduces the parametric split within 5 %,
 and full revaluation of a long-option book gives a lower ES than the
 linear map, as convexity says it must.
 
-## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
+## Risk attribution, FRTB IMA, tails, revaluation and limits (risk attribution, FRTB IMA, tails, revaluation, limits)
 
 Seven new public modules and one private helper (`_r3checks`). They are
 asset-agnostic, ship as the same file in

@@ -182,7 +182,7 @@ trading book. The engine handles it with `Book(base="EUR")`:
   run to proceed on partial data, the substitution must be made explicitly
   upstream and recorded.
 
-## Round 3: which tool for which question
+## Which tool for which question
 
 * "Which trades drive our VaR?" `risk_attribution.parametric_attribution`
   for a quick read, `simulation_attribution` on the scenario P&L matrix for
