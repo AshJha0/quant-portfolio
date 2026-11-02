@@ -21,10 +21,13 @@ dataset (the research entries use ECB reference rates).
   plus an AVX2 clone on x86-64 Linux). Not bit-exact; tested within
   `1e-13 * max(1, S, K)`. Measured about 4x over `bs_price_batch` with
   GCC 15 and 1.2-2.4x with Clang 21 (noisy laptop, WSL2); see the engine
-  METHODOLOGY. `qp::vm::log_batch` added; `qp::vm::erfc_batch` now actually
+  METHODOLOGY. `bs_greeks_batch_fast` / `gk_greeks_batch_fast` added on the
+  same kernels (about 3-4x with GCC, tested within `1e-12 * max(1, S, K,
+  |exact|)`); `fxopt_batch_bench` added. On MSVC the `_fast` functions use
+  the exact path, because there they measured 3-4x slower. `qp::vm::log_batch` added; `qp::vm::erfc_batch` now actually
   vectorises (its sign select had compiled to a branch).
-- `eq_options.bs_price_array`, `eq_options.bs_greeks_array` and
-  `fx_options.gk_price_array`: NumPy entry points with keyword-only
+- `eq_options.bs_price_array`, `eq_options.bs_greeks_array`,
+  `fx_options.gk_price_array` and `fx_options.gk_greeks_array`: NumPy entry points with keyword-only
   arguments after `K`. About 19x faster than a scalar loop for 10 000
   options. Scalar functions unchanged.
 

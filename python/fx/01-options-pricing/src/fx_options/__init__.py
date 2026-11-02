@@ -8,7 +8,7 @@ Conventions: pairs quoted BASE/QUOTE (EURUSD = USD per EUR); r_d = quote
 ccy rate, r_f = base ccy rate; rates continuously compounded, ACT/365F.
 """
 
-from .arrays import gk_price_array
+from .arrays import gk_greeks_array, gk_price_array
 from .binomial import binomial_convergence, binomial_price
 from .black76 import black76_from_spot, black76_price
 from .comparison import binomial_convergence_table, compare_models, mc_convergence_table
@@ -55,8 +55,9 @@ __all__ = [
                          "forward_to_spot_delta",
                          "gamma",
                          "gk_call",
+                         "gk_greeks_array",
                          "gk_price",
-    "gk_price_array",
+                         "gk_price_array",
                          "gk_put",
                          "hedge_frequency_study",
                          "implied_vol",

@@ -64,6 +64,14 @@ struct BatchError {
 [[nodiscard]] std::expected<void, BatchError> bs_greeks_batch(
     const BsBatchInputs& in, const BsGreeksBatchOutputs& out) noexcept;
 
+/// \brief Throughput form of bs_greeks_batch(): same validation and errors,
+///        vectorised with the qp/vmath.hpp kernels. Not bit-identical; the
+///        tested bound per field is |fast - exact| <= 1e-12 * max(1, S, K,
+///        |exact|). Elements with S / K outside the normal range take the
+///        scalar formula and match bs_greeks() bit for bit.
+[[nodiscard]] std::expected<void, BatchError> bs_greeks_batch_fast(
+    const BsBatchInputs& in, const BsGreeksBatchOutputs& out) noexcept;
+
 }  // namespace eqopt
 
 #endif  // EQOPT_BATCH_HPP

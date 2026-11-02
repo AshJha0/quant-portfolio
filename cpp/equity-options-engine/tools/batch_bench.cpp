@@ -1,5 +1,5 @@
-// Batch pricing throughput: bs_price_batch (bit-exact) against
-// bs_price_batch_fast (vectorised) on the same 1024 quotes.
+// Batch throughput: bs_price_batch / bs_greeks_batch (bit-exact) against
+// the _fast variants (vectorised) on the same 1024 quotes.
 //
 // Method: each run prices the batch `reps` times and divides the elapsed
 // std::chrono::steady_clock time by reps * 1024. The program does 21 runs
@@ -54,18 +54,45 @@ int main() {
         ty[i] = u(g) < 0.5 ? OptionType::Call : OptionType::Put;
     }
     const eqopt::BsBatchInputs in{S, K, T, r, sig, q, ty};
-    measure("scalar try_bs_price", [&] {
-        for (std::size_t i = 0; i < n; ++i)
-            out[i] = eqopt::try_bs_price(S[i], K[i], T[i], r[i], sig[i], q[i], ty[i]).value_or(0.0);
-        g_sink = g_sink + out[n / 2];
-    }, n);
-    measure("bs_price_batch", [&] {
-        (void)eqopt::bs_price_batch(in, out);
-        g_sink = g_sink + out[n / 2];
-    }, n);
-    measure("bs_price_batch_fast", [&] {
-        (void)eqopt::bs_price_batch_fast(in, out);
-        g_sink = g_sink + out[n / 2];
-    }, n);
+    measure(
+        "scalar try_bs_price",
+        [&] {
+            for (std::size_t i = 0; i < n; ++i)
+                out[i] =
+                    eqopt::try_bs_price(S[i], K[i], T[i], r[i], sig[i], q[i], ty[i]).value_or(0.0);
+            g_sink = g_sink + out[n / 2];
+        },
+        n);
+    measure(
+        "bs_price_batch",
+        [&] {
+            (void)eqopt::bs_price_batch(in, out);
+            g_sink = g_sink + out[n / 2];
+        },
+        n);
+    measure(
+        "bs_price_batch_fast",
+        [&] {
+            (void)eqopt::bs_price_batch_fast(in, out);
+            g_sink = g_sink + out[n / 2];
+        },
+        n);
+    std::vector<double> gv[8];
+    for (auto& x : gv) x.resize(n);
+    const eqopt::BsGreeksBatchOutputs go{gv[0], gv[1], gv[2], gv[3], gv[4], gv[5], gv[6], gv[7]};
+    measure(
+        "bs_greeks_batch",
+        [&] {
+            (void)eqopt::bs_greeks_batch(in, go);
+            g_sink = g_sink + gv[1][n / 2];
+        },
+        n);
+    measure(
+        "bs_greeks_batch_fast",
+        [&] {
+            (void)eqopt::bs_greeks_batch_fast(in, go);
+            g_sink = g_sink + gv[1][n / 2];
+        },
+        n);
     return 0;
 }

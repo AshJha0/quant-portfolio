@@ -138,8 +138,7 @@ the normal double range, go through `gk_price_unchecked` and
 match `gk_price` bit for bit. On x86-64 Linux with GCC or Clang the kernel is
 built twice (`target_clones("avx2", "default")`) and the loader picks the
 AVX2 copy where the CPU has it; AVX2 does not enable FMA, so both copies
-return the same bits. MSVC builds the default copy only and its loop has not
-been checked for vectorisation.
+return the same bits. On MSVC the fast functions take the exact path (see the second pass below).
 
 Three changes were needed before the loop vectorised, each confirmed with
 `-fopt-info-vec` / `-Rpass=loop-vectorize`: the erfc reflection
@@ -161,7 +160,32 @@ spread is wide). Release build, no `-march=native`:
 
 With `EQOPT_NATIVE=ON` (AVX2 and FMA) GCC measured 16-38 ns per option.
 Before the three fixes above the fast kernel was scalar and no faster than
-`gk_price_batch` (about 159 ns against 137 ns). The Greeks batch is not
-vectorised yet. The numbers above are for the equity kernel (`eqopt_batch_bench`); the FX
-kernel is the same loop with `r_f` in place of `q` and was not benchmarked
-separately.
+`gk_price_batch` (about 159 ns against 137 ns). The table above is for the equity kernel; FX numbers are in the second pass below.
+
+### Greeks batch, FX numbers and MSVC (second pass)
+
+`bs_greeks_batch_fast` and `gk_greeks_batch_fast` use the same kernels.
+Bound per field: `|fast - exact| <= 1e-12 * max(1, S, K, |exact|)`
+(`BatchApi.FastGreeksWithinDocumentedBound`, 50 000 random quotes plus the
+grid). The Greeks loop only vectorised once every kernel pointer was a
+`__restrict__` parameter: with 7 inputs and up to 11 outputs GCC needs more
+run-time alias checks than `--param vect-max-version-for-alias-checks=10`
+allows.
+
+Measured with `eqopt_batch_bench` and `fxopt_batch_bench` (same method as
+above, a later and quieter run, median ns per option, GCC 15.2 Release):
+
+| Kernel | exact batch | `_fast` | Speed-up |
+|---|---|---|---|
+| equity price | 94 | 23 | about 4x |
+| equity Greeks | 91 | 29 | about 3x |
+| FX price | 89 | 28 | about 3x |
+| FX Greeks | 110 | 27 | about 4x |
+
+Clang 21.1 in the same session: equity 185 to 73 (price) and 197 to 101
+(Greeks), FX 81 to 33 and 91 to 55, so 1.6x to 2.5x.
+
+MSVC (VS 2022, `/O2`) does not vectorise the kernel and the scalar vmath code
+was 3-4x slower than the exact batch there (equity price 189 against 622 ns).
+On MSVC the four `_fast` functions therefore call the exact batch and are
+bit-exact; both engines build with `/W4 /WX` and pass ctest (92 and 90 tests).

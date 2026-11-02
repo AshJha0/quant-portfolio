@@ -142,7 +142,7 @@ cross-language tolerances listed in the module docstring, checked over
 
 **The plain idea.** `gk_price` prices one option per call, about 5.9 µs each
 from Python. `gk_price_array` takes NumPy arrays (anything that broadcasts) and
-prices the whole book (there is no Greeks array form yet) in one call.
+prices the whole book; `gk_greeks_array` returns the full Greek set as a dict of arrays in one call.
 
 **Formal statement.** Arguments after `K` are keyword-only, so swapping two
 floats such as `T` and `sigma` raises `TypeError` instead of returning a

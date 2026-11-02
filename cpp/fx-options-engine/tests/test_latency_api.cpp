@@ -240,8 +240,7 @@ TEST(BatchApi, FastPricesWithinDocumentedBound) {
     std::uniform_real_distribution<double> u(0.0, 1.0);
     for (int i = 0; i < 100000; ++i) {
         add(1.1 * std::exp(2.0 * u(g) - 1.0), 1.1, 1e-3 + 5.0 * u(g), 0.1 * u(g) - 0.02,
-            0.1 * u(g) - 0.02, 0.01 + 2.0 * u(g),
-            u(g) < 0.5 ? OptionType::Call : OptionType::Put);
+            0.1 * u(g) - 0.02, 0.01 + 2.0 * u(g), u(g) < 0.5 ? OptionType::Call : OptionType::Put);
     }
     const std::size_t n = S.size();
     std::vector<double> fast(n), exact(n);
@@ -256,6 +255,54 @@ TEST(BatchApi, FastPricesWithinDocumentedBound) {
     }
     EXPECT_LE(worst, 1e-13);
     RecordProperty("worst_scaled_abs_err", std::to_string(worst));
+}
+
+// Fast Greeks: |fast - exact| <= 1e-12 * max(1, S, K, |exact|) per field.
+TEST(BatchApi, FastGreeksWithinDocumentedBound) {
+    std::vector<double> S, K, T, rd, rf, sig;
+    std::vector<OptionType> ty;
+    auto add = [&](double s, double k, double t, double d, double f, double v, OptionType o) {
+        S.push_back(s);
+        K.push_back(k);
+        T.push_back(t);
+        rd.push_back(d);
+        rf.push_back(f);
+        sig.push_back(v);
+        ty.push_back(o);
+    };
+    for (const Q& x : grid()) {
+        if (x.T > 0 && x.sigma > 0) add(x.S, x.K, x.T, x.rd, x.rf, x.sigma, x.type);
+    }
+    std::mt19937_64 g(7);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    for (int i = 0; i < 50000; ++i) {
+        add(1.1 * std::exp(2.0 * u(g) - 1.0), 1.1, 1e-3 + 5.0 * u(g), 0.1 * u(g) - 0.02,
+            0.1 * u(g) - 0.02, 0.01 + 2.0 * u(g), u(g) < 0.5 ? OptionType::Call : OptionType::Put);
+    }
+    const std::size_t n = S.size();
+    std::vector<double> e[10], f[10];
+    for (int k = 0; k < 10; ++k) {
+        e[k].resize(n);
+        f[k].resize(n);
+    }
+    const GkGreeksBatchOutputs eo{e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9]};
+    const GkGreeksBatchOutputs fo{f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]};
+    ASSERT_TRUE(gk_greeks_batch({S, K, T, rd, rf, sig, ty}, eo).has_value());
+    ASSERT_TRUE(gk_greeks_batch_fast({S, K, T, rd, rf, sig, ty}, fo).has_value());
+    double worst = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (int k = 0; k < 10; ++k) {
+            const double scale = std::max({1.0, S[i], K[i], std::abs(e[k][i])});
+            worst = std::max(worst, std::abs(f[k][i] - e[k][i]) / scale);
+        }
+    }
+    EXPECT_LE(worst, 1e-12);
+    RecordProperty("worst_scaled_abs_err", std::to_string(worst));
+    std::vector<double> bad_sig = sig;
+    bad_sig[2] = 0.0;
+    const auto res = gk_greeks_batch_fast({S, K, T, rd, rf, bad_sig, ty}, fo);
+    ASSERT_FALSE(res.has_value());
+    EXPECT_EQ(res.error().index, 2U);
 }
 
 TEST(BatchApi, FastReportsTheSameErrorsAsExact) {

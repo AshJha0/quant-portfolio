@@ -185,8 +185,9 @@ TEST(VMath, LogWithinTwoUlp) {
     std::uniform_real_distribution<double> e(-1020.0, 1020.0);
     std::vector<double> x(200000), y(x.size());
     for (auto& v : x) v = std::exp2(e(g));
-    const double fixed[] = {1.0, 2.0, 0.5, 0x1.6a09e667f3bcdp-1, 0x1.6a09e667f3bcdp0,
-                            1.0 + 0x1p-52, 1.0 - 0x1p-53, 0x1p-1022, 0x1.fffffffffffffp1023};
+    const double fixed[] = {
+        1.0,           2.0,           0.5,       0x1.6a09e667f3bcdp-1,  0x1.6a09e667f3bcdp0,
+        1.0 + 0x1p-52, 1.0 - 0x1p-53, 0x1p-1022, 0x1.fffffffffffffp1023};
     std::copy(std::begin(fixed), std::end(fixed), x.begin());
     // Near 1 as well, where log x is small and a relative bound is too strict.
     for (int i = 0; i < 20000; ++i) x[100 + i] = 0.9 + 0.2 * (i / 20000.0);
