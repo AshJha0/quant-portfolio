@@ -69,6 +69,42 @@ Produced by `python examples/run_pipeline.py` and `pytest`.
 | USDJPY calibration | rho -0.469, RMSE 0.181 vol points |
 | EURUSD 6m digital at 1.15 | flat GK 0.2054, vanna-volga 0.1895, Heston 0.1899 |
 
+## Round 4 additions: local vol, SSVI and Bates in FX terms
+
+Three models that already existed for equities now have FX versions, with
+domestic and foreign rates in place of the rate and dividend yield, smile
+points addressed by delta, and the four delta conventions supported.
+
+| Module | What it gives you |
+|---|---|
+| `fx_surface.dupire` | Dupire local vol from total variance or from GK call prices (`q = r_f`), local vol at a quoted delta, local-vol Monte Carlo under the domestic measure |
+| `fx_surface.ssvi` | SSVI and eSSVI surfaces, arbitrage checks, a fit from solved pillar strikes that reads `theta` at the forward rather than at the DNS ATM strike, and the strike of a quoted delta on an SSVI slice |
+| `fx_surface.bates` | Bates (1996) jumps plus Heston, priced with the Lewis integral, a Merton series oracle, and an exact `xi -> 0` limit |
+
+```python
+from fx_surface import SSVIParams, ssvi_strike_at_delta, local_vol_at_delta
+p = SSVIParams(rho=-0.3, eta=0.9, gamma=0.4)
+K, vol = ssvi_strike_at_delta(p, theta=0.0032, delta=0.25, cp=-1,
+                              S=1.10, T=0.5, r_d=0.045, r_f=0.035, convention="forward_pa")
+K, lv = local_vol_at_delta(lambda k, T: p.total_variance(k, 0.0064 * T), 0.25, 0.5,
+                           1.10, 0.045, 0.035, cp=-1, convention="spot")
+```
+
+What the tests show (`tests/test_r4_fxmodels.py`, 26 tests):
+
+* The FX and equity versions agree to 1e-15 relative (local vol, SSVI total
+  variance) and 1e-12 absolute (Bates prices) when the equity dividend
+  yield is set to `r_f`. That is the cross-check where the maths coincides.
+* The two Dupire routes agree to 2e-4 relative, and the local-vol Monte
+  Carlo reprices the input surface within four standard errors.
+* Bates with no jumps equals `heston_price` (Gil-Pelaez) to 1e-9, and with
+  a vanishing vol of vol it equals the Merton series to 1e-9.
+* Finding: three-parameter SSVI is a coarse fit to five-point FX smiles.
+  On the USDJPY preset the worst pillar misses by about one vol point (0.5
+  on EURUSD), and eSSVI barely helps. The per-slice SVI and vanna-volga
+  smiles stay the default for pricing; SSVI is there when you need a
+  surface that is arbitrage-free by construction.
+
 ## Tests and runtime
 
 Measured on the development machine with `pytest -q` and
@@ -76,7 +112,7 @@ Measured on the development machine with `pytest -q` and
 
 | Command | Result | Wall time |
 |---|---|---|
-| `pytest -q` | 295 passed | 57 s |
+| `pytest -q` | 321 passed | 27 s |
 | `python examples/run_pipeline.py` | exit 0 | 33 s |
 
 ## Layout
@@ -84,6 +120,7 @@ Measured on the development machine with `pytest -q` and
 ```
 src/fx_surface/          garman_kohlhagen, smile_from_quotes, smile,
                          surface, heston, heston_mc, calibration,
+                         dupire, ssvi, bates (round 4),
                          greeks, data/synthetic (seeded presets:
                          EURUSD, USDJPY-pa, 35%-vol EM, Heston ground truth)
 tests/                   offline seeded tests

@@ -45,6 +45,25 @@ come from seeded synthetic data.
   `FORWARD_LOG_ENABLED` is set to `true`. 16 tests on synthetic data, including
   exact parity with `fx_studies.pair_returns` / `pairs_study`. Docs:
   `research/forward/README.md`.
+#### Round 4: FX model twins (fxmodels lane)
+
+- `fx_surface.dupire`: Dupire local vol for FX (total-variance route and
+  GK-price route with `q = r_f`), local vol at a quoted delta under all
+  four delta conventions, and local-vol Monte Carlo under the domestic
+  measure.
+- `fx_surface.ssvi`: SSVI/eSSVI with `fit_ssvi_from_pillars`, which reads
+  `theta` at the forward rather than at the DNS ATM strike, and
+  `ssvi_strike_at_delta`. Finding: SSVI misses five-point USDJPY smiles by
+  up to about one vol point (fx_surface VALIDATION F10).
+- `fx_surface.bates`: Bates (1996) for FX with the Lewis integral, a
+  Merton-series oracle using GK, and an exact `xi -> 0` limit.
+- `fx_vol.har_rv`: HAR-RV with realised variance on 17:00 New York FX
+  days (DST-aware, weekends dropped) and 260-day annualisation.
+- `fx_var.fx_attribution`: currency mapping for Euler VaR/ES attribution,
+  option exposure with the premium-adjusted delta for base-currency
+  reporting, and additive grouping.
+- Each module is checked against its equity twin (agreement to 1e-12 or
+  better where the maths coincides). 44 new tests.
 
 #### Round 3 fixes: options lane
 

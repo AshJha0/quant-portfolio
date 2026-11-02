@@ -6,11 +6,19 @@ smile fits -> delta-space surface -> Heston (GK) calibration -> pricing,
 Greeks and Monte Carlo validation.
 """
 
+from .bates import JumpParams, bates_call, bates_cf_x, bates_put, merton_call
 from .calibration import (
     CalibrationResult,
     CalibrationSlice,
     calibrate_heston,
     heston_smile_vols,
+)
+from .dupire import (
+    LocalVolArbitrageError,
+    local_vol_at_delta,
+    local_vol_from_prices,
+    local_vol_from_total_variance,
+    local_vol_mc_price,
 )
 from .garman_kohlhagen import (
     DELTA_CONVENTIONS,
@@ -51,6 +59,17 @@ from .smile_from_quotes import (
     strike_from_delta_pa_candidates,
     vols_from_quotes,
 )
+from .ssvi import (
+    ESSVIParams,
+    SSVIFitResult,
+    SSVIParams,
+    calendar_arbitrage_free,
+    fit_ssvi,
+    fit_ssvi_from_pillars,
+    ssvi_slice_as_svi,
+    ssvi_strike_at_delta,
+    ssvi_total_variance,
+)
 from .surface import (
     FXVolSurface,
     SmileSlice,
@@ -64,8 +83,13 @@ __all__ = [
     "PILLAR_LABELS",
     "CalibrationResult",
     "CalibrationSlice",
+    "ESSVIParams",
     "FXVolSurface",
     "HestonParams",
+    "JumpParams",
+    "LocalVolArbitrageError",
+    "SSVIFitResult",
+    "SSVIParams",
     "SVIParams",
     "SVISmile",
     "SmileQuotes",
@@ -73,11 +97,17 @@ __all__ = [
     "SurfaceConvergenceError",
     "VannaVolgaSmile",
     "atm_dns_strike",
+    "bates_call",
+    "bates_cf_x",
+    "bates_put",
     "broker_strangle_from_smile",
     "build_slice",
     "build_surface",
+    "calendar_arbitrage_free",
     "calibrate_heston",
     "durrleman_g",
+    "fit_ssvi",
+    "fit_ssvi_from_pillars",
     "gk_delta",
     "gk_digital",
     "gk_forward",
@@ -96,7 +126,12 @@ __all__ = [
     "heston_price",
     "heston_smile_vols",
     "implied_vol",
+    "local_vol_at_delta",
+    "local_vol_from_prices",
+    "local_vol_from_total_variance",
+    "local_vol_mc_price",
     "mc_price",
+    "merton_call",
     "pa_call_delta_max",
     "price_cos",
     "price_gil_pelaez",
@@ -105,6 +140,9 @@ __all__ = [
     "smile_digital",
     "smile_quotes_from_broker",
     "solve_pillar_strikes",
+    "ssvi_slice_as_svi",
+    "ssvi_strike_at_delta",
+    "ssvi_total_variance",
     "strike_from_delta",
     "strike_from_delta_pa_candidates",
     "vols_from_quotes",
