@@ -42,12 +42,27 @@ reprice exactly. The correction is picked from four shapes so the forward
 never leaves the range of its two node values. In plain terms: the
 forward curve is continuous, it rises wherever the inputs rise, and a
 pillar bump moves at most two segments on each side. It does not by
-itself guarantee positive forwards (the paper's optional collar is not
-implemented), and its first segment `(0, t_1]` is interpolated too, so the
-short end differs a little from the other schemes. Tested for exact
-repricing, continuity at pillars, monotone inputs giving a monotone
-forward, locality, and every one of the four correction shapes
-(`tests/test_round3_fix_rates.py`).
+itself guarantee positive forwards, and its first segment `(0, t_1]` is
+interpolated too, so the short end differs a little from the other
+schemes. Tested for exact repricing, continuity at pillars, monotone
+inputs giving a monotone forward, locality, and every one of the four
+correction shapes (`tests/test_round3_fix_rates.py`).
+
+The paper's positivity collar (their Section 5) is available as an
+option: `DiscountCurve(..., "monotone_convex", positive_forwards=True)`.
+It clamps each node forward into `[0, 2 min(f^d_i, f^d_{i+1})]` (end nodes
+into `[0, 2 f^d]`), and with node values in that band none of the four
+correction shapes can dip below zero. So if every discrete forward is
+positive, so is the whole forward curve; pillars still reprice exactly.
+It is off by default because it changes the curve wherever it binds, and
+the constructor refuses it when a discrete forward is zero or negative.
+Example: discrete forwards 0.1 %, 5 %, 4.5 %, 0.2 %, 4 % give a plain
+forward that goes below zero near the short end and before 5y; with the
+collar the minimum is zero or above (`tests/test_round4_collar.py`).
+One property of the unameliorated scheme worth knowing: when a node
+forward equals the discrete forward of a neighbouring segment exactly
+(two equal discrete forwards side by side) the correction collapses and
+the forward jumps at that pillar. The collar does not change that.
 
 All four interpolations share one code path and one test suite; the
 choice is a constructor argument.

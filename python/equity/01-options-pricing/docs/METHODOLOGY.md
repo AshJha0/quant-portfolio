@@ -171,9 +171,14 @@ reference (paper, section, equation) and a worked example. In short:
   pays only inside a band `[Y(tau), B(tau)]` that starts at `[K r/q, K]`
   and closes at a finite `tau*` (Battauz, De Donno and Sbuelz 2015;
   Andersen and Lake 2021). The band comes from the two value-matching
-  integral equations, marched in `tau` on a `sqrt(tau)` grid with a 2x2
-  Newton step per node; slower than the single-boundary collocation (about
-  a second) but checked to the same 2e-5 against the tree.
+  integral equations. The default solver is Chebyshev collocation in the
+  spirit of Andersen and Lake (2021): mid-line and half-width at 9 nodes in
+  `sqrt(tau / T_c)`, Gauss-Legendre after `u = tau sin^2(theta)`, and, when
+  the band closes before `T`, the closing time `tau*` as one more unknown
+  pinned by smooth fit at the tip. About 15 ms a price, within 1e-5 of the
+  tree. The old solver (march in `tau` on a `sqrt(tau)` grid, 2x2 Newton per
+  node, about 0.2 s) stays as `double_boundary_method="march"`, the
+  reference, and the fallback if the collocation solve ever fails.
 * **Discrete dividends**: escrowed model (spot less the dividends' present
   value is lognormal). Roll-Geske-Whaley for one dividend on a call; an LR
   tree on the escrowed spot for several dividends or puts.
