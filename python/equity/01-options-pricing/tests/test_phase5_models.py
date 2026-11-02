@@ -311,7 +311,8 @@ def test_alo_double_boundary_matches_extrapolated_tree(a):
 def test_alo_double_boundary_converges_with_the_grid():
     a = (100.0, 100.0, 1.0, -0.005, 0.2, -0.02, "put")
     ref = _lr_richardson(*a)
-    e = [abs(alo_price(*a, n_march=n) - ref) for n in (100, 200, 400)]
+    e = [abs(alo_price(*a, n_march=n, double_boundary_method="march") - ref)
+         for n in (100, 200, 400)]
     assert e[0] > e[1] > e[2] and e[0] / e[2] > 6.0
 
 

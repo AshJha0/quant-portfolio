@@ -101,8 +101,9 @@ The C++ and Rust equity engines share the conventions and golden vectors.
 Their historical and Monte Carlo VaR also take European options, repriced in
 full in every scenario by `option_reval` (BSM), with parity to
 `eq_var.revaluation` pinned at 1e-11 for historical VaR/ES. They hold vol
-fixed per scenario; vol shocks, Taylor approximations and P&L explain stay
-in Python.
+fixed per scenario in the VaR drivers (their `full_revaluation_pnl` takes
+the same three vol modes as Python); Taylor approximations and P&L explain
+stay in Python.
 
 Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
@@ -122,7 +123,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
+## Risk attribution, FRTB IMA, tails, revaluation and limits (risk attribution, FRTB IMA, tails, revaluation, limits)
 
 Seven new public modules and one private helper (`_r3checks`). They are
 asset-agnostic, ship as the same file in

@@ -143,7 +143,7 @@ def cut_datetime_utc(expiry: dt.date, cut: str = "NY") -> dt.datetime:
         raise ValueError(f"cut must be one of {tuple(CUTS)}, got {cut!r}")
     zone, hh, mm = CUTS[cut]
     local = dt.datetime(expiry.year, expiry.month, expiry.day, hh, mm, tzinfo=ZoneInfo(zone))
-    return local.astimezone(dt.timezone.utc)
+    return local.astimezone(dt.UTC)
 
 
 def time_to_expiry(valuation: dt.datetime, expiry: dt.date, cut: str = "NY") -> float:

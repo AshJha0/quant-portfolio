@@ -1,7 +1,7 @@
 # Portfolio-wide CI.
 #
 #   discover     lists python/core and the 23 Python projects with their test extra
-#   py core      python/core (qp-core) on Python 3.10 to 3.13
+#   py core      python/core (qp-core) on Python 3.11 to 3.13
 #   python       one job per project and Python version, each in a fresh venv,
 #                python/core installed first
 #   lint         uv lock --check, ruff check python, mypy (config at the root)
@@ -73,7 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,7 +123,7 @@ jobs:
       fail-fast: false
       matrix:
         project: ${{ fromJSON(needs.discover.outputs.projects) }}
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

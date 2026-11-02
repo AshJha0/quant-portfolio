@@ -204,7 +204,7 @@ such a book. Pinned by
 * `test_edge_cases.py`, `test_input_hardening.py`: edge cases and input
   validation.
 
-## Round 3 oracle tests (`tests/test_round3_rates.py`)
+## November 2026 oracle tests (`tests/test_round3_rates.py`)
 
 | Item | Oracle | Tolerance |
 |---|---|---|
@@ -217,7 +217,7 @@ such a book. Pinned by
 | Hull-White | exact-OU MC (200k paths): bond, caplet, swaption | 4 SE + 2e-5 |
 | Hull-White | sigma -> 0 caplet is intrinsic; small a gives normal vol ~ sigma | 1e-6 / 2e-3 rel |
 
-## Round 3 fixes (`tests/test_round3_fix_rates.py`)
+## November 2026 fixes (`tests/test_round3_fix_rates.py`)
 
 | Item | Oracle | Tolerance |
 |---|---|---|

@@ -266,6 +266,62 @@ pub fn historical_option_var(
     Ok(res)
 }
 
+/// [`historical_option_var`] with vol scenarios: `returns` must also carry
+/// `"VOL:CCY"` for every option factor (see
+/// [`crate::option_reval::VolScenarios`]). The scenarios are the rows of the
+/// combined axis [`crate::option_reval::option_combined_factors`];
+/// `Filtered` rescales the vol columns by their own EWMA vol, like any other
+/// factor.
+///
+/// # Errors
+/// As [`historical_option_var`], plus no options, missing `"VOL:CCY"`
+/// columns or a `skews` length mismatch.
+#[allow(clippy::too_many_arguments)]
+pub fn historical_option_var_vol(
+    book: &Book,
+    market: &Market,
+    options: &[OptionLeg],
+    option_factors: &[String],
+    returns: &ReturnsMatrix,
+    opts: &HistoricalOptions,
+    dt: f64,
+    vol: &crate::option_reval::VolScenarios,
+) -> Result<HistoricalResult> {
+    if options.is_empty() {
+        return Err(FxVarError::invalid("vol scenarios need option legs"));
+    }
+    validate_alpha(opts.alpha)?;
+    validate_horizon(opts.horizon_days)?;
+    if opts.horizon_days != 1.0 {
+        return Err(FxVarError::invalid(
+            "historical_option_var: sqrt-time scaling is not valid for a non-linear book; \
+             pass horizon_days = 1 and h-day returns instead",
+        ));
+    }
+    let layout = layout_option_book(book, market, options, option_factors)?;
+    let axis = crate::option_reval::option_combined_factors(&layout);
+    let mut res = HistoricalResult {
+        var: 0.0,
+        es: 0.0,
+        alpha: opts.alpha,
+        horizon_days: opts.horizon_days,
+        method: opts.method,
+        pnl: Vec::new(),
+        weights: Vec::new(),
+        flagged_peg_factors: Vec::new(),
+        warnings: Vec::new(),
+    };
+    validate_returns(returns, &axis, opts.min_obs)?;
+    let mut rets = returns.select(&axis)?;
+    let weights = prepare_scenarios(&mut rets, opts, &mut res)?;
+    res.pnl = crate::option_reval::option_book_pnl_vol(&layout, &rets, dt, vol)?;
+    let (var, es) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
+    res.weights = weights;
+    res.var = var;
+    res.es = es;
+    Ok(res)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

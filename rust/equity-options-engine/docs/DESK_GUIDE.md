@@ -106,7 +106,7 @@ independent oracle, machine-checked agreement, and a release gate.
   (discrete dividends, smile-dependent exotics, American MC) must go to
   a different model, per the assumptions register in METHODOLOGY.md.
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Use the compiled LR tree where an American mark must be reproduced outside
 Python; Bachelier for normal-vol quotes on the serving path; higher-order

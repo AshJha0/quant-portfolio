@@ -24,7 +24,7 @@ pip install -e python/equity/01-options-pricing -e python/fx/01-options-pricing 
 pytest bindings/rust-pyo3/tests
 ```
 
-Build requirements: Rust stable (tested with 1.99.1) and Python 3.10 or
+Build requirements: Rust stable (tested with 1.99.1) and Python 3.11 or
 later. maturin is fetched by pip as the build backend. Lint with
 `cargo clippy --release --locked --all-targets -- -D warnings` and
 `cargo fmt --check` from this directory.

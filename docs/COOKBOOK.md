@@ -20,7 +20,7 @@ Each section names the projects its recipes need.
 Recipes are grouped to match [ARCHITECTURE.md](ARCHITECTURE.md)'s area map:
 options pricing/vol/surfaces, market risk (VaR/ES/backtesting), fixed
 income/pairs/credit/portfolio optimization, and execution/regime/building the
-compiled engines, plus a final section for what Round 3 added. For the theory behind any of these, see the matching round
+compiled engines, plus a final section for what the November 2026 release added. For the theory behind any of these, see the matching set
 in [LEARN.md](LEARN.md) Part IV; for the underlying math and assumptions, see
 the project's own `docs/METHODOLOGY.md`.
 
@@ -1924,7 +1924,7 @@ golden value in the commit message.
 Use the commands in [CONTRIBUTING.md](../CONTRIBUTING.md). CI installs each
 project into its own fresh venv against `requirements/ci-constraints.txt` and
 runs pytest there, so repeat this per project to reproduce CI. CI installs
-`python/core` first, because 12 projects import `qp_core`:
+`python/core` first, because 16 projects import `qp_core`:
 
 ```bash
 python -m venv ~/.venvs/qp-eqopt
@@ -1963,7 +1963,7 @@ name = "eq-newproj"
 version = "1.0.0"
 description = "One-sentence description of what this project does and why."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 dependencies = ["numpy", "pandas"]
 
@@ -2012,9 +2012,9 @@ project pairs with a C++/Rust engine later, its golden vectors live under
 cross-language validation pipeline shown above.
 
 
-## Round 3: Engine Switch, Research Workflow and New Models
+## November 2026 release: Engine Switch, Research Workflow and New Models
 
-Recipes for what Round 3 added. Install `python/core` and the package each
+Recipes for what the November 2026 release added. Install `python/core` and the package each
 recipe names, as above. The new modules are imported by their path (for
 example `eq_options.alo`); they are not re-exported from the package root.
 Outputs below come from one run on Windows with Python 3.12.
@@ -2061,6 +2061,17 @@ The check refuses a result whose `prereg_sha256` does not match the
 registration, and a result whose period reaches 2022-01-01 or later unless
 the registration is signed with that hash. Run the hold-out only after
 signing. Training-period results are not out-of-sample evidence.
+
+`python research/tools/prereg.py sign FILE NAME [DATE]` signs a draft, and
+refuses if the registration names no simulated power file in
+`research/power/`. The 2022-2025 hold-out is spent: the regime study used it
+(H0 not rejected) and the pairs study was withdrawn before it. New drafts
+are scored on forward data only. To see an interim report from the forward
+log (no verdict before 2028-11-13):
+
+```bash
+python research/forward/evaluate.py --log forward/log.jsonl     --history research/forward/history_1999-01-04_2026-11-02.csv     --history-sha256 <sha256 from the signing commit> --log-commit <commit>
+```
 
 ### How do I mark an American option with ALO and check it with the Leisen-Reimer tree?
 
@@ -2122,7 +2133,8 @@ print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to th
 ```
 
 Pass `holidays="auto"` to use the pair's joint settlement calendar from
-`fx_options.holidays` (rules-based, 2010 to 2099), or pass your own dates.
+`fx_options.holidays` (rules-based, 2010 to 2099; a re-export of
+`qp_core.holidays`), or pass your own dates.
 The quoted butterfly is read as the smile strangle; if your broker quotes
 the market strangle, convert it first with
 `fx_options.smile.smile_strangle_from_broker`.
@@ -2196,7 +2208,12 @@ print(round(res.cva, 2), round(res.dva, 2))        # 5121.83 1526.72
 `eq_credit.cds` uses a flat discount rate and year-fraction maturities.
 For dated contracts on the ISDA standard-model conventions (step-in, ACT/360,
 exact accrual on default, a real discount curve) use
-`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. For collateral, build the exposure with `collateralised_exposure`.
+`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. Pass
+`calendar="USD"` (or `"EUR"`, `"GBP"`, `"JPY"`, a joint code like
+`"EURGBP"`) to roll coupon dates and `T + 3` cash settlement over that
+centre's holidays as well as weekends; the default is weekends only. For
+a closure the rules do not know yet, wrap the call in
+`qp_core.holidays.extra_closures({"USD": [date]})`. For collateral, build the exposure with `collateralised_exposure`.
 
 ### How do I calibrate PDs to a central tendency with a margin of conservatism?
 

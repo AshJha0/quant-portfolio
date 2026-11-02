@@ -121,4 +121,36 @@ HistoricalResult historical_var(const Book& book, const Market& market,
   return res;
 }
 
+HistoricalResult historical_var(const Book& book, const Market& market,
+                                std::span<const OptionLeg> options,
+                                const std::vector<std::string>& option_factors,
+                                const ReturnsMatrix& returns, const HistoricalOptions& opts,
+                                double dt, const VolScenarios& vol) {
+  if (options.empty()) throw std::invalid_argument("vol scenarios need option legs");
+  validate_alpha(opts.alpha);
+  validate_horizon(opts.horizon_days);
+  if (opts.horizon_days != 1.0)
+    throw std::invalid_argument(
+        "historical_var with options: sqrt-time scaling is not valid for a non-linear book; "
+        "pass horizon_days = 1 and h-day returns instead");
+  const OptionBookLayout layout = layout_option_book(book, market, options, option_factors);
+  const std::vector<std::string> axis = option_combined_factors(layout);
+
+  HistoricalResult res;
+  res.alpha = opts.alpha;
+  res.horizon_days = opts.horizon_days;
+  res.method = opts.method;
+
+  validate_returns(returns, axis, opts.min_obs);
+  ReturnsMatrix rets = returns.select(axis);
+  const std::vector<double> weights = prepare_scenarios(rets, opts, res);
+
+  res.pnl = option_book_pnl(layout, rets, dt, vol);
+  res.weights = weights;
+  const auto [var1, es1] = empirical_var_es(res.pnl, opts.alpha, weights);
+  res.var = var1;
+  res.es = es1;
+  return res;
+}
+
 }  // namespace fxvar

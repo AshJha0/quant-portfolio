@@ -181,6 +181,13 @@ Consequence for the desk: never invert an implied vol from a
 deep-wing premium at very short expiry, there is no information left
 in the number.
 
+**F10, SSVI underfits five-point FX smiles (finding, round 4).** On the
+USDJPY preset the fitted power-law SSVI misses the worst pillar by about
+one vol point, and by 0.5 on EURUSD; eSSVI does not close the gap. The
+arbitrage penalty `eta (1 + |rho|) <= 2` binds on USDJPY. Reproduce with
+`test_fit_from_pillars_reads_theta_at_forward_not_dns`. Use per-slice SVI
+or vanna-volga for pricing.
+
 ## 5. Convergence / stability studies
 
 * COS truncation and terms against Gil-Pelaez (1y, EURUSD-like

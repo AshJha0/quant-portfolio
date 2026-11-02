@@ -1,0 +1,47 @@
+{
+  "prereg": "research/prereg/regime-fx-basket.md",
+  "prereg_sha256": "bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687",
+  "registration_signed": true,
+  "mode": "holdout",
+  "period": {
+    "start": "2022-01-03",
+    "end": "2025-12-31"
+  },
+  "data_start": "1999-01-04",
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "provenance": {
+    "git_commit": "68ae51cf0b86207383b48ce6c18532e176360c84",
+    "git_dirty": false,
+    "input_sha256": {
+      "data/raw/ecb_exr_1999-01-01_2025-12-31.csv": "eff207fef4e3e57cb6b7e6610e5f0e4822ce671465c92ad9a3304c508dd3caf3"
+    },
+    "prereg_sha256": {
+      "research/prereg/regime-fx-basket.md": "bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687"
+    },
+    "timestamp_utc": "2026-11-02T17:49:50+00:00",
+    "packages": {
+      "python": "3.12.10",
+      "numpy": "2.5.4",
+      "pandas": "3.1.0",
+      "scipy": "1.18.1",
+      "statsmodels": "0.15.0",
+      "qp-core": "1.0.0",
+      "fx-pairs": "1.0.0",
+      "fx-regime": "1.0.0"
+    },
+    "dry_run": false
+  },
+  "primary_metric": "mean next-day basket return in the predicted high-vol state",
+  "trial_count": 1,
+  "high_vol_days": 161,
+  "all_days": 1019,
+  "mean_ann_high": 0.1245620344572031,
+  "mean_ann_low": -0.040499326893433725,
+  "hac_t_high": 0.9371967756271223,
+  "hac_lag": 4,
+  "negative_mean_supported": false,
+  "decision": {
+    "rule": "HAC t-statistic of the high-vol mean < -1.645",
+    "h0_rejected": false
+  }
+}

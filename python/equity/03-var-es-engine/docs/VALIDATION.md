@@ -179,7 +179,7 @@ of 1500, so that key does not exercise the exception branch.
 - The GARCH generator is a data-generating device, not a calibrated model.
 - Stress shocks approximate published episode moves.
 
-## Round 3 validation
+## Attribution, IMA and tail validation
 
 Every new model has at least one oracle test. Files under `tests/`:
 
@@ -194,7 +194,12 @@ Every new model has at least one oracle test. Files under `tests/`:
 | `test_limits.py` | statuses, ordering and aggregation by hand | exact |
 
 Compiled `option_reval` (C++ and Rust, both VaR engines): golden values from
-`eq_var.revaluation` to 1e-11, put-call parity, input rejection. Compiled
+`eq_var.revaluation` to 1e-11, put-call parity, input rejection. Vol scenario
+modes (`tests/test_round4_vol_modes.py`): goldens for sticky strike,
+sticky delta and historical ATM shift pasted into all four compiled engines
+and matched to 1e-12 relative; the default is bit-identical to the old
+sticky-strike path; sticky delta with a flat smile equals sticky strike;
+hand-computed single-leg cases; the vol floor; bad modes and skews rejected. Compiled
 option VaR (`test_option_var` in all four engines): historical VaR, ES and
 scenario P&L against `eq_var.revaluation.full_revaluation_pnl` plus the S2
 order statistic at 1e-11 relative (goldens from

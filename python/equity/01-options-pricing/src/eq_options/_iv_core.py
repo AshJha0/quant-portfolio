@@ -8,6 +8,8 @@ OTM time value ``beta``, its complement ``u = b_max - beta`` and
 """
 import math
 
+from qp_core.normal import norm_cdf, norm_pdf
+
 SQRT2 = 1.4142135623730951
 INV_SQRT_2PI = 0.3989422804014327
 LN_SQRT_2PI = 0.9189385332046728
@@ -16,12 +18,6 @@ EPS = 2.220446049250313e-16
 MAX_ITER = 100
 
 
-def norm_cdf(d):
-    return 0.5 * math.erfc(-d / SQRT2)
-
-
-def norm_pdf(d):
-    return INV_SQRT_2PI * math.exp(-0.5 * d * d)
 
 
 def normalised_otm_call(x, s):

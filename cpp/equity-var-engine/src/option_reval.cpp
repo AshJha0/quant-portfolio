@@ -86,17 +86,34 @@ BsmGreeks bsm_greeks(const OptionLeg& l) {
 
 std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
                                          std::span<const double> dv, std::size_t nf, double dt) {
+    return full_revaluation_pnl(legs, x, dv, nf, dt, VolMode::StickyStrike, {});
+}
+
+std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
+                                         std::span<const double> dv, std::size_t nf, double dt,
+                                         VolMode mode, std::span<const double> skews) {
     check_scenarios(legs, x, dv, nf);
     require(std::isfinite(dt) && dt >= 0.0, "dt must be >= 0");
+    require(skews.empty() || skews.size() == legs.size(), "skews must be empty or one per leg");
+    for (double k : skews) require(std::isfinite(k), "skews must be finite");
+    require(mode == VolMode::StickyStrike || mode == VolMode::StickyDelta ||
+                mode == VolMode::HistoricalAtm,
+            "unknown vol mode");
     const std::size_t n = x.size() / nf;
     std::vector<double> pnl(n, 0.0);
-    for (const auto& l : legs) {
+    for (std::size_t k = 0; k < legs.size(); ++k) {
+        const OptionLeg& l = legs[k];
+        const double skew = skews.empty() ? 0.0 : skews[k];
         const double p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
         const double t1 = std::max(l.tau - dt, 0.0);
-        for (std::size_t i = 0; i < n; ++i) {
-            const double s1 = l.spot * std::exp(x[i * nf + l.factor]);
-            const double v1 = l.vol + (dv.empty() ? 0.0 : dv[i * nf + l.factor]);
-            pnl[i] +=
+        for (std::size_t r = 0; r < n; ++r) {
+            const double xr = x[r * nf + l.factor];
+            const double d = dv.empty() ? 0.0 : dv[r * nf + l.factor];
+            const double s1 = l.spot * std::exp(xr);
+            double v1 = l.vol + d;
+            if (mode == VolMode::StickyDelta) v1 = l.vol - skew * xr + d;
+            if (mode == VolMode::HistoricalAtm) v1 = l.vol * std::exp(d);
+            pnl[r] +=
                 l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
         }
     }
@@ -166,6 +183,68 @@ MonteCarloResult monte_carlo_option_var(std::span<const OptionLeg> legs,
     require(std::isfinite(alpha) && alpha > 0.0 && alpha < 0.5, "alpha must be in (0, 0.5)");
     const Matrix scen = simulate_factor_returns(cov, n_paths, dist, df, seed, repair);
     const std::vector<double> pnl = option_book_pnl(legs, exposures, scen, dt);
+    MonteCarloResult res = mc_tail_metrics(pnl, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL);
+    res.n_paths = n_paths;
+    return res;
+}
+
+std::vector<double> option_book_pnl_vol(std::span<const OptionLeg> legs,
+                                        std::span<const double> exposures, const Matrix& combined,
+                                        double dt, VolMode mode, std::span<const double> skews) {
+    const std::size_t n = combined.rows();
+    const std::size_t nc = combined.cols();
+    require(n > 0 && nc > 0 && nc % 2 == 0,
+            "combined panel must be non-empty with 2J columns (spot block, then vol block)");
+    require(!legs.empty(), "option_book_pnl_vol needs option legs");
+    const std::size_t nf = nc / 2;
+    Matrix spot(n, nf);
+    std::vector<double> dv(n * nf);
+    const double* c = combined.data();
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < nf; ++j) {
+            spot.data()[i * nf + j] = c[i * nc + j];
+            dv[i * nf + j] = c[i * nc + nf + j];
+        }
+    }
+    require(exposures.empty() || exposures.size() == nf,
+            "exposures must be empty or match the spot block");
+    for (double w : exposures) require(std::isfinite(w), "exposures must be finite");
+    const std::span<const double> x(spot.data(), n * nf);
+    std::vector<double> pnl = full_revaluation_pnl(legs, x, dv, nf, dt, mode, skews);
+    if (!exposures.empty()) {
+        for (std::size_t i = 0; i < n; ++i) {
+            double s = 0.0;
+            for (std::size_t j = 0; j < nf; ++j) s += exposures[j] * x[i * nf + j];
+            pnl[i] += s;
+        }
+    }
+    return pnl;
+}
+
+TailRisk historical_option_var_es_vol(std::span<const OptionLeg> legs,
+                                      std::span<const double> exposures, const Matrix& combined,
+                                      double alpha, double dt, VolMode mode,
+                                      std::span<const double> skews) {
+    require(combined.rows() >= kMinHistObs,
+            "historical option VaR needs at least kMinHistObs rows");
+    require(std::isfinite(alpha) && alpha > 0.0 && alpha < 0.5, "alpha must be in (0, 0.5)");
+    const std::vector<double> pnl = option_book_pnl_vol(legs, exposures, combined, dt, mode, skews);
+    return var_es_order_statistic(pnl, alpha);
+}
+
+MonteCarloResult monte_carlo_option_var_vol(
+    std::span<const OptionLeg> legs, std::span<const double> exposures, const Matrix& joint_cov,
+    double alpha, std::size_t n_paths, Dist dist, double df, std::uint64_t seed, std::size_t n_boot,
+    Repair repair, double dt, VolMode mode, std::span<const double> skews) {
+    require(!legs.empty(), "monte_carlo_option_var_vol needs option legs");
+    require(
+        joint_cov.rows() == joint_cov.cols() && joint_cov.rows() > 0 && joint_cov.rows() % 2 == 0,
+        "joint_cov must be square with 2J rows (spot block, then vol block)");
+    require(exposures.empty() || 2 * exposures.size() == joint_cov.rows(),
+            "exposures must be empty or match the spot block");
+    require(std::isfinite(alpha) && alpha > 0.0 && alpha < 0.5, "alpha must be in (0, 0.5)");
+    const Matrix scen = simulate_factor_returns(joint_cov, n_paths, dist, df, seed, repair);
+    const std::vector<double> pnl = option_book_pnl_vol(legs, exposures, scen, dt, mode, skews);
     MonteCarloResult res = mc_tail_metrics(pnl, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL);
     res.n_paths = n_paths;
     return res;

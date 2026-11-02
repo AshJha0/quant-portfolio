@@ -11,7 +11,8 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
   log-linear on discount factors (default, piecewise-constant forwards),
   linear on zeros (kept to show its forward sawtooth), PCHIP on zeros
   (C1 zeros, C0 forwards) and Hagan-West monotone convex (continuous,
-  local forwards that keep the monotonicity of the inputs). Long-end
+  local forwards that keep the monotonicity of the inputs, with the
+  paper's optional positivity collar). Long-end
   extrapolation is flat and warned.
 * **Bootstrap** (`bootstrap.py`): sequential bootstrap from deposits, FRAs
   and par swaps (Brent per pillar), plus a coupon-bond bootstrap. Inputs
@@ -98,7 +99,7 @@ print(fr.scenario_pnl_table(book, settle, curve,
 * [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md): daily workflow, ladder
   hedging, carry, scenarios, controls.
 
-## Round 3 additions
+## November 2026 additions
 
 - `multicurve.py`: OIS discount curve and a separate projection curve per
   index tenor, both bootstrapped exactly from par quotes.

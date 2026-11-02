@@ -258,7 +258,7 @@ dedicated unit test; edge cases are in `tests/test_edge_cases.py`.
     applied to total variance rather than variance has this failure mode.
     (T: pinned from `T = 1e-14` upward.)
 
-## 5. Round 3 additions: SSVI/eSSVI, Dupire, Bates
+## 5. November 2026 additions: SSVI/eSSVI, Dupire, Bates
 
 **SSVI.** One formula for the whole surface: total variance at log-moneyness
 k is `theta/2 (1 + rho phi k + sqrt((phi k + rho)^2 + 1 - rho^2))`, where

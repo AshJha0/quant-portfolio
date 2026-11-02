@@ -65,11 +65,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
      alt="CI status"></a></p>
   <table>
     <tr><th>Item</th><th>Value</th></tr>
-    <tr><td>Stage</td><td>1 of 3: study portfolio. Round 3 started the research platform (ECB and FRED fetchers, two signed pre-registrations, training-period results only, no hold-out run yet) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
+    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two drafts scored on forward data from 2026-11-03) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
     <tr><td>Sub-projects</td><td>31: 10 areas in equity and FX (20), 3 foundations projects, 4 engines in C++ and in Rust (8)</td></tr>
     <tr><td>Tests</td><td>Executed pass counts are written by the CI <code>counts</code> job to <code>counts.json</code> and the run summary. This page does not repeat them.</td></tr>
     <tr><td>Cross-language tests</td><td>Golden vectors (options from an mpmath oracle with a tolerance per output; VaR from the Python reference), checked by the <code>goldens --check</code> job, plus differential tests against the compiled engines.</td></tr>
-    <tr><td>Study guide</td><td>511 self-test questions in 18 rounds</td></tr>
+    <tr><td>Study guide</td><td>511 self-test questions in 18 sets</td></tr>
     <tr><td>Cookbook</td><td>74 recipes, written against current main; outputs are indicative</td></tr>
   </table>
 
@@ -121,7 +121,7 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
          dependencies beyond the standard library; C++ tests use GoogleTest.
          The VaR ports revalue linear positions and reprice European option legs in full. The Python packages call
          them through <code>engine="cpp"</code> or <code>engine="rust"</code>.
-         Phase 6 added Philox, O(n) quantiles and blocked GEMM to the shared
+         The shared core also has Philox, O(n) quantiles and blocked GEMM to the shared
          core; the batch erfc and exp kernels were slower than libm on an SSE2
          build (0.66x and 0.38x) and are not used by the engines. They are ports of the Python
          design, not independent derivations. Shared code lives in

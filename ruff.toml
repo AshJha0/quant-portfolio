@@ -1,6 +1,6 @@
 # Repository-wide ruff configuration. Projects inherit it unless they define
 # their own [tool.ruff] table.
-target-version = "py310"
+target-version = "py311"
 line-length = 110
 extend-exclude = ["**/build", "**/target", "**/output", "**/figures"]
 
@@ -28,7 +28,8 @@ extend-immutable-calls = [
 
 [lint.per-file-ignores]
 "**/tests/**" = ["B011"]  # assert False is fine in tests
-"**/examples/**" = ["E402"]  # scripts set thread env vars and sys.path before importing the package
+"**/examples/**" = ["E402"]
+"research/studies/holdout.py" = ["UP017"]  # frozen with the signed registrations; timezone.utc kept  # scripts set thread env vars and sys.path before importing the package
 
 [format]
 quote-style = "double"

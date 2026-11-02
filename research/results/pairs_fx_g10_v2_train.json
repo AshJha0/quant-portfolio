@@ -1,0 +1,330 @@
+{
+  "prereg": "research/prereg/pairs-fx-g10-v2.md",
+  "prereg_sha256": "78da5f57e0225e2ee47e870bd782ffa03172805ff183f976f346b24ad6c5042b",
+  "registration_signed": false,
+  "mode": "train",
+  "period": {
+    "start": "1999-01-04",
+    "end": "2021-12-31"
+  },
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "primary_metric": "annualised net Sharpe, walk-forward test years (training)",
+  "design": "static OLS hedge on the formation window, level z = residual / formation sd",
+  "trial_count": 7,
+  "folds": [
+    {
+      "year": 2003,
+      "pairs": [
+        "AUD/SEK",
+        "CAD/JPY",
+        "GBP/NZD"
+      ],
+      "net_return": -0.004357946437750428,
+      "entry_signal_days": 391,
+      "entries": 5,
+      "days_in_market": 573
+    },
+    {
+      "year": 2004,
+      "pairs": [
+        "NZD/SEK",
+        "NZD/EUR"
+      ],
+      "net_return": 0.01166446514965392,
+      "entry_signal_days": 11,
+      "entries": 1,
+      "days_in_market": 51
+    },
+    {
+      "year": 2005,
+      "pairs": [
+        "NZD/SEK",
+        "NZD/EUR",
+        "SEK/EUR"
+      ],
+      "net_return": -0.018435366032137968,
+      "entry_signal_days": 488,
+      "entries": 3,
+      "days_in_market": 508
+    },
+    {
+      "year": 2006,
+      "pairs": [
+        "AUD/NOK",
+        "JPY/SEK"
+      ],
+      "net_return": -0.027687867537652622,
+      "entry_signal_days": 194,
+      "entries": 1,
+      "days_in_market": 237
+    },
+    {
+      "year": 2007,
+      "pairs": [
+        "GBP/SEK"
+      ],
+      "net_return": 0.016811641311115125,
+      "entry_signal_days": 166,
+      "entries": 1,
+      "days_in_market": 244
+    },
+    {
+      "year": 2008,
+      "pairs": [
+        "GBP/SEK"
+      ],
+      "net_return": -0.08163394165967776,
+      "entry_signal_days": 256,
+      "entries": 1,
+      "days_in_market": 256
+    },
+    {
+      "year": 2009,
+      "pairs": [],
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "days_in_market": 0
+    },
+    {
+      "year": 2010,
+      "pairs": [],
+      "net_return": 0.0,
+      "entry_signal_days": 0,
+      "entries": 0,
+      "days_in_market": 0
+    },
+    {
+      "year": 2011,
+      "pairs": [
+        "AUD/CAD",
+        "CAD/NZD"
+      ],
+      "net_return": 0.011760547669298722,
+      "entry_signal_days": 97,
+      "entries": 2,
+      "days_in_market": 207
+    },
+    {
+      "year": 2012,
+      "pairs": [
+        "GBP/EUR",
+        "NOK/SEK"
+      ],
+      "net_return": -0.0010116746541403263,
+      "entry_signal_days": 169,
+      "entries": 1,
+      "days_in_market": 179
+    },
+    {
+      "year": 2013,
+      "pairs": [
+        "CAD/CHF",
+        "CAD/GBP",
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/NOK",
+        "GBP/NOK",
+        "GBP/SEK"
+      ],
+      "net_return": -0.007794940526922564,
+      "entry_signal_days": 665,
+      "entries": 10,
+      "days_in_market": 972
+    },
+    {
+      "year": 2014,
+      "pairs": [
+        "CAD/NOK"
+      ],
+      "net_return": 0.020194149140279213,
+      "entry_signal_days": 175,
+      "entries": 1,
+      "days_in_market": 232
+    },
+    {
+      "year": 2015,
+      "pairs": [
+        "CHF/NZD"
+      ],
+      "net_return": 0.02799376605634716,
+      "entry_signal_days": 199,
+      "entries": 2,
+      "days_in_market": 217
+    },
+    {
+      "year": 2016,
+      "pairs": [
+        "CHF/GBP",
+        "CHF/NZD",
+        "CHF/EUR",
+        "JPY/NOK",
+        "JPY/SEK"
+      ],
+      "net_return": -0.0008650717988814977,
+      "entry_signal_days": 628,
+      "entries": 5,
+      "days_in_market": 678
+    },
+    {
+      "year": 2017,
+      "pairs": [
+        "CAD/CHF",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR",
+        "SEK/EUR"
+      ],
+      "net_return": 0.0034430808921052237,
+      "entry_signal_days": 84,
+      "entries": 2,
+      "days_in_market": 246
+    },
+    {
+      "year": 2018,
+      "pairs": [
+        "AUD/CHF",
+        "CAD/CHF",
+        "CAD/NOK",
+        "CHF/GBP",
+        "CHF/JPY",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR"
+      ],
+      "net_return": 0.017779239907481082,
+      "entry_signal_days": 41,
+      "entries": 6,
+      "days_in_market": 302
+    },
+    {
+      "year": 2019,
+      "pairs": [
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/GBP",
+        "CHF/NOK",
+        "CHF/SEK"
+      ],
+      "net_return": -0.003900421349372944,
+      "entry_signal_days": 310,
+      "entries": 4,
+      "days_in_market": 397
+    },
+    {
+      "year": 2020,
+      "pairs": [
+        "CHF/NZD"
+      ],
+      "net_return": -0.05550885372491633,
+      "entry_signal_days": 218,
+      "entries": 1,
+      "days_in_market": 235
+    },
+    {
+      "year": 2021,
+      "pairs": [
+        "CAD/GBP",
+        "SEK/EUR"
+      ],
+      "net_return": 0.016273026387838455,
+      "entry_signal_days": 86,
+      "entries": 3,
+      "days_in_market": 172
+    }
+  ],
+  "years_with_trades": 17,
+  "n_days": 4867,
+  "active_days": 3431,
+  "sharpe": -0.10726722532834561,
+  "sharpe_se_lo": 0.23382916893542754,
+  "ci95": [
+    -0.5829080673151896,
+    0.28779695620377027
+  ],
+  "deflated_sharpe": {
+    "n_trials": 7,
+    "trial_sr_variance": "1/(n-1), null sampling variance",
+    "sr_per_period": -0.006757200048731696,
+    "skew": 9.858499518476592,
+    "kurtosis": 399.90767881700117,
+    "n_obs": 4867,
+    "sr0_per_period": 0.0198801557647677,
+    "dsr": 0.036299316533866643,
+    "z": -1.7953457314755505
+  },
+  "superseded_kalman_menu": {
+    "note": "earlier Kalman variance menu; superseded by the level-z design, counted as trials",
+    "variants": {
+      "levels": {
+        "n_days": 4867,
+        "active_days": 79,
+        "sharpe": 0.2406519989681297,
+        "sharpe_se_lo": 0.15393436174136432,
+        "ci95": [
+          -0.1747475582725665,
+          0.4561703018426657
+        ],
+        "entries": 7,
+        "years_with_trades": 3,
+        "net_return_total": 0.11929891228132841
+      },
+      "levels_x0.25": {
+        "n_days": 4867,
+        "active_days": 465,
+        "sharpe": 0.1597266235456646,
+        "sharpe_se_lo": 0.1979322422306471,
+        "ci95": [
+          -0.33329465162227184,
+          0.43555637472231945
+        ],
+        "entries": 57,
+        "years_with_trades": 15,
+        "net_return_total": 0.08674227431465603
+      },
+      "levels_x0.1": {
+        "n_days": 4867,
+        "active_days": 1135,
+        "sharpe": 0.12192299538265246,
+        "sharpe_se_lo": 0.2053984612938459,
+        "ci95": [
+          -0.3748979260552222,
+          0.43994901985765344
+        ],
+        "entries": 178,
+        "years_with_trades": 16,
+        "net_return_total": 0.07446959268711331
+      },
+      "diff": {
+        "n_days": 4867,
+        "active_days": 1486,
+        "sharpe": 0.23202204494451809,
+        "sharpe_se_lo": 0.1953956894087486,
+        "ci95": [
+          -0.20995232970489475,
+          0.576191566546102
+        ],
+        "entries": 259,
+        "years_with_trades": 17,
+        "net_return_total": 0.1498590330828738
+      }
+    },
+    "test_years": 19,
+    "min_active_year_frac": 0.75,
+    "chosen_rule": "diff",
+    "chosen_rule_without_activity_floor": "levels",
+    "deflated_sharpe_chosen": {
+      "n_trials": 7,
+      "trial_sr_variance": "1/(n-1), null sampling variance",
+      "sr_per_period": 0.014616014990663,
+      "skew": 24.868013251495654,
+      "kurtosis": 1228.816586687884,
+      "n_obs": 4867,
+      "sr0_per_period": 0.0198801557647677,
+      "dsr": 0.3306057164066958,
+      "z": -0.43824121729642934
+    }
+  }
+}

@@ -156,7 +156,7 @@ def nearest_correlation_higham(corr: np.ndarray, tol: float = 1e-12,
         ds = x - r
         y_new = x.copy()
         np.fill_diagonal(y_new, 1.0)
-        diff = np.linalg.norm(y_new - y) / max(np.linalg.norm(y_new), 1e-300)
+        diff = float(np.linalg.norm(y_new - y)) / max(float(np.linalg.norm(y_new)), 1e-300)
         y = y_new
         if diff < tol:
             return (y + y.T) / 2.0

@@ -116,11 +116,11 @@ def test_cut_follows_daylight_saving():
     assert cut_datetime_utc(dt.date(2026, 7, 1), "NY").hour == 14  # EDT
     assert cut_datetime_utc(dt.date(2026, 7, 1), "TOK").hour == 6  # JST, no DST
     assert cut_datetime_utc(dt.date(2026, 7, 1), "ECB") == dt.datetime(
-        2026, 7, 1, 12, 15, tzinfo=dt.timezone.utc)
+        2026, 7, 1, 12, 15, tzinfo=dt.UTC)
 
 
 def test_time_to_expiry_act365f():
-    val = dt.datetime(2026, 12, 1, 15, 0, tzinfo=dt.timezone.utc)
+    val = dt.datetime(2026, 12, 1, 15, 0, tzinfo=dt.UTC)
     assert time_to_expiry(val, dt.date(2026, 12, 2), "NY") == pytest.approx(1.0 / 365.0, rel=1e-15)
     with pytest.raises(ValueError):
         time_to_expiry(dt.datetime(2026, 12, 1), dt.date(2026, 12, 2))

@@ -86,17 +86,34 @@ BsmGreeks bsm_greeks(const OptionLeg& l) {
 
 std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
                                          std::span<const double> dv, std::size_t nf, double dt) {
+  return full_revaluation_pnl(legs, x, dv, nf, dt, VolMode::StickyStrike, {});
+}
+
+std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
+                                         std::span<const double> dv, std::size_t nf, double dt,
+                                         VolMode mode, std::span<const double> skews) {
   check_scenarios(legs, x, dv, nf);
   require(std::isfinite(dt) && dt >= 0.0, "dt must be >= 0");
+  require(skews.empty() || skews.size() == legs.size(), "skews must be empty or one per leg");
+  for (double k : skews) require(std::isfinite(k), "skews must be finite");
+  require(mode == VolMode::StickyStrike || mode == VolMode::StickyDelta ||
+              mode == VolMode::HistoricalAtm,
+          "unknown vol mode");
   const std::size_t n = x.size() / nf;
   std::vector<double> pnl(n, 0.0);
-  for (const auto& l : legs) {
+  for (std::size_t k = 0; k < legs.size(); ++k) {
+    const OptionLeg& l = legs[k];
+    const double skew = skews.empty() ? 0.0 : skews[k];
     const double p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
     const double t1 = std::max(l.tau - dt, 0.0);
-    for (std::size_t i = 0; i < n; ++i) {
-      const double s1 = l.spot * std::exp(x[i * nf + l.factor]);
-      const double v1 = l.vol + (dv.empty() ? 0.0 : dv[i * nf + l.factor]);
-      pnl[i] += l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
+    for (std::size_t r = 0; r < n; ++r) {
+      const double xr = x[r * nf + l.factor];
+      const double d = dv.empty() ? 0.0 : dv[r * nf + l.factor];
+      const double s1 = l.spot * std::exp(xr);
+      double v1 = l.vol + d;
+      if (mode == VolMode::StickyDelta) v1 = l.vol - skew * xr + d;
+      if (mode == VolMode::HistoricalAtm) v1 = l.vol * std::exp(d);
+      pnl[r] += l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
     }
   }
   return pnl;
@@ -152,6 +169,49 @@ std::vector<double> option_book_pnl(const OptionBookLayout& layout, const Return
   const std::size_t nf = layout.factors.size();
   const std::vector<double>& x = rets.data.data();
   std::vector<double> pnl = full_revaluation_pnl(layout.legs, x, {}, nf, dt);
+  if (layout.linear && !layout.linear->factors().empty()) {
+    const std::vector<double> lin = layout.linear->pnl(rets);
+    for (std::size_t i = 0; i < pnl.size(); ++i) pnl[i] += lin[i];
+  }
+  return pnl;
+}
+
+std::vector<std::string> option_vol_factors(const OptionBookLayout& layout) {
+  std::vector<bool> used(layout.factors.size(), false);
+  for (const auto& l : layout.legs) used[l.factor] = true;
+  std::vector<std::string> out;
+  for (std::size_t j = 0; j < layout.factors.size(); ++j)
+    if (used[j]) out.push_back("VOL:" + layout.factors[j].substr(3));
+  return out;
+}
+
+std::vector<std::string> option_combined_factors(const OptionBookLayout& layout) {
+  std::vector<std::string> out = layout.factors;
+  for (auto& v : option_vol_factors(layout)) out.push_back(std::move(v));
+  return out;
+}
+
+std::vector<double> option_book_pnl(const OptionBookLayout& layout, const ReturnsMatrix& scenarios,
+                                    double dt, const VolScenarios& vol) {
+  require(vol.skews.empty() || vol.skews.size() == layout.legs.size(),
+          "skews must be empty or one per option leg");
+  const ReturnsMatrix rets = scenarios.select(layout.factors);
+  const std::vector<std::string> vnames = option_vol_factors(layout);
+  const ReturnsMatrix vols = scenarios.select(vnames);
+  const std::size_t nf = layout.factors.size();
+  const std::size_t n = rets.n_obs();
+  // dv on the spot axis: column j holds the vol shock of factor j (zero for
+  // factors no option references; full_revaluation_pnl never reads those).
+  std::vector<double> dv(n * nf, 0.0);
+  std::size_t k = 0;
+  for (std::size_t j = 0; j < nf; ++j) {
+    if (k < vnames.size() && vnames[k] == "VOL:" + layout.factors[j].substr(3)) {
+      for (std::size_t i = 0; i < n; ++i) dv[i * nf + j] = vols.data(i, k);
+      ++k;
+    }
+  }
+  const std::vector<double>& x = rets.data.data();
+  std::vector<double> pnl = full_revaluation_pnl(layout.legs, x, dv, nf, dt, vol.mode, vol.skews);
   if (layout.linear && !layout.linear->factors().empty()) {
     const std::vector<double> lin = layout.linear->pnl(rets);
     for (std::size_t i = 0; i < pnl.size(); ++i) pnl[i] += lin[i];

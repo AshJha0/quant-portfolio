@@ -7,7 +7,7 @@ streams and the WM/R 4pm London fix.
 Every result in this project is computed on synthetic data. The signal edge
 is planted by the generator (hourly AR(1) increments with phi = 0.25, far
 stronger than any real intraday FX autocorrelation). No real-data result
-exists yet; real data arrives in Phase 4 of the repository plan.
+exists yet; real data arrives in the research platform of the repository plan.
 
 ```
 Signal generation -> features -> backtest -> transaction costs

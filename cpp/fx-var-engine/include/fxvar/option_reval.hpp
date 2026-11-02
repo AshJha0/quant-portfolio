@@ -60,6 +60,26 @@ struct BsmGreeks {
                                                        std::span<const double> vol_shocks,
                                                        std::size_t n_factors, double dt = 0.0);
 
+/// How the scenario vol of an option leg is formed (mirrors the Python
+/// reference's `vol_mode`; Derman 1999, "Regimes of volatility", for the
+/// first two):
+///   StickyStrike   sigma_1 = sigma_0 + dv              (strike's vol fixed)
+///   StickyDelta    sigma_1 = sigma_0 - skew * x + dv   (smile moves with spot;
+///                  skew = d sigma / d ln(K/S), x = the factor log return)
+///   HistoricalAtm  sigma_1 = sigma_0 * exp(dv)         (dv = historical log
+///                  change of the ATM vol, applied to every strike)
+/// Every mode floors the vol at 1e-12.
+enum class VolMode { StickyStrike, StickyDelta, HistoricalAtm };
+
+/// Full revaluation P&L with an explicit vol mode. `skews` is empty (all
+/// zero) or has one entry per leg; it is read only by StickyDelta. With
+/// StickyStrike and empty skews this is exactly the overload above.
+[[nodiscard]] std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs,
+                                                       std::span<const double> spot_log_returns,
+                                                       std::span<const double> vol_shocks,
+                                                       std::size_t n_factors, double dt,
+                                                       VolMode mode, std::span<const double> skews);
+
 /// Delta-gamma P&L per scenario: Delta dS + Gamma dS^2 / 2, dS = S (e^x - 1).
 [[nodiscard]] std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs,
                                                   std::span<const double> spot_log_returns,
@@ -86,5 +106,30 @@ struct OptionBookLayout {
 /// in layout.factors (it is re-selected into that order; extras ignored).
 [[nodiscard]] std::vector<double> option_book_pnl(const OptionBookLayout& layout,
                                                   const ReturnsMatrix& scenarios, double dt = 0.0);
+
+/// Vol scenarios for option VaR. The vol shocks sit on the same named factor
+/// axis as the spot returns: the vol factor of "FX:CCY" is "VOL:CCY" (an ATM
+/// vol change in vol points for StickyStrike / StickyDelta, an ATM log
+/// change for HistoricalAtm). A returns panel or covariance used with these
+/// must carry "VOL:CCY" for every option factor; the combined axis is
+/// layout.factors followed by option_vol_factors(layout). `skews` is empty
+/// or one per option leg (in the order passed in), read only by StickyDelta.
+struct VolScenarios {
+  VolMode mode = VolMode::StickyStrike;
+  std::vector<double> skews;
+};
+
+/// "VOL:CCY" for every option factor of `layout`, in layout.factors order.
+[[nodiscard]] std::vector<std::string> option_vol_factors(const OptionBookLayout& layout);
+
+/// layout.factors followed by option_vol_factors(layout).
+[[nodiscard]] std::vector<std::string> option_combined_factors(const OptionBookLayout& layout);
+
+/// option_book_pnl with vol scenarios read from the "VOL:CCY" columns of
+/// `scenarios`. With StickyStrike and all-zero vol columns it equals the
+/// overload above bit for bit.
+[[nodiscard]] std::vector<double> option_book_pnl(const OptionBookLayout& layout,
+                                                  const ReturnsMatrix& scenarios, double dt,
+                                                  const VolScenarios& vol);
 
 }  // namespace fxvar

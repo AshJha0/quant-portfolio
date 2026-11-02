@@ -208,8 +208,34 @@ the VaR pipeline:
   n_boot, dt)` returns an `McRun` from the same simulation as
   `monte_carlo_run`, repriced path by path.
 
-Options are held at today's implied vol (no vol factor yet). The linear legs
+Options are held at today's implied vol unless you use the `_vol` drivers
+below. The linear legs
 use `exposures . r` on log returns, as the rest of this crate does.
+
+Vol scenario modes. `full_revaluation_pnl_vol_mode(legs, x, dv, n_factors, dt, mode,
+skews)` takes `VolMode::StickyStrike` (`sigma + dv`), `StickyDelta`
+(`sigma - skew x + dv`, `skews` one per leg or empty) or `HistoricalAtm`
+(`sigma e^{dv}`, `dv` a historical log change of ATM vol). `full_revaluation_pnl`
+is sticky strike. All three are pinned to the Python reference at
+1e-12 relative (`vol_modes_golden` in `tests/test_option_reval.rs`).
+
+The VaR drivers take vol scenarios too, on what we call the combined axis.
+The plain idea: a vol shock is just one more risk factor, so it goes in the
+same panel (or covariance) as the spot returns, after them. Formally, with J
+spot factors the panel has 2J columns: spot log returns in columns 0..J-1,
+then the vol shock of factor j in column J + j (vol points for sticky strike
+and sticky delta, a log change of ATM vol for historical ATM).
+`exposures` and `leg.factor` still index the J spot factors. For Monte Carlo
+the covariance is 2J x 2J, so the spot-vol correlation (the leverage effect,
+usually negative for equities) is simulated, not assumed away. With sticky
+strike and an all-zero vol block every driver gives the old answer bit for
+bit. Worked example: the two-leg test book with vol shocks of a few vol
+points a day has 99 % historical VaR 39.22 sticky strike, 39.86 sticky delta
+(skews -0.1, -0.2) and 34.80 historical ATM, against 33.44 with vol held
+fixed; all three match Python at 1e-11 relative.
+Entry points: `option_book_pnl_vol`, `historical_option_var_es_vol` and
+`monte_carlo_option_run_vol` in `option_reval`; tests in
+`tests/test_option_var_vol.rs`.
 
 Parity with Python. The historical numbers are pinned to the Python
 reference (`eq_var.revaluation.full_revaluation_pnl` followed by the S2 order

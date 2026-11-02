@@ -128,7 +128,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Phase 5 additions (Round 3)
+## newer additions (November 2026)
 
 | Module | What it does | Oracle (`tests/test_phase5_fx.py`) |
 |---|---|---|
@@ -136,4 +136,4 @@ cross-language tolerances listed in the module docstring, checked over
 | `premium` | Four premium styles and conversions; cash premium amount | Foreign pips equals the inverse-pair GK price |
 | `smile` (broker strangle) | Converts a broker (market) 25-delta butterfly into the smile butterfly and back | The smile reprices the broker strangle to 1e-12; RR = 0 gives equal butterflies; round trip to 1e-13 (`tests/test_fx_strangle_holidays.py`) |
 | `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut; `holidays="auto"` uses the shipped calendars | Hand-checked dates, end-of-month rule, DST shifts |
-| `holidays` | Rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD, 2010 to 2099, no network | Full 2026 lists checked against the Fed, gov.uk, ECB and Cabinet Office of Japan lists (`tests/test_fx_strangle_holidays.py`) |
+| `holidays` | Rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD, 2010 to 2099, no network; since round 4 a re-export of `qp_core.holidays`, which also adds one-off closures | Full 2026 lists checked against the Fed, gov.uk, ECB and Cabinet Office of Japan lists (`tests/test_fx_strangle_holidays.py`) |

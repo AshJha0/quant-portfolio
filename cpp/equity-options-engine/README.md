@@ -209,9 +209,9 @@ equity-options-engine/
 - [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md): where a C++ engine sits in a
   desk workflow; golden-vector regression as a release gate.
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Leisen-Reimer tree, Bachelier price/Greeks/implied normal vol, and charm,
 speed, colour, zomma, veta: `include/eqopt/lr_tree.hpp`, `include/eqopt/bachelier.hpp`, `include/eqopt/greeks_higher.hpp` (tests in `tests/test_phase5.cpp`). They match the Python reference
-golden values to 1e-12 relative (1e-13 for Bachelier). The other Phase 5
+golden values to 1e-12 relative (1e-13 for Bachelier). The other newer
 models are Python only for now.

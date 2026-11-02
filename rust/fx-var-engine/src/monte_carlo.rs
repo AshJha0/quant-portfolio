@@ -789,6 +789,75 @@ pub fn monte_carlo_option_var(
     })
 }
 
+/// [`monte_carlo_option_var`] with vol scenarios: `cov` must also carry
+/// `"VOL:CCY"` for every option factor (with its cross terms to the spot
+/// factors); the combined axis
+/// [`crate::option_reval::option_combined_factors`] is simulated jointly,
+/// with the same model, seed, horizon and repair.
+///
+/// # Errors
+/// As [`monte_carlo_option_var`], plus no options, missing `"VOL:CCY"`
+/// factors or a `skews` length mismatch.
+#[allow(clippy::too_many_arguments)]
+pub fn monte_carlo_option_var_vol(
+    book: &Book,
+    market: &Market,
+    options: &[OptionLeg],
+    option_factors: &[String],
+    cov: &FactorCov,
+    opts: &MonteCarloOptions,
+    dt: f64,
+    vol: &crate::option_reval::VolScenarios,
+) -> Result<MonteCarloResult> {
+    if options.is_empty() {
+        return Err(FxVarError::invalid("vol scenarios need option legs"));
+    }
+    let threads = crate::par::default_threads();
+    validate_alpha(opts.alpha)?;
+    validate_horizon(opts.horizon_days)?;
+    if opts.n_boot < 2 {
+        return Err(FxVarError::invalid(format!(
+            "n_boot must be >= 2, got {}",
+            opts.n_boot
+        )));
+    }
+    let layout = layout_option_book(book, market, options, option_factors)?;
+    let sub = cov.select(&crate::option_reval::option_combined_factors(&layout))?;
+    let (scen, warning, jitter) = simulate_threads(
+        &sub,
+        opts.n_scenarios,
+        opts.dist,
+        opts.df,
+        &opts.jumps,
+        opts.seed,
+        opts.horizon_days,
+        threads,
+    )?;
+    let pnl = crate::option_reval::option_book_pnl_vol(&layout, &scen, dt, vol)?;
+    let (var, es) = empirical_var_es(&pnl, opts.alpha, None)?;
+    let se_var = bootstrap_se_threads(
+        &pnl,
+        opts.alpha,
+        opts.n_boot,
+        opts.seed ^ 0x9E37_79B9_7F4A_7C15,
+        threads,
+    )?;
+    let se_var_kde = var_standard_error(&pnl, opts.alpha)?;
+    Ok(MonteCarloResult {
+        var,
+        es,
+        alpha: opts.alpha,
+        horizon_days: opts.horizon_days,
+        dist: opts.dist,
+        n_scenarios: opts.n_scenarios,
+        se_var,
+        se_var_kde,
+        jitter,
+        pnl,
+        cholesky_warning: warning,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

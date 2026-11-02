@@ -100,6 +100,6 @@ why its vol understates its risk), `docs/VALIDATION.md` for every identity
 and failure mode, `docs/DESK_GUIDE.md` for how an FX overlay desk would run
 this.
 
-## Round 3 models
+## November 2026 models
 
 `hrp`, `robust_mvo` (resampled and robust MVO), `cost_qp` (cost- and turnover-penalised rebalance), `factor_model`, `tracking_error` and `sharpe_tests` (HAC and block-bootstrap Sharpe difference). See docs/METHODOLOGY.md and docs/VALIDATION.md.

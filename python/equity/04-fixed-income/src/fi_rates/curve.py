@@ -44,6 +44,20 @@ Interpolation schemes
     end differs slightly from the other three schemes (the pillar still
     reprices).
 
+    Positivity collar (``positive_forwards=True``, monotone_convex only).
+    Plain idea: if every discrete forward is positive you usually want the
+    interpolated forward positive too, and the plain scheme does not promise
+    that (a steep drop between two segments can push a node forward below
+    zero). Formal statement: Hagan and West (2006), Section 5 ("ensuring
+    positivity"), clamp the node forwards to
+    ``f_0 in [0, 2 f^d_1]``, ``f_i in [0, 2 min(f^d_i, f^d_{i+1})]`` for
+    ``0 < i < n`` and ``f_n in [0, 2 f^d_n]``. With node values in that band
+    every one of the four ``g`` shapes stays at or above zero, so the
+    instantaneous forward is non-negative wherever the discrete forwards are
+    positive; pillars still reprice exactly because ``g`` still integrates to
+    zero. When some discrete forward is negative the clamp is meaningless and
+    the constructor raises. Worked example: ``tests/test_round4_collar.py``.
+
 Extrapolation policy
 --------------------
 * **Long end** (``t`` beyond the last pillar): flat zero-rate extrapolation,
@@ -95,6 +109,8 @@ class DiscountCurve:
         times: Sequence[float] | np.ndarray,
         discount_factors: Sequence[float] | np.ndarray,
         interpolation: str = "loglinear_df",
+        *,
+        positive_forwards: bool = False,
     ) -> None:
         t = np.asarray(times, dtype=float)
         p = np.asarray(discount_factors, dtype=float)
@@ -114,14 +130,17 @@ class DiscountCurve:
             )
         self.times = t
         self.dfs = p
+        if positive_forwards and interpolation != "monotone_convex":
+            raise ValueError("positive_forwards applies to monotone_convex only")
         self.interpolation = interpolation
+        self.positive_forwards = bool(positive_forwards)
         self._zeros = -np.log(p) / t
         self._pchip: PchipInterpolator | None = None
         if interpolation == "pchip_zero" and t.size >= 2:
             self._pchip = PchipInterpolator(t, self._zeros, extrapolate=False)
         self._mc: _MonotoneConvex | None = None
         if interpolation == "monotone_convex":
-            self._mc = _MonotoneConvex(t, -np.log(p))
+            self._mc = _MonotoneConvex(t, -np.log(p), collar=self.positive_forwards)
 
     # ------------------------------------------------------------------ ctors
     @classmethod
@@ -130,11 +149,13 @@ class DiscountCurve:
         times: Sequence[float] | np.ndarray,
         zero_rates: Sequence[float] | np.ndarray,
         interpolation: str = "loglinear_df",
+        *,
+        positive_forwards: bool = False,
     ) -> DiscountCurve:
         """Build from continuously compounded zero rates ``z(t_i)``."""
         t = np.asarray(times, dtype=float)
         z = np.asarray(zero_rates, dtype=float)
-        return cls(t, np.exp(-z * t), interpolation)
+        return cls(t, np.exp(-z * t), interpolation, positive_forwards=positive_forwards)
 
     # ------------------------------------------------------------- core query
     def _warn_extrapolation(self, t: np.ndarray) -> None:
@@ -259,7 +280,8 @@ class DiscountCurve:
         """New curve with all pillar zero rates shifted by ``shift`` (absolute,
         e.g. ``1e-4`` = 1bp)."""
         return DiscountCurve.from_zero_rates(
-            self.times, self._zeros + shift, self.interpolation
+            self.times, self._zeros + shift, self.interpolation,
+            positive_forwards=self.positive_forwards,
         )
 
     def bumped_pillars(self, shifts: Sequence[float] | np.ndarray) -> DiscountCurve:
@@ -270,7 +292,8 @@ class DiscountCurve:
                 f"expected {self.times.size} shifts, got {s.size}"
             )
         return DiscountCurve.from_zero_rates(
-            self.times, self._zeros + s, self.interpolation
+            self.times, self._zeros + s, self.interpolation,
+            positive_forwards=self.positive_forwards,
         )
 
     @property
@@ -288,9 +311,12 @@ class DiscountCurve:
 
 class _MonotoneConvex:
     """Hagan-West (2006) monotone-convex forward on pillars ``t`` with
-    ``y = -ln P(t) = r t``. ``integral(t)`` returns ``int_0^t f``."""
+    ``y = -ln P(t) = r t``. ``integral(t)`` returns ``int_0^t f``.
 
-    def __init__(self, t: np.ndarray, y: np.ndarray) -> None:
+    ``collar=True`` applies the Section 5 positivity bounds to the node
+    forwards (see the module docstring)."""
+
+    def __init__(self, t: np.ndarray, y: np.ndarray, collar: bool = False) -> None:
         tau = np.concatenate(([0.0], t))
         yy = np.concatenate(([0.0], y))
         dt = np.diff(tau)
@@ -304,6 +330,13 @@ class _MonotoneConvex:
             f[1:n] = w * fd[1:] + (1.0 - w) * fd[:-1]
             f[0] = fd[0] - 0.5 * (f[1] - fd[0])
             f[n] = fd[-1] - 0.5 * (f[n - 1] - fd[-1])
+        if collar:
+            if np.any(fd <= 0.0):
+                raise ValueError("positive_forwards needs every discrete forward > 0")
+            f[0] = np.clip(f[0], 0.0, 2.0 * fd[0])
+            if n > 1:
+                f[1:n] = np.clip(f[1:n], 0.0, 2.0 * np.minimum(fd[:-1], fd[1:]))
+            f[n] = np.clip(f[n], 0.0, 2.0 * fd[-1])
         self.tau, self.yy, self.dt, self.fd, self.f = tau, yy, dt, fd, f
 
     @staticmethod
@@ -311,6 +344,17 @@ class _MonotoneConvex:
         """(G(x), int_0^x G) for one segment; Hagan-West Section 5.2."""
         if g0 == 0.0 and g1 == 0.0:
             return 0.0, 0.0
+        tiny = 1e-9 * max(abs(g0), abs(g1))
+        if abs(g0) <= tiny or abs(g1) <= tiny:
+            # Boundary between regions: one end sits at the discrete forward
+            # (two equal discrete forwards side by side; "equal" up to
+            # round-off, since ln P differences rarely cancel exactly). Every
+            # region's limit here is a jump at the pillar (eta -> 0 or 1), so
+            # we take the plain quadratic: continuous, integrates to zero,
+            # and it dips (or peaks) by |g|/3 inside the segment.
+            G = g0 * (1 - 4 * x + 3 * x * x) + g1 * (-2 * x + 3 * x * x)
+            I = g0 * (x - 2 * x * x + x**3) + g1 * (-x * x + x**3)
+            return G, I
         if (g0 < 0 and -0.5 * g0 <= g1 <= -2.0 * g0) or (g0 > 0 and -0.5 * g0 >= g1 >= -2.0 * g0):
             # region (i): plain quadratic
             G = g0 * (1 - 4 * x + 3 * x * x) + g1 * (-2 * x + 3 * x * x)

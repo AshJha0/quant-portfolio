@@ -66,3 +66,40 @@ TEST(OptionReval, RejectsBadInput) {
     EXPECT_THROW((void)delta_gamma_pnl(legs, nan, 2), std::invalid_argument);
     EXPECT_THROW((void)bsm_price(100, 100, 1, 0, 0, 0.0, OptionKind::Call), std::invalid_argument);
 }
+
+// Round 4 vol modes: golden values from {eq,fx}_var.revaluation
+// full_revaluation_pnl(..., vol_mode=...) with skews (-0.1, 0.15)
+// (tests/test_round4_vol_modes.py in both Python packages).
+TEST(OptionReval, VolModesGolden) {
+    const std::vector<OptionLeg> legs{kCall, kPut};
+    const std::vector<double> skews{-0.1, 0.15};
+    const double dt = 1.0 / 365.0;
+    const auto ss = full_revaluation_pnl(legs, kX, kDv, 2, dt, VolMode::StickyStrike, skews);
+    const auto sd = full_revaluation_pnl(legs, kX, kDv, 2, dt, VolMode::StickyDelta, skews);
+    const auto ha = full_revaluation_pnl(legs, kX, kDv, 2, dt, VolMode::HistoricalAtm, skews);
+    const double gss[3] = {4.92183106078723, -0.6845739357538516, -0.1540808210950111};
+    const double gsd[3] = {4.793674377411101, -1.3383700871131143, -0.1540808210950111};
+    const double gha[3] = {2.8099164421405085, -11.777009547269026, -0.1540808210950111};
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(ss[i], gss[i], 1e-12 * (1.0 + std::abs(gss[i])));
+        EXPECT_NEAR(sd[i], gsd[i], 1e-12 * (1.0 + std::abs(gsd[i])));
+        EXPECT_NEAR(ha[i], gha[i], 1e-12 * (1.0 + std::abs(gha[i])));
+    }
+    // The old overload is sticky strike with no skews, bit for bit.
+    const auto old = full_revaluation_pnl(legs, kX, kDv, 2, dt);
+    const auto ss0 = full_revaluation_pnl(legs, kX, kDv, 2, dt, VolMode::StickyStrike, {});
+    for (int i = 0; i < 3; ++i) EXPECT_EQ(old[i], ss0[i]);
+    // Sticky delta with flat smiles is sticky strike.
+    const auto sd0 = full_revaluation_pnl(legs, kX, kDv, 2, dt, VolMode::StickyDelta, {});
+    for (int i = 0; i < 3; ++i) EXPECT_EQ(sd0[i], ss0[i]);
+}
+
+TEST(OptionReval, VolModesRejectBadSkews) {
+    const std::vector<OptionLeg> legs{kCall, kPut};
+    const std::vector<double> one{0.1};
+    const std::vector<double> nan{0.1, std::nan("")};
+    EXPECT_THROW((void)full_revaluation_pnl(legs, kX, kDv, 2, 0.0, VolMode::StickyDelta, one),
+                 std::invalid_argument);
+    EXPECT_THROW((void)full_revaluation_pnl(legs, kX, kDv, 2, 0.0, VolMode::StickyDelta, nan),
+                 std::invalid_argument);
+}

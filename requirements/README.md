@@ -14,19 +14,19 @@ for. Each project still declares its own dependencies in its `pyproject.toml`.
 Use [uv](https://docs.astral.sh/uv/) 0.13 or later from the repository root:
 
 ```bash
-uv pip compile --universal --python-version 3.10 --no-header \
+uv pip compile --universal --python-version 3.11 --no-header \
     requirements/ci-requirements.in -o requirements/ci-constraints.txt
 ```
 
-`--universal` resolves for every Python version from 3.10 up in one file.
-NumPy, SciPy, pandas and a few others need different versions on 3.10, so
+`--universal` resolves for every Python version from 3.11 up in one file.
+NumPy, SciPy, pandas and a few others need different versions across 3.11 to 3.13, so
 the output carries `python_full_version` markers.
 
 Then check that the pinned set installs from binary wheels on each supported
 version and on the CI platform:
 
 ```bash
-for v in 3.10 3.11 3.12 3.13; do
+for v in 3.11 3.12 3.13; do
   uv pip compile -q --no-header --python-version "$v" \
       --python-platform x86_64-manylinux_2_28 --only-binary :all: \
       requirements/ci-requirements.in -c requirements/ci-constraints.txt \

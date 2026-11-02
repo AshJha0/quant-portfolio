@@ -42,12 +42,39 @@ reprice exactly. The correction is picked from four shapes so the forward
 never leaves the range of its two node values. In plain terms: the
 forward curve is continuous, it rises wherever the inputs rise, and a
 pillar bump moves at most two segments on each side. It does not by
-itself guarantee positive forwards (the paper's optional collar is not
-implemented), and its first segment `(0, t_1]` is interpolated too, so the
-short end differs a little from the other schemes. Tested for exact
-repricing, continuity at pillars, monotone inputs giving a monotone
-forward, locality, and every one of the four correction shapes
-(`tests/test_round3_fix_rates.py`).
+itself guarantee positive forwards, and its first segment `(0, t_1]` is
+interpolated too, so the short end differs a little from the other
+schemes. Tested for exact repricing, continuity at pillars, monotone
+inputs giving a monotone forward, locality, and every one of the four
+correction shapes (`tests/test_round3_fix_rates.py`).
+
+The paper's positivity collar (their Section 5) is available as an
+option: `DiscountCurve(..., "monotone_convex", positive_forwards=True)`.
+It clamps each node forward into `[0, 2 min(f^d_i, f^d_{i+1})]` (end nodes
+into `[0, 2 f^d]`), and with node values in that band none of the four
+correction shapes can dip below zero. So if every discrete forward is
+positive, so is the whole forward curve; pillars still reprice exactly.
+It is off by default because it changes the curve wherever it binds, and
+the constructor refuses it when a discrete forward is zero or negative.
+Example: discrete forwards 0.1 %, 5 %, 4.5 %, 0.2 %, 4 % give a plain
+forward that goes below zero near the short end and before 5y; with the
+collar the minimum is zero or above (`tests/test_round4_collar.py`).
+One edge case needed a choice of our own. When a node forward equals the
+discrete forward of a neighbouring segment exactly (two equal discrete
+forwards side by side), one end of the correction `g` is zero and the
+other is not. Each of the paper's four shapes, taken to that limit,
+squeezes its transition into a point, so the forward used to jump at the
+pillar. We use the plain quadratic of region (i) there instead: it is
+continuous, still integrates to zero (pillars reprice), and moves by at
+most a third of the non-zero end inside the segment. "Equal" means equal
+to within 1e-9 relative, because the discrete forwards come from
+differences of `ln P` and rarely cancel to the last bit. Forwards that
+are close but not equal still use the paper's shapes, which stay
+continuous but turn steeply over a width of about `|g0/g1|` of the
+segment; the paper's amelioration step (not implemented) is the cure. With the collar on,
+that keeps the forward positive. Worked example: forwards 3 %, 3 %, 5 %
+at 1y, 2y, 3y; the forward is now continuous at 2y
+(`tests/test_round4_collar.py::test_equal_adjacent_forwards_no_jump`).
 
 All four interpolations share one code path and one test suite; the
 choice is a constructor argument.
@@ -172,7 +199,7 @@ Each assumption states what breaks if it is violated.
 * All randomness flows through `numpy.random.default_rng(seed)`. Tests and
   the pipeline are deterministic and offline.
 
-## Round 3 additions: OIS multi-curve, caps and swaptions, Hull-White
+## November 2026 additions: OIS multi-curve, caps and swaptions, Hull-White
 
 **Multi-curve.** Collateralised swaps discount on the OIS curve, and each
 index tenor gets its own projection curve (Ametrano and Bianchetti 2013).

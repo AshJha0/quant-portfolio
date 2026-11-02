@@ -1,0 +1,85 @@
+# Forward log: one line per ECB business day, appended to the forward-log branch.
+#
+# Runs on weekdays at 16:30 UTC, after the ECB reference rates are published
+# (about 16:00 CET; 15:00 UTC in winter, 14:00 UTC in summer). It fetches
+# ECB rates for dates on or after 2026-11-03 only (research/forward/forward.py
+# refuses anything earlier), scores the two registered strategies on forward
+# history as registered, and pushes the new lines to the unprotected branch
+# forward-log. main is never written. Re-running for a day already logged
+# appends nothing, so a retry or a manual dispatch is safe.
+#
+# Off by default: the job runs only when the repository variable
+# FORWARD_LOG_ENABLED is "true". The coordinator sets it after merge.
+#
+# How to read the log: research/forward/README.md.
+
+name: forward-log
+
+on:
+  schedule:
+    - cron: "30 16 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forward-log
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUTF8: "1"
+  LOG_BRANCH: forward-log
+
+jobs:
+  append:
+    name: append ECB day(s) to forward-log
+    if: vars.FORWARD_LOG_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements/ci-constraints.txt
+            python/core/pyproject.toml
+            python/fx/05-pairs-trading/pyproject.toml
+            python/fx/10-regime-switching/pyproject.toml
+      - name: Install python/core and the FX pairs and regime packages
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -c requirements/ci-constraints.txt -e python/core
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -c requirements/ci-constraints.txt \
+            -e python/fx/05-pairs-trading -e python/fx/10-regime-switching statsmodels
+      - name: Check out the forward-log branch (created empty on the first run)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$LOG_BRANCH" > /dev/null; then
+            git fetch --depth=1 origin "$LOG_BRANCH"
+            git worktree add "$RUNNER_TEMP/log" FETCH_HEAD
+            git -C "$RUNNER_TEMP/log" switch -c "$LOG_BRANCH"
+          else
+            git worktree add --orphan -b "$LOG_BRANCH" "$RUNNER_TEMP/log"
+          fi
+      - name: Append new days
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" research/forward/forward.py update \
+            --log "$RUNNER_TEMP/log/forward/log.jsonl"
+      - name: Commit and push
+        working-directory: ${{ runner.temp }}/log
+        run: |
+          git add forward/log.jsonl
+          if git diff --cached --quiet; then
+            echo "no new day to log"
+            exit 0
+          fi
+          last=$(tail -n 1 forward/log.jsonl | python -c 'import json,sys; print(json.load(sys.stdin)["date"])')
+          git commit -m "forward log through $last" -m "code: $GITHUB_SHA"
+          git push origin "HEAD:refs/heads/$LOG_BRANCH"

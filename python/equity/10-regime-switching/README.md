@@ -6,8 +6,8 @@ hysteresis-banded, vol-targeted allocation in a causal walk-forward backtest.
 
 All results below come from synthetic data. The generator plants a bear state
 with a -30% a year drift, and the strategy profits mainly from that planted
-drift. No real-data result exists yet; a real-data study is Phase 4 of the
-remediation plan.
+drift. No real-data result exists yet; a real-data study belongs to the research platform in
+`research/`.
 
 ```
 multi-asset panel

@@ -148,7 +148,7 @@ K(ρ_sov) > K(ρ_corp) is unit-tested across the PD range.
   lognormal scheme, so the martingale test is a 3-standard-error check, not a
   discretisation compromise.
 
-## Round 3 additions: desk CVA/DVA, CSA and MPoR, wrong-way risk, SA-CCR
+## November 2026 additions: desk CVA/DVA, CSA and MPoR, wrong-way risk, SA-CCR
 
 `exposure.expected_exposure_loss` is a real-world expected-loss measure and is not a CVA. `xva.py` is the risk-neutral version:
 

@@ -140,3 +140,59 @@ def test_loglinear_curve():
     assert c.df(3.0) == pytest.approx(np.exp(-0.06 - 0.04), abs=1e-15)  # flat last forward
     with pytest.raises(ValueError):
         LogLinearCurve(np.array([1.0, 0.5]), np.array([0.02, 0.03]))
+
+
+# ------------------------------------------------- holiday calendars (round 4)
+def test_calendar_moves_cash_settle_over_holiday():
+    m = date(2031, 12, 20)
+    plain = IsdaCds(date(2026, 11, 6), m, 0.01)
+    usd = IsdaCds(date(2026, 11, 6), m, 0.01, calendar="USD")
+    assert plain.cash_settle == date(2026, 11, 11)
+    assert usd.cash_settle == date(2026, 11, 12)  # 11 Nov Veterans Day
+    assert IsdaCds(date(2026, 11, 6), m, 0.01, calendar="EUR").cash_settle == date(2026, 11, 11)
+
+
+def test_calendar_rolls_coupon_dates():
+    # 20 Dec 2027 is a Monday (open); 20 Mar 2028 Monday; GBP Easter 2028:
+    # Good Friday 14 Apr, Easter Monday 17 Apr. Use JPY: 20 Mar 2028 is the
+    # vernal equinox (holiday), so the payment rolls to 21 Mar.
+    cds = IsdaCds(date(2027, 12, 1), date(2028, 6, 20), 0.01, calendar="JPY")
+    pay = [p for _, _, p in cds.periods()]
+    assert date(2028, 3, 21) in pay
+    plain = IsdaCds(date(2027, 12, 1), date(2028, 6, 20), 0.01)
+    assert date(2028, 3, 20) in [p for _, _, p in plain.periods()]
+
+
+def test_calendar_accrual_start_rolls():
+    # 20 Mar 2028 JPY holiday: a trade stepping in on 21 Mar accrues from 21 Mar.
+    cds = IsdaCds(date(2028, 3, 20), date(2033, 3, 20), 0.01, calendar="JPY")
+    assert cds.accrual_start == date(2028, 3, 21)
+    assert cds.accrued() == pytest.approx(0.0)
+
+
+def test_calendar_none_matches_weekend_only_pricing():
+    disc = DISC
+    a = bootstrap_isda(TRADE, MATS, SPREADS, disc)
+    b = bootstrap_isda(TRADE, MATS, SPREADS, disc, calendar=None)
+    np.testing.assert_array_equal(a.hazards, b.hazards)
+
+
+def test_calendar_bootstrap_reprices_par():
+    disc = DISC
+    hz = bootstrap_isda(TRADE, MATS, SPREADS, disc, calendar="USD")
+    for m, s in zip(MATS, SPREADS, strict=True):
+        cds = IsdaCds(TRADE, m, s, 0.4, "USD")
+        assert abs(legs(cds, hz, disc)["clean_upfront"]) < 1e-12
+
+
+def test_calendar_runtime_closure_hook():
+    from qp_core.holidays import extra_closures
+    m = date(2031, 12, 20)
+    with extra_closures({"USD": [date(2026, 11, 12)]}):
+        assert IsdaCds(date(2026, 11, 6), m, 0.01, calendar="USD").cash_settle == date(2026, 11, 13)
+    assert IsdaCds(date(2026, 11, 6), m, 0.01, calendar="USD").cash_settle == date(2026, 11, 12)
+
+
+def test_calendar_bad_code_raises():
+    with pytest.raises(ValueError):
+        IsdaCds(TRADE, MATS[0], 0.01, calendar="XYZ")

@@ -17,13 +17,17 @@ refuses a result when
 - the hash in the result does not match the pre-registration as committed;
 - the result's period reaches the hold-out (on or after ``HOLDOUT_START``)
   and the pre-registration is not signed with that same hash;
+- it is a hold-out result for a registration in ``WITHDRAWN`` (withdrawn
+  before the hold-out, see research/README.md DR-R4-5);
 - it is a hold-out result (``"mode": "holdout"`` or a ``*_holdout*.json``
   name) and its ``provenance`` block is missing a field, records a dirty
   tree, lists no input-file hash, disagrees with ``prereg_sha256``, or is a
   dry run (dry runs never belong in ``research/results``).
 
 Usage: ``python research/tools/prereg.py check [results_dir]`` exits 1 and
-prints one line per refused file.
+prints one line per refused file. ``prereg.py sign FILE NAME [YYYY-MM-DD]``
+fills the signature block and refuses unless the registration names a
+recorded simulated power result (``research/power/*.json``; ``power_errors``).
 """
 
 from __future__ import annotations
@@ -40,6 +44,9 @@ REPO = Path(__file__).resolve().parents[2]
 HOLDOUT_START = date(2022, 1, 1)
 HOLDOUT_END = date(2025, 12, 31)
 SIG_HEADING = "## Signature"
+# Registrations withdrawn before any hold-out data was seen. A hold-out result
+# for one of them is refused, whoever produced it.
+WITHDRAWN = {"research/prereg/pairs-fx-g10.md": "DR-R4-5, 2026-11-02"}
 _FIELD = re.compile(r"^(signed_by|signed_on|sha256):[ \t]*(.*?)[ \t]*$", re.M)
 
 
@@ -80,6 +87,56 @@ def load(path: Path) -> Registration:
         signed_on=fields.get("signed_on", ""),
         signed_sha256=fields.get("sha256", ""),
     )
+
+
+_POWER_REF = re.compile(r"research/power/[\w.-]+\.json")
+
+
+class SigningRefused(RuntimeError):
+    """A registration may not be signed yet."""
+
+
+def power_errors(text: str, repo: Path = REPO) -> list[str]:
+    """Why the registration lacks a recorded simulated power result.
+
+    The text must name at least one ``research/power/*.json`` file; each must
+    exist and hold a non-empty ``cells`` list whose every cell has ``reps`` > 0
+    and a ``rejection_rate`` (at the top of the cell or one level down): the
+    rejection rate of the decision rule on simulated ground-truth data."""
+    refs = sorted(set(_POWER_REF.findall(_split(text)[0])))
+    if not refs:
+        return ["no simulated power result (research/power/*.json) is named in the registration"]
+    errs = []
+    for ref in refs:
+        try:
+            cells = json.loads((repo / ref).read_text(encoding="utf-8")).get("cells")
+        except (OSError, ValueError) as e:
+            errs.append(f"{ref}: unreadable ({e})")
+            continue
+        if not isinstance(cells, list) or not cells:
+            errs.append(f"{ref}: no 'cells'")
+            continue
+        for i, c in enumerate(cells):
+            rates = [c.get("rejection_rate")] + [v.get("rejection_rate") for v in c.values() if isinstance(v, dict)]
+            reps_ok = isinstance(c.get("reps"), int) and c["reps"] > 0
+            if not reps_ok or not any(isinstance(r, (int, float)) for r in rates):
+                errs.append(f"{ref}: cell {i} has no reps or rejection_rate")
+    return errs
+
+
+def sign(path: Path, by: str, on: str, repo: Path = REPO) -> str:
+    """Fill the signature block; refuses without a recorded power result."""
+    text = path.read_text(encoding="utf-8")
+    if errs := power_errors(text, repo):
+        raise SigningRefused("; ".join(errs))
+    if load(path).signed:
+        raise SigningRefused("already signed")
+    date.fromisoformat(on)
+    body, _ = _split(text)
+    h = registration_hash(text)
+    path.write_text(f"{body}{SIG_HEADING}\n\nsigned_by: {by}\nsigned_on: {on}\nsha256: {h}\n",
+                    encoding="utf-8", newline="\n")
+    return h
 
 
 def touches_holdout(period: dict) -> bool:
@@ -134,6 +191,8 @@ def check_result(result_path: Path, repo: Path = REPO) -> list[str]:
     if holdout and not reg.signed:
         errors.append("period reaches the 2022-2025 hold-out but the registration is not signed")
     if res.get("mode") == "holdout" or "_holdout" in result_path.name:
+        if res["prereg"] in WITHDRAWN:
+            errors.append(f"registration withdrawn before the hold-out ({WITHDRAWN[res['prereg']]})")
         errors += check_holdout_provenance(res, claimed)
     return errors
 
@@ -151,6 +210,14 @@ def main(argv: list[str]) -> int:
         for name in argv[2:]:
             reg = load(Path(name))
             print(f"{reg.sha256}  signed={reg.signed}  {name}")
+        return 0
+    if len(argv) >= 4 and argv[1] == "sign":
+        on = argv[4] if len(argv) > 4 else date.today().isoformat()
+        try:
+            print(f"signed {argv[2]} sha256={sign(Path(argv[2]), argv[3], on)}")
+        except SigningRefused as refusal:
+            print(f"REFUSED to sign {argv[2]}: {refusal}")
+            return 1
         return 0
     if len(argv) >= 2 and argv[1] == "check":
         results_dir = Path(argv[2]) if len(argv) > 2 else REPO / "research" / "results"

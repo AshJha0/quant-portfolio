@@ -5,7 +5,7 @@ default) or from the test suite. All data is synthetic. The generator plants
 cointegrated pairs with known half-lives, so every positive P&L figure here
 measures how well the pipeline recovers a planted effect. None of it is
 evidence of an edge in real markets; no real-data result exists yet
-(Phase 4).
+(see `research/`).
 
 ---
 

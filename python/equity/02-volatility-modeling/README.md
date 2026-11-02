@@ -120,7 +120,7 @@ Confidence Set and the Giacomini-White test are not implemented. The
 rolling harness re-runs the recursion over the full history every day,
 which is O(n^2).
 
-## Round 3 additions
+## November 2026 additions
 
 - `har_rv.py`: realised variance from intraday returns and the HAR-RV model
   of Corsi (2009), fitted by OLS with Newey-West standard errors, with

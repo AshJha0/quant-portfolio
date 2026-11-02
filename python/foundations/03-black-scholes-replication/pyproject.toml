@@ -7,7 +7,7 @@ name = "eq-bs-replication"
 version = "1.0.0"
 description = "From-scratch, zero-scipy Black-Scholes-Merton replication: closed-form pricing/Greeks (math.erfc only), an independent Monte Carlo cross-check, and a controlled experiment showing the vol smile emerge under fat-tailed pricing."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [

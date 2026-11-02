@@ -180,7 +180,8 @@ pub fn bsm_greeks(l: &OptionLeg) -> Result<BsmGreeks> {
 }
 
 /// Exact book P&L per scenario by repricing every leg; `dt` (years) ages
-/// the options, floored at expiry.
+/// the options, floored at expiry. Sticky strike: the same as
+/// [`full_revaluation_pnl_vol_mode`] with [`VolMode::StickyStrike`].
 pub fn full_revaluation_pnl(
     legs: &[OptionLeg],
     spot_log_returns: &[f64],
@@ -188,16 +189,69 @@ pub fn full_revaluation_pnl(
     n_factors: usize,
     dt: f64,
 ) -> Result<Vec<f64>> {
+    full_revaluation_pnl_vol_mode(
+        legs,
+        spot_log_returns,
+        vol_shocks,
+        n_factors,
+        dt,
+        VolMode::StickyStrike,
+        &[],
+    )
+}
+
+/// How the scenario vol of an option leg is formed; mirrors the Python
+/// reference's `vol_mode` (Derman 1999, "Regimes of volatility", Risk
+/// 12(4), for the first two). Every mode floors the vol at `1e-12`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolMode {
+    /// `sigma_1 = sigma_0 + dv`: the strike's vol does not move with spot.
+    StickyStrike,
+    /// `sigma_1 = sigma_0 - skew * x + dv`: the smile moves with spot;
+    /// `skew = d sigma / d ln(K/S)`, `x` the factor log return.
+    StickyDelta,
+    /// `sigma_1 = sigma_0 * exp(dv)`: `dv` is the historical log change of
+    /// the ATM vol, applied to every strike.
+    HistoricalAtm,
+}
+
+/// Full revaluation P&L with an explicit vol mode. `skews` is empty (all
+/// zero) or has one entry per leg; only [`VolMode::StickyDelta`] reads it.
+///
+/// # Errors
+/// As [`full_revaluation_pnl`], plus a `skews` length mismatch or a
+/// non-finite skew.
+pub fn full_revaluation_pnl_vol_mode(
+    legs: &[OptionLeg],
+    spot_log_returns: &[f64],
+    vol_shocks: &[f64],
+    n_factors: usize,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<Vec<f64>> {
     let n = check_scenarios(legs, spot_log_returns, vol_shocks, n_factors)?;
     require(dt.is_finite() && dt >= 0.0, "dt must be >= 0")?;
+    require(
+        skews.is_empty() || skews.len() == legs.len(),
+        "skews must be empty or one per leg",
+    )?;
+    require(skews.iter().all(|k| k.is_finite()), "skews must be finite")?;
     let mut pnl = vec![0.0; n];
-    for l in legs {
+    for (k, l) in legs.iter().enumerate() {
+        let skew = skews.get(k).copied().unwrap_or(0.0);
         let p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
         let t1 = (l.tau - dt).max(0.0);
         for (i, p) in pnl.iter_mut().enumerate() {
             let j = i * n_factors + l.factor;
-            let s1 = l.spot * spot_log_returns[j].exp();
-            let v1 = l.vol + vol_shocks.get(j).copied().unwrap_or(0.0);
+            let x = spot_log_returns[j];
+            let d = vol_shocks.get(j).copied().unwrap_or(0.0);
+            let s1 = l.spot * x.exp();
+            let v1 = match mode {
+                VolMode::StickyStrike => l.vol + d,
+                VolMode::StickyDelta => l.vol - skew * x + d,
+                VolMode::HistoricalAtm => l.vol * d.exp(),
+            };
             *p +=
                 l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
         }
@@ -332,6 +386,140 @@ pub fn monte_carlo_option_run(
     )?;
     let (scen, jitter) = simulate_factor_returns_jitter(cov, n_paths, tail, seed)?;
     let pnl = option_book_pnl(legs, exposures, &scen, dt)?;
+    let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
+    let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
+    let se_kde = var_kde_se(&pnl, alpha)?;
+    Ok(McRun {
+        pnl,
+        var,
+        es,
+        se,
+        se_kde,
+        jitter,
+    })
+}
+
+/// Vol scenarios on the combined factor axis: [`option_book_pnl_vol`] and
+/// the drivers below take a panel (or covariance) with `2J` columns, the
+/// spot log returns of the `J` factors first, then one vol shock per factor
+/// in the same order, so column `J + j` is the vol shock of factor `j` (an
+/// ATM vol change in vol points for `StickyStrike` / `StickyDelta`, an ATM
+/// log change for `HistoricalAtm`). `exposures` and `leg.factor` still index
+/// the `J` spot factors. `skews` is empty or one per leg (`StickyDelta`
+/// only). With `StickyStrike` and an all-zero vol block each function equals
+/// its no-vol counterpart bit for bit.
+///
+/// # Errors
+/// No legs, an odd column count, shape mismatch, non-finite input, invalid
+/// legs or skews.
+pub fn option_book_pnl_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    combined: &Matrix,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<Vec<f64>> {
+    let (n, nc) = (combined.rows(), combined.cols());
+    require(
+        n > 0 && nc > 0 && nc.is_multiple_of(2),
+        "combined panel must be non-empty with 2J columns (spot block, then vol block)",
+    )?;
+    require(!legs.is_empty(), "option_book_pnl_vol needs option legs")?;
+    let nf = nc / 2;
+    require(
+        exposures.is_empty() || exposures.len() == nf,
+        "exposures must be empty or match the spot block",
+    )?;
+    require(
+        exposures.iter().all(|w| w.is_finite()),
+        "exposures must be finite",
+    )?;
+    let c = combined.as_slice();
+    let mut x = Vec::with_capacity(n * nf);
+    let mut dv = Vec::with_capacity(n * nf);
+    for row in c.chunks_exact(nc) {
+        x.extend_from_slice(&row[..nf]);
+        dv.extend_from_slice(&row[nf..]);
+    }
+    let mut pnl = full_revaluation_pnl_vol_mode(legs, &x, &dv, nf, dt, mode, skews)?;
+    if !exposures.is_empty() {
+        for (i, p) in pnl.iter_mut().enumerate() {
+            let row = &x[i * nf..(i + 1) * nf];
+            let mut s = 0.0;
+            for (w, r) in exposures.iter().zip(row) {
+                s += w * r;
+            }
+            *p += s;
+        }
+    }
+    Ok(pnl)
+}
+
+/// [`historical_option_var_es`] with vol scenarios: each row of the `T x 2J`
+/// `combined` panel (spot block, then vol block) is a scenario.
+///
+/// # Errors
+/// Fewer than `MIN_OBS` rows, invalid `alpha`, or any
+/// [`option_book_pnl_vol`] error.
+pub fn historical_option_var_es_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    combined: &Matrix,
+    alpha: f64,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<(f64, f64)> {
+    validate_alpha(alpha)?;
+    require(
+        combined.rows() >= crate::historical::MIN_OBS,
+        "historical option VaR needs at least MIN_OBS rows",
+    )?;
+    let pnl = option_book_pnl_vol(legs, exposures, combined, dt, mode, skews)?;
+    crate::tail::empirical_var_es(&pnl, alpha)
+}
+
+/// [`monte_carlo_option_run`] with vol scenarios: `joint_cov` is `2J x 2J`
+/// over the combined axis (spot block, then vol block, with their cross
+/// terms). The `2J` factors are simulated jointly with the same model and
+/// seed, then priced by [`option_book_pnl_vol`].
+///
+/// # Errors
+/// As [`monte_carlo_option_run`], plus no legs or an odd `joint_cov` size.
+#[allow(clippy::too_many_arguments)]
+pub fn monte_carlo_option_run_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    joint_cov: &Matrix,
+    alpha: f64,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    n_boot: usize,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<McRun> {
+    require(
+        !legs.is_empty(),
+        "monte_carlo_option_run_vol needs option legs",
+    )?;
+    validate_alpha(alpha)?;
+    require(n_boot >= 2, "n_boot must be >= 2")?;
+    require(n_paths >= MIN_PATHS, "need at least MIN_PATHS paths")?;
+    require(
+        joint_cov.rows() == joint_cov.cols()
+            && joint_cov.rows() > 0
+            && joint_cov.rows().is_multiple_of(2),
+        "joint_cov must be square with 2J rows (spot block, then vol block)",
+    )?;
+    require(
+        exposures.is_empty() || 2 * exposures.len() == joint_cov.rows(),
+        "exposures must be empty or match the spot block",
+    )?;
+    let (scen, jitter) = simulate_factor_returns_jitter(joint_cov, n_paths, tail, seed)?;
+    let pnl = option_book_pnl_vol(legs, exposures, &scen, dt, mode, skews)?;
     let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
     let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
     let se_kde = var_kde_se(&pnl, alpha)?;

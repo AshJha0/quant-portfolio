@@ -49,18 +49,49 @@ region", Management Science 61(5), 1094-1107; Andersen and Lake 2021,
   - q S e^{-q(T-u)} (Phi(-d+(S/B(u))) - Phi(-d+(S/Y(u))))] du``,
   and the two boundaries are pinned by value matching,
   ``K - B(tau) = P(tau, B(tau))`` and ``K - Y(tau) = P(tau, Y(tau))``.
-  We solve that pair by marching in ``tau`` on a grid uniform in
-  ``sqrt(tau)`` (trapezoid in ``u``, a damped 2x2 Newton per node), and
-  stop where the band closes or the monotonicity (``B`` falling, ``Y``
-  rising) fails. This is the integral-equation system of the
-  double-boundary paper solved by direct marching rather than by its
-  Chebyshev collocation, so it is slower (about a second at the default
-  ``n_march = 400``) and accurate to about 1e-5 per 100 of strike against
-  an extrapolated Leisen-Reimer tree, converging at close to second order.
+  Two solvers for that pair are provided.
+
+  *Collocation (default, ``double_boundary_method="collocation"``).* The
+  approach of Andersen and Lake (2021): write the band as a mid-line and a
+  half-width, ``B = M + W`` and ``Y = M - W``, store both at ``n_cheb + 1``
+  Chebyshev-Lobatto nodes in ``x = sqrt(tau / T_c)`` on ``[0, 1]``, with
+  ``T_c = min(T, tau*)``, and impose value matching for both boundaries at
+  every node. The time integrals use Gauss-Legendre in ``theta`` after
+  ``u = tau sin^2(theta)``, which removes the square-root behaviour at both
+  ends (``u -> 0`` where the boundaries start, ``u -> tau`` where the kernel
+  is singular). The interpolation weights onto the quadrature points do not
+  depend on ``T_c``, so they are built once. When the band closes before
+  ``T`` the closing time is an extra unknown: the half-width is written
+  ``W = (1 - x^2) w(x)`` so it vanishes at ``tau*`` (the two boundaries
+  meet at a corner, with width close to linear in ``tau* - tau``; checked
+  against the fine march), and the extra equation is smooth fit at the tip,
+  ``dP/dS = -1`` at ``S = B(tau*)``. The square system (``2 n_cheb``
+  unknowns) is solved by Newton with a finite-difference Jacobian, refreshed
+  every three steps. A coarse 16-step march supplies the starting guess and
+  says whether the band closes. At the default ``n_cheb = 8, n_quad = 24``
+  a price takes about 15 ms on one core and is within 1e-5 of the 400-step
+  march and of the extrapolated Leisen-Reimer tree on the test grid. If the
+  Newton solve fails (never seen on the test grid) the pricer falls back to
+  the march, so the answer is never worse than the reference.
+  Our closing-time treatment is our own reading of the method; the paper's
+  exact parametrisation of the closing segment is not reproduced.
+
+  *March (reference, ``double_boundary_method="march"``).* March in
+  ``tau`` on a grid uniform in ``sqrt(tau)`` (trapezoid in ``u``, a damped
+  2x2 Newton per node), stopping where the band closes or the monotonicity
+  (``B`` falling, ``Y`` rising) fails. It is slower (about 0.2 s at the
+  default ``n_march = 400``) and accurate to about 1e-5 per 100 of strike
+  against an extrapolated Leisen-Reimer tree, converging at close to second
+  order. The residual ``K - x - put(x)`` is written through put-call parity
+  with ``expm1`` so it does not cancel at the first nodes of a fine grid
+  (``tau`` near 1e-7), and the Newton tolerance scales with ``tau``. Before
+  that, ``n_march`` around 1600 stopped the march after one node for some
+  inputs (regression test in ``tests/test_round4_alo_collocation.py``).
 
 Worked example (double boundary): ``S = K = 100, T = 1, r = -0.005,
-q = -0.02, sigma = 0.2``, put: 7.410691 at the default grid, against
-7.410683 from the extrapolated tree; the European put is 7.3291.
+q = -0.02, sigma = 0.2``, put: 7.410683 by collocation and 7.410691 by the
+400-step march, against 7.410683 from the extrapolated tree; the European
+put is 7.3291.
 
 Calls use the same symmetry, so a call with ``r < q < 0`` is the
 double-boundary put with the roles of ``r`` and ``q`` swapped.
@@ -77,6 +108,8 @@ from scipy.special import ndtr
 from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
 
 __all__ = ["alo_boundary", "alo_double_boundary", "alo_price"]
+
+DOUBLE_BOUNDARY_METHODS = ("collocation", "march")
 
 _INV_SQRT_2PI = 1.0 / math.sqrt(2.0 * math.pi)
 
@@ -192,8 +225,12 @@ def _double_boundary(K, T, r, q, sigma, n):
             integral = (r * K * er * p_band - q * x[:, None] * eq_ * q_band) @ wk \
                 + wi * 0.5 * (r * K - q * x)
             d1 = (np.log(x / K) + (r - q + 0.5 * sigma * sigma) * t) / st
-            euro = K * math.exp(-r * t) * ndtr(-(d1 - st)) - x * math.exp(-q * t) * ndtr(-d1)
-            return K - x - euro - integral
+            # K - x - put(x), written through put-call parity with expm1 so
+            # it does not cancel: every term is O(t), and at the first nodes
+            # of a fine grid (t ~ 1e-7) the direct form loses most digits
+            # and the finite-difference Jacobian becomes noise.
+            call = x * math.exp(-q * t) * ndtr(d1) - K * math.exp(-r * t) * ndtr(d1 - st)
+            return -K * math.expm1(-r * t) + x * math.expm1(-q * t) - call - integral
 
         prev = np.array([B[i - 1], Y[i - 1]])
         x = prev if i < 2 else 2.0 * prev - np.array([B[i - 2], Y[i - 2]])
@@ -202,7 +239,7 @@ def _double_boundary(K, T, r, q, sigma, n):
         for _ in range(50):
             f = resid(x)
             fnorm = float(np.max(np.abs(f)))
-            if fnorm < 1e-11 * K:
+            if fnorm < 1e-11 * K * min(1.0, t / T):  # the residual is O(t)
                 converged = True
                 break
             jac = np.empty((2, 2))
@@ -232,6 +269,203 @@ def _double_boundary(K, T, r, q, sigma, n):
     return u[: last + 1], B[: last + 1], Y[: last + 1]
 
 
+def _bary_w(x):
+    d = x[:, None] - x[None, :]
+    np.fill_diagonal(d, 1.0)
+    return 1.0 / d.prod(axis=1)
+
+
+def _bary_mat(xn, x):
+    wn = _bary_w(xn)
+    diff = x[:, None] - xn[None, :]
+    exact = np.abs(diff) < 1e-15
+    diff[exact] = 1.0
+    t = wn / diff
+    L = t / t.sum(axis=1, keepdims=True)
+    rows = np.nonzero(exact.any(axis=1))[0]
+    L[rows] = exact[rows].astype(float)
+    return L
+
+
+def _gl_theta(l):
+    th, wt = np.polynomial.legendre.leggauss(l)
+    th = 0.25 * math.pi * (1 + th)
+    return np.sin(th), 2 * np.sin(th) * np.cos(th) * 0.25 * math.pi * wt
+
+
+class _DoubleBoundaryCollocation:
+    """Collocation system for the q < r < 0 put band (see the module note)."""
+
+    def __init__(self, K, T, r, q, sigma, n=8, l=24):
+        self.K, self.T, self.r, self.q, self.sigma, self.n, self.l = K, T, r, q, sigma, n, l
+        sn, self.wq = _gl_theta(l)
+        self.s2 = sn * sn
+        self.x = 0.5 * (1 - np.cos(np.pi * np.arange(n + 1) / n))
+        xq = (self.x[1:, None] * sn[None, :]).ravel()
+        self.LMq = _bary_mat(self.x, xq)
+        self.LWq_close = (1 - xq * xq)[:, None] * _bary_mat(self.x[:-1], xq)
+        self.LWn_close = (1 - self.x[1:] ** 2)[:, None] * _bary_mat(self.x[:-1], self.x[1:])
+        self.M0, self.W0 = 0.5 * K * (1 + r / q), 0.5 * K * (1 - r / q)
+
+    def unpack(self, z, closing):
+        n = self.n
+        M = np.concatenate(([self.M0], z[:n]))
+        if closing:
+            return M, np.concatenate(([self.W0], z[n:2 * n - 1])), z[-1]
+        return M, np.concatenate(([self.W0], z[n:])), self.T
+
+    def _P(self, S, tau, top, Bq, Yq, s2, wq):
+        K, r, q, sig = self.K, self.r, self.q, self.sigma
+        u = top[:, None] * s2[None, :]
+        w = top[:, None] * wq[None, :]
+        dt = tau[:, None] - u
+        sq = sig * np.sqrt(dt)
+        drift = (r - q) * dt
+        lS = np.log(S)[:, None]
+        dmb = (lS - np.log(Bq) + drift) / sq - 0.5 * sq
+        dmy = (lS - np.log(Yq) + drift) / sq - 0.5 * sq
+        f = (r * K * np.exp(-r * dt) * (ndtr(-dmb) - ndtr(-dmy))
+             - q * S[:, None] * np.exp(-q * dt) * (ndtr(-(dmb + sq)) - ndtr(-(dmy + sq))))
+        st = sig * np.sqrt(tau)
+        d1 = (np.log(S / K) + (r - q + 0.5 * sig * sig) * tau) / st
+        euro = K * np.exp(-r * tau) * ndtr(-(d1 - st)) - S * np.exp(-q * tau) * ndtr(-d1)
+        return euro + np.sum(w * f, axis=1)
+
+    def resid(self, z, closing):
+        M, w, Tc = self.unpack(z, closing)
+        if not Tc > 0:
+            return None
+        n, l = self.n, self.l
+        Mq = (self.LMq @ M).reshape(n, l)
+        Wq = ((self.LWq_close if closing else self.LMq) @ w).reshape(n, l)
+        Bq, Yq = Mq + Wq, Mq - Wq
+        Wn = self.LWn_close @ w if closing else w[1:]
+        B, Y = M[1:] + Wn, M[1:] - Wn
+        if np.any(Yq <= 0) or np.any(Y <= 0) or np.any(Wq < 0):
+            return None
+        if np.any(Wn[:-1] <= 0) or (not closing and Wn[-1] <= 0):
+            return None
+        tau = Tc * self.x[1:] ** 2
+        m = n - 1 if closing else n
+        S = np.concatenate((B, Y[:m]))
+        tt = np.concatenate((tau, tau[:m]))
+        P = self._P(S, tt, tt, np.vstack((Bq, Bq[:m])), np.vstack((Yq, Yq[:m])), self.s2, self.wq)
+        R = (self.K - S - P) / self.K
+        if closing:
+            h = 1e-4 * B[-1]
+            Pp = self._P(np.array([B[-1] + h, B[-1] - h]), np.array([Tc, Tc]), np.array([Tc, Tc]),
+                         np.vstack((Bq[-1], Bq[-1])), np.vstack((Yq[-1], Yq[-1])), self.s2, self.wq)
+            R = np.concatenate((R, [(Pp[0] - Pp[1]) / (2 * h) + 1.0]))
+        return R
+
+    def boundary(self, z, closing, u):
+        M, w, Tc = self.unpack(z, closing)
+        xu = np.sqrt(np.clip(np.asarray(u, float) / Tc, 0.0, 1.0))
+        Mu = _bary_mat(self.x, xu) @ M
+        if closing:
+            Wu = (1 - xu * xu) * (_bary_mat(self.x[:-1], xu) @ w)
+        else:
+            Wu = _bary_mat(self.x, xu) @ w
+        return Mu + Wu, Mu - Wu
+
+    def price(self, S, z, closing, nq=48):
+        Tc = z[-1] if closing else self.T
+        top = min(self.T, Tc)
+        sn, wq = _gl_theta(nq)
+        B, Y = self.boundary(z, closing, top * sn * sn)
+        p = self._P(np.array([S]), np.array([self.T]), np.array([top]), B[None, :], Y[None, :],
+                    sn * sn, wq)
+        return float(p[0])
+
+    def solve(self, z, closing, tol=1e-12, maxit=40):
+        f = self.resid(z, closing)
+        if f is None:
+            return None
+        J = None
+        age = 0
+        for _ in range(maxit):
+            fn_ = np.max(np.abs(f))
+            if fn_ < tol:
+                return z
+            if J is None or age >= 3:
+                J = np.empty((f.size, z.size))
+                for j in range(z.size):
+                    h = 1e-7 * max(abs(z[j]), 1.0)
+                    zp = z.copy()
+                    zp[j] += h
+                    fp = self.resid(zp, closing)
+                    if fp is None:
+                        zp[j] -= 2 * h
+                        fp = 2 * f - self.resid(zp, closing)
+                    J[:, j] = (fp - f) / h
+                age = 0
+                fresh = True
+            else:
+                fresh = False
+            dz = np.linalg.solve(J, -f)
+            lam = 1.0
+            ok = False
+            while lam > 1e-3:
+                zn = z + lam * dz
+                fn = self.resid(zn, closing)
+                if fn is not None and np.max(np.abs(fn)) < fn_:
+                    ok = True
+                    break
+                lam *= 0.5
+            if not ok:
+                if fresh:
+                    return None
+                J = None
+                continue
+            z, f = zn, fn
+            age += 1
+        return z if np.max(np.abs(f)) < 1e-9 else None
+
+
+def _collocate(K, T, r, q, sigma, n=8, l=24, nm=16):
+    """Solve the band; return ``(solver, z, closing)`` or ``None`` on failure."""
+    u, B, Y = _double_boundary(K, T, r, q, sigma, nm)
+    if u.size < 3:
+        return None
+    db = _DoubleBoundaryCollocation(K, T, r, q, sigma, n, l)
+    closing = u[-1] < T
+    if closing:
+        wa, wb = B[-2] - Y[-2], B[-1] - Y[-1]
+        Tc = u[-1] + wb * (u[-1] - u[-2]) / max(wa - wb, 1e-300)
+    else:
+        Tc = T
+    tau_n = Tc * db.x ** 2
+    Bi = np.interp(np.sqrt(tau_n), np.sqrt(u), B)
+    Yi = np.interp(np.sqrt(tau_n), np.sqrt(u), Y)
+    if closing:
+        mid = 0.5 * (B[-1] + Y[-1])
+        far = tau_n > u[-1]
+        frac = (Tc - tau_n[far]) / (Tc - u[-1])
+        Bi[far] = mid + frac * (B[-1] - mid)
+        Yi[far] = mid - frac * (mid - Y[-1])
+    Mn, Wn = 0.5 * (Bi + Yi), 0.5 * (Bi - Yi)
+    if closing:
+        z0 = np.concatenate((Mn[1:], Wn[1:-1] / (1 - db.x[1:-1] ** 2), [Tc]))
+    else:
+        z0 = np.concatenate((Mn[1:], Wn[1:]))
+    z = db.solve(z0, closing)
+    if z is None or (closing and not z[-1] < T):
+        return None
+    return db, z, closing
+
+
+def _double_boundary_put_collocation(S, K, T, r, q, sigma, n, l):
+    sol = _collocate(K, T, r, q, sigma, n, l)
+    if sol is None:
+        return None
+    db, z, closing = sol
+    if not closing:
+        Bt, Yt = db.boundary(z, closing, [T])
+        if Yt[0] <= S <= Bt[0]:
+            return K - S
+    return db.price(S, z, closing)
+
+
 def _double_boundary_put(S, K, T, r, q, sigma, n):
     u, B, Y = _double_boundary(K, T, r, q, sigma, n)
     if u[-1] >= T and Y[-1] <= S <= B[-1]:
@@ -251,17 +485,42 @@ def _double_boundary_put(S, K, T, r, q, sigma, n):
     return float(bs_price(S, K, T, r, sigma, q, "put") + premium)
 
 
+def _check_db_method(method, n_cheb, n_quad_db):
+    if method not in DOUBLE_BOUNDARY_METHODS:
+        raise ValueError(f"double_boundary_method must be one of {DOUBLE_BOUNDARY_METHODS}")
+    if method == "collocation" and (n_cheb < 3 or n_quad_db < 4):
+        raise ValueError("collocation needs n_cheb >= 3 and n_quad_db >= 4")
+
+
 def alo_double_boundary(K: float, T: float, r: float, sigma: float, q: float,
-                        n_march: int = 400):
+                        n_march: int = 400, method: str = "collocation",
+                        n_cheb: int = 8, n_quad_db: int = 24):
     """Return ``(tau, lower, upper)``: the put exercise band for ``q < r < 0``.
 
-    ``tau`` runs from 0 to ``T`` or to the last grid time before the band
-    closes, whichever comes first (see the module note).
+    ``tau`` is the grid ``T_c (k / n_march)^2`` with ``T_c = min(T, tau*)``.
+    With ``method="collocation"`` the boundaries are the collocation
+    interpolants on that grid; when the band closes before ``T`` the grid
+    stops one point short of ``tau*`` (where the two boundaries meet). With
+    ``method="march"`` they are the march values, which stop at the last grid
+    time before the band closes (see the module note). Collocation falls back
+    to the march if its solve fails.
     """
     if not q < r < 0.0:
         raise ValueError("alo_double_boundary covers q < r < 0 (put)")
     if min(K, T, sigma) <= 0.0 or n_march < 2:
         raise ValueError("need K, T, sigma > 0 and n_march >= 2")
+    _check_db_method(method, n_cheb, n_quad_db)
+    if method == "collocation":
+        sol = _collocate(K, T, r, q, sigma, n_cheb, n_quad_db)
+        if sol is not None:
+            db, z, closing = sol
+            Tc = float(z[-1]) if closing else T
+            u = Tc * (np.arange(n_march + 1) / n_march) ** 2
+            if closing:
+                u = u[:-1]
+            B, Y = db.boundary(z, closing, u)
+            B[0], Y[0] = K, K * r / q
+            return u, Y, B
     u, B, Y = _double_boundary(K, T, r, q, sigma, n_march)
     return u, Y, B
 
@@ -289,6 +548,9 @@ def alo_price(
     n_price: int = 64,
     iterations: int = 60,
     n_march: int = 400,
+    double_boundary_method: str = "collocation",
+    n_cheb: int = 8,
+    n_quad_db: int = 24,
 ) -> float:
     """American option price by the Andersen-Lake-Offengeim method.
 
@@ -306,6 +568,12 @@ def alo_price(
     n_march : int
         Time steps for the double-boundary march (``q < r < 0`` put,
         ``r < q < 0`` call); ignored elsewhere.
+    double_boundary_method : {"collocation", "march"}
+        Solver for the double boundary (module note). Collocation is the
+        default; the march is kept as the reference.
+    n_cheb, n_quad_db : int
+        Chebyshev nodes and Gauss-Legendre points of the double-boundary
+        collocation.
 
     Returns
     -------
@@ -320,12 +588,17 @@ def alo_price(
         if q <= 0.0 and r >= 0.0:
             return bs_price(S, K, T, r, sigma, q, "call")  # never exercised early
         return alo_price(K, S, T, q, sigma, r, "put", n_nodes, n_quad, n_price, iterations,
-                         n_march)
+                         n_march, double_boundary_method, n_cheb, n_quad_db)
     if r <= 0.0 and q >= r and not (r == 0.0 and q < 0.0):
         return bs_price(S, K, T, r, sigma, q, "put")  # carry r K - q S never positive in the money
     if r < 0.0:  # q < r < 0: the double boundary
         if n_march < 2:
             raise ValueError("n_march must be >= 2")
+        _check_db_method(double_boundary_method, n_cheb, n_quad_db)
+        if double_boundary_method == "collocation":
+            v = _double_boundary_put_collocation(S, K, T, r, q, sigma, n_cheb, n_quad_db)
+            if v is not None:
+                return float(v)
         return _double_boundary_put(S, K, T, r, q, sigma, n_march)
     B = _put_boundary(K, T, r, q, sigma, n_nodes, n_quad, iterations)
     european = bs_price(S, K, T, r, sigma, q, "put")
