@@ -187,6 +187,8 @@ every run, both compilers, before and after, are in
 `bench/bench_main.cpp`; every call gets a different input from a 16,384-entry
 table.
 
+> **How these figures were timed.** Old harness: each call timed on its own with rdtscp, empty-call overhead subtracted. They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | Compiler | p50 before | p50 after | p99 before | p99 after | p99.9 after | max after |
 |---|---|---|---|---|---|---|---|
 | `gk_price` | GCC 15.2 | 127 ns | 113 ns | 256 ns | 329 ns | 617 ns | 139.2 µs |

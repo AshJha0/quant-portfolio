@@ -469,6 +469,15 @@ dataset (the research entries use ECB reference rates).
 
 ### Changed
 
+- One latency method for the C++ and Rust benches (`qp/bench/latency.hpp`,
+  `qp_core::bench`): batches of back-to-back calls sized to at least 2 us,
+  median with p10/p90, nearest-rank percentiles. The CI bench job now builds
+  the base and head commits on one runner, runs them in three alternating
+  rounds and fails only when the head median is more than 25% slower with
+  head p10 above base p90 (`.github/scripts/bench_ab.py`, replacing
+  `bench_compare.py` and its 2x rule against laptop numbers). README latency
+  tables are labelled as the older laptop run. See `docs/BENCHMARKS.md`.
+
 - C++ equity and FX `try_mc_price` (and `mc_price`) run their chunks inline
   below 16,384 independent draws (`kMcParallelMinDraws`) instead of on the
   thread pool. At 10,000 paths, 4 threads measured 531 us against 424 us on

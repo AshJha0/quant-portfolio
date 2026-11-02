@@ -38,6 +38,7 @@
 
 use std::fmt;
 
+pub mod bench;
 pub mod gemm;
 pub mod iv;
 pub mod linalg;

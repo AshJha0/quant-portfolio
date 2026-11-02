@@ -2,18 +2,17 @@
 //!
 //! Book: 250 positions on 50 factors (45 FX + 5 IR): 200 spots and 50
 //! forwards. History: 500 days of seeded factor returns, full-rank
-//! covariance. Each kernel is warmed up, then timed call by call with
-//! `std::time::Instant` and `std::hint::black_box`, cycling through varied
-//! inputs. Kernels faster than about 1 us are timed in batches of
-//! `calls_per_sample` calls and reported per call.
+//! covariance. Each kernel is timed with the method shared with
+//! the C++ benches (`qp_core::bench`, docs/BENCHMARKS.md), cycling through
+//! varied inputs: a calibrated batch of back-to-back calls per sample (at
+//! least 2 us), median with p10/p90.
 //!
-//! Output: a JSON array (one object per kernel with p50, p90, p99, p99.9
+//! Output: a JSON array (one object per kernel with p10, p50, p90, p99, p99.9
 //! and max in ns) printed to stdout and written to `bench/results.json`
 //! under the crate root (or to `--out <path>`). Run with `cargo run --release --bin bench`.
 
 use std::fmt::Write as _;
 use std::hint::black_box;
-use std::time::Instant;
 
 use fx_var_engine::prelude::*;
 
@@ -21,43 +20,31 @@ struct Stat {
     kernel: &'static str,
     n_iter: usize,
     calls_per_sample: usize,
-    p: [f64; 5],
+    /// p10, p50, p90, p99, p99.9, max (ns per call).
+    p: [f64; 6],
 }
 
-/// Time `n_iter` samples of `calls` calls each after `warm` warm-up
-/// samples. `f(i)` runs call number `i` (the caller varies inputs by `i`).
+/// Time `f(i)` with the shared method (`qp_core::bench`): `warm` and
+/// `n_iter` are in units of `calls`, so the call budget is `n_iter *
+/// calls`; the batch size itself is calibrated. `f(i)` runs call number
+/// `i` (the caller varies inputs by `i`).
 fn measure(
     kernel: &'static str,
     warm: usize,
     n_iter: usize,
     calls: usize,
-    mut f: impl FnMut(usize),
+    f: impl FnMut(usize),
 ) -> Stat {
-    let mut i = 0usize;
-    for _ in 0..warm * calls {
-        f(i);
-        i += 1;
-    }
-    let mut ns = Vec::with_capacity(n_iter);
-    for _ in 0..n_iter {
-        let t0 = Instant::now();
-        for _ in 0..calls {
-            f(i);
-            i += 1;
-        }
-        ns.push(t0.elapsed().as_nanos() as f64 / calls as f64);
-    }
-    ns.sort_unstable_by(f64::total_cmp);
-    let q = |p: f64| ns[((p * (ns.len() - 1) as f64).round() as usize).min(ns.len() - 1)];
-    let p = [q(0.5), q(0.9), q(0.99), q(0.999), ns[ns.len() - 1]];
+    let s = qp_core::bench::measure(warm * calls, n_iter * calls, f);
+    let p = [s.p10, s.p50, s.p90, s.p99, s.p999, s.max];
     eprintln!(
-        "{kernel:<34} p50 {:>12.0}  p99 {:>12.0}  p99.9 {:>12.0} ns",
-        p[0], p[2], p[3]
+        "{kernel:<34} p10 {:>12.0}  p50 {:>12.0}  p90 {:>12.0} ns  (B = {})",
+        p[0], p[1], p[2], s.calls_per_sample
     );
     Stat {
         kernel,
-        n_iter,
-        calls_per_sample: calls,
+        n_iter: s.samples,
+        calls_per_sample: s.calls_per_sample,
         p,
     }
 }
@@ -225,7 +212,7 @@ fn main() {
             json,
             "  {{\"engine\": \"fx-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{}\", \"flags\": \"{}\", \
              \"cpu\": \"{}\", \"date\": \"{}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \
-             \"p50\": {:.0}, \"p90\": {:.0}, \"p99\": {:.0}, \"p999\": {:.0}, \"max\": {:.0}}}{}",
+             \"p10\": {:.0}, \"p50\": {:.0}, \"p90\": {:.0}, \"p99\": {:.0}, \"p999\": {:.0}, \"max\": {:.0}}}{}",
             s.kernel,
             toolchain,
             flags,
@@ -238,6 +225,7 @@ fn main() {
             s.p[2],
             s.p[3],
             s.p[4],
+            s.p[5],
             if n + 1 < stats.len() { "," } else { "" }
         );
     }

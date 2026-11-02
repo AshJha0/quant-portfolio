@@ -279,6 +279,8 @@ do not use Philox or the batch kernels yet.
 Measured with `bench_core` on an Intel Core 5 120U under WSL2, gcc 15.2
 `-O3`, default x86-64 target (SSE2 only); p50 in microseconds per call:
 
+> **How these figures were timed.** Old harness: each call timed on its own with rdtscp, empty-call overhead subtracted. They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; no results file was committed for it. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | Old | New | Ratio |
 |---|---|---|---|
 | quantile, n = 10,000 | 1169 (full sort) | 160 (select) | 7.3x faster |

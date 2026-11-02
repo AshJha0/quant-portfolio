@@ -172,6 +172,8 @@ scheduler jitter. Kernels under 1 us are timed in batches of 64 or 16
 calls and reported per call; the batch rows time one 1,024-option batch
 and report per option.
 
+> **How these figures were timed.** Old harness: `std::time::Instant` over a fixed batch per sample (16 or 64 calls for fast kernels, 1 for slow ones). They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | p50 ns | p99 ns | p99.9 ns |
 |---|---:|---:|---:|
 | `gk_price` | 64 | 72 | 332 |

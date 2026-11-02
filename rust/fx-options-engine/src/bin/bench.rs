@@ -1,11 +1,9 @@
 //! Per-call latency benchmark for the FX options engine.
 //!
-//! Each kernel runs a warm-up, then many timed samples over a rotating set
-//! of varied inputs. A sample times `calls_per_sample` back-to-back calls
-//! with `std::time::Instant` and records the per-call time
-//! (sample / calls_per_sample). Kernels far below the timer resolution
-//! (about 20-30 ns) use batches of 64 calls; slow kernels use one call per
-//! sample. Results print as JSON and are written to `bench/results.json`
+//! Every kernel is timed with the method shared with the C++ benches
+//! (`qp_core::bench`, docs/BENCHMARKS.md): a calibrated batch of
+//! back-to-back calls per sample (at least 2 us), median with p10/p90,
+//! over a rotating set of varied inputs. Results print as JSON and are written to `bench/results.json`
 //! (or the path given with `--out <path>`).
 //!
 //! Run: `cargo run --release --bin bench`. Set `BENCH_FILTER=<substring>`
@@ -13,7 +11,7 @@
 //! partial).
 
 use std::hint::black_box;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use fx_options_engine::{
     analytic_greeks, binomial_price, gk_price, implied_vol, mc_price, strike_from_delta,
@@ -86,10 +84,13 @@ struct Row {
     kernel: &'static str,
     n_iter: usize,
     calls_per_sample: usize,
-    q: [f64; 5],
+    /// p10, p50, p90, p99, p99.9, max (ns per call).
+    q: [f64; 6],
 }
 
-/// Time `samples` samples of `per` calls of `f(idx)` after `warm` warm-up calls.
+/// Time `f(idx)` with the shared method (`qp_core::bench`). `warm` is in
+/// calls and `samples * per` is the call budget; the batch size itself is
+/// calibrated. `idx` cycles over the `NIN` inputs.
 fn measure(
     kernel: &'static str,
     warm: usize,
@@ -102,35 +103,15 @@ fn measure(
             kernel,
             n_iter: 0,
             calls_per_sample: per,
-            q: [0.0; 5],
+            q: [0.0; 6],
         };
     }
-    for j in 0..warm {
-        f(j % NIN);
-    }
-    let mut ns = Vec::with_capacity(samples);
-    let mut idx = 0usize;
-    for _ in 0..samples {
-        let t0 = Instant::now();
-        for _ in 0..per {
-            f(idx);
-            idx = (idx + 1) % NIN;
-        }
-        ns.push(t0.elapsed().as_nanos() as f64 / per as f64);
-    }
-    ns.sort_by(f64::total_cmp);
-    let pick = |p: f64| ns[((p * (ns.len() - 1) as f64).round() as usize).min(ns.len() - 1)];
+    let s = qp_core::bench::measure(warm, samples * per, |i| f(i % NIN));
     Row {
         kernel,
-        n_iter: samples * per,
-        calls_per_sample: per,
-        q: [
-            pick(0.50),
-            pick(0.90),
-            pick(0.99),
-            pick(0.999),
-            ns[ns.len() - 1],
-        ],
+        n_iter: s.samples,
+        calls_per_sample: s.calls_per_sample,
+        q: [s.p10, s.p50, s.p90, s.p99, s.p999, s.max],
     }
 }
 
@@ -319,8 +300,7 @@ fn main() {
         for q in &mut r.q {
             *q /= NIN as f64;
         }
-        r.calls_per_sample = NIN;
-        r.n_iter *= NIN;
+        r.calls_per_sample *= NIN;
         rows.push(r);
         let mut cols = vec![vec![0.0; NIN]; 10];
         let mut r = measure("fast::greeks_batch_per_option", 200, 10_000, 1, |_| {
@@ -344,8 +324,7 @@ fn main() {
         for q in &mut r.q {
             *q /= NIN as f64;
         }
-        r.calls_per_sample = NIN;
-        r.n_iter *= NIN;
+        r.calls_per_sample *= NIN;
         rows.push(r);
     }
     let mut bws = BinomialWorkspace::with_steps(500);
@@ -441,8 +420,8 @@ fn main() {
     let mut json = String::from("[\n");
     for (i, r) in rows.iter().enumerate() {
         json.push_str(&format!(
-            "  {{\"engine\": \"rust/fx-options-engine\", \"kernel\": \"{}\", \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
-            r.kernel, r.n_iter, r.calls_per_sample, r.q[0], r.q[1], r.q[2], r.q[3], r.q[4],
+            "  {{\"engine\": \"rust/fx-options-engine\", \"kernel\": \"{}\", \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+            r.kernel, r.n_iter, r.calls_per_sample, r.q[0], r.q[1], r.q[2], r.q[3], r.q[4], r.q[5],
             if i + 1 < rows.len() { "," } else { "" }
         ));
     }
