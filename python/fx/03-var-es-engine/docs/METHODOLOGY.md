@@ -306,6 +306,15 @@ reference and a pointer to its worked example. Summary:
 * **Revaluation and P&L explain** (Hull, OFOD 11th ed.). BSM with carry
   (dividend yield, or the foreign rate for Garman-Kohlhagen); delta, gamma,
   vega, vanna, volga and theta terms; the explain residual is third order.
+* **Vol scenario modes** (round 4; Derman 1999, "Regimes of volatility").
+  `full_revaluation_pnl(..., vol_mode=...)`: `"sticky_strike"` (default,
+  `sigma + dv`, a strike keeps its vol when spot moves), `"sticky_delta"`
+  (`sigma - skew x + dv`, the smile travels with spot; `skew` is the leg's
+  `d sigma / d ln(K/S)`), `"historical_atm"` (`sigma e^{dv}`, `dv` the
+  historical log change of ATM vol applied to every strike). Example: a
+  call with skew -0.1 after a 5 % spot fall is repriced at a vol 0.5 points
+  lower under sticky delta and at an unchanged vol under sticky strike.
+  The compiled engines carry the same three formulas.
 * **Limits.** Utilisation `x/L` (or `|x|/L` for two-sided sensitivity
   limits), warning at 80 % by default, breach above 100 %; parents default to
   the sum of their children, which is conservative for VaR and ES.

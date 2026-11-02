@@ -256,8 +256,8 @@ WSL2 the hypervisor adds scheduling jitter that shows up in p99.9 and max.
 
 ## Limitations
 
-- Option VaR holds each option at today's implied vol in every scenario
-  (there is no vol factor yet) and takes European options only. Its linear
+- Option VaR holds each option at today's implied vol unless you call the
+  `_vol` drivers with a vol block, and takes European options only. Its linear
   legs use `w . r` on log returns like the rest of this engine; the Python
   `LinearLeg` uses the simple return `S (e^x - 1)`.
 - The bootstrap SE dominates the Monte Carlo time (n_boot selections over
@@ -301,6 +301,34 @@ with a 1 % daily factor vol. The exact 99 % one-day VaR is 11.35 and ES is
 12.79; 200,000 paths give both within Monte Carlo error. The delta-normal
 VaR of the same book is larger, because positive gamma cuts the downside;
 for the short book the ordering flips (`test_option_var.cpp`).
+
+Vol scenario modes. `full_revaluation_pnl(legs, x, dv, n_factors, dt, mode,
+skews)` takes `VolMode::StickyStrike` (`sigma + dv`), `StickyDelta`
+(`sigma - skew x + dv`, `skews` one per leg or empty) or `HistoricalAtm`
+(`sigma e^{dv}`, `dv` a historical log change of ATM vol). The five-argument
+overload is sticky strike. All three are pinned to the Python reference at
+1e-12 relative (`VolModesGolden` in `test_option_reval.cpp`).
+
+The VaR drivers take vol scenarios too, on what we call the combined axis.
+The plain idea: a vol shock is just one more risk factor, so it goes in the
+same panel (or covariance) as the spot returns, after them. Formally, with J
+spot factors the panel has 2J columns: spot log returns in columns 0..J-1,
+then the vol shock of factor j in column J + j (vol points for sticky strike
+and sticky delta, a log change of ATM vol for historical ATM).
+`exposures` and `leg.factor` still index the J spot factors. For Monte Carlo
+the covariance is 2J x 2J, so the spot-vol correlation (the leverage effect,
+usually negative for equities) is simulated, not assumed away. With sticky
+strike and an all-zero vol block every driver gives the old answer bit for
+bit. Worked example: the two-leg test book with vol shocks of a few vol
+points a day has 99 % historical VaR 39.22 sticky strike, 39.86 sticky delta
+(skews -0.1, -0.2) and 34.80 historical ATM, against 33.44 with vol held
+fixed; all three match Python at 1e-11 relative.
+Entry points: `option_book_pnl_vol`, `historical_option_var_es_vol(legs,
+exposures, combined, alpha, dt, mode, skews)` and
+`monte_carlo_option_var_vol(legs, exposures, joint_cov, alpha, n_paths, dist,
+df, seed, n_boot, repair, dt, mode, skews)`; tests in `test_option_var.cpp`
+(`OptionVarVol.*`), including a closed-form Monte Carlo check on a vol-only
+book.
 
 Parity with Python. The historical numbers are pinned to the Python
 reference (`eq_var.revaluation.full_revaluation_pnl` followed by the S2 order

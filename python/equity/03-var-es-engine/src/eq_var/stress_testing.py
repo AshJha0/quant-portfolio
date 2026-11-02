@@ -215,7 +215,7 @@ def reverse_stress_delta_gamma(
     rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
 
     def x_of(u: np.ndarray) -> np.ndarray:
-        norm_u = np.linalg.norm(u)
+        norm_u = float(np.linalg.norm(u))
         if norm_u == 0.0:
             norm_u = 1.0
         return radius * (chol @ u) / norm_u

@@ -82,3 +82,50 @@ fn rejects_bad_input() {
     assert!(delta_gamma_pnl(&[PUT], &[f64::NAN, 0.0], 2).is_err());
     assert!(bsm_price(100.0, 100.0, 1.0, 0.0, 0.0, 0.0, OptionKind::Call).is_err());
 }
+
+// Round 4 vol modes: golden values from `{eq,fx}_var.revaluation`
+// `full_revaluation_pnl(..., vol_mode=...)` with skews (-0.1, 0.15).
+#[test]
+fn vol_modes_golden() {
+    let skews = [-0.1, 0.15];
+    let dt = 1.0 / 365.0;
+    let cases = [
+        (
+            VolMode::StickyStrike,
+            [4.92183106078723, -0.6845739357538516, -0.1540808210950111],
+        ),
+        (
+            VolMode::StickyDelta,
+            [4.793674377411101, -1.3383700871131143, -0.1540808210950111],
+        ),
+        (
+            VolMode::HistoricalAtm,
+            [2.8099164421405085, -11.777009547269026, -0.1540808210950111],
+        ),
+    ];
+    for (mode, golden) in cases {
+        let pnl =
+            full_revaluation_pnl_vol_mode(&[CALL, PUT], &X, &DV, 2, dt, mode, &skews).unwrap();
+        for (a, b) in pnl.iter().zip(golden) {
+            close(*a, b, 1e-12 * (1.0 + b.abs()));
+        }
+    }
+    let old = full_revaluation_pnl(&[CALL, PUT], &X, &DV, 2, dt).unwrap();
+    let ss0 =
+        full_revaluation_pnl_vol_mode(&[CALL, PUT], &X, &DV, 2, dt, VolMode::StickyStrike, &[])
+            .unwrap();
+    let sd0 =
+        full_revaluation_pnl_vol_mode(&[CALL, PUT], &X, &DV, 2, dt, VolMode::StickyDelta, &[])
+            .unwrap();
+    assert_eq!(old, ss0);
+    assert_eq!(sd0, ss0);
+}
+
+#[test]
+fn vol_modes_reject_bad_skews() {
+    let m = VolMode::StickyDelta;
+    assert!(full_revaluation_pnl_vol_mode(&[CALL, PUT], &X, &DV, 2, 0.0, m, &[0.1]).is_err());
+    assert!(
+        full_revaluation_pnl_vol_mode(&[CALL, PUT], &X, &DV, 2, 0.0, m, &[0.1, f64::NAN]).is_err()
+    );
+}

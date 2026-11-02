@@ -125,6 +125,51 @@ dataset (the research entries use ECB reference rates).
   (`research/power/*.json` with per-cell `reps` and `rejection_rate`).
 
 #### Fixes: options
+#### Round 4: varalo lane
+
+- Option VaR vol scenario modes. `eq_var.revaluation` and
+  `fx_var.revaluation` `full_revaluation_pnl(..., vol_mode=...)` take
+  `"sticky_strike"` (default, unchanged results), `"sticky_delta"` (the
+  smile moves with spot through a per-leg `skew`, new `OptionLeg.skew`
+  field) and `"historical_atm"` (vol shocks are historical log changes of
+  ATM vol, applied proportionally to every strike); new `shocked_vol`.
+  The same three modes are in all four compiled engines (C++
+  `full_revaluation_pnl(..., VolMode, skews)`, Rust
+  `full_revaluation_pnl_vol_mode`), pinned to the Python reference at
+  1e-12 relative.
+- Option VaR drivers take vol scenarios in all four compiled engines. The
+  vol shocks are extra factors on the spot axis: equity uses a combined
+  panel or covariance of 2J columns (spot block, then one vol column per
+  factor; C++ `historical_option_var_es_vol` / `monte_carlo_option_var_vol`,
+  Rust `historical_option_var_es_vol` / `monte_carlo_option_run_vol`); FX
+  names them `VOL:CCY` beside `FX:CCY` (C++ `historical_var` /
+  `monte_carlo_var` overloads taking `VolScenarios`, Rust
+  `historical_option_var_vol` / `monte_carlo_option_var_vol`). Historical
+  VaR/ES pinned to Python at 1e-11 for all three modes; Monte Carlo checked
+  against a closed-form vol-only quantile. Sticky strike with a zero vol
+  block reproduces the old drivers bit for bit.
+- `eq_options.alo`: the `q < r < 0` double boundary is now solved by
+  Chebyshev collocation (Andersen and Lake 2021 approach; closing time as
+  an extra unknown fixed by smooth fit), about 15 ms a price and within
+  1e-5 of the extrapolated tree. The time march stays as
+  `double_boundary_method="march"`, the reference and the fallback.
+  `alo_double_boundary` takes the same `method` switch.
+- `fi_rates.DiscountCurve(..., "monotone_convex", positive_forwards=True)`:
+  the Hagan-West (2006) Section 5 positivity collar on the node forwards.
+  Off by default.
+- Fixed: `fi_rates` monotone convex: two equal adjacent discrete forwards (equal
+  up to round-off) made the forward jump at the pillar, because every
+  Hagan-West shape squeezes its transition to a point there. That boundary
+  now uses the plain quadratic: continuous, pillars still reprice.
+- Fixed: `eq_options.alo` double-boundary march: with fine grids (`n_march` 1600
+  and up) the first nodes sit at tau ~ 1e-7 and `K - x - put` cancelled to
+  noise, so the march stopped after one node and returned a wrong price. The
+  residual now goes through put-call parity with `expm1`, and the Newton
+  tolerance scales with tau.
+- Fixed: mypy errors in `eq_var.stress_testing` and `fx_var.monte_carlo_var`
+  (numpy scalar types; no behaviour change).
+
+#### Round 3 fixes: options lane
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
   (any `q`) and `r = 0 > q`; European where the carry `r K - q S` never

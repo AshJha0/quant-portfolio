@@ -181,7 +181,8 @@ pub fn bsm_greeks(l: &OptionLeg) -> Result<BsmGreeks> {
 }
 
 /// Exact book P&L per scenario by repricing every leg; `dt` (years) ages
-/// the options, floored at expiry.
+/// the options, floored at expiry. Sticky strike: the same as
+/// [`full_revaluation_pnl_vol_mode`] with [`VolMode::StickyStrike`].
 pub fn full_revaluation_pnl(
     legs: &[OptionLeg],
     spot_log_returns: &[f64],
@@ -189,16 +190,69 @@ pub fn full_revaluation_pnl(
     n_factors: usize,
     dt: f64,
 ) -> Result<Vec<f64>> {
+    full_revaluation_pnl_vol_mode(
+        legs,
+        spot_log_returns,
+        vol_shocks,
+        n_factors,
+        dt,
+        VolMode::StickyStrike,
+        &[],
+    )
+}
+
+/// How the scenario vol of an option leg is formed; mirrors the Python
+/// reference's `vol_mode` (Derman 1999, "Regimes of volatility", Risk
+/// 12(4), for the first two). Every mode floors the vol at `1e-12`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolMode {
+    /// `sigma_1 = sigma_0 + dv`: the strike's vol does not move with spot.
+    StickyStrike,
+    /// `sigma_1 = sigma_0 - skew * x + dv`: the smile moves with spot;
+    /// `skew = d sigma / d ln(K/S)`, `x` the factor log return.
+    StickyDelta,
+    /// `sigma_1 = sigma_0 * exp(dv)`: `dv` is the historical log change of
+    /// the ATM vol, applied to every strike.
+    HistoricalAtm,
+}
+
+/// Full revaluation P&L with an explicit vol mode. `skews` is empty (all
+/// zero) or has one entry per leg; only [`VolMode::StickyDelta`] reads it.
+///
+/// # Errors
+/// As [`full_revaluation_pnl`], plus a `skews` length mismatch or a
+/// non-finite skew.
+pub fn full_revaluation_pnl_vol_mode(
+    legs: &[OptionLeg],
+    spot_log_returns: &[f64],
+    vol_shocks: &[f64],
+    n_factors: usize,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<Vec<f64>> {
     let n = check_scenarios(legs, spot_log_returns, vol_shocks, n_factors)?;
     require(dt.is_finite() && dt >= 0.0, "dt must be >= 0")?;
+    require(
+        skews.is_empty() || skews.len() == legs.len(),
+        "skews must be empty or one per leg",
+    )?;
+    require(skews.iter().all(|k| k.is_finite()), "skews must be finite")?;
     let mut pnl = vec![0.0; n];
-    for l in legs {
+    for (k, l) in legs.iter().enumerate() {
+        let skew = skews.get(k).copied().unwrap_or(0.0);
         let p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
         let t1 = (l.tau - dt).max(0.0);
         for (i, p) in pnl.iter_mut().enumerate() {
             let j = i * n_factors + l.factor;
-            let s1 = l.spot * spot_log_returns[j].exp();
-            let v1 = l.vol + vol_shocks.get(j).copied().unwrap_or(0.0);
+            let x = spot_log_returns[j];
+            let d = vol_shocks.get(j).copied().unwrap_or(0.0);
+            let s1 = l.spot * x.exp();
+            let v1 = match mode {
+                VolMode::StickyStrike => l.vol + d,
+                VolMode::StickyDelta => l.vol - skew * x + d,
+                VolMode::HistoricalAtm => l.vol * d.exp(),
+            };
             *p +=
                 l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
         }
@@ -304,6 +358,106 @@ pub fn option_book_pnl(
     let rets = scenarios.select(&layout.factors)?;
     let nf = layout.factors.len();
     let mut pnl = full_revaluation_pnl(&layout.legs, rets.data.as_slice(), &[], nf, dt)?;
+    if let Some(c) = &layout.linear {
+        if !c.factors().is_empty() {
+            let lin = c.pnl_scenarios(&rets)?;
+            for (p, l) in pnl.iter_mut().zip(lin) {
+                *p += l;
+            }
+        }
+    }
+    Ok(pnl)
+}
+
+/// Vol scenarios for option VaR. The vol shocks sit on the same named factor
+/// axis as the spot returns: the vol factor of `"FX:CCY"` is `"VOL:CCY"` (an
+/// ATM vol change in vol points for `StickyStrike` / `StickyDelta`, an ATM
+/// log change for `HistoricalAtm`). A returns panel or covariance used with
+/// these must carry `"VOL:CCY"` for every option factor; the combined axis is
+/// `layout.factors` followed by [`option_vol_factors`]. `skews` is empty or
+/// one per option leg (in the order passed in), read only by `StickyDelta`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VolScenarios {
+    /// How the scenario vol is formed.
+    pub mode: VolMode,
+    /// Per-leg skew `d sigma / d ln(K/S)`; empty means all zero.
+    pub skews: Vec<f64>,
+}
+
+impl Default for VolScenarios {
+    fn default() -> Self {
+        Self {
+            mode: VolMode::StickyStrike,
+            skews: Vec::new(),
+        }
+    }
+}
+
+/// `"VOL:CCY"` for every option factor of `layout`, in `layout.factors` order.
+pub fn option_vol_factors(layout: &OptionBookLayout) -> Vec<String> {
+    let mut used = vec![false; layout.factors.len()];
+    for l in &layout.legs {
+        used[l.factor] = true;
+    }
+    layout
+        .factors
+        .iter()
+        .zip(used)
+        .filter(|(_, u)| *u)
+        .map(|(f, _)| format!("VOL:{}", &f[3..]))
+        .collect()
+}
+
+/// `layout.factors` followed by [`option_vol_factors`].
+pub fn option_combined_factors(layout: &OptionBookLayout) -> Vec<String> {
+    let mut out = layout.factors.clone();
+    out.extend(option_vol_factors(layout));
+    out
+}
+
+/// [`option_book_pnl`] with vol scenarios read from the `"VOL:CCY"` columns
+/// of `scenarios`. With `StickyStrike` and all-zero vol columns it equals
+/// [`option_book_pnl`] bit for bit.
+///
+/// # Errors
+/// As [`option_book_pnl`], plus missing `"VOL:CCY"` columns or a `skews`
+/// length mismatch.
+pub fn option_book_pnl_vol(
+    layout: &OptionBookLayout,
+    scenarios: &ReturnsMatrix,
+    dt: f64,
+    vol: &VolScenarios,
+) -> Result<Vec<f64>> {
+    require(
+        vol.skews.is_empty() || vol.skews.len() == layout.legs.len(),
+        "skews must be empty or one per option leg",
+    )?;
+    let rets = scenarios.select(&layout.factors)?;
+    let vnames = option_vol_factors(layout);
+    let vols = scenarios.select(&vnames)?;
+    let nf = layout.factors.len();
+    let n = rets.n_obs();
+    // dv on the spot axis: column j holds the vol shock of factor j (zero for
+    // factors no option references; the repricer never reads those).
+    let mut dv = vec![0.0; n * nf];
+    let mut k = 0;
+    for (j, f) in layout.factors.iter().enumerate() {
+        if k < vnames.len() && vnames[k] == format!("VOL:{}", &f[3..]) {
+            for i in 0..n {
+                dv[i * nf + j] = vols.data.get(i, k);
+            }
+            k += 1;
+        }
+    }
+    let mut pnl = full_revaluation_pnl_vol_mode(
+        &layout.legs,
+        rets.data.as_slice(),
+        &dv,
+        nf,
+        dt,
+        vol.mode,
+        &vol.skews,
+    )?;
     if let Some(c) = &layout.linear {
         if !c.factors().is_empty() {
             let lin = c.pnl_scenarios(&rets)?;

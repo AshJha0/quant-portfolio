@@ -101,8 +101,9 @@ The C++ and Rust equity engines share the conventions and golden vectors.
 Their historical and Monte Carlo VaR also take European options, repriced in
 full in every scenario by `option_reval` (BSM), with parity to
 `eq_var.revaluation` pinned at 1e-11 for historical VaR/ES. They hold vol
-fixed per scenario; vol shocks, Taylor approximations and P&L explain stay
-in Python.
+fixed per scenario in the VaR drivers (their `full_revaluation_pnl` takes
+the same three vol modes as Python); Taylor approximations and P&L explain
+stay in Python.
 
 Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
