@@ -112,6 +112,8 @@ target_link_libraries(eqopt_jsonl PRIVATE eqopt eqopt_warnings)
 # -------------------------------------------------------------- benchmark ----
 add_executable(eqopt_bench bench/bench_main.cpp)
 target_link_libraries(eqopt_bench PRIVATE eqopt eqopt_warnings)
+add_executable(eqopt_batch_bench tools/batch_bench.cpp)
+target_link_libraries(eqopt_batch_bench PRIVATE eqopt eqopt_warnings)
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _eqopt_bt)
 set(_eqopt_flags "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_eqopt_bt}}")
 if(EQOPT_NATIVE)
