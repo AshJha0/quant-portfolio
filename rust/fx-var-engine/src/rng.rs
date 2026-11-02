@@ -20,66 +20,55 @@
 //! (portfolio convention: no hidden global RNG state).
 
 use crate::stats::inv_norm_cdf_unchecked;
+use qp_core::rng::{marsaglia_tsang, GammaSource, Xoshiro256PlusPlus};
 
 /// xoshiro256++ deterministic generator with SplitMix64 seeding.
 ///
 /// Two generators built with the same seed produce bitwise-identical
-/// streams; this is asserted by the Monte Carlo determinism tests.
+/// streams; this is asserted by the Monte Carlo determinism tests. The
+/// integer stream is `qp_core::rng::Xoshiro256PlusPlus`.
 #[derive(Clone, Debug)]
 pub struct Rng {
-    s: [u64; 4],
+    inner: Xoshiro256PlusPlus,
 }
 
-#[inline]
-fn splitmix64(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
+impl GammaSource for Rng {
+    #[inline]
+    fn gamma_normal(&mut self) -> f64 {
+        self.normal()
+    }
+    #[inline]
+    fn gamma_uniform(&mut self) -> f64 {
+        self.uniform_open()
+    }
 }
 
 impl Rng {
     /// Create a generator from a 64-bit seed (any value is valid).
+    #[inline]
     pub fn new(seed: u64) -> Self {
-        let mut sm = seed;
-        let s = [
-            splitmix64(&mut sm),
-            splitmix64(&mut sm),
-            splitmix64(&mut sm),
-            splitmix64(&mut sm),
-        ];
-        Rng { s }
+        Rng {
+            inner: Xoshiro256PlusPlus::new(seed),
+        }
     }
 
     /// Next raw 64-bit output of the xoshiro256++ stream.
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
-        let result = self.s[0]
-            .wrapping_add(self.s[3])
-            .rotate_left(23)
-            .wrapping_add(self.s[0]);
-        let t = self.s[1] << 17;
-        self.s[2] ^= self.s[0];
-        self.s[3] ^= self.s[1];
-        self.s[1] ^= self.s[2];
-        self.s[0] ^= self.s[3];
-        self.s[2] ^= t;
-        self.s[3] = self.s[3].rotate_left(45);
-        result
+        self.inner.next_u64()
     }
 
     /// Uniform double in `[0, 1)` with full 53-bit mantissa resolution.
     #[inline]
     pub fn uniform(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 * (1.0 / 9_007_199_254_740_992.0)
+        self.inner.next_uniform_closed_open()
     }
 
     /// Uniform double in the *open* interval `(0, 1)` - safe for inverse-CDF
     /// transforms (never returns an endpoint).
     #[inline]
     pub fn uniform_open(&mut self) -> f64 {
-        ((self.next_u64() >> 11) as f64 + 0.5) * (1.0 / 9_007_199_254_740_992.0)
+        self.inner.next_uniform()
     }
 
     /// Standard normal draw via the inverse-CDF transform.
@@ -97,34 +86,17 @@ impl Rng {
     /// identity `Gamma(a) = Gamma(a+1) * U^{1/a}`.
     ///
     /// An invalid `shape` (NaN, infinite, or `<= 0`) returns NaN without
-    /// consuming the stream. It used to `assert!` (a panic) on `shape <= 0`
-    /// and to loop forever on NaN.
+    /// consuming the stream.
     pub fn gamma(&mut self, shape: f64) -> f64 {
         if !(shape > 0.0) || !shape.is_finite() {
             return f64::NAN;
         }
         if shape < 1.0 {
+            // Stream order: the boost uniform first, then the Gamma(shape + 1) draw.
             let u = self.uniform_open();
             return self.gamma(shape + 1.0) * u.powf(1.0 / shape);
         }
-        let d = shape - 1.0 / 3.0;
-        let c = 1.0 / (9.0 * d).sqrt();
-        loop {
-            let x = self.normal();
-            let v = 1.0 + c * x;
-            if v <= 0.0 {
-                continue;
-            }
-            let v3 = v * v * v;
-            let u = self.uniform_open();
-            let x2 = x * x;
-            if u < 1.0 - 0.0331 * x2 * x2 {
-                return d * v3;
-            }
-            if u.ln() < 0.5 * x2 + d * (1.0 - v3 + v3.ln()) {
-                return d * v3;
-            }
-        }
+        marsaglia_tsang(self, shape)
     }
 
     /// Chi-square draw with `df > 0` degrees of freedom (`2 * Gamma(df/2)`).

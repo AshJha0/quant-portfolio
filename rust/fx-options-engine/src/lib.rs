@@ -227,8 +227,7 @@ pub(crate) fn validate_inputs(
 /// ```
 #[inline]
 pub fn norm_pdf(x: f64) -> f64 {
-    const INV_SQRT_2PI: f64 = 0.398_942_280_401_432_7;
-    INV_SQRT_2PI * (-0.5 * x * x).exp()
+    qp_core::special::norm_pdf(x)
 }
 
 /// Standard normal CDF `N(x)`, via Cody's rational-Chebyshev `erfc`
@@ -242,129 +241,7 @@ pub fn norm_pdf(x: f64) -> f64 {
 /// ```
 #[inline]
 pub fn norm_cdf(x: f64) -> f64 {
-    0.5 * erfc_cody(-x * std::f64::consts::FRAC_1_SQRT_2)
-}
-
-const CODY_A: [f64; 5] = [
-    3.161_123_743_870_565_6e0,
-    1.138_641_541_510_501_6e2,
-    3.774_852_376_853_020_2e2,
-    3.209_377_589_138_469_5e3,
-    1.857_777_061_846_031_5e-1,
-];
-const CODY_B: [f64; 4] = [
-    2.360_129_095_234_412_1e1,
-    2.440_246_379_344_441_7e2,
-    1.282_616_526_077_372_3e3,
-    2.844_236_833_439_170_6e3,
-];
-
-/// Cody's direct `erf(x) = x P(x^2)/Q(x^2)` for `|x| <= 0.46875`.
-fn erf_small(x: f64) -> f64 {
-    let y = x.abs();
-    let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
-    let mut xnum = CODY_A[4] * ysq;
-    let mut xden = ysq;
-    for i in 0..3 {
-        xnum = (xnum + CODY_A[i]) * ysq;
-        xden = (xden + CODY_B[i]) * ysq;
-    }
-    x * (xnum + CODY_A[3]) / (xden + CODY_B[3])
-}
-
-/// Error function `erf(x)`: Cody's direct rational form for
-/// `|x| <= 0.46875` (full relative precision near zero), `1 - erfc(x)`
-/// beyond, where `erfc(x) <= 0.51` loses nothing.
-pub(crate) fn erf(x: f64) -> f64 {
-    if x.abs() <= 0.46875 {
-        erf_small(x)
-    } else {
-        1.0 - erfc_cody(x)
-    }
-}
-
-/// Complementary error function, W. J. Cody's CALERF rational Chebyshev
-/// approximation (netlib SPECFUN), ~1e-16 relative accuracy.
-pub(crate) fn erfc_cody(x: f64) -> f64 {
-    const C: [f64; 9] = [
-        5.641_884_969_886_700_9e-1,
-        8.883_149_794_388_375_9e0,
-        6.611_919_063_714_163e1,
-        2.986_351_381_974_001_3e2,
-        8.819_522_212_417_691e2,
-        1.712_047_612_634_070_6e3,
-        2.051_078_377_826_071_5e3,
-        1.230_339_354_797_997_2e3,
-        2.153_115_354_744_038_5e-8,
-    ];
-    const D: [f64; 8] = [
-        1.574_492_611_070_983_5e1,
-        1.176_939_508_913_125e2,
-        5.371_811_018_620_098_5e2,
-        1.621_389_574_566_690_2e3,
-        3.290_799_235_733_459_7e3,
-        4.362_619_090_143_247e3,
-        3.439_367_674_143_721_6e3,
-        1.230_339_354_803_749_4e3,
-    ];
-    const P: [f64; 6] = [
-        3.053_266_349_612_323_4e-1,
-        3.603_448_999_498_044_4e-1,
-        1.257_817_261_112_292_45e-1,
-        1.608_378_514_874_227_7e-2,
-        6.587_491_615_298_378e-4,
-        1.631_538_713_730_209_8e-2,
-    ];
-    const Q: [f64; 5] = [
-        2.568_520_192_289_822_4e0,
-        1.872_952_849_923_460_4e0,
-        5.279_051_029_514_284e-1,
-        6.051_834_131_244_132e-2,
-        2.335_204_976_268_691_8e-3,
-    ];
-    /// 1/sqrt(pi).
-    const SQRPI: f64 = 5.641_895_835_477_562_9e-1;
-    const THRESH: f64 = 0.46875;
-
-    let y = x.abs();
-    if y <= THRESH {
-        // erfc(x) = 1 - erf(x) with the erf rational approximation.
-        return 1.0 - erf_small(x);
-    }
-    let result = if y <= 4.0 {
-        let mut xnum = C[8] * y;
-        let mut xden = y;
-        for i in 0..7 {
-            xnum = (xnum + C[i]) * y;
-            xden = (xden + D[i]) * y;
-        }
-        let r = (xnum + C[7]) / (xden + D[7]);
-        // exp(-y^2) split for accuracy: y^2 = ysq^2 + del with ysq a
-        // 1/16-grid truncation of y.
-        let ysq = (y * 16.0).trunc() / 16.0;
-        let del = (y - ysq) * (y + ysq);
-        (-ysq * ysq).exp() * (-del).exp() * r
-    } else if y >= 26.543 {
-        0.0
-    } else {
-        let ysq = 1.0 / (y * y);
-        let mut xnum = P[5] * ysq;
-        let mut xden = ysq;
-        for i in 0..4 {
-            xnum = (xnum + P[i]) * ysq;
-            xden = (xden + Q[i]) * ysq;
-        }
-        let mut r = ysq * (xnum + P[4]) / (xden + Q[4]);
-        r = (SQRPI - r) / y;
-        let ysq = (y * 16.0).trunc() / 16.0;
-        let del = (y - ysq) * (y + ysq);
-        (-ysq * ysq).exp() * (-del).exp() * r
-    };
-    if x < 0.0 {
-        2.0 - result
-    } else {
-        result
-    }
+    qp_core::special::norm_cdf_c1_truncated(x)
 }
 
 /// Inverse standard normal CDF `N^{-1}(p)` for `p` in `(0, 1)`.
@@ -384,57 +261,9 @@ pub fn norm_ppf(p: f64) -> f64 {
     if !(p > 0.0 && p < 1.0) {
         return f64::NAN;
     }
-    const A: [f64; 6] = [
-        -3.969_683_028_665_376e1,
-        2.209_460_984_245_205e2,
-        -2.759_285_104_469_687e2,
-        1.383_577_518_672_69e2,
-        -3.066_479_806_614_716e1,
-        2.506_628_277_459_239e0,
-    ];
-    const B: [f64; 5] = [
-        -5.447_609_879_822_406e1,
-        1.615_858_368_580_409e2,
-        -1.556_989_798_598_866e2,
-        6.680_131_188_771_972e1,
-        -1.328_068_155_288_572e1,
-    ];
-    const C: [f64; 6] = [
-        -7.784_894_002_430_293e-3,
-        -3.223_964_580_411_365e-1,
-        -2.400_758_277_161_838e0,
-        -2.549_732_539_343_734e0,
-        4.374_664_141_464_968e0,
-        2.938_163_982_698_783e0,
-    ];
-    const D: [f64; 4] = [
-        7.784_695_709_041_462e-3,
-        3.224_671_290_700_398e-1,
-        2.445_134_137_142_996e0,
-        3.754_408_661_907_416e0,
-    ];
-    const P_LOW: f64 = 0.02425;
-
-    let mut z = if p < P_LOW {
-        let q = (-2.0 * p.ln()).sqrt();
-        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
-    } else if p <= 1.0 - P_LOW {
-        let q = p - 0.5;
-        let r = q * q;
-        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
-            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
-    } else {
-        let q = (-2.0 * (1.0 - p).ln()).sqrt();
-        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
-    };
-
-    // Halley refinement: z -= u / (1 + z u / 2) with u = (N(z) - p) / n(z).
+    let mut z = qp_core::special::acklam(p);
     for _ in 0..2 {
-        let e = norm_cdf(z) - p;
-        let u = e / norm_pdf(z);
-        z -= u / (1.0 + 0.5 * z * u);
+        z = qp_core::special::halley_step(z, p, norm_cdf(z), norm_pdf(z));
     }
     z
 }
@@ -454,85 +283,14 @@ pub(crate) fn brentq<F>(f: F, a: f64, b: f64, xtol: f64, max_iter: usize) -> FxR
 where
     F: Fn(f64) -> f64,
 {
-    let (mut a, mut b) = (a, b);
-    let mut fa = f(a);
-    let mut fb = f(b);
-    if fa == 0.0 {
-        return Ok(a);
-    }
-    if fb == 0.0 {
-        return Ok(b);
-    }
-    if fa * fb > 0.0 {
-        return Err(FxError::Numerical(format!(
-            "brentq: root not bracketed on [{a}, {b}]"
-        )));
-    }
-    let mut c = a;
-    let mut fc = fa;
-    let mut e = b - a;
-    let mut dstep = e;
-    for _ in 0..max_iter {
-        if fc.abs() < fb.abs() {
-            a = b;
-            b = c;
-            c = a;
-            fa = fb;
-            fb = fc;
-            fc = fa;
-        }
-        let tol1 = 2.0 * f64::EPSILON * b.abs() + 0.5 * xtol;
-        let xm = 0.5 * (c - b);
-        if xm.abs() <= tol1 || fb == 0.0 {
-            return Ok(b);
-        }
-        if e.abs() >= tol1 && fa.abs() > fb.abs() {
-            // Attempt inverse quadratic interpolation / secant.
-            let s = fb / fa;
-            let (mut p, mut q);
-            if a == c {
-                p = 2.0 * xm * s;
-                q = 1.0 - s;
-            } else {
-                let qq = fa / fc;
-                let r = fb / fc;
-                p = s * (2.0 * xm * qq * (qq - r) - (b - a) * (r - 1.0));
-                q = (qq - 1.0) * (r - 1.0) * (s - 1.0);
-            }
-            if p > 0.0 {
-                q = -q;
-            }
-            p = p.abs();
-            let min1 = 3.0 * xm * q - (tol1 * q).abs();
-            let min2 = (e * q).abs();
-            if 2.0 * p < min1.min(min2) {
-                e = dstep;
-                dstep = p / q;
-            } else {
-                dstep = xm;
-                e = dstep;
-            }
-        } else {
-            dstep = xm;
-            e = dstep;
-        }
-        a = b;
-        fa = fb;
-        if dstep.abs() > tol1 {
-            b += dstep;
-        } else {
-            b += if xm > 0.0 { tol1 } else { -tol1 };
-        }
-        fb = f(b);
-        if (fb > 0.0) == (fc > 0.0) {
-            c = a;
-            fc = fa;
-            e = b - a;
-            dstep = e;
+    qp_core::roots::brentq(f, a, b, xtol, max_iter).map_err(FxError::from)
+}
+
+impl From<qp_core::Error> for FxError {
+    fn from(e: qp_core::Error) -> Self {
+        match e {
+            qp_core::Error::InvalidInput(m) => FxError::InvalidInput(m),
+            qp_core::Error::Numerical(m) => FxError::Numerical(m),
         }
     }
-    Err(FxError::Numerical(format!(
-        "brentq: no convergence to xtol {xtol} in {max_iter} iterations \
-         (last iterate {b})"
-    )))
 }

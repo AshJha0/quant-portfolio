@@ -32,12 +32,19 @@ returns panel (T x n) -- sample / EWMA covariance -- cholesky_repair (jitter, Cl
 
 ## Quickstart
 
-```bash
-cd rust/equity-var-engine
-cargo test --release                       # 121 integration tests + 14 doctests
-cargo clippy --all-targets -- -D warnings
-cargo run --release --bin bench
+From `rust/` (the Cargo workspace root; one `Cargo.lock`, one `target/`):
+
+```sh
+cargo test --release --locked -p eq-var-engine
+cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings
+cargo run --release --locked -p eq-var-engine --bin bench -- --out /tmp/bench.json
 ```
+
+The tests are 126 integration tests and 16 doctests. Without `--out` the
+bench writes `bench/results.json` in this crate.
+
+The xoshiro256++ stream, the Acklam guess and the Cholesky kernel come from
+the workspace's [`qp-core`](../core) crate (std only).
 
 ```rust
 use eq_var_engine::prelude::*;
@@ -178,7 +185,7 @@ src/
   matrix.rs              dense Matrix, covariance estimators
   psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
   stats.rs               special functions, moments
-  rng.rs                 xoshiro256++, Box-Muller, Marsaglia-Tsang
+  rng.rs                 Rng over qp-core's xoshiro256++ (Box-Muller), gamma
   bin/bench.rs           per-call latency distribution, writes bench/results.json
 tests/                   14 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE

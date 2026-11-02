@@ -1,0 +1,17 @@
+[package]
+name = "qp-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared numerical core of the quant-portfolio Rust engines: seeded RNG, Cody erfc and the normal distribution, the normalised-Black implied-vol core, Brent, Cholesky and fixed-chunk parallelism. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_core"
+path = "src/lib.rs"
+
+# No runtime dependencies: std only. proptest is a test-only dependency.
+[dependencies]
+
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }

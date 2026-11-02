@@ -297,3 +297,49 @@ fn mc_is_deterministic_across_runs_and_thread_counts() {
         }
     }
 }
+
+/// `threads == 0` is an error, as in the C++ engine (`Errc::BadThreads`),
+/// for every input including the `T == 0` shortcut; it used to run on one
+/// thread. A bad path count is reported first, in the C++ order.
+#[test]
+fn mc_rejects_zero_threads() {
+    use eq_options_engine::fast::ErrorCode;
+    let mut ws = McWorkspace::new();
+    for t in [0.8, 0.0] {
+        let e = try_mc_price(
+            100.0,
+            95.0,
+            t,
+            0.04,
+            0.3,
+            0.01,
+            OptionType::Call,
+            1_000,
+            true,
+            true,
+            7,
+            0,
+            &mut ws,
+        )
+        .unwrap_err();
+        assert_eq!(e, ErrorCode::BadThreads);
+        assert_eq!(e.to_string(), "threads must be at least 1");
+    }
+    let e = try_mc_price(
+        100.0,
+        95.0,
+        0.8,
+        0.04,
+        0.3,
+        0.01,
+        OptionType::Call,
+        1,
+        false,
+        false,
+        7,
+        0,
+        &mut ws,
+    )
+    .unwrap_err();
+    assert_eq!(e, ErrorCode::PathsOutOfRange);
+}

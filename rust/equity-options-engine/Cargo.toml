@@ -1,6 +1,6 @@
 [package]
 name = "eq-options-engine"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Zero-dependency Rust equity options pricing engine, cross-validated against the eq_options Python reference and the C++ engine"
 license = "MIT"
@@ -18,16 +18,11 @@ path = "src/bin/bench.rs"
 name = "eq_jsonl"
 path = "src/bin/eq_jsonl.rs"
 
-# No runtime dependencies (determinism and auditability). proptest is a
-# test-only dependency.
-# RNG (SplitMix64 -> xoshiro256++) and the normal CDF (Cody's erfc) are
-# implemented in-crate against std only.
+# No third-party runtime dependencies (determinism and auditability). The
+# RNG (SplitMix64 -> xoshiro256++) and the normal CDF (Cody's erfc) live in
+# the workspace's std-only qp-core crate. proptest is test-only.
 [dependencies]
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
+qp-core = { path = "../core" }
 
 [dev-dependencies]
 proptest = { version = "1", default-features = false, features = ["std"] }

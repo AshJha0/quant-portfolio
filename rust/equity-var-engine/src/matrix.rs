@@ -192,26 +192,12 @@ impl Matrix {
         }
         let n = self.rows;
         let mut l = Matrix::zeros(n, n);
-        for i in 0..n {
-            for j in 0..=i {
-                let mut sum = self.get(i, j);
-                for k in 0..j {
-                    sum -= l.get(i, k) * l.get(j, k);
-                }
-                if i == j {
-                    // `!(sum > 0.0)` rather than `sum <= 0.0`: the latter is
-                    // FALSE for a NaN pivot, which would then propagate
-                    // through `sqrt` into an all-NaN factor.
-                    if !(sum > 0.0) {
-                        return Err(EqVarError::Numerical(format!(
-                            "matrix is not positive definite (pivot {sum:e} at row {i})"
-                        )));
-                    }
-                    l.set(i, j, sum.sqrt());
-                } else {
-                    l.set(i, j, sum / l.get(j, j));
-                }
-            }
+        // Shared kernel; fails on a pivot that is not > 0, NaN included.
+        if let Err(e) = qp_core::linalg::cholesky_lower(&self.data, n, &mut l.data) {
+            let (sum, i) = (e.pivot, e.row);
+            return Err(EqVarError::Numerical(format!(
+                "matrix is not positive definite (pivot {sum:e} at row {i})"
+            )));
         }
         Ok(l)
     }

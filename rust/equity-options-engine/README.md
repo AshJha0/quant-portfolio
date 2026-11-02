@@ -17,7 +17,7 @@ dependencies (proptest is a test-only dependency).
 | `binomial.rs`      | CRR tree, European and American, O(n) memory, exercise values precomputed per level |
 | `black76.rs`       | Options on forwards/futures: price and Greeks; equals BSM at `F = S e^{(r-q)T}` |
 | `monte_carlo.rs`   | GBM exact scheme; explicit `u64` seed; antithetic pairs and a control variate fitted on pair averages; `McResult{price, std_error, ci_low, ci_high}` |
-| `rng.rs`           | xoshiro256++ seeded by SplitMix64, Box-Muller normals |
+| `rng.rs`           | re-exports xoshiro256++ (SplitMix64 seeding, Box-Muller normals) from `qp-core` |
 
 Conventions match the Python reference: continuously compounded annualised
 `r`/`q` (ACT/365F), `T` in years; theta per year, vega per unit vol, rho
@@ -26,12 +26,24 @@ overflowing results are `InvalidInput`.
 
 ## Build and test
 
+From `rust/` (the Cargo workspace root; one `Cargo.lock`, one `target/`):
+
 ```sh
-cargo test --release                       # 80 integration tests + 33 doctests
-cargo clippy --all-targets -- -D warnings
-cargo run --release --bin bench
-python3 tools/gen_golden_rs.py --check     # src/golden.rs matches the golden JSON
+cargo test --release --locked -p eq-options-engine
+cargo clippy --release --all-targets --locked -p eq-options-engine -- -D warnings
+cargo run --release --locked -p eq-options-engine --bin bench -- --out /tmp/bench.json
 ```
+
+The tests are 81 integration tests and 32 doctests. Without `--out` the
+bench writes `bench/results.json` in this crate.
+
+From this directory, `python3 tools/gen_golden_rs.py --check` checks that
+`src/golden.rs` matches the golden JSON.
+
+The RNG, Cody erfc, normal CDF, Acklam guess and the implied-vol core live
+in [`rust/core`](../core) (`qp-core`, std only) and are re-exported here;
+public paths such as `eq_options_engine::rng::Xoshiro256PlusPlus` and
+`eq_options_engine::black_scholes::erfc` are unchanged.
 
 On Windows, Application Control may block the doctest executables
 (os error 4551); run the doctests in WSL or Linux.

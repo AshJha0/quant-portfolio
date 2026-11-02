@@ -1,0 +1,5 @@
+# Pinned toolchain for the rust/ workspace. CI installs the same version.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -71,8 +71,10 @@ Rationale:
 
 ### 2.2 Zero-dependency determinism
 
-The crate has no runtime dependencies (proptest is a test-only
-dependency). The reasons:
+The crate has no third-party runtime dependencies (proptest is a
+test-only dependency). Its one runtime dependency is `qp-core`, the
+workspace's own std-only crate in `rust/core`, which holds the RNG, erfc
+and the implied-vol core shared with the other engines. The reasons:
 
 - **Auditability**: a model validator can read every line that produces a
   number, including the normal CDF and the RNG, in ~2,500 lines of
@@ -96,7 +98,7 @@ The two components a normal crate would import:
   The erfc route (rather than `0.5(1+erf)`) preserves *relative* accuracy
   deep in the tail, which is what keeps far-OTM prices and wing implied
   vols meaningful.
-- **RNG** (`src/rng.rs`, choice documented there in full):
+- **RNG** (`qp_core::rng`, re-exported as `rng`; choice documented in `src/rng.rs`):
   **xoshiro256++** (Blackman & Vigna 2019, 256-bit state, passes
   BigCrush, ~1 ns/u64) seeded through **SplitMix64** (the seeding the
   xoshiro authors specify; well-mixed non-zero state for every seed,

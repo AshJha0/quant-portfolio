@@ -5,7 +5,8 @@
 //! with `std::time::Instant` and records the per-call time
 //! (sample / calls_per_sample). Kernels far below the timer resolution
 //! (about 20-30 ns) use batches of 64 calls; slow kernels use one call per
-//! sample. Results print as JSON and are written to `bench/results.json`.
+//! sample. Results print as JSON and are written to `bench/results.json`
+//! (or the path given with `--out <path>`).
 //!
 //! Run: `cargo run --release --bin bench`. Set `BENCH_FILTER=<substring>`
 //! to time only the kernels whose name contains it (results.json is then
@@ -447,10 +448,36 @@ fn main() {
     }
     json.push_str("]\n");
     print!("{json}");
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/bench");
-    if std::fs::create_dir_all(dir).is_ok() {
-        if let Err(e) = std::fs::write(format!("{dir}/results.json"), &json) {
-            eprintln!("could not write results.json: {e}");
+    write_results(&out_path(), &json);
+}
+
+/// Where to write the JSON: `--out <path>` (or `--out=<path>`) if given,
+/// otherwise `bench/results.json` inside this crate.
+fn out_path() -> std::path::PathBuf {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--out" {
+            if let Some(p) = args.next() {
+                return p.into();
+            }
+        } else if let Some(p) = a.strip_prefix("--out=") {
+            return p.into();
         }
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bench")
+        .join("results.json")
+}
+
+/// Write `json` to `path`, creating the parent directory.
+fn write_results(path: &std::path::Path, json: &str) {
+    let written = match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => std::fs::create_dir_all(dir),
+        _ => Ok(()),
+    }
+    .and_then(|()| std::fs::write(path, json));
+    match written {
+        Ok(()) => eprintln!("wrote {}", path.display()),
+        Err(e) => eprintln!("could not write {}: {e}", path.display()),
     }
 }

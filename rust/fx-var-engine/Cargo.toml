@@ -1,6 +1,6 @@
 [package]
 name = "fx-var-engine"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress); linear-book port of python/fx/03-var-es-engine"
 license = "MIT"
@@ -14,13 +14,9 @@ name = "bench"
 path = "src/bin/bench.rs"
 
 [dependencies]
-# Empty on purpose: std only. The RNG, linear algebra and special
-# functions are implemented and validated inside the crate.
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
+qp-core = { path = "../core" }
+# std plus the workspace's own qp-core (RNG, Cholesky kernel, thread
+# helper); no third-party crates. Special functions are in-crate.
 
 [dev-dependencies]
 proptest = "1"

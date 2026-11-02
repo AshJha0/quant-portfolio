@@ -1,0 +1,64 @@
+# qp-core
+
+Shared numerical core of the four Rust engines in `rust/`. Library name
+`qp_core`. It depends on `std` only; `proptest` is a test-only dependency.
+
+The engines re-export what they use from here, so their public paths did
+not change. The code was moved, not rewritten: the arithmetic runs in the
+same order as before, and every engine golden, bit-equality and
+differential test passes unchanged.
+
+## Contents
+
+| Module | Contents | Used by |
+|---|---|---|
+| `rng` | `splitmix64`, `SplitMix64`, `Xoshiro256PlusPlus` (cached Box-Muller normal), `Xoshiro256StarStar`, the open and half-open uniform maps, `box_muller`, the Marsaglia-Tsang gamma loop | all four engines |
+| `special` | Cody `erf`/`erfc` in two coefficient tables, normal CDF and PDF, the Acklam rational inverse normal, one Halley step | all four engines |
+| `iv` | Normalised-Black implied-vol core (same algorithm as the Python and C++ engines), generic over the erf table | both options engines |
+| `roots` | Brent's method with `scipy.optimize.brentq` semantics | FX options |
+| `linalg` | Row-major Cholesky kernel that rejects NaN pivots | both VaR engines |
+| `par` | Fixed-chunk scoped-thread helper; results do not depend on the thread count | FX VaR |
+| `Error`, `require_finite` | Invalid-input and numerical-failure error; each engine converts it with `From` | all four engines |
+
+## Variants kept on purpose
+
+Before this crate existed the engines had drifted apart in small ways.
+Each engine pins golden values computed with its own variant, so both
+variants are kept under separate names and each engine uses the one it had.
+
+| Variant | Where it differs | Used by |
+|---|---|---|
+| `erfc` / `erfc_c1_truncated` | Cody's middle-regime `C[1]` correctly rounded, or truncated to 17 digits (one ulp below) | equity options / FX options |
+| `norm_pdf` / `norm_pdf_div` | multiply by `1/sqrt(2 pi)`, or divide by `sqrt(2 pi)` | most callers / equity options pricing |
+| `Xoshiro256PlusPlus` / `Xoshiro256StarStar` | output scrambler | equity options and both VaR engines / FX options |
+| uniform maps | `(m + 0.5) 2^-53` on (0, 1), or `m 2^-53` on [0, 1) | all / FX VaR `Rng::uniform` |
+
+The same seed therefore gives a different stream in the FX options engine
+than in the other three. That was already true and is unchanged.
+
+## Not moved
+
+- Each VaR engine's special functions (incomplete gamma and beta, Student
+  t, the erfc used by `eq_var_engine::stats`). The two engines use
+  different algorithms, so sharing them would change numbers.
+- The PSD repair code (`psd.rs`), which is written against each engine's
+  own `Matrix` type.
+- The engine error enums. Their variant names differ, and downstream code
+  (for example the Python bindings) may implement traits for each one
+  separately.
+
+## Build and test
+
+From `rust/`:
+
+```sh
+cargo test --release --locked -p qp-core
+cargo clippy --release --all-targets --locked -p qp-core -- -D warnings
+```
+
+The tests are the unit tests in each module (reference vectors for the
+generators, erfc against mpmath values), the doctests, and the property
+tests in `tests/properties.rs` (erfc reflection, agreement of the two
+tables, odd `erf`, CDF symmetry and monotonicity, Acklam plus two Halley
+steps inverting the CDF, RNG fill and stream layout, Cholesky
+reconstruction, thread-count independence of `par`, Brent convergence).
