@@ -141,6 +141,8 @@ scipy==1.18.1 ; python_full_version >= '3.12'
     #   statsmodels
 scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'
     # via -r requirements/ci-requirements.in
+setuptools==84.2.1
+    # via -r requirements/ci-requirements.in
 sortedcontainers==2.4.0
     # via hypothesis
 statsmodels==0.15.0

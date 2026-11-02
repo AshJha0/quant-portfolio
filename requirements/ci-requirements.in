@@ -23,3 +23,6 @@ scikit-build-core>=0.11
 maturin>=1.8
 pandas-stubs==3.1.0.261029 ; python_version >= "3.12"
 scipy-stubs==1.18.1.1 ; python_version >= "3.12"
+# Build backend of every Python project; CI installs it from uv.lock and
+# builds with --no-build-isolation.
+setuptools>=68
