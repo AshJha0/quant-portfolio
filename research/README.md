@@ -1,6 +1,6 @@
 # research
 
-The Phase 4 research programme: pre-registered studies on real data.
+The research programme: pre-registered studies on real data.
 
 ## How a study runs
 
@@ -182,8 +182,8 @@ See [forward/README.md](forward/README.md) for why and how to read it.
 | `prereg/pairs-fx-g10-v2.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/pairs_fx_g10_v2_train.json` |
 | `prereg/momentum-fx-g10.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/momentum_fx_g10_train.json` |
 
-The two FX registrations were signed by the maintainer under owner decision
-9, which delegated pre-registration signing. The signature records the hash
+The two FX registrations were signed by the maintainer, to whom the
+repository owner delegated pre-registration signing. The signature records the hash
 printed by `prereg.py hash`; `prereg.py check` passes on both. The execution
 study needs LOBSTER files, which sit behind LOBSTER's terms of use, so it
 stays an unsigned draft. Equity pairs on a point-in-time universe need a
@@ -220,8 +220,8 @@ period only. They are not out-of-sample evidence; the hold-out decides.
 
 ## Forward hold-out registrations
 
-The 2022-2025 window can be used once, and the two signed registrations use
-it. New questions on the same free ECB data therefore need data nobody has
+The 2022-2025 window can be used once. The regime registration used it;
+the pairs registration was withdrawn rather than spend it. New questions on the same free ECB data therefore need data nobody has
 seen: fixes from the signing date onward. Two drafts do that.
 
 - `prereg/pairs-fx-g10-v2.md` keeps the signed pairs selection and replaces
@@ -248,8 +248,14 @@ Formation and lookback history comes from one ECB file of 1999-01-04 to
 run; nothing dated before 2026-11-03 is scored. Both are evaluated once, on
 2026-11-03 to 2028-11-02, by
 Sharpe - 1.645 x Lo SE > 0. With about 500 daily returns that can only
-detect a true Sharpe above roughly 1.2, which the registrations state. The
-forward log that supplies the data is specified in `forward/SPEC.md`.
+detect a true Sharpe above roughly 1.2, which the registrations state. For momentum the
+simulated power check (`studies/momentum_power.py`,
+`power/momentum-fx-g10.json`, 200 runs per cell) gives about 13 %
+rejection at a true Sharpe of about 0.4 and 50 % only near 1.3, so a fail
+is the expected outcome and says little. The forward log that supplies the
+data is specified in `forward/SPEC.md`; `forward/evaluate.py` scores it and
+gives a verdict only on or after 2028-11-13, once the log is complete and
+the registration is signed. Before then every report is marked interim.
 Training runs:
 
 ```bash

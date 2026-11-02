@@ -297,7 +297,7 @@ def append(log: Path, eur: pd.DataFrame, data_sha256: str, source: str,
     records = read_log(log)
     have = {r["date"] for r in records}
     hist = log_frame(records)
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     hashes = prereg_hashes()
     commit = code_commit()
     eur = eur[list(ORDER)].dropna().sort_index()
@@ -344,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     up.add_argument("--csv", type=Path, help="read this ECB csvdata file instead of fetching")
     up.add_argument("--today", type=dt.date.fromisoformat, default=None)
     args = ap.parse_args(argv)
-    today = args.today or dt.datetime.now(dt.timezone.utc).date()
+    today = args.today or dt.datetime.now(dt.UTC).date()
     if args.csv:
         eur, sha, src = read_csv(args.csv)
     else:

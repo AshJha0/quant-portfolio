@@ -19,7 +19,7 @@ pytest bindings/cpp-nanobind/tests
 ```
 
 Build requirements: a C++23 compiler (GCC 15, Clang 21 or MSVC 19.44),
-CMake 3.26 or later and Python 3.10 or later. scikit-build-core and nanobind
+CMake 3.26 or later and Python 3.11 or later. scikit-build-core and nanobind
 are fetched by pip. On Windows run the install from a shell where
 `vcvars64.bat` has been called.
 

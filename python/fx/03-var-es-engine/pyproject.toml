@@ -7,7 +7,7 @@ name = "fx-var"
 version = "1.1.0"
 description = "FX market risk: VaR & Expected Shortfall engine for a multi-currency book (historical, parametric, Monte Carlo, backtesting, Basel traffic light, stress testing)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "qp-core>=1.0",

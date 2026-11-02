@@ -66,7 +66,7 @@ nu = 3.7), and the Gaussian GARCH pins persistence at 1 (flagged
 constant series, NaNs, short samples) are in
 [docs/VALIDATION.md](docs/VALIDATION.md).
 
-## Round 4 addition: HAR-RV on the FX trading day
+## Addition: HAR-RV on the FX trading day
 
 `fx_vol.har_rv` (imported from the submodule) fits Corsi's (2009) HAR-RV
 model, the same regression as `eq_vol.har_rv`, and adds the FX part: what

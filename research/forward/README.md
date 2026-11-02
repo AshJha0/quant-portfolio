@@ -14,8 +14,7 @@ that choice away: the log shows what the rules said on the day, in public, in
 a git history anyone can check.
 
 The log is also the hold-out for any new pre-registration whose evaluation
-window is forward data (see `research/forward/SPEC.md`, owned by the
-pre-registration lane).
+window is forward data (see `research/forward/SPEC.md`).
 
 ## Where it lives
 

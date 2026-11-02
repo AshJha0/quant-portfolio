@@ -7,7 +7,7 @@ name = "eq-port"
 version = "1.0.0"
 description = "Equity portfolio optimization & risk allocation: shrunk return estimation (James-Stein, Black-Litterman), Ledoit-Wolf covariance shrinkage from scratch, closed-form and constrained mean-variance optimization, efficient frontier, equal-risk-contribution (risk parity) via cyclical coordinate descent, and a no-lookahead walk-forward backtester with exact turnover/cost accounting."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [

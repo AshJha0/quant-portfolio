@@ -1,6 +1,6 @@
 # Forward log: what the forward-hold-out registrations need from it
 
-Owner: the pre-registration lane. The log itself, its schema and its job are
+The log itself, its schema and its job are
 documented in `research/forward/README.md` (schema 1) and written by
 `research/forward/forward.py`. This file says what the two forward-hold-out
 registrations (`prereg/pairs-fx-g10-v2.md`, `prereg/momentum-fx-g10.md`)

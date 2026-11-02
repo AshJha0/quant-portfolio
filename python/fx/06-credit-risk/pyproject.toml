@@ -7,7 +7,7 @@ name = "fx-credit"
 version = "1.0.0"
 description = "FX / cross-border credit risk: sovereign PD scorecard (WOE/IV + IRLS logistic), FX settlement (Herstatt) risk, counterparty pre-settlement exposure (EE/PFE/CVA) and capital (EL, Basel standardized, Vasicek economic capital)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "numpy>=1.24",

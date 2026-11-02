@@ -69,7 +69,7 @@ Produced by `python examples/run_pipeline.py` and `pytest`.
 | USDJPY calibration | rho -0.469, RMSE 0.181 vol points |
 | EURUSD 6m digital at 1.15 | flat GK 0.2054, vanna-volga 0.1895, Heston 0.1899 |
 
-## Round 4 additions: local vol, SSVI and Bates in FX terms
+## Additions: local vol, SSVI and Bates in FX terms
 
 Three models that already existed for equities now have FX versions, with
 domestic and foreign rates in place of the rate and dividend yield, smile
@@ -120,7 +120,7 @@ Measured on the development machine with `pytest -q` and
 ```
 src/fx_surface/          garman_kohlhagen, smile_from_quotes, smile,
                          surface, heston, heston_mc, calibration,
-                         dupire, ssvi, bates (round 4),
+                         dupire, ssvi, bates,
                          greeks, data/synthetic (seeded presets:
                          EURUSD, USDJPY-pa, 35%-vol EM, Heston ground truth)
 tests/                   offline seeded tests

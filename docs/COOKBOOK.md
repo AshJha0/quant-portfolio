@@ -1963,7 +1963,7 @@ name = "eq-newproj"
 version = "1.0.0"
 description = "One-sentence description of what this project does and why."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 dependencies = ["numpy", "pandas"]
 
@@ -2061,6 +2061,17 @@ The check refuses a result whose `prereg_sha256` does not match the
 registration, and a result whose period reaches 2022-01-01 or later unless
 the registration is signed with that hash. Run the hold-out only after
 signing. Training-period results are not out-of-sample evidence.
+
+`python research/tools/prereg.py sign FILE NAME [DATE]` signs a draft, and
+refuses if the registration names no simulated power file in
+`research/power/`. The 2022-2025 hold-out is spent: the regime study used it
+(H0 not rejected) and the pairs study was withdrawn before it. New drafts
+are scored on forward data only. To see an interim report from the forward
+log (no verdict before 2028-11-13):
+
+```bash
+python research/forward/evaluate.py --log forward/log.jsonl     --history research/forward/history_1999-01-04_2026-11-02.csv     --history-sha256 <sha256 from the signing commit> --log-commit <commit>
+```
 
 ### How do I mark an American option with ALO and check it with the Leisen-Reimer tree?
 

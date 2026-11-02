@@ -18,7 +18,7 @@ Two things are worth looking at first:
   values and against each other on random inputs; a skipped comparison
   fails CI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Quickstart (Python 3.10 to 3.13, about two minutes):
+Quickstart (Python 3.11 to 3.13, about two minutes):
 
 ```bash
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv/Scripts/activate
@@ -47,7 +47,7 @@ November 2026 release started parts of stages two and three.
 | Stage | What it means | Status |
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
-| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers, two signed pre-registrations, training-period results; no hold-out run yet |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two drafts to be scored on forward data from 2026-11-03 |
 | 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core, bindings and the `engine=` switch; no option revaluation in the VaR engines yet |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
@@ -171,7 +171,9 @@ A study runs in four steps:
 | Registration | State |
 |---|---|
 | `pairs-fx-g10` | Signed on 2026-11-02, then withdrawn the same day before any hold-out data was read ([DR-R4-5](research/README.md#dr-r4-5-pairs-registration-withdrawn-2026-11-02)). Training result only; uninformative. |
-| `regime-fx-basket` | Signed by the maintainer on 2026-11-02. Training result only. |
+| `regime-fx-basket` | Signed by the maintainer on 2026-11-02. Hold-out run once on 2026-11-02 (2022-2025): H0 not rejected. The hold-out is spent. |
+| `pairs-fx-g10-v2` | Unsigned draft. Level-based z with a simulated power check. Scored only on forward data, 2026-11-03 to 2028-11-02. |
+| `momentum-fx-g10` | Unsigned draft. Monthly G10 spot momentum. Scored only on forward data, 2026-11-03 to 2028-11-02. Low power: a fail is the expected outcome even if a modest effect exists. |
 | `execution-lobster` | Unsigned draft. Needs LOBSTER sample files, which sit behind LOBSTER's terms of use. |
 
 Two studies are not done because their data needs an account: equity pairs
@@ -190,6 +192,26 @@ were changed twice on training data before signing, and the registration
 counts all three variants as trials. The regime study did not support its
 hypothesis in training: the high-volatility state had a higher mean
 next-day return than the low state (HAC t = +0.27).
+
+The regime hold-out (2022-01-03 to 2025-12-31, run once) agreed with
+training. On the 161 of 1,019 days classified high-volatility the basket
+earned +12.5% a year annualised, against -4.0% on the other days; HAC
+t = +0.94 with 4 lags. The registered rule rejects H0 only if t < -1.645,
+so H0 is not rejected. The effect has the opposite sign to the hypothesis,
+but t = +0.94 is not evidence of a positive effect either. Result file:
+`research/results/regime_fx_basket_holdout.json`.
+
+Because the 2022-2025 window can be used only once, the two new drafts are
+scored on data nobody has seen yet: ECB fixes from 2026-11-03 onward,
+collected by a scheduled job into a forward log (`research/forward/`) and
+scored once, after 2028-11-02, by `research/forward/evaluate.py`. Before
+that date the script only prints interim reports with no verdict. The
+momentum test has low power. In a simulation with planted momentum
+(`research/power/momentum-fx-g10.json`, 200 runs per cell) it rejects H0
+about 13% of the time when the true Sharpe ratio is about 0.4, and needs a
+Sharpe ratio of about 1.3 to reject half the time. A fail on the forward
+data is therefore the expected outcome and will say little either way; the
+registration states this before any forward data exists.
 
 ### New models and their oracles
 
@@ -216,6 +238,7 @@ re-exported from the package `__init__`.
 | OIS multi-curve | `fi_rates.multicurve` | Reprices all OIS and swap quotes to 1e-13; zero basis collapses to the OIS curve |
 | Caps and swaptions (Black, Bachelier) | `fi_rates.rate_options` | Parity and ATM closed forms; implied-vol round trip |
 | Hull-White 1F, Jamshidian swaptions | `fi_rates.hull_white` | Curve repricing; parity; exact-OU Monte Carlo (200k paths) |
+| FX twins: Dupire, SSVI/eSSVI, Bates, HAR-RV, Euler attribution with currency mapping | `fx_surface.dupire`, `fx_surface.ssvi`, `fx_surface.bates`, `fx_vol.har_rv`, `fx_var.fx_attribution` | The equity module where the maths coincides (1e-12 or better); Bates against the Merton series via Garman-Kohlhagen; HAR-RV on 17:00 New York days |
 | Dupire local vol | `eq_surface.dupire` | Flat and term-only cases; total-variance route equals price route; local-vol MC reprices the surface |
 | SSVI and eSSVI | `eq_surface.ssvi` | Slice equals raw SVI to 1e-15; Gatheral-Jacquier conditions give no butterfly arbitrage |
 | Bates | `eq_surface.bates` | No jumps equals Heston; no vol of vol equals the Merton (1976) series; Euler MC within 4 SE |
@@ -232,6 +255,8 @@ re-exported from the package `__init__`.
 | Limit hierarchy | `eq_var.limits`, `fx_var.limits` | Exact cases |
 | Johansen trace test | `research/studies/models.py` | statsmodels `coint_johansen`, 1e-9 relative |
 | Kalman hedge ratio | `research/studies/models.py` | Recursive least squares when delta = 0 |
+| Settlement calendars and business-day rolls | `qp_core.holidays` | Published holiday dates per centre; one-off closures through `add_closure` |
+| Standard normal CDF and density | `qp_core.normal` | One shared definition for the option packages; `erfc` form keeps the lower tail |
 
 The C++ and Rust equity options engines also gained Leisen-Reimer,
 Bachelier and the higher-order Greeks, checked against the Python values to
@@ -296,7 +321,7 @@ single required check is `ci-ok`, which passes only when every job passed.
 
 | Job | What it runs |
 |---|---|
-| `py core`, `py <project>` | pytest for `python/core` and each of the 23 projects, each in its own venv, on Python 3.10 to 3.13 |
+| `py core`, `py <project>` | pytest for `python/core` and each of the 23 projects, each in its own venv, on Python 3.11 to 3.13 |
 | `lint` | `uv lock --check`, `ruff check python`, `mypy` |
 | `goldens --check` | regenerates each C++ golden header and Rust golden module and fails on any difference from the committed JSON |
 | `cpp <engine> (<preset>)` | each engine built and tested with the `gcc`, `clang`, `asan` and `tsan` presets, `gcc16-cxx26` in a GCC 16 container, and `msvc` on Windows |
@@ -407,11 +432,19 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
 - Not implemented: structural (Merton/KMV) PD, FRTB NMRF/SES and the
-  default risk charge. CHANGELOG.md lists the other known issues (the ISDA
-  CDS module's weekends-only calendar, the missing ISDA test-grid comparison
-  and so on).
-- No result here is out-of-sample evidence yet. The research studies have
-  training-period results only; the hold-out runs come next.
+  default risk charge. CHANGELOG.md lists the other known issues.
+- The ISDA CDS module has not been compared with ISDA's published test
+  grid (a licence click-through). Its outside check is a one-off comparison
+  with QuantLib 1.44 `IsdaCdsEngine` made during the November 2026 review
+  (par spread and upfront agree to about 1e-9, RPV01 to about 1e-7); that comparison is not a CI
+  test. Business-day calendars are optional (`calendar=`); the default is
+  weekends only.
+- `fx_surface.ssvi` misses five-point FX smiles by up to about one vol
+  point on USDJPY (about 0.5 on EURUSD); eSSVI does not close the gap. See
+  fx/09-vol-surface VALIDATION, finding F10.
+- One result here is out-of-sample: the regime hold-out, which did not
+  reject H0. Everything else in `research/results/` is training-period
+  only. The two forward drafts cannot be scored before November 2028.
 - The bindings (`qp-cpp`, `qp-rust`) cover pricing, Greeks, implied vol,
   binomial, Monte Carlo and the main VaR, ES and backtest calls. They do not
   bind the FX VaR Monte Carlo or book-level VaR, deltas and strikes from

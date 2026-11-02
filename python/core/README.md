@@ -20,6 +20,7 @@ from the repository root installs it with every project that depends on it.
 | `qp_core.execution` | `ExecutionConfig` and `fill_price`: the t+1 fill rule | the same seven strategy projects |
 | `qp_core.calendars` | Partial business-day calendars (weekends and fixed-date holidays) and the four roll conventions | fi_rates, fx_rates |
 | `qp_core.holidays` | Full rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD (2010 to 2099, moveable feasts and observance rules included), `is_business_day`, `adjust_following`, `add_business_days`, and runtime one-off closures (`add_closure`, test hook `extra_closures`) | eq_credit (`isda_cds`), fx_options (re-exported as `fx_options.holidays`) |
+| `qp_core.normal` | `norm_cdf`, `norm_pdf` for scalar floats (`erfc` form, full lower-tail precision) | eq_options, fx_options |
 | `qp_core.daycount` | ACT/365F, ACT/360, 30/360US, ACT/ACT-ISDA, ACT/ACT-ICMA; month arithmetic; coupon schedules; money-market day counts | fi_rates, fx_rates |
 | `qp_core.validation` | `require_finite`, `finite_scalar`, `finite_series` | fx_rates, fx_pairs |
 | `qp_core.metrics` | Downside deviation, drawdown (equity, returns, P&L), annualisation | eq_pairs, eq_port, eq_algo, eq_risk_metrics, fx_pairs, fx_port |

@@ -24,7 +24,7 @@ for docs, and how to regenerate golden vectors.
 
 ### Python
 
-Python 3.10 to 3.13. The quickest setup is the uv workspace, which installs
+Python 3.11 to 3.13. The quickest setup is the uv workspace, which installs
 `python/core` and all 23 projects into one `.venv` at the root from
 `uv.lock`:
 
@@ -147,7 +147,7 @@ passes only if every other CI job passed:
 
 | Job | What it runs |
 |---|---|
-| `py core (<version>)` | pytest for `python/core` on Python 3.10 to 3.13 |
+| `py core (<version>)` | pytest for `python/core` on Python 3.11 to 3.13 |
 | `py <project> (<version>)` | pytest for one project on one Python version, in a fresh venv with `python/core` installed first |
 | `lint (uv lock, ruff, mypy)` | `uv lock --check`, `ruff check python`, `mypy` |
 | `goldens --check` | regenerated C++ headers and Rust modules match the golden JSON |

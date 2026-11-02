@@ -29,6 +29,9 @@ Known limits worth knowing before you read further:
   have drifted. Treat the FX packages as convention variants.
 - Latency tables are from one laptop under WSL2. The C++ and Rust tables use
   different timing methods and are not comparable with each other.
+- One study has an out-of-sample result, and it is a null (regime
+  hold-out, H0 not rejected). The two forward drafts cannot be scored
+  before November 2028.
 - The only real-data studies use ECB daily reference rates. There is no
   point-in-time equity or intraday evidence.
 

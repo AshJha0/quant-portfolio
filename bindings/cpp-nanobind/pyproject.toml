@@ -7,7 +7,7 @@ name = "qp-cpp"
 version = "0.1.0"
 description = "Python bindings (nanobind) for the quant-portfolio C++ option and VaR engines"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = ["numpy>=1.24"]
 

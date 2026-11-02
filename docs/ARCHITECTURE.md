@@ -230,6 +230,10 @@ package `docs/VALIDATION.md` and in the README table.
 | `fi_rates` | `multicurve`, `rate_options`, `hull_white` |
 | `fx_rates` | `xccy_float` |
 | `eq_surface` | `ssvi`, `dupire`, `bates` |
+| `fx_surface` | `ssvi`, `dupire`, `bates` (FX twins: forward from r_d and r_f, delta conventions; checked against the equity modules) |
+| `fx_vol` | `har_rv` (realised variance on 17:00 New York days) |
+| `fx_var` | `fx_attribution` (currency mapping and option exposure for Euler attribution) |
+| `qp_core` | `normal` (shared normal CDF and density), `holidays` (settlement calendars and business-day rolls, moved from `fx_options`) |
 | `eq_credit` | `lgd_ead`, `calibration`, `migration`, `cds` |
 | `fx_credit` | `xva`, `saccr` |
 | `eq_port`, `fx_port` (same files) | `hrp`, `robust_mvo`, `cost_qp`, `factor_model`, `tracking_error`, `sharpe_tests` |
@@ -349,8 +353,8 @@ the same engine and platform.
 | Job | What it does |
 |---|---|
 | `discover` | Lists the Python projects and their test extra (`.github/scripts/discover_projects.py`). |
-| `py core` | pytest for `python/core` on Python 3.10 to 3.13. |
-| `py <project>` | One job per project and Python version (3.10, 3.11, 3.12, 3.13). Installs `python/core` and the project in its own venv and runs pytest. Uploads JUnit XML. |
+| `py core` | pytest for `python/core` on Python 3.11 to 3.13. |
+| `py <project>` | One job per project and Python version (3.11, 3.12, 3.13). Installs `python/core` and the project in its own venv and runs pytest. Uploads JUnit XML. |
 | `lint` | `uv lock --check`, `uv sync --all-packages --locked`, `ruff check python`, `mypy`. Installs `pandas-stubs` and `scipy-stubs`, which `requirements/ci-constraints.txt` pins for Python 3.12 and later. |
 | `goldens --check` | Runs every `gen_golden_header.py --check` and `gen_golden_rs.py --check`. |
 | `cpp <engine> (<preset>)` | Each C++ engine with the `gcc`, `clang`, `asan` and `tsan` presets: configure, build, ctest. |

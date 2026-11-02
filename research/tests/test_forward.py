@@ -21,7 +21,7 @@ sys.path[:0] = [str(REPO / "research" / "forward"), str(REPO / "research" / "stu
 import forward as fw  # noqa: E402
 import fx_studies  # noqa: E402
 
-NOW = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2030, 1, 1, tzinfo=dt.UTC)
 
 
 def synthetic_eur(start: str, end: str, seed: int = 7) -> pd.DataFrame:

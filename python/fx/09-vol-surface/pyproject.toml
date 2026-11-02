@@ -7,7 +7,7 @@ name = "fx-surface"
 version = "1.0.0"
 description = "FX volatility surface from delta-space quotes (ATM/RR/BF), vanna-volga & SVI smiles, Garman-Kohlhagen, Heston calibration, pricing, and Greeks"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Ashish Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "numpy>=1.24",

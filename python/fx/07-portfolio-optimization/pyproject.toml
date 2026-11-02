@@ -7,7 +7,7 @@ name = "fx-port"
 version = "1.0.0"
 description = "FX portfolio optimization & currency risk allocation: carry/momentum/value style portfolios, shrinkage covariance, mean-variance & risk parity, CVaR-constrained sizing (Rockafellar-Uryasev LP), optimal currency hedging, walk-forward backtesting with carry accrual"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "qp-core>=1.0",

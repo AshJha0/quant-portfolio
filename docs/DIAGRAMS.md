@@ -195,8 +195,8 @@ scenario, vol held fixed).
 ```mermaid
 flowchart TD
     DISC["discover<br/>(list Python projects + test extra)"]
-    PYC["py core<br/>python/core x Python 3.10-3.13"]
-    PY["py &lt;project&gt;<br/>per project x Python 3.10-3.13<br/>pytest, JUnit XML"]
+    PYC["py core<br/>python/core x Python 3.11-3.13"]
+    PY["py &lt;project&gt;<br/>per project x Python 3.11-3.13<br/>pytest, JUnit XML"]
     LINT["lint<br/>uv lock --check, ruff, mypy"]
     GOLD["goldens --check<br/>gen_golden_header.py / gen_golden_rs.py"]
     CPP["cpp &lt;engine&gt; (&lt;preset&gt;)<br/>gcc, clang, asan, tsan,<br/>gcc16-cxx26, msvc"]
@@ -274,8 +274,10 @@ flowchart TD
     CHECK -->|yes| OK
 ```
 
-State on this branch: `pairs-fx-g10` and `regime-fx-basket` signed
-(training results only); `execution-lobster` an unsigned draft, blocked on
+State: `regime-fx-basket` signed and run once on the hold-out (H0 not
+rejected); `pairs-fx-g10` signed, then withdrawn before the hold-out
+(DR-R4-5); `pairs-fx-g10-v2` and `momentum-fx-g10` unsigned drafts scored
+only on forward data (2026-11-03 to 2028-11-02, `research/forward/`); `execution-lobster` an unsigned draft, blocked on
 LOBSTER data access. Equity pairs on a point-in-time universe are not
 drafted (Nasdaq Data Link needs an account).
 

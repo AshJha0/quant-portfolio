@@ -172,9 +172,10 @@ about:
   compares the engines on 10,000 random inputs per group.
 - **A research workflow on real data.** `data/` fetches ECB and FRED
   series; `research/` holds pre-registrations. The order is draft, sign,
-  hash check, then run on the 2022-2025 hold-out. Two FX registrations are
-  signed. The results so far are training-period numbers and are not
-  out-of-sample evidence. Equity pairs and the LOBSTER execution study are
+  hash check, then run on the 2022-2025 hold-out. The regime study ran on
+  the hold-out once and did not reject H0; the pairs study was withdrawn
+  before it. Two later drafts (pairs v2, momentum) are scored only on
+  forward data from 2026-11-03. Equity pairs and the LOBSTER execution study are
   not done because their data needs an account.
 - **More models, each with an oracle.** American pricers (Leisen-Reimer,
   Crank-Nicolson, ALO), Bachelier, SABR, higher Greeks, FX smiles and
@@ -1393,7 +1394,7 @@ It is a file that fixes the hypothesis, data, parameters, costs, primary metric 
 
 **Q28. The FX pairs study had a training Sharpe of 0.24. Why is that not evidence of an edge?**
 
-It is a training-period number (ECB data, 1999 to 2021) and the parameters were changed twice on that same data before signing, so all three variants count as trials. The block-bootstrap 95% interval [-0.17, 0.46] includes zero, and the strategy held a position on only 79 of 4,867 days. Only the hold-out run under the signed registration can count as out-of-sample evidence.
+It is a training-period number (ECB data, 1999 to 2021) and the parameters were changed twice on that same data before signing, so all three variants count as trials. The block-bootstrap 95% interval [-0.17, 0.46] includes zero, and the strategy held a position on only 79 of 4,867 days. It also turned out that the signal as registered could almost never fire: on simulated pairs that are cointegrated by construction the Kalman one-step z passed 2 on about 0.5% of days, and never at JPY-like price levels. The registration was therefore withdrawn before any hold-out data was read (DR-R4-5 in `research/README.md`), and its hold-out will never be run. A redesigned draft, `pairs-fx-g10-v2`, uses a level-based z and is scored only on forward data.
 
 **Q29. What do `johansen_trace` and `kalman_hedge` in `research/studies/models.py` add to the pairs toolkit, and what are their oracles?**
 
@@ -1853,7 +1854,7 @@ Yes, two distinct sub-cases are both documented and tested. First, "false alarms
 
 **Q27. What did the training run of the regime study (`regime-fx-basket`) find, and what happens next?**
 
-The hypothesis was that next-day returns are negative in the high-volatility state. In training (ECB data, 1999 to 2021) the high state had a mean of +1.2% a year against +0.3% in the low state, HAC t = +0.27, so the hypothesis is not supported. The registration is signed. If the hold-out agrees, the strategy is described as a volatility-targeting overlay, not a directional signal.
+The hypothesis was that next-day returns are negative in the high-volatility state. In training (ECB data, 1999 to 2021) the high state had a mean of +1.2% a year against +0.3% in the low state, HAC t = +0.27, so the hypothesis is not supported. The hold-out (2022-2025) was then run once: on 161 of 1,019 high-vol days the basket earned +12.5% a year against -4.0% on the rest, HAC t = +0.94 with 4 lags. The rule rejects H0 only if t < -1.645, so H0 is not rejected. The effect has the opposite sign to the hypothesis, but t = +0.94 is not evidence of a positive effect either. The hold-out is spent, so the study is closed.
 
 
 ## Set 14: The Foundations Trilogy
