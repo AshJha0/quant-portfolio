@@ -174,3 +174,11 @@ stops at `max_iter`, and the pipeline refuses a non-converged fit.
 | NaN/Inf inputs (paths, EL, Vasicek, expected exposure loss, AUC/KS/PSI/HL, USD rates) | `test_edge_cases_review.py` NaN/Inf block: every public entry point raises `ValueError` |
 | Tiny samples (2-row AUC, 2-row WOE), constant scores | `test_auc_minimal_two_row_sample`, `test_woe_single_row_per_class`, `test_auc_constant_score_is_half`, `test_ks_constant_score_is_zero` |
 | Empty / all-CLS settlement book | `test_empty_trade_book_zero_exposure`, `test_netting_all_cls_book_zero_exposure` |
+
+## Round 3 oracle tests (`tests/test_xva_saccr.py`, 9 tests)
+
+- Constant-EPE CVA equals LGD EPE (1 - e^{-lambda T}) to 1e-13. CVA and DVA swap exactly when the two parties are swapped.
+- The uncollateralised EE of a forward matches the Black price within 4 standard errors at 3, 6 and 12 months.
+- The MPoR EPE matches its closed form within 4 standard errors. Adding a threshold raises the exposure. A very large MTA gives the uncollateralised exposure.
+- WWR with b = 0 equals the independent CVA to 1e-9. Wrong-way b > 0 raises CVA and right-way b < 0 lowers it.
+- SA-CCR: the add-on, multiplier, margined RC and maturity factor match hand values from the CRE52 formulas.

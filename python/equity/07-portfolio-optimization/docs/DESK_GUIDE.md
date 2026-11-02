@@ -131,3 +131,11 @@ turnover ledger under 5x cost stress.
 | Risk-budget adherence | `realized_risk_contributions` | RCᵢ within ±25% of budget |
 | Estimator health | LW `intensity`, `condition_number` | alert on δ > 0.5 or cond > 1e3 |
 | Benchmark null | equal weight in every race | must beat net of costs |
+
+## Round 3: when to use which optimiser
+
+- Use HRP when the covariance is near-singular or unstable.
+- Use robust or resampled MVO when expected returns drive the weights.
+- Use `cost_qp.rebalance` for any real rebalance, because costs and turnover caps change the answer.
+- Use `tracking_error` for benchmarked mandates.
+- Before calling one strategy better than another, use `sharpe_tests.sharpe_diff_hac` with lags > 0 on daily data.

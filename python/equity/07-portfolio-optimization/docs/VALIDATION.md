@@ -167,3 +167,12 @@ sets raise `ValueError` (target return outside the box-achievable range,
 caps that cannot sum to the budget, a vol cap below the constrained
 minimum-variance vol) and runs portfolio invariants over random SPD
 inputs.
+
+## Round 3 oracle tests (`tests/test_round3_portfolio.py`, 19 tests)
+
+- HRP gives exactly the inverse-variance weights for a diagonal Sigma and matches the two-asset closed form. It stays long-only on a near-singular Sigma.
+- The closed-form MV satisfies its first-order condition. Resampled weights converge to the classic weights as T grows. Robust MVO with kappa = 0 equals the classic solution, and with kappa > 0 it equals the classic solution at the effective risk aversion.
+- The cost QP matches the closed-form no-trade band with and without impact. With zero cost it equals the classic MV. The turnover cap binds and the box bounds hold.
+- The factor model recovers the true loadings and reproduces lstsq exactly. Its Euler sums match the totals to 1e-13.
+- TE: the active weights are budget-neutral, hit the target TE and attain the IR bound. The SLSQP solution equals the closed form when the bounds are slack.
+- Sharpe: with no lags, the HAC standard error equals Memmel's to within 2% on 200k normal draws. The gradient matches finite differences. HAC widens under AR(1) returns. The bootstrap rejects a true difference and accepts equal Sharpe ratios.
