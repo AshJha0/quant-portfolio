@@ -37,11 +37,14 @@ def log_path() -> Path:
 
 
 def git_state(repo: Path = REPO) -> tuple[str | None, bool | None]:
-    """(commit, dirty) of ``repo``; (None, None) outside a git checkout."""
+    """(commit, dirty) of ``repo``; (None, None) outside a git checkout. The
+    log itself is left out of the dirty check, or every run after the first
+    would read as dirty until the log is committed."""
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True,
                                 capture_output=True, text=True).stdout.strip()
-        status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True,
+        status = subprocess.run(["git", "status", "--porcelain", "--", ".",
+                                 ":(exclude)research/results/trials.jsonl"], cwd=repo, check=True,
                                 capture_output=True, text=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return None, None

@@ -71,6 +71,17 @@ def test_write_logs_every_training_run(tmp_path, monkeypatch):
     assert rows[1]["git_commit"] is None or len(rows[1]["git_commit"]) == 40
 
 
+def test_git_state_ignores_the_log_itself():
+    commit, dirty = trials.git_state()
+    if commit is None:
+        pytest.skip("not a git checkout")
+    import subprocess
+
+    other = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True).stdout
+    rest = [ln for ln in other.splitlines() if not ln.endswith("research/results/trials.jsonl")]
+    assert dirty == bool(rest)
+
+
 def test_committed_trials_log_is_well_formed():
     rows = trials.read(trials.LOG)
     for r in rows:
