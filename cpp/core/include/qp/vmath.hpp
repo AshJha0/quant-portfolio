@@ -49,8 +49,8 @@ inline constexpr double kExpHi = 710.0;     // above this exp overflows to inf
 
 /// 2^k for an integer-valued double k in [-1022, 1023], from bits.
 [[nodiscard]] inline double pow2_int(double k) noexcept {
-    const std::uint64_t bits = std::bit_cast<std::uint64_t>(k + kMagic) -
-                               std::bit_cast<std::uint64_t>(kMagic) + 1023U;
+    const std::uint64_t bits =
+        std::bit_cast<std::uint64_t>(k + kMagic) - std::bit_cast<std::uint64_t>(kMagic) + 1023U;
     return std::bit_cast<double>(bits << 52);
 }
 
@@ -82,13 +82,13 @@ inline constexpr double kExpHi = 710.0;     // above this exp overflows to inf
 // Chebyshev coefficients of g(u); see tools/gen_erfc_cheb.cpp.
 inline constexpr double kErfcT0 = 2.0 / 29.0;
 inline constexpr double kErfcCheb[] = {
-    -0x1.38b2eee989714p-1, 0x1.35f18ad2ce0ffp-1, 0x1.c7658ee928cd8p-7, -0x1.0ed39819f4a28p-7,
+    -0x1.38b2eee989714p-1,  0x1.35f18ad2ce0ffp-1,  0x1.c7658ee928cd8p-7,  -0x1.0ed39819f4a28p-7,
     -0x1.1c2616503568bp-11, 0x1.2e974e1ab12f5p-12, 0x1.067a324226513p-16, -0x1.cf293647bddcp-17,
-    -0x1.20ba820a5fp-28, 0x1.8073bf7bf0a6p-21, -0x1.eff91eecb86p-25, -0x1.2726773d45cp-25,
-    0x1.d06e903265p-28, 0x1.4e2cb79bbcp-30, -0x1.260006d808p-31, -0x1.2a97a798p-39,
-    0x1.120be3dp-35, -0x1.2f0b8fcp-38, -0x1.3e198ecp-40, 0x1.d67a0f4p-42,
-    -0x1.9b2d2p-48, -0x1.843ebcp-46, 0x1.29619p-48, 0x1.752cp-52,
-    -0x1.34708p-52, 0x1.99b4p-55,
+    -0x1.20ba820a5fp-28,    0x1.8073bf7bf0a6p-21,  -0x1.eff91eecb86p-25,  -0x1.2726773d45cp-25,
+    0x1.d06e903265p-28,     0x1.4e2cb79bbcp-30,    -0x1.260006d808p-31,   -0x1.2a97a798p-39,
+    0x1.120be3dp-35,        -0x1.2f0b8fcp-38,      -0x1.3e198ecp-40,      0x1.d67a0f4p-42,
+    -0x1.9b2d2p-48,         -0x1.843ebcp-46,       0x1.29619p-48,         0x1.752cp-52,
+    -0x1.34708p-52,         0x1.99b4p-55,
 };
 
 [[nodiscard]] inline double erfc1(double x) noexcept {

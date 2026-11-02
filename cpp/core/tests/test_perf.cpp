@@ -79,7 +79,8 @@ TEST(Quantile, SelectAndType7MatchSortBitForBit) {
             const double h = static_cast<double>(n - 1) * q;
             const auto lo = static_cast<std::size_t>(std::floor(h));
             const std::size_t hi = std::min(lo + 1, n - 1);
-            const double ref = sorted[lo] + (h - static_cast<double>(lo)) * (sorted[hi] - sorted[lo]);
+            const double ref =
+                sorted[lo] + (h - static_cast<double>(lo)) * (sorted[hi] - sorted[lo]);
             auto work = x;
             EXPECT_EQ(std::bit_cast<std::uint64_t>(qp::quantile_type7(work, q)),
                       std::bit_cast<std::uint64_t>(ref))
@@ -134,7 +135,8 @@ TEST(VMath, ExpWithinTwoUlp) {
     x[2] = -1e-300;
     qp::vm::exp_batch(x, y);
     double worst = 0.0;
-    for (std::size_t i = 0; i < x.size(); ++i) worst = std::max(worst, rel_err(y[i], std::exp(x[i])));
+    for (std::size_t i = 0; i < x.size(); ++i)
+        worst = std::max(worst, rel_err(y[i], std::exp(x[i])));
     EXPECT_LE(worst, 4.5e-16);  // 2 ulp at the top of a binade
     EXPECT_EQ(y[0], 1.0);
 }
@@ -155,7 +157,8 @@ TEST(VMath, ErfcWithinDocumentedTolerance) {
     std::vector<double> y(x.size());
     qp::vm::erfc_batch(x, y);
     double worst = 0.0;
-    for (std::size_t i = 0; i < x.size(); ++i) worst = std::max(worst, rel_err(y[i], std::erfc(x[i])));
+    for (std::size_t i = 0; i < x.size(); ++i)
+        worst = std::max(worst, rel_err(y[i], std::erfc(x[i])));
     EXPECT_LE(worst, 2e-15);
     const std::vector<double> far{30.0, -30.0};
     std::vector<double> yf(2);

@@ -21,25 +21,25 @@ namespace fxvar {
 enum class OptionKind { Call, Put };
 
 struct OptionLeg {
-    double quantity;
-    OptionKind kind;
-    double spot;
-    double strike;
-    double tau;    // years, > 0
-    double rate;   // continuously compounded
-    double carry;  // dividend yield or foreign rate
-    double vol;    // annualised, > 0
-    std::size_t factor = 0;
+  double quantity;
+  OptionKind kind;
+  double spot;
+  double strike;
+  double tau;    // years, > 0
+  double rate;   // continuously compounded
+  double carry;  // dividend yield or foreign rate
+  double vol;    // annualised, > 0
+  std::size_t factor = 0;
 };
 
 struct BsmGreeks {
-    double delta, gamma, vega, vanna, volga, theta;  // vega per 1.00 vol; theta = -dV/dtau
+  double delta, gamma, vega, vanna, volga, theta;  // vega per 1.00 vol; theta = -dV/dtau
 };
 
 /// BSM price; intrinsic value when tau <= 0. Throws std::invalid_argument on
 /// non-finite or out-of-domain input.
-[[nodiscard]] double bsm_price(double spot, double strike, double tau, double rate,
-                               double carry, double vol, OptionKind kind);
+[[nodiscard]] double bsm_price(double spot, double strike, double tau, double rate, double carry,
+                               double vol, OptionKind kind);
 
 /// Closed-form Greeks per unit quantity (Hull, OFOD 11th ed., ch. 19).
 [[nodiscard]] BsmGreeks bsm_greeks(const OptionLeg& leg);

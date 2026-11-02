@@ -66,7 +66,8 @@ BsmGreeks bsm_greeks(const OptionLeg& l) {
     const double s = l.kind == OptionKind::Call ? 1.0 : -1.0;
     const double rt = std::sqrt(l.tau);
     const double sq = l.vol * rt;
-    const double d1 = (std::log(l.spot / l.strike) + (l.rate - l.carry + 0.5 * l.vol * l.vol) * l.tau) / sq;
+    const double d1 =
+        (std::log(l.spot / l.strike) + (l.rate - l.carry + 0.5 * l.vol * l.vol) * l.tau) / sq;
     const double d2 = d1 - sq;
     const double eb = std::exp(-l.carry * l.tau);
     const double er = std::exp(-l.rate * l.tau);
@@ -83,9 +84,8 @@ BsmGreeks bsm_greeks(const OptionLeg& l) {
     return g;
 }
 
-std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs,
-                                         std::span<const double> x, std::span<const double> dv,
-                                         std::size_t nf, double dt) {
+std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
+                                         std::span<const double> dv, std::size_t nf, double dt) {
     check_scenarios(legs, x, dv, nf);
     require(std::isfinite(dt) && dt >= 0.0, "dt must be >= 0");
     const std::size_t n = x.size() / nf;
@@ -96,8 +96,8 @@ std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs,
         for (std::size_t i = 0; i < n; ++i) {
             const double s1 = l.spot * std::exp(x[i * nf + l.factor]);
             const double v1 = l.vol + (dv.empty() ? 0.0 : dv[i * nf + l.factor]);
-            pnl[i] += l.quantity *
-                      (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
+            pnl[i] +=
+                l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
         }
     }
     return pnl;

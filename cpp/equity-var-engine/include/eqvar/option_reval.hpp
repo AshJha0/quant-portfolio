@@ -39,8 +39,8 @@ struct BsmGreeks {
 
 /// BSM price; intrinsic value when tau <= 0. Throws std::invalid_argument on
 /// non-finite or out-of-domain input.
-[[nodiscard]] double bsm_price(double spot, double strike, double tau, double rate,
-                               double carry, double vol, OptionKind kind);
+[[nodiscard]] double bsm_price(double spot, double strike, double tau, double rate, double carry,
+                               double vol, OptionKind kind);
 
 /// Closed-form Greeks per unit quantity (Hull, OFOD 11th ed., ch. 19).
 [[nodiscard]] BsmGreeks bsm_greeks(const OptionLeg& leg);

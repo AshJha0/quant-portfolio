@@ -23,8 +23,8 @@ namespace qp {
 inline constexpr std::size_t kGemmTile = 64;
 
 /// C += A B with A m x k, B k x n, C m x n, all row-major and dense.
-inline void gemm_blocked(const double* a, const double* b, double* c, std::size_t m,
-                         std::size_t k, std::size_t n) noexcept
+inline void gemm_blocked(const double* a, const double* b, double* c, std::size_t m, std::size_t k,
+                         std::size_t n) noexcept
     QP_PRE((a != nullptr && b != nullptr && c != nullptr) || m * k * n == 0) {
     constexpr std::size_t T = kGemmTile;
     for (std::size_t kb = 0; kb < k; kb += T) {

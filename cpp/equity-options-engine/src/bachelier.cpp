@@ -76,8 +76,8 @@ double bachelier_implied_vol(double price, double F, double K, double T, double 
             hi = sig;
         else
             lo = sig;
-        const double d = sig > 0.0 ? (F - K) / (sig * std::sqrt(T))
-                                   : std::numeric_limits<double>::infinity();
+        const double d =
+            sig > 0.0 ? (F - K) / (sig * std::sqrt(T)) : std::numeric_limits<double>::infinity();
         const double vega = df * std::sqrt(T) * norm_pdf(d);
         const double step =
             vega > 0.0 ? sig - diff / vega : std::numeric_limits<double>::quiet_NaN();

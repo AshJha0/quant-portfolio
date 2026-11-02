@@ -25,9 +25,9 @@ void expect_rel(double a, double b, double tol) {
 }
 
 TEST(LeisenReimer, GoldenVsPython) {
-    expect_rel(eqopt::lr_price(100, 100, 1, 0.05, 0.2, 0, OptionType::Call,
-                               ExerciseStyle::European, 101),
-               10.450549336567306, 1e-12);
+    expect_rel(
+        eqopt::lr_price(100, 100, 1, 0.05, 0.2, 0, OptionType::Call, ExerciseStyle::European, 101),
+        10.450549336567306, 1e-12);
     expect_rel(eqopt::lr_price(100, 110, 0.5, 0.03, 0.3, 0.02, OptionType::Put,
                                ExerciseStyle::European, 101),
                14.21511061827863, 1e-12);
@@ -42,9 +42,11 @@ TEST(LeisenReimer, GoldenVsPython) {
 TEST(LeisenReimer, SecondOrderConvergenceToBS) {
     const double bs = eqopt::bs_price(100, 105, 1, 0.04, 0.25, 0.01, OptionType::Call);
     const double e1 = std::fabs(eqopt::lr_price(100, 105, 1, 0.04, 0.25, 0.01, OptionType::Call,
-                                                ExerciseStyle::European, 101) - bs);
+                                                ExerciseStyle::European, 101) -
+                                bs);
     const double e2 = std::fabs(eqopt::lr_price(100, 105, 1, 0.04, 0.25, 0.01, OptionType::Call,
-                                                ExerciseStyle::European, 201) - bs);
+                                                ExerciseStyle::European, 201) -
+                                bs);
     EXPECT_GT(e1 / e2, 3.0);
     EXPECT_LT(e1 / e2, 5.0);
 }
