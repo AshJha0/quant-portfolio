@@ -11,7 +11,7 @@ namespace eqopt {
 double peizer_pratt(double z, int n) {
     if (n < 1 || n % 2 == 0)
         throw std::invalid_argument("peizer_pratt: n must be a positive odd integer");
-    const double nd = static_cast<double>(n);
+    const auto nd = static_cast<double>(n);
     const double a = z / (nd + 1.0 / 3.0 + 0.1 / (nd + 1.0));
     const double root = std::sqrt(-std::expm1(-a * a * (nd + 1.0 / 6.0)));
     return 0.5 + std::copysign(0.5, z) * root;
