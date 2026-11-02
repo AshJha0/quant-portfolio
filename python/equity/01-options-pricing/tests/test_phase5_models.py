@@ -46,7 +46,7 @@ def test_lr_second_order_convergence():
     b = bs_price(100, 105, 1, 0.04, 0.25, 0.01, "call")
     errs = [abs(lr_price(100, 105, 1, 0.04, 0.25, 0.01, "call", "european", n) - b)
             for n in (101, 201, 401)]
-    for e1, e2 in zip(errs, errs[1:], strict=True):
+    for e1, e2 in zip(errs[:-1], errs[1:], strict=True):
         assert 3.0 < e1 / e2 < 5.0
 
 

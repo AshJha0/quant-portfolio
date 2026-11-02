@@ -60,7 +60,7 @@ def mean_variance_weights(mu: np.ndarray, cov: np.ndarray, risk_aversion: float)
 
 def _long_only_mv(mu: np.ndarray, cov: np.ndarray, lam: float) -> np.ndarray:
     n = mu.size
-    res = minimize(
+    res = minimize(  # type: ignore[call-overload]
         lambda w: -(mu @ w) + 0.5 * lam * w @ cov @ w,
         np.full(n, 1.0 / n),
         jac=lambda w: -mu + lam * cov @ w,
@@ -133,7 +133,7 @@ def robust_weights(
         s = np.sqrt(w @ om @ w)
         return -m + kappa * (om @ w) / s + risk_aversion * c @ w
 
-    res = minimize(
+    res = minimize(  # type: ignore[call-overload]
         f,
         w0,
         jac=g,

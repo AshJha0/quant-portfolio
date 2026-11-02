@@ -29,6 +29,7 @@ which is why the market trades the resetting form.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy.optimize import brentq
@@ -113,8 +114,10 @@ class FloatFloatXccy:
             return nq * self._leg_constant(
                 t, c.quote_projection, c.quote_discount, self.spread_quote)
         # value at 0 of S(t_{i-1}) paid at t_{i-1} is S_0 D_base(t_{i-1})
-        db = np.where(t[:-1] <= 0.0, 1.0, np.asarray(c.base_discount.df(t[:-1]), dtype=float))
-        dq = np.where(t[:-1] <= 0.0, 1.0, np.asarray(c.quote_discount.df(t[:-1]), dtype=float))
+        bd: Any = c.base_discount
+        qd: Any = c.quote_discount
+        db = np.where(t[:-1] <= 0.0, 1.0, np.asarray(bd.df(t[:-1]), dtype=float))
+        dq = np.where(t[:-1] <= 0.0, 1.0, np.asarray(qd.df(t[:-1]), dtype=float))
         per = self._period_values(t, c.quote_projection, c.quote_discount, self.spread_quote)
         return float(c.spot * self.notional_base * np.sum(db / dq * per))
 

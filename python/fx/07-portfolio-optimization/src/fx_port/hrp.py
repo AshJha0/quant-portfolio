@@ -18,6 +18,8 @@ inverse-variance portfolio, so HRP equals w_i proportional to 1 / sigma_i^2.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from scipy.cluster.hierarchy import leaves_list, linkage
 from scipy.spatial.distance import squareform
@@ -43,7 +45,7 @@ def correlation_distance(cov: np.ndarray) -> np.ndarray:
     return d
 
 
-def quasi_diagonal_order(cov: np.ndarray, method: str = "single") -> np.ndarray:
+def quasi_diagonal_order(cov: np.ndarray, method: Literal["single", "complete", "average", "weighted", "centroid", "median", "ward"] = "single") -> np.ndarray:
     d = correlation_distance(cov)
     if d.shape[0] == 1:
         return np.array([0])
@@ -58,7 +60,7 @@ def _cluster_var(c: np.ndarray, idx: np.ndarray) -> float:
     return float(ivp @ sub @ ivp)
 
 
-def hrp_weights(cov: np.ndarray, method: str = "single") -> np.ndarray:
+def hrp_weights(cov: np.ndarray, method: Literal["single", "complete", "average", "weighted", "centroid", "median", "ward"] = "single") -> np.ndarray:
     """HRP weights (long-only, summing to one) in the input asset order."""
     c = _check_cov(cov)
     order = quasi_diagonal_order(c, method)

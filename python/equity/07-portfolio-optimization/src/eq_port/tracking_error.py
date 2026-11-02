@@ -77,7 +77,7 @@ def te_constrained_weights(
             "jac": lambda w: -2.0 * c @ (w - b),
         },
     ]
-    res = minimize(
+    res = minimize(  # type: ignore[call-overload]
         lambda w: -(al @ w),
         b.copy(),
         jac=lambda w: -al,

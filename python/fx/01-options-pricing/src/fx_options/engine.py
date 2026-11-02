@@ -79,5 +79,7 @@ def gk_price_batch(S, K, T, r_d, r_f, sigma, is_call, *, engine: Engine = "pytho
         return mod.fx_gk_price_batch(*cols, flags)
     if any(c.shape != flags.shape for c in cols) or flags.ndim != 1:
         raise ValueError("length mismatch: inputs must be equal-length 1-D arrays")
-    return np.array([_gk_price(*(float(c[i]) for c in cols), "call" if flags[i] else "put")
+    s, k, t, rd, rf, v = cols
+    return np.array([_gk_price(float(s[i]), float(k[i]), float(t[i]), float(rd[i]), float(rf[i]),
+                               float(v[i]), "call" if flags[i] else "put")
                      for i in range(flags.size)], dtype=np.float64)

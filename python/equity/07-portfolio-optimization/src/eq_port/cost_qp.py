@@ -95,7 +95,7 @@ def rebalance(
         gap = 1.0 - x0w.sum()
         start[:n] = max(gap, 0.0) / n
         start[n:] = max(-gap, 0.0) / n
-    res = minimize(
+    res = minimize(  # type: ignore[call-overload]
         obj,
         start,
         jac=jac,

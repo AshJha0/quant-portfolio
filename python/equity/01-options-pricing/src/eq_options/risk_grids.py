@@ -31,12 +31,12 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from .black_scholes import bs_price
+from .black_scholes import OptionType, bs_price
 from .greeks import bs_greeks
 
 __all__ = ["Position", "book_value", "scenario_grid", "spot_ladder", "vega_ladder"]
 
-Position = tuple[float, float, float, str]  # (quantity, K, T, option_type)
+Position = tuple[float, float, float, OptionType]  # (quantity, K, T, option_type)
 
 
 def book_value(positions: Sequence[Position], S: float, r: float, sigma: float, q: float = 0.0) -> float:

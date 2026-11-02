@@ -21,10 +21,13 @@ Greeks come back as ``BSGreeks`` from every engine.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from qp_core.engines import Engine, load_engine
 
 from .binomial import crr_price as _crr_price
+from .black_scholes import OptionType
 from .black_scholes import bs_price as _bs_price
 from .black_scholes import implied_vol as _implied_vol
 from .greeks import BSGreeks
@@ -34,7 +37,7 @@ __all__ = ["bs_greeks", "bs_price", "bs_price_batch", "crr_price", "implied_vol"
 
 
 def bs_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0,
-             option_type: str = "call", *, engine: Engine = "python") -> float:
+             option_type: OptionType = "call", *, engine: Engine = "python") -> float:
     """Black-Scholes-Merton price (Hull, Options, Futures and Other
     Derivatives, 11th ed., eq. 17.4)."""
     mod = load_engine(engine)
@@ -44,7 +47,7 @@ def bs_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.
 
 
 def bs_greeks(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0,
-              option_type: str = "call", *, engine: Engine = "python") -> BSGreeks:
+              option_type: OptionType = "call", *, engine: Engine = "python") -> BSGreeks:
     """Closed-form Black-Scholes-Merton Greeks as ``BSGreeks``."""
     mod = load_engine(engine)
     if mod is None:
@@ -53,7 +56,7 @@ def bs_greeks(S: float, K: float, T: float, r: float, sigma: float, q: float = 0
 
 
 def implied_vol(price: float, S: float, K: float, T: float, r: float, q: float = 0.0,
-                option_type: str = "call", *, engine: Engine = "python") -> float:
+                option_type: OptionType = "call", *, engine: Engine = "python") -> float:
     """Black-Scholes implied volatility. Every engine raises ``ValueError``
     for a quote outside the no-arbitrage bounds."""
     mod = load_engine(engine)
@@ -63,7 +66,7 @@ def implied_vol(price: float, S: float, K: float, T: float, r: float, q: float =
 
 
 def crr_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0,
-              option_type: str = "call", style: str = "american", n_steps: int = 500,
+              option_type: OptionType = "call", style: Literal["american", "european"] = "american", n_steps: int = 500,
               *, engine: Engine = "python") -> float:
     """Cox-Ross-Rubinstein tree price (Cox, Ross and Rubinstein 1979)."""
     mod = load_engine(engine)
@@ -85,5 +88,7 @@ def bs_price_batch(S, K, T, r, sigma, q, is_call, *, engine: Engine = "python") 
         return mod.eq_bs_price_batch(*cols, flags)
     if any(c.shape != flags.shape for c in cols) or flags.ndim != 1:
         raise ValueError("length mismatch: inputs must be equal-length 1-D arrays")
-    return np.array([_bs_price(*(float(c[i]) for c in cols), "call" if flags[i] else "put")
+    s, k, t, rr, v, qq = cols
+    return np.array([_bs_price(float(s[i]), float(k[i]), float(t[i]), float(rr[i]), float(v[i]),
+                               float(qq[i]), "call" if flags[i] else "put")
                      for i in range(flags.size)], dtype=np.float64)
