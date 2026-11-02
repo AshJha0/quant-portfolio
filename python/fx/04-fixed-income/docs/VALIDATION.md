@@ -126,3 +126,12 @@ deterministic and write nothing to disk.
   basis-quoted market (independent code path), abs 1e-6 on 1m notional.
 - A one-period MtM swap equals the constant-notional one.
 - At par, the MtM swap has zero FX delta; the constant-notional one does not.
+- MtM convexity: zero quote spread on one curve leaves the MtM leg at zero
+  whatever the vols; the factor has the right small-`a` limit (1e-6 rel);
+  a 200k-path quote-measure Monte Carlo of `E[D_q(0,t2) S(t1)]` (Hull-White
+  quote rate, lognormal spot, rho = 0.8) matches `c F D_q(t2)` within
+  4 SE + 2e-5 relative and sits more than 10 SE from the unadjusted value.
+- Seasoned trades: fixings are required inside a period; moving the FX
+  fixing moves the value by exactly the fixed flow (1e-12 rel); the
+  constant leg matches a hand computation; the value is continuous through
+  a reset.

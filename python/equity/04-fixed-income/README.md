@@ -7,10 +7,12 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
        -> Convexity -> Key-rate duration -> Scenario analysis
 ```
 
-* **Curves** (`curve.py`): discount curve with three interpolations:
+* **Curves** (`curve.py`): discount curve with four interpolations:
   log-linear on discount factors (default, piecewise-constant forwards),
-  linear on zeros (kept to show its forward sawtooth) and PCHIP on zeros
-  (C1 zeros, C0 forwards). Long-end extrapolation is flat and warned.
+  linear on zeros (kept to show its forward sawtooth), PCHIP on zeros
+  (C1 zeros, C0 forwards) and Hagan-West monotone convex (continuous,
+  local forwards that keep the monotonicity of the inputs). Long-end
+  extrapolation is flat and warned.
 * **Bootstrap** (`bootstrap.py`): sequential bootstrap from deposits, FRAs
   and par swaps (Brent per pillar), plus a coupon-bond bootstrap. Inputs
   reprice to 1e-10 (measured 4e-16) under local interpolation.
@@ -34,7 +36,8 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
   government plus corporate sample book; `data/live.py`: optional FRED CMT
   loader, never used by tests.
 
-Limitations: single-curve (no OIS discounting or tenor basis), curve
+Limitations: the bond and risk pipeline is single-curve (OIS discounting
+and tenor basis live in `multicurve.py`, below), curve
 inputs in year fractions rather than dated instruments, partial holiday
 calendars, KRDs in zero-rate space with no par-rate Jacobian.
 
@@ -102,6 +105,12 @@ print(fr.scenario_pnl_table(book, settle, curve,
 - `rate_options.py`: Black-76 and Bachelier caps, floors and swaptions on
   the multi-curve setup, with implied-vol inversion.
 - `hull_white.py`: one-factor Hull-White fitted to the curve; zero-bond
-  options, caps and Jamshidian swaptions; an exact-OU Monte Carlo.
+  options, caps and Jamshidian swaptions; an exact-OU Monte Carlo. The
+  short rate drives the OIS discount curve and swaptions can project their
+  floating leg on a separate forward curve (two-curve, deterministic
+  spread). `calibrate_hull_white` fits `(a, sigma)`, or `sigma` with `a`
+  fixed, to a grid of swaption vols (normal or Black).
 
-Tests: `tests/test_round3_rates.py` (14 tests).
+Tests: `tests/test_round3_rates.py` (14 tests) and
+`tests/test_round3_fix_rates.py` (monotone convex, two-curve Hull-White,
+calibration).

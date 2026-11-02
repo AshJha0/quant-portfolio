@@ -32,11 +32,24 @@ piecewise-constant instantaneous forwards with jumps at pillars (unit
 tested). Linear on zeros gives a sawtooth (numbers in `VALIDATION.md`).
 PCHIP on zeros gives C1 zero rates; the instantaneous forward
 `f = z + t z'` is then continuous but kinked at the pillars
-(`tests/test_carry_curve_claims.py`). Hagan-West monotone-convex
-interpolation is not implemented, and no interpolation here guarantees
-positive forwards.
+(`tests/test_carry_curve_claims.py`).
 
-All three interpolations share one code path and one test suite; the
+Hagan-West monotone convex (`monotone_convex`; Hagan and West 2006,
+Applied Mathematical Finance 13(2), Section 5) interpolates the
+instantaneous forward itself. On each segment the forward is the discrete
+forward plus a quadratic correction that integrates to zero, so pillars
+reprice exactly. The correction is picked from four shapes so the forward
+never leaves the range of its two node values. In plain terms: the
+forward curve is continuous, it rises wherever the inputs rise, and a
+pillar bump moves at most two segments on each side. It does not by
+itself guarantee positive forwards (the paper's optional collar is not
+implemented), and its first segment `(0, t_1]` is interpolated too, so the
+short end differs a little from the other schemes. Tested for exact
+repricing, continuity at pillars, monotone inputs giving a monotone
+forward, locality, and every one of the four correction shapes
+(`tests/test_round3_fix_rates.py`).
+
+All four interpolations share one code path and one test suite; the
 choice is a constructor argument.
 
 ## 2. Instrument treatment
@@ -175,5 +188,25 @@ rate (Hull 2018, ch. 29). Bachelier versions for low or negative rates
 
 **Hull-White.** `dr = (theta(t) - a r) dt + sigma dW`, fitted to today's
 curve. Closed-form zero bonds, zero-bond options, caplets and Jamshidian
-swaptions (Brigo and Mercurio 2006, eqs. 3.36-3.45). Assumptions: one curve
-for the model; constant a and sigma (no calibration to a vol cube yet).
+swaptions (Brigo and Mercurio 2006, eqs. 3.36-3.45). Constant a and sigma.
+
+*Two-curve.* The model is fitted to the OIS discount curve. A floating leg
+on another index uses Henrard's (2010) deterministic multiplicative
+spread: the ratio of projection to discount forward factors for each float
+period is held at today's value. The payer swaption is then a put on a
+coupon bond with coefficient `K tau` on fixed dates, `1` at the end and
+`-(beta - 1)` on float dates, struck at `beta_1`. Jamshidian still applies
+because every zero bond falls as `r` rises, so the pieces all change sign
+at the same root; the code refuses a bond that does not cross its strike.
+Checked: with the forward curve equal to the discount curve the
+single-curve price comes back to 1e-14; payer minus receiver equals
+`annuity x (F - K)` from `rate_options` (an independent code path); a
+200k-path Monte Carlo agrees within 4 standard errors.
+
+*Calibration.* `calibrate_hull_white` turns each swaption vol into a price
+with the annuity formula, then fits `(a, sigma)` by least squares on price
+errors divided by the annuity (so residuals are in rate units). With `a`
+given only `sigma` is fitted, which is the usual choice because one
+expiry column barely pins `a` down. Checked by round trip: prices from a
+known model, turned into normal or Black vols, give back `a` and `sigma`
+to 1e-6 relative.

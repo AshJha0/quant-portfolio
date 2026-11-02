@@ -77,8 +77,8 @@ December.
 - Curve controls: repricing tolerance, stale-quote checks, day-over-day
   jump thresholds.
 - Model card: assumptions A1-A9 in METHODOLOGY.md. The main reservations
-  are A2 (no OIS tenor basis or CSA optionality), A5 (no MtM-resetting
-  basis swap) and A6 (partial calendars).
+  are A2 (no OIS tenor basis or CSA optionality), A5 (MtM-resetting
+  swaps only in `xccy_float`) and A6 (partial calendars).
 - Arbitrage monitor: `detect_cip_arbitrage` with `min_pnl` set to the
   balance-sheet charge, alerts to treasury. A non-finite quote raises a
   named error, so a broken feed reaches the alert queue instead of

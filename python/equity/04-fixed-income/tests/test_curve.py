@@ -119,6 +119,9 @@ class TestExtrapolation:
         with warnings.catch_warnings():
             warnings.simplefilter("error", ExtrapolationWarning)
             z = any_curve.zero_rate(0.1)
+        if any_curve.interpolation == "monotone_convex":
+            # Hagan-West interpolates the first segment too (documented in curve.py)
+            return
         assert z == pytest.approx(ZEROS[0], abs=1e-12)
 
 
