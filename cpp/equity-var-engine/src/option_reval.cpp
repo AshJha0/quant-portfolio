@@ -118,4 +118,57 @@ std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs, std::span<c
     return pnl;
 }
 
+std::vector<double> option_book_pnl(std::span<const OptionLeg> legs,
+                                    std::span<const double> exposures, const Matrix& r,
+                                    double dt) {
+    const std::size_t n = r.rows();
+    const std::size_t nf = r.cols();
+    require(n > 0 && nf > 0, "factor_returns must be non-empty");
+    require(exposures.empty() || exposures.size() == nf, "exposures must be empty or match columns");
+    require(!legs.empty() || !exposures.empty(), "book has no positions");
+    for (double w : exposures) require(std::isfinite(w), "exposures must be finite");
+    const std::span<const double> x(r.data(), n * nf);
+    std::vector<double> pnl =
+        legs.empty() ? std::vector<double>(n, 0.0) : full_revaluation_pnl(legs, x, {}, nf, dt);
+    if (legs.empty()) {
+        for (double v : x) require(std::isfinite(v), "spot_log_returns must be finite");
+    }
+    if (!exposures.empty()) {
+        for (std::size_t i = 0; i < n; ++i) {
+            double s = 0.0;
+            for (std::size_t j = 0; j < nf; ++j) s += exposures[j] * x[i * nf + j];
+            pnl[i] += s;
+        }
+    }
+    return pnl;
+}
+
+TailRisk historical_option_var_es(std::span<const OptionLeg> legs,
+                                  std::span<const double> exposures, const Matrix& r, double alpha,
+                                  double dt) {
+    require(r.rows() >= kMinHistObs, "historical option VaR needs at least kMinHistObs rows");
+    require(std::isfinite(alpha) && alpha > 0.0 && alpha < 0.5, "alpha must be in (0, 0.5)");
+    const std::vector<double> pnl = option_book_pnl(legs, exposures, r, dt);
+    return var_es_order_statistic(pnl, alpha);
+}
+
+MonteCarloResult monte_carlo_option_var(std::span<const OptionLeg> legs,
+                                        std::span<const double> exposures, const Matrix& cov,
+                                        double alpha, std::size_t n_paths, Dist dist, double df,
+                                        std::uint64_t seed, std::size_t n_boot, Repair repair,
+                                        double dt) {
+    if (legs.empty()) {
+        return monte_carlo_var(exposures, cov, alpha, n_paths, dist, df, seed, n_boot, repair);
+    }
+    require(cov.rows() == cov.cols() && cov.rows() > 0, "cov must be square and non-empty");
+    require(exposures.empty() || exposures.size() == cov.rows(),
+            "exposures must be empty or match cov");
+    require(std::isfinite(alpha) && alpha > 0.0 && alpha < 0.5, "alpha must be in (0, 0.5)");
+    const Matrix scen = simulate_factor_returns(cov, n_paths, dist, df, seed, repair);
+    const std::vector<double> pnl = option_book_pnl(legs, exposures, scen, dt);
+    MonteCarloResult res = mc_tail_metrics(pnl, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL);
+    res.n_paths = n_paths;
+    return res;
+}
+
 }  // namespace eqvar

@@ -1,11 +1,12 @@
 # Equity VaR Engine (Rust)
 
-A dependency-free Rust port of the linear-book part of the Python library
+A dependency-free Rust port of the Python library
 [`python/equity/03-var-es-engine`](../../python/equity/03-var-es-engine)
 (`eq_var`), alongside [`cpp/equity-var-engine`](../../cpp/equity-var-engine).
 It computes historical, parametric and Monte Carlo VaR and ES for a book of
-dollar exposures to equity factors, and backtests the forecasts. Option
-revaluation is in the Python library only.
+dollar exposures to equity factors, and backtests the forecasts. European
+options on those factors are repriced in full in every historical or Monte
+Carlo scenario (see [Option VaR](#option-var-full-revaluation)).
 
 The conventions are shared with every VaR engine in the repository and are
 checked by the shared `conv_*` goldens (see `docs/METHODOLOGY.md` section 0):
@@ -188,15 +189,37 @@ src/
   stats.rs               special functions, moments
   rng.rs                 Rng over qp-core's xoshiro256++ (Box-Muller), gamma
   bin/bench.rs           per-call latency distribution, writes bench/results.json
-tests/                   14 integration files; golden/mod.rs is generated
+tests/                   16 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE
 ```
 
-## Option revaluation (Round 3)
+## Option VaR (full revaluation)
 
-`option_reval` adds Black-Scholes-Merton pricing with a carry yield
-(dividend yield), closed-form Greeks (delta, gamma, vega, vanna, volga, theta), full
-revaluation P&L per scenario and the delta-gamma approximation. It mirrors
-`eq_var.revaluation`; the tests pin golden values from the Python module to
-1e-11. It is self-contained (its own normal CDF call) and does not use the
-batch kernel API, so adapting it to the Round 3 kernels is integration work.
+`option_reval` prices European options by Black-Scholes-Merton with a
+dividend yield, gives closed-form Greeks and full-revaluation and
+delta-gamma P&L, mirroring `eq_var.revaluation`. Two functions put it into
+the VaR pipeline:
+
+- `historical_option_var_es(legs, exposures, factor_returns, alpha, dt)`
+  returns `(VaR, ES)` with each of the `T >= MIN_OBS` historical rows as a
+  scenario: every leg repriced at `S e^x` with `tau - dt` left, plus the
+  linear `exposures . r`.
+- `monte_carlo_option_run(legs, exposures, cov, alpha, n_paths, tail, seed,
+  n_boot, dt)` returns an `McRun` from the same simulation as
+  `monte_carlo_run`, repriced path by path.
+
+Options are held at today's implied vol (no vol factor yet). The linear legs
+use `exposures . r` on log returns, as the rest of this crate does.
+
+Parity with Python. The historical numbers are pinned to the Python
+reference (`eq_var.revaluation.full_revaluation_pnl` followed by the S2 order
+statistic) at 1e-11 relative, for an options-only book and for options plus
+a linear book, with and without ageing (`dt = 1/252`). The goldens come from
+[`cpp/equity-var-engine/tools/gen_option_var_golden.py`](../../cpp/equity-var-engine/tools/gen_option_var_golden.py),
+which builds a closed-form scenario panel so no RNG is shared. Monte Carlo
+cannot match numpy draw for draw, so its test uses a case with a known
+answer: a long call on one normal factor has P&L monotone in the factor, so
+the exact VaR is minus the P&L at sigma z_alpha and the exact ES is a
+one-dimensional integral. The engine must land within 4 bootstrap standard
+errors (ES within 2 %). A book with no option legs goes down the unchanged
+linear path, and the tests check the two give identical bits.

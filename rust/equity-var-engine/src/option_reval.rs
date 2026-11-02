@@ -9,9 +9,18 @@
 //!
 //! Scenario layout: row-major `n_scenarios x n_factors` spot log returns;
 //! vol shocks (absolute, decimal) in the same layout, or empty for none.
+//!
+//! [`historical_option_var_es`] and [`monte_carlo_option_run`] wire the
+//! pricer into historical simulation and Monte Carlo: every scenario reprices
+//! every option leg in full (Jorion, *Value at Risk*, 3rd ed., ch. 10). A book
+//! with no option legs goes down the unchanged linear path.
 
+use crate::matrix::Matrix;
+use crate::monte_carlo::{
+    monte_carlo_run, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se, McRun, MIN_PATHS,
+};
 use crate::stats::{normal_cdf as ncdf, normal_pdf as npdf};
-use crate::{EqVarError, Result};
+use crate::{validate_alpha, EqVarError, Result, TailModel};
 
 /// Call or put.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,4 +221,126 @@ pub fn delta_gamma_pnl(
         }
     }
     Ok(pnl)
+}
+
+/// Scenario P&L of a mixed book: `exposures . r` (the engine's linear
+/// convention, unchanged) plus [`full_revaluation_pnl`] of the option legs on
+/// the same rows. `exposures` is empty (options only) or has one entry per
+/// column; `legs` may be empty. No vol shocks.
+///
+/// # Errors
+/// Empty book or panel, shape mismatch, non-finite input, invalid legs.
+pub fn option_book_pnl(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    factor_returns: &Matrix,
+    dt: f64,
+) -> Result<Vec<f64>> {
+    let (n, nf) = (factor_returns.rows(), factor_returns.cols());
+    require(n > 0 && nf > 0, "factor_returns must be non-empty")?;
+    require(
+        exposures.is_empty() || exposures.len() == nf,
+        "exposures must be empty or match columns",
+    )?;
+    require(
+        !legs.is_empty() || !exposures.is_empty(),
+        "book has no positions",
+    )?;
+    require(
+        exposures.iter().all(|w| w.is_finite()),
+        "exposures must be finite",
+    )?;
+    let x = factor_returns.as_slice();
+    let mut pnl = if legs.is_empty() {
+        require(
+            x.iter().all(|v| v.is_finite()),
+            "spot_log_returns must be finite",
+        )?;
+        vec![0.0; n]
+    } else {
+        full_revaluation_pnl(legs, x, &[], nf, dt)?
+    };
+    if !exposures.is_empty() {
+        for (i, p) in pnl.iter_mut().enumerate() {
+            let row = &x[i * nf..(i + 1) * nf];
+            let mut s = 0.0;
+            for (w, r) in exposures.iter().zip(row) {
+                s += w * r;
+            }
+            *p += s;
+        }
+    }
+    Ok(pnl)
+}
+
+/// Historical-simulation VaR / ES with full option revaluation: each of the
+/// `T >= MIN_OBS` rows of `factor_returns` is a scenario, the book P&L is
+/// [`option_book_pnl`], and `(VaR, ES)` come from the S2 order statistic.
+/// With no option legs this is exactly the linear path.
+///
+/// # Errors
+/// Fewer than `MIN_OBS` rows, invalid `alpha`, or any [`option_book_pnl`] error.
+pub fn historical_option_var_es(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    factor_returns: &Matrix,
+    alpha: f64,
+    dt: f64,
+) -> Result<(f64, f64)> {
+    validate_alpha(alpha)?;
+    require(
+        factor_returns.rows() >= crate::historical::MIN_OBS,
+        "historical option VaR needs at least MIN_OBS rows",
+    )?;
+    let pnl = option_book_pnl(legs, exposures, factor_returns, dt)?;
+    crate::tail::empirical_var_es(&pnl, alpha)
+}
+
+/// Monte Carlo VaR / ES with full option revaluation: the same simulation as
+/// [`monte_carlo_run`] (model, seed, bootstrap seed offset), then
+/// [`option_book_pnl`] on every path. With no option legs it calls
+/// [`monte_carlo_run`] unchanged.
+///
+/// # Errors
+/// Invalid `alpha`, fewer than `MIN_PATHS` paths, `n_boot < 2`, shape
+/// mismatch, invalid legs or tail model, unfactorisable covariance.
+#[allow(clippy::too_many_arguments)]
+pub fn monte_carlo_option_run(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    cov: &Matrix,
+    alpha: f64,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    n_boot: usize,
+    dt: f64,
+) -> Result<McRun> {
+    if legs.is_empty() {
+        return monte_carlo_run(exposures, cov, alpha, n_paths, tail, seed, n_boot);
+    }
+    validate_alpha(alpha)?;
+    require(n_boot >= 2, "n_boot must be >= 2")?;
+    require(n_paths >= MIN_PATHS, "need at least MIN_PATHS paths")?;
+    require(
+        cov.rows() == cov.cols() && cov.rows() > 0,
+        "cov must be square and non-empty",
+    )?;
+    require(
+        exposures.is_empty() || exposures.len() == cov.rows(),
+        "exposures must be empty or match cov",
+    )?;
+    let (scen, jitter) = simulate_factor_returns_jitter(cov, n_paths, tail, seed)?;
+    let pnl = option_book_pnl(legs, exposures, &scen, dt)?;
+    let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
+    let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
+    let se_kde = var_kde_se(&pnl, alpha)?;
+    Ok(McRun {
+        pnl,
+        var,
+        es,
+        se,
+        se_kde,
+        jitter,
+    })
 }

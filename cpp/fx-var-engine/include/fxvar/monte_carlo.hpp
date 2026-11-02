@@ -33,11 +33,13 @@
 #include <cstdint>
 #include <map>
 #include <random>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "fxvar/book.hpp"
 #include "fxvar/matrix.hpp"
+#include "fxvar/option_reval.hpp"
 #include "fxvar/returns.hpp"
 
 namespace fxvar {
@@ -150,5 +152,18 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl, double alpha
 /// exactly zero.
 MonteCarloResult monte_carlo_var(const Book& book, const Market& market, const FactorCov& cov,
                                  const MonteCarloOptions& opts = {});
+
+/// Monte Carlo VaR/ES with full option revaluation: the scenarios are
+/// simulated on the union of the book's and the options' factors (same
+/// model, seed, horizon and repair as above), the linear book is revalued
+/// through CompiledBook and every option leg (leg.factor indexes
+/// `option_factors`) is repriced by Garman-Kohlhagen, aged by `dt` years.
+/// The book may be empty; if not, its base must be USD. With no options
+/// this is the linear overload, unchanged.
+MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
+                                 std::span<const OptionLeg> options,
+                                 const std::vector<std::string>& option_factors,
+                                 const FactorCov& cov, const MonteCarloOptions& opts = {},
+                                 double dt = 0.0);
 
 }  // namespace fxvar

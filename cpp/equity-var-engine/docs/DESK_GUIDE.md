@@ -10,7 +10,7 @@ engine. The engine handles linear books only.
 Python eq_var   : model development, full revaluation, stress, studies
       |  golden vectors (committed JSON -> generated C++ header)
       v
-C++ eqvar       : linear-book port for batch and intraday VaR / ES / backtests
+C++ eqvar       : port for batch and intraday VaR / ES / backtests (linear + options)
 ```
 
 A methodology change lands in Python first, regenerates the golden vectors,

@@ -14,8 +14,9 @@ research (Python eq_var): model choices, full revaluation, stress
 C++ eqvar (linear book)     Rust eq_var_engine (linear book)
 ```
 
-The Python library owns model development and option revaluation. The C++
-and Rust engines are linear-book ports written separately against the same
+The Python library owns model development, vol shocks and P&L explain. The
+C++ and Rust engines (linear books plus European options repriced in full per
+scenario) are written separately against the same
 goldens. A methodology change lands in Python first, regenerates the JSON,
 and is then ported; a failing golden test is the tripwire for an unported
 change.

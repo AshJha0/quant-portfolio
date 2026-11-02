@@ -8,14 +8,23 @@
 //
 // Scenario layout: row-major n_scenarios x n_factors spot log returns; vol
 // shocks (absolute, decimal) in the same layout or empty for none.
-// Self-contained (std::erfc normal CDF) so it does not depend on the kernel
-// API that Round 3 lane B is changing.
+// The pricer is self-contained (std::erfc normal CDF). The two VaR drivers at
+// the bottom (historical_option_var_es, monte_carlo_option_var) wire the
+// pricer into historical simulation and Monte Carlo: every scenario reprices
+// every option leg in full (Hull, OFOD 11th ed., ch. 22 "full revaluation";
+// Jorion, Value at Risk, 3rd ed., ch. 10). A book with no option legs goes
+// down the unchanged linear path.
 
 #pragma once
 
 #include <cstddef>
 #include <span>
 #include <vector>
+
+#include "eqvar/historical.hpp"
+#include "eqvar/matrix.hpp"
+#include "eqvar/monte_carlo.hpp"
+#include "eqvar/parametric.hpp"
 
 namespace eqvar {
 
@@ -56,5 +65,33 @@ struct BsmGreeks {
 [[nodiscard]] std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs,
                                                   std::span<const double> spot_log_returns,
                                                   std::size_t n_factors);
+
+/// Scenario P&L of a mixed book: exposures . r (the engine's linear
+/// convention, unchanged) plus full_revaluation_pnl of the option legs on the
+/// same rows. `factor_returns` is n x J spot log returns; `exposures` is empty
+/// (options only) or has J entries; legs may be empty. No vol shocks.
+[[nodiscard]] std::vector<double> option_book_pnl(std::span<const OptionLeg> legs,
+                                                  std::span<const double> exposures,
+                                                  const Matrix& factor_returns, double dt = 0.0);
+
+/// Historical-simulation VaR / ES with full option revaluation: each of the
+/// T >= kMinHistObs historical rows of `factor_returns` is a scenario, the
+/// book P&L is option_book_pnl, and VaR / ES come from
+/// var_es_order_statistic. With no option legs this is exactly
+/// var_es_order_statistic(exposures . r), the linear path.
+[[nodiscard]] TailRisk historical_option_var_es(std::span<const OptionLeg> legs,
+                                                std::span<const double> exposures,
+                                                const Matrix& factor_returns, double alpha = 0.01,
+                                                double dt = 0.0);
+
+/// Monte Carlo VaR / ES with full option revaluation: simulate_factor_returns
+/// (same model, seed and repair as monte_carlo_var), option_book_pnl on every
+/// path, then mc_tail_metrics. With no option legs it calls monte_carlo_var
+/// unchanged. `cov` is J x J; `exposures` is empty or has J entries.
+[[nodiscard]] MonteCarloResult monte_carlo_option_var(
+    std::span<const OptionLeg> legs, std::span<const double> exposures, const Matrix& cov,
+    double alpha = 0.01, std::size_t n_paths = 100'000, Dist dist = Dist::Normal, double df = 6.0,
+    std::uint64_t seed = 0, std::size_t n_boot = 200, Repair repair = Repair::None,
+    double dt = 0.0);
 
 }  // namespace eqvar

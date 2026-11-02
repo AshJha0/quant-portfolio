@@ -3,8 +3,9 @@
 How a global FX risk function would run this engine: regional sweeps,
 per-currency limits, the peg watchlist, backtests, and the regression gate
 against the Python engine. Written for the risk manager who reads the
-numbers. The engine handles cash, spot and forwards; options stay in the
-Python engine.
+numbers. The engine handles cash, spot, forwards and European options
+(Garman-Kohlhagen, repriced in every scenario with vol held at today's
+level); vol shocks and P&L explain stay in the Python engine.
 
 ## 1. Regional sweeps
 

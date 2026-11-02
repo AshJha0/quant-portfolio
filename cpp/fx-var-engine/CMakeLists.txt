@@ -111,6 +111,7 @@ if(BUILD_TESTING)
     test_fuzz
     test_latency_api
     test_option_reval
+    test_option_var
   )
   foreach(t IN LISTS FXVAR_TESTS)
     add_executable(${t} tests/${t}.cpp)

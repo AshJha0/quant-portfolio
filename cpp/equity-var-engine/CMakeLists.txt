@@ -109,6 +109,7 @@ if(BUILD_TESTING)
     test_conventions
     test_latency_api
     test_option_reval
+    test_option_var
   )
   foreach(t IN LISTS EQVAR_TESTS)
     add_executable(${t} tests/${t}.cpp)

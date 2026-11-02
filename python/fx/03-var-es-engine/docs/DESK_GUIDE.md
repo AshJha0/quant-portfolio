@@ -161,8 +161,9 @@ trading book. The engine handles it with `Book(base="EUR")`:
   suite is the regression harness. Any change that shifts a validated
   number fails a test before it reaches production.
 * **Cross-language contract**: the C++ (`cpp/fx-var-engine`) and Rust
-  (`rust/fx-var-engine`) engines are linear-book ports. They revalue spot,
-  forward and cash positions, not options. They assert golden constants
+  (`rust/fx-var-engine`) engines revalue spot, forward and cash positions,
+  and European options by Garman-Kohlhagen with vol held fixed per scenario
+  (option VaR is checked against `fx_var.revaluation`). They assert golden constants
   generated from this package by `tests/golden/generate_golden.py`.
   `tests/test_golden_vectors.py` checks the committed JSON against a fresh
   build to a 16-ulp bound. It also checks the shared `conv_*` convention

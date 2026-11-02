@@ -1,10 +1,11 @@
 //! # eq_var_engine: equity market-risk engine (VaR / ES / backtesting)
 //!
-//! Linear-book port of the Python research library
+//! Port of the Python research library
 //! `python/equity/03-var-es-engine` (package `eq_var`), alongside the C++
 //! engine `cpp/equity-var-engine` (namespace `eqvar`). The Rust engine
-//! revalues books linearly (dollar exposures times factor returns); the
-//! Python library also does full revaluation. The shared conventions are
+//! revalues the linear book as dollar exposures times factor returns and
+//! reprices European options in full per scenario ([`option_reval`]); the
+//! Python library also shocks vol and explains P&L. The shared conventions are
 //! checked against the same golden vectors (see
 //! `tests/test_cross_language.rs` and `docs/VALIDATION.md`).
 //!

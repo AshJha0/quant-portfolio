@@ -9,9 +9,9 @@
 //! ES, the bootstrap standard error ([`var_bootstrap_se`], primary) and the
 //! KDE standard error ([`var_kde_se`], diagnostic) from the same scenarios.
 //!
-//! This is a linear-book engine: for a linear book MC adds nothing over the
-//! closed form except a check of it. Option revaluation lives in the Python
-//! library.
+//! For a linear book MC adds nothing over the closed form except a check of
+//! it; option books go through
+//! [`crate::option_reval::monte_carlo_option_run`], which reprices every path.
 //!
 //! Determinism: every draw comes from a seeded [`crate::rng::Rng`]
 //! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma). There is no

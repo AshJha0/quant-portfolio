@@ -185,7 +185,8 @@ flowchart TD
 ```
 
 `alpha` is the tail probability in (0, 0.5) everywhere. The C++ and Rust VaR
-engines are linear-book ports and do not revalue options.
+engines revalue linear books and European options (full repricing per
+scenario, vol held fixed).
 
 ---
 
@@ -302,7 +303,7 @@ flowchart LR
         REV --> FRTB["frtb_ima"]
     end
     subgraph CMP["cpp + rust VaR engines"]
-        OR["option_reval<br/>(not yet in the VaR pipeline)"]
+        OR["option_reval"] --> OV["historical / MC option VaR"]
     end
     REV -.->|goldens 1e-11| OR
 ```

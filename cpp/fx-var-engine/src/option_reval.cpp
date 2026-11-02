@@ -117,4 +117,46 @@ std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs, std::span<c
   return pnl;
 }
 
+OptionBookLayout layout_option_book(const Book& book, const Market& market,
+                                    std::span<const OptionLeg> options,
+                                    const std::vector<std::string>& option_factors) {
+  require(!options.empty(), "no option legs");
+  OptionBookLayout out;
+  if (!book.empty()) {
+    require(book.base() == "USD", "a book holding options must report in USD");
+    out.linear.emplace(book, market);
+    out.factors = out.linear->factors();
+  }
+  for (const auto& name : option_factors) {
+    require(name.size() > 3 && name.rfind("FX:", 0) == 0 && name != "FX:USD",
+            "option factors must be named FX:CCY with CCY != USD");
+  }
+  out.legs.assign(options.begin(), options.end());
+  for (auto& l : out.legs) {
+    check_leg(l);
+    require(l.factor < option_factors.size(), "leg factor index out of range");
+    const std::string& name = option_factors[l.factor];
+    auto it = std::find(out.factors.begin(), out.factors.end(), name);
+    if (it == out.factors.end()) {
+      out.factors.push_back(name);
+      it = out.factors.end() - 1;
+    }
+    l.factor = static_cast<std::size_t>(it - out.factors.begin());
+  }
+  return out;
+}
+
+std::vector<double> option_book_pnl(const OptionBookLayout& layout, const ReturnsMatrix& scenarios,
+                                    double dt) {
+  const ReturnsMatrix rets = scenarios.select(layout.factors);
+  const std::size_t nf = layout.factors.size();
+  const std::vector<double>& x = rets.data.data();
+  std::vector<double> pnl = full_revaluation_pnl(layout.legs, x, {}, nf, dt);
+  if (layout.linear && !layout.linear->factors().empty()) {
+    const std::vector<double> lin = layout.linear->pnl(rets);
+    for (std::size_t i = 0; i < pnl.size(); ++i) pnl[i] += lin[i];
+  }
+  return pnl;
+}
+
 }  // namespace fxvar

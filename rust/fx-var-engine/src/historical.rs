@@ -26,6 +26,7 @@
 
 use crate::book::{Book, CompiledBook, Market};
 use crate::expected_shortfall::empirical_var_es;
+use crate::option_reval::{layout_option_book, option_book_pnl, OptionLeg};
 use crate::returns::{ewma_volatility, flag_peg_factors, validate_returns, ReturnsMatrix};
 use crate::stats::{validate_alpha, validate_horizon};
 use crate::{FxVarError, Result};
@@ -143,8 +144,26 @@ pub fn historical_var(
     validate_returns(returns, &factors, opts.min_obs)?;
     let mut rets = returns.select(&factors)?;
 
+    let weights = prepare_scenarios(&mut rets, opts, &mut res)?;
+
+    res.pnl = compiled.pnl_scenarios(&rets)?;
+    res.weights = weights.clone();
+    let (var1, es1) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
+    let scale = opts.horizon_days.sqrt();
+    res.var = var1 * scale;
+    res.es = es1 * scale;
+    Ok(res)
+}
+
+/// Peg warnings, scenario weights and (for `Filtered`) the per-factor FHS
+/// rescaling of `rets` in place. Shared by the linear and option drivers.
+fn prepare_scenarios(
+    rets: &mut ReturnsMatrix,
+    opts: &HistoricalOptions,
+    res: &mut HistoricalResult,
+) -> Result<Vec<f64>> {
     if opts.warn_pegs {
-        res.flagged_peg_factors = flag_peg_factors(&rets, crate::returns::PEG_VOL_THRESHOLD)?;
+        res.flagged_peg_factors = flag_peg_factors(rets, crate::returns::PEG_VOL_THRESHOLD)?;
         for f in &res.flagged_peg_factors {
             res.warnings.push(format!(
                 "peg blindness: factor {f} has daily vol < {} (pegged/managed currency). \
@@ -178,7 +197,7 @@ pub fn historical_var(
             w
         }
         HsMethod::Filtered => {
-            let ev = ewma_volatility(&rets, opts.ewma_lambda)?;
+            let ev = ewma_volatility(rets, opts.ewma_lambda)?;
             for i in 0..n {
                 for j in 0..rets.n_factors() {
                     let v = rets.data.get(i, j) / ev.sigma.get(i, j) * ev.sigma_next[j];
@@ -189,12 +208,61 @@ pub fn historical_var(
         }
     };
 
-    res.pnl = compiled.pnl_scenarios(&rets)?;
-    res.weights = weights.clone();
-    let (var1, es1) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
-    let scale = opts.horizon_days.sqrt();
-    res.var = var1 * scale;
-    res.es = es1 * scale;
+    Ok(weights)
+}
+
+/// Historical-simulation VaR/ES with full option revaluation: the linear
+/// book as in [`historical_var`] plus `options` (`leg.factor` indexes
+/// `option_factors`, e.g. `"FX:EUR"`), every leg repriced by
+/// Garman-Kohlhagen in every scenario and aged by `dt` years. All three
+/// methods apply (`Filtered` rescales the spot returns before repricing).
+/// `horizon_days` must be 1: sqrt-time scaling is not valid for a
+/// non-linear book. The book may be empty; if not, its base must be USD.
+/// With no options this is [`historical_var`], unchanged.
+///
+/// # Errors
+/// As [`historical_var`], plus [`crate::option_reval::layout_option_book`]
+/// errors and `horizon_days != 1`.
+pub fn historical_option_var(
+    book: &Book,
+    market: &Market,
+    options: &[OptionLeg],
+    option_factors: &[String],
+    returns: &ReturnsMatrix,
+    opts: &HistoricalOptions,
+    dt: f64,
+) -> Result<HistoricalResult> {
+    if options.is_empty() {
+        return historical_var(book, market, returns, opts);
+    }
+    validate_alpha(opts.alpha)?;
+    validate_horizon(opts.horizon_days)?;
+    if opts.horizon_days != 1.0 {
+        return Err(FxVarError::invalid(
+            "historical_option_var: sqrt-time scaling is not valid for a non-linear book; \
+             pass horizon_days = 1 and h-day returns instead",
+        ));
+    }
+    let layout = layout_option_book(book, market, options, option_factors)?;
+    let mut res = HistoricalResult {
+        var: 0.0,
+        es: 0.0,
+        alpha: opts.alpha,
+        horizon_days: opts.horizon_days,
+        method: opts.method,
+        pnl: Vec::new(),
+        weights: Vec::new(),
+        flagged_peg_factors: Vec::new(),
+        warnings: Vec::new(),
+    };
+    validate_returns(returns, &layout.factors, opts.min_obs)?;
+    let mut rets = returns.select(&layout.factors)?;
+    let weights = prepare_scenarios(&mut rets, opts, &mut res)?;
+    res.pnl = option_book_pnl(&layout, &rets, dt)?;
+    let (var, es) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
+    res.weights = weights;
+    res.var = var;
+    res.es = es;
     Ok(res)
 }
 

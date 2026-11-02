@@ -95,9 +95,11 @@ examples/run_pipeline.py
 docs/                  METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
 
-The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines are
-linear-book ports. They check their results against
-`tests/golden/golden_vectors.json`.
+The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines
+revalue cash, spot, forwards and European options (Garman-Kohlhagen, vol
+held fixed per scenario). They check their results against
+`tests/golden/golden_vectors.json` and, for option VaR, against
+`fx_var.revaluation`.
 
 ## Choosing an engine
 
@@ -137,4 +139,5 @@ a.total, a.component, a.percent   # components sum to the total (Euler)
 ```
 
 The compiled VaR engines gain the option revaluation part only
-(`option_reval` in C++ and Rust); see their READMEs.
+(`option_reval` in C++ and Rust, used by their historical and Monte Carlo
+VaR); see their READMEs.

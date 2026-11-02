@@ -39,7 +39,8 @@ Each VaR/ES number can come from three methods. The engines expose all three.
 - **Monte Carlo (`monte_carlo_var`)**: factor simulation with normal,
   Student-t or jump-mixture shocks. The Python FX engine reprices spot,
   forward and option positions in every scenario. The C++ and Rust VaR engines
-  are linear-book ports and do not revalue options yet. Every MC figure comes
+  reprice European options in every scenario too, with vol held at today's
+  level (no vol shocks). Every MC figure comes
   with a standard error.
 
 When methods disagree, the gap is a signal. FHS well below parametric means the
@@ -145,8 +146,11 @@ normal or Student-t factor model cannot represent a discrete jump.
 
 ## Where the C++ and Rust engines fit
 
-The C++ and Rust `equity-var-engine` and `fx-var-engine` are linear-book ports
-of the Python VaR/ES and backtesting design. They do not revalue options. They
+The C++ and Rust `equity-var-engine` and `fx-var-engine` are ports of the
+Python VaR/ES and backtesting design. Their historical and Monte Carlo VaR
+reprice European option legs in full in every scenario (BSM for equity,
+Garman-Kohlhagen for FX), matched to the Python revaluation at 1e-11 for
+historical VaR/ES; vol shocks and P&L explain stay in Python. They
 follow the same conventions listed at the top of this page. Their golden
 vectors come from the Python reference through the generator pipeline in
 [ARCHITECTURE.md](ARCHITECTURE.md) "Cross-language testing". Latency figures
