@@ -217,6 +217,30 @@ such a book. Pinned by
 | Hull-White | exact-OU MC (200k paths): bond, caplet, swaption | 4 SE + 2e-5 |
 | Hull-White | sigma -> 0 caplet is intrinsic; small a gives normal vol ~ sigma | 1e-6 / 2e-3 rel |
 
+### Outside check against QuantLib (`tests/test_hull_white_quantlib.py`, optional)
+
+The checks above all come from formulas written in this repo. This one
+compares against a library written by other people. QuantLib's
+`HullWhite` model and `JamshidianSwaptionEngine` price the same
+instruments on a flat continuously compounded curve; `SimpleDayCounter`
+with same-day dates makes QuantLib's year fractions whole years, so both
+sides see identical times. Three models (r, a, sigma) = (3%, 0.1, 1%),
+(4.5%, 0.03, 1.5%), (-0.5%, 0.5, 0.8%); for each, a zero-bond call and put
+and three swaptions (1x5 payer, 5x5 receiver ATM, 2x10 payer 100 bp ITM).
+
+| Item | Tolerance | Seen with QuantLib 1.44 |
+|---|---|---|
+| Zero-bond option | 1e-15 abs | 0 to 1.1e-16 |
+| Jamshidian swaption | 1e-7 rel | 3e-13 to 3.8e-8 |
+
+Example: at (3%, 0.1, 1%) the 1x5 payer struck at 3.2% is 0.0106067044526
+here and 0.0106067044526 in QuantLib. The larger swaption gaps (up to
+3.8e-8 relative on the 5x5 at a = 0.03) come from the accuracy of
+QuantLib's critical-rate root search, not from a formula difference;
+the zero-bond options, which need no root, agree to rounding. The test
+is skipped unless QuantLib is installed (`pip install QuantLib`); CI does
+not install it.
+
 ## November 2026 fixes (`tests/test_round3_fix_rates.py`)
 
 | Item | Oracle | Tolerance |

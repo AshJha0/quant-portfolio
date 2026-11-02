@@ -32,6 +32,10 @@ dataset (the research entries use ECB reference rates).
   or after 2028-11-13. Their formation/lookback history is one ECB EXR file,
   `research/forward/history_1999-01-04_2026-11-02.csv` (7,127 fixes, sha256
   d2e62948442b8c42c3739f95f6db04ca4894bdb20cce11b50ea322c9a943b6ea), fetched at signing.
+- Optional QuantLib cross-checks, skipped unless QuantLib is installed:
+  Hull-White zero-bond options and Jamshidian swaptions against QuantLib's
+  `HullWhite` model (1e-15 abs and 1e-7 rel), and Heston COS and
+  Gil-Pelaez prices against `AnalyticHestonEngine` (1e-9 and 1e-12 rel).
 
 #### Research results (ECB reference rates)
 
