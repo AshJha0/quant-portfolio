@@ -144,6 +144,8 @@ python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; hold-out code ready, not run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out code ready, not run | `results/regime_fx_basket_train.json` |
 | `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
+| `prereg/pairs-fx-g10-v2.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/pairs_fx_g10_v2_train.json` |
+| `prereg/momentum-fx-g10.md` | draft, unsigned; forward hold-out from 2026-11-03 | `results/momentum_fx_g10_train.json` |
 
 The two FX registrations were signed by the maintainer under owner decision
 9, which delegated pre-registration signing. The signature records the hash
@@ -165,6 +167,40 @@ Changing the variance rule would be a new registration.
 
 Training results (ECB data, 1999-2021) are numbers from the training
 period only. They are not out-of-sample evidence; the hold-out decides.
+
+## Forward hold-out registrations
+
+The 2022-2025 window can be used once, and the two signed registrations use
+it. New questions on the same free ECB data therefore need data nobody has
+seen: fixes from the signing date onward. Two drafts do that.
+
+- `prereg/pairs-fx-g10-v2.md` keeps the signed pairs design and changes one
+  thing, the Kalman observation variance, which makes v1 nearly dormant.
+  Four rules were fixed in a menu before the first run
+  (`forward_studies.VAR_RULES`) and all four were run on 1999-2021. Highest
+  training Sharpe picked the v1 rule again (0.241, 3 active years in 19).
+  An activity floor (trades in at least 75 % of training years) was then
+  added so the forward test has a chance of seeing trades; under it the
+  `diff` rule (variance of the daily change of the formation residual)
+  wins with 0.232 over 17 active years. The floor came after the results,
+  so the registration says so and counts every rule as a trial (6 with the
+  v1 drafting variants). The two Sharpes are a small fraction of a
+  standard error apart; the training data does not rank them.
+- `prereg/momentum-fx-g10.md`: long the three G10 currencies with the best
+  63-day spot return, short the worst three, monthly. One variant, taken
+  from Menkhoff et al. (2012) before any data was run. Training net
+  Sharpe -0.20 (Lo SE 0.20), so the training period weighs against it; the
+  forward data decides.
+
+Both are evaluated once, after 24 months of forward fixes, by
+Sharpe - 1.645 x Lo SE > 0. With about 500 daily returns that can only
+detect a true Sharpe above roughly 1.2, which the registrations state. The
+forward log that supplies the data is specified in `forward/SPEC.md`.
+Training runs:
+
+```bash
+python research/studies/forward_studies.py all
+```
 
 ## Models added here
 

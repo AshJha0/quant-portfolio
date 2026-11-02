@@ -16,6 +16,24 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 4: forward-hold-out pre-registrations (prereg2 lane)
+
+- Two new draft registrations, unsigned, whose hold-out is forward ECB data
+  from 2026-11-03 (evaluated from the forward log after 24 months):
+  `research/prereg/pairs-fx-g10-v2.md` (the signed pairs design with the
+  Kalman observation variance chosen on 1999-2021 from a fixed menu of four
+  rules, trial count 6; the activity floor that picked the `diff` rule was
+  added after the first run and is disclosed) and
+  `research/prereg/momentum-fx-g10.md` (monthly cross-sectional spot
+  momentum, 63-day lookback, long 3 / short 3, trial count 1).
+- `research/studies/forward_studies.py` runs both on training data only;
+  results in `research/results/pairs_fx_g10_v2_train.json` and
+  `momentum_fx_g10_train.json` (momentum training net Sharpe -0.20).
+- `research/forward/SPEC.md`: the contract between the registrations and
+  the forward log (fields, append-only and idempotent rules, the
+  recompute-from-fixes evaluation, and why pairs v2 waits for the v1
+  hold-out run).
+
 #### Round 3 fixes: options lane
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`

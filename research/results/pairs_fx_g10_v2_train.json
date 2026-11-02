@@ -1,0 +1,82 @@
+{
+  "prereg": "research/prereg/pairs-fx-g10-v2.md",
+  "prereg_sha256": "efc77f6465cf12faeef56b1a6130c0053545f5c5c391ca7b62cb484949d30118",
+  "registration_signed": false,
+  "mode": "train",
+  "period": {
+    "start": "1999-01-04",
+    "end": "2021-12-31"
+  },
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "primary_metric": "annualised net Sharpe, walk-forward test years (training)",
+  "trial_count": 6,
+  "variants": {
+    "levels": {
+      "n_days": 4867,
+      "active_days": 79,
+      "sharpe": 0.2406519989681297,
+      "sharpe_se_lo": 0.15393436174136432,
+      "ci95": [
+        -0.1747475582725665,
+        0.4561703018426657
+      ],
+      "entries": 7,
+      "years_with_trades": 3,
+      "net_return_total": 0.11929891228132841
+    },
+    "levels_x0.25": {
+      "n_days": 4867,
+      "active_days": 465,
+      "sharpe": 0.1597266235456646,
+      "sharpe_se_lo": 0.1979322422306471,
+      "ci95": [
+        -0.33329465162227184,
+        0.43555637472231945
+      ],
+      "entries": 57,
+      "years_with_trades": 15,
+      "net_return_total": 0.08674227431465603
+    },
+    "levels_x0.1": {
+      "n_days": 4867,
+      "active_days": 1135,
+      "sharpe": 0.12192299538265246,
+      "sharpe_se_lo": 0.2053984612938459,
+      "ci95": [
+        -0.3748979260552222,
+        0.43994901985765344
+      ],
+      "entries": 178,
+      "years_with_trades": 16,
+      "net_return_total": 0.07446959268711331
+    },
+    "diff": {
+      "n_days": 4867,
+      "active_days": 1486,
+      "sharpe": 0.23202204494451809,
+      "sharpe_se_lo": 0.1953956894087486,
+      "ci95": [
+        -0.20995232970489475,
+        0.576191566546102
+      ],
+      "entries": 259,
+      "years_with_trades": 17,
+      "net_return_total": 0.1498590330828738
+    }
+  },
+  "test_years": 19,
+  "min_active_year_frac": 0.75,
+  "chosen_rule": "diff",
+  "chosen_rule_without_activity_floor": "levels",
+  "deflated_sharpe_chosen": {
+    "n_trials": 6,
+    "trial_sr_variance": "1/(n-1), null sampling variance",
+    "sr_per_period": 0.014616014990663,
+    "skew": 24.868013251495654,
+    "kurtosis": 1228.816586687884,
+    "n_obs": 4867,
+    "sr0_per_period": 0.018638215585004985,
+    "dsr": 0.36886936795225966,
+    "z": -0.3348493439510351
+  }
+}
