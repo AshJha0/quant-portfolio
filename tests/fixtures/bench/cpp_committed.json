@@ -1,0 +1,9 @@
+[
+ {"engine": "equity-options", "kernel": "bs_price", "label": "before", "compiler": "gcc 15.2.0", "unit": "ns", "p50": 500.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "bs_price", "label": "after", "compiler": "gcc 15.2.0", "unit": "ns", "p50": 90.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "bs_price", "label": "after", "compiler": "clang 21.1", "unit": "ns", "p50": 110.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "mc_price n=10000", "label": "before", "compiler": "gcc 15.2.0", "unit": "ns", "p50": 9000.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "mc_price n=10000", "label": "after", "compiler": "gcc 15.2.0", "unit": "ns", "p50": 4000.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "mc_price n=10000", "label": "after", "compiler": "clang 21.1", "unit": "ns", "p50": 6000.0, "pass": 1},
+ {"engine": "equity-options", "kernel": "only_committed", "label": "after", "unit": "us", "p50": 3.0, "pass": 1}
+]

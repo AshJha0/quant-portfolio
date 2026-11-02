@@ -1,0 +1,4 @@
+[
+  {"engine": "fx-var-engine", "kernel": "pnl_one_scenario_250pos", "toolchain": "rustc 1.99.1", "n_iter": 100000, "calls_per_sample": 1, "unit": "ns", "p50": 2026, "p90": 2091},
+  {"engine": "fx-var-engine", "kernel": "normal_var_closed_form", "toolchain": "rustc 1.99.1", "n_iter": 100000, "calls_per_sample": 16, "unit": "ns", "p50": 12.5, "p90": 13.0}
+]

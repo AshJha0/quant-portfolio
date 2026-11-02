@@ -4,14 +4,21 @@ Inputs, all under one directory as laid down by ``actions/download-artifact``:
 
 * ``junit-py-<slug>-<pyver>/junit.xml``: pytest JUnit XML, one per project
   and Python version.
-* ``junit-cpp-<engine>-<compiler>/junit.xml``: ``ctest --output-junit``.
+  The shared package ``python/core`` reports under the slug ``core``.
+* ``junit-cpp-<engine>-<preset>/junit.xml``: ``ctest --preset <preset>
+  --output-junit``. ``<engine>`` ends in ``-engine``; ``<preset>`` is one of
+  the CMake presets (gcc, clang, asan, tsan, gcc16-cxx26, msvc) and may
+  itself contain a hyphen.
 * ``rust-<crate>/cargo-test.log``: ``cargo test`` output. Every
   ``test result: ok. N passed; M failed; K ignored`` line is summed.
+* ``junit-bind-<package>-<pyver>/junit.xml``: pytest for one binding package
+  (``cpp-nanobind`` or ``rust-pyo3``) on one Python version.
 
 Output: per language and per project, the number of tests that were executed
-and passed, failed, errored or were skipped. The headline Python counts use
-the reference Python version (``--ref-python``). The headline C++ counts use
-the reference compiler (``--ref-cxx``).
+and passed, failed, errored or were skipped. The headline Python and binding
+counts use the reference Python version (``--ref-python``). The headline C++
+counts use the reference preset (``--ref-cxx``). ``cpp_by_compiler`` keeps
+its name from schema 1 and is keyed by preset (schema 2 adds bindings).
 
 Usage::
 
@@ -27,7 +34,9 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+CPP_NAME = re.compile(r"^(?P<engine>.+-engine)-(?P<preset>[A-Za-z0-9][A-Za-z0-9-]*)$")
 RUST_LINE = re.compile(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored")
+SECTIONS = ("python", "cpp", "rust", "bindings")
 KEYS = ("passed", "failed", "errors", "skipped")
 
 
@@ -75,11 +84,12 @@ def _total(section: dict[str, dict[str, int]]) -> dict[str, int]:
 
 def aggregate(art: Path, ref_python: str, ref_cxx: str) -> dict:
     out: dict = {
-        "schema": 1,
+        "schema": 2,
         "reference": {"python": ref_python, "cxx": ref_cxx},
         "python": {}, "python_by_version": {},
         "cpp": {}, "cpp_by_compiler": {},
         "rust": {},
+        "bindings": {}, "bindings_by_version": {},
     }
     def _find(d: Path, fname: str) -> Path:
         # upload-artifact keeps paths relative to the common ancestor of the
@@ -99,15 +109,24 @@ def aggregate(art: Path, ref_python: str, ref_cxx: str) -> dict:
             if ver == ref_python:
                 out["python"][slug] = c
         elif name.startswith("junit-cpp-"):
-            engine, cxx = name.removeprefix("junit-cpp-").rsplit("-", 1)
+            m = CPP_NAME.match(name.removeprefix("junit-cpp-"))
+            if m is None:
+                raise ValueError(f"cannot split {name!r} into <engine>-<preset>")
+            engine, cxx = m["engine"], m["preset"]
             c = parse_junit(_find(d, "junit.xml"))
             out["cpp_by_compiler"].setdefault(engine, {})[cxx] = c
             if cxx == ref_cxx:
                 out["cpp"][engine] = c
         elif name.startswith("rust-"):
             out["rust"][name.removeprefix("rust-")] = parse_cargo(_find(d, "cargo-test.log"))
-    out["totals"] = {k: _total(out[k]) for k in ("python", "cpp", "rust")}
-    out["totals"]["all_passed"] = sum(out["totals"][k]["passed"] for k in ("python", "cpp", "rust"))
+        elif name.startswith("junit-bind-"):
+            pkg, ver = name.removeprefix("junit-bind-").rsplit("-", 1)
+            c = parse_junit(_find(d, "junit.xml"))
+            out["bindings_by_version"].setdefault(pkg, {})[ver] = c
+            if ver == ref_python:
+                out["bindings"][pkg] = c
+    out["totals"] = {k: _total(out[k]) for k in SECTIONS}
+    out["totals"]["all_passed"] = sum(out["totals"][k]["passed"] for k in SECTIONS)
     return out
 
 
@@ -116,13 +135,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("artefacts", type=Path)
     ap.add_argument("-o", "--output", type=Path, default=Path("counts.json"))
     ap.add_argument("--ref-python", default="3.12")
-    ap.add_argument("--ref-cxx", default="gcc")
+    ap.add_argument("--ref-cxx", default="gcc", help="reference C++ preset")
     args = ap.parse_args(argv)
     counts = aggregate(args.artefacts, args.ref_python, args.ref_cxx)
     args.output.write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     t = counts["totals"]
-    for k in ("python", "cpp", "rust"):
-        print(f"{k:7s} {t[k]}")
+    for k in SECTIONS:
+        print(f"{k:8s} {t[k]}")
     print(f"all passed: {t['all_passed']}")
     return 0
 
