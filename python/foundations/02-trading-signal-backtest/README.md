@@ -10,7 +10,7 @@ around it: where it worked, where it failed, what was assumed, and what
 would break it.
 
 Every result below comes from a synthetic price generator. No real-data
-result exists yet; real data is Phase 4 of the repository plan.
+result exists yet; real data belongs to the research platform in `research/`.
 
 ```
 close prices ──► ma_crossover_signal (fast MA vs slow MA, 0/1)

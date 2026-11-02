@@ -181,10 +181,10 @@ what breaks when each is violated. Additional engine-level assumptions:
    same output against the library before and after this change, with GCC
    15.2 and Clang 21.1.
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Straight ports of the Python formulas, same constants and branches. The LR
 tree recomputes node spots in the American loop (O(n^2) `exp`); a
-precomputed spot table, as in the CRR kernel, is left for the perf lane.
+precomputed spot table, as in the CRR kernel, is left for a later performance pass.
 Bachelier's implied vol inverts the out-of-the-money side so in-the-money
 quotes keep their digits.

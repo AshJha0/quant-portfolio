@@ -109,7 +109,7 @@ gamma 0.113, beta 0.868. Base vol 15% annualised.
 * **NaN in the feed:** everything raises `ValueError`. Fix the feed rather
   than mark off a shortened series.
 
-## Round 3: HAR-RV in the daily workflow
+## November 2026: HAR-RV in the daily workflow
 
 Feed it daily RV from 5-minute bars. Use the 1-day and 5-day forecasts as a
 benchmark beside GARCH; where intraday data exist, HAR usually does better

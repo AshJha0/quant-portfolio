@@ -142,7 +142,7 @@ corners are finite and tested. Every edge case in the contract's item 6
 list is both documented (VALIDATION.md §6.5) and unit-tested
 (`tests/test_edge_cases.py`).
 
-## 4. Phase 5 tools on the desk (Round 3)
+## 4. newer tools on the desk (November 2026)
 
 * **American books**: ALO for the end-of-day mark and intraday risk
   (tens of milliseconds per option in Python); LR or CN as the independent

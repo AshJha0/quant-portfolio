@@ -112,7 +112,7 @@ a real P&L restatement.
   fast; choosing the right vol/dividend inputs per the desk's marking
   process is upstream of it (see the Python DESK_GUIDE for that workflow).
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Use the compiled LR tree where an American mark must be reproduced outside
 Python; Bachelier for normal-vol quotes on the serving path; higher-order

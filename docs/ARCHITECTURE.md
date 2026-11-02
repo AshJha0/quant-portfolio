@@ -4,7 +4,7 @@ This page answers three questions for each capability: where it lives, what it
 depends on, and where its tests are. [DIAGRAMS.md](DIAGRAMS.md) has the same
 material as Mermaid diagrams: the directory layout, the golden-vector pipeline,
 the differential-test pipeline, two per-area data flows, the CI jobs, the
-`engine=` switch, the pre-registration workflow and the Round 3 model
+`engine=` switch, the pre-registration workflow and the newer model
 dependencies.
 
 Each project's own `docs/METHODOLOGY.md`, `docs/VALIDATION.md` and
@@ -13,9 +13,9 @@ This file is the map of how the 31 sub-projects fit together.
 
 ## Stage of the repository
 
-The repository is a study portfolio (Phases 0-3 of the plan). Round 3 started
-the research platform (Phase 4: `data/` and `research/`), added the Phase 5
-models and the Phase 6 performance kernels, and put an `engine=` switch over
+The repository is a study portfolio. The November 2026 release started
+the research platform (`data/` and `research/`), added the newer models
+and the performance kernels, and put an `engine=` switch over
 the bindings. All data is synthetic unless a page names a real source; the
 research studies use ECB data and have training-period results only. None
 of this code runs on a live book.
@@ -43,13 +43,13 @@ counted in them:
 
 | Path | Name | What it holds |
 |---|---|---|
-| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 12 Python projects |
-| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; since Round 3 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
-| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; since Round 3 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
+| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 16 Python projects |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
-Since Round 3 the four packages with ports (`eq_options`, `fx_options`,
+Since November 2026 the four packages with ports (`eq_options`, `fx_options`,
 `eq_var`, `fx_var`) each have an `engine` module whose functions take
 `engine="python" | "cpp" | "rust"`. The mapping from name to backend is in
 one place, `python/core/src/qp_core/engines.py`: an unknown name raises
@@ -84,7 +84,7 @@ quant-portfolio/
 ├── pyproject.toml, uv.lock # uv workspace: python/core and the 23 projects; mypy config
 ├── tests/                 # repository-level tests: docs counts, engine differential harness
 ├── data/                  # free-data fetchers (data/fetch/qp_fetch.py); downloads in data/raw/, git-ignored
-├── research/              # Phase 4 research platform
+├── research/              # research platform
 │   ├── prereg/            # pre-registrations (hash over the text above "## Signature")
 │   ├── studies/           # models.py (Johansen, Kalman, training_only guard), fx_studies.py
 │   ├── results/           # result JSON, each naming its registration hash
@@ -159,6 +159,13 @@ figures are in each engine README). Rust figures are rustc 1.99.1, release
 profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
 jitter, so read p99 as an upper bound. CI does not produce these numbers.
 
+Do not compare the C++ and Rust tables with each other. The C++ harness
+times each call separately (lfence, rdtscp, timer overhead subtracted); the
+Rust bench times batches of calls with `Instant` and divides, which reads
+lower for the same work. The committed C++ `bs_price` p50 moves between
+about 98 and 149 ns across runs on the same machine, roughly plus or minus
+25%.
+
 C++:
 
 | Engine | Kernel | p50 | p99 |
@@ -210,7 +217,7 @@ Rust:
 | | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
 | | Rust | `fx_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` -> `tests/golden/mod.rs` |
 
-Round 3 added these modules. They are imported by path and are not
+The November 2026 release added these modules. They are imported by path and are not
 re-exported from the package `__init__`. Each has oracle tests listed in the
 package `docs/VALIDATION.md` and in the README table.
 
@@ -355,7 +362,7 @@ the same engine and platform.
 | `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
 | `bench` | Runs the release benches; fails when a kernel whose committed p50 is above 1 µs is more than 2x slower. |
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). Runs `tests/test_ci_scripts.py`. |
-| `cpp core (<preset>)` | Builds and tests `cpp/core` (including the Phase 6 kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
+| `cpp core (<preset>)` | Builds and tests `cpp/core` (including the kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |

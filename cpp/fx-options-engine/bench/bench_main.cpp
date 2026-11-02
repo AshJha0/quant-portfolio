@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
         },
         200, 3000);
 
-    fxopt::ThreadPool pool(4);
+    fxopt::ThreadPool pool(4, std::chrono::microseconds(50));  // as before the default changed
     fxopt::McWorkspace mc_ws;
     mc_ws.reserve(1000000, true);
     b.run(

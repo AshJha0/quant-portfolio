@@ -7,7 +7,7 @@ statistics conventions, and the assumptions register.
 
 Every result in this project is computed on synthetic data. The intraday
 signal edge is planted by the generator. No real-data result exists yet; real
-data arrives in Phase 4 of the repository plan.
+data arrives in the research platform of the repository plan.
 
 ---
 

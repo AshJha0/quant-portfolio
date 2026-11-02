@@ -246,6 +246,56 @@ TEST(ThreadPool, ResultIndependentOfPoolSize) {
     EXPECT_EQ(run(0), run(4));
 }
 
+TEST(ThreadPool, NestedRunOnSamePoolRunsInlineAndDoesNotDeadlock) {
+    qp::ThreadPool pool(3);
+    std::vector<std::atomic<int>> hits(8 * 8);
+    struct Ctx {
+        qp::ThreadPool* pool;
+        std::vector<std::atomic<int>>* hits;
+    } ctx{&pool, &hits};
+    auto outer = [&](unsigned i) noexcept {
+        auto inner = [&](unsigned j) noexcept { (*ctx.hits)[i * 8 + j].fetch_add(1); };
+        ctx.pool->for_each_task(8, inner);
+    };
+    pool.for_each_task(8, outer);
+    for (auto& h : hits) EXPECT_EQ(h.load(), 1);
+    // The pool is still usable after the nested job.
+    std::atomic<int> n{0};
+    auto g = [&](unsigned) noexcept { n.fetch_add(1); };
+    pool.for_each_task(10, g);
+    EXPECT_EQ(n.load(), 10);
+}
+
+TEST(ThreadPool, NestedRunOnDefaultPoolDoesNotDeadlock) {
+    std::atomic<int> n{0};
+    auto outer = [&](unsigned) noexcept {
+        auto inner = [&](unsigned) noexcept { n.fetch_add(1); };
+        qp::default_thread_pool().for_each_task(4, inner);
+    };
+    qp::default_thread_pool().for_each_task(4, outer);
+    EXPECT_EQ(n.load(), 16);
+}
+
+TEST(ThreadPool, NestedRunOnAnotherPoolUsesItsWorkers) {
+    qp::ThreadPool a(2);
+    qp::ThreadPool b(2);
+    std::atomic<int> n{0};
+    auto outer = [&](unsigned) noexcept {
+        auto inner = [&](unsigned) noexcept { n.fetch_add(1); };
+        b.for_each_task(5, inner);
+    };
+    a.for_each_task(3, outer);
+    EXPECT_EQ(n.load(), 15);
+}
+
+TEST(ThreadPool, SpinningPoolGivesSameResult) {
+    qp::ThreadPool pool(3, std::chrono::microseconds(50));
+    std::vector<std::atomic<int>> hits(32);
+    auto f = [&](unsigned t) noexcept { hits[t].fetch_add(1); };
+    for (int rep = 0; rep < 5; ++rep) pool.for_each_task(32, f);
+    for (auto& h : hits) EXPECT_EQ(h.load(), 5);
+}
+
 // ---------------------------------------------------------------- expected
 
 }  // namespace

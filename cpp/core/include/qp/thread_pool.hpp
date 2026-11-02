@@ -9,11 +9,22 @@
 /// on the same data. Kernels that give every task its own RNG stream and
 /// output range therefore return identical bits whatever the pool size.
 ///
-/// After a job, idle workers spin for a short while (`spin`) before they
+/// After a job, idle workers may spin for a short while (`spin`) before they
 /// block on a condition variable, so back-to-back calls do not pay a
-/// kernel wake-up. No allocation happens in `run`, and the task function is
-/// a plain function pointer plus a context pointer (no std::function).
-/// One job runs at a time per pool; concurrent callers are serialised.
+/// kernel wake-up. The constructor default is no spin, which suits a shared
+/// host; `default_thread_pool()` spins for 50 us because the Monte Carlo
+/// kernels call it back to back. No allocation happens in `run`, and the
+/// task function is a plain function pointer plus a context pointer (no
+/// std::function). One job runs at a time per pool; concurrent callers are
+/// serialised.
+///
+/// Contract:
+/// - Tasks must not throw. `TaskFn` is `noexcept`, so an exception that
+///   escapes a task calls `std::terminate`. Catch inside the task and
+///   report through the context if a task can fail.
+/// - A task may call `run` on the same pool (for example through
+///   `default_thread_pool()`). The nested job then runs inline on the
+///   calling thread instead of deadlocking on the job lock.
 
 #pragma once
 
@@ -39,7 +50,7 @@ public:
     /// \param spin How long an idle worker polls for the next job before it
     ///        blocks.
     explicit ThreadPool(unsigned workers,
-                        std::chrono::microseconds spin = std::chrono::microseconds(50));
+                        std::chrono::microseconds spin = std::chrono::microseconds(0));
     ~ThreadPool();
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
@@ -62,6 +73,23 @@ public:
 private:
     void worker_loop() noexcept;
     void drain(TaskFn fn, void* ctx, unsigned n) noexcept;
+    static void run_inline(unsigned n_tasks, TaskFn fn, void* ctx) noexcept;
+
+    // The pool whose task the current thread is executing, if any. Used to
+    // detect a nested run() on the same pool.
+    static const ThreadPool*& current_pool() noexcept {
+        thread_local const ThreadPool* p = nullptr;
+        return p;
+    }
+    struct InPool {
+        const ThreadPool* saved;
+        explicit InPool(const ThreadPool* p) noexcept : saved(current_pool()) {
+            current_pool() = p;
+        }
+        ~InPool() { current_pool() = saved; }
+        InPool(const InPool&) = delete;
+        InPool& operator=(const InPool&) = delete;
+    };
 
     std::vector<std::thread> threads_;
     std::chrono::microseconds spin_;
@@ -100,7 +128,12 @@ inline ThreadPool::~ThreadPool() {
     for (auto& t : threads_) t.join();
 }
 
+inline void ThreadPool::run_inline(unsigned n_tasks, TaskFn fn, void* ctx) noexcept {
+    for (unsigned t = 0; t < n_tasks; ++t) fn(ctx, t);
+}
+
 inline void ThreadPool::drain(TaskFn fn, void* ctx, unsigned n) noexcept {
+    const InPool in(this);
     for (unsigned t = next_.fetch_add(1, std::memory_order_relaxed); t < n;
          t = next_.fetch_add(1, std::memory_order_relaxed)) {
         fn(ctx, t);
@@ -142,8 +175,10 @@ inline void ThreadPool::worker_loop() noexcept {
 
 inline void ThreadPool::run(unsigned n_tasks, TaskFn fn, void* ctx) noexcept {
     if (n_tasks == 0) return;
-    if (threads_.empty() || n_tasks == 1) {
-        for (unsigned t = 0; t < n_tasks; ++t) fn(ctx, t);
+    if (threads_.empty() || n_tasks == 1 || current_pool() == this) {
+        // No workers, one task, or a nested call from inside one of this
+        // pool's tasks: run on the calling thread.
+        run_inline(n_tasks, fn, ctx);
         return;
     }
     std::scoped_lock job(run_mutex_);
@@ -171,7 +206,8 @@ inline void ThreadPool::run(unsigned n_tasks, TaskFn fn, void* ctx) noexcept {
 inline ThreadPool& default_thread_pool() {
     static ThreadPool pool(std::max(1U, std::thread::hardware_concurrency()) > 1
                                ? std::thread::hardware_concurrency() - 1
-                               : 1U);
+                               : 1U,
+                           std::chrono::microseconds(50));
     return pool;
 }
 

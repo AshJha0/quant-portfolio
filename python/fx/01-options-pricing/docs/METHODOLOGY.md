@@ -151,7 +151,7 @@ Each assumption states what breaks when it is violated.
   (`tests/golden/generate_golden.py`), each output with its own tolerance;
   the Python, C++ and Rust engines consume the same file.
 
-## 5. Smile, premium styles, cuts and dates (Round 3)
+## 5. Smile, premium styles, cuts and dates (November 2026)
 
 * **Smile**: smile-strangle reading of the butterfly,
   `sigma_25C = ATM + BF + RR/2`, `sigma_25P = ATM + BF - RR/2`

@@ -193,7 +193,7 @@ Campbell, Serfaty-de Medeiros & Viceira (2010), *Global currency hedging*;
 Menkhoff, Sarno, Schmeling & Schrimpf (2012), *Carry trades and global
 foreign exchange volatility*; Lo (2002), *The statistics of Sharpe ratios*.
 
-## Round 3 additions
+## November 2026 additions
 
 - **HRP** (`hrp.py`) follows Lopez de Prado (2016). It uses single linkage on sqrt((1 - rho)/2), quasi-diagonal ordering and recursive bisection with inverse-variance clusters. It needs no matrix inversion.
 - **Resampled MVO** (`robust_mvo.resampled_weights`) follows Michaud (1998). It averages the mean-variance solutions over inputs re-estimated from simulated samples.

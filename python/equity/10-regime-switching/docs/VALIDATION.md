@@ -4,7 +4,7 @@ How the model was validated and where it fails. Every number below comes
 from `python examples/run_pipeline.py` (about 18 minutes with 10 workers) or
 from the test suite (`pytest -q`, 195 tests, about 5 minutes). All data are
 synthetic. The bear state's negative drift is planted by the generator, and
-no real-data result exists yet (Phase 4).
+no real-data result exists yet (see `research/`).
 
 ## 1. Cross-model consistency checks
 

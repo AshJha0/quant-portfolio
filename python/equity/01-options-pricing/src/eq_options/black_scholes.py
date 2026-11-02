@@ -26,6 +26,8 @@ import math
 import warnings
 from typing import Literal
 
+from qp_core.normal import norm_cdf
+
 from ._iv_core import black_implied_vol
 
 OptionType = Literal["call", "put"]
@@ -40,12 +42,10 @@ __all__ = [
 ]
 
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
-_SQRT2 = math.sqrt(2.0)
 
 
-def _ncdf(x: float) -> float:
-    """Standard normal CDF via ``erfc``: full relative precision in the lower tail."""
-    return 0.5 * math.erfc(-x / _SQRT2)
+# Standard normal CDF via ``erfc``: full relative precision in the lower tail.
+_ncdf = norm_cdf
 
 
 def _check_rates(**rates: float) -> None:

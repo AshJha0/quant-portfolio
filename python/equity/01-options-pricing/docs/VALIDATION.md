@@ -180,7 +180,7 @@ model, which this package does not implement.
 - **Monte Carlo:** fewer than two independent samples (three with the
   control variate) raises; one antithetic pair has no standard error.
 
-## 7. Phase 5 oracle tests (Round 3)
+## 7. Oracle tests for the newer models (November 2026)
 
 `tests/test_phase5_models.py`, 51 tests. Every model has at least one oracle:
 

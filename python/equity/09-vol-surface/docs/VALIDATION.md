@@ -229,7 +229,7 @@ invariants:
 | Single-pillar surface | flat vol at every T from 1e-6 to 30 | `test_single_pillar_surface_is_flat_in_T` |
 | SVI parameter domain | negative `b`, `\|ρ\| ≥ 1`, `σ ≤ 0` and `a + bσ√(1−ρ²) ≤ 0` all raise | `test_svi_params_reject_negative_total_variance` |
 
-## 7. Round 3 oracle tests (`tests/test_round3_volsurface.py`)
+## 7. The November 2026 release oracle tests (`tests/test_round3_volsurface.py`)
 
 | Model | Oracle | Tolerance |
 |---|---|---|

@@ -10,7 +10,7 @@ block bootstrap, multi-seed distributions).
 **Status.** Every result in this project is from synthetic data. The
 generator plants cointegrated pairs with known half-lives, and the
 strategy's P&L is that planted mean reversion. No real-data result exists
-yet; that is Phase 4 of the repository plan.
+yet; that belongs to the research platform in `research/`.
 
 ## Execution convention
 

@@ -185,7 +185,7 @@ jumps: projects 9 and later. The golden vectors in
 `tests/golden/golden_vectors.json` are consumed by the Python, C++ and Rust
 engines.
 
-## 6. Round 3 additions
+## 6. November 2026 additions
 
 `tests/test_phase5_fx.py`, 19 tests: smile pillars reproduce ATM, RR and BF
 to 1e-15 and the ATM strike is delta neutral, under all four delta

@@ -196,7 +196,7 @@ Hardening additions (`test_input_validation.py`, `test_edge_cases.py`):
   mean ≈ PD·LGD within 3 SE; Basel K bounded by LGD at M = 2.5; economic
   capital quantile gated to (0, 1].
 
-## Round 3 oracle tests (`tests/test_round3_credit.py`, 18 tests)
+## November 2026 oracle tests (`tests/test_round3_credit.py`, 18 tests)
 
 | Model | Oracle |
 |---|---|

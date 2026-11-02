@@ -158,7 +158,7 @@ Each assumption states what breaks if violated.
 - Forward points: `(F - S) * 1e4`, or `* 1e2` for JPY-quoted pairs.
 - PVs, deltas and DV01s in the quote currency; DV01s are signed per +1bp.
 
-## Round 3 addition: float-float cross-currency swaps
+## November 2026 addition: float-float cross-currency swaps
 
 Each leg pays its index plus a spread, projected on its own curve and
 discounted on its collateral-consistent curve (Fujii, Shimada and Takahashi

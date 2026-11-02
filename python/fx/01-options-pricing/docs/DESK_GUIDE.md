@@ -136,7 +136,7 @@ independent checker used in model validation sign-off.
 - **Model validation / quant dev**: `finite_difference_greeks`,
   convergence tables, golden vectors (release-gated).
 
-## 7. Round 3 tools
+## 7. The November 2026 release tools
 
 If the broker's butterfly is a market strangle (one vol for both legs),
 convert it first with `smile_strangle_from_broker`; feeding it straight in

@@ -265,7 +265,7 @@ documented.
 * Corsi (2009), *A Simple Approximate Long-Memory Model of Realized
   Volatility* (HAR), J. Financial Econometrics.
 
-## Round 3 addition: HAR-RV
+## November 2026 addition: HAR-RV
 
 Tomorrow's realised variance is regressed on today's, the past week's mean
 and the past month's mean (Corsi 2009, eq. 8). Three averages at different

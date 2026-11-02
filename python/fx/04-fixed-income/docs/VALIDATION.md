@@ -119,7 +119,7 @@ parameters, not individual quotes, so the quotes are internally
 consistent by construction. Tests and the pipeline are offline and
 deterministic and write nothing to disk.
 
-## Round 3: float-float cross-currency swaps (`tests/test_xccy_float.py`)
+## November 2026: float-float cross-currency swaps (`tests/test_xccy_float.py`)
 
 - Projection = discount and zero spread: each leg is worth zero.
 - The constant-notional swap equals the existing `xccy.BasisSwap` on a

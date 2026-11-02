@@ -27,8 +27,8 @@ z(reversal 21d) (`src/eq_algo/data/synthetic.py`). The signal the book
 trades combines those same regressors. Every alpha number below is therefore
 a property of the generator, not evidence of a tradable edge. The planted
 daily IC of about 0.03 is far larger than anything published for real
-momentum. No real-data result exists yet; that work is Phase 4 of the
-repository plan. The stage of this code is a study portfolio.
+momentum. No real-data result exists yet; that work belongs to the research platform in
+`research/`. The stage of this code is a study portfolio.
 
 ## Execution convention
 

@@ -3,7 +3,7 @@
 This file describes where each component would sit on an FX e-trading desk
 and which workflow it would serve. Every number it cites is from
 VALIDATION.md and is computed on synthetic data; no real-data result exists
-yet (Phase 4). Reproduce with `python examples/run_pipeline.py`.
+yet (see `research/`). Reproduce with `python examples/run_pipeline.py`.
 
 ---
 

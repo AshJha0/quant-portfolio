@@ -1,7 +1,7 @@
 # Validation: MA-Crossover Signal Backtest
 
 How the implementation was checked. Every result here is from synthetic
-data; no real-data result exists yet (Phase 4).
+data; no real-data result exists yet (see `research/`).
 
 Commands:
 

@@ -3,8 +3,8 @@
 This guide describes how a regime overlay like this one is used and which
 controls the code implements. Every result in this project comes from
 synthetic data. The negative drift of the bear state is planted by the
-generator, and no real-data result exists yet (real data is Phase 4 of the
-remediation plan).
+generator, and no real-data result exists yet (real data belongs to the research platform in
+`research/`).
 
 ## 1. Typical uses of a regime model
 

@@ -17,6 +17,8 @@ from __future__ import annotations
 import math
 import numbers
 
+from qp_core.normal import norm_cdf
+
 __all__ = [
     "OTHER_TYPE",
     "PHI",
@@ -105,12 +107,8 @@ def validate_inputs(
         raise ValueError(f"Volatility sigma must be non-negative, got {sigma}")
 
 
-_SQRT2 = math.sqrt(2.0)
-
-
-def ncdf(x: float) -> float:
-    """Standard normal CDF via ``erfc``: full relative precision in the lower tail."""
-    return 0.5 * math.erfc(-x / _SQRT2)
+# Standard normal CDF via ``erfc``: full relative precision in the lower tail.
+ncdf = norm_cdf
 
 
 def safe_exp(x: float, what: str) -> float:
