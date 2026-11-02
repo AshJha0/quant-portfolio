@@ -104,3 +104,16 @@ Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
 modes), [DESK_GUIDE.md](docs/DESK_GUIDE.md) (workflow, capital link, stress
 review).
+
+## Choosing an engine
+
+`eq_var.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.

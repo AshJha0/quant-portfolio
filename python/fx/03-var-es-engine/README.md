@@ -98,3 +98,16 @@ docs/                  METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines are
 linear-book ports. They check their results against
 `tests/golden/golden_vectors.json`.
+
+## Choosing an engine
+
+`fx_var.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.
