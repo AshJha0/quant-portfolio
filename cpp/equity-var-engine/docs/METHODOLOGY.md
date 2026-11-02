@@ -46,7 +46,10 @@ and the rescaled scenario is r*_{t,j} = z_{t,j} sigma_{T+1,j}, with
 sigma_{T+1,j} the one-step-ahead forecast. Scenario P&L = w . r*. VaR and ES
 then follow the order-statistic rule. The P&L-level `filtered_historical_var`
 devolatilises the book P&L instead of the factors. It is deprecated and kept
-unchanged for one release (full-sample seed, type-7 quantile).
+for one release with its full-sample seed. Its tail now uses the same order
+statistic as every other path; it used type-7 interpolation before, which
+moved golden `a_fhs_var_5pct_lam094` from 109.3777910164513 to
+112.05212695060598 (docs/MARKET_RISK.md has the before/after table).
 
 **Square-root-of-time**: VaR_h = VaR_1 sqrt(h). It holds only for i.i.d.
 zero-drift returns and understates multi-day risk under volatility

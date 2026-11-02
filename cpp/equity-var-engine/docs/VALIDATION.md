@@ -14,7 +14,8 @@ closed-form series that both languages rebuild, so there are no data files.
 - **Case A**: pnl[t] = 100 sin(3t + 1) + 0.5 t cos(t), t = 0..99.
   Historical VaR at 1 % / 5 % (141.75681075495305 / 108.2348601407293),
   ES at 1 % / 5 % (141.75681075495305 / 122.6373207703405), BRW VaR
-  (108.2348601407293), the deprecated P&L-level FHS VaR (109.3777910164513)
+  (108.2348601407293), the deprecated P&L-level FHS VaR (112.05212695060598, order statistic; 109.3777910164513
+  before, with type-7 interpolation)
   and the 5-element BRW weight vector. With n = 100 and alpha = 0.01, k = 1,
   so VaR and ES at 1 % are the same worst loss.
 - **Case B**: fixed 3-asset book. Portfolio sigma (9962.429422585637),

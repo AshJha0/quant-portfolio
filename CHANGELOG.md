@@ -14,6 +14,15 @@ One release, v2.0.0, is planned. Until then changes collect here. Results
 quoted below come from seeded synthetic data unless an entry names a
 dataset (the research entries use ECB reference rates).
 
+### Changed
+
+- Deprecated P&L-level `filtered_historical_var` (Python, C++, Rust equity
+  VaR engines) now reads its tail with the order statistic
+  L(ceil(n alpha)), like every other VaR path, instead of numpy type-7
+  interpolation. Golden `a_fhs_var_5pct_lam094` moves from
+  109.3777910164513 to 112.05212695060598; no other golden moves. Table and
+  references in docs/MARKET_RISK.md.
+
 ### Added
 
 - Signed the forward-only registrations `research/prereg/pairs-fx-g10-v2.md`
