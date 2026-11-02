@@ -134,4 +134,6 @@ cross-language tolerances listed in the module docstring, checked over
 |---|---|---|
 | `smile` | ATM/25-delta RR/BF to a three-point smile; smile-consistent strike from delta | The quotes are recovered exactly; delta round trip to 1e-12 under all four delta conventions |
 | `premium` | Four premium styles and conversions; cash premium amount | Foreign pips equals the inverse-pair GK price |
-| `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut | Hand-checked dates, end-of-month rule, DST shifts |
+| `smile` (broker strangle) | Converts a broker (market) 25-delta butterfly into the smile butterfly and back | The smile reprices the broker strangle to 1e-12; RR = 0 gives equal butterflies; round trip to 1e-13 (`tests/test_fx_strangle_holidays.py`) |
+| `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut; `holidays="auto"` uses the shipped calendars | Hand-checked dates, end-of-month rule, DST shifts |
+| `holidays` | Rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD, 2010 to 2099, no network | Full 2026 lists checked against the Fed, gov.uk, ECB and Cabinet Office of Japan lists (`tests/test_fx_strangle_holidays.py`) |

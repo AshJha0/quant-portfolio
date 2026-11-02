@@ -8,7 +8,10 @@ is the calendar time from now to the cut, which moves with daylight saving.
 
 Formal statement (Clark 2011, "Foreign Exchange Option Pricing", Wiley,
 ch. 1; Wystup 2017, "FX Options and Structured Products", 2nd ed., section
-1.5). Business days skip Saturdays, Sundays and the caller's holidays.
+1.5). Business days skip Saturdays, Sundays and holidays. ``holidays`` is
+either a collection of dates supplied by the caller or the string
+``"auto"``, which uses the shipped joint calendar of the pair's two
+currencies (:mod:`fx_options.holidays`).
 
 * Spot date: trade date plus ``spot_lag`` business days (1 for USDCAD,
   USDTRY and USDRUB, else 2). The rule that the first day of a T+2 lag may
@@ -34,6 +37,8 @@ import datetime as dt
 from collections.abc import Collection
 from zoneinfo import ZoneInfo
 
+from .holidays import pair_holidays
+
 __all__ = ["CUTS", "add_business_days", "cut_datetime_utc", "expiry_and_delivery",
            "spot_date", "spot_lag", "time_to_expiry"]
 
@@ -52,6 +57,17 @@ def spot_lag(pair: str) -> int:
     if len(p) != 6 or not p.isalpha():
         raise ValueError(f"pair must be six letters, got {pair!r}")
     return 1 if p in _T1_PAIRS else 2
+
+
+Holidays = Collection[dt.date] | str
+
+
+def _resolve(holidays: Holidays, pair: str, first_year: int, last_year: int) -> Collection[dt.date]:
+    if isinstance(holidays, str):
+        if holidays != "auto":
+            raise ValueError(f'holidays must be a collection of dates or "auto", got {holidays!r}')
+        return pair_holidays(pair, first_year, last_year)
+    return holidays
 
 
 def _is_business(d: dt.date, holidays: Collection[dt.date]) -> bool:
@@ -75,8 +91,9 @@ def add_business_days(d: dt.date, n: int, holidays: Collection[dt.date] = ()) ->
     return d
 
 
-def spot_date(trade_date: dt.date, pair: str, holidays: Collection[dt.date] = ()) -> dt.date:
+def spot_date(trade_date: dt.date, pair: str, holidays: Holidays = ()) -> dt.date:
     """Spot date of a trade (business days after the trade date)."""
+    holidays = _resolve(holidays, pair, trade_date.year, trade_date.year + 1)
     return add_business_days(trade_date, spot_lag(pair), holidays)
 
 
@@ -100,12 +117,14 @@ def _add_months(d: dt.date, months: int, holidays: Collection[dt.date]) -> dt.da
 
 
 def expiry_and_delivery(trade_date: dt.date, tenor: str, pair: str,
-                        holidays: Collection[dt.date] = ()) -> tuple[dt.date, dt.date]:
+                        holidays: Holidays = ()) -> tuple[dt.date, dt.date]:
     """Expiry and delivery dates for a tenor such as ``"1W"``, ``"3M"``, ``"1Y"``."""
     t = tenor.strip().upper()
     if len(t) < 2 or not t[:-1].isdigit() or t[-1] not in "DWMY" or int(t[:-1]) <= 0:
         raise ValueError(f"tenor must look like 1D, 2W, 3M or 1Y, got {tenor!r}")
     n, unit = int(t[:-1]), t[-1]
+    span = n // 365 + 1 if unit == "D" else n // 52 + 1 if unit == "W" else n // 12 + 1         if unit == "M" else n + 1
+    holidays = _resolve(holidays, pair, trade_date.year, trade_date.year + span)
     if unit in "DW":
         expiry = _roll_following(trade_date + dt.timedelta(days=n * (7 if unit == "W" else 1)),
                                  holidays)

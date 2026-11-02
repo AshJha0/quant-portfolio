@@ -192,3 +192,11 @@ to 1e-15 and the ATM strike is delta neutral, under all four delta
 conventions; smile-consistent strikes round-trip delta to 1e-12; foreign
 pips equal the inverse-pair GK price to 1e-13; spot, tenor, end-of-month
 and holiday dates against hand-checked calendars; cut instants across DST.
+
+`tests/test_fx_strangle_holidays.py`: the converted smile reprices the
+broker strangle to 1e-12 under all four delta conventions and three skews;
+RR = 0 gives equal butterflies; broker-to-smile-to-broker round trip to
+1e-13; full 2026 calendars for USD, GBP, EUR and JPY against the published
+lists, plus specials (2022 jubilee and funeral, 2023 coronation, 2021
+Olympic moves, Juneteenth from 2022); every calendar deterministic and
+weekday-only from 2010 to 2099; `"auto"` wired into spot and tenor dates.
