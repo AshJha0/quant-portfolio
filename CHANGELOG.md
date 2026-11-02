@@ -16,6 +16,15 @@ dataset (the research entries use ECB reference rates).
 
 ### Changed
 
+- The Black-Scholes maths the equity and FX options code carried twice now
+  lives once per language, in cost-of-carry form (b = r - q = r_d - r_f):
+  `qp_core.black_scholes` and `qp_core.iv_core` (Python), `qp/black_scholes.hpp`
+  and `qp/black_scholes_vm.hpp` (C++), `qp_core::black_scholes` (Rust). The
+  equity and FX packages keep their names, signatures and validation and call
+  it. Every in-scope output is unchanged bit for bit on a 6,000-quote grid
+  (Python, C++ on GCC and Clang, Rust), signed zeros included; no golden
+  moves. `tests/test_carry_twin.py` pins equity-with-yield against
+  FX-with-foreign-rate.
 - Deprecated P&L-level `filtered_historical_var` (Python, C++, Rust equity
   VaR engines) now reads its tail with the order statistic
   L(ceil(n alpha)), like every other VaR path, instead of numpy type-7
