@@ -80,7 +80,7 @@ Release (sanitizers: RelWithDebInfo) and turn warnings into errors.
 `QP_CXX26=ON` compiles with C++26. Two features are then used when the
 compiler reports them through a feature-test macro:
 
-- Contracts (`__cpp_contracts`, GCC 16 with `-fcontracts`, added by the
+- Contracts (`__cpp_contracts`, GCC 16 with `-fcontracts` and `libstdc++exp` for the default violation handler, added by the
   CMake file). `QP_PRE` and `QP_POST` state programmer preconditions only:
   pointers and sizes in `cholesky_raw` and `matvec_rows`, `0 < p < 1` for the
   unchecked inverse cdf, the tolerance of `brentq`, a non-null task in

@@ -36,6 +36,10 @@ if(QP_CXX26)
   # the flag for an older, incompatible design, so only 16+ gets it.
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
     target_compile_options(qp_core INTERFACE -fcontracts)
+    # The default contract-violation handler (handle_contract_violation)
+    # lives in libstdc++exp in GCC 16; without it every TU that evaluates a
+    # contract fails to link.
+    target_link_libraries(qp_core INTERFACE stdc++exp)
   endif()
 else()
   target_compile_features(qp_core INTERFACE cxx_std_23)
