@@ -362,8 +362,7 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
 - Not implemented: structural (Merton/KMV) PD, FRTB NMRF/SES and the
-  default risk charge, the arbitrage-free
-  SABR PDE, Hull-White calibration to a swaption grid, ISDA standard-model
+  default risk charge, Hull-White calibration to a swaption grid, ISDA standard-model
   CDS conventions.
 - No result here is out-of-sample evidence yet. The research studies have
   training-period results only; the hold-out runs come next.

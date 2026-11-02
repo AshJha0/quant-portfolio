@@ -16,6 +16,27 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 3 fixes: options lane
+
+- `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
+  (any `q`) and `r = 0 > q`; European where the carry `r K - q S` never
+  pays (`r <= 0`, `q >= r`); and the double boundary of the `q < r < 0`
+  put (`r < q < 0` call), where the exercise band is found from the two
+  value-matching integral equations (Andersen and Lake 2021) by marching
+  in time. New `alo_double_boundary` returns the band. Eight new tree
+  comparisons, all within 2e-5.
+- `eq_options.sabr_pde`: arbitrage-free SABR (Hagan et al. 2014) by a
+  conservative finite-volume scheme on a grid uniform in Hagan's `z`, with
+  TR-BDF2 or implicit Euler steps (Le Floc'h and Kennedy 2014). Mass and
+  forward conserved to 1e-12, non-negative density and convex call prices
+  in the case where the expansion's density is negative.
+- `sharpe_tests` (equity and FX): `sharpe_diff_hac(kernel="qs_pw")`, the
+  Andrews-Monahan prewhitened quadratic-spectral HAC with Andrews'
+  automatic bandwidth that Ledoit and Wolf (2008) use, plus
+  `hac_cov_qs_prewhitened`, `qs_kernel` and `qs_bandwidth`.
+  `sharpe_diff_bootstrap` is now the Ledoit-Wolf studentised bootstrap by
+  default; `studentize=False` gives the previous centred bootstrap.
+
 #### Round 3: engine switch (lane A)
 
 - `qp_core.engines` (`check_engine`, `load_engine`, `engine_available`) and

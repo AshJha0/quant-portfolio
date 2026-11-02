@@ -569,7 +569,7 @@ CRR's error oscillates with the number of steps because the strike falls at a di
 
 **Q32. `eq_options.alo` prices American options with the Andersen-Lake-Offengeim method. What is it checked against, and what does it refuse to do?**
 
-It is checked against a Richardson-extrapolated Leisen-Reimer tree (2001 and 4001 steps) in four cases, to 2e-5. That is a different numerical method with the same model, so agreement is real evidence. `alo_price` iterates a fixed point for the exercise boundary from a crude start, up to 60 times. It raises for negative rates and for `r < q < 0`, where the boundary splits in two; that case is out of scope, not silently approximated.
+It is checked against a Richardson-extrapolated Leisen-Reimer tree (2001 and 4001 steps) in four cases, to 2e-5. That is a different numerical method with the same model, so agreement is real evidence. `alo_price` iterates a fixed point for the exercise boundary from a crude start, up to 60 times. Negative rates are covered too. Whether early exercise pays depends on the carry of the exercised position, `r K - q S`: with `r > 0` there is one boundary as usual; with `r <= 0` and `q >= r` the carry never pays and the price is European; with `q < r < 0` exercise pays only inside a band of spots that opens at expiry and closes at a finite maturity. For that double-boundary case `alo_price` solves the two value-matching equations for the band directly, marching in time. It is slower than the single-boundary collocation but checked against the same extrapolated tree to the same 2e-5.
 
 **Q33. What is Bachelier's vol in `eq_options.bachelier`, and why is it tested with mpmath rather than against another formula?**
 
@@ -577,7 +577,7 @@ Bachelier models the forward as arithmetic Brownian motion, so its vol `sigma_n`
 
 **Q34. What two things does `eq_options.sabr` add beyond Hagan's 2002 formula, and what does it not implement?**
 
-It offers Obloj's (2008) leading term and West's (2005) stable evaluation, and `sabr_density_check` flags strikes where the implied density goes negative, which Hagan's expansion does at low strikes. A precision bug was found and fixed in testing: the naive `log` form of `x(z)` lost accuracy just above the series cut-over and showed as a jump in the smile slope near ATM; it now uses `log1p`. The arbitrage-free SABR PDE is not implemented; the module detects the problem rather than fixing it.
+It offers Obloj's (2008) leading term and West's (2005) stable evaluation, and `sabr_density_check` flags strikes where the implied density goes negative, which Hagan's expansion does at low strikes. A precision bug was found and fixed in testing: the naive `log` form of `x(z)` lost accuracy just above the series cut-over and showed as a jump in the smile slope near ATM; it now uses `log1p`. `sabr_pde` fixes it: the arbitrage-free SABR PDE of Hagan et al. (2014) on a Le Floc'h-Kennedy grid. The density it produces is non-negative by construction, total probability and the forward are conserved to rounding, and in the test case where the expansion's density goes negative the PDE's call prices are convex in strike. At short expiry it agrees with the expansion to 2e-5 in vol; at ten years it differs by about half a vol point at the money, and that difference is second order in `T`, which is the part of the expansion that was wrong.
 
 
 ## Round 3: Implied Volatility & Numerical Solvers
@@ -1632,7 +1632,7 @@ Mean-variance inverts the covariance matrix, and small errors in a near-singular
 
 **Q28. Why test a Sharpe-ratio difference with `sharpe_diff_hac` instead of comparing two numbers?**
 
-Two Sharpe ratios estimated on the same dates are correlated and their returns are autocorrelated, so a plain t-test is wrong. Ledoit and Wolf (2008) use the delta method with a HAC covariance; this code uses a Bartlett kernel, not their prewhitened QS kernel. `sharpe_diff_bootstrap` gives a circular block bootstrap as a second view. Its interval is not studentised; the docs say so.
+Two Sharpe ratios estimated on the same dates are correlated and their returns are autocorrelated, so a plain t-test is wrong. Ledoit and Wolf (2008) use the delta method with a HAC covariance; `sharpe_diff_hac(kernel="qs_pw")` uses their prewhitened quadratic-spectral estimator (Andrews and Monahan 1992, with Andrews' automatic bandwidth), and the Bartlett kernel at fixed lags stays as the default for old callers. `sharpe_diff_bootstrap` is their studentised circular block bootstrap: each draw is divided by its own block-based standard error, which makes the p-value more accurate in short samples than the plain centred bootstrap (still available with `studentize=False`).
 
 **Q29. How does `eq_port.cost_qp.rebalance` handle transaction costs, and what is its oracle?**
 
