@@ -260,7 +260,6 @@ WSL2 the hypervisor adds scheduling jitter that shows up in p99.9 and max.
 - The Monte Carlo runs on one thread.
 - `try_cholesky_lower` has no PSD repair; repair a covariance with
   `cholesky(cov, Repair)` or `repair_covariance` before the hot path.
-- `ewma_covariance` still seeds with the full-sample covariance.
 
 ## Documentation
 

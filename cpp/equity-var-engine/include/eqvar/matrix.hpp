@@ -108,8 +108,12 @@ cholesky(const Matrix& cov, double jitter, int max_tries = 12);
 
 /// RiskMetrics EWMA covariance forecast for the day after the sample:
 /// Sigma <- lam * Sigma + (1 - lam) * r_t r_t' over all rows, seeded with the
-/// sample covariance.  Zero-mean returns assumed (standard at daily horizon).
+/// zero-mean second moment mean(r r') of the first min(seed_window, T) rows
+/// (convention S8), so the seed uses no later data.  Zero-mean returns assumed
+/// (standard at daily horizon).  Throws std::invalid_argument if T < 2, the
+/// panel is not finite, lam is outside (0, 1) or seed_window == 0.
 /// Mirrors eq_var.parametric_var.ewma_covariance exactly.
-[[nodiscard]] Matrix ewma_covariance(const Matrix& returns, double lam = 0.94);
+[[nodiscard]] Matrix ewma_covariance(const Matrix& returns, double lam = 0.94,
+                                     std::size_t seed_window = 30);
 
 }  // namespace eqvar

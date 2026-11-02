@@ -144,13 +144,27 @@ Matrix sample_covariance(const Matrix& returns) {
     return cov;
 }
 
-Matrix ewma_covariance(const Matrix& returns, double lam) {
+Matrix ewma_covariance(const Matrix& returns, double lam, std::size_t seed_window) {
     if (!(lam > 0.0 && lam < 1.0)) {
         throw std::invalid_argument("ewma_covariance: decay lam must be in (0, 1), got " +
                                     std::to_string(lam));
     }
-    Matrix cov = sample_covariance(returns);  // validates T >= 2
+    if (seed_window == 0) {
+        throw std::invalid_argument("ewma_covariance: seed_window must be a positive integer");
+    }
+    (void)sample_covariance(returns);  // validates T >= 2 and finiteness
     const std::size_t t = returns.rows(), n = returns.cols();
+    // Seed: zero-mean second moment over the first min(seed_window, T) rows
+    // (convention S8), same summation order as head.T @ head / m in Python.
+    const std::size_t m = seed_window < t ? seed_window : t;
+    Matrix cov(n, n);
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < n; ++j) {
+            double acc = 0.0;
+            for (std::size_t r = 0; r < m; ++r) acc += returns(r, i) * returns(r, j);
+            cov(i, j) = acc / static_cast<double>(m);
+        }
+    }
     for (std::size_t r = 0; r < t; ++r) {
         for (std::size_t i = 0; i < n; ++i) {
             const double ri = returns(r, i);

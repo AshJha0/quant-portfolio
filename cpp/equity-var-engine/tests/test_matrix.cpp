@@ -94,11 +94,17 @@ TEST(SampleCovariance, HandComputed2x2) {
 }
 
 TEST(EwmaCovariance, SinglePointLimitAndValidation) {
-    // With lam -> 1 the EWMA forecast stays near the sample seed.
+    // With lam -> 1 the EWMA forecast stays near the seed: the zero-mean
+    // second moment mean(r r') of the first min(seed_window, T) rows.
     const Matrix r(3, 2, {0.01, 0.02, -0.01, 0.00, 0.03, 0.01});
-    const Matrix s = sample_covariance(r);
+    const Matrix s(2, 2, {(1e-4 + 1e-4 + 9e-4) / 3.0, (2e-4 + 0.0 + 3e-4) / 3.0,
+                          (2e-4 + 0.0 + 3e-4) / 3.0, (4e-4 + 0.0 + 1e-4) / 3.0});
     const Matrix e = ewma_covariance(r, 0.999999);
     EXPECT_LT(Matrix::max_abs_diff(e, s), 1e-8);
+    // seed_window = 1: seed is r_0 r_0' only.
+    const Matrix s1(2, 2, {1e-4, 2e-4, 2e-4, 4e-4});
+    EXPECT_LT(Matrix::max_abs_diff(ewma_covariance(r, 0.999999, 1), s1), 1e-8);
+    EXPECT_THROW(ewma_covariance(r, 0.94, 0), std::invalid_argument);
     EXPECT_THROW(ewma_covariance(r, 1.0), std::invalid_argument);
     EXPECT_THROW(ewma_covariance(r, 0.0), std::invalid_argument);
 }

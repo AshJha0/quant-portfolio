@@ -8,8 +8,8 @@
 //!
 //! Conventions match the Python reference (`eq_var.parametric_var`):
 //! return panels are `(T, n)`: one row per day, one column per factor:
-//! and EWMA is seeded with the sample covariance then iterated over every
-//! row: `Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'`.
+//! and EWMA is seeded with the zero-mean second moment `mean(r r')` of the
+//! first `min(30, T)` rows (convention S8) then iterated over every row: `Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'`.
 
 use crate::{EqVarError, Result};
 
@@ -339,10 +339,15 @@ pub fn sample_covariance(returns: &Matrix) -> Result<Matrix> {
     Ok(cov)
 }
 
+/// Number of leading rows used for the EWMA covariance seed (convention S8).
+pub const EWMA_COV_SEED_WINDOW: usize = 30;
+
 /// RiskMetrics EWMA covariance forecast for the day after the sample.
 ///
 /// `Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'`, seeded with the
-/// sample covariance and iterated over **every** row of the panel (zero
+/// zero-mean second moment `mean(r r')` of the first
+/// `min(EWMA_COV_SEED_WINDOW, T)` rows (convention S8, so the seed uses no
+/// later data) and iterated over **every** row of the panel (zero
 /// mean assumed, standard at daily horizon): identical to the Python
 /// reference `eq_var.parametric_var.ewma_covariance`.
 pub fn ewma_covariance(returns: &Matrix, lam: f64) -> Result<Matrix> {
@@ -351,8 +356,20 @@ pub fn ewma_covariance(returns: &Matrix, lam: f64) -> Result<Matrix> {
             "decay lam must be in (0, 1), got {lam}"
         )));
     }
-    let mut cov = sample_covariance(returns)?;
+    sample_covariance(returns)?; // validates T >= 2 and finiteness
     let n = returns.cols();
+    let m = EWMA_COV_SEED_WINDOW.min(returns.rows());
+    let mut cov = Matrix::zeros(n, n);
+    for j in 0..n {
+        for k in 0..n {
+            let mut acc = 0.0;
+            for i in 0..m {
+                let r = returns.row(i);
+                acc += r[j] * r[k];
+            }
+            cov.set(j, k, acc / m as f64);
+        }
+    }
     for i in 0..returns.rows() {
         let r = returns.row(i);
         for j in 0..n {

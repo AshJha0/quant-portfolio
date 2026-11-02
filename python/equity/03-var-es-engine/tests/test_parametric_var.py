@@ -68,10 +68,24 @@ class TestCovarianceEstimators:
 
     def test_ewma_covariance_constant_data_fixed_point(self):
         x = np.ones((100, 2))
-        # sample seed is 0; recursion contracts to the fixed point J = r r'
-        # geometrically: after 100 steps C = (1 - lam^100) * J
+        # zero-mean seed is J = r r' already, the fixed point of the recursion
         cov = ewma_covariance(x, 0.94)
-        np.testing.assert_allclose(cov, (1 - 0.94**100) * np.ones((2, 2)), atol=1e-10)
+        np.testing.assert_allclose(cov, np.ones((2, 2)), atol=1e-12)
+
+    def test_ewma_covariance_seed_uses_first_window_only(self):
+        rng = np.random.default_rng(3)
+        x = rng.normal(size=(80, 2)) * 0.01
+        base = ewma_covariance(x, 0.94)
+        y = x.copy()
+        y[40:] *= 3.0  # rows after the seed window change only through the recursion
+        lam = 0.94
+        expect = lam**80 * (x[:30].T @ x[:30] / 30)
+        for k, r in enumerate(y):
+            expect = expect + (1 - lam) * lam ** (79 - k) * np.outer(r, r)
+        np.testing.assert_allclose(ewma_covariance(y, lam), expect, rtol=1e-12)
+        assert not np.allclose(base, ewma_covariance(y, lam))
+        with pytest.raises(ValueError, match="seed_window"):
+            ewma_covariance(x, 0.94, seed_window=0)
 
     def test_ewma_close_to_sample_on_iid_data(self):
         rng = np.random.default_rng(5)

@@ -370,3 +370,48 @@ fn special_functions_never_panic_or_hang_on_non_finite_input() {
     assert!(ln_gamma(0.0).is_err());
     assert!(chi2_sf(f64::NAN, 1.0).is_err());
 }
+
+#[test]
+fn ewma_covariance_seed_uses_first_window_rows_only() {
+    use eq_var_engine::matrix::{ewma_covariance, EWMA_COV_SEED_WINDOW};
+    // Two panels identical in the seed window, wildly different afterwards.
+    // With lam -> 1 the forecast stays at the seed, so both must agree.
+    let w = EWMA_COV_SEED_WINDOW;
+    let t = w + 20;
+    let mut a = Vec::with_capacity(t * 2);
+    let mut b = Vec::with_capacity(t * 2);
+    for i in 0..t {
+        let x = 0.01 * ((i as f64) * 0.7).sin();
+        let y = 0.01 * ((i as f64) * 1.3).cos();
+        a.extend_from_slice(&[x, y]);
+        if i < w {
+            b.extend_from_slice(&[x, y]);
+        } else {
+            b.extend_from_slice(&[0.0, 0.0]);
+        }
+    }
+    let ma = Matrix::from_vec(t, 2, a.clone()).unwrap();
+    let mb = Matrix::from_vec(t, 2, b).unwrap();
+    let ea = ewma_covariance(&ma, 1.0 - 1e-12).unwrap();
+    let eb = ewma_covariance(&mb, 1.0 - 1e-12).unwrap();
+    let mut seed = [0.0_f64; 4];
+    for i in 0..w {
+        let (x, y) = (a[2 * i], a[2 * i + 1]);
+        seed[0] += x * x;
+        seed[1] += x * y;
+        seed[3] += y * y;
+    }
+    for v in &mut seed {
+        *v /= w as f64;
+    }
+    seed[2] = seed[1];
+    for (j, k, s) in [
+        (0, 0, seed[0]),
+        (0, 1, seed[1]),
+        (1, 0, seed[2]),
+        (1, 1, seed[3]),
+    ] {
+        assert!((ea.get(j, k) - s).abs() < 1e-12, "a[{j},{k}]");
+        assert!((eb.get(j, k) - s).abs() < 1e-12, "b[{j},{k}]");
+    }
+}
