@@ -64,8 +64,10 @@ truth.
 ## Evaluation
 
 Both registrations score 2026-11-03 to 2028-11-02 once, on or after
-2028-11-13. The evaluation script (not written yet; next work after
-signing) will
+2028-11-13. The evaluation script, `research/forward/evaluate.py`,
+gives a verdict only when every check below passes, today is on or after
+2028-11-13 and the registration is signed; otherwise it prints interim
+numbers labelled INTERIM, decides nothing and writes no result. It will
 
 1. read `forward/log.jsonl` at a stated `forward-log` commit and the
    history file, and check the history file's SHA-256 against the signing

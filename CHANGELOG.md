@@ -34,6 +34,12 @@ come from seeded synthetic data.
 - `research/forward/SPEC.md`: the contract between the registrations and
   the forward log's schema 1, the history-file rule and the
   recompute-from-rates evaluation.
+- `research/forward/evaluate.py` scores both forward registrations from the
+  log and the history file; before 2028-11-13, with a gap in the log or
+  while unsigned it prints interim numbers only, never a verdict.
+- `research/tools/prereg.py sign` fills the signature block and refuses to
+  sign a registration that names no recorded simulated power result
+  (`research/power/*.json` with per-cell `reps` and `rejection_rate`).
 
 #### Round 3 fixes: options lane
 
