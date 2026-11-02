@@ -20,6 +20,11 @@
 //! | [`roots`] | Brent's method with scipy `brentq` semantics | FX options |
 //! | [`linalg`] | Row-major Cholesky kernel | both VaR engines |
 //! | [`par`] | Fixed-chunk scoped-thread helper; results do not depend on the thread count | FX VaR |
+//! | [`pool`] | Persistent worker pool for `'static` jobs, results in index order | new, opt-in |
+//! | [`philox`] | Philox4x32-10 counter-based generator (Random123 known answers) | new, opt-in |
+//! | [`quantile`] | O(n) selection and type-7 quantile, same bits as a sort | new, opt-in |
+//! | [`gemm`] | Cache-blocked GEMM and `D^T D`, same bits as the naive loops | eq VaR covariance |
+//! | [`vmath`] | Branch-free batch exp/erfc/normal CDF with documented tolerances | new, opt-in |
 //! | [`Error`] | Invalid-input / numerical-failure error shared by the fallible functions here | all four (via `From`) |
 //!
 //! What stayed in the engines: each VaR engine's special functions (the
@@ -33,12 +38,17 @@
 
 use std::fmt;
 
+pub mod gemm;
 pub mod iv;
 pub mod linalg;
 pub mod par;
+pub mod philox;
+pub mod pool;
+pub mod quantile;
 pub mod rng;
 pub mod roots;
 pub mod special;
+pub mod vmath;
 
 /// Error returned by the fallible functions in this crate.
 ///

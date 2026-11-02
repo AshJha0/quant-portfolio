@@ -316,18 +316,15 @@ pub fn sample_covariance(returns: &Matrix) -> Result<Matrix> {
     for m in &mut means {
         *m /= t as f64;
     }
-    let mut cov = Matrix::zeros(n, n);
+    // Centre once, then a cache-blocked D^T D that adds the products for
+    // each (j, k) in row order: the same bits as the row-streaming loop.
+    let mut centred = Vec::with_capacity(t * n);
     for i in 0..t {
-        let row = returns.row(i);
-        for j in 0..n {
-            let dj = row[j] - means[j];
-            for k in j..n {
-                let dk = row[k] - means[k];
-                let v = cov.get(j, k) + dj * dk;
-                cov.set(j, k, v);
-            }
-        }
+        centred.extend(returns.row(i).iter().zip(&means).map(|(x, m)| x - m));
     }
+    let mut upper = vec![0.0; n * n];
+    qp_core::gemm::syrk_upper_blocked(&centred, &mut upper, t, n);
+    let mut cov = Matrix::from_vec(n, n, upper)?;
     let denom = (t - 1) as f64;
     for j in 0..n {
         for k in j..n {

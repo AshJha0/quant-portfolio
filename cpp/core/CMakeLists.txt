@@ -75,7 +75,7 @@ if(QP_CORE_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
   endif()
-  add_executable(qp_core_tests tests/test_core.cpp)
+  add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp)
   target_link_libraries(qp_core_tests PRIVATE qp::core GTest::gtest GTest::gtest_main)
   target_compile_options(qp_core_tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
@@ -84,4 +84,14 @@ if(QP_CORE_TESTS)
     $<$<AND:$<BOOL:${QP_WERROR}>,$<CXX_COMPILER_ID:MSVC>>:/WX>)
   include(GoogleTest)
   gtest_discover_tests(qp_core_tests)
+
+  # Latency of the Phase 6 kernels next to the code they replace.
+  add_executable(bench_core bench/bench_core.cpp)
+  target_link_libraries(bench_core PRIVATE qp::core)
+  target_compile_options(bench_core PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+    $<$<AND:$<BOOL:${QP_WERROR}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-Werror>)
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" _qp_bt)
+  string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_qp_bt}}" _qp_flags)
+  target_compile_definitions(bench_core PRIVATE QP_BENCH_FLAGS="${_qp_flags}")
 endif()
