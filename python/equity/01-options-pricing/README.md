@@ -109,3 +109,16 @@ docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 - **Real-life scenarios & edge cases** (earnings jump, dividend
   announcement, expiry pinning, 2008/2020 vol spikes; every edge case
   unit-tested), [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md) §3
+
+## Choosing an engine
+
+`eq_options.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.
