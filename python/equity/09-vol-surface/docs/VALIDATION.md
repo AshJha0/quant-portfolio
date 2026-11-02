@@ -228,3 +228,18 @@ invariants:
 | Degenerate pillar sets rejected | duplicate, out-of-order, zero, empty expiries; slice/expiry count mismatch; non-positive spot and strikes | `test_surface_rejects_degenerate_pillar_sets`, `test_surface_rejects_non_positive_strikes` |
 | Single-pillar surface | flat vol at every T from 1e-6 to 30 | `test_single_pillar_surface_is_flat_in_T` |
 | SVI parameter domain | negative `b`, `\|ρ\| ≥ 1`, `σ ≤ 0` and `a + bσ√(1−ρ²) ≤ 0` all raise | `test_svi_params_reject_negative_total_variance` |
+
+## 7. Round 3 oracle tests (`tests/test_round3_volsurface.py`)
+
+| Model | Oracle | Tolerance |
+|---|---|---|
+| SSVI | slice equals raw SVI under the Gatheral-Jacquier mapping | 1e-15 |
+| SSVI | Theorem 4.2 conditions hold, so Durrleman g >= 0 on [-4, 4] | 1e-12 |
+| SSVI/eSSVI | fit recovers known parameters from noiseless data | 1e-5 / 1e-3 |
+| Dupire | flat vol returns sigma; term-structure-only surface returns dw/dT | 1e-6 rel |
+| Dupire | the route via w and the route via prices agree on an SSVI surface | 2e-4 rel |
+| Dupire | local-vol MC reprices the input surface (40k paths, 100 steps) | 4 SE + 0.02 |
+| Bates | lam = 0 gives Heston | 1e-7 |
+| Bates | xi = 0, v0 = theta gives the Merton (1976) series | 1e-8 |
+| Bates | put-call parity; K -> 0 gives the discounted forward | 1e-12 / 1e-7 rel |
+| Bates | Euler MC of the dynamics (100k paths, 200 steps) | 4 SE + 0.03 |

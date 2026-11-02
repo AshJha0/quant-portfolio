@@ -1,6 +1,8 @@
 # Methodology
 
-This engine is the linear-book port of the Python engine `eq_var`. The
+This engine is the C++ port of the Python engine `eq_var` (linear
+exposures plus European options repriced in full per scenario, see the
+README's Option VaR section). The
 Python engine revalues each position in full. This engine takes a vector of
 linear factor exposures `w` and uses `P&L = w . r`. This file states the
 conventions, the maths, the model choices and the assumptions.
@@ -64,7 +66,11 @@ Variances are floored at 1e-32 to keep r / sigma finite on all-zero data.
 
 ## 3. Covariance and linear algebra (`eqvar/matrix.hpp`)
 
-- **Sample covariance**, ddof = 1.
+- **Sample covariance**, ddof = 1. The returns are centred once and the
+  cross-products come from `qp::syrk_upper_blocked`, a cache-blocked
+  `D^T D` that adds the rows in their original order. The result is the
+  same double as the row-streaming loop it replaced. The Rust engine uses
+  the same kernel (`qp_core::gemm`).
 - **EWMA covariance**: Sigma <- lam Sigma + (1 - lam) r r' over all rows,
   lam = 0.94. The seed is the zero-mean second moment mean(r r') of the
   first min(seed_window, T) rows, seed_window = 30 (convention S8), so the

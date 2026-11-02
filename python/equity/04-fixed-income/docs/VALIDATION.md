@@ -203,3 +203,31 @@ such a book. Pinned by
   2008 shock, PCHIP smoothness, mid-period FRN.
 * `test_edge_cases.py`, `test_input_hardening.py`: edge cases and input
   validation.
+
+## Round 3 oracle tests (`tests/test_round3_rates.py`)
+
+| Item | Oracle | Tolerance |
+|---|---|---|
+| OIS, projection | the bootstrap reprices every input quote | 1e-13 |
+| Projection | OIS quotes used as swap quotes give back the OIS curve | 1e-12 |
+| Black, Bachelier | put-call parity, ATM closed forms, implied-vol round trip | 1e-14 / 1e-10 |
+| Swaption, cap | payer - receiver = annuity x (F - K); cap - floor = swap | 1e-14 |
+| Hull-White | zero bonds reprice the initial curve | 1e-7 rel |
+| Hull-White | bond-option parity; Jamshidian payer-receiver parity | 1e-13 |
+| Hull-White | exact-OU MC (200k paths): bond, caplet, swaption | 4 SE + 2e-5 |
+| Hull-White | sigma -> 0 caplet is intrinsic; small a gives normal vol ~ sigma | 1e-6 / 2e-3 rel |
+
+## Round 3 fixes (`tests/test_round3_fix_rates.py`)
+
+| Item | Oracle | Tolerance |
+|---|---|---|
+| Monotone convex | every pillar reprices | 1e-15 |
+| Monotone convex | forward continuous at pillars; equals -d ln P/dt | 1e-8 / 1e-7 |
+| Monotone convex | increasing discrete forwards give an increasing, positive forward | exact sign |
+| Monotone convex | bumping one pillar leaves forwards two segments away unchanged | 1e-15 |
+| Monotone convex | each of the four shapes: end values, zero integral, quadrature | 1e-14 / 1e-8 |
+| HW two-curve | forward curve = discount curve gives the single-curve price | 1e-14 |
+| HW two-curve | payer - receiver = annuity x (F - K) from `rate_options` | 1e-13 |
+| HW two-curve | exact-OU MC (200k paths) of the two-curve payoff | 4 SE + 2e-5 |
+| HW calibration | known (a, sigma) recovered from normal and Black vol grids | 1e-6 rel |
+| HW calibration | fixed a: sigma recovered; wrong a leaves a visible misfit | 1e-8 rel |

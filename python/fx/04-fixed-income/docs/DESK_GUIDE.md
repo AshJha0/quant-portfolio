@@ -77,8 +77,8 @@ December.
 - Curve controls: repricing tolerance, stale-quote checks, day-over-day
   jump thresholds.
 - Model card: assumptions A1-A9 in METHODOLOGY.md. The main reservations
-  are A2 (no OIS tenor basis or CSA optionality), A5 (no MtM-resetting
-  basis swap) and A6 (partial calendars).
+  are A2 (no OIS tenor basis or CSA optionality), A5 (MtM-resetting
+  swaps only in `xccy_float`) and A6 (partial calendars).
 - Arbitrage monitor: `detect_cip_arbitrage` with `min_pnl` set to the
   balance-sheet charge, alerts to treasury. A non-finite quote raises a
   named error, so a broken feed reaches the alert queue instead of
@@ -94,3 +94,9 @@ December.
 | Basis DV01 and basis scenarios | Trader, treasury | EOD, weekly |
 | Carry table | Forward roll desk | Weekly |
 | CIP monitor | Treasury | EOD |
+
+## Round 3: which cross-currency swap
+
+For the major pairs the quoted basis is on the MtM (resetting) form; mark it
+with `FloatFloatXccy(mtm_reset=True)`. Use the constant-notional form for
+trades booked that way, with `notional_quote` set at trade.

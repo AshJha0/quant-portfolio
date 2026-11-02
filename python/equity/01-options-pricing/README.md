@@ -32,7 +32,7 @@ invalid inputs raise `ValueError`.
 ```bash
 cd python/equity/01-options-pricing
 pip install -e .[dev]                # numpy, scipy, pandas; dev adds pytest, hypothesis, mpmath
-python -m pytest tests -q            # 2039 tests, offline, about 100 s
+python -m pytest tests -q            # 2118 tests, offline, about 100 s
 python examples/run_pipeline.py      # full report, about 2 s
 python examples/validation_tables.py # remaining VALIDATION.md tables
 ```
@@ -109,3 +109,36 @@ docs/                    METHODOLOGY.md · VALIDATION.md · DESK_GUIDE.md
 - **Real-life scenarios & edge cases** (earnings jump, dividend
   announcement, expiry pinning, 2008/2020 vol spikes; every edge case
   unit-tested), [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md) §3
+
+## Choosing an engine
+
+`eq_options.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.
+
+## Phase 5 models (Round 3)
+
+New modules, each with an oracle test in `tests/test_phase5_models.py`:
+
+| Module | What it does | Oracle |
+|---|---|---|
+| `lr_tree` | Leisen-Reimer tree, European and American | Black-Scholes; error falls 4x per doubling of steps |
+| `pde` | Crank-Nicolson with Rannacher start, Brennan-Schwartz American | Black-Scholes; extrapolated LR tree; order-2 convergence |
+| `alo` | Andersen-Lake-Offengeim American pricer, including negative rates and the `q < r < 0` double boundary | LR tree at 2001/4001 steps, Richardson-extrapolated, to 2e-5 |
+| `dividends` | Escrowed cash dividends, Roll-Geske-Whaley, dividend tree | Haug's published RGW value 4.3860 |
+| `term_structure` | Zero curve, vol term structure, Merton averaging | Closed-form averages; flat curves equal `bs_price` |
+| `bachelier` | Normal model price, Greeks, implied normal vol | mpmath integral and derivatives at 30 digits |
+| `sabr` | Hagan and Obloj SABR vols, stable ATM evaluation, density check | Hagan's ATM formula; beta = 1, nu = 0 gives alpha |
+| `sabr_pde` | Arbitrage-free SABR density by the Hagan et al. (2014) PDE on a Le Floc'h-Kennedy grid | Exact mass and forward conservation; non-negative density; Hagan's expansion at short expiry |
+| `greeks_higher` | Charm, speed, colour, zomma, veta | `mpmath.diff` of the price at 30 digits |
+| `risk_grids` | Spot ladder, vega by expiry bucket, spot-by-vol P&L grid | Direct repricing; bucket totals equal book vega |
+
+Import them from their modules (for example `from eq_options.alo import alo_price`);
+the package `__init__` is unchanged this round.

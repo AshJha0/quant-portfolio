@@ -2,10 +2,10 @@
 
 How the C++ engine is validated: analytic identities, golden values from
 the Python engine, ordering tests, an input fuzz walk, and known failure
-modes. Every claim below is enforced by `ctest --test-dir build`: 121 tests
-in 13 executables, about 3 s serial, passing under GCC 15.2 and Clang 21.1
+modes. Every claim below is enforced by `ctest --test-dir build`: 133 tests
+in 15 executables, about 3 s serial, passing under GCC 15.2 and Clang 21.1
 with `-DFXVAR_WERROR=ON` and under GCC 15.2 and Clang 21.1 with
-`-fsanitize=address,undefined` (119 tests there: the allocation-counting
+`-fsanitize=address,undefined` (131 tests there: the allocation-counting
 binary replaces `operator new`, which the sanitizer runtimes also define,
 so sanitizer builds skip it).
 

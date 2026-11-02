@@ -2,7 +2,7 @@
 
 Contract items **3** (how it was validated) and **4** (where it fails), with
 the numbers produced by the committed seeds on synthetic data. Reproduce
-everything with `python -m pytest -q` (867 tests, about 90 s, offline) and
+everything with `python -m pytest -q` (924 tests, about 90 s, offline) and
 `python examples/run_pipeline.py` (about 30 s). Timings: Windows 11,
 Python 3.12.10, numpy 2.5, scipy 1.18. All `alpha` values below are tail
 probabilities (0.01 = 99 %).
@@ -326,7 +326,7 @@ both historical and parametric methods.
 ### 4.2 Cross-language golden vectors (`tests/test_golden_vectors.py`)
 
 `tests/golden/generate_golden.py` writes `golden_vectors.json`, which the C++
-and Rust linear-book ports assert. The JSON records the Python, numpy and
+and Rust ports assert. The JSON records the Python, numpy and
 scipy versions. The Python test rebuilds the JSON and compares every value
 to 16 ulps of `max(|value|, scale)`. The scale is 2e7 for case A, because
 those values are P&L differences of book values near 1e7 USD and their
@@ -348,3 +348,27 @@ Smile/skew vol risk (one ATM vol per pair: A5), tenor-bucketed curves (A3),
 cross-currency basis (A4), intraday VaR, and American/exotic options. Each
 is an extension point, not an accident: the assumptions register in
 METHODOLOGY.md states what breaks and how to add it.
+
+## Round 3 validation
+
+Every new model has at least one oracle test. Files under `tests/`:
+
+| Test file | Oracle | Evidence class |
+|---|---|---|
+| `test_risk_attribution.py` | hand two-asset example; Euler sum to 1e-13; marginal vs central finite difference; incremental vs marginal for a small trade; scenario ES and VaR contributions converge to the closed form on 400,000 draws | closed form, convergence |
+| `test_frtb_ima.py` | hand-computed cascade; sqrt(12) telescoping; plus-factor table; capital by hand; desk thresholds at 12/13 and 30/31; Spearman and KS equal scipy to 1e-12; PLA zones | closed form, published table, library cross-check |
+| `test_stressed_var.py` | planted 250-day crisis found; window VaR equals the 3rd-worst loss at alpha n = 3; capital by hand | closed form, planted signal |
+| `test_evt.py` | POT VaR equals the exact GPD quantile and POT ES the integrated quantile, for xi in (-0.2, 0, 0.25, 0.6); MLE recovers xi and beta on 200,000 draws; t_4 tail gives xi near 1/4; flat mean excess for the exponential | closed form, convergence |
+| `test_copula_mc.py` | Kendall tau = (2/pi) arcsin(rho); empirical tail dependence vs the closed form; Gaussian limit VaR vs closed form | closed form, convergence |
+| `test_revaluation.py` | Greeks vs finite differences; put-call parity; cross-check against the package's own Garman-Kohlhagen `gk_price`/`gk_*`; linear book exact; explain residual scales by about 8 when moves halve | closed form, library cross-check, convergence |
+| `test_limits.py` | statuses, ordering and aggregation by hand | exact |
+
+Compiled `option_reval` (C++ and Rust, both VaR engines): golden values from
+`fx_var.revaluation` to 1e-11, put-call parity, input rejection. Compiled
+option VaR (`test_option_var` in all four engines): historical VaR, ES and
+scenario P&L against `fx_var.revaluation.full_revaluation_pnl` plus the S2
+order statistic at 1e-11 relative (goldens from
+`cpp/equity-var-engine/tools/gen_option_var_golden.py`); Monte Carlo VaR
+within 4 bootstrap SEs of the closed-form quantile of a monotone one-factor
+book; a book with no options gives bit-identical results to the linear
+path.

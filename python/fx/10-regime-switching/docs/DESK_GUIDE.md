@@ -36,7 +36,9 @@ yet. Read section 6 before relying on any control listed here.
   [-0.19, 1.37] across 8 seeds, and the whole difference is the planted
   crash drift (VALIDATION.md section 4). Whether high-vol FX states carry
   a negative expected return out of sample is the question Phase 4 must
-  answer on real data before this use is justified.
+  answer on real data before this use is justified. The training run on
+  ECB data (1999-2021) did not support it (HAC t = +0.27); the signed
+  hold-out run decides.
 * Tail-hedge overlay. A filter reacts after jumps (peg breaks), so gap
   risk needs options or limits, not the filter.
 * Risk dashboard. The features themselves (vol, carry momentum, haven

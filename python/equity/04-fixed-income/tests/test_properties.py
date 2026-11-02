@@ -122,7 +122,8 @@ class TestCurveIdentities:
     def test_short_end_is_silent_and_consistent_across_schemes(self):
         zeros = [0.02, 0.03, 0.04]
         vals = []
-        for interp in fr.INTERPOLATIONS:
+        # monotone_convex interpolates the first segment (documented in curve.py)
+        for interp in [i for i in fr.INTERPOLATIONS if i != "monotone_convex"]:
             c = fr.DiscountCurve.from_zero_rates([1.0, 5.0, 10.0], zeros, interp)
             with warnings.catch_warnings():
                 warnings.simplefilter("error")  # must NOT warn on the short end

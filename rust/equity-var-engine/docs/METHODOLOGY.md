@@ -1,6 +1,6 @@
 # Methodology
 
-This crate is the linear-book port of the Python library `eq_var`
+This crate is the Rust port of the Python library `eq_var`
 (`python/equity/03-var-es-engine`). It revalues a book linearly: dollar
 exposures times factor returns. The Python library also does full
 revaluation of options. Both follow the repository-wide conventions below,
@@ -138,7 +138,11 @@ multivariate t (`r = L z / sqrt(W/nu)`, `W ~ chi^2_nu`, scale matrix
 
 For a linear book with normal factors MC reproduces the parametric number;
 it is a check of the closed form, not new information. The C++ and Rust
-engines are linear-book ports; option revaluation lives in Python.
+engines also reprice European options in full in every scenario:
+`historical_option_var_es` and `monte_carlo_option_run` in `option_reval`
+(Jorion, *Value at Risk*, 3rd ed., ch. 10). Vol is held at today's implied
+vol; the Python library also shocks vol and offers the Taylor
+approximations and P&L explain.
 
 `monte_carlo_run` simulates once and returns VaR, ES, the bootstrap SE
 (primary) and the KDE SE (diagnostic) from the same scenarios, plus the

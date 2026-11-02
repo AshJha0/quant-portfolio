@@ -83,6 +83,8 @@ add_library(eqopt
   src/black76.cpp
   src/monte_carlo.cpp
   src/batch.cpp
+  src/lr_tree.cpp
+  src/bachelier.cpp
 )
 target_include_directories(eqopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(eqopt PUBLIC Threads::Threads eqopt_tuning PRIVATE eqopt_warnings)
@@ -147,6 +149,7 @@ if(EQOPT_TESTS AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
     tests/test_monte_carlo.cpp
     tests/test_numerical_safety.cpp
     tests/test_latency_api.cpp
+    tests/test_phase5.cpp
   )
   target_include_directories(eqopt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_link_libraries(eqopt_tests PRIVATE eqopt eqopt_warnings GTest::gtest GTest::gtest_main)

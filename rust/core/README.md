@@ -18,6 +18,15 @@ differential test passes unchanged.
 | `roots` | Brent's method with `scipy.optimize.brentq` semantics | FX options |
 | `linalg` | Row-major Cholesky kernel that rejects NaN pivots | both VaR engines |
 | `par` | Fixed-chunk scoped-thread helper; results do not depend on the thread count | FX VaR |
+| `pool` | Persistent worker pool for `'static` jobs; results in task-index order, independent of worker count | new, opt-in |
+| `philox` | Philox4x32-10 counter-based generator; Random123 known-answer tests; same words as `qp/philox.hpp` | new, opt-in |
+| `quantile` | O(n) `select_kth` and type-7 quantile; same bits as a sort | new, opt-in |
+| `gemm` | Cache-blocked GEMM and `D^T D`; same bits as the naive loops | eq VaR `sample_covariance` |
+| `vmath` | Branch-free batch exp, erfc, normal CDF; exp 2 ulp, erfc 2e-15 relative, CDF 4e-16 absolute (see the module docs) | new, opt-in |
+
+`par` stays on `std::thread::scope` because it borrows the caller's
+slices, and a persistent pool cannot do that without `unsafe` (this crate
+forbids it). `pool` is for work whose inputs can move into an `Arc`.
 | `Error`, `require_finite` | Invalid-input and numerical-failure error; each engine converts it with `From` | all four engines |
 
 ## Variants kept on purpose

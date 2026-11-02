@@ -63,6 +63,7 @@ add_library(eqvar STATIC
   src/monte_carlo.cpp
   src/backtest.cpp
   src/kernels.cpp
+  src/option_reval.cpp
 )
 target_include_directories(eqvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(eqvar PRIVATE ${EQVAR_WARNINGS})
@@ -107,6 +108,8 @@ if(BUILD_TESTING)
     test_fuzz
     test_conventions
     test_latency_api
+    test_option_reval
+    test_option_var
   )
   foreach(t IN LISTS EQVAR_TESTS)
     add_executable(${t} tests/${t}.cpp)

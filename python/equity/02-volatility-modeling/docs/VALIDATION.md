@@ -229,3 +229,11 @@ not exist. `median_vol_annual` is reported alongside.
 | QLIKE penalises under-prediction more | strict | `test_qlike_penalises_underprediction_more_than_overprediction` |
 | Loss rankings invariant to data scale | strict | `test_qlike_scale_sensitive_mse_scale_sensitive_but_ranking_agrees` |
 | GJR/EGARCH collapse toward GARCH on symmetric data | abs(gamma) < 0.06 | `test_asymmetric_models_reduce_to_symmetric_on_symmetric_data` |
+
+## Round 3: HAR-RV (`tests/test_har_rv.py`)
+
+- Noiseless series built from the HAR recursion: the fit returns the
+  generating coefficients (rel 1e-6).
+- Regressors checked against a naive loop.
+- Simulated HAR (20,000 days): coefficients within 4 HAC SE + 0.02.
+- The long-horizon forecast converges to `b0 / (1 - b_d - b_w - b_m)`.

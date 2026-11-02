@@ -212,4 +212,36 @@ MonteCarloResult monte_carlo_var(const Book& book, const Market& market, const F
   return res;
 }
 
+MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
+                                 std::span<const OptionLeg> options,
+                                 const std::vector<std::string>& option_factors,
+                                 const FactorCov& cov, const MonteCarloOptions& opts, double dt) {
+  if (options.empty()) return monte_carlo_var(book, market, cov, opts);
+  validate_alpha(opts.alpha);
+  validate_horizon(opts.horizon_days);
+  if (opts.n_boot < 2) throw std::invalid_argument("n_boot must be >= 2");
+  const OptionBookLayout layout = layout_option_book(book, market, options, option_factors);
+
+  MonteCarloResult res;
+  res.alpha = opts.alpha;
+  res.horizon_days = opts.horizon_days;
+  res.dist = opts.dist;
+  res.n_scenarios = opts.n_scenarios;
+
+  const FactorCov sub = cov.select(layout.factors);
+  CholeskyResult diag;
+  const ReturnsMatrix scen =
+      simulate_factor_returns(sub, opts.n_scenarios, opts.dist, opts.df, opts.jumps, opts.seed,
+                              opts.horizon_days, &diag, opts.repair);
+  res.cholesky_warning = diag.warning;
+  res.pnl = option_book_pnl(layout, scen, dt);
+  const auto [var, es] = empirical_var_es(res.pnl, opts.alpha);
+  res.var = var;
+  res.es = es;
+  res.se_var = var_standard_error_bootstrap(res.pnl, opts.alpha, opts.n_boot,
+                                            opts.seed ^ 0x9E3779B97F4A7C15ULL);
+  res.se_var_kde = var_standard_error(res.pnl, opts.alpha);
+  return res;
+}
+
 }  // namespace fxvar

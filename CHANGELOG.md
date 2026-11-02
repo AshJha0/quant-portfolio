@@ -16,6 +16,170 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 3 fixes: options lane
+
+- `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
+  (any `q`) and `r = 0 > q`; European where the carry `r K - q S` never
+  pays (`r <= 0`, `q >= r`); and the double boundary of the `q < r < 0`
+  put (`r < q < 0` call), where the exercise band is found from the two
+  value-matching integral equations (Andersen and Lake 2021) by marching
+  in time. New `alo_double_boundary` returns the band. Eight new tree
+  comparisons, all within 2e-5.
+- `eq_options.sabr_pde`: arbitrage-free SABR (Hagan et al. 2014) by a
+  conservative finite-volume scheme on a grid uniform in Hagan's `z`, with
+  TR-BDF2 or implicit Euler steps (Le Floc'h and Kennedy 2014). Mass and
+  forward conserved to 1e-12, non-negative density and convex call prices
+  in the case where the expansion's density is negative.
+- `sharpe_tests` (equity and FX): `sharpe_diff_hac(kernel="qs_pw")`, the
+  Andrews-Monahan prewhitened quadratic-spectral HAC with Andrews'
+  automatic bandwidth that Ledoit and Wolf (2008) use, plus
+  `hac_cov_qs_prewhitened`, `qs_kernel` and `qs_bandwidth`.
+  `sharpe_diff_bootstrap` is now the Ledoit-Wolf studentised bootstrap by
+  default; `studentize=False` gives the previous centred bootstrap.
+- Research hold-out entry point: `fx_studies.py --mode holdout` scores 2022-2025 once, behind signed-hash, clean-tree and write-once guards, with provenance in every result; `--dry-run` runs the same path on synthetic fake-dated data; the pairs study now reports the deflated Sharpe (trial count 3). `prereg.py check` validates hold-out provenance.
+
+#### Round 3: engine switch (lane A)
+
+- `qp_core.engines` (`check_engine`, `load_engine`, `engine_available`) and
+  an `engine` module in `eq_options`, `fx_options`, `eq_var` and `fx_var`
+  whose functions take `engine="python" | "cpp" | "rust"`. `"python"` is the
+  default and calls the reference unchanged. An unknown name raises
+  `ValueError`; a missing extension raises `ImportError` with the install
+  command.
+- `tests/test_engine_differential.py`: each compiled engine against the
+  Python reference on 10,000 random inputs per group, at the binding-test
+  tolerances. CI job `engine differential` builds both bindings and fails
+  if any compiled case is skipped.
+- The four packages now declare `qp-core` as a dependency, because their
+  `engine` modules import it.
+
+#### Round 3 fixes: FX smile and calendars (fx lane)
+
+- `fx_options.smile.smile_strangle_from_broker` and
+  `broker_strangle_from_smile`: broker (market) 25-delta strangle to smile
+  strangle conversion and back (Reiswich and Wystup 2010, section 3.2;
+  Clark 2011), with `broker_strangle_premium`.
+- `fx_options.holidays`: rules-based settlement calendars for USD, EUR,
+  GBP, JPY, CHF, CAD and AUD, 2010 to 2099, deterministic and offline;
+  `holidays="auto"` in `spot_date` and `expiry_and_delivery` uses the
+  pair's joint calendar.
+
+#### Round 3: research platform, Phase 4 (lane C)
+
+- `data/`: free-data fetchers (`data/fetch/qp_fetch.py`) for ECB reference
+  rates and FRED series, each download stored under the git-ignored
+  `data/raw/` with a `.sha256` file. FRED third-party series are refused. A
+  parser for LOBSTER files placed by hand.
+- `research/`: pre-registrations `pairs-fx-g10`, `regime-fx-basket` and
+  `execution-lobster`; `research/tools/prereg.py` (`hash`, `check`); the
+  Johansen trace test and a Kalman hedge ratio in `research/studies/models.py`
+  (oracles: statsmodels `coint_johansen`; recursive least squares); the
+  `training_only` guard; training-period pairs and regime results on ECB
+  data, 1999 to 2021. CI job `research (prereg check, tests)`.
+- `pairs-fx-g10` and `regime-fx-basket` signed by the maintainer on
+  2026-11-02 under owner decision 9. `execution-lobster` stays unsigned.
+- Training-period results are not out-of-sample evidence. Pairs: net Sharpe
+  0.24, block-bootstrap 95% interval [-0.17, 0.46], a position on 79 of
+  4,867 days, trial count 3. Regime: the hypothesis (negative mean return
+  in the high-volatility state) is not supported in training, HAC t = +0.27.
+
+#### Round 3: options, Phase 5 (lane D)
+
+- `eq_options`: `lr_tree` (Leisen-Reimer), `pde` (Crank-Nicolson, American),
+  `alo` (Andersen-Lake-Offengeim), `dividends` (escrowed spot, RGW, tree),
+  `term_structure`, `bachelier`, `sabr`, `greeks_higher` (charm, speed,
+  colour, zomma, veta), `risk_grids`.
+- `fx_options`: `smile` (three-point smile from ATM, RR and BF), `premium`
+  (premium styles), `cuts` (spot lag, expiry and delivery from tenor, cut
+  times, ACT/365F time to the cut).
+- C++ `eqopt` and Rust `eq-options-engine` ports of Leisen-Reimer, Bachelier
+  and the higher-order Greeks, matched to the Python values to 1e-12
+  relative (1e-13 for Bachelier).
+- Each model has an oracle test; the list is in the README and in the
+  package `docs/VALIDATION.md`.
+
+#### Round 3: volatility and rates (lane F)
+
+- Dupire local vol (`eq_surface.dupire`), SSVI and eSSVI (`eq_surface.ssvi`),
+  Bates (`eq_surface.bates`), HAR-RV (`eq_vol.har_rv`), OIS multi-curve
+  bootstrap (`fi_rates.multicurve`), Black and Bachelier caps and swaptions
+  (`fi_rates.rate_options`), Hull-White one-factor with Jamshidian swaptions
+  (`fi_rates.hull_white`), float-float cross-currency swaps with constant
+  and MtM notional (`fx_rates.xccy_float`).
+
+#### Round 3: credit and portfolio (lane G)
+
+- `eq_credit`: `lgd_ead`, `calibration` (central tendency, margin of
+  conservatism, CRR 3 bp floor), `migration` (cohort matrix, lifetime PD,
+  generator), `cds` (hazard bootstrap with accrual on default).
+- `fx_credit`: `xva` (bilateral CVA/DVA, CSA threshold, MTA and MPoR,
+  wrong-way risk), `saccr` (SA-CCR for FX, CRE52). `fx_credit.cva` stays
+  the deprecated alias.
+- `eq_port` and `fx_port` (same code in both): `hrp`, `robust_mvo`
+  (resampled and robust), `cost_qp` (L1 and quadratic costs, turnover cap),
+  `factor_model`, `tracking_error`, `sharpe_tests` (HAC delta method,
+  circular block bootstrap).
+
+#### Round 3: VaR and ES, Phase 5 (lane E)
+
+- `eq_var` and `fx_var` (same file in both): `risk_attribution` (Euler
+  marginal, component and incremental VaR and ES), `frtb_ima`
+  (liquidity-horizon cascade, stressed ES, IMCC, capital, desk backtest,
+  PLA test), `stressed_var` (stress-window search, Basel 2.5 capital),
+  `evt` (POT GPD fit, VaR and ES), `copula_mc` (t-copula MC), `revaluation`
+  (option full revaluation, Taylor P&L, P&L explain), `limits`.
+- `option_reval` in all four compiled VaR engines (C++ and Rust): BSM price,
+  Greeks, full-revaluation and delta-gamma P&L, matched to Python goldens to
+  1e-11.
+- Option VaR in all four compiled VaR engines (fix round): historical and
+  Monte Carlo VaR/ES reprice every option leg in full in every scenario
+  (BSM for equity, Garman-Kohlhagen for FX), with the linear path unchanged
+  for books without options. Equity: `historical_option_var_es`,
+  `monte_carlo_option_var` (C++) / `monte_carlo_option_run` (Rust),
+  `option_book_pnl`. FX: option overloads of `historical_var` and
+  `monte_carlo_var` (C++), `historical_option_var` and
+  `monte_carlo_option_var` (Rust). Historical VaR, ES and scenario P&L match
+  the Python revaluation at 1e-11 relative (goldens from
+  `cpp/equity-var-engine/tools/gen_option_var_golden.py`); Monte Carlo VaR
+  lands within 4 bootstrap SEs of a closed-form quantile. Vol is held at
+  today's level per scenario; FX option books must report in USD and
+  historical option VaR takes `horizon_days = 1` only.
+- The BCBS MAR paragraph numbers quoted in `frtb_ima` have not been
+  re-checked against the bis.org text.
+
+#### Round 3 fixes: rates and credit
+
+- `fi_rates.curve`: `monotone_convex` interpolation (Hagan and West 2006,
+  Section 5) and `DiscountCurve.instantaneous_forward`. Pillars reprice
+  exactly; the forward is continuous, local and keeps the monotonicity of
+  the inputs.
+- `fi_rates.hull_white`: two-curve swaptions (OIS discounting, separate
+  forward curve, Henrard 2010 deterministic spread) and
+  `calibrate_hull_white` to a swaption vol grid (normal or Black), with
+  `(a, sigma)` or `sigma` alone; checked by Monte Carlo and round trip.
+- `fx_rates.xccy_float`: MtM convexity adjustment (`MtmConvexity`:
+  lognormal spot, Hull-White quote rate, correlation; checked by Monte
+  Carlo) and seasoned valuation between resets (`elapsed` with the current
+  fixings).
+- `eq_credit.isda_cds`: CDS on ISDA standard-model conventions (dated IMM
+  schedule, step-in, ACT/360, exact accrual on default, a real discount
+  curve), dated par-spread bootstrap and quoted-spread to upfront
+  conversion. Not checked against ISDA's licensed test grids.
+
+#### Round 3: performance kernels, Phase 6 (lane B)
+
+- `qp::core` and `qp-core`: Philox4x32-10 (Random123 known-answer vectors
+  pass in both languages), O(n) quantile selection, cache-blocked GEMM and
+  `D^T D` (bit-identical to the naive loops), branch-free batch `exp`,
+  `erfc` and normal CDF (documented tolerances, opt-in), a persistent Rust
+  thread pool, and the C++ `bench_core` latency bench. CI job
+  `cpp core (<preset>)` builds and tests `cpp/core` and runs `bench_core`
+  report-only.
+- Measured on one laptop (SSE2 target): selection 7.3x faster than a full
+  sort and blocked GEMM 3.2x faster than naive at p50, but the batch `erfc`
+  and `exp` are slower than libm (0.66x and 0.38x). They are not used by
+  any engine.
+
 #### Shared code, bindings and build (Round 2)
 
 - `qp-core` 1.0.0 at `python/core` (import `qp_core`): statistics,
@@ -152,6 +316,16 @@ come from seeded synthetic data.
 
 ### Changed
 
+#### Round 3
+
+- Equity VaR sample covariance (C++ and Rust) runs on the blocked `D^T D`.
+  Results are bit-identical; no golden changed.
+- `sharpe_diff_bootstrap` (equity and FX `sharpe_tests`) now studentises by
+  default, following Ledoit and Wolf (2008), so its p-value for the same
+  inputs differs from Round 2. Pass `studentize=False` to get the old
+  centred-bootstrap result.
+- No other existing function, golden or pinned number changed in Round 3.
+
 #### Round 2
 
 - Equity EWMA covariance seeds from the zero-mean second moment mean(r r')
@@ -275,7 +449,8 @@ come from seeded synthetic data.
   checks every quoted LEARN question count and COOKBOOK recipe count against
   the files, and fails on a hand-typed test total.
 - LEARN.md answers and COOKBOOK.md recipes follow the current APIs. The C++
-  and Rust VaR engines are described as linear-book ports.
+  and Rust VaR engines are described as revaluing linear positions and
+  repricing European option legs in full.
 
 ### Deprecated
 
@@ -324,11 +499,51 @@ Each stays for one release with a `DeprecationWarning` (Python),
   Cornish-Fisher grid text, dangling references, the "Real Data" title of a
   synthetic-data project, and the descriptions of CI and the count mechanism.
 
+### Known issues
+
+These are gaps in Round 3 work that a user can hit. Each is stated so the
+number it affects can be read with the right caveat.
+
+- The ISDA CDS standard model (`eq_credit.isda_cds`) has not been compared
+  with the ISDA published test grid, because downloading the grid needs a
+  licence click-through. Its checks are internal (identities and hand
+  examples).
+- The ISDA CDS module uses a weekends-only calendar, so a date that falls on
+  a public holiday is not rolled.
+- The rules-based holiday calendars omit one-off closures announced after the
+  code was written (a state funeral or a royal wedding, say).
+- The double-boundary Andersen-Lake-Offengelden price (`q < r < 0` put)
+  takes about 1 s per price, because it marches the two boundaries in time.
+- Option VaR holds implied vol at today's level in every scenario; there is
+  no vol factor. FX option books must report in USD, and historical option
+  VaR needs a one-day horizon (pass h-day returns for longer horizons).
+- The positivity collar of the monotone-convex curve (Hagan and West) is not
+  implemented, so forwards can go negative on steep inputs.
+- Dupire local vol, SSVI, Bates, HAR-RV and Euler attribution exist for
+  equity only; the FX packages do not have them.
+- The `pairs-fx-g10` pre-registered strategy is nearly dormant under its
+  registered variance rule: in training it trades in 3 of 19 test years (79
+  active days). That is the registered design, not a code fault; changing the
+  rule would be a new registration. The reasoning is in `research/README.md`.
+
 ### Known limitations
 
-- The Python reference packages have no `engine="python"|"cpp"|"rust"`
-  switch. It was not part of Round 2 and is deferred to Round 3. Use
-  `qp_cpp` or `qp_rust` directly.
+- The `engine=` switch does not cover Monte Carlo pricing, MC VaR, the
+  backtests or the Round 3 compiled ports (Leisen-Reimer, Bachelier,
+  higher-order Greeks).
+- Not done because the data needs an account: equity pairs on a
+  point-in-time universe (Nasdaq Data Link) and the LOBSTER execution study,
+  whose pre-registration is an unsigned draft.
+- No hold-out run yet. The research results are training-period only. The
+  hold-out entry point exists and has only been run with `--dry-run`.
+- Engines do not use Philox or the batch kernels. Switching would change
+  every Monte Carlo golden, and the batch kernels move prices by up to
+  about 1e-15 relative.
+- FRTB NMRF/SES (an input), the default risk charge and risk-factor
+  eligibility are not implemented.
+- The Round 3 Python modules (for example `eq_options.sabr_pde`,
+  `fx_options.holidays`, `eq_credit.isda_cds`) are not re-exported from the
+  package `__init__`; import them by module path.
 - The bindings do not cover the FX VaR Monte Carlo, book-level VaR, deltas
   and strikes from delta, Black-76, Christoffersen or Acerbi-Szekely.
 - The `gcc16-cxx26` preset has not been run yet. GCC 16 is not installed

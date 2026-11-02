@@ -136,3 +136,10 @@ because reordering them would change the bits. A few elementwise loops
   validation, identities, convergence, failure modes, benchmarks.
 - [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md): where a Rust engine could sit
   in a desk workflow; golden-vector regression as a release gate.
+
+## Phase 5 ports (Round 3)
+
+Leisen-Reimer tree, Bachelier price/Greeks/implied normal vol, and charm,
+speed, colour, zomma, veta: `src/lr_tree.rs`, `src/bachelier.rs`, `src/greeks_higher.rs` (unit tests in each module). They match the Python reference
+golden values to 1e-12 relative (1e-13 for Bachelier). The other Phase 5
+models are Python only for now.

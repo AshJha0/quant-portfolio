@@ -1,7 +1,7 @@
 # Validation
 
 How the engine is validated, and where it fails. Every claim below is
-enforced by the test suite: `ctest` runs 123 tests in 13 executables,
+enforced by the test suite: `ctest` runs 136 tests in 15 executables,
 offline, in about 7 s serial (GCC 15.2, Release). The same suite passes
 under Clang 21.1 and under GCC with `-fsanitize=address,undefined`.
 

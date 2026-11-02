@@ -1,6 +1,6 @@
 # Methodology
 
-C++23 FX VaR/ES engine. It is the linear-book port of the Python engine
+C++23 FX VaR/ES engine. It is the C++ port of the Python engine
 `python/fx/03-var-es-engine` (`fx_var`): cash, spot and forwards with full
 revaluation, no options. This file states the conventions, the reasons for
 a compiled engine, the model choices, and the assumptions. The Python

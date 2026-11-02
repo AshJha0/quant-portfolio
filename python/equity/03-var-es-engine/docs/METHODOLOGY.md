@@ -184,10 +184,11 @@ Monte Carlo has no multi-day path model and options keep expiry fixed, so
 
 ## 11. Not implemented
 
-Risk decomposition (component or incremental VaR), FRTB (liquidity
-horizons, stressed calibration, P&L attribution), EVT tails, variance
-reduction in Monte Carlo, covariance shrinkage and exact or simulated
-Kupiec and Christoffersen p-values.
+Variance reduction in Monte Carlo, covariance shrinkage and exact or
+simulated Kupiec and Christoffersen p-values. Risk decomposition, the FRTB
+IMA pieces and EVT tails were added in Round 3 (see the Round 3 section);
+FRTB NMRF/SES, the default risk charge and risk-factor eligibility are
+still not implemented.
 
 ## 12. References
 
@@ -201,3 +202,35 @@ Kupiec and Christoffersen p-values.
 - Higham (2002), *Computing the nearest correlation matrix*.
 - BCBS (1996), *Supervisory framework for the use of backtesting*; BCBS
   (2019), *Minimum capital requirements for market risk*.
+
+## Round 3 methods
+
+Each module's docstring carries the plain idea, the formal statement, the
+reference and a pointer to its worked example. Summary:
+
+* **Euler attribution** (Tasche 2000; Hallerbach 2003). VaR and ES are
+  homogeneous of degree one in the positions, so `R = sum_i w_i dR/dw_i`.
+  Closed form under normal returns; from scenarios, the ES gradient is the
+  mean position loss on the tail scenarios, and the VaR gradient is a box-
+  kernel average over ranks around the VaR scenario (Epperlein and Smillie
+  2006), window `alpha n / 4` on each side.
+* **FRTB IMA** (BCBS market risk standard, 2019; MAR32, MAR33, MAR99).
+  Cascade `ES = sqrt(sum_j (ES_j sqrt((LH_j - LH_{j-1})/10))^2)`, stressed
+  scaling by `max(ES_FC/ES_RC, 1)`, `IMCC = 0.5 ES_all + 0.5 sum ES_class`,
+  capital `max(latest, (1.5 + plus) avg60)`, desk test at 12/30 exceptions,
+  PLA zones from Spearman (0.80/0.70) and KS (0.09/0.12). The NMRF charge
+  (SES) is an input, not computed.
+* **Stressed VaR** (BCBS 2009, para. 718(Lxxvi)). Search every window of
+  250 days for the largest VaR of today's book; capital
+  `max(VaR, m_c avg60) + max(sVaR, m_s avg60)`, multipliers at least 3.
+* **EVT / POT** (McNeil and Frey 2000; McNeil, Frey and Embrechts 2015).
+  GPD fitted by maximum likelihood to excesses over a threshold;
+  `VaR = u + beta/xi ((n alpha/n_u)^-xi - 1)`, `ES = (VaR + beta - xi u)/(1 - xi)`.
+* **t copula** (Demarta and McNeil 2005). `U = t_nu(Z / sqrt(W))`; any
+  marginals through their inverse CDFs.
+* **Revaluation and P&L explain** (Hull, OFOD 11th ed.). BSM with carry
+  (dividend yield, or the foreign rate for Garman-Kohlhagen); delta, gamma,
+  vega, vanna, volga and theta terms; the explain residual is third order.
+* **Limits.** Utilisation `x/L` (or `|x|/L` for two-sided sensitivity
+  limits), warning at 80 % by default, breach above 100 %; parents default to
+  the sum of their children, which is conservative for VaR and ES.

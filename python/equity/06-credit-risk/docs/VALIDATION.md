@@ -3,7 +3,7 @@
 All numbers below are produced by `python examples/run_pipeline.py`
 (train: 30,000 loans, seed 42, 2.95% default rate; OOT: 12,000 loans,
 seed 123, drift 0.5 + calibration shift 0.5 → 4.78% default rate) and by the
-test suite (`pytest -q`, 157 tests, offline, seeded). All data are synthetic.
+test suite (`pytest -q`, 185 tests, offline, seeded). All data are synthetic.
 
 ## 1. Analytic and cross-model benchmarks
 
@@ -195,3 +195,17 @@ Hardening additions (`test_input_validation.py`, `test_edge_cases.py`):
   Vasicek quantile monotone in q; simulated loss rates bounded in [0, 1] with
   mean ≈ PD·LGD within 3 SE; Basel K bounded by LGD at M = 2.5; economic
   capital quantile gated to (0, 1].
+
+## Round 3 oracle tests (`tests/test_round3_credit.py`, 18 tests)
+
+| Model | Oracle |
+|---|---|
+| Workout LGD | Hand value at a 10% rate; the zero-rate case is undiscounted |
+| EAD / CCF | Round trip CCF -> EAD -> CCF; NaN when nothing was undrawn |
+| Beta LGD | Recovers (2, 5) from 200k draws within 3% |
+| Calibration | Mean PD equals the target to 1e-12; ranking unchanged; a single obligor is exact |
+| MoC C | Equals t_{0.9,n-1} s / sqrt(n) to 1e-14 |
+| Lifetime PD | Two-state chain: 1 - (1-p)^t to 1e-14 |
+| Generator | exp(Q) -> log round trip to 1e-10; fixed generator is valid |
+| CDS | Credit triangle s = lambda (1-R) as the premium grid is refined; flat-segment protection leg closed form; bootstrap reprices five tenors to 1e-12 |
+| ISDA CDS (`test_isda_cds.py`) | Standard dates (step-in, cash settle, weekend roll, maturity + 1, 21 periods); protection and premium legs equal adaptive quadrature to 1e-10 rel; flat hazard gives lambda (1-R) 360/365 / (1 - r tau/2) to 5e-4 rel; bootstrap reprices five dated tenors to 1e-13; quoted spread = coupon gives zero clean upfront; upfront ~ (S - C) RPV01 to 3%. ISDA's published test grids not checked (licensed, not in the repo) |

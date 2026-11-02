@@ -14,8 +14,9 @@ research (Python eq_var): model choices, full revaluation, stress
 C++ eqvar (linear book)     Rust eq_var_engine (linear book)
 ```
 
-The Python library owns model development and option revaluation. The C++
-and Rust engines are linear-book ports written separately against the same
+The Python library owns model development, vol shocks and P&L explain. The
+C++ and Rust engines (linear books plus European options repriced in full per
+scenario) are written separately against the same
 goldens. A methodology change lands in Python first, regenerates the JSON,
 and is then ported; a failing golden test is the tripwire for an unported
 change.
@@ -61,7 +62,7 @@ overnight batch.
 ## 5. Gates for every commit
 
 1. `cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings` and `#![deny(missing_docs)]`.
-2. `cargo test --release --locked -p eq-var-engine` (from `rust/`): 127 integration tests and 16 doctests, including
+2. `cargo test --release --locked -p eq-var-engine` (from `rust/`): 138 integration tests and 16 doctests, including
    the fuzz walk and its registry of public functions.
 3. Goldens: `tools/gen_golden_rs.py --check`, `test_conv_golden.rs`,
    `test_cross_language.rs`. Any drift is an unported methodology change or

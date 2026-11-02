@@ -141,3 +141,17 @@ to invent a vol there (raises; the quote is information-free); T=0 and
 corners are finite and tested. Every edge case in the contract's item 6
 list is both documented (VALIDATION.md §6.5) and unit-tested
 (`tests/test_edge_cases.py`).
+
+## 4. Phase 5 tools on the desk (Round 3)
+
+* **American books**: ALO for the end-of-day mark and intraday risk
+  (tens of milliseconds per option in Python); LR or CN as the independent
+  check. Single-stock names with a known cash dividend: the escrowed
+  dividend tree, with RGW as the one-dividend cross-check.
+* **Risk reports**: `spot_ladder` for the morning delta/gamma ladder,
+  `vega_ladder` for vega by expiry bucket, `scenario_grid` for the
+  spot-by-vol stress page. Charm and colour explain overnight delta and
+  gamma drift; veta explains vega bleed.
+* **Normal-vol quotes and smiles**: Bachelier for normal-vol quotes; SABR
+  for smile marking, with `sabr_density_check` run on every calibration to
+  catch low-strike arbitrage before it reaches a risk number.

@@ -38,7 +38,7 @@ flowchart TB
     end
 
     A1 -.->|golden vectors| CPP & RUST
-    A3 -.->|"golden vectors<br/>(linear book)"| CPP & RUST
+    A3 -.->|"golden vectors<br/>(linear book, options)"| CPP & RUST
 
     style AREAS fill:#1f2937,color:#fff
     style FOUND fill:#374151,color:#fff
@@ -185,7 +185,8 @@ flowchart TD
 ```
 
 `alpha` is the tail probability in (0, 0.5) everywhere. The C++ and Rust VaR
-engines are linear-book ports and do not revalue options.
+engines revalue linear books and European options (full repricing per
+scenario, vol held fixed).
 
 ---
 
@@ -204,14 +205,107 @@ flowchart TD
     BIND["bind &lt;package&gt;<br/>qp-cpp, qp-rust"]
     BENCH["bench<br/>2x p50 rule"]
     HYG["hygiene<br/>banned-word check,<br/>voice report (report-only)"]
+    CORE["cpp core (&lt;preset&gt;)<br/>cpp/core tests,<br/>bench_core report-only"]
+    DIFF["engine differential<br/>both bindings, 10,000-input harness,<br/>no skips allowed"]
+    RES["research<br/>prereg.py check, research/tests"]
     CNT["counts<br/>aggregate executed counts<br/>into counts.json,<br/>run tests/test_docs_counts.py"]
     OK(["ci-ok<br/>required check:<br/>every job succeeded"])
 
     DISC --> PY
     PY --> CNT
+    PYC --> CNT
     CPP --> CNT
     RUST --> CNT
-    DISC & PYC & PY & LINT & GOLD & CPP & FMT & RUST & BIND & BENCH & HYG & CNT --> OK
+    BIND --> CNT
+    DISC & PYC & PY & LINT & GOLD & CPP & FMT & RUST & BIND & BENCH & HYG & CORE & DIFF & RES & CNT --> OK
+```
+
+
+---
+
+## 7. The `engine=` switch (Round 3)
+
+```mermaid
+flowchart LR
+    CALL["eq_options.engine / fx_options.engine<br/>eq_var.engine / fx_var.engine<br/>f(..., engine=name)"]
+    CHK{"qp_core.engines<br/>check_engine(name)"}
+    ERR1(["ValueError:<br/>unknown name"])
+    PYREF["python (default)<br/>reference function, unchanged"]
+    LOAD{"load_engine:<br/>extension imports?"}
+    ERR2(["ImportError with<br/>pip install ./bindings/..."])
+    CPP["qp_cpp (nanobind)<br/>C++ engines"]
+    RS["qp_rust (PyO3)<br/>Rust crates"]
+    DIFF["tests/test_engine_differential.py<br/>10,000 random inputs per group"]
+
+    CALL --> CHK
+    CHK -->|unknown| ERR1
+    CHK -->|python| PYREF
+    CHK -->|cpp or rust| LOAD
+    LOAD -->|no| ERR2
+    LOAD -->|cpp| CPP
+    LOAD -->|rust| RS
+    CPP & RS -.->|compared with| PYREF
+    DIFF -.-> CPP & RS
+```
+
+---
+
+## 8. Pre-registration workflow (Phase 4)
+
+```mermaid
+flowchart TD
+    FETCH["data/fetch/qp_fetch.py<br/>ECB, FRED to data/raw/ + .sha256"]
+    DRAFT["1. draft<br/>research/prereg/&lt;name&gt;.md"]
+    HASH["prereg.py hash<br/>SHA-256 of the text above ## Signature"]
+    SIGN["2. sign<br/>signed_by, signed_on, sha256"]
+    TRAIN["training run, 1999-2021<br/>training_only guard"]
+    CHECK{"3. prereg.py check<br/>hash matches?<br/>hold-out only if signed"}
+    HOLD["4. hold-out run, 2022-2025"]
+    REF(["result refused"])
+    OK(["result accepted"])
+
+    FETCH --> TRAIN
+    DRAFT --> HASH --> SIGN
+    DRAFT --> TRAIN
+    SIGN --> HOLD
+    TRAIN --> CHECK
+    HOLD --> CHECK
+    CHECK -->|no| REF
+    CHECK -->|yes| OK
+```
+
+State on this branch: `pairs-fx-g10` and `regime-fx-basket` signed
+(training results only); `execution-lobster` an unsigned draft, blocked on
+LOBSTER data access. Equity pairs on a point-in-time universe are not
+drafted (Nasdaq Data Link needs an account).
+
+---
+
+## 9. Round 3 model dependencies
+
+```mermaid
+flowchart LR
+    subgraph RATES["fi_rates (equity/04)"]
+        OIS["multicurve<br/>bootstrap_ois"] --> PROJ["multicurve<br/>bootstrap_projection"]
+        PROJ --> RO["rate_options<br/>caps, swaptions"]
+        OIS --> HW["hull_white<br/>Jamshidian swaptions"]
+    end
+    subgraph SURF["eq_surface (equity/09)"]
+        SSVI["ssvi"] --> DUP["dupire"]
+        HES["heston"] --- BAT["bates"]
+    end
+    subgraph AMER["eq_options: American pricer choice"]
+        LR["lr_tree<br/>reference"] -.->|oracle| ALO["alo<br/>fast"]
+        LR -.->|oracle| PDE["pde<br/>Crank-Nicolson"]
+    end
+    subgraph RISK["eq_var / fx_var"]
+        REV["revaluation"] --> ATT["risk_attribution"]
+        REV --> FRTB["frtb_ima"]
+    end
+    subgraph CMP["cpp + rust VaR engines"]
+        OR["option_reval"] --> OV["historical / MC option VaR"]
+    end
+    REV -.->|goldens 1e-11| OR
 ```
 
 Fix history is in [CHANGELOG.md](../CHANGELOG.md).

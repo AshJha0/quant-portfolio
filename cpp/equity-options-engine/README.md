@@ -64,7 +64,7 @@ pool, and it equals the throwing `mc_price` bit for bit. See
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # add -DEQOPT_WERROR=ON for -Werror
 cmake --build build -j
-ctest --test-dir build --output-on-failure        # 82 tests
+ctest --test-dir build --output-on-failure        # 89 tests
 ./build/eqopt_bench --out results.json            # per-call latency, JSON
 ```
 
@@ -208,3 +208,10 @@ equity-options-engine/
   validation, identities, convergence, failure behaviour, kernel API tests.
 - [docs/DESK_GUIDE.md](docs/DESK_GUIDE.md): where a C++ engine sits in a
   desk workflow; golden-vector regression as a release gate.
+
+## Phase 5 ports (Round 3)
+
+Leisen-Reimer tree, Bachelier price/Greeks/implied normal vol, and charm,
+speed, colour, zomma, veta: `include/eqopt/lr_tree.hpp`, `include/eqopt/bachelier.hpp`, `include/eqopt/greeks_higher.hpp` (tests in `tests/test_phase5.cpp`). They match the Python reference
+golden values to 1e-12 relative (1e-13 for Bachelier). The other Phase 5
+models are Python only for now.

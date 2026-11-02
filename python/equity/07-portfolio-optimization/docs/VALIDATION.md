@@ -2,7 +2,7 @@
 
 All numbers below come from `python examples/run_pipeline.py` (seeded,
 offline, synthetic data, about 90 s) and the pytest suite (`pytest -q`,
-170 tests, about 16 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
+196 tests, about 16 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
 1e-10–1e-8 (most hold to machine precision), solver-vs-closed-form to
 documented tolerance.
 
@@ -154,7 +154,7 @@ bonds.
 
 ## 7. Test suite
 
-`pytest -q`: 170 tests, all passing, about 16 s, offline and seeded
+`pytest -q`: 196 tests, all passing, about 16 s, offline and seeded
 (measured 2026-11-01). Coverage: the identities in §1, the solver checks
 in §2, property tests (frontier monotonicity, DR ≥ 1, RC Euler),
 no-lookahead and exact cost accounting, and the edge cases: single
@@ -167,3 +167,12 @@ sets raise `ValueError` (target return outside the box-achievable range,
 caps that cannot sum to the budget, a vol cap below the constrained
 minimum-variance vol) and runs portfolio invariants over random SPD
 inputs.
+
+## Round 3 oracle tests (`tests/test_round3_portfolio.py`, 19 tests)
+
+- HRP gives exactly the inverse-variance weights for a diagonal Sigma and matches the two-asset closed form. It stays long-only on a near-singular Sigma.
+- The closed-form MV satisfies its first-order condition. Resampled weights converge to the classic weights as T grows. Robust MVO with kappa = 0 equals the classic solution, and with kappa > 0 it equals the classic solution at the effective risk aversion.
+- The cost QP matches the closed-form no-trade band with and without impact. With zero cost it equals the classic MV. The turnover cap binds and the box bounds hold.
+- The factor model recovers the true loadings and reproduces lstsq exactly. Its Euler sums match the totals to 1e-13.
+- TE: the active weights are budget-neutral, hit the target TE and attain the IR bound. The SLSQP solution equals the closed form when the bounds are slack.
+- Sharpe: with no lags, the HAC standard error equals Memmel's to within 2% on 200k normal draws. The gradient matches finite differences. HAC widens under AR(1) returns. The QS kernel matches its closed form and its k_2 = 18 pi^2 / 125 curvature at 0; the Andrews bandwidth matches the AR(1) plug-in; the prewhitened QS estimator recovers the AR(1) long-run variance 1 / (1 - rho)^2 and a VAR(1)'s (I - A)^-1 (I - A)^-T within 3-4% on 200k draws, and the sample covariance on iid data; with `kernel="qs_pw"` the standard error equals Memmel's within 3% on iid normals. The studentised bootstrap rejects at most 9 of 60 seeded null samples at 5% (AR(1) returns, T = 300) and rejects a true difference; `studentize=False` reproduces the old centred statistic exactly. A defect found while testing: the QS kernel's closed form loses about 5e-6 to cancellation at x = 1e-6; it now uses its Taylor series below |6 pi x / 5| = 0.05.

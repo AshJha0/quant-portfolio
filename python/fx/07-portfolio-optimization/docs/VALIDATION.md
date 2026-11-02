@@ -1,6 +1,6 @@
 # Validation: FX Portfolio Optimization
 
-All numbers below are reproducible offline: `pytest -q` (187 tests, about 40 s)
+All numbers below are reproducible offline: `pytest -q` (213 tests, about 40 s)
 and `python examples/run_pipeline.py` (seed 123, 3 024 days, synthetic data, about 60 s).
 
 ## 1. Analytic identities (unit-tested tolerances)
@@ -185,3 +185,12 @@ on solver failure, so no failed iterate reaches the ledger.
 - ERC coordinate descent vs analytic 2-asset solution; Euler identity ties
   contributions to total variance.
 - EWMA recursion vs 4-observation hand computation.
+
+## Round 3 oracle tests (`tests/test_round3_portfolio.py`, 19 tests)
+
+- HRP gives exactly the inverse-variance weights for a diagonal Sigma and matches the two-asset closed form. It stays long-only on a near-singular Sigma.
+- The closed-form MV satisfies its first-order condition. Resampled weights converge to the classic weights as T grows. Robust MVO with kappa = 0 equals the classic solution, and with kappa > 0 it equals the classic solution at the effective risk aversion.
+- The cost QP matches the closed-form no-trade band with and without impact. With zero cost it equals the classic MV. The turnover cap binds and the box bounds hold.
+- The factor model recovers the true loadings and reproduces lstsq exactly. Its Euler sums match the totals to 1e-13.
+- TE: the active weights are budget-neutral, hit the target TE and attain the IR bound. The SLSQP solution equals the closed form when the bounds are slack.
+- Sharpe: with no lags, the HAC standard error equals Memmel's to within 2% on 200k normal draws. The gradient matches finite differences. HAC widens under AR(1) returns. The QS kernel matches its closed form and its k_2 = 18 pi^2 / 125 curvature at 0; the Andrews bandwidth matches the AR(1) plug-in; the prewhitened QS estimator recovers the AR(1) long-run variance 1 / (1 - rho)^2 and a VAR(1)'s (I - A)^-1 (I - A)^-T within 3-4% on 200k draws, and the sample covariance on iid data; with `kernel="qs_pw"` the standard error equals Memmel's within 3% on iid normals. The studentised bootstrap rejects at most 9 of 60 seeded null samples at 5% (AR(1) returns, T = 300) and rejects a true difference; `studentize=False` reproduces the old centred statistic exactly. A defect found while testing: the QS kernel's closed form loses about 5e-6 to cancellation at x = 1e-6; it now uses its Taylor series below |6 pi x / 5| = 0.05.

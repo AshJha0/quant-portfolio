@@ -65,46 +65,46 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
      alt="CI status"></a></p>
   <table>
     <tr><th>Item</th><th>Value</th></tr>
-    <tr><td>Stage</td><td>1 of 3: study portfolio. Next: research platform on free public data, then a desk library.</td></tr>
+    <tr><td>Stage</td><td>1 of 3: study portfolio. Round 3 started the research platform (ECB and FRED fetchers, two signed pre-registrations, training-period results only, no hold-out run yet) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
     <tr><td>Sub-projects</td><td>31: 10 areas in equity and FX (20), 3 foundations projects, 4 engines in C++ and in Rust (8)</td></tr>
     <tr><td>Tests</td><td>Executed pass counts are written by the CI <code>counts</code> job to <code>counts.json</code> and the run summary. This page does not repeat them.</td></tr>
     <tr><td>Cross-language tests</td><td>Golden vectors (options from an mpmath oracle with a tolerance per output; VaR from the Python reference), checked by the <code>goldens --check</code> job, plus differential tests against the compiled engines.</td></tr>
-    <tr><td>Study guide</td><td>481 self-test questions in 18 rounds</td></tr>
-    <tr><td>Cookbook</td><td>63 recipes, written against current main; outputs are indicative</td></tr>
+    <tr><td>Study guide</td><td>511 self-test questions in 18 rounds</td></tr>
+    <tr><td>Cookbook</td><td>74 recipes, written against current main; outputs are indicative</td></tr>
   </table>
 
   <h2>The 10 project areas</h2>
   <div class="grid">
     <div class="card"><span class="tag">01</span><h3>Options Pricing &amp; Greeks</h3>
       <p>Black-Scholes / Garman-Kohlhagen closed form, analytic and finite-difference
-         Greeks, CRR binomial trees for American exercise, implied vol by a safeguarded Halley iteration, Monte Carlo cross-checks. C++ and Rust ports.</p></div>
+         Greeks, CRR and Leisen-Reimer trees, Crank-Nicolson and ALO for American exercise, discrete dividends, Bachelier, SABR, higher-order Greeks, FX smiles, premium styles and cuts, implied vol by a safeguarded Halley iteration, Monte Carlo cross-checks. C++ and Rust ports.</p></div>
     <div class="card"><span class="tag">02</span><h3>Volatility Modelling</h3>
       <p>GARCH-family forecasting of realized volatility, clustering and mean
-         reversion, forecast validation against a naive benchmark.</p></div>
+         reversion, HAR-RV, forecast validation against a naive benchmark.</p></div>
     <div class="card"><span class="tag">03</span><h3>VaR / Expected Shortfall</h3>
       <p>Historical, age-weighted, parametric (Cornish-Fisher) and Monte Carlo VaR
          with full book revaluation; Kupiec and Christoffersen backtests and a Basel
-         traffic light for any window. C++ and Rust linear-book ports.</p></div>
+         traffic light for any window; Euler risk attribution, FRTB IMA pieces, stressed VaR, EVT and t-copula Monte Carlo, option P&amp;L explain and limits. C++ and Rust ports that reprice European option legs in full in each scenario.</p></div>
     <div class="card"><span class="tag">04</span><h3>Fixed Income</h3>
       <p>Bond pricing, yield-to-maturity solving, duration/convexity/DV01, yield
-         curve construction, day-count conventions.</p></div>
+         curve construction, day-count conventions; OIS multi-curve, caps and swaptions, Hull-White, float-float cross-currency swaps.</p></div>
     <div class="card"><span class="tag">05</span><h3>Statistical Pairs Trading</h3>
       <p>Cointegration testing, hedge-ratio estimation, z-score entry/exit,
-         market-neutral spread construction and backtesting.</p></div>
+         market-neutral spread construction and backtesting. A pre-registered FX pairs study on ECB data has a training-period result only.</p></div>
     <div class="card"><span class="tag">06</span><h3>Credit Risk</h3>
       <p>Probability-of-default modelling, discrimination and calibration
-         validation, expected-loss estimation.</p></div>
+         validation, expected-loss estimation; LGD and EAD, margin of conservatism, migration, CDS bootstrap, CVA/DVA and SA-CCR.</p></div>
     <div class="card"><span class="tag">07</span><h3>Portfolio Optimisation</h3>
       <p>Mean-variance, minimum-variance and risk-parity allocation, constrained
-         optimisation, marginal/component risk attribution.</p></div>
+         optimisation, marginal/component risk attribution; HRP, robust and resampled MVO, costs and turnover, factor model, tracking error, Sharpe-ratio tests.</p></div>
     <div class="card"><span class="tag">08</span><h3>Algorithmic Execution</h3>
       <p>TWAP/VWAP/participation-rate scheduling, market-impact modelling,
          implementation-shortfall and transaction-cost analysis.</p></div>
     <div class="card"><span class="tag">09</span><h3>Volatility Surfaces</h3>
       <p>Raw-SVI smile/skew surface construction with Durrleman no-arbitrage
          checks, Heston stochastic volatility (little-trap characteristic
-         function) with Monte Carlo pricing; SABR is discussed as an
-         alternative, not implemented.</p></div>
+         function) with Monte Carlo pricing; SSVI and eSSVI, Dupire local vol,
+         Bates.</p></div>
     <div class="card"><span class="tag">10</span><h3>Regime-Switching Strategies</h3>
       <p>Regime detection, regime-conditional signals, walk-forward validation
          against overfitting to hindsight-obvious regimes.</p></div>
@@ -119,7 +119,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
     <div class="card"><span class="tag">C++ / Rust</span><h3>Compiled ports</h3>
       <p>C++23 and Rust ports of the options and VaR libraries. No runtime
          dependencies beyond the standard library; C++ tests use GoogleTest.
-         The VaR ports revalue linear books only. They are ports of the Python
+         The VaR ports revalue linear positions and reprice European option legs in full. The Python packages call
+         them through <code>engine="cpp"</code> or <code>engine="rust"</code>.
+         Phase 6 added Philox, O(n) quantiles and blocked GEMM to the shared
+         core; the batch erfc and exp kernels were slower than libm on an SSE2
+         build (0.66x and 0.38x) and are not used by the engines. They are ports of the Python
          design, not independent derivations. Shared code lives in
          <code>cpp/core</code> and <code>rust/core</code>, and the
          <code>qp-cpp</code> and <code>qp-rust</code> packages in

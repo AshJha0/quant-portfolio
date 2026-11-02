@@ -150,3 +150,29 @@ Each assumption states what breaks when it is violated.
 - **Golden vectors**: 434 records computed in mpmath at 50 digits
   (`tests/golden/generate_golden.py`), each output with its own tolerance;
   the Python, C++ and Rust engines consume the same file.
+
+## 5. Smile, premium styles, cuts and dates (Round 3)
+
+* **Smile**: smile-strangle reading of the butterfly,
+  `sigma_25C = ATM + BF + RR/2`, `sigma_25P = ATM + BF - RR/2`
+  (Reiswich and Wystup 2010; Clark 2011, ch. 3). Pillar strikes under the
+  pair's delta convention; quadratic in log-moneyness between pillars, flat
+  outside. Strike from delta solves `delta(K, sigma(K)) = target`, taking
+  the branch away from ATM (the market branch for premium-adjusted calls).
+  Broker (market) strangle conversion: the smile butterfly is the one
+  whose smile prices the broker strangle strikes (25-delta at the single
+  vol `ATM + BF_mkt`) at the broker premium (Reiswich and Wystup,
+  section 3.2; Clark 2011, section 3.6), solved by Brent; the inverse is
+  solved the same way. With skew the smile butterfly is the larger one.
+* **Premium styles**: domestic pips, foreign %, domestic %, foreign pips
+  (Wystup 2017, section 1.5.6).
+* **Dates and cuts**: spot lag 1 for USDCAD/TRY/RUB, else 2; month tenors
+  from the spot date with modified following and end-of-month; expiry is
+  the latest business day whose spot date is on or before delivery. Cuts
+  NY 10:00, Tokyo 15:00, ECB 14:15 Frankfurt, via `zoneinfo`; time to
+  expiry is ACT/365F to the cut instant. Holidays are either supplied by
+  the caller or `"auto"`: the union of both currencies' calendars from
+  `fx_options.holidays`, a deterministic rules generator for USD (Federal
+  Reserve), EUR (TARGET2), GBP (England and Wales), JPY (Act on National
+  Holidays plus bank days), CHF (Zurich), CAD (Bank of Canada) and AUD
+  (NSW), 2010 to 2099. One-off closures announced later are not known.

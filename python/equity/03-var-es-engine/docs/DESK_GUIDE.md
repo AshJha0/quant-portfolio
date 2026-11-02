@@ -83,9 +83,12 @@ alpha by the cumulative binomial probability (spec S4). On 250 days at 99 %:
 the synthetic GARCH backtest the unconditional models are red (13 and 10
 exceptions) and per-factor FHS is green (2).
 
-FRTB is not implemented: its ES-based capital, the 1.5 to 2.0 multiplier,
-backtesting at 97.5 % and 99 % on actual and hypothetical P&L, and the P&L
-attribution test.
+FRTB IMA pieces were added in Round 3 in `eq_var.frtb_ima`: the
+liquidity-horizon ES cascade, stressed ES, IMCC, capital with the plus
+factor, the desk backtest and the P&L attribution test. NMRF/SES (taken as
+an input), the default risk charge and risk-factor eligibility are still
+not implemented, and the BCBS paragraph references have not been re-checked
+against the bis.org text. See the Round 3 section below.
 
 ## 5. Stress review
 
@@ -125,3 +128,21 @@ attribution test.
 | Regulator | 99 % VaR, 250-day exceptions, multiplier | quarterly |
 | Model validation | backtest p-values, method disagreement, CF validity flags | quarterly |
 | Finance | capital charge | monthly |
+
+## Round 3: which tool for which question
+
+* "Which trades drive our VaR?" `risk_attribution.parametric_attribution`
+  for a quick read, `simulation_attribution` on the scenario P&L matrix for
+  the number you report. Components add to the total.
+* "What does this hedge do to our ES?" `parametric_incremental` or
+  `simulation_incremental`; the latter recomputes, it does not linearise.
+* "Are we still on IMA?" `frtb_ima.desk_backtest` (run on actual and on
+  hypothetical P&L) and `frtb_ima.pla_test`.
+* "What is our 99.9 % loss?" Do not read it off 500 historical days: fit
+  `evt.fit_pot` and use `tail.var(0.001)`. Check the mean-excess plot first.
+* "Our options book under the historical scenarios?" `revaluation.full_revaluation_pnl`;
+  use `taylor_pnl(order="delta_gamma")` only as a fast check and quote the gap.
+* "Why did we make money yesterday?" `revaluation.pnl_explain`. A large
+  `unexplained` means a missing risk factor or a big move.
+* Limits: build a `limits.Limit` tree once; `check_limits` each day; pass the
+  aggregated VaR for parents rather than letting it sum the children.

@@ -210,3 +210,13 @@ Lo (2002) "The Statistics of Sharpe Ratios"; Newey & West (1987);
 Jobson & Korkie (1981); Memmel (2003); Cornuejols & Tutuncu (2007); Maillard, Roncalli &
 Teïletche (2010); Spinu (2013); Griveau-Billion, Richard & Roncalli
 (2013); DeMiguel, Garlappi & Uppal (2009) "1/N".
+
+## Round 3 additions
+
+- **HRP** (`hrp.py`) follows Lopez de Prado (2016). It uses single linkage on sqrt((1 - rho)/2), quasi-diagonal ordering and recursive bisection with inverse-variance clusters. It needs no matrix inversion.
+- **Resampled MVO** (`robust_mvo.resampled_weights`) follows Michaud (1998). It averages the mean-variance solutions over inputs re-estimated from simulated samples.
+- **Robust MVO** (`robust_mvo.robust_weights`) uses an ellipsoidal uncertainty set on the mean (Ceria and Stubbs 2006). When Omega = Sigma/T, the result is a classic portfolio at a higher risk aversion.
+- **Cost and turnover QP** (`cost_qp.rebalance`) has proportional and quadratic costs, an optional turnover cap, an optional budget and box bounds (Boyd et al. 2017). `no_trade_band_solution` is the closed form for a diagonal Sigma.
+- **Factor risk model** (`factor_model`) runs OLS time-series regressions, giving Sigma = B Sigma_f B' + D. The Euler factor and asset contributions add up exactly to the totals (Grinold and Kahn ch. 3).
+- **Tracking error** (`tracking_error`) has the closed-form maximum-IR active weights at a target TE (Grinold and Kahn ch. 14, Roll 1992). A long-only or box-bounded SLSQP version is also provided.
+- **Sharpe-difference tests** (`sharpe_tests`) follow Ledoit and Wolf (2008): a HAC delta method, with their prewhitened quadratic-spectral kernel (`kernel="qs_pw"`, Andrews and Monahan 1992) or a Newey-West Bartlett kernel at fixed lags (the default, kept for compatibility), and a studentised circular block bootstrap whose draws use the block-sum covariance (section 3.2). `studentize=False` gives the basic centred bootstrap.

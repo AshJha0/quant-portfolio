@@ -37,7 +37,7 @@ FX-specific design:
 
 ```bash
 pip install -e .[dev]
-python -m pytest -q               # 867 tests, offline, about 90 s
+python -m pytest -q               # 924 tests, offline, about 90 s
 python examples/run_pipeline.py   # full demo, about 30 s
 ```
 
@@ -95,6 +95,49 @@ examples/run_pipeline.py
 docs/                  METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
 
-The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines are
-linear-book ports. They check their results against
-`tests/golden/golden_vectors.json`.
+The C++ (`cpp/fx-var-engine`) and Rust (`rust/fx-var-engine`) engines
+revalue cash, spot, forwards and European options (Garman-Kohlhagen, vol
+held fixed per scenario). They check their results against
+`tests/golden/golden_vectors.json` and, for option VaR, against
+`fx_var.revaluation`.
+
+## Choosing an engine
+
+`fx_var.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.
+
+## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
+
+Seven new public modules and one private helper (`_r3checks`). They are
+asset-agnostic, ship as the same file in
+`eq_var` and `fx_var`, and are imported from their submodule (they are not
+re-exported from the package root yet):
+
+| Module | What it gives you |
+|---|---|
+| `fx_var.risk_attribution` | Euler marginal, component and incremental VaR and ES, closed form and from scenarios |
+| `fx_var.frtb_ima` | Liquidity-horizon ES cascade, stressed ES, IMCC, IMA capital, desk backtest, PLA test |
+| `fx_var.stressed_var` | Basel 2.5 stress-window search, stressed VaR, the VaR + sVaR capital formula |
+| `fx_var.evt` | Peaks-over-threshold GPD fit, POT VaR and ES, mean-excess function |
+| `fx_var.copula_mc` | Student-t copula Monte Carlo VaR and ES with any marginals |
+| `fx_var.revaluation` | Full revaluation of option books under scenarios, Greek approximations, P&L explain |
+| `fx_var.limits` | Limit hierarchy with utilisation, warning and breach status |
+
+```python
+import numpy as np
+from fx_var.risk_attribution import parametric_attribution
+a = parametric_attribution([1e6, -4e5], np.array([[4e-4, 1.2e-4], [1.2e-4, 2.25e-4]]), 0.01)
+a.total, a.component, a.percent   # components sum to the total (Euler)
+```
+
+The compiled VaR engines gain the option revaluation part only
+(`option_reval` in C++ and Rust, used by their historical and Monte Carlo
+VaR); see their READMEs.

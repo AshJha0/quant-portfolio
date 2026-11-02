@@ -88,6 +88,13 @@ fn monte_carlo_same_bits_for_any_thread_count() {
     }
 }
 
+// The pinned bits were recorded on x86_64 Linux (glibc libm, as in CI), and
+// there they must match exactly. The Windows C runtime's exp and ln round
+// differently in the last bit: measured on Windows 11 / MSVC target, ES moves
+// by 1 ulp and the KDE standard error (which goes through exp) by 12 ulp, VaR
+// and the plain standard error not at all. Elsewhere the test therefore checks
+// a relative tolerance of 1e-12 (about 4500 ulp), which still catches any real
+// change to the algorithm while allowing libm rounding.
 #[test]
 fn monte_carlo_matches_pre_rewrite_bits() {
     // (var, es, se_var, se_var_kde).to_bits() from the serial code.
@@ -130,7 +137,17 @@ fn monte_carlo_matches_pre_rewrite_bits() {
             r.se_var.to_bits(),
             r.se_var_kde.to_bits(),
         ];
-        assert_eq!(got, want, "{dist:?}");
+        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            assert_eq!(got, want, "{dist:?}");
+        } else {
+            for (g, w) in got.iter().zip(&want) {
+                let (g, w) = (f64::from_bits(*g), f64::from_bits(*w));
+                assert!(
+                    (g - w).abs() <= 1e-12 * w.abs(),
+                    "{dist:?}: got {g:e}, pinned {w:e}"
+                );
+            }
+        }
     }
 }
 

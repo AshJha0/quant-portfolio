@@ -85,6 +85,12 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
   days. Delta conventions (spot, forward, premium-adjusted) and ATM/RR/BF
   quoting are documented where used; the FX surface uses each pair's native
   convention by default.
+- **FX time to expiry** (`fx_options.cuts`) is ACT/365F from the valuation
+  instant to the cut instant (for example 10:00 New York), not to midnight.
+- **Higher-order Greeks** (`eq_options.greeks_higher`) take time derivatives
+  as `d/dt = -d/dT`, per year, the same sign convention as theta.
+- **Bachelier vol** is in price (or rate) units per square root of a year,
+  not a percentage of the forward.
 
 ## Risk conventions (all VaR engines)
 
@@ -163,3 +169,29 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
 - `30/360` is an alias of `30/360US` (no end-of-February rule).
 - Python is checked with `ruff check python` and `mypy` (configuration in the
   root `pyproject.toml`) in the CI `lint` job.
+
+## Engine selection (`engine=`)
+
+- Packages with compiled ports expose an `engine` module. Its functions take
+  `engine="python" | "cpp" | "rust"` as a keyword, default `"python"`.
+- The mapping from name to backend lives only in `qp_core.engines`. An
+  unknown name raises `ValueError`; a missing extension raises
+  `ImportError` with the install command. No silent fallback to Python.
+- `"python"` calls the reference function unchanged. A compiled result must
+  agree with it at the tolerance stated in `bindings/*/tests/test_binding.py`;
+  `tests/test_engine_differential.py` enforces this.
+
+## Research studies (`research/`)
+
+- A study on real data needs a pre-registration in `research/prereg/`
+  before any hold-out data (2022-01-01 onward) is read. Order: draft, sign,
+  hash check, then the hold-out run.
+- The registration hash is the SHA-256 of the text above `## Signature`,
+  with line endings normalised to LF. Any edit to that text is a new
+  registration and a new trial.
+- Every result JSON carries `prereg`, `prereg_sha256` and `period`;
+  `python research/tools/prereg.py check` must pass.
+- Training-period results are reported as such and are never described as
+  out-of-sample evidence.
+- Raw downloads go to `data/raw/` (git-ignored) with a `.sha256` file; only
+  sources whose terms allow it are fetched by script.

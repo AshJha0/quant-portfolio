@@ -18,6 +18,10 @@ Header-only C++23 library shared by the four C++ engines
 | `qp/expected.hpp` | `qp::Result<T, E>`, `value_or_throw` | all four |
 | `qp/config.hpp` | `QP_PRE` / `QP_POST` contract macros | core |
 | `qp/simd.hpp` | optional vector path for `matvec_rows` | core |
+| `qp/philox.hpp` | Philox4x32-10 counter-based generator, `PhiloxStream` (Random123 known answers) | new, opt-in |
+| `qp/quantile.hpp` | `select_kth`, `quantile_type7`: O(n) selection, same bits as a sort | new, opt-in |
+| `qp/gemm.hpp` | `gemm_blocked`, `syrk_upper_blocked`: cache-blocked, same bits as the naive loops | eqvar `sample_covariance` |
+| `qp/vmath.hpp` | `qp::vm::exp_batch`, `erfc_batch`, `norm_cdf_batch`: branch-free batch kernels with documented tolerances | new, opt-in |
 | `qp/bench/latency.hpp`, `qp/tools/jsonl.hpp` | bench harness and JSON-lines reader for the shims | benches, shims |
 
 Each engine keeps its public headers, namespaces and API. Where a type or
@@ -38,6 +42,45 @@ Moving the code changed no result. Programs that call the old public API of
 each engine print the same hex-float values and exception texts when built
 against the pre-core sources (76166fd) and against these, with GCC 15 and
 Clang 21.
+
+## Performance kernels (Phase 6)
+
+Two kinds, kept apart on purpose.
+
+Same bits as before. `gemm_blocked` and `syrk_upper_blocked` tile the loops
+for the cache but add each product into its output element in the original
+k (or row) order, so every element is the same double as the textbook loop.
+`select_kth` and `quantile_type7` use `std::nth_element`, which puts the
+k-th value where a sort would. The core tests check both bit for bit.
+`eqvar::sample_covariance` now runs on `syrk_upper_blocked`; its goldens
+did not move.
+
+Documented tolerance. `qp::vm` evaluates exp, erfc and the normal cdf over
+a span with no data-dependent branch, so the compiler can vectorise the
+loop. Tolerances, checked by `tests/test_perf.cpp`:
+
+| Kernel | Tolerance | Range |
+|---|---|---|
+| `exp_batch` | 2 ulp (relative 4.5e-16) | [-708, 709] |
+| `erfc_batch` | relative 2e-15 (measured 1.0e-15) | [-6, 26.5] |
+| `norm_cdf_batch` | absolute 4e-16 and relative 2e-15 (measured 2.8e-16, 1.1e-15) | x >= -37 |
+
+The scalar functions in `qp/normal.hpp` stay the default and every golden
+uses them. A caller opts in to `qp::vm` and accepts the tolerance. Inputs
+must be finite. `tools/gen_erfc_cheb.cpp` regenerates the erfc
+coefficients.
+
+Philox. `PhiloxStream(seed, stream)` gives path `stream` its own sequence,
+so a Monte Carlo can hand paths to any thread and get the same numbers.
+The engines' existing generators are unchanged, because switching them
+would move every Monte Carlo golden. Moving an engine to Philox is a
+release that regenerates those goldens.
+
+Latency. `bench_core` (built with the tests) prints p50, p90, p99, p99.9,
+max and mean per call for each new kernel next to the code it replaces. It
+records compiler, flags, CPU model and timer with each line, and writes
+JSON with `--out`. The harness does not pin the thread to a core. Use
+`taskset -c 2 ./bench_core` for a pinned run.
 
 ## Use from an engine
 
@@ -99,8 +142,8 @@ GCC 15 and Clang 21 in C++26 mode take that path.
 Limitations, stated plainly:
 
 - The contract and `std::simd` branches have not been compiled locally:
-  no GCC 16 was available on the build machine. CI's `gcc16-cxx26` job is the
-  first compiler that takes them.
+  no GCC 16 was available on the build machine. CI's `cpp <engine> (gcc16-cxx26)` jobs
+  are the first builds that take them.
 - The vector path's bit identity was tested through GCC's
   `<experimental/simd>` (CMake option `QP_SIMD_EXPERIMENTAL=ON`), which runs
   the same code with a different vector type.

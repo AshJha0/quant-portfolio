@@ -74,7 +74,8 @@ class TestIcmaCoupons:
     def test_par_property(self, coupon, years, month, day, k):
         """At y = c on any coupon date an ICMA bond prices at par."""
         import calendar as cal
-        day = min(day, cal.monthrange(2020, month)[1])
+        # Feb 29 exists in 2020 but not in most maturity years, so cap at 28.
+        day = min(day, 28 if month == 2 else cal.monthrange(2020, month)[1])
         eff = D(2020, month, day)
         mat = D(2020 + years, month, day)
         bond = B.FixedRateBond(eff, mat, coupon, 2, "ACT/ACT-ICMA")

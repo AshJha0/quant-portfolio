@@ -79,8 +79,9 @@ normal regime, 2.3bp in the crisis regime).
   currency's collateral-consistent curve. Par rates are closed-form.
   `solve_par_basis` solves a parallel shift of the basis quotes that zeroes
   the PV.
-- Float-float basis swap (`BasisSwap`): constant notionals; the
-  mark-to-market resetting variant is not implemented.
+- Float-float basis swap (`BasisSwap`): constant notionals. The
+  mark-to-market resetting variant, with its convexity adjustment, is
+  `FloatFloatXccy(mtm_reset=True)` in `fx_rates.xccy_float`.
 
 ### 1.5 Dates and day counts
 
@@ -137,8 +138,9 @@ Each assumption states what breaks if violated.
   by a few bp.
 - **A4 Log-linear DFs between quoted swap maturities.** KRDs at unquoted
   years are interpolation results, not market facts.
-- **A5 Constant-notional basis swaps.** The MtM-resetting basis swap,
-  which is the liquid instrument for some pairs, is not modelled.
+- **A5 Constant-notional basis swaps in `xccy`.** The MtM-resetting basis
+  swap, the liquid instrument for the majors, lives in `xccy_float`
+  (section below), with its convexity adjustment and seasoned valuation.
 - **A6 Partial calendars.** Weekends plus fixed-date holidays only; no
   moveable feasts, no turn-of-year day-count spikes on the curve.
 - **A7 One pair per `MarketState`.** Triangular consistency of CIP
@@ -155,3 +157,36 @@ Each assumption states what breaks if violated.
 - Basis spreads: decimal; reported in bp.
 - Forward points: `(F - S) * 1e4`, or `* 1e2` for JPY-quoted pairs.
 - PVs, deltas and DV01s in the quote currency; DV01s are signed per +1bp.
+
+## Round 3 addition: float-float cross-currency swaps
+
+Each leg pays its index plus a spread, projected on its own curve and
+discounted on its collateral-consistent curve (Fujii, Shimada and Takahashi
+2010). The resetting (MtM) leg is a strip of one-period exchanges whose
+notional is `N_base x S(t_{i-1})`; that spot, paid at `t_{i-1}`, is worth
+`S_0 D_base(t_{i-1})` today. Its value is therefore proportional to spot,
+and at par it has no FX delta.
+
+*Convexity adjustment.* The notional set at `t_{i-1}` comes back at `t_i`
+with the coupon. Writing `1 + tau L_i = beta_i / P_q(t_{i-1}, t_i)` with
+Henrard's deterministic spread `beta_i`, the notional and index part of
+that return is worth exactly `beta_i S_0 D_base(t_{i-1})`, so only the
+spread part, fixed at one date and paid at the next, needs an adjustment.
+With lognormal spot (vol `sigma_S`), a Hull-White quote short rate
+(`a`, `sigma_r`) and correlation `rho`, the Gaussian change of numeraire
+gives `ln c_i = -B(tau) (rho sigma_S sigma_r I_1(t) + sigma_r^2 I_2(t))`
+(formulas in `xccy_float.py`; Brigo and Mercurio 2006, Sections 2.3 and
+3.3; Fujii et al. 2010, Section 4). The second term is the forward FX
+rate's own exposure to quote rates and is there even at `rho = 0`. In plain
+terms: the adjustment is small, it only touches the quote-leg spread, and
+with zero quote spread on one curve the MtM leg is worth exactly zero
+whatever the vols. Checked against a 200k-path Monte Carlo under the
+quote risk-neutral measure (within 4 standard errors, and more than 10
+standard errors away from the unadjusted value).
+
+*Seasoned trades.* `elapsed` shifts the schedule so today is `t = 0`. The
+period running through today has its fixings given (`base_fixing`,
+`quote_fixing` and, on the MtM leg, `fx_fixing`), so its flows are known
+amounts; later periods are valued as above. On a reset date today's flows
+count as settled, which keeps the value continuous through the reset
+(tested). Remaining assumption: base-currency rates deterministic.

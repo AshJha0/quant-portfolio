@@ -1,9 +1,11 @@
 //! # fx_var_engine: multi-currency FX market-risk engine (VaR / ES / stress)
 //!
-//! Linear-book port of the Python research package
+//! Port of the Python research package
 //! `python/fx/03-var-es-engine` (package `fx_var`), alongside the C++ engine
 //! `cpp/fx-var-engine` (namespace `fxvar`). Books hold cash, spot and
-//! forwards only; options are revalued in the Python package. The shared
+//! forwards; European options are repriced per scenario through
+//! [`historical::historical_option_var`] and
+//! [`monte_carlo::monte_carlo_option_var`]. The shared
 //! conventions are checked against the same golden vectors (see
 //! `tests/test_golden_python.rs` and `docs/VALIDATION.md`).
 //!
@@ -107,6 +109,7 @@ pub mod expected_shortfall;
 pub mod historical;
 pub mod matrix;
 pub mod monte_carlo;
+pub mod option_reval;
 pub mod parametric;
 pub mod psd;
 pub mod returns;

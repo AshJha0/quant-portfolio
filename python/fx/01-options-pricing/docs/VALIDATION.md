@@ -2,7 +2,7 @@
 
 All numbers below are produced by `python examples/run_pipeline.py`
 (seeded, offline, under 1 s) unless a test is named, and enforced by the
-test suite (`python -m pytest tests -q`, 2202 tests, offline and seeded;
+test suite (`python -m pytest tests -q`, 2264 tests, offline and seeded;
 most are parametrised grid points).
 
 ## 1. Analytic benchmarks
@@ -184,3 +184,19 @@ Smile construction (RR/BF to strike vols), stochastic vol and rates,
 jumps: projects 9 and later. The golden vectors in
 `tests/golden/golden_vectors.json` are consumed by the Python, C++ and Rust
 engines.
+
+## 6. Round 3 additions
+
+`tests/test_phase5_fx.py`, 19 tests: smile pillars reproduce ATM, RR and BF
+to 1e-15 and the ATM strike is delta neutral, under all four delta
+conventions; smile-consistent strikes round-trip delta to 1e-12; foreign
+pips equal the inverse-pair GK price to 1e-13; spot, tenor, end-of-month
+and holiday dates against hand-checked calendars; cut instants across DST.
+
+`tests/test_fx_strangle_holidays.py`: the converted smile reprices the
+broker strangle to 1e-12 under all four delta conventions and three skews;
+RR = 0 gives equal butterflies; broker-to-smile-to-broker round trip to
+1e-13; full 2026 calendars for USD, GBP, EUR and JPY against the published
+lists, plus specials (2022 jubilee and funeral, 2023 coronation, 2021
+Olympic moves, Juneteenth from 2022); every calendar deterministic and
+weekday-only from 2010 to 2099; `"auto"` wired into spot and tenor dates.

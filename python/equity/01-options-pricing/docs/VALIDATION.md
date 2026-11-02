@@ -179,3 +179,30 @@ model, which this package does not implement.
   point, including r and q.
 - **Monte Carlo:** fewer than two independent samples (three with the
   control variate) raises; one antithetic pair has no standard error.
+
+## 7. Phase 5 oracle tests (Round 3)
+
+`tests/test_phase5_models.py`, 51 tests. Every model has at least one oracle:
+
+| Model | Oracle | Tolerance |
+|---|---|---|
+| LR tree | Black-Scholes at 401 steps; error ratio per doubling in (3, 5) | 2e-5 abs |
+| CN PDE | Black-Scholes (European); LR 2001/4001 Richardson (American); error ratio > 3 per doubling | 5e-4, 3e-4 abs |
+| ALO | LR 2001/4001 Richardson, four cases (put, call, q > r, ITM) | 2e-5 abs |
+| ALO, negative rates | LR 2001/4001 Richardson: four single-boundary cases (r > 0 > q, r = 0 > q, negative-rate call) and four double-boundary cases (q < r < 0 put incl. T past the band's close, r < q < 0 call); grid convergence; band shape (starts at [K r/q, K], monotone, closes); no-exercise regions equal Black-Scholes | 2e-5 abs |
+| RGW | Haug (2007) section 9.2.1 published value 4.3860 | 5e-5 abs |
+| Dividend tree | RGW at 4001 steps; escrowed closed form for Europeans | 1e-3, 1e-5 abs |
+| Term structures | Hand-computed Merton averages; flat curves equal BS | 1e-14 rel |
+| Bachelier | mpmath quadrature of the payoff; mpmath derivatives; implied-vol round trip | 1e-15 abs, 1e-13 abs, 1e-10 rel |
+| SABR | Hagan ATM formula; beta = 1, nu = 0 limit; smoothness through ATM; density sign | 1e-14 rel |
+| SABR PDE | Mass and forward conservation (both schemes, four parameter sets); non-negative masses and convex, decreasing calls where the expansion's density is negative; exact put-call parity; flat vol in the lognormal limit; Hagan's expansion at T = 0.5; grid convergence; TR-BDF2 against fine-step implicit Euler | 1e-12, 0, 1e-15, 1e-4, 2e-5 / 5e-4 vol, 2e-5 vol |
+| Higher Greeks | `mpmath.diff` at 30 digits, eight cases | 1e-9 rel |
+| Ladders, grids | Direct repricing; bucket sums | 1e-14 rel |
+
+A precision defect found while testing: the naive `log` form of SABR's
+`x(z)` loses `eps / z` relative accuracy just above the series cut-over
+(`|z| = 1e-6`), which showed up as a 1e-3 relative jump in the smile slope.
+The `log1p` form fixes it and the smoothness test guards it.
+
+Not validated: SABR (expansion or PDE) against Monte Carlo of the full two-factor model; the
+CN pricer beyond vanilla payoffs.

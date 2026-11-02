@@ -23,7 +23,7 @@ compounded, ACT/365F; premiums in quote ccy per unit base notional.
 
 ```bash
 pip install -e .[dev]       # numpy/scipy/pandas; dev adds pytest, hypothesis, mpmath
-python -m pytest tests -q   # 2202 tests, offline, deterministic (one CRR
+python -m pytest tests -q   # 2264 tests, offline, deterministic (one CRR
                             # convergence test runs 51200-step trees: 2-4 min)
 python examples/run_pipeline.py   # full EURUSD + USDJPY report, <1s
 ```
@@ -114,3 +114,26 @@ atm = atm_dns_strike(147.5, 0.5, 0.0050, 0.0525, 0.1075, "forward_pa")
 - **Desk usage** (vol/delta quoting, delta-vega-vanna-volga buckets,
   25Δ RR/BF marking, NY/Tokyo cuts, T+2, scenario playbook):
   `docs/DESK_GUIDE.md`.
+
+## Choosing an engine
+
+`fx_options.engine` wraps the main functions of this package with
+`engine="python" | "cpp" | "rust"`. The default, `"python"`, is this
+package unchanged and stays the reference. `"cpp"` and `"rust"` call the
+compiled ports through the `qp_cpp` and `qp_rust` extensions (install
+them from the repository root with `pip install ./bindings/cpp-nanobind`
+or `pip install ./bindings/rust-pyo3`). An unknown name raises
+`ValueError`; a missing extension raises `ImportError` with that install
+command. The compiled results agree with the reference to the
+cross-language tolerances listed in the module docstring, checked over
+10,000 random inputs per engine by `tests/test_engine_differential.py`.
+
+## Phase 5 additions (Round 3)
+
+| Module | What it does | Oracle (`tests/test_phase5_fx.py`) |
+|---|---|---|
+| `smile` | ATM/25-delta RR/BF to a three-point smile; smile-consistent strike from delta | The quotes are recovered exactly; delta round trip to 1e-12 under all four delta conventions |
+| `premium` | Four premium styles and conversions; cash premium amount | Foreign pips equals the inverse-pair GK price |
+| `smile` (broker strangle) | Converts a broker (market) 25-delta butterfly into the smile butterfly and back | The smile reprices the broker strangle to 1e-12; RR = 0 gives equal butterflies; round trip to 1e-13 (`tests/test_fx_strangle_holidays.py`) |
+| `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut; `holidays="auto"` uses the shipped calendars | Hand-checked dates, end-of-month rule, DST shifts |
+| `holidays` | Rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD, 2010 to 2099, no network | Full 2026 lists checked against the Fed, gov.uk, ECB and Cabinet Office of Japan lists (`tests/test_fx_strangle_holidays.py`) |

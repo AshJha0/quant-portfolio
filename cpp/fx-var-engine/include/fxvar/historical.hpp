@@ -27,7 +27,10 @@
 #include <string>
 #include <vector>
 
+#include <span>
+
 #include "fxvar/book.hpp"
+#include "fxvar/option_reval.hpp"
 #include "fxvar/returns.hpp"
 
 namespace fxvar {
@@ -69,5 +72,18 @@ struct HistoricalResult {
 /// base-ccy cash) reports exactly zero VaR/ES.
 HistoricalResult historical_var(const Book& book, const Market& market,
                                 const ReturnsMatrix& returns, const HistoricalOptions& opts = {});
+
+/// Historical-simulation VaR/ES with full option revaluation: the linear
+/// book as above plus `options` (leg.factor indexes `option_factors`, e.g.
+/// "FX:EUR"), every leg repriced by Garman-Kohlhagen in every scenario and
+/// aged by `dt` years. All three methods apply (kFiltered rescales the spot
+/// returns before repricing). horizon_days must be 1: sqrt-time scaling is
+/// not valid for a non-linear book. The book may be empty; if not, its
+/// base must be USD. With no options this is the linear overload, unchanged.
+HistoricalResult historical_var(const Book& book, const Market& market,
+                                std::span<const OptionLeg> options,
+                                const std::vector<std::string>& option_factors,
+                                const ReturnsMatrix& returns, const HistoricalOptions& opts = {},
+                                double dt = 0.0);
 
 }  // namespace fxvar

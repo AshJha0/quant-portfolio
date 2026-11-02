@@ -2,7 +2,9 @@
 
 Every result in this project comes from synthetic data. The generator
 plants regimes with known drifts, vols and correlations, and the edge the
-strategy shows is the drift it plants. No real-data result exists yet.
+strategy shows is the drift it plants. The only real-data result is a
+training-period run in `research/` (ECB, 1999-2021), which did not support
+a negative high-vol mean; the hold-out has not been run.
 
 ## 1. The regime story being modelled
 

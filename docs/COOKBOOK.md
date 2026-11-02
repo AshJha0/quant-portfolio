@@ -20,7 +20,7 @@ Each section names the projects its recipes need.
 Recipes are grouped to match [ARCHITECTURE.md](ARCHITECTURE.md)'s area map:
 options pricing/vol/surfaces, market risk (VaR/ES/backtesting), fixed
 income/pairs/credit/portfolio optimization, and execution/regime/building the
-compiled engines. For the theory behind any of these, see the matching round
+compiled engines, plus a final section for what Round 3 added. For the theory behind any of these, see the matching round
 in [LEARN.md](LEARN.md) Part IV; for the underlying math and assumptions, see
 the project's own `docs/METHODOLOGY.md`.
 
@@ -2011,3 +2011,245 @@ project pairs with a C++/Rust engine later, its golden vectors live under
 `tests/golden/generate_golden.py` in this same Python project, per the
 cross-language validation pipeline shown above.
 
+
+## Round 3: Engine Switch, Research Workflow and New Models
+
+Recipes for what Round 3 added. Install `python/core` and the package each
+recipe names, as above. The new modules are imported by their path (for
+example `eq_options.alo`); they are not re-exported from the package root.
+Outputs below come from one run on Windows with Python 3.12.
+
+### How do I call the C++ or Rust engine from the Python API?
+
+Needs `python/core` and `python/equity/01-options-pricing`. The compiled
+engines need `pip install ./bindings/cpp-nanobind` or
+`pip install ./bindings/rust-pyo3` from the repository root.
+
+```python
+from eq_options.engine import bs_price
+from qp_core.engines import engine_available
+
+p = bs_price(100.0, 105.0, 0.5, 0.03, 0.2, q=0.01, option_type="call")
+print(round(p, 6))                           # 3.965696, the Python reference
+for eng in ("cpp", "rust"):
+    if engine_available(eng):
+        print(eng, abs(bs_price(100.0, 105.0, 0.5, 0.03, 0.2, q=0.01, engine=eng) - p))
+    else:
+        print(eng, "not installed")
+```
+
+`engine="python"` is the default and calls the reference unchanged. Asking
+for an engine that is not installed raises `ImportError` with the install
+command; an unknown name raises `ValueError`. The same switch exists in
+`fx_options.engine`, `eq_var.engine` and `fx_var.engine`.
+
+### How do I pre-register a study, sign it and check results?
+
+Needs no install beyond Python for the hash and check steps.
+
+```bash
+# 1. draft research/prereg/<name>.md, ending with a "## Signature" section
+# 2. print the registration hash of the text above that heading
+python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
+# dfca5c7ae8ea...ae953dcc  signed=True  research/prereg/pairs-fx-g10.md
+# 3. sign: fill signed_by, signed_on and sha256 under "## Signature"
+# 4. check every result file against its registration
+python research/tools/prereg.py check     # exit code 0 when all pass
+```
+
+The check refuses a result whose `prereg_sha256` does not match the
+registration, and a result whose period reaches 2022-01-01 or later unless
+the registration is signed with that hash. Run the hold-out only after
+signing. Training-period results are not out-of-sample evidence.
+
+### How do I mark an American option with ALO and check it with the Leisen-Reimer tree?
+
+Needs `python/equity/01-options-pricing`.
+
+```python
+from eq_options.alo import alo_price
+from eq_options.lr_tree import lr_price
+
+alo = alo_price(100.0, 100.0, 1.0, 0.05, 0.25, q=0.0, option_type="put")
+lr = lr_price(100.0, 100.0, 1.0, 0.05, 0.25, q=0.0, option_type="put",
+              exercise="american", n_steps=2001)
+print(round(alo, 5), round(lr, 5), f"{abs(alo - lr):.1e}")
+# 7.97448 7.97438 1.1e-04
+```
+
+The 1e-4 gap is mostly the tree's own error at 2001 steps; the package
+test compares ALO with a Richardson-extrapolated tree (2001 and 4001
+steps) and gets within 2e-5. Negative rates work too, including the
+`q < r < 0` put (and `r < q < 0` call) where the exercise region is a band
+between two boundaries; pass `n_march` to trade speed for accuracy there.
+
+### How do I price an American call on a stock with one discrete dividend?
+
+Needs `python/equity/01-options-pricing`.
+
+```python
+from eq_options.dividends import lr_price_discrete_divs, rgw_call
+
+# spot 100, strike 100, 1 year, r 5%, vol 25%, dividend 2.0 paid at t = 0.5
+tree = lr_price_discrete_divs(100.0, 100.0, 1.0, 0.05, 0.25, [(0.5, 2.0)],
+                              option_type="call", exercise="american")
+rgw = rgw_call(100.0, 100.0, 0.5, 1.0, 2.0, 0.05, 0.25)
+print(round(tree, 4), round(rgw, 4))          # 11.1414 11.1414
+```
+
+The tree uses the escrowed-dividend spot. Roll-Geske-Whaley is the closed
+form for one dividend and is the oracle. The tree converges to it only at
+O(1/n), because the ex-date is not on a node.
+
+### How do I build an FX smile from ATM, risk reversal and butterfly, and read the 10-delta strike?
+
+Needs `python/fx/01-options-pricing`.
+
+```python
+import datetime as dt
+from fx_options.smile import smile_from_quotes
+from fx_options.cuts import expiry_and_delivery, time_to_expiry
+
+sm = smile_from_quotes(S=1.0850, T=0.25, r_d=0.045, r_f=0.025,
+                       atm=0.075, rr25=-0.008, bf25=0.0025)   # spot delta
+k10 = sm.strike_from_delta(0.10, "call")
+print(round(k10, 5), round(sm.vol(k10), 5))   # 1.14365 0.0735
+
+exp, dlv = expiry_and_delivery(dt.date(2026, 11, 2), "3M", "EURUSD")
+print(exp, dlv)                               # 2027-02-02 2027-02-04
+now = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
+print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to the cut
+```
+
+Pass `holidays="auto"` to use the pair's joint settlement calendar from
+`fx_options.holidays` (rules-based, 2010 to 2099), or pass your own dates.
+The quoted butterfly is read as the smile strangle; if your broker quotes
+the market strangle, convert it first with
+`fx_options.smile.smile_strangle_from_broker`.
+
+### How do I build OIS and projection curves and price a cap?
+
+Needs `python/equity/04-fixed-income`.
+
+```python
+from fi_rates.multicurve import bootstrap_ois, bootstrap_projection
+from fi_rates.rate_options import cap_price
+
+mats = [1, 2, 3, 5, 7, 10]
+ois = bootstrap_ois(mats, [0.030, 0.031, 0.032, 0.033, 0.034, 0.035])
+proj = bootstrap_projection(ois, mats, [0.033, 0.034, 0.035, 0.036, 0.037, 0.038])
+print(round(cap_price(ois, proj, strike=0.035, maturity=5.0, vol=0.20), 6))       # 0.020219
+print(round(cap_price(ois, proj, strike=0.035, maturity=5.0, vol=0.0075,
+                      model="bachelier"), 6))                                      # 0.021254
+```
+
+The projection curve reprices the swap quotes while discounting on OIS.
+Black vol is lognormal; Bachelier vol is in rate units (75 bp here).
+
+### How do I fit an SSVI surface and get Dupire local vol from it?
+
+Needs `python/equity/09-vol-surface`.
+
+```python
+import numpy as np
+from eq_surface.ssvi import SSVIParams
+from eq_surface.dupire import local_vol_from_total_variance
+
+params = SSVIParams(rho=-0.4, eta=1.0, gamma=0.5)
+thetas = 0.04 * np.array([0.25, 0.5, 1.0, 2.0])     # ATM total variance per expiry
+print(params.static_arbitrage_free(), all(params.butterfly_free(t) for t in thetas))
+# True True
+
+def w(k, T):                                       # total variance w(k, T)
+    return params.total_variance(k, 0.04 * T)
+
+print(np.round(local_vol_from_total_variance(w, np.array([-0.2, 0.0, 0.2]), 1.0), 4))
+# [0.2781 0.1854 0.1734]
+```
+
+To fit to market data use `fit_ssvi(k, w_market, thetas)`. Dupire uses
+finite differences, so a noisy surface gives noisy local vol; negative
+local variance raises `LocalVolArbitrageError`.
+
+### How do I bootstrap CDS hazard rates and compute bilateral CVA?
+
+Needs `python/equity/06-credit-risk` and `python/fx/06-credit-risk`.
+
+```python
+import numpy as np
+from eq_credit.cds import bootstrap_hazards, par_spread
+from fx_credit.xva import bilateral_cva
+
+cpty = bootstrap_hazards(np.array([1.0, 3.0, 5.0]), np.array([0.0100, 0.0125, 0.0150]),
+                         rate=0.03, recovery=0.4)
+print(np.round(cpty.hazards, 5), round(par_spread(cpty, 5.0, 0.03, 0.4), 6))
+# [0.0166  0.02299 0.03207] 0.015
+own = bootstrap_hazards(np.array([5.0]), np.array([0.0060]), rate=0.03, recovery=0.4)
+
+times = np.linspace(0.0, 5.0, 21)                  # grid must start at 0
+epe = 1e6 * 0.05 * np.sqrt(times)                 # expected positive exposure
+ene = 0.8 * epe                                    # expected negative exposure, as a positive amount
+res = bilateral_cva(times, epe, ene, cpty.survival(times), own.survival(times), rate=0.03)
+print(round(res.cva, 2), round(res.dva, 2))        # 5121.83 1526.72
+```
+
+`eq_credit.cds` uses a flat discount rate and year-fraction maturities.
+For dated contracts on the ISDA standard-model conventions (step-in, ACT/360,
+exact accrual on default, a real discount curve) use
+`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. For collateral, build the exposure with `collateralised_exposure`.
+
+### How do I calibrate PDs to a central tendency with a margin of conservatism?
+
+Needs `python/equity/06-credit-risk`.
+
+```python
+import numpy as np
+from eq_credit.calibration import calibrate_with_moc
+
+pd_raw = np.array([0.002, 0.008, 0.02, 0.06])           # model PDs by grade
+dr = np.array([0.010, 0.025, 0.018, 0.012, 0.030, 0.015])  # yearly default rates
+r = calibrate_with_moc(pd_raw, dr, confidence=0.90, moc_a=0.001)
+print(round(r.central_tendency, 5), round(r.moc_c, 5), np.round(r.pd_final, 5))
+# 0.01833 0.00468 [0.00729 0.01215 0.02189 0.05471]
+```
+
+`moc_c` is the estimation-error margin from the default-rate history;
+`moc_a` and `moc_b` are supplied by the modeller. The CRR floor of 3 bp
+applies last.
+
+### How do I rebalance a portfolio with transaction costs and a turnover cap?
+
+Needs `python/equity/07-portfolio-optimization` (the same module is in
+`fx_port`).
+
+```python
+import numpy as np
+from eq_port.cost_qp import rebalance
+
+mu = np.array([0.06, 0.05, 0.04])
+cov = np.diag([0.04, 0.03, 0.02])
+w0 = np.array([0.5, 0.3, 0.2])
+rb = rebalance(mu, cov, w0, risk_aversion=4.0, cost=0.002, max_turnover=0.10)
+print(np.round(rb.weights, 4), round(rb.turnover, 4))    # [0.45 0.3  0.25] 0.1
+```
+
+The turnover cap binds here. The solver is SLSQP, so results agree with
+closed forms to about 1e-6, not to the bit.
+
+### How do I split portfolio VaR into Euler components?
+
+Needs `python/equity/03-var-es-engine` (the same module is in `fx_var`).
+
+```python
+import numpy as np
+from eq_var.risk_attribution import parametric_attribution
+
+a = parametric_attribution([1e6, -4e5],
+                           np.array([[4e-4, 1.2e-4], [1.2e-4, 2.25e-4]]), 0.01)
+print(round(a.total, 2), np.round(a.component, 2), round(float(np.sum(a.component)), 2))
+# 42895.74 [44409.7  -1513.97] 42895.74
+```
+
+The components sum to the total because VaR is homogeneous of degree one
+in the positions. The short position reduces risk, so its component is
+negative. `simulation_attribution` does the same from scenarios.

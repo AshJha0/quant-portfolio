@@ -111,3 +111,10 @@ a real P&L restatement.
   the same A1–A8 assumptions as the reference. The engine prices *a* model
   fast; choosing the right vol/dividend inputs per the desk's marking
   process is upstream of it (see the Python DESK_GUIDE for that workflow).
+
+## Phase 5 ports (Round 3)
+
+Use the compiled LR tree where an American mark must be reproduced outside
+Python; Bachelier for normal-vol quotes on the serving path; higher-order
+Greeks for the overnight drift report. Each must agree with the Python
+golden values before release, as for the other kernels.

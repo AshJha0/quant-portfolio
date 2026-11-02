@@ -272,7 +272,7 @@ pub fn fhs_factor_scenarios(returns: &Matrix, lam: f64) -> Result<Matrix> {
 ///
 /// Rescales every factor with [`fhs_factor_scenarios`], revalues the book
 /// linearly (`pnl_t = exposures . r*_t`) and returns the S2 order-statistic
-/// VaR. This is the linear-book port of the Python full-revaluation FHS.
+/// VaR. It is the linear case of the Python full-revaluation FHS.
 ///
 /// # Errors
 /// [`EqVarError::InvalidInput`] for an empty book, a shape mismatch, fewer
