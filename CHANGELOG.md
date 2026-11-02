@@ -316,6 +316,14 @@ come from seeded synthetic data.
 
 ### Changed
 
+- Toolchain upkeep (2026-11-02): rechecked current stable releases (GCC 16.2,
+  Clang 23.1.2, MSVC 14.51 in Visual Studio 2026 18.10, Rust 1.99.1, Python
+  3.15.2). `uv.lock`, `requirements/ci-constraints.txt` and both
+  `Cargo.lock` files were already at the latest compatible versions, so no
+  pin moved. Contracts and `std::simd` are still GCC-only on cppreference
+  and stay behind their feature-test macros; `cpp/core/README.md` records
+  the dated status.
+
 #### Round 3
 
 - Equity VaR sample covariance (C++ and Rust) runs on the blocked `D^T D`.

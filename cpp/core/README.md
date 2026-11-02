@@ -139,6 +139,13 @@ compiler reports them through a feature-test macro:
 Without the macros both features compile to nothing and the C++23 code runs.
 GCC 15 and Clang 21 in C++26 mode take that path.
 
+Compiler support, rechecked on 2026-11-02 against the cppreference C++26
+support table (primary source: the vendor columns of that page): contracts
+(P2900R14) are listed for GCC 16 only, and `std::simd` (P1928R15) for GCC 16
+libstdc++ only, marked partial. Clang 23.1 and MSVC 14.51 list neither. A
+feature leaves its macro once GCC, Clang and MSVC all ship it, so both stay
+behind their macros for now. The C++23 floor is unchanged.
+
 Limitations, stated plainly:
 
 - The contract and `std::simd` branches have not been compiled locally:
