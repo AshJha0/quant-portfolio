@@ -93,11 +93,18 @@ numpy==2.5.4 ; python_full_version >= '3.12'
     #   formulaic
     #   hmmlearn
     #   matplotlib
+    #   numpy-typing-compat
+    #   optype
     #   pandas
+    #   pandas-stubs
     #   patsy
     #   scikit-learn
     #   scipy
     #   statsmodels
+numpy-typing-compat==20260602.2.5 ; python_full_version >= '3.12'
+    # via optype
+optype==0.19.0 ; python_full_version >= '3.12'
+    # via scipy-stubs
 packaging==26.3
     # via
     #   arch
@@ -118,6 +125,8 @@ pandas==3.1.0 ; python_full_version >= '3.11'
     #   arch
     #   formulaic
     #   statsmodels
+pandas-stubs==3.1.0.261029 ; python_full_version >= '3.12'
+    # via -r requirements/ci-requirements.in
 pathspec==1.1.1
     # via
     #   mypy
@@ -182,6 +191,8 @@ scipy==1.18.1 ; python_full_version >= '3.12'
     #   hmmlearn
     #   scikit-learn
     #   statsmodels
+scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'
+    # via -r requirements/ci-requirements.in
 six==1.17.0 ; python_full_version < '3.11'
     # via python-dateutil
 sortedcontainers==2.4.0
@@ -203,6 +214,7 @@ typing-extensions==4.16.0
     #   exceptiongroup
     #   formulaic
     #   mypy
+    #   optype
     #   scikit-build-core
 tzdata==2026.6
     # via
