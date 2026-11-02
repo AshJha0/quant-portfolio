@@ -30,9 +30,8 @@ enum class Exercise { European, American };
 /// or if the tree probability falls outside [0, 1] (time step too coarse
 /// for the drift/vol combination).  sigma = 0 defers to the analytic limit
 /// (European) or deterministic exercise optimisation (American).
-double binomial_price(double S, double K, double T, double r_d, double r_f,
-                      double sigma, OptionType type, int steps = 500,
-                      Exercise exercise = Exercise::European);
+double binomial_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                      OptionType type, int steps = 500, Exercise exercise = Exercise::European);
 
 /// Doubles of workspace try_binomial_price() needs for `steps`: `3 n + 2`
 /// (2n+1 node exercise values plus n+1 option values).

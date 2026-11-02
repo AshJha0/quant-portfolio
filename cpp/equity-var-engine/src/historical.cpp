@@ -144,9 +144,8 @@ double ewma_volatility_next(std::span<const double> x, double lam, std::size_t s
     return std::sqrt(ewma_path(x, lam, seed_window, nullptr));
 }
 
-TailRisk filtered_historical_var_es(const Matrix& factor_returns,
-                                    std::span<const double> exposures, double alpha,
-                                    double lam) {
+TailRisk filtered_historical_var_es(const Matrix& factor_returns, std::span<const double> exposures,
+                                    double alpha, double lam) {
     validate_alpha(alpha);
     validate_lam(lam, "filtered_historical_var_es");
     validate_exposures(exposures, "filtered_historical_var_es");
@@ -198,7 +197,7 @@ double filtered_historical_var(std::span<const double> pnl, double alpha, double
     for (std::size_t t = 0; t < n; ++t) scenarios[t] = pnl[t] / sigma[t] * next;
     std::sort(scenarios.begin(), scenarios.end());
     const double h = alpha * static_cast<double>(n - 1);
-    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
+    const auto lo = static_cast<std::size_t>(std::floor(h));
     const double q = (lo + 1 < n) ? scenarios[lo] + (h - static_cast<double>(lo)) *
                                                         (scenarios[lo + 1] - scenarios[lo])
                                   : scenarios[n - 1];

@@ -19,12 +19,9 @@ std::string upper(std::string s) {
 }  // namespace
 
 PairLegs split_pair(const std::string& pair) {
-  if (pair.size() != 6 ||
-      !std::all_of(pair.begin(), pair.end(), [](unsigned char c) {
-        return std::isalpha(c) != 0;
-      })) {
-    throw std::invalid_argument("FX pair must be 6 letters like 'EURUSD', got '" +
-                                pair + "'");
+  if (pair.size() != 6 || !std::all_of(pair.begin(), pair.end(),
+                                       [](unsigned char c) { return std::isalpha(c) != 0; })) {
+    throw std::invalid_argument("FX pair must be 6 letters like 'EURUSD', got '" + pair + "'");
   }
   PairLegs legs{upper(pair.substr(0, 3)), upper(pair.substr(3, 3))};
   if (legs.base == legs.quote)
@@ -35,16 +32,14 @@ PairLegs split_pair(const std::string& pair) {
 std::string fx_factor(const std::string& ccy) {
   const std::string c = upper(ccy);
   if (c == "USD")
-    throw std::invalid_argument(
-        "USD has no FX factor: its USD price is identically 1");
+    throw std::invalid_argument("USD has no FX factor: its USD price is identically 1");
   return "FX:" + c;
 }
 
 std::string ir_factor(const std::string& ccy) { return "IR:" + upper(ccy); }
 
 // ----------------------------------------------------------------- Market
-Market::Market(std::map<std::string, double> spot_usd,
-               std::map<std::string, double> rates) {
+Market::Market(std::map<std::string, double> spot_usd, std::map<std::string, double> rates) {
   for (auto& [c, s] : spot_usd) {
     if (!std::isfinite(s) || s <= 0.0) {
       std::ostringstream msg;
@@ -59,8 +54,7 @@ Market::Market(std::map<std::string, double> spot_usd,
   }
   spot_usd_["USD"] = 1.0;
   for (auto& [c, r] : rates) {
-    if (!std::isfinite(r))
-      throw std::invalid_argument("rate for " + c + " must be finite");
+    if (!std::isfinite(r)) throw std::invalid_argument("rate for " + c + " must be finite");
     rates_[upper(c)] = r;
   }
 }
@@ -68,16 +62,14 @@ Market::Market(std::map<std::string, double> spot_usd,
 double Market::spot(const std::string& ccy) const {
   const auto it = spot_usd_.find(upper(ccy));
   if (it == spot_usd_.end())
-    throw std::invalid_argument("no USD spot for currency '" + ccy +
-                                "' in Market");
+    throw std::invalid_argument("no USD spot for currency '" + ccy + "' in Market");
   return it->second;
 }
 
 double Market::rate(const std::string& ccy) const {
   const auto it = rates_.find(upper(ccy));
   if (it == rates_.end())
-    throw std::invalid_argument("no interest rate for currency '" + ccy +
-                                "' in Market");
+    throw std::invalid_argument("no interest rate for currency '" + ccy + "' in Market");
   return it->second;
 }
 
@@ -99,14 +91,11 @@ namespace {
 void validate_position(const Position& p) {
   if (const auto* cash = std::get_if<CashPosition>(&p)) {
     if (cash->ccy.size() != 3)
-      throw std::invalid_argument("cash ccy must be a 3-letter code, got '" +
-                                  cash->ccy + "'");
-    if (!std::isfinite(cash->amount))
-      throw std::invalid_argument("cash amount must be finite");
+      throw std::invalid_argument("cash ccy must be a 3-letter code, got '" + cash->ccy + "'");
+    if (!std::isfinite(cash->amount)) throw std::invalid_argument("cash amount must be finite");
   } else if (const auto* spot = std::get_if<SpotPosition>(&p)) {
     split_pair(spot->pair);
-    if (!std::isfinite(spot->notional))
-      throw std::invalid_argument("spot notional must be finite");
+    if (!std::isfinite(spot->notional)) throw std::invalid_argument("spot notional must be finite");
     if (spot->entry_rate && !(*spot->entry_rate > 0.0 && std::isfinite(*spot->entry_rate)))
       throw std::invalid_argument("entry_rate must be > 0");
   } else if (const auto* fwd = std::get_if<ForwardPosition>(&p)) {
@@ -121,8 +110,7 @@ void validate_position(const Position& p) {
 }
 
 std::set<std::string> position_currencies(const Position& p) {
-  if (const auto* cash = std::get_if<CashPosition>(&p))
-    return {upper(std::string(cash->ccy))};
+  if (const auto* cash = std::get_if<CashPosition>(&p)) return {upper(std::string(cash->ccy))};
   if (const auto* spot = std::get_if<SpotPosition>(&p)) {
     const PairLegs legs = split_pair(spot->pair);
     return {legs.base, legs.quote};
@@ -136,7 +124,7 @@ std::string upper_copy(const std::string& s) { return upper(s); }
 
 }  // namespace
 
-Book::Book(std::vector<Position> positions, std::string base)
+Book::Book(std::vector<Position> positions, const std::string& base)
     : positions_(std::move(positions)), base_(upper_copy(base)) {
   for (const auto& p : positions_) validate_position(p);
 }
@@ -170,8 +158,7 @@ std::vector<std::string> Book::factors() const {
 // ----------------------------------------------------------- CompiledBook
 CompiledBook::CompiledBook(const Book& book, const Market& market) {
   if (book.empty())
-    throw std::invalid_argument(
-        "book has no positions: add positions before running VaR");
+    throw std::invalid_argument("book has no positions: add positions before running VaR");
   factors_ = book.factors();
   base_ = book.base();
   s0_base_ = market.spot(base_);
@@ -183,8 +170,7 @@ CompiledBook::CompiledBook(const Book& book, const Market& market) {
   };
   base_fx_idx_ = (base_ == "USD") ? -1 : factor_index(fx_factor(base_));
 
-  auto add_leg = [&](double amount, const std::string& ccy, double rate0,
-                     double expiry) {
+  auto add_leg = [&](double amount, const std::string& ccy, double rate0, double expiry) {
     const double df = (expiry > 0.0) ? std::exp(-rate0 * expiry) : 1.0;
     value0_.push_back(amount * market.spot(ccy) * df);
     fx_idx_.push_back(ccy == "USD" ? -1 : factor_index(fx_factor(ccy)));
@@ -197,19 +183,16 @@ CompiledBook::CompiledBook(const Book& book, const Market& market) {
       add_leg(cash->amount, upper_copy(cash->ccy), 0.0, 0.0);
     } else if (const auto* spot = std::get_if<SpotPosition>(&p)) {
       const PairLegs legs = split_pair(spot->pair);
-      const double x0 =
-          spot->entry_rate ? *spot->entry_rate : market.cross(spot->pair);
+      const double x0 = spot->entry_rate ? *spot->entry_rate : market.cross(spot->pair);
       add_leg(+spot->notional, legs.base, 0.0, 0.0);
       add_leg(-spot->notional * x0, legs.quote, 0.0, 0.0);
     } else {
       const auto& fwd = std::get<ForwardPosition>(p);
       const PairLegs legs = split_pair(fwd.pair);
-      const double k =
-          fwd.strike ? *fwd.strike : market.forward(fwd.pair, fwd.expiry);
+      const double k = fwd.strike ? *fwd.strike : market.forward(fwd.pair, fwd.expiry);
       if (fwd.expiry > 0.0) {
         add_leg(+fwd.notional, legs.base, market.rate(legs.base), fwd.expiry);
-        add_leg(-fwd.notional * k, legs.quote, market.rate(legs.quote),
-                fwd.expiry);
+        add_leg(-fwd.notional * k, legs.quote, market.rate(legs.quote), fwd.expiry);
       } else {  // expired forward = spot difference vs strike
         add_leg(+fwd.notional, legs.base, 0.0, 0.0);
         add_leg(-fwd.notional * k, legs.quote, 0.0, 0.0);
@@ -241,8 +224,7 @@ Result<double> CompiledBook::try_pnl(std::span<const double> shocks) const noexc
     if (!std::isfinite(shocks[j])) [[unlikely]]
       return std::unexpected(Error{Errc::kShockNonFinite, factors_[j].c_str()});
   const double v1 = value_usd(shocks.data());
-  const double s1_base =
-      (base_fx_idx_ >= 0) ? s0_base_ * std::exp(shocks[base_fx_idx_]) : s0_base_;
+  const double s1_base = (base_fx_idx_ >= 0) ? s0_base_ * std::exp(shocks[base_fx_idx_]) : s0_base_;
   return v1 / s1_base - v0_usd_ / s0_base_;
 }
 
@@ -261,7 +243,8 @@ Result<void> CompiledBook::try_pnl_batch(std::span<const double> scenarios,
   // Branch-free finiteness count over the whole block (vectorises).
   std::size_t bad = 0;
   for (const double v : scenarios) bad += std::fabs(v) <= 1.7976931348623157e308 ? 0U : 1U;
-  if (bad != 0) [[unlikely]] return fail("scenario matrix contains NaN or inf");
+  if (bad != 0) [[unlikely]]
+    return fail("scenario matrix contains NaN or inf");
   const std::size_t n_legs = value0_.size();
   const double v0_base = v0_usd_ / s0_base_;
   for (std::size_t s = 0; s < n_scen; ++s) {
@@ -273,8 +256,7 @@ Result<void> CompiledBook::try_pnl_batch(std::span<const double> scenarios,
       if (ir_idx_[i] >= 0) shift += neg_expiry_[i] * row[ir_idx_[i]];
       v1 += (shift == 0.0) ? value0_[i] : value0_[i] * std::exp(shift);
     }
-    const double s1_base =
-        (base_fx_idx_ >= 0) ? s0_base_ * std::exp(row[base_fx_idx_]) : s0_base_;
+    const double s1_base = (base_fx_idx_ >= 0) ? s0_base_ * std::exp(row[base_fx_idx_]) : s0_base_;
     out[s] = v1 / s1_base - v0_base;
   }
   return {};
@@ -309,8 +291,7 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
     throw std::invalid_argument(msg.str());
   }
   for (double v : scenarios.data.data())
-    if (!std::isfinite(v))
-      throw std::invalid_argument("scenario matrix contains NaN or inf");
+    if (!std::isfinite(v)) throw std::invalid_argument("scenario matrix contains NaN or inf");
   for (std::size_t i = 0; i < value0_.size(); ++i) {
     if (fx_idx_[i] >= 0) fx_col[i] = factor_col[fx_idx_[i]];
     if (ir_idx_[i] >= 0) ir_col[i] = factor_col[ir_idx_[i]];
@@ -330,8 +311,7 @@ std::vector<double> CompiledBook::pnl(const ReturnsMatrix& scenarios) const {
       if (ir_col[i] >= 0) shift += neg_expiry_[i] * row[ir_col[i]];
       v1 += (shift == 0.0) ? value0_[i] : value0_[i] * std::exp(shift);
     }
-    const double s1_base =
-        (base_col >= 0) ? s0_base_ * std::exp(row[base_col]) : s0_base_;
+    const double s1_base = (base_col >= 0) ? s0_base_ * std::exp(row[base_col]) : s0_base_;
     out[s] = v1 / s1_base - v0_base;
   }
   return out;

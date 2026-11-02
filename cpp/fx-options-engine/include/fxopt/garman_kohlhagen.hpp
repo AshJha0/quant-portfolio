@@ -39,16 +39,14 @@ double d2(double S, double K, double T, double r_d, double r_f, double sigma);
 /// Price is in domestic (quote) currency per unit of foreign (base)
 /// notional, e.g. USD per EUR for EURUSD.  T = 0 returns intrinsic;
 /// sigma = 0 returns the discounted forward intrinsic.
-double gk_price(double S, double K, double T, double r_d, double r_f,
-                double sigma, OptionType type);
+double gk_price(double S, double K, double T, double r_d, double r_f, double sigma,
+                OptionType type);
 
 /// Convenience wrapper: gk_price(..., OptionType::Call).
-double gk_call(double S, double K, double T, double r_d, double r_f,
-               double sigma);
+double gk_call(double S, double K, double T, double r_d, double r_f, double sigma);
 
 /// Convenience wrapper: gk_price(..., OptionType::Put).
-double gk_put(double S, double K, double T, double r_d, double r_f,
-              double sigma);
+double gk_put(double S, double K, double T, double r_d, double r_f, double sigma);
 
 // ------------------------------------------------------------------------
 // noexcept kernels. Same arithmetic as the throwing functions above (which
@@ -56,8 +54,8 @@ double gk_put(double S, double K, double T, double r_d, double r_f,
 // ------------------------------------------------------------------------
 
 /// noexcept form of d1().
-[[nodiscard]] inline Result<double> try_d1(double S, double K, double T, double r_d,
-                                           double r_f, double sigma) noexcept {
+[[nodiscard]] inline Result<double> try_d1(double S, double K, double T, double r_d, double r_f,
+                                           double sigma) noexcept {
     if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
@@ -70,17 +68,18 @@ double gk_put(double S, double K, double T, double r_d, double r_f,
 
 /// GK price on inputs the caller has validated (try_validate_inputs). The
 /// raw value may be non-finite if a discount factor overflows.
-inline double gk_price_unchecked(double S, double K, double T, double r_d, double r_f,
-                                 double sigma, OptionType type) noexcept {
+inline double gk_price_unchecked(double S, double K, double T, double r_d, double r_f, double sigma,
+                                 OptionType type) noexcept {
     const double p = phi(type);
-    if (T == 0.0) [[unlikely]] return std::max(p * (S - K), 0.0);
+    if (T == 0.0) [[unlikely]]
+        return std::max(p * (S - K), 0.0);
     const double sqrt_t = std::sqrt(T);
     const double vol_sqrt_t = sigma * sqrt_t;
     const double disc_s = S * std::exp(-r_f * T);
     const double disc_k = K * std::exp(-r_d * T);
-    if (vol_sqrt_t <= kMinVol) [[unlikely]] return std::max(p * (disc_s - disc_k), 0.0);
-    const double d1v =
-        (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
+    if (vol_sqrt_t <= kMinVol) [[unlikely]]
+        return std::max(p * (disc_s - disc_k), 0.0);
+    const double d1v = (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
     const double d2v = d1v - vol_sqrt_t;
     return p * (disc_s * norm_cdf(p * d1v) - disc_k * norm_cdf(p * d2v));
 }

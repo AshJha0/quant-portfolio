@@ -53,10 +53,9 @@ enum class ExerciseStyle { European, American };
 /// \throws std::invalid_argument on negative/NaN inputs, `n_steps < 1`, or
 ///         if the risk-neutral probability falls outside (0, 1): a sign
 ///         that `dt` is too large for the given `r - q` and `sigma`.
-double crr_price(double S, double K, double T, double r, double sigma,
-                 double q = 0.0, OptionType type = OptionType::Call,
-                 ExerciseStyle exercise = ExerciseStyle::European,
-                 int n_steps = 500);
+double crr_price(double S, double K, double T, double r, double sigma, double q = 0.0,
+                 OptionType type = OptionType::Call,
+                 ExerciseStyle exercise = ExerciseStyle::European, int n_steps = 500);
 
 /// \brief American-minus-European value on the same CRR tree.
 ///
@@ -69,10 +68,8 @@ double crr_price(double S, double K, double T, double r, double sigma,
 /// \param n_steps Tree steps shared by both legs.
 /// \return Early-exercise premium in currency units; floored at 0 to remove
 ///         residual floating-point noise.
-double early_exercise_premium(double S, double K, double T, double r,
-                              double sigma, double q = 0.0,
-                              OptionType type = OptionType::Put,
-                              int n_steps = 500);
+double early_exercise_premium(double S, double K, double T, double r, double sigma, double q = 0.0,
+                              OptionType type = OptionType::Put, int n_steps = 500);
 
 /// \brief Doubles of workspace try_crr_price() needs for `n_steps`:
 ///        `3 n + 2` (2n+1 node exercise values plus n+1 option values).
@@ -86,10 +83,9 @@ constexpr std::size_t crr_workspace_size(int n_steps) noexcept {
 /// live in `workspace`, which must hold at least crr_workspace_size(n_steps)
 /// doubles (Errc::WorkspaceTooSmall otherwise). No allocation, so a desk
 /// process sizes one buffer for its largest tree at start-up and reuses it.
-[[nodiscard]] Result<double> try_crr_price(double S, double K, double T, double r,
-                                           double sigma, double q, OptionType type,
-                                           ExerciseStyle exercise, int n_steps,
-                                           std::span<double> workspace) noexcept;
+[[nodiscard]] Result<double> try_crr_price(double S, double K, double T, double r, double sigma,
+                                           double q, OptionType type, ExerciseStyle exercise,
+                                           int n_steps, std::span<double> workspace) noexcept;
 
 }  // namespace eqopt
 

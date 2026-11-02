@@ -47,13 +47,14 @@ struct TailRisk {
 /// sorted with the losses (stable sort, losses descending). W_j is the
 /// cumulative weight; m = first j with W_j >= alpha - 1e-12;
 /// VaR = L(m), ES = [ sum_{i<m} w_i L(i) + (alpha - W_{m-1}) L(m) ] / alpha.
-[[nodiscard]] TailRisk var_es_weighted(std::span<const double> pnl,
-                                       std::span<const double> weights, double alpha);
+[[nodiscard]] TailRisk var_es_weighted(std::span<const double> pnl, std::span<const double> weights,
+                                       double alpha);
 
 /// Type-7 (numpy "linear") quantile, q in [0, 1]. No VaR path uses it.
-[[deprecated("type-7 interpolation is no longer a VaR convention; use "
-             "var_es_order_statistic. Removed next release.")]]
-[[nodiscard]] double quantile_linear(std::span<const double> x, double q);
+[[deprecated(
+    "type-7 interpolation is no longer a VaR convention; use "
+    "var_es_order_statistic. Removed next release.")]] [[nodiscard]] double
+quantile_linear(std::span<const double> x, double q);
 
 /// Plain historical-simulation VaR (order statistic L(m)).
 /// Requires at least kMinHistObs finite observations.
@@ -96,9 +97,10 @@ struct TailRisk {
 /// the book with the vol of its factors; use filtered_historical_var_es.
 /// Kept unchanged for one release: full-sample variance seed and type-7
 /// quantile, as before.
-[[deprecated("P&L-level FHS; use filtered_historical_var_es (per factor). Removed next release.")]]
-[[nodiscard]] double filtered_historical_var(std::span<const double> pnl, double alpha = 0.01,
-                                             double lam = 0.94);
+[[deprecated(
+    "P&L-level FHS; use filtered_historical_var_es (per factor). Removed next "
+    "release.")]] [[nodiscard]] double
+filtered_historical_var(std::span<const double> pnl, double alpha = 0.01, double lam = 0.94);
 
 /// Square-root-of-time scaling: VaR_h = VaR_1 * sqrt(h). Valid only for
 /// i.i.d. zero-drift returns. var_1d must be finite, horizon_days >= 1.

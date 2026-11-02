@@ -58,10 +58,8 @@ TEST(EmpiricalVar, InputValidation) {
   EXPECT_THROW(empirical_var({1.0, 2.0}, 0.5), std::invalid_argument);
   EXPECT_THROW(empirical_var({1.0, 2.0}, 0.0), std::invalid_argument);
   EXPECT_THROW(empirical_var({1.0, 2.0}, 0.01, {0.5}), std::invalid_argument);
-  EXPECT_THROW(empirical_var({1.0, 2.0}, 0.01, {-0.1, 1.1}),
-               std::invalid_argument);
-  EXPECT_THROW(empirical_var({1.0, 2.0}, 0.01, {0.0, 0.0}),
-               std::invalid_argument);
+  EXPECT_THROW(empirical_var({1.0, 2.0}, 0.01, {-0.1, 1.1}), std::invalid_argument);
+  EXPECT_THROW(empirical_var({1.0, 2.0}, 0.01, {0.0, 0.0}), std::invalid_argument);
 }
 
 TEST(ClosedForm, NormalVarEsIdentity) {
@@ -70,8 +68,7 @@ TEST(ClosedForm, NormalVarEsIdentity) {
   const double sigma = 2.5e6, alpha = 0.01, mu = 1.0e4;
   const double z = norm_ppf(1.0 - alpha);
   EXPECT_NEAR(normal_var(sigma, alpha, mu), -mu + sigma * z, 1e-10);
-  EXPECT_NEAR(normal_es(sigma, alpha, mu),
-              -mu + sigma * norm_pdf(z) / alpha, 1e-10);
+  EXPECT_NEAR(normal_es(sigma, alpha, mu), -mu + sigma * norm_pdf(z) / alpha, 1e-10);
   // sigma=1, alpha=0.01: VaR = 2.3263478740, ES = 2.6652142306 (classic).
   EXPECT_NEAR(normal_var(1.0, 0.01), 2.3263478740408408, 1e-9);
   EXPECT_NEAR(normal_es(1.0, 0.01), 2.665214220345808, 1e-9);
@@ -93,13 +90,11 @@ TEST(ClosedForm, EmpiricalConvergesToNormalIdentity) {
   // empirical ES on the grid approaches the closed form.
   const int n = 200000;
   std::vector<double> pnl(n);
-  for (int i = 0; i < n; ++i)
-    pnl[i] = norm_ppf((i + 0.5) / static_cast<double>(n));
+  for (int i = 0; i < n; ++i) pnl[i] = norm_ppf((i + 0.5) / static_cast<double>(n));
   const auto [v, e] = empirical_var_es(pnl, 0.025);
   EXPECT_NEAR(v, normal_var(1.0, 0.025), 2e-4);
   EXPECT_NEAR(e, normal_es(1.0, 0.025), 2e-3);
 }
-
 
 TEST(EmpiricalVar, SingleAndTwoElementSamples) {
   // A one-scenario sample is degenerate but must not read out of bounds:

@@ -32,6 +32,9 @@
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 #include <x86intrin.h>
 #define QP_BENCH_TSC 1
+#elif defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#define QP_BENCH_TSC 1
 #endif
 
 #ifndef QP_BENCH_FLAGS
@@ -103,9 +106,8 @@ private:
 #ifdef QP_BENCH_TSC
     double ns_per_tick_ = 1.0;
 #else
-    double ns_per_tick_ =
-        1e9 * static_cast<double>(std::chrono::steady_clock::period::num) /
-        static_cast<double>(std::chrono::steady_clock::period::den);
+    double ns_per_tick_ = 1e9 * static_cast<double>(std::chrono::steady_clock::period::num) /
+                          static_cast<double>(std::chrono::steady_clock::period::den);
 #endif
 };
 
@@ -126,6 +128,8 @@ inline std::string compiler_id() {
     return "clang " __clang_version__;
 #elif defined(__GNUC__)
     return "gcc " __VERSION__;
+#elif defined(_MSC_VER)
+    return "msvc " + std::to_string(_MSC_FULL_VER);
 #else
     return "unknown";
 #endif
@@ -134,7 +138,13 @@ inline std::string compiler_id() {
 inline std::string today() {
     const std::time_t t = std::time(nullptr);
     char buf[16];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d", std::gmtime(&t));
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &tm);
     return buf;
 }
 
@@ -154,12 +164,12 @@ public:
         }
         cpu_ = read_cpu_model();
         overhead_ = run_raw([](std::size_t) {}, 10000, 200000).p50;
-        std::printf("engine %s | %s | %s | timer %s | empty-call overhead %.1f ns "
-                    "(subtracted)\n",
-                    engine_.c_str(), compiler_id().c_str(), cpu_.c_str(), Timer::name(),
-                    overhead_);
-        std::printf("%-36s %9s %9s %9s %9s %11s %11s\n", "kernel (ns per call)", "p50",
-                    "p90", "p99", "p99.9", "max", "mean");
+        std::printf(
+            "engine %s | %s | %s | timer %s | empty-call overhead %.1f ns "
+            "(subtracted)\n",
+            engine_.c_str(), compiler_id().c_str(), cpu_.c_str(), Timer::name(), overhead_);
+        std::printf("%-36s %9s %9s %9s %9s %11s %11s\n", "kernel (ns per call)", "p50", "p90",
+                    "p99", "p99.9", "max", "mean");
     }
     Bench(const Bench&) = delete;
     Bench& operator=(const Bench&) = delete;
@@ -173,8 +183,8 @@ public:
         iters = std::max<std::size_t>(
             20, static_cast<std::size_t>(static_cast<double>(iters) * scale_));
         const Stats s = run_raw(f, warmup, iters, overhead_);
-        std::printf("%-36s %9.1f %9.1f %9.1f %9.1f %11.1f %11.1f\n", kernel.c_str(),
-                    s.p50, s.p90, s.p99, s.p999, s.max, s.mean);
+        std::printf("%-36s %9.1f %9.1f %9.1f %9.1f %11.1f %11.1f\n", kernel.c_str(), s.p50, s.p90,
+                    s.p99, s.p999, s.max, s.mean);
         std::fflush(stdout);
         char rec[1536];
         std::snprintf(rec, sizeof rec,
@@ -184,10 +194,9 @@ public:
                       "\"timer\": \"%s\", \"overhead_ns\": %.2f, \"p50\": %.2f, "
                       "\"p90\": %.2f, \"p99\": %.2f, \"p999\": %.2f, \"max\": %.2f, "
                       "\"mean\": %.2f}",
-                      engine_.c_str(), kernel.c_str(), label_.c_str(),
-                      compiler_id().c_str(), QP_BENCH_FLAGS, cpu_.c_str(),
-                      today().c_str(), iters, Timer::name(), overhead_, s.p50, s.p90,
-                      s.p99, s.p999, s.max, s.mean);
+                      engine_.c_str(), kernel.c_str(), label_.c_str(), compiler_id().c_str(),
+                      QP_BENCH_FLAGS, cpu_.c_str(), today().c_str(), iters, Timer::name(),
+                      overhead_, s.p50, s.p90, s.p99, s.p999, s.max, s.mean);
         records_.emplace_back(rec);
     }
 

@@ -34,13 +34,11 @@ static_assert(noexcept(try_black76_greeks(1.0, 1.0, 1.0, 0.0, 0.2)));
 static_assert(noexcept(try_implied_vol(0.1, 1.0, 1.0, 1.0, 0.0)));
 static_assert(noexcept(try_crr_price(1.0, 1.0, 1.0, 0.0, 0.2, 0.0, OptionType::Call,
                                      ExerciseStyle::American, 10, std::span<double>{})));
-static_assert(noexcept(bs_price_batch(std::declval<const BsBatchInputs&>(),
-                                      std::span<double>{})));
+static_assert(noexcept(bs_price_batch(std::declval<const BsBatchInputs&>(), std::span<double>{})));
 static_assert(noexcept(bs_greeks_batch(std::declval<const BsBatchInputs&>(),
                                        std::declval<const BsGreeksBatchOutputs&>())));
-static_assert(noexcept(try_mc_price(1.0, 1.0, 1.0, 0.0, 0.2, 0.0, OptionType::Call, 100,
-                                    true, true, 1, 1, std::declval<McWorkspace&>(),
-                                    nullptr)));
+static_assert(noexcept(try_mc_price(1.0, 1.0, 1.0, 0.0, 0.2, 0.0, OptionType::Call, 100, true, true,
+                                    1, 1, std::declval<McWorkspace&>(), nullptr)));
 static_assert(std::is_trivially_copyable_v<Error>);
 
 bool same_bits(double a, double b) {
@@ -86,12 +84,9 @@ TEST(NoexceptApi, ErrorsCarryTheThrowingMessage) {
         EXPECT_EQ(message(r.error()), e.what());
     }
     EXPECT_EQ(try_bs_price(100.0, 100.0, 1.0, nan, 0.2).error().code, Errc::NonFiniteRate);
-    EXPECT_EQ(try_bs_greeks(100.0, 100.0, 0.0, 0.0, 0.2).error().code,
-              Errc::NotStrictlyPositive);
-    EXPECT_EQ(try_implied_vol(1e9, 100.0, 100.0, 1.0, 0.0).error().code,
-              Errc::AboveUpperBound);
-    EXPECT_EQ(try_bs_price(1e300, 1.0, 10.0, 0.0, 0.2, -80.0).error().code,
-              Errc::NonFiniteResult);
+    EXPECT_EQ(try_bs_greeks(100.0, 100.0, 0.0, 0.0, 0.2).error().code, Errc::NotStrictlyPositive);
+    EXPECT_EQ(try_implied_vol(1e9, 100.0, 100.0, 1.0, 0.0).error().code, Errc::AboveUpperBound);
+    EXPECT_EQ(try_bs_price(1e300, 1.0, 10.0, 0.0, 0.2, -80.0).error().code, Errc::NonFiniteResult);
 }
 
 TEST(NoexceptApi, GreeksAndBlack76EqualThrowingApi) {
@@ -136,13 +131,13 @@ TEST(NoexceptApi, CrrWorkspaceEqualsThrowingApiAndIsChecked) {
         for (ExerciseStyle ex : {ExerciseStyle::European, ExerciseStyle::American}) {
             const auto a = try_crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, ex, 200, ws);
             ASSERT_TRUE(a.has_value());
-            EXPECT_TRUE(same_bits(*a, crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, ex,
-                                                200)));
+            EXPECT_TRUE(
+                same_bits(*a, crr_price(x.S, x.K, x.T, x.r, x.sigma, x.q, x.type, ex, 200)));
         }
     }
     std::vector<double> small(crr_workspace_size(200) - 1);
-    EXPECT_EQ(try_crr_price(100, 100, 1, 0.03, 0.2, 0, OptionType::Put,
-                            ExerciseStyle::American, 200, small)
+    EXPECT_EQ(try_crr_price(100, 100, 1, 0.03, 0.2, 0, OptionType::Put, ExerciseStyle::American,
+                            200, small)
                   .error()
                   .code,
               Errc::WorkspaceTooSmall);
@@ -153,13 +148,17 @@ TEST(BatchApi, PricesEqualScalarApiBitForBit) {
     std::vector<double> S, K, T, r, sig, q, out(g.size());
     std::vector<OptionType> ty;
     for (const Q& x : g) {
-        S.push_back(x.S); K.push_back(x.K); T.push_back(x.T); r.push_back(x.r);
-        sig.push_back(x.sigma); q.push_back(x.q); ty.push_back(x.type);
+        S.push_back(x.S);
+        K.push_back(x.K);
+        T.push_back(x.T);
+        r.push_back(x.r);
+        sig.push_back(x.sigma);
+        q.push_back(x.q);
+        ty.push_back(x.type);
     }
     ASSERT_TRUE(bs_price_batch({S, K, T, r, sig, q, ty}, out).has_value());
     for (std::size_t i = 0; i < g.size(); ++i) {
-        EXPECT_TRUE(same_bits(out[i], bs_price(S[i], K[i], T[i], r[i], sig[i], q[i], ty[i])))
-            << i;
+        EXPECT_TRUE(same_bits(out[i], bs_price(S[i], K[i], T[i], r[i], sig[i], q[i], ty[i]))) << i;
     }
 }
 
@@ -168,8 +167,13 @@ TEST(BatchApi, GreeksEqualScalarApiBitForBit) {
     std::vector<OptionType> ty;
     for (const Q& x : grid()) {
         if (x.S <= 0 || x.K <= 0 || x.T <= 0 || x.sigma <= 0) continue;
-        S.push_back(x.S); K.push_back(x.K); T.push_back(x.T); r.push_back(x.r);
-        sig.push_back(x.sigma); q.push_back(x.q); ty.push_back(x.type);
+        S.push_back(x.S);
+        K.push_back(x.K);
+        T.push_back(x.T);
+        r.push_back(x.r);
+        sig.push_back(x.sigma);
+        q.push_back(x.q);
+        ty.push_back(x.type);
     }
     const std::size_t n = S.size();
     std::vector<double> o[8];
@@ -185,8 +189,8 @@ TEST(BatchApi, GreeksEqualScalarApiBitForBit) {
 }
 
 TEST(BatchApi, ReportsFirstBadIndexAndWritesNothing) {
-    std::vector<double> S{100, 100, -1, 100}, K(4, 100), T(4, 1), r(4, 0), sig(4, 0.2),
-        q(4, 0), out(4, 7.0);
+    std::vector<double> S{100, 100, -1, 100}, K(4, 100), T(4, 1), r(4, 0), sig(4, 0.2), q(4, 0),
+        out(4, 7.0);
     std::vector<OptionType> ty(4, OptionType::Call);
     S[3] = std::numeric_limits<double>::infinity();
     const auto res = bs_price_batch({S, K, T, r, sig, q, ty}, out);
@@ -208,13 +212,13 @@ TEST(ThreadPoolMc, ResultIndependentOfPoolSizeAndEqualsLegacyApi) {
     for (unsigned threads : {1U, 2U, 4U, 9U}) {
         for (bool av : {false, true}) {
             for (bool cv : {false, true}) {
-                const MCResult legacy = mc_price(100, 105, 1, 0.04, 0.25, 0.015,
-                                                 OptionType::Call, 20001, av, cv, 7, threads);
+                const MCResult legacy = mc_price(100, 105, 1, 0.04, 0.25, 0.015, OptionType::Call,
+                                                 20001, av, cv, 7, threads);
                 for (ThreadPool* p : {static_cast<ThreadPool*>(nullptr), &p0, &p1, &p3, &p7}) {
                     for (int rep = 0; rep < 3; ++rep) {
-                        const auto r = try_mc_price(100, 105, 1, 0.04, 0.25, 0.015,
-                                                    OptionType::Call, 20001, av, cv, 7,
-                                                    threads, ws, p);
+                        const auto r =
+                            try_mc_price(100, 105, 1, 0.04, 0.25, 0.015, OptionType::Call, 20001,
+                                         av, cv, 7, threads, ws, p);
                         ASSERT_TRUE(r.has_value());
                         EXPECT_TRUE(same_bits(r->price, legacy.price) &&
                                     same_bits(r->std_error, legacy.std_error));
@@ -228,13 +232,13 @@ TEST(ThreadPoolMc, ResultIndependentOfPoolSizeAndEqualsLegacyApi) {
 TEST(ThreadPoolMc, WorkspaceTooSmallIsAnError) {
     McWorkspace ws;
     ws.reserve(100, false);
-    EXPECT_EQ(try_mc_price(100, 100, 1, 0.0, 0.2, 0.0, OptionType::Call, 1000, true, false, 1,
-                           1, ws, nullptr)
+    EXPECT_EQ(try_mc_price(100, 100, 1, 0.0, 0.2, 0.0, OptionType::Call, 1000, true, false, 1, 1,
+                           ws, nullptr)
                   .error()
                   .code,
               Errc::WorkspaceTooSmall);
-    EXPECT_EQ(try_mc_price(100, 100, 1, 0.0, 0.2, 0.0, OptionType::Call, 100, true, true, 1,
-                           1, ws, nullptr)
+    EXPECT_EQ(try_mc_price(100, 100, 1, 0.0, 0.2, 0.0, OptionType::Call, 100, true, true, 1, 1, ws,
+                           nullptr)
                   .error()
                   .code,
               Errc::WorkspaceTooSmall);

@@ -12,8 +12,10 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+
 #include <type_traits>
 #include <utility>
+#include "qp/expected.hpp"
 
 namespace fxvar {
 
@@ -33,7 +35,7 @@ struct Error {
 };
 
 template <class T>
-using Result = std::expected<T, Error>;
+using Result = qp::Result<T, Error>;
 
 /// Shorthand for a fixed-text error.
 inline std::unexpected<Error> fail(const char* text) noexcept {
@@ -47,10 +49,7 @@ std::string message(const Error& e);
 /// Throw std::invalid_argument(message(e)).
 [[noreturn]] void throw_error(const Error& e);
 
-template <class T>
-T value_or_throw(Result<T>&& r) {
-  if (!r) [[unlikely]] throw_error(r.error());
-  if constexpr (!std::is_void_v<T>) return std::move(*r);
-}
+/// Unwrap a result or throw (qp/expected.hpp). Used by the throwing wrappers.
+using qp::value_or_throw;
 
 }  // namespace fxvar

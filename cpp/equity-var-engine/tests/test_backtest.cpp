@@ -82,8 +82,7 @@ TEST(Christoffersen, DetectsPlantedClustering) {
     EXPECT_GT(c.pi11, c.pi01);  // exception begets exception in the cluster
     EXPECT_GT(s.pvalue, 0.10) << "evenly spread exceptions must not reject";
     EXPECT_GT(c.lr, s.lr);
-    EXPECT_THROW(christoffersen_independence(std::vector<std::uint8_t>{1}),
-                 std::invalid_argument);
+    EXPECT_THROW(christoffersen_independence(std::vector<std::uint8_t>{1}), std::invalid_argument);
 }
 
 TEST(Christoffersen, ConditionalCoverageIsSumOfComponents) {

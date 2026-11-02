@@ -13,8 +13,7 @@ int ReturnsMatrix::column_index(const std::string& factor) const {
   return -1;
 }
 
-ReturnsMatrix ReturnsMatrix::select(
-    const std::vector<std::string>& wanted) const {
+ReturnsMatrix ReturnsMatrix::select(const std::vector<std::string>& wanted) const {
   std::vector<int> idx;
   std::vector<std::string> missing;
   idx.reserve(wanted.size());
@@ -66,21 +65,17 @@ FactorCov FactorCov::select(const std::vector<std::string>& wanted) const {
   out.cov = Matrix(wanted.size(), wanted.size());
   for (std::size_t i = 0; i < idx.size(); ++i)
     for (std::size_t j = 0; j < idx.size(); ++j)
-      out.cov(i, j) = cov(static_cast<std::size_t>(idx[i]),
-                          static_cast<std::size_t>(idx[j]));
+      out.cov(i, j) = cov(static_cast<std::size_t>(idx[i]), static_cast<std::size_t>(idx[j]));
   return out;
 }
 
-void validate_returns(const ReturnsMatrix& returns,
-                      const std::vector<std::string>& required,
+void validate_returns(const ReturnsMatrix& returns, const std::vector<std::string>& required,
                       std::size_t min_obs) {
   if (returns.data.cols() != returns.factors.size())
-    throw std::invalid_argument(
-        "returns: factor labels do not match the data column count");
+    throw std::invalid_argument("returns: factor labels do not match the data column count");
   if (returns.n_obs() < min_obs) {
     std::ostringstream msg;
-    msg << "insufficient history: " << returns.n_obs()
-        << " rows < min_obs=" << min_obs
+    msg << "insufficient history: " << returns.n_obs() << " rows < min_obs=" << min_obs
         << "; VaR quantiles are meaningless on this sample";
     throw std::invalid_argument(msg.str());
   }
@@ -104,13 +99,11 @@ void validate_returns(const ReturnsMatrix& returns,
 FactorCov sample_cov(const ReturnsMatrix& returns) {
   const std::size_t n = returns.n_obs();
   const std::size_t k = returns.n_factors();
-  if (n < 2)
-    throw std::invalid_argument("sample_cov: need at least 2 observations");
+  if (n < 2) throw std::invalid_argument("sample_cov: need at least 2 observations");
   if (returns.data.cols() != k)
     throw std::invalid_argument("sample_cov: factor labels do not match the data");
   for (double v : returns.data.data())
-    if (!std::isfinite(v))
-      throw std::invalid_argument("sample_cov: returns contain NaN or inf");
+    if (!std::isfinite(v)) throw std::invalid_argument("sample_cov: returns contain NaN or inf");
   std::vector<double> mean(k, 0.0);
   for (std::size_t i = 0; i < n; ++i)
     for (std::size_t j = 0; j < k; ++j) mean[j] += returns.data(i, j);
@@ -119,8 +112,7 @@ FactorCov sample_cov(const ReturnsMatrix& returns) {
   for (std::size_t i = 0; i < n; ++i) {
     for (std::size_t a = 0; a < k; ++a) {
       const double da = returns.data(i, a) - mean[a];
-      for (std::size_t b = a; b < k; ++b)
-        cov(a, b) += da * (returns.data(i, b) - mean[b]);
+      for (std::size_t b = a; b < k; ++b) cov(a, b) += da * (returns.data(i, b) - mean[b]);
     }
   }
   const double denom = static_cast<double>(n) - 1.0;
@@ -158,8 +150,7 @@ EwmaVolatility ewma_volatility(const ReturnsMatrix& returns, double lam) {
   }
   const std::size_t n = returns.n_obs();
   const std::size_t k = returns.n_factors();
-  if (n < 2)
-    throw std::invalid_argument("ewma_volatility: need at least 2 observations");
+  if (n < 2) throw std::invalid_argument("ewma_volatility: need at least 2 observations");
   for (double v : returns.data.data())
     if (!std::isfinite(v))
       throw std::invalid_argument("ewma_volatility: returns contain NaN or inf");
@@ -172,8 +163,7 @@ EwmaVolatility ewma_volatility(const ReturnsMatrix& returns, double lam) {
       const double r = returns.data(i, j);
       sig2[j] += r * r;
     }
-  for (std::size_t j = 0; j < k; ++j)
-    sig2[j] = std::max(sig2[j] / static_cast<double>(w), 1e-18);
+  for (std::size_t j = 0; j < k; ++j) sig2[j] = std::max(sig2[j] / static_cast<double>(w), 1e-18);
 
   EwmaVolatility out;
   out.sigma = Matrix(n, k);
@@ -189,8 +179,7 @@ EwmaVolatility ewma_volatility(const ReturnsMatrix& returns, double lam) {
   return out;
 }
 
-std::vector<std::string> flag_peg_factors(const ReturnsMatrix& returns,
-                                          double threshold) {
+std::vector<std::string> flag_peg_factors(const ReturnsMatrix& returns, double threshold) {
   if (!(threshold >= 0.0) || !std::isfinite(threshold))
     throw std::invalid_argument("peg threshold must be finite and >= 0");
   std::vector<std::string> flagged;
@@ -198,7 +187,7 @@ std::vector<std::string> flag_peg_factors(const ReturnsMatrix& returns,
   if (n < 2) return flagged;
   for (std::size_t j = 0; j < returns.n_factors(); ++j) {
     const std::string& f = returns.factors[j];
-    if (f.rfind("FX:", 0) != 0) continue;
+    if (!f.starts_with("FX:")) continue;
     double mean = 0.0;
     for (std::size_t i = 0; i < n; ++i) mean += returns.data(i, j);
     mean /= static_cast<double>(n);

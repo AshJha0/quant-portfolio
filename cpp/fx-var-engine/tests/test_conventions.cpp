@@ -42,13 +42,12 @@ TEST(OrderStatistic, FractionalAtomByHand) {
 
 TEST(Kupiec, StructInputAndTailAlpha) {
   const LrTest r = kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01});
-  const double lr = -2.0 * (245.0 * std::log(0.99) + 5.0 * std::log(0.01) -
-                            245.0 * std::log(0.98) - 5.0 * std::log(0.02));
+  const double lr = -2.0 * (245.0 * std::log(0.99) + 5.0 * std::log(0.01) - 245.0 * std::log(0.98) -
+                            5.0 * std::log(0.02));
   EXPECT_NEAR(r.lr, lr, 1e-12);
   EXPECT_THROW(kupiec_pof({.n_obs = 250, .n_exceptions = 251, .alpha = 0.01}),
                std::invalid_argument);
-  EXPECT_THROW(kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.99}),
-               std::invalid_argument);
+  EXPECT_THROW(kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.99}), std::invalid_argument);
 }
 
 TEST(Basel, PlusFactorMappedThrough250DayTable) {

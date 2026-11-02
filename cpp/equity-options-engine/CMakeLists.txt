@@ -19,13 +19,21 @@
 # Sanitizers and other instrumentation are passed through CMAKE_CXX_FLAGS
 # and CMAKE_EXE_LINKER_FLAGS; this file never overwrites them.
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(equity_options_engine
         VERSION 1.1.0
         DESCRIPTION "Equity options pricing engine"
         LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+# C++23 floor. QP_CXX26=ON compiles with C++26 and turns on the features
+# qp::core guards with feature-test macros (contracts, std::simd); the
+# results are the same either way.
+option(QP_CXX26 "Compile with C++26 and enable C++26 features where supported" OFF)
+if(QP_CXX26)
+  set(CMAKE_CXX_STANDARD 26)
+else()
+  set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -75,10 +83,14 @@ add_library(eqopt
   src/black76.cpp
   src/monte_carlo.cpp
   src/batch.cpp
-  src/thread_pool.cpp
 )
 target_include_directories(eqopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(eqopt PUBLIC Threads::Threads eqopt_tuning PRIVATE eqopt_warnings)
+# Shared numerical core (cpp/core, header-only target qp::core).
+if(NOT TARGET qp::core)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/qp_core)
+endif()
+target_link_libraries(eqopt PUBLIC qp::core)
 # The batch kernels: errno is never read, so -fno-math-errno lets the
 # compiler inline sqrt and vectorise; it changes no returned value.
 set_source_files_properties(src/batch.cpp PROPERTIES COMPILE_OPTIONS
@@ -109,7 +121,8 @@ string(STRIP "${_eqopt_flags}" _eqopt_flags)
 target_compile_definitions(eqopt_bench PRIVATE QP_BENCH_FLAGS="${_eqopt_flags}")
 
 # ------------------------------------------------------------------ tests ----
-if(EQOPT_TESTS)
+# BUILD_TESTING=OFF (CTest convention) also turns the suite off.
+if(EQOPT_TESTS AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
   enable_testing()
   find_package(GTest CONFIG QUIET)
   if(NOT GTest_FOUND)
@@ -120,6 +133,7 @@ if(EQOPT_TESTS)
     FetchContent_Declare(googletest
       URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.tar.gz)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
   endif()
 

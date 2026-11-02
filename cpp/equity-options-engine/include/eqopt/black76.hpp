@@ -44,8 +44,7 @@ struct Black76Greeks {
 /// \return Pair `(d1, d2)` with `d2 = d1 - sigma sqrt(T)`.
 /// \throws std::invalid_argument if `F`, `K`, `T` or `sigma` is not
 ///         strictly positive.
-std::pair<double, double> b76_d1_d2(double F, double K, double T,
-                                    double sigma);
+std::pair<double, double> b76_d1_d2(double F, double K, double T, double sigma);
 
 /// \brief Black-76 present value of a European option on a forward price.
 ///
@@ -70,12 +69,11 @@ double black76_price(double F, double K, double T, double r, double sigma,
 ///         struct documentation).
 /// \throws std::invalid_argument if inputs are invalid or not strictly
 ///         positive.
-Black76Greeks black76_greeks(double F, double K, double T, double r,
-                             double sigma, OptionType type = OptionType::Call);
+Black76Greeks black76_greeks(double F, double K, double T, double r, double sigma,
+                             OptionType type = OptionType::Call);
 
 /// \brief noexcept form of b76_d1_d2().
-[[nodiscard]] inline Result<std::pair<double, double>> try_b76_d1_d2(double F, double K,
-                                                                     double T,
+[[nodiscard]] inline Result<std::pair<double, double>> try_b76_d1_d2(double F, double K, double T,
                                                                      double sigma) noexcept {
     if (auto e = try_validate_inputs(F, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
@@ -95,9 +93,11 @@ Black76Greeks black76_greeks(double F, double K, double T, double r,
     if (auto e = try_validate_inputs(F, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r); !e) [[unlikely]]
+        return std::unexpected(e.error());
     const double sign = type == OptionType::Call ? 1.0 : -1.0;
-    if (T == 0.0) [[unlikely]] return std::fmax(sign * (F - K), 0.0);
+    if (T == 0.0) [[unlikely]]
+        return std::fmax(sign * (F - K), 0.0);
     const double df = std::exp(-r * T);
     if (sigma == 0.0 || K == 0.0 || F == 0.0) [[unlikely]] {
         return df * std::fmax(sign * (F - K), 0.0);
@@ -112,9 +112,11 @@ Black76Greeks black76_greeks(double F, double K, double T, double r,
 [[nodiscard]] inline Result<Black76Greeks> try_black76_greeks(
     double F, double K, double T, double r, double sigma,
     OptionType type = OptionType::Call) noexcept {
-    if (auto e = try_validate_rates(r); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r); !e) [[unlikely]]
+        return std::unexpected(e.error());
     const auto dd = try_b76_d1_d2(F, K, T, sigma);
-    if (!dd) [[unlikely]] return std::unexpected(dd.error());
+    if (!dd) [[unlikely]]
+        return std::unexpected(dd.error());
     const auto [d1, d2] = *dd;
     const double df = std::exp(-r * T);
     const double sqrt_t = std::sqrt(T);

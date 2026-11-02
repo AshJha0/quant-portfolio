@@ -1,0 +1,23 @@
+# C++ style for cpp/** (clang-format 21). Based on Google, adjusted to the
+# style the engines were already written in: 4-space indent, 100 columns,
+# access specifiers at class indentation. cpp/fx-var-engine keeps its
+# 2-space indent through its own .clang-format.
+Language: Cpp
+BasedOnStyle: Google
+Standard: Latest
+IndentWidth: 4
+AccessModifierOffset: -4
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+BreakAfterAttributes: Leave
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+SpacesBeforeTrailingComments: 2
+ReflowComments: false
+BreakBeforeTernaryOperators: true

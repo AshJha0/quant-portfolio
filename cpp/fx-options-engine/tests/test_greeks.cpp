@@ -12,14 +12,12 @@ namespace {
 
 using namespace fxopt;
 
-constexpr double S = 1.10, K = 1.12, T = 0.5, RD = 0.0425, RF = 0.0290,
-                 SIG = 0.0925;
+constexpr double S = 1.10, K = 1.12, T = 0.5, RD = 0.0425, RF = 0.0290, SIG = 0.0925;
 
 TEST(Greeks, AnalyticMatchesFiniteDifferences) {
     for (const auto type : {OptionType::Call, OptionType::Put}) {
         const GreeksResult a = analytic_greeks(S, K, T, RD, RF, SIG, type);
-        const FDGreeks fd = finite_difference_greeks(S, K, T, RD, RF, SIG,
-                                                     type);
+        const FDGreeks fd = finite_difference_greeks(S, K, T, RD, RF, SIG, type);
         EXPECT_NEAR(a.delta_spot, fd.delta_spot, 1e-6);
         EXPECT_NEAR(a.gamma, fd.gamma, 1e-4);  // second difference, O(1) value
         EXPECT_NEAR(a.vega, fd.vega, 1e-6);
@@ -34,22 +32,18 @@ TEST(Greeks, AnalyticMatchesFiniteDifferences) {
 TEST(Greeks, TemplateComparatorAcceptsArbitraryPricer) {
     // The FD comparator is templated on the pricing function: feed it the
     // GK pricer as a lambda and check delta against the closed form.
-    const auto pricer = [](double s, double k, double t, double rd, double rf,
-                           double sig) {
+    const auto pricer = [](double s, double k, double t, double rd, double rf, double sig) {
         return gk_price(s, k, t, rd, rf, sig, OptionType::Call);
     };
     const FDGreeks fd = finite_difference_greeks(pricer, S, K, T, RD, RF, SIG);
-    const GreeksResult a =
-        analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
+    const GreeksResult a = analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
     EXPECT_NEAR(fd.delta_spot, a.delta_spot, 1e-6);
     EXPECT_NEAR(fd.vega, a.vega, 1e-6);
 }
 
 TEST(Greeks, RhoSigns) {
-    const GreeksResult call =
-        analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
-    const GreeksResult put =
-        analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Put);
+    const GreeksResult call = analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
+    const GreeksResult put = analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Put);
     // Calls: higher r_d lifts the forward (+), higher r_f is a larger
     // 'dividend' on the base currency (-).  Puts are reversed.
     EXPECT_GT(call.rho_domestic, 0.0);
@@ -60,10 +54,8 @@ TEST(Greeks, RhoSigns) {
 
 TEST(Greeks, CallPutShareSymmetricGreeks) {
     // Gamma, vega, vanna, volga are identical for calls and puts.
-    const GreeksResult c =
-        analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
-    const GreeksResult p =
-        analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Put);
+    const GreeksResult c = analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Call);
+    const GreeksResult p = analytic_greeks(S, K, T, RD, RF, SIG, OptionType::Put);
     EXPECT_NEAR(c.gamma, p.gamma, 1e-15);
     EXPECT_NEAR(c.vega, p.vega, 1e-15);
     EXPECT_NEAR(c.vanna, p.vanna, 1e-15);
@@ -83,10 +75,8 @@ TEST(Greeks, GammaAndVegaArePositive) {
 }
 
 TEST(Greeks, RequiresPositiveTimeAndVol) {
-    EXPECT_THROW(analytic_greeks(S, K, 0.0, RD, RF, SIG, OptionType::Call),
-                 std::invalid_argument);
-    EXPECT_THROW(analytic_greeks(S, K, T, RD, RF, 0.0, OptionType::Call),
-                 std::invalid_argument);
+    EXPECT_THROW(analytic_greeks(S, K, 0.0, RD, RF, SIG, OptionType::Call), std::invalid_argument);
+    EXPECT_THROW(analytic_greeks(S, K, T, RD, RF, 0.0, OptionType::Call), std::invalid_argument);
 }
 
 }  // namespace

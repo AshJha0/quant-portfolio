@@ -35,8 +35,8 @@ enum class Dist { Normal, StudentT };
 /// `horizon_days` applies square-root-of-time scaling to sigma and linear
 /// scaling to the mean.  df must be > 2 for dist = StudentT.
 [[nodiscard]] double parametric_var(std::span<const double> exposures, const Matrix& cov,
-                                    double alpha = 0.01, Dist dist = Dist::Normal,
-                                    double df = 6.0, double mean = 0.0, int horizon_days = 1);
+                                    double alpha = 0.01, Dist dist = Dist::Normal, double df = 6.0,
+                                    double mean = 0.0, int horizon_days = 1);
 
 /// Cornish-Fisher adjusted quantile:
 ///   z_cf = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36
@@ -52,10 +52,10 @@ enum class Dist { Normal, StudentT };
 [[nodiscard]] bool cornish_fisher_valid(double skew, double excess_kurt, double alpha);
 
 /// Old predicate: monotone on the fixed interval [-z_range, z_range].
-[[deprecated("fixed z_range ignores alpha; use cornish_fisher_valid(skew, excess_kurt, alpha). "
-             "Removed next release.")]]
-[[nodiscard]] bool cornish_fisher_domain_ok(double skew, double excess_kurt,
-                                            double z_range = 3.5, int n_grid = 2001);
+[[deprecated(
+    "fixed z_range ignores alpha; use cornish_fisher_valid(skew, excess_kurt, alpha). "
+    "Removed next release.")]] [[nodiscard]] bool
+cornish_fisher_domain_ok(double skew, double excess_kurt, double z_range = 3.5, int n_grid = 2001);
 
 /// Cornish-Fisher VaR: -(mean + z_cf(alpha) sigma). With
 /// `check_domain = true` (default) throws std::invalid_argument when

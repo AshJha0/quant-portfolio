@@ -82,8 +82,7 @@ TEST(HistoricalVar, AgeWeightsSumToOneAndTiltRecent) {
   EXPECT_NEAR(sum, 1.0, 1e-12);
   // Most recent scenario (last row) carries the largest weight.
   EXPECT_GT(res.weights.back(), res.weights.front());
-  EXPECT_NEAR(res.weights.back() / res.weights[res.weights.size() - 2],
-              1.0 / 0.99, 1e-12);
+  EXPECT_NEAR(res.weights.back() / res.weights[res.weights.size() - 2], 1.0 / 0.99, 1e-12);
 }
 
 TEST(HistoricalVar, FilteredScalesToCurrentVolRegime) {
@@ -106,8 +105,7 @@ TEST(HistoricalVar, PegBlindnessWarningTriggers) {
   // HKD inside its band: daily vol ~2e-4 < threshold 5e-4 -> flagged.
   const Market m = test_market();
   Book book({SpotPosition{"EURUSD", 10e6, {}}, SpotPosition{"USDHKD", 5e6, {}}});
-  const ReturnsMatrix rets =
-      synthetic_returns(300, {"FX:EUR", "FX:HKD"}, {0.006, 0.0002});
+  const ReturnsMatrix rets = synthetic_returns(300, {"FX:EUR", "FX:HKD"}, {0.006, 0.0002});
   const auto res = historical_var(book, m, rets, {});
   ASSERT_EQ(res.flagged_peg_factors.size(), 1u);
   EXPECT_EQ(res.flagged_peg_factors[0], "FX:HKD");
@@ -115,8 +113,7 @@ TEST(HistoricalVar, PegBlindnessWarningTriggers) {
   EXPECT_NE(res.warnings[0].find("peg"), std::string::npos);
   // Free-float-only book: no flags.
   Book clean({SpotPosition{"EURUSD", 10e6, {}}});
-  const auto res2 = historical_var(
-      clean, m, synthetic_returns(300, {"FX:EUR"}, {0.006}), {});
+  const auto res2 = historical_var(clean, m, synthetic_returns(300, {"FX:EUR"}, {0.006}), {});
   EXPECT_TRUE(res2.flagged_peg_factors.empty());
 }
 
@@ -124,17 +121,14 @@ TEST(HistoricalVar, ValidationAndEdgeCases) {
   const Market m = test_market();
   Book book({SpotPosition{"EURUSD", 10e6, {}}});
   // Empty book throws.
-  EXPECT_THROW(
-      historical_var(Book{}, m, synthetic_returns(100, {"FX:EUR"}, {0.01}), {}),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(Book{}, m, synthetic_returns(100, {"FX:EUR"}, {0.01}), {}),
+               std::invalid_argument);
   // Too little history throws.
-  EXPECT_THROW(
-      historical_var(book, m, synthetic_returns(30, {"FX:EUR"}, {0.01}), {}),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(book, m, synthetic_returns(30, {"FX:EUR"}, {0.01}), {}),
+               std::invalid_argument);
   // Missing factor column throws.
-  EXPECT_THROW(
-      historical_var(book, m, synthetic_returns(300, {"FX:JPY"}, {0.01}), {}),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(book, m, synthetic_returns(300, {"FX:JPY"}, {0.01}), {}),
+               std::invalid_argument);
   // NaNs are refused.
   ReturnsMatrix bad = synthetic_returns(300, {"FX:EUR"}, {0.01});
   bad.data(7, 0) = std::nan("");
@@ -142,27 +136,23 @@ TEST(HistoricalVar, ValidationAndEdgeCases) {
   // Bad alpha / horizon / decay.
   HistoricalOptions a;
   a.alpha = 1.0;
-  EXPECT_THROW(
-      historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), a),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), a),
+               std::invalid_argument);
   HistoricalOptions h;
   h.horizon_days = 0.0;
-  EXPECT_THROW(
-      historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), h),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), h),
+               std::invalid_argument);
   HistoricalOptions d;
   d.method = HsMethod::kAge;
   d.decay = 1.5;
-  EXPECT_THROW(
-      historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), d),
-      std::invalid_argument);
+  EXPECT_THROW(historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), d),
+               std::invalid_argument);
 }
 
 TEST(HistoricalVar, PureBaseCcyCashIsZeroRisk) {
   const Market m = test_market();
   Book book({CashPosition{"USD", 50e6}});  // USD cash in a USD book
-  const auto res =
-      historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), {});
+  const auto res = historical_var(book, m, synthetic_returns(300, {"FX:EUR"}, {0.01}), {});
   EXPECT_DOUBLE_EQ(res.var, 0.0);
   EXPECT_DOUBLE_EQ(res.es, 0.0);
 }

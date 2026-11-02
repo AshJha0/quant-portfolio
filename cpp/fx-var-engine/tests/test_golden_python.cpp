@@ -38,10 +38,10 @@
 
 #include "fxvar/backtest.hpp"
 #include "fxvar/expected_shortfall.hpp"
-#include "fxvar/matrix.hpp"
-#include "fxvar/returns.hpp"
 #include "fxvar/historical.hpp"
+#include "fxvar/matrix.hpp"
 #include "fxvar/parametric.hpp"
+#include "fxvar/returns.hpp"
 #include "golden_vectors.hpp"
 
 using namespace fxvar;
@@ -56,9 +56,9 @@ Market golden_market() {
 
 Book golden_book() {
   return Book({
-      SpotPosition{"EURUSD", 10'000'000.0, {}},   // long 10m EUR at market
+      SpotPosition{"EURUSD", 10'000'000.0, {}},         // long 10m EUR at market
       ForwardPosition{"USDJPY", 5'000'000.0, 0.5, {}},  // ATM CIP forward
-      SpotPosition{"EURJPY", -3'000'000.0, {}},   // short 3m EUR cross
+      SpotPosition{"EURJPY", -3'000'000.0, {}},         // short 3m EUR cross
   });
 }
 
@@ -75,8 +75,7 @@ ReturnsMatrix golden_returns() {
     for (int j = 0; j < 4; ++j) {
       const double td = static_cast<double>(t);
       const double jd = static_cast<double>(j);
-      r.data(t, j) = scales[j] * (std::sin(0.1 * td + jd) +
-                                  0.5 * std::cos(0.05 * td * (jd + 1.0)));
+      r.data(t, j) = scales[j] * (std::sin(0.1 * td + jd) + 0.5 * std::cos(0.05 * td * (jd + 1.0)));
     }
   return r;
 }
@@ -133,9 +132,8 @@ TEST(GoldenPython, CaseB_ParametricClosedForm) {
   //   t(5)   99%:  var = 171803.12389091405  es = 227327.5314974144
   //   normal 99% 10d: var = 484902.0892474838 es = 555535.1192996583
   const std::vector<double> w{11e6, -4.5e6, -2.4e6};
-  const Matrix cov = Matrix::from_rows({{3.6e-5, 1.1e-5, -2.0e-6},
-                                        {1.1e-5, 4.9e-5, -1.0e-6},
-                                        {-2.0e-6, -1.0e-6, 2.5e-7}});
+  const Matrix cov = Matrix::from_rows(
+      {{3.6e-5, 1.1e-5, -2.0e-6}, {1.1e-5, 4.9e-5, -1.0e-6}, {-2.0e-6, -1.0e-6, 2.5e-7}});
   const VarEs n1 = var_covar(w, cov, 0.01, 1.0, TailDist::kNormal);
   EXPECT_NEAR(n1.var, golden::b_normal_var_99_1d, golden::tol_case_b_rel * n1.var);
   EXPECT_NEAR(n1.es, golden::b_normal_es_99_1d, golden::tol_case_b_rel * n1.es);
@@ -210,103 +208,107 @@ TEST(GoldenPython, CaseC_BacktestStatistics) {
 namespace {
 
 std::vector<double> conv_sample() {
-    std::vector<double> p(250);
-    for (int i = 0; i < 250; ++i) {
-        const double x = 1000.0 * std::sin(0.37 * i + 0.1) * (1.0 + 0.5 * std::cos(0.11 * i));
-        p[i] = std::floor(x * 100.0 + 0.5) / 100.0;
-    }
-    return p;
+  std::vector<double> p(250);
+  for (int i = 0; i < 250; ++i) {
+    const double x = 1000.0 * std::sin(0.37 * i + 0.1) * (1.0 + 0.5 * std::cos(0.11 * i));
+    p[i] = std::floor(x * 100.0 + 0.5) / 100.0;
+  }
+  return p;
 }
 
 void expect_rel12(double actual, double expected, const char* what) {
-    EXPECT_NEAR(actual, expected, 1e-12 * std::abs(expected)) << what;
+  EXPECT_NEAR(actual, expected, 1e-12 * std::abs(expected)) << what;
 }
 
 }  // namespace
 
 TEST(GoldenPython, ConvOrderStatisticVarEs) {
-    const std::vector<double> p = conv_sample();
-    const auto a010 = empirical_var_es(p, 0.010);
-    const auto a025 = empirical_var_es(p, 0.025);
-    const auto a050 = empirical_var_es(p, 0.050);
-    expect_rel12(a010.first, golden::conv_var_a010, "conv_var_a010");
-    expect_rel12(a010.second, golden::conv_es_a010, "conv_es_a010");
-    expect_rel12(a025.first, golden::conv_var_a025, "conv_var_a025");
-    expect_rel12(a025.second, golden::conv_es_a025, "conv_es_a025");
-    expect_rel12(a050.first, golden::conv_var_a050, "conv_var_a050");
-    expect_rel12(a050.second, golden::conv_es_a050, "conv_es_a050");
+  const std::vector<double> p = conv_sample();
+  const auto a010 = empirical_var_es(p, 0.010);
+  const auto a025 = empirical_var_es(p, 0.025);
+  const auto a050 = empirical_var_es(p, 0.050);
+  expect_rel12(a010.first, golden::conv_var_a010, "conv_var_a010");
+  expect_rel12(a010.second, golden::conv_es_a010, "conv_es_a010");
+  expect_rel12(a025.first, golden::conv_var_a025, "conv_var_a025");
+  expect_rel12(a025.second, golden::conv_es_a025, "conv_es_a025");
+  expect_rel12(a050.first, golden::conv_var_a050, "conv_var_a050");
+  expect_rel12(a050.second, golden::conv_es_a050, "conv_es_a050");
 }
 
 TEST(GoldenPython, ConvBasel) {
-    struct Case {
-        int n, x;
-        double alpha, zone, k, cdf;
-        const char* name;
-    };
-    const Case cases[] = {
-#define FXVAR_BASEL_CASE(n, x, a, tag)                                                     \
-    {n, x, a, golden::conv_basel_zone_n##n##_x##x##_a##tag,                                 \
-     golden::conv_basel_k_n##n##_x##x##_a##tag, golden::conv_basel_cdf_n##n##_x##x##_a##tag, \
-     "n" #n "_x" #x "_a" #tag}
-        FXVAR_BASEL_CASE(250, 4, 0.01, 010),   FXVAR_BASEL_CASE(250, 5, 0.01, 010),
-        FXVAR_BASEL_CASE(250, 9, 0.01, 010),   FXVAR_BASEL_CASE(250, 10, 0.01, 010),
-        FXVAR_BASEL_CASE(500, 8, 0.01, 010),   FXVAR_BASEL_CASE(500, 9, 0.01, 010),
-        FXVAR_BASEL_CASE(500, 12, 0.01, 010),  FXVAR_BASEL_CASE(1000, 15, 0.01, 010),
-        FXVAR_BASEL_CASE(250, 12, 0.025, 025),
+  struct Case {
+    int n, x;
+    double alpha, zone, k, cdf;
+    const char* name;
+  };
+  const Case cases[] = {
+#define FXVAR_BASEL_CASE(n, x, a, tag)           \
+  {n,                                            \
+   x,                                            \
+   a,                                            \
+   golden::conv_basel_zone_n##n##_x##x##_a##tag, \
+   golden::conv_basel_k_n##n##_x##x##_a##tag,    \
+   golden::conv_basel_cdf_n##n##_x##x##_a##tag,  \
+   "n" #n "_x" #x "_a" #tag}
+      FXVAR_BASEL_CASE(250, 4, 0.01, 010),   FXVAR_BASEL_CASE(250, 5, 0.01, 010),
+      FXVAR_BASEL_CASE(250, 9, 0.01, 010),   FXVAR_BASEL_CASE(250, 10, 0.01, 010),
+      FXVAR_BASEL_CASE(500, 8, 0.01, 010),   FXVAR_BASEL_CASE(500, 9, 0.01, 010),
+      FXVAR_BASEL_CASE(500, 12, 0.01, 010),  FXVAR_BASEL_CASE(1000, 15, 0.01, 010),
+      FXVAR_BASEL_CASE(250, 12, 0.025, 025),
 #undef FXVAR_BASEL_CASE
-    };
-    for (const Case& c : cases) {
-        const TrafficLight r =
-            basel_traffic_light(BaselInput{.n_obs = c.n, .n_exceptions = c.x, .alpha = c.alpha});
-        EXPECT_EQ(static_cast<double>(static_cast<int>(r.zone)), c.zone) << c.name;
-        EXPECT_DOUBLE_EQ(r.multiplier, c.k) << c.name;
-        EXPECT_NEAR(r.cumulative_prob, c.cdf, 1e-12) << c.name;
-    }
+  };
+  for (const Case& c : cases) {
+    const TrafficLight r =
+        basel_traffic_light(BaselInput{.n_obs = c.n, .n_exceptions = c.x, .alpha = c.alpha});
+    EXPECT_EQ(static_cast<double>(static_cast<int>(r.zone)), c.zone) << c.name;
+    EXPECT_DOUBLE_EQ(r.multiplier, c.k) << c.name;
+    EXPECT_NEAR(r.cumulative_prob, c.cdf, 1e-12) << c.name;
+  }
 }
 
 TEST(GoldenPython, ConvKupiecAndAcerbiSzekely) {
-    EXPECT_NEAR(kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01}).lr,
-                golden::conv_kupiec_lr_n250_x5, 1e-10);
-    EXPECT_NEAR(kupiec_pof({.n_obs = 500, .n_exceptions = 9, .alpha = 0.01}).lr,
-                golden::conv_kupiec_lr_n500_x9, 1e-10);
-    EXPECT_NEAR(kupiec_pof({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01}).lr,
-                golden::conv_kupiec_lr_n250_x0, 1e-10);
-    const std::vector<double> p = conv_sample();
-    const std::vector<double> var = {1000.0};
-    const std::vector<double> es = {1300.0};
-    EXPECT_NEAR(acerbi_szekely_z2(p, var, es, 0.025), golden::conv_as_z2, 1e-12);
+  EXPECT_NEAR(kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01}).lr,
+              golden::conv_kupiec_lr_n250_x5, 1e-10);
+  EXPECT_NEAR(kupiec_pof({.n_obs = 500, .n_exceptions = 9, .alpha = 0.01}).lr,
+              golden::conv_kupiec_lr_n500_x9, 1e-10);
+  EXPECT_NEAR(kupiec_pof({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01}).lr,
+              golden::conv_kupiec_lr_n250_x0, 1e-10);
+  const std::vector<double> p = conv_sample();
+  const std::vector<double> var = {1000.0};
+  const std::vector<double> es = {1300.0};
+  EXPECT_NEAR(acerbi_szekely_z2(p, var, es, 0.025), golden::conv_as_z2, 1e-12);
 }
 
 TEST(GoldenPython, ConvCornishFisherFlags) {
-    const auto flag = [](double s, double k, double a) {
-        return cornish_fisher_valid(s, k, a) ? 1.0 : 0.0;
-    };
-    EXPECT_EQ(flag(0.122, -0.427, 0.01), golden::conv_cf_valid_s0122_km0427);
-    EXPECT_EQ(flag(0.0, 0.0, 0.01), golden::conv_cf_valid_s00_k00);
-    EXPECT_EQ(flag(1.0, 1.0, 0.01), golden::conv_cf_valid_s10_k10);
-    EXPECT_EQ(flag(-0.0105, 8.0001, 0.01), golden::conv_cf_valid_sm0105_k80001);
-    EXPECT_EQ(flag(0.122, -0.427, 0.001), golden::conv_cf_valid_a001_s0122_km0427);
+  const auto flag = [](double s, double k, double a) {
+    return cornish_fisher_valid(s, k, a) ? 1.0 : 0.0;
+  };
+  EXPECT_EQ(flag(0.122, -0.427, 0.01), golden::conv_cf_valid_s0122_km0427);
+  EXPECT_EQ(flag(0.0, 0.0, 0.01), golden::conv_cf_valid_s00_k00);
+  EXPECT_EQ(flag(1.0, 1.0, 0.01), golden::conv_cf_valid_s10_k10);
+  EXPECT_EQ(flag(-0.0105, 8.0001, 0.01), golden::conv_cf_valid_sm0105_k80001);
+  EXPECT_EQ(flag(0.122, -0.427, 0.001), golden::conv_cf_valid_a001_s0122_km0427);
 }
 
 TEST(GoldenPython, ConvCholeskyRepair) {
-    const Matrix a = Matrix::from_rows({{1.0, 0.9, 0.9}, {0.9, 1.0, -0.9}, {0.9, -0.9, 1.0}});
-    EXPECT_THROW(cholesky(a), std::runtime_error);
-    const Matrix h = repair_covariance(a, Repair::kHigham);
-    EXPECT_NEAR(h(0, 1), golden::conv_higham_a01, 1e-8);
-    EXPECT_NEAR(h(0, 2), golden::conv_higham_a02, 1e-8);
-    EXPECT_NEAR(h(1, 2), golden::conv_higham_a12, 1e-8);
-    const Matrix c = repair_covariance(a, Repair::kClip);
-    expect_rel12(c(0, 1), golden::conv_clip_a01, "conv_clip_a01");
-    expect_rel12(c(0, 2), golden::conv_clip_a02, "conv_clip_a02");
-    expect_rel12(c(1, 2), golden::conv_clip_a12, "conv_clip_a12");
+  const Matrix a = Matrix::from_rows({{1.0, 0.9, 0.9}, {0.9, 1.0, -0.9}, {0.9, -0.9, 1.0}});
+  EXPECT_THROW(cholesky(a), std::runtime_error);
+  const Matrix h = repair_covariance(a, Repair::kHigham);
+  EXPECT_NEAR(h(0, 1), golden::conv_higham_a01, 1e-8);
+  EXPECT_NEAR(h(0, 2), golden::conv_higham_a02, 1e-8);
+  EXPECT_NEAR(h(1, 2), golden::conv_higham_a12, 1e-8);
+  const Matrix c = repair_covariance(a, Repair::kClip);
+  expect_rel12(c(0, 1), golden::conv_clip_a01, "conv_clip_a01");
+  expect_rel12(c(0, 2), golden::conv_clip_a02, "conv_clip_a02");
+  expect_rel12(c(1, 2), golden::conv_clip_a12, "conv_clip_a12");
 }
 
 TEST(GoldenPython, ConvEwmaSigmaLast) {
-    const std::vector<double> p = conv_sample();
-    ReturnsMatrix r;
-    r.factors = {"FX:EUR"};
-    r.data = Matrix(p.size(), 1);
-    for (std::size_t i = 0; i < p.size(); ++i) r.data(i, 0) = p[i] / 1e5;
-    expect_rel12(ewma_volatility(r, 0.94).sigma_next[0], golden::conv_ewma_sigma_last,
-                 "conv_ewma_sigma_last");
+  const std::vector<double> p = conv_sample();
+  ReturnsMatrix r;
+  r.factors = {"FX:EUR"};
+  r.data = Matrix(p.size(), 1);
+  for (std::size_t i = 0; i < p.size(); ++i) r.data(i, 0) = p[i] / 1e5;
+  expect_rel12(ewma_volatility(r, 0.94).sigma_next[0], golden::conv_ewma_sigma_last,
+               "conv_ewma_sigma_last");
 }

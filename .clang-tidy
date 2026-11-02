@@ -1,0 +1,25 @@
+# clang-tidy 21 for cpp/**. CI runs it on each engine's src/*.cpp with the
+# compile_commands.json of the clang preset and --warnings-as-errors='*'.
+#
+# Enabled: bugprone-*, performance-*, modernize-*. Disabled, with reasons:
+#   bugprone-easily-swappable-parameters: kernels take several doubles of
+#     the same type (S, K, T, r, sigma) by design, matching Python and Rust.
+#   modernize-use-trailing-return-type: style only; the code uses leading
+#     return types throughout.
+#   modernize-avoid-c-arrays: fixed coefficient tables (Acklam, Lanczos) are
+#     constexpr C arrays; std::array would change only the spelling.
+#   modernize-use-nodiscard: public functions already carry [[nodiscard]]
+#     where a dropped result is a bug; the check also flags plain helpers.
+#   modernize-use-std-print: bench and shim output uses printf for exact
+#     %a and %.17g formatting.
+#   modernize-use-designated-initializers: error values are built as
+#     Error{code, field, a}; designators would only lengthen every return.
+#   modernize-use-ranges: std::ranges::nth_element and sort may leave the
+#     unselected elements in a different order, and the ES kernels sum those
+#     elements, so the switch could move last bits of pinned results.
+#   performance-enum-size: shrinking OptionType and friends changes the
+#     public ABI that the Python bindings compile against, for no speed gain.
+Checks: '-*,bugprone-*,performance-*,modernize-*,-bugprone-easily-swappable-parameters,-modernize-use-trailing-return-type,-modernize-avoid-c-arrays,-modernize-use-nodiscard,-modernize-use-std-print,-modernize-use-designated-initializers,-modernize-use-ranges,-performance-enum-size'
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/cpp/[^/]+/(include|src)/.*'
+FormatStyle: file

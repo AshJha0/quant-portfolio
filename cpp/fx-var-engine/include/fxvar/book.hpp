@@ -80,8 +80,7 @@ std::string ir_factor(const std::string& ccy);
 /// compounded zero rate, annualised, ACT/365 (flat curve per currency).
 class Market {
  public:
-  explicit Market(std::map<std::string, double> spot_usd,
-                  std::map<std::string, double> rates = {});
+  explicit Market(std::map<std::string, double> spot_usd, std::map<std::string, double> rates = {});
 
   /// USD price of 1 unit of `ccy` (1.0 for USD).  Throws if unknown.
   double spot(const std::string& ccy) const;
@@ -129,8 +128,7 @@ using Position = std::variant<CashPosition, SpotPosition, ForwardPosition>;
 /// A multi-currency book with a designated base (reporting) currency.
 class Book {
  public:
-  explicit Book(std::vector<Position> positions = {},
-                std::string base = "USD");
+  explicit Book(std::vector<Position> positions = {}, const std::string& base = "USD");
 
   const std::string& base() const { return base_; }
   const std::vector<Position>& positions() const { return positions_; }
@@ -207,9 +205,9 @@ class CompiledBook {
 
  private:
   // Struct-of-arrays legs.
-  std::vector<double> value0_;  ///< discounted unshocked USD leg value
-  std::vector<int> fx_idx_;     ///< index into factors_, -1 = USD leg
-  std::vector<int> ir_idx_;     ///< index into factors_, -1 = no rate leg
+  std::vector<double> value0_;      ///< discounted unshocked USD leg value
+  std::vector<int> fx_idx_;         ///< index into factors_, -1 = USD leg
+  std::vector<int> ir_idx_;         ///< index into factors_, -1 = no rate leg
   std::vector<double> neg_expiry_;  ///< -T (0 for undiscounted legs)
 
   std::vector<std::string> factors_;

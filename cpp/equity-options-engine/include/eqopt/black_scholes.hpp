@@ -26,6 +26,7 @@
 #include <utility>
 
 #include "eqopt/error.hpp"
+#include "qp/normal.hpp"
 
 namespace eqopt {
 
@@ -39,17 +40,12 @@ enum class OptionType { Call, Put };
 /// form loses all precision below ~x = -6.
 /// \param x Evaluation point.
 /// \return `P(Z <= x)` for `Z ~ N(0, 1)`.
-inline double norm_cdf(double x) noexcept {
-    return 0.5 * std::erfc(-x * 0.7071067811865475244008443621048490393);
-}
+inline double norm_cdf(double x) noexcept { return qp::norm_cdf_rcp(x); }
 
 /// \brief Standard normal PDF `exp(-x^2/2) / sqrt(2*pi)`.
 /// \param x Evaluation point.
 /// \return Density value.
-inline double norm_pdf(double x) noexcept {
-    constexpr double inv_sqrt_2pi = 0.3989422804014326779399460599343819;
-    return inv_sqrt_2pi * std::exp(-0.5 * x * x);
-}
+inline double norm_pdf(double x) noexcept { return qp::norm_pdf(x); }
 
 /// \brief Validate common Black–Scholes inputs.
 ///
@@ -72,10 +68,8 @@ void validate_rates(double r, double q = 0.0);
 /// \param S,K  Spot and strike, currency units.
 /// \param type Payoff direction.
 /// \return Intrinsic value in currency units.
-inline double intrinsic_value(double S, double K,
-                              OptionType type = OptionType::Call) noexcept {
-    return type == OptionType::Call ? std::fmax(S - K, 0.0)
-                                    : std::fmax(K - S, 0.0);
+inline double intrinsic_value(double S, double K, OptionType type = OptionType::Call) noexcept {
+    return type == OptionType::Call ? std::fmax(S - K, 0.0) : std::fmax(K - S, 0.0);
 }
 
 /// \brief Equity forward `F = S * exp((r - q) * T)`.
@@ -84,8 +78,7 @@ inline double intrinsic_value(double S, double K,
 /// \param r Continuously compounded annualised risk-free rate.
 /// \param q Continuously compounded annualised dividend yield.
 /// \return Forward price in currency units.
-inline double forward_price(double S, double T, double r,
-                            double q = 0.0) noexcept {
+inline double forward_price(double S, double T, double r, double q = 0.0) noexcept {
     return S * std::exp((r - q) * T);
 }
 
@@ -101,8 +94,8 @@ inline double forward_price(double S, double T, double r,
 /// \return Pair `(d1, d2)`.
 /// \throws std::invalid_argument if `S`, `K`, `T` or `sigma` is not
 ///         strictly positive (or any input is negative/NaN).
-std::pair<double, double> d1_d2(double S, double K, double T, double r,
-                                double sigma, double q = 0.0);
+std::pair<double, double> d1_d2(double S, double K, double T, double r, double sigma,
+                                double q = 0.0);
 
 /// \brief Black–Scholes–Merton price of a European option with dividend yield.
 ///
@@ -120,8 +113,8 @@ std::pair<double, double> d1_d2(double S, double K, double T, double r,
 /// \note `T == 0` returns intrinsic; `sigma == 0` returns the discounted
 ///       intrinsic on the forward `exp(-rT) max(±(F - K), 0)`: identical
 ///       to the Python reference edge-case policy.
-double bs_price(double S, double K, double T, double r, double sigma,
-                double q = 0.0, OptionType type = OptionType::Call);
+double bs_price(double S, double K, double T, double r, double sigma, double q = 0.0,
+                OptionType type = OptionType::Call);
 
 /// \brief Return `value`, or throw std::invalid_argument naming `what` if it
 /// is not finite (a discount factor or forward overflowed for finite inputs).
@@ -189,18 +182,19 @@ EQOPT_COLD Error rate_error(double r, double q) noexcept;
 inline std::pair<double, double> d1_d2_unchecked(double S, double K, double T, double r,
                                                  double sigma, double q) noexcept {
     const double sqrt_t = std::sqrt(T);
-    const double d1 =
-        (std::log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t);
+    const double d1 = (std::log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_t);
     return {d1, d1 - sigma * sqrt_t};
 }
 
 /// \brief noexcept form of d1_d2().
-[[nodiscard]] inline Result<std::pair<double, double>> try_d1_d2(
-    double S, double K, double T, double r, double sigma, double q = 0.0) noexcept {
+[[nodiscard]] inline Result<std::pair<double, double>> try_d1_d2(double S, double K, double T,
+                                                                 double r, double sigma,
+                                                                 double q = 0.0) noexcept {
     if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]]
+        return std::unexpected(e.error());
     if (S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) [[unlikely]] {
         return std::unexpected(Error{Errc::NotStrictlyPositive, "", S, K, T, sigma});
     }
@@ -210,14 +204,17 @@ inline std::pair<double, double> d1_d2_unchecked(double S, double K, double T, d
 /// \brief Black-Scholes-Merton price on inputs the caller has validated
 ///        (finite; S, K, T, sigma >= 0; r, q finite). Returns the raw value,
 ///        which is non-finite if a discount factor overflows.
-inline double bs_price_unchecked(double S, double K, double T, double r, double sigma,
-                                 double q, OptionType type) noexcept {
-    if (T == 0.0) [[unlikely]] return intrinsic_value(S, K, type);
+inline double bs_price_unchecked(double S, double K, double T, double r, double sigma, double q,
+                                 OptionType type) noexcept {
+    if (T == 0.0) [[unlikely]]
+        return intrinsic_value(S, K, type);
     const double disc_s = S * std::exp(-q * T);
     const double disc_k = K * std::exp(-r * T);
     const bool call = type == OptionType::Call;
-    if (K == 0.0) [[unlikely]] return call ? disc_s : 0.0;
-    if (S == 0.0) [[unlikely]] return call ? 0.0 : disc_k;
+    if (K == 0.0) [[unlikely]]
+        return call ? disc_s : 0.0;
+    if (S == 0.0) [[unlikely]]
+        return call ? 0.0 : disc_k;
     if (sigma == 0.0) [[unlikely]] {
         const double sign = call ? 1.0 : -1.0;
         return std::fmax(sign * (disc_s - disc_k), 0.0);
@@ -235,7 +232,8 @@ inline double bs_price_unchecked(double S, double K, double T, double r, double 
     if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]]
+        return std::unexpected(e.error());
     return try_finite(bs_price_unchecked(S, K, T, r, sigma, q, type), "bs_price");
 }
 

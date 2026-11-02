@@ -58,8 +58,7 @@ LrTest kupiec_pof(int n_exceptions, int n_obs, double alpha = 0.01);
 LrTest christoffersen_independence(const std::vector<int>& exceedances);
 
 /// Christoffersen conditional coverage: LR_cc = LR_uc + LR_ind, chi2(2).
-LrTest conditional_coverage(const std::vector<int>& exceedances,
-                            double alpha = 0.01);
+LrTest conditional_coverage(const std::vector<int>& exceedances, double alpha = 0.01);
 
 enum class Zone { kGreen, kYellow, kRed };
 
@@ -78,18 +77,17 @@ TrafficLight basel_traffic_light(const BaselInput& in);
 
 /// Old argument order (n_exceptions, n_obs, alpha); alpha is now the tail
 /// probability.
-[[deprecated("use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
-             "Removed next release.")]]
-TrafficLight basel_traffic_light(int n_exceptions, int n_obs = 250,
-                                 double alpha = 0.01);
+[[deprecated(
+    "use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
+    "Removed next release.")]]
+TrafficLight basel_traffic_light(int n_exceptions, int n_obs = 250, double alpha = 0.01);
 
 /// Acerbi-Szekely (2014) Z2 statistic for an ES backtest:
 ///   Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1,  I_t = 1{pnl_t < -VaR_t}.
 /// Expected 0 under a correct model; NEGATIVE means ES is understated.
 /// `var` and `es` are positive losses, one per day or size 1 (broadcast).
 /// Requires finite inputs, VaR >= 0, ES > 0. Returns Z2 only (no p-value).
-double acerbi_szekely_z2(const std::vector<double>& pnl,
-                         const std::vector<double>& var,
+double acerbi_szekely_z2(const std::vector<double>& pnl, const std::vector<double>& var,
                          const std::vector<double>& es, double alpha);
 
 /// Full VaR backtest summary over a forecast/realisation window.
@@ -109,7 +107,6 @@ struct BacktestResult {
 /// forecasts for the same days. Throws on length mismatch, < 2
 /// observations, non-finite values or a negative VaR.
 BacktestResult evaluate_var_backtest(const std::vector<double>& pnl,
-                                     const std::vector<double>& var_forecasts,
-                                     double alpha = 0.01);
+                                     const std::vector<double>& var_forecasts, double alpha = 0.01);
 
 }  // namespace fxvar

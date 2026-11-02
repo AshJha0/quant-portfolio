@@ -10,7 +10,7 @@
 #include "eqopt/black_scholes.hpp"
 #include "eqopt/greeks.hpp"
 #include "eqopt/implied_vol.hpp"
-#include "jsonl.hpp"
+#include "qp/tools/jsonl.hpp"
 
 namespace {
 
@@ -26,9 +26,14 @@ std::string handle(const jsonl::Request& r, const std::string& id) {
     if (fn == "bs") {
         const auto g = eqopt::bs_greeks(r.num("S"), r.num("K"), r.num("T"), r.num("r"),
                                         r.num("sigma"), r.num("q"), option_type(r));
-        return jsonl::ok(id, {{"price", g.price}, {"delta", g.delta}, {"gamma", g.gamma},
-                              {"vega", g.vega}, {"theta", g.theta}, {"rho", g.rho},
-                              {"vanna", g.vanna}, {"volga", g.volga}});
+        return jsonl::ok(id, {{"price", g.price},
+                              {"delta", g.delta},
+                              {"gamma", g.gamma},
+                              {"vega", g.vega},
+                              {"theta", g.theta},
+                              {"rho", g.rho},
+                              {"vanna", g.vanna},
+                              {"volga", g.volga}});
     }
     if (fn == "iv") {
         const double s = eqopt::implied_vol(r.num("price"), r.num("S"), r.num("K"), r.num("T"),
@@ -36,18 +41,22 @@ std::string handle(const jsonl::Request& r, const std::string& id) {
         return jsonl::ok(id, {{"sigma", s}});
     }
     if (fn == "crr") {
-        const auto ex = r.flag("american") ? eqopt::ExerciseStyle::American
-                                           : eqopt::ExerciseStyle::European;
-        const double p = eqopt::crr_price(r.num("S"), r.num("K"), r.num("T"), r.num("r"),
-                                          r.num("sigma"), r.num("q"), option_type(r), ex,
-                                          static_cast<int>(r.num("steps")));
+        const auto ex =
+            r.flag("american") ? eqopt::ExerciseStyle::American : eqopt::ExerciseStyle::European;
+        const double p =
+            eqopt::crr_price(r.num("S"), r.num("K"), r.num("T"), r.num("r"), r.num("sigma"),
+                             r.num("q"), option_type(r), ex, static_cast<int>(r.num("steps")));
         return jsonl::ok(id, {{"price", p}});
     }
     if (fn == "b76") {
         const auto g = eqopt::black76_greeks(r.num("F"), r.num("K"), r.num("T"), r.num("r"),
                                              r.num("sigma"), option_type(r));
-        return jsonl::ok(id, {{"price", g.price}, {"delta", g.delta}, {"gamma", g.gamma},
-                              {"vega", g.vega}, {"theta", g.theta}, {"rho", g.rho}});
+        return jsonl::ok(id, {{"price", g.price},
+                              {"delta", g.delta},
+                              {"gamma", g.gamma},
+                              {"vega", g.vega},
+                              {"theta", g.theta},
+                              {"rho", g.rho}});
     }
     throw std::invalid_argument("unknown fn: " + fn);
 }

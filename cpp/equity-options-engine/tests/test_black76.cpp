@@ -32,18 +32,13 @@ TEST(Black76, EqualsBlackScholesOnForwardTo1e12) {
                 for (double sigma : vols)
                     for (double r : rates)
                         for (double q : divs)
-                            for (OptionType type :
-                                 {OptionType::Call, OptionType::Put}) {
+                            for (OptionType type : {OptionType::Call, OptionType::Put}) {
                                 const double F = forward_price(S, T, r, q);
-                                const double b76 =
-                                    black76_price(F, K, T, r, sigma, type);
-                                const double bs =
-                                    bs_price(S, K, T, r, sigma, q, type);
-                                ASSERT_NEAR(b76, bs,
-                                            1e-12 * std::max(1.0, bs))
-                                    << "S=" << S << " K=" << K << " T=" << T
-                                    << " sigma=" << sigma << " r=" << r
-                                    << " q=" << q;
+                                const double b76 = black76_price(F, K, T, r, sigma, type);
+                                const double bs = bs_price(S, K, T, r, sigma, q, type);
+                                ASSERT_NEAR(b76, bs, 1e-12 * std::max(1.0, bs))
+                                    << "S=" << S << " K=" << K << " T=" << T << " sigma=" << sigma
+                                    << " r=" << r << " q=" << q;
                             }
 }
 
@@ -67,26 +62,17 @@ TEST(Black76, GreeksMatchCentralDifferences) {
             return black76_price(f, K, t, rr, sig, type);
         };
         EXPECT_NEAR(g.delta,
-                    (price(F + h_f, T, r, sigma) - price(F - h_f, T, r, sigma)) /
-                        (2 * h_f),
-                    1e-7);
+                    (price(F + h_f, T, r, sigma) - price(F - h_f, T, r, sigma)) / (2 * h_f), 1e-7);
         const double h_f2 = 2e-4 * F;
         EXPECT_NEAR(g.gamma,
-                    (price(F + h_f2, T, r, sigma) - 2 * g.price +
-                     price(F - h_f2, T, r, sigma)) /
+                    (price(F + h_f2, T, r, sigma) - 2 * g.price + price(F - h_f2, T, r, sigma)) /
                         (h_f2 * h_f2),
                     1e-7);
-        EXPECT_NEAR(g.vega,
-                    (price(F, T, r, sigma + h_v) - price(F, T, r, sigma - h_v)) /
-                        (2 * h_v),
+        EXPECT_NEAR(g.vega, (price(F, T, r, sigma + h_v) - price(F, T, r, sigma - h_v)) / (2 * h_v),
                     1e-5);
         EXPECT_NEAR(g.theta,
-                    -(price(F, T + h_t, r, sigma) - price(F, T - h_t, r, sigma)) /
-                        (2 * h_t),
-                    1e-5);
-        EXPECT_NEAR(g.rho,
-                    (price(F, T, r + h_r, sigma) - price(F, T, r - h_r, sigma)) /
-                        (2 * h_r),
+                    -(price(F, T + h_t, r, sigma) - price(F, T - h_t, r, sigma)) / (2 * h_t), 1e-5);
+        EXPECT_NEAR(g.rho, (price(F, T, r + h_r, sigma) - price(F, T, r - h_r, sigma)) / (2 * h_r),
                     1e-5);
         // rho is pure discounting: -T * V by construction.
         EXPECT_NEAR(g.rho, -T * g.price, 1e-12);
@@ -97,15 +83,12 @@ TEST(Black76, EdgeCasesAndValidation) {
     // T == 0 -> intrinsic (undiscounted).
     EXPECT_DOUBLE_EQ(black76_price(105.0, 100.0, 0.0, 0.05, 0.2), 5.0);
     // sigma == 0 -> discounted intrinsic.
-    EXPECT_DOUBLE_EQ(black76_price(105.0, 100.0, 1.0, 0.05, 0.0),
-                     std::exp(-0.05) * 5.0);
+    EXPECT_DOUBLE_EQ(black76_price(105.0, 100.0, 1.0, 0.05, 0.0), std::exp(-0.05) * 5.0);
     // Daily-margined futures options: r = 0 (no premium discounting).
     const double undisc = black76_price(105.0, 100.0, 1.0, 0.0, 0.2);
     EXPECT_GT(undisc, black76_price(105.0, 100.0, 1.0, 0.05, 0.2));
-    EXPECT_THROW(black76_price(-1.0, 100.0, 1.0, 0.05, 0.2),
-                 std::invalid_argument);
-    EXPECT_THROW(black76_greeks(100.0, 100.0, 0.0, 0.05, 0.2),
-                 std::invalid_argument);
+    EXPECT_THROW(black76_price(-1.0, 100.0, 1.0, 0.05, 0.2), std::invalid_argument);
+    EXPECT_THROW(black76_greeks(100.0, 100.0, 0.0, 0.05, 0.2), std::invalid_argument);
 }
 
 }  // namespace

@@ -107,7 +107,8 @@ inline std::string escape(const std::string& s) {
     return out;
 }
 
-inline std::string ok(const std::string& id, const std::vector<std::pair<std::string, double>>& out) {
+inline std::string ok(const std::string& id,
+                      const std::vector<std::pair<std::string, double>>& out) {
     std::string s = "{\"id\":" + id + ",\"ok\":true,\"out\":{";
     for (std::size_t k = 0; k < out.size(); ++k) {
         if (k) s += ",";

@@ -32,13 +32,11 @@ static_assert(noexcept(try_black76_price(1.0, 1.0, 1.0, 0.0, 0.2, OptionType::Ca
 static_assert(noexcept(try_implied_vol(0.1, 1.0, 1.0, 1.0, 0.0, 0.0, OptionType::Call)));
 static_assert(noexcept(try_binomial_price(1.0, 1.0, 1.0, 0.0, 0.0, 0.2, OptionType::Call, 10,
                                           Exercise::American, std::span<double>{})));
-static_assert(noexcept(gk_price_batch(std::declval<const GkBatchInputs&>(),
-                                      std::span<double>{})));
+static_assert(noexcept(gk_price_batch(std::declval<const GkBatchInputs&>(), std::span<double>{})));
 static_assert(noexcept(gk_greeks_batch(std::declval<const GkBatchInputs&>(),
                                        std::declval<const GkGreeksBatchOutputs&>())));
-static_assert(noexcept(try_mc_price(1.0, 1.0, 1.0, 0.0, 0.0, 0.2, OptionType::Call, 100,
-                                    Seed{1}, true, true, 1, std::declval<McWorkspace&>(),
-                                    nullptr)));
+static_assert(noexcept(try_mc_price(1.0, 1.0, 1.0, 0.0, 0.0, 0.2, OptionType::Call, 100, Seed{1},
+                                    true, true, 1, std::declval<McWorkspace&>(), nullptr)));
 static_assert(std::is_trivially_copyable_v<Error>);
 static_assert(std::is_trivially_copyable_v<McEstimate>);
 
@@ -100,9 +98,9 @@ TEST(NoexceptApi, GreeksAndBlack76EqualThrowingApi) {
         const GreeksResult a = *try_analytic_greeks(x.S, x.K, x.T, x.rd, x.rf, x.sigma, x.type);
         const GreeksResult b = analytic_greeks(x.S, x.K, x.T, x.rd, x.rf, x.sigma, x.type);
         EXPECT_TRUE(same_bits(a.price, b.price) && same_bits(a.delta_spot, b.delta_spot) &&
-                    same_bits(a.delta_forward, b.delta_forward) &&
-                    same_bits(a.gamma, b.gamma) && same_bits(a.vega, b.vega) &&
-                    same_bits(a.theta, b.theta) && same_bits(a.rho_domestic, b.rho_domestic) &&
+                    same_bits(a.delta_forward, b.delta_forward) && same_bits(a.gamma, b.gamma) &&
+                    same_bits(a.vega, b.vega) && same_bits(a.theta, b.theta) &&
+                    same_bits(a.rho_domestic, b.rho_domestic) &&
                     same_bits(a.rho_foreign, b.rho_foreign) && same_bits(a.vanna, b.vanna) &&
                     same_bits(a.volga, b.volga));
     }
@@ -146,8 +144,8 @@ TEST(NoexceptApi, BinomialWorkspaceEqualsThrowingApiAndIsChecked) {
                 try_binomial_price(x.S, x.K, x.T, x.rd, x.rf, x.sigma, x.type, 200, ex, ws);
             ASSERT_EQ(a.has_value(), !threw);
             if (a) {
-            EXPECT_TRUE(same_bits(*a, b));
-        }
+                EXPECT_TRUE(same_bits(*a, b));
+            }
         }
     }
     std::vector<double> small(binomial_workspace_size(200) - 1);
@@ -163,8 +161,13 @@ TEST(BatchApi, PricesEqualScalarApiBitForBit) {
     std::vector<double> S, K, T, rd, rf, sig, out(g.size());
     std::vector<OptionType> ty;
     for (const Q& x : g) {
-        S.push_back(x.S); K.push_back(x.K); T.push_back(x.T); rd.push_back(x.rd);
-        rf.push_back(x.rf); sig.push_back(x.sigma); ty.push_back(x.type);
+        S.push_back(x.S);
+        K.push_back(x.K);
+        T.push_back(x.T);
+        rd.push_back(x.rd);
+        rf.push_back(x.rf);
+        sig.push_back(x.sigma);
+        ty.push_back(x.type);
     }
     ASSERT_TRUE(gk_price_batch({S, K, T, rd, rf, sig, ty}, out).has_value());
     for (std::size_t i = 0; i < g.size(); ++i) {
@@ -178,8 +181,13 @@ TEST(BatchApi, GreeksEqualScalarApiBitForBit) {
     std::vector<OptionType> ty;
     for (const Q& x : grid()) {
         if (!greeks_domain(x)) continue;
-        S.push_back(x.S); K.push_back(x.K); T.push_back(x.T); rd.push_back(x.rd);
-        rf.push_back(x.rf); sig.push_back(x.sigma); ty.push_back(x.type);
+        S.push_back(x.S);
+        K.push_back(x.K);
+        T.push_back(x.T);
+        rd.push_back(x.rd);
+        rf.push_back(x.rf);
+        sig.push_back(x.sigma);
+        ty.push_back(x.type);
     }
     const std::size_t n = S.size();
     std::vector<double> o[10];
@@ -195,8 +203,8 @@ TEST(BatchApi, GreeksEqualScalarApiBitForBit) {
 }
 
 TEST(BatchApi, ReportsFirstBadIndexAndWritesNothing) {
-    std::vector<double> S{1.1, 1.1, -1, 1.1}, K(4, 1.1), T(4, 1), rd(4, 0), rf(4, 0),
-        sig(4, 0.2), out(4, 7.0);
+    std::vector<double> S{1.1, 1.1, -1, 1.1}, K(4, 1.1), T(4, 1), rd(4, 0), rf(4, 0), sig(4, 0.2),
+        out(4, 7.0);
     std::vector<OptionType> ty(4, OptionType::Call);
     S[3] = std::numeric_limits<double>::infinity();
     const auto res = gk_price_batch({S, K, T, rd, rf, sig, ty}, out);
@@ -235,8 +243,8 @@ TEST(ThreadPoolMc, ChunkedResultIndependentOfPoolAndRuns) {
     ThreadPool p0(0), p1(1), p3(3), p7(7);
     for (unsigned threads : {2U, 4U, 9U}) {
         for (bool av : {false, true}) {
-            const auto ref = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put,
-                                          20001, Seed{9}, av, true, threads, ws, nullptr);
+            const auto ref = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, 20001,
+                                          Seed{9}, av, true, threads, ws, nullptr);
             ASSERT_TRUE(ref.has_value());
             for (ThreadPool* p : {&p0, &p1, &p3, &p7}) {
                 for (int rep = 0; rep < 3; ++rep) {
@@ -249,8 +257,8 @@ TEST(ThreadPoolMc, ChunkedResultIndependentOfPoolAndRuns) {
             }
             // Statistically consistent with the single stream: within 5
             // combined standard errors (both are unbiased estimators).
-            const auto single = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put,
-                                             20001, Seed{9}, av, true, 1, ws, nullptr);
+            const auto single = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, 20001,
+                                             Seed{9}, av, true, 1, ws, nullptr);
             EXPECT_LT(std::fabs(single->price - ref->price),
                       5.0 * std::hypot(single->std_error, ref->std_error));
         }
@@ -260,18 +268,18 @@ TEST(ThreadPoolMc, ChunkedResultIndependentOfPoolAndRuns) {
 TEST(ThreadPoolMc, WorkspaceAndThreadErrors) {
     McWorkspace ws;
     ws.reserve(100, false);
-    EXPECT_EQ(try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 1000, Seed{1}, true, false, 1,
-                           ws, nullptr)
+    EXPECT_EQ(try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 1000, Seed{1}, true, false, 1, ws,
+                           nullptr)
                   .error()
                   .code,
               Errc::WorkspaceTooSmall);
-    EXPECT_EQ(try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 100, Seed{1}, true, true, 1,
-                           ws, nullptr)
-                  .error()
-                  .code,
-              Errc::WorkspaceTooSmall);
-    EXPECT_EQ(try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 100, Seed{1}, true, false, 0,
-                           ws, nullptr)
+    EXPECT_EQ(
+        try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 100, Seed{1}, true, true, 1, ws, nullptr)
+            .error()
+            .code,
+        Errc::WorkspaceTooSmall);
+    EXPECT_EQ(try_mc_price(1, 1, 1, 0, 0, 0.2, OptionType::Call, 100, Seed{1}, true, false, 0, ws,
+                           nullptr)
                   .error()
                   .code,
               Errc::BadThreads);

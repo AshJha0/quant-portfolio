@@ -15,16 +15,13 @@ double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov) 
   return value_or_throw(try_portfolio_sigma(exposures, cov));
 }
 
-VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov,
-                double alpha, double horizon_days, TailDist dist, double df,
-                double mean) {
-  return value_or_throw(
-      try_var_covar(exposures, cov, alpha, horizon_days, dist, df, mean));
+VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov, double alpha,
+                double horizon_days, TailDist dist, double df, double mean) {
+  return value_or_throw(try_var_covar(exposures, cov, alpha, horizon_days, dist, df, mean));
 }
 
 ParametricResult parametric_var(const Book& book, const Market& market,
-                                const ReturnsMatrix& returns,
-                                const ParametricOptions& opts) {
+                                const ReturnsMatrix& returns, const ParametricOptions& opts) {
   validate_alpha(opts.alpha);
   validate_horizon(opts.horizon_days);
   const CompiledBook compiled(book, market);  // throws on empty book
@@ -43,8 +40,7 @@ ParametricResult parametric_var(const Book& book, const Market& market,
     res.flagged_peg_factors = flag_peg_factors(rets);
     for (const auto& f : res.flagged_peg_factors) {
       std::ostringstream msg;
-      msg << "peg blindness: factor " << f << " has daily vol < "
-          << kPegVolThreshold
+      msg << "peg blindness: factor " << f << " has daily vol < " << kPegVolThreshold
           << " (pegged/managed currency). Historical and parametric VaR are "
              "blind to peg-break risk; add the peg-break stress add-on "
              "(fxvar::peg_break_scenario).";
@@ -52,12 +48,11 @@ ParametricResult parametric_var(const Book& book, const Market& market,
     }
   }
 
-  const FactorCov cov = (opts.cov_method == CovMethod::kSample)
-                            ? sample_cov(rets)
-                            : ewma_cov(rets, opts.ewma_lambda);
+  const FactorCov cov =
+      (opts.cov_method == CovMethod::kSample) ? sample_cov(rets) : ewma_cov(rets, opts.ewma_lambda);
   res.exposures = compiled.linear_exposures();
-  const VarEs ve = var_covar(res.exposures, cov.cov, opts.alpha,
-                             opts.horizon_days, opts.dist, opts.df);
+  const VarEs ve =
+      var_covar(res.exposures, cov.cov, opts.alpha, opts.horizon_days, opts.dist, opts.df);
   res.var = ve.var;
   res.es = ve.es;
   res.sigma = portfolio_sigma(res.exposures, cov.cov);
@@ -95,16 +90,14 @@ double cf_min_derivative(double skew, double k, double r) {
 }  // namespace
 
 bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha) {
-  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis) ||
-      !std::isfinite(alpha))
+  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis) || !std::isfinite(alpha))
     throw std::invalid_argument(
         "cornish_fisher_valid: skew, excess_kurtosis and alpha must be finite");
   validate_alpha(alpha);
   return cf_min_derivative(skew, excess_kurtosis, norm_ppf(1.0 - alpha)) > 0.0;
 }
 
-bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
-                              double z_range, int n_grid) {
+bool cornish_fisher_domain_ok(double skew, double excess_kurtosis, double z_range, int n_grid) {
   if (n_grid < 3) throw std::invalid_argument("n_grid must be >= 3");
   if (!(z_range > 0.0) || !std::isfinite(z_range))
     throw std::invalid_argument("z_range must be finite and > 0");
@@ -113,9 +106,8 @@ bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
   return cf_min_derivative(skew, excess_kurtosis, z_range) > 0.0;
 }
 
-double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
-                          double alpha, double mean, double horizon_days,
-                          bool check_domain) {
+double cornish_fisher_var(double sigma, double skew, double excess_kurtosis, double alpha,
+                          double mean, double horizon_days, bool check_domain) {
   validate_alpha(alpha);
   validate_horizon(horizon_days);
   if (!(sigma >= 0.0) || !std::isfinite(sigma))

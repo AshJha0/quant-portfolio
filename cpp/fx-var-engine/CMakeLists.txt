@@ -1,7 +1,15 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(fx_var_engine CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+# C++23 floor. QP_CXX26=ON compiles with C++26 and turns on the features
+# qp::core guards with feature-test macros (contracts, std::simd); the
+# results are the same either way.
+option(QP_CXX26 "Compile with C++26 and enable C++26 features where supported" OFF)
+if(QP_CXX26)
+  set(CMAKE_CXX_STANDARD 26)
+else()
+  set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -35,8 +43,9 @@ add_library(fxvar_tuning INTERFACE)
 target_compile_options(fxvar_tuning INTERFACE
   $<$<AND:$<BOOL:${FXVAR_NATIVE}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-O3 -march=native>)
 
-# Warnings for GCC/Clang only; MSVC keeps its defaults.
+# Warnings: -Wall -Wextra -Wpedantic (GCC/Clang), /W4 /permissive- (MSVC).
 set(FXVAR_WARNINGS
+  $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
   $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic>
   $<$<AND:$<BOOL:${FXVAR_WERROR}>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:-Werror>
   $<$<AND:$<BOOL:${FXVAR_WERROR}>,$<CXX_COMPILER_ID:MSVC>>:/WX>
@@ -59,6 +68,11 @@ add_library(fxvar
 target_include_directories(fxvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(fxvar PRIVATE ${FXVAR_WARNINGS})
 target_link_libraries(fxvar PUBLIC fxvar_tuning)
+# Shared numerical core (cpp/core, header-only target qp::core).
+if(NOT TARGET qp::core)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/qp_core)
+endif()
+target_link_libraries(fxvar PUBLIC qp::core)
 if(FXVAR_VEC_REPORT)
   set_property(SOURCE src/kernels.cpp src/book.cpp src/matrix.cpp src/monte_carlo.cpp
     APPEND PROPERTY COMPILE_OPTIONS
@@ -101,7 +115,8 @@ if(BUILD_TESTING)
     target_link_libraries(${t} PRIVATE fxvar GTest::gtest GTest::gtest_main)
     target_compile_options(${t} PRIVATE ${FXVAR_WARNINGS}
       # The tests exercise the deprecated entry points on purpose.
-      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>)
+      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>
+      $<$<CXX_COMPILER_ID:MSVC>:/wd4834;/wd4996>)
     gtest_discover_tests(${t})
   endforeach()
 

@@ -44,16 +44,14 @@ namespace eqopt {
 
 /// Monte Carlo estimate with statistical error bars.
 struct MCResult {
-    double price;      ///< Point estimate, currency units.
-    double std_error;  ///< Standard error of the estimator.
-    double ci_low;     ///< Lower edge of the two-sided 95% CI.
-    double ci_high;    ///< Upper edge of the two-sided 95% CI.
+    double price;         ///< Point estimate, currency units.
+    double std_error;     ///< Standard error of the estimator.
+    double ci_low;        ///< Lower edge of the two-sided 95% CI.
+    double ci_high;       ///< Upper edge of the two-sided 95% CI.
     std::size_t n_paths;  ///< Simulated paths (antithetic pairs count as 2).
 
     /// \brief True if `x` lies inside the 95% confidence interval.
-    [[nodiscard]] bool contains(double x) const noexcept {
-        return ci_low <= x && x <= ci_high;
-    }
+    [[nodiscard]] bool contains(double x) const noexcept { return ci_low <= x && x <= ci_high; }
 
     /// Field-by-field exact equality (used by reproducibility tests).
     bool operator==(const MCResult&) const = default;
@@ -97,10 +95,9 @@ double normal_from_u64(std::uint64_t u64) noexcept;
 ///         prices that overflow.
 /// \note `T == 0` or `sigma == 0` are deterministic; the exact
 ///       Black–Scholes value is returned with `std_error = 0`.
-MCResult mc_price(double S, double K, double T, double r, double sigma,
-                  double q = 0.0, OptionType type = OptionType::Call,
-                  std::size_t n_paths = 100000, bool antithetic = true,
-                  bool control_variate = true, std::uint64_t seed = 42,
+MCResult mc_price(double S, double K, double T, double r, double sigma, double q = 0.0,
+                  OptionType type = OptionType::Call, std::size_t n_paths = 100000,
+                  bool antithetic = true, bool control_variate = true, std::uint64_t seed = 42,
                   unsigned threads = 1);
 
 /// \brief Reusable path buffers for try_mc_price().
@@ -119,9 +116,9 @@ public:
     [[nodiscard]] std::size_t capacity() const noexcept { return payoff_.size(); }
 
 private:
-    friend Result<MCResult> try_mc_price(double, double, double, double, double, double,
-                                         OptionType, std::size_t, bool, bool, std::uint64_t,
-                                         unsigned, McWorkspace&, ThreadPool*) noexcept;
+    friend Result<MCResult> try_mc_price(double, double, double, double, double, double, OptionType,
+                                         std::size_t, bool, bool, std::uint64_t, unsigned,
+                                         McWorkspace&, ThreadPool*) noexcept;
     std::vector<double> payoff_;
     std::vector<double> control_;
 };
@@ -134,11 +131,10 @@ private:
 /// thread when `pool` is null), and the result does not depend on the pool
 /// size. `ws` must have been reserved for `n_paths` (Errc::WorkspaceTooSmall
 /// otherwise). No allocation and no thread creation on any path.
-[[nodiscard]] Result<MCResult> try_mc_price(double S, double K, double T, double r,
-                                            double sigma, double q, OptionType type,
-                                            std::size_t n_paths, bool antithetic,
-                                            bool control_variate, std::uint64_t seed,
-                                            unsigned threads, McWorkspace& ws,
+[[nodiscard]] Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma,
+                                            double q, OptionType type, std::size_t n_paths,
+                                            bool antithetic, bool control_variate,
+                                            std::uint64_t seed, unsigned threads, McWorkspace& ws,
                                             ThreadPool* pool) noexcept;
 
 }  // namespace eqopt

@@ -27,12 +27,15 @@ const std::vector<double> kExposures = {1.0e6, -5.0e5, 2.0e5};
 
 TEST(MonteCarlo, BitwiseSeedDeterminism) {
     const Matrix cov = demo_cov();
-    const MonteCarloResult a = monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 42);
-    const MonteCarloResult b = monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 42);
+    const MonteCarloResult a =
+        monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 42);
+    const MonteCarloResult b =
+        monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 42);
     EXPECT_EQ(a.var, b.var);  // bitwise, not approximate
     EXPECT_EQ(a.es, b.es);
     EXPECT_EQ(a.var_se, b.var_se);
-    const MonteCarloResult c = monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 43);
+    const MonteCarloResult c =
+        monte_carlo_var(kExposures, cov, 0.01, 20'000, Dist::Normal, 6.0, 43);
     EXPECT_NE(a.var, c.var);  // a different seed must move the estimate
 }
 
@@ -97,7 +100,7 @@ TEST(RandomStreamTest, UniformInOpenIntervalAndGaussianMoments) {
         s += g;
         s2 += g * g;
     }
-    EXPECT_NEAR(s / 1e5, 0.0, 0.015);   // ~ 4.7 SE
+    EXPECT_NEAR(s / 1e5, 0.0, 0.015);  // ~ 4.7 SE
     EXPECT_NEAR(s2 / 1e5, 1.0, 0.02);
 }
 
@@ -113,8 +116,8 @@ TEST(RandomStreamTest, ChiSquaredMeanAndVariance) {
         s2 += x * x;
     }
     const double m = s / n;
-    EXPECT_NEAR(m, df, 0.07);                       // E = df, SE ~ 0.015
-    EXPECT_NEAR(s2 / n - m * m, 2.0 * df, 0.5);     // Var = 2 df
+    EXPECT_NEAR(m, df, 0.07);                    // E = df, SE ~ 0.015
+    EXPECT_NEAR(s2 / n - m * m, 2.0 * df, 0.5);  // Var = 2 df
 }
 
 TEST(MonteCarlo, BootstrapSeSameSeedIsBitwiseIdentical) {

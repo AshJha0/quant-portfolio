@@ -6,21 +6,22 @@
 #include <stdexcept>
 #include <string>
 
+#include "qp/normal.hpp"
+#include "qp/special.hpp"
+
 namespace eqvar {
 
 namespace {
-constexpr double kSqrt2 = 1.4142135623730950488016887242097;
-constexpr double kInvSqrt2Pi = 0.39894228040143267793994605993438;
-constexpr double kPi = 3.1415926535897932384626433832795;
+using qp::kPi;
 }  // namespace
 
 // --------------------------------------------------------------------------
 // Normal
 // --------------------------------------------------------------------------
 
-double normal_pdf(double x) noexcept { return kInvSqrt2Pi * std::exp(-0.5 * x * x); }
+double normal_pdf(double x) noexcept { return qp::norm_pdf(x); }
 
-double normal_cdf(double x) noexcept { return 0.5 * std::erfc(-x / kSqrt2); }
+double normal_cdf(double x) noexcept { return qp::norm_cdf(x); }
 
 double normal_ppf(double p) {
     if (!(p > 0.0 && p < 1.0)) {
@@ -31,40 +32,8 @@ double normal_ppf(double p) {
     // refinement is accurate in the lower tail but suffers cancellation near 1.
     // This also makes Phi^{-1}(p) = -Phi^{-1}(1-p) hold bitwise.
     if (p > 0.5) return -normal_ppf(1.0 - p);
-    // Acklam's rational approximation (2003), |relative error| < 1.15e-9.
-    static constexpr double a[] = {-3.969683028665376e+01, 2.209460984245205e+02,
-                                   -2.759285104469687e+02, 1.383577518672690e+02,
-                                   -3.066479806614716e+01, 2.506628277459239e+00};
-    static constexpr double b[] = {-5.447609879822406e+01, 1.615858368580409e+02,
-                                   -1.556989798598866e+02, 6.680131188771972e+01,
-                                   -1.328068155288572e+01};
-    static constexpr double c[] = {-7.784894002430293e-03, -3.223964580411365e-01,
-                                   -2.400758277161838e+00, -2.549732539343734e+00,
-                                   4.374664141464968e+00,  2.938163982698783e+00};
-    static constexpr double d[] = {7.784695709041462e-03, 3.224671290700398e-01,
-                                   2.445134137142996e+00, 3.754408661907416e+00};
-    constexpr double p_low = 0.02425;
-
-    double x;
-    if (p < p_low) {
-        const double q = std::sqrt(-2.0 * std::log(p));
-        x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
-    } else if (p <= 1.0 - p_low) {
-        const double q = p - 0.5;
-        const double r = q * q;
-        x = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0);
-    } else {
-        const double q = std::sqrt(-2.0 * std::log(1.0 - p));
-        x = -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0);
-    }
-    // One Halley refinement step drives the error to ~machine precision.
-    const double e = normal_cdf(x) - p;
-    const double u = e / normal_pdf(x);
-    x -= u / (1.0 + 0.5 * x * u);
-    return x;
+    // Acklam (2003) plus one Halley step against the erfc-based cdf.
+    return qp::norm_ppf_unchecked<1>(p);
 }
 
 // --------------------------------------------------------------------------
@@ -76,20 +45,7 @@ double log_gamma(double x) {
     if (!(x > 0.0) || !std::isfinite(x)) {
         throw std::invalid_argument("log_gamma: x must be finite and > 0");
     }
-    if (x < 0.5) {
-        // Reflection keeps full relative accuracy near 0.
-        return std::log(kPi / std::sin(kPi * x)) - log_gamma(1.0 - x);
-    }
-    static constexpr double c[] = {0.99999999999980993,  676.5203681218851,
-                                   -1259.1392167224028,  771.32342877765313,
-                                   -176.61502916214059,  12.507343278686905,
-                                   -0.13857109526572012, 9.9843695780195716e-6,
-                                   1.5056327351493116e-7};
-    const double z = x - 1.0;
-    double a = c[0];
-    const double t = z + 7.5;
-    for (int i = 1; i < 9; ++i) a += c[i] / (z + static_cast<double>(i));
-    return 0.5 * std::log(2.0 * kPi) + (z + 0.5) * std::log(t) - t + std::log(a);
+    return qp::log_gamma_lanczos(x);
 }
 
 // --------------------------------------------------------------------------
@@ -97,39 +53,9 @@ double log_gamma(double x) {
 // --------------------------------------------------------------------------
 
 namespace {
-
-double betacf(double a, double b, double x) {
-    constexpr int kMaxIter = 300;
-    constexpr double kEps = 3e-16;
-    constexpr double kFpMin = 1e-300;
-    const double qab = a + b, qap = a + 1.0, qam = a - 1.0;
-    double c = 1.0;
-    double d = 1.0 - qab * x / qap;
-    if (std::abs(d) < kFpMin) d = kFpMin;
-    d = 1.0 / d;
-    double h = d;
-    for (int m = 1; m <= kMaxIter; ++m) {
-        const double m2 = 2.0 * m;
-        double aa = m * (b - m) * x / ((qam + m2) * (a + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < kFpMin) d = kFpMin;
-        c = 1.0 + aa / c;
-        if (std::abs(c) < kFpMin) c = kFpMin;
-        d = 1.0 / d;
-        h *= d * c;
-        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < kFpMin) d = kFpMin;
-        c = 1.0 + aa / c;
-        if (std::abs(c) < kFpMin) c = kFpMin;
-        d = 1.0 / d;
-        const double del = d * c;
-        h *= del;
-        if (std::abs(del - 1.0) < kEps) return h;
-    }
-    return h;  // converged to working precision in practice
-}
-
+constexpr double kBetaEps = 3e-16;
+constexpr int kBetaMaxIter = 300;
+constexpr double kGammaEps = 3e-16;
 }  // namespace
 
 double betainc_reg(double a, double b, double x) {
@@ -141,62 +67,12 @@ double betainc_reg(double a, double b, double x) {
     }
     if (x == 0.0) return 0.0;
     if (x == 1.0) return 1.0;
-    const double ln_front = log_gamma(a + b) - log_gamma(a) - log_gamma(b) +
-                            a * std::log(x) + b * std::log1p(-x);
-    const double front = std::exp(ln_front);
-    if (x < (a + 1.0) / (a + b + 2.0)) {
-        return front * betacf(a, b, x) / a;
-    }
-    return 1.0 - front * betacf(b, a, 1.0 - x) / b;
+    return qp::betainc_unchecked(a, b, x, kBetaEps, kBetaMaxIter);
 }
 
 // --------------------------------------------------------------------------
 // Regularized incomplete gamma
 // --------------------------------------------------------------------------
-
-namespace {
-
-/// Series representation of P(a, x), valid/fast for x < a + 1.
-double gamma_p_series(double a, double x) {
-    constexpr int kMaxIter = 500;
-    constexpr double kEps = 3e-16;
-    double ap = a;
-    double sum = 1.0 / a;
-    double del = sum;
-    for (int n = 0; n < kMaxIter; ++n) {
-        ap += 1.0;
-        del *= x / ap;
-        sum += del;
-        if (std::abs(del) < std::abs(sum) * kEps) break;
-    }
-    return sum * std::exp(-x + a * std::log(x) - log_gamma(a));
-}
-
-/// Continued-fraction representation of Q(a, x), valid/fast for x >= a + 1.
-double gamma_q_cf(double a, double x) {
-    constexpr int kMaxIter = 500;
-    constexpr double kEps = 3e-16;
-    constexpr double kFpMin = 1e-300;
-    double b = x + 1.0 - a;
-    double c = 1.0 / kFpMin;
-    double d = 1.0 / b;
-    double h = d;
-    for (int i = 1; i <= kMaxIter; ++i) {
-        const double an = -static_cast<double>(i) * (static_cast<double>(i) - a);
-        b += 2.0;
-        d = an * d + b;
-        if (std::abs(d) < kFpMin) d = kFpMin;
-        c = b + an / c;
-        if (std::abs(c) < kFpMin) c = kFpMin;
-        d = 1.0 / d;
-        const double del = d * c;
-        h *= del;
-        if (std::abs(del - 1.0) < kEps) break;
-    }
-    return h * std::exp(-x + a * std::log(x) - log_gamma(a));
-}
-
-}  // namespace
 
 double regularized_gamma_p(double a, double x) {
     if (!(a > 0.0) || !std::isfinite(a)) {
@@ -206,7 +82,8 @@ double regularized_gamma_p(double a, double x) {
         throw std::invalid_argument("regularized_gamma_p: x must be finite and >= 0");
     }
     if (x == 0.0) return 0.0;
-    return (x < a + 1.0) ? gamma_p_series(a, x) : 1.0 - gamma_q_cf(a, x);
+    return (x < a + 1.0) ? qp::gamma_p_series(a, x, kGammaEps)
+                         : 1.0 - qp::gamma_q_cf(a, x, kGammaEps);
 }
 
 double regularized_gamma_q(double a, double x) {
@@ -217,7 +94,8 @@ double regularized_gamma_q(double a, double x) {
         throw std::invalid_argument("regularized_gamma_q: x must be finite and >= 0");
     }
     if (x == 0.0) return 1.0;
-    return (x < a + 1.0) ? 1.0 - gamma_p_series(a, x) : gamma_q_cf(a, x);
+    return (x < a + 1.0) ? 1.0 - qp::gamma_p_series(a, x, kGammaEps)
+                         : qp::gamma_q_cf(a, x, kGammaEps);
 }
 
 double chi2_sf(double x, double df) {
@@ -239,19 +117,7 @@ double binomial_cdf(int k, int n, double p) {
     if (k >= n) return 1.0;
     if (p == 0.0) return 1.0;
     if (p == 1.0) return 0.0;
-    // pmf recursion in double: pmf(0) = (1-p)^n, pmf(j+1) = pmf(j) (n-j)/(j+1) p/(1-p).
-    double pmf = std::exp(static_cast<double>(n) * std::log1p(-p));
-    if (pmf == 0.0) {
-        // pmf(0) underflows (n p >~ 700): use P(X <= k) = I_{1-p}(n - k, k + 1).
-        return betainc_reg(static_cast<double>(n - k), static_cast<double>(k + 1), 1.0 - p);
-    }
-    const double odds = p / (1.0 - p);
-    double cdf = pmf;
-    for (int j = 0; j < k; ++j) {
-        pmf *= static_cast<double>(n - j) / static_cast<double>(j + 1) * odds;
-        cdf += pmf;
-    }
-    return std::min(cdf, 1.0);
+    return qp::binomial_cdf_unchecked(k, n, p, kBetaEps, kBetaMaxIter);
 }
 
 // --------------------------------------------------------------------------
@@ -262,8 +128,7 @@ double student_t_pdf(double x, double df) {
     if (!(df > 0.0) || !std::isfinite(df) || !std::isfinite(x)) {
         throw std::invalid_argument("student_t_pdf: need finite x and finite df > 0");
     }
-    const double ln = log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) -
-                      0.5 * std::log(df * kPi) -
+    const double ln = log_gamma(0.5 * (df + 1.0)) - log_gamma(0.5 * df) - 0.5 * std::log(df * kPi) -
                       0.5 * (df + 1.0) * std::log1p(x * x / df);
     return std::exp(ln);
 }
@@ -280,8 +145,7 @@ double student_t_cdf(double x, double df) {
 
 double student_t_ppf(double p, double df) {
     if (!(p > 0.0 && p < 1.0)) {
-        throw std::invalid_argument("student_t_ppf: p must be in (0, 1), got " +
-                                    std::to_string(p));
+        throw std::invalid_argument("student_t_ppf: p must be in (0, 1), got " + std::to_string(p));
     }
     if (!(df > 0.0) || !std::isfinite(df)) {
         throw std::invalid_argument("student_t_ppf: df must be finite and > 0");
@@ -325,7 +189,7 @@ void require_finite(std::span<const double> x, const char* who) {
 }
 
 void central_moments(std::span<const double> x, double& mu, double& m2, double& m3, double& m4) {
-    const double n = static_cast<double>(x.size());
+    const auto n = static_cast<double>(x.size());
     mu = 0.0;
     for (double v : x) mu += v;
     mu /= n;

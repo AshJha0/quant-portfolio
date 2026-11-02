@@ -20,8 +20,8 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <stdexcept>
 #include <iterator>
+#include <stdexcept>
 #include <vector>
 
 #include "eqvar/backtest.hpp"
@@ -37,8 +37,7 @@ namespace {
 
 // Relative tolerance for cross-language agreement.
 void expect_rel(double actual, double expected, const char* what) {
-    EXPECT_NEAR(actual, expected, golden::tol_rel * std::abs(expected) + golden::tol_abs)
-        << what;
+    EXPECT_NEAR(actual, expected, golden::tol_rel * std::abs(expected) + golden::tol_abs) << what;
 }
 
 // Case A input: pnl[t] = 100 sin(3t + 1) + 0.5 t cos(t), t = 0..99.
@@ -72,7 +71,8 @@ TEST(CrossLanguage, CaseA_HistoricalFamily) {
     expect_rel(expected_shortfall(pnl, 0.05), golden::a_es_5pct, "A ES 5%");
     expect_rel(expected_shortfall(pnl, 0.01), golden::a_es_1pct, "A ES 1%");
     expect_rel(age_weighted_var(pnl, 0.05, 0.98), golden::a_brw_var_5pct_lam098, "A BRW VaR 5%");
-    expect_rel(filtered_historical_var(pnl, 0.05, 0.94), golden::a_fhs_var_5pct_lam094, "A FHS VaR 5%");
+    expect_rel(filtered_historical_var(pnl, 0.05, 0.94), golden::a_fhs_var_5pct_lam094,
+               "A FHS VaR 5%");
 }
 
 TEST(CrossLanguage, CaseA_BrwWeights) {
@@ -203,9 +203,13 @@ TEST(CrossLanguage, ConvBasel) {
         const char* name;
     };
     const Case cases[] = {
-#define EQVAR_BASEL_CASE(n, x, a, tag)                                                     \
-    {n, x, a, golden::conv_basel_zone_n##n##_x##x##_a##tag,                                 \
-     golden::conv_basel_k_n##n##_x##x##_a##tag, golden::conv_basel_cdf_n##n##_x##x##_a##tag, \
+#define EQVAR_BASEL_CASE(n, x, a, tag)             \
+    {n,                                            \
+     x,                                            \
+     a,                                            \
+     golden::conv_basel_zone_n##n##_x##x##_a##tag, \
+     golden::conv_basel_k_n##n##_x##x##_a##tag,    \
+     golden::conv_basel_cdf_n##n##_x##x##_a##tag,  \
      "n" #n "_x" #x "_a" #tag}
         EQVAR_BASEL_CASE(250, 4, 0.01, 010),   EQVAR_BASEL_CASE(250, 5, 0.01, 010),
         EQVAR_BASEL_CASE(250, 9, 0.01, 010),   EQVAR_BASEL_CASE(250, 10, 0.01, 010),
