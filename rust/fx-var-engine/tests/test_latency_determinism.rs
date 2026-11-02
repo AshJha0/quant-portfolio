@@ -88,7 +88,15 @@ fn monte_carlo_same_bits_for_any_thread_count() {
     }
 }
 
+// The pinned bits were recorded on x86_64 Linux (glibc libm, as in CI). The
+// Windows C runtime's exp and ln can round differently in the
+// last bit, so the exact-bits pin is only meaningful on that platform. The
+// thread-count determinism tests below run everywhere.
 #[test]
+#[cfg_attr(
+    not(all(target_os = "linux", target_arch = "x86_64")),
+    ignore = "bits pinned on x86_64 Linux (glibc libm); other libms differ in the last ulp"
+)]
 fn monte_carlo_matches_pre_rewrite_bits() {
     // (var, es, se_var, se_var_kde).to_bits() from the serial code.
     let pinned: [(McDist, [u64; 4]); 3] = [
