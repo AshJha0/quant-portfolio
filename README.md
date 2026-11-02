@@ -273,7 +273,7 @@ single required check is `ci-ok`, which passes only when every job passed.
 | `cpp core (<preset>)` | builds and tests `cpp/core`, including the Phase 6 kernel tests and `bench_core` |
 | `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; a skipped compiled case fails the job |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and the `research/tests` suite |
-| `hygiene` | banned-word check and a voice report |
+| `hygiene` | banned-word check, a voice report and the tests for the CI scripts |
 | `counts` | sums executed pass counts into `counts.json` and runs `tests/test_docs_counts.py` |
 
 ### Cross-language tests

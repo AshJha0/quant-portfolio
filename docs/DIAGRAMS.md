@@ -212,8 +212,10 @@ flowchart TD
 
     DISC --> PY
     PY --> CNT
+    PYC --> CNT
     CPP --> CNT
     RUST --> CNT
+    BIND --> CNT
     DISC & PYC & PY & LINT & GOLD & CPP & FMT & RUST & BIND & BENCH & HYG & CORE & DIFF & RES & CNT --> OK
 ```
 

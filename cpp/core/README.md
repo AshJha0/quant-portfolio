@@ -142,8 +142,8 @@ GCC 15 and Clang 21 in C++26 mode take that path.
 Limitations, stated plainly:
 
 - The contract and `std::simd` branches have not been compiled locally:
-  no GCC 16 was available on the build machine. CI's `gcc16-cxx26` job is the
-  first compiler that takes them.
+  no GCC 16 was available on the build machine. CI's `cpp <engine> (gcc16-cxx26)` jobs
+  are the first build that takes them.
 - The vector path's bit identity was tested through GCC's
   `<experimental/simd>` (CMake option `QP_SIMD_EXPERIMENTAL=ON`), which runs
   the same code with a different vector type.

@@ -353,7 +353,7 @@ the same engine and platform.
 | `rust fmt` | `cargo fmt --check` over the workspace. |
 | `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
 | `bench` | Runs the release benches; fails when a kernel whose committed p50 is above 1 µs is more than 2x slower. |
-| `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). |
+| `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). Runs `tests/test_ci_scripts.py`. |
 | `cpp core (<preset>)` | Builds and tests `cpp/core` (including the Phase 6 kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
