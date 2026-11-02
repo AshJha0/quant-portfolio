@@ -197,6 +197,14 @@ report in USD; historical `horizon_days` must be 1, since square-root-of-time
 scaling is wrong for a non-linear book. Options are held at today's implied
 vol (no vol factor yet).
 
+Vol scenario modes. `full_revaluation_pnl_vol_mode(legs, x, dv, n_factors, dt, mode,
+skews)` takes `VolMode::StickyStrike` (`sigma + dv`), `StickyDelta`
+(`sigma - skew x + dv`, `skews` one per leg or empty) or `HistoricalAtm`
+(`sigma e^{dv}`, `dv` a historical log change of ATM vol). `full_revaluation_pnl`
+is sticky strike. All three are pinned to the Python reference at
+1e-12 relative (`vol_modes_golden` in `tests/test_option_reval.rs`). The VaR drivers
+above do not take a vol panel yet.
+
 Parity with Python. The historical numbers are pinned to the Python
 reference (`fx_var.revaluation.full_revaluation_pnl` followed by the S2 order
 statistic) at 1e-11 relative, for an options-only book and for options plus

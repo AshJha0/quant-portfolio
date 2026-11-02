@@ -61,6 +61,26 @@ struct BsmGreeks {
                                                        std::span<const double> vol_shocks,
                                                        std::size_t n_factors, double dt = 0.0);
 
+/// How the scenario vol of an option leg is formed (mirrors the Python
+/// reference's `vol_mode`; Derman 1999, "Regimes of volatility", for the
+/// first two):
+///   StickyStrike   sigma_1 = sigma_0 + dv              (strike's vol fixed)
+///   StickyDelta    sigma_1 = sigma_0 - skew * x + dv   (smile moves with spot;
+///                  skew = d sigma / d ln(K/S), x = the factor log return)
+///   HistoricalAtm  sigma_1 = sigma_0 * exp(dv)         (dv = historical log
+///                  change of the ATM vol, applied to every strike)
+/// Every mode floors the vol at 1e-12.
+enum class VolMode { StickyStrike, StickyDelta, HistoricalAtm };
+
+/// Full revaluation P&L with an explicit vol mode. `skews` is empty (all
+/// zero) or has one entry per leg; it is read only by StickyDelta. With
+/// StickyStrike and empty skews this is exactly the overload above.
+[[nodiscard]] std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs,
+                                                       std::span<const double> spot_log_returns,
+                                                       std::span<const double> vol_shocks,
+                                                       std::size_t n_factors, double dt,
+                                                       VolMode mode, std::span<const double> skews);
+
 /// Delta-gamma P&L per scenario: Delta dS + Gamma dS^2 / 2, dS = S (e^x - 1).
 [[nodiscard]] std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs,
                                                   std::span<const double> spot_log_returns,

@@ -27,7 +27,9 @@ project, written as two separate Python codebases. Two areas, options pricing
 and market-risk VaR/ES, also have C++ and Rust ports of the Python design for
 both asset classes. That makes four compiled engines per language. The VaR
 engines revalue linear books and European options (full repricing per
-scenario, vol held fixed); vol shocks and P&L explain stay in Python. A smaller
+scenario, vol held fixed in the VaR drivers; the revaluation kernel takes
+the same sticky-strike, sticky-delta and historical-ATM vol modes as Python);
+P&L explain stays in Python. A smaller
 3-project foundations tier predates the 10-area build. It covers the same core
 techniques for a single asset in Python only.
 

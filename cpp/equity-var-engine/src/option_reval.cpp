@@ -86,17 +86,34 @@ BsmGreeks bsm_greeks(const OptionLeg& l) {
 
 std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
                                          std::span<const double> dv, std::size_t nf, double dt) {
+    return full_revaluation_pnl(legs, x, dv, nf, dt, VolMode::StickyStrike, {});
+}
+
+std::vector<double> full_revaluation_pnl(std::span<const OptionLeg> legs, std::span<const double> x,
+                                         std::span<const double> dv, std::size_t nf, double dt,
+                                         VolMode mode, std::span<const double> skews) {
     check_scenarios(legs, x, dv, nf);
     require(std::isfinite(dt) && dt >= 0.0, "dt must be >= 0");
+    require(skews.empty() || skews.size() == legs.size(), "skews must be empty or one per leg");
+    for (double k : skews) require(std::isfinite(k), "skews must be finite");
+    require(mode == VolMode::StickyStrike || mode == VolMode::StickyDelta ||
+                mode == VolMode::HistoricalAtm,
+            "unknown vol mode");
     const std::size_t n = x.size() / nf;
     std::vector<double> pnl(n, 0.0);
-    for (const auto& l : legs) {
+    for (std::size_t k = 0; k < legs.size(); ++k) {
+        const OptionLeg& l = legs[k];
+        const double skew = skews.empty() ? 0.0 : skews[k];
         const double p0 = price_unchecked(l.spot, l.strike, l.tau, l.rate, l.carry, l.vol, l.kind);
         const double t1 = std::max(l.tau - dt, 0.0);
-        for (std::size_t i = 0; i < n; ++i) {
-            const double s1 = l.spot * std::exp(x[i * nf + l.factor]);
-            const double v1 = l.vol + (dv.empty() ? 0.0 : dv[i * nf + l.factor]);
-            pnl[i] +=
+        for (std::size_t r = 0; r < n; ++r) {
+            const double xr = x[r * nf + l.factor];
+            const double d = dv.empty() ? 0.0 : dv[r * nf + l.factor];
+            const double s1 = l.spot * std::exp(xr);
+            double v1 = l.vol + d;
+            if (mode == VolMode::StickyDelta) v1 = l.vol - skew * xr + d;
+            if (mode == VolMode::HistoricalAtm) v1 = l.vol * std::exp(d);
+            pnl[r] +=
                 l.quantity * (price_unchecked(s1, l.strike, t1, l.rate, l.carry, v1, l.kind) - p0);
         }
     }

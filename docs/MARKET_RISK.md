@@ -150,7 +150,10 @@ The C++ and Rust `equity-var-engine` and `fx-var-engine` are ports of the
 Python VaR/ES and backtesting design. Their historical and Monte Carlo VaR
 reprice European option legs in full in every scenario (BSM for equity,
 Garman-Kohlhagen for FX), matched to the Python revaluation at 1e-11 for
-historical VaR/ES; vol shocks and P&L explain stay in Python. They
+historical VaR/ES. Their `full_revaluation_pnl` takes the same three vol
+scenario modes as Python (sticky strike, sticky delta, historical ATM shift),
+pinned to Python at 1e-12; the VaR drivers still hold options at today's
+vol, and P&L explain stays in Python. They
 follow the same conventions listed at the top of this page. Their golden
 vectors come from the Python reference through the generator pipeline in
 [ARCHITECTURE.md](ARCHITECTURE.md) "Cross-language testing". Latency figures

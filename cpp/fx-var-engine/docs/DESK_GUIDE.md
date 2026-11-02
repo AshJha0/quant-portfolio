@@ -5,7 +5,8 @@ per-currency limits, the peg watchlist, backtests, and the regression gate
 against the Python engine. Written for the risk manager who reads the
 numbers. The engine handles cash, spot, forwards and European options
 (Garman-Kohlhagen, repriced in every scenario with vol held at today's
-level); vol shocks and P&L explain stay in the Python engine.
+level in the VaR drivers; `full_revaluation_pnl` itself takes the three vol
+scenario modes); P&L explain stays in the Python engine.
 
 ## 1. Regional sweeps
 

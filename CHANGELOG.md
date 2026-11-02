@@ -16,6 +16,28 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 4: varalo lane
+
+- Option VaR vol scenario modes. `eq_var.revaluation` and
+  `fx_var.revaluation` `full_revaluation_pnl(..., vol_mode=...)` take
+  `"sticky_strike"` (default, unchanged results), `"sticky_delta"` (the
+  smile moves with spot through a per-leg `skew`, new `OptionLeg.skew`
+  field) and `"historical_atm"` (vol shocks are historical log changes of
+  ATM vol, applied proportionally to every strike); new `shocked_vol`.
+  The same three modes are in all four compiled engines (C++
+  `full_revaluation_pnl(..., VolMode, skews)`, Rust
+  `full_revaluation_pnl_vol_mode`), pinned to the Python reference at
+  1e-12 relative. The VaR drivers still hold options at today's vol.
+- `eq_options.alo`: the `q < r < 0` double boundary is now solved by
+  Chebyshev collocation (Andersen and Lake 2021 approach; closing time as
+  an extra unknown fixed by smooth fit), about 15 ms a price and within
+  1e-5 of the extrapolated tree. The time march stays as
+  `double_boundary_method="march"`, the reference and the fallback.
+  `alo_double_boundary` takes the same `method` switch.
+- `fi_rates.DiscountCurve(..., "monotone_convex", positive_forwards=True)`:
+  the Hagan-West (2006) Section 5 positivity collar on the node forwards.
+  Off by default.
+
 #### Round 3 fixes: options lane
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`

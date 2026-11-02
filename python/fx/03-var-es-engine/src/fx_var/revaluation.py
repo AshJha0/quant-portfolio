@@ -29,6 +29,32 @@ and the explain is
 with ``Theta = -dV/dtau``. The residual of P&L explain is third order in
 the moves, which is what the oracle test checks.
 
+Vol scenario modes (``vol_mode`` of :func:`full_revaluation_pnl`)
+-----------------------------------------------------------------
+Plain idea: when spot moves, what happens to the implied vol of the
+option you hold? Three standard answers (Derman 1999, "Regimes of
+volatility", Risk 12(4), 55-59, for the first two):
+
+* ``"sticky_strike"`` (default, the behaviour before round 4): the vol of
+  a given strike does not move with spot. ``sigma_1 = sigma_0 + dv``.
+* ``"sticky_delta"``: the smile moves with spot, so the vol depends on
+  moneyness ``K / S`` only. With the leg's smile slope ``skew`` (the
+  derivative of implied vol with respect to log-moneyness ``ln(K/S)`` at
+  this strike, linear smile assumed), a spot move ``S -> S e^x`` changes
+  the strike's log-moneyness by ``-x``, so
+  ``sigma_1 = sigma_0 - skew * x + dv``. With ``skew = 0`` it equals
+  sticky strike.
+* ``"historical_atm"``: ``vol_shocks`` hold historical *log changes* of
+  the ATM vol, ``dv = ln(sigma_ATM,t+h / sigma_ATM,t)``, and every strike's
+  vol is scaled by the same factor, ``sigma_1 = sigma_0 e^{dv}``. This
+  replays the proportional ATM moves of the history while keeping the
+  smile shape (Alexander, *Market Risk Analysis* IV, 2008, s. 5.4, on
+  relative vol shocks in historical simulation).
+
+In every mode the shocked vol is floored at ``1e-12``. The compiled
+engines (C++ and Rust, equity and FX) implement the same three formulas
+and are checked against this module to 1e-12 relative.
+
 Worked example: ``tests/test_revaluation.py``.
 """
 
@@ -44,6 +70,8 @@ from scipy.stats import norm
 from . import _r3checks as chk
 
 Kind = Literal["call", "put"]
+VolMode = Literal["sticky_strike", "sticky_delta", "historical_atm"]
+VOL_MODES: tuple[str, ...] = ("sticky_strike", "sticky_delta", "historical_atm")
 
 
 @dataclass(frozen=True)
@@ -51,7 +79,9 @@ class OptionLeg:
     """European option on factor ``factor`` (a column of the scenario matrix).
 
     ``carry`` is the dividend yield (equity) or foreign rate (FX); all rates
-    continuously compounded, ``tau`` in years, ``vol`` annualised.
+    continuously compounded, ``tau`` in years, ``vol`` annualised. ``skew``
+    is ``d sigma / d ln(K/S)`` at this strike, used only by
+    ``vol_mode="sticky_delta"``.
     """
 
     quantity: float
@@ -63,6 +93,7 @@ class OptionLeg:
     carry: float
     vol: float
     factor: int = 0
+    skew: float = 0.0
 
     def __post_init__(self):
         if self.kind not in ("call", "put"):
@@ -75,6 +106,7 @@ class OptionLeg:
         chk.scalar("carry", self.carry)
         chk.scalar("vol", self.vol, lo=0.0, strict=True)
         chk.count("factor", self.factor, lo=0)
+        chk.scalar("skew", self.skew)
 
 
 @dataclass(frozen=True)
@@ -147,13 +179,35 @@ def _scenarios(legs: Sequence[Leg], spot_log_returns, vol_shocks):
     return x, dv
 
 
+def shocked_vol(leg: OptionLeg, x, dv, vol_mode: VolMode = "sticky_strike") -> np.ndarray:
+    """Scenario vol of ``leg`` given its factor's log return ``x`` and vol shock ``dv``.
+
+    See the module note for the three modes; floored at ``1e-12``.
+    """
+    x = np.asarray(x, dtype=float)
+    dv = np.asarray(dv, dtype=float)
+    if vol_mode == "sticky_strike":
+        v1 = leg.vol + dv
+    elif vol_mode == "sticky_delta":
+        v1 = leg.vol - leg.skew * x + dv
+    elif vol_mode == "historical_atm":
+        v1 = leg.vol * np.exp(dv)
+    else:
+        raise ValueError(f"vol_mode must be one of {VOL_MODES}, got {vol_mode!r}")
+    return np.maximum(v1, 1e-12)
+
+
 def full_revaluation_pnl(legs: Sequence[Leg], spot_log_returns, vol_shocks=None,
-                         dt: float = 0.0) -> np.ndarray:
+                         dt: float = 0.0, *, vol_mode: VolMode = "sticky_strike") -> np.ndarray:
     """Exact book P&L per scenario by repricing every leg.
 
     ``spot_log_returns`` and ``vol_shocks`` are ``(n_scenarios, n_factors)``;
-    ``dt`` (years) ages every option, floored at expiry.
+    ``dt`` (years) ages every option, floored at expiry. ``vol_mode`` picks
+    how the scenario vol is formed (module note); the default reproduces the
+    pre-round-4 behaviour exactly.
     """
+    if vol_mode not in VOL_MODES:
+        raise ValueError(f"vol_mode must be one of {VOL_MODES}, got {vol_mode!r}")
     x, dv = _scenarios(legs, spot_log_returns, vol_shocks)
     dt = chk.scalar("dt", dt, lo=0.0)
     pnl = np.zeros(x.shape[0])
@@ -162,7 +216,7 @@ def full_revaluation_pnl(legs: Sequence[Leg], spot_log_returns, vol_shocks=None,
         if isinstance(leg, LinearLeg):
             pnl += leg.quantity * (s1 - leg.spot)
             continue
-        v1 = np.maximum(leg.vol + dv[:, leg.factor], 1e-12)
+        v1 = shocked_vol(leg, x[:, leg.factor], dv[:, leg.factor], vol_mode)
         p0 = bsm_price(leg.spot, leg.strike, leg.tau, leg.rate, leg.carry, leg.vol, leg.kind)
         p1 = bsm_price(s1, leg.strike, max(leg.tau - dt, 0.0), leg.rate, leg.carry, v1, leg.kind)
         pnl += leg.quantity * (p1 - p0)
