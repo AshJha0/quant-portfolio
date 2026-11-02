@@ -1,0 +1,319 @@
+{
+  "prereg": "research/prereg/pairs-fx-g10-v2.md",
+  "prereg_sha256": "78da5f57e0225e2ee47e870bd782ffa03172805ff183f976f346b24ad6c5042b",
+  "registration_signed": false,
+  "mode": "calibration",
+  "period": {
+    "start": "1999-01-04",
+    "end": "2021-12-31"
+  },
+  "dataset": "ECB euro foreign exchange reference rates (EXR), daily",
+  "method": "null: rows of the formation-window daily log-return matrix drawn with replacement, levels re-cumulated, the same EG AND Johansen selection re-run; FDR: Benjamini-Hochberg at q = 0.05 on MacKinnon EG p-values, then Johansen",
+  "n_perms": 200,
+  "seed": 0,
+  "fdr_q": 0.05,
+  "folds": [
+    {
+      "year": 2003,
+      "candidates": 36,
+      "selected": 3,
+      "selected_pairs": [
+        "AUD/SEK",
+        "CAD/JPY",
+        "GBP/NZD"
+      ],
+      "null_mean": 1.295,
+      "null_p95": 7.0,
+      "perm_pvalue": 0.15920398009950248,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2004,
+      "candidates": 36,
+      "selected": 2,
+      "selected_pairs": [
+        "NZD/SEK",
+        "NZD/EUR"
+      ],
+      "null_mean": 1.345,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.30845771144278605,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2005,
+      "candidates": 36,
+      "selected": 3,
+      "selected_pairs": [
+        "NZD/SEK",
+        "NZD/EUR",
+        "SEK/EUR"
+      ],
+      "null_mean": 1.115,
+      "null_p95": 4.049999999999983,
+      "perm_pvalue": 0.12935323383084577,
+      "bh_selected": 1,
+      "bh_selected_pairs": [
+        "SEK/EUR"
+      ]
+    },
+    {
+      "year": 2006,
+      "candidates": 36,
+      "selected": 2,
+      "selected_pairs": [
+        "AUD/NOK",
+        "JPY/SEK"
+      ],
+      "null_mean": 1.115,
+      "null_p95": 4.0,
+      "perm_pvalue": 0.25870646766169153,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2007,
+      "candidates": 36,
+      "selected": 1,
+      "selected_pairs": [
+        "GBP/SEK"
+      ],
+      "null_mean": 1.485,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.6069651741293532,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2008,
+      "candidates": 36,
+      "selected": 1,
+      "selected_pairs": [
+        "GBP/SEK"
+      ],
+      "null_mean": 1.26,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.5522388059701493,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2009,
+      "candidates": 36,
+      "selected": 0,
+      "selected_pairs": [],
+      "null_mean": 1.16,
+      "null_p95": 4.0,
+      "perm_pvalue": 1.0,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2010,
+      "candidates": 36,
+      "selected": 0,
+      "selected_pairs": [],
+      "null_mean": 1.095,
+      "null_p95": 4.049999999999983,
+      "perm_pvalue": 1.0,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2011,
+      "candidates": 36,
+      "selected": 2,
+      "selected_pairs": [
+        "AUD/CAD",
+        "CAD/NZD"
+      ],
+      "null_mean": 1.225,
+      "null_p95": 6.0,
+      "perm_pvalue": 0.2537313432835821,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2012,
+      "candidates": 36,
+      "selected": 2,
+      "selected_pairs": [
+        "GBP/EUR",
+        "NOK/SEK"
+      ],
+      "null_mean": 1.015,
+      "null_p95": 4.0,
+      "perm_pvalue": 0.263681592039801,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2013,
+      "candidates": 36,
+      "selected": 7,
+      "selected_pairs": [
+        "CAD/CHF",
+        "CAD/GBP",
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/NOK",
+        "GBP/NOK",
+        "GBP/SEK"
+      ],
+      "null_mean": 1.24,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.01990049751243781,
+      "bh_selected": 2,
+      "bh_selected_pairs": [
+        "CAD/SEK",
+        "GBP/SEK"
+      ]
+    },
+    {
+      "year": 2014,
+      "candidates": 36,
+      "selected": 1,
+      "selected_pairs": [
+        "CAD/NOK"
+      ],
+      "null_mean": 1.28,
+      "null_p95": 6.0,
+      "perm_pvalue": 0.4975124378109453,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2015,
+      "candidates": 36,
+      "selected": 1,
+      "selected_pairs": [
+        "CHF/NZD"
+      ],
+      "null_mean": 0.995,
+      "null_p95": 4.0,
+      "perm_pvalue": 0.4577114427860697,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2016,
+      "candidates": 36,
+      "selected": 5,
+      "selected_pairs": [
+        "CHF/GBP",
+        "CHF/NZD",
+        "CHF/EUR",
+        "JPY/NOK",
+        "JPY/SEK"
+      ],
+      "null_mean": 1.02,
+      "null_p95": 4.0,
+      "perm_pvalue": 0.04477611940298507,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2017,
+      "candidates": 36,
+      "selected": 6,
+      "selected_pairs": [
+        "CAD/CHF",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR",
+        "SEK/EUR"
+      ],
+      "null_mean": 1.245,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.04477611940298507,
+      "bh_selected": 3,
+      "bh_selected_pairs": [
+        "CHF/NOK",
+        "CHF/SEK",
+        "CHF/EUR"
+      ]
+    },
+    {
+      "year": 2018,
+      "candidates": 36,
+      "selected": 9,
+      "selected_pairs": [
+        "AUD/CHF",
+        "CAD/CHF",
+        "CAD/NOK",
+        "CHF/GBP",
+        "CHF/JPY",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR"
+      ],
+      "null_mean": 1.035,
+      "null_p95": 6.0,
+      "perm_pvalue": 0.014925373134328358,
+      "bh_selected": 8,
+      "bh_selected_pairs": [
+        "CAD/CHF",
+        "CAD/NOK",
+        "CHF/GBP",
+        "CHF/JPY",
+        "CHF/NOK",
+        "CHF/NZD",
+        "CHF/SEK",
+        "CHF/EUR"
+      ]
+    },
+    {
+      "year": 2019,
+      "candidates": 36,
+      "selected": 5,
+      "selected_pairs": [
+        "CAD/NOK",
+        "CAD/SEK",
+        "CHF/GBP",
+        "CHF/NOK",
+        "CHF/SEK"
+      ],
+      "null_mean": 1.285,
+      "null_p95": 5.0,
+      "perm_pvalue": 0.06467661691542288,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2020,
+      "candidates": 36,
+      "selected": 1,
+      "selected_pairs": [
+        "CHF/NZD"
+      ],
+      "null_mean": 0.965,
+      "null_p95": 4.0,
+      "perm_pvalue": 0.5124378109452736,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    },
+    {
+      "year": 2021,
+      "candidates": 36,
+      "selected": 2,
+      "selected_pairs": [
+        "CAD/GBP",
+        "SEK/EUR"
+      ],
+      "null_mean": 1.06,
+      "null_p95": 4.049999999999983,
+      "perm_pvalue": 0.208955223880597,
+      "bh_selected": 0,
+      "bh_selected_pairs": []
+    }
+  ],
+  "total_selected": 53,
+  "total_null_mean": 22.235,
+  "total_null_p95": 34.0,
+  "total_perm_pvalue": 0.009950248756218905,
+  "total_bh_selected": 14
+}
