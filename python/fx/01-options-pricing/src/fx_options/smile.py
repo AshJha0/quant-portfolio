@@ -22,9 +22,20 @@ under the pair's delta convention (:mod:`fx_options.deltas`). Between the
 pillars, vol is the quadratic in ``x = ln(K / F)`` through the three points;
 beyond them it is flat at the wing vol, so it never turns negative.
 
-Not covered: the broker ("market") strangle, whose quoted butterfly must
-first be converted into the smile strangle by solving for the strangle
-price (Reiswich and Wystup, section 3.2).
+Broker ("market") strangle: brokers often quote the butterfly as a single
+vol ``ATM + BF_mkt`` at which a 25-delta strangle is priced, with both
+strikes found at that one vol. That number is not the smile strangle. The
+conversion (Reiswich and Wystup, section 3.2, the "market strangle"
+equations; Clark 2011, section 3.6) finds the smile-strangle ``BF_s`` such
+that the smile built from ``(ATM, RR, BF_s)`` prices the broker strangle
+strikes at the broker strangle premium:
+
+``C(K_c^ms, sigma(K_c^ms)) + P(K_p^ms, sigma(K_p^ms)) = C(K_c^ms, v_ms) + P(K_p^ms, v_ms)``
+
+with ``v_ms = ATM + BF_mkt`` and ``K^ms`` the +/-25-delta strikes at
+``v_ms``. :func:`smile_strangle_from_broker` solves it for ``BF_s`` and
+:func:`broker_strangle_from_smile` inverts it. With ``RR = 0`` the two are
+equal, because the broker strikes then coincide with the smile pillars.
 
 Worked example: ``S = 1.10, T = 0.5, r_d = 0.04, r_f = 0.02``, ATM 8 %,
 RR -1 %, BF 0.3 %: the 25-delta call and put vols are 7.8 % and 8.8 %.
@@ -38,8 +49,10 @@ from dataclasses import dataclass, field
 from scipy.optimize import brentq
 
 from .deltas import _validate_convention, atm_dns_strike, delta, strike_from_delta
+from .garman_kohlhagen import gk_price
 
-__all__ = ["Smile3", "smile_from_quotes"]
+__all__ = ["Smile3", "broker_strangle_from_smile", "broker_strangle_premium",
+           "smile_from_quotes", "smile_strangle_from_broker"]
 
 
 @dataclass(frozen=True)
@@ -122,3 +135,86 @@ def smile_from_quotes(S: float, T: float, r_d: float, r_f: float, atm: float, rr
         b += -vs[i] * (xs[j] + xs[k]) / den
         a += vs[i] * xs[j] * xs[k] / den
     return Smile3(S, T, r_d, r_f, conv, (k_p, k_atm, k_c), (v_put, atm, v_call), (a, b, c))
+
+
+def _broker_strikes(S: float, T: float, r_d: float, r_f: float, v_ms: float,
+                    conv: str) -> tuple[float, float]:
+    k_c = strike_from_delta(0.25, S, T, r_d, r_f, v_ms, "call", conv)
+    k_p = strike_from_delta(-0.25, S, T, r_d, r_f, v_ms, "put", conv)
+    return k_c, k_p
+
+
+def broker_strangle_premium(S: float, T: float, r_d: float, r_f: float, atm: float,
+                            bf_mkt: float, convention: str = "spot") -> float:
+    """Premium (domestic pips) of the broker 25-delta strangle at ``ATM + BF_mkt``."""
+    conv = _validate_convention(convention)
+    v_ms = atm + bf_mkt
+    if not (math.isfinite(v_ms) and v_ms > 0.0):
+        raise ValueError("ATM + BF_mkt must be a positive vol")
+    k_c, k_p = _broker_strikes(S, T, r_d, r_f, v_ms, conv)
+    return (gk_price(S, k_c, T, r_d, r_f, v_ms, "call")
+            + gk_price(S, k_p, T, r_d, r_f, v_ms, "put"))
+
+
+def _smile_price_at(sm: Smile3, k_c: float, k_p: float) -> float:
+    return (gk_price(sm.S, k_c, sm.T, sm.r_d, sm.r_f, sm.vol(k_c), "call")
+            + gk_price(sm.S, k_p, sm.T, sm.r_d, sm.r_f, sm.vol(k_p), "put"))
+
+
+def _bracket_root(f, lo: float, hi: float) -> float:
+    """Brent root of ``f`` on ``[lo, hi]``; raises if no sign change."""
+    flo, fhi = f(lo), f(hi)
+    if flo == 0.0:
+        return lo
+    if fhi == 0.0:
+        return hi
+    if flo * fhi > 0.0:
+        raise ValueError("no strangle solution in the search range")
+    return brentq(f, lo, hi, xtol=1e-15, rtol=1e-15, maxiter=300)
+
+
+def smile_strangle_from_broker(S: float, T: float, r_d: float, r_f: float, atm: float,
+                               rr25: float, bf_mkt: float, convention: str = "spot") -> float:
+    """Convert a broker (market) 25-delta butterfly into the smile butterfly.
+
+    Solves the Reiswich-Wystup (2010, section 3.2) market-strangle condition
+    for ``BF_s``: the smile from ``(atm, rr25, BF_s)`` must price the broker
+    strangle strikes at the broker premium. Returns ``BF_s``; feed it to
+    :func:`smile_from_quotes`.
+    """
+    conv = _validate_convention(convention)
+    v_ms = atm + bf_mkt
+    target = broker_strangle_premium(S, T, r_d, r_f, atm, bf_mkt, conv)
+    k_c, k_p = _broker_strikes(S, T, r_d, r_f, v_ms, conv)
+    floor = -(atm - 0.5 * abs(rr25)) + 1e-6  # keeps both pillar vols positive
+    lo, hi = max(bf_mkt - 0.25 * atm - abs(rr25), floor), bf_mkt + 0.25 * atm + abs(rr25)
+
+    def f(bf_s: float) -> float:
+        try:
+            sm = smile_from_quotes(S, T, r_d, r_f, atm, rr25, bf_s, conv)
+        except ValueError:
+            return -target  # an unbuildable (too low) smile counts as too cheap
+        return _smile_price_at(sm, k_c, k_p) - target
+
+    return _bracket_root(f, lo, hi)
+
+
+def broker_strangle_from_smile(S: float, T: float, r_d: float, r_f: float, atm: float,
+                               rr25: float, bf_smile: float, convention: str = "spot") -> float:
+    """Inverse of :func:`smile_strangle_from_broker`: the broker butterfly.
+
+    Finds ``BF_mkt`` such that the strangle struck at the 25-delta strikes
+    of the single vol ``atm + BF_mkt`` costs the same at that vol as under
+    the smile ``(atm, rr25, bf_smile)``.
+    """
+    conv = _validate_convention(convention)
+    sm = smile_from_quotes(S, T, r_d, r_f, atm, rr25, bf_smile, conv)
+
+    def f(bf_mkt: float) -> float:
+        v_ms = atm + bf_mkt
+        k_c, k_p = _broker_strikes(S, T, r_d, r_f, v_ms, conv)
+        return broker_strangle_premium(S, T, r_d, r_f, atm, bf_mkt, conv) -             _smile_price_at(sm, k_c, k_p)
+
+    lo = max(bf_smile - 0.25 * atm - abs(rr25), -atm + 1e-6)
+    hi = bf_smile + 0.25 * atm + abs(rr25)
+    return _bracket_root(f, lo, hi)

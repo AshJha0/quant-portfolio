@@ -31,6 +31,17 @@ come from seeded synthetic data.
 - The four packages now declare `qp-core` as a dependency, because their
   `engine` modules import it.
 
+#### Round 3 fixes: FX smile and calendars (fx lane)
+
+- `fx_options.smile.smile_strangle_from_broker` and
+  `broker_strangle_from_smile`: broker (market) 25-delta strangle to smile
+  strangle conversion and back (Reiswich and Wystup 2010, section 3.2;
+  Clark 2011), with `broker_strangle_premium`.
+- `fx_options.holidays`: rules-based settlement calendars for USD, EUR,
+  GBP, JPY, CHF, CAD and AUD, 2010 to 2099, deterministic and offline;
+  `holidays="auto"` in `spot_date` and `expiry_and_delivery` uses the
+  pair's joint calendar.
+
 #### Round 3: research platform, Phase 4 (lane C)
 
 - `data/`: free-data fetchers (`data/fetch/qp_fetch.py`) for ECB reference
