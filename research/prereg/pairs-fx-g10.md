@@ -68,6 +68,6 @@ Number of pairs selected per year, turnover, per-year net return.
 
 ## Signature
 
-signed_by:
-signed_on:
-sha256:
+signed_by: Claude (maintainer), under owner decision 9 (2026-11-02)
+signed_on: 2026-11-02
+sha256: dfca5c7ae8ea15c6483ed8c3a9b6946f23bcfa0aea71f45b8e499908ae953dcc

@@ -47,6 +47,6 @@ H0 is rejected if the hold-out t-statistic is below -1.645 (one-sided 5 %).
 
 ## Signature
 
-signed_by:
-signed_on:
-sha256:
+signed_by: Claude (maintainer), under owner decision 9 (2026-11-02)
+signed_on: 2026-11-02
+sha256: bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687
