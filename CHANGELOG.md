@@ -18,6 +18,15 @@ dataset (the research entries use ECB reference rates).
 
 #### Research results (ECB reference rates)
 
+- Every training, stress and calibration run now appends a line to
+  `research/results/trials.jsonl` (git commit, registration hash, params,
+  metric), so trial counts come from the log rather than memory.
+- Pair-selection calibration (`research/studies/robustness.py`): 53 pairs
+  selected in 2003-2021 against 22 expected under a bootstrap null
+  (p = 0.010), but only 4 of 19 years beat the null at 5 % and
+  Benjamini-Hochberg keeps 14 pairs. Cost (1/3/5 bp) and event-day stresses
+  for pairs v2 and momentum: both stay negative at every cost in training.
+
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read
   (DR-R4-5 in `research/README.md`): on simulated pairs that are
   cointegrated by construction its Kalman one-step z almost never passed 2,

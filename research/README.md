@@ -263,6 +263,111 @@ python research/studies/forward_studies.py all
 python research/studies/pairs_power.py        # synthetic power check
 ```
 
+## Trials log
+
+The plain idea: a deflated Sharpe needs the number of things that were
+tried, and a number recalled from memory is the one most likely to be
+wrong. So every training run now writes down that it happened.
+
+Formally: each call of `_write` in `studies/fx_studies.py` and
+`studies/forward_studies.py` (training runs, and the stress and calibration
+runs below) appends one JSON line to `results/trials.jsonl`, opened in
+append mode only. Fields: `timestamp_utc`, `study`, `kind` (`train`,
+`stress` or `calibration`), `prereg`, `prereg_sha256`, `result`,
+`git_commit`, `git_dirty` (read before the result file is written, with the
+log itself left out), `params`, `metric` and `python`. The hold-out path
+does not write here; it has its own provenance block. `trials.count(prereg)`
+gives the number of logged training runs against a registration.
+
+Worked example: the log was started by re-running the four training studies
+on commit 73908e1 with a clean tree. All four result files came out byte for
+byte the same as before, and the log holds one `train` line for each.
+Earlier trials (the three v1 drafting variants and the variance menu) were
+not logged at the time; their count stays as stated in each registration.
+
+## Robustness checks (training period only)
+
+`studies/robustness.py` answers two questions the training results leave
+open. Neither is a new registration or a new decision rule; both are
+sensitivity tables. Evidence class for every number in this section:
+training data (ECB 1999-01-04 to 2021-12-31), not out-of-sample.
+
+```bash
+python research/studies/robustness.py stress
+python research/studies/robustness.py calibration --perms 200   # about 50 min
+```
+
+### Is the pair selection finding anything?
+
+The plain idea: each fold tests 36 pairs at 5 %, so about two pairs a year
+pass even if no pair is cointegrated. The question is whether the
+selection finds more than that.
+
+Formally, for each training fold the result gives:
+
+- `selected`: pairs passing Engle-Granger at 5 % AND Johansen trace rank
+  >= 1, the registered rule;
+- `null_mean`, `null_p95`, `perm_pvalue`: the same rule re-run on 200 null
+  data sets. A null data set draws whole days (rows of the formation
+  window's daily log-return matrix) with replacement and re-cumulates them.
+  That keeps each day's cross-section (correlations, fat tails, the dollar
+  factor) and destroys the order in time, so no spread can mean-revert.
+  Drawing with replacement matters: a permutation keeps every series' end
+  point, so a cointegrated spread is rebuilt as a bridge that still looks
+  stationary, and the null becomes too hard to beat (the unit tests show
+  this). `perm_pvalue` = (1 + #null counts >= selected) / (1 + 200);
+- `bh_selected`: pairs whose MacKinnon (1994, 2010) Engle-Granger p-value
+  survives Benjamini and Hochberg (1995) at q = 0.05 across the 36
+  candidates, and that also pass Johansen.
+
+Result (`results/pairs_selection_calibration.json`, 19 folds, 2003-2021):
+53 pairs selected in total against a null mean of 22.2 (null 95th
+percentile 34), permutation p = 0.010. So across all years the selection
+finds more than chance. Year by year it mostly does not: the null gives
+about 1.1 pairs a fold, and only 2013 (7), 2016 (5), 2017 (6) and 2018 (9)
+have p <= 0.05. BH at 5 % keeps 14 pairs in total, 8 of them in 2018, and
+none in 15 of the 19 years. Reading it: in most years the selected pairs
+are what chance alone would produce; a forward result from pairs v2 should
+be read with that in mind. The null mean (about 1.1, not 36 x 5 % = 1.8)
+is lower than the nominal rate because a pair must pass both tests.
+
+### Does the result survive the fix not being tradeable?
+
+The plain idea: the studies assume a trade at the ECB 14:15 CET fix for
+1 bp. On 15 January 2015 nobody could deal CHF anywhere near the fix. So
+re-score the rules with higher costs, and with the days on which a fix was
+least tradeable either removed or scored against the strategy.
+
+Formally: an event day is one where any currency's log return exceeds 5
+times its standard deviation over the 250 fixes before it (needs 60), or
+where more than 4 calendar days separate it from the previous fix (Easter
+and Christmas closures). Both use only data up to that day. For costs of
+1, 3 and 5 bp per unit traded, three versions of the daily net return are
+scored: `base`; `exclude` (event days dropped); `adverse` (on event days
+the return is min(r, 0): gains forfeited, losses kept, a crude worst case
+for a gap).
+
+Result (69 event days in 1999-2021, 2015-01-15 among them; annualised net
+Sharpe, Lo standard error in brackets):
+
+| Rule | Cost | base | exclude | adverse |
+|---|---|---|---|---|
+| pairs v2 | 1 bp | -0.107 (0.234) | -0.095 (0.212) | -0.367 (0.209) |
+| pairs v2 | 3 bp | -0.114 (0.234) | -0.103 (0.212) | -0.375 (0.209) |
+| pairs v2 | 5 bp | -0.121 (0.235) | -0.112 (0.212) | -0.383 (0.209) |
+| momentum | 1 bp | -0.200 (0.196) | -0.290 (0.195) | -0.475 (0.191) |
+| momentum | 3 bp | -0.244 (0.197) | -0.337 (0.195) | -0.520 (0.191) |
+| momentum | 5 bp | -0.288 (0.197) | -0.385 (0.195) | -0.566 (0.190) |
+
+Reading it: both rules are negative in training at every cost, so the
+stress cannot rescue them; it shows how much worse a forward result could
+look. Pairs v2 trades little, so cost barely moves it (about -0.007 Sharpe
+per 2 bp); its event days lost money (-2.3 % summed over 50 exposed days).
+Momentum turns over monthly, so each 2 bp costs about 0.044 Sharpe, and its
+event days made money (+6.5 % over 68 days): dropping them makes it worse.
+Files: `results/pairs_fx_g10_v2_stress.json`,
+`results/momentum_fx_g10_stress.json` (event dates listed in each).
+
 ## Models added here
 
 - `studies/models.py: johansen_trace`, the Johansen (1991) trace test with
