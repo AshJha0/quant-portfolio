@@ -344,6 +344,17 @@ class _MonotoneConvex:
         """(G(x), int_0^x G) for one segment; Hagan-West Section 5.2."""
         if g0 == 0.0 and g1 == 0.0:
             return 0.0, 0.0
+        tiny = 1e-9 * max(abs(g0), abs(g1))
+        if abs(g0) <= tiny or abs(g1) <= tiny:
+            # Boundary between regions: one end sits at the discrete forward
+            # (two equal discrete forwards side by side; "equal" up to
+            # round-off, since ln P differences rarely cancel exactly). Every
+            # region's limit here is a jump at the pillar (eta -> 0 or 1), so
+            # we take the plain quadratic: continuous, integrates to zero,
+            # and it dips (or peaks) by |g|/3 inside the segment.
+            G = g0 * (1 - 4 * x + 3 * x * x) + g1 * (-2 * x + 3 * x * x)
+            I = g0 * (x - 2 * x * x + x**3) + g1 * (-x * x + x**3)
+            return G, I
         if (g0 < 0 and -0.5 * g0 <= g1 <= -2.0 * g0) or (g0 > 0 and -0.5 * g0 >= g1 >= -2.0 * g0):
             # region (i): plain quadratic
             G = g0 * (1 - 4 * x + 3 * x * x) + g1 * (-2 * x + 3 * x * x)

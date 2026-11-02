@@ -69,3 +69,22 @@ def test_collar_single_pillar():
     c = DiscountCurve([5.0], [0.8], "monotone_convex", positive_forwards=True)
     assert c.df(5.0) == pytest.approx(0.8, abs=1e-15)
     assert c.instantaneous_forward(2.0) == pytest.approx(-np.log(0.8) / 5.0)
+
+
+@pytest.mark.parametrize("collar", [False, True])
+def test_equal_adjacent_forwards_no_jump(collar):
+    # Discrete forwards 3 %, 3 %, 5 %: node forward f_1 = 3 % = fd_1 = fd_2,
+    # so g0 = 0 on segment 2 with g1 != 0. Before the fix the forward jumped
+    # by about 1 % at 2y.
+    t = np.array([1.0, 2.0, 3.0])
+    fd = np.array([0.03, 0.03, 0.05])
+    y = np.cumsum(fd)
+    c = DiscountCurve(t, np.exp(-y), "monotone_convex", positive_forwards=collar)
+    for pillar in (1.0, 2.0):
+        lo, hi = c.instantaneous_forward(np.array([pillar - 1e-9, pillar + 1e-9]))
+        assert abs(hi - lo) < 1e-7
+    np.testing.assert_allclose(c.df(t), np.exp(-y), rtol=0, atol=1e-14)
+    g = np.linspace(1e-6, 3.0, 3001)
+    assert np.all(np.isfinite(c.instantaneous_forward(g)))
+    if collar:
+        assert np.min(c.instantaneous_forward(g)) > 0.0

@@ -152,8 +152,10 @@ reprice European option legs in full in every scenario (BSM for equity,
 Garman-Kohlhagen for FX), matched to the Python revaluation at 1e-11 for
 historical VaR/ES. Their `full_revaluation_pnl` takes the same three vol
 scenario modes as Python (sticky strike, sticky delta, historical ATM shift),
-pinned to Python at 1e-12; the VaR drivers still hold options at today's
-vol, and P&L explain stays in Python. They
+pinned to Python at 1e-12. Their VaR drivers take the vol shocks as extra
+factors on the same axis as spot (equity: a vol block after the spot block;
+FX: `VOL:CCY` beside `FX:CCY`), so Monte Carlo simulates spot and vol
+jointly. P&L explain stays in Python. They
 follow the same conventions listed at the top of this page. Their golden
 vectors come from the Python reference through the generator pipeline in
 [ARCHITECTURE.md](ARCHITECTURE.md) "Cross-language testing". Latency figures

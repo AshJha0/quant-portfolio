@@ -114,4 +114,35 @@ enum class VolMode { StickyStrike, StickyDelta, HistoricalAtm };
     std::uint64_t seed = 0, std::size_t n_boot = 200, Repair repair = Repair::None,
     double dt = 0.0);
 
+/// Vol scenarios on the combined factor axis. The panel (or covariance) has
+/// 2J columns: spot log returns of the J factors first, then one vol shock
+/// per factor in the same order, so column J + j is the vol shock of factor
+/// j (an ATM vol change in vol points for StickyStrike / StickyDelta, an ATM
+/// log change for HistoricalAtm). `exposures` and `leg.factor` still index
+/// the J spot factors. `skews` is empty or one per leg (StickyDelta only).
+/// With StickyStrike and an all-zero vol block every function below equals
+/// its no-vol counterpart bit for bit.
+[[nodiscard]] std::vector<double> option_book_pnl_vol(std::span<const OptionLeg> legs,
+                                                      std::span<const double> exposures,
+                                                      const Matrix& combined, double dt,
+                                                      VolMode mode,
+                                                      std::span<const double> skews = {});
+
+/// historical_option_var_es with vol scenarios: each row of the T x 2J
+/// `combined` panel (spot block, then vol block) is a scenario.
+[[nodiscard]] TailRisk historical_option_var_es_vol(std::span<const OptionLeg> legs,
+                                                    std::span<const double> exposures,
+                                                    const Matrix& combined, double alpha, double dt,
+                                                    VolMode mode,
+                                                    std::span<const double> skews = {});
+
+/// monte_carlo_option_var with vol scenarios: `joint_cov` is 2J x 2J over the
+/// combined axis (spot block, then vol block, with their cross terms); the
+/// 2J factors are simulated jointly with the same model, seed and repair,
+/// then priced by option_book_pnl_vol. Options legs must not be empty.
+[[nodiscard]] MonteCarloResult monte_carlo_option_var_vol(
+    std::span<const OptionLeg> legs, std::span<const double> exposures, const Matrix& joint_cov,
+    double alpha, std::size_t n_paths, Dist dist, double df, std::uint64_t seed, std::size_t n_boot,
+    Repair repair, double dt, VolMode mode, std::span<const double> skews = {});
+
 }  // namespace eqvar

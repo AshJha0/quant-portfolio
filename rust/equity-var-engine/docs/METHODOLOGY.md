@@ -141,8 +141,11 @@ it is a check of the closed form, not new information. The C++ and Rust
 engines also reprice European options in full in every scenario:
 `historical_option_var_es` and `monte_carlo_option_run` in `option_reval`
 (Jorion, *Value at Risk*, 3rd ed., ch. 10). Vol is held at today's implied
-vol; the Python library also shocks vol and offers the Taylor
-approximations and P&L explain.
+vol in those two; `historical_option_var_es_vol` and
+`monte_carlo_option_run_vol` add one vol column per factor after the spot
+columns (the combined axis) and reprice under sticky strike, sticky delta or
+historical ATM. The Python library also offers the Taylor approximations and
+P&L explain.
 
 `monte_carlo_run` simulates once and returns VaR, ES, the bootstrap SE
 (primary) and the KDE SE (diagnostic) from the same scenarios, plus the

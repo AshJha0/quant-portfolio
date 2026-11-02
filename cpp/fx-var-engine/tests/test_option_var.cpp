@@ -130,3 +130,94 @@ TEST(OptionVar, RejectsBadInput) {
   EXPECT_THROW((void)historical_var(usd, market(), kLegs, {"FX:EUR", "FX:CHF"}, panel(), plain()),
                std::invalid_argument);  // CHF missing from the history
 }
+
+// ---- Round 4: vol scenarios on the named axis ("VOL:CCY" beside "FX:CCY").
+namespace {
+ReturnsMatrix vol_panel(bool zero_vol = false) {
+  const ReturnsMatrix p = panel();
+  ReturnsMatrix r;
+  r.factors = {"VOL:AUD", "FX:AUD", "FX:EUR", "VOL:EUR"};  // any order
+  r.data = Matrix(kN, 4);
+  for (std::size_t i = 0; i < kN; ++i) {
+    const double t = static_cast<double>(i);
+    r.data(i, 1) = p.data(i, 0);
+    r.data(i, 2) = p.data(i, 1);
+    r.data(i, 3) = zero_vol ? 0.0 : 0.03 * std::sin(0.9 * t + 0.2);
+    r.data(i, 0) = zero_vol ? 0.0 : 0.04 * std::cos(1.7 * t);
+  }
+  return r;
+}
+VolScenarios vs(VolMode m) { return VolScenarios{m, {-0.05, 0.08}}; }
+}  // namespace
+
+TEST(OptionVarVol, HistoricalMatchesPythonAllModes) {
+  const Book book({CashPosition{"EUR", 1.0e6}});
+  const struct {
+    VolMode mode;
+    double var, es, pnl0;
+  } want[] = {{VolMode::StickyStrike, 47004.75041376564, 50058.34738396022, 5845.693777989148},
+              {VolMode::StickyDelta, 47689.026521634754, 50653.063630506396, 6400.832090265918},
+              {VolMode::HistoricalAtm, 37267.63851698485, 38043.48960210825, 18537.15494683804}};
+  for (const auto& w : want) {
+    const auto r = historical_var(book, market(), kLegs, kNames, vol_panel(), plain(), 1.0 / 252.0,
+                                  vs(w.mode));
+    expect_rel(r.pnl[0], w.pnl0, 1e-10);
+    expect_rel(r.var, w.var);
+    expect_rel(r.es, w.es);
+  }
+}
+
+TEST(OptionVarVol, ZeroVolColumnsStickyStrikeIsTheOldPath) {
+  const Book book({CashPosition{"EUR", 1.0e6}});
+  const auto a = historical_var(book, market(), kLegs, kNames, vol_panel(true), plain(),
+                                1.0 / 252.0, VolScenarios{});
+  const auto b = historical_var(book, market(), kLegs, kNames, panel(), plain(), 1.0 / 252.0);
+  EXPECT_EQ(a.var, b.var);
+  EXPECT_EQ(a.es, b.es);
+  EXPECT_EQ(a.pnl, b.pnl);
+}
+
+TEST(OptionVarVol, LayoutPutsVolFactorsAfterSpot) {
+  const Book book({SpotPosition{"GBPUSD", 1e6, {}}});
+  const Market m({{"EUR", 1.10}, {"AUD", 0.75}, {"GBP", 1.25}}, {{"USD", 0.045}});
+  const auto layout = layout_option_book(book, m, kLegs, kNames);
+  const auto axis = option_combined_factors(layout);
+  ASSERT_EQ(axis.size(), 5u);
+  EXPECT_EQ(axis[0], "FX:GBP");
+  EXPECT_EQ(axis[3], "VOL:EUR");
+  EXPECT_EQ(axis[4], "VOL:AUD");
+}
+
+TEST(OptionVarVol, MonteCarloMatchesClosedFormVolQuantile) {
+  const std::vector<OptionLeg> leg{
+      {1.0e6, OptionKind::Call, 1.10, 1.10, 0.25, 0.045, 0.03, 0.08, 0}};
+  FactorCov cov{{"FX:EUR", "VOL:EUR"}, Matrix(2, 2)};
+  cov.cov(0, 0) = 1e-12;   // spot frozen
+  cov.cov(1, 1) = 0.0025;  // ATM log vol change, daily sigma 5 %
+  MonteCarloOptions mo;
+  mo.n_scenarios = 200'000;
+  mo.seed = 5;
+  const auto r = monte_carlo_var(Book{}, market(), leg, {"FX:EUR"}, cov, mo, 0.0,
+                                 VolScenarios{VolMode::HistoricalAtm, {}});
+  EXPECT_NEAR(r.var, 1899.770347803309, 4.0 * r.se_var);
+  EXPECT_NEAR(r.es, 2156.5055802076868, 0.02 * 2156.5055802076868);
+}
+
+TEST(OptionVarVol, RejectsBadInput) {
+  const Book usd({CashPosition{"EUR", 1.0e6}});
+  // A spot-only panel has no VOL: columns.
+  EXPECT_THROW(
+      (void)historical_var(usd, market(), kLegs, kNames, panel(), plain(), 0.0, VolScenarios{}),
+      std::invalid_argument);
+  EXPECT_THROW(
+      (void)historical_var(usd, market(), {}, {}, vol_panel(), plain(), 0.0, VolScenarios{}),
+      std::invalid_argument);
+  EXPECT_THROW((void)historical_var(usd, market(), kLegs, kNames, vol_panel(), plain(), 0.0,
+                                    VolScenarios{VolMode::StickyDelta, {1.0}}),
+               std::invalid_argument);
+  FactorCov cov{{"FX:AUD", "FX:EUR"}, Matrix(2, 2)};
+  cov.cov(0, 0) = cov.cov(1, 1) = 1e-4;
+  EXPECT_THROW((void)monte_carlo_var(usd, market(), kLegs, kNames, cov, MonteCarloOptions{}, 0.0,
+                                     VolScenarios{}),
+               std::invalid_argument);
+}

@@ -398,3 +398,137 @@ pub fn monte_carlo_option_run(
         jitter,
     })
 }
+
+/// Vol scenarios on the combined factor axis: [`option_book_pnl_vol`] and
+/// the drivers below take a panel (or covariance) with `2J` columns, the
+/// spot log returns of the `J` factors first, then one vol shock per factor
+/// in the same order, so column `J + j` is the vol shock of factor `j` (an
+/// ATM vol change in vol points for `StickyStrike` / `StickyDelta`, an ATM
+/// log change for `HistoricalAtm`). `exposures` and `leg.factor` still index
+/// the `J` spot factors. `skews` is empty or one per leg (`StickyDelta`
+/// only). With `StickyStrike` and an all-zero vol block each function equals
+/// its no-vol counterpart bit for bit.
+///
+/// # Errors
+/// No legs, an odd column count, shape mismatch, non-finite input, invalid
+/// legs or skews.
+pub fn option_book_pnl_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    combined: &Matrix,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<Vec<f64>> {
+    let (n, nc) = (combined.rows(), combined.cols());
+    require(
+        n > 0 && nc > 0 && nc.is_multiple_of(2),
+        "combined panel must be non-empty with 2J columns (spot block, then vol block)",
+    )?;
+    require(!legs.is_empty(), "option_book_pnl_vol needs option legs")?;
+    let nf = nc / 2;
+    require(
+        exposures.is_empty() || exposures.len() == nf,
+        "exposures must be empty or match the spot block",
+    )?;
+    require(
+        exposures.iter().all(|w| w.is_finite()),
+        "exposures must be finite",
+    )?;
+    let c = combined.as_slice();
+    let mut x = Vec::with_capacity(n * nf);
+    let mut dv = Vec::with_capacity(n * nf);
+    for row in c.chunks_exact(nc) {
+        x.extend_from_slice(&row[..nf]);
+        dv.extend_from_slice(&row[nf..]);
+    }
+    let mut pnl = full_revaluation_pnl_vol_mode(legs, &x, &dv, nf, dt, mode, skews)?;
+    if !exposures.is_empty() {
+        for (i, p) in pnl.iter_mut().enumerate() {
+            let row = &x[i * nf..(i + 1) * nf];
+            let mut s = 0.0;
+            for (w, r) in exposures.iter().zip(row) {
+                s += w * r;
+            }
+            *p += s;
+        }
+    }
+    Ok(pnl)
+}
+
+/// [`historical_option_var_es`] with vol scenarios: each row of the `T x 2J`
+/// `combined` panel (spot block, then vol block) is a scenario.
+///
+/// # Errors
+/// Fewer than `MIN_OBS` rows, invalid `alpha`, or any
+/// [`option_book_pnl_vol`] error.
+pub fn historical_option_var_es_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    combined: &Matrix,
+    alpha: f64,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<(f64, f64)> {
+    validate_alpha(alpha)?;
+    require(
+        combined.rows() >= crate::historical::MIN_OBS,
+        "historical option VaR needs at least MIN_OBS rows",
+    )?;
+    let pnl = option_book_pnl_vol(legs, exposures, combined, dt, mode, skews)?;
+    crate::tail::empirical_var_es(&pnl, alpha)
+}
+
+/// [`monte_carlo_option_run`] with vol scenarios: `joint_cov` is `2J x 2J`
+/// over the combined axis (spot block, then vol block, with their cross
+/// terms). The `2J` factors are simulated jointly with the same model and
+/// seed, then priced by [`option_book_pnl_vol`].
+///
+/// # Errors
+/// As [`monte_carlo_option_run`], plus no legs or an odd `joint_cov` size.
+#[allow(clippy::too_many_arguments)]
+pub fn monte_carlo_option_run_vol(
+    legs: &[OptionLeg],
+    exposures: &[f64],
+    joint_cov: &Matrix,
+    alpha: f64,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    n_boot: usize,
+    dt: f64,
+    mode: VolMode,
+    skews: &[f64],
+) -> Result<McRun> {
+    require(
+        !legs.is_empty(),
+        "monte_carlo_option_run_vol needs option legs",
+    )?;
+    validate_alpha(alpha)?;
+    require(n_boot >= 2, "n_boot must be >= 2")?;
+    require(n_paths >= MIN_PATHS, "need at least MIN_PATHS paths")?;
+    require(
+        joint_cov.rows() == joint_cov.cols()
+            && joint_cov.rows() > 0
+            && joint_cov.rows().is_multiple_of(2),
+        "joint_cov must be square with 2J rows (spot block, then vol block)",
+    )?;
+    require(
+        exposures.is_empty() || 2 * exposures.len() == joint_cov.rows(),
+        "exposures must be empty or match the spot block",
+    )?;
+    let (scen, jitter) = simulate_factor_returns_jitter(joint_cov, n_paths, tail, seed)?;
+    let pnl = option_book_pnl_vol(legs, exposures, &scen, dt, mode, skews)?;
+    let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
+    let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
+    let se_kde = var_kde_se(&pnl, alpha)?;
+    Ok(McRun {
+        pnl,
+        var,
+        es,
+        se,
+        se_kde,
+        jitter,
+    })
+}

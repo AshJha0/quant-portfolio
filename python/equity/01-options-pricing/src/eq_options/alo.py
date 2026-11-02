@@ -82,8 +82,11 @@ region", Management Science 61(5), 1094-1107; Andersen and Lake 2021,
   (``B`` falling, ``Y`` rising) fails. It is slower (about 0.2 s at the
   default ``n_march = 400``) and accurate to about 1e-5 per 100 of strike
   against an extrapolated Leisen-Reimer tree, converging at close to second
-  order. Known limitation: for some inputs a very fine grid (``n_march``
-  around 1600) makes the first Newton step fail and the march stops at once.
+  order. The residual ``K - x - put(x)`` is written through put-call parity
+  with ``expm1`` so it does not cancel at the first nodes of a fine grid
+  (``tau`` near 1e-7), and the Newton tolerance scales with ``tau``. Before
+  that, ``n_march`` around 1600 stopped the march after one node for some
+  inputs (regression test in ``tests/test_round4_alo_collocation.py``).
 
 Worked example (double boundary): ``S = K = 100, T = 1, r = -0.005,
 q = -0.02, sigma = 0.2``, put: 7.410683 by collocation and 7.410691 by the
@@ -222,8 +225,12 @@ def _double_boundary(K, T, r, q, sigma, n):
             integral = (r * K * er * p_band - q * x[:, None] * eq_ * q_band) @ wk \
                 + wi * 0.5 * (r * K - q * x)
             d1 = (np.log(x / K) + (r - q + 0.5 * sigma * sigma) * t) / st
-            euro = K * math.exp(-r * t) * ndtr(-(d1 - st)) - x * math.exp(-q * t) * ndtr(-d1)
-            return K - x - euro - integral
+            # K - x - put(x), written through put-call parity with expm1 so
+            # it does not cancel: every term is O(t), and at the first nodes
+            # of a fine grid (t ~ 1e-7) the direct form loses most digits
+            # and the finite-difference Jacobian becomes noise.
+            call = x * math.exp(-q * t) * ndtr(d1) - K * math.exp(-r * t) * ndtr(d1 - st)
+            return -K * math.expm1(-r * t) + x * math.expm1(-q * t) - call - integral
 
         prev = np.array([B[i - 1], Y[i - 1]])
         x = prev if i < 2 else 2.0 * prev - np.array([B[i - 2], Y[i - 2]])
@@ -232,7 +239,7 @@ def _double_boundary(K, T, r, q, sigma, n):
         for _ in range(50):
             f = resid(x)
             fnorm = float(np.max(np.abs(f)))
-            if fnorm < 1e-11 * K:
+            if fnorm < 1e-11 * K * min(1.0, t / T):  # the residual is O(t)
                 converged = True
                 break
             jac = np.empty((2, 2))

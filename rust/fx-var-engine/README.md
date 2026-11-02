@@ -195,15 +195,34 @@ this list, e.g. `"FX:EUR"`) and `dt` (years of ageing). The book may be
 empty. Options are on CCYUSD with P&L in USD, so a book holding them must
 report in USD; historical `horizon_days` must be 1, since square-root-of-time
 scaling is wrong for a non-linear book. Options are held at today's implied
-vol (no vol factor yet).
+vol unless you call the `_vol` entry points (below).
 
 Vol scenario modes. `full_revaluation_pnl_vol_mode(legs, x, dv, n_factors, dt, mode,
 skews)` takes `VolMode::StickyStrike` (`sigma + dv`), `StickyDelta`
 (`sigma - skew x + dv`, `skews` one per leg or empty) or `HistoricalAtm`
 (`sigma e^{dv}`, `dv` a historical log change of ATM vol). `full_revaluation_pnl`
 is sticky strike. All three are pinned to the Python reference at
-1e-12 relative (`vol_modes_golden` in `tests/test_option_reval.rs`). The VaR drivers
-above do not take a vol panel yet.
+1e-12 relative (`vol_modes_golden` in `tests/test_option_reval.rs`).
+
+The VaR drivers take vol scenarios too. The plain idea: a vol shock is one
+more named risk factor, so it sits on the same factor axis as the spot
+returns. Formally, the vol factor of `"FX:CCY"` is `"VOL:CCY"` (vol points
+for sticky strike and sticky delta, a log change of ATM vol for historical
+ATM). The returns panel or covariance must carry `"VOL:CCY"` for every
+option factor; the scenario axis is the option layout's factors (book
+factors first, then option factors the book lacks) followed by those vol
+factors, so Monte Carlo simulates spot and vol jointly with their cross
+terms, and filtered HS rescales the vol columns by their own EWMA vol like
+any other column. With sticky strike and all-zero vol columns the answer is
+the old one bit for bit. Worked example: the EUR call plus short AUD put
+test book, with EUR 1m cash and one day of ageing, has 99 % historical VaR
+47,005 USD sticky strike, 47,689 sticky delta and 37,268 historical ATM,
+against 36,908 with vol held fixed; all three match Python at 1e-11
+relative.
+Entry points: `historical::historical_option_var_vol`,
+`monte_carlo::monte_carlo_option_var_vol`,
+`option_reval::option_book_pnl_vol` and `option_combined_factors`; tests in
+`tests/test_option_var_vol.rs`.
 
 Parity with Python. The historical numbers are pinned to the Python
 reference (`fx_var.revaluation.full_revaluation_pnl` followed by the S2 order

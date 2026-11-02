@@ -59,10 +59,22 @@ the constructor refuses it when a discrete forward is zero or negative.
 Example: discrete forwards 0.1 %, 5 %, 4.5 %, 0.2 %, 4 % give a plain
 forward that goes below zero near the short end and before 5y; with the
 collar the minimum is zero or above (`tests/test_round4_collar.py`).
-One property of the unameliorated scheme worth knowing: when a node
-forward equals the discrete forward of a neighbouring segment exactly
-(two equal discrete forwards side by side) the correction collapses and
-the forward jumps at that pillar. The collar does not change that.
+One edge case needed a choice of our own. When a node forward equals the
+discrete forward of a neighbouring segment exactly (two equal discrete
+forwards side by side), one end of the correction `g` is zero and the
+other is not. Each of the paper's four shapes, taken to that limit,
+squeezes its transition into a point, so the forward used to jump at the
+pillar. We use the plain quadratic of region (i) there instead: it is
+continuous, still integrates to zero (pillars reprice), and moves by at
+most a third of the non-zero end inside the segment. "Equal" means equal
+to within 1e-9 relative, because the discrete forwards come from
+differences of `ln P` and rarely cancel to the last bit. Forwards that
+are close but not equal still use the paper's shapes, which stay
+continuous but turn steeply over a width of about `|g0/g1|` of the
+segment; the paper's amelioration step (not implemented) is the cure. With the collar on,
+that keeps the forward positive. Worked example: forwards 3 %, 3 %, 5 %
+at 1y, 2y, 3y; the forward is now continuous at 2y
+(`tests/test_round4_collar.py::test_equal_adjacent_forwards_no_jump`).
 
 All four interpolations share one code path and one test suite; the
 choice is a constructor argument.

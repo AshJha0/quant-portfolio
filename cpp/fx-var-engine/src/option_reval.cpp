@@ -176,4 +176,47 @@ std::vector<double> option_book_pnl(const OptionBookLayout& layout, const Return
   return pnl;
 }
 
+std::vector<std::string> option_vol_factors(const OptionBookLayout& layout) {
+  std::vector<bool> used(layout.factors.size(), false);
+  for (const auto& l : layout.legs) used[l.factor] = true;
+  std::vector<std::string> out;
+  for (std::size_t j = 0; j < layout.factors.size(); ++j)
+    if (used[j]) out.push_back("VOL:" + layout.factors[j].substr(3));
+  return out;
+}
+
+std::vector<std::string> option_combined_factors(const OptionBookLayout& layout) {
+  std::vector<std::string> out = layout.factors;
+  for (auto& v : option_vol_factors(layout)) out.push_back(std::move(v));
+  return out;
+}
+
+std::vector<double> option_book_pnl(const OptionBookLayout& layout, const ReturnsMatrix& scenarios,
+                                    double dt, const VolScenarios& vol) {
+  require(vol.skews.empty() || vol.skews.size() == layout.legs.size(),
+          "skews must be empty or one per option leg");
+  const ReturnsMatrix rets = scenarios.select(layout.factors);
+  const std::vector<std::string> vnames = option_vol_factors(layout);
+  const ReturnsMatrix vols = scenarios.select(vnames);
+  const std::size_t nf = layout.factors.size();
+  const std::size_t n = rets.n_obs();
+  // dv on the spot axis: column j holds the vol shock of factor j (zero for
+  // factors no option references; full_revaluation_pnl never reads those).
+  std::vector<double> dv(n * nf, 0.0);
+  std::size_t k = 0;
+  for (std::size_t j = 0; j < nf; ++j) {
+    if (k < vnames.size() && vnames[k] == "VOL:" + layout.factors[j].substr(3)) {
+      for (std::size_t i = 0; i < n; ++i) dv[i * nf + j] = vols.data(i, k);
+      ++k;
+    }
+  }
+  const std::vector<double>& x = rets.data.data();
+  std::vector<double> pnl = full_revaluation_pnl(layout.legs, x, dv, nf, dt, vol.mode, vol.skews);
+  if (layout.linear && !layout.linear->factors().empty()) {
+    const std::vector<double> lin = layout.linear->pnl(rets);
+    for (std::size_t i = 0; i < pnl.size(); ++i) pnl[i] += lin[i];
+  }
+  return pnl;
+}
+
 }  // namespace fxvar

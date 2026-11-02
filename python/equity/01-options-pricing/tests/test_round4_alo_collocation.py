@@ -107,3 +107,17 @@ def test_collocation_is_fast():
         alo_price(*a)
         best = min(best, time.perf_counter() - t0)
     assert best < 0.05
+
+
+@pytest.mark.parametrize("n_march", [1600, 3200])
+def test_fine_march_does_not_stop_at_first_step(n_march):
+    # Regression: before the expm1 / parity form of the march residual, a
+    # 1600-step grid stopped after one node here (the first nodes sit at
+    # tau ~ 2e-7 and K - x - put cancelled to noise) and returned a wrong price.
+    a = (80.0, 100.0, 0.5, -0.01, 0.3, -0.03)
+    u, B, Y = alo_mod._double_boundary(100.0, 0.5, -0.01, -0.03, 0.3, n_march)
+    assert u.size == n_march + 1 and u[-1] == pytest.approx(0.5)
+    assert np.all(np.diff(B) <= 0.0) and np.all(np.diff(Y) >= 0.0)
+    p = alo_price(*a, option_type="put", n_march=n_march, double_boundary_method="march")
+    ref = alo_price(*a, option_type="put")
+    assert p == pytest.approx(ref, abs=1e-5)

@@ -166,4 +166,14 @@ MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
                                  const FactorCov& cov, const MonteCarloOptions& opts = {},
                                  double dt = 0.0);
 
+/// monte_carlo_var with options and vol scenarios: `cov` must also carry
+/// "VOL:CCY" for every option factor (with its cross terms to the spot
+/// factors); the combined axis option_combined_factors(layout) is simulated
+/// jointly, with the same model, seed, horizon and repair.
+MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
+                                 std::span<const OptionLeg> options,
+                                 const std::vector<std::string>& option_factors,
+                                 const FactorCov& cov, const MonteCarloOptions& opts, double dt,
+                                 const VolScenarios& vol);
+
 }  // namespace fxvar

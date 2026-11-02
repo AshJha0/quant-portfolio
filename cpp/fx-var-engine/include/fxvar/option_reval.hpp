@@ -107,4 +107,29 @@ struct OptionBookLayout {
 [[nodiscard]] std::vector<double> option_book_pnl(const OptionBookLayout& layout,
                                                   const ReturnsMatrix& scenarios, double dt = 0.0);
 
+/// Vol scenarios for option VaR. The vol shocks sit on the same named factor
+/// axis as the spot returns: the vol factor of "FX:CCY" is "VOL:CCY" (an ATM
+/// vol change in vol points for StickyStrike / StickyDelta, an ATM log
+/// change for HistoricalAtm). A returns panel or covariance used with these
+/// must carry "VOL:CCY" for every option factor; the combined axis is
+/// layout.factors followed by option_vol_factors(layout). `skews` is empty
+/// or one per option leg (in the order passed in), read only by StickyDelta.
+struct VolScenarios {
+  VolMode mode = VolMode::StickyStrike;
+  std::vector<double> skews;
+};
+
+/// "VOL:CCY" for every option factor of `layout`, in layout.factors order.
+[[nodiscard]] std::vector<std::string> option_vol_factors(const OptionBookLayout& layout);
+
+/// layout.factors followed by option_vol_factors(layout).
+[[nodiscard]] std::vector<std::string> option_combined_factors(const OptionBookLayout& layout);
+
+/// option_book_pnl with vol scenarios read from the "VOL:CCY" columns of
+/// `scenarios`. With StickyStrike and all-zero vol columns it equals the
+/// overload above bit for bit.
+[[nodiscard]] std::vector<double> option_book_pnl(const OptionBookLayout& layout,
+                                                  const ReturnsMatrix& scenarios, double dt,
+                                                  const VolScenarios& vol);
+
 }  // namespace fxvar

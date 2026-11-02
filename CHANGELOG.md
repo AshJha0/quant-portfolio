@@ -27,7 +27,18 @@ come from seeded synthetic data.
   The same three modes are in all four compiled engines (C++
   `full_revaluation_pnl(..., VolMode, skews)`, Rust
   `full_revaluation_pnl_vol_mode`), pinned to the Python reference at
-  1e-12 relative. The VaR drivers still hold options at today's vol.
+  1e-12 relative.
+- Option VaR drivers take vol scenarios in all four compiled engines. The
+  vol shocks are extra factors on the spot axis: equity uses a combined
+  panel or covariance of 2J columns (spot block, then one vol column per
+  factor; C++ `historical_option_var_es_vol` / `monte_carlo_option_var_vol`,
+  Rust `historical_option_var_es_vol` / `monte_carlo_option_run_vol`); FX
+  names them `VOL:CCY` beside `FX:CCY` (C++ `historical_var` /
+  `monte_carlo_var` overloads taking `VolScenarios`, Rust
+  `historical_option_var_vol` / `monte_carlo_option_var_vol`). Historical
+  VaR/ES pinned to Python at 1e-11 for all three modes; Monte Carlo checked
+  against a closed-form vol-only quantile. Sticky strike with a zero vol
+  block reproduces the old drivers bit for bit.
 - `eq_options.alo`: the `q < r < 0` double boundary is now solved by
   Chebyshev collocation (Andersen and Lake 2021 approach; closing time as
   an extra unknown fixed by smooth fit), about 15 ms a price and within
@@ -37,6 +48,17 @@ come from seeded synthetic data.
 - `fi_rates.DiscountCurve(..., "monotone_convex", positive_forwards=True)`:
   the Hagan-West (2006) Section 5 positivity collar on the node forwards.
   Off by default.
+- Fixed: `fi_rates` monotone convex: two equal adjacent discrete forwards (equal
+  up to round-off) made the forward jump at the pillar, because every
+  Hagan-West shape squeezes its transition to a point there. That boundary
+  now uses the plain quadratic: continuous, pillars still reprice.
+- Fixed: `eq_options.alo` double-boundary march: with fine grids (`n_march` 1600
+  and up) the first nodes sit at tau ~ 1e-7 and `K - x - put` cancelled to
+  noise, so the march stopped after one node and returned a wrong price. The
+  residual now goes through put-call parity with `expm1`, and the Newton
+  tolerance scales with tau.
+- Fixed: mypy errors in `eq_var.stress_testing` and `fx_var.monte_carlo_var`
+  (numpy scalar types; no behaviour change).
 
 #### Round 3 fixes: options lane
 

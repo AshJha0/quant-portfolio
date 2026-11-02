@@ -19,6 +19,7 @@ quadrature). The engines must land within 4 bootstrap standard errors.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +49,11 @@ def panel() -> np.ndarray:
     )
 
 
+def vol_panel() -> np.ndarray:
+    i = np.arange(N, dtype=float)
+    return np.column_stack([0.03 * np.sin(0.9 * i + 0.2), 0.04 * np.cos(1.7 * i)])
+
+
 def show(label: str, pnl: np.ndarray) -> None:
     v, e = var_es(pnl, ALPHA)
     print(f"{label}: var={v!r} es={e!r} pnl0={float(pnl[0])!r} pnl7={float(pnl[7])!r}")
@@ -75,6 +81,41 @@ def main() -> None:
     show("fx options only dt=0", fxr.full_revaluation_pnl(fx_legs, x))
     lin = [fxr.LinearLeg(1.0e6 * 1.10, 1.0, 0)]
     show("fx options + spot dt=1/252", fxr.full_revaluation_pnl(fx_legs + lin, x, dt=DT))
+
+    # Vol scenarios on the combined factor axis: spot columns then one vol
+    # column per spot factor (equity: columns J..2J-1; FX: "VOL:CCY").
+    dv = vol_panel()
+    eq_sk = [replace(eq_legs[0], skew=-0.1), replace(eq_legs[1], skew=-0.2)]
+    fx_sk = [replace(fx_legs[0], skew=-0.05), replace(fx_legs[1], skew=0.08)]
+    for mode in eqr.VOL_MODES:
+        show(f"eq vol {mode} + linear dt=0",
+             eqr.full_revaluation_pnl(eq_sk, x, dv, vol_mode=mode) + x @ w)
+        show(f"fx vol {mode} + spot dt=1/252",
+             fxr.full_revaluation_pnl(fx_sk + lin, x, dv, dt=DT, vol_mode=mode))
+
+    # MC closed-form target for the vol axis: one long call, spot frozen
+    # (variance 1e-12), historical-ATM vol shock with daily sigma 5 %. The
+    # P&L is monotone in dv (positive vega), so the same quantile argument
+    # holds.
+    sv = 0.05
+
+    def vpnl_at(z: float) -> float:
+        return float(eqr.full_revaluation_pnl(
+            [leg_v], np.array([[0.0]]), np.array([[sv * z]]), vol_mode="historical_atm")[0])
+
+    leg_v = eqr.OptionLeg(10.0, "call", 100.0, 100.0, 0.25, 0.02, 0.0, 0.2, 0)
+    var_v = -vpnl_at(norm.ppf(ALPHA))
+    es_v = -integrate.quad(lambda u: vpnl_at(norm.ppf(u)), 0.0, ALPHA, limit=200)[0] / ALPHA
+    print(f"mc target eq vol (hist ATM, sigma 5 %): var={var_v!r} es={es_v!r}")
+    fleg_v = fxr.OptionLeg(1.0e6, "call", 1.10, 1.10, 0.25, 0.045, 0.03, 0.08, 0)
+
+    def fvpnl_at(z: float) -> float:
+        return float(fxr.full_revaluation_pnl(
+            [fleg_v], np.array([[0.0]]), np.array([[sv * z]]), vol_mode="historical_atm")[0])
+
+    var_fv = -fvpnl_at(norm.ppf(ALPHA))
+    es_fv = -integrate.quad(lambda u: fvpnl_at(norm.ppf(u)), 0.0, ALPHA, limit=200)[0] / ALPHA
+    print(f"mc target fx vol (hist ATM, sigma 5 %): var={var_fv!r} es={es_fv!r}")
 
     # MC closed-form target: 10 long calls, one factor, daily sigma 1 %.
     sig = 0.01

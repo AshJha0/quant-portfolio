@@ -86,4 +86,14 @@ HistoricalResult historical_var(const Book& book, const Market& market,
                                 const ReturnsMatrix& returns, const HistoricalOptions& opts = {},
                                 double dt = 0.0);
 
+/// historical_var with options and vol scenarios: `returns` must also carry
+/// "VOL:CCY" for every option factor (see VolScenarios). The scenarios are
+/// the rows of the combined axis option_combined_factors(layout); kFiltered
+/// rescales the vol columns by their own EWMA vol, like any other factor.
+HistoricalResult historical_var(const Book& book, const Market& market,
+                                std::span<const OptionLeg> options,
+                                const std::vector<std::string>& option_factors,
+                                const ReturnsMatrix& returns, const HistoricalOptions& opts,
+                                double dt, const VolScenarios& vol);
+
 }  // namespace fxvar
