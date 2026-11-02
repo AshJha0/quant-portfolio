@@ -1,6 +1,7 @@
 #include "eqvar/matrix.hpp"
 
 #include "eqvar/kernels.hpp"
+#include "qp/gemm.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -125,15 +126,13 @@ Matrix sample_covariance(const Matrix& returns) {
         for (std::size_t c = 0; c < n; ++c) mu[c] += returns(r, c);
     for (double& m : mu) m /= static_cast<double>(t);
 
+    // Centre once, then a cache-blocked D^T D that adds the products for
+    // each (i, j) in row order: the same bits as the row-streaming loop.
+    std::vector<double> centred(t * n);
+    for (std::size_t r = 0; r < t; ++r)
+        for (std::size_t c = 0; c < n; ++c) centred[r * n + c] = returns(r, c) - mu[c];
     Matrix cov(n, n);
-    for (std::size_t r = 0; r < t; ++r) {
-        for (std::size_t i = 0; i < n; ++i) {
-            const double di = returns(r, i) - mu[i];
-            for (std::size_t j = i; j < n; ++j) {
-                cov(i, j) += di * (returns(r, j) - mu[j]);
-            }
-        }
-    }
+    qp::syrk_upper_blocked(centred.data(), cov.data(), t, n);
     const auto denom = static_cast<double>(t - 1);
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i; j < n; ++j) {
