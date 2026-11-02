@@ -17,6 +17,8 @@ refuses a result when
 - the hash in the result does not match the pre-registration as committed;
 - the result's period reaches the hold-out (on or after ``HOLDOUT_START``)
   and the pre-registration is not signed with that same hash;
+- it is a hold-out result for a registration in ``WITHDRAWN`` (withdrawn
+  before the hold-out, see research/README.md DR-R4-5);
 - it is a hold-out result (``"mode": "holdout"`` or a ``*_holdout*.json``
   name) and its ``provenance`` block is missing a field, records a dirty
   tree, lists no input-file hash, disagrees with ``prereg_sha256``, or is a
@@ -40,6 +42,9 @@ REPO = Path(__file__).resolve().parents[2]
 HOLDOUT_START = date(2022, 1, 1)
 HOLDOUT_END = date(2025, 12, 31)
 SIG_HEADING = "## Signature"
+# Registrations withdrawn before any hold-out data was seen. A hold-out result
+# for one of them is refused, whoever produced it.
+WITHDRAWN = {"research/prereg/pairs-fx-g10.md": "DR-R4-5, 2026-11-02"}
 _FIELD = re.compile(r"^(signed_by|signed_on|sha256):[ \t]*(.*?)[ \t]*$", re.M)
 
 
@@ -134,6 +139,8 @@ def check_result(result_path: Path, repo: Path = REPO) -> list[str]:
     if holdout and not reg.signed:
         errors.append("period reaches the 2022-2025 hold-out but the registration is not signed")
     if res.get("mode") == "holdout" or "_holdout" in result_path.name:
+        if res["prereg"] in WITHDRAWN:
+            errors.append(f"registration withdrawn before the hold-out ({WITHDRAWN[res['prereg']]})")
         errors += check_holdout_provenance(res, claimed)
     return errors
 

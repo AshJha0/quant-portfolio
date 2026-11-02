@@ -154,8 +154,10 @@ def test_unsigned_registration_is_refused_before_data_is_read(tmp_path, monkeypa
     text = (regs / "pairs-fx-g10.md").read_text(encoding="utf-8")
     (regs / "pairs-fx-g10.md").write_text(text.replace("sha256: dfca", "sha256: 0fca"), encoding="utf-8")
     monkeypatch.setattr(ho, "git_state", lambda _repo: CLEAN)
+    text = (regs / "regime-fx-basket.md").read_text(encoding="utf-8")
+    (regs / "regime-fx-basket.md").write_text(text.replace("sha256: bd64", "sha256: 0d64"), encoding="utf-8")
     with pytest.raises(ho.HoldoutRefused, match="not signed"):
-        fx_studies.run_holdout("pairs", tmp_path / "missing.csv", tmp_path, False, prereg_dir=regs)
+        fx_studies.run_holdout("regime", tmp_path / "missing.csv", tmp_path, False, prereg_dir=regs)
 
 
 def test_existing_result_is_never_overwritten(tmp_path, monkeypatch):
@@ -183,9 +185,10 @@ def dry_run(tmp_path_factory) -> Path:
     return out
 
 
-def test_dry_run_writes_both_results_with_provenance(dry_run):
+def test_dry_run_writes_only_the_regime_result_with_provenance(dry_run):
     data = (dry_run / "synthetic_ecb_2012-2025.csv").read_bytes()
-    for stem, metric in [("pairs_fx_g10", "decision"), ("regime_fx_basket", "decision")]:
+    assert not (dry_run / "pairs_fx_g10_holdout_dryrun.json").exists()
+    for stem, metric in [("regime_fx_basket", "decision")]:
         doc = json.loads((dry_run / f"{stem}_holdout_dryrun.json").read_text())
         prov = doc["provenance"]
         assert set(prereg.PROVENANCE_FIELDS) <= set(prov)
@@ -194,9 +197,41 @@ def test_dry_run_writes_both_results_with_provenance(dry_run):
         assert prov["prereg_sha256"][doc["prereg"]] == doc["prereg_sha256"]
         assert doc["period"] == {"start": "2022-01-03", "end": "2025-12-31"}
         assert doc["mode"] == "holdout" and metric in doc
-    pairs = json.loads((dry_run / "pairs_fx_g10_holdout_dryrun.json").read_text())
-    assert [f["year"] for f in pairs["folds"]] == list(ho.HOLDOUT_YEARS)
-    assert pairs["deflated_sharpe"]["n_trials"] == 3
+
+
+# ---- DR-R4-5: the pairs registration is withdrawn --------------------------
+
+def test_withdrawn_pairs_holdout_is_refused_before_anything_else(tmp_path, monkeypatch):
+    monkeypatch.setattr(ho, "git_state", lambda _repo: {**CLEAN, "dirty": True, "dirty_paths": ["x"]})
+    with pytest.raises(ho.HoldoutRefused, match="withdrawn"):
+        fx_studies.run_holdout("pairs", tmp_path / "missing.csv", tmp_path, dry_run=False)
+    with pytest.raises(ho.HoldoutRefused, match="withdrawn"):
+        fx_studies.main(["pairs", "--dry-run", "--out", str(tmp_path / "d")])
+    assert fx_studies.holdout_studies("all") == ["regime"]
+    assert fx_studies.holdout_studies("regime") == ["regime"]
+
+
+def test_withdrawn_pairs_cli_exits_without_reading_data(tmp_path, monkeypatch):
+    monkeypatch.setattr(ho, "git_state", lambda _repo: CLEAN)
+    with pytest.raises(ho.HoldoutRefused, match="withdrawn"):
+        fx_studies.main(["pairs", "--mode", "holdout", "--out", str(tmp_path)])
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_prereg_check_refuses_a_holdout_result_for_the_withdrawn_registration(dry_run, tmp_path):
+    repo = tmp_path / "repo"
+    shutil.copytree(REPO / "research" / "prereg", repo / "research" / "prereg")
+    res = repo / "research" / "results"
+    res.mkdir(parents=True)
+    doc = json.loads((dry_run / "regime_fx_basket_holdout_dryrun.json").read_text())
+    pairs = "research/prereg/pairs-fx-g10.md"
+    sha = fx_studies.SIGNED_SHA256["pairs-fx-g10.md"]
+    doc.update(prereg=pairs, prereg_sha256=sha)
+    doc["provenance"].update(dry_run=False, git_dirty=False, prereg_sha256={pairs: sha})
+    f = res / "pairs_fx_g10_holdout.json"
+    f.write_text(json.dumps(doc))
+    errs = prereg.check_result(f, repo)
+    assert errs == ["registration withdrawn before the hold-out (DR-R4-5, 2026-11-02)"]
 
 
 def test_second_dry_run_is_refused(dry_run):
@@ -224,9 +259,11 @@ def test_prereg_check_refuses_dry_runs_and_dirty_trees_and_accepts_clean(dry_run
     assert prereg.check_result(clean, repo) == ["hold-out result has no provenance block"]
 
 
-def test_dry_run_labels_the_bootstrap_bound_as_secondary(dry_run):
-    doc = json.loads((dry_run / "pairs_fx_g10_holdout_dryrun.json").read_text())
-    sec = doc["decision"]["secondary_bootstrap"]
+def test_pairs_code_still_labels_the_bootstrap_bound_as_secondary(synth_px):
+    res = fx_studies.pairs_study(synth_px, years=ho.HOLDOUT_YEARS)
+    assert [f["year"] for f in res["folds"]] == list(ho.HOLDOUT_YEARS)
+    assert res["deflated_sharpe"]["n_trials"] == 3
+    sec = fx_studies.pairs_decision(res)["secondary_bootstrap"]
     assert "not the decision" in sec["label"] and "lower_end" in sec
 
 
