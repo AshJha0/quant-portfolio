@@ -75,3 +75,10 @@ tests/                   offline seeded tests
 examples/run_pipeline.py reproduces every number above, writes nothing
 docs/                    METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
+
+## Round 3 additions
+
+- `xccy_float.py`: float-float cross-currency swaps on four curves
+  (projection and discount per currency), constant-notional or
+  mark-to-market resetting, with a par-spread solver. Tests:
+  `tests/test_xccy_float.py` (5 tests).

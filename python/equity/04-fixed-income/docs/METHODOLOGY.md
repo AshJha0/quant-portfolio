@@ -158,3 +158,22 @@ Each assumption states what breaks if it is violated.
   YTM steps.
 * All randomness flows through `numpy.random.default_rng(seed)`. Tests and
   the pipeline are deterministic and offline.
+
+## Round 3 additions: OIS multi-curve, caps and swaptions, Hull-White
+
+**Multi-curve.** Collateralised swaps discount on the OIS curve, and each
+index tenor gets its own projection curve (Ametrano and Bianchetti 2013).
+The OIS curve comes from OIS par rates (a compounded overnight leg is worth
+`1 - D(T)`); the projection curve then comes from par swap rates, with the
+float leg projected on it and discounted on OIS. Pillars are solved one at
+a time with Brent's method, with log-linear discount factors in between.
+
+**Caps and swaptions.** Market formulas: caplet = accrual x discount x
+Black-76 on the forward; swaption = annuity x Black-76 on the forward swap
+rate (Hull 2018, ch. 29). Bachelier versions for low or negative rates
+(Brigo and Mercurio 2006, Section 6.4).
+
+**Hull-White.** `dr = (theta(t) - a r) dt + sigma dW`, fitted to today's
+curve. Closed-form zero bonds, zero-bond options, caplets and Jamshidian
+swaptions (Brigo and Mercurio 2006, eqs. 3.36-3.45). Assumptions: one curve
+for the model; constant a and sigma (no calibration to a vol cube yet).

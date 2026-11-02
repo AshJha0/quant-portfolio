@@ -94,3 +94,14 @@ print(fr.scenario_pnl_table(book, settle, curve,
   KRD residuals, failure modes with numbers.
 * [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md): daily workflow, ladder
   hedging, carry, scenarios, controls.
+
+## Round 3 additions
+
+- `multicurve.py`: OIS discount curve and a separate projection curve per
+  index tenor, both bootstrapped exactly from par quotes.
+- `rate_options.py`: Black-76 and Bachelier caps, floors and swaptions on
+  the multi-curve setup, with implied-vol inversion.
+- `hull_white.py`: one-factor Hull-White fitted to the curve; zero-bond
+  options, caps and Jamshidian swaptions; an exact-OU Monte Carlo.
+
+Tests: `tests/test_round3_rates.py` (14 tests).
