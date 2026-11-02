@@ -2122,7 +2122,8 @@ print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to th
 ```
 
 Pass `holidays="auto"` to use the pair's joint settlement calendar from
-`fx_options.holidays` (rules-based, 2010 to 2099), or pass your own dates.
+`fx_options.holidays` (rules-based, 2010 to 2099; a re-export of
+`qp_core.holidays`), or pass your own dates.
 The quoted butterfly is read as the smile strangle; if your broker quotes
 the market strangle, convert it first with
 `fx_options.smile.smile_strangle_from_broker`.
@@ -2196,7 +2197,12 @@ print(round(res.cva, 2), round(res.dva, 2))        # 5121.83 1526.72
 `eq_credit.cds` uses a flat discount rate and year-fraction maturities.
 For dated contracts on the ISDA standard-model conventions (step-in, ACT/360,
 exact accrual on default, a real discount curve) use
-`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. For collateral, build the exposure with `collateralised_exposure`.
+`eq_credit.isda_cds.bootstrap_isda` with a `LogLinearCurve`. Pass
+`calendar="USD"` (or `"EUR"`, `"GBP"`, `"JPY"`, a joint code like
+`"EURGBP"`) to roll coupon dates and `T + 3` cash settlement over that
+centre's holidays as well as weekends; the default is weekends only. For
+a closure the rules do not know yet, wrap the call in
+`qp_core.holidays.extra_closures({"USD": [date]})`. For collateral, build the exposure with `collateralised_exposure`.
 
 ### How do I calibrate PDs to a central tendency with a margin of conservatism?
 

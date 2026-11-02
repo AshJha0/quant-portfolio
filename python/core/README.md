@@ -19,6 +19,7 @@ from the repository root installs it with every project that depends on it.
 | `qp_core.stats` | Sharpe ratio, Lo (2002) Sharpe standard error with a Newey-West long-run variance, deflated Sharpe ratio, PBO by CSCV, circular block bootstrap, seed distributions, `TrialLog` | eq_pairs, eq_algo, eq_regime, eq_signal_backtest, fx_pairs, fx_algo, fx_regime (through their `research_stats` modules) |
 | `qp_core.execution` | `ExecutionConfig` and `fill_price`: the t+1 fill rule | the same seven strategy projects |
 | `qp_core.calendars` | Partial business-day calendars (weekends and fixed-date holidays) and the four roll conventions | fi_rates, fx_rates |
+| `qp_core.holidays` | Full rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD (2010 to 2099, moveable feasts and observance rules included), `is_business_day`, `adjust_following`, `add_business_days`, and runtime one-off closures (`add_closure`, test hook `extra_closures`) | eq_credit (`isda_cds`), fx_options (re-exported as `fx_options.holidays`) |
 | `qp_core.daycount` | ACT/365F, ACT/360, 30/360US, ACT/ACT-ISDA, ACT/ACT-ICMA; month arithmetic; coupon schedules; money-market day counts | fi_rates, fx_rates |
 | `qp_core.validation` | `require_finite`, `finite_scalar`, `finite_series` | fx_rates, fx_pairs |
 | `qp_core.metrics` | Downside deviation, drawdown (equity, returns, P&L), annualisation | eq_pairs, eq_port, eq_algo, eq_risk_metrics, fx_pairs, fx_port |
@@ -57,5 +58,10 @@ the config with 0.5 bp.
 
 ## Limitations
 
-The calendars know fixed-date holidays only; moveable feasts and observance
-rules are missing.
+`qp_core.calendars` knows fixed-date holidays only; moveable feasts and
+observance rules are missing there. `qp_core.holidays` has the full rules
+for its seven centres, but only the closures known when the rules were
+written. A newly announced one-off closure (a state funeral, say) goes in
+two steps: `add_closure("GBP", date)` at runtime straight away, then a
+dated line in the currency's rule function with its official notice cited
+and a test that pins it. The module docstring spells out the procedure.
