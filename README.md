@@ -434,10 +434,10 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
 - Not implemented: structural (Merton/KMV) PD, FRTB NMRF/SES and the
   default risk charge. CHANGELOG.md lists the other known issues.
 - The ISDA CDS module has not been compared with ISDA's published test
-  grid (a licence click-through). Its outside check is a one-off comparison
-  with QuantLib 1.44 `IsdaCdsEngine` made during the November 2026 review
-  (par spread and upfront agree to about 1e-9, RPV01 to about 1e-7); that comparison is not a CI
-  test. Business-day calendars are optional (`calendar=`); the default is
+  grid (a licence click-through). It is checked against QuantLib 1.44
+  `IsdaCdsEngine` in an optional test (`test_isda_cds_quantlib.py`, skipped
+  unless QuantLib is installed; not run in CI): protection legs to 1e-12,
+  risky annuity and par spread to 1e-7 relative. Business-day calendars are optional (`calendar=`); the default is
   weekends only.
 - `fx_surface.ssvi` misses five-point FX smiles by up to about one vol
   point on USDJPY (about 0.5 on EURUSD); eSSVI does not close the gap. See

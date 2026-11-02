@@ -35,6 +35,14 @@ dataset (the research entries use ECB reference rates).
   on the forward data is the expected outcome. `prereg.py sign` refuses a
   registration that names no power file.
 
+#### CDS cross-check against QuantLib
+
+- `python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py`: three
+  flat-curve cases against QuantLib `IsdaCdsEngine` (NoBias, Taylor).
+  Protection legs agree to 1e-12 relative, risky annuity and par spread to
+  1e-7 relative, trade-date value to 1e-8. Skipped unless QuantLib is
+  installed; QuantLib is not a CI dependency.
+
 #### Shared normal CDF
 
 - `qp_core.normal` (`norm_cdf`, `norm_pdf`): one definition for the option
@@ -621,9 +629,8 @@ number it affects can be read with the right caveat.
 - The ISDA CDS standard model (`eq_credit.isda_cds`) has not been compared
   with the ISDA published test grid, because downloading the grid needs a
   licence click-through. Its in-repo checks are internal (identities and
-  hand examples); the one outside check is a review comparison with
-  QuantLib 1.44 `IsdaCdsEngine` (par spread and upfront to about 1e-9),
-  which is not a CI test.
+  hand examples) plus an optional QuantLib 1.44 `IsdaCdsEngine` test
+  (skipped unless QuantLib is installed; not run in CI).
 - The ISDA CDS module defaults to a weekends-only calendar; pass
   `calendar=` to roll over a centre's holidays.
 - One-off closures (a state funeral, say) must be added with
