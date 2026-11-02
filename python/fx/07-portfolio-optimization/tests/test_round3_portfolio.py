@@ -8,7 +8,15 @@ from fx_port.cost_qp import no_trade_band_solution, rebalance
 from fx_port.factor_model import decompose_risk, fit_factor_model
 from fx_port.hrp import hrp_weights
 from fx_port.robust_mvo import mean_variance_weights, resampled_weights, robust_weights
-from fx_port.sharpe_tests import sharpe_diff_bootstrap, sharpe_diff_gradient, sharpe_diff_hac
+from fx_port.sharpe_tests import (
+    hac_cov,
+    hac_cov_qs_prewhitened,
+    qs_bandwidth,
+    qs_kernel,
+    sharpe_diff_bootstrap,
+    sharpe_diff_gradient,
+    sharpe_diff_hac,
+)
 from fx_port.tracking_error import (
     information_ratio_bound,
     max_ir_active_weights,
@@ -204,3 +212,108 @@ def test_hac_widens_under_autocorrelation_and_bootstrap_detects_difference():
     big = rng.normal(size=(2000, 2))
     assert sharpe_diff_bootstrap(0.3 + big[:, 0], big[:, 1], n_boot=300) < 0.01
     assert sharpe_diff_bootstrap(big[:, 0], big[:, 1], n_boot=300) > 0.05
+
+
+# --- Ledoit-Wolf: prewhitened QS HAC and studentised bootstrap ----------------
+
+
+def _ar1(rng, t, rho, k=1):
+    e = rng.normal(size=(t, k))
+    x = np.empty_like(e)
+    x[0] = e[0] / np.sqrt(1.0 - rho**2)
+    for i in range(1, t):
+        x[i] = rho * x[i - 1] + e[i]
+    return x
+
+
+def test_qs_kernel_values():
+    x = np.array([0.0, 1e-6, 0.5, 1.0, 3.0])
+    a = 6 * np.pi * x[2:] / 5
+    expect = 25 / (12 * np.pi**2 * x[2:] ** 2) * (np.sin(a) / a - np.cos(a))
+    k = qs_kernel(x)
+    assert k[0] == 1.0 and k[1] == pytest.approx(1.0, abs=1e-9)
+    np.testing.assert_allclose(k[2:], expect, rtol=1e-14)
+    # Andrews (1991): the QS kernel has characteristic exponent 2 with
+    # k_2 = lim (1 - k(x)) / x^2 = 18 pi^2 / 125.
+    assert (1.0 - qs_kernel(np.array([1e-3]))[0]) / 1e-6 == pytest.approx(18 * np.pi**2 / 125, rel=1e-5)
+
+
+def test_qs_bandwidth_ar1_plug_in():
+    # One AR(1) series: alpha(2) = 4 rho^2 / (1 - rho)^4 exactly in the estimates.
+    rng = np.random.default_rng(11)
+    e = _ar1(rng, 5000, 0.4)
+    x0, x1 = e[:-1, 0], e[1:, 0]
+    rho = x0 @ x1 / (x0 @ x0)
+    assert qs_bandwidth(e) == pytest.approx(1.3221 * (4 * rho**2 / (1 - rho) ** 4 * 5000) ** 0.2,
+                                            rel=1e-12)
+
+
+def test_prewhitened_qs_recovers_ar1_long_run_variance():
+    rng = np.random.default_rng(12)
+    x = _ar1(rng, 200_000, 0.5)
+    assert hac_cov_qs_prewhitened(x)[0, 0] == pytest.approx(1.0 / 0.5**2, rel=0.03)
+    # A VAR(1): Psi = (I - A)^{-1} Sigma (I - A)^{-T} with Sigma = I.
+    a = np.array([[0.5, 0.2], [0.0, 0.3]])
+    e = rng.normal(size=(200_000, 2))
+    z = np.empty_like(e)
+    z[0] = e[0]
+    for i in range(1, len(e)):
+        z[i] = a @ z[i - 1] + e[i]
+    inv = np.linalg.inv(np.eye(2) - a)
+    np.testing.assert_allclose(hac_cov_qs_prewhitened(z), inv @ inv.T, rtol=0.04, atol=0.04)
+
+
+def test_prewhitened_qs_on_iid_data_is_close_to_sample_covariance():
+    rng = np.random.default_rng(13)
+    y = rng.multivariate_normal([0, 0], [[1.0, 0.3], [0.3, 2.0]], size=50_000)
+    np.testing.assert_allclose(hac_cov_qs_prewhitened(y), hac_cov(y, 0), rtol=0.05, atol=0.02)
+    with pytest.raises(ValueError):
+        hac_cov_qs_prewhitened(y[:5])
+    with pytest.raises(ValueError):
+        hac_cov_qs_prewhitened(y, bandwidth=-1.0)
+
+
+def test_hac_qs_pw_matches_memmel_and_widens_under_autocorrelation():
+    rng = np.random.default_rng(6)
+    t, rho = 200_000, 0.6
+    z = rng.multivariate_normal([0.0, 0.0], [[1, rho], [rho, 1]], size=t)
+    r1, r2 = 0.05 + 1.0 * z[:, 0], 0.02 + 0.5 * z[:, 1]
+    s1, s2 = 0.05, 0.04
+    memmel = np.sqrt((2 - 2 * rho + 0.5 * (s1**2 + s2**2 - 2 * s1 * s2 * rho**2)) / t)
+    assert sharpe_diff_hac(r1, r2, kernel="qs_pw").se == pytest.approx(memmel, rel=0.03)
+    x = _ar1(rng, 3000, 0.6, k=2)
+    q1, q2 = 0.02 + x[:, 0], 0.02 + x[:, 1]
+    assert sharpe_diff_hac(q1, q2, kernel="qs_pw").se > 1.3 * sharpe_diff_hac(q1, q2).se
+    with pytest.raises(ValueError):
+        sharpe_diff_hac(q1, q2, kernel="parzen")
+
+
+def test_studentised_bootstrap_size_and_power():
+    # Under H0 with autocorrelated returns the 5 % test should reject about
+    # 5 % of the time; allow sampling noise over 60 seeded replications.
+    rng = np.random.default_rng(14)
+    rejections = 0
+    for i in range(60):
+        x = _ar1(rng, 300, 0.3, k=2)
+        p = sharpe_diff_bootstrap(0.1 + x[:, 0], 0.1 + x[:, 1], block=10, n_boot=199, seed=i)
+        rejections += p < 0.05
+    assert rejections <= 9  # P(Binomial(60, 0.05) > 9) < 0.01
+    big = rng.normal(size=(2000, 2))
+    assert sharpe_diff_bootstrap(0.3 + big[:, 0], big[:, 1], n_boot=300) < 0.01
+
+
+def test_basic_bootstrap_option_is_the_old_centred_statistic():
+    rng = np.random.default_rng(15)
+    x = rng.normal(size=(250, 2)) + np.array([0.1, 0.0])
+    t, block, n_boot = 250, 5, 200
+    d = x[:, 0].mean() / x[:, 0].std() - x[:, 1].mean() / x[:, 1].std()
+    g = np.random.default_rng(3)
+    hits = 0
+    for _ in range(n_boot):
+        starts = g.integers(0, t, t // block)
+        xs = x[((starts[:, None] + np.arange(block)) % t).ravel()]
+        ds = xs[:, 0].mean() / xs[:, 0].std() - xs[:, 1].mean() / xs[:, 1].std()
+        hits += abs(ds - d) >= abs(d)
+    expect = (hits + 1) / (n_boot + 1)
+    got = sharpe_diff_bootstrap(x[:, 0], x[:, 1], block, n_boot, seed=3, studentize=False)
+    assert got == pytest.approx(expect, abs=1e-12)

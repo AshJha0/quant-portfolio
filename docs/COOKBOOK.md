@@ -2079,8 +2079,9 @@ print(round(alo, 5), round(lr, 5), f"{abs(alo - lr):.1e}")
 
 The 1e-4 gap is mostly the tree's own error at 2001 steps; the package
 test compares ALO with a Richardson-extrapolated tree (2001 and 4001
-steps) and gets within 2e-5. ALO raises for negative rates and for
-`r < q < 0`.
+steps) and gets within 2e-5. Negative rates work too, including the
+`q < r < 0` put (and `r < q < 0` call) where the exercise region is a band
+between two boundaries; pass `n_march` to trade speed for accuracy there.
 
 ### How do I price an American call on a stock with one discrete dividend?
 

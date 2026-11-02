@@ -12,7 +12,7 @@ import mpmath as mp
 import numpy as np
 import pytest
 from eq_options import bs_greeks, bs_price
-from eq_options.alo import alo_price
+from eq_options.alo import alo_double_boundary, alo_price
 from eq_options.bachelier import bachelier_greeks, bachelier_implied_vol, bachelier_price
 from eq_options.dividends import bs_price_discrete_divs, lr_price_discrete_divs, rgw_call
 from eq_options.greeks_higher import higher_greeks
@@ -285,3 +285,54 @@ def test_scenario_grid_full_revaluation():
     assert g[2, 1] == 0.0
     base = book_value(BOOK, 100.0, 0.03, 0.22, 0.01)
     assert g[0, 2] == pytest.approx(book_value(BOOK, 90.0, 0.03, 0.27, 0.01) - base, rel=1e-14)
+
+
+# ------------------------------------------- ALO, negative rates ---------
+@pytest.mark.parametrize("a", [
+    (100.0, 100.0, 1.0, 0.05, 0.2, -0.02, "put"),    # r > 0 > q: single boundary, X = K
+    (90.0, 100.0, 2.0, 0.01, 0.25, -0.01, "put"),
+    (100.0, 100.0, 1.0, 0.0, 0.2, -0.03, "put"),     # r = 0 > q
+    (100.0, 100.0, 1.0, -0.02, 0.2, 0.01, "call"),   # negative-rate call = put with q < 0
+])
+def test_alo_negative_rates_single_boundary(a):
+    assert alo_price(*a) == pytest.approx(_lr_richardson(*a), abs=2e-5)
+
+
+@pytest.mark.parametrize("a", [
+    (100.0, 100.0, 1.0, -0.005, 0.2, -0.02, "put"),  # q < r < 0
+    (100.0, 100.0, 1.0, -0.01, 0.1, -0.03, "put"),
+    (95.0, 100.0, 3.0, -0.01, 0.2, -0.02, "put"),    # T beyond tau*: the band has closed
+    (100.0, 100.0, 1.0, -0.03, 0.2, -0.01, "call"),  # r < q < 0 call
+])
+def test_alo_double_boundary_matches_extrapolated_tree(a):
+    assert alo_price(*a) == pytest.approx(_lr_richardson(*a), abs=2e-5)
+
+
+def test_alo_double_boundary_converges_with_the_grid():
+    a = (100.0, 100.0, 1.0, -0.005, 0.2, -0.02, "put")
+    ref = _lr_richardson(*a)
+    e = [abs(alo_price(*a, n_march=n) - ref) for n in (100, 200, 400)]
+    assert e[0] > e[1] > e[2] and e[0] / e[2] > 6.0
+
+
+def test_alo_double_boundary_band_shape():
+    K, r, q = 100.0, -0.01, -0.02
+    u, lo, hi = alo_double_boundary(K, 3.0, r, 0.2, q)
+    assert lo[0] == pytest.approx(K * r / q) and hi[0] == K
+    assert np.all(np.diff(hi) <= 0.0) and np.all(np.diff(lo) >= 0.0) and np.all(hi > lo)
+    assert 1.0 < u[-1] < 3.0                 # the band closes before T = 3
+    assert hi[-1] - lo[-1] < 0.05 * (hi[0] - lo[0])
+    u1, lo1, hi1 = alo_double_boundary(K, 0.25, r, 0.2, q)
+    assert u1[-1] == 0.25
+    s_in = 0.5 * (lo1[-1] + hi1[-1])         # inside the band: exercise now
+    assert alo_price(s_in, K, 0.25, r, 0.2, q, "put") == K - s_in
+    with pytest.raises(ValueError):
+        alo_double_boundary(K, 1.0, -0.02, 0.2, -0.01)
+
+
+def test_alo_negative_rate_no_exercise_regions_are_european():
+    # r <= q < 0 put and q <= r < 0 call: the carry never pays in the money.
+    for a in [(100.0, 100.0, 1.0, -0.01, 0.2, -0.005, "put"),
+              (100.0, 100.0, 1.0, -0.005, 0.2, -0.01, "call")]:
+        assert alo_price(*a) == bs_price(*a)
+        assert alo_price(*a) == pytest.approx(_lr_richardson(*a), abs=2e-5)

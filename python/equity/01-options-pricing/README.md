@@ -131,11 +131,12 @@ New modules, each with an oracle test in `tests/test_phase5_models.py`:
 |---|---|---|
 | `lr_tree` | Leisen-Reimer tree, European and American | Black-Scholes; error falls 4x per doubling of steps |
 | `pde` | Crank-Nicolson with Rannacher start, Brennan-Schwartz American | Black-Scholes; extrapolated LR tree; order-2 convergence |
-| `alo` | Andersen-Lake-Offengeim American pricer | LR tree at 2001/4001 steps, Richardson-extrapolated, to 2e-5 |
+| `alo` | Andersen-Lake-Offengeim American pricer, including negative rates and the `q < r < 0` double boundary | LR tree at 2001/4001 steps, Richardson-extrapolated, to 2e-5 |
 | `dividends` | Escrowed cash dividends, Roll-Geske-Whaley, dividend tree | Haug's published RGW value 4.3860 |
 | `term_structure` | Zero curve, vol term structure, Merton averaging | Closed-form averages; flat curves equal `bs_price` |
 | `bachelier` | Normal model price, Greeks, implied normal vol | mpmath integral and derivatives at 30 digits |
 | `sabr` | Hagan and Obloj SABR vols, stable ATM evaluation, density check | Hagan's ATM formula; beta = 1, nu = 0 gives alpha |
+| `sabr_pde` | Arbitrage-free SABR density by the Hagan et al. (2014) PDE on a Le Floc'h-Kennedy grid | Exact mass and forward conservation; non-negative density; Hagan's expansion at short expiry |
 | `greeks_higher` | Charm, speed, colour, zomma, veta | `mpmath.diff` of the price at 30 digits |
 | `risk_grids` | Spot ladder, vega by expiry bucket, spot-by-vol P&L grid | Direct repricing; bucket totals equal book vega |
 

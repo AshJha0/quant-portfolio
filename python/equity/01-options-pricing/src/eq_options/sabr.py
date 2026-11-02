@@ -28,10 +28,11 @@ Formal statement.
   at low strikes (Hagan, Kumar, Lesniewski and Woodward 2014, "Arbitrage-
   free SABR", Wilmott 69, 60-75, section 1).
 
-The brief asks for "the Le Floc'h fix". The arbitrage-free PDE of Hagan et
-al. (2014) as made practical by Le Floc'h and Kennedy (2014, "Finite
-difference techniques for arbitrage-free SABR", J. Comput. Finance 18(3))
-is not implemented here; the density check only detects the problem.
+The fix for that arbitrage, the arbitrage-free PDE of Hagan et al. (2014)
+on the grid and time stepping of Le Floc'h and Kennedy (2014, "Finite
+difference techniques for arbitrage-free SABR", J. Comput. Finance
+20(3)), lives in :mod:`eq_options.sabr_pde`; this module's density check
+detects the problem, that one removes it.
 
 Worked example: ``F = K = 0.03, T = 5, alpha = 0.02, beta = 0.5,
 rho = -0.3, nu = 0.4``: both variants give 0.121209 at the money; at
