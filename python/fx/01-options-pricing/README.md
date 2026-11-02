@@ -114,3 +114,11 @@ atm = atm_dns_strike(147.5, 0.5, 0.0050, 0.0525, 0.1075, "forward_pa")
 - **Desk usage** (vol/delta quoting, delta-vega-vanna-volga buckets,
   25Δ RR/BF marking, NY/Tokyo cuts, T+2, scenario playbook):
   `docs/DESK_GUIDE.md`.
+
+## Phase 5 additions (Round 3)
+
+| Module | What it does | Oracle (`tests/test_phase5_fx.py`) |
+|---|---|---|
+| `smile` | ATM/25-delta RR/BF to a three-point smile; smile-consistent strike from delta | The quotes are recovered exactly; delta round trip to 1e-12 under all four delta conventions |
+| `premium` | Four premium styles and conversions; cash premium amount | Foreign pips equals the inverse-pair GK price |
+| `cuts` | Spot dates, tenor expiry and delivery, NY/TOK/ECB cuts, time to the cut | Hand-checked dates, end-of-month rule, DST shifts |

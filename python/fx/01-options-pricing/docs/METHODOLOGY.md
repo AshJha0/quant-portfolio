@@ -150,3 +150,21 @@ Each assumption states what breaks when it is violated.
 - **Golden vectors**: 434 records computed in mpmath at 50 digits
   (`tests/golden/generate_golden.py`), each output with its own tolerance;
   the Python, C++ and Rust engines consume the same file.
+
+## 5. Smile, premium styles, cuts and dates (Round 3)
+
+* **Smile**: smile-strangle reading of the butterfly,
+  `sigma_25C = ATM + BF + RR/2`, `sigma_25P = ATM + BF - RR/2`
+  (Reiswich and Wystup 2010; Clark 2011, ch. 3). Pillar strikes under the
+  pair's delta convention; quadratic in log-moneyness between pillars, flat
+  outside. Strike from delta solves `delta(K, sigma(K)) = target`, taking
+  the branch away from ATM (the market branch for premium-adjusted calls).
+  The broker-strangle conversion is not implemented.
+* **Premium styles**: domestic pips, foreign %, domestic %, foreign pips
+  (Wystup 2017, section 1.5.6).
+* **Dates and cuts**: spot lag 1 for USDCAD/TRY/RUB, else 2; month tenors
+  from the spot date with modified following and end-of-month; expiry is
+  the latest business day whose spot date is on or before delivery. Cuts
+  NY 10:00, Tokyo 15:00, ECB 14:15 Frankfurt, via `zoneinfo`; time to
+  expiry is ACT/365F to the cut instant. Holidays are supplied by the
+  caller; no calendar ships with the package.

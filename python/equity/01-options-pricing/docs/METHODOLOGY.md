@@ -149,3 +149,35 @@ is demonstrated or tested.
 - **Path-dependent/multi-asset/exotic dynamics:** Monte Carlo (with the
   variance-reduction toolkit and CI reporting shipped here).
 - **Sizing model risk of any of the above:** the hedging simulator.
+
+## 4. Phase 5 models (Round 3)
+
+Each module's docstring gives the plain idea, the formal statement with its
+reference (paper, section, equation) and a worked example. In short:
+
+* **Leisen-Reimer** (1996): probabilities from a Peizer-Pratt inversion of
+  `d1` and `d2`, so the tree centres on the strike. European error O(1/n^2)
+  without the CRR odd/even wobble. Use it as the default tree.
+* **Crank-Nicolson** in log-spot with two implicit half steps first
+  (Rannacher 1984) and Brennan-Schwartz projection for American exercise.
+  Second order in both grids; slower than ALO, but it extends to payoffs a
+  boundary method cannot price.
+* **Andersen-Lake-Offengeim** (2016): exercise boundary by the FP-B fixed
+  point on Chebyshev nodes, Gauss-Legendre quadrature after removing the
+  `1/sqrt(tau - u)` singularity. The fastest accurate American pricer
+  here. Scope: put with `r > 0, q >= 0` (calls by put-call symmetry); no
+  negative-rate double boundary.
+* **Discrete dividends**: escrowed model (spot less the dividends' present
+  value is lognormal). Roll-Geske-Whaley for one dividend on a call; an LR
+  tree on the escrowed spot for several dividends or puts.
+* **Term structures**: Merton (1973) averages; rates linear in `r(t) t`,
+  vols linear in total variance, which rejects calendar arbitrage.
+* **Bachelier**: normal model for quotes in normal vol.
+* **SABR**: Hagan et al. (2002) and Obloj (2008) variants; West (2005)
+  stable evaluation of `z/x(z)` near the money (series plus `log1p`). A
+  Breeden-Litzenberger density check flags the expansion's known negative
+  density at low strikes. The arbitrage-free SABR PDE is not implemented.
+* **Higher-order Greeks**: Haug (2007) formulas; time derivatives are per
+  year in calendar time, the same sign convention as `theta`.
+* **Ladders and grids**: full revaluation, no Taylor terms; vega split
+  linearly between neighbouring expiry buckets (a convention).
