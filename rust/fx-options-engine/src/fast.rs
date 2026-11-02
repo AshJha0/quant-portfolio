@@ -36,7 +36,8 @@ use std::fmt;
 use crate::garman_kohlhagen::MIN_VOL;
 use crate::iv_core::black_implied_vol;
 use crate::rng::Xoshiro256StarStar;
-use crate::{norm_cdf, norm_pdf, Exercise, GreeksResult, McResult, OptionType};
+use crate::{Exercise, GreeksResult, McResult, OptionType};
+use qp_core::black_scholes::{carry_d1_d2, carry_greeks, carry_value, TruncatedC1Normal};
 
 /// Error code of the low-latency kernels. `Copy`, one byte, no heap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -143,9 +144,8 @@ fn gk_core(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64, phi: f64) -> 
     if vol_sqrt_t <= MIN_VOL {
         (phi * (disc_s - disc_k)).max(0.0)
     } else {
-        let d1v = ((s / k).ln() + (r_d - r_f + 0.5 * sigma * sigma) * t) / vol_sqrt_t;
-        let d2v = d1v - sigma * t.sqrt();
-        phi * (disc_s * norm_cdf(phi * d1v) - disc_k * norm_cdf(phi * d2v))
+        let (d1v, d2v) = carry_d1_d2(s, k, t, r_d, r_f, sigma);
+        carry_value::<TruncatedC1Normal>(disc_s, disc_k, d1v, d2v, phi)
     }
 }
 
@@ -183,31 +183,10 @@ fn greeks_core(
     if vol_sqrt_t <= MIN_VOL {
         return Err(KernelError::ZeroVol);
     }
-    let d1v = ((s / k).ln() + (r_d - r_f + 0.5 * sigma * sigma) * t) / vol_sqrt_t;
-    let d2v = d1v - sigma * t.sqrt();
-    let df_f = (-r_f * t).exp();
-    let df_d = (-r_d * t).exp();
-    let sqrt_t = t.sqrt();
-    let n_d1 = norm_pdf(d1v);
-    let nc_pd1 = norm_cdf(phi * d1v);
-    let nc_pd2 = norm_cdf(phi * d2v);
-
-    let price = phi * (s * df_f * nc_pd1 - k * df_d * nc_pd2);
-    let delta_spot = phi * df_f * nc_pd1;
-    let theta = -s * df_f * n_d1 * sigma / (2.0 * sqrt_t)
-        + phi * (r_f * s * df_f * nc_pd1 - r_d * k * df_d * nc_pd2);
-    Ok(GreeksResult {
-        price,
-        delta_spot,
-        delta_forward: phi * nc_pd1,
-        gamma: df_f * n_d1 / (s * sigma * sqrt_t),
-        vega: s * df_f * n_d1 * sqrt_t,
-        theta,
-        rho_domestic: phi * k * t * df_d * nc_pd2,
-        rho_foreign: -phi * s * t * df_f * nc_pd1,
-        vanna: -df_f * n_d1 * d2v / sigma,
-        volga: s * df_f * n_d1 * sqrt_t * d1v * d2v / sigma,
-    })
+    // Shared carry-form kernel, as in [`crate::analytic_greeks`].
+    Ok(crate::greeks::from_carry(
+        &carry_greeks::<TruncatedC1Normal>(s, k, t, r_d, r_f, sigma, phi),
+    ))
 }
 
 /// Analytic GK Greeks. Same bits as [`crate::analytic_greeks`].

@@ -24,6 +24,7 @@
 use std::fmt;
 
 use crate::fast::ErrorCode;
+use qp_core::black_scholes::{carry_d1_d2, carry_value, ErfcNormal};
 
 /// Option payoff direction.
 ///
@@ -421,11 +422,11 @@ pub(crate) fn bs_price_core(
         // forward itself overflows when (r - q) T > 709.
         (option_type.sign() * (disc_s - disc_k)).max(0.0)
     } else {
+        // Shared carry-form kernel (qp_core::black_scholes). The + 0.0 turns
+        // the -0.0 the phi form gives for a put worth exactly zero into the
+        // +0.0 this function has always returned; no other value moves.
         let (d1, d2) = d1_d2_core(s, k, t, r, sigma, q);
-        match option_type {
-            OptionType::Call => disc_s * norm_cdf(d1) - disc_k * norm_cdf(d2),
-            OptionType::Put => disc_k * norm_cdf(-d2) - disc_s * norm_cdf(-d1),
-        }
+        carry_value::<ErfcNormal>(disc_s, disc_k, d1, d2, option_type.sign()) + 0.0
     }
 }
 
@@ -433,9 +434,7 @@ pub(crate) fn bs_price_core(
 /// as [`d1_d2`]).
 #[inline]
 pub(crate) fn d1_d2_core(s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64) -> (f64, f64) {
-    let sqrt_t = t.sqrt();
-    let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
-    (d1, d1 - sigma * sqrt_t)
+    carry_d1_d2(s, k, t, r, q, sigma)
 }
 
 /// Return `value`, or [`PricingError::InvalidInput`] if it is not finite

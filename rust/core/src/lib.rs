@@ -39,6 +39,7 @@
 use std::fmt;
 
 pub mod bench;
+pub mod black_scholes;
 pub mod gemm;
 pub mod iv;
 pub mod linalg;

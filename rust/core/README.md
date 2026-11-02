@@ -15,6 +15,7 @@ differential test passes unchanged.
 | `rng` | `splitmix64`, `SplitMix64`, `Xoshiro256PlusPlus` (cached Box-Muller normal), `Xoshiro256StarStar`, the open and half-open uniform maps, `box_muller`, the Marsaglia-Tsang gamma loop | all four engines |
 | `special` | Cody `erf`/`erfc` in two coefficient tables, normal CDF and PDF, the Acklam rational inverse normal, one Halley step | all four engines |
 | `iv` | Normalised-Black implied-vol core (same algorithm as the Python and C++ engines), generic over the erf table | both options engines |
+| `black_scholes` | Black-Scholes in cost-of-carry form (`b = r - q = r_d - r_f`): `carry_d1_d2`, `carry_value`, `carry_price`, `carry_greeks`, generic over the normal pair (`ErfcNormal` for equity, `TruncatedC1Normal` for FX) | both options engines |
 | `roots` | Brent's method with `scipy.optimize.brentq` semantics | FX options |
 | `linalg` | Row-major Cholesky kernel that rejects NaN pivots | both VaR engines |
 | `par` | Fixed-chunk scoped-thread helper; results do not depend on the thread count | FX VaR |
