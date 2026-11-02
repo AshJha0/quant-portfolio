@@ -16,6 +16,41 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Shared code, bindings and build (Round 2)
+
+- `qp-core` 1.0.0 at `python/core` (import `qp_core`): statistics,
+  execution fill rule, calendars, day counts, validation and metrics shared
+  by 12 Python projects, which declare `qp-core>=1.0`. Their old import paths
+  re-export it. The other 11 projects have no shared copies and are
+  unchanged.
+- Root `pyproject.toml` with a uv workspace (`python/core` and the 23
+  projects) and `uv.lock`. The mypy configuration is in the same file.
+- `qp::core` at `cpp/core`: a header-only CMake target with the code the four
+  C++ engines used to copy (normal CDF, implied-vol core, RNG, special
+  functions, matrix and linear algebra, Brent, thread pool, `expected`,
+  latency bench helper). `CMakePresets.json` in each engine and in
+  `cpp/core` with the presets `gcc`, `clang`, `gcc16-cxx26`, `asan`, `tsan`
+  and `msvc`. `QP_CXX26=ON` compiles with C++26 (contracts, `std::simd`
+  where available). Root `.clang-format` and clang-tidy configuration.
+- Rust: `rust/` is one Cargo workspace with a fifth crate, `qp-core` 0.1.0
+  (standard library only, `forbid(unsafe_code)`): RNGs, special functions,
+  implied-vol core, `brentq`, Cholesky, thread partitioning. One
+  `Cargo.lock`; toolchain pinned in `rust/rust-toolchain.toml` (1.99.1). The
+  bench binaries take `--out <path>`.
+- `qp-cpp` 0.1.0 (`bindings/cpp-nanobind`, nanobind) and `qp-rust` 0.1.0
+  (`bindings/rust-pyo3`, PyO3, abi3 for Python 3.10+): Python bindings for
+  the four C++ engines and the four Rust crates. Each is tested against the
+  Python reference packages.
+- CI jobs: `py core`, `lint` (`uv lock --check`, ruff, mypy), C++ presets on
+  GCC and Clang, a GCC 16 container in C++26 mode, MSVC on Windows,
+  `clang-format` and `clang-tidy`, a Rust job per workspace crate including
+  `qp-core`, `rust fmt`, `bind <package>` and `bench` (fails when a kernel
+  whose committed p50 is above 1 us is more than 2x slower).
+- CI pins for ruff, mypy, nanobind, scikit-build-core and maturin.
+  `pandas-stubs` and `scipy-stubs` are pinned in
+  `requirements/ci-constraints.txt` for Python 3.12 and later only; the
+  `lint` job installs them for mypy.
+
 #### Infrastructure
 
 - CI runs every Python project in its own environment on Python 3.10, 3.11,
@@ -116,6 +151,28 @@ come from seeded synthetic data.
   CI jobs.
 
 ### Changed
+
+#### Round 2
+
+- Equity EWMA covariance seeds from the zero-mean second moment mean(r r')
+  of the first min(30, T) rows (convention S8) in Python, C++ and Rust, so
+  the forecast at a date uses no later data.
+- Rust eq-options `fast::try_mc_price` rejects `threads == 0` with
+  `ErrorCode::BadThreads`, as the C++ engine does. The other entry points
+  keep their behaviour; CONVENTIONS.md lists which reject 0 and which treat
+  it as 1.
+- Rust crate versions: eq-options 0.2.0, fx-options 1.1.0, eq-var 0.3.0,
+  fx-var 0.3.0. The engines take their shared numerics from `qp-core`. No
+  number moves: a bit-identity harness and the JSONL shims give
+  byte-identical output against the previous main.
+- The C++ engines take their shared code from `qp::core` with byte-identical
+  results. CMake 3.25 is now the minimum. All C++ is formatted with the root
+  `.clang-format` and builds clean under MSVC `/W4 /WX`.
+- `HestonParams` uses one field order, `(v0, kappa, theta, xi, rho)`, in
+  `eq_surface` and `fx_surface`. Pass the fields by keyword.
+- Python: ruff and mypy report no findings over `python/`. No result
+  changed.
+- `bindings/rust-pyo3/Cargo.lock` includes the `qp-core` crate.
 
 #### VaR and ES (behaviour and golden changes)
 
@@ -225,6 +282,8 @@ come from seeded synthetic data.
 Each stays for one release with a `DeprecationWarning` (Python),
 `#[deprecated]` (Rust) or `[[deprecated]]` (C++).
 
+- Positional `HestonParams(...)` in `eq_surface` (old order
+  `(v0, kappa, theta, rho, xi)`) and `fx_surface`.
 - Options: Python `implied_vol` arguments `tol`, `max_iter`, `sigma_lo`,
   `sigma_hi` (ignored); `IV_PRICE_TOL`; the old C++ `implied_vol` overloads.
 - VaR: positional `kupiec_pof`; the FX `confidence=` keyword; FX
@@ -264,6 +323,19 @@ Each stays for one release with a `DeprecationWarning` (Python),
   statements, "independent" codebases, bootstrap SE coverage, stale
   Cornish-Fisher grid text, dangling references, the "Real Data" title of a
   synthetic-data project, and the descriptions of CI and the count mechanism.
+
+### Known limitations
+
+- The Python reference packages have no `engine="python"|"cpp"|"rust"`
+  switch. It was not part of Round 2 and is deferred to Round 3. Use
+  `qp_cpp` or `qp_rust` directly.
+- The bindings do not cover the FX VaR Monte Carlo, book-level VaR, deltas
+  and strikes from delta, Black-76, Christoffersen or Acerbi-Szekely.
+- The `gcc16-cxx26` preset has not been run yet. GCC 16 is not installed
+  locally; CI runs the preset in a `gcc:16` container.
+- The C++ `uniform_open53` draw can return exactly 1.0 with probability
+  2^-53. Fixing it changes the Monte Carlo goldens, so it waits for a release
+  that regenerates them.
 
 ## [1.1.0] - 2026-09-06
 

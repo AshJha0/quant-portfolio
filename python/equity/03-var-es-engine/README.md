@@ -28,7 +28,7 @@ full list of conventions is in [METHODOLOGY.md](docs/METHODOLOGY.md) §2.
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest -p no:cacheprovider -q   # 578 tests, offline
+python -m pytest -p no:cacheprovider -q   # 579 tests, offline
 python examples/run_pipeline.py           # full demo
 ```
 
@@ -75,7 +75,7 @@ paths on the demo book takes 0.03 s (`monte_carlo_pnl(..., method="full")`).
 
 | Command | Result | Wall time |
 |---|---|---|
-| `python -m pytest -p no:cacheprovider -q` | 578 passed | 28 s alone, 72 s with other jobs on the machine |
+| `python -m pytest -p no:cacheprovider -q` | 579 passed | 28 s alone, 72 s with other jobs on the machine |
 
 `tests/test_fuzz_public_api.py` sends NaN, infinities, empty arrays and
 out-of-domain values to every name in `eq_var.__all__`. Golden vectors for

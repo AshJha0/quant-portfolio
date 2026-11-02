@@ -84,9 +84,8 @@ struct StressRow {
 
 /// Full-revaluation P&L of `book` under each scenario, sorted
 /// worst-first.  Shocks on factors the book does not carry are dropped.
-std::vector<StressRow> run_stress(
-    const Book& book, const Market& market,
-    const std::map<std::string, Scenario>& scenarios);
+std::vector<StressRow> run_stress(const Book& book, const Market& market,
+                                  const std::map<std::string, Scenario>& scenarios);
 
 /// Reverse-stress outcome: the worst-case factor shock and its loss.
 struct ReverseStress {
@@ -99,21 +98,20 @@ struct ReverseStress {
 /// maximised at dx* = -radius * Sigma w / sqrt(w' Sigma w) with loss
 /// radius * sqrt(w' Sigma w).  Throws if the book has zero linear risk or
 /// radius <= 0.
-ReverseStress reverse_stress_linear(const std::vector<double>& exposures,
-                                    const Matrix& cov, double radius);
+ReverseStress reverse_stress_linear(const std::vector<double>& exposures, const Matrix& cov,
+                                    double radius);
 
 /// As reverse_stress_linear but solving for the radius that produces
 /// `loss_target`: k = loss_target / sqrt(w' Sigma w).
-ReverseStress reverse_stress_for_loss(const std::vector<double>& exposures,
-                                      const Matrix& cov, double loss_target);
+ReverseStress reverse_stress_for_loss(const std::vector<double>& exposures, const Matrix& cov,
+                                      double loss_target);
 
 /// Independent numerical check of the closed form: maximises the linear
 /// loss over the Mahalanobis ellipsoid by projected gradient ascent in
 /// whitened coordinates (dx = L y, |y| = radius) from a seeded random
 /// start - it never assumes the analytic optimum.  Used in tests to
 /// confirm reverse_stress_linear to 1e-6.
-ReverseStress reverse_stress_numerical(const std::vector<double>& exposures,
-                                       const Matrix& cov, double radius,
-                                       std::uint64_t seed = 0);
+ReverseStress reverse_stress_numerical(const std::vector<double>& exposures, const Matrix& cov,
+                                       double radius, std::uint64_t seed = 0);
 
 }  // namespace fxvar

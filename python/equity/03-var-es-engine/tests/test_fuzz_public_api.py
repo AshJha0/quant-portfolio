@@ -11,16 +11,16 @@ arrays, the position of the bad entry.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
-
-import numpy as np
-import pytest
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
+from typing import Any
 
 import eq_var as ev
+import numpy as np
+import pytest
 from eq_var.data import demo_covariance, demo_portfolio
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 NON_FINITE = [np.nan, np.inf, -np.inf]
 BAD_ALPHA = [0.0, 0.5, 0.99, -0.01, 1.0]
@@ -221,7 +221,7 @@ def test_poisoned_input_raises(name, data):
     bad = data.draw(st.sampled_from(choices), label="bad")
     if isinstance(good, np.ndarray):
         if bad == "empty":
-            kwargs[arg] = np.array([]).reshape((0,) + good.shape[1:]) if good.ndim > 1 else np.array([])
+            kwargs[arg] = np.array([]).reshape((0, *good.shape[1:])) if good.ndim > 1 else np.array([])
         else:
             arr = good.astype(float).copy()
             i = data.draw(st.integers(0, arr.size - 1), label="index")

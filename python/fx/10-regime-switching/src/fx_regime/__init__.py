@@ -6,6 +6,13 @@ conditional carry / safe-haven / long-USD baskets -> walk-forward
 backtesting -> oracle-vs-filtered risk analysis.
 """
 
+from .backtest import (
+    BacktestResult,
+    ExecutionConfig,
+    oracle_regimes,
+    run_backtest,
+    static_carry_regimes,
+)
 from .data.synthetic import (
     CURRENCIES,
     EM,
@@ -17,8 +24,6 @@ from .data.synthetic import (
     PIP_FRACTION,
     PIP_SIZE,
     QUOTES,
-    half_spread_fraction,
-    quote_levels,
     SPREAD_PIPS,
     STATE_NAMES_2,
     STATE_NAMES_3,
@@ -27,9 +32,18 @@ from .data.synthetic import (
     SyntheticPanel,
     generate_null_gbm_panel,
     generate_roro_panel,
+    half_spread_fraction,
+    quote_levels,
     simulate_markov_chain,
     state_correlation,
     state_moments,
+)
+from .detection import (
+    DetectionConfig,
+    DetectionResult,
+    apply_hysteresis,
+    label_states,
+    run_detection,
 )
 from .features import (
     FEATURE_COLUMNS,
@@ -40,7 +54,6 @@ from .features import (
     expanding_standardize,
     realised_vol,
 )
-from .pca import PCAResult, fit_pca, roro_axis_check
 from .gmm import GMMResult, fit_gmm, gaussian_logpdf, select_k_bic
 from .hmm import (
     HMMModel,
@@ -55,28 +68,7 @@ from .hmm import (
     stationary_distribution,
     viterbi,
 )
-from .detection import (
-    DetectionConfig,
-    DetectionResult,
-    apply_hysteresis,
-    label_states,
-    run_detection,
-)
-from .strategy import (
-    StrategyConfig,
-    base_weights,
-    carry_accrual,
-    regime_weights,
-    transaction_cost,
-    vol_target_scale,
-)
-from .backtest import (
-    BacktestResult,
-    ExecutionConfig,
-    oracle_regimes,
-    run_backtest,
-    static_carry_regimes,
-)
+from .pca import PCAResult, fit_pca, roro_axis_check
 from .risk import (
     carry_drawdown_decomposition,
     comparison_table,
@@ -89,38 +81,97 @@ from .risk import (
     regime_spells,
     transition_attribution,
 )
+from .strategy import (
+    StrategyConfig,
+    base_weights,
+    carry_accrual,
+    regime_weights,
+    transaction_cost,
+    vol_target_scale,
+)
 
 __all__ = [
-    "ExecutionConfig", "random_timing_regimes", "QUOTES", "PIP_SIZE", "half_spread_fraction", "quote_levels",
     # data
-    "CURRENCIES", "EM", "G10", "G10_CARRY", "G10_NEUTRAL", "HAVENS",
-    "MEAN_DEPOSIT_RATES", "PIP_FRACTION", "SPREAD_PIPS",
-    "STATE_NAMES_2", "STATE_NAMES_3", "TRANSITION_2", "TRANSITION_3",
-    "SyntheticPanel", "generate_null_gbm_panel", "generate_roro_panel",
-    "simulate_markov_chain", "state_correlation", "state_moments",
+    "CURRENCIES",
+    "EM",
     # features
-    "FEATURE_COLUMNS", "FeatureConfig", "avg_pairwise_correlation",
-    "build_features", "carry_basket_weights", "expanding_standardize",
-    "realised_vol",
-    # pca
-    "PCAResult", "fit_pca", "roro_axis_check",
-    # gmm
-    "GMMResult", "fit_gmm", "gaussian_logpdf", "select_k_bic",
-    # hmm
-    "HMMModel", "expected_durations", "filtered_probabilities", "fit_hmm",
-    "hmm_bic", "log_backward", "log_forward", "match_states",
-    "smoothed_probabilities", "stationary_distribution", "viterbi",
-    # detection
-    "DetectionConfig", "DetectionResult", "apply_hysteresis",
-    "label_states", "run_detection",
-    # strategy
-    "StrategyConfig", "base_weights", "carry_accrual", "regime_weights",
-    "transaction_cost", "vol_target_scale",
+    "FEATURE_COLUMNS",
+    "G10",
+    "G10_CARRY",
+    "G10_NEUTRAL",
+    "HAVENS",
+    "MEAN_DEPOSIT_RATES",
+    "PIP_FRACTION",
+    "PIP_SIZE",
+    "QUOTES",
+    "SPREAD_PIPS",
+    "STATE_NAMES_2",
+    "STATE_NAMES_3",
+    "TRANSITION_2",
+    "TRANSITION_3",
     # backtest
-    "BacktestResult", "oracle_regimes", "run_backtest",
-    "static_carry_regimes",
+    "BacktestResult",
+    # detection
+    "DetectionConfig",
+    "DetectionResult",
+    "ExecutionConfig",
+    "FeatureConfig",
+    # gmm
+    "GMMResult",
+    # hmm
+    "HMMModel",
+    # pca
+    "PCAResult",
+    # strategy
+    "StrategyConfig",
+    "SyntheticPanel",
+    "apply_hysteresis",
+    "avg_pairwise_correlation",
+    "base_weights",
+    "build_features",
+    "carry_accrual",
+    "carry_basket_weights",
     # risk
-    "carry_drawdown_decomposition", "comparison_table", "detection_lag",
-    "detection_lag_report", "oracle_gap_decomposition", "per_regime_stats",
-    "perf_stats", "regime_spells", "transition_attribution",
+    "carry_drawdown_decomposition",
+    "comparison_table",
+    "detection_lag",
+    "detection_lag_report",
+    "expanding_standardize",
+    "expected_durations",
+    "filtered_probabilities",
+    "fit_gmm",
+    "fit_hmm",
+    "fit_pca",
+    "gaussian_logpdf",
+    "generate_null_gbm_panel",
+    "generate_roro_panel",
+    "half_spread_fraction",
+    "hmm_bic",
+    "label_states",
+    "log_backward",
+    "log_forward",
+    "match_states",
+    "oracle_gap_decomposition",
+    "oracle_regimes",
+    "per_regime_stats",
+    "perf_stats",
+    "quote_levels",
+    "random_timing_regimes",
+    "realised_vol",
+    "regime_spells",
+    "regime_weights",
+    "roro_axis_check",
+    "run_backtest",
+    "run_detection",
+    "select_k_bic",
+    "simulate_markov_chain",
+    "smoothed_probabilities",
+    "state_correlation",
+    "state_moments",
+    "static_carry_regimes",
+    "stationary_distribution",
+    "transaction_cost",
+    "transition_attribution",
+    "viterbi",
+    "vol_target_scale",
 ]

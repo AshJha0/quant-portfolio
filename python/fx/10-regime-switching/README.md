@@ -39,6 +39,7 @@ synthetic RORO panel (known states, transition matrix, per-state
 
 ```bash
 cd python/fx/10-regime-switching
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 pytest                              # 196 tests, about 15 minutes
 python examples/run_pipeline.py     # 5 to 7 minutes with 6 worker processes

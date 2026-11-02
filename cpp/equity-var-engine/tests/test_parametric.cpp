@@ -14,8 +14,7 @@ TEST(PortfolioSigma, HandComputedTwoAsset) {
     // sigma^2 = w1^2 s11 + 2 w1 w2 s12 + w2^2 s22
     const Matrix cov(2, 2, {4.0e-4, 1.0e-4, 1.0e-4, 2.5e-4});
     const std::vector<double> w = {1.0e6, -2.0e6};
-    const double expected =
-        std::sqrt(1e12 * 4e-4 - 2.0 * 1e6 * 2e6 * 1e-4 + 4e12 * 2.5e-4);
+    const double expected = std::sqrt(1e12 * 4e-4 - 2.0 * 1e6 * 2e6 * 1e-4 + 4e12 * 2.5e-4);
     EXPECT_NEAR(portfolio_sigma(w, cov), expected, 1e-12 * expected);
 }
 
@@ -37,8 +36,7 @@ TEST(ParametricVar, NormalClosedFormTo1e12) {
     const double expected_95 = 1.6448536269514722 * sigma;  // z_0.95, Wichura
     EXPECT_NEAR(parametric_var(w, cov, 0.05), expected_95, 1e-8);
     // Non-zero mean shifts VaR linearly.
-    EXPECT_NEAR(parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 500.0),
-                expected_99 - 500.0, 1e-9);
+    EXPECT_NEAR(parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 500.0), expected_99 - 500.0, 1e-9);
 }
 
 TEST(ParametricVar, StudentTFatterThanNormalAndVarianceMatched) {
@@ -47,12 +45,11 @@ TEST(ParametricVar, StudentTFatterThanNormalAndVarianceMatched) {
     const double v_norm = parametric_var(w, cov, 0.01, Dist::Normal);
     const double v_t4 = parametric_var(w, cov, 0.01, Dist::StudentT, 4.0);
     const double v_t100 = parametric_var(w, cov, 0.01, Dist::StudentT, 100.0);
-    EXPECT_GT(v_t4, v_norm);          // fat tails at 99 %
-    EXPECT_GT(v_t4, v_t100);          // fatness decreases with df
+    EXPECT_GT(v_t4, v_norm);                     // fat tails at 99 %
+    EXPECT_GT(v_t4, v_t100);                     // fatness decreases with df
     EXPECT_NEAR(v_t100, v_norm, 0.02 * v_norm);  // df -> inf: normal limit
     // Closed form: z_t = t_ppf(alpha, df) * sqrt((df-2)/df).
-    const double expected =
-        -student_t_ppf(0.01, 6.0) * std::sqrt(4.0 / 6.0) * 2.0e4;
+    const double expected = -student_t_ppf(0.01, 6.0) * std::sqrt(4.0 / 6.0) * 2.0e4;
     EXPECT_NEAR(parametric_var(w, cov, 0.01, Dist::StudentT, 6.0), expected, 1e-12 * expected);
 }
 
@@ -62,8 +59,7 @@ TEST(ParametricVar, SqrtTimeHorizonScaling) {
     const double v1 = parametric_var(w, cov, 0.01);
     const double v10 = parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 0.0, 10);
     EXPECT_NEAR(v10, v1 * std::sqrt(10.0), 1e-9);
-    EXPECT_THROW(parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 0.0, 0),
-                 std::invalid_argument);
+    EXPECT_THROW(parametric_var(w, cov, 0.01, Dist::Normal, 6.0, 0.0, 0), std::invalid_argument);
 }
 
 TEST(ParametricVar, Validation) {
@@ -73,8 +69,7 @@ TEST(ParametricVar, Validation) {
     EXPECT_THROW(parametric_var(w, cov, 0.5), std::invalid_argument);
     EXPECT_THROW(parametric_var(w, cov, 0.01, Dist::StudentT, 2.0), std::invalid_argument);
     EXPECT_THROW(parametric_var(std::vector<double>{}, cov, 0.01), std::invalid_argument);
-    EXPECT_THROW(parametric_var(std::vector<double>{1.0, 2.0}, cov, 0.01),
-                 std::invalid_argument);
+    EXPECT_THROW(parametric_var(std::vector<double>{1.0, 2.0}, cov, 0.01), std::invalid_argument);
 }
 
 TEST(CornishFisher, ReducesToNormalAtZeroMoments) {

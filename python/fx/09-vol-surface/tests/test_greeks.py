@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_surface import HestonParams, gk_greeks, heston_greeks_fd
 
 S, RD, RF = 1.10, 0.045, 0.033

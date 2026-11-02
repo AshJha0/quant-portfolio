@@ -34,11 +34,10 @@ import numpy as np
 import pandas as pd
 
 from .book import Book, Market
-from .common import (require_positions, resolve_alpha, validate_horizon,
-                     validate_returns, warn_peg_factors)
+from .common import require_positions, resolve_alpha, validate_horizon, validate_returns, warn_peg_factors
 from .expected_shortfall import empirical_var_es
 
-__all__ = ["HistoricalVaRResult", "historical_var", "ewma_volatility"]
+__all__ = ["HistoricalVaRResult", "ewma_volatility", "historical_var"]
 
 
 @dataclass(frozen=True)

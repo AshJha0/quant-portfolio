@@ -3,7 +3,6 @@ parity and vol targeting."""
 
 import numpy as np
 import pytest
-
 from eq_port.data import generate_panel
 from eq_port.risk_parity import (
     erc_weights,

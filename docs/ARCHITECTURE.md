@@ -33,6 +33,20 @@ techniques for a single asset in Python only.
 + 4 engines x 2 languages (C++, Rust)              =  8 compiled projects
 ```
 
+Three shared libraries and two binding packages sit beside the 31 and are not
+counted in them:
+
+| Path | Name | What it holds |
+|---|---|---|
+| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 12 Python projects |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning |
+| `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
+| `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
+
+The Python reference packages do not call the bindings. There is no
+`engine=` switch in them yet; that is deferred to Round 3.
+
 Test counts are not typed here. The CI `counts` job aggregates the executed
 counts from every job into `counts.json`.
 
@@ -55,23 +69,30 @@ quant-portfolio/
 │   ├── LEARN.md
 │   ├── COOKBOOK.md
 │   └── MARKET_RISK.md
+├── pyproject.toml, uv.lock # uv workspace: python/core and the 23 projects; mypy config
 ├── python/
+│   ├── core/              # qp-core, shared Python code
 │   ├── equity/01-…10-…    # 10 equity projects, src/-layout Python packages
 │   ├── fx/01-…10-…        # 10 FX projects, same layout, separate code
 │   └── foundations/        # 3 single-asset Python projects
 │       ├── 01-risk-metrics/
 │       ├── 02-trading-signal-backtest/
 │       └── 03-black-scholes-replication/
-├── cpp/                   # 4 engines, C++23, tests use GoogleTest
+├── cpp/                   # 4 engines, C++23, CMake presets, tests use GoogleTest
+│   ├── core/              # qp::core, header-only
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
 │   ├── equity-var-engine/
 │   └── fx-var-engine/
-└── rust/                  # The same 4 engines, Rust 2021, std only
-    ├── equity-options-engine/
-    ├── fx-options-engine/
-    ├── equity-var-engine/
-    └── fx-var-engine/
+├── rust/                  # Cargo workspace (Cargo.toml, Cargo.lock, rust-toolchain.toml)
+│   ├── core/              # qp-core crate
+│   ├── equity-options-engine/
+│   ├── fx-options-engine/
+│   ├── equity-var-engine/
+│   └── fx-var-engine/
+└── bindings/
+    ├── cpp-nanobind/      # qp-cpp
+    └── rust-pyo3/         # qp-rust
 ```
 
 Every Python project uses the same layout: `src/<package>/`, `tests/`,
@@ -82,9 +103,11 @@ layout: `include/<ns>/` or `src/*.rs` for the library, `tests/` (GoogleTest or
 benchmark, `tools/gen_golden_header.py` (C++) or `tools/gen_golden_rs.py` (Rust)
 for the golden-vector generator, and `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
 
-The C++ engines set `CMAKE_CXX_STANDARD 20` in each `cpp/*/CMakeLists.txt`.
-They have no runtime dependencies beyond the standard library. Their tests use
-GoogleTest. The Rust crates have an empty `[dependencies]` table.
+The C++ engines set `CMAKE_CXX_STANDARD 23` in each `cpp/*/CMakeLists.txt`,
+or 26 when `QP_CXX26=ON`. They need CMake 3.25 and link `qp::core`. They have
+no runtime dependencies beyond the standard library. Their tests use
+GoogleTest. Each Rust engine's only `[dependencies]` entry is the workspace
+`qp-core` crate, which itself has none.
 
 ## The 10 project areas
 
@@ -186,7 +209,8 @@ runs it for all eight engines.
 - The Monte Carlo VaR standard error is a bootstrap estimate. The KDE
   density-at-quantile estimate is kept as a diagnostic.
 - EWMA volatility is seeded with the mean of r^2 over the first min(30, n)
-  observations.
+  observations. The equity EWMA covariance is seeded with mean(r r') over the
+  first min(30, T) rows (S8) in Python, C++ and Rust.
 - Cholesky adds a diagonal jitter capped at 1e-6 times the mean diagonal and
   raises above that cap. Callers can ask for a repair (`clip` or `higham`).
 
@@ -255,7 +279,8 @@ the Python result. The shims are:
 | FX options | `fx_jsonl` | `fxopt_jsonl` | `QP_RS_FX_JSONL` | `QP_CPP_FX_JSONL` |
 
 When an env var is unset the test looks for the default build path
-(`rust/*/target/release/<bin>` or `cpp/*/build/<target>`). A missing binary
+(`rust/target/release/<bin>`, the workspace target directory, or
+`cpp/<engine>/build/<target>` and then `cpp/<engine>/build/gcc/<target>`). A missing binary
 skips its test. Set `QP_DIFF_VERBOSE=1` to print the largest deviations.
 [DIAGRAMS.md](DIAGRAMS.md) diagram 3 shows the flow.
 
@@ -273,11 +298,18 @@ the same engine and platform.
 | Job | What it does |
 |---|---|
 | `discover` | Lists the Python projects and their test extra (`.github/scripts/discover_projects.py`). |
-| `python` | One job per project and Python version (3.10, 3.11, 3.12, 3.13). Installs the project in its own venv and runs pytest. Uploads JUnit XML. |
+| `py core` | pytest for `python/core` on Python 3.10 to 3.13. |
+| `py <project>` | One job per project and Python version (3.10, 3.11, 3.12, 3.13). Installs `python/core` and the project in its own venv and runs pytest. Uploads JUnit XML. |
+| `lint` | `uv lock --check`, `uv sync --all-packages --locked`, `ruff check python`, `mypy`. Installs `pandas-stubs` and `scipy-stubs`, which `requirements/ci-constraints.txt` pins for Python 3.12 and later. |
 | `goldens --check` | Runs every `gen_golden_header.py --check` and `gen_golden_rs.py --check`. |
-| `cpp` | Each C++ engine with GCC and with Clang: configure, build, ctest. |
-| `cpp-asan` | Each C++ engine with Clang and AddressSanitizer plus UndefinedBehaviorSanitizer. |
-| `rust` | `cargo test --release` per crate. `cargo fmt --check` and clippy run report-only. |
+| `cpp <engine> (<preset>)` | Each C++ engine with the `gcc`, `clang`, `asan` and `tsan` presets: configure, build, ctest. |
+| `cpp <engine> (gcc16-cxx26)` | The same in a `gcc:16` container with `QP_CXX26=ON`. |
+| `cpp <engine> (msvc)` | The same on Windows with MSVC. |
+| `clang-format`, `clang-tidy <engine>` | Format check over `cpp/`; clang-tidy with warnings as errors. |
+| `rust <crate>` | `cargo test --release --locked` and clippy with warnings denied, per workspace crate including `qp-core`. |
+| `rust fmt` | `cargo fmt --check` over the workspace. |
+| `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
+| `bench` | Runs the release benches; fails when a kernel whose committed p50 is above 1 µs is more than 2x slower. |
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
@@ -299,7 +331,8 @@ state. This is a portfolio-wide rule in `CONVENTIONS.md` §"Code quality".
   states the rate, day-count and quoting rules once. Each codebase implements
   them separately.
 - **The compiled engines use only the standard library.** The RNG, normal
-  CDF/PPF and Cholesky factorisation are written in this repository.
+  CDF/PPF and Cholesky factorisation are written in this repository, once per
+  language, in `cpp/core` and `rust/core`.
 
 Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-
 from fi_rates.daycount import (
     add_months,
     adjust_modified_following,

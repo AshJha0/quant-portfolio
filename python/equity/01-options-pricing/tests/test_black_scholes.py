@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import bs_price, d1_d2, forward_price, intrinsic_value
 
 S_GRID = [50.0, 80.0, 100.0, 120.0, 200.0]
@@ -68,7 +67,7 @@ def test_d1_d2_atm_forward() -> None:
 def test_call_monotone_increasing_in_vol() -> None:
     vols = [0.05, 0.1, 0.2, 0.4, 0.8, 1.6]
     prices = [bs_price(100, 100, 1, 0.02, v, 0.01, "call") for v in vols]
-    assert all(b > a for a, b in zip(prices, prices[1:]))
+    assert all(b > a for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_price_convex_in_strike() -> None:
@@ -87,8 +86,8 @@ def test_call_decreasing_in_strike_put_increasing() -> None:
     strikes = [60.0, 80.0, 100.0, 120.0, 140.0]
     calls = [bs_price(100, k, 1, 0.03, 0.2, 0.0, "call") for k in strikes]
     puts = [bs_price(100, k, 1, 0.03, 0.2, 0.0, "put") for k in strikes]
-    assert all(b < a for a, b in zip(calls, calls[1:]))
-    assert all(b > a for a, b in zip(puts, puts[1:]))
+    assert all(b < a for a, b in zip(calls, calls[1:], strict=False))
+    assert all(b > a for a, b in zip(puts, puts[1:], strict=False))
 
 
 def test_price_bounds() -> None:

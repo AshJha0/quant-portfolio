@@ -5,7 +5,7 @@ validated** (analytic checks, what "good" output looks like on the bundled
 data) and **where it fails** (known failure modes with reproducible
 examples). Every number below is produced by the committed code,
 `python examples/run_pipeline.py` regenerates the report;
-`pytest -q` (217 tests, offline, seeded) enforces the analytic checks
+`pytest -q` (221 tests, offline, seeded) enforces the analytic checks
 permanently.
 
 Bundled synthetic data: `eq_risk_metrics.data.synthetic.generate(seed=2,

@@ -1,6 +1,5 @@
 """Data subpackage: deterministic synthetic generators and guarded live loaders."""
 
-from . import synthetic
-from . import live
+from . import live, synthetic
 
-__all__ = ["synthetic", "live"]
+__all__ = ["live", "synthetic"]

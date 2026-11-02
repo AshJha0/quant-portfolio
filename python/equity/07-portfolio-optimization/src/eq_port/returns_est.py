@@ -34,13 +34,13 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "sample_mean",
-    "ewma_mean",
-    "james_stein_mean",
-    "JamesSteinResult",
-    "implied_equilibrium_returns",
-    "black_litterman",
     "BlackLittermanResult",
+    "JamesSteinResult",
+    "black_litterman",
+    "ewma_mean",
+    "implied_equilibrium_returns",
+    "james_stein_mean",
+    "sample_mean",
 ]
 
 

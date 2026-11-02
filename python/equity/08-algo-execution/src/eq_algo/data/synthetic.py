@@ -28,8 +28,13 @@ import pandas as pd
 
 from ..intraday import IntradayConfig, IntradayMarket, u_shaped_profile
 
-__all__ = ["DailyPanel", "generate_daily_panel",
-           "IntradayConfig", "IntradayMarket", "u_shaped_profile"]
+__all__ = [
+    "DailyPanel",
+    "IntradayConfig",
+    "IntradayMarket",
+    "generate_daily_panel",
+    "u_shaped_profile",
+]
 
 
 @dataclass

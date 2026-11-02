@@ -3,10 +3,19 @@ arrival, scheduler properties (VWAP tracks profile, POV respects cap)."""
 
 import numpy as np
 import pytest
-
-from eq_algo import (IntradayConfig, IntradayMarket, arrival_price,
-                     benchmark_slippage, pov_schedule, slippage_bps, twap,
-                     twap_schedule, u_shaped_profile, vwap, vwap_schedule)
+from eq_algo import (
+    IntradayConfig,
+    IntradayMarket,
+    arrival_price,
+    benchmark_slippage,
+    pov_schedule,
+    slippage_bps,
+    twap,
+    twap_schedule,
+    u_shaped_profile,
+    vwap,
+    vwap_schedule,
+)
 
 
 def test_vwap_hand_computed():

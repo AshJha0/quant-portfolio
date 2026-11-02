@@ -25,22 +25,22 @@ Tests
 from __future__ import annotations
 
 import warnings
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
-from scipy import stats
 import statsmodels.api as sm
+from scipy import stats
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 
 __all__ = [
-    "qlike_loss",
-    "mse_loss",
-    "mincer_zarnowitz",
-    "newey_west_variance",
-    "diebold_mariano",
-    "default_hac_lags",
-    "ljung_box",
     "arch_lm",
+    "default_hac_lags",
+    "diebold_mariano",
+    "ljung_box",
+    "mincer_zarnowitz",
+    "mse_loss",
+    "newey_west_variance",
+    "qlike_loss",
     "sign_bias_test",
 ]
 
@@ -252,7 +252,8 @@ def sign_bias_test(returns: Sequence[float], sigma2: Sequence[float]) -> dict:
     X = np.column_stack([s_neg, s_neg * e_lag, (1.0 - s_neg) * e_lag])
     X = sm.add_constant(X)
     fit = sm.OLS(z2, X).fit()
-    R = np.zeros((3, 4)); R[0, 1] = R[1, 2] = R[2, 3] = 1.0
+    R = np.zeros((3, 4))
+    R[0, 1] = R[1, 2] = R[2, 3] = 1.0
     joint = fit.f_test(R)
     return {
         "sign_bias_t": float(fit.tvalues[1]),

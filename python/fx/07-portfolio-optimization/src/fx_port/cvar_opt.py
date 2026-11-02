@@ -223,7 +223,7 @@ def min_cvar(
     )
     if not res.success:
         raise ValueError(f"CVaR LP infeasible or failed: {res.message}")
-    w, cvar, z, er = _unpack(res.x, n, s_n, alpha, r, list(scenarios.columns))
+    w, cvar, z, er = _unpack(np.asarray(res.x), n, s_n, alpha, r, list(scenarios.columns))
     return CVaRResult(w, cvar, z, er, True, str(res.message))
 
 
@@ -287,7 +287,7 @@ def max_return_cvar_constrained(
     )
     if not res.success:
         raise ValueError(f"CVaR LP infeasible or failed: {res.message}")
-    w, cvar, z, er_scen = _unpack(res.x, n, s_n, alpha, r, list(scenarios.columns))
+    w, cvar, z, _er_scen = _unpack(np.asarray(res.x), n, s_n, alpha, r, list(scenarios.columns))
     er = float(m @ w.to_numpy())
     return CVaRResult(w, cvar, z, er, True, str(res.message))
 

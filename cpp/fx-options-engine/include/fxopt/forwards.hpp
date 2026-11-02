@@ -34,7 +34,7 @@ double forward_points(double S, double T, double r_d, double r_f,
 /// Forward implied by put-call parity: F = K + (C - P) e^{r_d T}.
 /// Long call + short put at the same strike replicates a forward purchase
 /// of the base currency (a "synthetic forward" / conversion trade).
-double synthetic_forward_from_options(double call_price, double put_price,
-                                      double K, double T, double r_d);
+double synthetic_forward_from_options(double call_price, double put_price, double K, double T,
+                                      double r_d);
 
 }  // namespace fxopt

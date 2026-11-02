@@ -1,8 +1,8 @@
 # Validation: eq-options-engine (Rust)
 
 How this engine was validated, what tolerances are enforced in CI
-(`RUSTFLAGS="-D warnings" cargo test --release`: 74 integration tests +
-28 doctests), and where the models fail.
+(`cargo test --release --locked -p eq-options-engine` from `rust/`: 81
+integration tests and 32 doctests), and where the models fail.
 
 ## 1. Golden vectors and the differential test
 

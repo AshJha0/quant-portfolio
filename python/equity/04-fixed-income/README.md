@@ -14,7 +14,8 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
 * **Bootstrap** (`bootstrap.py`): sequential bootstrap from deposits, FRAs
   and par swaps (Brent per pillar), plus a coupon-bond bootstrap. Inputs
   reprice to 1e-10 (measured 4e-16) under local interpolation.
-* **Dates** (`daycount.py`, `calendars.py`): ACT/365F, ACT/360, 30/360US,
+* **Dates** (`daycount.py`, `calendars.py`, built on `qp_core.daycount`
+  and `qp_core.calendars`): ACT/365F, ACT/360, 30/360US,
   ACT/ACT-ISDA, ACT/ACT-ICMA; schedules with the end-of-month rule;
   partial business-day calendars (weekends plus fixed-date holidays for
   USD, EUR, GBP, JPY) with following, modified following and preceding.
@@ -41,6 +42,7 @@ calendars, KRDs in zero-rate space with no par-rate Jacobian.
 
 ```bash
 cd python/equity/04-fixed-income
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[test]
 python -m pytest tests -q          # see the table below
 python examples/run_pipeline.py    # writes nothing to disk

@@ -13,7 +13,7 @@ import numpy as np
 
 from .._common import validate_inputs
 
-__all__ = ["gbm_fx_paths", "VolQuote", "synthetic_vol_quotes"]
+__all__ = ["VolQuote", "gbm_fx_paths", "synthetic_vol_quotes"]
 
 
 def gbm_fx_paths(S0: float, T: float, r_d: float, r_f: float, sigma: float,

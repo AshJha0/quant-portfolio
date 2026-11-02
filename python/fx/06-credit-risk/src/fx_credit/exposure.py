@@ -46,18 +46,18 @@ from dataclasses import dataclass
 import numpy as np
 
 __all__ = [
-    "FXForward",
     "ExposureProfile",
-    "simulate_fx_paths",
-    "forward_mtm",
-    "exposure_profile",
-    "netting_set_profile",
-    "hazard_from_pd1y",
-    "pd_term_structure",
-    "expected_exposure_loss",
-    "expected_exposure_loss_for_forward",
+    "FXForward",
     "cva",
     "cva_for_forward",
+    "expected_exposure_loss",
+    "expected_exposure_loss_for_forward",
+    "exposure_profile",
+    "forward_mtm",
+    "hazard_from_pd1y",
+    "netting_set_profile",
+    "pd_term_structure",
+    "simulate_fx_paths",
 ]
 
 
@@ -245,11 +245,11 @@ def netting_set_profile(
     pfe = {q: np.empty(times.size) for q in quantiles}
     for j, t in enumerate(times):
         vs = [forward_mtm(f, paths[:, j], t, r_d, r_f) for f in forwards]
-        vs = [np.broadcast_to(v, (n_paths,)) for v in vs]
+        vs_b = [np.broadcast_to(v, (n_paths,)) for v in vs]
         if netting:
-            e = np.maximum(np.sum(vs, axis=0), 0.0)
+            e = np.maximum(np.sum(vs_b, axis=0), 0.0)
         else:
-            e = np.sum([np.maximum(v, 0.0) for v in vs], axis=0)
+            e = np.sum([np.maximum(v, 0.0) for v in vs_b], axis=0)
         ee[j] = e.mean()
         for q in quantiles:
             pfe[q][j] = np.quantile(e, q)

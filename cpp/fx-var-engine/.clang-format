@@ -1,0 +1,5 @@
+# fx-var-engine keeps its original 2-space Google layout; everything else
+# comes from the repository .clang-format.
+BasedOnStyle: InheritParentConfig
+IndentWidth: 2
+AccessModifierOffset: -1

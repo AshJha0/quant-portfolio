@@ -27,7 +27,7 @@ Quote conventions
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -35,17 +35,17 @@ from ._validation import require_finite
 from .curve import DiscountCurve
 
 __all__ = [
-    "df_from_deposit",
-    "deposit_rate_from_df",
-    "par_swap_rate",
-    "bootstrap_curve",
-    "reprice_deposits",
-    "reprice_swaps",
     "basis_adjusted_curve",
     "basis_discount_curve",
     "basis_swap_par_spread",
-    "implied_basis_from_forwards",
+    "bootstrap_curve",
     "curve_from_fx_forwards",
+    "deposit_rate_from_df",
+    "df_from_deposit",
+    "implied_basis_from_forwards",
+    "par_swap_rate",
+    "reprice_deposits",
+    "reprice_swaps",
 ]
 
 Quote = tuple[float, float]  # (time in years, rate/price)
@@ -145,7 +145,15 @@ def bootstrap_curve(
             ln_prev = float(np.log(base.df(t_prev)))
             gap = [k for k in range(1, n) if k > t_prev]
 
-            def par_error(x: float) -> float:
+            def par_error(
+                x: float,
+                ln_prev: float = ln_prev,
+                t_prev: float = t_prev,
+                n: int = n,
+                gap: list[int] = gap,
+                c: float = c,
+                ann_known: float = ann_known,
+            ) -> float:
                 lx = np.log(x)
                 mid = sum(np.exp(ln_prev + (k - t_prev) / (n - t_prev) * (lx - ln_prev))
                           for k in gap)

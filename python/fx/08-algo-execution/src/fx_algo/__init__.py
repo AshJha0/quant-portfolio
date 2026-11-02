@@ -6,35 +6,6 @@ execution -> performance analysis, specialised for the 24h OTC FX
 market (session liquidity, dealer last-look, WM/R fix, no volume tape).
 """
 
-from .sessions import (
-    EURUSD,
-    GBPUSD,
-    USDMXN,
-    FIX_HOUR_LONDON,
-    FIX_WINDOW_MINUTES,
-    PairProfile,
-    SESSION_BOUNDS,
-    SESSION_NAMES,
-    fix_window_mask,
-    make_time_grid,
-    session_of_hour,
-    weekend_mask,
-)
-from .features import (
-    build_bars,
-    carry_feature,
-    feature_matrix,
-    london_open_breakout,
-    momentum,
-    reversion_to_session_mean,
-)
-from .signals import (
-    carry_gate,
-    combine_signals,
-    rolling_zscore,
-    session_filter,
-    vol_target_positions,
-)
 from .backtest import (
     BARS_PER_YEAR,
     BacktestConfig,
@@ -43,12 +14,11 @@ from .backtest import (
     information_coefficient,
 )
 from .data.synthetic import generate_daily_panel, generate_ticks
-from .execution.simulator import (
-    ExecutionResult,
-    FirmVenue,
-    LastLookVenue,
-    MarketSimulator,
-    last_look_reject_prob,
+from .execution.optimal import (
+    ac_closed_form_schedule,
+    ac_expected_cost,
+    eta_from_depth,
+    piecewise_ac_schedule,
 )
 from .execution.schedulers import (
     fix_schedule,
@@ -56,11 +26,12 @@ from .execution.schedulers import (
     pov_schedule,
     twap_schedule,
 )
-from .execution.optimal import (
-    ac_closed_form_schedule,
-    ac_expected_cost,
-    eta_from_depth,
-    piecewise_ac_schedule,
+from .execution.simulator import (
+    ExecutionResult,
+    FirmVenue,
+    LastLookVenue,
+    MarketSimulator,
+    last_look_reject_prob,
 )
 from .execution.tca import (
     decompose_implementation_shortfall,
@@ -72,66 +43,95 @@ from .execution.tca import (
     twap_benchmark,
     venue_comparison,
 )
+from .features import (
+    build_bars,
+    carry_feature,
+    feature_matrix,
+    london_open_breakout,
+    momentum,
+    reversion_to_session_mean,
+)
+from .sessions import (
+    EURUSD,
+    FIX_HOUR_LONDON,
+    FIX_WINDOW_MINUTES,
+    GBPUSD,
+    SESSION_BOUNDS,
+    SESSION_NAMES,
+    USDMXN,
+    PairProfile,
+    fix_window_mask,
+    make_time_grid,
+    session_of_hour,
+    weekend_mask,
+)
+from .signals import (
+    carry_gate,
+    combine_signals,
+    rolling_zscore,
+    session_filter,
+    vol_target_positions,
+)
 
 __all__ = [
-    # sessions
-    "PairProfile",
+    "BARS_PER_YEAR",
     "EURUSD",
-    "GBPUSD",
-    "USDMXN",
-    "SESSION_NAMES",
-    "SESSION_BOUNDS",
     "FIX_HOUR_LONDON",
     "FIX_WINDOW_MINUTES",
-    "session_of_hour",
-    "make_time_grid",
-    "weekend_mask",
-    "fix_window_mask",
-    # features
-    "build_bars",
-    "momentum",
-    "reversion_to_session_mean",
-    "london_open_breakout",
-    "carry_feature",
-    "feature_matrix",
-    # signals
-    "rolling_zscore",
-    "combine_signals",
-    "vol_target_positions",
-    "session_filter",
-    "carry_gate",
+    "GBPUSD",
+    "SESSION_BOUNDS",
+    "SESSION_NAMES",
+    "USDMXN",
     # backtest
     "BacktestConfig",
     "ExecutionConfig",
-    "BARS_PER_YEAR",
-    "IntradayBacktester",
-    "information_coefficient",
-    # data
-    "generate_ticks",
-    "generate_daily_panel",
-    # execution
-    "MarketSimulator",
     "ExecutionResult",
     "FirmVenue",
+    "IntradayBacktester",
     "LastLookVenue",
-    "last_look_reject_prob",
-    "twap_schedule",
-    "liquidity_weighted_schedule",
-    "pov_schedule",
-    "fix_schedule",
+    # execution
+    "MarketSimulator",
+    # sessions
+    "PairProfile",
     "ac_closed_form_schedule",
-    "piecewise_ac_schedule",
     "ac_expected_cost",
-    "eta_from_depth",
+    # features
+    "build_bars",
+    "carry_feature",
+    "carry_gate",
+    "combine_signals",
     # tca
     "decompose_implementation_shortfall",
-    "twap_benchmark",
+    "eta_from_depth",
+    "feature_matrix",
     "fix_benchmark",
     "fix_print",
+    "fix_schedule",
     "fix_self_impact_pips",
-    "slippage_vs_benchmark",
+    "fix_window_mask",
+    "generate_daily_panel",
+    # data
+    "generate_ticks",
+    "information_coefficient",
+    "last_look_reject_prob",
+    "liquidity_weighted_schedule",
+    "london_open_breakout",
+    "make_time_grid",
+    "momentum",
+    "piecewise_ac_schedule",
+    "pov_schedule",
     "rejection_cost_pips",
+    "reversion_to_session_mean",
+    # signals
+    "rolling_zscore",
+    "session_filter",
+    "session_of_hour",
+    "slippage_vs_benchmark",
+    "twap_benchmark",
+    "twap_schedule",
     "venue_comparison",
+    "vol_target_positions",
+    "weekend_mask",
 ]
 
 __version__ = "1.0.0"

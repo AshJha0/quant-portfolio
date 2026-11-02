@@ -3,8 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from fx_var import Book, Forward, Option, Spot, ewma_volatility
+from fx_var import ewma_volatility
 from fx_var.data.synthetic import (
     ANNUAL_VOLS,
     EM,

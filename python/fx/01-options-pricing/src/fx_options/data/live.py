@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-__all__ = ["fetch_ecb_rates", "LiveDataUnavailable"]
+__all__ = ["LiveDataUnavailable", "fetch_ecb_rates"]
 
 _API = "https://api.frankfurter.app/latest"
 
@@ -55,7 +55,7 @@ def fetch_ecb_rates(base: str = "EUR", symbols: tuple[str, ...] = ("USD", "JPY",
         rates = {str(k): float(v) for k, v in payload["rates"].items()}
         rates["_date"] = payload.get("date", "unknown")
         return rates
-    except Exception as exc:  # noqa: BLE001 - degrade gracefully by design
+    except Exception as exc:
         raise LiveDataUnavailable(
             f"could not fetch ECB rates from {url}: {exc}"
         ) from exc

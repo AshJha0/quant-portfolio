@@ -59,7 +59,8 @@ auction variant has the lower net Sharpe (section 4 of VALIDATION).
 
 - Spearman rank IC, matching `scipy.stats.spearmanr`.
 - Newey-West t-stats on IC series, which are autocorrelated.
-- `research_stats.py`, identical in every strategy project:
+- `research_stats.py`, a re-export of `qp_core.stats` (shared by every
+  strategy project):
   - Lo (2002) standard error of the Sharpe ratio by the GMM delta method,
     with a Newey-West (Bartlett) long-run variance truncated at
     floor(4 (n/100)^(2/9)) lags.

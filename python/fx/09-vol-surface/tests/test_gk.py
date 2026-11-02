@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface import (
     gk_delta,
     gk_digital,
@@ -19,6 +18,8 @@ from fx_surface import (
     gk_volga,
     implied_vol,
 )
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 S, T, RD, RF, SIG = 1.10, 0.75, 0.045, 0.033, 0.085
 
@@ -36,7 +37,7 @@ def test_price_bounds_and_monotonicity_in_vol():
     lower = max(S * math.exp(-RF * T) - K * math.exp(-RD * T), 0.0)
     prices = [gk_price(S, K, T, RD, RF, s, 1) for s in (0.02, 0.05, 0.10, 0.30, 0.80)]
     assert all(lower < p < S * math.exp(-RF * T) for p in prices)
-    assert all(a < b for a, b in zip(prices, prices[1:]))  # vega > 0
+    assert all(a < b for a, b in zip(prices, prices[1:], strict=False))  # vega > 0
 
 
 def test_convexity_in_strike():
@@ -147,8 +148,6 @@ def test_invalid_inputs_raise():
         gk_delta(S, 1.1, T, RD, RF, SIG, 1, "delta50")
 
 
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 
 @settings(max_examples=200, deadline=None)

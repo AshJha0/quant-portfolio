@@ -37,30 +37,30 @@ from .volatility import (
 __version__ = "1.0.0"
 
 __all__ = [
-    "__version__",
     # volatility
     "TRADING_DAYS",
-    "simple_returns",
-    "log_returns",
-    "annualised_volatility",
-    "rolling_volatility",
-    "ewma_volatility",
-    # var_es
-    "cornish_fisher_valid",
-    "var_historical",
-    "var_parametric",
-    "var_cornish_fisher",
-    "expected_shortfall",
     # performance
     "DrawdownResult",
-    "max_drawdown",
-    "sharpe_ratio",
-    "sortino_ratio",
-    # diagnostics
-    "NormalityReport",
-    "normality_report",
     # backtest
     "KupiecResult",
+    # diagnostics
+    "NormalityReport",
+    "__version__",
+    "annualised_volatility",
+    # var_es
+    "cornish_fisher_valid",
     "count_var_exceptions",
+    "ewma_volatility",
+    "expected_shortfall",
     "kupiec_pof_test",
+    "log_returns",
+    "max_drawdown",
+    "normality_report",
+    "rolling_volatility",
+    "sharpe_ratio",
+    "simple_returns",
+    "sortino_ratio",
+    "var_cornish_fisher",
+    "var_historical",
+    "var_parametric",
 ]

@@ -119,7 +119,7 @@ class TestCommittedJsonIsReproducible:
         same = _same_minor_versions(committed["versions"])
         for k, v in regenerated["values"].items():
             c = committed["values"][k]
-            pairs = list(zip(c, v)) if isinstance(v, list) else [(c, v)]
+            pairs = list(zip(c, v, strict=False)) if isinstance(v, list) else [(c, v)]
             if isinstance(v, list):
                 assert len(c) == len(v), k
             for ci, vi in pairs:

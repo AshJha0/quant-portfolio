@@ -17,24 +17,22 @@ All rates continuously compounded, annualised; ``T`` in years (ACT/365F).
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, fields
-from typing import Callable
 
-
-
-from .black_scholes import OptionType, _check_rates, _ncdf, bs_price, d1_d2, validate_inputs
+from .black_scholes import OptionType, _ncdf, bs_price, d1_d2, validate_inputs
 
 __all__ = [
     "BSGreeks",
     "bs_greeks",
-    "fd_greeks",
     "compare_greeks",
     "delta",
+    "fd_greeks",
     "gamma",
-    "vega",
-    "theta",
     "rho",
+    "theta",
     "vanna",
+    "vega",
     "volga",
 ]
 

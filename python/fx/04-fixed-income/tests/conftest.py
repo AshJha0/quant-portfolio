@@ -1,7 +1,6 @@
 """Shared fixtures: seeded synthetic markets per regime."""
 
 import pytest
-
 from fx_rates.data import build_market_state, generate_market_quotes, sample_book
 
 

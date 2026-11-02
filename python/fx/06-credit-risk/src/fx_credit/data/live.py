@@ -12,7 +12,7 @@ import os
 
 import pandas as pd
 
-__all__ = ["WORLDBANK_SCHEMA", "load_worldbank_csv", "fetch_worldbank_indicators"]
+__all__ = ["WORLDBANK_SCHEMA", "fetch_worldbank_indicators", "load_worldbank_csv"]
 
 #: Expected long-format schema for a World Bank-style extract.
 WORLDBANK_SCHEMA: dict[str, str] = {

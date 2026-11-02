@@ -10,9 +10,9 @@ and source) and are documented as such in docs/DESK_GUIDE.md.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import warnings
+from dataclasses import dataclass, field
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -23,14 +23,14 @@ from .monte_carlo_var import cholesky
 from .portfolio import Portfolio
 
 __all__ = [
-    "StressScenario",
     "HISTORICAL_SCENARIOS",
-    "scenario_shock_vector",
+    "StressScenario",
     "apply_scenario",
-    "scenario_table",
-    "sensitivity_ladder",
     "reverse_stress_delta",
     "reverse_stress_delta_gamma",
+    "scenario_shock_vector",
+    "scenario_table",
+    "sensitivity_ladder",
 ]
 
 
@@ -102,7 +102,7 @@ def scenario_shock_vector(portfolio: Portfolio, scenario: StressScenario) -> np.
 
 
 def apply_scenario(
-    portfolio: Portfolio, scenario: StressScenario, method: str = "full"
+    portfolio: Portfolio, scenario: StressScenario, method: Literal["full", "delta_gamma"] = "full"
 ) -> float:
     """Portfolio P&L (currency units, loss < 0) under a stress scenario."""
     shocks = scenario_shock_vector(portfolio, scenario)
@@ -134,7 +134,7 @@ def sensitivity_ladder(
     portfolio: Portfolio,
     factor: str,
     shocks: np.ndarray | None = None,
-    method: str = "full",
+    method: Literal["full", "delta_gamma"] = "full",
 ) -> pd.DataFrame:
     """One-factor P&L ladder: shock a single factor, hold the rest flat."""
     if factor not in portfolio.factors:
@@ -228,18 +228,21 @@ def reverse_stress_delta_gamma(
         return abs(float(y @ y) / radius**2 - 1.0)
 
     starts = [rng.standard_normal(n) for _ in range(n_starts)]
-    delta_dir = reverse_stress_delta(w, sig, radius)["shock"]
+    delta_dir = cast(np.ndarray, reverse_stress_delta(w, sig, radius)["shock"])
     if np.linalg.norm(delta_dir) > 0:
         starts.append(np.linalg.solve(chol, delta_dir))
     best_x, best_pnl = None, np.inf
+    def objective(u: np.ndarray) -> float:
+        return pnl_of(x_of(u))
+
     for u0 in starts:
-        res = minimize(lambda u: pnl_of(x_of(u)), u0, method="BFGS")
+        res = minimize(objective, u0, method="BFGS")
         if not np.isfinite(res.fun):
             continue
         # BFGS often stops with "precision loss" at a true optimum on this
         # scale-invariant objective, so accept a start when it reports success
         # OR the gradient is stationary relative to the objective.
-        stationary = np.linalg.norm(res.jac) * np.linalg.norm(res.x) <= 1e-6 * max(1.0, abs(res.fun))
+        stationary = np.linalg.norm(np.asarray(res.jac)) * np.linalg.norm(res.x) <= 1e-6 * max(1.0, abs(res.fun))
         if not (res.success or stationary):
             continue
         x = x_of(res.x)

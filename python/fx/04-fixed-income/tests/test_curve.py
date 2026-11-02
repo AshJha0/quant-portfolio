@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_rates.curve import DiscountCurve
 
 TIMES = np.array([0.25, 0.5, 1.0, 2.0, 5.0, 10.0])

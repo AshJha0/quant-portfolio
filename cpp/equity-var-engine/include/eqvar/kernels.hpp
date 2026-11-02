@@ -45,8 +45,7 @@ namespace eqvar {
 /// noexcept var_es_order_statistic(). `workspace` must hold pnl.size()
 /// doubles; the loss vector is partitioned there with std::nth_element
 /// (O(n) selection, no sort).
-[[nodiscard]] Result<TailRisk> try_var_es_order_statistic(std::span<const double> pnl,
-                                                          double alpha,
+[[nodiscard]] Result<TailRisk> try_var_es_order_statistic(std::span<const double> pnl, double alpha,
                                                           std::span<double> workspace) noexcept;
 
 /// noexcept historical_var(); workspace as above.
@@ -102,8 +101,7 @@ constexpr std::size_t cholesky_workspace_size(std::size_t n) noexcept { return n
 [[nodiscard]] Result<double> try_parametric_var(std::span<const double> exposures,
                                                 const Matrix& cov, double alpha = 0.01,
                                                 Dist dist = Dist::Normal, double df = 6.0,
-                                                double mean = 0.0,
-                                                int horizon_days = 1) noexcept;
+                                                double mean = 0.0, int horizon_days = 1) noexcept;
 
 // ----------------------------------------------------------- Monte Carlo
 

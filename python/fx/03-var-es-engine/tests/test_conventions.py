@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import warnings
 
+import fx_var as fv
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.stats import binom, norm
-
-import fx_var as fv
 from fx_var import (
     JumpSpec,
     NumericalWarning,
@@ -36,6 +34,7 @@ from fx_var import (
     var_standard_error_bootstrap,
 )
 from fx_var.data.synthetic import demo_market
+from scipy.stats import binom, norm
 
 PNL = np.random.default_rng(0).standard_normal(400) * 1e5
 
@@ -96,9 +95,9 @@ def test_order_statistic_with_fractional_k():
 
 # ------------------------------------------------------------------ S3
 def test_kupiec_keyword_api_and_old_order():
-    lr, p = kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
+    lr, _p = kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
     with pytest.warns(DeprecationWarning, match="positional"):
-        lr_old, p_old = kupiec_pof(5, 250, 0.99)
+        lr_old, _p_old = kupiec_pof(5, 250, 0.99)
     assert lr_old == pytest.approx(lr, rel=1e-12)
     with pytest.raises(ValueError, match="must not exceed"):
         kupiec_pof(n_obs=10, n_exceptions=11, alpha=0.01)

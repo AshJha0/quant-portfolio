@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 
+import fi_rates as fr
 import numpy as np
 import pytest
-
-import fi_rates as fr
 
 D = dt.date
 
@@ -80,7 +79,7 @@ class TestYTM:
     def test_price_decreasing_in_yield(self, settlement, bond_5y):
         ys = np.linspace(-0.02, 0.30, 25)
         ps = [fr.price_from_ytm(bond_5y, settlement, y) for y in ys]
-        assert all(a > b for a, b in zip(ps, ps[1:]))
+        assert all(a > b for a, b in zip(ps, ps[1:], strict=False))
 
     def test_premium_discount_relation(self, settlement, bond_5y):
         # yield below coupon -> premium; above -> discount (at a coupon date)
@@ -174,7 +173,6 @@ class TestAnnuity:
 
     def test_annuity_flat_curve_closed_form(self, settlement):
         # annual annuity on flat continuous curve: sum of exp(-z t_i)
-        times = [1.0, 2.0, 3.0]
         c = fr.DiscountCurve.from_zero_rates([1.0, 2.0, 3.0], [0.05] * 3)
         pv = fr.annuity_pv(1.0, settlement, D(2029, 8, 18), c, frequency=1)
         # schedule dates are anniversaries; ACT/365F times differ slightly from

@@ -35,20 +35,17 @@ TEST(ImpliedVol, RoundTripTo1e8AcrossMoneynessAndExpiry) {
                     // underflows double precision and no solver can recover
                     // vol from the price (that regime is covered by the
                     // sub-intrinsic rejection tests instead).
-                    const double sigma = std::max(
-                        sigma_raw,
-                        std::fabs(std::log(K / S)) / (3.0 * std::sqrt(T)));
+                    const double sigma =
+                        std::max(sigma_raw, std::fabs(std::log(K / S)) / (3.0 * std::sqrt(T)));
                     const double price = bs_price(S, K, T, r, sigma, q, type);
                     const double iv = implied_vol(price, S, K, T, r, q, type);
-                    ASSERT_NEAR(iv, sigma, 1e-8)
-                        << "K/S=" << m << " T=" << T << " sigma=" << sigma
-                        << (type == OptionType::Call ? " call" : " put");
+                    ASSERT_NEAR(iv, sigma, 1e-8) << "K/S=" << m << " T=" << T << " sigma=" << sigma
+                                                 << (type == OptionType::Call ? " call" : " put");
                 }
 }
 
 TEST(ImpliedVol, RecoversVeryHighVol) {
-    const double price =
-        bs_price(100.0, 100.0, 1.0, 0.05, 4.0, 0.0, OptionType::Call);
+    const double price = bs_price(100.0, 100.0, 1.0, 0.05, 4.0, 0.0, OptionType::Call);
     EXPECT_NEAR(implied_vol(price, 100.0, 100.0, 1.0, 0.05, 0.0), 4.0, 1e-7);
 }
 
@@ -56,22 +53,17 @@ TEST(ImpliedVol, RejectsSubIntrinsicPrices) {
     const double S = 100.0, K = 80.0, T = 0.5, r = 0.05, q = 0.0;
     // sigma -> 0 lower bound: discounted forward intrinsic.
     const double lower = bs_price(S, K, T, r, 0.0, q, OptionType::Call);
-    EXPECT_THROW(implied_vol(lower, S, K, T, r, q, OptionType::Call),
-                 std::invalid_argument);
-    EXPECT_THROW(implied_vol(lower - 0.5, S, K, T, r, q, OptionType::Call),
-                 std::invalid_argument);
-    EXPECT_THROW(implied_vol(0.0, S, K, T, r, q, OptionType::Call),
-                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(lower, S, K, T, r, q, OptionType::Call), std::invalid_argument);
+    EXPECT_THROW(implied_vol(lower - 0.5, S, K, T, r, q, OptionType::Call), std::invalid_argument);
+    EXPECT_THROW(implied_vol(0.0, S, K, T, r, q, OptionType::Call), std::invalid_argument);
 }
 
 TEST(ImpliedVol, RejectsPricesAboveUpperBound) {
     // Call upper bound is S e^{-qT}; put upper bound is K e^{-rT}.
-    EXPECT_THROW(
-        implied_vol(101.0, 100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Call),
-        std::invalid_argument);
-    EXPECT_THROW(
-        implied_vol(100.0, 100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Put),
-        std::invalid_argument);
+    EXPECT_THROW(implied_vol(101.0, 100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Call),
+                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(100.0, 100.0, 100.0, 1.0, 0.05, 0.0, OptionType::Put),
+                 std::invalid_argument);
 }
 
 TEST(ImpliedVol, RejectsDegenerateInputs) {
@@ -81,30 +73,23 @@ TEST(ImpliedVol, RejectsDegenerateInputs) {
                  std::invalid_argument);
     EXPECT_THROW(implied_vol(5.0, 100.0, 0.0, 1.0, 0.05),  // K == 0
                  std::invalid_argument);
-    EXPECT_THROW(
-        implied_vol(std::nan(""), 100.0, 100.0, 1.0, 0.05),
-        std::invalid_argument);
+    EXPECT_THROW(implied_vol(std::nan(""), 100.0, 100.0, 1.0, 0.05), std::invalid_argument);
 }
 
 TEST(ImpliedVol, RecoversVolAboveDefaultBracketTop) {
     // sigma = 15 > default sigma_hi = 10: exercises the automatic bracket
     // expansion path (hi doubled until the premium is bracketed).
     const double sigma = 15.0;
-    const double price =
-        bs_price(100.0, 100.0, 0.5, 0.02, sigma, 0.0, OptionType::Call);
+    const double price = bs_price(100.0, 100.0, 0.5, 0.02, sigma, 0.0, OptionType::Call);
     EXPECT_NEAR(implied_vol(price, 100.0, 100.0, 0.5, 0.02, 0.0), sigma, 1e-6);
 }
 
 TEST(ImpliedVol, RejectsNonFinitePriceAndRates) {
     constexpr double kInf = std::numeric_limits<double>::infinity();
-    EXPECT_THROW(implied_vol(kInf, 100.0, 100.0, 1.0, 0.05),
-                 std::invalid_argument);
-    EXPECT_THROW(implied_vol(-kInf, 100.0, 100.0, 1.0, 0.05),
-                 std::invalid_argument);
-    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, kInf),
-                 std::invalid_argument);
-    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, 0.05, kInf),
-                 std::invalid_argument);
+    EXPECT_THROW(implied_vol(kInf, 100.0, 100.0, 1.0, 0.05), std::invalid_argument);
+    EXPECT_THROW(implied_vol(-kInf, 100.0, 100.0, 1.0, 0.05), std::invalid_argument);
+    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, kInf), std::invalid_argument);
+    EXPECT_THROW(implied_vol(5.0, 100.0, 100.0, 1.0, 0.05, kInf), std::invalid_argument);
 }
 
 TEST(ImpliedVol, ShortDatedWingsConverge) {
@@ -113,8 +98,7 @@ TEST(ImpliedVol, ShortDatedWingsConverge) {
     const double S = 100.0, K = 140.0, T = 0.05, r = 0.01, q = 0.0;
     const double sigma = 0.6;
     const double price = bs_price(S, K, T, r, sigma, q, OptionType::Call);
-    EXPECT_NEAR(implied_vol(price, S, K, T, r, q, OptionType::Call), sigma,
-                1e-7);
+    EXPECT_NEAR(implied_vol(price, S, K, T, r, q, OptionType::Call), sigma, 1e-7);
 }
 
 TEST(ImpliedVol, LongDatedHighVolFlatVegaRegimeStaysAccurate) {
@@ -130,8 +114,7 @@ TEST(ImpliedVol, LongDatedHighVolFlatVegaRegimeStaysAccurate) {
     const double S = 100.0, K = 100.0, T = 25.0, r = 0.10, q = 0.0;
     const double sigma = 3.0;
     const double price = bs_price(S, K, T, r, sigma, q, OptionType::Put);
-    EXPECT_NEAR(implied_vol(price, S, K, T, r, q, OptionType::Put), sigma,
-                2e-4);
+    EXPECT_NEAR(implied_vol(price, S, K, T, r, q, OptionType::Put), sigma, 2e-4);
 }
 
 }  // namespace

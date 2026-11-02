@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -53,14 +54,14 @@ from .curve import DiscountCurve
 from .risk import Position, portfolio_risk, portfolio_value
 
 __all__ = [
-    "Scenario",
-    "parallel_scenario",
-    "steepener_scenario",
-    "butterfly_scenario",
     "HISTORICAL_SCENARIOS",
+    "Scenario",
     "apply_scenario",
-    "scenario_pnl_table",
+    "butterfly_scenario",
     "carry_rolldown",
+    "parallel_scenario",
+    "scenario_pnl_table",
+    "steepener_scenario",
 ]
 
 
@@ -79,7 +80,7 @@ class Scenario:
             raise ValueError("tenors and shifts_bp must have equal length")
         if len(self.tenors) == 0:
             raise ValueError("scenario needs at least one tenor")
-        if any(b - a <= 0 for a, b in zip(self.tenors, self.tenors[1:])):
+        if any(b - a <= 0 for a, b in zip(self.tenors, self.tenors[1:], strict=False)):
             raise ValueError("scenario tenors must be strictly increasing")
 
     def pillar_shifts(self, times: np.ndarray) -> np.ndarray:
@@ -169,8 +170,8 @@ def scenario_pnl_table(
     """
     base_mv = portfolio_value(positions, settlement, curve)
     risk = portfolio_risk(positions, settlement, curve)
-    d_mod = float(risk.loc["TOTAL", "mod_duration"]) if len(risk) else 0.0
-    conv = float(risk.loc["TOTAL", "convexity"]) if len(risk) else 0.0
+    d_mod = float(cast(float, risk.loc["TOTAL", "mod_duration"])) if len(risk) else 0.0
+    conv = float(cast(float, risk.loc["TOTAL", "convexity"])) if len(risk) else 0.0
     rows = []
     for sc in scenarios:
         shocked = apply_scenario(curve, sc)

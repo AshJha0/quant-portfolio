@@ -88,8 +88,8 @@ TEST(Basel, ZonesByBinomialCdfOnAnyWindow) {
     // The 1996 table is reproduced at n = 250.
     const double table[] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.40, 0.50, 0.65, 0.75, 0.85, 1.0};
     for (int x = 0; x <= 10; ++x) {
-        EXPECT_DOUBLE_EQ(basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = x}).plus_factor,
-                         table[x])
+        EXPECT_DOUBLE_EQ(
+            basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = x}).plus_factor, table[x])
             << x;
     }
     // x > n used to be clamped; now it throws.

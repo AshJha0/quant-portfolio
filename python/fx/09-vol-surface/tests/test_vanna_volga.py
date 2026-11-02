@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface import (
     VannaVolgaSmile,
     gk_forward,
@@ -26,7 +25,7 @@ def vv():
 
 
 def test_pillar_vols_reproduced_exactly(vv):
-    for K, sig in zip(KS, VOLS):
+    for K, sig in zip(KS, VOLS, strict=False):
         assert vv.vol(K) == pytest.approx(sig, abs=1e-10)
 
 
@@ -108,7 +107,7 @@ def test_vv_digital_includes_skew_correction(vv):
     smile_dig = smile_digital(vv, K, S, T, RD, RF, 1)
     h = 1e-4
     slope = (float(vv.vol(K + h)) - float(vv.vol(K - h))) / (2 * h)
-    vega_dig = gk_vega(S, K, T, RD, RF, float(vv.vol(K)))  # ~ digital vega scale
+    gk_vega(S, K, T, RD, RF, float(vv.vol(K)))  # ~ digital vega scale
     assert (smile_dig - flat) * (-slope) > 0  # sign of -vega*dsigma/dK
     assert 0.0 < smile_dig < math.exp(-RD * T)
 

@@ -6,19 +6,28 @@ in docs/VALIDATION.md / METHODOLOGY.md.
 """
 
 import math
+from typing import ClassVar
 
 import pytest
-
-from fx_options import (atm_dns_strike, cip_forward, delta, digital_price,
-                        gk_call, gk_price, gk_put, implied_vol,
-                        mc_digital_price, strike_from_delta,
-                        synthetic_forward_from_options)
+from fx_options import (
+    atm_dns_strike,
+    cip_forward,
+    delta,
+    digital_price,
+    gk_call,
+    gk_price,
+    gk_put,
+    implied_vol,
+    mc_digital_price,
+    strike_from_delta,
+    synthetic_forward_from_options,
+)
 
 
 class TestPeggedManagedPairs:
     """Pre-break EURCHF style: spot glued to a floor, vol in low singles."""
 
-    PEG = dict(S=1.2010, T=0.25, r_d=-0.0075, r_f=-0.0050, sigma=0.02)
+    PEG: ClassVar[dict] = dict(S=1.2010, T=0.25, r_d=-0.0075, r_f=-0.0050, sigma=0.02)
 
     def test_strike_from_delta_round_trip_at_peg_vol(self):
         # Tiny vol compresses the strike ladder violently; the solvers
@@ -66,7 +75,7 @@ class TestPeggedManagedPairs:
 class TestPremiumAdjustedFold:
     """The PA call delta K->delta map folds: two strikes, one delta."""
 
-    MKT = dict(S=147.5, T=1.0, r_d=0.0050, r_f=0.0525, sigma=0.35)
+    MKT: ClassVar[dict] = dict(S=147.5, T=1.0, r_d=0.0050, r_f=0.0525, sigma=0.35)
 
     def test_two_strikes_share_one_pa_delta(self):
         # High-vol USDJPY-style market: pick a delta below the fold's max
@@ -108,7 +117,7 @@ class TestPremiumAdjustedFold:
                              self.MKT["r_f"], self.MKT["sigma"])
         ks = [S * m for m in (0.6, 0.8, 1.0, 1.25, 1.6)]
         ds = [delta(S, k, T, rd, rf, sig, "put", "forward_pa") for k in ks]
-        assert all(b < a for a, b in zip(ds, ds[1:]))  # more negative
+        assert all(b < a for a, b in zip(ds, ds[1:], strict=False))  # more negative
         K = strike_from_delta(-0.25, S, T, rd, rf, sig, "put", "forward_pa")
         assert delta(S, K, T, rd, rf, sig, "put",
                      "forward_pa") == pytest.approx(-0.25, abs=1e-8)
@@ -129,7 +138,7 @@ class TestVolInfinityLimits:
         # entirely financed by the (huge) premium held in base ccy.
         ds = [delta(1.10, 1.10, 1.0, 0.03, 0.01, s, "call", "forward_pa")
               for s in (0.5, 2.0, 6.0, 15.0)]
-        assert all(b < a for a, b in zip(ds, ds[1:]))
+        assert all(b < a for a, b in zip(ds, ds[1:], strict=False))
         assert ds[-1] < 1e-8
 
     def test_put_price_approaches_discounted_strike(self):
@@ -138,7 +147,7 @@ class TestVolInfinityLimits:
 
 
 class TestDigitalSymmetryAndLimits:
-    ARGS = dict(S=1.10, K=1.14, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)
+    ARGS: ClassVar[dict] = dict(S=1.10, K=1.14, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)
 
     def test_foreign_domestic_symmetry_for_digitals(self):
         # A domestic-cash digital call on BASE/QUOTE is a foreign-cash

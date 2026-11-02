@@ -54,8 +54,7 @@ constexpr bool is_premium_adjusted(DeltaConvention c) noexcept {
 
 /// FX option delta under a chosen quoting convention, in units of foreign
 /// notional.  Requires T > 0 and sigma > 0 (throws otherwise).
-double delta(double S, double K, double T, double r_d, double r_f,
-             double sigma, OptionType type,
+double delta(double S, double K, double T, double r_d, double r_f, double sigma, OptionType type,
              DeltaConvention convention = DeltaConvention::Spot);
 
 /// Convert spot delta to forward delta: delta_f = delta_s e^{r_f T}.
@@ -92,8 +91,8 @@ double atm_dns_strike(double S, double T, double r_d, double r_f, double sigma,
 /// root on the decreasing branch (larger strike, consistent with OTM
 /// quoting) is returned, and a target above the fold's maximum attainable
 /// PA delta throws std::invalid_argument.
-double strike_from_delta(double target_delta, double S, double T, double r_d,
-                         double r_f, double sigma, OptionType type,
+double strike_from_delta(double target_delta, double S, double T, double r_d, double r_f,
+                         double sigma, OptionType type,
                          DeltaConvention convention = DeltaConvention::Spot);
 
 /// ln N(x) without underflow (series below x = -37). Exposed for tests.

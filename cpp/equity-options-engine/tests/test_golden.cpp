@@ -25,7 +25,8 @@ std::map<std::string, double> evaluate(const GoldenRecord& r) {
     const auto& x = r.in;
     const std::string fn = r.fn;
     if (fn == "bs") {
-        if (r.n_out == 1) return {{"price", eqopt::bs_price(x[0], x[1], x[2], x[3], x[5], x[4], r.type)}};
+        if (r.n_out == 1)
+            return {{"price", eqopt::bs_price(x[0], x[1], x[2], x[3], x[5], x[4], r.type)}};
         const auto g = eqopt::bs_greeks(x[0], x[1], x[2], x[3], x[5], x[4], r.type);
         return {{"price", g.price}, {"delta", g.delta}, {"gamma", g.gamma}, {"vega", g.vega},
                 {"theta", g.theta}, {"rho", g.rho},     {"vanna", g.vanna}, {"volga", g.volga}};
@@ -47,9 +48,7 @@ std::map<std::string, double> evaluate(const GoldenRecord& r) {
     return {};
 }
 
-TEST(GoldenVectors, CoverageAndSize) {
-    EXPECT_GE(kRecords.size(), 400u);
-}
+TEST(GoldenVectors, CoverageAndSize) { EXPECT_GE(kRecords.size(), 400u); }
 
 TEST(GoldenVectors, AllRecordsMatchOracle) {
     double worst = 0.0;
@@ -60,8 +59,8 @@ TEST(GoldenVectors, AllRecordsMatchOracle) {
             const auto& o = r.out[static_cast<std::size_t>(k)];
             const double v = got.at(o.name);
             EXPECT_LE(std::fabs(v - o.value), o.tol)
-                << "record " << i << " (" << r.fn << ") output " << o.name << ": " << v
-                << " vs " << o.value;
+                << "record " << i << " (" << r.fn << ") output " << o.name << ": " << v << " vs "
+                << o.value;
             worst = std::max(worst, std::fabs(v - o.value) / o.tol);
         }
     }

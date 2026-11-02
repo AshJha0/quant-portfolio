@@ -161,6 +161,15 @@ impl fmt::Display for FxVarError {
 
 impl std::error::Error for FxVarError {}
 
+impl From<qp_core::Error> for FxVarError {
+    fn from(e: qp_core::Error) -> Self {
+        match e {
+            qp_core::Error::InvalidInput(m) => FxVarError::Invalid(m),
+            qp_core::Error::Numerical(m) => FxVarError::Numerical(m),
+        }
+    }
+}
+
 /// Crate-wide result alias.
 pub type Result<T> = std::result::Result<T, FxVarError>;
 

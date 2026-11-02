@@ -3,11 +3,17 @@
 import math
 
 import pytest
-
-from fx_options import (CONVENTIONS, atm_dns_strike, atm_forward_strike,
-                        delta, forward_to_spot_delta, gk_price,
-                        premium_adjust_spot_delta, spot_to_forward_delta,
-                        strike_from_delta)
+from fx_options import (
+    CONVENTIONS,
+    atm_dns_strike,
+    atm_forward_strike,
+    delta,
+    forward_to_spot_delta,
+    gk_price,
+    premium_adjust_spot_delta,
+    spot_to_forward_delta,
+    strike_from_delta,
+)
 
 MKT = dict(S=1.10, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)
 JPY = dict(S=147.5, T=0.5, r_d=0.0050, r_f=0.0525, sigma=0.1075)
@@ -180,9 +186,8 @@ class TestPremiumAdjustedCallFold:
     @pytest.mark.parametrize("conv", ["spot_pa", "forward_pa"])
     @pytest.mark.parametrize("frac", [0.3, 0.6, 0.9])
     def test_twice_attainable_delta_returns_larger_strike_root(self, mkt, conv, frac):
-        from scipy.optimize import brentq
-
         from fx_options.deltas import _pa_peak_strike
+        from scipy.optimize import brentq
 
         F = mkt["S"] * math.exp((mkt["r_d"] - mkt["r_f"]) * mkt["T"])
         k_peak = _pa_peak_strike(F, mkt["T"], mkt["sigma"])

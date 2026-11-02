@@ -1,14 +1,23 @@
 # Portfolio-wide CI.
 #
-#   discover   lists the Python projects and the extra each one installs
-#   python     one job per project and Python version, each in a fresh venv
-#   goldens    regenerated C++ headers and Rust modules match the JSON vectors
-#   cpp        4 engines x {GCC 15, Clang 21}, Release, ctest
-#   cpp-asan   4 engines, Clang 21, AddressSanitizer + UBSan
-#   rust       4 crates, pinned toolchain, cargo test --release
-#   hygiene    hard ban on the hiring-process word; voice report (report-only)
-#   counts     sums executed pass counts into counts.json, then checks the docs
-#   ci-ok      fails unless every job above succeeded; the only required check
+#   discover     lists python/core and the 23 Python projects with their test extra
+#   py core      python/core (qp-core) on Python 3.10 to 3.13
+#   python       one job per project and Python version, each in a fresh venv,
+#                python/core installed first
+#   lint         uv lock --check, ruff check python, mypy (config at the root)
+#   goldens      regenerated C++ headers and Rust modules match the JSON vectors
+#   cpp          4 engines x CMake presets {gcc, clang, asan, tsan} on Ubuntu
+#   cpp gcc16    4 engines, preset gcc16-cxx26 in the gcc:16 container
+#   cpp msvc     4 engines, preset msvc on windows-2025 (MSVC 19.4x)
+#   clang-format clang-format-21 --dry-run --Werror over cpp/
+#   clang-tidy   4 engines, clang-tidy-21 with the root .clang-tidy
+#   rust         rust/ workspace: one entry per crate, cargo test + clippy
+#   rust fmt     cargo fmt --all --check over the workspace
+#   bindings     qp-cpp (nanobind) and qp-rust (PyO3) built and tested
+#   bench        Release benches vs committed bench/results.json (2x rule)
+#   hygiene      hard ban on the hiring-process word; voice report (report-only)
+#   counts       sums executed pass counts into counts.json, then checks the docs
+#   ci-ok        fails unless every job above succeeded; the only required check
 #
 # Third-party actions are pinned to full commit SHAs. Dependabot keeps them
 # current (.github/dependabot.yml).
@@ -39,6 +48,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       projects: ${{ steps.find.outputs.projects }}
+      core: ${{ steps.find.outputs.core }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,8 +57,57 @@ jobs:
         with:
           python-version: "3.12"
       - id: find
-        name: Find Python projects and their test extra
+        name: Find python/core, the Python projects and their test extra
         run: python .github/scripts/discover_projects.py
+
+  python-core:
+    name: py core (${{ matrix.python }})
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements/ci-constraints.txt
+            python/core/pyproject.toml
+      - name: Create a venv for python/core only
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Install python/core with its test dependencies
+        working-directory: python/core
+        env:
+          SPEC: ${{ fromJSON(needs.discover.outputs.core).spec }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c "$GITHUB_WORKSPACE/requirements/ci-constraints.txt" \
+            -e "$SPEC" pytest hypothesis
+          python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
+      - name: pytest
+        working-directory: python/core
+        run: |
+          python -m pytest -p no:cacheprovider -ra \
+            --junitxml="$RUNNER_TEMP/junit/junit.xml"
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-py-core-${{ matrix.python }}
+          path: |
+            ${{ runner.temp }}/junit/junit.xml
+            ${{ runner.temp }}/pip-freeze.txt
+          if-no-files-found: error
+          retention-days: 30
 
   python:
     name: py ${{ matrix.project.slug }} (${{ matrix.python }})
@@ -70,17 +129,23 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements/ci-constraints.txt
+            python/core/pyproject.toml
             ${{ matrix.project.path }}/pyproject.toml
       - name: Create a venv for this project only
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      # Outside the uv workspace the qp-core dependency resolves to the
+      # already installed local python/core, so it is installed first.
+      - name: Install python/core
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c requirements/ci-constraints.txt -e python/core
       - name: Install the project with its ${{ matrix.project.extra || 'base' }} dependencies
         working-directory: ${{ matrix.project.path }}
         env:
           SPEC: ${{ matrix.project.spec }}
         run: |
-          python -m pip install --upgrade pip
           python -m pip install -c "$GITHUB_WORKSPACE/requirements/ci-constraints.txt" \
             -e "$SPEC" pytest hypothesis
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
@@ -100,6 +165,33 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  lint:
+    name: lint (uv lock, ruff, mypy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: uv.lock matches every pyproject.toml in the workspace
+        run: uv lock --check
+      - name: Install the workspace from uv.lock, plus the pinned lint tools, stubs and test deps mypy imports
+        run: |
+          uv sync --all-packages --locked
+          uv pip install -c requirements/ci-constraints.txt ruff mypy pandas-stubs scipy-stubs pytest hypothesis
+      - name: ruff check python
+        run: uv run --no-sync ruff check python
+      # No arguments: the [tool.mypy] / mypy.ini config at the root decides
+      # the files and the strictness (strict on python/core).
+      - name: mypy
+        run: uv run --no-sync mypy
+
   goldens:
     name: goldens --check
     runs-on: ubuntu-24.04
@@ -111,86 +203,210 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      # cpp/core and rust/core have no golden vectors; only the engines do.
       - name: Committed C++ headers and Rust modules match the golden JSON
         run: |
           set -euo pipefail
-          for d in cpp/*/; do python "$d/tools/gen_golden_header.py" --check; done
-          for d in rust/*/; do python "$d/tools/gen_golden_rs.py" --check; done
+          for d in cpp/*-engine/; do python "$d/tools/gen_golden_header.py" --check; done
+          for d in rust/*-engine/; do (cd "$d" && python tools/gen_golden_rs.py --check); done
 
   cpp:
-    name: cpp ${{ matrix.engine }} (${{ matrix.cxx }})
+    name: cpp ${{ matrix.engine }} (${{ matrix.preset }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         engine: [equity-options-engine, equity-var-engine, fx-options-engine, fx-var-engine]
-        cxx: [gcc, clang]
+        preset: [gcc, clang, asan, tsan]
+        include:
+          - preset: gcc
+            toolchain: gcc
+          - preset: clang
+            toolchain: clang
+          - preset: asan
+            toolchain: both
+          - preset: tsan
+            toolchain: both
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    defaults:
+      run:
+        working-directory: cpp/${{ matrix.engine }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install GCC 15 or Clang 21, CMake, Ninja and GoogleTest
+      - name: Install ${{ matrix.toolchain }} toolchain, CMake, Ninja and GoogleTest
+        working-directory: .
         env:
-          CXX_KIND: ${{ matrix.cxx }}
+          CXX_KIND: ${{ matrix.toolchain }}
         run: bash .github/scripts/install_cxx.sh "$CXX_KIND"
-      - name: Configure (Release)
+      # The Ubuntu 24.04 runner kernel uses 32 bits of mmap entropy, which the
+      # sanitizer runtimes of Clang 21 cannot map around.
+      - name: Lower mmap randomisation for the sanitizers
+        if: matrix.preset == 'asan' || matrix.preset == 'tsan'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: cmake --preset ${{ matrix.preset }}
         env:
-          ENGINE: ${{ matrix.engine }}
-        run: |
-          cmake -S "cpp/$ENGINE" -B "$RUNNER_TEMP/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
-            --no-warn-unused-cli \
-            -DEQOPT_WERROR=ON -DFXOPT_WERROR=ON -DEQVAR_WERROR=ON -DFXVAR_WERROR=ON
+          PRESET: ${{ matrix.preset }}
+        run: cmake --preset "$PRESET"
       - name: Build
-        run: cmake --build "$RUNNER_TEMP/build" -j 4
+        env:
+          PRESET: ${{ matrix.preset }}
+        run: cmake --build --preset "$PRESET" -j 4
       - name: ctest
+        env:
+          PRESET: ${{ matrix.preset }}
         run: |
-          ctest --test-dir "$RUNNER_TEMP/build" --output-on-failure -j 4 \
+          ctest --preset "$PRESET" --output-on-failure -j 2 \
             --output-junit "$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: junit-cpp-${{ matrix.engine }}-${{ matrix.cxx }}
+          name: junit-cpp-${{ matrix.engine }}-${{ matrix.preset }}
           path: ${{ runner.temp }}/junit/junit.xml
           if-no-files-found: error
           retention-days: 30
 
-  cpp-asan:
-    name: cpp ${{ matrix.engine }} (clang asan+ubsan)
+  # On 2026-11-01 ubuntu-toolchain-r/test had only a pre-release gcc-16
+  # snapshot (16-20260315) for noble, while the official gcc:16 image carries
+  # the GCC 16.2.0 release (Debian trixie). The job runs in that container,
+  # pinned by digest.
+  cpp-gcc16:
+    name: cpp ${{ matrix.engine }} (gcc16-cxx26)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      image: gcc:16@sha256:07280eb2e744f1b7a2d8d4a3894c089ea07266c109758afc388a634bd098e4eb
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [equity-options-engine, equity-var-engine, fx-options-engine, fx-var-engine]
+    defaults:
+      run:
+        working-directory: cpp/${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The image installs GCC 16 as gcc / g++ in /usr/local/bin. The
+      # gcc-16 / g++-16 names are added for presets that use them.
+      - name: Install CMake, Ninja and GoogleTest; name GCC 16
+        working-directory: .
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends cmake ninja-build libgtest-dev
+          ln -sf "$(command -v gcc)" /usr/local/bin/gcc-16
+          ln -sf "$(command -v g++)" /usr/local/bin/g++-16
+          echo "CC=gcc-16" >> "$GITHUB_ENV"
+          echo "CXX=g++-16" >> "$GITHUB_ENV"
+          g++-16 --version | head -1
+          cmake --version | head -1
+      - name: cmake --preset gcc16-cxx26
+        run: cmake --preset gcc16-cxx26
+      - name: Build
+        run: cmake --build --preset gcc16-cxx26 -j 4
+      - name: ctest
+        run: |
+          ctest --preset gcc16-cxx26 --output-on-failure -j 2 \
+            --output-junit "$RUNNER_TEMP/junit/junit.xml"
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-cpp-${{ matrix.engine }}-gcc16-cxx26
+          path: ${{ runner.temp }}/junit/junit.xml
+          if-no-files-found: error
+          retention-days: 30
+
+  # windows-2025 ships Visual Studio 2022 17.14 (MSVC 19.44). GoogleTest is
+  # not installed, so each engine's FetchContent fallback provides it.
+  cpp-msvc:
+    name: cpp ${{ matrix.engine }} (msvc)
+    runs-on: windows-2025
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [equity-options-engine, equity-var-engine, fx-options-engine, fx-var-engine]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: cpp/${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Tool versions
+        run: |
+          cl 2>&1 | Select-Object -First 1
+          cmake --version | Select-Object -First 1
+          ninja --version
+      - name: cmake --preset msvc
+        run: cmake --preset msvc
+      - name: Build
+        run: cmake --build --preset msvc -j 4
+      - name: ctest
+        run: ctest --preset msvc --output-on-failure -j 2 --output-junit "$env:RUNNER_TEMP/junit/junit.xml"
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-cpp-${{ matrix.engine }}-msvc
+          path: ${{ runner.temp }}/junit/junit.xml
+          if-no-files-found: error
+          retention-days: 30
+
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install clang-format-21
+        run: bash .github/scripts/install_cxx.sh tools
+      - name: Every C++ file under cpp/ matches .clang-format
+        run: |
+          git ls-files -z -- 'cpp/*.cpp' 'cpp/*.hpp' 'cpp/*.h' 'cpp/*.cc' 'cpp/*.ipp' \
+            | xargs -0 --no-run-if-empty clang-format-21 --dry-run --Werror
+
+  clang-tidy:
+    name: clang-tidy ${{ matrix.engine }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         engine: [equity-options-engine, equity-var-engine, fx-options-engine, fx-var-engine]
-    env:
-      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
-      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    defaults:
+      run:
+        working-directory: cpp/${{ matrix.engine }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install Clang 21, CMake, Ninja and GoogleTest
-        run: bash .github/scripts/install_cxx.sh clang
-      - name: Configure (sanitizers)
-        env:
-          ENGINE: ${{ matrix.engine }}
+      - name: Install Clang 21 with clang-tidy-21
+        working-directory: .
+        run: bash .github/scripts/install_cxx.sh tools
+      - name: cmake --preset clang with a compilation database
+        run: cmake --preset clang -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      # Checks and header filter come from the root .clang-tidy. Any finding
+      # from an enabled check fails the job.
+      - name: clang-tidy-21 over the engine sources
         run: |
-          san="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
-          cmake -S "cpp/$ENGINE" -B "$RUNNER_TEMP/build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
-            -DCMAKE_CXX_FLAGS="$san" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-            --no-warn-unused-cli \
-            -DEQOPT_WERROR=ON -DFXOPT_WERROR=ON -DEQVAR_WERROR=ON -DFXVAR_WERROR=ON
-      - name: Build
-        run: cmake --build "$RUNNER_TEMP/build" -j 4
-      - name: ctest
-        run: ctest --test-dir "$RUNNER_TEMP/build" --output-on-failure -j 2
+          set -euo pipefail
+          test -f build/clang/compile_commands.json
+          git ls-files -z -- 'src/*.cpp' \
+            | xargs -0 -r -n 4 -P 4 clang-tidy-21 -p build/clang --quiet --warnings-as-errors='*'
 
   rust:
     name: rust ${{ matrix.crate }}
@@ -199,38 +415,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [equity-options-engine, equity-var-engine, fx-options-engine, fx-var-engine]
+        include:
+          - crate: core
+            package: qp-core
+          - crate: equity-options-engine
+            package: eq-options-engine
+          - crate: equity-var-engine
+            package: eq-var-engine
+          - crate: fx-options-engine
+            package: fx-options-engine
+          - crate: fx-var-engine
+            package: fx-var-engine
     env:
-      RUST_TOOLCHAIN: "1.99.1"
       CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install the pinned Rust toolchain
+      # rustup reads the channel and components from rust/rust-toolchain.toml.
+      - name: Install the toolchain from rust/rust-toolchain.toml
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal -c rustfmt,clippy
-          rustup default "$RUST_TOOLCHAIN"
+          rustup toolchain install
           rustc --version
+          cargo clippy --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: rust/${{ matrix.crate }}
-      - name: cargo test --release
-        working-directory: rust/${{ matrix.crate }}
+          workspaces: rust -> target
+          key: ${{ hashFiles('rust/Cargo.lock') }}
+      - name: cargo test --release -p ${{ matrix.package }}
         env:
           RUSTFLAGS: "-D warnings"
+          PACKAGE: ${{ matrix.package }}
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/rust"
-          cargo test --release --locked 2>&1 | tee "$RUNNER_TEMP/rust/cargo-test.log"
-      # Generated golden modules carry #[rustfmt::skip] so their layout matches
-      # tools/gen_golden_rs.py and the goldens --check job.
-      - name: cargo fmt --check
-        working-directory: rust/${{ matrix.crate }}
-        run: cargo fmt --check
+          cargo test --release --locked -p "$PACKAGE" 2>&1 | tee "$RUNNER_TEMP/rust/cargo-test.log"
       - name: cargo clippy -D warnings
-        working-directory: rust/${{ matrix.crate }}
-        run: cargo clippy --release --all-targets --locked -- -D warnings
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: cargo clippy --release --all-targets --locked -p "$PACKAGE" -- -D warnings
       - name: Upload cargo test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -239,6 +465,185 @@ jobs:
           path: ${{ runner.temp }}/rust/cargo-test.log
           if-no-files-found: error
           retention-days: 30
+
+  # Generated golden modules carry #[rustfmt::skip] so their layout matches
+  # tools/gen_golden_rs.py and the goldens --check job.
+  rust-fmt:
+    name: rust fmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the toolchain from rust/rust-toolchain.toml
+        run: rustup toolchain install
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
+
+  bindings:
+    name: bind ${{ matrix.package }} (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: cpp-nanobind
+            python: "3.12"
+          - package: rust-pyo3
+            python: "3.12"
+          - package: rust-pyo3
+            python: "3.13"
+    env:
+      CARGO_TERM_COLOR: never
+      # Applies to the isolated build environments too, so nanobind,
+      # scikit-build-core and maturin come from the pinned set.
+      PIP_CONSTRAINT: ${{ github.workspace }}/requirements/ci-constraints.txt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements/ci-constraints.txt
+            bindings/${{ matrix.package }}/pyproject.toml
+      - name: Install GCC 15, CMake and Ninja
+        if: matrix.package == 'cpp-nanobind'
+        run: bash .github/scripts/install_cxx.sh gcc
+      # bindings/rust-pyo3 sits outside rust/, so the pinned channel is read
+      # from rust/rust-toolchain.toml and set for every later step.
+      - name: Install the Rust toolchain pinned in rust/rust-toolchain.toml
+        if: matrix.package == 'rust-pyo3'
+        run: |
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)
+          test -n "$channel"
+          rustup toolchain install "$channel" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: matrix.package == 'rust-pyo3'
+        with:
+          workspaces: bindings/rust-pyo3 -> target
+          key: ${{ hashFiles('bindings/rust-pyo3/Cargo.lock') }}
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Install python/core and the four reference packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e python/core \
+            -e python/equity/01-options-pricing -e python/fx/01-options-pricing \
+            -e python/equity/03-var-es-engine -e python/fx/03-var-es-engine \
+            pytest hypothesis
+      - name: pip install ./bindings/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m pip install -v "./bindings/$PACKAGE"
+          python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
+      # Run from the temp dir so the installed package is imported, not the
+      # source tree.
+      - name: pytest bindings/${{ matrix.package }}/tests
+        working-directory: ${{ runner.temp }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m pytest -p no:cacheprovider -ra "$GITHUB_WORKSPACE/bindings/$PACKAGE/tests" \
+            --junitxml="$RUNNER_TEMP/junit/junit.xml"
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-bind-${{ matrix.package }}-${{ matrix.python }}
+          path: |
+            ${{ runner.temp }}/junit/junit.xml
+            ${{ runner.temp }}/pip-freeze.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  # CI runner numbers are not the published numbers in the engine READMEs.
+  # The job fails only on a p50 regression worse than 2.0x on a kernel whose
+  # committed p50 is above 1 us; everything else is report-only. See
+  # .github/scripts/bench_compare.py.
+  bench:
+    name: bench
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install GCC 15, CMake, Ninja and GoogleTest
+        run: bash .github/scripts/install_cxx.sh gcc
+      - name: Install the toolchain from rust/rust-toolchain.toml
+        working-directory: rust
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust -> target
+          key: bench-${{ hashFiles('rust/Cargo.lock') }}
+      - name: C++ benches (preset gcc, Release)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/bench"
+          mkdir -p "$out"
+          for pair in equity-options-engine:eqopt_bench equity-var-engine:bench_eqvar \
+                      fx-options-engine:fxopt_bench fx-var-engine:fxvar_bench; do
+            engine="${pair%%:*}"
+            target="${pair##*:}"
+            (
+              cd "cpp/$engine"
+              cmake --preset gcc -DCMAKE_BUILD_TYPE=Release
+              cmake --build --preset gcc --target "$target" -j 4
+              "build/gcc/$target" --label ci --out "$out/cpp-$engine.json"
+            )
+          done
+      - name: Rust benches (release)
+        working-directory: rust
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/bench"
+          for pair in equity-options-engine:eq-options-engine equity-var-engine:eq-var-engine \
+                      fx-options-engine:fx-options-engine fx-var-engine:fx-var-engine; do
+            crate="${pair%%:*}"
+            package="${pair##*:}"
+            cargo run --release --locked -p "$package" --bin bench -- --out "$out/rust-$crate.json"
+          done
+      - name: Compare p50 with the committed results
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/bench"
+          args=()
+          for lang in cpp rust; do
+            for engine in equity-options-engine equity-var-engine fx-options-engine fx-var-engine; do
+              args+=(--pair "$lang/$engine" "$lang/$engine/bench/results.json" "$out/$lang-$engine.json")
+            done
+          done
+          rc=0
+          python .github/scripts/bench_compare.py "${args[@]}" \
+            --summary "$out/summary.md" --json "$out/comparison.json" > /dev/null || rc=$?
+          cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Upload bench JSON
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-results
+          path: ${{ runner.temp }}/bench/
+          if-no-files-found: warn
+          retention-days: 90
 
   hygiene:
     name: hygiene
@@ -261,10 +666,14 @@ jobs:
           python-version: "3.12"
       - name: Voice report (em-dashes, banned phrases; report-only)
         run: python .github/scripts/style_report.py
+      - name: CI helper scripts (bench_compare, aggregate_counts, discover)
+        run: |
+          python -m pip install pytest
+          python -m pytest -p no:cacheprovider -q tests/test_ci_scripts.py
 
   counts:
     name: counts
-    needs: [python, cpp, rust]
+    needs: [python-core, python, cpp, cpp-gcc16, cpp-msvc, rust, bindings]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -305,7 +714,23 @@ jobs:
 
   ci-ok:
     name: ci-ok
-    needs: [discover, python, goldens, cpp, cpp-asan, rust, hygiene, counts]
+    needs:
+      - discover
+      - python-core
+      - python
+      - lint
+      - goldens
+      - cpp
+      - cpp-gcc16
+      - cpp-msvc
+      - clang-format
+      - clang-tidy
+      - rust
+      - rust-fmt
+      - bindings
+      - bench
+      - hygiene
+      - counts
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

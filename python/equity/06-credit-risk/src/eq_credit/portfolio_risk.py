@@ -62,25 +62,25 @@ import pandas as pd
 from scipy.stats import binom, norm
 
 __all__ = [
-    "expected_loss",
-    "el_by_bucket",
     "asset_correlation",
-    "maturity_adjustment_b",
     "basel_k",
-    "risk_weighted_assets",
     "basel_report",
-    "vasicek_cdf",
-    "vasicek_quantile",
-    "simulate_portfolio_losses",
     "economic_capital",
+    "el_by_bucket",
+    "expected_loss",
     "finite_portfolio_quantile",
     "granularity_adjustment",
+    "maturity_adjustment_b",
     "mc_quantile_ci",
+    "risk_weighted_assets",
+    "simulate_portfolio_losses",
+    "vasicek_cdf",
+    "vasicek_quantile",
 ]
 
 
 def _validate_pd_lgd_ead(
-    pd_: np.ndarray, lgd: np.ndarray, ead: np.ndarray
+    pd_: np.ndarray | float, lgd: np.ndarray | float, ead: np.ndarray | float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     p = np.atleast_1d(np.asarray(pd_, dtype=float))
     l = np.atleast_1d(np.asarray(lgd, dtype=float))

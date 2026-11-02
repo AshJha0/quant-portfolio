@@ -12,11 +12,11 @@ from .backtest import (
     BacktestResult,
     ExecutionConfig,
     backtest_from_detection,
-    random_timing_weights,
-    vol_target_weights,
     ma_timing_weights,
+    random_timing_weights,
     run_ledger,
     summary_stats,
+    vol_target_weights,
     walk_forward_backtest,
 )
 from .detection import (
@@ -71,29 +71,69 @@ from .strategy import (
 __version__ = "1.0.0"
 
 __all__ = [
-    # features
-    "expanding_zscore", "realized_vol", "return_dispersion",
-    "average_pairwise_correlation", "drawdown_depth", "trend_strength",
-    "credit_proxy_spread", "term_proxy", "build_features",
-    # pca
-    "PCAModel", "fit_pca", "project", "scree_table", "rolling_pca",
-    # gmm
-    "GMMFit", "fit_gmm", "gmm_log_likelihood", "bic", "aic",
-    "select_k_bic", "match_permutation",
-    # hmm
-    "HMMFit", "fit_hmm", "forward_filter", "forward_backward", "viterbi",
-    "stationary_distribution", "expected_durations",
-    # detection
-    "RegimeLabels", "label_states", "labels_from_vol_means", "filtered_probabilities",
-    "smoothed_probabilities", "flip_flop_rate", "min_duration_filter",
-    "expanding_fit_detect",
-    # strategy
-    "hysteresis_regime", "naive_threshold_regime", "regime_target_weight",
-    "vol_target_scale", "build_weights", "turnover", "causal_min_duration",
     # backtest
-    "BacktestResult", "ExecutionConfig", "run_ledger", "ma_timing_weights",
-    "backtest_from_detection", "random_timing_weights", "vol_target_weights",
-    "walk_forward_backtest", "summary_stats",
+    "BacktestResult",
+    "ExecutionConfig",
+    # gmm
+    "GMMFit",
+    # hmm
+    "HMMFit",
+    # pca
+    "PCAModel",
+    # detection
+    "RegimeLabels",
+    "aic",
+    "average_pairwise_correlation",
+    "backtest_from_detection",
+    "bic",
+    "build_features",
+    "build_weights",
+    "causal_min_duration",
+    "credit_proxy_spread",
+    "drawdown_depth",
+    "expanding_fit_detect",
+    # features
+    "expanding_zscore",
+    "expected_durations",
+    "filtered_probabilities",
+    "fit_gmm",
+    "fit_hmm",
+    "fit_pca",
+    "flip_aftermath",
+    "flip_flop_rate",
+    "forward_backward",
+    "forward_filter",
+    "gmm_log_likelihood",
+    # strategy
+    "hysteresis_regime",
+    "label_states",
+    "labels_from_vol_means",
+    "ma_timing_weights",
+    "match_permutation",
+    "min_duration_filter",
+    "naive_threshold_regime",
+    "per_regime_stats",
+    "project",
+    "random_timing_weights",
+    "realized_vol",
+    "regime_runs",
+    "regime_target_weight",
     # risk
-    "regimes_known_at_decision", "per_regime_stats", "transition_attribution", "flip_aftermath", "regime_runs",
+    "regimes_known_at_decision",
+    "return_dispersion",
+    "rolling_pca",
+    "run_ledger",
+    "scree_table",
+    "select_k_bic",
+    "smoothed_probabilities",
+    "stationary_distribution",
+    "summary_stats",
+    "term_proxy",
+    "transition_attribution",
+    "trend_strength",
+    "turnover",
+    "viterbi",
+    "vol_target_scale",
+    "vol_target_weights",
+    "walk_forward_backtest",
 ]

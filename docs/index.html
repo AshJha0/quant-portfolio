@@ -120,7 +120,10 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <p>C++23 and Rust ports of the options and VaR libraries. No runtime
          dependencies beyond the standard library; C++ tests use GoogleTest.
          The VaR ports revalue linear books only. They are ports of the Python
-         design, not independent derivations.</p></div>
+         design, not independent derivations. Shared code lives in
+         <code>cpp/core</code> and <code>rust/core</code>, and the
+         <code>qp-cpp</code> and <code>qp-rust</code> packages in
+         <code>bindings/</code> call the engines from Python.</p></div>
     <div class="card"><span class="tag">Docs</span><h3>Documentation contract</h3>
       <p>Each project states why it uses its model, what it assumes, how it was
          validated, where it fails and how it is meant to be used. Changes are
@@ -135,12 +138,11 @@ python -m venv ../venv-qp && . ../venv-qp/bin/activate
 cd python/equity/01-options-pricing
 python -m pip install -c ../../../requirements/ci-constraints.txt -e ".[dev]"
 python -m pytest -q</pre>
-<pre># a C++ engine, built outside the clone
-cmake -S cpp/equity-options-engine -B ../build/equity-options-engine -DCMAKE_BUILD_TYPE=Release
-cmake --build ../build/equity-options-engine -j
-ctest --test-dir ../build/equity-options-engine --output-on-failure</pre>
-<pre># a Rust engine
-cd rust/equity-var-engine && cargo test --release --locked</pre>
+<pre># a C++ engine, with the gcc preset (build tree under build/gcc)
+cd cpp/equity-options-engine
+cmake --preset gcc && cmake --build --preset gcc && ctest --preset gcc</pre>
+<pre># a Rust engine, from the Cargo workspace
+cd rust && cargo test --release --locked -p eq-var-engine</pre>
 
   <footer>quant-portfolio. Conventions: <a href="https://github.com/AshJha0/quant-portfolio/blob/main/CONVENTIONS.md">CONVENTIONS.md</a>.</footer>
 </div>

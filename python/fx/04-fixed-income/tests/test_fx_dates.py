@@ -3,7 +3,6 @@
 import datetime as dt
 
 import pytest
-
 from fx_rates.daycount import (
     MONEY_MARKET_DAYCOUNT,
     forward_settlement_date,

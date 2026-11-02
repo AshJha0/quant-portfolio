@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_algo import (
     EURUSD,
     MarketSimulator,
@@ -11,7 +10,6 @@ from fx_algo import (
     eta_from_depth,
     liquidity_weighted_schedule,
     piecewise_ac_schedule,
-    twap_schedule,
 )
 
 

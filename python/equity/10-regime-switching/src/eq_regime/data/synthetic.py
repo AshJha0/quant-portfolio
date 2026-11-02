@@ -18,7 +18,8 @@ All randomness flows through an explicit ``seed`` / ``numpy.random.Generator``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -28,8 +29,8 @@ TRADING_DAYS: int = 252
 __all__ = [
     "RegimePanel",
     "default_regime_params",
-    "make_regime_panel",
     "make_gbm_panel",
+    "make_regime_panel",
     "simulate_markov_chain",
 ]
 
@@ -233,7 +234,7 @@ def make_regime_panel(
     returns = pd.DataFrame(
         rets, index=dates[1:], columns=[f"A{i:02d}" for i in range(n_assets)]
     )
-    prices = 100.0 * np.exp(returns.cumsum())
+    prices = cast(pd.DataFrame, 100.0 * np.exp(returns.cumsum()))
     prices = pd.concat(
         [pd.DataFrame(100.0, index=dates[:1], columns=returns.columns), prices]
     )

@@ -6,6 +6,8 @@
 #include <random>
 
 #include "eqopt/black_scholes.hpp"
+#include "qp/normal.hpp"
+#include "qp/rng.hpp"
 
 namespace eqopt {
 
@@ -13,60 +15,14 @@ namespace {
 
 constexpr double kZ95 = 1.959963984540054;  // two-sided 95% normal quantile
 
-/// Acklam's rational approximation to the inverse normal CDF (~1.15e-9
-/// relative error), used as the initial guess before Halley refinement.
-double inv_norm_cdf_acklam(double p) noexcept {
-    // Coefficients from P. J. Acklam (2003).
-    constexpr double a[6] = {-3.969683028665376e+01, 2.209460984245205e+02,
-                             -2.759285104469687e+02, 1.383577518672690e+02,
-                             -3.066479806614716e+01, 2.506628277459239e+00};
-    constexpr double b[5] = {-5.447609879822406e+01, 1.615858368580409e+02,
-                             -1.556989798598866e+02, 6.680131188771972e+01,
-                             -1.328068155288572e+01};
-    constexpr double c[6] = {-7.784894002430293e-03, -3.223964580411365e-01,
-                             -2.400758277161838e+00, -2.549732539343734e+00,
-                             4.374664141464968e+00,  2.938163982698783e+00};
-    constexpr double d[4] = {7.784695709041462e-03, 3.224671290700398e-01,
-                             2.445134137142996e+00, 3.754408661907416e+00};
-    constexpr double p_low = 0.02425;
-
-    if (p < p_low) {
-        const double t = std::sqrt(-2.0 * std::log(p));
-        return (((((c[0] * t + c[1]) * t + c[2]) * t + c[3]) * t + c[4]) * t +
-                c[5]) /
-               ((((d[0] * t + d[1]) * t + d[2]) * t + d[3]) * t + 1.0);
-    }
-    if (p <= 1.0 - p_low) {
-        const double u = p - 0.5;
-        const double t = u * u;
-        return (((((a[0] * t + a[1]) * t + a[2]) * t + a[3]) * t + a[4]) * t +
-                a[5]) *
-               u /
-               (((((b[0] * t + b[1]) * t + b[2]) * t + b[3]) * t + b[4]) * t +
-                1.0);
-    }
-    const double t = std::sqrt(-2.0 * std::log(1.0 - p));
-    return -(((((c[0] * t + c[1]) * t + c[2]) * t + c[3]) * t + c[4]) * t +
-             c[5]) /
-           ((((d[0] * t + d[1]) * t + d[2]) * t + d[3]) * t + 1.0);
-}
-
-/// splitmix64 mix step: derives statistically independent per-thread seeds
-/// from (base seed, chunk index) deterministically.
-std::uint64_t splitmix64(std::uint64_t x) noexcept {
-    x += 0x9e3779b97f4a7c15ULL;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-    return x ^ (x >> 31);
-}
+using qp::splitmix64;
 
 }  // namespace
 
 double normal_from_u64(std::uint64_t u64) noexcept {
     // 53-bit uniform in (0, 1): (k + 0.5) * 2^-53 never hits 0 or 1.
-    const double u =
-        (static_cast<double>(u64 >> 11) + 0.5) * 1.1102230246251565e-16;
-    double x = inv_norm_cdf_acklam(u);
+    const double u = qp::uniform_open53(u64);
+    double x = qp::acklam_ppf(u);
     // One Halley step against the erfc-based CDF: pushes the ~1e-9 error of
     // the rational approximation down to ~1e-15.
     const double e = norm_cdf(x) - u;
@@ -117,21 +73,24 @@ void chunk_entry(void* ctx, unsigned c) noexcept {
 
 }  // namespace
 
-Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma,
-                              double q, OptionType type, std::size_t n_paths,
-                              bool antithetic, bool control_variate, std::uint64_t seed,
-                              unsigned threads, McWorkspace& ws, ThreadPool* pool) noexcept {
+Result<MCResult> try_mc_price(double S, double K, double T, double r, double sigma, double q,
+                              OptionType type, std::size_t n_paths, bool antithetic,
+                              bool control_variate, std::uint64_t seed, unsigned threads,
+                              McWorkspace& ws, ThreadPool* pool) noexcept {
     if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]]
+        return std::unexpected(e.error());
     // A standard error needs two independent samples (paths, or antithetic
     // pairs) left after fitting: three with the control variate, since two
     // points fit the regression line exactly and leave a zero residual.
     const std::size_t units = antithetic ? (n_paths + 1) / 2 : n_paths;
     const std::size_t needed = control_variate ? 3 : 2;
-    if (units < needed) [[unlikely]] return std::unexpected(Error{Errc::TooFewPaths});
-    if (threads == 0) [[unlikely]] return std::unexpected(Error{Errc::BadThreads});
+    if (units < needed) [[unlikely]]
+        return std::unexpected(Error{Errc::TooFewPaths});
+    if (threads == 0) [[unlikely]]
+        return std::unexpected(Error{Errc::BadThreads});
     if (T == 0.0 || sigma == 0.0) {
         const auto exact = try_bs_price(S, K, T, r, sigma, q, type);
         if (!exact) return std::unexpected(exact.error());
@@ -142,8 +101,7 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
     const std::size_t half = antithetic ? (n_paths + 1) / 2 : 0;
     const std::size_t base = antithetic ? half : n_paths;
     const std::size_t n_eff = antithetic ? 2 * half : n_paths;
-    if (ws.payoff_.size() < n_eff || (control_variate && ws.control_.size() < n_eff))
-        [[unlikely]] {
+    if (ws.payoff_.size() < n_eff || (control_variate && ws.control_.size() < n_eff)) [[unlikely]] {
         return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_mc_price",
                                      static_cast<double>(ws.payoff_.size()),
                                      static_cast<double>(n_eff)});
@@ -167,11 +125,9 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
                 static_cast<unsigned>(std::min<std::size_t>(threads, base)),
                 payoff,
                 control};
-    ThreadPool::TaskFn fn = antithetic
-                                ? (control_variate ? &chunk_entry<true, true>
-                                                   : &chunk_entry<true, false>)
-                                : (control_variate ? &chunk_entry<false, true>
-                                                   : &chunk_entry<false, false>);
+    ThreadPool::TaskFn fn =
+        antithetic ? (control_variate ? &chunk_entry<true, true> : &chunk_entry<true, false>)
+                   : (control_variate ? &chunk_entry<false, true> : &chunk_entry<false, false>);
     if (pool != nullptr && task.n_chunks > 1) {
         pool->run(task.n_chunks, fn, &task);
     } else {
@@ -226,17 +182,16 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
         const double d = samples[i] - mean;
         var += d * d;
     }
-    const double se = std::sqrt(var / static_cast<double>(n_samples - 1) /
-                                static_cast<double>(n_samples));
+    const double se =
+        std::sqrt(var / static_cast<double>(n_samples - 1) / static_cast<double>(n_samples));
     if (!std::isfinite(mean) || !std::isfinite(se)) [[unlikely]] {
         return std::unexpected(Error{Errc::McNotFinite});
     }
     return MCResult{mean, se, mean - kZ95 * se, mean + kZ95 * se, n_eff};
 }
 
-MCResult mc_price(double S, double K, double T, double r, double sigma,
-                  double q, OptionType type, std::size_t n_paths,
-                  bool antithetic, bool control_variate, std::uint64_t seed,
+MCResult mc_price(double S, double K, double T, double r, double sigma, double q, OptionType type,
+                  std::size_t n_paths, bool antithetic, bool control_variate, std::uint64_t seed,
                   unsigned threads) {
     McWorkspace ws;
     // Validation errors take precedence over sizing, as before.

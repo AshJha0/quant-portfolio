@@ -3,7 +3,6 @@ and high vol regimes (which exercises both the Newton-Raphson stage
 and the bisection fallback), plus the no-arbitrage-bound guard.
 """
 import pytest
-
 from eq_bs_replication import call_price, implied_volatility
 
 S, K, r, sigma, T = 100.0, 105.0, 0.03, 0.25, 0.75

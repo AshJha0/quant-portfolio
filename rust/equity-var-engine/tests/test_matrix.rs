@@ -101,7 +101,14 @@ fn sample_covariance_hand_computed_2x2() {
 #[test]
 fn ewma_covariance_single_point_limit_and_validation() {
     let r = Matrix::from_vec(3, 2, vec![0.01, 0.02, -0.01, 0.00, 0.03, 0.01]).unwrap();
-    let s = sample_covariance(&r).unwrap();
+    // lam -> 1 stays near the seed: zero-mean mean(r r') of the first min(30, T) rows.
+    let c = (2e-4 + 0.0 + 3e-4) / 3.0;
+    let s = Matrix::from_vec(
+        2,
+        2,
+        vec![(1e-4 + 1e-4 + 9e-4) / 3.0, c, c, (4e-4 + 0.0 + 1e-4) / 3.0],
+    )
+    .unwrap();
     let e = ewma_covariance(&r, 0.999999).unwrap();
     assert!(max_abs_diff(&e, &s) < 1e-8);
     assert!(ewma_covariance(&r, 1.0).is_err());

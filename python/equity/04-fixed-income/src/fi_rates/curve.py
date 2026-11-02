@@ -49,7 +49,7 @@ from collections.abc import Sequence
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
-__all__ = ["DiscountCurve", "ExtrapolationWarning", "INTERPOLATIONS"]
+__all__ = ["INTERPOLATIONS", "DiscountCurve", "ExtrapolationWarning"]
 
 INTERPOLATIONS: tuple[str, ...] = ("loglinear_df", "linear_zero", "pchip_zero")
 
@@ -76,8 +76,8 @@ class DiscountCurve:
 
     def __init__(
         self,
-        times: Sequence[float],
-        discount_factors: Sequence[float],
+        times: Sequence[float] | np.ndarray,
+        discount_factors: Sequence[float] | np.ndarray,
         interpolation: str = "loglinear_df",
     ) -> None:
         t = np.asarray(times, dtype=float)
@@ -108,10 +108,10 @@ class DiscountCurve:
     @classmethod
     def from_zero_rates(
         cls,
-        times: Sequence[float],
-        zero_rates: Sequence[float],
+        times: Sequence[float] | np.ndarray,
+        zero_rates: Sequence[float] | np.ndarray,
         interpolation: str = "loglinear_df",
-    ) -> "DiscountCurve":
+    ) -> DiscountCurve:
         """Build from continuously compounded zero rates ``z(t_i)``."""
         t = np.asarray(times, dtype=float)
         z = np.asarray(zero_rates, dtype=float)
@@ -212,14 +212,14 @@ class DiscountCurve:
         return (1.0 - float(dfs[-1])) / annuity
 
     # ----------------------------------------------------------------- bumps
-    def bumped_parallel(self, shift: float) -> "DiscountCurve":
+    def bumped_parallel(self, shift: float) -> DiscountCurve:
         """New curve with all pillar zero rates shifted by ``shift`` (absolute,
         e.g. ``1e-4`` = 1bp)."""
         return DiscountCurve.from_zero_rates(
             self.times, self._zeros + shift, self.interpolation
         )
 
-    def bumped_pillars(self, shifts: Sequence[float]) -> "DiscountCurve":
+    def bumped_pillars(self, shifts: Sequence[float] | np.ndarray) -> DiscountCurve:
         """New curve with per-pillar zero-rate shifts (absolute)."""
         s = np.asarray(shifts, dtype=float)
         if s.shape != self.times.shape:

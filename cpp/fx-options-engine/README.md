@@ -40,11 +40,11 @@ fx-options-engine/
 │   ├── monte_carlo.hpp         # GBM under domestic measure, mt19937_64, McWorkspace
 │   ├── thread_pool.hpp         # persistent fixed-size pool for chunked MC
 │   └── batch.hpp               # structure-of-arrays price and Greeks batch
-├── src/                        # implementations (+ internal brent.hpp)
+├── src/                        # implementations (brent.hpp: alias of qp::brentq)
 ├── tools/gen_golden_header.py  # golden JSON -> tests/golden_vectors.hpp (--check)
 ├── tools/jsonl_main.cpp        # fxopt_jsonl shim for the differential test
 ├── tests/                      # GoogleTest suite + generated golden_vectors.hpp
-├── bench/                      # per-call latency harness (latency.hpp) and kernels
+├── bench/                      # per-call latency harness (harness: qp/bench/latency.hpp in cpp/core) and kernels
 └── docs/                       # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```
 
@@ -66,10 +66,33 @@ cases (including the separate `fxopt_alloc_tests` binary) plus the shim
 smoke test; sanitizer builds skip `fxopt_alloc_tests` (82 cases), because
 the sanitizer runtimes define `operator new` themselves.
 
-C++23, CMake >= 3.20. GoogleTest is found with `find_package(GTest)` and
+C++23, CMake >= 3.25. GoogleTest is found with `find_package(GTest)` and
 fetched (v1.15.2) when absent. Built and tested with GCC 15.2, Clang 21.1
 and ASan+UBSan builds with both compilers, plus a Clang TSan build for
 the thread pool.
+
+## Shared core, presets and C++26
+
+The normal cdf and inverse, the implied-vol core, Brent, splitmix64 seeding and the thread pool come from `qp::core`, the
+header-only library in `cpp/core` (see `cpp/core/README.md`). This engine
+keeps its own headers and API; moved names are using-declarations. The
+CMake file adds the core with `add_subdirectory(../core)` unless a parent
+project already did.
+
+`CMakePresets.json` defines the presets `gcc`, `clang`, `gcc16-cxx26`,
+`asan`, `tsan` and `msvc`. From this directory:
+
+```bash
+cmake --preset clang
+cmake --build --preset clang
+ctest --preset clang
+```
+
+Build trees go to `build/<preset>`. The presets turn `FXOPT_WERROR` on. `msvc`
+must run inside a Visual Studio developer prompt. `QP_CXX26=ON` (the
+`gcc16-cxx26` preset) compiles with C++26 and uses contracts and
+`std::simd` where the compiler reports them; results are the same as the
+C++23 build. CMake 3.25 or newer is required.
 
 ## Quick example
 

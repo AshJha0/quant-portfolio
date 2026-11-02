@@ -35,7 +35,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fx_algo import (  # noqa: E402
+from fx_algo import (
     BARS_PER_YEAR,
     EURUSD,
     BacktestConfig,
@@ -66,7 +66,7 @@ from fx_algo import (  # noqa: E402
     venue_comparison,
     vol_target_positions,
 )
-from fx_algo.research_stats import (  # noqa: E402
+from fx_algo.research_stats import (
     TrialLog,
     block_bootstrap_ci,
     deflated_sharpe_ratio,
@@ -250,7 +250,7 @@ def fix_demo() -> None:
     te_clean = {k: [] for k in names}
     self_imp = []
     for s in range(N_REP):
-        for k, q in zip(names, (q_fix, q_twap)):
+        for k, q in zip(names, (q_fix, q_twap), strict=False):
             r = sim.execute(q, seed=s)
             te[k].append(slippage_vs_benchmark(r, fix_print(r, seed=100_000 + s)))
             te_clean[k].append(

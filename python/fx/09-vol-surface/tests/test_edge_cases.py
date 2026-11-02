@@ -3,9 +3,7 @@ negative rates, extreme vols, rho at the bounds, degenerate inputs."""
 
 import math
 
-import numpy as np
 import pytest
-
 from fx_surface import (
     HestonParams,
     SmileQuotes,
@@ -73,7 +71,7 @@ def test_negative_rates_both_legs_strike_solving():
     for conv in ("spot", "forward", "spot_pa"):
         strikes = solve_pillar_strikes(vols, S, 1.0, rd, rf, conv)
         ks = [strikes[p] for p in ("10p", "25p", "atm", "25c", "10c")]
-        assert all(a < b for a, b in zip(ks, ks[1:]))
+        assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_negative_rates_heston_parity():
@@ -93,7 +91,7 @@ def test_em_high_vol_preset_full_build(em_market):
     assert surf.is_calendar_arbitrage_free()
     for sl in surf.slices:
         ks = [sl.strikes[p] for p in ("10p", "25p", "atm", "25c", "10c")]
-        assert all(a < b for a, b in zip(ks, ks[1:]))
+        assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
         ok, g_min = sl.smile.is_butterfly_arbitrage_free(k_lo=-1.0, k_hi=1.5)
         assert ok, f"{sl.label}: {g_min}"
     # positive RR: call wing above put wing
@@ -105,7 +103,7 @@ def test_em_high_vol_preset_full_build(em_market):
 def test_em_atm_strike_far_above_spot(em_market):
     """30% carry: the 1y forward (and ATM strike) sits ~30% above spot -
     conventions must not silently anchor ATM at spot."""
-    sl = [s for s in em_market.slices if s.label == "1y"][0]
+    sl = next(s for s in em_market.slices if s.label == "1y")
     F = gk_forward(em_market.S, sl.T, sl.r_d, sl.r_f)
     assert F / em_market.S > 1.25
     vols = vols_from_quotes(sl.quotes)

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_options import (
     bs_greeks,
     bs_price,

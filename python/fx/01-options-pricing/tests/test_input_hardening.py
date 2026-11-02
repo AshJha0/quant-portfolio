@@ -21,7 +21,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_options import (
     binomial_price,
     delta,
@@ -86,7 +85,7 @@ class TestDeltaHelperHardening:
         with pytest.raises(ValueError, match="delta_spot"):
             premium_adjust_spot_delta(bad, 0.04, 1.10)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1.10])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -1.1])
     def test_premium_adjust_rejects_bad_spot(self, bad: float) -> None:
         with pytest.raises(ValueError, match="Spot S"):
             premium_adjust_spot_delta(0.55, 0.04, bad)
@@ -123,7 +122,7 @@ class TestHedgeSimulatorHardening:
                                  transaction_cost_pips=bad,
                                  n_rebalances=4, n_paths=8)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1e-4])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -0.0001])
     def test_bad_pip_size_raises(self, bad: float) -> None:
         with pytest.raises(ValueError, match="pip_size"):
             simulate_delta_hedge(1.10, 1.10, 0.25, 0.04, 0.025, 0.09, "call",
@@ -151,7 +150,7 @@ class TestSyntheticQuoteHardening:
         with pytest.raises(ValueError, match=field):
             synthetic_vol_quotes(**kwargs)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -0.25])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -0.25])
     def test_bad_tenor_raises(self, bad: float) -> None:
         with pytest.raises(ValueError, match="tenors"):
             synthetic_vol_quotes(tenors=(0.25, bad))
@@ -167,7 +166,7 @@ class TestArbitrageBoundaries:
         # negative: C(T2) >= C(T1) for T2 > T1.
         prices = [gk_price(1.10, 1.15, t, 0.02, 0.02, 0.10, "call")
                   for t in (0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)]
-        assert all(b >= a - 1e-14 for a, b in zip(prices, prices[1:]))
+        assert all(b >= a - 1e-14 for a, b in zip(prices, prices[1:], strict=False))
 
     def test_spot_delta_bounded_by_foreign_discount_factor(self) -> None:
         # |delta_spot| <= e^{-r_f T}: the hedge can never be larger than the

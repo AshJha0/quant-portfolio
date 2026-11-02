@@ -48,21 +48,21 @@ def test_no_arbitrage_bounds_put():
 def test_monotonic_in_vol():
     # A call is strictly increasing in volatility (vega > 0).
     prices = [call_price(S, K, r, v, T) for v in (0.1, 0.2, 0.3, 0.4)]
-    assert all(a < b for a, b in zip(prices, prices[1:]))
+    assert all(a < b for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_monotonic_in_vol_put():
     prices = [put_price(S, K, r, v, T) for v in (0.1, 0.2, 0.3, 0.4)]
-    assert all(a < b for a, b in zip(prices, prices[1:]))
+    assert all(a < b for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_call_decreasing_in_strike():
     # A call is monotone non-increasing in strike (deeper OTM is
     # weakly cheaper); the derivative is -K e^{-rT} N(d2) <= 0.
     prices = [call_price(S, k, r, sigma, T) for k in (80.0, 100.0, 120.0, 140.0)]
-    assert all(a > b for a, b in zip(prices, prices[1:]))
+    assert all(a > b for a, b in zip(prices, prices[1:], strict=False))
 
 
 def test_put_increasing_in_strike():
     prices = [put_price(S, k, r, sigma, T) for k in (80.0, 100.0, 120.0, 140.0)]
-    assert all(a < b for a, b in zip(prices, prices[1:]))
+    assert all(a < b for a, b in zip(prices, prices[1:], strict=False))

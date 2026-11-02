@@ -37,17 +37,27 @@ quant-portfolio/
 ├── CONTRIBUTING.md    # setup, test gate, golden regeneration
 ├── CHANGELOG.md
 ├── docs/              # architecture, study guide, recipes, market-risk workflow
+├── pyproject.toml     # uv workspace: python/core and the 23 projects (uv.lock)
 ├── python/
+│   ├── core/          # qp-core: shared Python code used by 12 projects
 │   ├── equity/01-…10-…    # 10 equity projects
 │   ├── fx/01-…10-…        # 10 FX projects (separate code from equity)
 │   └── foundations/       # 3 single-asset projects
-├── cpp/               # 4 engines, C++23, CMake, tests in GoogleTest
-└── rust/              # the same 4 engines, Rust 2021, std only
+├── cpp/               # qp::core (header-only) + 4 engines, C++23, CMake presets, GoogleTest
+├── rust/              # Cargo workspace: qp-core + the same 4 engines, Rust 2021
+└── bindings/          # qp-cpp (nanobind) and qp-rust (PyO3) Python packages
 ```
 
 ## Areas
 
-31 sub-projects: 23 Python projects, 4 C++ engines and 4 Rust crates.
+31 sub-projects: 23 Python projects, 4 C++ engines and 4 Rust crates. Three
+shared libraries sit beside them and are not counted as sub-projects:
+[`python/core`](python/core/README.md) (`qp-core`),
+[`cpp/core`](cpp/core/README.md) (`qp::core`) and
+[`rust/core`](rust/core/README.md) (the `qp-core` crate). Two binding
+packages expose the compiled engines to Python:
+[`qp-cpp`](bindings/cpp-nanobind/README.md) and
+[`qp-rust`](bindings/rust-pyo3/README.md).
 
 | # | Area | Equity | FX |
 |---|------|--------|-----|
@@ -88,6 +98,10 @@ python examples/run_pipeline.py
 ```
 
 A project declares either a `test` or a `dev` extra; install whichever it has.
+Projects that import `qp_core` need `python/core` installed first
+(`python -m pip install -e python/core` from the root). The alternative is
+the uv workspace: `uv sync --all-packages` from the root installs
+`python/core` and all 23 projects from `uv.lock`.
 
 ## How it is tested
 
@@ -96,10 +110,14 @@ single required check is `ci-ok`, which passes only when every job passed.
 
 | Job | What it runs |
 |---|---|
-| `python` | pytest for each of the 23 projects, each in its own venv, on Python 3.10 to 3.13 |
+| `py core`, `py <project>` | pytest for `python/core` and each of the 23 projects, each in its own venv, on Python 3.10 to 3.13 |
+| `lint` | `uv lock --check`, `ruff check python`, `mypy` |
 | `goldens --check` | regenerates each C++ golden header and Rust golden module and fails on any difference from the committed JSON |
-| `cpp` | each engine built and tested with GCC and Clang, plus a Clang AddressSanitizer and UBSan build |
-| `rust` | `cargo test --release --locked` with warnings denied |
+| `cpp <engine> (<preset>)` | each engine built and tested with the `gcc`, `clang`, `asan` and `tsan` presets, `gcc16-cxx26` in a GCC 16 container, and `msvc` on Windows |
+| `clang-format`, `clang-tidy` | formatting check over `cpp/` and clang-tidy per engine with warnings as errors |
+| `rust <crate>`, `rust fmt` | `cargo test --release --locked` and clippy with warnings denied for `qp-core` and the four engines; `cargo fmt --check` |
+| `bind <package>` | builds `qp-cpp` and `qp-rust` and tests them against the Python reference packages |
+| `bench` | runs the release benches and fails when a kernel whose committed p50 is above 1 µs is more than 2x slower |
 | `hygiene` | banned-word check and a voice report |
 | `counts` | sums executed pass counts into `counts.json` and runs `tests/test_docs_counts.py` |
 
@@ -189,7 +207,14 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
   its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
 - Not implemented: SABR, structural (Merton/KMV) PD, short-rate models, OIS
   multi-curve, FRTB.
-- The compiled engines have no Python bindings.
+- The bindings (`qp-cpp`, `qp-rust`) cover pricing, Greeks, implied vol,
+  binomial, Monte Carlo and the main VaR, ES and backtest calls. They do not
+  bind the FX VaR Monte Carlo or book-level VaR, deltas and strikes from
+  delta, Black-76, Christoffersen or Acerbi-Szekely. See each binding
+  README.
+- The Python reference packages have no `engine="python"|"cpp"|"rust"`
+  switch. Call the binding packages directly. The switch is planned for a
+  later round.
 - Python dependencies are pinned for CI only, in
   `requirements/ci-constraints.txt`.
 

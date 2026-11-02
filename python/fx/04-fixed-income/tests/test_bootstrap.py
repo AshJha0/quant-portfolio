@@ -3,9 +3,6 @@ basis-adjusted curve construction."""
 
 import numpy as np
 import pytest
-
-from fx_rates.fxforward import market_forward
-
 from fx_rates.bootstrap import (
     basis_adjusted_curve,
     basis_discount_curve,
@@ -20,6 +17,7 @@ from fx_rates.bootstrap import (
     reprice_swaps,
 )
 from fx_rates.data import REGIMES, build_market_state, generate_market_quotes
+from fx_rates.fxforward import market_forward
 
 
 class TestDeposits:
@@ -78,7 +76,7 @@ class TestBootstrapRoundTrip:
             bootstrap_curve([(1.0, 0.03)], [(2.5, 0.03)])
 
     def test_swaps_without_1y_deposit_raise(self):
-        with pytest.raises(ValueError, match="1.0y"):
+        with pytest.raises(ValueError, match=r"1.0y"):
             bootstrap_curve([(0.25, 0.03)], [(2.0, 0.03)])
 
 

@@ -24,7 +24,6 @@ no-lookahead property testable.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -32,17 +31,17 @@ import pandas as pd
 from .spread import OUFit
 
 __all__ = [
-    "zscore_rolling",
-    "zscore_ou",
     "SignalRules",
     "generate_signals",
-    "time_stop_bars",
     "size_positions",
+    "time_stop_bars",
+    "zscore_ou",
+    "zscore_rolling",
 ]
 
 
 def zscore_rolling(
-    spread: pd.Series, window: int, min_periods: Optional[int] = None
+    spread: pd.Series, window: int, min_periods: int | None = None
 ) -> pd.Series:
     """Rolling z-score (s_t - mean_window) / std_window.
 
@@ -69,11 +68,11 @@ def zscore_rolling(
     return (spread - mean) / std
 
 
-def zscore_ou(spread: Union[pd.Series, np.ndarray], ou: OUFit) -> Union[pd.Series, np.ndarray]:
+def zscore_ou(spread: pd.Series | np.ndarray, ou: OUFit) -> pd.Series | np.ndarray:
     """Z-score against the fitted OU stationary distribution.
 
     z_t = (s_t - mu) / (sigma / sqrt(2 kappa)). Unlike the rolling z-score
-    this uses the model's stationary variance, so it has no warm-up NaNs : 
+    this uses the model's stationary variance, so it has no warm-up NaNs :
     but it treats (mu, kappa, sigma) as frozen parameters; in walk-forward
     use they must come from the formation window only.
 
@@ -123,7 +122,7 @@ class SignalRules:
     entry_z: float = 2.0
     exit_z: float = 0.0
     stop_z: float = 4.0
-    max_holding: Optional[int] = None
+    max_holding: int | None = None
 
     def __post_init__(self) -> None:
         if self.entry_z <= 0:
@@ -231,7 +230,7 @@ def size_positions(
     gross : float
         Target gross dollar exposure |q_y| P_y + |q_x| P_x (default $1mm).
     mode : {"dollar", "beta"}
-        "dollar": equal dollars on each leg (long gross/2, short gross/2) : 
+        "dollar": equal dollars on each leg (long gross/2, short gross/2) :
         dollar-neutral at entry, but the hedge deviates from the
         cointegrating ratio. "beta": shares in the cointegrating proportion
         q_x = -beta q_y, scaled to the same gross: P&L tracks the spread

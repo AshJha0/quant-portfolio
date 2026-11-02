@@ -25,6 +25,7 @@ decimals; ``cp=+1`` call / ``-1`` put on the base currency.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -35,14 +36,14 @@ from .garman_kohlhagen import gk_forward
 __all__ = [
     "HestonParams",
     "heston_cf",
-    "price_gil_pelaez",
-    "price_cos",
-    "heston_price",
     "heston_digital",
+    "heston_price",
+    "price_cos",
+    "price_gil_pelaez",
 ]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class HestonParams:
     """Heston parameters.
 
@@ -50,6 +51,11 @@ class HestonParams:
     kappa : mean-reversion speed (1/years).
     xi : vol-of-vol (of variance).
     rho : spot-vol correlation in [-1, 1].
+
+    Pass the parameters by keyword. The field order ``(v0, kappa, theta, xi,
+    rho)`` is shared with ``eq_surface.HestonParams``. Positional
+    construction still works in that order, with a ``DeprecationWarning``,
+    because the equity package used a different positional order.
     """
 
     v0: float
@@ -57,6 +63,29 @@ class HestonParams:
     theta: float
     xi: float
     rho: float
+
+    _ORDER = ("v0", "kappa", "theta", "xi", "rho")
+
+    def __init__(self, *args: float, **kwargs: float) -> None:
+        if args:
+            if len(args) > 5:
+                raise TypeError(f"HestonParams takes at most 5 positional arguments, got {len(args)}")
+            warnings.warn(
+                "positional HestonParams(...) is deprecated; pass v0, kappa, theta, xi, rho by keyword",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            for name, value in zip(self._ORDER, args, strict=False):
+                if name in kwargs:
+                    raise TypeError(f"HestonParams got multiple values for argument {name!r}")
+                kwargs[name] = value
+        missing = [n for n in self._ORDER if n not in kwargs]
+        unknown = [n for n in kwargs if n not in self._ORDER]
+        if missing or unknown:
+            raise TypeError(f"HestonParams: missing {missing}, unexpected {unknown}")
+        for name in self._ORDER:
+            object.__setattr__(self, name, kwargs[name])
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.v0 <= 0.0 or self.theta <= 0.0:
@@ -235,7 +264,7 @@ def price_cos(
 
     kk = np.arange(N)
     u = kk * math.pi / span  # shared CF grid (span is strike-independent)
-    cf_z = heston_cf(u, T, params, mu=mu, x0=0.0)  # CF of z = ln(S_T/S_0)
+    cf_z = np.asarray(heston_cf(u, T, params, mu=mu, x0=0.0))  # CF of z = ln(S_T/S_0)
 
     # Put payoff coefficients on [a, d] with d = min(0, b):
     # V_k = 2/span * K * (-chi_k(a, d) + psi_k(a, d))
@@ -286,7 +315,7 @@ def heston_price(
     if method == "gil_pelaez":
         if np.ndim(K) > 0:
             return np.array(
-                [price_gil_pelaez(S, float(k), T, r_d, r_f, params, cp) for k in K]
+                [price_gil_pelaez(S, float(k), T, r_d, r_f, params, cp) for k in np.asarray(K)]
             )
         return price_gil_pelaez(S, float(K), T, r_d, r_f, params, cp)
     raise ValueError(f"unknown method {method!r}; use 'cos' or 'gil_pelaez'")

@@ -5,7 +5,6 @@ PDO property, monotone score, stepwise selection."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_credit.model import (
     ScorecardScaling,
     SeparationWarning,
@@ -197,7 +196,6 @@ def test_points_table_sums_to_score() -> None:
     sc = ScorecardScaling()
     pts = scorecard_points_table(fit, wt.binnings_, sc)
     # For one obligor: sum of its bin points == scaled score from its PD.
-    row = df.iloc[100]
     woe_row = woe.iloc[100]
     pd_hat = fit.predict_proba(woe_row.to_numpy()[None, :])[0]
     expected_score = sc.score_from_pd(pd_hat)

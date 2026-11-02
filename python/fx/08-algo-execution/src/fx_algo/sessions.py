@@ -32,24 +32,24 @@ scandal); see :func:`fix_window_mask` and docs/METHODOLOGY.md.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 import numpy as np
 
 __all__ = [
-    "SESSION_NAMES",
-    "SESSION_BOUNDS",
-    "session_of_hour",
-    "PairProfile",
     "EURUSD",
-    "GBPUSD",
-    "USDMXN",
-    "make_time_grid",
-    "weekend_mask",
-    "fix_window_mask",
     "FIX_HOUR_LONDON",
     "FIX_WINDOW_MINUTES",
+    "GBPUSD",
+    "SESSION_BOUNDS",
+    "SESSION_NAMES",
+    "USDMXN",
+    "PairProfile",
+    "fix_window_mask",
+    "make_time_grid",
+    "session_of_hour",
+    "weekend_mask",
 ]
 
 #: WM/R benchmark time, London clock (4pm London).

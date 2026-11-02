@@ -14,7 +14,7 @@ import pandas as pd
 
 from ..black_scholes import bs_price, forward_price, validate_inputs
 
-__all__ = ["gbm_paths", "synthetic_chain", "skew_vol"]
+__all__ = ["gbm_paths", "skew_vol", "synthetic_chain"]
 
 
 def gbm_paths(
@@ -163,7 +163,7 @@ def synthetic_chain(
             raise ValueError("expiries must all be > 0")
         F = forward_price(S0, T, r, q)
         for K in strikes:
-            iv = skew_vol(float(K), F, T, base_vol, skew, smile)
+            iv = float(skew_vol(float(K), F, T, base_vol, skew, smile))
             for opt in ("call", "put"):
                 rows.append({
                     "expiry": T,

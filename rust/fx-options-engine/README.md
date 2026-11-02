@@ -65,7 +65,7 @@ fx-options-engine/
 │   ├── implied_vol.rs          # bounds checks + shared core (iv_core.rs), at most 10 evaluations
 │   ├── binomial.rs             # CRR tree, foreign rate as yield, European + American
 │   ├── monte_carlo.rs          # GBM under domestic measure, xoshiro256**, VR
-│   ├── rng.rs                  # SplitMix64 seed expansion + xoshiro256** + inverse-CDF normal
+│   ├── rng.rs                  # xoshiro256** and SplitMix64 from qp-core + inverse-CDF normal
 │   ├── fast.rs                 # low-latency API: Copy errors, workspaces, SoA batch, threaded MC
 │   ├── golden.rs                # GENERATED: 434 mpmath golden records
 │   └── bin/bench.rs             # per-call latency benchmark -> bench/results.json
@@ -76,15 +76,20 @@ fx-options-engine/
 
 ## Build, test, benchmark
 
+From `rust/` (the Cargo workspace root; one `Cargo.lock`, one `target/`):
+
 ```sh
-cargo build --release
-RUSTFLAGS="-D warnings" cargo test --release   # 100 integration tests + 20 doctests
-cargo run --release --bin bench
+cargo test --release --locked -p fx-options-engine
+cargo clippy --release --all-targets --locked -p fx-options-engine -- -D warnings
+cargo run --release --locked -p fx-options-engine --bin bench -- --out /tmp/bench.json
 ```
 
-Requires only a stable Rust toolchain (edition 2021). No external crates -
-the deterministic RNG, normal-distribution kernel and root finders (Brent,
-the Halley-based implied-vol core) are all implemented in this crate on `std` alone.
+Without `--out` the bench writes `bench/results.json` in this crate.
+
+The toolchain is pinned in `rust/rust-toolchain.toml` (1.99.1, edition
+2021). No third-party runtime crates. The RNG, the Cody erfc, Brent and the
+implied-vol core live in the workspace's own [`qp-core`](../core) crate
+(std only) and are re-exported, so public paths are unchanged.
 
 ## Quick example
 
@@ -126,7 +131,8 @@ dependency surface to review. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 - **Property tests** (proptest) and the identity, convergence and
   non-finite-rejection suites: see [docs/VALIDATION.md](docs/VALIDATION.md).
 
-`cargo test --release` runs 100 integration tests and 20 doctests. On
+`cargo test --release --locked -p fx-options-engine` (from `rust/`) runs
+100 integration tests and 20 doctests. On
 Windows, Application Control may block test executables (os error 4551);
 run them in WSL or Linux.
 

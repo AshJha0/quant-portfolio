@@ -4,9 +4,7 @@ vol clustering, structural integrity."""
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_algo import (forward_returns, generate_daily_panel, ic_summary,
-                     information_coefficient, momentum)
+from eq_algo import forward_returns, generate_daily_panel, ic_summary, information_coefficient, momentum
 
 
 @pytest.fixture(scope="module")

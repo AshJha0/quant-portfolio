@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface import HestonParams, gk_forward, mc_price, price_cos, simulate_terminal
 
 S, RD, RF = 1.10, 0.045, 0.033

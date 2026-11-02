@@ -28,7 +28,6 @@ Three canonical regimes are provided:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -36,16 +35,16 @@ import pandas as pd
 __all__ = [
     "PairTruth",
     "PanelTruth",
-    "make_rng",
     "business_index",
-    "simulate_ou",
     "cointegrated_pair",
     "correlated_random_walks",
-    "regime_break_pair",
+    "make_rng",
     "mixed_panel",
+    "regime_break_pair",
+    "simulate_ou",
 ]
 
-SeedLike = Union[int, np.random.Generator, None]
+SeedLike = int | np.random.Generator | None
 
 _PRICE_FLOOR = 1.0  # dollars; generators floor prices here to stay positive
 
@@ -121,7 +120,7 @@ def simulate_ou(
     kappa: float,
     sigma: float,
     mu: float = 0.0,
-    x0: Optional[float] = None,
+    x0: float | None = None,
     dt: float = 1.0,
     seed: SeedLike = None,
 ) -> np.ndarray:
@@ -274,7 +273,7 @@ def regime_break_pair(
     """Pair whose cointegration dies mid-sample.
 
     Before the break the spread is OU(kappa, sigma). From the break onwards
-    the spread becomes a random walk with drift ``drift_after`` dollars/day : 
+    the spread becomes a random walk with drift ``drift_after`` dollars/day :
     mean reversion never resumes, so convergence trades opened after the
     break lose money on average.
 

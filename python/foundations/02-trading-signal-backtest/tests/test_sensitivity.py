@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-
 from eq_signal_backtest.sensitivity import parameter_grid
 
 

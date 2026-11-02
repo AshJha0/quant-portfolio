@@ -3,10 +3,9 @@
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.optimize import minimize
-
 from fx_port import hedged_returns, optimal_hedge_ratios, variance_decomposition
 from fx_port.data import make_equity_portfolio
+from scipy.optimize import minimize
 
 
 @pytest.fixture(scope="module")

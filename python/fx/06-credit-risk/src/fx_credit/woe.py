@@ -40,11 +40,11 @@ import pandas as pd
 __all__ = [
     "WOEBin",
     "WOETable",
-    "woe_table",
-    "monotone_merge",
-    "woe_transform",
-    "iv_report",
     "flag_leaky_iv",
+    "iv_report",
+    "monotone_merge",
+    "woe_table",
+    "woe_transform",
 ]
 
 
@@ -262,7 +262,7 @@ def monotone_merge(table: WOETable) -> WOETable:
         a, b = raw[i], raw[i + 1]
         left, right = a[1], b[2]
         label = f"({left:.4g}, {right:.4g}]" if i > 0 else f"[{left:.4g}, {right:.4g}]"
-        raw = raw[:i] + [(label, left, right, False, a[4] + b[4], a[5] + b[5])] + raw[i + 2:]
+        raw = [*raw[:i], (label, left, right, False, a[4] + b[4], a[5] + b[5]), *raw[i + 2:]]
         # bin count changed, so every bin's smoothed share changes
         allb = _finalise(raw + ([_raw(mb)] if mb else []), table.bad_total,
                          table.good_total, table.smoothing)

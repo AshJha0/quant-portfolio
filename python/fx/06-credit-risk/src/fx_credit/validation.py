@@ -17,14 +17,14 @@ import pandas as pd
 from scipy import stats
 
 __all__ = [
-    "auc",
-    "gini",
-    "ks_statistic",
-    "hosmer_lemeshow",
-    "pd_backtest_by_grade",
     "HosmerLemeshowResult",
-    "psi",
+    "auc",
     "bootstrap_auc_ci",
+    "gini",
+    "hosmer_lemeshow",
+    "ks_statistic",
+    "pd_backtest_by_grade",
+    "psi",
     "within_country_autocorrelation",
 ]
 

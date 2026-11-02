@@ -20,13 +20,21 @@ repos:
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.3
-    # Scoped to the repository tooling this round. The project sources carry
-    # about 1,100 existing findings; widen `files` per project as each one is
-    # cleaned (Phase 2).
+    # Same version as the lint job (requirements/ci-constraints.txt). The
+    # rules live in ruff.toml at the root.
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^(\.github/scripts|tests)/
+        files: ^(python|\.github/scripts|tests)/
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v21.1.8
+    # Same major version as the clang-format CI job (clang-format-21). The
+    # style lives in .clang-format at the root.
+    hooks:
+      - id: clang-format
+        files: ^cpp/
+        types_or: [c++, c]
 
   - repo: local
     hooks:

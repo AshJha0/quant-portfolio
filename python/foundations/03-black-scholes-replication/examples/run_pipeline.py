@@ -36,9 +36,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-import numpy as np
-
 import eq_bs_replication as bs
+import numpy as np
 
 S, K, r, sigma, T = 100.0, 105.0, 0.03, 0.25, 0.75
 

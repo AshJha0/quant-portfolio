@@ -10,7 +10,6 @@ Focus, per the FX execution domain:
 
 import numpy as np
 import pytest
-
 from fx_algo.execution.optimal import (
     ac_closed_form_schedule,
     ac_expected_cost,
@@ -33,7 +32,6 @@ from fx_algo.sessions import (
     session_of_hour,
     weekend_mask,
 )
-
 
 # ---------------------------------------------------------------------------
 # Illiquid crosses
@@ -93,7 +91,7 @@ def test_session_bounds_partition_the_day_without_gaps_or_overlaps():
     edges = sorted(SESSION_BOUNDS.values())
     assert edges[0][0] == 0.0
     assert edges[-1][1] == 24.0
-    for (_, prev_hi), (next_lo, _) in zip(edges, edges[1:]):
+    for (_, prev_hi), (next_lo, _) in zip(edges, edges[1:], strict=False):
         assert prev_hi == next_lo
 
 

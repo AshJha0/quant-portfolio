@@ -39,10 +39,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import fx_pairs as fp  # noqa: E402
-from fx_pairs.data import synthetic as syn  # noqa: E402
-
-from fx_pairs import research_stats as rs  # noqa: E402
+import fx_pairs as fp
+from fx_pairs import research_stats as rs
+from fx_pairs.data import synthetic as syn
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--seeds", type=int, default=60,
@@ -78,7 +77,8 @@ pair_names = ["AUDUSD", "NZDUSD", "USDCAD", "USDJPY", "USDCHF",
 prices = pd.DataFrame({p: fp.market_price_from_legs(legs, p) for p in pair_names})
 
 # a hard peg joins the universe and must be screened out with a warning
-import warnings  # noqa: E402
+import warnings
+
 prices["PEGUSD"] = 3.6725
 with warnings.catch_warnings(record=True) as caught:
     warnings.simplefilter("always")

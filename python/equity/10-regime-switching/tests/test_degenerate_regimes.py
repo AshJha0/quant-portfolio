@@ -8,14 +8,16 @@ confident-looking set of regimes.
 
 import numpy as np
 import pytest
-
-from eq_regime.data import make_gbm_panel
-from eq_regime.detection import (flip_flop_rate, label_states,
-                                 labels_from_vol_means, min_duration_filter)
+from eq_regime.detection import flip_flop_rate, label_states, labels_from_vol_means, min_duration_filter
 from eq_regime.gmm import fit_gmm, match_permutation
-from eq_regime.hmm import (expected_durations, fit_hmm, forward_backward,
-                           forward_filter, stationary_distribution, viterbi)
-
+from eq_regime.hmm import (
+    expected_durations,
+    fit_hmm,
+    forward_backward,
+    forward_filter,
+    stationary_distribution,
+    viterbi,
+)
 
 # ---------------------------------------------------------------------------
 # Single-regime (null) data

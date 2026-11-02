@@ -3,9 +3,8 @@
 import math
 
 import pytest
-from scipy.stats import norm
-
 from fx_options import d1, d2, gk_call, gk_price, gk_put, implied_vol
+from scipy.stats import norm
 
 # A representative grid: (S, K, T, r_d, r_f, sigma)
 GRID = [
@@ -81,7 +80,7 @@ class TestProperties:
     def test_monotone_increasing_in_vol(self):
         prices = [gk_call(1.1, 1.1, 0.5, 0.02, 0.01, s)
                   for s in (0.05, 0.10, 0.20, 0.40, 0.80)]
-        assert all(b > a for a, b in zip(prices, prices[1:]))
+        assert all(b > a for a, b in zip(prices, prices[1:], strict=False))
 
     def test_convex_in_strike(self):
         ks = [1.00, 1.05, 1.10, 1.15, 1.20]

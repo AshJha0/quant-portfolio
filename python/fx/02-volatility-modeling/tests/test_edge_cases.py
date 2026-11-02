@@ -6,7 +6,6 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-
 from fx_vol import (
     close_to_close_vol,
     ewma_variance,
@@ -133,7 +132,7 @@ class TestNaNPolicy:
     def test_fitters_reject_inf(self):
         r = syn.simulate_constant_vol(500, 0.006, seed=114)
         r[250] = np.inf
-        with pytest.raises(ValueError, match="NaN|infinite"):
+        with pytest.raises(ValueError, match=r"NaN|infinite"):
             fit_garch(r)
 
 

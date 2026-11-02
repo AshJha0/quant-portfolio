@@ -217,7 +217,8 @@ variant fills at p_t and pays an auction cost.
 
 ## 8. Statistics
 
-`research_stats.py` is shared verbatim with the other alpha projects.
+`research_stats.py` re-exports `qp_core.stats`, which the other alpha
+projects use too.
 
 - Sharpe ratios are annualised with `BARS_PER_YEAR = 24 x 261 = 6264`
   hourly bars, counting session-filtered zero-position bars.

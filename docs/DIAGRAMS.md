@@ -33,8 +33,8 @@ flowchart TB
 
     subgraph PORTS["C++ and Rust ports of areas 01 and 03"]
         direction LR
-        CPP["C++23 engines<br/>GoogleTest"]
-        RUST["Rust 2021 engines<br/>cargo test, std only"]
+        CPP["C++23 engines + qp::core<br/>GoogleTest"]
+        RUST["Rust 2021 engines<br/>cargo workspace + qp-core"]
     end
 
     A1 -.->|golden vectors| CPP & RUST
@@ -107,7 +107,7 @@ flowchart LR
 
     subgraph LOC["locate shim"]
         ENV["env var set?<br/>QP_RS_EQ_JSONL, QP_RS_FX_JSONL,<br/>QP_CPP_EQ_JSONL, QP_CPP_FX_JSONL"]
-        DEF["default build path<br/>rust/*/target/release/&lt;bin&gt;<br/>cpp/*/build/&lt;target&gt;"]
+        DEF["default build path<br/>rust/target/release/&lt;bin&gt;<br/>cpp/&lt;engine&gt;/build/&lt;target&gt;<br/>or build/gcc/&lt;target&gt;"]
         SKIP(["binary absent:<br/>pytest.skip"])
     end
 
@@ -194,11 +194,15 @@ engines are linear-book ports and do not revalue options.
 ```mermaid
 flowchart TD
     DISC["discover<br/>(list Python projects + test extra)"]
-    PY["python<br/>per project x Python 3.10-3.13<br/>pytest, JUnit XML"]
+    PYC["py core<br/>python/core x Python 3.10-3.13"]
+    PY["py &lt;project&gt;<br/>per project x Python 3.10-3.13<br/>pytest, JUnit XML"]
+    LINT["lint<br/>uv lock --check, ruff, mypy"]
     GOLD["goldens --check<br/>gen_golden_header.py / gen_golden_rs.py"]
-    CPP["cpp<br/>4 engines x gcc | clang<br/>configure, build, ctest"]
-    ASAN["cpp-asan<br/>4 engines, clang asan+ubsan"]
-    RUST["rust<br/>cargo test --release per crate<br/>(fmt, clippy report-only)"]
+    CPP["cpp &lt;engine&gt; (&lt;preset&gt;)<br/>gcc, clang, asan, tsan,<br/>gcc16-cxx26, msvc"]
+    FMT["clang-format, clang-tidy"]
+    RUST["rust &lt;crate&gt;, rust fmt<br/>qp-core + 4 engines<br/>cargo test, clippy -D warnings"]
+    BIND["bind &lt;package&gt;<br/>qp-cpp, qp-rust"]
+    BENCH["bench<br/>2x p50 rule"]
     HYG["hygiene<br/>banned-word check,<br/>voice report (report-only)"]
     CNT["counts<br/>aggregate executed counts<br/>into counts.json,<br/>run tests/test_docs_counts.py"]
     OK(["ci-ok<br/>required check:<br/>every job succeeded"])
@@ -207,7 +211,7 @@ flowchart TD
     PY --> CNT
     CPP --> CNT
     RUST --> CNT
-    DISC & PY & GOLD & CPP & ASAN & RUST & HYG & CNT --> OK
+    DISC & PYC & PY & LINT & GOLD & CPP & FMT & RUST & BIND & BENCH & HYG & CNT --> OK
 ```
 
 Fix history is in [CHANGELOG.md](../CHANGELOG.md).

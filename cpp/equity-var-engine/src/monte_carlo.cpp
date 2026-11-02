@@ -1,8 +1,8 @@
 #include "eqvar/monte_carlo.hpp"
 
 #include <algorithm>
-#include <functional>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,14 +11,14 @@
 #include "eqvar/historical.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
+#include "qp/rng.hpp"
 
 namespace eqvar {
 
 double RandomStream::uniform() {
     // 53-bit mantissa uniform on (0, 1): (x >> 11) / 2^53 shifted by half a
     // step so 0 and 1 are excluded (safe input for normal_ppf).
-    const std::uint64_t bits = engine_() >> 11;
-    return (static_cast<double>(bits) + 0.5) * 0x1.0p-53;
+    return qp::uniform_open53(engine_());
 }
 
 double RandomStream::gaussian() { return normal_ppf(uniform()); }
@@ -27,26 +27,9 @@ double RandomStream::gamma(double shape) {
     if (!(shape > 0.0) || !std::isfinite(shape)) {
         throw std::invalid_argument("RandomStream::gamma: shape must be finite and > 0");
     }
-    if (shape < 1.0) {
-        // Boost: Gamma(a) = Gamma(a + 1) * U^{1/a}.
-        const double u = uniform();
-        return gamma(shape + 1.0) * std::pow(u, 1.0 / shape);
-    }
-    // Marsaglia-Tsang (2000) squeeze method.
-    const double d = shape - 1.0 / 3.0;
-    const double c = 1.0 / std::sqrt(9.0 * d);
-    for (;;) {
-        double x, v;
-        do {
-            x = gaussian();
-            v = 1.0 + c * x;
-        } while (v <= 0.0);
-        v = v * v * v;
-        const double u = uniform();
-        const double x2 = x * x;
-        if (u < 1.0 - 0.0331 * x2 * x2) return d * v;
-        if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return d * v;
-    }
+    auto u = [this] { return uniform(); };
+    auto z = [this] { return gaussian(); };
+    return qp::gamma_marsaglia_tsang(shape, u, z);
 }
 
 double RandomStream::chi_squared(double df) {
@@ -92,10 +75,5 @@ Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist
     }
     return out;
 }
-
-
-
-
-
 
 }  // namespace eqvar

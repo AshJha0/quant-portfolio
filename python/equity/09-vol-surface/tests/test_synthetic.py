@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import eq_surface as es
 import numpy as np
 import pytest
-
-import eq_surface as es
 from eq_surface.data import DEFAULT_TRUE_HESTON, generate_chain
 from eq_surface.data.synthetic import default_svi_slices
 from eq_surface.heston import heston_call_gl

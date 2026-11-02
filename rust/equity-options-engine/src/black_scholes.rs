@@ -25,10 +25,6 @@ use std::fmt;
 
 use crate::fast::ErrorCode;
 
-/// Square root of 2*pi, used by the normal PDF.
-pub(crate) const SQRT_2PI: f64 = 2.506_628_274_631_000_5;
-const FRAC_1_SQRT_2: f64 = std::f64::consts::FRAC_1_SQRT_2;
-
 /// Option payoff direction.
 ///
 /// # Examples
@@ -197,115 +193,7 @@ pub fn validate_rates(r: f64, q: f64) -> Result<(), PricingError> {
 /// ```
 #[inline]
 pub fn erfc(x: f64) -> f64 {
-    // Regime 0.46875 < |x| <= 4: erfc(x) = exp(-x^2) P(x)/Q(x).
-    const C: [f64; 9] = [
-        5.641_884_969_886_700_9e-1,
-        8.883_149_794_388_376e0,
-        6.611_919_063_714_163e1,
-        2.986_351_381_974_001_3e2,
-        8.819_522_212_417_691e2,
-        1.712_047_612_634_070_6e3,
-        2.051_078_377_826_071_5e3,
-        1.230_339_354_797_997_2e3,
-        2.153_115_354_744_038_5e-8,
-    ];
-    const D: [f64; 8] = [
-        1.574_492_611_070_983_5e1,
-        1.176_939_508_913_125e2,
-        5.371_811_018_620_098_5e2,
-        1.621_389_574_566_690_2e3,
-        3.290_799_235_733_459_7e3,
-        4.362_619_090_143_247e3,
-        3.439_367_674_143_721_6e3,
-        1.230_339_354_803_749_4e3,
-    ];
-    // Regime |x| > 4: erfc(x) = exp(-x^2)/x [1/sqrt(pi) - P(1/x^2)/Q(1/x^2)/x^2].
-    const P: [f64; 6] = [
-        3.053_266_349_612_323_4e-1,
-        3.603_448_999_498_044_4e-1,
-        1.257_817_261_112_292_5e-1,
-        1.608_378_514_874_227_7e-2,
-        6.587_491_615_298_378e-4,
-        1.631_538_713_730_209_8e-2,
-    ];
-    const Q: [f64; 5] = [
-        2.568_520_192_289_822_4e0,
-        1.872_952_849_923_460_4e0,
-        5.279_051_029_514_284e-1,
-        6.051_834_131_244_132e-2,
-        2.335_204_976_268_691_8e-3,
-    ];
-    const SQRPI: f64 = 5.641_895_835_477_562_9e-1; // 1/sqrt(pi)
-    const THRESH: f64 = 0.46875;
-    const XBIG: f64 = 26.543; // erfc underflows to 0 beyond this
-
-    let y = x.abs();
-    if y <= THRESH {
-        return 1.0 - erf_small(x);
-    }
-
-    let result = if y <= 4.0 {
-        let mut xnum = C[8] * y;
-        let mut xden = y;
-        for i in 0..7 {
-            xnum = (xnum + C[i]) * y;
-            xden = (xden + D[i]) * y;
-        }
-        let r = (xnum + C[7]) / (xden + D[7]);
-        let y16 = (y * 16.0).floor() / 16.0;
-        let del = (y - y16) * (y + y16);
-        (-y16 * y16).exp() * (-del).exp() * r
-    } else if y >= XBIG {
-        0.0
-    } else {
-        let ysq = 1.0 / (y * y);
-        let mut xnum = P[5] * ysq;
-        let mut xden = ysq;
-        for i in 0..4 {
-            xnum = (xnum + P[i]) * ysq;
-            xden = (xden + Q[i]) * ysq;
-        }
-        let mut r = ysq * (xnum + P[4]) / (xden + Q[4]);
-        r = (SQRPI - r) / y;
-        let y16 = (y * 16.0).floor() / 16.0;
-        let del = (y - y16) * (y + y16);
-        (-y16 * y16).exp() * (-del).exp() * r
-    };
-
-    if x < 0.0 {
-        2.0 - result
-    } else {
-        result
-    }
-}
-
-// Cody's coefficients, regime |x| <= 0.46875: erf(x) = x P(x^2)/Q(x^2).
-const CODY_A: [f64; 5] = [
-    3.161_123_743_870_565_6e0,
-    1.138_641_541_510_501_6e2,
-    3.774_852_376_853_020_2e2,
-    3.209_377_589_138_469_5e3,
-    1.857_777_061_846_031_5e-1,
-];
-const CODY_B: [f64; 4] = [
-    2.360_129_095_234_412_1e1,
-    2.440_246_379_344_441_7e2,
-    1.282_616_526_077_372_3e3,
-    2.844_236_833_439_170_6e3,
-];
-
-/// Cody's direct `erf(x) = x P(x^2)/Q(x^2)` for `|x| <= 0.46875`.
-#[inline]
-fn erf_small(x: f64) -> f64 {
-    let y = x.abs();
-    let ysq = if y > 1.11e-16 { y * y } else { 0.0 };
-    let mut xnum = CODY_A[4] * ysq;
-    let mut xden = ysq;
-    for i in 0..3 {
-        xnum = (xnum + CODY_A[i]) * ysq;
-        xden = (xden + CODY_B[i]) * ysq;
-    }
-    x * (xnum + CODY_A[3]) / (xden + CODY_B[3])
+    qp_core::special::erfc(x)
 }
 
 /// Error function `erf(x)`.
@@ -322,12 +210,9 @@ fn erf_small(x: f64) -> f64 {
 /// assert!((erf(1e-10) - 1.1283791670955126e-10).abs() < 1e-25);
 /// assert!((erf(1.0) - 0.8427007929497149).abs() < 1e-15);
 /// ```
+#[inline]
 pub fn erf(x: f64) -> f64 {
-    if x.abs() <= 0.46875 {
-        erf_small(x)
-    } else {
-        1.0 - erfc(x)
-    }
+    qp_core::special::erf(x)
 }
 
 /// Standard normal cumulative distribution function `Phi(x)`.
@@ -346,7 +231,7 @@ pub fn erf(x: f64) -> f64 {
 /// ```
 #[inline]
 pub fn norm_cdf(x: f64) -> f64 {
-    0.5 * erfc(-x * FRAC_1_SQRT_2)
+    qp_core::special::norm_cdf(x)
 }
 
 /// Standard normal probability density function `phi(x)`.
@@ -359,7 +244,7 @@ pub fn norm_cdf(x: f64) -> f64 {
 /// ```
 #[inline]
 pub fn norm_pdf(x: f64) -> f64 {
-    (-0.5 * x * x).exp() / SQRT_2PI
+    qp_core::special::norm_pdf_div(x)
 }
 
 /// Intrinsic (exercise-now) value `max(S - K, 0)` or `max(K - S, 0)`.

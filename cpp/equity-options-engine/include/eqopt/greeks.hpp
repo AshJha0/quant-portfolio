@@ -49,13 +49,13 @@ struct BSGreeks {
 /// \return Price plus delta, gamma, vega, theta, rho, vanna, volga.
 /// \throws std::invalid_argument if `S`, `K`, `T`, `sigma` are not strictly
 ///         positive (Greeks are singular at the boundary).
-BSGreeks bs_greeks(double S, double K, double T, double r, double sigma,
-                   double q = 0.0, OptionType type = OptionType::Call);
+BSGreeks bs_greeks(double S, double K, double T, double r, double sigma, double q = 0.0,
+                   OptionType type = OptionType::Call);
 
 /// \brief Analytic Greeks on inputs with S, K, T, sigma > 0 and r, q
 ///        finite (the caller has validated them).
-inline BSGreeks bs_greeks_unchecked(double S, double K, double T, double r, double sigma,
-                                    double q, OptionType type) noexcept {
+inline BSGreeks bs_greeks_unchecked(double S, double K, double T, double r, double sigma, double q,
+                                    OptionType type) noexcept {
     const auto [d1, d2] = d1_d2_unchecked(S, K, T, r, sigma, q);
     const double sqrt_t = std::sqrt(T);
     const double df_q = std::exp(-q * T);
@@ -122,9 +122,8 @@ inline BSGreeks bs_greeks_unchecked(double S, double K, double T, double r, doub
 ///         `sigma`) is too small for its central down-bump to stay in the
 ///         valid domain.
 template <typename Pricer>
-BSGreeks fd_greeks(Pricer&& pricer, double S, double K, double T, double r,
-                   double sigma, double q = 0.0,
-                   OptionType type = OptionType::Call, double rel_bump = 1e-5,
+BSGreeks fd_greeks(Pricer&& pricer, double S, double K, double T, double r, double sigma,
+                   double q = 0.0, OptionType type = OptionType::Call, double rel_bump = 1e-5,
                    double rel_bump2 = 2e-4) {
     validate_inputs(S, K, T, sigma);
 
@@ -142,29 +141,21 @@ BSGreeks fd_greeks(Pricer&& pricer, double S, double K, double T, double r,
         throw std::invalid_argument("T too small for a central theta bump");
     }
     if (sigma - std::fmax(h_v, h_v2) <= 0.0) {
-        throw std::invalid_argument(
-            "sigma too small for a central vega/volga bump");
+        throw std::invalid_argument("sigma too small for a central vega/volga bump");
     }
 
     const double price = f(S, sigma, T, r);
     BSGreeks g{};
     g.price = price;
     g.delta = (f(S + h_s, sigma, T, r) - f(S - h_s, sigma, T, r)) / (2.0 * h_s);
-    g.gamma = (f(S + h_s2, sigma, T, r) - 2.0 * price +
-               f(S - h_s2, sigma, T, r)) /
-              (h_s2 * h_s2);
+    g.gamma = (f(S + h_s2, sigma, T, r) - 2.0 * price + f(S - h_s2, sigma, T, r)) / (h_s2 * h_s2);
     g.vega = (f(S, sigma + h_v, T, r) - f(S, sigma - h_v, T, r)) / (2.0 * h_v);
-    g.theta = -(f(S, sigma, T + h_t, r) - f(S, sigma, T - h_t, r)) /
-              (2.0 * h_t);
+    g.theta = -(f(S, sigma, T + h_t, r) - f(S, sigma, T - h_t, r)) / (2.0 * h_t);
     g.rho = (f(S, sigma, T, r + h_r) - f(S, sigma, T, r - h_r)) / (2.0 * h_r);
-    g.vanna = (f(S + h_s2, sigma + h_v2, T, r) -
-               f(S + h_s2, sigma - h_v2, T, r) -
-               f(S - h_s2, sigma + h_v2, T, r) +
-               f(S - h_s2, sigma - h_v2, T, r)) /
+    g.vanna = (f(S + h_s2, sigma + h_v2, T, r) - f(S + h_s2, sigma - h_v2, T, r) -
+               f(S - h_s2, sigma + h_v2, T, r) + f(S - h_s2, sigma - h_v2, T, r)) /
               (4.0 * h_s2 * h_v2);
-    g.volga = (f(S, sigma + h_v2, T, r) - 2.0 * price +
-               f(S, sigma - h_v2, T, r)) /
-              (h_v2 * h_v2);
+    g.volga = (f(S, sigma + h_v2, T, r) - 2.0 * price + f(S, sigma - h_v2, T, r)) / (h_v2 * h_v2);
     return g;
 }
 

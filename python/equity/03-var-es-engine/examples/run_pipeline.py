@@ -36,7 +36,7 @@ print("EQUITY VaR / ES ENGINE: demo pipeline")
 print("=" * 78)
 print(f"\nPortfolio value: ${pf.value():,.0f}")
 print("Dollar exposures (per unit factor move):")
-for name, e in zip(pf.factor_names, expos):
+for name, e in zip(pf.factor_names, expos, strict=False):
     print(f"  {name:8s} {e:>14,.0f}")
 
 # ----------------------------------------------------------------------- #
@@ -187,7 +187,7 @@ rs = ev.reverse_stress_delta(expos, cov, radius=3.0)
 rsg = ev.reverse_stress_delta_gamma(expos, pf.gamma_matrix(), cov, radius=3.0, seed=5)
 print("\n--- Reverse stress (worst joint 3-sigma move) ---")
 print("factor shocks (delta closed form):")
-for name, s in zip(pf.factor_names, rs["shock"]):
+for name, s in zip(pf.factor_names, rs["shock"], strict=False):
     print(f"  {name:8s} {s:+.4f}")
 print(f"worst-case loss (delta): ${rs['loss']:,.0f}")
 print(f"worst-case loss (delta-gamma, numeric): ${rsg['loss']:,.0f} (long gamma trims the tail)")

@@ -41,12 +41,12 @@ import pandas as pd
 TRADING_DAYS: int = 252
 
 __all__ = [
+    "build_weights",
     "hysteresis_regime",
     "naive_threshold_regime",
     "regime_target_weight",
-    "vol_target_scale",
-    "build_weights",
     "turnover",
+    "vol_target_scale",
 ]
 
 

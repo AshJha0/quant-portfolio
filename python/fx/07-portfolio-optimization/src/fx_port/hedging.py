@@ -146,10 +146,10 @@ def hedged_returns(
                 raise ValueError("forward_carry missing or non-finite for some dates/currencies")
             out = out + (c * notional).sum(axis=1)
         else:
-            c = pd.Series(forward_carry).reindex(exposures.index)
-            if not np.all(np.isfinite(c.to_numpy(dtype=float))):
+            cs = pd.Series(forward_carry).reindex(exposures.index)
+            if not np.all(np.isfinite(cs.to_numpy(dtype=float))):
                 raise ValueError("forward_carry missing or non-finite for some currencies")
-            out = out + float((c * notional).sum())
+            out = out + float((cs * notional).sum())
     out.name = "hedged"
     return out
 

@@ -131,9 +131,11 @@ eigenvalue. Explicit repairs:
 Both warn. For `A = [[1, .9, .9], [.9, 1, -.9], [.9, -.9, 1]]` (eigenvalues
 -0.8, 1.9, 1.9) both give 0.5 off the diagonal with the signs of `A`.
 
-`ewma_covariance` still seeds with the sample covariance and iterates over
-the whole sample. It has not moved to the S8 seed window because the
-compiled ports pin its current output.
+`ewma_covariance` follows S8 too: the seed is the zero-mean second moment
+`mean(r r')` over the first `min(seed_window=30, T)` rows, then the recursion
+runs over the whole sample. This is the same convention as
+`fx_var.parametric_var.ewma_cov`, and the C++ and Rust ports pin it through
+the `c_ewma_cov_*` golden values.
 
 ## 8. Multi-day horizons
 

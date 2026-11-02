@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -28,16 +29,16 @@ from scipy.stats import chi2
 from ._validation import finite_array, integer, validate_alpha
 
 __all__ = [
-    "exceptions_from_pnl",
-    "kupiec_pof",
-    "christoffersen_independence",
-    "christoffersen_cc",
+    "BacktestResult",
+    "acerbi_szekely_z2",
     "basel_traffic_light",
     "basel_zone_probabilities",
-    "acerbi_szekely_z2",
+    "christoffersen_cc",
+    "christoffersen_independence",
     "exception_cluster_table",
+    "exceptions_from_pnl",
+    "kupiec_pof",
     "rolling_var_backtest",
-    "BacktestResult",
 ]
 
 
@@ -82,7 +83,7 @@ def _counts(n_obs: object, n_exceptions: object, alpha: object) -> tuple[int, in
     return n, x, validate_alpha(alpha)
 
 
-def kupiec_pof(*args: object, n_obs: int | None = None, n_exceptions: int | None = None,
+def kupiec_pof(*args: Any, n_obs: int | None = None, n_exceptions: int | None = None,
                alpha: float | None = None) -> dict[str, float]:
     """Kupiec proportion-of-failures test (unconditional coverage), spec S3.
 
@@ -213,7 +214,7 @@ def _basel(n: int, x: int, a: float) -> dict[str, object]:
     return {"zone": zone, "multiplier": 3.0 + plus, "plus_factor": plus, "cumulative_prob": cum_p}
 
 
-def basel_traffic_light(*args: object, n_obs: int | None = None, n_exceptions: int | None = None,
+def basel_traffic_light(*args: Any, n_obs: int | None = None, n_exceptions: int | None = None,
                         alpha: float = 0.01) -> dict[str, object]:
     """Basel (1996) traffic light for any window and any alpha (spec S4).
 
@@ -283,7 +284,7 @@ def acerbi_szekely_z2(
     pnl: np.ndarray,
     var: np.ndarray | float,
     es: np.ndarray | float,
-    *args: object,
+    *args: Any,
     alpha: float | None = None,
     n_sims: int = 10_000,
     seed: int | np.random.Generator | None = 0,

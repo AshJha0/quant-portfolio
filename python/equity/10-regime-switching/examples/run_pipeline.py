@@ -35,7 +35,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
-
 from eq_regime import (
     ExecutionConfig,
     backtest_from_detection,

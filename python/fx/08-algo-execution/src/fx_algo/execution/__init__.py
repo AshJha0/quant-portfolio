@@ -1,11 +1,10 @@
 """Execution layer: simulator, schedulers, optimal execution, TCA."""
 
-from .simulator import (
-    ExecutionResult,
-    FirmVenue,
-    LastLookVenue,
-    MarketSimulator,
-    last_look_reject_prob,
+from .optimal import (
+    ac_closed_form_schedule,
+    ac_expected_cost,
+    eta_from_depth,
+    piecewise_ac_schedule,
 )
 from .schedulers import (
     fix_schedule,
@@ -13,11 +12,12 @@ from .schedulers import (
     pov_schedule,
     twap_schedule,
 )
-from .optimal import (
-    ac_closed_form_schedule,
-    ac_expected_cost,
-    eta_from_depth,
-    piecewise_ac_schedule,
+from .simulator import (
+    ExecutionResult,
+    FirmVenue,
+    LastLookVenue,
+    MarketSimulator,
+    last_look_reject_prob,
 )
 from .tca import (
     decompose_implementation_shortfall,
@@ -31,25 +31,25 @@ from .tca import (
 )
 
 __all__ = [
-    "MarketSimulator",
     "ExecutionResult",
     "FirmVenue",
     "LastLookVenue",
-    "last_look_reject_prob",
-    "twap_schedule",
-    "liquidity_weighted_schedule",
-    "pov_schedule",
-    "fix_schedule",
+    "MarketSimulator",
     "ac_closed_form_schedule",
-    "piecewise_ac_schedule",
     "ac_expected_cost",
-    "eta_from_depth",
     "decompose_implementation_shortfall",
-    "twap_benchmark",
+    "eta_from_depth",
     "fix_benchmark",
     "fix_print",
+    "fix_schedule",
     "fix_self_impact_pips",
-    "slippage_vs_benchmark",
+    "last_look_reject_prob",
+    "liquidity_weighted_schedule",
+    "piecewise_ac_schedule",
+    "pov_schedule",
     "rejection_cost_pips",
+    "slippage_vs_benchmark",
+    "twap_benchmark",
+    "twap_schedule",
     "venue_comparison",
 ]

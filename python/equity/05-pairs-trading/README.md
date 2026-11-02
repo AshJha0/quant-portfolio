@@ -29,6 +29,7 @@ ExecutionConfig(mode="close_auction", auction_cost_bp=10) # same close, pays 10 
 
 ```bash
 cd python/equity/05-pairs-trading
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 pytest -q                          # 314 tests, offline
 python examples/run_pipeline.py    # every number below; prints only

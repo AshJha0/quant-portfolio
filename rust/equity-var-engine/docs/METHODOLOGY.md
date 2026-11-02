@@ -77,8 +77,10 @@ full-sample seed (*test* `ewma_seed_uses_first_30_observations_only`, *golden*
 `CONV_EWMA_SIGMA_LAST`).
 
 Covariance: `Sigma <- lam Sigma + (1-lam) r_t r_t'` over every row, seeded
-with the sample covariance (unchanged; it matches the Python `ewma_covariance`
-and the *golden* `C_EWMA_COV_*`).
+with the zero-mean second moment `mean(r r')` of the first `min(30, T)` rows
+(`EWMA_COV_SEED_WINDOW`, convention S8), so the seed uses no later data. It
+matches the Python `ewma_covariance` (*golden* `C_EWMA_COV_*`, *test*
+`ewma_covariance_seed_uses_first_window_rows_only`).
 
 ## 3. Cholesky and PSD repair (`src/psd.rs`)
 
@@ -222,5 +224,5 @@ Each item says what breaks if it is violated.
 8. **Basel plus factors** are the 1996 250-day table, mapped by equivalent
    count for other windows and alphas. That mapping is a convention of this
    repository, not a regulatory rule.
-9. **RNG stream is crate-specific.** Changing `rng.rs` changes every seeded
-   number.
+9. **RNG stream is crate-specific.** Changing `rng.rs` or
+   `qp_core::rng` changes every seeded number.

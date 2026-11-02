@@ -25,7 +25,6 @@ import pytest
 
 arch = pytest.importorskip("arch")
 from arch import arch_model  # noqa: E402
-
 from eq_vol.data import synthetic as syn  # noqa: E402
 from eq_vol.egarch import egarch_recursion, expected_abs_z, fit_egarch  # noqa: E402
 from eq_vol.forecasting import forecast_garch, forecast_gjr  # noqa: E402

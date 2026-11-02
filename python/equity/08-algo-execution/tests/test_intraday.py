@@ -3,7 +3,6 @@ seeded reproducibility, zero-participation, fill model exactness."""
 
 import numpy as np
 import pytest
-
 from eq_algo import IntradayConfig, IntradayMarket, u_shaped_profile
 
 

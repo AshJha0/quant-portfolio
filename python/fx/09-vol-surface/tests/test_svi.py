@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-
-from fx_surface import SVIParams, SVISmile, VannaVolgaSmile
+from fx_surface import SVIParams, SVISmile
 from fx_surface.surface import build_slice
 
 F, T = 1.105, 0.5
@@ -91,7 +90,7 @@ def test_svi_vs_vanna_volga_agree_near_pillars(eurusd):
                          ms.convention, "svi")
     sl_vv = build_slice(ms.label, ms.T, eurusd.S, ms.r_d, ms.r_f, ms.quotes,
                         ms.convention, "vv")
-    K25p, Katm, K25c = (sl_svi.strikes[p] for p in ("25p", "atm", "25c"))
+    K25p, _Katm, K25c = (sl_svi.strikes[p] for p in ("25p", "atm", "25c"))
     for K in np.linspace(K25p, K25c, 21):
         v_svi = float(sl_svi.smile.vol(K))
         v_vv = float(sl_vv.smile.vol(K))

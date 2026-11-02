@@ -8,8 +8,6 @@ available: ``pip install eq-pairs[live]``.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import pandas as pd
 
 __all__ = ["load_prices"]
@@ -26,7 +24,7 @@ except ImportError:  # pragma: no cover
 def load_prices(
     tickers: list[str],
     start: str = "2015-01-01",
-    end: Optional[str] = None,
+    end: str | None = None,
 ) -> pd.DataFrame:
     """Download daily adjusted close prices for ``tickers`` via yfinance.
 

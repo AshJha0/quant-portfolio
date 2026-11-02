@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-
-from true_params import GJR_TRUE
 from eq_vol.data import synthetic as syn
 from eq_vol.gjr import (
     fit_gjr,
@@ -12,6 +10,7 @@ from eq_vol.gjr import (
     gjr_unconditional_variance,
     news_impact_curve,
 )
+from true_params import GJR_TRUE
 
 
 class TestRecursion:
@@ -95,9 +94,9 @@ class TestNewsImpactCurve:
         assert v_neg - v_pos == pytest.approx(expected_gap, rel=1e-10)
 
     def test_symmetric_when_gamma_zero(self):
-        z, v = news_impact_curve(omega=5e-6, alpha=0.05, gamma=0.0, beta=0.90)
+        _z, v = news_impact_curve(omega=5e-6, alpha=0.05, gamma=0.0, beta=0.90)
         np.testing.assert_allclose(v, v[::-1], rtol=1e-12)
 
     def test_positive_everywhere(self):
-        z, v = news_impact_curve(**GJR_TRUE)
+        _z, v = news_impact_curve(**GJR_TRUE)
         assert np.all(v > 0)

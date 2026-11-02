@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import bs_greeks, bs_price, compare_greeks, crr_price, fd_greeks
 
 SCENARIOS = [

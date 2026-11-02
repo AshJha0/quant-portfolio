@@ -15,7 +15,6 @@ exact boundary raises.
 import math
 
 import pytest
-
 from eq_bs_replication import (
     call_greeks,
     call_price,

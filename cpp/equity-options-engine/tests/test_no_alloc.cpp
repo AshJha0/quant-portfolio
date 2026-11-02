@@ -92,8 +92,8 @@ TEST(NoAlloc, CrrWithWorkspace) {
     std::vector<double> ws(crr_workspace_size(500));
     double acc = 0.0;
     EXPECT_EQ(allocations([&](int i) {
-                  acc += *try_crr_price(95.0 + 0.05 * i, 100, 1, 0.03, 0.25, 0.01,
-                                        OptionType::Put, ExerciseStyle::American, 500, ws);
+                  acc += *try_crr_price(95.0 + 0.05 * i, 100, 1, 0.03, 0.25, 0.01, OptionType::Put,
+                                        ExerciseStyle::American, 500, ws);
               }),
               0);
     EXPECT_GT(acc, 0.0);
@@ -121,8 +121,8 @@ TEST(NoAlloc, MonteCarloWithPoolAndWorkspace) {
     ws.reserve(50000, true);
     double acc = 0.0;
     EXPECT_EQ(allocations([&](int i) {
-                  acc += try_mc_price(100, 100, 1, 0.03, 0.2, 0.0, OptionType::Call, 50000,
-                                      true, true, static_cast<std::uint64_t>(i), 4, ws, &pool)
+                  acc += try_mc_price(100, 100, 1, 0.03, 0.2, 0.0, OptionType::Call, 50000, true,
+                                      true, static_cast<std::uint64_t>(i), 4, ws, &pool)
                              ->price;
               }),
               0);

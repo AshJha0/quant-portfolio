@@ -2,9 +2,6 @@
 
 import numpy as np
 import pytest
-from statsmodels.tsa.adfvalues import mackinnoncrit
-from statsmodels.tsa.stattools import adfuller
-
 from eq_pairs.cointegration import (
     adf_test,
     engle_granger,
@@ -12,6 +9,8 @@ from eq_pairs.cointegration import (
     mackinnon_crit,
 )
 from eq_pairs.data import cointegrated_pair, correlated_random_walks, simulate_ou
+from statsmodels.tsa.adfvalues import mackinnoncrit
+from statsmodels.tsa.stattools import adfuller
 
 
 class TestHedgeRatio:
@@ -214,7 +213,7 @@ class TestMacKinnonTableLock:
 
         ours = mackinnon_crit(n_series=n_series, regression=regression, nobs=nobs)
         theirs = sm_crit(N=n_series, regression=regression, nobs=nobs)
-        for level, ref in zip(("1%", "5%", "10%"), np.asarray(theirs, dtype=float)):
+        for level, ref in zip(("1%", "5%", "10%"), np.asarray(theirs, dtype=float), strict=False):
             # statsmodels stores the asymptotic coefficients to 5 decimals and
             # the finite-sample terms to 3-4; agreement to 1e-6 absolute
             # proves the same 15 rows were transcribed.

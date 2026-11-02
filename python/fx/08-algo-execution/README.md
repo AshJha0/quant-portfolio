@@ -64,6 +64,7 @@ src/fx_algo/
 ## Quickstart
 
 ```bash
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 python -m pytest tests -q          # 185 tests, about 30-45 s, offline, seeded
 python examples/run_pipeline.py    # full pipeline, about 25-30 s, writes nothing

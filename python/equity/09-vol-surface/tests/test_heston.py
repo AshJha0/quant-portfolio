@@ -6,7 +6,6 @@ import warnings
 
 import numpy as np
 import pytest
-
 from eq_surface.black_scholes import bs_price
 from eq_surface.heston import (
     FellerWarning,
@@ -110,7 +109,9 @@ def test_put_call_parity(mild_heston):
 def test_price_monotone_in_v0(mild_heston):
     prices = []
     for v0 in [0.01, 0.02, 0.04, 0.08, 0.16]:
-        p = HestonParams(v0, mild_heston.kappa, mild_heston.theta, mild_heston.rho, mild_heston.xi)
+        p = HestonParams(
+            v0=v0, kappa=mild_heston.kappa, theta=mild_heston.theta, rho=mild_heston.rho, xi=mild_heston.xi
+        )
         prices.append(float(heston_call_gl(S, 100.0, 0.5, R, Q, p)))
     assert np.all(np.diff(prices) > 0.0)
 

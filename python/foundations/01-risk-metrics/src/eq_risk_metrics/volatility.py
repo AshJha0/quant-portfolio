@@ -13,6 +13,8 @@ Conventions used throughout this package:
 """
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 
@@ -22,11 +24,11 @@ TRADING_DAYS = 252
 
 __all__ = [
     "TRADING_DAYS",
-    "simple_returns",
-    "log_returns",
     "annualised_volatility",
-    "rolling_volatility",
     "ewma_volatility",
+    "log_returns",
+    "rolling_volatility",
+    "simple_returns",
 ]
 
 
@@ -74,7 +76,7 @@ def log_returns(prices: pd.Series) -> pd.Series:
         shorter than ``prices``.
     """
     prices = _positive_prices(prices, "log_returns")
-    return np.log(prices / prices.shift(1)).iloc[1:]
+    return cast(pd.Series, np.log(prices / prices.shift(1))).iloc[1:]
 
 
 # ----------------------------------------------------------------------

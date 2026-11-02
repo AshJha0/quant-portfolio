@@ -2,8 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy.stats import chi2, norm
-
 from eq_var import (
     acerbi_szekely_z2,
     basel_traffic_light,
@@ -16,6 +14,7 @@ from eq_var import (
     normal_es,
     rolling_var_backtest,
 )
+from scipy.stats import chi2, norm
 
 
 def hand_kupiec(t: int, x: int, p: float) -> float:

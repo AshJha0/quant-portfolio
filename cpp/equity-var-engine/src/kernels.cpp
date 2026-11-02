@@ -103,14 +103,15 @@ void throw_error(const Error& e) {
 
 namespace {
 
-inline std::unexpected<Error> fail(Errc c, const char* who = "", double a = 0.0,
-                                   std::size_t n1 = 0, std::size_t n2 = 0) noexcept {
+inline std::unexpected<Error> fail(Errc c, const char* who = "", double a = 0.0, std::size_t n1 = 0,
+                                   std::size_t n2 = 0) noexcept {
     return std::unexpected(Error{c, who, a, n1, n2});
 }
 
 inline bool all_finite(std::span<const double> x) noexcept {
     for (double v : x) {
-        if (!std::isfinite(v)) [[unlikely]] return false;
+        if (!std::isfinite(v)) [[unlikely]]
+            return false;
     }
     return true;
 }
@@ -128,8 +129,7 @@ TailRisk order_statistic(std::span<const double> pnl, double alpha, double* loss
     const double mc = std::ceil(k - 1e-9);
     const std::size_t m = mc < 1.0 ? 1 : std::min(n, static_cast<std::size_t>(mc));
     // Partition so loss[0..m-1) are the m-1 largest and loss[m-1] = L(m).
-    std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n,
-                     std::greater<double>());
+    std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n, std::greater<>());
     const double lm = loss[m - 1];
     double tail = 0.0;
     for (std::size_t i = 0; i + 1 < m; ++i) tail += loss[i];
@@ -140,24 +140,7 @@ TailRisk order_statistic(std::span<const double> pnl, double alpha, double* loss
 }
 
 /// Plain Cholesky on raw row-major storage; false at a non-positive pivot.
-bool cholesky_raw(const double* a, std::size_t n, double* l) noexcept {
-    std::fill(l, l + n * n, 0.0);
-    for (std::size_t j = 0; j < n; ++j) {
-        const double* lj = l + j * n;
-        double diag = a[j * n + j];
-        for (std::size_t k = 0; k < j; ++k) diag -= lj[k] * lj[k];
-        if (!(diag > 0.0)) return false;  // also catches NaN
-        const double ljj = std::sqrt(diag);
-        l[j * n + j] = ljj;
-        for (std::size_t i = j + 1; i < n; ++i) {
-            const double* li = l + i * n;
-            double s = a[i * n + j];
-            for (std::size_t k = 0; k < j; ++k) s -= li[k] * lj[k];
-            l[i * n + j] = s / ljj;
-        }
-    }
-    return true;
-}
+using qp::cholesky_raw;
 
 Result<double> bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
                             std::uint64_t seed, double* loss) noexcept {
@@ -172,7 +155,7 @@ Result<double> bootstrap_se(std::span<const double> pnl, double alpha, std::size
             loss[i] = -pnl[idx];
         }
         std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n,
-                         std::greater<double>());
+                         std::greater<>());
         const double v = loss[m - 1];
         const double prev_mean = (b == 0) ? 0.0 : sum / static_cast<double>(b);
         sum += v;
@@ -213,7 +196,8 @@ double kde_se(std::span<const double> pnl, double alpha, double* loss, double* w
 // ---------------------------------------------------------------- checks
 
 Result<void> try_validate_alpha(double alpha) noexcept {
-    if (!(alpha > 0.0 && alpha < 0.5)) [[unlikely]] return fail(Errc::BadAlpha, "", alpha);
+    if (!(alpha > 0.0 && alpha < 0.5)) [[unlikely]]
+        return fail(Errc::BadAlpha, "", alpha);
     return {};
 }
 
@@ -221,19 +205,22 @@ Result<void> try_validate_pnl(std::span<const double> pnl, std::size_t min_obs) 
     if (pnl.size() < min_obs) [[unlikely]] {
         return fail(Errc::TooFewPnl, "", 0.0, min_obs, pnl.size());
     }
-    if (!all_finite(pnl)) [[unlikely]] return fail(Errc::PnlNotFinite);
+    if (!all_finite(pnl)) [[unlikely]]
+        return fail(Errc::PnlNotFinite);
     return {};
 }
 
-Result<void> try_validate_exposures(std::span<const double> exposures,
-                                    const char* who) noexcept {
-    if (exposures.empty()) [[unlikely]] return fail(Errc::NoPositions, who);
+Result<void> try_validate_exposures(std::span<const double> exposures, const char* who) noexcept {
+    if (exposures.empty()) [[unlikely]]
+        return fail(Errc::NoPositions, who);
     bool any = false;
     for (double w : exposures) {
-        if (!std::isfinite(w)) [[unlikely]] return fail(Errc::ExposuresNotFinite, who);
+        if (!std::isfinite(w)) [[unlikely]]
+            return fail(Errc::ExposuresNotFinite, who);
         any = any || w != 0.0;
     }
-    if (!any) [[unlikely]] return fail(Errc::NoPositions, who);
+    if (!any) [[unlikely]]
+        return fail(Errc::NoPositions, who);
     return {};
 }
 
@@ -241,41 +228,52 @@ Result<void> try_validate_exposures(std::span<const double> exposures,
 
 Result<TailRisk> try_var_es_order_statistic(std::span<const double> pnl, double alpha,
                                             std::span<double> workspace) noexcept {
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
-    if (pnl.empty()) [[unlikely]] return fail(Errc::EmptySample, "var_es_order_statistic");
-    if (!all_finite(pnl)) [[unlikely]] return fail(Errc::NonFiniteInput, "var_es_order_statistic");
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
+    if (pnl.empty()) [[unlikely]]
+        return fail(Errc::EmptySample, "var_es_order_statistic");
+    if (!all_finite(pnl)) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "var_es_order_statistic");
     if (workspace.size() < pnl.size()) [[unlikely]] {
-        return fail(Errc::WorkspaceTooSmall, "try_var_es_order_statistic", 0.0,
-                    workspace.size(), pnl.size());
+        return fail(Errc::WorkspaceTooSmall, "try_var_es_order_statistic", 0.0, workspace.size(),
+                    pnl.size());
     }
     return order_statistic(pnl, alpha, workspace.data());
 }
 
 Result<double> try_historical_var(std::span<const double> pnl, double alpha,
                                   std::span<double> workspace) noexcept {
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
     if (auto e = try_validate_pnl(pnl, kMinHistObs); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
     const auto r = try_var_es_order_statistic(pnl, alpha, workspace);
-    if (!r) [[unlikely]] return std::unexpected(r.error());
+    if (!r) [[unlikely]]
+        return std::unexpected(r.error());
     return r->var;
 }
 
 Result<double> try_expected_shortfall(std::span<const double> pnl, double alpha,
                                       std::span<double> workspace) noexcept {
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
-    if (auto e = try_validate_pnl(pnl, 10); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
+    if (auto e = try_validate_pnl(pnl, 10); !e) [[unlikely]]
+        return std::unexpected(e.error());
     const auto r = try_var_es_order_statistic(pnl, alpha, workspace);
-    if (!r) [[unlikely]] return std::unexpected(r.error());
+    if (!r) [[unlikely]]
+        return std::unexpected(r.error());
     return r->es;
 }
 
 Result<double> detail::try_quantile_linear(std::span<const double> x, double q,
-                                   std::span<double> workspace) noexcept {
-    if (x.empty()) [[unlikely]] return fail(Errc::EmptySample, "quantile_linear");
-    if (!all_finite(x)) [[unlikely]] return fail(Errc::NonFiniteInput, "quantile_linear");
-    if (!(q >= 0.0 && q <= 1.0)) [[unlikely]] return fail(Errc::BadQuantile, "", q);
+                                           std::span<double> workspace) noexcept {
+    if (x.empty()) [[unlikely]]
+        return fail(Errc::EmptySample, "quantile_linear");
+    if (!all_finite(x)) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "quantile_linear");
+    if (!(q >= 0.0 && q <= 1.0)) [[unlikely]]
+        return fail(Errc::BadQuantile, "", q);
     const std::size_t n = x.size();
     if (workspace.size() < n) [[unlikely]] {
         return fail(Errc::WorkspaceTooSmall, "try_quantile_linear", 0.0, workspace.size(), n);
@@ -283,7 +281,7 @@ Result<double> detail::try_quantile_linear(std::span<const double> x, double q,
     double* w = workspace.data();
     std::copy(x.begin(), x.end(), w);
     const double h = q * static_cast<double>(n - 1);
-    const std::size_t lo = static_cast<std::size_t>(std::floor(h));
+    const auto lo = static_cast<std::size_t>(std::floor(h));
     if (lo + 1 >= n) return *std::max_element(w, w + n);
     std::nth_element(w, w + static_cast<std::ptrdiff_t>(lo), w + n);
     const double x_lo = w[lo];
@@ -294,46 +292,19 @@ Result<double> detail::try_quantile_linear(std::span<const double> x, double q,
 
 // ---------------------------------------------------------------- matrix
 
-Result<void> try_matvec(const Matrix& a, std::span<const double> x,
-                        std::span<double> y) noexcept {
+Result<void> try_matvec(const Matrix& a, std::span<const double> x, std::span<double> y) noexcept {
     if (x.size() != a.cols()) [[unlikely]] {
         return fail(Errc::MatvecShape, "", 0.0, x.size(), a.cols());
     }
-    if (!all_finite(x)) [[unlikely]] return fail(Errc::NonFiniteInput, "matvec");
-    if (!all_finite({a.data(), a.size()})) [[unlikely]] return fail(Errc::NonFiniteInput, "matvec");
+    if (!all_finite(x)) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "matvec");
+    if (!all_finite({a.data(), a.size()})) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "matvec");
     const std::size_t rows = a.rows(), cols = a.cols();
     if (y.size() != rows) [[unlikely]] {
         return fail(Errc::WorkspaceTooSmall, "try_matvec", 0.0, y.size(), rows);
     }
-    const double* d = a.data();
-    const double* xv = x.data();
-    std::size_t i = 0;
-    // Four rows at a time: four independent accumulators for instruction-
-    // level parallelism, each summed in the original left-to-right order.
-    for (; i + 4 <= rows; i += 4) {
-        const double* r0 = d + i * cols;
-        const double* r1 = r0 + cols;
-        const double* r2 = r1 + cols;
-        const double* r3 = r2 + cols;
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0, a3 = 0.0;
-        for (std::size_t j = 0; j < cols; ++j) {
-            const double xj = xv[j];
-            a0 += r0[j] * xj;
-            a1 += r1[j] * xj;
-            a2 += r2[j] * xj;
-            a3 += r3[j] * xj;
-        }
-        y[i] = a0;
-        y[i + 1] = a1;
-        y[i + 2] = a2;
-        y[i + 3] = a3;
-    }
-    for (; i < rows; ++i) {
-        const double* row = d + i * cols;
-        double acc = 0.0;
-        for (std::size_t j = 0; j < cols; ++j) acc += row[j] * xv[j];
-        y[i] = acc;
-    }
+    qp::matvec_rows(a.data(), rows, cols, x.data(), y.data());
     return {};
 }
 
@@ -341,8 +312,10 @@ Result<double> try_quad_form(std::span<const double> w, const Matrix& s) noexcep
     if (!s.square() || s.rows() != w.size()) [[unlikely]] {
         return fail(Errc::QuadFormShape, "", 0.0, w.size());
     }
-    if (!all_finite(w)) [[unlikely]] return fail(Errc::NonFiniteInput, "quad_form");
-    if (!all_finite({s.data(), s.size()})) [[unlikely]] return fail(Errc::NonFiniteInput, "quad_form");
+    if (!all_finite(w)) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "quad_form");
+    if (!all_finite({s.data(), s.size()})) [[unlikely]]
+        return fail(Errc::NonFiniteInput, "quad_form");
     double acc = 0.0;
     for (std::size_t i = 0; i < w.size(); ++i) {
         const double* row = s.data() + i * s.cols();
@@ -367,11 +340,13 @@ Result<double> try_cholesky_lower(const Matrix& cov, std::span<double> lower,
     const double* a = cov.data();
     double amax = 0.0;
     for (std::size_t k = 0; k < n * n; ++k) {
-        if (!std::isfinite(a[k])) [[unlikely]] return fail(Errc::CovNotFinite, who);
+        if (!std::isfinite(a[k])) [[unlikely]]
+            return fail(Errc::CovNotFinite, who);
         amax = std::max(amax, std::abs(a[k]));
     }
     for (std::size_t i = 0; i < n; ++i) {
-        if (a[i * n + i] < 0.0) [[unlikely]] return fail(Errc::CovNegativeDiag, who);
+        if (a[i * n + i] < 0.0) [[unlikely]]
+            return fail(Errc::CovNegativeDiag, who);
         for (std::size_t j = i + 1; j < n; ++j) {
             if (std::abs(a[i * n + j] - a[j * n + i]) > 1e-10 * amax) [[unlikely]] {
                 return fail(Errc::CovAsymmetric, who);
@@ -384,7 +359,8 @@ Result<double> try_cholesky_lower(const Matrix& cov, std::span<double> lower,
     double* l = lower.data();
     if (scale == 0.0) {
         for (std::size_t k = 0; k < n * n; ++k) {
-            if (a[k] != 0.0) [[unlikely]] return fail(Errc::CholZeroVar);
+            if (a[k] != 0.0) [[unlikely]]
+                return fail(Errc::CholZeroVar);
         }
         std::fill(l, l + n * n, 0.0);
         return 0.0;
@@ -409,32 +385,39 @@ Result<double> try_portfolio_sigma(std::span<const double> exposures, const Matr
         return fail(Errc::SigmaShape, "", 0.0, exposures.size());
     }
     const auto q = try_quad_form(exposures, cov);
-    if (!q) [[unlikely]] return q;
+    if (!q) [[unlikely]]
+        return q;
     const double var = *q;
-    if (!std::isfinite(var)) [[unlikely]] return fail(Errc::SigmaNotFinite);
+    if (!std::isfinite(var)) [[unlikely]]
+        return fail(Errc::SigmaNotFinite);
     double wmax = 0.0;
     for (double w : exposures) wmax = std::max(wmax, std::abs(w));
-    if (var < -1e-10 * std::max(1.0, wmax * wmax)) [[unlikely]] return fail(Errc::NotPsd);
+    if (var < -1e-10 * std::max(1.0, wmax * wmax)) [[unlikely]]
+        return fail(Errc::NotPsd);
     return std::sqrt(std::max(var, 0.0));
 }
 
 Result<double> try_parametric_var(std::span<const double> exposures, const Matrix& cov,
                                   double alpha, Dist dist, double df, double mean,
                                   int horizon_days) noexcept {
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
-    if (!std::isfinite(mean)) [[unlikely]] return fail(Errc::MeanNotFinite, "parametric_var");
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
+    if (!std::isfinite(mean)) [[unlikely]]
+        return fail(Errc::MeanNotFinite, "parametric_var");
     if (horizon_days < 1) [[unlikely]] {
         return fail(Errc::BadHorizon, "", static_cast<double>(horizon_days));
     }
     const auto s = try_portfolio_sigma(exposures, cov);
-    if (!s) [[unlikely]] return s;
+    if (!s) [[unlikely]]
+        return s;
     const double sigma = *s * std::sqrt(static_cast<double>(horizon_days));
     const double mu = mean * static_cast<double>(horizon_days);
     double z;
     if (dist == Dist::Normal) {
         z = normal_ppf(alpha);  // alpha in (0, 0.5): cannot throw
     } else {
-        if (!(df > 2.0) || !std::isfinite(df)) [[unlikely]] return fail(Errc::BadDf, "", df);
+        if (!(df > 2.0) || !std::isfinite(df)) [[unlikely]]
+            return fail(Errc::BadDf, "", df);
         // Variance-matched t: quantile rescaled to unit variance.
         z = student_t_ppf(alpha, df) * std::sqrt((df - 2.0) / df);
     }
@@ -446,9 +429,12 @@ Result<double> try_parametric_var(std::span<const double> exposures, const Matri
 Result<MonteCarloResult> try_mc_tail_metrics(std::span<const double> pnl, double alpha,
                                              std::size_t n_boot, std::uint64_t seed,
                                              McVarWorkspace& ws) noexcept {
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
-    if (pnl.size() < 100) [[unlikely]] return fail(Errc::McTooFewScenarios, "", 0.0, pnl.size());
-    if (!all_finite(pnl)) [[unlikely]] return fail(Errc::McPnlNotFinite, "mc_tail_metrics");
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
+    if (pnl.size() < 100) [[unlikely]]
+        return fail(Errc::McTooFewScenarios, "", 0.0, pnl.size());
+    if (!all_finite(pnl)) [[unlikely]]
+        return fail(Errc::McPnlNotFinite, "mc_tail_metrics");
     if (ws.loss.size() < pnl.size() || ws.work.size() < pnl.size()) [[unlikely]] {
         return fail(Errc::WorkspaceTooSmall, "try_mc_tail_metrics", 0.0,
                     std::min(ws.loss.size(), ws.work.size()), pnl.size());
@@ -458,30 +444,35 @@ Result<MonteCarloResult> try_mc_tail_metrics(std::span<const double> pnl, double
     res.n_paths = pnl.size();
     res.var = tr.var;
     res.es = tr.es;
-    if (n_boot < 2) [[unlikely]] return fail(Errc::BootTooFewReps);
+    if (n_boot < 2) [[unlikely]]
+        return fail(Errc::BootTooFewReps);
     res.var_se = *bootstrap_se(pnl, alpha, n_boot, seed, ws.loss.data());
     res.var_se_kde = kde_se(pnl, alpha, ws.loss.data(), ws.work.data());
     return res;
 }
 
-Result<MonteCarloResult> try_monte_carlo_var_factored(
-    std::span<const double> exposures, std::span<const double> lower, double alpha,
-    std::size_t n_paths, Dist dist, double df, std::uint64_t seed, std::size_t n_boot,
-    McVarWorkspace& ws) noexcept {
+Result<MonteCarloResult> try_monte_carlo_var_factored(std::span<const double> exposures,
+                                                      std::span<const double> lower, double alpha,
+                                                      std::size_t n_paths, Dist dist, double df,
+                                                      std::uint64_t seed, std::size_t n_boot,
+                                                      McVarWorkspace& ws) noexcept {
     if (auto e = try_validate_exposures(exposures, "monte_carlo_var"); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
     const std::size_t n = exposures.size();
-    if (lower.size() != n * n) [[unlikely]] return fail(Errc::McShape);
-    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]] return std::unexpected(e.error());
-    if (n_paths < 1) [[unlikely]] return fail(Errc::McNoPaths);
+    if (lower.size() != n * n) [[unlikely]]
+        return fail(Errc::McShape);
+    if (auto e = try_validate_alpha(alpha); !e) [[unlikely]]
+        return std::unexpected(e.error());
+    if (n_paths < 1) [[unlikely]]
+        return fail(Errc::McNoPaths);
     const bool student = dist == Dist::StudentT;
     if (student && (!(df > 2.0) || !std::isfinite(df))) [[unlikely]] {
         return fail(Errc::McBadDf, "", df);
     }
     if (ws.z.size() < n || ws.row.size() < n || ws.pnl.size() < n_paths) [[unlikely]] {
-        return fail(Errc::WorkspaceTooSmall, "try_monte_carlo_var_factored", 0.0,
-                    ws.pnl.size(), n_paths);
+        return fail(Errc::WorkspaceTooSmall, "try_monte_carlo_var_factored", 0.0, ws.pnl.size(),
+                    n_paths);
     }
     // Same draw order as simulate_factor_returns(); each scenario row is
     // mapped to P&L at once, as portfolio_pnl() would, so the n_paths x n
@@ -513,7 +504,8 @@ Result<MonteCarloResult> try_monte_carlo_var_factored(
         }
         pnl[p] = acc;
     }
-    if (!finite) [[unlikely]] return fail(Errc::McReturnsNotFinite);
+    if (!finite) [[unlikely]]
+        return fail(Errc::McReturnsNotFinite);
     return try_mc_tail_metrics({pnl, n_paths}, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL, ws);
 }
 
@@ -522,7 +514,8 @@ Result<MonteCarloResult> try_monte_carlo_var_factored(
 double mc_bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
                        std::uint64_t seed) {
     validate_alpha(alpha);
-    if (pnl.size() < 10) throw_error(Error{Errc::BootTooFewObs, "mc_bootstrap_se", 0.0, pnl.size()});
+    if (pnl.size() < 10)
+        throw_error(Error{Errc::BootTooFewObs, "mc_bootstrap_se", 0.0, pnl.size()});
     if (n_boot < 2) throw_error(Error{Errc::BootTooFewReps});
     if (!all_finite(pnl)) throw_error(Error{Errc::McPnlNotFinite, "mc_bootstrap_se"});
     // One resample buffer reused per replicate: memory O(n), never n_boot x n.
@@ -545,9 +538,9 @@ MonteCarloResult mc_tail_metrics(std::span<const double> pnl, double alpha, std:
     return value_or_throw(try_mc_tail_metrics(pnl, alpha, n_boot, seed, ws));
 }
 
-MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix& cov,
-                                 double alpha, std::size_t n_paths, Dist dist, double df,
-                                 std::uint64_t seed, std::size_t n_boot, Repair repair) {
+MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix& cov, double alpha,
+                                 std::size_t n_paths, Dist dist, double df, std::uint64_t seed,
+                                 std::size_t n_boot, Repair repair) {
     validate_exposures(exposures, "monte_carlo_var");
     if (!cov.square() || cov.rows() != exposures.size()) throw_error(Error{Errc::McShape});
     validate_alpha(alpha);
@@ -563,8 +556,8 @@ MonteCarloResult monte_carlo_var(std::span<const double> exposures, const Matrix
     const Matrix chol = cholesky(scale, repair).lower;
     McVarWorkspace ws;
     ws.reserve(n, n_paths);
-    return value_or_throw(try_monte_carlo_var_factored(
-        exposures, {chol.data(), chol.size()}, alpha, n_paths, dist, df, seed, n_boot, ws));
+    return value_or_throw(try_monte_carlo_var_factored(exposures, {chol.data(), chol.size()}, alpha,
+                                                       n_paths, dist, df, seed, n_boot, ws));
 }
 
 }  // namespace eqvar

@@ -47,6 +47,7 @@ USD legs (CCYUSD) -> crosses = exact ratios -> candidate pairs of pairs
 ## Quickstart
 
 ```bash
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]              # numpy, scipy, pandas, statsmodels; pytest, hypothesis
 python examples/run_pipeline.py    # seeded synthetic data, 60 seeds, about 200 s, writes no files
 python examples/run_pipeline.py --seeds 10   # quicker, wider intervals

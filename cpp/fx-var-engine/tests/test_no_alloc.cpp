@@ -57,7 +57,8 @@ long allocations(F&& f) {
 
 TEST(NoAlloc, VarEsAndClosedForms) {
   std::vector<double> pnl(10000), ws(10000);
-  for (std::size_t i = 0; i < pnl.size(); ++i) pnl[i] = std::sin(0.37 * static_cast<double>(i)) * 1e5;
+  for (std::size_t i = 0; i < pnl.size(); ++i)
+    pnl[i] = std::sin(0.37 * static_cast<double>(i)) * 1e5;
   double acc = 0.0;
   EXPECT_EQ(allocations([&](int i) {
               pnl[static_cast<std::size_t>(i)] += 1.0;  // vary the input
@@ -98,7 +99,7 @@ TEST(NoAlloc, LinearAlgebraSimulationAndBook) {
               acc += try_cholesky_lower(cov, lower).has_value() ? lower[k + 1] : 0.0;
               acc += try_simulate_factor_returns(lower, k, 1000, McDist::kStudentT, 5.0,
                                                  static_cast<std::uint64_t>(i), scen)
-                         .has_value()
+                             .has_value()
                          ? scen[3]
                          : 0.0;
               (void)try_simulate_factor_returns(l2, nf, 1000, McDist::kNormal, 5.0,

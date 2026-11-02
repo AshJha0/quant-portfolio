@@ -1,9 +1,9 @@
 # Validation
 
 How the engine is validated and where it fails. Every claim below names the
-test that enforces it. `cargo test --release` runs 12 integration files
-(121 tests) and 14 doctests, all offline and deterministic.
-`cargo clippy --all-targets -- -D warnings` is clean.
+test that enforces it. `cargo test --release --locked -p eq-var-engine`, run from `rust/`, runs
+14 integration files (127 tests) and 16 doctests, all offline and deterministic.
+`cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings` is clean.
 
 ## 1. Goldens from the Python reference
 

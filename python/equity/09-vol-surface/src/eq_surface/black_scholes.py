@@ -25,9 +25,9 @@ from scipy.stats import norm
 
 __all__ = [
     "ImpliedVolWarning",
-    "bs_price",
     "bs_delta",
     "bs_gamma",
+    "bs_price",
     "bs_vega",
     "implied_vol",
     "implied_vol_vector",
@@ -221,11 +221,11 @@ def implied_vol(
     _validate_market(S, K, T)
     if not np.isfinite(price):
         warnings.warn(
-            f"implied_vol: non-finite price {price}; returning nan", ImpliedVolWarning
+            f"implied_vol: non-finite price {price}; returning nan", ImpliedVolWarning, stacklevel=2
         )
         return np.nan
     if T == 0.0:
-        warnings.warn("implied_vol: T=0 option has no time value; returning nan", ImpliedVolWarning)
+        warnings.warn("implied_vol: T=0 option has no time value; returning nan", ImpliedVolWarning, stacklevel=2)
         return np.nan
 
     lower, upper = _price_bounds(S, K, T, r, q, kind)
@@ -235,27 +235,27 @@ def implied_vol(
         warnings.warn(
             f"implied_vol: price {price:.6g} below discounted intrinsic {lower:.6g} "
             "(sub-intrinsic, arbitrageable quote); returning nan",
-            ImpliedVolWarning,
+            ImpliedVolWarning, stacklevel=2,
         )
         return np.nan
     if price > upper + eps:
         warnings.warn(
             f"implied_vol: price {price:.6g} above upper bound {upper:.6g}; returning nan",
-            ImpliedVolWarning,
+            ImpliedVolWarning, stacklevel=2,
         )
         return np.nan
     if price < eps:
         warnings.warn(
             f"implied_vol: price {price:.6g} is numerically zero at this scale "
             "(deep OTM wing); vol is unidentifiable, returning nan",
-            ImpliedVolWarning,
+            ImpliedVolWarning, stacklevel=2,
         )
         return np.nan
     if lower > 0.0 and price - lower < eps:
         warnings.warn(
             "implied_vol: price carries no measurable time value above intrinsic "
             "(deep ITM wing, vega ~ 0); vol is unidentifiable, returning nan",
-            ImpliedVolWarning,
+            ImpliedVolWarning, stacklevel=2,
         )
         return np.nan
 
@@ -271,13 +271,13 @@ def implied_vol(
             warnings.warn(
                 "implied_vol: price equals the zero-vol limit to machine precision "
                 "(deep wing, vega ~ 0); vol is unidentifiable, returning nan",
-                ImpliedVolWarning,
+                ImpliedVolWarning, stacklevel=2,
             )
         else:
             warnings.warn(
                 "implied_vol: no volatility in [1e-6, 5.0] reproduces the price "
                 "(deep wing or extreme quote); returning nan",
-                ImpliedVolWarning,
+                ImpliedVolWarning, stacklevel=2,
             )
         return np.nan
 
@@ -301,7 +301,7 @@ def implied_vol(
         warnings.warn(
             "implied_vol: solver could not reproduce the price to tolerance "
             "(near-zero vega region); returning nan",
-            ImpliedVolWarning,
+            ImpliedVolWarning, stacklevel=2,
         )
         return np.nan
     return float(sigma)

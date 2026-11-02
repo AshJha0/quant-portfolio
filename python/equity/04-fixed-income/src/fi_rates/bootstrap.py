@@ -52,11 +52,11 @@ from scipy.optimize import brentq
 from .curve import DiscountCurve, ExtrapolationWarning
 
 __all__ = [
-    "Deposit",
     "FRA",
+    "Deposit",
     "ParSwap",
-    "bootstrap_curve",
     "bootstrap_bond_curve",
+    "bootstrap_curve",
     "reprice_instruments",
 ]
 
@@ -137,7 +137,7 @@ def _validate(instruments: list[Instrument]) -> list[Instrument]:
                 )
     ordered = sorted(instruments, key=lambda i: i.pillar)
     pillars = [i.pillar for i in ordered]
-    for a, b in zip(pillars, pillars[1:]):
+    for a, b in zip(pillars, pillars[1:], strict=False):
         if abs(a - b) < 1e-12:
             raise ValueError(
                 f"duplicate pillar maturity {a}: each instrument must add a "
@@ -184,8 +184,8 @@ def bootstrap_curve(
     for ins in ordered:
         t_new = ins.pillar
 
-        def objective(df_new: float, _ins: Instrument = ins) -> float:
-            trial = DiscountCurve(times + [t_new], dfs + [df_new], interpolation)
+        def objective(df_new: float, _ins: Instrument = ins, _t_new: float = t_new) -> float:
+            trial = DiscountCurve([*times, _t_new], [*dfs, df_new], interpolation)
             return _pv_error(_ins, trial)
 
         try:
@@ -248,7 +248,7 @@ def bootstrap_bond_curve(
     if not quotes:
         raise ValueError("no bond quotes supplied to bootstrap")
     ordered = sorted(quotes, key=lambda q: q.maturity)
-    for a, b in zip(ordered, ordered[1:]):
+    for a, b in zip(ordered, ordered[1:], strict=False):
         if abs(a.maturity - b.maturity) < 1e-12:
             raise ValueError(f"duplicate bond maturity {a.maturity}")
     times: list[float] = []
@@ -256,13 +256,15 @@ def bootstrap_bond_curve(
     for q in ordered:
         t_cf, cf = q.cashflows()
 
-        def objective(df_new: float, _q: BondQuote = q) -> float:
+        def objective(
+            df_new: float, _q: BondQuote = q, _cf: np.ndarray = cf, _t_cf: np.ndarray = t_cf
+        ) -> float:
             trial = DiscountCurve(
-                times + [_q.maturity], dfs + [df_new], interpolation
+                [*times, _q.maturity], [*dfs, df_new], interpolation
             )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", ExtrapolationWarning)
-                pv = float(np.sum(cf * np.asarray(trial.df(t_cf))))
+                pv = float(np.sum(_cf * np.asarray(trial.df(_t_cf))))
             return pv - _q.dirty_price
 
         try:

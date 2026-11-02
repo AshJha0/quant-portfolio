@@ -26,7 +26,7 @@ from ..bond import FixedRateBond
 from ..bootstrap import Deposit, Instrument, ParSwap
 from ..risk import Position
 
-__all__ = ["market_quotes", "sample_portfolio", "CURVE_VARIANTS"]
+__all__ = ["CURVE_VARIANTS", "market_quotes", "sample_portfolio"]
 
 CURVE_VARIANTS: tuple[str, ...] = ("upward", "inverted", "flat", "negative")
 

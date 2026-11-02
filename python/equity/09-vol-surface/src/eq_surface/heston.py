@@ -70,14 +70,14 @@ import numpy as np
 from scipy.integrate import quad
 
 __all__ = [
-    "HestonParams",
     "FellerWarning",
+    "HestonParams",
     "feller_condition",
-    "heston_cf",
-    "heston_call_p1p2",
+    "heston_call",
     "heston_call_damped",
     "heston_call_gl",
-    "heston_call",
+    "heston_call_p1p2",
+    "heston_cf",
     "heston_put",
 ]
 
@@ -86,7 +86,7 @@ class FellerWarning(UserWarning):
     """Warns when 2*kappa*theta < xi^2 (variance can touch zero)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class HestonParams:
     """Heston model parameters (annualised variance units).
 
@@ -98,17 +98,46 @@ class HestonParams:
         Mean-reversion speed of variance (> 0).
     theta : float
         Long-run variance level (> 0).
-    rho : float
-        Spot-variance correlation, in [-1, 1] (boundaries allowed).
     xi : float
         Volatility of variance (>= 0; 0 gives deterministic variance).
+    rho : float
+        Spot-variance correlation, in [-1, 1] (boundaries allowed).
+
+    Pass the parameters by keyword. The field order is
+    ``(v0, kappa, theta, xi, rho)``, the same as ``fx_surface.HestonParams``.
+    Positional construction still works and keeps this package's historical
+    order ``(v0, kappa, theta, rho, xi)``, with a ``DeprecationWarning``.
     """
 
     v0: float
     kappa: float
     theta: float
-    rho: float
     xi: float
+    rho: float
+
+    _LEGACY_ORDER = ("v0", "kappa", "theta", "rho", "xi")
+
+    def __init__(self, *args: float, **kwargs: float) -> None:
+        if args:
+            if len(args) > 5:
+                raise TypeError(f"HestonParams takes at most 5 positional arguments, got {len(args)}")
+            warnings.warn(
+                "positional HestonParams(v0, kappa, theta, rho, xi) is deprecated; pass "
+                "keywords (the field order is now v0, kappa, theta, xi, rho, as in fx_surface)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            for name, value in zip(self._LEGACY_ORDER, args, strict=False):
+                if name in kwargs:
+                    raise TypeError(f"HestonParams got multiple values for argument {name!r}")
+                kwargs[name] = value
+        missing = [n for n in self._LEGACY_ORDER if n not in kwargs]
+        unknown = [n for n in kwargs if n not in self._LEGACY_ORDER]
+        if missing or unknown:
+            raise TypeError(f"HestonParams: missing {missing}, unexpected {unknown}")
+        for name in ("v0", "kappa", "theta", "xi", "rho"):
+            object.__setattr__(self, name, kwargs[name])
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.v0 <= 0.0:
@@ -146,7 +175,7 @@ def feller_condition(p: HestonParams, warn: bool = True) -> float:
             f"Feller condition violated: 2*kappa*theta/xi^2 = {ratio:.3f} < 1; "
             "variance process can touch zero (common in equity calibrations; "
             "pricing remains valid, MC schemes handle v=0)",
-            FellerWarning,
+            FellerWarning, stacklevel=2,
         )
     return float(ratio)
 

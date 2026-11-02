@@ -32,19 +32,19 @@ carries exactly zero risk.
 from __future__ import annotations
 
 import warnings as _warnings
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from .common import (NumericalWarning, fx_factor, ir_factor, split_pair,
-                     validate_finite, vol_factor)
+from .common import NumericalWarning, fx_factor, ir_factor, split_pair, validate_finite, vol_factor
 from .gk import gk_delta, gk_gamma, gk_price, gk_vega
 
-__all__ = ["Market", "Cash", "Spot", "Forward", "Option", "Book", "Position"]
+__all__ = ["Book", "Cash", "Forward", "Market", "Option", "Position", "Spot"]
 
-ShockLike = Union[Mapping[str, "float | np.ndarray"], pd.Series, pd.DataFrame]
+ShockLike = Mapping[str, "float | np.ndarray"] | pd.Series | pd.DataFrame
 
 
 # --------------------------------------------------------------------------
@@ -262,7 +262,7 @@ class Option:
         return {self.pair.upper()}
 
 
-Position = Union[Cash, Spot, Forward, Option]
+Position = Cash | Spot | Forward | Option
 
 
 # --------------------------------------------------------------------------
@@ -348,7 +348,7 @@ class Book:
         for p in self.positions:
             pairs |= p.vol_pairs()
             rate_ccys |= p.rate_currencies()
-        spot = {}
+        spot: dict[str, Any] = {}
         for c in ccys:
             if c == "USD":
                 spot[c] = 1.0
@@ -458,6 +458,7 @@ class Book:
         sh = self._normalise_shocks(shocks)
         v0 = self.value_usd(market, None, option_method="full")
         v1 = self.value_usd(market, sh, option_method=option_method)
+        s1b: float | np.ndarray
         if self.base == "USD":
             s0b, s1b = 1.0, 1.0
         else:

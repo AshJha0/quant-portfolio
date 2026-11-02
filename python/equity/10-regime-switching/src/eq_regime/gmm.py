@@ -28,13 +28,13 @@ from scipy.special import logsumexp
 
 __all__ = [
     "GMMFit",
+    "aic",
+    "bic",
     "fit_gmm",
     "gmm_log_likelihood",
-    "bic",
-    "aic",
-    "select_k_bic",
-    "match_permutation",
     "kmeans_lite",
+    "match_permutation",
+    "select_k_bic",
 ]
 
 _LOG_2PI = np.log(2.0 * np.pi)
@@ -180,7 +180,7 @@ def _em_run(
     history: list[float] = []
     converged = False
     it = 0
-    for it in range(1, max_iter + 1):
+    for it in range(1, max_iter + 1):  # noqa: B007  (it is read after the loop)
         # E-step
         log_prob = np.stack(
             [np.log(weights[j]) + _log_gaussian_pdf(x, means[j], covs[j]) for j in range(k)],
@@ -320,7 +320,7 @@ def select_k_bic(
     for k in k_range:
         fit = fit_gmm(x, k, seed=seed, **fit_kwargs)
         scores[k] = bic(fit, x.shape[0])
-    best_k = min(scores, key=scores.get)
+    best_k = min(scores, key=scores.__getitem__)
     return best_k, scores
 
 

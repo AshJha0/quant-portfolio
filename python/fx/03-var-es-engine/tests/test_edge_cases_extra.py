@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_var import (
     Book,
     Cash,
@@ -28,7 +27,7 @@ from fx_var import (
     normal_var,
     parametric_var,
 )
-from fx_var.common import PegBlindnessWarning, fx_factor
+from fx_var.common import PegBlindnessWarning
 from fx_var.data.synthetic import demo_market, simulate_history
 from fx_var.gk import gk_price
 from fx_var.stress_testing import peg_break_scenario, run_stress
@@ -51,11 +50,11 @@ class TestNonFiniteMarketData:
     """NaN policy is 'refuse'; these paths used to fail *silently*."""
 
     def test_nan_rate_rejected_at_construction(self):
-        with pytest.raises(ValueError, match="rates.*finite"):
+        with pytest.raises(ValueError, match=r"rates.*finite"):
             Market(spot_usd={"EUR": 1.08}, rates={"EUR": float("nan")})
 
     def test_inf_rate_rejected(self):
-        with pytest.raises(ValueError, match="rates.*finite"):
+        with pytest.raises(ValueError, match=r"rates.*finite"):
             Market(spot_usd={"EUR": 1.08}, rates={"EUR": float("inf")})
 
     def test_nan_vol_rejected_at_construction(self):
@@ -63,7 +62,7 @@ class TestNonFiniteMarketData:
         # non-finite sigma*sqrt(T) as the ZERO-vol case, so a NaN vol would
         # otherwise return forward intrinsic -- a plausible-looking but
         # wrong price, and a P&L of exactly 0.
-        with pytest.raises(ValueError, match="vols.*finite"):
+        with pytest.raises(ValueError, match=r"vols.*finite"):
             Market(spot_usd={"EUR": 1.08}, rates={"EUR": 0.03, "USD": 0.05},
                    vols={"EURUSD": float("nan")})
 

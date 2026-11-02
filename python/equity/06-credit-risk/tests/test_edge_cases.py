@@ -4,7 +4,6 @@ all-missing feature, PD boundary clamps, empty portfolio, degenerate inputs."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_credit.data.synthetic import generate_loan_book
 from eq_credit.model import ScorecardScaling, fit_logistic
 from eq_credit.portfolio_risk import (

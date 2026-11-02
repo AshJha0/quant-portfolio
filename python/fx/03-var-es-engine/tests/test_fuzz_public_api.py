@@ -14,14 +14,13 @@ from __future__ import annotations
 
 import warnings
 
+import fx_var as fv
 import numpy as np
 import pandas as pd
 import pytest
+from fx_var.data.synthetic import demo_market
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-
-import fx_var as fv
-from fx_var.data.synthetic import demo_market
 
 MKT = demo_market()
 EUR_BOOK = fv.Book([fv.Spot("EURUSD", 1e6)])

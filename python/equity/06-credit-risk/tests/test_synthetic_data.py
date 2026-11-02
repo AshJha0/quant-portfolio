@@ -4,7 +4,6 @@ monotonicity, seeding, drift, missingness and planted pathologies."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_credit.data.synthetic import (
     SECTORS,
     TRUE_COEFFS,

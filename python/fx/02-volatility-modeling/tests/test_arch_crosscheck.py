@@ -20,12 +20,11 @@ import numpy as np
 import pytest
 
 pytest.importorskip("arch")
-from arch import arch_model  # noqa: E402
-
-from fx_vol import fit_egarch, fit_garch, fit_gjr, forecast_variance  # noqa: E402
-from fx_vol._mle import gaussian_loglik  # noqa: E402
-from fx_vol.data import synthetic as syn  # noqa: E402
-from fx_vol.egarch import egarch_filter  # noqa: E402
+from arch import arch_model
+from fx_vol import fit_egarch, fit_garch, fit_gjr, forecast_variance
+from fx_vol._mle import gaussian_loglik
+from fx_vol.data import synthetic as syn
+from fx_vol.egarch import egarch_filter
 
 SCALE = 100.0
 

@@ -40,26 +40,31 @@ scenario counts, so the bootstrap is the primary figure.
 from __future__ import annotations
 
 import warnings as _w
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping
 
 import numpy as np
 import pandas as pd
 
 from .book import Book, Market
-from .common import (NumericalWarning, require_positions, resolve_alpha,
-                     validate_alpha, validate_finite, validate_horizon)
+from .common import (
+    NumericalWarning,
+    require_positions,
+    resolve_alpha,
+    validate_finite,
+    validate_horizon,
+)
 from .expected_shortfall import _tail, empirical_var_es, tail_rank
 
 __all__ = [
     "JumpSpec",
     "MonteCarloVaRResult",
-    "robust_cholesky",
+    "monte_carlo_var",
     "nearest_correlation_higham",
+    "robust_cholesky",
     "simulate_factor_returns",
     "var_standard_error",
     "var_standard_error_bootstrap",
-    "monte_carlo_var",
 ]
 
 _JITTER_START = 1e-12
@@ -325,6 +330,7 @@ def simulate_factor_returns(
         w = rng.chisquare(df, size=n_scenarios) / df
         x = x * np.sqrt((df - 2.0) / df) / np.sqrt(w)[:, None]
     elif dist == "jump":
+        assert jumps is not None
         n_jumps = rng.poisson(jumps.intensity * horizon_days, size=n_scenarios)
         for j, f in enumerate(factors):
             if f in jumps.mean:

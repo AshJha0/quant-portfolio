@@ -4,7 +4,6 @@ shrinkage, reverse optimization and Black-Litterman."""
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_port.covariance import psd_repair
 from eq_port.mvo import tangency_weights
 from eq_port.returns_est import (

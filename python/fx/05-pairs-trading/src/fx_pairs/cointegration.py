@@ -38,8 +38,8 @@ __all__ = [
     "EngleGrangerResult",
     "adf_test",
     "engle_granger",
-    "mackinnon_crit",
     "is_degenerate_spread",
+    "mackinnon_crit",
 ]
 
 # MacKinnon (2010) response-surface coefficients, constant ('c') case.
@@ -90,7 +90,7 @@ def mackinnon_crit(n_vars: int, nobs: float | int = np.inf) -> dict[str, float]:
     else:
         T = float(nobs)
         cvs = b[:, 0] + b[:, 1] / T + b[:, 2] / T**2 + b[:, 3] / T**3
-    return {lvl: float(cv) for lvl, cv in zip(_LEVELS, cvs)}
+    return {lvl: float(cv) for lvl, cv in zip(_LEVELS, cvs, strict=False)}
 
 
 def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:

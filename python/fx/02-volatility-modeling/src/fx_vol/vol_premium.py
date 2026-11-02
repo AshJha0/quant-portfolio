@@ -20,16 +20,16 @@ swaps actually settle.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
 
 __all__ = [
-    "realized_vol_forward",
-    "vol_risk_premium",
-    "variance_swap_pnl",
     "premium_summary",
+    "realized_vol_forward",
+    "variance_swap_pnl",
+    "vol_risk_premium",
 ]
 
 

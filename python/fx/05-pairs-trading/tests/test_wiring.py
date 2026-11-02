@@ -1,11 +1,10 @@
 """Funnel, carry veto, vol targeting and RLS hedge are used by reported
 results (examples/run_pipeline.py); these tests pin their behaviour."""
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 from fx_pairs.data import synthetic as syn
 
 PAIRS = ["AUDUSD", "NZDUSD", "USDCAD", "USDJPY", "USDCHF", "AUDNZD", "AUDJPY", "CHFJPY"]

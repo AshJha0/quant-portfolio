@@ -44,7 +44,8 @@ stated tolerances.
 
 ## Why zero dependencies
 
-`Cargo.toml` declares no runtime dependencies. This is a portfolio-quality
+`Cargo.toml` declares no third-party runtime dependencies; the one runtime
+dependency is the workspace's own std-only `qp-core` (`rust/core`). This is a portfolio-quality
 choice, not a performance one, the crates this engine would otherwise pull
 in (`rand` for the RNG, `statrs`/`libm` for the normal distribution,
 `roots`/`argmin` for root finding) are all mature and fine to depend on in a
@@ -52,7 +53,7 @@ production system. Choosing to implement them in-crate instead is an
 exercise in owning the numerics end-to-end and keeping the
 review surface small and self-contained:
 
-* **RNG**: `src/rng.rs` implements SplitMix64 (seed expansion, per the
+* **RNG**: `qp_core::rng` (wrapped in `src/rng.rs`) implements SplitMix64 (seed expansion, per the
   xoshiro authors' recommendation) and xoshiro256** 1.0 (Blackman & Vigna
   2018; passes BigCrush, period `2^256 - 1`) directly from the published
   algorithms, plus an inverse-CDF normal transform. This sidesteps the
@@ -71,8 +72,8 @@ review surface small and self-contained:
   normalised Black solved on the out-of-the-money side with safeguarded
   Halley iteration, at most 10 evaluations, the same algorithm and constants
   as the Python and C++ engines. Premium-adjusted strikes use Brent
-  (an NR-style zbrent that errors on non-convergence) implemented directly in
-  `src/lib.rs`; premium-adjusted strike-from-delta locates the fold of
+  (`brentq` semantics, an error on non-convergence) in `qp_core::roots`,
+  wrapped in `src/lib.rs`; premium-adjusted strike-from-delta locates the fold of
   `K N(d2(K))` analytically and Brent-solves on the market-standard
   decreasing branch.
 

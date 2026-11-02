@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_var import (
     EquityPosition,
     FuturePosition,
@@ -110,7 +109,6 @@ class TestBlackScholes:
 class TestOptionPnl:
     def test_full_reval_matches_direct_bs_difference(self):
         pf = make_option_portfolio()
-        opt = pf.positions[0]
         scen = np.array([[-0.05, 0.03]])
         pnl = pf.pnl(scen, "full")[0]
         p0 = bs_price(5000.0, 5000.0, 0.5, 0.03, 0.01, 0.20, "call")

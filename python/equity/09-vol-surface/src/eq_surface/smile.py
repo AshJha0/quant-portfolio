@@ -35,18 +35,18 @@ from scipy.optimize import least_squares
 from scipy.stats import norm
 
 __all__ = [
-    "SVIParams",
-    "SVIFitResult",
-    "svi_total_variance",
-    "svi_dw_dk",
-    "svi_d2w_dk2",
-    "svi_implied_vol",
-    "durrleman_g",
-    "check_butterfly",
-    "fit_svi",
     "LEE_SLOPE_MAX",
-    "fit_quadratic_delta",
     "QuadraticDeltaFit",
+    "SVIFitResult",
+    "SVIParams",
+    "check_butterfly",
+    "durrleman_g",
+    "fit_quadratic_delta",
+    "fit_svi",
+    "svi_d2w_dk2",
+    "svi_dw_dk",
+    "svi_implied_vol",
+    "svi_total_variance",
 ]
 
 
@@ -402,7 +402,7 @@ def fit_svi(
         return float(r @ r) * scale
 
     def obj_grad(x):
-        a, b, rho, m, sig = x
+        _a, b, rho, m, sig = x
         d = k - m
         sq = np.sqrt(d * d + sig * sig)
         r = _svi_residuals(x, k, w, wts) * wts
@@ -438,7 +438,7 @@ def fit_svi(
         ]
         with np.errstate(all="ignore"):
             return minimize(obj, x0, jac=obj_grad, method="SLSQP",
-                            bounds=list(zip(lb, ub)), constraints=cons,
+                            bounds=list(zip(lb, ub, strict=False)), constraints=cons,
                             options={"maxiter": 300, "ftol": 1e-14}).x
 
     def feasible(x):
@@ -478,12 +478,12 @@ def fit_svi(
         raise RuntimeError("constrained SVI fit found no feasible solution; check input quotes")
 
     active = []
-    a, b, rho, m, sig = best
+    _a, b, rho, m, sig = best
     if b * (1.0 + abs(rho)) >= LEE_SLOPE_MAX - 1e-6:
         active.append("lee")
     if _durrleman_min(best, k_lo, k_hi)[0] <= 1e-8:
         active.append("butterfly")
-    for name, xi, lo_, hi_ in zip(("a", "b", "rho", "m", "sigma"), best, lb, ub):
+    for name, xi, lo_, hi_ in zip(("a", "b", "rho", "m", "sigma"), best, lb, ub, strict=False):
         if xi <= lo_ + 1e-8 * max(1.0, abs(lo_)) or xi >= hi_ - 1e-8 * max(1.0, abs(hi_)):
             active.append(f"{name}_bound")
     return _make_result(best, k, w, T, tried, best_val, costs, k_lo, k_hi, True, tuple(active))
@@ -502,7 +502,7 @@ def _make_result(x, k, w, T, tried, cost, costs, k_lo, k_hi, constrained, active
         warnings.warn(
             f"fitted SVI slice (T={T:.4g}) is not arbitrage-free: min Durrleman g = "
             f"{min_g:.3e}, wing slope b(1+|rho|) = {b * (1 + abs(rho)):.3f}",
-            UserWarning,
+            UserWarning, stacklevel=2,
         )
     return SVIFitResult(
         params=params, rmse_vol=rmse_vol, rmse_w=rmse_w, arb_free=arb_free,
@@ -544,7 +544,7 @@ def _fit_svi_unconstrained(k, w, wts, T, lb, ub, n_restarts, seed, k_lo, k_hi):
             continue
         tried += 1
         costs.append(float(res.cost))
-        a, b, rho, m, sig = res.x
+        a, b, rho, _m, sig = res.x
         if a + b * sig * np.sqrt(max(1.0 - rho * rho, 0.0)) <= 0.0:
             continue
         if best is None or res.cost < best.cost:

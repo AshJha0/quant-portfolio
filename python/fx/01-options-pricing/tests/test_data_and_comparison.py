@@ -4,10 +4,8 @@ import math
 
 import numpy as np
 import pytest
-
-from fx_options import (binomial_convergence_table, compare_models,
-                        gk_price, mc_convergence_table)
-from fx_options.data.synthetic import (gbm_fx_paths, synthetic_vol_quotes)
+from fx_options import binomial_convergence_table, compare_models, gk_price, mc_convergence_table
+from fx_options.data.synthetic import gbm_fx_paths, synthetic_vol_quotes
 
 MKT = dict(S=1.10, K=1.1075, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)
 

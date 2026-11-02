@@ -57,8 +57,7 @@ struct FactorCov {
 /// Validate a history for use by any VaR method: consistent shape, at
 /// least `min_obs` rows, every `required` factor present, no NaN or inf.
 /// Throws std::invalid_argument with an informative message otherwise.
-void validate_returns(const ReturnsMatrix& returns,
-                      const std::vector<std::string>& required,
+void validate_returns(const ReturnsMatrix& returns, const std::vector<std::string>& required,
                       std::size_t min_obs = 60);
 
 /// Unbiased (ddof=1) sample covariance of the daily factor returns.

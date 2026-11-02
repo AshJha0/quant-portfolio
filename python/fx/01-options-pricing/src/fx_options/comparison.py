@@ -14,8 +14,11 @@ from .black76 import black76_from_spot
 from .garman_kohlhagen import gk_price
 from .monte_carlo import mc_price
 
-__all__ = ["compare_models", "binomial_convergence_table",
-           "mc_convergence_table"]
+__all__ = [
+    "binomial_convergence_table",
+    "compare_models",
+    "mc_convergence_table",
+]
 
 
 def compare_models(S: float, K: float, T: float, r_d: float, r_f: float,

@@ -3,7 +3,6 @@ structural properties."""
 
 import numpy as np
 import pytest
-
 from eq_port.metrics import (
     annualized_return,
     annualized_vol,
@@ -18,7 +17,6 @@ from eq_port.metrics import (
     summary_table,
 )
 from eq_port.risk_parity import risk_contributions
-
 
 # ------------------------------------------------------------ hand-checked
 

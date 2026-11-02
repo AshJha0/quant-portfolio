@@ -6,7 +6,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_regime.detection import min_duration_filter
 from eq_regime.features import expanding_zscore
 from eq_regime.gmm import fit_gmm

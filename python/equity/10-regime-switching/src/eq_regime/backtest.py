@@ -31,9 +31,11 @@ execution and cost model.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
+from qp_core.execution import ExecutionConfig
 
 from .detection import expanding_fit_detect
 from .features import build_features
@@ -42,47 +44,17 @@ from .strategy import build_weights, vol_target_scale
 TRADING_DAYS: int = 252
 
 __all__ = [
-    "ExecutionConfig",
     "BacktestResult",
-    "run_ledger",
-    "ma_timing_weights",
-    "walk_forward_backtest",
+    "ExecutionConfig",
     "backtest_from_detection",
+    "ma_timing_weights",
     "random_timing_weights",
-    "vol_target_weights",
+    "run_ledger",
     "summary_stats",
+    "vol_target_weights",
+    "walk_forward_backtest",
 ]
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """When and at what price an order decided at the close of ``t`` fills.
-
-    mode : ``"next"`` fills at ``p_t + f (p_{t+1} - p_t)``; ``"close_auction"``
-        fills at ``p_t`` and pays ``auction_cost_bp`` per unit traded.
-    fill_fraction : f in (0, 1]; 0.5 by default (a stand-in for a next-open
-        fill when only closes exist), 1.0 is the next close. Ignored in
-        close-auction mode.
-    auction_cost_bp : extra cost in bp of traded notional in close-auction mode.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in ("next", "close_auction"):
-            raise ValueError(f"mode must be 'next' or 'close_auction', got {self.mode!r}")
-        f = float(self.fill_fraction)
-        if not np.isfinite(f) or not (0.0 < f <= 1.0):
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        a = float(self.auction_cost_bp)
-        if not np.isfinite(a) or a < 0:
-            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
-
-    @property
-    def effective_fraction(self) -> float:
-        return 0.0 if self.mode == "close_auction" else float(self.fill_fraction)
 
 
 @dataclass(frozen=True)
@@ -281,10 +253,10 @@ def backtest_from_detection(
     Lets several weight variants share one (expensive) walk-forward
     detection. All ledgers use the same dates, execution and cost model.
     """
-    asset_log_ret = np.log(prices / prices.shift(1)).iloc[1:]
+    asset_log_ret = cast(pd.DataFrame, np.log(prices / prices.shift(1))).iloc[1:]
     log_ret = asset_log_ret.mean(axis=1)
-    simple_ret = np.expm1(asset_log_ret).mean(axis=1)
-    led = dict(cost_bps=cost_bps, execution=execution, cash_rate=cash_rate,
+    simple_ret = cast(pd.DataFrame, np.expm1(asset_log_ret)).mean(axis=1)
+    led: dict[str, Any] = dict(cost_bps=cost_bps, execution=execution, cash_rate=cash_rate,
                borrow_spread_bps=borrow_spread_bps)
 
     weights = build_weights(detection, log_ret, enter=enter, exit_=exit_,

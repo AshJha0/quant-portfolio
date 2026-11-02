@@ -5,10 +5,20 @@ import inspect
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_algo import (BacktestConfig, IntradayConfig, IntradayMarket, capacity_backtest,
-                     capacity_curve, cs_zscore, evaluate_schedules, generate_daily_panel,
-                     momentum, pov_schedule, twap_schedule, vwap_schedule)
+from eq_algo import (
+    BacktestConfig,
+    IntradayConfig,
+    IntradayMarket,
+    capacity_backtest,
+    capacity_curve,
+    cs_zscore,
+    evaluate_schedules,
+    generate_daily_panel,
+    momentum,
+    pov_schedule,
+    twap_schedule,
+    vwap_schedule,
+)
 
 
 def test_default_impact_coefficient_is_in_the_cited_range():

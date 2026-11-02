@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import pnl_std_vs_frequency, simulate_delta_hedge
 
 BASE = dict(S0=100.0, K=100.0, T=0.25, r=0.02, sigma_realized=0.20)
@@ -12,7 +11,7 @@ BASE = dict(S0=100.0, K=100.0, T=0.25, r=0.02, sigma_realized=0.20)
 def test_pnl_std_decreases_with_rebalance_frequency() -> None:
     stds = pnl_std_vs_frequency([4, 16, 64, 256], n_paths=3000, **BASE)
     values = [stds[n] for n in (4, 16, 64, 256)]
-    assert all(b < a for a, b in zip(values, values[1:]))
+    assert all(b < a for a, b in zip(values, values[1:], strict=False))
 
 
 def test_pnl_std_scales_like_one_over_sqrt_n() -> None:

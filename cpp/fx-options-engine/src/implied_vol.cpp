@@ -1,7 +1,7 @@
 #include "fxopt/implied_vol.hpp"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -9,26 +9,30 @@
 
 namespace fxopt {
 
-Result<double> try_implied_vol(double price, double S, double K, double T, double r_d,
-                               double r_f, OptionType type) noexcept {
+Result<double> try_implied_vol(double price, double S, double K, double T, double r_d, double r_f,
+                               OptionType type) noexcept {
     const double p = phi(type);
     if (auto e = try_validate_inputs(S, K, T, r_d, r_f, 0.0); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (T <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::IvExpired});
+    if (T <= 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::IvExpired});
     if (auto e = try_require_finite(price, "price"); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
 
     const auto df_d = try_finite_result(std::exp(-r_d * T), "implied_vol");
-    if (!df_d) [[unlikely]] return df_d;
+    if (!df_d) [[unlikely]]
+        return df_d;
     const auto df_f = try_finite_result(std::exp(-r_f * T), "implied_vol");
-    if (!df_f) [[unlikely]] return df_f;
+    if (!df_f) [[unlikely]]
+        return df_f;
     const auto fwd = try_finite_result(S * *df_f / *df_d, "forward");
-    if (!fwd) [[unlikely]] return fwd;
+    if (!fwd) [[unlikely]]
+        return fwd;
     const double forward = *fwd;
     const double lower = *df_d * std::max(p * (forward - K), 0.0);  // sigma->0
-    const double upper = p > 0.0 ? S * *df_f : K * *df_d;            // sigma->inf
+    const double upper = p > 0.0 ? S * *df_f : K * *df_d;           // sigma->inf
     constexpr double eps = std::numeric_limits<double>::epsilon();
     // Rounding of the sigma -> 0 bound df (F - K): a few eps of df max(F, K)
     // when in the money; exactly zero otherwise. Same rule in all engines.
@@ -57,13 +61,13 @@ Result<double> try_implied_vol(double price, double S, double K, double T, doubl
     return std::unexpected(Error{Errc::NoConvergence});
 }
 
-double implied_vol(double price, double S, double K, double T, double r_d,
-                   double r_f, OptionType type) {
+double implied_vol(double price, double S, double K, double T, double r_d, double r_f,
+                   OptionType type) {
     return value_or_throw(try_implied_vol(price, S, K, T, r_d, r_f, type));
 }
 
-double implied_vol(double price, double S, double K, double T, double r_d,
-                   double r_f, OptionType type, double /*tol*/, int /*max_iter*/) {
+double implied_vol(double price, double S, double K, double T, double r_d, double r_f,
+                   OptionType type, double /*tol*/, int /*max_iter*/) {
     return implied_vol(price, S, K, T, r_d, r_f, type);
 }
 

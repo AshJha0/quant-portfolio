@@ -30,26 +30,23 @@ from the hedge, ``delta_pa = delta - V/S``.
 from __future__ import annotations
 
 import math
-from typing import Iterable
 
-import numpy as np
 from scipy.optimize import brentq
 from scipy.special import ndtr
-from scipy.stats import norm
 
 __all__ = [
     "DELTA_CONVENTIONS",
-    "gk_price",
-    "gk_forward",
     "gk_delta",
-    "gk_vega",
+    "gk_digital",
+    "gk_forward",
     "gk_gamma",
-    "gk_vanna",
-    "gk_volga",
+    "gk_price",
     "gk_rho_domestic",
     "gk_rho_foreign",
     "gk_theta",
-    "gk_digital",
+    "gk_vanna",
+    "gk_vega",
+    "gk_volga",
     "implied_vol",
 ]
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-__all__ = ["load_option_chain", "HAS_YFINANCE"]
+__all__ = ["HAS_YFINANCE", "load_option_chain"]
 
 try:  # pragma: no cover - depends on optional extra
     import yfinance as _yf

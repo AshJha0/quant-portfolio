@@ -1,10 +1,9 @@
 """Synthetic generators: seeding, ground-truth recovery, correlation structure."""
 
+import fx_pairs as fp
 import numpy as np
 import pandas as pd
 import pytest
-
-import fx_pairs as fp
 from fx_pairs.data import synthetic as syn
 
 

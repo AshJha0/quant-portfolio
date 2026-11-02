@@ -1,21 +1,15 @@
 """Walk-forward: window hygiene, frozen parameters, gating behaviour."""
 
 import numpy as np
-import pandas as pd
 import pytest
-
 from eq_pairs.backtest import (
-    WalkForwardWindow,
     ZERO_COSTS,
-    align_pair,
-    backtest_pair,
+    WalkForwardWindow,
     walk_forward_pair,
     walk_forward_portfolio,
     walk_forward_windows,
 )
 from eq_pairs.data import cointegrated_pair, correlated_random_walks, mixed_panel
-from eq_pairs.signals import SignalRules, generate_signals, time_stop_bars
-from eq_pairs.spread import compute_spread
 
 
 class TestWindows:
@@ -29,7 +23,7 @@ class TestWindows:
 
     def test_default_step_gives_contiguous_trading_windows(self):
         wins = walk_forward_windows(1000, formation=252, trading=63)
-        for a, b in zip(wins[:-1], wins[1:]):
+        for a, b in zip(wins[:-1], wins[1:], strict=False):
             assert b.trading_start == a.trading_end + 1  # no gap, no overlap
 
     def test_window_count(self):
@@ -131,7 +125,7 @@ class TestWalkForwardPair:
 
     def test_trap_pair_mostly_gated_out(self):
         df, _ = correlated_random_walks(n=1000, rho=0.92, seed=91)
-        res, windows = walk_forward_pair(
+        _res, windows = walk_forward_pair(
             df["A"], df["B"], formation=252, trading=63, costs=ZERO_COSTS
         )
         assert windows["traded"].mean() <= 0.5  # EG gate blocks most windows
@@ -171,7 +165,7 @@ class TestWalkForwardPortfolio:
         assert att["net_pnl"].sum() == pytest.approx(port.net_pnl, abs=1e-6)
 
     def test_too_short_raises(self):
-        prices, truth = mixed_panel(n=100, seed=94)
+        prices, _truth = mixed_panel(n=100, seed=94)
         with pytest.raises(ValueError, match="too short"):
             walk_forward_portfolio(prices, [("CO0_Y", "CO0_X")], formation=252, trading=63)
 
@@ -200,7 +194,7 @@ class TestDynamicHedgeAndScreens:
         port2, _ = walk_forward_portfolio(mutated, pairs, formation=252, trading=63,
                                           costs=ZERO_COSTS, max_pairs=4, hedge=hedge)
         assert port is not None and port2 is not None
-        for a, b in zip(port.pairs, port2.pairs):
+        for a, b in zip(port.pairs, port2.pairs, strict=False):
             assert a.name == b.name
             before = a.daily.index < cut
             np.testing.assert_array_equal(a.daily.loc[before, "position"],

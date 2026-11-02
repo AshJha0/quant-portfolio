@@ -30,49 +30,18 @@ With ``aum=None`` the impact term is off and the backtest is AUM-independent.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 import pandas as pd
+from qp_core.execution import ExecutionConfig
 
 from .signals import freeze_signal
 
-__all__ = ["ExecutionConfig", "BacktestConfig", "capacity_backtest", "BacktestResult", "long_short_weights", "run_backtest"]
+__all__ = ["BacktestConfig", "BacktestResult", "ExecutionConfig", "capacity_backtest", "long_short_weights", "run_backtest"]
 
 
-_EXEC_MODES = ("next", "close_auction")
 
-
-@dataclass(frozen=True)
-class ExecutionConfig:
-    """When and at what price a decision taken at close t is filled.
-
-    Parameters
-    ----------
-    mode : {"next", "close_auction"}
-        ``"next"`` fills at ``p_t + fill_fraction * (p_{t+1} - p_t)``.
-        ``"close_auction"`` fills at ``p_t`` and charges ``auction_cost_bp``
-        per unit of turnover in addition to the normal costs.
-    fill_fraction : float
-        Share of the next period's move that has happened by the fill, in
-        (0, 1]. 0.5 is a stand-in for a next-open or early-session fill when
-        only closes exist; 1.0 is the next close.
-    auction_cost_bp : float
-        Extra cost per unit of turnover in close-auction mode, in bp.
-    """
-
-    mode: str = "next"
-    fill_fraction: float = 0.5
-    auction_cost_bp: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.mode not in _EXEC_MODES:
-            raise ValueError(f"mode must be one of {_EXEC_MODES}, got {self.mode!r}")
-        f = float(self.fill_fraction)
-        if not np.isfinite(f) or not (0.0 < f <= 1.0):
-            raise ValueError(f"fill_fraction must be in (0, 1], got {self.fill_fraction}")
-        a = float(self.auction_cost_bp)
-        if not np.isfinite(a) or a < 0:
-            raise ValueError(f"auction_cost_bp must be finite and >= 0, got {self.auction_cost_bp}")
 
 
 @dataclass(frozen=True)
@@ -273,9 +242,10 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
 
     def trade_cost(i_dec: int, dw: np.ndarray) -> float:
         if cfg.aum is not None:
-            sig_i = np.nan_to_num(sigma_np[i_dec], nan=0.0)
-            adv_i = np.where(np.isfinite(adv_np[i_dec]) & (adv_np[i_dec] > 0),
-                             adv_np[i_dec], np.inf)
+            sig_np, a_np = cast(np.ndarray, sigma_np), cast(np.ndarray, adv_np)
+            sig_i = np.nan_to_num(sig_np[i_dec], nan=0.0)
+            adv_i = np.where(np.isfinite(a_np[i_dec]) & (a_np[i_dec] > 0),
+                             a_np[i_dec], np.inf)
             c = _rebalance_cost(dw, sig_i, adv_i, cfg)
         else:
             c = _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)

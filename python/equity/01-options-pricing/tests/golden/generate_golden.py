@@ -155,7 +155,7 @@ def iv_records():
             for sig in (1e-3, 0.01, 0.1, 0.5, 2.0):
                 K = float(mp.mpf(S) * mp.exp(lk))
                 for call in (True, False):
-                    vals, d1 = bs_oracle(S, K, T, r, q, sig, call)
+                    vals, _d1 = bs_oracle(S, K, T, r, q, sig, call)
                     price = float(vals["price"])
                     # Keep quotes whose time value and distance to the upper
                     # bound both exceed 64 ulps of the quote: inside that the

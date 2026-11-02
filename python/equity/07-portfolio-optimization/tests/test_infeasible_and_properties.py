@@ -3,7 +3,6 @@
 
 import numpy as np
 import pytest
-
 from eq_port.mvo import (
     efficient_frontier,
     max_sharpe_constrained,
@@ -39,7 +38,7 @@ def test_infeasible_target_return_below_box_min_raises() -> None:
 
 def test_infeasible_budget_vs_bounds_raises() -> None:
     # 4 assets capped at 10% each cannot sum to a budget of 1.
-    mu, cov = _spd(4, seed=2)
+    _mu, cov = _spd(4, seed=2)
     with pytest.raises(ValueError):
         min_variance_constrained(cov, bounds=(0.0, 0.1), budget=1.0)
 
@@ -65,7 +64,7 @@ def test_weights_sum_to_one_property_across_solvers() -> None:
 
 
 def test_custom_budget_respected() -> None:
-    mu, cov = _spd(5, seed=7)
+    _mu, cov = _spd(5, seed=7)
     w = min_variance_constrained(cov, bounds=(0.0, 1.0), budget=0.5)
     assert w.sum() == pytest.approx(0.5, abs=1e-8)
 

@@ -5,12 +5,10 @@ Every test here failed on the code before the fix it pins.
 
 import math
 
-import numpy as np
-import pytest
-from scipy.signal import lfilter
-
 import fx_vol.forecasting as fc
 import fx_vol.garch as garch_mod
+import numpy as np
+import pytest
 from fx_vol import (
     ConvergenceError,
     default_hac_lags,
@@ -23,6 +21,7 @@ from fx_vol import (
     rolling_one_step,
 )
 from fx_vol.data import synthetic as syn
+from scipy.signal import lfilter
 
 
 class TestRobustStandardErrors:

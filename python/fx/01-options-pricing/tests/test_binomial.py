@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_options import binomial_convergence, binomial_price, gk_price
 
 MKT = dict(S=1.10, K=1.12, T=0.5, r_d=0.0425, r_f=0.0290, sigma=0.0825)

@@ -3,8 +3,6 @@ described in docs/VALIDATION.md."""
 
 import numpy as np
 import pytest
-from scipy.stats import norm
-
 from eq_var import (
     EquityPosition,
     OptionPosition,
@@ -17,6 +15,7 @@ from eq_var import (
     parametric_var,
     simulate_factor_returns,
 )
+from scipy.stats import norm
 
 
 class TestEmptyPortfolio:

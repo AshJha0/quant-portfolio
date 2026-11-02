@@ -31,7 +31,6 @@ schedule reproduces :meth:`MarketSimulator.simulate_mids` exactly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 from scipy.special import expit
@@ -39,11 +38,11 @@ from scipy.special import expit
 from ..sessions import PairProfile, make_time_grid
 
 __all__ = [
-    "last_look_reject_prob",
+    "ExecutionResult",
     "FirmVenue",
     "LastLookVenue",
-    "ExecutionResult",
     "MarketSimulator",
+    "last_look_reject_prob",
 ]
 
 
@@ -152,7 +151,7 @@ class ExecutionResult:
     arrival_mid: float
     final_mid: float
     venue: str
-    sigma_bucket_pips: Optional[np.ndarray] = None
+    sigma_bucket_pips: np.ndarray | None = None
     perm_total_pips: float = 0.0
 
     @property
@@ -228,7 +227,7 @@ class MarketSimulator:
         k_perm: float = 0.05,
         max_participation: float = 0.3,
         vol_scale: float = 1.0,
-        tradeable: Optional[np.ndarray] = None,
+        tradeable: np.ndarray | None = None,
     ) -> None:
         if k_temp < 0 or k_perm < 0:
             raise ValueError("impact coefficients must be >= 0")

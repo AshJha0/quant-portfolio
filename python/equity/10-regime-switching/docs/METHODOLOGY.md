@@ -103,7 +103,7 @@ earns `cash_rate`, leverage pays `cash_rate + borrow_spread_bps` (default
 
 ### Statistics
 
-`research_stats.py` (identical across the alpha projects) gives the Lo
+`research_stats.py` (a re-export of `qp_core.stats`) gives the Lo
 (2002) Sharpe SE with a Newey-West Bartlett window (lag `floor(4 (n/100)^(2/9))`),
 the deflated Sharpe ratio against a logged trial count, PBO by CSCV, a
 circular block bootstrap and multi-seed summaries with Student-t intervals.

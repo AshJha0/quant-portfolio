@@ -32,40 +32,35 @@ struct GreeksResult {
     double delta_forward;
     double gamma;
     double vega;
-    double theta;          ///< per year; divide by 365 for daily theta
-    double rho_domestic;   ///< dV/dr_d
-    double rho_foreign;    ///< dV/dr_f
-    double vanna;          ///< d2V/(dS dsigma)
-    double volga;          ///< d2V/dsigma^2
+    double theta;         ///< per year; divide by 365 for daily theta
+    double rho_domestic;  ///< dV/dr_d
+    double rho_foreign;   ///< dV/dr_f
+    double vanna;         ///< d2V/(dS dsigma)
+    double volga;         ///< d2V/dsigma^2
 };
 
 /// Spot gamma d2V/dS2 = e^{-r_f T} n(d1) / (S sigma sqrt(T)).
-double gamma(double S, double K, double T, double r_d, double r_f,
-             double sigma);
+double gamma(double S, double K, double T, double r_d, double r_f, double sigma);
 
 /// Vega dV/dsigma = S e^{-r_f T} n(d1) sqrt(T) (call = put).
-double vega(double S, double K, double T, double r_d, double r_f,
-            double sigma);
+double vega(double S, double K, double T, double r_d, double r_f, double sigma);
 
 /// Vanna d2V/(dS dsigma) = -e^{-r_f T} n(d1) d2 / sigma.
 /// The sensitivity a 25-delta risk reversal position monetises.
-double vanna(double S, double K, double T, double r_d, double r_f,
-             double sigma);
+double vanna(double S, double K, double T, double r_d, double r_f, double sigma);
 
 /// Volga d2V/dsigma2 = vega * d1 * d2 / sigma.
 /// The sensitivity a 25-delta butterfly position monetises.
-double volga(double S, double K, double T, double r_d, double r_f,
-             double sigma);
+double volga(double S, double K, double T, double r_d, double r_f, double sigma);
 
 /// Closed-form GK Greeks.  Requires T > 0 and sigma > 0 (throws otherwise).
-GreeksResult analytic_greeks(double S, double K, double T, double r_d,
-                             double r_f, double sigma, OptionType type);
+GreeksResult analytic_greeks(double S, double K, double T, double r_d, double r_f, double sigma,
+                             OptionType type);
 
 /// Closed-form GK Greeks on inputs the caller has validated: finite, S, K,
 /// T, sigma > 0 and sigma*sqrt(T) > kMinVol.
-inline GreeksResult analytic_greeks_unchecked(double S, double K, double T, double r_d,
-                                              double r_f, double sigma,
-                                              OptionType type) noexcept {
+inline GreeksResult analytic_greeks_unchecked(double S, double K, double T, double r_d, double r_f,
+                                              double sigma, OptionType type) noexcept {
     const double p = phi(type);
     const double vol_sqrt_t = sigma * std::sqrt(T);
     const double d1v = (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
@@ -99,13 +94,13 @@ inline GreeksResult analytic_greeks_unchecked(double S, double K, double T, doub
 /// noexcept form of analytic_greeks(): the same values, or the error the
 /// throwing form raises. No allocation.
 [[nodiscard]] inline Result<GreeksResult> try_analytic_greeks(double S, double K, double T,
-                                                              double r_d, double r_f,
-                                                              double sigma,
+                                                              double r_d, double r_f, double sigma,
                                                               OptionType type) noexcept {
     if (auto e = try_validate_inputs(S, K, T, r_d, r_f, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (T <= 0.0 || sigma <= 0.0) [[unlikely]] return std::unexpected(Error{Errc::GreeksDomain});
+    if (T <= 0.0 || sigma <= 0.0) [[unlikely]]
+        return std::unexpected(Error{Errc::GreeksDomain});
     if (auto d = try_d1(S, K, T, r_d, r_f, sigma); !d) [[unlikely]] {
         return std::unexpected(d.error());
     }
@@ -140,9 +135,8 @@ struct FDGreeks {
 /// sigma is smaller than its own central bump (the down-bumped volatility
 /// would be negative).
 template <typename PriceFn>
-FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K,
-                                  double T, double r_d, double r_f,
-                                  double sigma, double rel_bump = 1e-5) {
+FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K, double T, double r_d,
+                                  double r_f, double sigma, double rel_bump = 1e-5) {
     validate_inputs(S, K, T, r_d, r_f, sigma);
     const double h_s = S * rel_bump;
     const double h_v = std::max(sigma * rel_bump, 1e-7);
@@ -154,13 +148,11 @@ FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K,
     // clear message instead of letting the inner pricer throw about a
     // negative sigma the caller never supplied.
     if (T <= 0.0) {
-        throw std::invalid_argument(
-            "finite_difference_greeks requires T > 0");
+        throw std::invalid_argument("finite_difference_greeks requires T > 0");
     }
     if (sigma - std::max(h_v, h_v2) <= 0.0) {
-        throw std::invalid_argument(
-            "sigma too small for a central vega/volga bump; need sigma > " +
-            std::to_string(std::max(h_v, h_v2)));
+        throw std::invalid_argument("sigma too small for a central vega/volga bump; need sigma > " +
+                                    std::to_string(std::max(h_v, h_v2)));
     }
 
     const auto p = [&](double s, double sig, double rd, double rf, double t) {
@@ -178,27 +170,20 @@ FDGreeks finite_difference_greeks(PriceFn&& price_fn, double S, double K,
         .delta_spot = (up_s - dn_s) / (2.0 * h_s),
         .gamma = (up_s - 2.0 * base + dn_s) / (h_s * h_s),
         .vega = (up_v - dn_v) / (2.0 * h_v),
-        .theta = -(p(S, sigma, r_d, r_f, T + h_t) -
-                   p(S, sigma, r_d, r_f, T - h_t)) /
-                 (2.0 * h_t),
-        .rho_domestic = (p(S, sigma, r_d + h_r, r_f, T) -
-                         p(S, sigma, r_d - h_r, r_f, T)) /
-                        (2.0 * h_r),
-        .rho_foreign = (p(S, sigma, r_d, r_f + h_r, T) -
-                        p(S, sigma, r_d, r_f - h_r, T)) /
-                       (2.0 * h_r),
-        .vanna = (p(S + h_s, sigma + h_v, r_d, r_f, T) -
-                  p(S + h_s, sigma - h_v, r_d, r_f, T) -
-                  p(S - h_s, sigma + h_v, r_d, r_f, T) +
-                  p(S - h_s, sigma - h_v, r_d, r_f, T)) /
+        .theta = -(p(S, sigma, r_d, r_f, T + h_t) - p(S, sigma, r_d, r_f, T - h_t)) / (2.0 * h_t),
+        .rho_domestic =
+            (p(S, sigma, r_d + h_r, r_f, T) - p(S, sigma, r_d - h_r, r_f, T)) / (2.0 * h_r),
+        .rho_foreign =
+            (p(S, sigma, r_d, r_f + h_r, T) - p(S, sigma, r_d, r_f - h_r, T)) / (2.0 * h_r),
+        .vanna = (p(S + h_s, sigma + h_v, r_d, r_f, T) - p(S + h_s, sigma - h_v, r_d, r_f, T) -
+                  p(S - h_s, sigma + h_v, r_d, r_f, T) + p(S - h_s, sigma - h_v, r_d, r_f, T)) /
                  (4.0 * h_s * h_v),
         .volga = (up_v2 - 2.0 * base + dn_v2) / (h_v2 * h_v2),
     };
 }
 
 /// Convenience overload: finite-difference Greeks of the GK pricer itself.
-FDGreeks finite_difference_greeks(double S, double K, double T, double r_d,
-                                  double r_f, double sigma, OptionType type,
-                                  double rel_bump = 1e-5);
+FDGreeks finite_difference_greeks(double S, double K, double T, double r_d, double r_f,
+                                  double sigma, OptionType type, double rel_bump = 1e-5);
 
 }  // namespace fxopt

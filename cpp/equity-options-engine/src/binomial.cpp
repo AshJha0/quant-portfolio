@@ -11,19 +11,16 @@ namespace {
 
 /// Price under `sigma == 0`: the stock grows deterministically at r - q.
 Result<double> deterministic_price(double S, double K, double T, double r, double q,
-                                   OptionType type, ExerciseStyle exercise,
-                                   int n_steps) noexcept {
+                                   OptionType type, ExerciseStyle exercise, int n_steps) noexcept {
     if (exercise == ExerciseStyle::European) {
         return try_bs_price(S, K, T, r, 0.0, q, type);
     }
     const double sign = type == OptionType::Call ? 1.0 : -1.0;
     double best = 0.0;
     for (int i = 0; i <= n_steps; ++i) {
-        const double t = T * static_cast<double>(i) /
-                         static_cast<double>(n_steps);
+        const double t = T * static_cast<double>(i) / static_cast<double>(n_steps);
         // Discounted payoff without forming the forward (overflow-safe).
-        const double value =
-            std::fmax(sign * (S * std::exp(-q * t) - K * std::exp(-r * t)), 0.0);
+        const double value = std::fmax(sign * (S * std::exp(-q * t) - K * std::exp(-r * t)), 0.0);
         best = std::fmax(best, value);
     }
     return try_finite(best, "crr_price");
@@ -47,13 +44,14 @@ double induct(double* values, const double* exercise_value, std::size_t n, doubl
 
 }  // namespace
 
-Result<double> try_crr_price(double S, double K, double T, double r, double sigma,
-                             double q, OptionType type, ExerciseStyle exercise,
-                             int n_steps, std::span<double> workspace) noexcept {
+Result<double> try_crr_price(double S, double K, double T, double r, double sigma, double q,
+                             OptionType type, ExerciseStyle exercise, int n_steps,
+                             std::span<double> workspace) noexcept {
     if (auto e = try_validate_inputs(S, K, T, sigma); !e) [[unlikely]] {
         return std::unexpected(e.error());
     }
-    if (auto e = try_validate_rates(r, q); !e) [[unlikely]] return std::unexpected(e.error());
+    if (auto e = try_validate_rates(r, q); !e) [[unlikely]]
+        return std::unexpected(e.error());
     if (n_steps < 1) [[unlikely]] {
         return std::unexpected(Error{Errc::BadSteps, "n_steps", static_cast<double>(n_steps)});
     }
@@ -88,7 +86,7 @@ Result<double> try_crr_price(double S, double K, double T, double r, double sigm
     if (!(0.0 < p && p < 1.0)) [[unlikely]] {
         return std::unexpected(Error{Errc::ProbabilityOutOfRange, "p", p});
     }
-    const std::size_t n = static_cast<std::size_t>(n_steps);
+    const auto n = static_cast<std::size_t>(n_steps);
     if (workspace.size() < crr_workspace_size(n_steps)) [[unlikely]] {
         return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_crr_price",
                                      static_cast<double>(workspace.size()),
@@ -116,22 +114,19 @@ Result<double> try_crr_price(double S, double K, double T, double r, double sigm
     return try_finite(v0, "crr_price");
 }
 
-double crr_price(double S, double K, double T, double r, double sigma,
-                 double q, OptionType type, ExerciseStyle exercise,
-                 int n_steps) {
+double crr_price(double S, double K, double T, double r, double sigma, double q, OptionType type,
+                 ExerciseStyle exercise, int n_steps) {
     std::vector<double> workspace(crr_workspace_size(n_steps));
-    return value_or_throw(
-        try_crr_price(S, K, T, r, sigma, q, type, exercise, n_steps, workspace));
+    return value_or_throw(try_crr_price(S, K, T, r, sigma, q, type, exercise, n_steps, workspace));
 }
 
-double early_exercise_premium(double S, double K, double T, double r,
-                              double sigma, double q, OptionType type,
-                              int n_steps) {
+double early_exercise_premium(double S, double K, double T, double r, double sigma, double q,
+                              OptionType type, int n_steps) {
     std::vector<double> workspace(crr_workspace_size(n_steps));
-    const double amer = value_or_throw(try_crr_price(
-        S, K, T, r, sigma, q, type, ExerciseStyle::American, n_steps, workspace));
-    const double euro = value_or_throw(try_crr_price(
-        S, K, T, r, sigma, q, type, ExerciseStyle::European, n_steps, workspace));
+    const double amer = value_or_throw(
+        try_crr_price(S, K, T, r, sigma, q, type, ExerciseStyle::American, n_steps, workspace));
+    const double euro = value_or_throw(
+        try_crr_price(S, K, T, r, sigma, q, type, ExerciseStyle::European, n_steps, workspace));
     return std::fmax(amer - euro, 0.0);
 }
 

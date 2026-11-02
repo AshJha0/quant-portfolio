@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_vol import (
     ewma_variance,
     forecast_egarch_simulated,
@@ -57,7 +56,8 @@ class TestGarchXForecast:
     def test_future_event_days_add_variance(self, garchx_fit):
         h = 10
         x_none = np.zeros((h, 1))
-        x_event = np.zeros((h, 1)); x_event[4, 0] = 1.0
+        x_event = np.zeros((h, 1))
+        x_event[4, 0] = 1.0
         f0 = forecast_variance(garchx_fit, h, x_future=x_none)
         f1 = forecast_variance(garchx_fit, h, x_future=x_event)
         gamma_x = garchx_fit.params["gamma_x"]
@@ -128,7 +128,8 @@ class TestRollingHarness:
         return must leave its own forecast unchanged."""
         r = syn.simulate_garch(1200, 1e-6, 0.05, 0.92, seed=83)
         out1 = rolling_one_step(r, model="garch", window=1000, refit_every=500)
-        r2 = r.copy(); r2[-1] *= 5.0
+        r2 = r.copy()
+        r2[-1] *= 5.0
         out2 = rolling_one_step(r2, model="garch", window=1000, refit_every=500)
         assert out1["forecast"][-1] == pytest.approx(out2["forecast"][-1], rel=1e-12)
 

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-import numpy as np
-import pytest
-
 import fi_rates as fr
+import pytest
 from fi_rates.bootstrap import Deposit, ParSwap
 from fi_rates.data import CURVE_VARIANTS, market_quotes, sample_portfolio
 
@@ -35,7 +33,7 @@ class TestMarketQuotes:
     def test_upward_variant_is_upward(self):
         qs = market_quotes("upward", noise_bp=0.0)
         rates = [q.rate for q in qs]
-        assert all(a < b for a, b in zip(rates, rates[1:]))
+        assert all(a < b for a, b in zip(rates, rates[1:], strict=False))
 
     def test_inverted_variant_is_inverted(self):
         qs = market_quotes("inverted", noise_bp=0.0)
@@ -89,7 +87,7 @@ class TestLiveLoaderGuard:
     def test_live_module_not_imported_by_package(self):
         import sys
 
-        import fi_rates  # noqa: F401
+        import fi_rates
         import fi_rates.data  # noqa: F401
 
         assert "fi_rates.data.live" not in sys.modules

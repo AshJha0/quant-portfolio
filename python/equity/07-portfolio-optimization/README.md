@@ -32,6 +32,7 @@ long-only minimum-variance portfolio and reports `fallback=True`.
 
 ```bash
 cd python/equity/07-portfolio-optimization
+pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
 pytest -q                        # 170 tests, about 16 s, offline
 python examples/run_pipeline.py  # full pipeline, about 90 s, seeded

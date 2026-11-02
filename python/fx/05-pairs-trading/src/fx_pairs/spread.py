@@ -30,12 +30,12 @@ from scipy import optimize
 from ._validation import finite_series, require_finite
 
 __all__ = [
-    "log_spread",
     "OUFit",
-    "fit_ou_ols",
-    "fit_ou_mle",
-    "half_life_days",
     "RLSHedge",
+    "fit_ou_mle",
+    "fit_ou_ols",
+    "half_life_days",
+    "log_spread",
 ]
 
 

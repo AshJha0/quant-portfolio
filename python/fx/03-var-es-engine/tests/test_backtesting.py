@@ -1,10 +1,7 @@
 """Kupiec, Christoffersen, Basel traffic light, ES backtest, rolling tests."""
 
 import numpy as np
-import pandas as pd
 import pytest
-from scipy.stats import chi2, norm
-
 from fx_var import (
     acerbi_szekely_z2,
     basel_traffic_light,
@@ -16,6 +13,7 @@ from fx_var import (
     normal_es,
     rolling_backtest,
 )
+from scipy.stats import chi2, norm
 
 
 # ------------------------------------------------------------ Kupiec

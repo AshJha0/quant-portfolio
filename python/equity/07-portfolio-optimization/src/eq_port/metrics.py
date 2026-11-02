@@ -12,23 +12,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import norm
 import pandas as pd
+from qp_core.metrics import downside_deviation, max_drawdown_from_returns
+from scipy.stats import norm
 
 __all__ = [
+    "LoSharpeResult",
+    "SharpeDiffResult",
     "annualized_return",
     "annualized_vol",
-    "sharpe_ratio",
-    "sharpe_lo",
-    "LoSharpeResult",
-    "sharpe_difference_test",
-    "SharpeDiffResult",
-    "sortino_ratio",
-    "max_drawdown",
     "calmar_ratio",
     "diversification_ratio",
     "effective_n",
+    "max_drawdown",
     "realized_risk_contributions",
+    "sharpe_difference_test",
+    "sharpe_lo",
+    "sharpe_ratio",
+    "sortino_ratio",
     "summary_table",
 ]
 
@@ -247,8 +248,7 @@ def sortino_ratio(
     and the mean excess return is positive.
     """
     r = _as_vector(returns) - rf
-    down = np.minimum(r, 0.0)
-    dd = float(np.sqrt(np.mean(down**2)))
+    dd = downside_deviation(r)
     mean = float(np.mean(r))
     if dd == 0.0:
         return float("inf") if mean > 0 else 0.0
@@ -259,11 +259,7 @@ def max_drawdown(returns: np.ndarray | pd.Series) -> float:
     """Maximum peak-to-trough drawdown of compounded wealth, as a
     POSITIVE fraction (0.25 = -25% drawdown). Wealth starts at 1 and the
     running peak includes that starting point."""
-    r = _as_vector(returns)
-    wealth = np.concatenate([[1.0], np.cumprod(1.0 + r)])
-    peak = np.maximum.accumulate(wealth)
-    dd = 1.0 - wealth / peak
-    return float(dd.max())
+    return max_drawdown_from_returns(_as_vector(returns), "simple", include_start=True)
 
 
 def calmar_ratio(returns: np.ndarray | pd.Series, periods_per_year: float = 252.0) -> float:

@@ -93,10 +93,10 @@ struct MonteCarloOptions {
   double horizon_days = 1.0;
   std::size_t n_scenarios = 50000;
   McDist dist = McDist::kNormal;
-  double df = 6.0;             ///< Student-t dof (must be > 2)
-  JumpSpec jumps;              ///< used when dist == kJump
+  double df = 6.0;  ///< Student-t dof (must be > 2)
+  JumpSpec jumps;   ///< used when dist == kJump
   std::uint64_t seed = 0;
-  std::size_t n_boot = 200;    ///< bootstrap replicates for se_var (>= 2)
+  std::size_t n_boot = 200;       ///< bootstrap replicates for se_var (>= 2)
   Repair repair = Repair::kNone;  ///< PSD repair for an indefinite cov
 };
 
@@ -123,14 +123,10 @@ struct MonteCarloResult {
 /// receives the Cholesky diagnostics. Throws on invalid inputs
 /// (n_scenarios < 1, t df <= 2 or non-finite, jump prob outside [0, 1),
 /// non-finite jump mean, negative or non-finite jump stdev).
-ReturnsMatrix simulate_factor_returns(const FactorCov& cov,
-                                      std::size_t n_scenarios,
-                                      McDist dist = McDist::kNormal,
-                                      double df = 6.0,
-                                      const JumpSpec& jumps = {},
-                                      std::uint64_t seed = 0,
-                                      double horizon_days = 1.0,
-                                      CholeskyResult* diag = nullptr,
+ReturnsMatrix simulate_factor_returns(const FactorCov& cov, std::size_t n_scenarios,
+                                      McDist dist = McDist::kNormal, double df = 6.0,
+                                      const JumpSpec& jumps = {}, std::uint64_t seed = 0,
+                                      double horizon_days = 1.0, CholeskyResult* diag = nullptr,
                                       Repair repair = Repair::kNone);
 
 /// Diagnostic asymptotic standard error of the empirical VaR:
@@ -145,16 +141,14 @@ double var_standard_error(const std::vector<double>& pnl, double alpha);
 /// std::nth_element) to each resample, return the ddof = 1 standard
 /// deviation. Memory is one resample buffer, never an n_boot x n index
 /// matrix. Requires at least 10 finite scenarios and n_boot >= 2.
-double var_standard_error_bootstrap(const std::vector<double>& pnl,
-                                    double alpha, std::size_t n_boot = 500,
-                                    std::uint64_t seed = 0);
+double var_standard_error_bootstrap(const std::vector<double>& pnl, double alpha,
+                                    std::size_t n_boot = 500, std::uint64_t seed = 0);
 
 /// Monte Carlo VaR/ES with full revaluation of the book.  `cov` must
 /// cover every factor in book.factors() (extra factors are ignored).  An
 /// empty book throws; a factorless (pure base-ccy cash) book reports
 /// exactly zero.
-MonteCarloResult monte_carlo_var(const Book& book, const Market& market,
-                                 const FactorCov& cov,
+MonteCarloResult monte_carlo_var(const Book& book, const Market& market, const FactorCov& cov,
                                  const MonteCarloOptions& opts = {});
 
 }  // namespace fxvar

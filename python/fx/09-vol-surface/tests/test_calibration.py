@@ -2,11 +2,9 @@
 
 import numpy as np
 import pytest
-
+from conftest import TRUE_HESTON
 from fx_surface import CalibrationSlice, calibrate_heston
 from fx_surface.data import calibration_slices
-
-from conftest import TRUE_HESTON
 
 
 def test_ground_truth_recovery(ground_truth_calibration):

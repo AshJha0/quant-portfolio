@@ -10,7 +10,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_risk_metrics import (
     annualised_volatility,
     ewma_volatility,

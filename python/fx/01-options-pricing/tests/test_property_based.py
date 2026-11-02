@@ -2,10 +2,9 @@
 
 import math
 
+from fx_options import analytic_greeks, delta, gk_price, implied_vol, strike_from_delta
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
-from fx_options import analytic_greeks, delta, gk_price, implied_vol, strike_from_delta
 
 spot = st.floats(0.5, 200.0)
 moneyness = st.floats(0.6, 1.6)

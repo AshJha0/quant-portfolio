@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from fx_algo import (
     EURUSD,
     FirmVenue,
@@ -11,10 +10,9 @@ from fx_algo import (
     decompose_implementation_shortfall,
     fix_benchmark,
     fix_print,
-    fix_self_impact_pips,
     fix_schedule,
+    fix_self_impact_pips,
     liquidity_weighted_schedule,
-    make_time_grid,
     rejection_cost_pips,
     slippage_vs_benchmark,
     twap_benchmark,

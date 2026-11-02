@@ -10,24 +10,24 @@ covariance in factor-return units matching ``Portfolio.delta_exposures``.
 
 from __future__ import annotations
 
+import warnings
 from typing import Literal
 
-import warnings
-
 import numpy as np
-from scipy.stats import norm, t as student_t
+from scipy.stats import norm
+from scipy.stats import t as student_t
 
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
-    "sample_covariance",
-    "ewma_covariance",
-    "portfolio_sigma",
-    "parametric_var",
-    "cornish_fisher_z",
-    "cornish_fisher_valid",
     "cornish_fisher_domain_ok",
+    "cornish_fisher_valid",
     "cornish_fisher_var",
+    "cornish_fisher_z",
+    "ewma_covariance",
+    "parametric_var",
+    "portfolio_sigma",
+    "sample_covariance",
 ]
 
 
@@ -59,20 +59,26 @@ def sample_covariance(returns: np.ndarray) -> np.ndarray:
     return np.cov(arr, rowvar=False, ddof=1).reshape(arr.shape[1], arr.shape[1])
 
 
-def ewma_covariance(returns: np.ndarray, lam: float = 0.94) -> np.ndarray:
+def ewma_covariance(returns: np.ndarray, lam: float = 0.94, seed_window: int = 30) -> np.ndarray:
     """RiskMetrics EWMA covariance forecast for the day after the sample.
 
-    ``Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'``, seeded with the
-    sample covariance.  Zero-mean returns assumed (standard at daily horizon).
+    ``Sigma_{t+1} = lam * Sigma_t + (1 - lam) * r_t r_t'``, iterated over every
+    row.  The seed is the zero-mean second moment ``mean(r r')`` over the first
+    ``min(seed_window, T)`` rows only (convention S8), so the forecast at any
+    date uses no later data.  Zero-mean returns assumed (standard at daily
+    horizon).  The same convention as ``fx_var.parametric_var.ewma_cov``.
     """
     lam = finite_scalar("lam", lam)
     if not 0.0 < lam < 1.0:
         raise ValueError(f"decay lam must be in (0, 1), got {lam}")
+    if isinstance(seed_window, bool) or int(seed_window) != seed_window or seed_window < 1:
+        raise ValueError(f"seed_window must be a positive integer, got {seed_window}")
     arr = np.atleast_2d(np.asarray(returns, dtype=float))
     if arr.shape[0] < 2:
         raise ValueError(f"need at least 2 observations for a covariance, got {arr.shape[0]}")
     _validate_finite_array("returns", arr)
-    cov = sample_covariance(arr)
+    head = arr[: min(int(seed_window), arr.shape[0])]
+    cov = head.T @ head / head.shape[0]
     for r in arr:
         cov = lam * cov + (1.0 - lam) * np.outer(r, r)
     return cov

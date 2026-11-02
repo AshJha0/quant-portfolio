@@ -12,8 +12,7 @@ namespace {
 
 using namespace fxopt;
 
-constexpr double S = 1.10, K = 1.08, T = 0.5, RD = 0.0425, RF = 0.0290,
-                 SIG = 0.0925;
+constexpr double S = 1.10, K = 1.08, T = 0.5, RD = 0.0425, RF = 0.0290, SIG = 0.0925;
 
 TEST(GarmanKohlhagen, PutCallParityWithTwoRates) {
     // C - P = S e^{-r_f T} - K e^{-r_d T}, exact to 1e-12.
@@ -28,8 +27,7 @@ TEST(GarmanKohlhagen, PutCallParityWithTwoRates) {
     for (const auto& g : grid) {
         const double c = gk_call(g.s, g.k, g.t, g.rd, g.rf, g.sig);
         const double p = gk_put(g.s, g.k, g.t, g.rd, g.rf, g.sig);
-        const double rhs = g.s * std::exp(-g.rf * g.t) -
-                           g.k * std::exp(-g.rd * g.t);
+        const double rhs = g.s * std::exp(-g.rf * g.t) - g.k * std::exp(-g.rd * g.t);
         EXPECT_NEAR(c - p, rhs, 1e-12);
     }
 }
@@ -38,8 +36,7 @@ TEST(GarmanKohlhagen, D1D2Definitions) {
     const double d1v = d1(S, K, T, RD, RF, SIG);
     const double d2v = d2(S, K, T, RD, RF, SIG);
     const double expected_d1 =
-        (std::log(S / K) + (RD - RF + 0.5 * SIG * SIG) * T) /
-        (SIG * std::sqrt(T));
+        (std::log(S / K) + (RD - RF + 0.5 * SIG * SIG) * T) / (SIG * std::sqrt(T));
     EXPECT_NEAR(d1v, expected_d1, 1e-15);
     EXPECT_NEAR(d2v, d1v - SIG * std::sqrt(T), 1e-15);
 }

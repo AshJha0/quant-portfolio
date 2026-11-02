@@ -60,8 +60,8 @@ overnight batch.
 
 ## 5. Gates for every commit
 
-1. `cargo clippy --all-targets -- -D warnings` and `#![deny(missing_docs)]`.
-2. `cargo test --release`: 121 integration tests and 14 doctests, including
+1. `cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings` and `#![deny(missing_docs)]`.
+2. `cargo test --release --locked -p eq-var-engine` (from `rust/`): 127 integration tests and 16 doctests, including
    the fuzz walk and its registry of public functions.
 3. Goldens: `tools/gen_golden_rs.py --check`, `test_conv_golden.rs`,
    `test_cross_language.rs`. Any drift is an unported methodology change or
@@ -111,5 +111,5 @@ Rolling window:
 - **Delta-hedged book**: sigma near zero is right for the linear model and
   wrong if the hedge is only delta-neutral. Use the Python stress replays.
 - **Audit replay**: same seed, same panel snapshot and same binary give the
-  same MC output. A compiler or `rng.rs` change is a stream change, so pin
+  same MC output. A compiler, `rng.rs` or `qp_core::rng` change is a stream change, so pin
   the binary, not only the seed.

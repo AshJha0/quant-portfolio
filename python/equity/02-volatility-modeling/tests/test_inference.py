@@ -9,8 +9,6 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.signal import lfilter
-
 from eq_vol import (
     default_hac_lags,
     diebold_mariano,
@@ -26,6 +24,7 @@ from eq_vol import (
 from eq_vol._utils import numerical_hessian
 from eq_vol.data import synthetic as syn
 from eq_vol.egarch import egarch_unconditional_logvar
+from scipy.signal import lfilter
 
 
 class TestSandwichStandardErrors:

@@ -6,10 +6,8 @@ expanding-refit detections to one run each.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime import (
     DetectionConfig,
     StrategyConfig,

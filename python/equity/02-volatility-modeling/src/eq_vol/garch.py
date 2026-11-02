@@ -27,6 +27,8 @@ alpha/beta invariant, and log-likelihoods differ by n ln(100).
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from scipy.optimize import minimize
 from scipy.signal import lfilter
@@ -38,19 +40,17 @@ from ._utils import (
     checked_sample_variance,
     initial_variance,
     mle_std_errors,
-    numerical_hessian,
-    std_errors_from_hessian,
     validate_returns,
 )
 
 __all__ = [
+    "fit_garch",
+    "garch_loglik",
     "garch_recursion",
     "gaussian_loglik",
-    "student_t_loglik",
     "loglik_obs",
-    "garch_loglik",
-    "fit_garch",
     "persistence",
+    "student_t_loglik",
     "unconditional_variance",
     "vol_halflife",
 ]
@@ -178,7 +178,7 @@ def _logit(p: float) -> float:
     return float(np.log(p / (1.0 - p)))
 
 
-def _to_natural(u: np.ndarray, dist: str) -> tuple[float, ...]:
+def _to_natural(u: np.ndarray, dist: str) -> tuple[Any, ...]:
     omega = float(np.exp(u[0]))
     p = _PMAX * _sigmoid(u[1])
     alpha = p * _sigmoid(u[2])
@@ -253,7 +253,7 @@ def fit_garch(
 
     if variance_targeting:
         # optimise (persistence split) only; omega = sample_var * (1 - a - b)
-        def unpack(u: np.ndarray) -> tuple[float, ...]:
+        def unpack(u: np.ndarray) -> tuple[Any, ...]:
             p = _PMAX * _sigmoid(u[0])
             alpha = p * _sigmoid(u[1])
             beta = p - alpha
@@ -262,10 +262,10 @@ def fit_garch(
                 return omega, alpha, beta, 2.05 + float(np.exp(u[2]))
             return omega, alpha, beta
 
-        u0 = [_logit((s["alpha"] + s["beta"]) / _PMAX), _logit(s["alpha"] / (s["alpha"] + s["beta"]))]
+        u0_list = [_logit((s["alpha"] + s["beta"]) / _PMAX), _logit(s["alpha"] / (s["alpha"] + s["beta"]))]
         if dist == "t":
-            u0.append(np.log(s["nu"] - 2.05))
-        u0 = np.array(u0)
+            u0_list.append(np.log(s["nu"] - 2.05))
+        u0 = np.array(u0_list)
     else:
         unpack = lambda u: _to_natural(u, dist)  # noqa: E731
         u0 = _from_natural(s["omega"], s["alpha"], s["beta"], dist, s["nu"])
@@ -289,7 +289,7 @@ def fit_garch(
         )
 
     names = ["omega", "alpha", "beta"] + (["nu"] if dist == "t" else [])
-    params = dict(zip(names, [float(x) for x in theta]))
+    params = dict(zip(names, [float(x) for x in theta], strict=False))
     omega, alpha, beta = theta[0], theta[1], theta[2]
     sigma2 = garch_recursion(r, omega, alpha, beta, b)
     ll = gaussian_loglik(r, sigma2) if dist == "normal" else student_t_loglik(r, sigma2, theta[3])
@@ -316,15 +316,15 @@ def fit_garch(
             lambda th: nll_nat(full(th)), lambda th: ll_obs_nat(full(th)), free,
             floor=se_floor(names[1:], params),
         )
-        std_errors = dict(zip(names[1:], [float(x) for x in se]))
-        robust = dict(zip(names[1:], [float(x) for x in rse]))
+        std_errors = dict(zip(names[1:], [float(x) for x in se], strict=False))
+        robust = dict(zip(names[1:], [float(x) for x in rse], strict=False))
         std_errors["omega"] = robust["omega"] = np.nan
     else:
         se, rse = mle_std_errors(
             nll_nat, ll_obs_nat, np.array(list(theta)), floor=se_floor(names, params)
         )
-        std_errors = dict(zip(names, [float(x) for x in se]))
-        robust = dict(zip(names, [float(x) for x in rse]))
+        std_errors = dict(zip(names, [float(x) for x in se], strict=False))
+        robust = dict(zip(names, [float(x) for x in rse], strict=False))
 
     pers = persistence(alpha, beta)
     extra = {"persistence": pers, "at_boundary": float(pers > 0.999 * _PMAX or alpha < 1e-6)}

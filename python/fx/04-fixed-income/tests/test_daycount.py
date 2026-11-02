@@ -3,7 +3,6 @@
 import datetime as dt
 
 import pytest
-
 from fx_rates.daycount import (
     VALID_CONVENTIONS,
     add_calendar_days,

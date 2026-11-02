@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from eq_options import bs_price, implied_vol
 
 MONEYNESS = [0.5, 0.8, 1.0, 1.25, 2.0]  # K / S

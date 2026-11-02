@@ -3,8 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <functional>
 #include <cmath>
+#include <functional>
 #include <numeric>
 #include <vector>
 
@@ -54,7 +54,8 @@ TEST(HistoricalVar, IsOrderStatisticAndIsMonotoneInAlpha) {
     std::vector<double> loss;
     for (double v : pnl) loss.push_back(-v);
     std::sort(loss.begin(), loss.end(), std::greater<double>());
-    const std::size_t m = static_cast<std::size_t>(std::ceil(0.05 * static_cast<double>(pnl.size()) - 1e-9));
+    const std::size_t m =
+        static_cast<std::size_t>(std::ceil(0.05 * static_cast<double>(pnl.size()) - 1e-9));
     EXPECT_EQ(historical_var(pnl, 0.05), loss[m - 1]);
     // Deeper tail => larger VaR.
     EXPECT_GE(historical_var(pnl, 0.01), historical_var(pnl, 0.05));

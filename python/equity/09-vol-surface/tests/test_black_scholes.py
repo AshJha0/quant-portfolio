@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from eq_surface.black_scholes import (
     ImpliedVolWarning,
     bs_delta,

@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from fx_surface import (
     DELTA_CONVENTIONS,
     atm_dns_strike,
@@ -99,14 +98,14 @@ def test_pillar_strike_ordering(convention):
     strikes = solve_pillar_strikes(vols, JPY["S"], JPY["T"], JPY["r_d"],
                                    JPY["r_f"], convention)
     ks = [strikes[p] for p in ("10p", "25p", "atm", "25c", "10c")]
-    assert all(a < b for a, b in zip(ks, ks[1:]))
+    assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_pillar_ordering_all_preset_slices(eurusd_surface, usdjpy_surface):
     for surf in (eurusd_surface, usdjpy_surface):
         for sl in surf.slices:
             ks = [sl.strikes[p] for p in ("10p", "25p", "atm", "25c", "10c")]
-            assert all(a < b for a, b in zip(ks, ks[1:]))
+            assert all(a < b for a, b in zip(ks, ks[1:], strict=False))
 
 
 def test_pa_strikes_differ_from_unadjusted():

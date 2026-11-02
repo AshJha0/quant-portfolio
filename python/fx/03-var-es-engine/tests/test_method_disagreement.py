@@ -4,7 +4,6 @@ EM fat-tailed book."""
 
 import numpy as np
 import pytest
-
 from fx_var import (
     Book,
     Spot,

@@ -1,7 +1,15 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(equity_var_engine CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+# C++23 floor. QP_CXX26=ON compiles with C++26 and turns on the features
+# qp::core guards with feature-test macros (contracts, std::simd); the
+# results are the same either way.
+option(QP_CXX26 "Compile with C++26 and enable C++26 features where supported" OFF)
+if(QP_CXX26)
+  set(CMAKE_CXX_STANDARD 26)
+else()
+  set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -36,8 +44,9 @@ add_library(eqvar_tuning INTERFACE)
 target_compile_options(eqvar_tuning INTERFACE
   $<$<AND:$<BOOL:${EQVAR_NATIVE}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-O3 -march=native>)
 
-# Warnings for GCC/Clang only; MSVC keeps its defaults.
+# Warnings: -Wall -Wextra -Wpedantic (GCC/Clang), /W4 /permissive- (MSVC).
 set(EQVAR_WARNINGS
+  $<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->
   $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic>
   $<$<AND:$<BOOL:${EQVAR_WERROR}>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:-Werror>
   $<$<AND:$<BOOL:${EQVAR_WERROR}>,$<CXX_COMPILER_ID:MSVC>>:/WX>
@@ -58,6 +67,11 @@ add_library(eqvar STATIC
 target_include_directories(eqvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(eqvar PRIVATE ${EQVAR_WARNINGS})
 target_link_libraries(eqvar PUBLIC eqvar_tuning)
+# Shared numerical core (cpp/core, header-only target qp::core).
+if(NOT TARGET qp::core)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/qp_core)
+endif()
+target_link_libraries(eqvar PUBLIC qp::core)
 if(EQVAR_VEC_REPORT)
   set_property(SOURCE src/kernels.cpp src/matrix.cpp APPEND PROPERTY COMPILE_OPTIONS
     "$<$<CXX_COMPILER_ID:GNU>:-fopt-info-vec-all>"
@@ -100,7 +114,8 @@ if(BUILD_TESTING)
     target_compile_options(${t} PRIVATE ${EQVAR_WARNINGS}
       # EXPECT_THROW(f(x), ...) discards [[nodiscard]] results by design, and
       # the tests exercise the deprecated entry points on purpose.
-      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>)
+      $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-result;-Wno-deprecated-declarations>
+      $<$<CXX_COMPILER_ID:MSVC>:/wd4834;/wd4996>)
     gtest_discover_tests(${t})
   endforeach()
 

@@ -43,11 +43,20 @@ Zero runtime dependencies (`proptest` is a test-only dependency).
 
 ## Quickstart
 
-```bash
-cargo test --release      # 71 unit + 61 integration + 8 doctests
-cargo clippy --all-targets -- -D warnings
-cargo run --release --bin bench
+From `rust/` (the Cargo workspace root; one `Cargo.lock`, one `target/`):
+
+```sh
+cargo test --release --locked -p fx-var-engine
+cargo clippy --release --all-targets --locked -p fx-var-engine -- -D warnings
+cargo run --release --locked -p fx-var-engine --bin bench -- --out /tmp/bench.json
 ```
+
+The tests are 71 unit, 62 integration and 8 doc tests. Without `--out`
+the bench writes `bench/results.json` in this crate.
+
+The xoshiro256++ stream, the Acklam guess, the Cholesky kernel and the
+fixed-chunk thread helper come from the workspace's [`qp-core`](../core)
+crate (std only).
 
 ```rust
 use fx_var_engine::prelude::*;

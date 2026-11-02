@@ -129,7 +129,7 @@ def roro_axis_check(
     columns : names of the p variables.
     risk_cols, haven_cols : subsets of ``columns``.
     """
-    pc1 = dict(zip(columns, components[0]))
+    pc1 = dict(zip(columns, components[0], strict=False))
     risk = np.array([pc1[c] for c in risk_cols])
     haven = np.array([pc1[c] for c in haven_cols])
     if len(risk) == 0 or len(haven) == 0:

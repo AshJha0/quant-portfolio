@@ -49,16 +49,18 @@ using BaselInput = KupiecInput;
 /// n_exceptions < 0 or n_exceptions > n_obs (no clamping).
 [[nodiscard]] KupiecResult kupiec_pof(const KupiecInput& in);
 
-[[deprecated("use kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha}). Removed next release.")]]
-[[nodiscard]] KupiecResult kupiec_pof(int n_obs, int n_exceptions, double alpha = 0.01);
+[[deprecated(
+    "use kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha}). Removed next "
+    "release.")]] [[nodiscard]] KupiecResult
+kupiec_pof(int n_obs, int n_exceptions, double alpha = 0.01);
 
 /// Christoffersen (1998) independence test result.
 struct ChristoffersenResult {
-    double lr = 0.0;      ///< LR_ind statistic, chi2(1) under independence.
+    double lr = 0.0;  ///< LR_ind statistic, chi2(1) under independence.
     double pvalue = 1.0;
     double n00 = 0.0, n01 = 0.0, n10 = 0.0, n11 = 0.0;  ///< Markov transition counts.
-    double pi01 = 0.0;    ///< P(exception today | none yesterday).
-    double pi11 = 0.0;    ///< P(exception today | exception yesterday).
+    double pi01 = 0.0;                                  ///< P(exception today | none yesterday).
+    double pi11 = 0.0;  ///< P(exception today | exception yesterday).
 };
 
 /// Independence LR against a first-order Markov alternative.  Clustered
@@ -76,8 +78,8 @@ struct ConditionalCoverageResult {
     double lr_ind = 0.0;
 };
 
-[[nodiscard]] ConditionalCoverageResult christoffersen_cc(
-    std::span<const std::uint8_t> exceptions, double alpha = 0.01);
+[[nodiscard]] ConditionalCoverageResult christoffersen_cc(std::span<const std::uint8_t> exceptions,
+                                                          double alpha = 0.01);
 
 /// Basel traffic-light zone.
 enum class BaselZone { Green, Yellow, Red };
@@ -100,9 +102,10 @@ struct BaselResult {
 
 /// Old argument order (n_exceptions, n_obs) at alpha = 0.01. Now zones by the
 /// binomial CDF at n_obs and throws when n_exceptions > n_obs.
-[[deprecated("use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
-             "Removed next release.")]]
-[[nodiscard]] BaselResult basel_traffic_light(int n_exceptions, int n_obs = 250);
+[[deprecated(
+    "use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
+    "Removed next release.")]] [[nodiscard]] BaselResult
+basel_traffic_light(int n_exceptions, int n_obs = 250);
 
 /// Acerbi-Szekely (2014) Z2 statistic for an ES backtest:
 ///   Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1,  I_t = 1{pnl_t < -VaR_t}.

@@ -6,11 +6,10 @@ preceded them.
 import math
 
 import pytest
-from hypothesis import assume, given, settings
-from hypothesis import strategies as st
-
 from eq_bs_replication import call_price, implied_volatility, put_price
 from eq_bs_replication.black_scholes import _norm_cdf
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 
 # Reference values of N(x) from the asymptotic series

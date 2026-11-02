@@ -24,7 +24,6 @@ import datetime as dt
 
 import numpy as np
 import pytest
-
 from fx_rates import (
     CIPQuotes,
     DiscountCurve,
@@ -173,10 +172,10 @@ class TestMarketAndForwardGuards:
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_cip_forward_rejects_non_finite_expiry(self, usd_curve, eur_curve,
                                                    bad) -> None:
-        with pytest.raises(ValueError, match="expiry|non-finite time"):
+        with pytest.raises(ValueError, match=r"expiry|non-finite time"):
             cip_forward(1.085, usd_curve, eur_curve, bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1e4])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -10000.0])
     def test_forward_points_rejects_bad_point_factor(self, market,
                                                      bad) -> None:
         with pytest.raises(ValueError, match="point_factor"):
@@ -260,7 +259,7 @@ class TestDepositAndBasisHelperGuards:
 
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_deposit_rate_from_df_rejects_non_finite(self, bad) -> None:
-        with pytest.raises(ValueError, match="df|tau"):
+        with pytest.raises(ValueError, match=r"df|tau"):
             deposit_rate_from_df(bad, 0.25)
 
     @pytest.mark.parametrize("bad", NON_FINITE)
@@ -273,7 +272,7 @@ class TestDepositAndBasisHelperGuards:
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_implied_basis_rejects_non_finite_quote(self, usd_curve,
                                                     eur_curve, bad) -> None:
-        with pytest.raises(ValueError, match="forward_quote|forward_tenor"):
+        with pytest.raises(ValueError, match=r"forward_quote|forward_tenor"):
             implied_basis_from_forwards(1.085, usd_curve, eur_curve,
                                         [(1.0, bad)])
 
@@ -301,7 +300,7 @@ class TestScenarioAndRiskGuards:
 
     @pytest.mark.parametrize("bad", NON_FINITE)
     def test_fx_delta_rejects_non_finite_bump(self, market, bad) -> None:
-        with pytest.raises(ValueError, match="spot|finite"):
+        with pytest.raises(ValueError, match=r"spot|finite"):
             fx_delta(FXForward(10e6, 1.09, 1.0), market, rel_bump=bad)
 
     @pytest.mark.parametrize("bad", NON_FINITE)

@@ -32,12 +32,19 @@ returns panel (T x n) -- sample / EWMA covariance -- cholesky_repair (jitter, Cl
 
 ## Quickstart
 
-```bash
-cd rust/equity-var-engine
-cargo test --release                       # 121 integration tests + 14 doctests
-cargo clippy --all-targets -- -D warnings
-cargo run --release --bin bench
+From `rust/` (the Cargo workspace root; one `Cargo.lock`, one `target/`):
+
+```sh
+cargo test --release --locked -p eq-var-engine
+cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings
+cargo run --release --locked -p eq-var-engine --bin bench -- --out /tmp/bench.json
 ```
+
+The tests are 127 integration tests and 16 doctests. Without `--out` the
+bench writes `bench/results.json` in this crate.
+
+The xoshiro256++ stream, the Acklam guess and the Cholesky kernel come from
+the workspace's [`qp-core`](../core) crate (std only).
 
 ```rust
 use eq_var_engine::prelude::*;
@@ -64,6 +71,7 @@ let tl = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0
 | P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function deprecated, old arithmetic kept |
 | `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function deprecated |
 | EWMA vol seeded with full-sample variance | seeded with mean `r^2` of the first `min(30, n)` points |
+| EWMA covariance seeded with the full-sample covariance | seeded with mean `r r'` of the first `min(30, T)` rows |
 | `ln_gamma(x) -> f64` | `ln_gamma(x) -> Result<f64>` |
 | new | `acerbi_szekely_z2`, `monte_carlo_run`, `psd` module, `tail` module |
 
@@ -178,7 +186,7 @@ src/
   matrix.rs              dense Matrix, covariance estimators
   psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
   stats.rs               special functions, moments
-  rng.rs                 xoshiro256++, Box-Muller, Marsaglia-Tsang
+  rng.rs                 Rng over qp-core's xoshiro256++ (Box-Muller), gamma
   bin/bench.rs           per-call latency distribution, writes bench/results.json
 tests/                   14 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE

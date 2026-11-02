@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pytest
-
 from eq_options import bs_price, crr_price, early_exercise_premium
 
 CASES = [
@@ -42,7 +41,7 @@ def test_monotone_convergence_sanity() -> None:
         abs(crr_price(S, K, T, r, sigma, q, "call", "european", n) - bs)
         for n in steps
     ]
-    for e_coarse, e_fine in zip(errs, errs[1:]):
+    for e_coarse, e_fine in zip(errs, errs[1:], strict=False):
         assert e_fine < e_coarse
     # O(1/n): error at 800 steps should be ~16x smaller than at 50 steps
     assert errs[-1] < errs[0] / 8.0

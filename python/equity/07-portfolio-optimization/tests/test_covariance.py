@@ -3,7 +3,6 @@ estimators, PSD repair and conditioning diagnostics."""
 
 import numpy as np
 import pytest
-
 from eq_port.covariance import (
     condition_number,
     ewma_cov,

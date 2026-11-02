@@ -32,22 +32,22 @@ import pandas as pd
 from scipy import stats
 
 __all__ = [
-    "roc_curve_points",
-    "roc_auc",
-    "gini",
-    "ks_statistic",
-    "ks_table",
     "bootstrap_auc_ci",
     "brier_score",
-    "hosmer_lemeshow",
-    "pd_backtest_by_grade",
     "calibration_table",
-    "psi_from_proportions",
+    "decile_table",
+    "gini",
+    "hosmer_lemeshow",
+    "is_monotone",
+    "ks_statistic",
+    "ks_table",
+    "pd_backtest_by_grade",
     "psi",
+    "psi_from_proportions",
     "psi_report",
     "psi_status",
-    "decile_table",
-    "is_monotone",
+    "roc_auc",
+    "roc_curve_points",
 ]
 
 
@@ -85,7 +85,7 @@ def roc_curve_points(y: np.ndarray, s: np.ndarray) -> tuple[np.ndarray, np.ndarr
 
 
 # np.trapezoid exists from numpy 2.0; np.trapz is the numpy 1.x name.
-_trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz  # type: ignore[attr-defined]  # noqa: NPY201  (numpy 1.x fallback; numpy 2 stubs drop trapz)
 
 
 def roc_auc(y: np.ndarray, s: np.ndarray) -> float:
@@ -157,7 +157,7 @@ def bootstrap_auc_ci(
     sa = np.asarray(s, dtype=float).ravel()
     rng = np.random.default_rng(seed)
     n = len(ya)
-    aucs = []
+    aucs: list[float] = []
     while len(aucs) < n_boot:
         idx = rng.integers(0, n, n)
         yb = ya[idx]

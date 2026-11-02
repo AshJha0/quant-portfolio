@@ -54,6 +54,29 @@ never CI), `-DFXVAR_LTO=ON` (link-time optimisation through
 compiler's vectorisation report for the hot sources). `CMAKE_CXX_FLAGS` is
 never modified. `CMAKE_BUILD_TYPE` defaults to Release.
 
+## Shared core, presets and C++26
+
+The normal cdf and inverse, the special functions, the Gamma sampler and the dense matrix with Cholesky, eigen and PSD repair come from `qp::core`, the
+header-only library in `cpp/core` (see `cpp/core/README.md`). This engine
+keeps its own headers and API; moved names are using-declarations. The
+CMake file adds the core with `add_subdirectory(../core)` unless a parent
+project already did.
+
+`CMakePresets.json` defines the presets `gcc`, `clang`, `gcc16-cxx26`,
+`asan`, `tsan` and `msvc`. From this directory:
+
+```bash
+cmake --preset clang
+cmake --build --preset clang
+ctest --preset clang
+```
+
+Build trees go to `build/<preset>`. The presets turn `FXVAR_WERROR` on. `msvc`
+must run inside a Visual Studio developer prompt. `QP_CXX26=ON` (the
+`gcc16-cxx26` preset) compiles with C++26 and uses contracts and
+`std::simd` where the compiler reports them; results are the same as the
+C++23 build. CMake 3.25 or newer is required.
+
 ## Low-latency API
 
 `fxvar/kernels.hpp` and two `CompiledBook` members give a `noexcept`
@@ -220,6 +243,6 @@ fx-var-engine/
 +-- include/fxvar/         # public headers
 +-- src/                   # implementations
 +-- tests/                 # 13 GoogleTest executables, 121 tests
-+-- bench/                 # per-call latency harness (latency.hpp) and kernels
++-- bench/                 # per-call latency harness (harness: qp/bench/latency.hpp in cpp/core) and kernels
 +-- docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```

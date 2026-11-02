@@ -6,9 +6,7 @@ fully offline and deterministic.
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
-
 from fx_vol import fit_egarch, fit_garch, fit_gjr
 from fx_vol.data import synthetic as syn
 

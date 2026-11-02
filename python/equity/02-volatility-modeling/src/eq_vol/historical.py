@@ -25,7 +25,7 @@ the observed high-low range). See docs/METHODOLOGY.md.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -33,14 +33,14 @@ import pandas as pd
 from ._utils import TRADING_DAYS, validate_returns
 
 __all__ = [
-    "yang_zhang_var",
-    "realized_vol",
     "close_to_close_var",
-    "parkinson_var",
     "garman_klass_var",
-    "rogers_satchell_var",
+    "parkinson_var",
     "range_vol",
+    "realized_vol",
+    "rogers_satchell_var",
     "window_sensitivity",
+    "yang_zhang_var",
 ]
 
 

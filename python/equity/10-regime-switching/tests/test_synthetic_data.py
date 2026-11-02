@@ -5,8 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
-from eq_regime.data import make_gbm_panel, make_regime_panel, simulate_markov_chain
+from eq_regime.data import make_regime_panel, simulate_markov_chain
 
 
 def test_shapes_and_alignment(panel3):
@@ -37,7 +36,7 @@ def test_empirical_transition_matrix_close_to_truth(panel3):
     states = panel3.states
     k = panel3.n_states
     counts = np.zeros((k, k))
-    for a, b in zip(states[:-1], states[1:]):
+    for a, b in zip(states[:-1], states[1:], strict=False):
         counts[a, b] += 1
     emp = counts / counts.sum(axis=1, keepdims=True)
     assert np.abs(np.diag(emp) - np.diag(panel3.transition)).max() < 0.05

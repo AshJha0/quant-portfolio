@@ -2,11 +2,10 @@
 
 import numpy as np
 import pytest
-from scipy.stats import multivariate_normal
-from sklearn.mixture import GaussianMixture
-
 from fx_regime import fit_gmm, gaussian_logpdf, generate_null_gbm_panel, select_k_bic
 from fx_regime.hmm import match_states
+from scipy.stats import multivariate_normal
+from sklearn.mixture import GaussianMixture
 
 
 def _two_clusters(n=400, seed=0):

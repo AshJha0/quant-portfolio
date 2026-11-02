@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-
-from fx_rates.data import generate_market_quotes, build_market_state, third_currency_curve
+from fx_rates.data import third_currency_curve
 from fx_rates.fxforward import (
     FXForward,
     FXSwap,

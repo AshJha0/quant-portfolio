@@ -144,7 +144,7 @@ class SVISmile:
     @classmethod
     def fit(
         cls, strikes: np.ndarray, vols: np.ndarray, F: float, T: float
-    ) -> "SVISmile":
+    ) -> SVISmile:
         """Least-squares fit of raw SVI through (strikes, vols).
 
         Five points / five parameters: when an SVI through the points
@@ -189,8 +189,8 @@ class SVISmile:
             [0.9 * w_min, 0.5 * (w_max - w_min) / max(k_span, 1e-2), 0.5, -0.05, 0.4],
         ]
         best = None
-        for x0 in starts:
-            x0 = np.clip(x0, lb, ub)
+        for x_start in starts:
+            x0 = np.clip(x_start, lb, ub)
             try:
                 res = least_squares(
                     residuals, x0, bounds=(lb, ub), xtol=1e-15, ftol=1e-15, gtol=1e-15
@@ -216,12 +216,12 @@ class SVISmile:
                 best.x, best.cost = x, 0.5 * float(np.sum(residuals(x) ** 2))
         a, b, rho, m, s = best.x
         # Keep parameters strictly inside the valid region.
-        b = max(b, 0.0)
-        params = SVIParams(a=float(a), b=float(b), rho=float(rho), m=float(m), s=float(s))
+        b_pos = max(float(b), 0.0)
+        params = SVIParams(a=float(a), b=b_pos, rho=float(rho), m=float(m), s=float(s))
         out = cls(params, F, T)
         names = ("a", "b", "rho", "m", "s")
         out.active_bounds = tuple(
-            n for n, x, l, u in zip(names, best.x, lb, ub)
+            n for n, x, l, u in zip(names, best.x, lb, ub, strict=False)
             if abs(x - l) <= 1e-9 * max(1.0, abs(l)) or abs(x - u) <= 1e-9 * max(1.0, abs(u))
         )
         out.max_abs_vol_residual = float(np.max(np.abs(out.vol(strikes) - vols)))
@@ -289,7 +289,7 @@ class VannaVolgaSmile:
             [
                 gk_price(S, K, T, r_d, r_f, sig, +1)
                 - gk_price(S, K, T, r_d, r_f, self.sigma_ref, +1)
-                for K, sig in zip(self.Ks, self.sigmas)
+                for K, sig in zip(self.Ks, self.sigmas, strict=False)
             ]
         )
 

@@ -13,10 +13,22 @@ ignore = [
     "RUF001",  # ambiguous unicode in strings: maths symbols are intended
     "RUF002",  # ambiguous unicode in docstrings
     "RUF003",  # ambiguous unicode in comments
+    "E741",    # I, l and O follow the papers' notation (identity matrix, loss, order)
+    "RUF046",  # int(round(x)) keeps numpy scalars as Python int on every numpy version
+    "RUF007",  # zip(x, x[1:]) is clear on arrays and lists; pairwise() changes nothing
+]
+
+[lint.flake8-bugbear]
+# Frozen dataclasses: a shared default instance cannot be mutated.
+extend-immutable-calls = [
+    "eq_pairs.backtest.CostModel",
+    "eq_pairs.signals.SignalRules",
+    "fx_algo.execution.simulator.FirmVenue",
 ]
 
 [lint.per-file-ignores]
 "**/tests/**" = ["B011"]  # assert False is fine in tests
+"**/examples/**" = ["E402"]  # scripts set thread env vars and sys.path before importing the package
 
 [format]
 quote-style = "double"

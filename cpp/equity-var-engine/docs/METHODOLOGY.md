@@ -66,8 +66,10 @@ Variances are floored at 1e-32 to keep r / sigma finite on all-zero data.
 
 - **Sample covariance**, ddof = 1.
 - **EWMA covariance**: Sigma <- lam Sigma + (1 - lam) r r' over all rows,
-  seeded with the sample covariance, lam = 0.94. It does not yet use the
-  30-observation seed of section 2.
+  lam = 0.94. The seed is the zero-mean second moment mean(r r') of the
+  first min(seed_window, T) rows, seed_window = 30 (convention S8), so the
+  seed uses no later data. It matches the Python `ewma_covariance` and the
+  `c_ewma_cov_*` golden values.
 
 **Cholesky.** Plain factorisation first. On a non-positive pivot the engine
 adds eps I with eps = 1e-12 mean(diag), then x10 per try up to

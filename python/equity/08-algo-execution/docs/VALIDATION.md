@@ -73,8 +73,8 @@ the variance of those ten trial Sharpes, which is inflated by
 high-turnover trials such as `turnover_z` (net Sharpe -52). The first uses
 the sampling variance of a zero-Sharpe estimate. The truth is between them.
 
-The statistics module (`research_stats.py`, identical in every strategy
-project) is tested in `tests/test_research_stats.py`: the Newey-West Lo SE
+The statistics module (`research_stats.py`, a re-export of
+`qp_core.stats`) is tested in `tests/test_research_stats.py`: the Newey-West Lo SE
 matches the Monte Carlo sd of the Sharpe estimate on AR(1) returns within
 10%; the expected maximum Sharpe matches simulation within 3%; the deflated
 Sharpe is uniform under the null (5.0% above 0.95, bound 2%); PBO averages

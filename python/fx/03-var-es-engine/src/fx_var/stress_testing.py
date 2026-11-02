@@ -28,8 +28,9 @@ covariance ``Sigma``, the most damaging shock at Mahalanobis radius k is
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -41,12 +42,12 @@ from .common import fx_factor, validate_finite, vol_factor
 __all__ = [
     "Scenario",
     "historical_scenarios",
-    "usd_broad_move",
     "peg_break_scenario",
-    "run_stress",
-    "sensitivity_ladder",
     "reverse_stress_linear",
     "reverse_stress_numerical",
+    "run_stress",
+    "sensitivity_ladder",
+    "usd_broad_move",
 ]
 
 
@@ -288,7 +289,7 @@ def reverse_stress_linear(
     if (loss_target is None) == (radius is None):
         raise ValueError("specify exactly one of loss_target or radius")
     validate_finite(radius=radius, loss_target=loss_target)
-    k = float(radius) if radius is not None else float(loss_target) / sp
+    k = float(radius) if radius is not None else float(cast(float, loss_target)) / sp
     if k <= 0:
         raise ValueError("radius / loss_target must be positive")
     dx = -k * (sig @ w) / sp
@@ -330,11 +331,17 @@ def reverse_stress_numerical(
         raise ValueError("book has zero linear risk; reverse stress undefined")
     gs = g / gn
 
-    cons = {"type": "ineq", "fun": lambda u: 1.0 - (u @ u) / k**2,
-            "jac": lambda u: -2.0 * u / k**2}
+    cons: Any = {"type": "ineq", "fun": lambda u: 1.0 - (u @ u) / k**2,
+               "jac": lambda u: -2.0 * u / k**2}
     rng = np.random.default_rng(seed)
     u0 = rng.standard_normal(w.size) * 1e-2
-    res = minimize(lambda u: float(gs @ u), u0, jac=lambda u: gs,
+    def objective(u: np.ndarray) -> float:
+        return float(gs @ u)
+
+    def gradient(u: np.ndarray) -> np.ndarray:
+        return gs
+
+    res = minimize(objective, u0, jac=gradient,
                    constraints=[cons], method="SLSQP",
                    options={"maxiter": 500, "ftol": 1e-15})
     if not res.success:

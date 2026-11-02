@@ -36,8 +36,7 @@ std::vector<std::uint8_t> exceptions_from_pnl(std::span<const double> pnl,
     }
     for (double v : pnl) {
         if (!std::isfinite(v)) {
-            throw std::invalid_argument(
-                "exceptions_from_pnl: pnl contains NaN or infinite values");
+            throw std::invalid_argument("exceptions_from_pnl: pnl contains NaN or infinite values");
         }
     }
     std::vector<std::uint8_t> ex(pnl.size());
@@ -57,7 +56,8 @@ void validate_counts(const KupiecInput& in, const char* who) {
                                     std::to_string(in.n_obs));
     }
     if (in.n_exceptions < 0 || in.n_exceptions > in.n_obs) {
-        throw std::invalid_argument(std::string(who) + ": n_exceptions must be in [0, n_obs], got " +
+        throw std::invalid_argument(std::string(who) +
+                                    ": n_exceptions must be in [0, n_obs], got " +
                                     std::to_string(in.n_exceptions));
     }
 }
@@ -67,8 +67,8 @@ void validate_counts(const KupiecInput& in, const char* who) {
 KupiecResult kupiec_pof(const KupiecInput& in) {
     validate_counts(in, "kupiec_pof");
     const double alpha = in.alpha;
-    const double t = static_cast<double>(in.n_obs);
-    const double x = static_cast<double>(in.n_exceptions);
+    const auto t = static_cast<double>(in.n_obs);
+    const auto x = static_cast<double>(in.n_exceptions);
     const double pihat = x / t;
     const auto ll = [t, x](double p) { return xlogy(t - x, 1.0 - p) + xlogy(x, p); };
     // Degenerate pihat in {0, 1}: the alternative's log-likelihood is 0.
@@ -181,7 +181,7 @@ double acerbi_szekely_z2(std::span<const double> pnl, std::span<const double> va
             throw std::invalid_argument("acerbi_szekely_z2: ES must be finite and > 0");
         }
     }
-    const double t = static_cast<double>(n);
+    const auto t = static_cast<double>(n);
     double sum = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
         const double v = var.size() == 1 ? var[0] : var[i];
@@ -193,9 +193,12 @@ double acerbi_szekely_z2(std::span<const double> pnl, std::span<const double> va
 
 std::string to_string(BaselZone zone) {
     switch (zone) {
-        case BaselZone::Green: return "green";
-        case BaselZone::Yellow: return "yellow";
-        case BaselZone::Red: return "red";
+        case BaselZone::Green:
+            return "green";
+        case BaselZone::Yellow:
+            return "yellow";
+        case BaselZone::Red:
+            return "red";
     }
     return "unknown";
 }

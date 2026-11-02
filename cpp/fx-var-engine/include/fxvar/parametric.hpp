@@ -51,9 +51,8 @@ double portfolio_sigma(const std::vector<double>& exposures, const Matrix& cov);
 /// `exposures` are base-ccy P&L per unit factor move; `cov` is the daily
 /// factor covariance in the same order; `df` is used for kStudentT;
 /// `mean` is the expected 1-day P&L (usually 0 at daily horizon).
-VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov,
-                double alpha = 0.01, double horizon_days = 1.0,
-                TailDist dist = TailDist::kNormal, double df = 6.0,
+VarEs var_covar(const std::vector<double>& exposures, const Matrix& cov, double alpha = 0.01,
+                double horizon_days = 1.0, TailDist dist = TailDist::kNormal, double df = 6.0,
                 double mean = 0.0);
 
 struct ParametricOptions {
@@ -85,8 +84,7 @@ struct ParametricResult {
 /// An empty book throws; a factorless (pure base-ccy cash) book reports
 /// exactly zero.
 ParametricResult parametric_var(const Book& book, const Market& market,
-                                const ReturnsMatrix& returns,
-                                const ParametricOptions& opts = {});
+                                const ReturnsMatrix& returns, const ParametricOptions& opts = {});
 
 /// Cornish-Fisher adjusted quantile
 /// z_cf = z + (z^2-1)S/6 + (z^3-3z)K/24 - (2z^3-5z)S^2/36.
@@ -102,17 +100,17 @@ bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha);
 
 /// Old predicate on the fixed interval [-z_range, z_range]. Non-finite
 /// moments now throw instead of returning false.
-[[deprecated("ignores alpha; use cornish_fisher_valid(skew, excess_kurtosis, alpha). "
-             "Removed next release.")]]
-bool cornish_fisher_domain_ok(double skew, double excess_kurtosis,
-                              double z_range = 4.0, int n_grid = 801);
+[[deprecated(
+    "ignores alpha; use cornish_fisher_valid(skew, excess_kurtosis, alpha). "
+    "Removed next release.")]]
+bool cornish_fisher_domain_ok(double skew, double excess_kurtosis, double z_range = 4.0,
+                              int n_grid = 801);
 
 /// Cornish-Fisher VaR (positive loss) at tail probability alpha. Throws
 /// std::invalid_argument when check_domain is true and
 /// cornish_fisher_valid(skew, excess_kurtosis, alpha) is false. Non-finite
 /// moments, sigma or mean always throw.
-double cornish_fisher_var(double sigma, double skew, double excess_kurtosis,
-                          double alpha = 0.01, double mean = 0.0,
-                          double horizon_days = 1.0, bool check_domain = true);
+double cornish_fisher_var(double sigma, double skew, double excess_kurtosis, double alpha = 0.01,
+                          double mean = 0.0, double horizon_days = 1.0, bool check_domain = true);
 
 }  // namespace fxvar

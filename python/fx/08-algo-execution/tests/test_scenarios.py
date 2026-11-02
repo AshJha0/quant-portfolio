@@ -3,14 +3,13 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_algo import (
-    BacktestConfig,
     EURUSD,
+    USDMXN,
+    BacktestConfig,
     FirmVenue,
     IntradayBacktester,
     MarketSimulator,
-    USDMXN,
     build_bars,
     decompose_implementation_shortfall,
     generate_ticks,

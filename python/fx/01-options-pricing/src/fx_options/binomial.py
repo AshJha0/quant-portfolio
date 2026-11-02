@@ -23,7 +23,7 @@ import numpy as np
 from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import gk_price
 
-__all__ = ["binomial_price", "binomial_convergence"]
+__all__ = ["binomial_convergence", "binomial_price"]
 
 
 def binomial_price(S: float, K: float, T: float, r_d: float, r_f: float,

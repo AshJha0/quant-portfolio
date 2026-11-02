@@ -151,6 +151,7 @@ registry entry fails the test.
 | Parametric VaR linear in exposures | `TestParametricEquivariance` |
 | Variance-matched t(5) charges less than the normal at 95 % and more at 99 % | `test_t_vs_normal_var_crossover_is_between_2_5_and_5_percent` |
 | `ewma_volatility` is causal and its seed uses the first 30 observations only | `test_ewma_volatility_is_causal_and_positive`, `test_seed_is_mean_square_of_first_30` |
+| `ewma_covariance` seed is mean(r r') of the first 30 rows only (S8) | `test_ewma_covariance_seed_uses_first_window_only` |
 | Per-factor FHS scenarios equal `r / sigma_t * sigma_{T+1}` per column | `test_factor_scenarios_are_rescaled_per_factor` |
 | MC VaR error falls with path count | `test_mc_var_converges_to_the_parametric_answer` |
 

@@ -26,11 +26,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-
-
 from .black_scholes import OptionType, _check_rates, _ncdf, validate_inputs
 
-__all__ = ["black76_price", "black76_greeks", "Black76Greeks", "b76_d1_d2"]
+__all__ = ["Black76Greeks", "b76_d1_d2", "black76_greeks", "black76_price"]
 
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
 

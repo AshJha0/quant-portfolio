@@ -27,25 +27,21 @@ FactorCov two_factor_cov() {
 }
 
 Book two_factor_book() {
-  return Book({SpotPosition{"EURUSD", 10e6, {}},
-               SpotPosition{"USDJPY", -4e6, {}}});
+  return Book({SpotPosition{"EURUSD", 10e6, {}}, SpotPosition{"USDJPY", -4e6, {}}});
 }
 
 }  // namespace
 
 TEST(MonteCarlo, SimulatedCovarianceMatchesTarget) {
   const FactorCov cov = two_factor_cov();
-  const ReturnsMatrix scen =
-      simulate_factor_returns(cov, 200000, McDist::kNormal, 6.0, {}, 42);
+  const ReturnsMatrix scen = simulate_factor_returns(cov, 200000, McDist::kNormal, 6.0, {}, 42);
   const FactorCov est = sample_cov(scen);
   for (std::size_t i = 0; i < 2; ++i)
     for (std::size_t j = 0; j < 2; ++j)
       EXPECT_NEAR(est.cov(i, j), cov.cov(i, j),
-                  4.0 * cov.cov(i, i) / std::sqrt(200000.0) +
-                      0.01 * std::abs(cov.cov(i, j)));
+                  4.0 * cov.cov(i, i) / std::sqrt(200000.0) + 0.01 * std::abs(cov.cov(i, j)));
   // Student-t is covariance-matched by construction: same tolerance.
-  const ReturnsMatrix scen_t =
-      simulate_factor_returns(cov, 200000, McDist::kStudentT, 6.0, {}, 42);
+  const ReturnsMatrix scen_t = simulate_factor_returns(cov, 200000, McDist::kStudentT, 6.0, {}, 42);
   const FactorCov est_t = sample_cov(scen_t);
   EXPECT_NEAR(est_t.cov(0, 0), cov.cov(0, 0), 0.05 * cov.cov(0, 0));
   EXPECT_NEAR(est_t.cov(0, 1), cov.cov(0, 1), 0.10 * cov.cov(0, 1));
@@ -109,8 +105,7 @@ TEST(MonteCarlo, BitwiseSeedDeterminism) {
   EXPECT_EQ(a.var, b.var);  // bitwise, not approximate
   EXPECT_EQ(a.es, b.es);
   ASSERT_EQ(a.pnl.size(), b.pnl.size());
-  for (std::size_t i = 0; i < a.pnl.size(); i += 997)
-    EXPECT_EQ(a.pnl[i], b.pnl[i]);
+  for (std::size_t i = 0; i < a.pnl.size(); i += 997) EXPECT_EQ(a.pnl[i], b.pnl[i]);
   // A different seed must change the draw.
   MonteCarloOptions other = opts;
   other.seed = 124;
@@ -129,8 +124,7 @@ TEST(MonteCarlo, PegBreakJumpProducesLossHistoricalSimulationMisses) {
   ReturnsMatrix rets;
   rets.factors = {"FX:HKD"};
   rets.data = Matrix(250, 1);
-  for (int i = 0; i < 250; ++i)
-    rets.data(i, 0) = 1e-4 * std::sin(0.5 * i);  // band-bound noise
+  for (int i = 0; i < 250; ++i) rets.data(i, 0) = 1e-4 * std::sin(0.5 * i);  // band-bound noise
   const auto hs = historical_var(book, m, rets, {});
   ASSERT_EQ(hs.flagged_peg_factors.size(), 1u);  // engine warns
 
@@ -139,12 +133,12 @@ TEST(MonteCarlo, PegBreakJumpProducesLossHistoricalSimulationMisses) {
   opts.n_scenarios = 50000;
   opts.seed = 5;
   opts.dist = McDist::kJump;
-  opts.jumps.prob = 0.02;                  // revaluation event
-  opts.jumps.mean = {{"FX:HKD", 0.10}};    // HKD +10% (log) vs USD
+  opts.jumps.prob = 0.02;                // revaluation event
+  opts.jumps.mean = {{"FX:HKD", 0.10}};  // HKD +10% (log) vs USD
   const auto mc = monte_carlo_var(book, m, cov, opts);
   // Short 100m USD of HKD: a +10% HKD reval loses ~10m USD.
-  EXPECT_LT(hs.var, 0.1e6);   // HS blind: < 0.1% of notional
-  EXPECT_GT(mc.var, 5e6);     // jump MC sees the break
+  EXPECT_LT(hs.var, 0.1e6);  // HS blind: < 0.1% of notional
+  EXPECT_GT(mc.var, 5e6);    // jump MC sees the break
   EXPECT_GT(mc.var, 20.0 * hs.var);
 }
 
@@ -169,8 +163,7 @@ TEST(MonteCarlo, SingularPeggedCovarianceRunsWithJitter) {
 TEST(MonteCarlo, InputValidation) {
   const FactorCov cov = two_factor_cov();
   EXPECT_THROW(simulate_factor_returns(cov, 0), std::invalid_argument);
-  EXPECT_THROW(simulate_factor_returns(cov, 10, McDist::kStudentT, 2.0),
-               std::invalid_argument);
+  EXPECT_THROW(simulate_factor_returns(cov, 10, McDist::kStudentT, 2.0), std::invalid_argument);
   JumpSpec bad_prob;
   bad_prob.prob = 1.5;
   EXPECT_THROW(simulate_factor_returns(cov, 10, McDist::kJump, 6.0, bad_prob),

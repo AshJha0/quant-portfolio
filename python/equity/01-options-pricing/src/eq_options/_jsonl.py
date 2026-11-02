@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import math
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from .binomial import crr_price
 from .black76 import black76_greeks
@@ -39,12 +39,12 @@ def handle(req: dict[str, Any]) -> dict[str, float]:
         return {"sigma": implied_vol(req["price"], req["S"], req["K"], req["T"], req["r"],
                                      req["q"], req["type"])}
     if fn == "crr":
-        exercise = "american" if req["american"] else "european"
+        exercise: Literal["european", "american"] = "american" if req["american"] else "european"
         return {"price": crr_price(req["S"], req["K"], req["T"], req["r"], req["sigma"],
                                    req["q"], req["type"], exercise, int(req["steps"]))}
     if fn == "b76":
-        g = black76_greeks(req["F"], req["K"], req["T"], req["r"], req["sigma"], req["type"])
-        return {k: getattr(g, k) for k in ("price", "delta", "gamma", "vega", "theta", "rho")}
+        g76 = black76_greeks(req["F"], req["K"], req["T"], req["r"], req["sigma"], req["type"])
+        return {k: getattr(g76, k) for k in ("price", "delta", "gamma", "vega", "theta", "rho")}
     raise ValueError(f"unknown fn: {fn!r}")
 
 

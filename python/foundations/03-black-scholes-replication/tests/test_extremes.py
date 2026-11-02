@@ -7,7 +7,6 @@ case here is also written up in docs/VALIDATION.md.
 import math
 
 import pytest
-
 from eq_bs_replication import (
     call_greeks,
     call_price,

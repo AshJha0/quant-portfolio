@@ -4,10 +4,6 @@ import math
 
 import numpy as np
 import pytest
-from scipy.integrate import quad
-from scipy.stats import norm, t as t_dist
-
-from true_params import EGARCH_TRUE
 from eq_vol.data import synthetic as syn
 from eq_vol.egarch import (
     egarch_recursion,
@@ -16,6 +12,10 @@ from eq_vol.egarch import (
     fit_egarch,
     news_impact_curve,
 )
+from scipy.integrate import quad
+from scipy.stats import norm
+from scipy.stats import t as t_dist
+from true_params import EGARCH_TRUE
 
 
 class TestRecursion:
@@ -102,10 +102,10 @@ class TestNewsImpactCurve:
         assert v_neg > v_pos
 
     def test_symmetric_when_gamma_zero(self):
-        z, v = news_impact_curve(omega=-0.4, alpha=0.1, gamma=0.0, beta=0.96)
+        _z, v = news_impact_curve(omega=-0.4, alpha=0.1, gamma=0.0, beta=0.96)
         np.testing.assert_allclose(v, v[::-1], rtol=1e-10)
 
     def test_minimum_not_at_extremes_and_positive(self):
-        z, v = news_impact_curve(**EGARCH_TRUE)
+        _z, v = news_impact_curve(**EGARCH_TRUE)
         assert np.all(v > 0)
         assert v[0] > v.min() and v[-1] > v.min()

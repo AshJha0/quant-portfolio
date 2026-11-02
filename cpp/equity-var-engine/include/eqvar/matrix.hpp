@@ -18,52 +18,29 @@
 #include <string>
 #include <vector>
 
+#include "qp/matrix.hpp"
+
 namespace eqvar {
 
-/// Row-major dense matrix of doubles.  Storage is a single contiguous
-/// std::vector so hot paths (matvec, Cholesky, simulation) are cache-friendly
-/// and allocation-free once constructed.
-class Matrix {
+/// Row-major dense matrix of doubles: qp::Matrix (cpp/core) plus the
+/// eqvar accessors. Storage is a single contiguous std::vector so hot paths
+/// (matvec, Cholesky, simulation) are cache-friendly and allocation-free
+/// once constructed. Constructors: (), (rows, cols[, fill]) zero-filled by
+/// default, and (rows, cols, row-major data) which throws
+/// std::invalid_argument when data.size() != rows * cols.
+class Matrix : public qp::Matrix {
 public:
-    Matrix() = default;
-
-    /// rows x cols matrix, zero-initialised.
-    Matrix(std::size_t rows, std::size_t cols)
-        : rows_(rows), cols_(cols), data_(rows * cols, 0.0) {}
-
-    /// rows x cols matrix with every entry set to `fill`.
-    Matrix(std::size_t rows, std::size_t cols, double fill)
-        : rows_(rows), cols_(cols), data_(rows * cols, fill) {}
-
-    /// rows x cols matrix from row-major data (size must be rows*cols).
-    Matrix(std::size_t rows, std::size_t cols, std::vector<double> data);
-
-    [[nodiscard]] std::size_t rows() const noexcept { return rows_; }
-    [[nodiscard]] std::size_t cols() const noexcept { return cols_; }
-    [[nodiscard]] bool square() const noexcept { return rows_ == cols_ && rows_ > 0; }
-
-    [[nodiscard]] double& operator()(std::size_t i, std::size_t j) noexcept {
-        return data_[i * cols_ + j];
-    }
-    [[nodiscard]] double operator()(std::size_t i, std::size_t j) const noexcept {
-        return data_[i * cols_ + j];
-    }
+    using qp::Matrix::Matrix;
 
     /// Raw row-major contiguous storage (no-alloc hot paths in the MC engine).
     [[nodiscard]] double* data() noexcept { return data_.data(); }
     [[nodiscard]] const double* data() const noexcept { return data_.data(); }
-    [[nodiscard]] std::size_t size() const noexcept { return data_.size(); }
 
     /// n x n identity.
     static Matrix identity(std::size_t n);
 
     /// max_ij |a_ij - b_ij|; throws std::invalid_argument on shape mismatch.
     static double max_abs_diff(const Matrix& a, const Matrix& b);
-
-private:
-    std::size_t rows_ = 0;
-    std::size_t cols_ = 0;
-    std::vector<double> data_;
 };
 
 /// y = A x.  Throws std::invalid_argument on dimension mismatch.
@@ -122,8 +99,8 @@ struct CholeskyResult {
 
 /// Old signature with a caller-chosen jitter start and try count. Both are
 /// ignored: the ladder is fixed at 1e-12 .. 1e-6 x mean(diag).
-[[deprecated("use cholesky(cov, Repair). Removed next release.")]]
-[[nodiscard]] CholeskyResult cholesky(const Matrix& cov, double jitter, int max_tries = 12);
+[[deprecated("use cholesky(cov, Repair). Removed next release.")]] [[nodiscard]] CholeskyResult
+cholesky(const Matrix& cov, double jitter, int max_tries = 12);
 
 /// Unbiased (ddof = 1) sample covariance of a (T x n) returns panel.
 /// Throws std::invalid_argument if T < 2.
@@ -131,8 +108,12 @@ struct CholeskyResult {
 
 /// RiskMetrics EWMA covariance forecast for the day after the sample:
 /// Sigma <- lam * Sigma + (1 - lam) * r_t r_t' over all rows, seeded with the
-/// sample covariance.  Zero-mean returns assumed (standard at daily horizon).
+/// zero-mean second moment mean(r r') of the first min(seed_window, T) rows
+/// (convention S8), so the seed uses no later data.  Zero-mean returns assumed
+/// (standard at daily horizon).  Throws std::invalid_argument if T < 2, the
+/// panel is not finite, lam is outside (0, 1) or seed_window == 0.
 /// Mirrors eq_var.parametric_var.ewma_covariance exactly.
-[[nodiscard]] Matrix ewma_covariance(const Matrix& returns, double lam = 0.94);
+[[nodiscard]] Matrix ewma_covariance(const Matrix& returns, double lam = 0.94,
+                                     std::size_t seed_window = 30);
 
 }  // namespace eqvar

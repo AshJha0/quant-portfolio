@@ -18,16 +18,13 @@ void check_pnl(const std::vector<double>& pnl) {
   if (pnl.empty()) throw std::invalid_argument("pnl sample is empty");
   for (double v : pnl)
     if (!std::isfinite(v))
-      throw std::invalid_argument(
-          "pnl sample contains NaN or inf (NaN policy: refuse)");
+      throw std::invalid_argument("pnl sample contains NaN or inf (NaN policy: refuse)");
 }
 
-std::pair<double, double> weighted_var_es(const std::vector<double>& pnl,
-                                          double alpha,
+std::pair<double, double> weighted_var_es(const std::vector<double>& pnl, double alpha,
                                           const std::vector<double>& weights) {
   const std::size_t n = pnl.size();
-  if (weights.size() != n)
-    throw std::invalid_argument("weights must match pnl length");
+  if (weights.size() != n) throw std::invalid_argument("weights must match pnl length");
   double sum = 0.0;
   for (double x : weights) {
     if (!std::isfinite(x) || x < 0.0)
@@ -38,10 +35,9 @@ std::pair<double, double> weighted_var_es(const std::vector<double>& pnl,
     throw std::invalid_argument("weights must be finite, non-negative and sum > 0");
   std::vector<std::size_t> order(n);
   std::iota(order.begin(), order.end(), std::size_t{0});
-  std::stable_sort(order.begin(), order.end(),
-                   [&pnl](std::size_t a, std::size_t b) {
-                     return -pnl[a] > -pnl[b];  // losses descending
-                   });
+  std::stable_sort(order.begin(), order.end(), [&pnl](std::size_t a, std::size_t b) {
+    return -pnl[a] > -pnl[b];  // losses descending
+  });
   double cum = 0.0, tail = 0.0;
   std::size_t m = n - 1;
   for (std::size_t j = 0; j < n; ++j) {
@@ -59,8 +55,7 @@ std::pair<double, double> weighted_var_es(const std::vector<double>& pnl,
 
 }  // namespace
 
-std::pair<double, double> empirical_var_es(const std::vector<double>& pnl,
-                                           double alpha,
+std::pair<double, double> empirical_var_es(const std::vector<double>& pnl, double alpha,
                                            const std::vector<double>& weights) {
   if (weights.empty()) {
     std::vector<double> ws(pnl.size());

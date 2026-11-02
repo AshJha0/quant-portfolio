@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from eq_vol.data import synthetic as syn
 from eq_vol.historical import (
     close_to_close_var,

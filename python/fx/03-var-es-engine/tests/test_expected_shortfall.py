@@ -2,9 +2,6 @@
 
 import numpy as np
 import pytest
-from scipy import integrate
-from scipy.stats import norm, t as student_t
-
 from fx_var import (
     empirical_es,
     empirical_var,
@@ -14,6 +11,9 @@ from fx_var import (
     t_es,
     t_var,
 )
+from scipy import integrate
+from scipy.stats import norm
+from scipy.stats import t as student_t
 
 
 # ------------------------------------------------------------ exact quantiles

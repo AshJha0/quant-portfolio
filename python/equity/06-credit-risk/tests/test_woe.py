@@ -1,12 +1,10 @@
 """Tests for WOE/IV: hand-computed exact values, monotone merging, missing
 bin, zero-cell smoothing, leakage flag on planted feature, noise IV."""
 
-import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
-
 from eq_credit.data.synthetic import generate_loan_book
 from eq_credit.validation import is_monotone
 from eq_credit.woe import (
@@ -24,7 +22,7 @@ def test_woe_hand_computed_exact() -> None:
     # Known tiny table: goods per bin, bads per bin (no zero cells).
     good = np.array([90.0, 60.0, 30.0])   # total 180
     bad = np.array([5.0, 15.0, 25.0])     # total 45
-    woe, ivc, iv = woe_iv_from_counts(good, bad)
+    woe, _ivc, _iv = woe_iv_from_counts(good, bad)
     # WOE_i = ln( (good_i/180) / (bad_i/45) ), by hand:
     expected_woe = np.log((good / 180.0) / (bad / 45.0))
     np.testing.assert_allclose(woe, expected_woe, rtol=0, atol=1e-14)
@@ -193,7 +191,7 @@ def test_binning_table_counts_consistent(book: pd.DataFrame) -> None:
 def test_smoothed_distributions_sum_to_one() -> None:
     good = np.array([30.0, 0.0, 70.0, 5.0])
     bad = np.array([0.0, 4.0, 6.0, 0.0])
-    woe, ivc, iv = woe_iv_from_counts(good, bad)
+    woe, _ivc, iv = woe_iv_from_counts(good, bad)
     g = good + np.array([0.5, 0.5, 0.0, 0.5])
     b = bad + np.array([0.5, 0.5, 0.0, 0.5])
     dg, db = g / g.sum(), b / b.sum()

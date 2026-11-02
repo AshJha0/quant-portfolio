@@ -2,7 +2,6 @@
 
 import pandas as pd
 import pytest
-
 from eq_signal_backtest.signals import ma_crossover_signal
 
 

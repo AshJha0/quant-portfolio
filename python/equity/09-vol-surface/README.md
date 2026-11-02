@@ -54,7 +54,7 @@ Produced by `python examples/run_pipeline.py` (seed 42) unless stated.
 |---|---|
 | Heston P1/P2 vs damped vs Gauss-Legendre | pairwise below 1.5e-7 (tests assert 1e-6) |
 | Fourier vs Black-Scholes at xi -> 0, v0 = theta | about 1e-10 |
-| Calibration recovery, chain priced with adaptive P1/P2, calibrated with Gauss-Legendre | (v0, kappa, theta, rho, xi) = (0.035, 1.8, 0.045, -0.65, 0.45) recovered to 6 dp, RMSE 0.0000 vol points, cond(J) 1.2e3 |
+| Calibration recovery, chain priced with adaptive P1/P2, calibrated with Gauss-Legendre | (v0, kappa, theta, xi, rho) = (0.035, 1.8, 0.045, 0.45, -0.65) recovered to 6 dp, RMSE 0.0000 vol points, cond(J) 1.2e3 |
 | SVI slice fit (constrained) vs quadratic-in-delta | 0.0006 to 0.041 vol points vs 0.50 to 0.75 |
 | 1y variance swap | strip 19.94%, Heston analytic 20.09%, flat ATM 18.29% |
 | ATM 6m call delta | sticky-strike 0.538, sticky-moneyness 0.615, Heston 0.616 |
@@ -64,7 +64,7 @@ Produced by `python examples/run_pipeline.py` (seed 42) unless stated.
 
 | Command | Result | Wall time |
 |---|---|---|
-| `pytest -q` | 156 passed | 53 s |
+| `pytest -q` | 161 passed | 53 s |
 | `python examples/run_pipeline.py` | exit 0 | 112 s |
 
 Measured on the development machine.

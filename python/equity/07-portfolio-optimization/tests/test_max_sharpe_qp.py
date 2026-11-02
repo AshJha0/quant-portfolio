@@ -14,9 +14,6 @@ import itertools
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
-
 from eq_port import (
     make_tangency_strategy,
     max_sharpe_constrained,
@@ -25,6 +22,8 @@ from eq_port import (
     portfolio_vol,
     tangency_weights,
 )
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def _sharpe(w, mu, cov, rf=0.0):

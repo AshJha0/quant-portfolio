@@ -1,9 +1,9 @@
 # Validation
 
 How the engine is validated and where it fails. Every claim names the test
-that enforces it. `cargo test --release` runs 71 unit tests, 55 integration
-tests (6 files) and 7 doctests, offline and deterministic.
-`cargo clippy --all-targets -- -D warnings` is clean.
+that enforces it. `cargo test --release --locked -p fx-var-engine`, run from `rust/`, runs
+71 unit tests, 62 integration tests (7 files) and 8 doctests, offline and deterministic.
+`cargo clippy --release --all-targets --locked -p fx-var-engine -- -D warnings` is clean.
 
 ## 1. Analytic identities
 

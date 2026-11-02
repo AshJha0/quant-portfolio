@@ -20,7 +20,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_vol.egarch import egarch_filter
 from fx_vol.ewma import ewma_variance
 from fx_vol.garch import garch_filter
@@ -78,7 +77,7 @@ class TestGjrFilterParameterGuards:
         with pytest.raises(ValueError, match=name):
             gjr_filter(rets, **kwargs)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1.0])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -1.0])
     def test_bad_initial_variance_raises(self, rets, bad) -> None:
         with pytest.raises(ValueError, match="initial_variance"):
             gjr_filter(rets, 1e-6, 0.03, 0.04, 0.9, initial_variance=bad)
@@ -102,9 +101,9 @@ class TestEgarchFilterParameterGuards:
         with pytest.raises(ValueError, match="abs_moment"):
             egarch_filter(rets, -0.2, 0.1, -0.05, 0.97, abs_moment=bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0.0, -1.0])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0.0, -1.0])
     def test_bad_initial_variance_raises(self, rets, bad) -> None:
-        with pytest.raises(ValueError, match="initial|variance"):
+        with pytest.raises(ValueError, match=r"initial|variance"):
             egarch_filter(rets, -0.2, 0.1, -0.05, 0.97, initial_variance=bad)
 
     def test_finite_parameters_give_positive_finite_variance(self, rets) -> None:
@@ -126,24 +125,24 @@ class TestEwmaSeedGuard:
 class TestAnnualisationFactorGuard:
     """``periods_per_year`` multiplies a variance then gets square-rooted."""
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0, -252])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0, -252])
     def test_close_to_close_rejects_bad_ppy(self, rets, bad) -> None:
         with pytest.raises(ValueError, match="periods_per_year"):
             close_to_close_vol(rets, periods_per_year=bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0, -252])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0, -252])
     def test_rolling_rejects_bad_ppy(self, rets, bad) -> None:
         with pytest.raises(ValueError, match="periods_per_year"):
             rolling_close_vol(pd.Series(rets), window=20, periods_per_year=bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0, -252])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0, -252])
     def test_parkinson_rejects_bad_ppy(self, bad) -> None:
         high = np.array([1.101, 1.104, 1.099, 1.102])
         low = np.array([1.098, 1.100, 1.095, 1.097])
         with pytest.raises(ValueError, match="periods_per_year"):
             parkinson_vol(high, low, periods_per_year=bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0, -252])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0, -252])
     def test_garman_klass_rejects_bad_ppy(self, bad) -> None:
         o = np.array([1.100, 1.101, 1.097, 1.100])
         h = np.array([1.101, 1.104, 1.099, 1.102])
@@ -152,7 +151,7 @@ class TestAnnualisationFactorGuard:
         with pytest.raises(ValueError, match="periods_per_year"):
             garman_klass_vol(o, h, low, c, periods_per_year=bad)
 
-    @pytest.mark.parametrize("bad", NON_FINITE + [0, -252])
+    @pytest.mark.parametrize("bad", [*NON_FINITE, 0, -252])
     def test_realized_vol_forward_rejects_bad_ppy(self, rets, bad) -> None:
         with pytest.raises(ValueError, match="periods_per_year"):
             realized_vol_forward(rets, window=20, periods_per_year=bad)

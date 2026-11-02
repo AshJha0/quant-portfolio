@@ -76,7 +76,7 @@ Measured on the development machine with `pytest -q` and
 
 | Command | Result | Wall time |
 |---|---|---|
-| `pytest -q` | 290 passed | 57 s |
+| `pytest -q` | 295 passed | 57 s |
 | `python examples/run_pipeline.py` | exit 0 | 33 s |
 
 ## Layout

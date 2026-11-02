@@ -15,10 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pandas as pd
-
 from eq_options import (
     bs_greeks,
-    bs_price,
     compare_models,
     crr_price,
     early_exercise_premium,

@@ -3,10 +3,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from fx_regime import (
     FEATURE_COLUMNS,
-    FeatureConfig,
     avg_pairwise_correlation,
     build_features,
     carry_basket_weights,

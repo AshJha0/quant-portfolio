@@ -13,17 +13,18 @@ from __future__ import annotations
 from typing import Literal
 
 import numpy as np
-from scipy.stats import norm, t as student_t
+from scipy.stats import norm
+from scipy.stats import t as student_t
 
 from . import _tail
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
+    "es_standard_error_bootstrap",
     "expected_shortfall",
     "normal_es",
-    "student_t_es",
     "parametric_es",
-    "es_standard_error_bootstrap",
+    "student_t_es",
 ]
 
 MIN_OBS_ES = 10

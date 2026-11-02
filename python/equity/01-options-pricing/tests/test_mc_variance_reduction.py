@@ -7,7 +7,6 @@ alone (0.0177).
 """
 
 import pytest
-
 from eq_options import bs_price, mc_price
 
 SEEDS = [1, 2, 3, 4, 5, 6, 7]

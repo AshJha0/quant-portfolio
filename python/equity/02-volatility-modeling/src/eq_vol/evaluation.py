@@ -29,29 +29,28 @@ from __future__ import annotations
 
 import math
 import warnings
-
-from typing import NamedTuple, Sequence
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 import statsmodels.api as sm
+from scipy import stats
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 
 from ._results import VolatilityFitResult
 
 __all__ = [
-    "qlike_loss",
-    "mse_loss",
-    "mincer_zarnowitz",
-    "diebold_mariano",
-    "default_hac_lags",
     "DMResult",
     "MZResult",
-    "ljung_box_squared",
     "arch_lm_test",
-    "sign_bias_test",
+    "default_hac_lags",
+    "diebold_mariano",
     "forecast_race_table",
+    "ljung_box_squared",
+    "mincer_zarnowitz",
+    "mse_loss",
+    "qlike_loss",
+    "sign_bias_test",
 ]
 
 
