@@ -69,6 +69,25 @@ dataset (the research entries use ECB reference rates).
   on the forward data is the expected outcome. `prereg.py sign` refuses a
   registration that names no power file.
 
+#### Hash-checked CI installs
+
+- Every Python install in CI (`py core`, the 23 project jobs on 3.11 to 3.13,
+  bindings, engine differential, research, forward log) now comes from
+  `uv.lock` with sha256 hashes checked. `.github/scripts/hashed_install.sh`
+  exports the locked closure of the named projects with `uv export`, installs
+  it with `pip --require-hashes --only-binary :all: --no-deps`, then installs
+  the local packages with `--no-deps --no-build-isolation` and runs
+  `pip check`. A wheel whose hash is not in the lock fails the job.
+- The root `pyproject.toml` gains four dependency groups locked in `uv.lock`:
+  `test` (pytest, hypothesis), `lint` (ruff, mypy, stubs), `backend`
+  (setuptools) and `build` (nanobind, scikit-build-core, maturin). The lint
+  job installs them with `uv sync --group test --group lint`.
+- The bindings are built without build isolation, from the hashed backends,
+  so `PIP_CONSTRAINT` is gone from CI.
+- `requirements/ci-constraints.txt` stays for local `pip install -c`; the lint
+  job fails if it pins a different version from `uv.lock`
+  (`.github/scripts/check_constraints_lock.py`).
+
 #### CDS cross-check against QuantLib
 
 - `python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py`: three

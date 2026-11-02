@@ -358,7 +358,8 @@ the same engine and platform.
 | `discover` | Lists the Python projects and their test extra (`.github/scripts/discover_projects.py`). |
 | `py core` | pytest for `python/core` on Python 3.11 to 3.13. |
 | `py <project>` | One job per project and Python version (3.11, 3.12, 3.13). Installs `python/core` and the project in its own venv and runs pytest. Uploads JUnit XML. |
-| `lint` | `uv lock --check`, `uv sync --all-packages --locked`, `ruff check python`, `mypy`. Installs `pandas-stubs` and `scipy-stubs`, which `requirements/ci-constraints.txt` pins for Python 3.12 and later. |
+| (all Python jobs) | Third-party packages come from `uv.lock` with sha256 hashes checked (`.github/scripts/hashed_install.sh`; see `requirements/README.md`). |
+| `lint` | `uv lock --check`, `uv sync --all-packages --locked --group test --group lint`, a check that `requirements/ci-constraints.txt` matches `uv.lock`, `ruff check python`, `mypy`. The `lint` group holds `pandas-stubs` and `scipy-stubs` for Python 3.12 and later. |
 | `goldens --check` | Runs every `gen_golden_header.py --check` and `gen_golden_rs.py --check`. |
 | `cpp <engine> (<preset>)` | Each C++ engine with the `gcc`, `clang`, `asan` and `tsan` presets: configure, build, ctest. |
 | `cpp <engine> (gcc16-cxx26)` | The same in a `gcc:16` container with `QP_CXX26=ON`. |

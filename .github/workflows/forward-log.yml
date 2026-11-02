@@ -47,16 +47,20 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             python/core/pyproject.toml
             python/fx/05-pairs-trading/pyproject.toml
             python/fx/10-regime-switching/pyproject.toml
-      - name: Install python/core and the FX pairs and regime packages
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      # Third-party wheels from uv.lock with sha256 hashes checked
+      # (see requirements/README.md).
+      - name: Install python/core and the FX pairs and regime packages (hashed, from uv.lock)
         run: |
           python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/python" -m pip install -c requirements/ci-constraints.txt -e python/core
-          "$RUNNER_TEMP/venv/bin/python" -m pip install -c requirements/ci-constraints.txt \
-            -e python/fx/05-pairs-trading -e python/fx/10-regime-switching statsmodels
+          PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --editable \
+            python/core python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: Check out the forward-log branch (created empty on the first run)
         run: |
           git config user.name "github-actions[bot]"
