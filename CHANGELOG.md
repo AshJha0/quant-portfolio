@@ -16,6 +16,11 @@ dataset (the research entries use ECB reference rates).
 
 ### Added
 
+- Optional QuantLib cross-checks, skipped unless QuantLib is installed:
+  Hull-White zero-bond options and Jamshidian swaptions against QuantLib's
+  `HullWhite` model (1e-15 abs and 1e-7 rel), and Heston COS and
+  Gil-Pelaez prices against `AnalyticHestonEngine` (1e-9 and 1e-12 rel).
+
 #### Research results (ECB reference rates)
 
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read
