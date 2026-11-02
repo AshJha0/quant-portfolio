@@ -63,7 +63,8 @@ TEST(OptionVar, HistoricalMixedMatchesPython) {
 TEST(OptionVar, NoLegsIsTheLinearPath) {
     const Matrix x = panel();
     std::vector<double> lin(kN);
-    for (std::size_t i = 0; i < kN; ++i) lin[i] = kW[0] * x.data()[2 * i] + kW[1] * x.data()[2 * i + 1];
+    for (std::size_t i = 0; i < kN; ++i)
+        lin[i] = kW[0] * x.data()[2 * i] + kW[1] * x.data()[2 * i + 1];
     const TailRisk want = var_es_order_statistic(lin, 0.01);
     const TailRisk got = historical_option_var_es({}, kW, x, 0.01);
     EXPECT_EQ(got.var, want.var);
@@ -82,7 +83,8 @@ TEST(OptionVar, NoLegsIsTheLinearPath) {
 }
 
 TEST(OptionVar, MonteCarloMatchesClosedFormQuantile) {
-    const std::vector<OptionLeg> leg{{10.0, OptionKind::Call, 100.0, 100.0, 0.25, 0.02, 0.0, 0.2, 0}};
+    const std::vector<OptionLeg> leg{
+        {10.0, OptionKind::Call, 100.0, 100.0, 0.25, 0.02, 0.0, 0.2, 0}};
     Matrix cov(1, 1);
     cov.data()[0] = 1e-4;  // daily sigma 1 %
     const auto r = monte_carlo_option_var(leg, {}, cov, 0.01, 200'000, Dist::Normal, 6.0, 11, 200);
@@ -98,7 +100,8 @@ TEST(OptionVar, MonteCarloMatchesClosedFormQuantile) {
 TEST(OptionVar, ConvexityMakesLongOptionVarBelowDelta) {
     // A long call's full-revaluation VaR is below its delta-normal VaR
     // (positive gamma cuts the downside); a short call's is above.
-    const std::vector<OptionLeg> lng{{10.0, OptionKind::Call, 100.0, 100.0, 0.25, 0.02, 0.0, 0.2, 0}};
+    const std::vector<OptionLeg> lng{
+        {10.0, OptionKind::Call, 100.0, 100.0, 0.25, 0.02, 0.0, 0.2, 0}};
     std::vector<OptionLeg> sht = lng;
     sht[0].quantity = -10.0;
     const double delta = bsm_greeks(lng[0]).delta * 10.0 * 100.0;
@@ -106,8 +109,8 @@ TEST(OptionVar, ConvexityMakesLongOptionVarBelowDelta) {
     cov.data()[0] = 4e-4;
     const auto rl = monte_carlo_option_var(lng, {}, cov, 0.01, 50'000, Dist::Normal, 6.0, 3, 50);
     const auto rs = monte_carlo_option_var(sht, {}, cov, 0.01, 50'000, Dist::Normal, 6.0, 3, 50);
-    const auto rd = monte_carlo_var(std::vector<double>{delta}, cov, 0.01, 50'000, Dist::Normal,
-                                    6.0, 3, 50);
+    const auto rd =
+        monte_carlo_var(std::vector<double>{delta}, cov, 0.01, 50'000, Dist::Normal, 6.0, 3, 50);
     EXPECT_LT(rl.var, rd.var);
     EXPECT_GT(rs.var, rd.var);
 }

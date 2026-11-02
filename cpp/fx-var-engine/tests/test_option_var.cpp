@@ -88,7 +88,8 @@ TEST(OptionVar, NoOptionsIsTheLinearPath) {
 }
 
 TEST(OptionVar, MonteCarloMatchesClosedFormQuantile) {
-  const std::vector<OptionLeg> leg{{1.0e6, OptionKind::Call, 1.10, 1.10, 0.25, 0.045, 0.03, 0.08, 0}};
+  const std::vector<OptionLeg> leg{
+      {1.0e6, OptionKind::Call, 1.10, 1.10, 0.25, 0.045, 0.03, 0.08, 0}};
   FactorCov cov{{"FX:EUR"}, Matrix(1, 1)};
   cov.cov(0, 0) = 0.006 * 0.006;
   MonteCarloOptions mo;

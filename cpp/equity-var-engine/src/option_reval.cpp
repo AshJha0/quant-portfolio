@@ -119,12 +119,12 @@ std::vector<double> delta_gamma_pnl(std::span<const OptionLeg> legs, std::span<c
 }
 
 std::vector<double> option_book_pnl(std::span<const OptionLeg> legs,
-                                    std::span<const double> exposures, const Matrix& r,
-                                    double dt) {
+                                    std::span<const double> exposures, const Matrix& r, double dt) {
     const std::size_t n = r.rows();
     const std::size_t nf = r.cols();
     require(n > 0 && nf > 0, "factor_returns must be non-empty");
-    require(exposures.empty() || exposures.size() == nf, "exposures must be empty or match columns");
+    require(exposures.empty() || exposures.size() == nf,
+            "exposures must be empty or match columns");
     require(!legs.empty() || !exposures.empty(), "book has no positions");
     for (double w : exposures) require(std::isfinite(w), "exposures must be finite");
     const std::span<const double> x(r.data(), n * nf);
