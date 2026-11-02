@@ -44,7 +44,7 @@ Return Estimation ──> Covariance Modeling ──> Mean-Variance ──> Effi
 cd python/fx/07-portfolio-optimization
 pip install -e ../../core   # qp-core, the shared package (not on PyPI)
 pip install -e .[dev]
-pytest -q                 # 187 tests, offline, about 40 s
+pytest -q                 # 213 tests, offline, about 40 s
 python examples/run_pipeline.py   # full pipeline, about 60 s
 ```
 

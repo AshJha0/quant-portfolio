@@ -64,7 +64,7 @@ pool, and it equals the throwing `mc_price` bit for bit. See
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # add -DEQOPT_WERROR=ON for -Werror
 cmake --build build -j
-ctest --test-dir build --output-on-failure        # 82 tests
+ctest --test-dir build --output-on-failure        # 89 tests
 ./build/eqopt_bench --out results.json            # per-call latency, JSON
 ```
 

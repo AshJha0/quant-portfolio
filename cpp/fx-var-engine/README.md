@@ -44,7 +44,7 @@ throws. `docs/METHODOLOGY.md` has the full table.
 ```bash
 cmake -S . -B build                          # GTest from the system, else fetched (v1.15.2)
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # 121 tests, about 3 s serial
+ctest --test-dir build --output-on-failure   # 133 tests, about 3 s serial
 ./build/fxvar_bench --out /tmp/fxvar_latency.json
 ```
 
@@ -244,7 +244,7 @@ fx-var-engine/
 +-- CMakeLists.txt
 +-- include/fxvar/         # public headers
 +-- src/                   # implementations
-+-- tests/                 # 13 GoogleTest executables, 121 tests
++-- tests/                 # 15 GoogleTest executables, 133 tests
 +-- bench/                 # per-call latency harness (harness: qp/bench/latency.hpp in cpp/core) and kernels
 +-- docs/                  # METHODOLOGY / VALIDATION / DESK_GUIDE
 ```

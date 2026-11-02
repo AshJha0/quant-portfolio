@@ -2,7 +2,7 @@
 
 Contract items **3** (how it was validated) and **4** (where it fails), with
 the numbers produced by the committed seeds on synthetic data. Reproduce
-everything with `python -m pytest -q` (867 tests, about 90 s, offline) and
+everything with `python -m pytest -q` (924 tests, about 90 s, offline) and
 `python examples/run_pipeline.py` (about 30 s). Timings: Windows 11,
 Python 3.12.10, numpy 2.5, scipy 1.18. All `alpha` values below are tail
 probabilities (0.01 = 99 %).

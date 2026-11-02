@@ -32,7 +32,7 @@ invalid inputs raise `ValueError`.
 ```bash
 cd python/equity/01-options-pricing
 pip install -e .[dev]                # numpy, scipy, pandas; dev adds pytest, hypothesis, mpmath
-python -m pytest tests -q            # 2039 tests, offline, about 100 s
+python -m pytest tests -q            # 2118 tests, offline, about 100 s
 python examples/run_pipeline.py      # full report, about 2 s
 python examples/validation_tables.py # remaining VALIDATION.md tables
 ```

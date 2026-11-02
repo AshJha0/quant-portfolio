@@ -3,7 +3,7 @@
 All numbers below are produced by `python examples/run_pipeline.py`
 (train: 30,000 loans, seed 42, 2.95% default rate; OOT: 12,000 loans,
 seed 123, drift 0.5 + calibration shift 0.5 → 4.78% default rate) and by the
-test suite (`pytest -q`, 157 tests, offline, seeded). All data are synthetic.
+test suite (`pytest -q`, 185 tests, offline, seeded). All data are synthetic.
 
 ## 1. Analytic and cross-model benchmarks
 

@@ -1,6 +1,6 @@
 # Validation: FX Portfolio Optimization
 
-All numbers below are reproducible offline: `pytest -q` (187 tests, about 40 s)
+All numbers below are reproducible offline: `pytest -q` (213 tests, about 40 s)
 and `python examples/run_pipeline.py` (seed 123, 3 024 days, synthetic data, about 60 s).
 
 ## 1. Analytic identities (unit-tested tolerances)

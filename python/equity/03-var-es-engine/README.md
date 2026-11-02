@@ -28,7 +28,7 @@ full list of conventions is in [METHODOLOGY.md](docs/METHODOLOGY.md) §2.
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest -p no:cacheprovider -q   # 579 tests, offline
+python -m pytest -p no:cacheprovider -q   # 636 tests, offline
 python examples/run_pipeline.py           # full demo
 ```
 

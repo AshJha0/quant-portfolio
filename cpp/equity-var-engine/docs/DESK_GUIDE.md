@@ -68,7 +68,7 @@ A kernel that receives a buffer that is too small returns
 ## 5. Gates (CI)
 
 1. **Build**: GCC and Clang with `-DEQVAR_WERROR=ON`; one ASan/UBSan build.
-2. **Unit**: `ctest`, 123 tests, including the fuzz walk of every public
+2. **Unit**: `ctest`, 136 tests, including the fuzz walk of every public
    function.
 3. **Golden**: `test_cross_language` against the Python-generated header;
    `tools/gen_golden_header.py --check` must pass.

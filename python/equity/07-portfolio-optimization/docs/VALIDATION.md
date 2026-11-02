@@ -2,7 +2,7 @@
 
 All numbers below come from `python examples/run_pipeline.py` (seeded,
 offline, synthetic data, about 90 s) and the pytest suite (`pytest -q`,
-170 tests, about 16 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
+196 tests, about 16 s, offline). Tolerances follow CONVENTIONS.md: analytic identities to
 1e-10–1e-8 (most hold to machine precision), solver-vs-closed-form to
 documented tolerance.
 
@@ -154,7 +154,7 @@ bonds.
 
 ## 7. Test suite
 
-`pytest -q`: 170 tests, all passing, about 16 s, offline and seeded
+`pytest -q`: 196 tests, all passing, about 16 s, offline and seeded
 (measured 2026-11-01). Coverage: the identities in §1, the solver checks
 in §2, property tests (frontier monotonicity, DR ≥ 1, RC Euler),
 no-lookahead and exact cost accounting, and the edge cases: single

@@ -1,7 +1,7 @@
 # Validation
 
 Everything below is enforced by the GoogleTest suite
-(`ctest --test-dir build --output-on-failure`, 66 tests). It passes with
+(`ctest --test-dir build --output-on-failure`, 89 tests). It passes with
 GCC 15.2, Clang 21.1 and a GCC AddressSanitizer + UndefinedBehaviorSanitizer
 build, all with `-DEQOPT_WERROR=ON`.
 

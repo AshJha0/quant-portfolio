@@ -23,7 +23,7 @@ compounded, ACT/365F; premiums in quote ccy per unit base notional.
 
 ```bash
 pip install -e .[dev]       # numpy/scipy/pandas; dev adds pytest, hypothesis, mpmath
-python -m pytest tests -q   # 2202 tests, offline, deterministic (one CRR
+python -m pytest tests -q   # 2264 tests, offline, deterministic (one CRR
                             # convergence test runs 51200-step trees: 2-4 min)
 python examples/run_pipeline.py   # full EURUSD + USDJPY report, <1s
 ```

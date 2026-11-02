@@ -37,7 +37,7 @@ FX-specific design:
 
 ```bash
 pip install -e .[dev]
-python -m pytest -q               # 867 tests, offline, about 90 s
+python -m pytest -q               # 924 tests, offline, about 90 s
 python examples/run_pipeline.py   # full demo, about 30 s
 ```
 

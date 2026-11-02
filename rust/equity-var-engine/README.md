@@ -41,7 +41,7 @@ cargo clippy --release --all-targets --locked -p eq-var-engine -- -D warnings
 cargo run --release --locked -p eq-var-engine --bin bench -- --out /tmp/bench.json
 ```
 
-The tests are 127 integration tests and 16 doctests. Without `--out` the
+The tests are 138 integration tests and 16 doctests. Without `--out` the
 bench writes `bench/results.json` in this crate.
 
 The xoshiro256++ stream, the Acklam guess and the Cholesky kernel come from

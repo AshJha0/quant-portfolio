@@ -2,7 +2,7 @@
 
 All numbers below are produced by `python examples/run_pipeline.py`
 (seeded, offline, under 1 s) unless a test is named, and enforced by the
-test suite (`python -m pytest tests -q`, 2202 tests, offline and seeded;
+test suite (`python -m pytest tests -q`, 2264 tests, offline and seeded;
 most are parametrised grid points).
 
 ## 1. Analytic benchmarks
