@@ -3,7 +3,8 @@
 Numbers in this file come from `python examples/run_pipeline.py` on
 synthetic data (3-state RORO panels, 1,500 business days, 12 currencies)
 unless a test is cited. The generator plants the crash drift that the
-strategy profits from; no real-data result exists yet.
+strategy profits from. The only real-data result is a training-period
+run in `research/`, not out-of-sample evidence.
 
 ## 1. Cross-checks against reference implementations
 

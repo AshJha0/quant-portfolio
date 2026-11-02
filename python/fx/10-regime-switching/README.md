@@ -11,8 +11,10 @@ data. The generator plants the edge: its risk-off and squeeze states have
 large negative drifts for carry and EM currencies (-25% to -40% a year)
 and a Gaussian HMM is the same model family that generated the data. On
 the synthetic vol-clustering null with zero drift in every state, the
-strategy has no edge. No real-data result exists yet; that is Phase 4 of
-the repository plan.
+strategy has no edge. The signed `regime-fx-basket`
+pre-registration has a training-period result on ECB data in `research/results/regime_fx_basket_train.json`:
+the high-vol state's mean next-day return was not negative (HAC t = +0.27).
+That is not out-of-sample evidence; the hold-out has not been run.
 
 ```
 synthetic RORO panel (known states, transition matrix, per-state

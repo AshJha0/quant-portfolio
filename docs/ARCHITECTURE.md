@@ -3,7 +3,9 @@
 This page answers three questions for each capability: where it lives, what it
 depends on, and where its tests are. [DIAGRAMS.md](DIAGRAMS.md) has the same
 material as Mermaid diagrams: the directory layout, the golden-vector pipeline,
-the differential-test pipeline, two per-area data flows and the CI jobs.
+the differential-test pipeline, two per-area data flows, the CI jobs, the
+`engine=` switch, the pre-registration workflow and the Round 3 model
+dependencies.
 
 Each project's own `docs/METHODOLOGY.md`, `docs/VALIDATION.md` and
 `docs/DESK_GUIDE.md` is the source for that project's maths and assumptions.
@@ -11,10 +13,12 @@ This file is the map of how the 31 sub-projects fit together.
 
 ## Stage of the repository
 
-The repository is a study portfolio today (Phases 0-3 of the plan). A research
-platform comes later, and a library a desk could use comes after that. All data
-is synthetic unless a page names a real source. None of this code runs on a
-live book.
+The repository is a study portfolio (Phases 0-3 of the plan). Round 3 started
+the research platform (Phase 4: `data/` and `research/`), added the Phase 5
+models and the Phase 6 performance kernels, and put an `engine=` switch over
+the bindings. All data is synthetic unless a page names a real source; the
+research studies use ECB data and have training-period results only. None
+of this code runs on a live book.
 
 ## The shape of the portfolio
 
@@ -39,13 +43,20 @@ counted in them:
 | Path | Name | What it holds |
 |---|---|---|
 | `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 12 Python projects |
-| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool |
-| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; since Round 3 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; since Round 3 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
-The Python reference packages do not call the bindings. There is no
-`engine=` switch in them yet; that is deferred to Round 3.
+Since Round 3 the four packages with ports (`eq_options`, `fx_options`,
+`eq_var`, `fx_var`) each have an `engine` module whose functions take
+`engine="python" | "cpp" | "rust"`. The mapping from name to backend is in
+one place, `python/core/src/qp_core/engines.py`: an unknown name raises
+`ValueError`, a missing extension raises `ImportError` with the install
+command, and `"python"` calls the reference unchanged. The rest of each
+package does not call the bindings. `tests/test_engine_differential.py`
+checks the compiled engines against the reference on 10,000 random inputs
+per group.
 
 Test counts are not typed here. The CI `counts` job aggregates the executed
 counts from every job into `counts.json`.
@@ -70,6 +81,14 @@ quant-portfolio/
 │   ├── COOKBOOK.md
 │   └── MARKET_RISK.md
 ├── pyproject.toml, uv.lock # uv workspace: python/core and the 23 projects; mypy config
+├── tests/                 # repository-level tests: docs counts, engine differential harness
+├── data/                  # free-data fetchers (data/fetch/qp_fetch.py); downloads in data/raw/, git-ignored
+├── research/              # Phase 4 research platform
+│   ├── prereg/            # pre-registrations (hash over the text above "## Signature")
+│   ├── studies/           # models.py (Johansen, Kalman, training_only guard), fx_studies.py
+│   ├── results/           # result JSON, each naming its registration hash
+│   ├── tools/prereg.py    # hash and check
+│   └── tests/
 ├── python/
 │   ├── core/              # qp-core, shared Python code
 │   ├── equity/01-…10-…    # 10 equity projects, src/-layout Python packages
@@ -189,6 +208,30 @@ Rust:
 | FX VaR/ES | Python | `fx_var` (`book.py`, `historical_var.py`, `parametric_var.py`, `monte_carlo_var.py`, `expected_shortfall.py`, `backtesting.py`, `stress_testing.py`) | Same methods as equity VaR plus a `Book`/`Market` full-revaluation layer that reprices spot, forward and option positions per scenario with Garman-Kohlhagen | `tests/golden/generate_golden.py` -> `tests/golden/golden_vectors.json` (locked by `tests/test_golden_vectors.py`) |
 | | C++ | `fxvar::` (`include/fxvar/`) | `book.hpp`, `historical.hpp`, `parametric.hpp`, `monte_carlo.hpp`, `expected_shortfall.hpp`, `backtest.hpp`, `stress.hpp` | `tools/gen_golden_header.py` -> `tests/golden_vectors.hpp` |
 | | Rust | `fx_var_engine` crate | mirrors the C++ module set | `tools/gen_golden_rs.py` -> `tests/golden/mod.rs` |
+
+Round 3 added these modules. They are imported by path and are not
+re-exported from the package `__init__`. Each has oracle tests listed in the
+package `docs/VALIDATION.md` and in the README table.
+
+| Package | New modules |
+|---|---|
+| `eq_options` | `engine`, `lr_tree`, `pde`, `alo`, `dividends`, `term_structure`, `bachelier`, `sabr`, `greeks_higher`, `risk_grids` |
+| `fx_options` | `engine`, `smile`, `premium`, `cuts` |
+| `eq_var`, `fx_var` (same files) | `engine`, `risk_attribution`, `frtb_ima`, `stressed_var`, `evt`, `copula_mc`, `revaluation`, `limits`, `_r3checks` |
+| `eq_vol` | `har_rv` |
+| `fi_rates` | `multicurve`, `rate_options`, `hull_white` |
+| `fx_rates` | `xccy_float` |
+| `eq_surface` | `ssvi`, `dupire`, `bates` |
+| `eq_credit` | `lgd_ead`, `calibration`, `migration`, `cds` |
+| `fx_credit` | `xva`, `saccr` |
+| `eq_port`, `fx_port` (same files) | `hrp`, `robust_mvo`, `cost_qp`, `factor_model`, `tracking_error`, `sharpe_tests` |
+| C++ `eqopt`, Rust `eq-options-engine` | `lr_tree`, `bachelier`, `greeks_higher` (matched to Python to 1e-12 relative, 1e-13 for Bachelier) |
+| C++ and Rust VaR engines (all four) | `option_reval`: BSM price, Greeks, full-revaluation and delta-gamma P&L, matched to Python to 1e-11; not called by the VaR pipelines yet |
+
+Rates curves now build in two layers: `fi_rates.multicurve` (OIS discount
+curve, then projection curves) feeds `fi_rates.rate_options` and
+`fi_rates.hull_white`. On the surface side `eq_surface.ssvi` feeds
+`eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`.
 
 The C++ headers and Rust golden modules are generated files. Every
 `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero when the
@@ -311,6 +354,9 @@ the same engine and platform.
 | `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
 | `bench` | Runs the release benches; fails when a kernel whose committed p50 is above 1 µs is more than 2x slower. |
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). |
+| `cpp core (<preset>)` | Builds and tests `cpp/core` (including the Phase 6 kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
+| `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
+| `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 
@@ -339,7 +385,7 @@ Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 ## Further reading
 
 - [DIAGRAMS.md](DIAGRAMS.md): the same architecture as diagrams.
-- [LEARN.md](LEARN.md): a curriculum through every topic, with a 481-question
+- [LEARN.md](LEARN.md): a curriculum through every topic, with a 511-question
   self-test bank organised by round.
 - [COOKBOOK.md](COOKBOOK.md): recipes for common tasks in every area.
 - [MARKET_RISK.md](MARKET_RISK.md): the VaR/ES and backtesting workflow the

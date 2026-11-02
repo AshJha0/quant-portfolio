@@ -3,14 +3,16 @@
 This folder holds the documentation that spans all 31 sub-projects. Each
 sub-project also has its own `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`.
 All results quoted here come from seeded synthetic data unless a page names a
-dataset.
+dataset. The research studies in [`../research/`](../research/README.md) use
+ECB data and report training-period results only, which are not
+out-of-sample evidence.
 
 | File | What it is for |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layout, package and engine tables, risk conventions, the golden and differential test pipeline, CI jobs. |
 | [DIAGRAMS.md](DIAGRAMS.md) | The same structure as Mermaid diagrams. |
-| [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 481 self-test questions in 18 rounds (Part IV). |
-| [COOKBOOK.md](COOKBOOK.md) | 63 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
+| [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 511 self-test questions in 18 rounds (Part IV). |
+| [COOKBOOK.md](COOKBOOK.md) | 74 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
 | [MARKET_RISK.md](MARKET_RISK.md) | How the VaR, ES and backtesting code fits together, and its conventions. |
 
 Where to start:

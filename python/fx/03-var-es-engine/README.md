@@ -114,7 +114,8 @@ cross-language tolerances listed in the module docstring, checked over
 
 ## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
 
-Eight new modules. They are asset-agnostic, ship as the same file in
+Seven new public modules and one private helper (`_r3checks`). They are
+asset-agnostic, ship as the same file in
 `eq_var` and `fx_var`, and are imported from their submodule (they are not
 re-exported from the package root yet):
 

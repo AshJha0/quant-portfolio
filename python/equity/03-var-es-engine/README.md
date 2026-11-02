@@ -98,7 +98,10 @@ src/eq_var/
 ```
 
 The C++ and Rust equity engines are linear-book ports: they share the
-conventions and golden vectors but revalue linear exposures only.
+conventions and golden vectors, and their VaR pipelines revalue linear
+exposures only. Since Round 3 each also has an `option_reval` module (BSM
+price, Greeks, full-revaluation and delta-gamma P&L for single options),
+which is not yet wired into the VaR pipeline.
 
 Docs: [METHODOLOGY.md](docs/METHODOLOGY.md) (conventions, model choice,
 assumptions), [VALIDATION.md](docs/VALIDATION.md) (evidence and failure
@@ -120,7 +123,8 @@ cross-language tolerances listed in the module docstring, checked over
 
 ## Round 3 additions (risk attribution, FRTB IMA, tails, revaluation, limits)
 
-Eight new modules. They are asset-agnostic, ship as the same file in
+Seven new public modules and one private helper (`_r3checks`). They are
+asset-agnostic, ship as the same file in
 `eq_var` and `fx_var`, and are imported from their submodule (they are not
 re-exported from the package root yet):
 

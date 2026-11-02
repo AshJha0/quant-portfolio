@@ -12,13 +12,14 @@ ports, tested against the Python code and, for options, against an mpmath
 oracle. All results come from seeded synthetic data unless a page names a
 dataset. The code has not been used on a live book.
 
-The plan has three stages. The repository is at stage one.
+The plan has three stages. The repository is at stage one, and Round 3
+started parts of stages two and three.
 
 | Stage | What it means | Status |
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
-| 2. Research platform | Free public data, pre-registered experiments, reported results | Planned |
-| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Planned |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers, two signed pre-registrations, training-period results; no hold-out run yet |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core, bindings and the `engine=` switch; no option revaluation in the VaR engines yet |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
 The CI `counts` job writes the executed pass counts to `counts.json` and shows
@@ -37,6 +38,8 @@ quant-portfolio/
 ├── CONTRIBUTING.md    # setup, test gate, golden regeneration
 ├── CHANGELOG.md
 ├── docs/              # architecture, study guide, recipes, market-risk workflow
+├── data/              # free-data fetch scripts; downloads go to data/raw/ (git-ignored)
+├── research/          # pre-registrations, studies, results, the hash checker
 ├── pyproject.toml     # uv workspace: python/core and the 23 projects (uv.lock)
 ├── python/
 │   ├── core/          # qp-core: shared Python code used by 12 projects
@@ -83,6 +86,155 @@ Foundations projects are smaller: one asset, Python only, no FX version.
 Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
 
+## What Round 3 added
+
+Round 3 ran seven lanes in parallel, all merged. Everything below is new code beside the old code: no existing
+golden, pinned number or cross-language value changed.
+
+### Engine switch
+
+The four packages with compiled ports now have an `engine` module whose
+functions take `engine="python" | "cpp" | "rust"`. `"python"` is the default
+and calls the reference function unchanged. The rule for mapping a name to a
+backend lives once, in `qp_core.engines` (`check_engine`, `load_engine`,
+`engine_available`): an unknown name raises `ValueError`; a compiled engine
+whose extension is not installed raises `ImportError` with the
+`pip install ./bindings/...` command.
+
+| Module | Functions |
+|---|---|
+| `eq_options.engine` | `bs_price`, `bs_greeks`, `implied_vol`, `crr_price`, `bs_price_batch` |
+| `fx_options.engine` | `gk_price`, `analytic_greeks`, `implied_vol`, `binomial_price`, `gk_price_batch` |
+| `eq_var.engine` | `historical_var`, `expected_shortfall`, `parametric_var` |
+| `fx_var.engine` | `empirical_var_es`, `normal_var`, `normal_es`, `t_var`, `t_es`, `var_covar` |
+
+`tests/test_engine_differential.py` checks each compiled engine against the
+reference on 10,000 random inputs per group (smaller samples where the
+reference is O(n^2) or uses pandas), at the tolerances the binding tests
+already use. Without the extensions installed, the compiled cases skip.
+Monte Carlo pricing, MC VaR and the backtests have no `engine=` wrapper yet,
+and neither do the new Leisen-Reimer, Bachelier and higher-Greek ports.
+
+### Research workflow and real data
+
+Two new top-level folders:
+
+- [`data/`](data/README.md) holds fetch scripts only. `data/fetch/qp_fetch.py`
+  reads ECB reference rates and FRED series and writes each file to
+  `data/raw/` (ignored by git) with a `.sha256` file beside it.
+- [`research/`](research/README.md) holds pre-registrations, studies, results
+  and the checker.
+
+A study runs in four steps:
+
+1. **Draft.** A file in `research/prereg/` fixes the hypothesis, data,
+   parameters, costs, primary metric and decision rule. Its registration
+   hash is the SHA-256 of the text above `## Signature`.
+2. **Sign.** The signer fills `signed_by`, `signed_on` and `sha256`.
+   Signing does not change the hash.
+3. **Hash check.** `python research/tools/prereg.py check` refuses a result
+   whose `prereg_sha256` does not match its registration, and any result
+   whose period reaches 2022-01-01 or later unless the registration is
+   signed with that hash.
+4. **Run on the hold-out.** Only after signing. Until then every study calls
+   `training_only`, which raises on any date from 2022-01-01.
+
+| Registration | State |
+|---|---|
+| `pairs-fx-g10` | Signed by the maintainer on 2026-11-02 under owner decision 9. Training result only. |
+| `regime-fx-basket` | Signed by the maintainer on 2026-11-02 under owner decision 9. Training result only. |
+| `execution-lobster` | Unsigned draft. Needs LOBSTER sample files, which sit behind LOBSTER's terms of use. |
+
+Two studies are not done because their data needs an account: equity pairs
+on a point-in-time US universe (Nasdaq Data Link) and the LOBSTER execution
+study.
+
+The training-period numbers (ECB data, 1999 to 2021) are in
+`research/results/`. They are not out-of-sample evidence. The pairs study
+had a net Sharpe of 0.24 with a block-bootstrap 95% interval of
+[-0.17, 0.46], and held a position on only 79 of 4,867 days. Its parameters
+were changed twice on training data before signing, and the registration
+counts all three variants as trials. The regime study did not support its
+hypothesis in training: the high-volatility state had a higher mean
+next-day return than the low state (HAC t = +0.27).
+
+### Phase 5 models and their oracles
+
+Every new model is tested against an independent result: a closed form, a
+published value, a different numerical method or a limiting case. The
+modules are imported by path (for example `eq_surface.ssvi`); they are not
+re-exported from the package `__init__`.
+
+| Model | Module | Oracle |
+|---|---|---|
+| Leisen-Reimer tree | `eq_options.lr_tree` | Black-Scholes; error falls by a factor of 3 to 5 per doubling of steps |
+| Crank-Nicolson PDE, American | `eq_options.pde` | Black-Scholes for European; Richardson-extrapolated LR for American; second order |
+| Andersen-Lake-Offengeim American | `eq_options.alo` | Richardson-extrapolated LR (2001/4001 steps), four cases, 2e-5 |
+| Discrete dividends (escrowed spot, tree) | `eq_options.dividends` | Haug (2007) Roll-Geske-Whaley value 4.3860 |
+| Term-structure rates and vol | `eq_options.term_structure` | Merton averaged parameters; flat inputs equal Black-Scholes |
+| Bachelier | `eq_options.bachelier` | mpmath quadrature and derivatives at 30 digits |
+| SABR (Hagan, Obloj, West) | `eq_options.sabr` | Hagan ATM formula; beta = 1, nu = 0 limit; smoothness through ATM; density sign |
+| Charm, speed, colour, zomma, veta | `eq_options.greeks_higher` | `mpmath.diff`, 1e-9 relative |
+| Ladders and grids | `eq_options.risk_grids` | Direct repricing; vega buckets sum to book vega |
+| FX smile from ATM, RR, BF | `fx_options.smile` | Quote recovery under four delta conventions |
+| FX premium styles | `fx_options.premium` | Inverse-pair Garman-Kohlhagen |
+| FX cuts, expiry and delivery | `fx_options.cuts` | Hand-checked dates, including DST changes |
+| HAR-RV | `eq_vol.har_rv` | Noiseless recursion recovered exactly; simulated HAR within 4 HAC SE |
+| OIS multi-curve | `fi_rates.multicurve` | Reprices all OIS and swap quotes to 1e-13; zero basis collapses to the OIS curve |
+| Caps and swaptions (Black, Bachelier) | `fi_rates.rate_options` | Parity and ATM closed forms; implied-vol round trip |
+| Hull-White 1F, Jamshidian swaptions | `fi_rates.hull_white` | Curve repricing; parity; exact-OU Monte Carlo (200k paths) |
+| Dupire local vol | `eq_surface.dupire` | Flat and term-only cases; total-variance route equals price route; local-vol MC reprices the surface |
+| SSVI and eSSVI | `eq_surface.ssvi` | Slice equals raw SVI to 1e-15; Gatheral-Jacquier conditions give no butterfly arbitrage |
+| Bates | `eq_surface.bates` | No jumps equals Heston; no vol of vol equals the Merton (1976) series; Euler MC within 4 SE |
+| Float-float cross-currency swap | `fx_rates.xccy_float` | Constant notional equals the existing `BasisSwap`; one-period MtM equals constant |
+| LGD, EAD, margin of conservatism, migration, CDS | `eq_credit.lgd_ead`, `calibration`, `migration`, `cds` | Closed forms and hand-worked cases; see the package VALIDATION |
+| Bilateral CVA/DVA, collateral, wrong-way risk; SA-CCR for FX | `fx_credit.xva`, `fx_credit.saccr` | Closed-form MPoR exposure; Monte Carlo within 4 SE; CRE52 steps |
+| HRP, robust and resampled MVO, cost QP, factor model, tracking error, Sharpe tests | `eq_port.*` and `fx_port.*` (same code) | Closed forms where they exist (SLSQP agrees to about 1e-6); see the package VALIDATION |
+| Euler marginal, component, incremental VaR and ES | `eq_var.risk_attribution`, `fx_var.risk_attribution` | Hand example; Euler sum; finite-difference gradient; MC converges to the closed form |
+| FRTB IMA: liquidity-horizon ES, stressed ES, IMCC, capital, desk backtest, PLA | `eq_var.frtb_ima`, `fx_var.frtb_ima` | Hand cascade; sqrt(12) telescoping; table thresholds; scipy cross-check |
+| Stressed VaR, Basel 2.5 capital | `eq_var.stressed_var`, `fx_var.stressed_var` | Planted crisis window found; order statistic by hand |
+| EVT peaks over threshold (GPD) | `eq_var.evt`, `fx_var.evt` | Exact GPD quantile and integrated ES; MLE convergence; t(4) tail index |
+| t-copula Monte Carlo VaR and ES | `eq_var.copula_mc`, `fx_var.copula_mc` | Kendall tau mapping; tail dependence; Gaussian limit |
+| Option revaluation and P&L explain | `eq_var.revaluation`, `fx_var.revaluation` | Finite-difference Greeks; parity; the package `bs_*`/`gk_*` pricers; linear legs exact |
+| Limit hierarchy | `eq_var.limits`, `fx_var.limits` | Exact cases |
+| Johansen trace test | `research/studies/models.py` | statsmodels `coint_johansen`, 1e-9 relative |
+| Kalman hedge ratio | `research/studies/models.py` | Recursive least squares when delta = 0 |
+
+The C++ and Rust equity options engines also gained Leisen-Reimer,
+Bachelier and the higher-order Greeks, checked against the Python values to
+1e-12 relative (1e-13 for Bachelier). All four compiled VaR engines gained
+`option_reval` (BSM price, Greeks, full-revaluation and delta-gamma P&L),
+checked against Python goldens to 1e-11; their VaR pipelines still take
+linear exposures only. Each package's `docs/VALIDATION.md`
+has the full oracle list and tolerances.
+
+### Phase 6 performance kernels
+
+`cpp/core` and `rust/core` gained a Philox4x32-10 generator, O(n) quantile
+selection, cache-blocked GEMM and `D^T D`, branch-free batch `exp`, `erfc`
+and normal CDF, and (Rust) a persistent thread pool. C++ has a new
+`bench_core` latency bench. The equity VaR sample covariance in C++ and Rust
+now uses the blocked `D^T D` and gives the same bits as before. The engines
+do not use Philox or the batch kernels yet.
+
+Measured with `bench_core` on an Intel Core 5 120U under WSL2, gcc 15.2
+`-O3`, default x86-64 target (SSE2 only); p50 in microseconds per call:
+
+| Kernel | Old | New | Ratio |
+|---|---|---|---|
+| quantile, n = 10,000 | 1169 (full sort) | 160 (select) | 7.3x faster |
+| GEMM 128^3 | 6837 (naive) | 2109 (blocked) | 3.2x faster |
+| erfc x1024 | 141 (`std::erfc`) | 212 (`vm::erfc_batch`) | 0.66x, slower |
+| exp x1024 | 11.1 (`std::exp`) | 29.1 (`vm::exp_batch`) | 0.38x, slower |
+
+The batch `erfc` and `exp` are slower than libm on this target. Without
+AVX2 the loops do not vectorise, and the `erfc` also pays for a 25-step
+Clenshaw recurrence and two `exp` calls. A wider target (x86-64-v3) or
+`std::simd` might change that; it was not measured. Philox costs 2.7 times
+as much per word as `mt19937_64`; it is there for reproducible parallel
+streams, not speed. These are one laptop run, and the tails are noisy. See
+[`cpp/core/README.md`](cpp/core/README.md).
+
 ## How to run
 
 Use a virtual environment outside the repository, one per project if you want
@@ -118,6 +270,9 @@ single required check is `ci-ok`, which passes only when every job passed.
 | `rust <crate>`, `rust fmt` | `cargo test --release --locked` and clippy with warnings denied for `qp-core` and the four engines; `cargo fmt --check` |
 | `bind <package>` | builds `qp-cpp` and `qp-rust` and tests them against the Python reference packages |
 | `bench` | runs the release benches and fails when a kernel whose committed p50 is above 1 µs is more than 2x slower |
+| `cpp core (<preset>)` | builds and tests `cpp/core`, including the Phase 6 kernel tests and `bench_core` |
+| `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; a skipped compiled case fails the job |
+| `research (prereg check, tests)` | `python research/tools/prereg.py check` and the `research/tests` suite |
 | `hygiene` | banned-word check and a voice report |
 | `counts` | sums executed pass counts into `counts.json` and runs `tests/test_docs_counts.py` |
 
@@ -205,16 +360,20 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
   an edge.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is about 9.5%, not 5% (`TestKupiecExactSize`).
-- Not implemented: SABR, structural (Merton/KMV) PD, short-rate models, OIS
-  multi-curve, FRTB.
+- Not implemented: structural (Merton/KMV) PD, FRTB NMRF/SES and the
+  default risk charge, the arbitrage-free
+  SABR PDE, Hull-White calibration to a swaption grid, ISDA standard-model
+  CDS conventions.
+- No result here is out-of-sample evidence yet. The research studies have
+  training-period results only; the hold-out runs come next.
 - The bindings (`qp-cpp`, `qp-rust`) cover pricing, Greeks, implied vol,
   binomial, Monte Carlo and the main VaR, ES and backtest calls. They do not
   bind the FX VaR Monte Carlo or book-level VaR, deltas and strikes from
   delta, Black-76, Christoffersen or Acerbi-Szekely. See each binding
   README.
-- The Python reference packages have no `engine="python"|"cpp"|"rust"`
-  switch. Call the binding packages directly. The switch is planned for a
-  later round.
+- The `engine=` switch covers closed-form pricing, Greeks, implied vol,
+  the binomial tree, batch pricing and the main VaR and ES calls. Monte
+  Carlo, the backtests and the Round 3 compiled ports are not behind it.
 - Python dependencies are pinned for CI only, in
   `requirements/ci-constraints.txt`.
 
@@ -337,7 +496,7 @@ The sources each area is built from and checked against.
 87. Andersen, L. (2008). "Simple and Efficient Simulation of the Heston Stochastic Volatility Model." *Journal of Computational Finance* 11(3), 1–42.
 88. Lord, R., Koekkoek, R. & van Dijk, D. (2010). "A Comparison of Biased Simulation Schemes for Stochastic Volatility Models." *Quantitative Finance* 10(2), 177–194.
 89. Castagna, A. & Mercurio, F. (2007). "The Vanna-Volga Method for Implied Volatilities." *Risk*, January, 106–111.
-90. Hagan, P. S., Kumar, D., Lesniewski, A. S. & Woodward, D. E. (2002). "Managing Smile Risk." *Wilmott*, September, 84–108. (SABR: discussed as an alternative in area 09; not implemented.)
+90. Hagan, P. S., Kumar, D., Lesniewski, A. S. & Woodward, D. E. (2002). "Managing Smile Risk." *Wilmott*, September, 84–108. (SABR: implemented in `eq_options.sabr` in Round 3.)
 
 **Regime switching (area 10)**
 
@@ -359,6 +518,10 @@ The sources each area is built from and checked against.
 Every project uses synthetic data from seeded generators in
 `src/*/data/synthetic.py` or similar. Some projects have optional loaders for
 free public data (Yahoo Finance, FRED, ECB). Tests never need the network.
+
+The research studies use real data: ECB euro reference rates fetched by
+`data/fetch/qp_fetch.py`, with a SHA-256 file per download. See
+[`data/README.md`](data/README.md) for sources, terms and what is blocked.
 
 ## License
 

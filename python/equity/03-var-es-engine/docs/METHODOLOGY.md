@@ -184,10 +184,11 @@ Monte Carlo has no multi-day path model and options keep expiry fixed, so
 
 ## 11. Not implemented
 
-Risk decomposition (component or incremental VaR), FRTB (liquidity
-horizons, stressed calibration, P&L attribution), EVT tails, variance
-reduction in Monte Carlo, covariance shrinkage and exact or simulated
-Kupiec and Christoffersen p-values.
+Variance reduction in Monte Carlo, covariance shrinkage and exact or
+simulated Kupiec and Christoffersen p-values. Risk decomposition, the FRTB
+IMA pieces and EVT tails were added in Round 3 (see the Round 3 section);
+FRTB NMRF/SES, the default risk charge and risk-factor eligibility are
+still not implemented.
 
 ## 12. References
 

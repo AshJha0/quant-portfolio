@@ -138,7 +138,9 @@ multivariate t (`r = L z / sqrt(W/nu)`, `W ~ chi^2_nu`, scale matrix
 
 For a linear book with normal factors MC reproduces the parametric number;
 it is a check of the closed form, not new information. The C++ and Rust
-engines are linear-book ports; option revaluation lives in Python.
+engines are linear-book ports; book-level option revaluation lives in
+Python. The `option_reval` module (Round 3) prices and revalues single
+options but is not wired into the VaR pipeline.
 
 `monte_carlo_run` simulates once and returns VaR, ES, the bootstrap SE
 (primary) and the KDE SE (diagnostic) from the same scenarios, plus the

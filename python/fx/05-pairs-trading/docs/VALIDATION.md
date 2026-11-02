@@ -3,8 +3,9 @@
 How the implementation was validated, with the numbers. Every performance
 number here comes from synthetic data in which the planted pair is
 cointegrated by construction, so the profit is a property of the generator,
-not evidence of an edge in FX markets. No real-data result exists yet (Phase
-4 of the remediation plan).
+not evidence of an edge in FX markets. The only real-data result is a
+training-period run in `research/` (ECB, 1999-2021); the hold-out has not
+been run.
 
 Reproduce: `python examples/run_pipeline.py` (seeded, offline, 196 s with the
 default 60 seeds; it writes no files) and `pytest -q` (286 tests, 106 s).

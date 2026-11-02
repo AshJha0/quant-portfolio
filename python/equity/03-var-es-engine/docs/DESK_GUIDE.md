@@ -83,9 +83,12 @@ alpha by the cumulative binomial probability (spec S4). On 250 days at 99 %:
 the synthetic GARCH backtest the unconditional models are red (13 and 10
 exceptions) and per-factor FHS is green (2).
 
-FRTB is not implemented: its ES-based capital, the 1.5 to 2.0 multiplier,
-backtesting at 97.5 % and 99 % on actual and hypothetical P&L, and the P&L
-attribution test.
+FRTB IMA pieces were added in Round 3 in `eq_var.frtb_ima`: the
+liquidity-horizon ES cascade, stressed ES, IMCC, capital with the plus
+factor, the desk backtest and the P&L attribution test. NMRF/SES (taken as
+an input), the default risk charge and risk-factor eligibility are still
+not implemented, and the BCBS paragraph references have not been re-checked
+against the bis.org text. See the Round 3 section below.
 
 ## 5. Stress review
 

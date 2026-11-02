@@ -4,8 +4,9 @@ This document states why this model was chosen, against what alternatives,
 and under which assumptions (with what breaks when each assumption fails).
 Every number in this project comes from synthetic data. The planted pair is
 cointegrated by construction, so the profit it shows is put there by the
-generator. No real-data result exists yet; that is Phase 4 of the
-remediation plan. Validation evidence lives in `VALIDATION.md`; desk usage in
+generator. The only real-data result is the training-period run of the
+signed `pairs-fx-g10` pre-registration in `research/` (not out-of-sample
+evidence). Validation evidence lives in `VALIDATION.md`; desk usage in
 `DESK_GUIDE.md`.
 
 ---

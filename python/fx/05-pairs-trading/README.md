@@ -8,8 +8,10 @@ roll) - pip costs**.
 
 **Status.** Every result in this project comes from synthetic data. The
 planted pair is cointegrated by construction, so the profit it shows is put
-there by the generator and is not evidence of an edge in FX markets. No
-real-data result exists yet; that is Phase 4 of the remediation plan.
+there by the generator and is not evidence of an edge in FX markets. The
+first real-data study (`research/prereg/pairs-fx-g10.md`, signed) has a
+training-period result on ECB data, 1999 to 2021, in `research/results/pairs_fx_g10_train.json`. It
+is not out-of-sample evidence; the 2022-2025 hold-out has not been run.
 
 Carry is part of the P&L (the pipeline builds a synthetic pair where
 including carry flips the sign of P&L), the triangular no-arbitrage identity
@@ -109,7 +111,8 @@ From `python examples/run_pipeline.py`: mean [95% CI] over 60 synthetic seeds
 
 ## Limitations
 
-* No real-data result exists; all numbers are synthetic.
+* All numbers in this package are synthetic. The ECB training-period
+  result lives in `research/`, not here, and has no hold-out run yet.
 * There is no market-impact model; costs are the half spread plus an optional
   auction charge.
 * The `live.py` loader returns ECB reference rates, which are a fixing, not

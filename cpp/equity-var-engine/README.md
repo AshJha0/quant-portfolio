@@ -254,7 +254,8 @@ WSL2 the hypervisor adds scheduling jitter that shows up in p99.9 and max.
 
 ## Limitations
 
-- Linear exposures only: no option revaluation.
+- The VaR pipeline takes linear exposures only. `option_reval` (Round 3)
+  revalues single options, but the VaR functions do not call it yet.
 - The bootstrap SE dominates the Monte Carlo time (n_boot selections over
   the full scenario set).
 - The Monte Carlo runs on one thread.

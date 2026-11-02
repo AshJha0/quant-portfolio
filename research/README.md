@@ -8,7 +8,7 @@ The Phase 4 research programme: pre-registered studies on real data.
    parameters, costs, primary metric and decision rule. Its registration
    hash is the SHA-256 of everything above its `## Signature` heading (line
    endings normalised to LF).
-2. The coordinator signs it by filling `signed_by`, `signed_on` and
+2. The maintainer signs it by filling `signed_by`, `signed_on` and
    `sha256` under that heading. Signing does not change the hash.
 3. The study writes a JSON result to `results/` carrying `prereg`,
    `prereg_sha256` and `period`.
@@ -31,9 +31,16 @@ python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
 
 | Registration | Status | Training result |
 |---|---|---|
-| `prereg/pairs-fx-g10.md` | draft, unsigned | `results/pairs_fx_g10_train.json` |
-| `prereg/regime-fx-basket.md` | draft, unsigned | `results/regime_fx_basket_train.json` |
-| `prereg/execution-lobster.md` | draft, blocked on data access | none |
+| `prereg/pairs-fx-g10.md` | signed 2026-11-02; hold-out not run | `results/pairs_fx_g10_train.json` |
+| `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out not run | `results/regime_fx_basket_train.json` |
+| `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
+
+The two FX registrations were signed by the maintainer under owner decision
+9, which delegated pre-registration signing. The signature records the hash
+printed by `prereg.py hash`; `prereg.py check` passes on both. The execution
+study needs LOBSTER files, which sit behind LOBSTER's terms of use, so it
+stays an unsigned draft. Equity pairs on a point-in-time universe need a
+Nasdaq Data Link account and are not drafted.
 
 Training results (ECB data, 1999-2021) are numbers from the training
 period only. They are not out-of-sample evidence; the hold-out decides.

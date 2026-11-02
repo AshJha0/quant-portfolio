@@ -2,8 +2,9 @@
 
 How an FX relative-value pod would use this library: trade expression,
 workflow, sizing, limits, P&L attribution, and the historical scenarios that
-hurt such books. The library has only been run on synthetic data. No
-real-data result exists yet (Phase 4 of the remediation plan), and the
+hurt such books. The library has only been run on synthetic data. The
+only real-data result is a training-period one (`research/`, ECB data,
+1999-2021), not out-of-sample evidence, and the
 planted edge in the examples is a property of the generator.
 
 **Execution timing.** Signals use data up to the close of day t. Orders fill

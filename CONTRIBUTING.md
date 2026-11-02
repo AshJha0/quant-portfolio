@@ -16,7 +16,9 @@ for docs, and how to regenerate golden vectors.
 | `bindings/cpp-nanobind/` | `qp-cpp` (import `qp_cpp`): nanobind bindings over the C++ engines. |
 | `bindings/rust-pyo3/` | `qp-rust` (import `qp_rust`): PyO3 bindings over the Rust crates. |
 | `requirements/` | The CI constraints file and how to regenerate it. |
-| `tests/` | `test_docs_counts.py` checks the counts quoted in the docs; `test_ci_scripts.py` tests the CI helper scripts. |
+| `tests/` | `test_docs_counts.py` checks the counts quoted in the docs; `test_ci_scripts.py` tests the CI helper scripts; `test_engine_differential.py` compares the compiled engines with the Python reference through `engine=`. |
+| `data/` | Free-data fetch scripts (`data/fetch/qp_fetch.py`). Downloads go to `data/raw/`, which git ignores. |
+| `research/` | Pre-registrations, studies, results and `research/tools/prereg.py`. See `research/README.md`. |
 
 ## Setup
 
@@ -97,8 +99,26 @@ CMake. The Rust package needs the pinned Rust toolchain:
 python -m pip install -e python/core     -e python/equity/01-options-pricing -e python/fx/01-options-pricing     -e python/equity/03-var-es-engine -e python/fx/03-var-es-engine pytest hypothesis
 python -m pip install ./bindings/cpp-nanobind
 python -m pip install ./bindings/rust-pyo3
-python -m pytest -p no:cacheprovider -q bindings/cpp-nanobind/tests bindings/rust-pyo3/tests
+python -m pytest -p no:cacheprovider -q bindings/cpp-nanobind/tests
+python -m pytest -p no:cacheprovider -q bindings/rust-pyo3/tests
+# with both bindings installed: the 10,000-input harness behind engine=
+python -m pytest -p no:cacheprovider -rs tests/test_engine_differential.py
 ```
+
+Run the two binding suites separately: both test files are named
+`test_binding.py`. Without the extensions, the differential harness skips
+its compiled cases; CI fails on any skip.
+
+### Research
+
+```bash
+python -m pip install -e python/core -e python/fx/05-pairs-trading -e python/fx/10-regime-switching pytest statsmodels
+python research/tools/prereg.py check
+python -m pytest -p no:cacheprovider -q research/tests
+```
+
+The tests are offline. Fetching data (`python data/fetch/qp_fetch.py ecb`)
+needs the network and is not part of the test gate.
 
 Build directories go outside the repository or under a git-ignored
 `build/` or `target/`. Example scripts write to a temp directory or to the
@@ -141,6 +161,9 @@ passes only if every other CI job passed:
 | `bind <package> (<version>)` | builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages |
 | `bench` | Release benches; fails on a p50 more than 2.0 times the committed value for a kernel above 1 us |
 | `hygiene` | banned-word check; voice report; tests for the CI scripts |
+| `cpp core (<preset>)` | builds and tests `cpp/core`; the gcc job also runs `bench_core --quick`, report-only |
+| `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; any skipped case fails |
+| `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests` |
 | `counts` | sums executed pass counts into `counts.json`, then runs `tests/test_docs_counts.py` |
 
 CI runner benchmark numbers are not the published numbers. Runners are
