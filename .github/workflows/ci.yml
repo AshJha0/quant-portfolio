@@ -184,7 +184,7 @@ jobs:
       - name: Install the workspace from uv.lock, plus the pinned ruff and mypy
         run: |
           uv sync --all-packages --locked
-          uv pip install -c requirements/ci-constraints.txt ruff mypy
+          uv pip install -c requirements/ci-constraints.txt ruff mypy pandas-stubs scipy-stubs
       - name: ruff check python
         run: uv run --no-sync ruff check python
       # No arguments: the [tool.mypy] / mypy.ini config at the root decides
