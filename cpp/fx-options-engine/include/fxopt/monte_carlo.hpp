@@ -33,6 +33,15 @@
 
 namespace fxopt {
 
+/// rief Fewest independent draws (paths, or antithetic pairs) for which
+///        try_mc_price() hands its chunks to a thread pool. Below it the
+///        chunks run inline on the caller: results are bit-identical
+///        either way. Measured crossover (Core 5 120U, WSL2, GCC 15.2,
+///        antithetic + control variate): 4 threads lose at 10k paths
+///        (531 us vs 424 us) and win from about 20k paths up; see
+///        docs/METHODOLOGY.md, "Monte Carlo threading crossover".
+inline constexpr std::size_t kMcParallelMinDraws = 16384;
+
 /// Monte Carlo estimate with sampling-error diagnostics.
 struct MCResult {
     double price;          ///< point estimate, domestic ccy per foreign notional

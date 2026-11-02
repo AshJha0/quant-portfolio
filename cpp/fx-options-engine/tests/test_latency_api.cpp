@@ -265,6 +265,25 @@ TEST(ThreadPoolMc, ChunkedResultIndependentOfPoolAndRuns) {
     }
 }
 
+TEST(ThreadPoolMc, ParallelThresholdKeepsBitsOnBothSides) {
+    // Paths just below and at the hand-off threshold (antithetic: draws =
+    // paths / 2). Below it the pool is skipped; the bits must not move.
+    const std::size_t below = 2 * (kMcParallelMinDraws - 1);
+    const std::size_t at = 2 * kMcParallelMinDraws;
+    McWorkspace ws;
+    ws.reserve(at, true);
+    ThreadPool p3(3);
+    for (std::size_t n : {below, at}) {
+        const auto ref = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, n,
+                                      Seed{11}, true, true, 4, ws, nullptr);
+        const auto pooled = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, n,
+                                         Seed{11}, true, true, 4, ws, &p3);
+        ASSERT_TRUE(ref.has_value() && pooled.has_value());
+        EXPECT_TRUE(same_bits(ref->price, pooled->price) &&
+                    same_bits(ref->std_error, pooled->std_error));
+    }
+}
+
 TEST(ThreadPoolMc, WorkspaceAndThreadErrors) {
     McWorkspace ws;
     ws.reserve(100, false);

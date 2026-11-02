@@ -469,6 +469,12 @@ dataset (the research entries use ECB reference rates).
 
 ### Changed
 
+- C++ equity and FX `try_mc_price` (and `mc_price`) run their chunks inline
+  below 16,384 independent draws (`kMcParallelMinDraws`) instead of on the
+  thread pool. At 10,000 paths, 4 threads measured 531 us against 424 us on
+  one thread; results are bit-identical. Crossover table in each engine's
+  `docs/METHODOLOGY.md`.
+
 - Python 3.10 dropped (end of life 2026-10-01). Every project and both
   bindings now declare `requires-python = ">=3.11"`; the CI matrix runs 3.11
   to 3.13; ruff targets `py311`. `uv.lock` and

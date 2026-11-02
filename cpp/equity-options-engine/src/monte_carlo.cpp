@@ -128,7 +128,11 @@ Result<MCResult> try_mc_price(double S, double K, double T, double r, double sig
     ThreadPool::TaskFn fn =
         antithetic ? (control_variate ? &chunk_entry<true, true> : &chunk_entry<true, false>)
                    : (control_variate ? &chunk_entry<false, true> : &chunk_entry<false, false>);
-    if (pool != nullptr && task.n_chunks > 1) {
+    // Below kMcParallelMinDraws the pool hand-off (waking workers and
+    // joining them) costs more than the simulation it splits, so the
+    // same chunks run inline on the calling thread. The chunking, and
+    // therefore every output bit, is unchanged; only who runs it is.
+    if (pool != nullptr && task.n_chunks > 1 && base >= kMcParallelMinDraws) {
         pool->run(task.n_chunks, fn, &task);
     } else {
         for (unsigned c = 0; c < task.n_chunks; ++c) fn(&task, c);

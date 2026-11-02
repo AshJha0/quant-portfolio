@@ -229,6 +229,25 @@ TEST(ThreadPoolMc, ResultIndependentOfPoolSizeAndEqualsLegacyApi) {
     }
 }
 
+TEST(ThreadPoolMc, ParallelThresholdKeepsBitsOnBothSides) {
+    // Paths just below and at the hand-off threshold (antithetic: draws =
+    // paths / 2). Below it the pool is skipped; the bits must not move.
+    const std::size_t below = 2 * (kMcParallelMinDraws - 1);
+    const std::size_t at = 2 * kMcParallelMinDraws;
+    McWorkspace ws;
+    ws.reserve(at, true);
+    ThreadPool p3(3);
+    for (std::size_t n : {below, at}) {
+        const auto ref = try_mc_price(100, 105, 1, 0.04, 0.25, 0.015, OptionType::Put, n, true,
+                                      true, 11, 4, ws, nullptr);
+        const auto pooled = try_mc_price(100, 105, 1, 0.04, 0.25, 0.015, OptionType::Put, n, true,
+                                         true, 11, 4, ws, &p3);
+        ASSERT_TRUE(ref.has_value() && pooled.has_value());
+        EXPECT_TRUE(same_bits(ref->price, pooled->price) &&
+                    same_bits(ref->std_error, pooled->std_error));
+    }
+}
+
 TEST(ThreadPoolMc, WorkspaceTooSmallIsAnError) {
     McWorkspace ws;
     ws.reserve(100, false);
