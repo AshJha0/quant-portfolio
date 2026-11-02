@@ -222,3 +222,24 @@ def test_prereg_check_refuses_dry_runs_and_dirty_trees_and_accepts_clean(dry_run
     del doc["provenance"]
     clean.write_text(json.dumps(doc))
     assert prereg.check_result(clean, repo) == ["hold-out result has no provenance block"]
+
+
+def test_dry_run_labels_the_bootstrap_bound_as_secondary(dry_run):
+    doc = json.loads((dry_run / "pairs_fx_g10_holdout_dryrun.json").read_text())
+    sec = doc["decision"]["secondary_bootstrap"]
+    assert "not the decision" in sec["label"] and "lower_end" in sec
+
+
+def test_pair_activity_counts_agree_with_the_return_path():
+    rng = np.random.default_rng(2)
+    n = 1200
+    lx = pd.Series(np.cumsum(0.005 * rng.standard_normal(n)))
+    ly = lx + 0.01 * rng.standard_normal(n)
+    test = np.arange(n) >= 950
+    act: dict = {}
+    r = fx_studies.pair_returns(ly, lx, test, fx_studies.PAIRS, act)
+    assert set(act) == {"entry_signal_days", "entries", "days_in_market", "max_abs_z"}
+    assert act["entries"] <= act["entry_signal_days"]
+    assert act["days_in_market"] >= act["entries"]
+    if act["max_abs_z"] <= fx_studies.PAIRS["entry_z"]:
+        assert act["entries"] == 0 and not np.any(r)

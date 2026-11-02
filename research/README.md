@@ -49,7 +49,7 @@ test years 2022, 2023, 2024 and 2025 exactly as each registration says:
   the start of that window and only sees data up to the day it trades.
   Reported: net Sharpe, Lo (2002) standard error, block-bootstrap 95 %
   interval, the deflated Sharpe with trial count 3, and the decision
-  (reject H0 if Sharpe - 1.645 x Lo SE > 0).
+  (reject H0 if Sharpe - 1.645 x Lo SE > 0; see DR-R4-1).
 - regime: the HMM for year Y is fitted on every day before 1 January of Y;
   the filtered probability at the close of day t classifies the return of
   day t+1. Reported: the annualised high-vol mean, its Newey-West t and the
@@ -63,6 +63,42 @@ missing, dirty, a dry run, or disagrees with its `prereg_sha256`.
 
 Tests show that a fold's result does not change when every price after the
 fold is altered, which is the plain test of no look-ahead.
+
+### Decision records fixed before the hold-out
+
+Four points where the registration text admits more than one reading were
+decided on 2026-11-02 by the coordinator, under the owner's delegation,
+before any 2022-2025 data had been fetched or scored. The registrations are
+not edited (that would void the signatures); these records say how the code
+reads them. The hold-out code that implements them is commit 149d3d5; the
+records were added in the commit that follows it.
+
+- **DR-R4-1, pairs lower bound.** Prereg: "H0 is rejected if the hold-out
+  net Sharpe has a one-sided 95 % lower bound above zero", while the primary
+  metric lists both a Lo (2002) Newey-West standard error and a circular
+  block-bootstrap 95 % interval. Reading: the decision is
+  Sharpe - 1.645 x Lo SE > 0. The lower end of the two-sided bootstrap
+  interval is reported beside it under `decision.secondary_bootstrap`,
+  labelled, and does not decide. Why: the Lo SE is the only quantity that
+  gives a one-sided 95 % bound directly; the two-sided interval's lower end
+  is a 97.5 % bound.
+- **DR-R4-2, deflated Sharpe variance.** Prereg: "Deflated Sharpe reported
+  with that count" (3), with no variance of the trial Sharpes. Reading:
+  V = 1/(T - 1), the sampling variance of a zero-Sharpe estimate. Why: the
+  three training variants' Sharpes were not logged, and inventing them
+  after the fact would be worse than the null default. Recorded in the JSON.
+- **DR-R4-3, flat outside the test year.** Prereg: "flat outside the test
+  year. Decided at the close of day t, earns the return of t+1", and the
+  Kalman filter "run from the start of the formation window". Reading, as
+  the training code already did: the filter runs through the 5-day embargo
+  without trading; a position held at the close of the last test day earns
+  nothing, so the return from the last day of a year to the first day of
+  the next is never scored. Why: anything else trades outside the test year.
+- **DR-R4-4, regime years.** Prereg: "First test year in training: 2003.
+  Hold-out years are scored with yearly refits on all data before each
+  year." Reading: the hold-out scores 2022-2025 only; each refit uses every
+  day from 1999-01-04 to 31 December of the previous year. Why: that is the
+  registered expanding window; the 2003 start applies to the training run.
 
 ### Dry run
 
@@ -115,6 +151,17 @@ printed by `prereg.py hash`; `prereg.py check` passes on both. The execution
 study needs LOBSTER files, which sit behind LOBSTER's terms of use, so it
 stays an unsigned draft. Equity pairs on a point-in-time universe need a
 Nasdaq Data Link account and are not drafted.
+
+The pairs strategy is almost dormant in training: it trades in 3 of 19
+test years (2008, 2015, 2020; 7 entries, 79 active days), and the other
+years show a net return of exactly 0.0. That is the registered design, not
+a code fault. The registration sets the observation variance to the
+variance of the OLS residual in levels over the formation window. The
+Kalman filter's alpha follows the spread, so its one-step errors are
+smaller (typically 0.6-1.5 % against a forecast SD of 1.5-3 %), and |z|
+seldom reaches 2.0. Per pair and year the result file now records entry
+signal days, entries, pair-days in the market and the largest |z|.
+Changing the variance rule would be a new registration.
 
 Training results (ECB data, 1999-2021) are numbers from the training
 period only. They are not out-of-sample evidence; the hold-out decides.

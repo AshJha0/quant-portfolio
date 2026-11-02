@@ -1,7 +1,7 @@
 {
   "prereg": "research/prereg/regime-fx-basket.md",
   "prereg_sha256": "bd64743240ec273a2e7e92a69c6ab6bb3d58054f5f99d9b184ff0e65fa11e687",
-  "registration_signed": false,
+  "registration_signed": true,
   "period": {
     "start": "1999-01-04",
     "end": "2021-12-31"

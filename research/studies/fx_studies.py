@@ -91,9 +91,14 @@ def _sharpe_block(r: np.ndarray) -> dict:
     return {**out, "sharpe": point, "sharpe_se_lo": lo_sharpe_se(r), "ci95": ci}
 
 
-def pair_returns(ly: pd.Series, lx: pd.Series, test_mask: np.ndarray, p: dict) -> np.ndarray:
+def pair_returns(ly: pd.Series, lx: pd.Series, test_mask: np.ndarray, p: dict,
+                 activity: dict | None = None) -> np.ndarray:
     """Net daily return of one pair over the test rows (position decided at
-    close t, earns the return of t+1; cost on gross notional traded)."""
+    close t, earns the return of t+1; cost on gross notional traded).
+
+    If ``activity`` is given it is filled with the test-year counts: days
+    with |z| above the entry level, entries, days in the market and the
+    largest |z|."""
     form = ~test_mask
     a = np.column_stack([np.ones(int(form.sum())), lx.to_numpy()[form]])
     coef, *_ = np.linalg.lstsq(a, ly.to_numpy()[form], rcond=None)
@@ -119,6 +124,12 @@ def pair_returns(ly: pd.Series, lx: pd.Series, test_mask: np.ndarray, p: dict) -
     gross = np.zeros(n)
     gross[1:] = wy[:-1] * ry[1:] + wx[:-1] * rx[1:]
     cost = p["cost_bp"] * 1e-4 * (np.abs(np.diff(wy, prepend=0.0)) + np.abs(np.diff(wx, prepend=0.0)))
+    if activity is not None:
+        zt = np.abs(z[test_mask])
+        held = pos[test_mask] != 0.0
+        activity.update(entry_signal_days=int((zt > p["entry_z"]).sum()),
+                        entries=int((held & ~np.concatenate([[False], held[:-1]])).sum()),
+                        days_in_market=int(held.sum()), max_abs_z=float(zt.max()) if zt.size else 0.0)
     return (gross - cost)[test_mask]
 
 
@@ -152,11 +163,17 @@ def pairs_study(px: pd.DataFrame, p: dict = PAIRS, years: tuple[int, ...] | None
             if eg.cointegrated and jo.rank >= 1:
                 selected.append((a, b))
         window = form | test
-        rets = [pair_returns(logp[a][window], logp[b][window], test[window], p) for a, b in selected]
+        acts: list[dict] = [{} for _ in selected]
+        rets = [pair_returns(logp[a][window], logp[b][window], test[window], p, act)
+                for (a, b), act in zip(selected, acts, strict=True)]
         port = np.mean(rets, axis=0) if rets else np.zeros(int(test.sum()))
         daily.append(port)
         folds.append({"year": year, "pairs": [f"{a}/{b}" for a, b in selected],
-                      "net_return": float(port.sum())})
+                      "net_return": float(port.sum()),
+                      "entry_signal_days": sum(x["entry_signal_days"] for x in acts),
+                      "entries": sum(x["entries"] for x in acts),
+                      "pair_days_in_market": sum(x["days_in_market"] for x in acts),
+                      "max_abs_z": max((x["max_abs_z"] for x in acts), default=None)})
     r = np.concatenate(daily)
     return {"folds": folds, "candidate_pairs": math.comb(len(names), 2), "trial_count": 3,
             "primary_metric": "annualised net Sharpe, walk-forward test years", **_sharpe_block(r),
@@ -211,8 +228,11 @@ def pairs_decision(res: dict) -> dict:
     lower = sr - 1.645 * se
     return {"rule": "Sharpe - 1.645 * Lo NW SE > 0", "lower_bound_95_one_sided": lower,
             "h0_rejected": bool(lower > 0),
-            "bootstrap_ci95_lower": None if ci is None else ci[0],
-            "bootstrap_ci95_lower_above_zero": None if ci is None else bool(ci[0] > 0)}
+            "secondary_bootstrap": {
+                "label": ("lower end of the two-sided 95 % circular block-bootstrap interval "
+                          "(a 97.5 % one-sided bound); reported only, not the decision (DR-R4-1)"),
+                "lower_end": None if ci is None else ci[0],
+                "above_zero": None if ci is None else bool(ci[0] > 0)}}
 
 
 def regime_decision(res: dict) -> dict:
