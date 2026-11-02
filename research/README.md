@@ -137,6 +137,12 @@ To get a hash for signing:
 python research/tools/prereg.py hash research/prereg/pairs-fx-g10.md
 ```
 
+## Forward log
+
+From 2026-11-03 a daily job records the ECB rates and the two registered
+rules' state on the branch `forward-log`, never reading anything earlier.
+See [forward/README.md](forward/README.md) for why and how to read it.
+
 ## Studies
 
 | Registration | Status | Training result |

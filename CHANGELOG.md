@@ -16,6 +16,20 @@ come from seeded synthetic data.
 
 ### Added
 
+#### Round 4: forward log
+
+- `research/forward/forward.py` and `.github/workflows/forward-log.yml`:
+  a weekday job (16:30 UTC) appends one JSON line per ECB business day to
+  `forward/log.jsonl` on the unprotected branch `forward-log`, with the
+  rates, the two registered strategies' state as registered, the commit and
+  the SHA-256 of the ECB response. It refuses any date before 2026-11-03,
+  so the 2022-2025 hold-out can never enter it. Idempotent per date; first
+  value wins. Least privilege (`contents: write`), pinned actions,
+  actionlint clean. Off until the repository variable
+  `FORWARD_LOG_ENABLED` is set to `true`. 16 tests on synthetic data, including
+  exact parity with `fx_studies.pair_returns` / `pairs_study`. Docs:
+  `research/forward/README.md`.
+
 #### Round 3 fixes: options lane
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
