@@ -92,7 +92,7 @@ docs/                METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 METHODOLOGY covers model choice and assumptions, VALIDATION the evidence
 and failure modes, DESK_GUIDE the workflow, controls and scenarios.
 
-## Round 3 additions
+## November 2026 additions
 
 - `ssvi.py`: SSVI and eSSVI surfaces with the Gatheral-Jacquier no-arbitrage
   checks, a calendar check and a least-squares fit.

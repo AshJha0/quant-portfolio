@@ -177,7 +177,7 @@ Tests added with the low-latency API:
 | `tests/zero_alloc.rs` | Counting global allocator, one test in its own binary. Every fast kernel, the batch pricers, the tree with a sized workspace and single-thread Monte Carlo after warm-up make zero heap allocations. The classic `crr_price` is asserted to allocate, so the counter is live. |
 | `tests/fast_equivalence.rs` | `try_*`, batch and workspace pricers equal the classic API by `to_bits` on 20,000 varied rows including edge and invalid inputs; Monte Carlo gives the same bits across runs and for 1 to 12 threads. |
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Golden values printed from the Python reference (`repr`) for four LR cases
 (European and American, negative rate), two Bachelier Greek sets and two

@@ -98,7 +98,7 @@ print(fr.scenario_pnl_table(book, settle, curve,
 * [`docs/DESK_GUIDE.md`](docs/DESK_GUIDE.md): daily workflow, ladder
   hedging, carry, scenarios, controls.
 
-## Round 3 additions
+## November 2026 additions
 
 - `multicurve.py`: OIS discount curve and a separate projection curve per
   index tenor, both bootstrapped exactly from par quotes.

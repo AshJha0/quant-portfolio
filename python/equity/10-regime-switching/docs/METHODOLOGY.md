@@ -2,7 +2,7 @@
 
 Why this model, what the maths is, and what it assumes. Every result in this
 project comes from synthetic data. The generator plants a negative drift in
-the bear state, and no real-data result exists yet (Phase 4).
+the bear state, and no real-data result exists yet (see `research/`).
 
 ## 1. The problem
 

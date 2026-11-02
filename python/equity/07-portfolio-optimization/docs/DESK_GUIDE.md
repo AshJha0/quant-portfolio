@@ -132,7 +132,7 @@ turnover ledger under 5x cost stress.
 | Estimator health | LW `intensity`, `condition_number` | alert on δ > 0.5 or cond > 1e3 |
 | Benchmark null | equal weight in every race | must beat net of costs |
 
-## Round 3: when to use which optimiser
+## November 2026: when to use which optimiser
 
 - Use HRP when the covariance is near-singular or unstable.
 - Use robust or resampled MVO when expected returns drive the weights.

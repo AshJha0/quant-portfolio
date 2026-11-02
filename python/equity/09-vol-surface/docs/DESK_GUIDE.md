@@ -148,7 +148,7 @@ Five valid quotes per expiry is the floor (SVI has five parameters;
 `fit_svi` refuses fewer). For thinner names, borrow the index smile shape
 (fix b, rho and sigma from the index slice and fit a and m only).
 
-## 5. Round 3 models: when to use which
+## 5. The November 2026 release models: when to use which
 
 - SSVI for a quick, arbitrage-free surface across expiries from a handful of
   parameters; eSSVI when the skew flattens with maturity and one rho is not

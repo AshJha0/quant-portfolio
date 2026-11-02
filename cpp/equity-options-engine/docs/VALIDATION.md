@@ -117,7 +117,7 @@ GCC 15.2 and with Clang 21.1. The 66 pre-existing tests pass unchanged.
 
 See the README latency table (`./build/eqopt_bench`).
 
-## Phase 5 ports (Round 3)
+## Ports of the newer models (November 2026)
 
 Golden values printed from the Python reference (`repr`) for four LR cases
 (European and American, negative rate), two Bachelier Greek sets and two

@@ -20,7 +20,7 @@ Each section names the projects its recipes need.
 Recipes are grouped to match [ARCHITECTURE.md](ARCHITECTURE.md)'s area map:
 options pricing/vol/surfaces, market risk (VaR/ES/backtesting), fixed
 income/pairs/credit/portfolio optimization, and execution/regime/building the
-compiled engines, plus a final section for what Round 3 added. For the theory behind any of these, see the matching round
+compiled engines, plus a final section for what the November 2026 release added. For the theory behind any of these, see the matching set
 in [LEARN.md](LEARN.md) Part IV; for the underlying math and assumptions, see
 the project's own `docs/METHODOLOGY.md`.
 
@@ -1924,7 +1924,7 @@ golden value in the commit message.
 Use the commands in [CONTRIBUTING.md](../CONTRIBUTING.md). CI installs each
 project into its own fresh venv against `requirements/ci-constraints.txt` and
 runs pytest there, so repeat this per project to reproduce CI. CI installs
-`python/core` first, because 12 projects import `qp_core`:
+`python/core` first, because 16 projects import `qp_core`:
 
 ```bash
 python -m venv ~/.venvs/qp-eqopt
@@ -2012,9 +2012,9 @@ project pairs with a C++/Rust engine later, its golden vectors live under
 cross-language validation pipeline shown above.
 
 
-## Round 3: Engine Switch, Research Workflow and New Models
+## November 2026 release: Engine Switch, Research Workflow and New Models
 
-Recipes for what Round 3 added. Install `python/core` and the package each
+Recipes for what the November 2026 release added. Install `python/core` and the package each
 recipe names, as above. The new modules are imported by their path (for
 example `eq_options.alo`); they are not re-exported from the package root.
 Outputs below come from one run on Windows with Python 3.12.

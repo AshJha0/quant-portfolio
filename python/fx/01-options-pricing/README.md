@@ -128,7 +128,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Phase 5 additions (Round 3)
+## newer additions (November 2026)
 
 | Module | What it does | Oracle (`tests/test_phase5_fx.py`) |
 |---|---|---|

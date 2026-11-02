@@ -72,7 +72,7 @@ estimator is a bootstrap over the simulated losses. It is distribution-free.
 The KDE density-at-the-quantile estimate is kept as a diagnostic. It
 underestimates the sampling error at deep tails and modest scenario counts. A
 limit breach that sits inside one standard error of the limit is treated as a
-breach and flagged as statistically marginal. [LEARN.md](LEARN.md) Round 7 has
+breach and flagged as statistically marginal. [LEARN.md](LEARN.md) Set 7 has
 the mechanics.
 
 ## Backtesting
@@ -85,7 +85,7 @@ Every VaR series is backtested against realised P&L.
   `alpha`. It takes keyword arguments only: `kupiec_pof(n_obs=..., n_exceptions=...,
   alpha=...)`. Its chi-squared(1) reference distribution is oversized at a
   250-day, 1% window. That is a property of the classical test.
-  [LEARN.md](LEARN.md) Round 7 covers it.
+  [LEARN.md](LEARN.md) Set 7 covers it.
 - **`christoffersen_independence`** and **`christoffersen_cc`** test whether
   exceptions are independent over time. A model can pass Kupiec and fail
   independence when breaches cluster. `exception_cluster_table` shows the
@@ -142,7 +142,7 @@ VaR limit and does not consume it, because a peg book can show zero VaR while
 carrying full devaluation risk. A jump-mixture Monte Carlo VaR
 (`monte_carlo_var(dist="jump")`) is run for currencies with peg-break risk. A
 normal or Student-t factor model cannot represent a discrete jump.
-[LEARN.md](LEARN.md) Round 6 covers the jump-mixture mechanics.
+[LEARN.md](LEARN.md) Set 6 covers the jump-mixture mechanics.
 
 ## Where the C++ and Rust engines fit
 
@@ -169,6 +169,6 @@ Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 - `python/equity/03-var-es-engine/docs/VALIDATION.md` and
   `python/fx/03-var-es-engine/docs/VALIDATION.md`: how each method is
   validated, with reproducible failure modes.
-- [LEARN.md](LEARN.md) Rounds 6 and 7 for VaR/ES theory as a self-test.
+- [LEARN.md](LEARN.md) Sets 6 and 7 for VaR/ES theory as a self-test.
 - [COOKBOOK.md](COOKBOOK.md) "Market Risk: VaR, Expected Shortfall &
   Backtesting" for runnable code.

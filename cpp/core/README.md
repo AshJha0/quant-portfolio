@@ -43,7 +43,7 @@ each engine print the same hex-float values and exception texts when built
 against the pre-core sources (76166fd) and against these, with GCC 15 and
 Clang 21.
 
-## Performance kernels (Phase 6)
+## Performance kernels (November 2026)
 
 Two kinds, kept apart on purpose.
 

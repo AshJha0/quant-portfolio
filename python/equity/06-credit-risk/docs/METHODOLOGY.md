@@ -167,7 +167,7 @@ finite-portfolio quantile by quadrature, the Gordy-Lutkebohmert
 granularity adjustment, and seeded Monte Carlo with order-statistic
 confidence intervals. Numbers are in VALIDATION.md.
 
-## Round 3 additions: LGD/EAD, calibration, migration, CDS
+## November 2026 additions: LGD/EAD, calibration, migration, CDS
 
 Each module's docstring holds the full statement and its references; this is the short version.
 

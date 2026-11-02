@@ -172,7 +172,7 @@ Each assumption states what breaks if it is violated.
 * All randomness flows through `numpy.random.default_rng(seed)`. Tests and
   the pipeline are deterministic and offline.
 
-## Round 3 additions: OIS multi-curve, caps and swaptions, Hull-White
+## November 2026 additions: OIS multi-curve, caps and swaptions, Hull-White
 
 **Multi-curve.** Collateralised swaps discount on the OIS curve, and each
 index tenor gets its own projection curve (Ametrano and Bianchetti 2013).

@@ -2,7 +2,7 @@
 
 This guide maps the library onto a statistical-arbitrage workflow. Every
 number the library produces today comes from synthetic data with planted
-cointegrated pairs; no real-data result exists yet (Phase 4). Read the
+cointegrated pairs; no real-data result exists yet (see `research/`). Read the
 limits and scenarios below as a description of how the tools would be used,
 not as evidence that the strategy earns money.
 

@@ -123,7 +123,7 @@ command. The compiled results agree with the reference to the
 cross-language tolerances listed in the module docstring, checked over
 10,000 random inputs per engine by `tests/test_engine_differential.py`.
 
-## Phase 5 models (Round 3)
+## Newer models (November 2026)
 
 New modules, each with an oracle test in `tests/test_phase5_models.py`:
 

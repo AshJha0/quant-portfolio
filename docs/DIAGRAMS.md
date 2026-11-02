@@ -223,7 +223,7 @@ flowchart TD
 
 ---
 
-## 7. The `engine=` switch (Round 3)
+## 7. The `engine=` switch
 
 ```mermaid
 flowchart LR
@@ -250,7 +250,7 @@ flowchart LR
 
 ---
 
-## 8. Pre-registration workflow (Phase 4)
+## 8. Pre-registration workflow 
 
 ```mermaid
 flowchart TD
@@ -281,7 +281,7 @@ drafted (Nasdaq Data Link needs an account).
 
 ---
 
-## 9. Round 3 model dependencies
+## 9. Newer model dependencies
 
 ```mermaid
 flowchart LR

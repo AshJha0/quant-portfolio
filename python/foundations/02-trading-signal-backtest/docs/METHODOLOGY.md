@@ -6,7 +6,7 @@ selection, out-of-sample and walk-forward validation, parameter-sensitivity
 map, deflated Sharpe, PBO and a multi-seed distribution.
 
 Every number quoted in these docs comes from synthetic data. No real-data
-result exists yet; that is Phase 4 of the repository plan.
+result exists yet; that belongs to the research platform in `research/`.
 
 Conventions: daily closes in price-index units (synthetic data starts at
 100), 252 trading days a year, simple daily returns, costs in basis points

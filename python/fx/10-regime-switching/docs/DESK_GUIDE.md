@@ -35,7 +35,7 @@ yet. Read section 6 before relying on any control listed here.
   synthetic data the filtered book beats static carry by 0.59 Sharpe
   [-0.19, 1.37] across 8 seeds, and the whole difference is the planted
   crash drift (VALIDATION.md section 4). Whether high-vol FX states carry
-  a negative expected return out of sample is the question Phase 4 must
+  a negative expected return out of sample is the question the research platform must
   answer on real data before this use is justified. The training run on
   ECB data (1999-2021) did not support it (HAC t = +0.27); the signed
   hold-out run decides.
@@ -45,7 +45,7 @@ yet. Read section 6 before relying on any control listed here.
   strength, USD-pair correlation, EM spread, dollar factor) are readable
   as expanding z-scores.
 
-## 4. Historical episodes to test in Phase 4
+## 4. Historical episodes to test in the research platform
 
 These are candidate real-data checks. None has been run.
 

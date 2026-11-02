@@ -3,7 +3,7 @@
 Every number below comes from synthetic data, produced by
 `python examples/run_pipeline.py` (seeded, offline, about 25-30 s, writes
 nothing to disk). The signal edge is planted by the generator; no real-data
-result exists yet (Phase 4). The test suite is `python -m pytest tests`
+result exists yet (see `research/`). The test suite is `python -m pytest tests`
 (185 tests, about 30-45 s). Tolerances: algebraic identities to 1e-10;
 Monte Carlo claims are bounded by their stated standard errors.
 

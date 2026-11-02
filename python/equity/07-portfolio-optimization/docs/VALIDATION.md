@@ -168,7 +168,7 @@ caps that cannot sum to the budget, a vol cap below the constrained
 minimum-variance vol) and runs portfolio invariants over random SPD
 inputs.
 
-## Round 3 oracle tests (`tests/test_round3_portfolio.py`, 19 tests)
+## November 2026 oracle tests (`tests/test_round3_portfolio.py`, 19 tests)
 
 - HRP gives exactly the inverse-variance weights for a diagonal Sigma and matches the two-asset closed form. It stays long-only on a near-singular Sigma.
 - The closed-form MV satisfies its first-order condition. Resampled weights converge to the classic weights as T grows. Robust MVO with kappa = 0 equals the classic solution, and with kappa > 0 it equals the classic solution at the effective risk aversion.

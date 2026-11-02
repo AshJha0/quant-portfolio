@@ -9,14 +9,16 @@ out-of-sample evidence.
 
 | File | What it is for |
 |---|---|
+| [START_HERE.md](START_HERE.md) | The five things worth reading first, and the known limits. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layout, package and engine tables, risk conventions, the golden and differential test pipeline, CI jobs. |
 | [DIAGRAMS.md](DIAGRAMS.md) | The same structure as Mermaid diagrams. |
-| [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 511 self-test questions in 18 rounds (Part IV). |
+| [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 511 self-test questions in 18 sets (Part IV). |
 | [COOKBOOK.md](COOKBOOK.md) | 74 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
 | [MARKET_RISK.md](MARKET_RISK.md) | How the VaR, ES and backtesting code fits together, and its conventions. |
 
 Where to start:
 
+- Ten minutes to spare: [START_HERE.md](START_HERE.md).
 - New to quant finance: [LEARN.md](LEARN.md) Part III, Path A.
 - Know the maths, new to this code: [LEARN.md](LEARN.md) Part III, Path B.
 - Interested in the C++ and Rust ports: [LEARN.md](LEARN.md) Part III, Path C.

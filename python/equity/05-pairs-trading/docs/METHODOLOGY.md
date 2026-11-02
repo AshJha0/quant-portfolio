@@ -10,7 +10,7 @@ points of per-leg traded notional, borrow and financing annualised ACT/252.
 
 Status: every result in this project comes from a synthetic generator that
 plants cointegrated pairs. The edge is planted. No real-data result exists
-yet; that is Phase 4 of the repository plan.
+yet; that belongs to the research platform in `research/`.
 
 ---
 

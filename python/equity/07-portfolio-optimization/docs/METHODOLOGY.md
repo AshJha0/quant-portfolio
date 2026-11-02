@@ -211,7 +211,7 @@ Jobson & Korkie (1981); Memmel (2003); Cornuejols & Tutuncu (2007); Maillard, Ro
 Teïletche (2010); Spinu (2013); Griveau-Billion, Richard & Roncalli
 (2013); DeMiguel, Garlappi & Uppal (2009) "1/N".
 
-## Round 3 additions
+## November 2026 additions
 
 - **HRP** (`hrp.py`) follows Lopez de Prado (2016). It uses single linkage on sqrt((1 - rho)/2), quasi-diagonal ordering and recursive bisection with inverse-variance clusters. It needs no matrix inversion.
 - **Resampled MVO** (`robust_mvo.resampled_weights`) follows Michaud (1998). It averages the mean-variance solutions over inputs re-estimated from simulated samples.

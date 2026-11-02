@@ -98,7 +98,7 @@ full hedge, and the CHF ratio changed sign between halves. The allocators'
 Sharpe ratios differ by at most 0.08 with iid standard errors near 0.33, so
 the race does not rank them. Quote ranges, not points.
 
-## Round 3: when to use which optimiser
+## November 2026: when to use which optimiser
 
 - Use HRP when the covariance is near-singular or unstable.
 - Use robust or resampled MVO when expected returns drive the weights.

@@ -4,7 +4,7 @@ How a systematic desk would review and run a signal of this kind. None of
 the monitoring or kill controls below is implemented in this repository;
 they are process, described for a reader who would build them. Every
 number quoted is from synthetic data. No real-data result exists yet
-(Phase 4).
+(see `research/`).
 
 ---
 

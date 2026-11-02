@@ -93,7 +93,7 @@ trigger, peg-break watchlist, sanctions rail review. Change control: any
 band-boundary or PD-midpoint change requires model-risk sign-off (it rescales
 every exposure-loss figure and limit downstream, Assumption A9).
 
-## Round 3: CVA and SA-CCR
+## November 2026: CVA and SA-CCR
 
 - The CVA desk prices with `xva.bilateral_cva` on risk-neutral hazards. `exposure.expected_exposure_loss` is a credit-officer view and is not a price.
 - Collateralised trades must pass the MPoR (10 business days bilateral, 20 for large netting sets under CRE52.52). Assuming zero MPoR understates exposure.

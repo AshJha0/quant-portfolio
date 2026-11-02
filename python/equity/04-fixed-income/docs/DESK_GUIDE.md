@@ -9,8 +9,8 @@ seeded quotes and a synthetic 7-position book.
 government desk) go through `bootstrap_curve` or `bootstrap_bond_curve`.
 Every input must reprice to 1e-10 (`reprice_instruments`) or the build
 fails. The default build is single-curve (METHODOLOGY assumption 1). Since
-Round 3, `fi_rates.multicurve` builds an OIS discount curve and projection
-curves for collateralised swaps; see the Round 3 section of METHODOLOGY.
+The November 2026 release, `fi_rates.multicurve` builds an OIS discount curve and projection
+curves for collateralised swaps; see the November 2026 section of METHODOLOGY.
 
 **Risk and PV.** `portfolio_risk` gives market value, YTM, modified
 duration, convexity and DV01 per position and in aggregate (pipeline
@@ -106,7 +106,7 @@ Two episodes are discussed but not encoded as shift vectors:
   largest known limitation (METHODOLOGY §7).
 * Calendars are partial (weekend plus fixed-date holidays).
 
-## Round 3: rates products
+## November 2026: rates products
 
 Build the OIS curve first, then one projection curve per index tenor. Quote
 caps and swaptions in normal vol when rates are near zero. Hull-White is for

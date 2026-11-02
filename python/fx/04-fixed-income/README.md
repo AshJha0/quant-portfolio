@@ -76,7 +76,7 @@ examples/run_pipeline.py reproduces every number above, writes nothing
 docs/                    METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 ```
 
-## Round 3 additions
+## November 2026 additions
 
 - `xccy_float.py`: float-float cross-currency swaps on four curves
   (projection and discount per currency), constant-notional or

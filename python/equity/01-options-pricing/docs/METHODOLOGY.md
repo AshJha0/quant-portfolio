@@ -150,7 +150,7 @@ is demonstrated or tested.
   variance-reduction toolkit and CI reporting shipped here).
 - **Sizing model risk of any of the above:** the hedging simulator.
 
-## 4. Phase 5 models (Round 3)
+## 4. Newer models (November 2026)
 
 Each module's docstring gives the plain idea, the formal statement with its
 reference (paper, section, equation) and a worked example. In short:
