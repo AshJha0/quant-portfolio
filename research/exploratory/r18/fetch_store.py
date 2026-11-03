@@ -17,7 +17,7 @@ Sources (all keyless, no account):
 * Kenneth French library ``F-F_Research_Data_Factors``.
 
 Run: ``QP_DATA_ALLOW_NETWORK=1 PYTHONPATH=python/data/src python
-research/results/r18/fetch_store.py``. Failures are recorded, not hidden.
+research/exploratory/r18/fetch_store.py``. Failures are recorded, not hidden.
 """
 
 from __future__ import annotations

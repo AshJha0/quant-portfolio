@@ -121,7 +121,7 @@ def collateral_balance(values: np.ndarray, csa: Csa) -> np.ndarray:
     return b
 
 
-def lagged_grid(times: Sequence[float], mpor: float) -> np.ndarray:
+def lagged_grid(times: Sequence[float] | np.ndarray, mpor: float) -> np.ndarray:
     """``times`` with every t - mpor >= t_0 added, sorted and de-duplicated,
     so the MPOR lag lands exactly on grid dates.
 

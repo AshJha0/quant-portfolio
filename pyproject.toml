@@ -144,6 +144,5 @@ module = [
     "statsmodels.*", # statsmodels ships no py.typed marker
     "sklearn.*",     # scikit-learn ships no py.typed marker
     "yfinance.*",    # optional live-data extra, not installed in the lint venv
-    "requests.*",    # optional live-data extra; types-requests is not a project dependency
 ]
 ignore_missing_imports = true

@@ -37,3 +37,5 @@ nbmake>=1.5
 ipykernel>=6.29
 # qp-data parquet extra (the store writes parquet when pyarrow is present).
 pyarrow>=14
+# Live market-data recorder (group "recorder", tools/recorder).
+websockets==17.4

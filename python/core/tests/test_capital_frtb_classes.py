@@ -153,7 +153,7 @@ def test_csr_delta_hand_fixture() -> None:
         ss = [sum(x[3] for x in b3), 24.0, 0.0, 15.0]
         # gamma: (3,11) same sector, diff rating 0.5; (3,16) 0; (3,17) 45%; (11,16) 0;
         # (11,17) 45% (17 is not in 1-15, so no rating factor); (16,17) 0.
-        g0 = [[0, 0.5, 0, 0.45], [0.5, 0, 0, 0.45], [0, 0, 0, 0], [0.45, 0.45, 0, 0]]
+        g0: list[list[float]] = [[0, 0.5, 0, 0.45], [0.5, 0, 0, 0.45], [0, 0, 0, 0], [0.45, 0.45, 0, 0]]
         g = [[up(x) if i != j else 0.0 for j, x in enumerate(row)] for i, row in enumerate(g0)]
         out[sc] = _across(ks, ss, g)
     got = C.csr_delta(sens)
@@ -210,7 +210,7 @@ def test_equity_delta_hand_fixture() -> None:
         rho = [[1.0 if i == j else up(r5[i][j]) for j in range(3)] for i in range(3)]
         ks = [_quad(w5, rho), 70.0, 0.70 * 100, 0.15 * 2000, 0.25 * 1000]
         ss = [sum(w5), 70.0, 0.0, 300.0, -250.0]
-        g0 = [
+        g0: list[list[float]] = [
             [0, 0.15, 0, 0.45, 0.45],
             [0.15, 0, 0, 0.45, 0.45],
             [0, 0, 0, 0, 0],

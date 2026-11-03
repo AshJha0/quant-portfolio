@@ -123,8 +123,10 @@ and Rust option engines) are wrappers that keep their own names, argument
 order, validation and boundary rules. Worked example: S = K = 100, T = 1,
 r = 5%, q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
 `gk_price` with `r_d = 5%`, `r_f = 2%`, and from the kernel itself. Moving
-the maths into the kernel changed no output bit on a 5,944-quote grid in
-any language; `tests/test_carry_twin.py` pins it. The C++ and Rust kernels
+the maths into the kernel changed no output bit on 5,944 quotes in any
+language (the 1,944-entry grid that `tests/test_carry_twin.py` pins, plus
+4,000 seeded random quotes; see
+`python/fx/01-options-pricing/docs/VALIDATION.md`). The C++ and Rust kernels
 take the normal CDF as a type parameter, because the equity and FX engines
 use different implementations. The Python FX `analytic_greeks` moves to
 the shared normal CDF in this release, which changes its outputs by at most

@@ -41,9 +41,11 @@ namespace detail {
 
 inline void check_square(std::span<const double> m, std::size_t n, const char* name) {
     if (n == 0 || m.size() != n * n)
-        throw std::invalid_argument(std::string(name) + " must be a non-empty n x n row-major matrix");
+        throw std::invalid_argument(std::string(name) +
+                                    " must be a non-empty n x n row-major matrix");
     for (double v : m)
-        if (!std::isfinite(v)) throw std::invalid_argument(std::string(name) + " contains NaN or infinite values");
+        if (!std::isfinite(v))
+            throw std::invalid_argument(std::string(name) + " contains NaN or infinite values");
 }
 
 struct Lu {
@@ -112,7 +114,8 @@ inline double norm1(std::span<const double> m, std::size_t n) {
     return best;
 }
 
-inline std::vector<double> matmul(std::span<const double> a, std::span<const double> b, std::size_t n) {
+inline std::vector<double> matmul(std::span<const double> a, std::span<const double> b,
+                                  std::size_t n) {
     std::vector<double> c(n * n, 0.0);
     for (std::size_t i = 0; i < n; ++i)
         for (std::size_t k = 0; k < n; ++k) {
@@ -123,7 +126,8 @@ inline std::vector<double> matmul(std::span<const double> a, std::span<const dou
 }
 
 inline void check_step(double h) {
-    if (!std::isfinite(h) || h <= 0.0) throw std::invalid_argument("finite-difference step must be > 0");
+    if (!std::isfinite(h) || h <= 0.0)
+        throw std::invalid_argument("finite-difference step must be > 0");
 }
 
 inline void check_point(std::span<const double> x) {
@@ -141,7 +145,8 @@ inline std::vector<double> checked_inverse(std::span<const double> jac, std::siz
     auto inv = detail::Lu(jac, n).inverse();
     const double cond = detail::norm1(jac, n) * detail::norm1(inv, n);
     if (!std::isfinite(cond) || cond > kMaxCondition)
-        throw std::invalid_argument("Jacobian is numerically singular (condition number above 1e12)");
+        throw std::invalid_argument(
+            "Jacobian is numerically singular (condition number above 1e12)");
     return inv;
 }
 
@@ -149,7 +154,8 @@ inline std::vector<double> checked_inverse(std::span<const double> jac, std::siz
 inline std::vector<double> node_to_quote_risk(std::span<const double> jac, std::size_t n,
                                               std::span<const double> node_risk) {
     detail::check_square(jac, n, "Jacobian");
-    if (node_risk.size() != n) throw std::invalid_argument("node risk length must equal the node count");
+    if (node_risk.size() != n)
+        throw std::invalid_argument("node risk length must equal the node count");
     (void)checked_inverse(jac, n);
     return detail::Lu(detail::transpose(jac, n), n).solve(node_risk);
 }
@@ -192,8 +198,9 @@ inline std::vector<double> quote_gamma(std::span<const double> jac, std::size_t 
 }
 
 // Central-difference Jacobian J[i][j] = d f_i / d x_j, row-major (m x n).
-inline std::vector<double> fd_jacobian(const std::function<std::vector<double>(std::span<const double>)>& f,
-                                       std::span<const double> x, double h) {
+inline std::vector<double> fd_jacobian(
+    const std::function<std::vector<double>(std::span<const double>)>& f, std::span<const double> x,
+    double h) {
     detail::check_step(h);
     detail::check_point(x);
     const std::size_t n = x.size();
@@ -238,7 +245,9 @@ inline std::vector<double> cross_gamma(const std::function<double(std::span<cons
         const double dn = f(v);
         out[i * n + i] = (up - 2.0 * f0 + dn) / (h * h);
         for (std::size_t j = i + 1; j < n; ++j) {
-            const double g = (at(i, 1, j, 1) - at(i, 1, j, -1) - at(i, -1, j, 1) + at(i, -1, j, -1)) / (4.0 * h * h);
+            const double g =
+                (at(i, 1, j, 1) - at(i, 1, j, -1) - at(i, -1, j, 1) + at(i, -1, j, -1)) /
+                (4.0 * h * h);
             out[i * n + j] = g;
             out[j * n + i] = g;
         }
@@ -251,7 +260,8 @@ class VolGrid {
 public:
     VolGrid(std::vector<std::vector<double>> axes, std::vector<double> vols)
         : axes_(std::move(axes)), vols_(std::move(vols)) {
-        if (axes_.size() < 2 || axes_.size() > 3) throw std::invalid_argument("a vol grid has 2 or 3 axes");
+        if (axes_.size() < 2 || axes_.size() > 3)
+            throw std::invalid_argument("a vol grid has 2 or 3 axes");
         std::size_t size = 1;
         for (const auto& a : axes_) {
             if (a.empty()) throw std::invalid_argument("axes must be non-empty");
@@ -262,7 +272,8 @@ public:
         }
         if (vols_.size() != size) throw std::invalid_argument("vols size does not match the axes");
         for (double v : vols_)
-            if (!std::isfinite(v) || v < 0.0) throw std::invalid_argument("node vols must be finite and >= 0");
+            if (!std::isfinite(v) || v < 0.0)
+                throw std::invalid_argument("node vols must be finite and >= 0");
     }
 
     const std::vector<std::vector<double>>& axes() const { return axes_; }
@@ -270,7 +281,8 @@ public:
 
     // Multilinear weights at coords (row-major, flat extrapolation, sum to 1).
     std::vector<double> weights(std::span<const double> coords) const {
-        if (coords.size() != axes_.size()) throw std::invalid_argument("wrong number of coordinates");
+        if (coords.size() != axes_.size())
+            throw std::invalid_argument("wrong number of coordinates");
         std::vector<double> w{1.0};
         for (std::size_t d = 0; d < axes_.size(); ++d) {
             const auto& a = axes_[d];
@@ -281,7 +293,9 @@ public:
             } else if (x >= a.back()) {
                 wa.back() = 1.0;
             } else {
-                const auto i = static_cast<std::size_t>(std::upper_bound(a.begin(), a.end(), x) - a.begin()) - 1;
+                const auto i =
+                    static_cast<std::size_t>(std::upper_bound(a.begin(), a.end(), x) - a.begin()) -
+                    1;
                 const double t = (x - a[i]) / (a[i + 1] - a[i]);
                 wa[i] = 1.0 - t;
                 wa[i + 1] = t;
@@ -314,8 +328,8 @@ private:
 };
 
 // Bucket vegas (value per unit vol), row-major; one-sided where vol < h.
-inline std::vector<double> vega_grid(const std::function<double(const VolGrid&)>& pv, const VolGrid& grid,
-                                     double h) {
+inline std::vector<double> vega_grid(const std::function<double(const VolGrid&)>& pv,
+                                     const VolGrid& grid, double h) {
     if (!std::isfinite(h) || h <= 0.0) throw std::invalid_argument("bump must be > 0");
     std::optional<double> base;
     std::vector<double> out;
@@ -333,7 +347,8 @@ inline std::vector<double> vega_grid(const std::function<double(const VolGrid&)>
 }
 
 // Per-factor second-order P&L; gamma is n x n row-major or empty.
-inline std::vector<double> taylor_attribution(std::span<const double> delta, std::span<const double> moves,
+inline std::vector<double> taylor_attribution(std::span<const double> delta,
+                                              std::span<const double> moves,
                                               std::span<const double> gamma = {}) {
     const std::size_t n = delta.size();
     if (n == 0 || moves.size() != n)
@@ -344,7 +359,8 @@ inline std::vector<double> taylor_attribution(std::span<const double> delta, std
         if (gamma.size() != n * n) throw std::invalid_argument("gamma must be n x n");
         for (std::size_t i = 0; i < n; ++i) {
             double s = 0.0;
-            for (std::size_t j = 0; j < n; ++j) s += 0.5 * (gamma[i * n + j] + gamma[j * n + i]) * moves[j];
+            for (std::size_t j = 0; j < n; ++j)
+                s += 0.5 * (gamma[i * n + j] + gamma[j * n + i]) * moves[j];
             out[i] += 0.5 * moves[i] * s;
         }
     }
@@ -381,7 +397,8 @@ inline PnlExplain explain(double hpl, std::span<const double> time, std::span<co
     for (double v : time) finite = finite && std::isfinite(v);
     for (double v : risk) finite = finite && std::isfinite(v);
     if (!finite) throw std::invalid_argument("explain inputs must be finite (NaN policy: refuse)");
-    return PnlExplain{hpl, std::vector<double>(time.begin(), time.end()), std::move(risk), new_trades};
+    return PnlExplain{hpl, std::vector<double>(time.begin(), time.end()), std::move(risk),
+                      new_trades};
 }
 
 }  // namespace qp::risk

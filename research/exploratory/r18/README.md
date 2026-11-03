@@ -1,4 +1,4 @@
-# research/results/r18: Round 18 real-data runs (exploratory and verification)
+# research/exploratory/r18: Round 18 real-data runs (exploratory and verification)
 
 Nothing here is a confirmatory result. No registration was signed, and the
 2016-2026 hold-out lock stayed closed.
