@@ -12,6 +12,13 @@ To decide whether a change made the code slower, the CI bench job does not
 compare with numbers from another machine. It builds the old commit and the
 new one on the same runner and runs them in turns.
 
+This page covers the engine and kernel benches. The low-latency track
+(`cpp/ull`, `rust/ull`) times single calls with coordinated-omission
+correction instead; its method is [LATENCY_METHOD.md](LATENCY_METHOD.md),
+and the Java figures (JMH and `LatencyMain`) are in
+[`../java/README.md`](../java/README.md). All of them are software,
+in-process latency on one machine, not wire-to-wire.
+
 ## The method, stated exactly
 
 Shared code: `cpp/core/include/qp/bench/latency.hpp` (C++) and
