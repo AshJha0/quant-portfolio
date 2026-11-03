@@ -157,6 +157,22 @@ class GatewayTest {
     }
 
     @Test
+    void selfTradePrefilterTracksBestPriceThroughRemovals() {
+        newOrder(1, p1, 1, 10, 10_400);
+        newOrder(2, p1, 1, 10, 10_400);
+        newOrder(3, p1, 1, 10, 10_200);
+        assertEquals(PreTradeRisk.SELF_TRADE, newOrder(4, p1, -1, 1, 10_300).get(0).code());
+        run(cmd.set(Command.VENUE_CANCELED, 1, null, 0, 0, 0));
+        assertEquals(PreTradeRisk.SELF_TRADE, newOrder(5, p1, -1, 1, 10_300).get(0).code(), "order 2 still at 10,400");
+        run(cmd.set(Command.VENUE_CANCELED, 2, null, 0, 0, 0));
+        assertEquals(Report.SEND_NEW, newOrder(6, p1, -1, 1, 10_300).get(0).type(), "best bid now 10,200");
+        assertEquals(PreTradeRisk.SELF_TRADE, newOrder(7, p1, -1, 1, 10_200).get(0).code());
+        // Another firm's resting bid is not a self-trade.
+        assertEquals(Report.SEND_NEW, newOrder(8, new int[] {sym.intern("XF"), rates, mm1, ust10}, 1, 1, 10_350)
+            .get(0).type(), "another firm crossing our offer is not a self-trade");
+    }
+
+    @Test
     void throttleRejectsAndDoesNotQueue() {
         OrderGateway g = new OrderGateway(sym, 64, 64, 4, out, clock, 3, 1_000_000L, 64);
         gw = g;

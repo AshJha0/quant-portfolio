@@ -52,6 +52,13 @@ public final class OmsCore {
     private final long[] workingBuy;
     private final long[] workingSell;
     private long workingNotional;
+    // Self-trade prefilter: best open buy / sell price per symbol and how many open orders sit there.
+    // When the last order at the best price leaves, the best is recomputed lazily by a scan.
+    private final long[] bestBuy;
+    private final long[] bestSell;
+    private final int[] nAtBestBuy;
+    private final int[] nAtBestSell;
+    private final boolean[] bestDirty;
 
     /** Status of the order after the most recent operation (also for rows already freed). */
     private int lastStatus;
@@ -82,6 +89,50 @@ public final class OmsCore {
         position = new long[maxSymbols];
         workingBuy = new long[maxSymbols];
         workingSell = new long[maxSymbols];
+        bestBuy = new long[maxSymbols];
+        bestSell = new long[maxSymbols];
+        nAtBestBuy = new int[maxSymbols];
+        nAtBestSell = new int[maxSymbols];
+        bestDirty = new boolean[maxSymbols];
+        java.util.Arrays.fill(bestBuy, Long.MIN_VALUE);
+        java.util.Arrays.fill(bestSell, Long.MAX_VALUE);
+    }
+
+    private void bestOnAdd(int sym, int s, long p) {
+        if (s > 0) {
+            if (p > bestBuy[sym]) {
+                bestBuy[sym] = p;
+                nAtBestBuy[sym] = 1;
+            } else if (p == bestBuy[sym]) {
+                nAtBestBuy[sym]++;
+            }
+        } else {
+            if (p < bestSell[sym]) {
+                bestSell[sym] = p;
+                nAtBestSell[sym] = 1;
+            } else if (p == bestSell[sym]) {
+                nAtBestSell[sym]++;
+            }
+        }
+    }
+
+    private void bestOnRemove(int sym, int s, long p) {
+        if (s > 0 && p == bestBuy[sym] && --nAtBestBuy[sym] == 0) {
+            bestDirty[sym] = true;
+        } else if (s < 0 && p == bestSell[sym] && --nAtBestSell[sym] == 0) {
+            bestDirty[sym] = true;
+        }
+    }
+
+    private void recomputeBest(int sym) {
+        bestBuy[sym] = Long.MIN_VALUE;
+        bestSell[sym] = Long.MAX_VALUE;
+        nAtBestBuy[sym] = 0;
+        nAtBestSell[sym] = 0;
+        for (int r = symHead[sym]; r >= 0; r = next[r]) {
+            bestOnAdd(sym, side[r], px[r]);
+        }
+        bestDirty[sym] = false;
     }
 
     public int openCount() {
@@ -114,6 +165,7 @@ public final class OmsCore {
             prev[symHead[sym]] = r;
         }
         symHead[sym] = r;
+        bestOnAdd(sym, orderSide, orderPx);
         addWorking(r, orderQty);
         record(r);
         return true;
@@ -221,6 +273,7 @@ public final class OmsCore {
         if (next[r] >= 0) {
             prev[next[r]] = prev[r];
         }
+        bestOnRemove(sym, side[r], px[r]);
         free[nFree++] = r;
     }
 
@@ -257,6 +310,14 @@ public final class OmsCore {
      * firm, on the other side, at a price the new order would cross?
      */
     public boolean wouldSelfTrade(int[] orderPath, int orderSide, long orderPx) {
+        int sym = orderPath[3];
+        if (bestDirty[sym]) {
+            recomputeBest(sym);
+        }
+        // O(1) prefilter over all firms: no open opposite order at a crossable price means no self-trade.
+        if (orderSide > 0 ? orderPx < bestSell[sym] : orderPx > bestBuy[sym]) {
+            return false;
+        }
         for (int r = symHead[orderPath[3]]; r >= 0; r = next[r]) {
             if (side[r] != orderSide && path[r][0] == orderPath[0] && status[r] != OrderStatus.PENDING_CANCEL) {
                 boolean cross = orderSide > 0 ? orderPx >= px[r] : orderPx <= px[r];
