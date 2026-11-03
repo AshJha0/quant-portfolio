@@ -17,11 +17,18 @@
 //     variance and a drift on top of Sigma.
 //
 // Determinism
-// All randomness flows through fxvar::Rng: mt19937_64 driving inverse-CDF
-// transforms implemented in this library (never std::normal_distribution).
-// A fixed seed gives the same scenarios on one platform. Across platforms
-// results can differ in the last bits, because std::log, std::exp and
-// std::erfc are not correctly rounded and differ between libms.
+// Scenario s of a simulation draws from its own Philox4x32-10 stream
+// (key = seed, counter = s) with AS 241 normals (qp/path_rng.hpp, W4(b)):
+// its k factor normals, then the Student-t chi-square or the Poisson jump
+// count and one normal per jump factor with sd > 0. Bootstrap resample b
+// draws its indices from stream (seed ^ 0x9E3779B97F4A7C15, b). The draws
+// depend only on (seed, s), so the scenarios do not depend on evaluation
+// order or thread count, and the Rust engine gives the same bits on the
+// same libm (std::log, std::exp and std::sqrt are not correctly rounded and
+// can differ between libms in the last bit). Each jump factor moves by
+// N(n mu_J, n sigma_J^2) given n jumps, the exact law of the sum of n
+// N(mu_J, sigma_J^2) jumps. fxvar::Rng (mt19937_64) remains for the stress
+// and test helpers.
 //
 // Standard error
 // monte_carlo_var simulates once and reports the bootstrap SE of the VaR

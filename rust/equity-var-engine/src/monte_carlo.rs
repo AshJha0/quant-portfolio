@@ -571,11 +571,21 @@ pub(crate) fn bootstrap_resample_var(
 ) -> f64 {
     let n = pnl.len();
     let nf = n as f64;
-    let mut rng = qp_core::philox::PhiloxStream::new(seed, b);
-    for slot in buf.iter_mut() {
-        let idx = ((rng.uniform() * nf) as usize).min(n - 1);
-        // `idx <= n - 1` by the `min`; `get` keeps the path panic-free.
-        *slot = -pnl.get(idx).copied().unwrap_or(0.0);
+    // Uniforms come from the batched Philox generator (LANES blocks side by
+    // side, the same words as `PhiloxStream::new(seed, b)`; a test checks
+    // it). The one-word-at-a-time stream cost more than the rest of the
+    // resample put together.
+    let mut u = [0.0f64; 2 * crate::rng::LANES];
+    let mut block = 0u64;
+    for chunk in buf.chunks_mut(2 * crate::rng::LANES) {
+        let uc = &mut u[..chunk.len()];
+        crate::rng::philox_uniforms(seed, b, block, uc);
+        block += crate::rng::LANES as u64;
+        for (slot, &ui) in chunk.iter_mut().zip(uc.iter()) {
+            let idx = ((ui * nf) as usize).min(n - 1);
+            // `idx <= n - 1` by the `min`; `get` keeps the path panic-free.
+            *slot = -pnl.get(idx).copied().unwrap_or(0.0);
+        }
     }
     let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
     *lm

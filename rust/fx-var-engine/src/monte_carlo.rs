@@ -25,10 +25,14 @@
 //!
 //! # Determinism
 //!
-//! All randomness flows through [`crate::rng::Rng`] (xoshiro256++ driving
-//! inverse-CDF transforms implemented in this crate). A fixed seed repeats
-//! the scenario set and VaR exactly on the same build and platform; no
-//! claim is made across platforms (libm `ln`/`exp` may differ by an ulp).
+//! Scenario `s` draws from its own Philox4x32-10 stream `(seed, s)` with
+//! AS 241 normals ([`qp_core::path_rng::PathRng`], W4(b)): its `k` factor
+//! normals, then the Student-t chi-square or the Poisson jump count and one
+//! normal per jump factor with `sd > 0`. Bootstrap resample `b` draws its
+//! indices from stream `(seed ^ 0x9E37_79B9_7F4A_7C15, b)`. The scenarios
+//! and VaR are the same bits for any thread count, and the C++ engine
+//! (`fxvar`, built with `-ffp-contract=off`) gives the same bits on the
+//! same libm; across libms `ln`/`exp`/`sqrt` may differ by an ulp.
 //!
 //! # Standard error
 //!
@@ -47,9 +51,9 @@ use crate::expected_shortfall::empirical_var_es;
 use crate::matrix::Matrix;
 use crate::option_reval::{OptionLeg, layout_option_book, option_book_pnl};
 use crate::returns::{FactorCov, ReturnsMatrix};
-use crate::rng::Rng;
-use crate::stats::{inv_norm_cdf_unchecked, validate_alpha, validate_horizon};
+use crate::stats::{validate_alpha, validate_horizon};
 use crate::{FxVarError, McDist, Result};
+use qp_core::path_rng::PathRng;
 
 /// Common-jump overlay for [`McDist::Jump`]: `prob` is the per-day jump
 /// probability, turned into a Poisson count over the horizon (see the
@@ -261,7 +265,6 @@ fn simulate_threads(
         String::new()
     };
 
-    let mut rng = Rng::new(seed);
     let mut data = Matrix::zeros(n_scenarios, k);
 
     // Pre-resolve jump columns so the per-scenario loop is branch-light.
@@ -269,7 +272,11 @@ fn simulate_threads(
     let mut jump_mean = Vec::new();
     let mut jump_std = Vec::new();
     if dist == McDist::Jump {
-        for (f, &m) in &jumps.mean {
+        // Factor-name order, as the C++ engine's std::map: the jump normals
+        // are drawn in this order, and HashMap order is not stable.
+        let mut named: Vec<(&String, f64)> = jumps.mean.iter().map(|(f, &m)| (f, m)).collect();
+        named.sort_by(|a, b| a.0.cmp(b.0));
+        for (f, m) in named {
             if let Some(col) = cov.factors.iter().position(|x| x == f) {
                 jump_col.push(col);
                 jump_mean.push(m);
@@ -284,100 +291,28 @@ fn simulate_threads(
     } else {
         1.0
     };
-    let jc = jump_col.len();
-
-    // Phase 1 (serial, cheap): walk the single RNG stream in the reference
-    // order. Each scenario takes k uniforms for its normals (stored raw in
-    // its row), then its Student-t mixing draw or its jump draws, which are
-    // kept in side buffers. The stream and its order are unchanged.
-    let mut mult = if dist == McDist::StudentT {
-        vec![0.0; n_scenarios]
-    } else {
-        Vec::new()
+    let path = PathSpec {
+        lower: lower.as_slice(),
+        k,
+        dist,
+        df,
+        t_scale,
+        jump_mu: jump_lam_h,
+        jump_col: &jump_col,
+        jump_mean: &jump_mean,
+        jump_std: &jump_std,
+        seed,
     };
-    let mut n_jumps_buf = if dist == McDist::Jump {
-        vec![0.0; n_scenarios]
-    } else {
-        Vec::new()
-    };
-    let mut zj_buf = if dist == McDist::Jump {
-        vec![0.0; n_scenarios * jc]
-    } else {
-        Vec::new()
-    };
-    {
-        let flat = data.as_mut_slice();
-        for s in 0..n_scenarios {
-            if let Some(row) = flat.get_mut(s * k..(s + 1) * k) {
-                for u in row.iter_mut() {
-                    *u = rng.uniform_open();
-                }
-            }
-            if dist == McDist::StudentT {
-                let w = rng.chi_square(df) / df;
-                if let Some(m) = mult.get_mut(s) {
-                    *m = t_scale / w.sqrt();
-                }
-            } else if dist == McDist::Jump {
-                if let Some(nj) = n_jumps_buf.get_mut(s) {
-                    *nj = poisson(&mut rng, jump_lam_h) as f64;
-                }
-                if let Some(zs) = zj_buf.get_mut(s * jc..(s + 1) * jc) {
-                    for (z, &sd) in zs.iter_mut().zip(&jump_std) {
-                        *z = if sd > 0.0 { rng.normal() } else { 0.0 };
-                    }
-                }
-            }
-        }
-    }
-
-    // Phase 2 (parallel, heavy): per row, inverse-CDF the stored uniforms,
-    // multiply by the Cholesky factor, then apply the per-scenario Student-t
-    // scale or jump overlay. Each row depends only on itself, so a fixed
-    // contiguous partition gives the same bits for any thread count.
-    let lower_flat = lower.as_slice();
-    let (mult, n_jumps_buf, zj_buf) = (&mult, &n_jumps_buf, &zj_buf);
-    let (jump_col, jump_mean, jump_std) = (&jump_col, &jump_mean, &jump_std);
+    // Scenario s reads only its own Philox stream (seed, s) (W4(b)), so a
+    // fixed contiguous partition gives the same bits for any thread count.
     crate::par::for_row_chunks(
         data.as_mut_slice(),
         k,
         SIM_MIN_ROWS,
         threads,
         |first, chunk| {
-            let mut z = vec![0.0; k];
             for (r, row) in chunk.chunks_exact_mut(k.max(1)).enumerate() {
-                let s = first + r;
-                for (zi, &u) in z.iter_mut().zip(row.iter()) {
-                    *zi = inv_norm_cdf_unchecked(u);
-                }
-                for (i, (out, li)) in row
-                    .iter_mut()
-                    .zip(lower_flat.chunks_exact(k.max(1)))
-                    .enumerate()
-                {
-                    let mut acc = 0.0;
-                    for (a, b) in li.iter().zip(z.iter()).take(i + 1) {
-                        acc += a * b;
-                    }
-                    *out = acc;
-                }
-                if dist == McDist::StudentT {
-                    let m = mult.get(s).copied().unwrap_or(1.0);
-                    for v in row.iter_mut() {
-                        *v *= m;
-                    }
-                } else if dist == McDist::Jump {
-                    let n_jumps = n_jumps_buf.get(s).copied().unwrap_or(0.0);
-                    let zs = zj_buf.get(s * jc..(s + 1) * jc).unwrap_or(&[]);
-                    for (idx, &zj) in zs.iter().enumerate() {
-                        if n_jumps > 0.0 {
-                            let (col, mean, sd) = (jump_col[idx], jump_mean[idx], jump_std[idx]);
-                            if let Some(x) = row.get_mut(col) {
-                                *x = *x + n_jumps * mean + sd * n_jumps.sqrt() * zj;
-                            }
-                        }
-                    }
-                }
+                simulate_path(&path, (first + r) as u64, row);
             }
         },
     );
@@ -392,8 +327,9 @@ fn simulate_threads(
 }
 
 /// Poisson(`mu`) draw by sequential inversion (one uniform per draw);
-/// `mu <= 700` so `exp(-mu)` does not underflow.
-fn poisson(rng: &mut Rng, mu: f64) -> u64 {
+/// `mu <= 700` so `exp(-mu)` does not underflow. The C++ twin is
+/// `fxvar::detail::path_poisson`.
+fn poisson(rng: &mut PathRng, mu: f64) -> u64 {
     if mu <= 0.0 {
         return 0;
     }
@@ -412,10 +348,72 @@ fn poisson(rng: &mut Rng, mu: f64) -> u64 {
     k
 }
 
+/// Model constants of one factor simulation.
+pub(crate) struct PathSpec<'a> {
+    /// Lower Cholesky factor of the horizon covariance, `k x k` row-major.
+    pub(crate) lower: &'a [f64],
+    pub(crate) k: usize,
+    pub(crate) dist: McDist,
+    pub(crate) df: f64,
+    /// `sqrt((df - 2) / df)` for Student-t, else 1.
+    pub(crate) t_scale: f64,
+    /// Poisson jump mean over the horizon (0 when there are no jumps).
+    pub(crate) jump_mu: f64,
+    pub(crate) jump_col: &'a [usize],
+    pub(crate) jump_mean: &'a [f64],
+    pub(crate) jump_std: &'a [f64],
+    pub(crate) seed: u64,
+}
+
+/// Scenario `s` (W4(b)): Philox stream `(seed, s)`, the `k` normals first
+/// (AS 241, batched), `x = L z` formed in place from the last row up, then
+/// the Student-t mixing draw, or the jump count and one normal per jump
+/// factor with `sd > 0` (a jump factor moves by `n mu + sd sqrt(n) z`).
+/// Same operations and order as the C++ `fxvar::detail::simulate_path`.
+pub(crate) fn simulate_path(spec: &PathSpec<'_>, s: u64, row: &mut [f64]) {
+    let k = spec.k;
+    let mut rng = PathRng::new(spec.seed, s);
+    for chunk in row.chunks_mut(2 * qp_core::path_rng::LANES) {
+        rng.fill_normals(chunk);
+    }
+    for i in (0..k).rev() {
+        let li = spec.lower.get(i * k..i * k + i + 1).unwrap_or(&[]);
+        let mut acc = 0.0;
+        for (a, b) in li.iter().zip(row.iter()) {
+            acc += a * b;
+        }
+        if let Some(x) = row.get_mut(i) {
+            *x = acc;
+        }
+    }
+    match spec.dist {
+        McDist::StudentT => {
+            let w = rng.chi_square(spec.df) / spec.df;
+            let m = spec.t_scale / w.sqrt();
+            for v in row.iter_mut() {
+                *v *= m;
+            }
+        }
+        McDist::Jump => {
+            let nj = poisson(&mut rng, spec.jump_mu) as f64;
+            for ((&col, &mean), &sd) in spec.jump_col.iter().zip(spec.jump_mean).zip(spec.jump_std)
+            {
+                let zj = if sd > 0.0 { rng.standard_normal() } else { 0.0 };
+                if nj > 0.0
+                    && let Some(x) = row.get_mut(col)
+                {
+                    *x = *x + nj * mean + sd * nj.sqrt() * zj;
+                }
+            }
+        }
+        McDist::Normal => {}
+    }
+}
+
 /// Bootstrap standard error of the S2 order-statistic VaR (primary SE).
 ///
-/// Resamples `pnl` with replacement `n_boot` times from one seeded
-/// [`Rng`], recomputes the S2 VaR `L(m)` on each resample (selection, not a
+/// Resamples `pnl` with replacement `n_boot` times, resample `b` from its
+/// own Philox stream `(seed, b)`, recomputes the S2 VaR `L(m)` on each resample (selection, not a
 /// sort; `m` depends only on `n` and `alpha`), and returns the sample
 /// standard deviation (`ddof = 1`) of the `n_boot` estimates. Memory is one
 /// resample buffer of length `n`, never an `n_boot x n` index matrix.
@@ -440,13 +438,10 @@ const BOOT_PAR_MIN_DRAWS: usize = 1 << 19;
 
 /// Bootstrap replicates of the rank-`m` loss, in replicate order.
 ///
-/// Replicate `b` uses draws `b * n .. (b + 1) * n` of one RNG stream, as in
-/// the serial reference. The `n_boot` replicates are split into at most
-/// `threads` contiguous chunks. A cheap serial pass advances a copy of the
-/// generator (raw `next_u64` only) to record the state at each chunk start.
-/// One scoped thread per chunk then regenerates its own draws from that
-/// state, gathers and selects. The estimates are the same bits as the
-/// one-thread loop.
+/// Replicate `b` draws its `n` indices `min(n - 1, floor(u n))` from Philox
+/// stream `(seed, b)`. The `n_boot` replicates are split into at most
+/// `threads` contiguous chunks, one scoped thread each; a replicate depends
+/// only on `b`, so the estimates are the same bits on any thread count.
 fn bootstrap_estimates(
     pnl: &[f64],
     m: usize,
@@ -463,40 +458,40 @@ fn bootstrap_estimates(
         threads.clamp(1, n_boot.max(1))
     };
     let per = n_boot.div_ceil(threads).max(1);
-    // Generator state at the start of each chunk.
-    let mut starts = Vec::with_capacity(threads);
-    let mut rng = Rng::new(seed);
-    for c in 0..n_boot.div_ceil(per) {
-        starts.push(rng.clone());
-        if c + 1 < n_boot.div_ceil(per) {
-            for _ in 0..per * n {
-                rng.next_u64();
-            }
-        }
-    }
-    let work = |mut rng: Rng, chunk: &mut [f64]| {
+    // Replicate b draws its n indices from its own Philox stream (seed, b)
+    // (W4(b)), batched 32 words at a time; same words as PathRng::uniform.
+    let work = |first: usize, chunk: &mut [f64]| {
+        let lanes = qp_core::path_rng::LANES;
         let mut buf = vec![0.0; n];
-        for e in chunk.iter_mut() {
-            for b in buf.iter_mut() {
-                let i = ((rng.uniform() * n as f64) as usize).min(n - 1);
-                *b = -pnl.get(i).copied().unwrap_or(0.0);
+        let mut u = vec![0.0; 2 * lanes];
+        for (r, e) in chunk.iter_mut().enumerate() {
+            let b = (first + r) as u64;
+            let mut block = 0u64;
+            for part in buf.chunks_mut(2 * lanes) {
+                let uc = u.get_mut(..part.len()).unwrap_or(&mut []);
+                qp_core::path_rng::philox_uniforms(seed, b, block, uc);
+                block += lanes as u64;
+                for (slot, &ui) in part.iter_mut().zip(uc.iter()) {
+                    let i = ((ui * n as f64) as usize).min(n - 1);
+                    *slot = -pnl.get(i).copied().unwrap_or(0.0);
+                }
             }
             let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
             *e = *lm;
         }
     };
-    let mut jobs = est.chunks_mut(per).zip(starts);
     if threads == 1 {
-        jobs.for_each(|(chunk, r)| work(r, chunk));
+        work(0, &mut est);
     } else {
         let work = &work;
         std::thread::scope(|sc| {
+            let mut jobs = est.chunks_mut(per).enumerate();
             let first = jobs.next();
-            for (chunk, r) in jobs {
-                sc.spawn(move || work(r, chunk));
+            for (c, chunk) in jobs {
+                sc.spawn(move || work(c * per, chunk));
             }
-            if let Some((chunk, r)) = first {
-                work(r, chunk);
+            if let Some((_, chunk)) = first {
+                work(0, chunk);
             }
         });
     }
@@ -863,6 +858,7 @@ mod tests {
     use super::*;
     use crate::TailDist;
     use crate::book::{Position, SpotPosition};
+    use crate::rng::Rng;
 
     fn cov1() -> FactorCov {
         FactorCov {

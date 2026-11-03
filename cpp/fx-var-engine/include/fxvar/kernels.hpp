@@ -78,7 +78,7 @@ namespace fxvar {
 [[nodiscard]] Result<void> try_cholesky_lower(const Matrix& a, std::span<double> lower) noexcept;
 
 /// Scenarios x = L z (times the Student-t mixing factor for kStudentT) into
-/// `out` (n_scenarios * k, row-major), from the same mt19937_64 stream as
+/// `out` (n_scenarios * k, row-major), from the same per-path Philox streams as
 /// simulate_factor_returns(cov, n_scenarios, dist, df, {}, seed, h): pass
 /// the factor of cov * h. kJump is not supported here (error).
 [[nodiscard]] Result<void> try_simulate_factor_returns(std::span<const double> lower, std::size_t k,

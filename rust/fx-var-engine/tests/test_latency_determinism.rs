@@ -101,32 +101,36 @@ fn monte_carlo_matches_pre_rewrite_bits() {
     // Re-pinned in Round 8 (W20): the normals now come from the shared
     // qp_core::stats inverse CDF, whose Halley step uses a lower-tail-exact
     // normal CDF; every value moved by less than 1e-12 relative.
+    // Re-pinned again in Round 8 (perf-fix lane, W4(b) for FX): scenario s
+    // now draws from Philox stream (seed, s) with AS 241 normals and the
+    // bootstrap from per-resample streams, so every value moved within Monte
+    // Carlo error (VaR by 0.07 % normal, 1.2 % Student-t, 0.3 % jump).
     let pinned: [(McDist, [u64; 4]); 3] = [
         (
             McDist::Normal,
             [
-                4685455079207104509,
-                4686410565451505562,
-                4657095559504159879,
-                4655565937955669651,
+                4685459142851392166,
+                4686337053181062990,
+                4656950455384134823,
+                4655454433157111485,
             ],
         ),
         (
             McDist::StudentT,
             [
-                4686150028457073071,
-                4688374324442965625,
-                4659162002223065312,
-                4658866423433919213,
+                4686233665241628561,
+                4688493082336337432,
+                4657742516503880608,
+                4658038070050354006,
             ],
         ),
         (
             McDist::Jump,
             [
-                4685990298010813155,
-                4687073495714471207,
-                4657605887974892853,
-                4656117938015996188,
+                4686013487656872710,
+                4687018863430787878,
+                4657157879210354217,
+                4655846722963673680,
             ],
         ),
     ];
