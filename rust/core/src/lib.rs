@@ -25,6 +25,7 @@
 //! | [`quantile`] | O(n) selection and type-7 quantile, same bits as a sort | new, opt-in |
 //! | [`gemm`] | Cache-blocked GEMM and `D^T D`, same bits as the naive loops | eq VaR covariance |
 //! | [`holidays`] | Rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards, NDF value | new, opt-in |
+//! | [`rates_vol`] | SABR implied vol (Hagan, Obloj, shifted) and the Hull-White trinomial Bermudan | new, opt-in |
 //! | [`vmath`] | Branch-free batch exp/erfc/normal CDF with documented tolerances | new, opt-in |
 //! | [`Error`] | Invalid-input / numerical-failure error shared by the fallible functions here | all four (via `From`) |
 //!
@@ -49,6 +50,7 @@ pub mod par;
 pub mod philox;
 pub mod pool;
 pub mod quantile;
+pub mod rates_vol;
 pub mod rng;
 pub mod roots;
 pub mod special;
