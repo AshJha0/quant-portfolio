@@ -763,7 +763,7 @@ tier = 2
 kind = "price"
 purpose = "Arbitrage-aware implied-volatility surface from quotes."
 entrypoints = [
-  "python/equity/09-vol-surface/src/eq_surface/ssvi.py::fit_ssvi",
+  "python/core/src/qp_core/vol/ssvi.py::fit_ssvi",
 ]
 assumptions = [
   "SSVI parameterisation of total variance",
@@ -791,7 +791,7 @@ tier = 2
 kind = "price"
 purpose = "Local volatility surface from total variance or prices."
 entrypoints = [
-  "python/equity/09-vol-surface/src/eq_surface/dupire.py::local_vol_from_total_variance",
+  "python/core/src/qp_core/vol/dupire.py::local_vol_from_total_variance",
 ]
 assumptions = [
   "an arbitrage-free, twice-differentiable input surface",
