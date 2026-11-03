@@ -16,8 +16,8 @@ name = "bench"
 path = "src/bin/bench.rs"
 
 # No third-party dependencies by design: std plus the workspace's own
-# qp-core (RNG, Acklam guess, Cholesky kernel). The special functions are
-# in-crate. See docs/METHODOLOGY.md.
+# qp-core (RNG, Acklam guess, Cholesky kernel, and since W20 the special
+# functions in qp_core::stats). See docs/METHODOLOGY.md.
 [dependencies]
 qp-core = { path = "../core" }
 
