@@ -1,11 +1,13 @@
 """Optional live FX data loader (Frankfurter / ECB reference rates).
 
-Import-guarded per CONVENTIONS.md: nothing in the test suite touches this
-module's network path. The loader needs the optional ``requests`` dependency
-and internet access; both failures raise informative ``RuntimeError`` rather
-than crashing at import time.
+Deprecated: use ``qp_data.fetch("frankfurter:<BASE>:<QUOTE>", start, end)``
+and ``qp_data.get``. :func:`load_frankfurter` now delegates to qp_data
+(retries, backoff, one parser) and is removed in v4.0.0. It no longer needs
+the optional ``requests`` package.
 
-ECB reference rates are once-a-day (~16:00 CET) fixings, EUR-based; they are
+Nothing in the test suite touches this module's network path.
+
+ECB reference rates are once-a-day (14:15 CET) fixings, EUR-based; they are
 fine for daily realized-vol studies but are NOT tradable prices and carry no
 intraday information (no highs/lows: range estimators cannot be used).
 """
@@ -17,8 +19,6 @@ import pandas as pd
 from ..returns import pair_currencies
 
 __all__ = ["load_frankfurter"]
-
-_API = "https://api.frankfurter.dev/v1"
 
 
 def load_frankfurter(
@@ -48,26 +48,20 @@ def load_frankfurter(
     Raises
     ------
     RuntimeError
-        If ``requests`` is not installed or the network call fails.
+        If qp_data is not installed or the download fails.
     """
     base, quote = pair_currencies(pair)
     try:
-        import requests  # deferred: optional dependency
+        from qp_data import legacy
     except ImportError as exc:  # pragma: no cover - environment dependent
-        raise RuntimeError(
-            "load_frankfurter requires the optional 'requests' package: pip install requests"
-        ) from exc
-
-    url = f"{_API}/{start}..{end or ''}"
+        raise RuntimeError("live data now comes from qp_data: pip install -e python/data") from exc
+    legacy.deprecated("fx_vol.data.live.load_frankfurter", 'qp_data.fetch("frankfurter:...")')
     try:  # pragma: no cover - network path, never exercised in tests
-        resp = requests.get(url, params={"base": base, "symbols": quote}, timeout=timeout)
-        resp.raise_for_status()
-        payload = resp.json()
+        frame = legacy.frankfurter(base, [quote], start, end, timeout=timeout)
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(f"Frankfurter request failed for {pair}: {exc}") from exc
-
-    rates = {pd.Timestamp(d): v[quote] for d, v in payload["rates"].items() if quote in v}
-    if not rates:  # pragma: no cover
+    if quote not in frame.columns or frame[quote].dropna().empty:  # pragma: no cover
         raise RuntimeError(f"Frankfurter returned no {pair} data between {start} and {end}")
-    out = pd.Series(rates, name=pair).sort_index()
-    return out
+    out = frame[quote].dropna().rename(pair)  # pragma: no cover
+    out.index.name = None  # pragma: no cover
+    return out  # pragma: no cover

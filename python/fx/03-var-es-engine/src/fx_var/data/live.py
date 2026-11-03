@@ -1,21 +1,23 @@
 """Guarded live FX data loader (Frankfurter / ECB reference rates).
 
+Deprecated: use ``qp_data.fetch("frankfurter:USD:EUR,JPY", start, end)`` and
+invert. Both functions here now delegate to qp_data (retries, backoff, one
+parser) and are removed in v4.0.0.
+
 Network access is **opt-in only**: nothing in this module runs at import
 time, no test imports it with the guard open, and every call raises unless
 ``allow_network=True`` is passed explicitly or the environment variable
-``FX_VAR_ALLOW_NETWORK=1`` is set.  Library code paths used by tests rely
+``FX_VAR_ALLOW_NETWORK=1`` is set. Library code paths used by tests rely
 exclusively on :mod:`fx_var.data.synthetic` (see CONVENTIONS.md).
 
 Frankfurter serves ECB reference rates - daily fixings only, quoted as
-QUOTE units per 1 unit of the requested base.  For the engine's USD-factor
+QUOTE units per 1 unit of the requested base. For the engine's USD-factor
 convention we request base=USD and invert: CCYUSD = 1 / (CCY per USD).
 """
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.request
 from typing import cast
 
 import numpy as np
@@ -24,8 +26,6 @@ import pandas as pd
 from ..common import fx_factor
 
 __all__ = ["frankfurter_factor_returns", "load_frankfurter"]
-
-_API = "https://api.frankfurter.app"
 
 
 def _check_guard(allow_network: bool | None) -> None:
@@ -67,17 +67,15 @@ def load_frankfurter(
     symbols = [s.upper() for s in symbols if s.upper() != "USD"]
     if not symbols:
         raise ValueError("symbols must contain at least one non-USD currency")
-    span = f"{start}..{end}" if end else f"{start}.."
-    url = f"{_API}/{span}?from=USD&to={','.join(symbols)}"
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
-    rates = payload.get("rates", {})
-    if not rates:
-        raise RuntimeError(f"Frankfurter returned no rates for {url}")
-    frame = pd.DataFrame(rates).T.sort_index()
-    frame.index = pd.to_datetime(frame.index)
+    try:
+        from qp_data import legacy
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError("live data now comes from qp_data: pip install -e python/data") from exc
+    legacy.deprecated("fx_var.data.live.load_frankfurter", 'qp_data.fetch("frankfurter:USD:...")')
+    frame = legacy.frankfurter("USD", symbols, start, end, timeout=timeout)  # pragma: no cover
+    frame.index.name = None  # pragma: no cover
     # Frankfurter gives CCY per USD; invert to USD per CCY (engine convention)
-    return (1.0 / frame[symbols]).astype(float)
+    return (1.0 / frame[symbols]).astype(float)  # pragma: no cover
 
 
 def frankfurter_factor_returns(

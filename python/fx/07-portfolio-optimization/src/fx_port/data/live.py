@@ -1,23 +1,21 @@
-"""Guarded live FX data loader (Frankfurter API).
+"""Live FX data loader (Frankfurter API).
 
-Network access lives ONLY here.  Nothing in the library or the test suite
-imports this module's network functions at import time; tests run fully
-offline against :mod:`fx_port.data.synthetic`.
+Deprecated: use ``qp_data.fetch("frankfurter:USD:EUR,JPY,...", start, end)``
+and invert. :func:`fetch_spots` now delegates to qp_data (retries, backoff,
+one parser) and is removed in v4.0.0.
+
+Nothing in the library or the test suite calls this module's network
+function; tests run fully offline against :mod:`fx_port.data.synthetic`.
 
 The Frankfurter API (https://frankfurter.dev) serves ECB reference rates:
 spot only, no deposit rates, so live panels support spot/momentum/value work
-but carry requires a separate rates source.
+but carry requires a separate rates source (``qp_data``: ``ecb:ESTR``,
+``nyfed:SOFR``, ``boe:IUDSOIA``).
 """
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
-
 import pandas as pd
-
-_API = "https://api.frankfurter.dev/v1"
 
 
 def fetch_spots(
@@ -49,23 +47,21 @@ def fetch_spots(
     Raises
     ------
     RuntimeError
-        If the network is unavailable or the API response is malformed.
-        Callers should catch this and fall back to
+        If qp_data is missing, the network is unavailable or the response is
+        malformed. Callers should catch this and fall back to
         :func:`fx_port.data.synthetic.make_panel`.
     """
-    url = f"{_API}/{start}..{end}?base={base}&symbols={','.join(currencies)}"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
-    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        from qp_data import legacy
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError("live data now comes from qp_data: pip install -e python/data") from exc
+    legacy.deprecated("fx_port.data.live.fetch_spots", 'qp_data.fetch("frankfurter:USD:...")')
+    try:
+        frame = legacy.frankfurter(base, currencies, start, end, timeout=timeout)
+    except Exception as exc:
         raise RuntimeError(
-            f"Frankfurter fetch failed ({exc}); use fx_port.data.synthetic "
-            "for offline work."
+            f"Frankfurter fetch failed ({exc}); use fx_port.data.synthetic for offline work."
         ) from exc
-    try:
-        frame = pd.DataFrame(payload["rates"]).T.sort_index()
-        frame.index = pd.to_datetime(frame.index)
-    except (KeyError, TypeError) as exc:
-        raise RuntimeError(f"malformed Frankfurter response: {exc}") from exc
+    frame.index.name = None
     # API returns CCY per 1 USD; invert to USD per 1 CCY (CCYUSD).
     return (1.0 / frame).astype(float)

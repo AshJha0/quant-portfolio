@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qp-data"
+version = "3.0.0.dev0"
+description = "One data layer for the quant-portfolio projects: keyless free sources, retries, a content-addressed cache, a manifest, publication lags and as-of queries"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "pandas>=2.0",
+    "qp-core",
+]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+test = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+qp_data = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --import-mode=importlib"
+markers = ["live: hits the real network; skipped unless QP_DATA_LIVE_TESTS=1"]
