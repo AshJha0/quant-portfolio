@@ -616,8 +616,8 @@ def fx_spot_date(trade_date: dt.date, pair: str | tuple[str, str],
     n = spot_lag((b, q)) if lag is None else lag
     if isinstance(n, bool) or int(n) != n or n < 0:
         raise ValueError(f"lag must be a non-negative integer, got {lag!r}")
-    non_usd = _shipped(c for c in (b, q) if c != "USD")
-    count_cal = joint_calendar(*non_usd) if non_usd else CALENDARS["USD"]
+    # Count on the shipped non-USD centres; none shipped means weekends only.
+    count_cal = joint_calendar(*_shipped(c for c in (b, q) if c != "USD"))
     d = trade_date
     for _ in range(int(n)):
         d = count_cal.add_business_days(d + _DAY, 0)
