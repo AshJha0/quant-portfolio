@@ -1865,7 +1865,7 @@ from the CI `counts` job.
 
 ### How do I build and test one Rust engine with warnings-as-errors?
 
-Rust engines are 2021-edition crates in one Cargo workspace under `rust/`,
+Rust engines are 2024-edition crates in one Cargo workspace under `rust/`,
 with no third-party dependencies outside tests. Their shared code is the
 workspace crate `qp-core`. The CI job `rust <crate>` in
 `.github/workflows/ci.yml` denies warnings. Reproduce that locally from
