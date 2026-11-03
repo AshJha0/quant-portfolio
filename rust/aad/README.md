@@ -44,27 +44,49 @@ fixture. The adjoint quote Greeks match central bumps of each quote
 
 ## Cost ratio (AAD time / price time)
 
-`cargo run --release --example cost_ratio` takes the best of 21 runs. The
-ratios below come from one Windows laptop that was also running other
-builds, so treat them as a range, not a benchmark.
+`cargo run --release --example cost_ratio` takes the best of 21 runs (MC and
+swap). Black-Scholes takes about 20 ns, so its two timings are interleaved
+rep by rep over 201 reps of 20,000 calls, with every input passed through
+`black_box`; the ratio of the two best times and the median of the per-rep
+ratios are both printed. The ratios below come from one Windows laptop
+(WSL) that was also running other builds, so treat them as a range, not a
+benchmark.
 
 | Pricer | Rust | C++ (g++ 15.2 -O3, WSL) | Python |
 |---|---|---|---|
-| Black-Scholes (one price) | 13-34x | 2.9-3.4x | about 20x |
+| Black-Scholes (one price), Round 17 | 13-34x | 2.9-3.4x | about 18-20x |
+| Black-Scholes (one price), Round 18 | @@BS_RUST@@ | not changed | @@BS_PY@@ |
 | MC European, 20k paths x 52 steps | 1.7-2.1x | 1.6-1.8x | about 3.4x (500 x 12) |
 | MC Asian, 20k paths x 52 steps | 3.0-6.4x | 2.4-3.5x | n/a (Asian not timed) |
 | Swap PV, 18 pillars, 10Y annual | 2.0-6.7x | 2.1-2.4x | about 3.6x |
+
+The Round 17 Rust figure was partly a measuring error: only the spot went
+through `black_box`, so the compiler folded most of the plain price and the
+denominator was about 9 ns instead of about 20 ns. Measured fairly, the
+Round 17 tape gave about 10-12x. Round 18 then made three changes, in
+Rust and in Python:
+
+1. **Tape reuse.** `bs::greeks` records on a per-thread tape that is
+   cleared, not reallocated, between calls; `bs::greeks_on` takes a
+   caller's tape. Inputs are recorded with one borrow (`Tape::vars`) and the
+   adjoints read with one (`Tape::adjoints`), and the sweep stops above the
+   inputs, which have no parents.
+2. **Fused nodes** (statement-level preaccumulation; Griewank and Walther
+   2008, s. 10.2; Savine 2018, ch. 15). `exp(-x y)`, `ln(x / y)`,
+   `ncdf(c x)` and `x^2 / 2` are each one node holding their local
+   partials, and `x * 1` records nothing. The Black-Scholes tape went from
+   34 nodes to 25. The `f64` path of each fused operation is the plain
+   composition, so the price did not move by a bit (tested).
+3. **A leaner sweep**: one bounds check per node instead of three.
 
 The plan's bar is "all Greeks under 5x one PV" (W19).
 - The swap and the European MC meet it in every language.
 - The Asian MC meets it in C++. In Rust it meets it on a quiet run but not on
   a loaded one.
-- Black-Scholes in Rust misses it by a wide margin. The price takes about
-  20 ns, so the fixed cost of allocating a tape and the result vectors
-  dominates. That cost is about 0.5 us in Rust and about 0.2 us in C++. A
-  tape reused across calls would remove it, but we have not built one.
+- Black-Scholes in Rust: @@BS_VERDICT@@
 - In Python every operation allocates an object, so its ratios measure
-  interpreter overhead as much as the method.
+  interpreter overhead as much as the method. Tape reuse and fused nodes
+  cut the Black-Scholes ratio, but it stays far above 5x.
 
 The quote Greeks add 18 residual sweeps and one 18 x 18 solve. Bumping
 instead would take 36 full bootstraps, each of them a bisection per pillar.

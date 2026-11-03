@@ -270,8 +270,8 @@ def _best(fn, reps: int = 5) -> float:
 def test_cost_ratio_reported():
     """Print AAD time / price time; asserted only loosely (shared runners are noisy).
 
-    Pure-Python tape: every operation allocates a ``Var`` and appends four
-    list entries, so the ratio is well above the C++/Rust figures. The plan's
+    Pure-Python tape: every operation allocates a ``Var`` and a node tuple,
+    so the ratio is well above the C++/Rust figures. The plan's
     < 5x bar (W19) is checked on the compiled ports; the handback has numbers.
     """
     z = normals(500, 12)
