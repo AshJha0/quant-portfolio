@@ -44,10 +44,9 @@ def test_capacity_backtest_monotone_in_aum_and_impact():
     assert p[(0.3, 1e9)] == pytest.approx(100.0 * p[(0.3, 1e7)], rel=1e-9)
 
 
-def test_full_sample_adv_is_deprecated_and_trailing_adv_is_causal():
+def test_full_sample_adv_removed_and_trailing_adv_is_causal():
     panel = generate_daily_panel(n_stocks=5, n_days=60, seed=1)
-    with pytest.warns(DeprecationWarning):
-        _ = panel.adv_dollars
+    assert not hasattr(panel, "adv_dollars")  # full-sample mean removed in v3.0.0
     adv = panel.trailing_adv_dollars(10)
     # mutate the future: values up to the cutoff must not change
     panel.volumes.iloc[40:] *= 3.0

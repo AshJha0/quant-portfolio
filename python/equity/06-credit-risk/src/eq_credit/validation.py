@@ -25,8 +25,6 @@ get higher PDs.
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -183,7 +181,8 @@ def hosmer_lemeshow(
     y: np.ndarray,
     pd_hat: np.ndarray,
     n_groups: int = 10,
-    out_of_sample: bool | None = None,
+    *,
+    out_of_sample: bool,
 ) -> tuple[float, float, pd.DataFrame]:
     """Hosmer-Lemeshow goodness-of-fit test on predicted-PD groups.
 
@@ -198,22 +197,12 @@ def hosmer_lemeshow(
       estimated on these rows, so the reference is chi-square(g).
 
     g counts only groups whose expected defaults and non-defaults are both
-    positive (the others contribute nothing to the statistic). Leaving
-    ``out_of_sample`` unset is deprecated: it keeps the old in-sample
-    g - 2 behaviour and warns.
+    positive (the others contribute nothing to the statistic). ``out_of_sample``
+    is required: the implicit in-sample default was removed in v3.0.0.
 
     Returns (chi2 statistic, p-value, group table with observed vs
     expected defaults).
     """
-    if out_of_sample is None:
-        warnings.warn(
-            "hosmer_lemeshow: pass out_of_sample=True for PDs scored on data "
-            "not used in fitting (df = g) or False for in-sample PDs "
-            "(df = g - 2); the implicit in-sample default will be removed",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out_of_sample = False
     ya = np.asarray(y, dtype=float).ravel()
     pa = np.asarray(pd_hat, dtype=float).ravel()
     if len(ya) != len(pa) or len(ya) == 0:

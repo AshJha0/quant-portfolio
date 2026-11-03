@@ -27,7 +27,6 @@ Also provided:
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import cast
 
@@ -44,7 +43,6 @@ __all__ = [
     "flip_flop_rate",
     "label_states",
     "labels_from_vol_means",
-    "min_duration_filter",
     "smoothed_probabilities",
 ]
 
@@ -169,65 +167,6 @@ def flip_flop_rate(states: np.ndarray) -> float:
     if len(states) < 2:
         return 0.0
     return float(np.mean(states[1:] != states[:-1]))
-
-
-def min_duration_filter(states: np.ndarray, min_duration: int) -> np.ndarray:
-    """Remove regime runs shorter than ``min_duration`` days (offline, not causal).
-
-    Scans runs left to right; any run shorter than ``min_duration`` is
-    absorbed into the PREVIOUS surviving regime (causal choice: the
-    alternative, merging into the following regime, would need future
-    knowledge of when the run ends beyond the filter horizon).  The first
-    run is never removed.
-
-    Parameters
-    ----------
-    states : (T,) integer regime path.
-    min_duration : int
-        Minimum run length in days, >= 1 (1 = no-op).
-
-    Returns
-    -------
-    (T,) filtered path.
-    """
-    warnings.warn(
-        "min_duration_filter relabels a run once its end is known, so it is not "
-        "causal and must not feed a backtest; use strategy.causal_min_duration "
-        "(walk_forward_backtest(min_duration=...)). Kept for offline labelling; "
-        "it will be removed in the next release.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if min_duration < 1:
-        raise ValueError(f"min_duration must be >= 1, got {min_duration}")
-    states = np.asarray(states).copy()
-    if min_duration == 1 or len(states) == 0:
-        return states
-    out = states.copy()
-    current = out[0]
-    run_start = 0
-    for t in range(1, len(out) + 1):
-        if t == len(out) or out[t] != current:
-            run_len = t - run_start
-            if run_start > 0 and run_len < min_duration:
-                out[run_start:t] = out[run_start - 1]
-                # merged into previous: continue the previous run
-                current = out[run_start - 1]
-                # recompute run_start backwards to the start of merged run
-                rs = run_start
-                while rs > 0 and out[rs - 1] == current:
-                    rs -= 1
-                run_start = rs
-                if t < len(out):
-                    if out[t] == current:
-                        continue
-                    current = out[t]
-                    run_start = t
-            else:
-                if t < len(out):
-                    current = out[t]
-                    run_start = t
-    return out
 
 
 def expanding_fit_detect(

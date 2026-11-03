@@ -6,7 +6,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from eq_regime.detection import min_duration_filter
 from eq_regime.features import expanding_zscore
 from eq_regime.gmm import fit_gmm
 from eq_regime.hmm import expected_durations, fit_hmm, stationary_distribution
@@ -94,15 +93,6 @@ class TestBoundaries:
         z = expanding_zscore(s, min_periods=5)
         assert not np.isinf(z.to_numpy()).any()
         assert z.iloc[-1] == z.iloc[-1]  # finite tail
-
-    def test_min_duration_filter_run_exactly_at_threshold(self):
-        s = np.array([0] * 5 + [1] * 3 + [0] * 5)
-        # run of 3 with min_duration=3 survives (>= threshold)
-        np.testing.assert_array_equal(min_duration_filter(s, 3), s)
-        # run of 3 with min_duration=4 is removed
-        np.testing.assert_array_equal(
-            min_duration_filter(s, 4), np.zeros(13, dtype=int)
-        )
 
 
 class TestNumericalExtremes:

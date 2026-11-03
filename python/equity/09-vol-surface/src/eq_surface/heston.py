@@ -87,7 +87,7 @@ class FellerWarning(UserWarning):
     """Warns when 2*kappa*theta < xi^2 (variance can touch zero)."""
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, kw_only=True)
 class HestonParams:
     """Heston model parameters (annualised variance units).
 
@@ -104,10 +104,10 @@ class HestonParams:
     rho : float
         Spot-variance correlation, in [-1, 1] (boundaries allowed).
 
-    Pass the parameters by keyword. The field order is
+    The parameters are keyword-only. The field order is
     ``(v0, kappa, theta, xi, rho)``, the same as ``fx_surface.HestonParams``.
-    Positional construction still works and keeps this package's historical
-    order ``(v0, kappa, theta, rho, xi)``, with a ``DeprecationWarning``.
+    Positional construction in the old order ``(v0, kappa, theta, rho, xi)``
+    was removed in v3.0.0.
     """
 
     v0: float
@@ -115,30 +115,6 @@ class HestonParams:
     theta: float
     xi: float
     rho: float
-
-    _LEGACY_ORDER = ("v0", "kappa", "theta", "rho", "xi")
-
-    def __init__(self, *args: float, **kwargs: float) -> None:
-        if args:
-            if len(args) > 5:
-                raise TypeError(f"HestonParams takes at most 5 positional arguments, got {len(args)}")
-            warnings.warn(
-                "positional HestonParams(v0, kappa, theta, rho, xi) is deprecated; pass "
-                "keywords (the field order is now v0, kappa, theta, xi, rho, as in fx_surface)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            for name, value in zip(self._LEGACY_ORDER, args, strict=False):
-                if name in kwargs:
-                    raise TypeError(f"HestonParams got multiple values for argument {name!r}")
-                kwargs[name] = value
-        missing = [n for n in self._LEGACY_ORDER if n not in kwargs]
-        unknown = [n for n in kwargs if n not in self._LEGACY_ORDER]
-        if missing or unknown:
-            raise TypeError(f"HestonParams: missing {missing}, unexpected {unknown}")
-        for name in ("v0", "kappa", "theta", "xi", "rho"):
-            object.__setattr__(self, name, kwargs[name])
-        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.v0 <= 0.0:

@@ -26,7 +26,6 @@ from .detection import (
     flip_flop_rate,
     label_states,
     labels_from_vol_means,
-    min_duration_filter,
     smoothed_probabilities,
 )
 from .features import (
@@ -110,7 +109,6 @@ __all__ = [
     "labels_from_vol_means",
     "ma_timing_weights",
     "match_permutation",
-    "min_duration_filter",
     "naive_threshold_regime",
     "per_regime_stats",
     "project",
