@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from portfolio import (
+from qp_bt.portfolio import (
     ledoit_wolf,
     mean_variance,
     pca_cov,

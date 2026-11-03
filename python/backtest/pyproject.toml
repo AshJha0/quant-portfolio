@@ -14,6 +14,7 @@ dependencies = [
     "qp-core>=3.0.0.dev0",
     "numpy>=1.24",
     "pandas>=2.0",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
