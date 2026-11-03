@@ -25,7 +25,7 @@ For a bond paying coupon `c` (annual rate) `f` times a year on face 100, with
 Reference: Hull, *Options, Futures, and Other Derivatives* (11th ed.), ch. 4;
 Fabozzi, *Bond Markets, Analysis and Strategies*, ch. 4. The code is
 `python/equity/04-fixed-income/src/fi_rates/bond.py` (`price_from_ytm`) and
-`python/equity/04-fixed-income/src/fi_rates/risk.py` (`macaulay_duration`,
+`python/equity/04-fixed-income/src/fi_rates/risk/__init__.py` (`macaulay_duration`,
 `modified_duration`, `convexity`, `dv01`).
 
 ## Worked example

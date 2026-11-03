@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Build and test the standalone C++ projects that are not in the engine matrix.
+# Build and test the standalone C++ projects outside the engine matrix (ci.yml cpp-extra job).
 set -uo pipefail
 ROOT=${1:-.}
 B=${2:-/tmp/qp-cppnew}
 rc=0
+mkdir -p "$B"
 for d in exec-core rates-curves aad ull/feed ull/gateway ull/bench; do
   echo "=== cpp/$d"
   bd="$B/${d//\//_}"
@@ -12,7 +13,7 @@ for d in exec-core rates-curves aad ull/feed ull/gateway ull/bench; do
     (cd "$bd" && ctest --output-on-failure -LE long -j 4 -E 'ull_qpbf_roundtrip_1e8|fuzz') 2>&1 | tail -4 || rc=1
     [[ ${PIPESTATUS[0]} -eq 0 ]] || rc=1
   else
-    echo "BUILD FAILED cpp/$d"; tail -30 "$bd.cfg.log" "$bd.build.log"; rc=1
+    echo "BUILD FAILED cpp/$d"; tail -n 30 "$bd.cfg.log" "$bd.build.log"; rc=1
   fi
 done
 exit $rc

@@ -59,7 +59,11 @@ def _check(cases):
     want = json.loads(GOLDEN.read_text())
     assert sorted(got) == sorted(want)
     for k in want:
-        np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12, err_msg=k)
+        # 1e-12 of the series' own scale: a P&L of 1e4 carries ~1e-12 relative
+        # reordering noise between platforms (numpy reductions, libm), which is
+        # far below anything a change in the backtester would produce.
+        scale = max(1.0, float(np.max(np.abs(want[k]))) if len(want[k]) else 1.0)
+        np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12 * scale, err_msg=k)
     before = json.loads(BEFORE.read_text())
     assert sorted(before) == sorted(want)
     for k, (b, a) in BEFORE_AFTER.items():
