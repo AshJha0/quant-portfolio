@@ -50,6 +50,13 @@ them in three alternating rounds: base, head, base, head, base, head. Every
 run is pinned to CPU 1. `.github/scripts/bench_ab.py` then takes, per kernel
 and side, the median over the rounds of p10, p50 and p90.
 
+Both sides are timed with the head's harness: before building, the script
+copies the head's bench sources and timing code into the base worktree, so
+the gate compares library code, never two timing methods. This matters. On
+the first run of the gate, rust/fx-var-engine `portfolio_sigma_50f` looked
+1.49x slower (4,599 ns against 3,085 ns) with identical library code; timed
+with one harness, base and head both gave a median of 2,342 ns on a laptop.
+
 A kernel fails the job only when both hold:
 
 - the head median is more than 25% above the base median, and
@@ -68,8 +75,7 @@ with the previous harness and say so.
 
 Limits. Three rounds on a shared runner catch large regressions, not 5%
 ones. A base whose bench does not build (for example a new engine) is
-reported without a gate. Benches from a base older than this harness have no
-p10/p90; their band is read as the median alone, so for that one comparison
-the gate fails when head p10 is above the base median, a looser test. Pinning
+reported without a gate, and so is a base library that does not build under
+the head's harness (the job prints a warning naming the engine). Pinning
 to one CPU also serialises the multi-threaded Monte Carlo kernels; both sides
 pay that equally.

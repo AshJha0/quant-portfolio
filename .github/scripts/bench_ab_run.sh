@@ -23,6 +23,29 @@ engines=(equity-options-engine:eqopt_bench:eq-options-engine
 
 git worktree add --detach "$base_dir" "$base_sha"
 
+# Both sides are timed with the head's harness, so the gate compares library
+# code and never two timing methods. Before this, a base older than the
+# shared harness made rust/fx-var-engine portfolio_sigma_50f look 1.49x slower
+# with identical library code (2,342 ns on both sides under one harness).
+# If the base library does not build under the head's harness, the engine is
+# skipped on the base below and bench_ab.py reports it without failing.
+cp "$head_dir/cpp/core/include/qp/bench/latency.hpp" \
+   "$base_dir/cpp/core/include/qp/bench/latency.hpp" 2> /dev/null ||
+    { mkdir -p "$base_dir/cpp/core/include/qp/bench" &&
+      cp "$head_dir/cpp/core/include/qp/bench/latency.hpp" "$base_dir/cpp/core/include/qp/bench/"; }
+cp "$head_dir/rust/core/src/bench.rs" "$base_dir/rust/core/src/bench.rs"
+grep -q '^pub mod bench;' "$base_dir/rust/core/src/lib.rs" ||
+    echo 'pub mod bench;' >> "$base_dir/rust/core/src/lib.rs"
+for e in "${engines[@]}"; do
+    IFS=: read -r engine _ _ <<<"$e"
+    if [ -d "$base_dir/cpp/$engine/bench" ]; then
+        cp "$head_dir/cpp/$engine/bench/bench_main.cpp" "$base_dir/cpp/$engine/bench/"
+    fi
+    if [ -d "$base_dir/rust/$engine/src/bin" ]; then
+        cp "$head_dir/rust/$engine/src/bin/bench.rs" "$base_dir/rust/$engine/src/bin/"
+    fi
+done
+
 build() {  # build <tree> <bin dir>
     local tree="$1" bin="$2"
     mkdir -p "$bin"
