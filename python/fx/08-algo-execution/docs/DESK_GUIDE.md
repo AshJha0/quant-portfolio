@@ -73,9 +73,9 @@ the kind of evidence such a review uses.
 ## 4. Scenarios
 
 Month-end fix. Index rebalancing concentrates large flow into the 5-minute
-window. On synthetic data the fix schedule pays about 0.5 pips and carries
+window. On synthetic data the fix schedule pays about 1 pip and carries
 about 0.5 pip of tracking-error sd against an independent print, and its own
-permanent impact moves the print by 0.078 pips. Pre-positioning ahead of the
+permanent impact moves the print by 0.035 pips (VALIDATION section 5). Pre-positioning ahead of the
 window is a compliance decision, not a trading one.
 
 Central bank blackout. An ECB-day band with no child orders is a

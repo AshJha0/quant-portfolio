@@ -98,15 +98,27 @@ Asia is thin, and spreads are one to two orders of magnitude wider in pips.
 ## 4. Impact model
 
 Executing `q` mm base in a bucket with session depth `D` (mm absorbed per
-bucket) and vol `sigma` (pips per bucket):
+bucket), so participation `rho = q / D` is a dimensionless rate, and session
+vol `sigma_H` in pips over a fixed reference horizon `H` =
+`impact_horizon_minutes` (default 5 minutes, the default bucket):
 
-- Temporary (fill only, gone next bucket): `k_temp * sigma * sqrt(q / D)`
-  pips, `k_temp = 0.35`. The square-root law is the most robust empirical
+- Temporary (fill only, gone next bucket): `k_temp * sigma_H * rho^delta`
+  pips, `k_temp = 0.35`, `delta = impact_exponent = 0.5` (1 gives the
+  linear law). The square-root law is the most robust empirical
   impact regularity across asset classes. Scaling by session vol and depth
   makes the same 10mm clip about 3x more expensive per unit vol in the late
   session than in the overlap (tested exactly).
-- Permanent (shifts all later mids): `k_perm * sigma * (q / D)` pips,
-  `k_perm = 0.05`, linear in flow. Linear permanent impact is required for
+- Permanent (shifts all later mids): `k_perm * sigma_H * q / D_H` pips with
+  `D_H` the session depth over `H`, `k_perm = 0.05`, linear in flow, so an
+  order's total permanent impact does not depend on how it is sliced.
+
+`H` is fixed rather than equal to the bucket width so that the same trading
+rate costs the same on any grid (`tests/test_impact_consistency.py`). Up to
+v2.0.0 both terms used the per-bucket vol `sigma * sqrt(dt)`: a 200mm TWAP
+over two overlap hours paid 0.119 pips of temporary impact on 1-minute
+buckets and 0.651 on 30-minute buckets, with permanent impact 0.314 and
+0.057 pips. It now pays 0.266 and 0.141 pips on every grid. Results on
+5-minute grids are unchanged; the 1-minute fix study below changed. Linear permanent impact is required for
   no dynamic arbitrage (Huberman and Stanzl). It also makes the permanent
   cost of a schedule nearly independent of the trajectory, which is why it
   is left out of the AC objective (section 5).

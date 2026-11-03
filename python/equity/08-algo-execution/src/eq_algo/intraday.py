@@ -12,8 +12,19 @@ Model (per trading day of ``n_buckets`` equal-length buckets):
 - **Execution price** of a market order in bucket ``j`` (LOB-lite fill
   model: market orders always fill, crossing the spread):
   ``fill_j = S_j * (1 + side * (half_spread + temp_j))`` with **temporary
-  impact** following the empirical square-root law,
-  ``temp_j = temp_coef * sigma_daily * sqrt(q_j / V_day)``.
+  impact** a power of the bucket's participation rate,
+  ``temp_j = temp_coef * sigma_daily * (q_j / V_j) ** impact_exponent``,
+  where ``q_j`` is our quantity and ``V_j`` the market volume *in the same
+  bucket*, so ``q_j / V_j`` is the dimensionless participation rate over
+  the bucket horizon. ``sigma_daily`` is a fraction of price per day and
+  ``temp_coef`` is dimensionless. The default exponent 0.5 is the
+  square-root law; 1.0 is the linear law of Almgren and Chriss (2000).
+  Because participation does not change when a fixed trading-rate profile
+  is cut into finer buckets, the summed cost converges to the continuous
+  integral ``int temp_coef * sigma * (v/V)^delta * v dt`` as buckets are
+  added (tested). Up to v2.0.0 the code divided by ``n_buckets * V_j``,
+  which counted the bucket width twice and made cost fall as
+  ``1/sqrt(n_buckets)``.
   Temporary impact affects only the fill price and fully reverts, the next
   bucket's mid does not carry it (tested).
 
@@ -59,7 +70,9 @@ class IntradayConfig:
     Units: ``mid0`` in currency; ``day_volume`` in shares (expected);
     ``sigma_daily`` is the close-to-close daily vol as a *fraction* of price;
     ``spread_bps`` is the full quoted spread in basis points; the impact
-    coefficients are dimensionless multipliers on ``sigma_daily``.
+    coefficients are dimensionless multipliers on ``sigma_daily``;
+    ``impact_exponent`` is the power on bucket participation ``q_j / V_j``
+    in the temporary impact (0.5 square root, 1.0 linear).
     """
 
     mid0: float = 100.0
@@ -72,10 +85,11 @@ class IntradayConfig:
     vol_noise: float = 0.0
     curvature: float = 3.0
     price_noise: float | None = None
+    impact_exponent: float = 0.5
 
     def __post_init__(self) -> None:
         for name in ("mid0", "day_volume", "sigma_daily", "spread_bps", "temp_coef",
-                     "perm_coef", "vol_noise", "curvature"):
+                     "perm_coef", "vol_noise", "curvature", "impact_exponent"):
             if not np.isfinite(float(getattr(self, name))):
                 raise ValueError(f"{name} must be finite")
         if self.price_noise is not None and not np.isfinite(float(self.price_noise)):
@@ -90,6 +104,8 @@ class IntradayConfig:
             raise ValueError("impact/noise coefficients must be >= 0")
         if self.price_noise is not None and self.price_noise < 0:
             raise ValueError("price_noise must be >= 0 when set")
+        if self.impact_exponent <= 0:
+            raise ValueError("impact_exponent must be > 0 (0.5 square root, 1 linear)")
 
     @property
     def bucket_noise(self) -> float:
@@ -240,8 +256,8 @@ class IntradayMarket:
         for j in range(cfg.n_buckets):
             mid = mids[j]
             if q[j] > 0:
-                temp_frac = cfg.temp_coef * cfg.sigma_daily * np.sqrt(
-                    q[j] / (cfg.n_buckets * volumes[j]))
+                temp_frac = cfg.temp_coef * cfg.sigma_daily * (
+                    q[j] / volumes[j]) ** cfg.impact_exponent
                 fill = mid * (1.0 + side * (half_spread_frac + temp_frac))
                 perm_move = side * cfg.perm_coef * cfg.sigma_daily * (q[j] / cfg.day_volume) * mid
             else:

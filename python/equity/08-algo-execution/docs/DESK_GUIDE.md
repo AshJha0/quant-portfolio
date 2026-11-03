@@ -50,8 +50,9 @@ best-execution committee owns `tca`.
 - Regress realised trading cost on sigma sqrt(Q/ADV) to re-estimate Y. The
   backtest and capacity runs use the new value. A move of more than 25% in
   a quarter triggers a capacity review.
-- Compare realised schedule slippage with `evaluate_schedules` (expected IS
-  and Monte Carlo std). A schedule outside its band points at the impact
+- Compare realised schedule slippage with `evaluate_schedules`
+  (model-implied IS and Monte Carlo std; schedule-level cost model on a
+  bucket simulator). A schedule outside its band points at the impact
   model.
 - Positive delay cost on buys means the alpha decays overnight. Raise
   urgency or move the fill earlier.

@@ -106,20 +106,30 @@ at $5bn. The square-root law is not reliable past roughly 10% participation.
 
 ### Execution race (synthetic simulator)
 
-Buy 50,000 shares (5% of ADV) over 26 buckets, sigma 2% a day, 5 bp spread,
-square-root temporary impact on bucket volume, linear permanent impact.
-Expected IS comes from the same simulator with zero price and volume noise.
-The spread comes from 500 Monte Carlo replications.
+This is a schedule-level cost model on a bucket simulator, not a model of
+an order book. Buy 50,000 shares (5% of ADV) over 26 buckets, sigma 2% a
+day, 5 bp spread, temporary impact `Y sigma (q_j / V_j)^0.5` on the bucket's
+own participation with Y = 1, linear permanent impact. The model-implied IS
+comes from the same simulator with zero price and volume noise; it is what
+the model charges, not an estimate of a real market's cost. The spread comes
+from 500 Monte Carlo replications. Run `python examples/run_pipeline.py`.
 
-| schedule | expected IS (bp) | std IS (bp) | MC mean IS (bp) | SE of MC mean (bp) |
+| schedule | model-implied IS (bp) | std IS (bp) | MC mean IS (bp) | SE of MC mean (bp) |
 |---|---:|---:|---:|---:|
-| VWAP | 13.7 | 109.1 | 19.0 | 4.9 |
-| TWAP | 14.3 | 113.2 | 19.4 | 5.1 |
-| AC (lambda 5e-6) | 15.1 | 74.2 | 17.5 | 3.3 |
-| POV 10% | 17.2 | 60.9 | 18.2 | 2.7 |
-| Aggressive (2 buckets) | 27.5 | 19.2 | 28.1 | 0.9 |
+| VWAP | 49.6 | 109.5 | 55.5 | 4.9 |
+| TWAP | 53.0 | 113.7 | 58.7 | 5.1 |
+| Power law (lambda 5e-6) | 55.5 | 71.6 | 58.9 | 3.2 |
+| AC, linear law (lambda 5e-6) | 57.1 | 74.5 | 60.1 | 3.3 |
+| POV 10% | 68.0 | 61.2 | 69.7 | 2.7 |
+| Aggressive (2 buckets) | 124.7 | 21.0 | 126.6 | 0.9 |
 
-Rank schedules on expected cost and on std. The Monte Carlo mean is not a
+Up to v2.0.0 these costs were about a quarter as large (TWAP 14.3 bp)
+because the simulator divided participation by the number of buckets a
+second time; see CHANGELOG and docs/VALIDATION.md section 6. The schedule
+optimised under the simulator's own square-root law beats the linear-law
+AC schedule on both cost and std at the same lambda.
+
+Rank schedules on model-implied cost and on std. The Monte Carlo mean is not a
 ranking tool at this replication count: its SE is several bp. The
 Almgren-Chriss frontier on synthetic parameters: lambda 1e-6 gives (15.5,
 99.0) bp expected cost and std, 5e-6 gives (21.1, 73.8), 5e-5 gives (53.9,
@@ -129,8 +139,8 @@ Almgren-Chriss frontier on synthetic parameters: lambda 1e-6 gives (15.5,
 
 The decision price is the prior close. The arrival mid follows it by a
 seeded move with sd sigma_daily x sqrt(0.5). Over 200 synthetic TWAP orders
-the mean delay is -4.3 bp (sd 124.7), trading 18.6 bp (sd 106.5) and total
-IS 14.3 bp (sd 170.9). The Perold components sum to the total exactly
+the mean delay is -4.3 bp (sd 124.7), trading 57.8 bp (sd 107.0) and total
+IS 53.5 bp (sd 171.6). The Perold components sum to the total exactly
 (tested to 1e-10).
 
 ## Layout

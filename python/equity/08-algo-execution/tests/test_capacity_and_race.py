@@ -74,7 +74,7 @@ def test_race_publishes_deterministic_expected_cost():
     mid = 100.0
     cost = 0.0
     for j in range(26):
-        temp = 1.0 * 0.02 * np.sqrt(q / (26 * prof[j] * 1e6))
+        temp = 1.0 * 0.02 * np.sqrt(q / (prof[j] * 1e6))
         cost += q * mid * (1 + 2.5e-4 + temp)
         mid += 0.5 * 0.02 * (q / 1e6) * mid
     expected = (cost / X - 100.0) / 100.0 * 1e4

@@ -102,17 +102,47 @@ Simulator mechanics (deterministic path tests):
   (`test_permanent_impact_persists_temporary_reverts`).
 - Permanent impact is linear in size, temporary impact is square-root
   (`test_permanent_impact_linear_temporary_sqrt_in_participation`).
+- Slicing consistency (W3). A fixed continuous trading-rate profile v(t),
+  cut into n = 10, 20, 40 and 80 buckets with bucket volumes scaled to the
+  bucket width, gives a temporary cost within O(1/n) of the quadrature value
+  of the integral of eta sigma (v/V)^delta v dt, for delta 0.5, 0.6 and 1 and
+  for flat and U-shaped volume (`test_bucket_cost_converges_to_continuous_integral`).
+  The same TWAP order costs the same on 13, 26, 52 and 104 buckets
+  (`test_twap_cost_does_not_fall_with_finer_slicing`). Before the fix the
+  temporary cost of a 100,000-share TWAP on a flat day was 5.26, 3.72, 2.63
+  and 1.86 bp on those grids; it is now 18.97 bp on all four
+  (0.3 x 2% x sqrt(0.1)).
+- Power-law optimiser. With exponent 1 `power_law_trajectory` equals the AC
+  closed form to 1e-8 of X for four risk aversions
+  (`test_power_law_solver_matches_closed_form_at_exponent_one`), and each
+  optimiser wins under its own law (`test_power_law_solver_is_optimal_under_its_own_law`).
 - Temporary impact uses the bucket's own volume: the same child order costs
   sqrt(v_open / v_mid) times more in the thin midday bucket
   (`test_thin_bucket_costs_more_than_heavy_bucket`).
 
-Schedule ranking. `evaluate_schedules` reports the expected IS from the
-same simulator with zero price and volume noise, and the Monte Carlo std
-and the SE of the Monte Carlo mean. On synthetic seed 42 with 500
-replications the expected IS is VWAP 13.7 < TWAP 14.3 < AC 15.1 < POV 17.2
-< Aggressive 27.5 bp, and the std is Aggressive 19.2 < POV 60.9 < AC 74.2 <
-VWAP 109.1 < TWAP 113.2 bp. The TWAP hand value of the expected IS is
-checked to 1e-10 (`test_race_publishes_deterministic_expected_cost`).
+Schedule ranking. `evaluate_schedules` reports the model-implied IS
+(`model_implied_is_bps`; `expected_is_bps` is the same column under its
+v2.0.0 name) from the same simulator with zero price and volume noise, and
+the Monte Carlo std and the SE of the Monte Carlo mean. On synthetic seed 42
+with 500 replications the model-implied IS is VWAP 49.6 < TWAP 53.0 <
+power law 55.5 < AC 57.1 < POV 68.0 < Aggressive 124.7 bp, and the std is
+Aggressive 21.0 < POV 61.2 < power law 71.6 < AC 74.5 < VWAP 109.5 <
+TWAP 113.7 bp. (v2.0.0, with the double-counted bucket width: VWAP 13.7,
+TWAP 14.3, AC 15.1, POV 17.2, Aggressive 27.5 bp; the order is unchanged.)
+The TWAP hand value is checked to 1e-10
+(`test_race_publishes_deterministic_expected_cost`).
+
+Both optimisers under both laws (`compare_impact_laws`, same config,
+lambda 5e-6, zero-noise simulator):
+
+| schedule | objective, linear law | IS, linear law (bp) | objective, square-root law | IS, square-root law (bp) |
+|---|---:|---:|---:|---:|
+| AC, linear law | 12,698.6 | 20.8 | 31,945.4 | 59.3 |
+| power law (delta 0.5) | 13,017.2 | 18.5 | 31,512.8 | 55.5 |
+
+Each schedule has the lower objective under the law it was built for. The
+coefficient Y is the same in both columns and is not re-fitted, so compare
+down a column, not across.
 
 AC against TWAP on the simulator: `test_ac_beats_twap_on_cost_variance_on_simulator`
 requires std_AC < 0.85 std_TWAP and a Levene p < 0.01 over 300 paired
@@ -160,6 +190,7 @@ replications. The analytic frontier agrees in direction
    a large loss in a sharp reversal. No statistic here predicts that.
 4. Cost regimes. Spreads and impact rise in stress. The cost model is
    static.
-5. AC optimises a linear temporary-impact model and is evaluated in a
-   square-root simulator. Rankings of risk are stable; absolute expected
-   costs depend on the model.
+5. The cost model works at schedule level on buckets: no queue, no
+   resilience, no partial fills. `compare_impact_laws` shows how much the
+   choice of law matters; a desk should fit the exponent on its own fills
+   before trusting either optimiser.
