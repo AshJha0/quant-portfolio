@@ -28,9 +28,9 @@ Worked example. ``y = x0 * x1 + exp(x0)`` at ``x0 = 1, x1 = 2``:
 >>> [round(v, 6) for v in g]       # dy/dx0 = x1 + e, dy/dx1 = x0
 [4.718282, 1.0]
 
-Design. Nodes have at most two parents, stored in four flat lists (parent
-indices and partials), which is the layout of Savine's ``Node`` without the
-per-node allocation. ``mark()`` / ``rewind(mark)`` keep the inputs and drop
+Design. Nodes have at most two parents, stored as one flat list of
+``(parent, partial, parent, partial)`` tuples, which is the layout of
+Savine's ``Node``. ``mark()`` / ``rewind(mark)`` keep the inputs and drop
 everything recorded after them; the Monte Carlo pricer uses that to record,
 sweep and forget one path at a time while the adjoints of the inputs
 accumulate across paths (Savine 2018, s. 10.3). Pricers are written once
@@ -47,46 +47,56 @@ from collections.abc import Sequence
 _INV_SQRT_2PI = 1.0 / math.sqrt(2.0 * math.pi)
 _SQRT2 = math.sqrt(2.0)
 _NONE = -1
+_LEAF = (_NONE, 0.0, _NONE, 0.0)
 
 
 class Tape:
     """Recording of one computation; see the module docstring."""
 
-    __slots__ = ("_a", "_adj", "_b", "_da", "_db")
+    __slots__ = ("_adj", "_nodes")
 
     def __init__(self) -> None:
-        self._a: list[int] = []
-        self._b: list[int] = []
-        self._da: list[float] = []
-        self._db: list[float] = []
+        # One tuple ``(a, da, b, db)`` per node: one append per operation,
+        # where four parallel lists cost four (the dominant cost of a
+        # small pricer under CPython).
+        self._nodes: list[tuple[int, float, int, float]] = []
         self._adj: list[float] = []
 
     def __len__(self) -> int:
-        return len(self._a)
+        return len(self._nodes)
 
     def _push(self, value: float, a: int, da: float, b: int, db: float) -> Var:
-        self._a.append(a)
-        self._da.append(da)
-        self._b.append(b)
-        self._db.append(db)
-        return Var(self, len(self._a) - 1, value)
+        nodes = self._nodes
+        nodes.append((a, da, b, db))
+        return Var(self, len(nodes) - 1, value)
 
     def var(self, value: float) -> Var:
         """A new independent input (a leaf node)."""
         return self._push(float(value), _NONE, 0.0, _NONE, 0.0)
 
+    def vars(self, values: Sequence[float]) -> list[Var]:
+        """Several independent inputs at once (one ``extend``)."""
+        first = len(self._nodes)
+        self._nodes.extend([_LEAF] * len(values))
+        return [Var(self, first + i, float(v)) for i, v in enumerate(values)]
+
+    def clear(self) -> None:
+        """Forget every node but keep the list objects, so a tape reused
+        across calls (``bs_greeks_aad``) skips building a new one."""
+        self.rewind(0)
+
     def mark(self) -> int:
         """Position to come back to with :meth:`rewind`."""
-        return len(self._a)
+        return len(self._nodes)
 
     def rewind(self, mark: int) -> None:
         """Forget every node recorded after ``mark``; adjoints before it stay."""
-        del self._a[mark:], self._b[mark:], self._da[mark:], self._db[mark:]
+        del self._nodes[mark:]
         if len(self._adj) > mark:
             del self._adj[mark:]
 
     def zero_adjoints(self) -> None:
-        self._adj = [0.0] * len(self._a)
+        self._adj = [0.0] * len(self._nodes)
 
     def backward(self, output: Var, seed: float = 1.0, stop: int = 0) -> None:
         """Add ``seed * d output / d node`` into every node's adjoint.
@@ -98,7 +108,7 @@ class Tape:
         if output.tape is not self:
             raise ValueError("output was recorded on a different tape")
         adj = self._adj
-        n = len(self._a)
+        n = len(self._nodes)
         if len(adj) < n:
             adj.extend([0.0] * (n - len(adj)))
         adj[output.idx] += seed
@@ -112,19 +122,23 @@ class Tape:
         ``propagate(mark)`` carries them back to the inputs.
         """
         adj = self._adj
-        if len(adj) < len(self._a):
-            adj.extend([0.0] * (len(self._a) - len(adj)))
-        a_, b_, da_, db_ = self._a, self._b, self._da, self._db
+        nodes = self._nodes
+        if len(adj) < len(nodes):
+            adj.extend([0.0] * (len(nodes) - len(adj)))
         for i in range(start - 1, stop - 1, -1):
             w = adj[i]
             if w == 0.0:
                 continue
-            a = a_[i]
+            a, da, b, db = nodes[i]
             if a >= 0:
-                adj[a] += w * da_[i]
-                b = b_[i]
+                adj[a] += w * da
                 if b >= 0:
-                    adj[b] += w * db_[i]
+                    adj[b] += w * db
+
+    def adjoints(self, vs: Sequence[Var]) -> list[float]:
+        adj = self._adj
+        n = len(adj)
+        return [adj[v.idx] if v.idx < n else 0.0 for v in vs]
 
     def adjoint(self, v: Var) -> float:
         return self._adj[v.idx] if v.idx < len(self._adj) else 0.0
@@ -187,6 +201,9 @@ class Var:
     def __mul__(self, o: Real) -> Var:
         if isinstance(o, Var):
             return self.tape._push(self.value * o.value, self.idx, o.value, o.idx, self.value)
+        if o == 1.0:
+            # ``x * 1`` is ``x`` bit for bit: record nothing (calls, phi = 1).
+            return self
         return self.tape._push(self.value * o, self.idx, float(o), _NONE, 0.0)
 
     __rmul__ = __mul__
@@ -235,6 +252,51 @@ def ncdf(x: Real) -> Real:
         return x.tape._push(0.5 * math.erfc(-v / _SQRT2), x.idx,
                             _INV_SQRT_2PI * math.exp(-0.5 * v * v), _NONE, 0.0)
     return 0.5 * math.erfc(-x / _SQRT2)
+
+
+# Fused operations. Each float branch is the plain composition, so the float
+# pricer computes exactly the bits it did unfused; a Var records one node
+# with its local partials preaccumulated (statement-level preaccumulation:
+# Griewank and Walther 2008, s. 10.2; Savine 2018, ch. 15). Fewer nodes means
+# fewer Python objects and a shorter reverse sweep. The Rust port has the
+# same four as default methods of ``Real``.
+
+
+def exp_neg_mul(x: Real, y: Real) -> Real:
+    """``exp(-x * y)``, e.g. a discount factor ``exp(-r T)``."""
+    if not isinstance(x, Var) and not isinstance(y, Var):
+        return math.exp(-x * y)  # the plain-float pricer: checked first
+    if isinstance(x, Var) and isinstance(y, Var):
+        e = math.exp(-x.value * y.value)
+        return x.tape._push(e, x.idx, -y.value * e, y.idx, -x.value * e)
+    return exp(-x * y)
+
+
+def ln_div(x: Real, y: Real) -> Real:
+    """``log(x / y)``, e.g. the log-moneyness ``log(S / K)``."""
+    if not isinstance(x, Var) and not isinstance(y, Var):
+        return math.log(x / y)
+    if isinstance(x, Var) and isinstance(y, Var):
+        return x.tape._push(math.log(x.value / y.value), x.idx, 1.0 / x.value,
+                            y.idx, -1.0 / y.value)
+    return log(x / y)
+
+
+def ncdf_scaled(x: Real, c: float) -> Real:
+    """``ncdf(c * x)`` for a constant ``c``."""
+    if isinstance(x, Var):
+        v = c * x.value
+        return x.tape._push(0.5 * math.erfc(-v / _SQRT2), x.idx,
+                            c * _INV_SQRT_2PI * math.exp(-0.5 * v * v), _NONE, 0.0)
+    return 0.5 * math.erfc(-(c * x) / _SQRT2)
+
+
+def half_square(x: Real) -> Real:
+    """``0.5 * x * x``."""
+    if isinstance(x, Var):
+        v = x.value
+        return x.tape._push(0.5 * v * v, x.idx, v, _NONE, 0.0)
+    return 0.5 * x * x
 
 
 def value(x: Real) -> float:

@@ -68,6 +68,7 @@ from typing import Literal
 
 import numpy as np
 from qp_core.model import model
+from qp_core.vol.heston import heston_cf as _core_cf
 from scipy.integrate import quad
 
 __all__ = [
@@ -174,26 +175,15 @@ def heston_cf(
     ``v(t) = theta + (v0 - theta) e^{-kappa t}``, and the CF degenerates to
     the Gaussian CF with integrated variance
     ``IV = theta T + (v0 - theta)(1 - e^{-kappa T})/kappa``.
+
+    A shim over :func:`qp_core.vol.heston.heston_cf` (Round 18): the one
+    characteristic function shared with ``fx_surface``. Bit-identical to the
+    copy that lived here before.
     """
     if T < 0.0:
         raise ValueError(f"T must be non-negative, got {T}")
-    u = np.asarray(u, dtype=complex)
-    x0 = np.log(S) + (r - q) * T  # log-forward
-
-    if p.xi < 1e-12:
-        iv = p.theta * T + (p.v0 - p.theta) * (1.0 - np.exp(-p.kappa * T)) / p.kappa
-        out = np.exp(1j * u * (x0 - 0.5 * iv) - 0.5 * u * u * iv)
-        return out if out.ndim else complex(out)
-
-    xi2 = p.xi * p.xi
-    b = p.kappa - 1j * p.rho * p.xi * u
-    d = np.sqrt(b * b + xi2 * (1j * u + u * u))
-    g2 = (b - d) / (b + d)
-    e_dT = np.exp(-d * T)
-    C = (p.kappa * p.theta / xi2) * ((b - d) * T - 2.0 * np.log((1.0 - g2 * e_dT) / (1.0 - g2)))
-    D = ((b - d) / xi2) * (1.0 - e_dT) / (1.0 - g2 * e_dT)
-    out = np.exp(1j * u * x0 + C + D * p.v0)
-    return out if out.ndim else complex(out)
+    return _core_cf(u, T, v0=p.v0, kappa=p.kappa, theta=p.theta, xi=p.xi, rho=p.rho,
+                    x0=np.log(S), mu=r - q)
 
 
 def _u_max(

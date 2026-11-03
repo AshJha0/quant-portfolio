@@ -28,6 +28,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.vol.heston import heston_cf as _core_cf
 from scipy.integrate import quad
 
 from .garman_kohlhagen import gk_forward
@@ -98,18 +99,14 @@ def heston_cf(
         Risk-neutral drift ``r_d - r_f``.
     x0 : float
         ``ln S_0`` (use 0 for the CF of the log-return).
+
+    A shim over :func:`qp_core.vol.heston.heston_cf` (Round 18): the one
+    characteristic function shared with ``eq_surface``. Bit-identical to the
+    copy that lived here before; a negative ``T`` now raises ``ValueError``.
     """
-    u = np.asarray(u, dtype=complex)
-    p = params
-    beta = p.kappa - 1j * p.rho * p.xi * u
-    d = np.sqrt(beta * beta + p.xi * p.xi * (1j * u + u * u))
-    g = (beta - d) / (beta + d)
-    e_dt = np.exp(-d * T)
-    D = (beta - d) / (p.xi * p.xi) * (1.0 - e_dt) / (1.0 - g * e_dt)
-    C = (p.kappa * p.theta / (p.xi * p.xi)) * (
-        (beta - d) * T - 2.0 * np.log((1.0 - g * e_dt) / (1.0 - g))
-    )
-    return np.exp(1j * u * (x0 + mu * T) + C + D * p.v0)
+    out = _core_cf(u, T, v0=params.v0, kappa=params.kappa, theta=params.theta,
+                   xi=params.xi, rho=params.rho, x0=x0, mu=mu)
+    return out if isinstance(out, np.ndarray) else np.complex128(out)
 
 
 # ----------------------------------------------------------------------

@@ -18,17 +18,19 @@ figures of ``carry_greeks`` to machine precision
 
 from __future__ import annotations
 
+import threading
 from typing import NamedTuple
 
-from .tape import Real, Tape, exp, log, ncdf, sqrt
+from .tape import Real, Tape, exp_neg_mul, half_square, ln_div, ncdf_scaled, sqrt
 
 
 def bs_price(S: Real, K: Real, T: Real, r: Real, q: Real, sigma: Real, phi: float = 1.0) -> Real:
     """Generic price: floats in, float out; tape variables in, tape variable out."""
     sd = sigma * sqrt(T)
-    d1 = (log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / sd
+    d1 = (ln_div(S, K) + (r - q + half_square(sigma)) * T) / sd
     d2 = d1 - sd
-    return phi * (S * exp(-q * T) * ncdf(phi * d1) - K * exp(-r * T) * ncdf(phi * d2))
+    return phi * (S * exp_neg_mul(q, T) * ncdf_scaled(d1, phi)
+                  - K * exp_neg_mul(r, T) * ncdf_scaled(d2, phi))
 
 
 class AadGreeks(NamedTuple):
@@ -43,11 +45,29 @@ class AadGreeks(NamedTuple):
 
 def bs_greeks_aad(S: float, K: float, T: float, r: float, q: float, sigma: float,
                   is_call: bool = True) -> AadGreeks:
-    """Price and all first-order Greeks from one forward and one backward pass."""
-    tape = Tape()
-    xs = [tape.var(v) for v in (S, K, T, r, q, sigma)]
+    """Price and all first-order Greeks from one forward and one backward pass.
+
+    Records on a per-thread tape that is cleared, not rebuilt, between
+    calls; ``bs_greeks_aad_on`` takes a caller's tape instead.
+    """
+    tape = getattr(_LOCAL, "tape", None)
+    if tape is None:
+        tape = _LOCAL.tape = Tape()
+    return bs_greeks_aad_on(tape, S, K, T, r, q, sigma, is_call)
+
+
+_LOCAL = threading.local()
+
+
+def bs_greeks_aad_on(tape: Tape, S: float, K: float, T: float, r: float, q: float,
+                     sigma: float, is_call: bool = True) -> AadGreeks:
+    """:func:`bs_greeks_aad` recorded on ``tape``, which is cleared first."""
+    tape.clear()
+    xs = tape.vars((S, K, T, r, q, sigma))
     vS, vK, vT, vr, vq, vs = xs
     v = bs_price(vS, vK, vT, vr, vq, vs, 1.0 if is_call else -1.0)
     assert not isinstance(v, float)
-    g = tape.gradient(v, xs)
+    tape.zero_adjoints()
+    tape.backward(v, 1.0, len(xs))  # inputs have no parents: stop above them
+    g = tape.adjoints(xs)
     return AadGreeks(v.value, g[0], g[5], g[3], g[4], g[1], g[2])
