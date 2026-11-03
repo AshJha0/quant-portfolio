@@ -172,8 +172,9 @@ pub mod prelude {
     };
     pub use crate::matrix::{Matrix, covariance_from_vols, ewma_covariance, sample_covariance};
     pub use crate::monte_carlo::{
-        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_run, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se,
+        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_pnl_threads, monte_carlo_run,
+        monte_carlo_var, portfolio_pnl, simulate_factor_returns, simulate_factor_returns_jitter,
+        var_bootstrap_se, var_kde_se,
     };
     pub use crate::parametric::{
         cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
