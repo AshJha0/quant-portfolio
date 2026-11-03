@@ -53,7 +53,7 @@ November 2026 release started parts of stages two and three.
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
 | 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
-| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core, bindings and the `engine=` switch; no option revaluation in the VaR engines yet |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Not yet: dated rates schedules, trade and portfolio objects, order management, execution venues |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
 The CI `counts` job writes the executed pass counts to `counts.json` and shows
