@@ -19,8 +19,8 @@ It is organized in four parts:
 - **Part III: Your learning path.** A suggested order to work through the
   portfolio, by background (quant-first, engineer-first, or starting from
   zero), with what to read and run at each step.
-- **Part IV: The exercise room.** 511 self-test questions and answers,
-  organized into 18 sets by topic, grounded in this portfolio's actual code
+- **Part IV: The exercise room.** 532 self-test questions and answers,
+  organized into 19 sets by topic, grounded in this portfolio's actual code
   and actual documented assumptions, not generic textbook trivia. Use it to
   check your own understanding after working through a project, or to find
   the gaps before you claim you know an area.
@@ -174,8 +174,10 @@ about:
   series; `research/` holds pre-registrations. The order is draft, sign,
   hash check, then run on the 2022-2025 hold-out. The regime study ran on
   the hold-out once and did not reject H0; the pairs study was withdrawn
-  before it. Two later drafts (pairs v2, momentum) are scored only on
-  forward data from 2026-11-03. Equity pairs and the LOBSTER execution study are
+  before it. Two later registrations (pairs v2, momentum), signed on
+  2026-11-02, are scored once on forward data from 2026-11-03 to
+  2028-11-02, on or after 2028-11-13. Every training, stress and
+  calibration run is logged in `research/results/trials.jsonl`. Equity pairs and the LOBSTER execution study are
   not done because their data needs an account.
 - **More models, each with an oracle.** American pricers (Leisen-Reimer,
   Crank-Nicolson, ALO), Bachelier, SABR, higher Greeks, FX smiles and
@@ -188,6 +190,17 @@ about:
   `cpp/core` and `rust/core`. The batch `erfc` and `exp` kernels turned
   out slower than libm on an SSE2 build, and the README reports that with
   the numbers.
+- **One option kernel per language.** Black-Scholes in cost-of-carry form
+  lives once in `qp_core.black_scholes` (Python), `qp/black_scholes.hpp`
+  (C++) and `qp_core::black_scholes` (Rust); the equity and FX packages
+  are wrappers that keep their names and validation. Every output stayed
+  bit-identical. NumPy entry points (`bs_price_array`, `gk_price_array`
+  and the Greeks versions) and vectorised C++ `_fast` batches sit on it.
+- **Builds you can check.** CI installs every Python package from
+  `uv.lock` with hashes checked, the C++ engines install as the CMake
+  package `QuantPortfolio`, CI builds wheels for the bindings, and the
+  bench job compares base and head on the same runner. Set 19 in Part IV
+  covers the ideas behind these.
 
 ### The determinism discipline
 
@@ -295,7 +308,7 @@ starting from. All three converge on the same question sets in Part IV.
 
 ## Part IV: The exercise room
 
-**511 questions across 18 sets**, organized to follow Part I's area-by-area
+**532 questions across 19 sets**, organized to follow Part I's area-by-area
 structure, then widen into the cross-cutting engineering and business
 material. Each answer is grounded in this portfolio's actual code,
 methodology docs, and test suite, where a number, function name, or file
@@ -323,7 +336,8 @@ against the answer.
 | 16 | Testing, Validation & the NaN Defect Class | 29 |
 | 17 | Business, Desk Usage & Model Risk Governance | 26 |
 | 18 | Real-World Postmortems & Judgment | 30 |
-| **Total** | | **511** |
+| 19 | Shared Kernels, Honest Statistics & Safe Builds | 21 |
+| **Total** | | **532** |
 
 
 ## Set 1: Quant & Math Foundations
@@ -2432,3 +2446,229 @@ A passing test suite is evidence of correctness only within the space of inputs 
 **Q30. What is the specific question this round wants you to walk away asking about any piece of numerical code you review, and how does it differ from asking "does this test pass"?**
 
 Ask "what property should always hold here, regardless of implementation, and am I actually testing that property, or just a handful of examples?": a NaN input should always be rejected, not just `-1` and `0`; a solver should be accurate to what the input supports across its whole domain, checked against an independent oracle; a domain check should agree with the exact analytic answer for *any* (skew, kurtosis, alpha), not just a hand-picked set; a reported standard error should track the true sampling variability across scenario counts and tail depths; an invariant like antithetic pairing should hold for *any* valid input shape. "Does this test pass" only tells you the code agrees with the examples you already thought to write down; asking what property must always hold is what surfaces the examples you didn't think to write down.
+
+
+## Set 19: Shared Kernels, Honest Statistics and Safe Builds
+
+This set covers seven ideas behind the most recent changes: one option
+kernel in cost-of-carry form, the quantile convention for historical VaR,
+optional stopping, statistical power, false discovery rate, hash-checked
+installs and honest latency measurement. Each starts with a short primer
+(the plain idea, the formal statement, a worked example), then questions.
+
+### Primer A: Black-Scholes in cost-of-carry form
+
+Plain idea. A stock paying a dividend yield, a currency earning a foreign
+interest rate and a futures contract are priced by one formula. Only the
+rate at which the underlying drifts under the pricing measure changes, and
+that rate is the cost of carry `b`.
+
+Formal statement (Generalised Black-Scholes; Garman and Kohlhagen 1983;
+Haug 2007, ch. 1). With `phi = +1` for a call, `-1` for a put, and the
+carry yield `q = r - b`:
+
+    d1 = [ln(S/K) + (b + sigma^2/2) T] / (sigma sqrt T),   d2 = d1 - sigma sqrt T
+    V  = phi [S e^{-qT} N(phi d1) - K e^{-rT} N(phi d2)]
+
+Equity: `b = r - q`. FX (Garman-Kohlhagen): `r = r_d`, `b = r_d - r_f`.
+Futures (Black 1976): `S = F`, `b = 0`.
+
+Worked example (`python/core/src/qp_core/black_scholes.py` docstring).
+S = K = 100, T = 1, r = 5%, q = 2%, sigma = 20%: `b = 3%`, `d1 = 0.25`,
+`d2 = 0.05`, call = 9.2270. A EURUSD-style call with r_d = 5%, r_f = 2%
+gives the same number.
+
+### Primer B: which sample quantile is "the" VaR
+
+Plain idea. "The 1% worst day" of 1,000 days is not one number until you
+say how to read between sorted observations. Software packages offer nine
+ways (Hyndman and Fan 1996).
+
+Formal statement. Type 1 is the inverse of the empirical distribution
+function: VaR is the loss L(m) with m = ceil(n alpha), no interpolation.
+Type 7 (numpy's default) interpolates linearly at position alpha (n - 1).
+Every historical VaR path here uses type 1 (`docs/MARKET_RISK.md`), the
+lower-quantile VaR on which Acerbi and Tasche (2002) build expected
+shortfall.
+
+Worked example. 1,000 N(0,1) draws (numpy seed 0), 99%: plain historical
+VaR is the 10th worst loss, 2.506. The deprecated P&L-level filtered
+historical VaR read its tail with type 7 and gave 2.778; with type 1 it
+gives 2.815. Golden `a_fhs_var_5pct_lam094` moved from 109.3777910164513
+to 112.05212695060598, and no other golden moved.
+
+### Primer C: optional stopping
+
+Plain idea. If you check a running test every month and stop the first time
+it looks significant, you will "find" an effect far more often than the 5%
+your test promises, even when there is none.
+
+Formal statement. A one-sided test at level 5% has a 5% false-positive rate
+for one look at a fixed sample. With k looks and "stop at the first
+rejection", the false-positive rate is P(at least one of k correlated test
+statistics crosses 1.645), which grows with k towards 1 (Armitage, McPherson
+and Rowe 1969). Sequential designs fix this by spending alpha across looks;
+the forward registrations here fix it more simply, with one look.
+
+Worked example. Both forward registrations (`research/prereg/pairs-fx-g10-v2.md`,
+`research/prereg/momentum-fx-g10.md`) score fixes from 2026-11-03 to
+2028-11-02 once. `research/forward/evaluate.py` gives a verdict only on or
+after 2028-11-13, once the log is complete and checked; before that it
+prints INTERIM numbers and writes nothing.
+
+### Primer D: statistical power
+
+Plain idea. Power is the chance that the test says "effect" when the effect
+is really there. A low-power test usually fails even when the idea is
+right, so a fail tells you little.
+
+Formal statement. Power = P(reject H0 | H1 true at a stated size). The
+momentum registration's rule is "reject if Sharpe - 1.645 x Lo SE > 0" on
+504 forward days. `research/studies/momentum_power.py` plants momentum of
+known strength in synthetic G10 returns and counts rejections over 200
+runs per cell (`research/power/momentum-fx-g10.json`).
+
+Worked example. Planted drift with a mean Sharpe of 0.36 (the "about 0.4"
+cell): 13% rejection. Mean Sharpe 1.29: 53%. No planted drift: 1.5%. So
+if momentum in G10 FX really earns a Sharpe near 0.4, the forward test
+still fails about 87 times in 100. `prereg.py sign` refuses a registration
+that names no power file.
+
+### Primer E: false discovery rate in pair selection
+
+Plain idea. Test 36 pairs at 5% and about two pass by luck each year. The
+question is how many of the passes are more than luck.
+
+Formal statement. Benjamini and Hochberg (1995): sort m p-values,
+p(1) <= ... <= p(m), and keep the largest k with p(k) <= k q / m. The
+expected share of false discoveries among the kept is at most q. A
+complementary check compares the number selected with a null built by
+resampling whole days, which keeps the cross-section but destroys
+mean reversion (`research/studies/robustness.py`).
+
+Worked example (`research/results/pairs_selection_calibration.json`). Over
+19 training folds, 2003-2021, the registered rule selected 53 pairs; the
+null averaged 22.2 (95th percentile 34), permutation p = 0.010. Only 4 of
+the 19 years beat the null at 5%, and BH at q = 0.05 keeps 14 pairs, 8 of
+them in 2018, none in 15 years.
+
+### Primer F: hash-checked installs
+
+Plain idea. A version number names a package; a hash names the exact file.
+Pinning versions alone trusts the package index to serve the same file
+forever. Pinning hashes does not.
+
+Formal statement. `uv.lock` records the sha256 of every wheel.
+`.github/scripts/hashed_install.sh` exports that closure and installs it
+with `pip --require-hashes --only-binary :all: --no-deps`: a file whose
+hash differs, a missing hash, an sdist (which would run arbitrary build
+code) or a package not in the export all fail. Local projects then go in
+with `--no-deps --no-build-isolation`, so the build backend comes from the
+same hashed set, and `pip check` confirms the set is consistent.
+
+Worked example. In the local dry run, 79 of 79 installs (core, the 23
+projects, research and bindings sets on Python 3.11, 3.12 and 3.13, plus
+lint) succeeded, and an export with one hash edited was refused with
+"THESE PACKAGES DO NOT MATCH THE HASHES".
+
+### Primer G: honest latency measurement
+
+Plain idea. One timing is noise. Report the middle of many timings and how
+wide they spread, and compare two versions on the same machine, in turns.
+
+Formal statement (`docs/BENCHMARKS.md`). Each sample is a batch of calls
+lasting at least 2 us, divided by its size; at least 31 samples; p10, p50
+and p90 by nearest rank. The CI gate runs base and head alternately three
+times on one runner pinned to one CPU, and fails a kernel only if the head
+median is more than 25% above the base median and head p10 is above base
+p90.
+
+Worked example. When the option maths moved into the shared kernel, an
+unchanged kernel (`black76_price`) timed in the same runs moved by a ratio
+of 0.83 to 1.10. Every changed kernel's before/after ratio fell inside that
+band (largest: Clang `gk_greeks_batch_fast`, 1.12 with overlapping
+bands), so none was called a regression.
+
+**Q1. Why can one function price an equity option, an FX option and an option on a futures price?**
+
+All three are European payoffs on an underlying that grows at a known rate under the pricing measure, so only the carry `b` differs: `r - q` for a stock with yield `q`, `r_d - r_f` for a currency, 0 for a futures price. `qp_core.black_scholes.carry_price(S, K, T, r, q, sigma, phi)` takes the discount rate and the carry yield `q = r - b`; FX passes `r_d` and `r_f`, futures pass `q = r`.
+
+**Q2. Why does the kernel take `r` and `q` rather than `r` and `b`?**
+
+So the two discount factors `e^{-qT}` and `e^{-rT}` are computed from the caller's own numbers. Recovering `q` as `r - b` would round in the last bit, and the packages' golden values, which were generated before the kernel existed, would move. Taking `q` directly is how every in-scope output stayed bit-identical on the 5,944-quote check grid.
+
+**Q3. Why do the C++ and Rust kernels take the normal CDF as a template or type parameter?**
+
+The equity and FX engines already used different normal CDF implementations (in C++, `norm_cdf_rcp` against `norm_cdf`; in Rust, plain erfc against a C1-truncated erfc). Forcing one would change bits in one engine's goldens. A type parameter shares the formula and keeps each engine's numbers exactly as they were.
+
+**Q4. The Python FX `analytic_greeks` is switching to the shared normal CDF. How large is the change, and why make it?**
+
+It used `scipy.stats.norm.cdf` for its N(phi d) terms while everything else used `0.5 erfc(-x / sqrt 2)`. On the 5,944-quote grid the switch changes price by at most 1.42e-14 relative and the Greeks by at most 3.55e-15. That is far inside every test tolerance, and it leaves one normal CDF across the Python option code with full relative precision in the lower tail.
+
+**Q5. Why does `carry_price` with `q = r` not match `black76_price` bit for bit?**
+
+They are mathematically equal (Black 1976 is the `b = 0` case), but `black76_price` is separate code that forms the terms in a different order. Floating-point addition is not associative, so the results differ in the last bits: 7.577082146427273 against 7.57708214642728, about 1e-15 relative.
+
+**Q6. Historical VaR at 99% on 1,000 days: what are the type 1 and type 7 answers, and why pick type 1?**
+
+Type 1 is the 10th worst loss, L(ceil(1000 x 0.01)). Type 7 interpolates at position alpha (n - 1) = 9.99 between two order statistics. Type 1 returns an observed P&L, so Python, C++ and Rust agree exactly, and VaR and expected shortfall come from the same sorted tail (Acerbi and Tasche 2002). On the seed-0 N(0,1) sample the deprecated filtered VaR moved from 2.778 (type 7) to 2.815 (type 1); plain historical VaR there is 2.506.
+
+**Q7. After the convention change, the gap between plain historical VaR (2.506) and filtered VaR (2.815) is larger than before. Is that worse?**
+
+No. Before, part of the 2.506 vs 2.778 gap was the quantile convention, so the two numbers were not comparable. Now both use type 1, and the whole gap is the volatility filter, which is the thing you want to measure.
+
+**Q8. What is optional stopping, and how large can its effect be?**
+
+Repeatedly testing accumulating data and stopping at the first significant result. Each look is another chance to cross the threshold by luck, so the false-positive rate climbs with the number of looks and tends to 1 if you look forever. A test that promises 5% for one look can give several times that with monthly looks over two years.
+
+**Q9. Why is the forward test scored only on or after 2028-11-13, when the window ends on 2028-11-02?**
+
+The window is 2026-11-03 to 2028-11-02. The extra days let the last ECB fixes arrive and the log be checked for gaps before anyone looks. `evaluate.py` refuses a verdict before 2028-11-13, if any ECB business day is missing, if the history file's SHA-256 does not match, or if the registration is unsigned.
+
+**Q10. What should you do with an INTERIM figure from `evaluate.py`?**
+
+Use it to check that the log is being written and parsed. Do not change parameters, stop the study or announce a result on it: the decision rule was set for one look, and acting on interim looks is optional stopping. The script writes no result file for that reason.
+
+**Q11. The momentum test has about 13% power at a true Sharpe of about 0.4. If it fails in 2028, what have we learned?**
+
+Very little about whether momentum exists at that size: a real Sharpe-0.4 effect would fail about 87 times in 100. A fail rules out large effects (power is 53% near Sharpe 1.3), not small ones. That is why the registration says a fail is the expected outcome, and why `prereg.py sign` demands a power file: it makes the weakness visible before the data arrives, not after.
+
+**Q12. Why is a power check run on synthetic data with a planted effect, rather than on history?**
+
+Power is defined relative to a known truth. On history you do not know whether momentum is present or how strong it is, so you cannot count how often the test detects it. Planting an effect of known size in synthetic returns with realistic volatility (daily sd 0.006 here) gives a true positive to measure against.
+
+**Q13. Pair selection picked 53 pairs over 19 years against 22.2 expected by chance. Is the selection working?**
+
+Partly. Across all years it finds more than chance (permutation p = 0.010). Year by year it mostly does not: only 4 of 19 years beat the null at 5%, and Benjamini-Hochberg at q = 0.05 keeps 14 pairs, none in 15 of the years. So in most years the selected pairs are what chance alone would produce, and a forward pairs result should be read with that in mind.
+
+**Q14. Why does the pair-selection null resample whole days with replacement rather than permute them?**
+
+Resampling rows keeps each day's cross-section (correlations, fat tails, the dollar factor) and destroys order in time, so no spread can mean-revert. A permutation keeps every series' end point, so a cointegrated spread is rebuilt as a bridge that still looks stationary, and the null becomes too hard to beat. The unit tests in `research/tests/test_robustness.py` show this.
+
+**Q15. What does Benjamini-Hochberg control, and how does that differ from Bonferroni?**
+
+BH controls the false discovery rate: the expected share of false positives among the pairs kept, at most q. Bonferroni controls the chance of any false positive at all, by testing each at q / m. With 36 candidates a year, Bonferroni would keep almost nothing; BH keeps more while bounding the share of mistakes.
+
+**Q16. Version pins already fix which package is installed. What do hashes add?**
+
+A version number names a release; a hash names an exact file. If an index served a different file under the same version (a compromised account, a re-upload, a mirror), version pins would install it and hashes would not. `--only-binary :all:` also refuses sdists, whose build step runs arbitrary code on the CI machine.
+
+**Q17. Why does `hashed_install.sh` install the local projects with `--no-build-isolation`?**
+
+With build isolation, pip fetches the build backend (setuptools, scikit-build-core, maturin) into a temporary environment from the index, unpinned and unhashed. Without it, the backend comes from the hashed set already installed (the `backend` and `build` dependency groups in `uv.lock`), so nothing enters the build that the lock did not name.
+
+**Q18. Why does every bench sample time a batch of calls rather than one call?**
+
+A 100 ns call is close to what the clock can resolve, and reading the clock costs time itself. Timing a batch of at least 2 us and dividing by the batch size puts the clock's cost and resolution well below the measurement. The price is that p99 and max of a fast kernel are batch averages, not single-call tails, which `docs/BENCHMARKS.md` states.
+
+**Q19. Why does the CI gate compare base and head on the same runner, in alternating rounds, rather than against stored numbers?**
+
+Cloud runners differ in CPU and load from run to run, so a stored number from another machine mixes the machine's speed with the code's. Building both commits on one runner and running base, head, base, head, base, head means both see the same hardware, and slow drift in the machine's state hits both sides.
+
+**Q20. Why does the gate need both a 25% median rise and non-overlapping bands?**
+
+Either test alone gives false alarms. A 25% median rise with overlapping p10-p90 bands can be noise on a shared runner; separate bands with a 5% rise are real but too small for three rounds to measure reliably. Requiring both means a failure is large and clearly outside the spread. Smaller regressions are reported in the summary, not failed.
+
+**Q21. How do you tell whether a 1.08 before/after latency ratio on a laptop is a regression?**
+
+Time an unchanged kernel in the same runs as a control. When the option kernels moved into the shared core, the control `black76_price` moved by 0.83 to 1.10 with no code change, so a 1.08 on a changed kernel is inside the noise. The arithmetic was also shown bit-identical, so any real difference could only come from instruction scheduling; the right next step is the CI gate, not a code change.

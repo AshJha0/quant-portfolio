@@ -132,7 +132,7 @@ class TestLearnAndCookbook:
     def test_learn_rounds_add_up(self):
         learn = _read(DOCS / "LEARN.md")
         rows = re.findall(r"^\| (\d+) \| [^|]+ \| (\d+) \|$", learn, re.M)
-        assert len(rows) == 18, "round table not found"
+        assert len(rows) == 19, "round table not found"
         assert sum(int(n) for _, n in rows) == count_questions()
         per_round = re.split(r"^#{2,4} Round (\d+)\b.*$", learn, flags=re.M)
         if len(per_round) > 1:
