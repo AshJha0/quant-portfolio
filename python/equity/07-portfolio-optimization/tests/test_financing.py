@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 from eq_port.backtest import make_static_strategy, run_backtest
+from qp_core.execution import ExecutionConfig
 from qp_core.stats import Financing, FinancingWarning
+
+# Filled at Thursday's close, so the levered book is held over Friday night.
+SAME_CLOSE = ExecutionConfig("close_auction", auction_cost_bp=0.0)
 
 
 def _flat(days):
@@ -16,7 +20,7 @@ def test_levered_book_pays_borrow_over_a_weekend_hand_fixture():
     ret = _flat(["2026-10-29", "2026-10-30", "2026-11-02"])
     fin = Financing(rate=0.04, borrow_spread_bp=50.0, basis=360.0)
     res = run_backtest(ret, make_static_strategy(np.array([0.75, 0.75])), window=1,
-                       financing=fin)
+                       financing=fin, execution=SAME_CLOSE)
     # Friday: trade day, accrual Thu->Fri 1 day, cash -0.5
     g_fri = -0.5 * 0.045 * 1 / 360
     assert res.financing.iloc[0] == pytest.approx(g_fri, rel=1e-12)
@@ -33,7 +37,8 @@ def test_levered_book_pays_borrow_over_a_weekend_hand_fixture():
 def test_under_invested_book_earns_on_cash():
     ret = _flat(["2026-10-29", "2026-10-30", "2026-11-02"])
     res = run_backtest(ret, make_static_strategy(np.array([0.25, 0.25])), window=1,
-                       financing=Financing(rate=0.04, lend_spread_bp=10.0))
+                       financing=Financing(rate=0.04, lend_spread_bp=10.0),
+                       execution=SAME_CLOSE)
     g_fri = 0.5 * 0.039 / 360
     cash_mon = 1.0 - 0.5 / (1.0 + g_fri)
     assert res.net_returns.iloc[1] == pytest.approx(cash_mon * 0.039 * 3 / 360, rel=1e-12)

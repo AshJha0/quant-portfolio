@@ -39,23 +39,30 @@ SAME_CLOSE = dict(execution=ExecutionConfig("close_auction", auction_cost_bp=0.0
 
 class TestLedgerExact:
     def test_hand_computed_scenario(self):
-        """3 weights, 4 returns, 10bps: every ledger cell checked by hand."""
+        """3 weights, 4 returns, 10bps: every ledger cell checked by hand.
+
+        Costs are paid out of the trade on the notional at the fill (qp_bt):
+        the post-trade NAV N solves N = m - c |w N - H|, with H the value held
+        at the fill. The fill here is at the decision close (a = 0, m = 1).
+        """
         idx = pd.bdate_range("2021-01-01", periods=5)
         rets = pd.Series([0.0, 0.01, -0.02, 0.03, 0.005], index=idx)
         weights = pd.Series([1.0, 0.5, 0.5], index=idx[:3])
         led = run_ledger(weights, rets, cost_bps=10.0, **SAME_CLOSE)
         c = 10.0 / 1e4
-        # day 2: w=1 earns r=0.01, cost = c*|1-0| (entry)
-        # day 3: w=0.5 earns r=-0.02, cost = c*0.5
-        # day 4: w=0.5 earns r=0.03, cost = 0
-        exp_net = np.array([1.0 * 0.01 - c * 1.0, 0.5 * -0.02 - c * 0.5, 0.5 * 0.03])
-        np.testing.assert_allclose(led["net_ret"].to_numpy(), exp_net, atol=1e-15)
+        n1 = 1 / (1 + c)                       # buy 1 of NAV from flat
+        n2 = (1 - c) / (1 - 0.5 * c)           # sell from 1 down to 0.5
+        h2 = 0.5 * 0.98 / 0.99                 # 0.5 drifts through -2% on a 0.99 NAV
+        n3 = (1 + c * h2) / (1 + 0.5 * c)      # buy back up to 0.5
+        exp_net = np.array([n1 * 1.01 - 1, n2 * 0.99 - 1, n3 * 1.015 - 1])
+        exp_cost = np.array([1 - n1, 1 - n2, 1 - n3])
+        np.testing.assert_allclose(led["net_ret"].to_numpy(), exp_net, rtol=0, atol=1e-15)
         np.testing.assert_allclose(
             led["equity"].to_numpy(), np.cumprod(1 + exp_net), atol=1e-15
         )
         np.testing.assert_array_equal(led.index, idx[1:4])
-        np.testing.assert_allclose(led["gross_ret"], [0.01, -0.01, 0.015])
-        np.testing.assert_allclose(led["cost"], [c, 0.5 * c, 0.0])
+        np.testing.assert_allclose(led["cost"], exp_cost, rtol=0, atol=1e-15)
+        np.testing.assert_allclose(led["gross_ret"], exp_net + exp_cost, rtol=0, atol=1e-15)
 
     def test_zero_cost_equity_is_weighted_compounding(self):
         idx = pd.bdate_range("2021-01-01", periods=4)
@@ -116,7 +123,7 @@ class TestBenchmarksAndStats:
         ratio = led["equity"].to_numpy() / np.cumprod(1 + led["net_ret"].to_numpy())
         np.testing.assert_allclose(ratio, 1.0, atol=1e-12)
         assert (led["weight"] == 1.0).all()
-        assert led["cost"].iloc[0] == pytest.approx(5e-4)
+        assert led["cost"].iloc[0] == pytest.approx(5e-4 / (1 + 5e-4), rel=1e-12)
         assert (led["cost"].iloc[1:] == 0).all()
 
     def test_ma_rule_is_causal_and_binary(self, bt_panel):

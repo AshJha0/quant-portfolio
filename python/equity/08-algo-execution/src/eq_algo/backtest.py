@@ -34,6 +34,7 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
+from qp_bt import NextBarFill, run_fast
 from qp_core.execution import ExecutionConfig
 from qp_core.stats import Financing, warn_no_financing
 
@@ -239,7 +240,6 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
     held = long_short_weights(sig, cfg.n_quantiles, cfg.gross_exposure, cfg.max_weight)
 
     rets = prices.pct_change()
-    n_dates = len(prices.index)
     sigma_np = adv_np = None
     if cfg.aum is not None:
         daily_vol = prices.pct_change().rolling(vol_window, min_periods=vol_window // 2).std(ddof=1)
@@ -248,17 +248,10 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
         adv_np = adv_dollars.to_numpy(dtype=float)
 
     w_np = held.to_numpy(dtype=float)
-    r_np = rets.to_numpy(dtype=float)
     n_names = w_np.shape[1]
-    f = ex.fill_fraction
     auction = ex.mode == "close_auction"
-    borrow_daily = cfg.borrow_bps_annual * 1e-4 / 252.0
     if financing is None:
         warn_no_financing("eq_algo.run_backtest")
-        rf_all = np.zeros(n_dates)
-        tau_all = np.zeros(n_dates)
-    else:
-        rf_all, tau_all = financing.accruals(prices.index)
 
     def trade_cost(i_dec: int, dw: np.ndarray) -> float:
         if cfg.aum is not None:
@@ -266,50 +259,31 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
             sig_i = np.nan_to_num(sig_np[i_dec], nan=0.0)
             adv_i = np.where(np.isfinite(a_np[i_dec]) & (a_np[i_dec] > 0),
                              a_np[i_dec], np.inf)
-            c = _rebalance_cost(dw, sig_i, adv_i, cfg)
-        else:
-            c = _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)
-        if auction:
-            c += ex.auction_cost_bp * 1e-4 * float(np.abs(dw).sum())
-        return c
+            return _rebalance_cost(dw, sig_i, adv_i, cfg)
+        return _rebalance_cost(dw, np.zeros_like(dw), np.ones_like(dw), cfg)
 
-    rows = []
-    held_w = np.zeros(n_names)      # weights held into day i
-    for i in range(n_dates):
-        r = np.nan_to_num(r_np[i], nan=0.0)
-        if auction:
-            # the target decided at close i fills at close i
-            gross_ret = float(held_w @ r)
-            w_new = w_np[i]
-            dw = w_new - held_w
-            cost = trade_cost(i, dw)
-        else:
-            # the target decided at close i-1 fills during day i
-            w_new = w_np[i - 1] if i > 0 else np.zeros(n_names)
-            dw = w_new - held_w
-            r_pre = f * r
-            r_post = (1.0 + r) / (1.0 + f * r) - 1.0
-            gross_ret = float(held_w @ r_pre + w_new @ r_post)
-            cost = trade_cost(i - 1, dw) if i > 0 else 0.0
-        borrow = borrow_daily * float(-w_new[w_new < 0].sum())
-        fin = (financing.cash_return(1.0 - float(held_w.sum()), rf_all[i], tau_all[i])
-               if financing is not None else 0.0)
-        rows.append({
-            "gross_ret": gross_ret,
-            "cost": cost,
-            "borrow": borrow,
-            "financing": fin,
-            "net_ret": gross_ret - cost - borrow + fin,
-            "risk_free": float(rf_all[i]),
-            "excess_ret": gross_ret - cost - borrow + fin - float(rf_all[i]),
-            "turnover": float(np.abs(dw).sum()),
-            "gross_exposure": float(np.abs(w_new).sum()),
-            "net_exposure": float(w_new.sum()),
-            "n_long": int((w_new > 0).sum()),
-            "n_short": int((w_new < 0).sum()),
-        })
-        held_w = w_new
-    ledger = pd.DataFrame(rows, index=prices.index)
+    # The shared core (qp_bt) does the arithmetic: the book drifts between
+    # closes, the fill splits the day, costs are paid out of the trade and the
+    # short book held overnight pays the borrow fee.
+    fill = NextBarFill.from_execution(ex, auction_booked="decision")
+    run = run_fast(rets, w_np, fill, trade_cost, financing=financing,
+                   borrow_bps_annual=cfg.borrow_bps_annual)
+    led = run.ledger
+    filled = w_np if auction else np.vstack([np.zeros((1, n_names)), w_np[:-1]])
+    ledger = pd.DataFrame({
+        "gross_ret": led["gross_ret"].to_numpy(),
+        "cost": led["cost"].to_numpy(),
+        "borrow": led["borrow"].to_numpy(),
+        "financing": led["financing"].to_numpy(),
+        "net_ret": led["net_ret"].to_numpy(),
+        "risk_free": led["risk_free"].to_numpy(),
+        "excess_ret": led["excess_ret"].to_numpy(),
+        "turnover": led["turnover"].to_numpy(),
+        "gross_exposure": np.abs(filled).sum(axis=1),
+        "net_exposure": filled.sum(axis=1),
+        "n_long": (filled > 0).sum(axis=1),
+        "n_short": (filled < 0).sum(axis=1),
+    }, index=prices.index)
     return BacktestResult(ledger=ledger, weights=held, config=cfg)
 
 

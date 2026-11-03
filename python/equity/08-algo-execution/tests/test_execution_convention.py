@@ -24,42 +24,60 @@ def _toy():
 
 CFG = BacktestConfig(n_quantiles=2, gross_exposure=2.0, max_weight=1.0,
                      linear_cost_bps=10.0, impact_coef=0.0)
+W = np.array([-0.5, -0.5, 0.5, 0.5])
+
+
+def _post_trade_nav(m, held, w, c):
+    """N = m - c sum|w N - held| by hand: costs paid out of the trade (qp_bt)."""
+    n = m
+    for _ in range(200):
+        n = m - c * np.abs(w * n - held).sum()
+    return n
 
 
 @pytest.mark.parametrize("f", [0.5, 0.25, 1.0])
 def test_fill_price_is_interpolated_next_price(f):
     prices, signal = _toy()
     led = run_backtest(prices, signal, CFG, execution=ExecutionConfig(fill_fraction=f)).ledger
+    c = 10e-4
     # day 0: target decided at close 0, nothing filled yet
     assert led["turnover"].iloc[0] == 0.0 and led["gross_ret"].iloc[0] == 0.0
-    # day 1: fill at p0 + f (p1 - p0); new weights earn p1 / fill - 1
-    w = np.array([-0.5, -0.5, 0.5, 0.5])
+    # day 1: fill at p0 + f (p1 - p0); new weights earn p1 / fill - 1. From flat,
+    # gross 2 is bought with the cost paid out of the trade: N1 = 1 / (1 + 2c).
     p0, p1 = prices.iloc[0].to_numpy(), prices.iloc[1].to_numpy()
     fill = p0 + f * (p1 - p0)
-    expected = float(w @ (p1 / fill - 1.0))
-    assert led["gross_ret"].iloc[1] == pytest.approx(expected, abs=1e-15)
-    assert led["turnover"].iloc[1] == pytest.approx(2.0, abs=1e-12)
-    assert led["cost"].iloc[1] == pytest.approx(2.0 * 10e-4, abs=1e-15)
-    # day 2: flat prices, no trade
+    b = p1 / fill - 1.0
+    n1 = 1.0 / (1.0 + 2 * c)
+    assert led["gross_ret"].iloc[1] == pytest.approx(n1 * float(W @ b), abs=1e-15)
+    assert led["turnover"].iloc[1] == pytest.approx(2.0 * n1, abs=1e-15)
+    assert led["cost"].iloc[1] == pytest.approx(1.0 - n1, abs=1e-15)
+    # day 2: flat prices, so no P&L; the book drifted on day 1 (h = w (1 + b) /
+    # (1 + w.b)) and the daily rebalance trades it back to the target.
     assert led["gross_ret"].iloc[2] == pytest.approx(0.0, abs=1e-15)
-    assert led["turnover"].iloc[2] == pytest.approx(0.0, abs=1e-12)
+    h = W * (1 + b) / (1 + float(W @ b))
+    n2 = _post_trade_nav(1.0, h, W, c)
+    assert led["turnover"].iloc[2] == pytest.approx(np.abs(W * n2 - h).sum(), abs=1e-15)
+    assert (led["turnover"].iloc[2] > 0) == (f < 1.0)   # f = 1: no move after the fill
 
 
 def test_close_auction_charges_exactly_the_auction_cost():
     prices, signal = _toy()
     ex = ExecutionConfig(mode="close_auction", auction_cost_bp=7.0)
     led = run_backtest(prices, signal, CFG, execution=ex).ledger
-    # fills at close 0: turnover 2.0 on day 0, cost (10 + 7) bp per unit
-    assert led["turnover"].iloc[0] == pytest.approx(2.0, abs=1e-12)
-    assert led["cost"].iloc[0] == pytest.approx(2.0 * 17e-4, abs=1e-15)
+    # fills at close 0 from flat: (10 + 7) bp per unit, N0 = 1 / (1 + 2c)
+    c = 17e-4
+    n0 = 1.0 / (1.0 + 2 * c)
+    assert led["turnover"].iloc[0] == pytest.approx(2.0 * n0, abs=1e-15)
+    assert led["cost"].iloc[0] == pytest.approx(1.0 - n0, abs=1e-15)
     # the weights then earn the whole close-to-close return of day 1
-    w = np.array([-0.5, -0.5, 0.5, 0.5])
     r1 = (prices.iloc[1] / prices.iloc[0] - 1.0).to_numpy()
-    assert led["gross_ret"].iloc[1] == pytest.approx(float(w @ r1), abs=1e-15)
+    assert led["gross_ret"].iloc[1] == pytest.approx(float(W @ r1), abs=1e-15)
     base = run_backtest(prices, signal, CFG,
                         execution=ExecutionConfig(mode="close_auction", auction_cost_bp=0.0))
-    diff = led["cost"] - base.ledger["cost"]
-    np.testing.assert_allclose(diff, 7e-4 * led["turnover"], atol=1e-15)
+    # the premium is 7 bp of every unit traded
+    assert (led["cost"] > base.ledger["cost"]).iloc[:2].all()
+    np.testing.assert_allclose(led["cost"], 17e-4 * led["turnover"], atol=1e-15)
+    np.testing.assert_allclose(base.ledger["cost"], 10e-4 * base.ledger["turnover"], atol=1e-15)
 
 
 def _foresight_panel(n_days=2000, n_names=20, seed=0):
@@ -106,9 +124,14 @@ def test_borrow_fee_charged_on_short_gross():
     cfg = BacktestConfig(n_quantiles=2, gross_exposure=2.0, max_weight=1.0,
                          linear_cost_bps=0.0, impact_coef=0.0, borrow_bps_annual=252.0)
     led = run_backtest(prices, signal, cfg).ledger
-    # short gross 1.0 held from day 1: 252 bp / 252 = 1 bp per day
-    assert led["borrow"].iloc[0] == 0.0
-    np.testing.assert_allclose(led["borrow"].iloc[1:], 1e-4, atol=1e-18)
+    # 252 bp / 252 = 1 bp per day on the short book held overnight. The short
+    # opened during day 1 first pays on day 2, on its drifted size (day 2 has
+    # flat prices, so the fill-point value equals the close-1 value).
+    p0, p1 = prices.iloc[0].to_numpy(), prices.iloc[1].to_numpy()
+    b = p1 / (0.5 * (p0 + p1)) - 1.0
+    h = W * (1 + b) / (1 + float(W @ b))
+    np.testing.assert_allclose(led["borrow"].iloc[:2], 0.0, atol=0)
+    assert led["borrow"].iloc[2] == pytest.approx(1e-4 * -h[h < 0].sum(), abs=1e-18)
     np.testing.assert_allclose(led["net_ret"], led["gross_ret"] - led["cost"] - led["borrow"])
 
 

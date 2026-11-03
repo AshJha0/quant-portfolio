@@ -15,9 +15,12 @@ Timing convention (no lookahead, test-enforced end to end)
   ``t+1``). Gross return of the day is ``(1 + w_{t-1} a)(1 + w_t b) - 1``.
 * Costs: ``cost_bps/1e4 * |w_t - w_{t-1}|`` on the fill day, plus
   ``auction_cost_bp/1e4 * |w_t - w_{t-1}|`` in close-auction mode.
-* Financing: cash ``1 - w`` earns ``cash_rate``; leverage ``w - 1`` pays
-  ``cash_rate + borrow_spread_bps/1e4``, both ACT/252 per trading day, on the
-  time-weighted weight of the day (``f w_{t-1} + (1 - f) w_t``).
+* Financing: the cash ``1 - h`` held overnight (``h`` the drifted weight at
+  the previous close) earns ``cash_rate``; leverage pays
+  ``cash_rate + borrow_spread_bps/1e4``, both ACT/252 per trading day.
+* The arithmetic is the shared core ``qp_bt.run_fast``: the book drifts
+  between closes and costs are paid out of the trade on the notional at the
+  fill, so the weight after a fill is exactly the target.
 
 Ledger columns (one row per P&L day): ``weight`` (``w_t``), ``prev_weight``,
 ``fill_ret`` (``p_fill / p_t - 1``), ``gross_ret``, ``cost``, ``financing``,
@@ -35,7 +38,9 @@ from typing import Any, cast
 
 import numpy as np
 import pandas as pd
+from qp_bt import LinearCost, NextBarFill, run_fast
 from qp_core.execution import ExecutionConfig
+from qp_core.stats import Financing
 
 from .detection import expanding_fit_detect
 from .features import build_features
@@ -153,30 +158,31 @@ def run_ledger(
 
     wn = w.to_numpy()
     wo = np.concatenate([[0.0], wn[:-1]])  # entering from flat
-    dw = np.abs(wn - wo)
     f = ex.effective_fraction
     a = f * r
-    b = (1.0 + r) / (1.0 + a) - 1.0
-    gross = (1.0 + wo * a) * (1.0 + wn * b) - 1.0
-    cost = cost_bps / 1e4 * dw
-    if ex.mode == "close_auction":
-        cost = cost + ex.auction_cost_bp / 1e4 * dw
-    w_avg = f * wo + (1.0 - f) * wn
-    daily_cash = cash_rate / TRADING_DAYS
-    daily_borrow = (cash_rate + borrow_spread_bps / 1e4) / TRADING_DAYS
-    financing = daily_cash * np.clip(1.0 - w_avg, 0.0, None) - daily_borrow * np.clip(
-        w_avg - 1.0, 0.0, None
-    )
-    net = gross - cost + financing
+    # The P&L, fill, costs and financing come from the shared core (qp_bt):
+    # period k earns the target decided at weight date k, with the book
+    # drifting between closes and costs paid out of the trade. Financing is
+    # on the cash held overnight, ACT/252 per trading day (RangeIndex).
+    rr = np.zeros((len(wn) + 1, 1))
+    rr[1:, 0] = r
+    tgt = np.full((len(wn) + 1, 1), np.nan)
+    tgt[:-1, 0] = wn
+    fill = NextBarFill.from_execution(ex, auction_booked="next")
+    fin = Financing(rate=cash_rate, borrow_spread_bp=borrow_spread_bps,
+                    periods_per_year=float(TRADING_DAYS))
+    run = run_fast(pd.DataFrame(rr), tgt, fill, LinearCost(cost_bps), financing=fin)
+    led = run.ledger.iloc[1:]
+    net = led["net_ret"].to_numpy()
     equity = initial_equity * np.cumprod(1.0 + net)
     return pd.DataFrame(
         {
             "weight": wn,
             "prev_weight": wo,
             "fill_ret": a,
-            "gross_ret": gross,
-            "cost": cost,
-            "financing": financing,
+            "gross_ret": led["gross_ret"].to_numpy(),
+            "cost": led["cost"].to_numpy(),
+            "financing": led["financing"].to_numpy(),
             "net_ret": net,
             "equity": equity,
         },
