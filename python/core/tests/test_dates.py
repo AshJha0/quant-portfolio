@@ -1,4 +1,4 @@
-"""Tests for qp_core.calendars and qp_core.daycount.
+"""Tests for the qp_core.holidays calendar objects and qp_core.daycount.
 
 Expected values are worked by hand from the convention definitions.
 """
@@ -9,7 +9,6 @@ import datetime as dt
 import pytest
 from hypothesis import given
 from hypothesis import strategies as hst
-from qp_core.calendars import CALENDARS, ROLL_CONVENTIONS, get_calendar, joint_calendar
 from qp_core.daycount import (
     MONEY_MARKET_DAYCOUNT,
     add_months,
@@ -21,9 +20,10 @@ from qp_core.daycount import (
     roll_months,
     year_fraction,
 )
+from qp_core.holidays import CALENDARS, ROLL_CONVENTIONS, get_calendar, joint_calendar
 
 D = dt.date
-dates = hst.dates(min_value=D(1990, 1, 1), max_value=D(2090, 12, 31))
+dates = hst.dates(min_value=D(2000, 1, 15), max_value=D(2090, 12, 31))
 
 
 class TestYearFraction:
@@ -113,8 +113,9 @@ class TestCalendars:
     def test_rolls(self):
         usd = CALENDARS["USD"]
         sat = D(2024, 8, 31)  # Saturday, month end
-        # Labor Day (2 Sep) is a floating holiday, not in the partial list.
-        assert usd.adjust(sat, "following") == D(2024, 9, 2)
+        # Labor Day is Mon 2 Sep 2024, so following lands on Tue 3 Sep. The
+        # partial fixed-date table used before round 6 gave Mon 2 Sep.
+        assert usd.adjust(sat, "following") == D(2024, 9, 3)
         assert usd.adjust(sat, "preceding") == D(2024, 8, 30)
         assert usd.adjust(sat, "modified_following") == D(2024, 8, 30)
         assert usd.adjust(sat, "unadjusted") == sat

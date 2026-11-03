@@ -120,7 +120,7 @@ def test_holiday_errors():
     with pytest.raises(ValueError):
         holidays("NZD", 2026)
     with pytest.raises(ValueError):
-        holidays("USD", 2009)
+        holidays("USD", 1999)
     with pytest.raises(ValueError):
         holidays("USD", 2100)
     with pytest.raises(ValueError):

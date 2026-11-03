@@ -17,8 +17,9 @@ currencies' calendars, then rolls forward to a day that is good in every
 currency of the pair including USD. ``tenor_dates`` gives the start and end
 of each market tenor: ON runs trade date to T+1, TN runs T+1 to spot, SN
 runs spot to spot+1, and W/M/Y tenors run from spot with the end-end rule
-and modified following. Holiday calendars are partial (weekends and
-fixed-date holidays only, see :mod:`fx_rates.calendars`).
+and modified following. Holiday calendars are the rule-based ones in
+:mod:`qp_core.holidays` (sources listed there); a currency with no shipped
+calendar counts weekends only.
 
 All year fractions are returned as plain floats (units: years).
 """

@@ -4,7 +4,7 @@ Plain idea: an FX trade settles only on a day that is a business day in
 both currencies' settlement centres. The dates follow fixed rules (fixed
 dates, "third Monday", Easter offsets, weekend substitutes), so a small
 generator reproduces them without a network call or a data file. It is
-deterministic and covers the years 2010 to 2099 inclusive (``MIN_YEAR``, ``MAX_YEAR``);
+deterministic and covers the years 2000 to 2099 inclusive (``MIN_YEAR``, ``MAX_YEAR``);
 outside that range it raises rather than guess.
 
 Formal statement. Each currency maps to the settlement holidays of its
@@ -17,17 +17,22 @@ centre, generated from these published rules:
   (2nd Mon Oct), Veterans (Nov 11), Thanksgiving (4th Thu Nov), Christmas.
   A Sunday holiday moves to Monday; a Saturday holiday is not observed.
 * EUR, TARGET2 closing days (ECB): Jan 1, Good Friday, Easter Monday,
-  May 1, Dec 25, Dec 26. No substitutes.
+  May 1, Dec 25, Dec 26. No substitutes. TARGET also closed on Dec 31
+  in 2000 and 2001. The name ``TARGET`` is an alias of ``EUR``; use it for
+  ECB reference-rate fixing dates.
 * GBP, London: England and Wales bank holidays (Banking and Financial
   Dealings Act 1971; gov.uk/bank-holidays). New Year (weekend to Monday),
   Good Friday, Easter Monday, early May (1st Mon), spring (last Mon May),
   summer (last Mon Aug), Christmas and Boxing Day with substitutes. Known
-  proclamations: 2020-05-08 (early May moved), 2022-06-02/03 (jubilee,
+  proclamations: 2002-06-03/04 (golden jubilee, spring moved),
+  2011-04-29 (royal wedding), 2012-06-04/05 (diamond jubilee, spring
+  moved), 2020-05-08 (early May moved), 2022-06-02/03 (platinum jubilee,
   spring moved), 2022-09-19 (state funeral), 2023-05-08 (coronation).
 * JPY, Tokyo: the Act on National Holidays (1948, as amended) plus the
   bank closing days Jan 2, Jan 3 and Dec 31. Substitute holiday: a Sunday
   holiday moves to the next non-holiday day. Citizens' holiday: a day
-  between two holidays. Equinoxes by the National Astronomical
+  between two holidays. Respect for the Aged Day is Sep 15 before 2003
+  and the 3rd Monday of September from 2003. Equinoxes by the National Astronomical
   Observatory approximation valid 1980-2099. Olympic moves in 2020 and
   2021 are included.
 * CHF, Zurich (SIX): Jan 1, Jan 2, Good Friday, Easter Monday, May 1,
@@ -77,28 +82,35 @@ so the Fed is open on Friday Jul 3.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import cache
 
 __all__ = [
+    "CALENDARS",
     "CURRENCIES",
     "MAX_YEAR",
     "MIN_YEAR",
+    "ROLL_CONVENTIONS",
+    "HolidayCalendar",
     "add_business_days",
     "add_closure",
     "adjust_following",
     "clear_closures",
     "easter_sunday",
     "extra_closures",
+    "get_calendar",
     "holidays",
     "is_business_day",
+    "joint_calendar",
     "pair_holidays",
 ]
 
 Calendar = str | Iterable[str] | None
 
-MIN_YEAR, MAX_YEAR = 2010, 2099
+MIN_YEAR, MAX_YEAR = 2000, 2099
 D = dt.date
 _DAY = dt.timedelta(days=1)
 
@@ -157,7 +169,10 @@ def _usd(y: int) -> set[dt.date]:
 
 def _eur(y: int) -> set[dt.date]:
     e = easter_sunday(y)
-    return {D(y, 1, 1), e - 2 * _DAY, e + _DAY, D(y, 5, 1), D(y, 12, 25), D(y, 12, 26)}
+    out = {D(y, 1, 1), e - 2 * _DAY, e + _DAY, D(y, 5, 1), D(y, 12, 25), D(y, 12, 26)}
+    if y in (2000, 2001):  # TARGET closed on 31 Dec in its first years (to 2001)
+        out.add(D(y, 12, 31))
+    return out
 
 
 def _gbp(y: int) -> set[dt.date]:
@@ -165,10 +180,17 @@ def _gbp(y: int) -> set[dt.date]:
     out = {_next_weekday(D(y, 1, 1)), e - 2 * _DAY, e + _DAY, _nth_weekday(y, 8, 0, -1)}
     out |= _xmas_boxing(y)
     out.add(D(2020, 5, 8) if y == 2020 else _nth_weekday(y, 5, 0, 1))
-    if y == 2022:
+    # Spring holiday moved for a jubilee in 2002, 2012 and 2022.
+    if y == 2002:
+        out |= {D(2002, 6, 3), D(2002, 6, 4)}
+    elif y == 2012:
+        out |= {D(2012, 6, 4), D(2012, 6, 5)}
+    elif y == 2022:
         out |= {D(2022, 6, 2), D(2022, 6, 3), D(2022, 9, 19)}
     else:
         out.add(_nth_weekday(y, 5, 0, -1))
+    if y == 2011:
+        out.add(D(2011, 4, 29))
     if y == 2023:
         out.add(D(2023, 5, 8))
     return out
@@ -180,7 +202,8 @@ def _equinox(y: int, base: float) -> int:
 
 def _jpy(y: int) -> set[dt.date]:
     nat = {D(y, 1, 1), D(y, 2, 11), D(y, 4, 29), D(y, 5, 3), D(y, 5, 4), D(y, 5, 5),
-           D(y, 11, 3), D(y, 11, 23), _nth_weekday(y, 1, 0, 2), _nth_weekday(y, 9, 0, 3),
+           D(y, 11, 3), D(y, 11, 23), _nth_weekday(y, 1, 0, 2),
+           _nth_weekday(y, 9, 0, 3) if y >= 2003 else D(y, 9, 15),
            D(y, 3, _equinox(y, 20.8431)), D(y, 9, _equinox(y, 23.2488))}
     if y >= 2020:
         nat.add(D(y, 2, 23))
@@ -391,3 +414,138 @@ def pair_holidays(pair: str, start_year: int, end_year: int) -> frozenset[dt.dat
     for y in range(start_year, end_year + 1):
         out |= holidays(p[:3], y) | holidays(p[3:], y)
     return frozenset(out)
+
+
+# ---------------------------------------------------------------------- #
+# Calendar objects: the one calendar for schedules, rolls and FX spot
+# ---------------------------------------------------------------------- #
+ROLL_CONVENTIONS: tuple[str, ...] = (
+    "following",
+    "modified_following",
+    "preceding",
+    "unadjusted",
+)
+
+_ALIASES = {"TARGET": "EUR", "TARGET2": "EUR"}
+
+
+@dataclass(frozen=True)
+class HolidayCalendar:
+    """Business-day calendar over one or more settlement centres.
+
+    Plain idea: a day is a business day when it is a weekday and no named
+    centre is closed. ``centres=()`` is the weekend-only calendar. A joint
+    calendar (``EUR+USD``) is the union of the centres' holidays, the
+    convention for multi-centre schedules (ISDA 2006 Definitions s.4.10).
+
+    Roll conventions follow ISDA 2006 s.4.12: ``following``,
+    ``modified_following`` (following unless that leaves the month, then
+    preceding), ``preceding`` and ``unadjusted``.
+
+    This class replaces ``qp_core.calendars.BusinessCalendar``, which knew
+    fixed-date holidays only. It has the same methods.
+    """
+
+    name: str
+    centres: tuple[str, ...] = ()
+
+    def holidays(self, year: int) -> frozenset[dt.date]:
+        """Weekday holidays of every centre in ``year`` (the union)."""
+        out: frozenset[dt.date] = frozenset()
+        for c in self.centres:
+            out = out | holidays(c, year)
+        return out
+
+    def is_business_day(self, date: dt.date) -> bool:
+        """True when ``date`` is a weekday open in every centre."""
+        return is_business_day(date, self.centres or None)
+
+    def adjust(self, date: dt.date, convention: str = "modified_following") -> dt.date:
+        """Roll ``date`` to a business day under ``convention``."""
+        if convention not in ROLL_CONVENTIONS:
+            raise ValueError(
+                f"unknown roll convention {convention!r}; expected one of {ROLL_CONVENTIONS}"
+            )
+        if convention == "unadjusted" or self.is_business_day(date):
+            return date
+        if convention == "preceding":
+            return self._step(date, -1)
+        rolled = self._step(date, +1)
+        if convention == "modified_following" and rolled.month != date.month:
+            return self._step(date, -1)
+        return rolled
+
+    def _step(self, date: dt.date, direction: int) -> dt.date:
+        d = date
+        while not self.is_business_day(d):
+            d += dt.timedelta(days=direction)
+        return d
+
+    def add_business_days(self, date: dt.date, n: int) -> dt.date:
+        """Move ``n >= 0`` business days forward.
+
+        ``n = 0`` returns ``date`` rolled forward to a business day (unlike
+        the module function :func:`add_business_days`, which returns it
+        unchanged).
+        """
+        if int(n) != n or n < 0:
+            raise ValueError(f"n must be a non-negative integer, got {n}")
+        d = self._step(date, +1)
+        for _ in range(int(n)):
+            d = self._step(d + _DAY, +1)
+        return d
+
+    def business_days_between(self, start: dt.date, end: dt.date) -> int:
+        """Number of business days in ``(start, end]``."""
+        if end < start:
+            raise ValueError(f"end {end} precedes start {start}")
+        count, d = 0, start
+        while d < end:
+            d += _DAY
+            count += self.is_business_day(d)
+        return count
+
+
+CALENDARS: dict[str, HolidayCalendar] = {
+    "WEEKEND": HolidayCalendar("WEEKEND"),
+    **{c: HolidayCalendar(c, (c,)) for c in CURRENCIES},
+}
+
+
+def get_calendar(name: str | HolidayCalendar | Iterable[str] | None) -> HolidayCalendar:
+    """Look up a calendar.
+
+    ``None`` or ``"WEEKEND"`` gives weekends only. A currency code
+    (``"USD"``), ``"TARGET"``, a joint code (``"EUR+USD"``, ``"EURUSD"``,
+    ``"EUR/USD"``) or an iterable of codes gives the rule-based calendar.
+    """
+    if name is None:
+        return CALENDARS["WEEKEND"]
+    if isinstance(name, HolidayCalendar):
+        return name
+    if not isinstance(name, str):
+        return joint_calendar(*name)
+    key = name.upper().strip()
+    key = _ALIASES.get(key, key)
+    if key in CALENDARS:
+        return CALENDARS[key]
+    parts = [p for p in re.split(r"[+/ ]", key) if p]
+    if len(parts) == 1 and len(key) % 3 == 0 and len(key) > 3:
+        parts = [key[i:i + 3] for i in range(0, len(key), 3)]
+    if len(parts) > 1:
+        return joint_calendar(*parts)
+    raise ValueError(f"unknown calendar {name!r}; expected one of {tuple(CALENDARS)}")
+
+
+def joint_calendar(*names: str | HolidayCalendar) -> HolidayCalendar:
+    """Calendar whose business days are business days in every input."""
+    centres: list[str] = []
+    for n in names:
+        for c in get_calendar(n).centres:
+            if c not in centres:
+                centres.append(c)
+    if not centres:
+        return CALENDARS["WEEKEND"]
+    if len(centres) == 1:
+        return CALENDARS[centres[0]]
+    return HolidayCalendar("+".join(centres), tuple(centres))
