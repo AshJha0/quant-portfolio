@@ -53,6 +53,7 @@ pub mod rng;
 pub mod roots;
 pub mod special;
 pub mod vmath;
+pub mod xva;
 
 /// Error returned by the fallible functions in this crate.
 ///

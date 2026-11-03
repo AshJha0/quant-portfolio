@@ -38,51 +38,72 @@ def records() -> list[str]:
         (-0.002, 0.001, 0.5, 2.0, 1, 1, 0.01),
         (100.0, 120.0, 0.32, 0.25, 0, 0, 0.0),
     ]:
-        d = s.supervisory_delta_option(p, k, v, t, call=bool(call), bought=bool(bought), shift=sh)
-        out.append(f"DELTA {_f(p)} {_f(k)} {_f(v)} {_f(t)} {call} {bought} {_f(sh)} {_f(d)}")
+        dl = s.supervisory_delta_option(p, k, v, t, call=bool(call), bought=bool(bought), shift=sh)
+        out.append(f"DELTA {_f(p)} {_f(k)} {_f(v)} {_f(t)} {call} {bought} {_f(sh)} {_f(dl)}")
     for m, mp in [(0.75, -1.0), (5.0, -1.0), (0.001, -1.0), (5.0, 14.0), (0.5, 10.0)]:
         out.append(f"MF {_f(m)} {_f(mp)} {_f(s.maturity_factor(m, mpor=None if mp < 0 else mp))}")
-    for v, c, a in [(-20.0, 0.0, 282.2), (80.0, 200.0, 1401.0), (10.0, 0.0, 5.0), (0.0, 0.0, 0.0)]:
-        out.append(f"MULT {_f(v)} {_f(c)} {_f(a)} {_f(s.multiplier(v, c, a))}")
-    for d in [(0.0, -36254.0, 78694.0), (1.0, 2.0, 3.0), (-5.0, 7.0, -11.0)]:
-        out.append(f"IREN {' '.join(_f(x) for x in d)} {_f(s.ir_effective_notional(*d))}")
+    for mv, mc, ma in [(-20.0, 0.0, 282.2), (80.0, 200.0, 1401.0), (10.0, 0.0, 5.0), (0.0, 0.0, 0.0)]:
+        out.append(f"MULT {_f(mv)} {_f(mc)} {_f(ma)} {_f(s.multiplier(mv, mc, ma))}")
+    for dd in [(0.0, -36254.0, 78694.0), (1.0, 2.0, 3.0), (-5.0, 7.0, -11.0)]:
+        out.append(f"IREN {' '.join(_f(x) for x in dd)} {_f(s.ir_effective_notional(*dd))}")
     for _ in range(4):
         n = int(rng.integers(1, 6))
-        a = rng.normal(0, 100, n)
-        r = rng.choice([0.4, 0.5, 0.8], n)
-        res = s.single_factor_addon(list(a), list(r))
-        out.append(f"SFA {n} {' '.join(_f(x) for x in a)} {' '.join(_f(x) for x in r)} {_f(res)}")
-    curve = DiscountCurve((0.5, 1.0, 5.0, 30.0), tuple(math.exp(-r * t) for r, t in [(0.02, 0.5), (0.025, 1.0), (0.03, 5.0), (0.035, 30.0)]))
-    for a, sig in [(0.05, 0.01), (0.2, 0.015), (0.01, 0.005)]:
-        hw = HullWhite(curve, a, sig)
+        aa = [float(x) for x in rng.normal(0, 100, n)]
+        rr = [float(x) for x in rng.choice([0.4, 0.5, 0.8], n)]
+        res = s.single_factor_addon(aa, rr)
+        out.append(f"SFA {n} {' '.join(_f(x) for x in aa)} {' '.join(_f(x) for x in rr)} {_f(res)}")
+    curve = DiscountCurve(
+        (0.5, 1.0, 5.0, 30.0),
+        tuple(math.exp(-r * t) for r, t in [(0.02, 0.5), (0.025, 1.0), (0.03, 5.0), (0.035, 30.0)]),
+    )
+    for ha, sig in [(0.05, 0.01), (0.2, 0.015), (0.01, 0.005)]:
+        hw = HullWhite(curve, ha, sig)
         for T, S, X, call in [(1.0, 3.0, 0.95, 1), (2.0, 10.0, 0.8, 0), (0.5, 0.75, 0.99, 1)]:
-            v = hw.zcb_option(T, S, X, call=bool(call))
-            out.append(f"ZBO {_f(a)} {_f(sig)} {_f(T)} {_f(S)} {_f(hw.p0(T))} {_f(hw.p0(S))} {_f(X)} {call} {_f(v)}")
+            zv = hw.zcb_option(T, S, X, call=bool(call))
+            out.append(
+                f"ZBO {_f(ha)} {_f(sig)} {_f(T)} {_f(S)} {_f(hw.p0(T))} {_f(hw.p0(S))} {_f(X)} {call} {_f(zv)}"
+            )
         for t0, n, k, payer in [(1.0, 5, 0.03, 1), (2.0, 8, 0.025, 0), (5.0, 10, 0.04, 1)]:
             pay = [t0 + 0.5 * (i + 1) for i in range(n)]
             acc = [0.5] * n
-            v = hw.swaption(t0, pay, acc, k, payer=bool(payer))
+            sv = hw.swaption(t0, pay, acc, k, payer=bool(payer))
             out.append(
-                f"SWPT {_f(a)} {_f(sig)} {_f(t0)} {_f(hw.p0(t0))} {n} "
-                + " ".join(_f(x) for x in pay) + " " + " ".join(_f(hw.p0(x)) for x in pay) + " "
-                + " ".join(_f(x) for x in acc) + f" {_f(k)} {payer} {_f(v)}"
+                f"SWPT {_f(ha)} {_f(sig)} {_f(t0)} {_f(hw.p0(t0))} {n} "
+                + " ".join(_f(x) for x in pay)
+                + " "
+                + " ".join(_f(hw.p0(x)) for x in pay)
+                + " "
+                + " ".join(_f(x) for x in acc)
+                + f" {_f(k)} {payer} {_f(sv)}"
             )
     for _ in range(3):
         m = int(rng.integers(3, 9))
-        t = np.concatenate([[0.0], np.cumsum(rng.uniform(0.1, 1.0, m - 1))])
-        ee = rng.uniform(0, 5, m)
-        ene = -rng.uniform(0, 5, m)
+        tg: list[float] = [float(x) for x in np.concatenate([[0.0], np.cumsum(rng.uniform(0.1, 1.0, m - 1))])]
+        ee = [float(x) for x in rng.uniform(0, 5, m)]
+        ene = [-float(x) for x in rng.uniform(0, 5, m)]
         hc = HazardCurve((1.0, 3.0), (float(rng.uniform(0, 0.05)), float(rng.uniform(0, 0.05))))
         hb = HazardCurve((2.0,), (float(rng.uniform(0, 0.03)),))
         rec = 0.4
-        c1 = cva(list(t), list(ee), hc, rec)
-        c2 = cva(list(t), list(ee), hc, rec, bank=hb)
-        fca, fba = fva(list(t), list(ee), list(ene), 0.01, 0.004, hc, hb)
+        c1 = cva(tg, ee, hc, rec)
+        c2 = cva(tg, ee, hc, rec, bank=hb)
+        fca, fba = fva(tg, ee, ene, 0.01, 0.004, hc, hb)
         hz = f"{_f(hc.times[0])} {_f(hc.times[1])} {_f(hc.hazards[0])} {_f(hc.hazards[1])} {_f(hb.times[0])} {_f(hb.hazards[0])}"
-        arr = " ".join(_f(x) for x in t) + " " + " ".join(_f(x) for x in ee) + " " + " ".join(_f(x) for x in ene)
+        arr = (
+            " ".join(_f(x) for x in tg)
+            + " "
+            + " ".join(_f(x) for x in ee)
+            + " "
+            + " ".join(_f(x) for x in ene)
+        )
         out.append(f"XVA {m} {arr} {hz} {_f(c1)} {_f(c2)} {_f(fca)} {_f(fba)}")
         mat = float(rng.uniform(0.5, 3.0))
-        out.append(f"EEPE {m} " + " ".join(_f(x) for x in t) + " " + " ".join(_f(x) for x in ee) + f" {_f(mat)} {_f(eepe(list(t), list(ee), mat))}")
+        out.append(
+            f"EEPE {m} "
+            + " ".join(_f(x) for x in tg)
+            + " "
+            + " ".join(_f(x) for x in ee)
+            + f" {_f(mat)} {_f(eepe(tg, ee, mat))}"
+        )
     for n, q in [(1000, 0.95), (100, 0.99), (7, 0.5), (1, 0.975)]:
         out.append(f"PFE {n} {_f(q)} {pfe_index(n, q)}")
     return out
