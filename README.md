@@ -52,7 +52,7 @@ November 2026 release started parts of stages two and three.
 | Stage | What it means | Status |
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
-| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: one keyless data layer (`qp_data`: FRED, ECB, Frankfurter, NY Fed, BoE, US Treasury, CBOE, Coinbase/Binance) with publication-lag checks; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
 | 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Not yet: dated rates schedules, trade and portfolio objects, order management, execution venues |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
@@ -64,6 +64,9 @@ Further reading in [`docs/`](docs/README.md):
 [DIAGRAMS](docs/DIAGRAMS.md), [LEARN](docs/LEARN.md) (study guide and
 self-test question bank), [COOKBOOK](docs/COOKBOOK.md) (recipes) and
 [MARKET_RISK](docs/MARKET_RISK.md) (the VaR, ES and backtesting workflow).
+For practice, [CAREER_PREP](docs/CAREER_PREP.md) points to the four
+[learning notebooks](docs/notebooks/README.md) and the
+[career-prep packs](career-prep/README.md); CI checks both.
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ```
@@ -72,11 +75,14 @@ quant-portfolio/
 ├── CONTRIBUTING.md    # setup, test gate, golden regeneration
 ├── CHANGELOG.md
 ├── docs/              # architecture, study guide, recipes, market-risk workflow
+│   └── notebooks/     # four learning notebooks (exercise and solution copies)
+├── career-prep/       # practice packs with separately kept, CI-checked answer keys
 ├── data/              # free-data fetch scripts; downloads go to data/raw/ (git-ignored)
 ├── research/          # pre-registrations, studies, results, the hash checker
-├── pyproject.toml     # uv workspace: python/core and the 23 projects (uv.lock)
+├── pyproject.toml     # uv workspace: python/core, python/data and the 23 projects (uv.lock)
 ├── python/
 │   ├── core/          # qp-core: shared Python code used by 16 projects
+│   ├── data/          # qp-data: keyless public data, content-addressed store, release lags
 │   ├── equity/01-…10-…    # 10 equity projects
 │   ├── fx/01-…10-…        # 10 FX projects (separate code from equity)
 │   └── foundations/       # 3 single-asset projects
@@ -278,7 +284,12 @@ re-exported from the package `__init__`.
 | Limit hierarchy | `eq_var.limits`, `fx_var.limits` | Exact cases |
 | Johansen trace test | `research/studies/models.py` | statsmodels `coint_johansen`, 1e-9 relative |
 | Kalman hedge ratio | `research/studies/models.py` | Recursive least squares when delta = 0 |
-| Settlement calendars, business-day rolls and FX spot dates | `qp_core.holidays` (also Rust `qp_core::holidays`, C++ `qp/holidays.hpp`) | Published holiday dates per centre; QuantLib 1.44 calendars for USD, GBP, TARGET, JPY, CHF, CAD and AUD on every year 2000-2030; one-off closures through `add_closure` |
+| Kalman hedge ratio with noise variances by maximum likelihood | `eq_pairs.kalman.kalman_hedge_ratio` | Exact Gaussian likelihood to 1e-10 relative; ridge-OLS posterior when the state noise is zero (1e-8); planted variances recovered at n = 3000 |
+| Deflated Sharpe ratio with the programme trial count | `qp_core.stats.deflated_sharpe_detail` | Trial count and trial-Sharpe variance read from `research/results/trials.jsonl`; Lo (2002) standard error below 50% in-market days, tested on a 10%-in-market fixture |
+| Backtest financing and excess returns | `qp_core.stats.Financing` in `eq_port`, `eq_algo`, `fx_pairs` `run_backtest` | Hand fixtures: 150% invested at 4% + 50 bp over a weekend, ACT/360; dollar-neutral capital earning the rate; zero excess return on flat prices |
+| Research power gate | `research/lib/power_gate.py` | Analytic panel power within 3 SE of a 400-run Monte Carlo; a single series is monitoring only |
+| Point-in-time look-ahead check | `qp_data.release.check_release` | Issuer release calendars; FEDFUNDS June 2024 used on 28 June raises (released 1 July) |
+| Settlement calendars, business-day rolls and FX spot dates | `qp_core.holidays` (also Rust `qp_core::holidays`, C++ `qp/holidays.hpp`) | Published holiday dates per centre; QuantLib 1.44 calendars for USD, GBP, TARGET, JPY, CHF, CAD, AUD and USD-GOVT (SIFMA; three listed SIFMA closures QuantLib omits) on every year 2000-2030; one-off closures through `add_closure` |
 | FX forwards from the spot date, broken dates, NDFs | `fx_rates` (`MarketState(valuation_date=)`, `forward_for_date`, `ndf`) | Closed form S exp((r_d - r_f)(T - t_s)) to 1e-13; forward-points strip repriced to 1e-10 |
 | Standard normal CDF and density | `qp_core.normal` | One shared definition for the option packages; `erfc` form keeps the lower tail |
 

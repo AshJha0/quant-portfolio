@@ -1233,6 +1233,40 @@ Output: half-life `~8.7` days, ADF stat `-6.96` well past the 5% critical
 value (`cointegrated=True`), and the backtest with no carry input (spot-only)
 turns in Sharpe `1.88` over 23 trades on this synthetic pair.
 
+`run_backtest` warns (`FinancingWarning`) when `financing` is not given,
+because the posted capital then earns nothing; the next recipe passes it.
+
+### How do I finance a backtest and read its excess return?
+
+Needs `python/core` and `python/fx/05-pairs-trading`. Without financing,
+the posted capital earns nothing, and the P&L is silently treated as if it
+were already an excess return. Pass a `Financing` (a constant or a daily rate series, plus optional borrow
+and lend spreads) and the posted `capital`, then take the Sharpe of
+`excess_pnl`.
+
+```python
+import numpy as np
+from qp_core.stats import Financing
+from fx_pairs.data.synthetic import make_cointegrated_pair
+from fx_pairs import engle_granger, log_spread, zscore, generate_positions, run_backtest
+
+p1, p2, truth = make_cointegrated_pair(n=1000, beta=1.0, kappa=20.0, sigma_ou=0.05, seed=5)
+res = engle_granger(np.log(p1), np.log(p2))
+z = zscore(log_spread(p1, p2, beta=res.beta, alpha=res.alpha), window=60)
+positions, trades = generate_positions(z, entry=2.0, exit_=0.5, stop=4.0)
+bt = run_backtest(p1, p2, positions, beta=res.beta, pair1="AUDUSD", pair2="NZDUSD",
+                  trades=trades, financing=Financing(rate=0.04), capital=1.0)
+ex = bt.excess_pnl
+print(f"financing {bt.financing_pnl.sum():.4f}  risk-free {bt.risk_free_pnl.sum():.4f}  "
+      f"excess {ex.sum():.4f}  excess Sharpe {ex.mean() / ex.std(ddof=1) * np.sqrt(252):.3f}")
+```
+
+Output (synthetic data): `financing 0.1554  risk-free 0.1554  excess 0.1741
+excess Sharpe 1.880`. The capital earns the 4% rate, and the excess return
+removes exactly that, so the excess P&L equals the zero-rate P&L of the
+previous recipe. The two differ once the book borrows or lends at a spread
+(`borrow_spread_bp`, `lend_spread_bp`) or the capital is not fully posted.
+
 ### How do I see the "spurious correlation" trap in pairs trading?
 
 Two independent random walks with correlated *increments* have high return
@@ -2183,9 +2217,10 @@ now = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
 print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to the cut
 ```
 
-Pass `holidays="auto"` to use the pair's joint settlement calendar from
-`fx_options.holidays` (rules-based, 2000 to 2099; a re-export of
-`qp_core.holidays`), or pass your own dates.
+The default `holidays="auto"` uses the pair's joint settlement calendar
+from `qp_core.holidays` (rules-based, 2000 to 2099; re-exported as
+`fx_options.holidays`), with the spot date from `fx_spot_date`. Pass your
+own dates, or `holidays=()` for weekends only.
 The quoted butterfly is read as the smile strangle; if your broker quotes
 the market strangle, convert it first with
 `fx_options.smile.smile_strangle_from_broker`.

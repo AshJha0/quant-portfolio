@@ -72,6 +72,40 @@ is in `docs/MIGRATION.md`.
   kernels report it as `McReturnsNotFinite`. `qp::gamma_marsaglia_tsang`
   loops forever on a NaN shape and recurses without end on a shape <= 0;
   it is now never called unguarded.
+- **Deflated Sharpe ratio (research, `qp_core.stats`).** The DSR used a
+  per-study trial count (3, hard-coded, for FX pairs) and V = 1/(T-1). It
+  now uses the programme-wide count from `research/results/trials.jsonl`
+  (13) and the variance of the 30 logged trial Sharpes (1.15e-4, was
+  2.06e-4), with the Lo (2002) standard error when the series is in the
+  market on fewer than half the days. FX pairs v1 training DSR: 0.616 to
+  0.374. There is one implementation, `deflated_sharpe_detail`.
+- **Backtest cash at a zero rate (`eq_port`, `eq_algo`, `fx_pairs`).** The
+  levered `eq_port` book borrowed for free and the `eq_algo` and
+  `fx_pairs` capital earned nothing. `run_backtest(financing=Financing(...))`
+  now finances the cash residual or the posted capital at a daily rate plus
+  stated spreads, calendar-day accrual, and the results expose excess
+  returns. Hand fixture: 150% invested at 4% + 50 bp over a weekend,
+  ACT/360, financing -1.8753e-4 (was 0). `eq_algo.capacity_backtest`
+  reports `net_sharpe` on excess returns (equal to net when
+  `financing=None`).
+- **Look-ahead in research rates.** Monthly rates were used inside their
+  own month. `research/lib/excess_returns.as_known` applies m+2 to monthly
+  series and d+1 to daily fixings; `qp_data.release.check_release` raises
+  when a series is used before its release (June 2024 FEDFUNDS on 28 June;
+  DGS10 for 1 July on 1 July).
+- **Cross-currency initial exchange (`fx_rates.xccy`).** With
+  `include_initial_exchange=True` the exchange is valued on the spot date,
+  not today. EURUSD, quote notional 150k off market, valued Thu
+  5-Jun-2025, r_d 4.5%: 150,000.00 to 149,926.05 (150k x P_d(t_s)). An
+  at-market `BasisSwap`: -2,377.82 USD to 0.00 (Clark 2011, ch. 1).
+- **FX option spot dates (`fx_options.cuts`).** `spot_date` and
+  `expiry_and_delivery` ignored holidays by default. EURUSD traded Wed
+  25-Nov-2026: Mon 30-Nov to Fri 27-Nov; EURJPY 2-Jul-2025: Fri 4-Jul (a
+  USD holiday) to Mon 7-Jul; GBPUSD 16-Apr-2025: Fri 18-Apr (Good Friday)
+  to Tue 22-Apr. `spot_lag("USDPHP")` is T+1 (was T+2).
+- **FRED loaders needed a key (`fi_rates`, `fx_rates` `data.live`).** They
+  now read FRED keyless, and FRED's empty-cell missing marker is parsed
+  as well as `.`.
 
 ### Changed
 
@@ -111,6 +145,29 @@ is in `docs/MIGRATION.md`.
   pairs-funnel figures are re-run at seed 7. `docs/index.html` gains a
   dark theme. The equity C++ VaR docs say "to 1e-12" where they said "bit
   for bit".
+- **C++ binding batch pricing.** `qp_cpp.eq_bs_price_batch` and
+  `eq_bs_greeks_batch` default to the vectorised kernels: 3.9 times faster
+  for prices (75.0 to 19.4 ns per option) and 2.5 times for Greeks (97.6
+  to 38.9 ns), median of 15 runs of a 100,000-option call, WSL, GCC 15.2.
+  Prices stay within 1e-13 max(1, S, K) of the exact path and each Greek
+  within 1e-12 max(1, S, K, |exact|). `exact=True` gives the old results;
+  `eq_options.engine.bs_price_batch` gains `exact=`. MSVC builds still run
+  the exact path. The Rust batch is unchanged.
+- **Array-tolerant scalar pricers.** `eq_options.bs_price` and
+  `fx_options.gk_price` accept arrays and return arrays, within 1e-15
+  max(1, S, K) of the scalar calls.
+- **Frozen results.** `eq_var.monte_carlo_risk` returns a frozen
+  `MonteCarloRisk` (dict-style access kept); `eq_var.BacktestResult` is
+  frozen.
+- **FX option spot-date default.** `fx_options.cuts.spot_date` and
+  `expiry_and_delivery` default to `holidays="auto"`, which delegates to
+  `qp_core.holidays.fx_spot_date` (was `()`, weekends only).
+- **`data/fetch/qp_fetch.py`** refuses any FRED series not on a
+  public-domain allow-list (`fred_permitted`); it used to refuse five named
+  series.
+- **Docs.** The RLS hedge tracker is no longer called "Kalman-lite";
+  `docs/CAREER_PREP.md` is new; README, ARCHITECTURE, DIAGRAMS and
+  CONTRIBUTING describe `python/data` and the two new CI jobs.
 
 ### Added
 
@@ -136,6 +193,48 @@ is in `docs/MIGRATION.md`.
   a nightly CI run; a required `quantlib` CI job (QuantLib 1.44 from
   hash-locked wheels, no skips) and an `api diff` job for pull requests.
 - `docs/VERSIONING.md`, `docs/MIGRATION.md` and `docs/CONTRIBUTING.md`.
+- `qp_data` (`python/data`): one keyless data layer. Sources: FRED CSV,
+  ECB reference rates and the euro short-term rate, Frankfurter, NY Fed
+  SOFR, BoE SONIA, US Treasury par curve, CBOE VIX, Coinbase and Binance
+  public daily candles. Retries with backoff; a SHA-256 content-addressed
+  store with a manifest; publication-lag rules from issuer release
+  calendars and `check_release`; bitemporal `get(series, as_of=...)`.
+  Tests run on recorded responses; live tests are opt-in.
+- `research/lib/`: CIP excess returns with publication lags, a
+  point-in-time 38-currency universe (`research/universe/fx.csv`), tiered
+  costs at 0x/1x/2x with the breakeven multiple, concentration diagnostics,
+  the one-day fill lag, per-leg pairs P&L, LRV and Fama-MacBeth panel
+  tools, and a power gate (a single series is monitoring only; a
+  confirmatory test needs a panel at 80% power).
+- `qp_core.stats`: `Financing`, `FinancingWarning`, `warn_no_financing`,
+  `deflated_sharpe_detail`, `deflated_sharpe_from_moments`,
+  `in_market_fraction`.
+- `eq_pairs.kalman.kalman_hedge_ratio` (`KalmanHedgeResult`): a Kalman
+  hedge ratio with observation and state noise estimated by maximum
+  likelihood, checked against the exact Gaussian likelihood (1e-10
+  relative) and the ridge-OLS posterior when Q = 0 (1e-8).
+- `fx_pairs.BacktestResult`: `leg1_pnl`, `leg2_pnl`, `financing_pnl`,
+  `risk_free_pnl`, `excess_pnl`; `run_backtest(capital=)`.
+- `USD-GOVT` (alias `SIFMA`), the SIFMA US bond-market calendar, in
+  `qp_core.holidays` with Rust and C++ ports, matching QuantLib 1.44
+  `UnitedStates(GovernmentBond)` 2000-2030 apart from three listed SIFMA
+  closures QuantLib omits; `qp_core.holidays.CALENDAR_CODES`;
+  `fi_rates.calendars.TREASURY_CALENDAR` and `SWAP_CALENDAR`;
+  `FixedRateBond.calendar` and `payment_dates()` (prices and accrual are
+  unchanged).
+- `fx_rates.swaps`: `DatedFXSwap`, `price_fx_swap`, `fair_swap_points`,
+  `tom_next_swap`, `roll_position`; Rust and C++ `fx_leg_value`,
+  `fx_swap_far_rate` and `xccy_initial_exchange`. `xccy` swaps gain
+  `exchange_time`; `CrossCurrencySwap.cashflows` takes an optional
+  `market`. `fx_options.forward_from_dates` is exported at package level.
+- `eq_var.engine.monte_carlo_var(..., engine=)` for linear books.
+- Four learning notebooks (Black-Scholes and implied vol, VaR and ES,
+  curve bootstrap, Almgren-Chriss), each as exercise and solution, checked
+  against independent computations; `career-prep/` with a 60-problem
+  probability pack (answers kept separate, each recomputed exactly and by
+  seeded simulation), a mental-maths drill and a market-making game.
+- CI jobs `py data` and `learning` (nbmake on the solution notebooks); the
+  `quantlib` job also runs the USD-GOVT parity test.
 
 ### Deprecated
 
@@ -151,12 +250,19 @@ Each still works in v3.0.0 and is removed no earlier than v4.0.0
   `FutureWarning`.
 - The `expected_is_bps` column of `eq_algo.evaluate_schedules`: read
   `model_implied_is_bps` (same values; a column cannot warn).
+- The `data/live.py` fetchers in `fx_options`, `fx_vol`, `fx_var`,
+  `fx_rates`, `fx_pairs`, `fx_port` and `fi_rates`: use `qp_data`;
+  `DeprecationWarning`, outputs unchanged.
 
 ### Removed
 
 - `BusinessCalendar.fixed_holidays`: the rule-based calendar has no
   fixed-date table; use `.holidays(year)`. This is a public API break,
   allowed at a major version and recorded in `docs/MIGRATION.md`.
+- The two excluded-source functions in `data/fetch/qp_fetch.py` and
+  `qp_fetch.FRED_RESTRICTED` (use `fred_permitted`).
+- The unsigned order-book execution draft registration (withdrawn
+  2026-11-03, never signed, no data scored; `research/withdrawals/`).
 
 ## [2.0.0] - 2026-11-03
 

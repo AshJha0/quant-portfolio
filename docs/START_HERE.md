@@ -23,6 +23,11 @@ read these five things in this order and skip the rest.
    Each model is listed with the independent check it passes and the
    tolerance.
 
+If you are here to learn rather than to review, start instead with
+[LEARN.md](LEARN.md), then the [learning notebooks](notebooks/README.md)
+and the [career-prep packs](../career-prep/README.md)
+([CAREER_PREP.md](CAREER_PREP.md) explains both).
+
 Known limits worth knowing before you read further:
 
 - Equity and FX are separate codebases for conventions (quoting, rates,

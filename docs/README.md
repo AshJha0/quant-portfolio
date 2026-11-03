@@ -13,8 +13,10 @@ out-of-sample evidence.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layout, package and engine tables, risk conventions, the golden and differential test pipeline, CI jobs. |
 | [DIAGRAMS.md](DIAGRAMS.md) | The same structure as Mermaid diagrams. |
 | [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 532 self-test questions in 19 sets (Part IV). |
-| [COOKBOOK.md](COOKBOOK.md) | 84 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
+| [COOKBOOK.md](COOKBOOK.md) | 85 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
 | [MARKET_RISK.md](MARKET_RISK.md) | How the VaR, ES and backtesting code fits together, and its conventions. |
+| [CAREER_PREP.md](CAREER_PREP.md) | The four learning notebooks and the career-prep packs, both checked in CI. |
+| [VERSIONING.md](VERSIONING.md), [MIGRATION.md](MIGRATION.md) | The public API, the deprecation table, and what to change in your code for each release. |
 
 Where to start:
 
@@ -23,6 +25,7 @@ Where to start:
 - Know the maths, new to this code: [LEARN.md](LEARN.md) Part III, Path B.
 - Interested in the C++ and Rust ports: [LEARN.md](LEARN.md) Part III, Path C.
 - Want to run something: [COOKBOOK.md](COOKBOOK.md).
+- Want to practise: [CAREER_PREP.md](CAREER_PREP.md) (notebooks and problem packs).
 - Want the overall layout first: [ARCHITECTURE.md](ARCHITECTURE.md) and
   [DIAGRAMS.md](DIAGRAMS.md).
 

@@ -37,6 +37,9 @@ flowchart TB
         RUST["Rust engines (edition 2024)<br/>cargo workspace + qp-core"]
     end
 
+    DATA["python/data (qp_data)<br/>keyless public data,<br/>content-addressed store,<br/>publication lags"]
+    DATA -.->|"live.py fetchers delegate<br/>(deprecated, removal v4.0.0)"| AREAS
+
     A1 -.->|golden vectors| CPP & RUST
     A3 -.->|"golden vectors<br/>(linear book, options)"| CPP & RUST
 
@@ -211,13 +214,15 @@ flowchart TD
     BENCH["bench<br/>base vs head on one runner,<br/>3 alternating rounds, CPU 1;<br/>fail: median +25% AND head p10 &gt; base p90"]
     HYG["hygiene<br/>banned-word check,<br/>voice report (report-only)"]
     RES["research<br/>prereg.py check, research/tests"]
+    PYD["py data<br/>python/data x Python 3.11-3.13<br/>recorded responses"]
+    LRN["learning<br/>notebook + career-prep tests,<br/>nbmake on solution notebooks"]
     CNT["counts<br/>aggregate executed counts<br/>into counts.json"]
     OK(["ci-ok<br/>required check:<br/>every gated job succeeded"])
 
-    HASH -.->|installs for| PYC & PY & LINT & BIND & DIFF & RES
+    HASH -.->|installs for| PYC & PY & LINT & BIND & DIFF & RES & PYD & LRN
     DISC --> PY
     PY & PYC & CPP & RUST & BIND --> CNT
-    DISC & PYC & PY & LINT & GOLD & CPP & CORE & FMT & RUST & BIND & DIFF & CMI & WHL & BENCH & HYG & RES & CNT --> OK
+    DISC & PYC & PY & LINT & GOLD & CPP & CORE & FMT & RUST & BIND & DIFF & CMI & WHL & BENCH & HYG & RES & PYD & LRN & CNT --> OK
 ```
 
 The `wheels` job is part of `ci-ok`; it joined after its first green run. The bench gate is described in [BENCHMARKS.md](BENCHMARKS.md).

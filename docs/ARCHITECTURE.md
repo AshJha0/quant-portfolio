@@ -110,7 +110,7 @@ quant-portfolio/
 │   ├── LEARN.md
 │   ├── COOKBOOK.md
 │   └── MARKET_RISK.md
-├── pyproject.toml, uv.lock # uv workspace: python/core and the 23 projects; mypy config
+├── pyproject.toml, uv.lock # uv workspace: python/core, python/data and the 23 projects; mypy config
 ├── tests/                 # repository-level tests: docs counts, engine differential harness
 ├── data/                  # free-data fetchers (data/fetch/qp_fetch.py); downloads in data/raw/, git-ignored
 ├── research/              # research platform
@@ -121,6 +121,7 @@ quant-portfolio/
 │   └── tests/
 ├── python/
 │   ├── core/              # qp-core, shared Python code
+│   ├── data/              # qp-data: keyless public data, content-addressed store, release lags
 │   ├── equity/01-…10-…    # 10 equity projects, src/-layout Python packages
 │   ├── fx/01-…10-…        # 10 FX projects, same layout, separate code
 │   └── foundations/        # 3 single-asset Python projects
@@ -406,6 +407,8 @@ the same engine and platform.
 | `cpp core (<preset>)` | Builds and tests `cpp/core` (including the kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
+| `py data (<version>)` | pytest for `python/data` (`qp-data`) on Python 3.11 to 3.13, on recorded responses; live tests are opt-in. `discover` does not list it because it is not under `python/*/NN-*`. |
+| `learning (notebooks, career-prep)` | `pytest docs/notebooks/tests career-prep/tests`, then nbmake on every `docs/notebooks/*-solution.ipynb` with the pinned `python3` kernel. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 

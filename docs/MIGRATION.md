@@ -173,6 +173,70 @@ own heading, and the v3.0.0 notes are the sum of them.
   value are ported to Rust (`rust/core/src/holidays.rs`) and C++
   (`cpp/core/include/qp/holidays.hpp`).
 
+#### Data: `qp_data` replaces the `live.py` fetchers (Round 7)
+
+- The `data/live.py` fetchers in `fx_options`, `fx_vol`, `fx_var`,
+  `fx_rates`, `fx_pairs`, `fx_port` and `fi_rates` now delegate to
+  `qp_data` and emit `DeprecationWarning`; removal in v4.0.0. Outputs are
+  unchanged. **What to do:** call
+  `qp_data.fetch("<key>", start, end, allow_network=True)`, then
+  `qp_data.get("<key>", as_of=...)`. Frankfurter keys are
+  `frankfurter:<BASE>:<SYM,SYM>`; for CCYUSD legs, invert a USD-based
+  frame.
+- FRED is read keyless. `api_key` is ignored (`fx_rates` warns about it;
+  in `fi_rates` passing one still counts as opting in to the network). `fi_rates.data.live.load_fred_cmt`
+  now needs `allow_network=True` or `QP_DATA_ALLOW_NETWORK=1`. **What to
+  do:** remove `FRED_API_KEY`; pass `allow_network=True`.
+- `qp_fetch.FRED_RESTRICTED` is gone; use `qp_fetch.fred_permitted(series)`.
+  The two excluded-source functions in `data/fetch/qp_fetch.py` are removed
+  and have no replacement.
+
+#### Backtests: financing and excess returns (Round 7)
+
+- `run_backtest` in `eq_port`, `eq_algo` and `fx_pairs` takes
+  `financing=` and warns (`FinancingWarning`) when it is not given.
+  **What to do:** to keep the old zero-rate cash silently, pass
+  `financing=Financing(rate=0.0)` (`qp_core.stats.Financing`). For
+  realistic results pass the daily rate series, for example
+  `Financing(rate=sofr_series, borrow_spread_bp=50)`.
+- Compute Sharpe ratios on `result.excess_returns` (`eq_port`, `eq_algo`)
+  or `result.excess_pnl` (`fx_pairs`). `eq_algo.capacity_backtest` now
+  does this for `net_sharpe` and takes `financing=`; with
+  `financing=None` the number is unchanged.
+- `eq_algo` ledgers have three new columns, `financing`, `risk_free` and
+  `excess_ret`; `net_ret` now includes `financing`.
+- `holdout.deflated_sharpe_of(r)` (research) without `n_trials` reads the
+  programme tally in `research/results/trials.jsonl`. Its dict has more
+  keys (`se_method`, `in_market_fraction`, `trial_sr_variance_source`).
+
+#### Pricing engines and results (Round 7)
+
+- `qp_cpp.eq_bs_price_batch` and `eq_bs_greeks_batch` default to the fast
+  vectorised kernels (within 1e-13 / 1e-12 scaled of the exact path, not
+  bit-identical). **What to do:** pass `exact=True` where you need the old
+  bit-exact results, for example to compare with `eq_bs_price`.
+- `eq_var.monte_carlo_risk` returns a frozen `MonteCarloRisk`;
+  `res["var"]`, `keys()` and `dict(res)` still work, but
+  `isinstance(res, dict)` is now False and the result cannot be mutated.
+  `eq_var.BacktestResult` is frozen. **What to do:** build a new object
+  with `dataclasses.replace`.
+
+#### FX dates and swaps (Round 7)
+
+- `fx_options.cuts.spot_date` and `expiry_and_delivery` default to
+  `holidays="auto"` (was `()`, weekends only), which uses
+  `qp_core.holidays.fx_spot_date`. EURUSD traded Wed 25-Nov-2026 settles
+  Fri 27-Nov (was Mon 30-Nov). `cuts.spot_lag("USDPHP")` is 1. **What to
+  do:** pass `holidays=()` for the old weekends-only dates.
+- `CrossCurrencySwap` and `BasisSwap` with `include_initial_exchange=True`
+  value the exchange on the spot date (`exchange_time`, default
+  `market.spot_time`). EURUSD, 150k quote notional off market, valued
+  5-Jun-2025: 150,000.00 to 149,926.05. **What to do:** nothing, unless you
+  relied on the undiscounted value. For `CrossCurrencySwap`,
+  `exchange_time=0.0` values the exchange today as before.
+- New `FixedRateBond.calendar` (default `USD-GOVT`) and `payment_dates()`;
+  prices and accrual still use the unadjusted schedule.
+
 #### Testing and CI (contributors only)
 
 - Hypothesis settings profiles in the root `conftest.py`: `ci`
@@ -180,8 +244,12 @@ own heading, and the v3.0.0 notes are the sum of them.
   (random, ten times the examples) and `dev` (defaults). Select with
   `QP_HYPOTHESIS_PROFILE` or `--hypothesis-profile`.
 - The QuantLib cross-checks (Hull-White, ISDA CDS, Heston, the holiday
-  calendars and the FX spot dates) run in a required `quantlib` CI job against QuantLib 1.44 installed from
+  calendars including USD-GOVT, and the FX spot dates) run in a required `quantlib` CI job against QuantLib 1.44 installed from
   hash-locked wheels, and fail rather than skip.
+- New CI jobs: `py data` (python/data on Python 3.11 to 3.13) and
+  `learning` (notebook and career-prep tests, nbmake on the solution
+  notebooks). The root workspace adds `python/data` and a `notebooks`
+  dependency group (nbmake, ipykernel).
 
 ## 2.0.0 (2026-11-03)
 

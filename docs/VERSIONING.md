@@ -8,7 +8,7 @@ to do about it.
 ## One version for the whole repository
 
 The top-level `VERSION` file holds the version. Every Python package
-(`python/core` and the 23 projects), both binding packages (`qp-cpp`,
+(`python/core`, `python/data` and the 23 projects), both binding packages (`qp-cpp`,
 `qp-rust`), the Rust binding crate and every `__version__` attribute carry
 the same number. `tests/test_repo_policy.py` fails on any mismatch.
 
@@ -89,6 +89,7 @@ Following PEP 387:
 | `market_volumes=` (`eq_algo.pov_schedule`; `FutureWarning`) | 3.0.0 (milestone v2.1) | 4.0.0 | `forecast_volumes=` |
 | `expected_is_bps` column (`eq_algo.evaluate_schedules`; no warning, a column) | 3.0.0 (milestone v2.1) | 4.0.0 | `model_implied_is_bps` |
 | `qp_core.calendars` (module) | 3.0.0 (milestone v2.1) | 4.0.0 | `qp_core.holidays` |
+| The `data/live.py` fetchers in `fx_options`, `fx_vol`, `fx_var`, `fx_rates`, `fx_pairs`, `fx_port` and `fi_rates` (seven modules; `DeprecationWarning`) | 3.0.0 (milestone v2.1) | 4.0.0 | `qp_data.fetch` and `qp_data.get` |
 | `fx_rates.MarketState` with neither `valuation_date` nor `spot_time`, or `spot_at_t0=True` | 3.0.0 (milestone v2.1) | 4.0.0 | `valuation_date=` or `spot_time=` |
 
 A name deprecated on the way to v3.0.0 has never warned in a released

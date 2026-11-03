@@ -25,6 +25,12 @@ It is organized in four parts:
   check your own understanding after working through a project, or to find
   the gaps before you claim you know an area.
 
+For hands-on practice next to this guide, the four
+[learning notebooks](notebooks/README.md) (Black-Scholes and implied vol,
+VaR and ES, curve bootstrap, Almgren-Chriss) and the
+[career-prep packs](../career-prep/README.md) are described in
+[CAREER_PREP.md](CAREER_PREP.md).
+
 Every claim in this file is checkable against the actual repository: file
 paths, function names, and test names are real, not illustrative.
 
@@ -2890,7 +2896,7 @@ Against Johansen (ML rank/vector estimation for N-series VARs): for a **two-leg 
 
 <details><summary>Answer</summary>
 
-`spread.py`'s `rls_hedge_ratio` implements exponentially-weighted **recursive least squares** with a forgetting factor λ ("Kalman-lite"), algebraically the Kalman filter for a random-walk-coefficient model where the state-noise-to-observation-noise ratio is tied to λ instead of estimated separately. It has one knob (memory ≈ 1/(1−λ)) and runs O(1) per step, versus a full Kalman filter's two separately-calibrated noise covariances and explicit smoothing. Tests show it tracks a hedge ratio drifting 1.0→2.0 with mean error < 0.02. The documented identification caveat: with short memory, an intercept becomes nearly collinear with the price level, so RLS tracking is run with `intercept=False`, letting the OU mean absorb the level instead.
+`spread.py`'s `rls_hedge_ratio` implements exponentially-weighted **recursive least squares** with a forgetting factor λ. It is labelled RLS, not Kalman: it is algebraically the Kalman filter for a random-walk-coefficient model where the state-noise-to-observation-noise ratio is tied to λ instead of estimated separately. It has one knob (memory ≈ 1/(1−λ)) and runs O(1) per step, versus a full Kalman filter's two separately-calibrated noise covariances and explicit smoothing. The full filter is `eq_pairs.kalman.kalman_hedge_ratio` (added in milestone v2.1), which estimates the observation and state noise by maximum likelihood. Tests show the RLS tracker follows a hedge ratio drifting 1.0→2.0 with mean error < 0.02. The documented identification caveat: with short memory, an intercept becomes nearly collinear with the price level, so RLS tracking is run with `intercept=False`, letting the OU mean absorb the level instead.
 
 </details>
 
