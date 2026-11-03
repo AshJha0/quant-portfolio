@@ -74,6 +74,13 @@ from .scenarios import (
     historical_scenarios,
     scenario_table,
 )
+from .swaps import (
+    DatedFXSwap,
+    fair_swap_points,
+    price_fx_swap,
+    roll_position,
+    tom_next_swap,
+)
 from .xccy import (
     BasisSwap,
     CrossCurrencySwap,
@@ -97,6 +104,8 @@ __all__ = [
     # arbitrage
     "CIPQuotes",
     "CrossCurrencySwap",
+    # dated FX swaps
+    "DatedFXSwap",
     # curve
     "DiscountCurve",
     "FXForward",
@@ -124,6 +133,7 @@ __all__ = [
     # bootstrap
     "df_from_deposit",
     "dv01",
+    "fair_swap_points",
     "forward_carry",
     "forward_for_date",
     "forward_points",
@@ -144,8 +154,10 @@ __all__ = [
     "pair_calendar",
     "par_swap_rate",
     "position_risk",
+    "price_fx_swap",
     "reprice_deposits",
     "reprice_swaps",
+    "roll_position",
     "scenario_table",
     "solve_par_basis",
     "solve_par_rate_base",
@@ -153,5 +165,6 @@ __all__ = [
     "spot_date",
     "tenor_dates",
     "tenor_to_years",
+    "tom_next_swap",
     "year_fraction",
 ]

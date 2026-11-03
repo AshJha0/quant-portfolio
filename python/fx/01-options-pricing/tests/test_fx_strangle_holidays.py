@@ -131,8 +131,9 @@ def test_holiday_errors():
 
 # ------------------------------------------------- wired into cuts/dates ---
 def test_auto_calendar_in_dates():
-    # Trade Wed 2026-11-25: Thanksgiving Thu 11-26 is a USD holiday, spot Mon 11-30.
-    assert spot_date(D(2026, 11, 25), "EURUSD", "auto") == D(2026, 11, 30)
+    # Trade Wed 2026-11-25: Thanksgiving Thu 11-26 is a USD holiday on T+1, which
+    # does not stop the count for a USD pair (Clark 2011, ch. 1): spot Fri 11-27.
+    assert spot_date(D(2026, 11, 25), "EURUSD", "auto") == D(2026, 11, 27)  # was 11-30 (round 7)
     assert spot_date(D(2026, 11, 25), "EURUSD") == D(2026, 11, 27)
     assert pair_holidays("EURUSD", 2026, 2026) == holidays("EUR", 2026) | holidays("USD", 2026)
     # 1M from Mon 2026-11-23 (spot Wed 11-25 under USD calendar too): delivery 12-28 is a
