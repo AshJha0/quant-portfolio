@@ -12,9 +12,15 @@ of the order book, and says honestly when that copy cannot be trusted.
 |---|---|---|---|
 | Coinbase Exchange `full` + REST `book?level=3` | L3 (every order) | `sequence` per message | `handlers.hpp` `CoinbaseFull` |
 | Binance spot `<sym>@depth` + REST `/api/v3/depth` | L2 (levels) | update-id range `[U, u]` | `handlers.hpp` `BinanceDepth` |
-| Coinbase Exchange `level2` | L2 | none | `handlers.hpp` `CoinbaseLevel2` |
+| Coinbase Exchange `level2_batch` (or `level2`) | L2 | none | `handlers.hpp` `CoinbaseLevel2` |
 
-All three are public, no-auth feeds. The handler does not own the transport:
+Access. Binance diff-depth and Coinbase `level2_batch` are public and need
+no account. Coinbase `full` and `level2` now require an authenticated
+connection (Coinbase server message seen 2026-11-03 by the recorder lane,
+`tools/recorder`); this project uses no accounts, so `CoinbaseFull` is tested
+on synthetic fixtures only, and live recordings use `level2_batch`, which
+carries the same `snapshot` / `l2update` messages batched over 50 ms. The
+handler does not own the transport:
 the caller passes raw websocket text and REST bodies in, which keeps tests
 offline and lets the recorder sit in front of the parser.
 
@@ -81,6 +87,38 @@ From `tests/test_feed.cpp`, case `seqsync_worked_example`:
 4. Update 12 arrives. 12 applies, then 13 drains. The book is fresh again.
 5. Line B delivers 12 again. It is counted as a duplicate.
 
+## Books and the hot path
+
+`BinanceDepth` and `CoinbaseFull` keep their books in the part-1 flat-array
+L3 book (`cpp/ull/book/l3_book.hpp`) through `flatbook.hpp`:
+
+- A per-product `ProductSpec` (tick, lot, window width, order capacity) maps
+  a fixed-point price to an integer tick and a size to whole lots. The
+  default is a 0.01 tick, a 1e-8 lot and a window of 16,384 ticks.
+- The window is centred on the touch when a snapshot loads. A bid above it
+  or an ask below it means the touch has moved out: the update throws
+  `OutOfWindow`, the handler resets (stale, snapshot requested), and the
+  snapshot re-centres the window.
+- Anything else the window cannot hold - deep levels, prices off the tick
+  grid, sizes above 2^32 lots - goes to an exact side store (a map-based
+  book), so the book is always complete. The map-based `L2Book` and
+  `L3Book` stay as the test oracle: the flat books match them call for call
+  on 50,000 and 60,000 random operations.
+- Coinbase order ids (strings, at most 48 bytes) are interned into a
+  fixed-capacity open-addressing table (`IdInterner`).
+- Binance frames go through `fastdepth.hpp` first, a decoder that reads the
+  event straight into a reused `DepthDelta`. It falls back to `json::parse`
+  for anything it does not fully understand (escapes, a wrapper it does not
+  expect, duplicate keys, a snapshot body), so it can only be faster, never
+  different; a differential test checks every frame it accepts against the
+  generic path on the fixtures and on fuzzed bytes.
+
+In sync and in order, a Binance frame is decoded, sequenced and applied
+with **zero heap allocations** (`tests/test_noalloc.cpp` replaces `operator
+new` and counts). The same frames through the generic `json::parse` path
+allocate on every frame. Coinbase frames still go through `json::parse`;
+their book operations do not allocate.
+
 ## Prices
 
 Prices and sizes are parsed from the exchange's decimal strings into int64
@@ -100,7 +138,7 @@ through it.
 
 ## Tests
 
-`tests/test_feed.cpp`, 12 cases:
+`tests/test_feed.cpp`, 17 cases, and `tests/test_noalloc.cpp`, 2 cases:
 
 - Fixture replay to the expected final book, on 2 Coinbase `full` sessions
   and 2 Binance sessions.
@@ -111,6 +149,10 @@ through it.
   same sequence. Every run must converge to the final book.
 - 20,000 mutated frames, none of which may throw out of the handler.
 - Recorder round trip and every truncation point.
+- Flat books against the map books; the id interner against a hash map;
+  the fast Binance decoder against the generic one; a touch move out of the
+  window going stale and recovering.
+- Zero allocations on the Binance hot path, and in flat L3 book operations.
 
 The fixtures are **synthetic**. See `tests/fixtures/README.md`.
 
@@ -122,11 +164,10 @@ cmake -S cpp/ull/feed -B build/ull-feed && cmake --build build/ull-feed && ctest
 
 ## Not done here
 
-- Captures of live sessions. The plan's acceptance criterion of "3 recorded
-  Coinbase L3 days" needs a capture tool and network access, and is open.
-- Hot-path allocation. This handler parses JSON into a DOM, which allocates.
-  The zero-allocation path is the QPBF binary decoder in part 1
-  (`cpp/ull/qpbf`).
+- Recorded days. The acceptance was re-scoped by the owner (2026-11-03) to 3
+  recorded days each of Binance diff-depth and Coinbase `level2_batch`;
+  `tools/recorder` holds the capture tool and the recordings so far.
+- A non-allocating Coinbase decoder; Coinbase frames still parse to a DOM.
 
 ## Sources
 

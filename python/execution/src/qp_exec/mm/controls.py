@@ -79,11 +79,18 @@ class QuoteController:
 
     def decide(self, model_bid: float | None, model_ask: float | None, q: int,
                best_bid: int | None, best_ask: int | None, book_stale: bool, t: float,
-               hedge_stale: bool = False) -> Decision:
+               hedge_stale: bool = False, extra_ticks: int = 0) -> Decision:
+        """``extra_ticks`` widens both sides (toxicity), after tick rounding."""
         p = self.p
         if book_stale or hedge_stale or best_bid is None or best_ask is None or best_bid >= best_ask:
             return self._commit(Decision(None, None, "stale"), t, pull=True)
         b, a = self._to_ticks(model_bid, model_ask)
+        if extra_ticks < 0:
+            raise ValueError("extra_ticks >= 0 required")
+        if b is not None:
+            b -= extra_ticks
+        if a is not None:
+            a += extra_ticks
         if p.widen_at is not None:
             if q >= p.widen_at and b is not None:
                 b -= p.widen_ticks

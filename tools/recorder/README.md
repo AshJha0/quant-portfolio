@@ -121,7 +121,7 @@ From `tests/test_replay_live.py` (2026-11-03, local run):
 | Binance A+B | C++ | 1,762 | 1,715 | 0 |
 | Binance A+B | Rust | 1,762 | 1,715 | 0 |
 | Binance A+B, 2 snapshots | C++ | 1,174 | 1,130 | 0 |
-| Binance A+B, 2 snapshots | Rust | 1,174 | 1,130 | **1,083** (strict xfail) |
+| Binance A+B, 2 snapshots | Rust | 1,174 | see below | 0 (was **1,083** before the fix below) |
 | Coinbase level2_batch | C++ | 684 | 683 | 0 |
 | Coinbase level2_batch | Rust | 684 | 683 | 0 |
 
@@ -139,6 +139,11 @@ the end. Whether a not-newer snapshot should be ignored, or whether
 comparisons should be limited to the snapshot's depth, is for the owner of
 `rust/ull/feed` to decide. The recording is kept and the Rust case is a
 strict xfail, so a fix shows up as an unexpected pass.
+
+Fixed 2026-11-03 (lane r18-mm-feed): `SyncEngine::on_snapshot` now ignores
+a snapshot that is not newer than the live book, as C++ does, and counts it
+in `SyncStats::snapshots_not_newer`. The xfail marker is removed; the case
+passes with zero mismatches.
 
 ## Running
 

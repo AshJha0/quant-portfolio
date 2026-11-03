@@ -26,15 +26,6 @@ REC_DIR = Path(__file__).resolve().parents[1] / "recordings"
 MANIFEST = json.loads((REC_DIR / "manifest.json").read_text())["recordings"]
 REQUIRE = os.environ.get("QP_RECORDER_REQUIRE_TOOLCHAINS") == "1"
 
-# A recording with a second REST snapshot at the same lastUpdateId as the live
-# book. C++ ignores a snapshot that is not newer than its book. Rust reloads
-# it, which drops the levels the stream had added beyond the snapshot's
-# 1,000-level depth, then reports fresh with a book that differs from the
-# reference at the same update id. Owner of rust/ull/feed to decide; see
-# tools/recorder/README.md "Findings".
-RUST_KNOWN_DIVERGENCE = {"binance_btcusdt_depth_ab_2snap_20261103.qprc.gz"}
-
-
 @pytest.fixture(scope="session")
 def runners(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Runner | None]:
     d = tmp_path_factory.mktemp("replay-build")
@@ -53,14 +44,7 @@ def unpacked(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
 
 
 CASES = [
-    pytest.param(
-        lang,
-        e,
-        id=f"{lang}-{e['file'].split('.')[0]}",
-        marks=[pytest.mark.xfail(strict=True, reason="Rust reloads a not-newer snapshot")]
-        if lang == "rust" and e["file"] in RUST_KNOWN_DIVERGENCE
-        else [],
-    )
+    pytest.param(lang, e, id=f"{lang}-{e['file'].split('.')[0]}")
     for e in MANIFEST
     for lang in ("cpp", "rust")
 ]

@@ -3,6 +3,9 @@
 // in the test. No test opens a socket.
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <tuple>
+#include <unordered_map>
 #include <fstream>
 #include <map>
 #include <random>
@@ -281,8 +284,8 @@ static std::string snapshot_body(const CoinbaseFull& ref) {
     std::string o = "{\"sequence\":" + std::to_string(ref.sync().applied_seq()) + ",\"bids\":[";
     std::string a = "],\"asks\":[";
     bool fb = true, fa = true;
-    std::vector<std::pair<std::string, L3Book::Order>> v(ref.book().orders().begin(),
-                                                         ref.book().orders().end());
+    const auto ords = ref.book().orders();  // by value: one copy, two iterators
+    std::vector<std::pair<std::string, L3Book::Order>> v(ords.begin(), ords.end());
     std::sort(v.begin(), v.end(), [](auto& x, auto& y) { return x.first < y.first; });
     for (auto& [id, ord] : v) {
         std::string row =
@@ -314,8 +317,8 @@ static std::string snapshot_body(const BinanceDepth& ref) {
     }
     return o + "]}";
 }
-static const L2Book& l2of(const CoinbaseFull& h) { return h.book().l2(); }
-static const L2Book& l2of(const BinanceDepth& h) { return h.book(); }
+static L2Book l2of(const CoinbaseFull& h) { return h.book().l2(); }
+static L2Book l2of(const BinanceDepth& h) { return h.book().to_l2(); }
 
 enum class Fault { DropOneLine, DropBoth, Duplicate, Reorder, Burst };
 
@@ -499,6 +502,255 @@ TEST(coinbase_level2_snapshot_dedupe_and_stale) {
     h.reset();
     CHECK(h.stale());
     CHECK((ev == std::vector<bool>{false, true}));
+}
+
+// ---- flat book (part-1 L3 book) parity and the fast decoder --------------------------
+//
+// The map-based L2Book and L3Book in l2book.hpp stay as the oracles: the flat
+// books must match them call for call, inside the window.
+
+TEST(flat_l2_matches_map_book) {
+    std::mt19937_64 rng(21);
+    FlatL2Book f;
+    L2Book m;
+    std::vector<std::pair<std::int64_t, std::int64_t>> b{{100 * kScale, kScale}}, a{{kScale * 101, kScale}};
+    f.load(b, a);
+    m.set(Side::Bid, 100 * kScale, kScale);
+    m.set(Side::Ask, 101 * kScale, kScale);
+    for (int i = 0; i < 50000; ++i) {
+        const Side s = rng() % 2 ? Side::Bid : Side::Ask;
+        const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
+                                (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 300) * (kScale / 100);
+        const std::int64_t q = rng() % 4 == 0 ? 0 : std::int64_t(1 + rng() % 5000) * 1000;
+        f.set(s, px, q);
+        m.set(s, px, q);
+        if (i % 997 == 0) CHECK(f.to_l2() == m);
+    }
+    CHECK(f.to_l2() == m);
+    CHECK_EQ(f.dump(), m.dump());
+    CHECK_EQ(f.get(Side::Bid, 100 * kScale), m.get(Side::Bid, 100 * kScale));
+    // Off the grid, deep, and above u32 lots: the side store keeps them exact.
+    for (auto [px, q] : {std::pair{101 * kScale + 1, std::int64_t(1)}, {900 * kScale, 1},
+                         {101 * kScale, 43 * kScale}, {99 * kScale, 50 * kScale}}) {
+        const Side s = px < 100 * kScale ? Side::Bid : Side::Ask;
+        f.set(s, px, q);
+        m.set(s, px, q);
+    }
+    CHECK(f.to_l2() == m);
+    CHECK(f.far_levels() >= 3);
+    f.set(Side::Ask, 101 * kScale, 2 * kScale);  // back into the flat book
+    m.set(Side::Ask, 101 * kScale, 2 * kScale);
+    f.set(Side::Ask, 5000 * kScale, 0);  // absent: a no-op
+    CHECK(f.to_l2() == m);
+    CHECK_THROWS(f.set(Side::Bid, f.window().second, 1));  // touch above the window
+    CHECK(!f.crossed());
+}
+
+TEST(flat_l3_matches_map_book) {
+    std::mt19937_64 rng(5);
+    FlatL3Book f;
+    L3Book m;
+    std::vector<std::tuple<std::string, Side, std::int64_t, std::int64_t>> snap{
+        {"s0", Side::Bid, 100 * kScale, kScale}, {"s1", Side::Ask, 101 * kScale, kScale}};
+    f.load(snap);
+    for (auto& [id, s, p, q] : snap) m.open(id, s, p, q);
+    std::vector<std::string> live{"s0", "s1"};
+    int next = 0;
+    for (int i = 0; i < 60000; ++i) {
+        const int op = int(rng() % 10);
+        if (op < 4 || live.empty()) {
+            std::string id = "o-" + std::to_string(next++);
+            const Side s = rng() % 2 ? Side::Bid : Side::Ask;
+            const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
+                                    (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 200) * (kScale / 100);
+            const std::int64_t q = std::int64_t(rng() % 50) * 100000;  // includes 0
+            f.open(id, s, px, q);
+            m.open(id, s, px, q);
+            live.push_back(id);
+            continue;
+        }
+        const std::size_t k = rng() % live.size();
+        const std::string id = live[k];
+        const std::int64_t cur = m.orders().at(id).qty;
+        if (op < 6) {
+            f.done(id);
+            m.done(id);
+            live[k] = live.back();
+            live.pop_back();
+        } else if (op < 8) {
+            const std::int64_t by = cur ? std::int64_t(rng() % (cur / 100000 + 1)) * 100000 : 0;
+            f.reduce(id, by);  // may leave a live zero-size order, as Coinbase does
+            m.reduce(id, by);
+        } else {
+            const std::int64_t q = std::int64_t(rng() % 50) * 100000;
+            f.resize(id, q);
+            m.resize(id, q);
+        }
+        if (i % 1009 == 0) {
+            CHECK(f.l2() == m.l2());
+            CHECK_EQ(f.order_count(), m.order_count());
+        }
+    }
+    CHECK(f.l2() == m.l2());
+    CHECK_EQ(f.order_count(), m.order_count());
+    auto fo = f.orders();
+    CHECK_EQ(fo.size(), m.orders().size());
+    bool same = true;
+    for (auto& [id, o] : m.orders()) {
+        auto it = fo.find(id);
+        same = same && it != fo.end() && it->second.side == o.side && it->second.px == o.px &&
+               it->second.qty == o.qty;
+    }
+    CHECK(same);
+    // A long id, a deep order and a huge one go to the side store.
+    for (auto& [id, px, q] : std::vector<std::tuple<std::string, std::int64_t, std::int64_t>>{
+             {std::string(IdInterner::kMaxId + 1, 'x'), 99 * kScale, 1},
+             {"deep", 10 * kScale, kScale},
+             {"huge", 99 * kScale, 60 * kScale}}) {
+        f.open(id, Side::Bid, px, q);
+        m.open(id, Side::Bid, px, q);
+    }
+    f.reduce("huge", 10 * kScale);
+    m.reduce("huge", 10 * kScale);
+    f.resize("huge", kScale);
+    m.resize("huge", kScale);
+    f.done("deep");
+    m.done("deep");
+    CHECK(f.l2() == m.l2());
+    CHECK_EQ(f.order_count(), m.order_count());
+    f.open("z", Side::Bid, 100 * kScale, kScale);
+    CHECK_THROWS(f.reduce("z", 2 * kScale));
+}
+
+TEST(id_interner_matches_hash_map) {
+    IdInterner t(64);
+    std::unordered_map<std::string, std::uint64_t> m;
+    std::mt19937_64 rng(3);
+    for (int i = 0; i < 200000; ++i) {
+        const std::string k = "id" + std::to_string(rng() % 150);
+        switch (rng() % 3) {
+            case 0:
+                if (!m.count(k)) {
+                    if (m.size() == 64) {
+                        CHECK_THROWS(t.insert(k));
+                    } else {
+                        const std::uint64_t h = t.insert(k);
+                        for (auto& [kk, v] : m)
+                            if (v == h) CHECK(false);  // a live handle reused
+                        m[k] = h;
+                    }
+                }
+                break;
+            case 1:
+                t.erase(k);
+                m.erase(k);
+                break;
+            default: {
+                auto it = m.find(k);
+                if (t.get(k) != (it == m.end() ? 0 : it->second)) CHECK(false);
+            }
+        }
+        if (t.size() != m.size()) CHECK(false);
+    }
+    CHECK_EQ(t.size(), m.size());
+}
+
+TEST(fast_depth_decoder_agrees_with_generic) {
+    std::uint64_t accepted = 0, fuzz_accepted = 0, total = 0;
+    DepthDelta d;
+    d.changes.reserve(4096);
+    std::mt19937_64 rng(17);
+    auto generic = [](const std::string& raw, DepthDelta& out) -> bool {
+        try {
+            json::Value m = json::parse(raw);
+            if (m.has("data") && m.has("stream")) m = json::Value(m.at("data"));
+            if (!m.has("e") || m.at("e").str() != "depthUpdate" || m.at("s").str() != "BTCUSDT") return false;
+            out = BinanceDepth::to_delta(m);
+            return out.first <= out.last;
+        } catch (const std::exception&) {
+            return false;
+        }
+    };
+    for (const char* name : {"binance_depth_21", "binance_depth_22"}) {
+        const std::string fname = name;
+        for (const auto& r : records(fname)) {
+            if (r.kind != Kind::Frame) continue;
+            ++total;
+            DepthDelta g;
+            const bool ok = decode_depth(r.bytes, "BTCUSDT", d);
+            CHECK(ok);  // every fixture frame takes the fast path
+            CHECK(generic(r.bytes, g));
+            if (ok && d == g) ++accepted;
+            for (int rep = 0; rep < 8; ++rep) {
+                std::string m = r.bytes;
+                const std::size_t pos = rng() % m.size();
+                switch (rng() % 3) {
+                    case 0:
+                        m[pos] = char(rng() % 256);
+                        break;
+                    case 1:
+                        m.erase(pos, 1 + rng() % 3);
+                        break;
+                    default:
+                        m.insert(pos, 1, " ,:[]{}\"0.9e-\\"[rng() % 14]);
+                }
+                if (decode_depth(m, "BTCUSDT", d)) {
+                    ++fuzz_accepted;
+                    DepthDelta g2;
+                    if (!generic(m, g2) || !(g2 == d)) {
+                        CHECK(false);
+                        std::fprintf(stderr, "fast/generic disagree: %s\n", m.c_str());
+                    }
+                } else if (!d.changes.empty()) {
+                    CHECK(false);
+                }
+            }
+        }
+    }
+    CHECK(total > 1000);
+    CHECK_EQ(accepted, total);
+    CHECK(fuzz_accepted > 0);  // some mutations stay valid (a digit changed, say)
+    // Fallback cases: escape, wrong symbol, a before b, duplicate key, snapshot.
+    for (const char* raw : {R"({"e":"depthUpdate","s":"BTC\u0055SDT","U":1,"u":1,"b":[],"a":[]})",
+                            R"({"e":"depthUpdate","s":"ETHUSDT","U":1,"u":1,"b":[],"a":[]})",
+                            R"({"e":"depthUpdate","s":"BTCUSDT","U":1,"u":1,"a":[],"b":[]})",
+                            R"({"e":"depthUpdate","s":"BTCUSDT","U":1,"U":1,"u":1,"b":[],"a":[]})",
+                            R"({"lastUpdateId":1,"bids":[],"asks":[]})"})
+        CHECK(!decode_depth(raw, "BTCUSDT", d));
+}
+
+TEST(window_move_goes_stale_and_recovers) {
+    // Window of 64 ticks (0.64) around the touch. A deep ask goes to the side
+    // store; a bid above the window means the touch moved: the handler resets
+    // (stale) and asks for a snapshot, which re-centres the window.
+    ProductSpec narrow;
+    narrow.n_levels = 64;
+    BinanceDepth h("BTCUSDT", {}, narrow);
+    int requests = 0;
+    h.on_snapshot_needed = [&] { ++requests; };
+    auto ev = [](int U, int u, const std::string& b, const std::string& a) {
+        return R"({"e":"depthUpdate","s":"BTCUSDT","U":)" + std::to_string(U) + R"(,"u":)" +
+               std::to_string(u) + R"(,"b":[)" + b + R"(],"a":[)" + a + "]}";
+    };
+    h.on_message(ev(11, 11, R"(["100.00","1"])", ""), 0);
+    h.on_snapshot(R"({"lastUpdateId":10,"bids":[["100.00","2"]],"asks":[["100.02","1"],["150.00","3"]]})");
+    CHECK(!h.stale());
+    CHECK_EQ(h.book().far_levels(), 1u);  // the deep ask
+    h.on_message(ev(12, 12, "", R"(["160.00","4"])"), 1);  // another deep ask: fine
+    CHECK(!h.stale());
+    CHECK_EQ(h.book().dump(), std::string("B 100 1\nA 100.02 1\nA 150 3\nA 160 4\n"));
+    const int before = requests;
+    h.on_message(ev(13, 13, R"(["120.00","1"])", ""), 2);  // bid above the window
+    CHECK(h.stale());
+    CHECK_EQ(h.stats().inconsistent, 1u);
+    CHECK(requests > before);
+    h.on_snapshot(R"({"lastUpdateId":13,"bids":[["120.00","1"],["100.00","1"]],"asks":[["120.05","1"]]})");
+    CHECK(!h.stale());
+    const auto [lo, hi] = h.book().window();
+    CHECK(lo <= 120 * kScale && 120 * kScale < hi);  // re-centred
+    CHECK_EQ(h.book().dump(), std::string("B 120 1\nB 100 1\nA 120.05 1\n"));
+    h.on_message(ev(14, 14, R"(["120.01","2"])", ""), 3);
+    CHECK(!h.stale());
 }
 
 QPT_MAIN()
