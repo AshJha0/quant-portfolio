@@ -117,6 +117,7 @@ revalues a leg as v0 exp(dfx - T dr): spot S exp(r) on log returns.
   quadratic form, Cholesky and the scenario product L z read rows
   contiguously. Summation order is never changed for speed, since that
   would change results in the last bits.
-- **Special functions in the library.** Acklam plus Halley inverse normal,
+- **Special functions in `cpp/core`** (`qp/var_stats.hpp`, shared with the
+  equity engine since milestone v2.1; `fxvar/stats.hpp` wraps it). Acklam plus Halley inverse normal,
   Lanczos `log_gamma` (thread-safe; `std::lgamma` writes glibc's global
   `signgam`), incomplete gamma and beta, binomial CDF by pmf recursion.

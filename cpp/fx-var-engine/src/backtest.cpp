@@ -42,10 +42,6 @@ LrTest kupiec_pof(const KupiecInput& in) {
   return {lr, chi2_sf(lr, 1.0)};
 }
 
-LrTest kupiec_pof(int n_exceptions, int n_obs, double alpha) {
-  return kupiec_pof(KupiecInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
-}
-
 LrTest christoffersen_independence(const std::vector<int>& exceedances) {
   if (exceedances.size() < 2)
     throw std::invalid_argument("need at least 2 observations for the independence test");
@@ -115,11 +111,6 @@ TrafficLight basel_traffic_light(const BaselInput& in) {
   }
   tl.multiplier = 3.0 + tl.plus_factor;
   return tl;
-}
-
-TrafficLight basel_traffic_light(int n_exceptions, int n_obs, double alpha) {
-  return basel_traffic_light(
-      BaselInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
 }
 
 double acerbi_szekely_z2(const std::vector<double>& pnl, const std::vector<double>& var,

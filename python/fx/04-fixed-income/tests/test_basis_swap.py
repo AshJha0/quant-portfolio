@@ -69,8 +69,8 @@ class TestCollateralCurrency:
         with pytest.raises(ValueError, match="collateral_ccy"):
             market.replace(collateral_ccy="GBP")
 
-    def test_zero_spread_model_is_deprecated(self, market):
-        with pytest.warns(DeprecationWarning, match="zero_spread"):
+    def test_zero_spread_model_removed_in_3_0(self, market):
+        with pytest.raises(ValueError, match="zero_spread"):
             market.replace(basis_model="zero_spread")
         with pytest.raises(ValueError, match="basis_model"):
             market.replace(basis_model="other")

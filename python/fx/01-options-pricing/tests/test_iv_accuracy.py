@@ -95,10 +95,11 @@ def test_k90_itm_call_is_backward_stable() -> None:
     assert abs(gk_price(S, K, T, r, 0.0, got, "call") - call) <= 16 * math.ulp(call)
 
 
-def test_old_tuning_keywords_warn() -> None:
+@pytest.mark.parametrize("kw", ["tol", "max_iter"])
+def test_tuning_keywords_removed_in_3_0(kw: str) -> None:
     price = gk_price(1.1, 1.1, 1.0, 0.04, 0.02, 0.1, "call")
-    with pytest.warns(DeprecationWarning):
-        implied_vol(price, 1.1, 1.1, 1.0, 0.04, 0.02, "call", tol=1e-10)
+    with pytest.raises(TypeError):
+        implied_vol(price, 1.1, 1.1, 1.0, 0.04, 0.02, "call", **{kw: 1})  # type: ignore[arg-type]
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         implied_vol(price, 1.1, 1.1, 1.0, 0.04, 0.02, "call")

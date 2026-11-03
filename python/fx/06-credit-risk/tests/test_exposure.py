@@ -217,12 +217,10 @@ def test_cva_validation_errors():
         expected_exposure_loss(t, e[:1], np.array([0.01, 0.02]), lgd=0.5)
 
 
-def test_cva_names_are_deprecated_aliases():
+def test_cva_aliases_removed_in_3_0():
     import fx_credit as fc
+    from fx_credit import exposure
 
-    t = np.array([0.5, 1.0])
-    ee = np.array([100.0, 150.0])
-    q = np.array([0.01, 0.02])
-    with pytest.warns(DeprecationWarning, match="not a CVA"):
-        old = fc.cva(t, ee, q, 0.6)
-    assert old == fc.expected_exposure_loss(t, ee, q, 0.6)
+    for name in ("cva", "cva_for_forward"):
+        assert not hasattr(fc, name) and not hasattr(exposure, name)
+        assert name not in fc.__all__

@@ -75,6 +75,15 @@ prices = load_prices("SPY", start="2016-01-01")
 
 ## Headline results (synthetic, 100 seeds)
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> `strategy_returns` pays the cost on the notional at the fill, out of the trade. Positions, trades and zero-cost returns match the old loop to 1e-12.
+> Worked example: entry day with bar return b and cost c: before b - c, after (1+b)/(1+c) - 1; exit: before a - c, after (1+a)(1-c) - 1. The gap is at most c(|r|+c) per trade day.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in the package's characterisation tests (source: `docs/MIGRATION.md`, milestone v2.1).
+
 Command: `python examples/run_pipeline.py`. Each seed is a fresh 10-year
 synthetic path from the bundled two-regime generator. On each seed the
 pipeline selects (fast, slow) on the first 70% by grid search over 49

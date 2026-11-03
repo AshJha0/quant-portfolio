@@ -124,12 +124,6 @@ class TestEwmaVolatility:
         x2[80] = 50.0
         assert ewma_volatility(x2, lam=0.94)[0] == sig[0]
 
-    def test_init_argument_is_deprecated(self):
-        x = np.random.default_rng(13).normal(0, 1, 50)
-        with pytest.deprecated_call():
-            old = ewma_volatility(x, lam=0.94, init="sample")
-        assert old[0] == pytest.approx(np.std(x), rel=1e-15)
-
     def test_vol_rises_after_large_returns(self):
         x = np.concatenate([np.full(100, 0.1), np.full(20, 5.0)])
         sig = ewma_volatility(x, lam=0.94)

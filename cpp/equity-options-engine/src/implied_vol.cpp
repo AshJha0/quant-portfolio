@@ -65,9 +65,4 @@ double implied_vol(double price, double S, double K, double T, double r, double 
     return value_or_throw(try_implied_vol(price, S, K, T, r, q, type));
 }
 
-double implied_vol(double price, double S, double K, double T, double r, double q, OptionType type,
-                   double /*tol*/, int /*max_iter*/, double /*sigma_lo*/, double /*sigma_hi*/) {
-    return implied_vol(price, S, K, T, r, q, type);
-}
-
 }  // namespace eqopt

@@ -33,7 +33,7 @@ variant fills at p_t and pays an auction cost.
   400 are identical.
 - Trailing ADV is causal
   (`test_capacity_and_race.py::test_full_sample_adv_is_deprecated_and_trailing_adv_is_causal`).
-  The full-sample `DailyPanel.adv_dollars` now warns.
+  The full-sample `DailyPanel.adv_dollars` was removed in 3.0.0.
 
 ## 3. Planted alpha recovered (synthetic, seed 42)
 

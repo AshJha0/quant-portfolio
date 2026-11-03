@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import math
 import numbers
-import warnings
 from collections.abc import Sequence
 from typing import Any, overload
 
@@ -169,8 +168,7 @@ def gk_put(S: float, K: float, T: float, r_d: float, r_f: float,
 
 
 def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
-                r_f: float, option_type: str, tol: float | None = None,
-                max_iter: int | None = None) -> float:
+                r_f: float, option_type: str) -> float:
     """Implied Garman-Kohlhagen volatility from a domestic-currency premium.
 
     The quote is mapped to normalised Black form and solved on the
@@ -194,8 +192,6 @@ def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
         As in :func:`gk_price`.  Requires T > 0.
     option_type : str
         ``"call"`` or ``"put"``.
-    tol, max_iter
-        Deprecated and ignored. The solver has no tuning parameters.
 
     Returns
     -------
@@ -208,12 +204,6 @@ def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
         If the price lies outside ``(lower - tau_lo, upper - tau)``, if T = 0,
         if an input is invalid, or if the solver does not converge.
     """
-    for name, value in (("tol", tol), ("max_iter", max_iter)):
-        if value is not None:
-            warnings.warn(
-                f"implied_vol({name}=...) is deprecated and ignored; "
-                "the solver has no tuning parameters",
-                DeprecationWarning, stacklevel=2)
     phi = validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, 0.0)
     if T <= 0.0:

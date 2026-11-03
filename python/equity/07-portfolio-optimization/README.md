@@ -57,6 +57,15 @@ print(ep.summary_table({"ERC": bt.net_returns}))
 
 ## Headline results
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> Before, the weights chosen at close t-1 filled at that same close for free (a look-ahead). `run_backtest(execution=)` now defaults to the next bar with fill fraction f = 0.5, the book drifts between rebalances and costs come out of the trade.
+> Worked example: one asset bought on a +2 % day: before 0.02, after 1.02/1.01 - 1 = 0.0099.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in the package's characterisation tests and `test_default_fill_is_next_bar_not_the_decision_close` (source: `docs/MIGRATION.md`, milestone v2.1).
+
 All numbers come from `python examples/run_pipeline.py` on synthetic
 panels. The intervals are 95% t-intervals across independent synthetic
 panels.

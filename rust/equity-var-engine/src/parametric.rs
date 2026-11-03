@@ -187,20 +187,6 @@ fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
     ends
 }
 
-/// Old fixed-interval check `g'(z) > 0` on `[-z_range, z_range]`, kept for
-/// one release. The interval should follow the VaR level; use
-/// [`cornish_fisher_valid`]. Non-finite input returns `false`.
-#[deprecated(
-    since = "0.2.0",
-    note = "use cornish_fisher_valid(skew, excess_kurt, alpha)"
-)]
-pub fn cornish_fisher_domain_ok(skew: f64, excess_kurt: f64, z_range: f64, _n_grid: usize) -> bool {
-    if !skew.is_finite() || !excess_kurt.is_finite() || !z_range.is_finite() {
-        return false;
-    }
-    cf_min_derivative(skew, excess_kurt, z_range) > 0.0
-}
-
 /// Cornish–Fisher VaR: moment-corrected parametric quantile.
 ///
 /// `VaR = -(mean + z_cf(alpha) * sigma)`. With `check_domain = true`

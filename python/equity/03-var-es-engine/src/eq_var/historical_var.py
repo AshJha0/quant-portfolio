@@ -144,7 +144,7 @@ def _window_seed(arr: np.ndarray, seed_window: int) -> float:
 
 
 def ewma_volatility(
-    x: np.ndarray, lam: float = 0.94, init: object = _UNSET, *, seed_window: int = SEED_WINDOW
+    x: np.ndarray, lam: float = 0.94, *, seed_window: int = SEED_WINDOW
 ) -> np.ndarray:
     """One-step-ahead EWMA (RiskMetrics) volatility forecasts.
 
@@ -153,8 +153,8 @@ def ewma_volatility(
     ``sigma[t]`` is the forecast for day ``t``. Apart from the seed window it
     uses information up to ``t-1`` only.
 
-    ``init`` is deprecated: ``"sample"`` (full-sample variance, a look-ahead)
-    and ``"first"`` (``x[0]**2``) keep their old meaning for one release.
+    The ``init`` argument (``"sample"``, a full-sample look-ahead, and
+    ``"first"``) was removed in v3.0.0.
 
     Returns an array of the same length as ``x``.
     """
@@ -163,21 +163,7 @@ def ewma_volatility(
     if arr.size < 2:
         raise ValueError("need at least 2 observations for EWMA volatility")
     seed_window = integer("seed_window", seed_window, min_value=1)
-    if init is _UNSET:
-        seed = _window_seed(arr, seed_window)
-    else:
-        warnings.warn(
-            "ewma_volatility(init=...) is deprecated; the seed is now the mean of x**2 "
-            "over the first seed_window observations",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if init == "sample":
-            seed = float(np.var(arr))
-        elif init == "first":
-            seed = float(arr[0] ** 2)
-        else:
-            raise ValueError(f"init must be 'sample' or 'first', got {init!r}")
+    seed = _window_seed(arr, seed_window)
     return np.sqrt(np.maximum(_ewma_var_path(arr, lam, seed)[:-1], 1e-32))
 
 
@@ -239,7 +225,8 @@ def factor_filtered_historical_var(
 def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.94) -> float:
     """Deprecated P&L-level FHS. Use ``factor_filtered_historical_var``.
 
-    Kept for one release with its full-sample EWMA seed. The tail is read
+    Kept with its full-sample EWMA seed until the C++ and Rust engines drop
+    their copies and the shared golden key (open item for v3.0.0). The tail is read
     with the same order statistic as every other VaR path
     (``eq_var._tail.var_es``, ``m = ceil(n alpha)``). It used numpy type-7
     interpolation before, so FHS and HS numbers were not like for like.

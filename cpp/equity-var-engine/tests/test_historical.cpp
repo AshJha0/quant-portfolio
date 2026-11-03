@@ -25,27 +25,6 @@ std::vector<double> demo_pnl() {
 
 }  // namespace
 
-TEST(QuantileLinear, HandExactTinyArrays) {
-    // NumPy type-7: h = (n-1) q, linear interpolation between order stats.
-    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0};
-    EXPECT_DOUBLE_EQ(quantile_linear(x, 0.0), 1.0);
-    EXPECT_DOUBLE_EQ(quantile_linear(x, 1.0), 4.0);
-    EXPECT_DOUBLE_EQ(quantile_linear(x, 0.5), 2.5);
-    EXPECT_DOUBLE_EQ(quantile_linear(x, 0.25), 1.75);  // h = 0.75
-    const std::vector<double> unsorted = {3.0, 1.0, 2.0};
-    EXPECT_DOUBLE_EQ(quantile_linear(unsorted, 0.5), 2.0);
-    EXPECT_DOUBLE_EQ(quantile_linear(unsorted, 0.75), 2.5);  // h = 1.5
-    const std::vector<double> single = {7.0};
-    EXPECT_DOUBLE_EQ(quantile_linear(single, 0.3), 7.0);
-}
-
-TEST(QuantileLinear, Validation) {
-    EXPECT_THROW(quantile_linear({}, 0.5), std::invalid_argument);
-    const std::vector<double> x = {1.0, 2.0};
-    EXPECT_THROW(quantile_linear(x, -0.1), std::invalid_argument);
-    EXPECT_THROW(quantile_linear(x, 1.1), std::invalid_argument);
-}
-
 TEST(HistoricalVar, IsOrderStatisticAndIsMonotoneInAlpha) {
     const std::vector<double> pnl = demo_pnl();
     // Order statistic: losses sorted descending, m = ceil(n alpha) -> L(m).

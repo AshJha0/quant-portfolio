@@ -27,7 +27,6 @@ All functions take ``alpha`` as the tail probability (0.01 = 99 % VaR).
 
 from __future__ import annotations
 
-import warnings as _w
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -45,7 +44,6 @@ __all__ = [
     "basel_traffic_light",
     "christoffersen_independence",
     "conditional_coverage",
-    "es_backtest_acerbi_szekely",
     "evaluate_var_backtest",
     "kupiec_pof",
     "rolling_backtest",
@@ -87,7 +85,7 @@ def _kupiec(n: int, x: int, alpha: float) -> tuple[float, float]:
     return float(lr), float(chi2.sf(lr, df=1))
 
 
-def kupiec_pof(*args, n_obs=None, n_exceptions=None, alpha=None) -> tuple[float, float]:
+def kupiec_pof(*, n_obs: int, n_exceptions: int, alpha: float) -> tuple[float, float]:
     """Kupiec proportion-of-failures LR test.
 
     Call as ``kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)`` with
@@ -95,9 +93,7 @@ def kupiec_pof(*args, n_obs=None, n_exceptions=None, alpha=None) -> tuple[float,
     ~ chi2(1) under H0 that the exception probability is ``alpha``.
 
     The old positional form ``kupiec_pof(n_exceptions, n_obs, confidence)``
-    still works for one release with a ``DeprecationWarning``.  In that form
-    a third positional value (or ``alpha=``) is the old confidence level,
-    default 0.99.
+    was removed in v3.0.0.
 
     Raises
     ------
@@ -105,24 +101,6 @@ def kupiec_pof(*args, n_obs=None, n_exceptions=None, alpha=None) -> tuple[float,
         ``alpha`` outside (0, 0.5), ``n_obs < 1``, ``n_exceptions < 0`` or
         ``n_exceptions > n_obs``.
     """
-    if args:
-        if len(args) > 3 or n_obs is not None or n_exceptions is not None:
-            raise TypeError("kupiec_pof: mix of positional and keyword counts")
-        _w.warn(
-            "positional kupiec_pof(n_exceptions, n_obs, confidence) is "
-            "deprecated; call kupiec_pof(n_obs=, n_exceptions=, alpha=) with "
-            "alpha the tail probability",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        conf = args[2] if len(args) == 3 else (0.99 if alpha is None else alpha)
-        if len(args) < 2:
-            raise TypeError("kupiec_pof: old positional form needs n_exceptions, n_obs")
-        validate_finite(confidence=conf)
-        n, x = _counts(args[1], args[0])
-        return _kupiec(n, x, validate_alpha(1.0 - float(conf)))
-    if n_obs is None or n_exceptions is None or alpha is None:
-        raise TypeError("kupiec_pof requires n_obs=, n_exceptions= and alpha=")
     alpha = validate_alpha(alpha)
     n, x = _counts(n_obs, n_exceptions)
     return _kupiec(n, x, alpha)
@@ -161,13 +139,12 @@ def christoffersen_independence(exceedances) -> tuple[float, float]:
     return float(lr), float(chi2.sf(lr, df=1))
 
 
-def conditional_coverage(exceedances, alpha: float | None = None, *,
-                         confidence: float | None = None) -> tuple[float, float]:
+def conditional_coverage(exceedances, alpha: float | None = None) -> tuple[float, float]:
     """Christoffersen conditional coverage: LR_cc = LR_uc + LR_ind, chi2(2).
 
     ``alpha`` is the tail probability (default 0.01).
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     e = _exceedance_array(exceedances)
     lr_uc, _ = kupiec_pof(n_obs=e.size, n_exceptions=int(e.sum()), alpha=alpha)
     lr_ind, _ = christoffersen_independence(e)
@@ -212,7 +189,7 @@ def _traffic_light(n: int, x: int, alpha: float) -> TrafficLight:
     return TrafficLight("red", x, n, cum, 4.0, 1.0)
 
 
-def basel_traffic_light(*args, n_obs=None, n_exceptions=None, alpha=None) -> TrafficLight:
+def basel_traffic_light(*, n_obs: int, n_exceptions: int, alpha: float | None = None) -> TrafficLight:
     """Basel traffic-light zone and capital multiplier for any window.
 
     Call as ``basel_traffic_light(n_obs=..., n_exceptions=..., alpha=0.01)``.
@@ -224,29 +201,9 @@ def basel_traffic_light(*args, n_obs=None, n_exceptions=None, alpha=None) -> Tra
     Multiplier = 3 + plus factor.  For 250 days at 1 % this is the
     regulatory table.
 
-    The old form ``basel_traffic_light(n_exceptions, n_obs=250,
-    confidence=0.99)`` with positional arguments is deprecated for one
-    release.  In that form the third value (or ``alpha=``) is a confidence
-    level, default 0.99.
+    The old positional form ``basel_traffic_light(n_exceptions, n_obs=250,
+    confidence=0.99)`` was removed in v3.0.0.
     """
-    if args:
-        if len(args) > 3 or n_exceptions is not None:
-            raise TypeError("basel_traffic_light: mix of positional and keyword counts")
-        _w.warn(
-            "positional basel_traffic_light(n_exceptions, n_obs, confidence) is "
-            "deprecated; call basel_traffic_light(n_obs=, n_exceptions=, alpha=) "
-            "with alpha the tail probability",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        x_old = args[0]
-        n_old = args[1] if len(args) > 1 else (250 if n_obs is None else n_obs)
-        conf = args[2] if len(args) > 2 else (0.99 if alpha is None else alpha)
-        validate_finite(confidence=conf)
-        n, x = _counts(n_old, x_old)
-        return _traffic_light(n, x, validate_alpha(1.0 - float(conf)))
-    if n_obs is None or n_exceptions is None:
-        raise TypeError("basel_traffic_light requires n_obs= and n_exceptions=")
     alpha = validate_alpha(0.01 if alpha is None else alpha)
     n, x = _counts(n_obs, n_exceptions)
     return _traffic_light(n, x, alpha)
@@ -270,8 +227,7 @@ class BacktestResult:
     exceedances: np.ndarray
 
 
-def evaluate_var_backtest(pnl, var_forecasts, alpha: float | None = None, *,
-                          confidence: float | None = None) -> BacktestResult:
+def evaluate_var_backtest(pnl, var_forecasts, alpha: float | None = None) -> BacktestResult:
     """Score a realised P&L series against out-of-sample VaR forecasts.
 
     Parameters
@@ -282,10 +238,8 @@ def evaluate_var_backtest(pnl, var_forecasts, alpha: float | None = None, *,
         Positive VaR forecast for the same day (made ex ante).
     alpha : float
         Tail probability of the VaR forecasts (default 0.01).
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     pnl = np.asarray(pnl, dtype=float).ravel()
     var = np.asarray(var_forecasts, dtype=float).ravel()
     if pnl.size != var.size:
@@ -315,8 +269,6 @@ def rolling_backtest(
     window: int = 250,
     alpha: float | None = None,
     option_method: str = "full",
-    *,
-    confidence: float | None = None,
 ) -> pd.DataFrame:
     """Rolling out-of-sample VaR backtest on a factor-return history.
 
@@ -331,7 +283,7 @@ def rolling_backtest(
         Columns ``pnl``, ``var``, ``exceed`` indexed like ``returns``
         (first ``window`` days dropped).
     """
-    resolve_alpha(alpha, confidence)  # validated for API symmetry; var_fn owns alpha
+    resolve_alpha(alpha)  # validated for API symmetry; var_fn owns alpha
     if window < 30:
         raise ValueError("window must be >= 30")
     if len(returns) <= window:
@@ -352,35 +304,6 @@ def rolling_backtest(
         idx.append(returns.index[t])
     out = pd.DataFrame(rows, columns=["pnl", "var", "exceed"], index=idx)
     return out
-
-
-def es_backtest_acerbi_szekely(
-    pnl,
-    var_forecasts,
-    es_forecasts,
-    alpha: float = 0.975,
-    n_sim: int = 5000,
-    seed: int = 0,
-) -> tuple[float, float]:
-    """Deprecated.  Use :func:`acerbi_szekely_z2`.
-
-    Kept for one release with its old conventions: ``alpha`` is a
-    confidence level (0.975) and the sign is the opposite of the paper,
-    ``Z = -Z2`` (positive means ES understated).  The p-value is
-    ``P(Z_sim >= Z_obs)``.  Returns ``(z_stat, p_value)``.
-    """
-    _w.warn(
-        "es_backtest_acerbi_szekely is deprecated (old sign, alpha as "
-        "confidence); use acerbi_szekely_z2(pnl, var, es, alpha=tail_prob)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    validate_finite(alpha=alpha)
-    tail = validate_alpha(1.0 - float(alpha))
-    r = acerbi_szekely_z2(pnl, var_forecasts, es_forecasts, alpha=tail,
-                          n_sims=n_sim, seed=seed)
-    # P(-Z2_sim >= -Z2_obs) = P(Z2_sim <= Z2_obs): the same p-value.
-    return -r["z2"], r["p_value"]
 
 
 def _as_z2_inputs(pnl, var, es):

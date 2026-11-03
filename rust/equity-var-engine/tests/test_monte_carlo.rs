@@ -40,7 +40,7 @@ fn normal_converges_to_parametric_within_3se() {
     let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 200_000, TailModel::Normal, 7).unwrap();
     let mc_var = monte_carlo_var(&EXPOSURES, &cov, 0.01, 200_000, TailModel::Normal, 7).unwrap();
     let mc_es = monte_carlo_es(&EXPOSURES, &cov, 0.01, 200_000, TailModel::Normal, 7).unwrap();
-    let se = var_order_statistic_se(&pnl, 0.01).unwrap();
+    let se = var_kde_se(&pnl, 0.01).unwrap();
     assert!(se > 0.0);
     assert!(se < 0.02 * exact_var);
     assert!(
@@ -84,7 +84,7 @@ fn student_t_fatter_than_normal_at_99_and_converges_to_closed_form() {
         11,
     )
     .unwrap();
-    let se_t = var_order_statistic_se(&pnl_t, 0.01).unwrap();
+    let se_t = var_kde_se(&pnl_t, 0.01).unwrap();
     assert!((t_var - exact_t).abs() < 3.0 * se_t);
 }
 
@@ -165,8 +165,8 @@ fn monte_carlo_validation() {
         .is_err()
     );
     assert!(simulate_factor_returns(&cov, 0, TailModel::Normal, 0).is_err());
-    let tiny_pnl = vec![0.0; 50];
-    assert!(var_order_statistic_se(&tiny_pnl, 0.01).is_err());
+    let tiny_pnl = vec![0.0; 5];
+    assert!(var_kde_se(&tiny_pnl, 0.01).is_err());
 }
 
 #[test]
@@ -205,10 +205,10 @@ fn bootstrap_se_errors_on_degenerate_n_boot() {
 }
 
 #[test]
-fn bootstrap_se_within_3x_of_order_statistic_se_on_large_sample() {
+fn bootstrap_se_within_3x_of_kde_se_on_large_sample() {
     let cov = demo_cov();
     let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 100_000, TailModel::Normal, 21).unwrap();
-    let se_os = var_order_statistic_se(&pnl, 0.01).unwrap();
+    let se_os = var_kde_se(&pnl, 0.01).unwrap();
     let se_boot = var_bootstrap_se(&pnl, 0.01, 500, 21).unwrap();
     assert!(se_boot > 0.0);
     assert!(

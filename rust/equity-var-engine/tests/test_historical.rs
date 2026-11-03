@@ -15,28 +15,6 @@ fn demo_pnl() -> Vec<f64> {
 }
 
 #[test]
-fn quantile_linear_hand_exact_tiny_arrays() {
-    let x = [1.0, 2.0, 3.0, 4.0];
-    assert!((linear_quantile(&x, 0.0).unwrap() - 1.0).abs() < 1e-15);
-    assert!((linear_quantile(&x, 1.0).unwrap() - 4.0).abs() < 1e-15);
-    assert!((linear_quantile(&x, 0.5).unwrap() - 2.5).abs() < 1e-15);
-    assert!((linear_quantile(&x, 0.25).unwrap() - 1.75).abs() < 1e-15); // h = 0.75
-    let unsorted = [3.0, 1.0, 2.0];
-    assert!((linear_quantile(&unsorted, 0.5).unwrap() - 2.0).abs() < 1e-15);
-    assert!((linear_quantile(&unsorted, 0.75).unwrap() - 2.5).abs() < 1e-15); // h = 1.5
-    let single = [7.0];
-    assert!((linear_quantile(&single, 0.3).unwrap() - 7.0).abs() < 1e-15);
-}
-
-#[test]
-fn quantile_linear_validation() {
-    assert!(linear_quantile(&[], 0.5).is_err());
-    let x = [1.0, 2.0];
-    assert!(linear_quantile(&x, -0.1).is_err());
-    assert!(linear_quantile(&x, 1.1).is_err());
-}
-
-#[test]
 fn historical_var_matches_quantile_and_monotone_in_alpha() {
     let pnl = demo_pnl();
     // S2: the m-th largest loss, m = ceil(n alpha - 1e-9). No interpolation.

@@ -95,9 +95,46 @@ Following PEP 387:
 A name deprecated on the way to v3.0.0 has never warned in a released
 version, so it ships in v3.0.0 still working, with its warning, and the
 two-minor-release clock starts there. Names removed at v3.0.0 are the ones
-deprecated in v2.0.0 or earlier. Deprecations made before this policy
-existed (the warnings already in the code) are being collected into this
-table.
+deprecated in v2.0.0 or earlier.
+
+One of those is kept on purpose:
+
+| Name | Deprecated in | Earliest removal | Replacement |
+|---|---|---|---|
+| P&L-level `filtered_historical_var` (`eq_var`, C++ `eqvar::`, Rust `eq_var_engine::historical::`) | 2.0.0 or earlier | 4.0.0 | `factor_filtered_historical_var` (Python), `filtered_historical_var_es` (C++), `filtered_historical_var_factors` (Rust) |
+
+It stays because the three languages share one golden value
+(`a_fhs_var_5pct_lam094` in `tests/golden/golden_vectors.json`) and the
+model inventory lists it under `EQ-VAR-HIST`; removing it means retiring
+that key and the inventory entry in the same change.
+
+### Removed in 3.0.0
+
+Each removal below warned in v2.0.0. A test asserts that the old form now
+fails: `tests/test_removed_in_3_0.py` in `eq_var` and `fx_var`, the
+`*_removed_in_3_0` tests in the other packages, and concept-based
+`static_assert`s in the C++ test files.
+
+| Package | Removed | Use instead |
+|---|---|---|
+| `eq_options`, `fx_options` | `implied_vol(tol=, max_iter=, sigma_lo=, sigma_hi=)` (ignored keywords) | `implied_vol(...)` without them |
+| `eq_var` | positional `kupiec_pof`, `basel_traffic_light`, positional `alpha` in `acerbi_szekely_z2` | keyword forms |
+| `eq_var` | `ewma_volatility(init=)`, `simulate_garch_returns(omega_frac=)` (model parameters now keyword-only) | the default seed window; keywords |
+| `eq_var` | `safe_cholesky`, `cornish_fisher_domain_ok` | `cholesky(cov, repair=)`, `cornish_fisher_valid(skew, excess_kurt, alpha)` |
+| `fx_var` | `confidence=` keyword on every VaR/ES function, positional `kupiec_pof`/`basel_traffic_light`, `es_backtest_acerbi_szekely`, `robust_cholesky(max_tries=)`, `cornish_fisher_domain_ok` | `alpha=` (tail probability), keyword forms, `acerbi_szekely_z2`, `robust_cholesky(cov, repair=)`, `cornish_fisher_valid` |
+| `eq_credit`, `fx_credit` | `hosmer_lemeshow` without `out_of_sample` | pass `out_of_sample=True` or `False` (keyword-only, required) |
+| `fx_credit` | `cva`, `cva_for_forward` aliases | `expected_exposure_loss`, `expected_exposure_loss_for_forward` |
+| `eq_algo` | `DailyPanel.adv_dollars` (full-sample mean, look-ahead) | `trailing_adv_dollars(window)` |
+| `eq_surface`, `fx_surface` | positional `HestonParams(...)` | keywords |
+| `fx_surface` | `calendar_arbitrage_report(deltas=)` | `delta_calendar_report(deltas=)` |
+| `eq_regime` | `detection.min_duration_filter` (not causal) | `strategy.causal_min_duration` |
+| `fx_regime` | `carry_accrual` without `year_fraction` (ACT/252 fallback) | pass `year_fraction` |
+| `fx_rates` | `spot_date(calendar_days=True)`, `tenor_to_years("ON"/"TN"/"SN")` (now raises), `MarketState(basis_model="zero_spread")` | business-day spot, `tenor_dates`, `"float_float"` |
+| Rust `eq-var-engine` | `kupiec_pof_positional`, `basel_traffic_light_250`, `historical::linear_quantile`, `Matrix::cholesky_jitter`, `monte_carlo::var_order_statistic_se`, `parametric::cornish_fisher_domain_ok` | `kupiec_pof(&KupiecInput)`, `basel_traffic_light(&BaselInput)`, `tail::empirical_var`, `cholesky_repair`, `var_bootstrap_se` / `var_kde_se`, `cornish_fisher_valid` |
+| Rust `fx-var-engine` | `kupiec_pof_confidence`, `basel_traffic_light_confidence`, `cornish_fisher_domain_ok` | struct forms, `cornish_fisher_valid` |
+| Rust `eq-options-engine` | `IV_PRICE_TOL` | none (the solver has no price tolerance) |
+| C++ `eqvar`, `fxvar` | positional `kupiec_pof`/`basel_traffic_light` overloads, `eqvar::quantile_linear`, `eqvar::cholesky(cov, jitter, max_tries)`, `fxvar::robust_cholesky`, `cornish_fisher_domain_ok` | `KupiecInput`/`BaselInput` forms, `var_es_order_statistic`, `cholesky(cov, Repair)`, `cornish_fisher_valid` |
+| C++ `eqopt`, `fxopt` | `implied_vol` overloads with tuning parameters | the 7-argument `implied_vol` |
 
 ## Errors
 

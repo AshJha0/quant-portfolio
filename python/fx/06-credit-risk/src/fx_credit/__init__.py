@@ -34,8 +34,6 @@ from .cleaning import (
 from .exposure import (
     ExposureProfile,
     FXForward,
-    cva,
-    cva_for_forward,
     expected_exposure_loss,
     expected_exposure_loss_for_forward,
     exposure_profile,
@@ -125,8 +123,6 @@ __all__ = [
     "capital_table",
     "clean_panel",
     "country_holdout_split",
-    "cva",
-    "cva_for_forward",
     "data",
     "drop_leaky_fields",
     "expected_exposure_loss",

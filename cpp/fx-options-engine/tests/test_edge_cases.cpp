@@ -219,3 +219,9 @@ TEST(EdgeCases, MonteCarloTooFewIndependentSamplesThrows) {
 }
 
 }  // namespace
+
+// v3.0.0 removed the tuning-parameter overload deprecated in v2.0.0.
+template <class D>
+concept OldFxIvOverload =
+    requires(D d) { fxopt::implied_vol(d, d, d, d, d, d, fxopt::OptionType::Call, d, 100); };
+static_assert(!OldFxIvOverload<double>);

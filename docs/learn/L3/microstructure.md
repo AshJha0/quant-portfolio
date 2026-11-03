@@ -62,8 +62,12 @@ repository's own Almgren-Chriss and power-law numbers are in
   other: `compare_impact_laws`, and the
   [execution notebook](../../notebooks/04-optimal-execution-exercise.ipynb).
 - Implementation shortfall and benchmark slippage: `eq_algo.benchmarks`.
-- Order types, market making and venue routing are being added in parallel
-  workstreams (W25-W30); this chapter will link to them once they are merged.
+- Market making (Avellaneda-Stoikov, GLFT), smart order routing, RFQ quoting
+  and the central risk book: [market making and routing](market-making-and-routing.md).
+- The order book, queue-reactive flow, fill models, transient impact and
+  stylised facts: `python/execution/src/qp_exec/lob/`.
+- The OMS, the kill switch and the low-latency feed handlers and gateways:
+  [trading systems](trading-systems.md).
 
 ## Checks
 

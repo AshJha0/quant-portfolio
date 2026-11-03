@@ -2,9 +2,10 @@
 
 Copy-pasteable recipes for the most common "how do I..." tasks across every
 project area in quant-portfolio. The recipes are written against the
-current `main` branch. Outputs are indicative: they come from one run on one
-machine, and nothing in CI executes these snippets, so a last digit can move
-after a code change. Every data set used here is synthetic.
+current `main` branch. Outputs come from one run on one
+machine. `tests/test_cookbook.py` runs every Python recipe and checks that
+each number quoted as output appears in what the recipe prints, so a stale
+number fails the test. Every data set used here is synthetic.
 
 Install each project into a virtual environment created outside the
 repository, as [CONTRIBUTING.md](../CONTRIBUTING.md) describes:
@@ -20,7 +21,8 @@ Each section names the projects its recipes need.
 Recipes are grouped to match [ARCHITECTURE.md](ARCHITECTURE.md)'s area map:
 options pricing/vol/surfaces, market risk (VaR/ES/backtesting), fixed
 income/pairs/credit/portfolio optimization, and execution/regime/building the
-compiled engines, plus a final section for what the November 2026 release added. For the theory behind any of these, see the matching set
+compiled engines, plus a section for what the November 2026 release added
+and a final one for the v3.0.0 trading stack, capital and new models. For the theory behind any of these, see the matching set
 in [LEARN.md](LEARN.md) Part IV; for the underlying math and assumptions, see
 the project's own `docs/METHODOLOGY.md`.
 
@@ -1361,8 +1363,8 @@ exposure (EE) / potential future exposure (PFE) profile for an FX forward,
 then integrates EE against a PD term structure (flat hazard from the 1y PD).
 `expected_exposure_loss_for_forward` returns the expected loss on exposure
 (real-world PD), not a CVA: a CVA needs risk-neutral default probabilities
-implied from market spreads. The old name `cva_for_forward` is a deprecated
-alias.
+implied from market spreads. The old name `cva_for_forward` was removed in
+3.0.0.
 
 ```python
 from fx_credit import FXForward, expected_exposure_loss_for_forward
@@ -2654,3 +2656,386 @@ evidence. The decision rule (Sharpe minus 1.645 Lo standard errors above
 zero) was set for one look after two full years. Looking every month and
 stopping when the number looks good raises the false-positive rate well
 above 5%. [LEARN.md](LEARN.md) Set 19 works through why.
+
+
+## Version 3.0.0: Trading Stack, Capital and New Models
+
+Recipes for what milestone v2.1 (released as v3.0.0) added: the shared
+backtest core (`python/backtest`, `qp_bt`), the execution stack
+(`python/execution`, `qp_exec`), post-trade (`python/posttrade`), the
+capital, xVA, AAD and SABR modules in `python/core`, dated swap legs in
+`fi_rates`, and the research factor tools. Install `python/core` and the
+package each recipe names. The research recipes run from the repository root
+with `research` on `PYTHONPATH`. Outputs below come from one run on Windows
+with Python 3.12, and `tests/test_cookbook.py` re-runs every recipe and checks
+the quoted numbers.
+
+### How do I get Black-Scholes Greeks by adjoint differentiation, and check them?
+
+Needs `python/core` and `python/equity/01-options-pricing`.
+
+Plain idea: record the price calculation once on a tape, then sweep it
+backwards; one backward sweep gives the derivative of the price with respect
+to every input. The Greeks must equal the closed forms.
+
+```python
+from qp_core.aad import bs_greeks_aad
+from eq_options import bs_greeks
+
+a = bs_greeks_aad(100.0, 105.0, 0.5, 0.03, 0.01, 0.22, is_call=True)
+g = bs_greeks(S=100, K=105, T=0.5, r=0.03, sigma=0.22, q=0.01, option_type="call")
+print(round(a.price, 6), round(a.delta, 6), round(a.vega, 6), round(a.rho, 6))
+print(abs(a.delta - g.delta) < 1e-12, abs(a.vega - g.vega) < 1e-12, abs(a.rho - g.rho) < 1e-12)
+```
+
+Output: `4.517301 0.429733 27.658685 19.22802` and `True True True`, the same
+contract as the first recipe in this file. Note the argument order: `q`
+comes before `sigma` here. The same tape also differentiates a pathwise Monte
+Carlo price (`mc_greeks_aad`) and a swap PV against its curve quotes
+(`quote_greeks`); `rust/aad/README.md` and `cpp/aad/README.md` give the cost
+of a backward sweep relative to one pricing in each language.
+
+### How do I calibrate SABR to a smile with beta fixed?
+
+Needs `python/core`.
+
+Plain idea: fix beta (the backbone), then fit alpha, rho and nu to the quoted
+vols by least squares. A fit to vols generated from known parameters must
+give those parameters back.
+
+```python
+import numpy as np
+from qp_core.vol.sabr import sabr_calibrate, sabr_vol
+
+F, T = 0.03, 2.0
+strikes = np.array([0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05])
+true = dict(alpha=0.02, beta=0.5, rho=-0.3, nu=0.4)
+vols = [sabr_vol(F, k, T, **true) for k in strikes]
+fit = sabr_calibrate(F, T, strikes, vols, beta=0.5)
+print(round(fit.alpha, 6), round(fit.rho, 6), round(fit.nu, 6), f"{fit.rmse:.1e}")
+```
+
+Output: `0.02 -0.3 0.4 4.5e-17`. The default expansion is Obloj (2008);
+`variant="hagan"` gives Hagan et al. (2002). For low or negative rates pass
+`shift=`. `sabr_density_check` reports strikes where the implied density goes
+negative, which the expansion allows for long expiries and low strikes. SABR
+moved here from `eq_options.sabr` with its arithmetic unchanged.
+
+### How do I compute SA-CCR exposure for a netting set (BCBS Example 1)?
+
+Needs `python/core`.
+
+Plain idea: exposure at default is 1.4 times replacement cost plus potential
+future exposure, where the future part is a supervisory add-on per asset
+class. The Basel Committee publishes worked examples, and the code must
+reproduce them.
+
+```python
+from qp_core.capital.saccr import IRTrade, NettingSet, ead, supervisory_delta_option
+
+trades = [
+    IRTrade("USD", 10_000, 0.0, 10.0, delta=1.0),     # 10y payer swap
+    IRTrade("USD", 10_000, 0.0, 4.0, delta=-1.0),     # 4y receiver swap
+    IRTrade("EUR", 5_000, 1.0, 11.0,                  # 1y-into-10y swaption
+            delta=supervisory_delta_option(0.06, 0.05, 0.5, 1.0, call=False, bought=True)),
+]
+r = ead(NettingSet(mtm=30 - 20 + 50, ir=trades))
+print(round(r.rc), round(r.addon), round(r.ead))
+```
+
+Output: `60 347 569` (thousands). BCBS 279 (2014), Annex 4a, Example 1,
+publishes EAD = 569. The module docstring walks through the supervisory
+duration, delta and effective notional; `qp_core.capital.frtb_sbm` is the
+FRTB sensitivities-based method alongside it.
+
+### How do I compute the CVA of a swap and check its exposure against swaptions?
+
+Needs `python/core`.
+
+Plain idea: simulate the swap's value under Hull-White, average its positive
+part to get expected exposure, and weight that by the counterparty's default
+probability. The check is exact in theory: the discounted expected exposure
+of a payer swap at time t is the price of a payer swaption expiring at t on
+the remaining swap.
+
+```python
+import math
+from qp_core.market import DiscountCurve
+from qp_core.xva import HazardCurve, HullWhite, SwapSpec, cva, swap_exposure
+
+curve = DiscountCurve((1.0, 30.0), (math.exp(-0.03), math.exp(-0.9)))
+hw = HullWhite(curve, a=0.05, sigma=0.01)
+spec = SwapSpec(dates=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0), strike=0.03, payer=True, notional=1e6)
+prof, _, _ = swap_exposure(hw, spec, n_paths=20_000, seed=7)
+c = cva(prof.times, prof.ee_disc, HazardCurve.flat(0.02), 0.4)
+strip = hw.swaption(2.0, [3.0, 4.0, 5.0], [1.0] * 3, 0.03, payer=True) * 1e6
+i = list(prof.times).index(2.0)
+print(round(c, 2), round(prof.ee_disc[i], 2), round(strip, 2), round(prof.ee_disc_se[i], 2))
+```
+
+Output: `533.58 14295.22 14302.6 138.86`. CVA is 533.58 on 1mm notional.
+At two years the simulated discounted EE (14,295) is 0.05 standard errors
+from the swaption price (14,303). `xva` adds DVA and funding adjustments,
+and `eepe` gives effective EPE for the IMM capital formula (Gregory, *The
+xVA Challenge*, 4th ed., 2020, ch. 11 and 14).
+
+### How do I price a standard CDS on ISDA conventions, with and without the half-day bias?
+
+Needs `python/equity/06-credit-risk`.
+
+Plain idea: the ISDA standard model adds half a day to the accrual on
+default. It is a small term, but at wide spreads it is worth hundreds per
+10mm, and quotes from a desk include it.
+
+```python
+from datetime import date
+import numpy as np
+from eq_credit.cds import HazardCurve
+from eq_credit.isda_cds import IsdaCds, LogLinearCurve, legs
+
+disc = LogLinearCurve(np.array([1.0, 5.0, 10.0]), np.array([0.03, 0.03, 0.03]))
+hazard = HazardCurve(np.array([10.0]), np.array([0.17]))
+for bias in (True, False):
+    cds = IsdaCds(date(2026, 6, 22), date(2031, 6, 20), coupon=0.05, half_day_bias=bias)
+    print(bias, round(legs(cds, hazard, disc)["clean_upfront"] * 10e6, 2))
+```
+
+Output: `True 1627159.11` and `False 1627532.21`, a 373 difference per 10mm
+at a 17% hazard rate. `half_day_bias=True` is the default and matches
+QuantLib `IsdaCdsEngine` with `HalfDayBias` (the cross-check is in the
+package tests, run when QuantLib is installed); `False` matches `NoBias`.
+Before milestone v2.1 the code had no bias term. In the integration check
+(5y, 3% rate, 17% hazard, per 10mm) its clean upfront was 379.1 away from
+QuantLib's; it is now 0.23 away.
+
+### How do I find the settlement date of a US equity trade or an FX spot trade?
+
+Needs `python/core` and `python/posttrade`.
+
+```python
+from datetime import date
+from qp_posttrade.settlement import fx_spot_date, us_equity_settle
+
+print(us_equity_settle(date(2026, 12, 31)))        # New Year's Day in between
+print(us_equity_settle(date(2026, 10, 9)))         # Friday before Columbus Day
+print(fx_spot_date("USDCAD", date(2026, 7, 2)), fx_spot_date("EURUSD", date(2026, 7, 2)))
+```
+
+Output: `2027-01-04`, `2026-10-13`, then `2026-07-03 2026-07-06`. US
+equities settle T+1 (SEC Rule 15c6-1 as amended in 2024). Columbus Day is a
+trading day but not a settlement day, because DTC follows the Federal Reserve
+calendar. USDCAD spot is T+1. EURUSD is T+2 and cannot settle on
+3 July 2026, when the US observes Independence Day. NYSE holidays come from
+the Rule 7.2 generator for 2000 to 2099; outside that range a date raises.
+
+### How do I quote both sides as a market maker with inventory (Avellaneda-Stoikov)?
+
+Needs `python/execution`.
+
+Plain idea: a market maker long inventory shades both quotes down, so that
+it is more likely to sell than to buy. The spread itself does not depend on
+inventory in this model.
+
+```python
+from qp_exec.mm.quotes import ASParams, avellaneda_stoikov
+
+p = ASParams(gamma=0.1, sigma=2.0, k=1.5)
+for q in (-2, 0, 2):
+    x = avellaneda_stoikov(100.0, q, 1.0, p)
+    print(q, round(x.reservation, 4), round(x.bid, 4), round(x.ask, 4), round(x.spread, 4))
+```
+
+Output:
+
+```text
+-2 100.8 99.9546 101.6454 1.6908
+0 100.0 99.1546 100.8454 1.6908
+2 99.2 98.3546 100.0454 1.6908
+```
+
+These are the paper's own parameters (Avellaneda and Stoikov 2008,
+section 4): the spread is `0.1 * 4 * 1 + 20 ln(1 + 0.1/1.5) = 1.6908`, and
+two units of inventory move the reservation price by `2 * 0.1 * 4 = 0.8`.
+`GLFT` adds an inventory bound (Gueant, Lehalle and Fernandez-Tapia 2013),
+`run_mm` simulates fills, and `QuoteController` pulls quotes when the feed
+goes stale.
+
+### How do I split an order across lit venues and market orders (Cont-Kukanov)?
+
+Needs `python/execution`.
+
+Plain idea: post limit orders where queue flow is likely to fill them and
+send the rest as a market order, trading off the spread paid against the
+penalty for not finishing.
+
+```python
+import numpy as np
+from qp_exec.sor.allocation import expected_cost, solve_allocation
+
+rng = np.random.default_rng(3)
+D = rng.integers(0, 2_000, size=(500, 2)).astype(float)   # flow behind the queue, 2 venues
+a = solve_allocation(S=3_000, h=0.5, f=0.3, c=[-0.7, -0.4], lam_u=2.0, D=D)
+print(round(a.market), [round(x) for x in a.limits], round(a.cost, 1), a.exact)
+print(round(expected_cost(3_000, [0, 0], S=3_000, h=0.5, f=0.3, c=[-0.7, -0.4], lam_u=2.0, D=D), 1))
+```
+
+Output: `922 [1059, 1019] 1011.9 True`, then `2400.0`. The router sends 922
+shares at market and posts 1,059 and 1,019 on the two venues, at an expected
+cost of 1,011.9 cents against 2,400 for an all-market order (`h + f = 0.8`
+cents per share). Costs are in cents per share and `c_k` is the rebate net of
+adverse selection on venue `k` (Cont and Kukanov 2017). This version never
+works more child quantity than the parent has left, which differs from the
+paper; the module docstring states the difference.
+`qp_exec/sor/README.md` covers dark venues, anti-gaming and the measured
+results.
+
+### How do I match orders in the reference limit order book?
+
+Needs `python/execution`.
+
+```python
+from qp_exec.lob import Order, OrdType, ReferenceBook, Side, Tif
+
+book = ReferenceBook()
+book.add(Order(1, Side.SELL, 300, price=10_001), ts=1)
+book.add(Order(2, Side.SELL, 200, price=10_001), ts=2)     # behind order 1 at the same price
+book.add(Order(3, Side.SELL, 500, price=10_002, display_qty=100), ts=3)   # iceberg
+book.add(Order(4, Side.BUY, 400, price=9_999), ts=4)
+print(book.best_bid(), book.best_ask(), book.depth(Side.SELL, 2), book.queue_ahead(2))
+r = book.add(Order(5, Side.BUY, 600, ord_type=OrdType.MARKET, tif=Tif.IOC), ts=5)
+print([(f.maker_id, f.price, f.qty) for f in r.fills], book.best_ask(), book.depth(Side.SELL, 1))
+```
+
+Output: `9999 10001 [(10001, 500), (10002, 100)] 300`, then
+`[(1, 10001, 300), (2, 10001, 200), (3, 10002, 100)] 10002 [(10002, 100)]`.
+Prices are integer ticks. Price-time priority fills order 1 before order 2.
+The iceberg shows only 100 of its 500, so the market order takes 100 there
+and the iceberg shows its next 100. A market order must be IOC or FOK; any
+other time in force is rejected. The rules are in `qp_exec/lob/SPEC.md`, and
+the C++ book in `cpp/ull` replays the same events to the same digests.
+
+### How do I see what filling at the decision close does to a backtest?
+
+Needs `python/backtest`.
+
+Plain idea: a signal computed from today's close cannot trade at that close.
+The shared backtest core fills a decision `lag` bars later, and the timing
+alone changes the result.
+
+```python
+import numpy as np
+import pandas as pd
+from qp_bt import LinearCost, NextBarFill, run_fast
+
+idx = pd.bdate_range("2026-01-05", periods=6)
+rets = pd.DataFrame({"A": [0.0, 0.01, -0.02, 0.03, 0.0, 0.01]}, index=idx)
+target = pd.DataFrame({"A": [1.0, 1.0, 1.0, 0.0, 0.0, 0.0]}, index=idx)   # decided at each close
+for name, fill in [("same close", NextBarFill(fraction=1.0, lag=0)),
+                   ("next close", NextBarFill(fraction=1.0, lag=1))]:
+    led = run_fast(rets, target, fill=fill, cost=LinearCost(bps=10.0))
+    print(f"{name:10}", np.round(led.ledger["net_ret"].to_numpy(), 6), round(led.ledger["nav"].iloc[-1], 6))
+```
+
+Output:
+
+```text
+same close [-0.000999  0.01     -0.02      0.02897   0.        0.      ] 1.017457
+next close [ 0.       -0.000999 -0.02      0.03     -0.001     0.      ] 1.007383
+```
+
+Filling at the decision close keeps the 1% of day two and exits before the
+flat day, so it ends at 1.0175 against 1.0074 for the next close. On real
+data the gap compounds. `eq_port`, `fx_port`, `fx_regime` and `fx_pairs`
+now default to the next-bar fill, which is why their backtest numbers moved
+in v3.0.0 (`docs/MIGRATION.md` lists before and after for each). The cost is
+paid on the notional traded at the fill, and `LinearCost`, `HalfSpreadCost`
+and `SqrtImpactCost` state the source of each assumption.
+
+### How do I shrink a covariance matrix when there are almost as many assets as observations?
+
+Needs `numpy`; run from the repository root with `research` on
+`PYTHONPATH`.
+
+Plain idea: with 40 assets and 60 months the sample covariance is close to
+singular, and an optimiser will exploit its noise. Ledoit-Wolf shrinkage
+pulls it towards a scaled identity by an amount estimated from the data.
+
+```python
+import numpy as np
+from lib.covariance import linear_shrinkage, sample_cov
+
+rng = np.random.default_rng(0)
+x = rng.standard_normal((60, 40)) * 0.02            # 60 months, 40 assets
+s = sample_cov(x)
+lw, delta = linear_shrinkage(x)
+print(round(delta, 4), f"{np.linalg.cond(s):.0f}", f"{np.linalg.cond(lw):.2f}")
+```
+
+Output: `0.8879 63 1.40`. The true covariance here is a multiple of the
+identity, so heavy shrinkage (0.89) is correct, and the condition number
+falls from 63 to 1.40. The estimator follows Ledoit and Wolf (2004) and
+equals `sklearn.covariance.ledoit_wolf` to 1e-10 in
+`research/tests`. `nonlinear_shrinkage` (Ledoit and Wolf 2020) and
+`pca_covariance` are in the same module.
+
+### How do I attribute a return to the dollar and carry factors with Newey-West errors?
+
+Needs `numpy` and `pandas`; run from the repository root with `research` on
+`PYTHONPATH`.
+
+Plain idea: before calling a return alpha, regress it on the premia it might
+be harvesting. For an FX book those are DOL and HML_FX (Lustig, Roussanov
+and Verdelhan 2011); for equities, the Fama-French factors. The intercept's
+t-statistic must allow for autocorrelated monthly returns.
+
+```python
+import numpy as np
+import pandas as pd
+from attribution.attribution import ols_hac
+
+rng = np.random.default_rng(0)
+idx = pd.period_range("2016-01", periods=120, freq="M")
+f = pd.DataFrame({"DOL": rng.normal(0.002, 0.02, 120), "HML_FX": rng.normal(0.004, 0.03, 120)}, index=idx)
+y = 0.001 + 0.2 * f["DOL"] + 0.8 * f["HML_FX"] + rng.normal(0, 0.01, 120)
+res = ols_hac(pd.Series(y, index=idx), f)
+print(res["coef"].round(4).to_dict(), round(res["alpha_t"], 2), res["lag"])
+```
+
+Output: `{'alpha': 0.0005, 'DOL': 0.2027, 'HML_FX': 0.768} 0.68 4`. The
+betas come back close to the true 0.2 and 0.8. The true alpha is 10bp a
+month; the estimate is 5bp with a t-statistic of 0.68. With ten years of
+data a small alpha is normally indistinguishable from zero; that is the
+limit of the data, not a defect of the method. The lag is
+`floor(4 (T/100)^(2/9))` (Newey and West 1994). Coefficients and standard
+errors equal `statsmodels` HAC to 1e-10. `attribute(y, factors, "ff3")` and
+the other named sets use the Kenneth French factors from `qp_data`.
+
+### How do I value a SOFR swap from dated legs?
+
+Needs `python/core` and `python/equity/04-fixed-income`.
+
+Plain idea: a real swap pays on adjusted dates, accrues on ACT/360 and
+compounds overnight fixings in arrears. The dated legs work on those dates
+instead of on year fractions.
+
+```python
+import datetime as dt
+from fi_rates.fixings import SOFR, FixingStore
+from fi_rates.legs import FixedLeg, FlatCurve, OvernightLeg, Swap
+from fi_rates.schedule import make_schedule
+
+val = dt.date(2025, 1, 15)
+curve = FlatCurve(0.05, val)
+s = make_schedule(val, dt.date(2027, 1, 15), 3, calendar="USD-GOVT")
+swap = Swap(FixedLeg(s, 10e6, 0.05), OvernightLeg(s, 10e6, SOFR), payer=True)
+par = swap.par_rate(curve, curve, FixingStore(), val)
+print(round(OvernightLeg(s, 10e6, SOFR).coupons(curve, FixingStore(), val)[0].rate, 6))
+print(round(par, 6), round(swap.npv(curve, curve, FixingStore(), val), 2))
+```
+
+Output: `0.04962`, then `0.049625 -7199.54`. A flat 5% continuous rate on
+ACT/365F is 4.96% simple on ACT/360 over a quarter, so a 2-year swap paying
+5% fixed is 7,200 out of the money on 10mm. Fixings already published go in
+the `FixingStore`. `fi_rates.multicurve.bootstrap_projection_dated` builds
+a projection curve discounted on OIS from dated quotes. The conventions
+follow the ARRC SOFR conventions (2020) and the 2021 ISDA Definitions.

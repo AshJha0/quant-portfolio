@@ -20,9 +20,15 @@ At the end of L3 you can:
 3. explain the backtests of a VaR model (Kupiec, Christoffersen,
    Acerbi-Szekely) and what each one cannot see (appendix Set 7);
 4. reason about market impact with the Roll, Kyle and square-root models
-   ([microstructure](microstructure.md));
+   ([microstructure](microstructure.md)), and quote, route and net orders
+   ([market making and routing](market-making-and-routing.md));
 5. explain why cross-language results are compared with stated tolerances
-   and when bit-identity is the right test (appendix Sets 15 and 19).
+   and when bit-identity is the right test (appendix Sets 15 and 19);
+6. price a SABR smile, split a day's P&L into explained and unexplained, and
+   build a stress from published data
+   ([rates vol and P&L explain](rates-vol-and-pnl-explain.md));
+7. say what a backtest core, a kill switch, a feed handler and a settlement
+   calendar must guarantee ([trading systems](trading-systems.md)).
 
 ## Worked example
 

@@ -56,7 +56,8 @@ cargo run --release --locked -p fx-var-engine --bin bench -- --out /tmp/bench.js
 The tests are 71 unit, 62 integration and 8 doc tests. Without `--out`
 the bench writes `bench/results.json` in this crate.
 
-The xoshiro256++ stream, the Acklam guess, the Cholesky kernel and the
+The special functions and moments (`qp_core::stats`), the xoshiro256++
+stream, the Acklam guess, the Cholesky kernel and the
 fixed-chunk thread helper come from the workspace's [`qp-core`](../core)
 crate (std only).
 
@@ -90,9 +91,9 @@ let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 })?;
 | Old | New |
 |---|---|
 | `alpha` = confidence (0.99) everywhere | `alpha` = tail probability (0.01); 0.99 is an error |
-| `kupiec_pof(x, n, confidence)` | `kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })`; old form `kupiec_pof_confidence` deprecated |
-| `basel_traffic_light(x, n, confidence)`, add-on by raw count | `basel_traffic_light(&BaselInput { .. })`, new `plus_factor` field; old form `basel_traffic_light_confidence` deprecated |
-| `cornish_fisher_domain_ok(s, k, 4.0, grid)` | `cornish_fisher_valid(s, k, alpha) -> Result<bool>`; old predicate deprecated |
+| `kupiec_pof(x, n, confidence)` | `kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })`; old form `kupiec_pof_confidence` removed in 3.0.0 |
+| `basel_traffic_light(x, n, confidence)`, add-on by raw count | `basel_traffic_light(&BaselInput { .. })`, new `plus_factor` field; old form `basel_traffic_light_confidence` removed in 3.0.0 |
+| `cornish_fisher_domain_ok(s, k, 4.0, grid)` | `cornish_fisher_valid(s, k, alpha) -> Result<bool>`; old predicate removed in 3.0.0 |
 | `Matrix::cholesky_with_jitter(tries)` | `Matrix::cholesky_repair(PsdRepair)`; old method deprecated |
 | Bernoulli jump per scenario | Poisson count over the horizon; `prob` must be in `[0, 1)` |
 | `MonteCarloResult.se_var` = KDE SE | `se_var` = bootstrap SE; `se_var_kde`, `jitter`, `MonteCarloOptions.n_boot` added |

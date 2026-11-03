@@ -4,6 +4,7 @@
 
 use eq_var_engine::EqVarError;
 use eq_var_engine::matrix::{Matrix, covariance_from_vols, ewma_covariance, sample_covariance};
+use eq_var_engine::psd::PsdRepair;
 
 fn spd3() -> Matrix {
     // SPD matrix built as A = B B^T + I from a fixed B.
@@ -43,19 +44,25 @@ fn cholesky_reconstructs_spd() {
 }
 
 #[test]
-fn cholesky_jitter_path_on_singular_matrix() {
+fn cholesky_repair_jitter_path_on_singular_matrix() {
     // Perfectly correlated 2x2: exactly singular, plain Cholesky must fail
     // and the diagonal-jitter fallback must engage.
     let a = Matrix::from_vec(2, 2, vec![1.0, 1.0, 1.0, 1.0]).unwrap();
     assert!(a.cholesky().is_err());
-    let l = a.cholesky_jitter(1e-10, 12).unwrap();
+    let l = a
+        .cholesky_repair(PsdRepair::None)
+        .map(|c| c.factor)
+        .unwrap();
     assert!(max_abs_diff(&reconstruct(&l), &a) < 1e-6);
 }
 
 #[test]
-fn cholesky_jitter_path_on_zero_variance_asset() {
+fn cholesky_repair_jitter_path_on_zero_variance_asset() {
     let a = Matrix::from_vec(2, 2, vec![0.01, 0.0, 0.0, 0.0]).unwrap();
-    let l = a.cholesky_jitter(1e-10, 12).unwrap();
+    let l = a
+        .cholesky_repair(PsdRepair::None)
+        .map(|c| c.factor)
+        .unwrap();
     assert!(max_abs_diff(&reconstruct(&l), &a) < 1e-8);
 }
 
@@ -71,7 +78,7 @@ fn cholesky_rejects_bad_input() {
     // Badly indefinite: jitter cannot rescue a huge negative eigenvalue.
     let bad = Matrix::from_vec(2, 2, vec![1.0, 1e8, 1e8, 1.0]).unwrap();
     assert!(matches!(
-        bad.cholesky_jitter(1e-10, 12),
+        bad.cholesky_repair(PsdRepair::None).map(|c| c.factor),
         Err(EqVarError::Numerical(_))
     ));
 }

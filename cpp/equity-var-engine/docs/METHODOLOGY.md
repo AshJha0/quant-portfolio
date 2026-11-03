@@ -32,7 +32,7 @@ conventions, the maths, the model choices and the assumptions.
 with `std::nth_element` (O(n)) and a partial sum of the m - 1 larger losses,
 with no full sort. The order statistic is a value from the sample, so it is
 the same in every language that rounds the inputs the same way. Type-7
-interpolation (`quantile_linear`) is deprecated and no VaR path uses it.
+interpolation (`quantile_linear`) was removed in 3.0.0; no VaR path used it.
 
 **BRW age-weighted VaR and ES** (Boudoukh, Richardson, Whitelaw):
 observation i (0 = oldest) gets weight (1-lam) lam^{n-1-i} / (1-lam^n), and
@@ -124,9 +124,12 @@ Simulate r = L z, P&L = w . r, then VaR and ES by the order statistic.
 - **Multivariate Student-t**: r = L z / sqrt(W / nu), W ~ chi2_nu, scale
   matrix Sigma (nu-2)/nu so the simulated covariance equals Sigma. One
   mixing variable per path keeps the joint tails dependent.
-- **Repeatability**: one seeded `std::mt19937_64`. Gaussians come from the
-  engine's own Phi^{-1} (Acklam plus one Halley step), chi2 from a
-  Marsaglia-Tsang gamma sampler. A seed repeats exactly on one platform.
+- **Repeatability**: each path draws from its own Philox4x32-10 stream
+  `(seed, path)` (Salmon et al. 2011, `qp/philox.hpp`); Gaussians are
+  AS 241 (Wichura 1988), chi2 from a Marsaglia-Tsang gamma sampler. Paths
+  run on all cores and the bits do not depend on the thread count; the Rust
+  engine draws the same streams. (Before milestone v2.1: one
+  `std::mt19937_64` stream with Acklam normals.) A seed repeats exactly on one platform.
   Results can differ in the last bits across platforms because `std::log`,
   `std::exp` and `std::erfc` are not correctly rounded.
 - **Simulate once**: `monte_carlo_var` simulates one scenario set and
@@ -193,7 +196,7 @@ now wraps them. The rules that keep them the same:
 - **Selection, not sorting.** The order-statistic VaR / ES partitions the
   loss vector with `std::nth_element` around rank m: O(n) on average. The
   tail sum then adds the m - 1 largest losses in the order the partition
-  leaves them, as before. The deprecated `quantile_linear` used a full sort;
+  leaves them, as before. The removed `quantile_linear` used a full sort;
   it now uses `nth_element` for x(lo) and the minimum of the upper part for
   x(lo + 1), the same two order statistics. `var_es_weighted` (BRW) still
   sorts, because it needs the cumulative weight in loss order.
@@ -220,8 +223,11 @@ now wraps them. The rules that keep them the same:
 - **No allocation.** Selection buffers, the Cholesky factor and its
   jittered copy, and the Monte Carlo vectors are caller storage. The
   bootstrap reuses one resample buffer across replicates.
-- **One thread.** The Monte Carlo is sequential (one `mt19937_64` stream),
-  so there is no thread pool and no generator change in this engine.
+- **Threads.** The Monte Carlo and the bootstrap run on all cores. Each
+  path, and each bootstrap resample, owns its Philox stream, so the result
+  is the same on 1 or N threads. `McVarWorkspace::reserve` also sizes the
+  bootstrap buffer (8 x n_paths doubles); clear it to keep the old
+  footprint and run on one thread with the same result.
 
 ## Assumptions register
 

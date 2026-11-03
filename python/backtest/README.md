@@ -91,3 +91,22 @@ fill is half-way through a +2% day (`a = 1%`):
   targeting and a walk-forward portfolio P&L.
 * The old top-level imports `fills` and `portfolio` (with `python/backtest`
   on the path) still work through shims.
+
+## Who runs on this core
+
+Nine strategy projects compute their P&L here (milestone v2.1): eq_signal
+(foundations 02), eq_pairs, eq_port, eq_algo and eq_regime on the equity
+side, and fx_pairs, fx_port, fx_algo and fx_regime on the FX side. Each
+keeps its own validation and reporting; the P&L loop is gone from all of
+them. eq_pairs and fx_algo match their old outputs to 1e-12. The others
+changed on purpose (look-ahead fills, free daily resets to target, costs
+on the pre-trade NAV, log-return sums, missing cross terms); each
+package's README states its before and after numbers, and
+`docs/MIGRATION.md` lists the calls that change. Ledgers now carry a
+`carry` column, and `asset_carry=` in `run_fast` and `EventEngine` charges
+it on the book held overnight; `qp_bt.HalfSpreadCost` is the half-spread
+cost model used by fx_pairs.
+
+Studies whose headline numbers were produced on the old loops are marked
+"pending rerun as a new trial" in their READMEs: a rerun is a new trial
+under the research protocol, not a correction.

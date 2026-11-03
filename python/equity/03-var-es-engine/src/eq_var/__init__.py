@@ -46,14 +46,12 @@ from .monte_carlo_var import (
     monte_carlo_risk,
     monte_carlo_var,
     repair_covariance,
-    safe_cholesky,
     simulate_factor_returns,
     var_confidence_interval,
     var_standard_error_bootstrap,
     var_standard_error_kde,
 )
 from .parametric_var import (
-    cornish_fisher_domain_ok,
     cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
@@ -109,7 +107,6 @@ __all__ = [
     "cholesky",
     "christoffersen_cc",
     "christoffersen_independence",
-    "cornish_fisher_domain_ok",
     "cornish_fisher_valid",
     "cornish_fisher_var",
     "cornish_fisher_z",
@@ -141,7 +138,6 @@ __all__ = [
     "reverse_stress_delta",
     "reverse_stress_delta_gamma",
     "rolling_var_backtest",
-    "safe_cholesky",
     # parametric
     "sample_covariance",
     "scale_var_sqrt_time",

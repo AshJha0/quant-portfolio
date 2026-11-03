@@ -103,8 +103,4 @@ CholeskyResult cholesky(const Matrix& cov, Repair repair) {
   return res;
 }
 
-CholeskyResult robust_cholesky(const Matrix& cov, int /*max_tries*/) {
-  return cholesky(cov, Repair::kNone);
-}
-
 }  // namespace fxvar

@@ -39,13 +39,13 @@ def test_hl_in_sample_size_with_fitted_model():
     assert 0.015 <= rej / 300 <= 0.09
 
 
-def test_hl_unset_mode_warns_and_keeps_old_df():
+def test_hl_mode_is_required_since_3_0():
     rng = np.random.default_rng(3)
     p = rng.uniform(0.05, 0.2, 1000)
     y = (rng.uniform(size=1000) < p).astype(float)
-    with pytest.warns(DeprecationWarning, match="out_of_sample"):
-        _chi2, pv, _ = hosmer_lemeshow(y, p)
-    assert pv == pytest.approx(hosmer_lemeshow(y, p, out_of_sample=False)[1], rel=1e-15)
+    with pytest.raises(TypeError, match="out_of_sample"):
+        hosmer_lemeshow(y, p)  # type: ignore[call-arg]
+    pv = hosmer_lemeshow(y, p, out_of_sample=False)[1]
     assert hosmer_lemeshow(y, p, out_of_sample=True)[1] > pv  # more df, larger p
 
 

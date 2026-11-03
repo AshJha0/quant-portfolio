@@ -37,63 +37,6 @@ fn validate_pnl(pnl: &[f64], min_obs: usize) -> Result<()> {
     Ok(())
 }
 
-fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
-    let mut v = pnl.to_vec();
-    // `total_cmp` is a total order on all f64 bit patterns, so this sort
-    // cannot panic even if a caller reaches it with a NaN (the public
-    // entry points reject NaN first; this removes the panic path entirely
-    // rather than relying on that).
-    v.sort_by(f64::total_cmp);
-    v
-}
-
-/// Empirical quantile with NumPy-default linear (Hyndman–Fan type-7)
-/// interpolation, kept for one release. No VaR path uses it any more.
-///
-/// `h = (n - 1) q`, result
-/// `x_(floor(h)) + (h - floor(h)) * (x_(floor(h)+1) - x_(floor(h)))` on the
-/// ascending order statistics.
-///
-/// `q` must be in `[0, 1]`; input needs at least one finite observation.
-#[deprecated(
-    since = "0.2.0",
-    note = "VaR is the order statistic now; use tail::empirical_var"
-)]
-pub fn linear_quantile(pnl: &[f64], q: f64) -> Result<f64> {
-    if pnl.is_empty() {
-        return Err(EqVarError::InvalidInput(
-            "quantile of an empty sample is undefined".to_string(),
-        ));
-    }
-    if !(0.0..=1.0).contains(&q) {
-        return Err(EqVarError::InvalidInput(format!(
-            "quantile level must be in [0, 1], got {q}"
-        )));
-    }
-    if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(EqVarError::InvalidInput(
-            "pnl contains NaN or infinite values".to_string(),
-        ));
-    }
-    let sorted = sorted_copy(pnl);
-    Ok(linear_quantile_sorted(&sorted, q))
-}
-
-/// Type-7 quantile on an already ascending-sorted, non-empty slice.
-fn linear_quantile_sorted(sorted: &[f64], q: f64) -> f64 {
-    let n = sorted.len();
-    if n == 1 {
-        return sorted[0];
-    }
-    let h = (n - 1) as f64 * q;
-    let lo = h.floor() as usize;
-    if lo + 1 >= n {
-        return sorted[n - 1];
-    }
-    let frac = h - lo as f64;
-    sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
-}
-
 /// Plain historical-simulation VaR (equal weights).
 ///
 /// Returns the loss order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`

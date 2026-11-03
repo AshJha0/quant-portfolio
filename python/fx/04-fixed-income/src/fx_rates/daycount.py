@@ -27,7 +27,6 @@ All year fractions are returned as plain floats (units: years).
 from __future__ import annotations
 
 import datetime as dt
-import warnings
 
 from qp_core import daycount as _core
 from qp_core.daycount import MONEY_MARKET_DAYCOUNT, money_market_year_fraction
@@ -101,7 +100,6 @@ def spot_date(
     trade_date: dt.date,
     spot_lag_days: int | None = None,
     pair: tuple[str, str] | None = None,
-    calendar_days: bool = False,
 ) -> dt.date:
     """FX spot date: T + ``spot_lag_days`` business days.
 
@@ -115,8 +113,8 @@ def spot_date(
     for USDCAD, USDTRY, USDRUB and USDPHP, T+2 otherwise. Before round 6
     the default was 2 for every pair.
 
-    ``calendar_days=True`` restores the old calendar-day arithmetic and is
-    deprecated.
+    The old ``calendar_days=True`` (calendar-day arithmetic) was removed in
+    v3.0.0.
 
     Raises
     ------
@@ -127,13 +125,6 @@ def spot_date(
         spot_lag_days = 2 if pair is None else _spot_lag(pair)
     if int(spot_lag_days) != spot_lag_days or spot_lag_days < 0:
         raise ValueError(f"spot_lag_days must be >= 0, got {spot_lag_days}")
-    if calendar_days:
-        warnings.warn(
-            "calendar-day spot dates are deprecated; spot_date now counts business days",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return add_calendar_days(trade_date, spot_lag_days)
     if pair is None:
         wk, d = CALENDARS["WEEKEND"], trade_date
         for _ in range(int(spot_lag_days)):
@@ -217,13 +208,10 @@ def tenor_to_years(tenor: str) -> float:
     """
     t = tenor.strip().upper()
     if t in ("ON", "TN", "SN"):
-        warnings.warn(
-            f"tenor_to_years({t!r}) returns a 1-day length only; ON and TN "
-            "settle before spot. Use tenor_dates for value dates.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return 1.0 / 365.0
+        raise ValueError(
+            f"tenor_to_years({t!r}): ON and TN settle before spot, so a year "
+            "fraction from spot is not defined; use tenor_dates for value dates "
+            "(the 1-day length was removed in v3.0.0)")
     if len(t) < 2:
         raise ValueError(f"Cannot parse tenor {tenor!r}")
     unit, num = t[-1], t[:-1]

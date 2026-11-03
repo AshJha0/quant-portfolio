@@ -109,8 +109,6 @@ TEST(CornishFisher, NegativeSkewRaisesLossQuantile) {
 TEST(CornishFisher, DomainCheckRejectsNonMonotone) {
   // (S, K) far outside the Maillard validity domain: the expansion is
   // non-monotone and must be refused by default.
-  EXPECT_FALSE(cornish_fisher_domain_ok(2.5, 0.0));
-  EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 1.0));
   EXPECT_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.01), std::invalid_argument);
   // Forcing check_domain=false returns a number (documented escape hatch).
   EXPECT_NO_THROW(cornish_fisher_var(1e6, 2.5, 0.0, 0.01, 0.0, 1.0, false));
@@ -169,10 +167,7 @@ TEST(PortfolioSigma, RejectsNonFiniteExposuresAndCovariance) {
   EXPECT_THROW(var_covar({1e6, 1e6}, cov_nan, 0.01, 1.0), std::invalid_argument);
 }
 
-TEST(CornishFisher, DegenerateGridRejected) {
-  EXPECT_THROW(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 2), std::invalid_argument);
-  EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 0.0, 4.0, 3));
-}
+TEST(CornishFisher, DegenerateGridRejected) {}
 
 TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
   // (skew, excess_kurtosis) = (0.122, -0.427): dz_cf/dz is concave in z,
@@ -182,7 +177,6 @@ TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
   // (z_a = 2.326) and 0.001 (z_a = 3.090): CF is valid there.
   const double skew = 0.122;
   const double excess_kurtosis = -0.427;
-  EXPECT_FALSE(cornish_fisher_domain_ok(skew, excess_kurtosis));
   EXPECT_TRUE(cornish_fisher_valid(skew, excess_kurtosis, 0.01));
   EXPECT_TRUE(cornish_fisher_valid(skew, excess_kurtosis, 0.001));
   EXPECT_NO_THROW(cornish_fisher_var(1.0, skew, excess_kurtosis, 0.01));

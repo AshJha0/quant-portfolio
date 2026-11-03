@@ -44,7 +44,7 @@ Worked example: losses 1, 2, ..., 250 at alpha = 1 %: `kth_worst` gives
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest -p no:cacheprovider -q   # 636 tests, offline
+python -m pytest -p no:cacheprovider -q   # 676 tests, offline
 python examples/run_pipeline.py           # full demo
 ```
 

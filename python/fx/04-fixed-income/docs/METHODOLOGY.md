@@ -61,9 +61,9 @@ Between reset dates `ln(D/P)` is linear in `t`, so zero spreads give
 carries the basis; for USDJPY the JPY (quote) curve does, not the USD one.
 Market forwards are `F_mkt(T) = S * D_base(T) / D_quote(T)`.
 
-`basis_adjusted_curve` keeps the older zero-spread shortcut
-(`z_adj = z_f + s`) and `basis_model="zero_spread"` selects it with a
-DeprecationWarning. Under it a parallel foreign-rate move and a basis move
+`basis_adjusted_curve` used to offer the older zero-spread shortcut
+(`z_adj = z_f + s`) as `basis_model="zero_spread"`; it was removed in 3.0.0.
+Under it a parallel foreign-rate move and a basis move
 are the same risk factor. `implied_basis_from_forwards` inverts forwards to
 that zero-spread equivalent; it differs from the float-float par spread by
 the gap between `T` and the spread annuity (under 0.3bp in the synthetic

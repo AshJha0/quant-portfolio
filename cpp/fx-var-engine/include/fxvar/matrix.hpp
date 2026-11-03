@@ -90,9 +90,4 @@ struct CholeskyResult {
 /// negative eigenvalue; otherwise repair and factor the repaired matrix.
 CholeskyResult cholesky(const Matrix& cov, Repair repair = Repair::kNone);
 
-/// Old entry point. It used to escalate the jitter without a cap; it now
-/// forwards to cholesky(cov, Repair::kNone) and `max_tries` is ignored.
-[[deprecated("use cholesky(cov, Repair). Removed next release.")]]
-CholeskyResult robust_cholesky(const Matrix& cov, int max_tries = 8);
-
 }  // namespace fxvar

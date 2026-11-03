@@ -22,7 +22,6 @@ docs/VALIDATION.md F4 for when this breaks for carry books).
 
 from __future__ import annotations
 
-import warnings as _w
 from dataclasses import dataclass
 
 import numpy as np
@@ -44,7 +43,6 @@ from .expected_shortfall import normal_es, normal_var, t_es, t_var
 
 __all__ = [
     "ParametricVaRResult",
-    "cornish_fisher_domain_ok",
     "cornish_fisher_valid",
     "cornish_fisher_var",
     "cornish_fisher_z",
@@ -129,8 +127,6 @@ def var_covar(
     dist: str = "normal",
     df: float = 6.0,
     mean: float = 0.0,
-    *,
-    confidence: float | None = None,
 ) -> tuple[float, float]:
     """Closed-form (VaR, ES) for a linear book: pure function for testing.
 
@@ -146,10 +142,8 @@ def var_covar(
         Expected 1-day P&L (usually 0 at daily horizon).
     alpha : float
         Tail probability in (0, 0.5).  Default 0.01.
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     validate_finite(mean=mean)
     validate_horizon(horizon_days)
     sig1 = portfolio_sigma(exposures, cov)
@@ -175,8 +169,6 @@ def parametric_var(
     ewma_lambda: float = 0.94,
     min_obs: int = 60,
     warn_pegs: bool = True,
-    *,
-    confidence: float | None = None,
 ) -> ParametricVaRResult:
     """Variance-covariance VaR/ES of ``book`` from a factor-return history.
 
@@ -184,7 +176,7 @@ def parametric_var(
     :func:`var_covar` for the distributional overlays.  ``alpha`` is the
     tail probability (default 0.01).  An empty book raises ``ValueError``.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     validate_horizon(horizon_days)
     require_positions(book)
     factors = book.factors(market)
@@ -266,33 +258,6 @@ def cornish_fisher_valid(skew: float, ex_kurt: float, alpha: float) -> bool:
     return bool(_cf_min_derivative(float(skew), float(ex_kurt), -z_a, z_a) > 0.0)
 
 
-def cornish_fisher_domain_ok(
-    skew: float, excess_kurtosis: float, z_range: float = 4.0, n_grid: int = 801
-) -> bool:
-    """Deprecated: monotonicity of the CF map on the fixed ``[-z_range, z_range]``.
-
-    Use :func:`cornish_fisher_valid`, which uses the interval implied by
-    ``alpha``.  This predicate keeps its old behaviour for one release:
-    the fixed interval, and False (not an error) for non-finite input.
-    ``n_grid`` is validated but unused.
-    """
-    _w.warn(
-        "cornish_fisher_domain_ok is deprecated; use "
-        "cornish_fisher_valid(skew, ex_kurt, alpha)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    z_range = float(z_range)
-    if n_grid < 3:
-        raise ValueError(f"n_grid must be >= 3, got {n_grid}")
-    if not (z_range > 0.0) or not np.isfinite(z_range):
-        raise ValueError(f"z_range must be finite and > 0, got {z_range}")
-    s, k = float(skew), float(excess_kurtosis)
-    if not np.isfinite(s) or not np.isfinite(k):
-        return False
-    return bool(_cf_min_derivative(s, k, -z_range, z_range) > 0.0)
-
-
 def cornish_fisher_var(
     sigma: float,
     skew: float,
@@ -301,8 +266,6 @@ def cornish_fisher_var(
     mean: float = 0.0,
     horizon_days: float = 1.0,
     check_domain: bool = True,
-    *,
-    confidence: float | None = None,
 ) -> float:
     """Cornish-Fisher VaR (positive loss) with an explicit domain check.
 
@@ -317,15 +280,13 @@ def cornish_fisher_var(
     check_domain : bool
         If True (default), raise ``ValueError`` when
         :func:`cornish_fisher_valid` fails at this ``alpha``.
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
 
     Raises
     ------
     ValueError
         If the domain check fails and ``check_domain`` is True.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     validate_horizon(horizon_days)
     validate_finite(sigma=sigma, skew=skew, excess_kurtosis=excess_kurtosis,
                     mean=mean)

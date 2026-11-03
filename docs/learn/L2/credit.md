@@ -58,7 +58,13 @@ Source: `cds_legs` and `par_spread` in
 - Bootstrapping a hazard curve from quoted spreads: `bootstrap_hazards`.
 - Default probabilities from borrower data (scorecards, calibration, the
   IFRS 9 stages): the rest of `eq_credit` and appendix Set 10.
-- Counterparty credit (CVA, SA-CCR): `fx_credit.xva` and `fx_credit.saccr`.
+- Counterparty credit (CVA, SA-CCR): the
+  [counterparty chapter](counterparty-and-capital.md), `qp_core.xva` and
+  `qp_core.capital.saccr`, with the FX package versions in `fx_credit.xva`
+  and `fx_credit.saccr`.
+- Credit indices (factors, defaults, index basis):
+  `python/core/src/qp_core/credit_index/index.py`, and the ISDA standard model
+  with the half-day accrual bias, on by default since v3.0.0.
 
 ## Checks
 

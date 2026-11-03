@@ -50,12 +50,6 @@ struct TailRisk {
 [[nodiscard]] TailRisk var_es_weighted(std::span<const double> pnl, std::span<const double> weights,
                                        double alpha);
 
-/// Type-7 (numpy "linear") quantile, q in [0, 1]. No VaR path uses it.
-[[deprecated(
-    "type-7 interpolation is no longer a VaR convention; use "
-    "var_es_order_statistic. Removed next release.")]] [[nodiscard]] double
-quantile_linear(std::span<const double> x, double q);
-
 /// Plain historical-simulation VaR (order statistic L(m)).
 /// Requires at least kMinHistObs finite observations.
 [[nodiscard]] double historical_var(std::span<const double> pnl, double alpha = 0.01);

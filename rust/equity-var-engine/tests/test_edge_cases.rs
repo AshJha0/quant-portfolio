@@ -6,10 +6,11 @@
 //! is also documented in docs/VALIDATION.md.
 
 use eq_var_engine::expected_shortfall::expected_shortfall;
-use eq_var_engine::historical::{MIN_OBS, historical_var, linear_quantile};
+use eq_var_engine::historical::{MIN_OBS, historical_var};
 use eq_var_engine::matrix::Matrix;
 use eq_var_engine::monte_carlo::{monte_carlo_var, portfolio_pnl};
 use eq_var_engine::parametric::{parametric_var, portfolio_sigma};
+use eq_var_engine::psd::PsdRepair;
 use eq_var_engine::stats::{excess_kurtosis, mean, normal_ppf, skewness};
 use eq_var_engine::{EqVarError, TailModel};
 
@@ -19,7 +20,6 @@ fn empty_inputs_error() {
     let cov = Matrix::from_vec(1, 1, vec![1e-4]).unwrap();
     assert!(historical_var(&empty, 0.01).is_err());
     assert!(expected_shortfall(&empty, 0.01).is_err());
-    assert!(linear_quantile(&empty, 0.5).is_err());
     assert!(portfolio_sigma(&empty, &cov).is_err());
     assert!(parametric_var(&empty, &cov, 0.01, TailModel::Normal).is_err());
     assert!(monte_carlo_var(&empty, &cov, 0.01, 1000, TailModel::Normal, 0).is_err());
@@ -37,7 +37,7 @@ fn single_asset_portfolio_is_exact() {
     let var = parametric_var(&w, &cov, 0.01, TailModel::Normal).unwrap();
     assert!((var - (-normal_ppf(0.01).unwrap() * sigma)).abs() < 1e-9);
     let mc = monte_carlo_var(&w, &cov, 0.01, 100_000, TailModel::Normal, 5).unwrap();
-    let se = eq_var_engine::monte_carlo::var_order_statistic_se(
+    let se = eq_var_engine::monte_carlo::var_kde_se(
         &eq_var_engine::monte_carlo::monte_carlo_pnl(&w, &cov, 100_000, TailModel::Normal, 5)
             .unwrap(),
         0.01,
@@ -75,7 +75,10 @@ fn zero_variance_asset_handled_throughout() {
     let sigma = portfolio_sigma(&w, &cov).unwrap();
     assert!((sigma - 1.0e6 * 0.02).abs() < 1e-9);
     assert!(cov.cholesky().is_err()); // plain Cholesky fails on the singular matrix
-    let l = cov.cholesky_jitter(1e-10, 12).unwrap();
+    let l = cov
+        .cholesky_repair(PsdRepair::None)
+        .map(|c| c.factor)
+        .unwrap();
     assert_eq!(l.rows(), 2);
     let mc = monte_carlo_var(&w, &cov, 0.01, 100_000, TailModel::Normal, 17).unwrap();
     assert!((mc - (-normal_ppf(0.01).unwrap() * sigma)).abs() < 0.05 * sigma);
@@ -184,8 +187,10 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
         );
         assert!(cov.cholesky().is_err(), "cholesky cov={bad}");
         assert!(
-            cov.cholesky_jitter(1e-10, 12).is_err(),
-            "cholesky_jitter cov={bad}"
+            cov.cholesky_repair(PsdRepair::None)
+                .map(|c| c.factor)
+                .is_err(),
+            "cholesky_repair cov={bad}"
         );
         assert!(simulate_factor_returns(&cov, 100, TailModel::Normal, 1).is_err());
         assert!(monte_carlo_var(&w, &cov, 0.01, 1000, TailModel::Normal, 1).is_err());
@@ -321,7 +326,10 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
     //     at the first rung, and the factor reproduces the input.
     let singular = Matrix::from_vec(2, 2, vec![1.0, 1.0, 1.0, 1.0]).unwrap();
     assert!(singular.cholesky().is_err());
-    let l = singular.cholesky_jitter(1e-10, 12).unwrap();
+    let l = singular
+        .cholesky_repair(PsdRepair::None)
+        .map(|c| c.factor)
+        .unwrap();
     let mut recon = 0.0f64;
     for i in 0..2 {
         for j in 0..2 {
@@ -353,7 +361,11 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
         rd.cholesky().is_err(),
         "rank-deficient matrix should defeat plain Cholesky"
     );
-    assert!(rd.cholesky_jitter(1e-10, 12).is_ok());
+    assert!(
+        rd.cholesky_repair(PsdRepair::None)
+            .map(|c| c.factor)
+            .is_ok()
+    );
     let w = [1.0e6, -2.0e5, 3.0e5];
     let var = parametric_var(&w, &rd, 0.01, TailModel::Normal).unwrap();
     assert!(var > 0.0 && var.is_finite());
@@ -371,7 +383,7 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
     //     has eigenvalues 2.1e-4 and -0.1e-4.
     let indef = Matrix::from_vec(2, 2, vec![1.0e-4, 1.1e-4, 1.1e-4, 1.0e-4]).unwrap();
     assert!(indef.cholesky().is_err());
-    let res = indef.cholesky_jitter(1e-10, 12);
+    let res = indef.cholesky_repair(PsdRepair::None).map(|c| c.factor);
     assert!(
         matches!(res, Err(EqVarError::Numerical(_))),
         "materially indefinite matrix must not be silently repaired, got {res:?}"
@@ -386,29 +398,13 @@ fn jitter_repairs_singular_but_refuses_materially_indefinite_matrices() {
     // (d) The cap is documented and small: a repair must never be a
     //     material fraction of the mean variance.
     const { assert!(MAX_RELATIVE_JITTER > 0.0 && MAX_RELATIVE_JITTER <= 1e-4) };
-    // A jitter argument that is itself nonsense is rejected up front.
-    assert!(singular.cholesky_jitter(0.0, 12).is_err());
-    assert!(singular.cholesky_jitter(f64::NAN, 12).is_err());
 }
 
 /// One- and two-element samples: the smallest inputs a VaR engine can see.
 #[test]
 fn one_and_two_element_samples_behave_predictably() {
     use eq_var_engine::expected_shortfall::expected_shortfall;
-    use eq_var_engine::historical::{historical_var, linear_quantile};
-
-    // linear_quantile is the only estimator defined on a single point: it
-    // returns that point at every level (a degenerate but correct CDF).
-    for q in [0.0, 0.01, 0.5, 0.99, 1.0] {
-        assert_eq!(linear_quantile(&[42.0], q).unwrap(), 42.0);
-    }
-    // Two points: exact linear interpolation between the order statistics.
-    assert_eq!(linear_quantile(&[-10.0, 10.0], 0.0).unwrap(), -10.0);
-    assert_eq!(linear_quantile(&[-10.0, 10.0], 1.0).unwrap(), 10.0);
-    assert!((linear_quantile(&[-10.0, 10.0], 0.25).unwrap() + 5.0).abs() < 1e-12);
-    // Out-of-range levels are errors, not clamps.
-    assert!(linear_quantile(&[1.0, 2.0], -1e-16).is_err());
-    assert!(linear_quantile(&[1.0, 2.0], 1.0 + 1e-9).is_err());
+    use eq_var_engine::historical::historical_var;
 
     // Every higher-level estimator refuses samples below its documented
     // minimum rather than reporting a tail read off 1-2 points.

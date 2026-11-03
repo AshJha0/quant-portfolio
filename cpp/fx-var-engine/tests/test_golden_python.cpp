@@ -147,7 +147,7 @@ TEST(GoldenPython, CaseB_ParametricClosedForm) {
 
 TEST(GoldenPython, CaseC_BacktestStatistics) {
   // Python fx_var.backtesting:
-  //   kupiec_pof(8, 250, 0.01)   -> LR = 7.7335507244945205
+  //   kupiec_pof(n_obs=250, n_exceptions=8, alpha=0.01) -> LR = 7.7335507244945205
   //                                 p  = 0.0054204051941277994
   //   christoffersen on the fixed pattern (t % 37 == 5, plus 100,101;
   //   9 exceptions in 250)       -> LR = 1.0063610339314124
@@ -155,7 +155,7 @@ TEST(GoldenPython, CaseC_BacktestStatistics) {
   //   basel cum prob: P(X<=5)  = 0.9588168159301514  (yellow, 3.40)
   //                   P(X<=4)  = 0.8921876269036249  (green,  3.00)
   //                   P(X<=10) = 0.999946101370953   (red,    4.00)
-  const LrTest k = kupiec_pof(8, 250, 0.01);
+  const LrTest k = kupiec_pof({.n_obs = 250, .n_exceptions = 8, .alpha = 0.01});
   EXPECT_NEAR(k.lr, golden::c_kupiec_lr_8_250, golden::tol_kupiec_lr_abs);
   EXPECT_NEAR(k.p, golden::c_kupiec_p_8_250, golden::tol_kupiec_p_abs);
 
@@ -171,15 +171,15 @@ TEST(GoldenPython, CaseC_BacktestStatistics) {
   EXPECT_NEAR(c.lr, golden::c_christoffersen_ind_lr, golden::tol_christoffersen_abs);
   EXPECT_NEAR(c.p, golden::c_christoffersen_ind_p, golden::tol_christoffersen_abs);
 
-  const TrafficLight t5 = basel_traffic_light(5, 250, 0.01);
+  const TrafficLight t5 = basel_traffic_light({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01});
   EXPECT_NEAR(t5.cumulative_prob, golden::c_basel_cum_prob_5, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t5.zone, Zone::kYellow);
   EXPECT_DOUBLE_EQ(t5.multiplier, golden::c_basel_multiplier_5);
-  const TrafficLight t4 = basel_traffic_light(4, 250, 0.01);
+  const TrafficLight t4 = basel_traffic_light({.n_obs = 250, .n_exceptions = 4, .alpha = 0.01});
   EXPECT_NEAR(t4.cumulative_prob, golden::c_basel_cum_prob_4, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t4.zone, Zone::kGreen);
   EXPECT_DOUBLE_EQ(t4.multiplier, golden::c_basel_multiplier_4);
-  const TrafficLight t10 = basel_traffic_light(10, 250, 0.01);
+  const TrafficLight t10 = basel_traffic_light({.n_obs = 250, .n_exceptions = 10, .alpha = 0.01});
   EXPECT_NEAR(t10.cumulative_prob, golden::c_basel_cum_prob_10, golden::tol_basel_cum_prob_abs);
   EXPECT_EQ(t10.zone, Zone::kRed);
   EXPECT_DOUBLE_EQ(t10.multiplier, golden::c_basel_multiplier_10);

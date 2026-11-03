@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 from eq_var import (
-    cornish_fisher_domain_ok,
     cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
@@ -156,12 +155,6 @@ class TestCornishFisher:
                 cornish_fisher_valid(bad, 0.0, 0.01)
             with pytest.raises(ValueError):
                 cornish_fisher_valid(0.0, bad, 0.01)
-
-    def test_old_predicate_is_deprecated(self):
-        with pytest.deprecated_call():
-            assert cornish_fisher_domain_ok(0.0, 0.0)
-        assert cornish_fisher_domain_ok(-0.5, 1.0)
-        assert cornish_fisher_domain_ok(0.3, 2.0)
 
     def test_domain_flags_pathological_inputs(self):
         # skew 3: dz_cf/dz = 1 + z - 1.5 z^2 + 1.25 goes negative near z = 2

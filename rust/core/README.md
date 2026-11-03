@@ -24,6 +24,14 @@ differential test passes unchanged.
 | `quantile` | O(n) `select_kth` and type-7 quantile; same bits as a sort | new, opt-in |
 | `gemm` | Cache-blocked GEMM and `D^T D`; same bits as the naive loops | eq VaR `sample_covariance` |
 | `vmath` | Branch-free batch exp, erfc, normal CDF; exp 2 ulp, erfc 2e-15 relative, CDF 4e-16 absolute (see the module docs) | new, opt-in |
+| `stats` | Special functions and sample moments for both VaR engines (one copy since Round 8; each engine's `stats.rs` is a wrapper) | both VaR engines |
+| `crr` | The one Cox-Ross-Rubinstein lattice (`crr_lattice`, `CrrWorkspace`, `CrrError`) | both options engines |
+| `holidays` | Rule-based settlement calendars, FX spot dates, spot-date forwards and NDF values | FX, rates |
+| `exotics` | Closed-form exotic pricers, the twin of `qp_core.exotics` | parity tests |
+| `rates_vol` | SABR implied vol and the Hull-White trinomial Bermudan, twin of `qp_core.vol.sabr` | parity tests |
+| `xva` | SA-CCR (BCBS 279 / CRE52), Hull-White bond and swaption closed forms, CVA / DVA / FVA / effective-EPE sums; parity with `qp_core.xva` and `qp/xva.hpp` | parity tests |
+| `credit_index` | ISDA CDS Standard Model legs under the CDX and iTraxx indices | parity tests |
+| `bond_futures` | CME conversion factor, implied repo, net basis, basic delivery option | parity tests |
 
 `par` stays on `std::thread::scope` because it borrows the caller's
 slices, and a persistent pool cannot do that without `unsafe` (this crate

@@ -129,8 +129,6 @@ TEST(Fuzz, Historical) {
         EXPECT_INVALID(var_es_weighted(bad, std::vector<double>(pnl.size(), 1.0), 0.01));
         EXPECT_INVALID(
             var_es_weighted(pnl, with_bad(std::vector<double>(pnl.size(), 1.0), b), 0.01));
-        EXPECT_INVALID(quantile_linear(bad, 0.5));
-        EXPECT_INVALID(quantile_linear(pnl, b));
         EXPECT_INVALID(historical_var(bad, 0.01));
         EXPECT_INVALID(historical_var(pnl, b));
         EXPECT_INVALID(brw_weights(10, b));
@@ -179,7 +177,6 @@ TEST(Fuzz, ParametricAndEs) {
         EXPECT_INVALID(cornish_fisher_valid(b, 0.0, 0.01));
         EXPECT_INVALID(cornish_fisher_valid(0.0, b, 0.01));
         EXPECT_INVALID(cornish_fisher_valid(0.0, 0.0, b));
-        EXPECT_INVALID(cornish_fisher_domain_ok(b, 0.0));
         EXPECT_INVALID(cornish_fisher_var(b, 0.01));
         EXPECT_INVALID(cornish_fisher_var(1.0, 0.01, b, 0.0, 0.0, false));
         EXPECT_INVALID(cornish_fisher_var(1.0, 0.01, 0.0, 0.0, b));
@@ -229,7 +226,7 @@ TEST(Fuzz, Backtest) {
         EXPECT_INVALID(exceptions_from_pnl(with_bad(pnl, b), var));
         EXPECT_INVALID(exceptions_from_pnl(pnl, std::vector<double>{b}));
         EXPECT_INVALID(kupiec_pof({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
-        EXPECT_INVALID(kupiec_pof(250, 3, b));
+        EXPECT_INVALID(kupiec_pof({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
         EXPECT_INVALID(
             basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = 3, .alpha = b}));
         EXPECT_INVALID(christoffersen_cc(std::vector<std::uint8_t>(10, 0), b));
@@ -244,7 +241,7 @@ TEST(Fuzz, Backtest) {
     EXPECT_INVALID(kupiec_pof({.n_obs = 10, .n_exceptions = -1, .alpha = 0.01}));
     EXPECT_INVALID(kupiec_pof({.n_obs = 10, .n_exceptions = 11, .alpha = 0.01}));
     EXPECT_INVALID(basel_traffic_light(BaselInput{.n_obs = 10, .n_exceptions = 11}));
-    EXPECT_INVALID(basel_traffic_light(11, 10));
+    EXPECT_INVALID(basel_traffic_light({.n_obs = 10, .n_exceptions = 11, .alpha = 0.01}));
     EXPECT_INVALID(christoffersen_independence(std::vector<std::uint8_t>{1}));
     EXPECT_INVALID(acerbi_szekely_z2(std::vector<double>{}, var, es, 0.025));
     EXPECT_INVALID(acerbi_szekely_z2(pnl, std::vector<double>{-1.0}, es, 0.025));

@@ -54,9 +54,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <!-- DIAGRAMS links to the GitHub blob view on purpose: the Pages build
            does not render Mermaid, and that page is all Mermaid diagrams. -->
       <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/DIAGRAMS.md">Diagrams</a>
-      <a href="LEARN.html">Learn</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/learn/README.md">Learn (L0-L4)</a>
+      <a href="LEARN.html">Question bank</a>
       <a href="COOKBOOK.html">Cookbook</a>
       <a href="MARKET_RISK.html">Market risk</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/models/README.md">Models</a>
       <a class="secondary" href="https://github.com/AshJha0/quant-portfolio">GitHub</a>
     </nav>
   </div>
@@ -69,12 +71,12 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
      alt="CI status"></a></p>
   <table>
     <tr><th>Item</th><th>Value</th></tr>
-    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
+    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13) and added an <code>engine=</code> switch over the compiled ports. Toward v3.0.0 (not yet released): a trade layer, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA and a low-latency track in C++, Rust and Java. Nothing connects to a real venue.</td></tr>
     <tr><td>Sub-projects</td><td>31: 10 areas in equity and FX (20), 3 foundations projects, 4 engines in C++ and in Rust (8)</td></tr>
     <tr><td>Tests</td><td>Executed pass counts are written by the CI <code>counts</code> job to <code>counts.json</code> and the run summary. This page does not repeat them.</td></tr>
     <tr><td>Cross-language tests</td><td>Golden vectors (options from an mpmath oracle with a tolerance per output; VaR from the Python reference), checked by the <code>goldens --check</code> job, plus differential tests against the compiled engines.</td></tr>
-    <tr><td>Study guide</td><td>532 self-test questions in 19 sets; each answer is folded so you can try first, and each question is tagged by topic</td></tr>
-    <tr><td>Cookbook</td><td>85 recipes, written against current main; outputs are indicative</td></tr>
+    <tr><td>Study guide</td><td>559 self-test questions in 19 sets; each answer is folded so you can try first, and each question is tagged by topic</td></tr>
+    <tr><td>Cookbook</td><td>98 recipes, written against current main; outputs are indicative</td></tr>
   </table>
 
   <h2>The 10 project areas</h2>
@@ -137,6 +139,20 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
          <code>cpp/core</code> and <code>rust/core</code>, and the
          <code>qp-cpp</code> and <code>qp-rust</code> packages in
          <code>bindings/</code> call the engines from Python.</p></div>
+    <div class="card"><span class="tag">Desk stacks</span><h3>Orders to post-trade</h3>
+      <p>Shared stacks outside the 31 sub-projects: <code>qp_bt</code> (one
+         backtest core), <code>qp_oms</code> (orders, FIX session, pre-trade
+         risk, kill switch per the <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/KILL_CONTRACT.md">kill contract</a>),
+         <code>qp_exec</code> (reference book, market making, smart order
+         router), <code>qp_posttrade</code> and <code>qp_data</code>. All
+         venues and fills are simulated.</p></div>
+    <div class="card"><span class="tag">Low latency</span><h3>C++, Rust, Java</h3>
+      <p><code>cpp/ull</code> and <code>rust/ull</code>: the <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/QPBF.md">QPBF</a>
+         binary feed, an SPSC ring, an L3 book, a feed handler with gap
+         recovery and an order gateway; <a href="https://github.com/AshJha0/quant-portfolio/blob/main/java/README.md">java/</a>
+         holds a garbage-free gateway and OMS core. Every figure is software,
+         in-process latency on one machine, not wire-to-wire
+         (<a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/LATENCY_METHOD.md">method</a>).</p></div>
     <div class="card"><span class="tag">Docs</span><h3>Documentation contract</h3>
       <p>Each project states why it uses its model, what it assumes, how it was
          validated, where it fails and how it is meant to be used. Changes are

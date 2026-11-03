@@ -50,6 +50,15 @@ python examples/run_pipeline.py   # full pipeline, about 60 s
 
 ## Headline numbers (seed 123, 3 024 business days, synthetic G10+EM panel)
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> Five changes: the decision-close weights no longer earn day t+1 for free (`execution=` defaults to the next bar, f = 0.5); the book drifts and the trade back is paid for; costs come out of the trade, N = 1/(1+c); simple returns replace a weighted sum of log returns; carry is on the overnight book.
+> Worked example: a +R day: before R, after (1+R)/(1+R/2) - 1. On the test corpus, case a net sum -0.041838 -> -0.038874, case b -0.071556 -> -0.085358.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in `BEFORE_AFTER` in the characterisation test, with the old golden in `tests/golden/characterisation_w24b_before.json` (source: `docs/MIGRATION.md`, milestone v2.1).
+
 All numbers are from `python examples/run_pipeline.py` on synthetic data.
 The value signal uses the exact PPP anchor that the synthetic spots revert
 to, and momentum is a planted AR(1) trend. Style performance is therefore a

@@ -1,6 +1,6 @@
 # Learning notebooks
 
-Four runnable notebooks, each in two copies: `*-exercise.ipynb` with the
+Eight runnable notebooks, each in two copies: `*-exercise.ipynb` with the
 tasks left blank, and `*-solution.ipynb` filled in. Both copies keep the
 check cells, which compare the library with an independent computation, so
 you can test your own answer.
@@ -11,6 +11,10 @@ you can test your own answer.
 | 02 Value at risk and ES | L1 | `eq_var` | normal VaR/ES formulas, quantile standard error |
 | 03 Yield-curve bootstrap | L1 | `fi_rates` | quotes reprice, first pillars by hand, annuity DV01 |
 | 04 Optimal execution | L2 | `eq_algo` | brute-force tridiagonal solve of the Almgren-Chriss objective |
+| 05 Greeks by AAD | L2 | `qp_core.aad` | closed-form Greeks, bump and reprice |
+| 06 Market-making quotes | L3 | `qp_exec.mm` | Avellaneda-Stoikov formulas by hand, the gamma to 0 limit 2/k |
+| 07 CVA | L3 | `qp_core.xva` | telescoped flat-exposure sum, closed-form integral for an amortising exposure |
+| 08 Risk parity and shrinkage | L2 | `qp_bt.portfolio` | 1/sigma weights under one common correlation, Ledoit-Wolf rebuilt by hand |
 
 Run from a checkout: `jupyter lab docs/notebooks` (the first cell,
 `import _paths`, puts the library on `sys.path`). Data are seeded synthetic

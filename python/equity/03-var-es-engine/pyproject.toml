@@ -38,5 +38,4 @@ addopts = "-q"
 filterwarnings = [
     "error::RuntimeWarning",
     'ignore:filtered_historical_var\(pnl:DeprecationWarning',
-    "ignore:cornish_fisher_domain_ok is deprecated:DeprecationWarning",
 ]

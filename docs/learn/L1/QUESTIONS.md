@@ -18,7 +18,7 @@ for the question number within its set, for example `Set 3` then `**Q4.`.
 - Q7. What is an order statistic, and how does the historical-VaR quantile relate to it?
 - Q8. `03-var-es-engine` computes historical VaR as the order statistic `L(ceil(n*alpha))` with no interpolation. Why not use NumPy's default (type-7) quantile, and how does ES fit with it?
 - Q10. Explain how Cholesky factorisation is actually used to turn independent normal draws into correlated ones, as in `simulate_factor_returns`.
-- Q11. What does "jitter escalation" mean in `safe_cholesky`, and why is it needed at all?
+- Q11. What does "jitter escalation" mean in `cholesky`, and why is it needed at all?
 - Q12. Why would a covariance matrix built from pegged-FX-currency data be singular or near-singular in the first place?
 - Q13. If jitter escalation lets a materially indefinite covariance matrix fail rather than being silently repaired, why is that the right design choice rather than always jittering until it works?
 - Q14. What is geometric Brownian motion (GBM), and where does it appear explicitly in this portfolio's code?

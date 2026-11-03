@@ -67,9 +67,9 @@ class TestSettlement:
         # Friday trade settles Tuesday (the calendar-day version gave Sunday)
         assert spot_date(dt.date(2024, 5, 10)) == dt.date(2024, 5, 14)
 
-    def test_calendar_day_spot_is_deprecated(self):
-        with pytest.warns(DeprecationWarning):
-            assert spot_date(dt.date(2024, 5, 10), calendar_days=True) == dt.date(2024, 5, 12)
+    def test_calendar_day_spot_removed_in_3_0(self):
+        with pytest.raises(TypeError):
+            spot_date(dt.date(2024, 5, 10), calendar_days=True)  # type: ignore[call-arg]
 
     def test_spot_lag_zero(self):
         d = dt.date(2024, 5, 10)
@@ -99,9 +99,10 @@ class TestTenorParsing:
     def test_known_tenors(self, tenor, years):
         assert tenor_to_years(tenor) == pytest.approx(years, abs=1e-15)
 
-    def test_overnight_tenors_warn(self):
-        with pytest.warns(DeprecationWarning, match="before spot"):
-            assert tenor_to_years("ON") == pytest.approx(1 / 365)
+    @pytest.mark.parametrize("t", ["ON", "TN", "SN"])
+    def test_overnight_tenors_raise_since_3_0(self, t):
+        with pytest.raises(ValueError, match="before spot"):
+            tenor_to_years(t)
 
     @pytest.mark.parametrize("bad", ["", "M", "XX3", "3Q", "-3M", "0Y"])
     def test_bad_tenors_raise(self, bad):
