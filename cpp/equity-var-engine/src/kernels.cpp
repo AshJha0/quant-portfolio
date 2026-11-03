@@ -474,34 +474,37 @@ Result<MonteCarloResult> try_monte_carlo_var_factored(std::span<const double> ex
         return fail(Errc::WorkspaceTooSmall, "try_monte_carlo_var_factored", 0.0, ws.pnl.size(),
                     n_paths);
     }
-    // Same draw order as simulate_factor_returns(); each scenario row is
-    // mapped to P&L at once, as portfolio_pnl() would, so the n_paths x n
-    // panel is never stored.
+    // Same draw order as simulate_factor_returns(), but the factor panel is
+    // never formed. For a linear book
+    //     P&L_p = w' (m_p L z_p) = m_p (L' w)' z_p = m_p v' z_p,
+    // so v = L' w is computed once per run (O(n^2)) and each path costs one
+    // O(n) dot product instead of an O(n^2) triangular matvec. The result
+    // equals the two-step path to rounding (summation order differs); the
+    // tests hold it to 1e-12 relative.
     RandomStream rng(seed);
     double* z = ws.z.data();
-    double* row = ws.row.data();
+    double* v = ws.row.data();
     double* pnl = ws.pnl.data();
     const double* l = lower.data();
     const double* w = exposures.data();
-    bool finite = true;
+    for (std::size_t j = 0; j < n; ++j) v[j] = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double* li = l + i * n;
+        const double wi = w[i];
+        for (std::size_t j = 0; j <= i; ++j) v[j] += li[j] * wi;
+    }
+    bool finite = all_finite({v, n});
     for (std::size_t p = 0; p < n_paths; ++p) {
         for (std::size_t j = 0; j < n; ++j) z[j] = rng.gaussian();
-        for (std::size_t i = 0; i < n; ++i) {
-            const double* li = l + i * n;
-            double s = 0.0;
-            for (std::size_t j = 0; j <= i; ++j) s += li[j] * z[j];
-            row[i] = s;
-        }
-        if (student) {
-            const double wmix = rng.chi_squared(df) / df;
-            const double m = 1.0 / std::sqrt(wmix);
-            for (std::size_t i = 0; i < n; ++i) row[i] *= m;
-        }
         double acc = 0.0;
-        for (std::size_t j = 0; j < n; ++j) {
-            finite = finite && std::isfinite(row[j]);
-            acc += row[j] * w[j];
+        for (std::size_t j = 0; j < n; ++j) acc += v[j] * z[j];
+        if (student) {
+            // Non-throwing draw: this function is noexcept. df > 2 is checked
+            // above; a bad df would give NaN and McReturnsNotFinite below.
+            const double wmix = rng.chi_squared_nothrow(df) / df;
+            acc *= 1.0 / std::sqrt(wmix);
         }
+        finite = finite && std::isfinite(acc);
         pnl[p] = acc;
     }
     if (!finite) [[unlikely]]

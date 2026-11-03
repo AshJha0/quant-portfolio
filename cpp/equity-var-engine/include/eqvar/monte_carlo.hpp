@@ -50,6 +50,14 @@ public:
     /// Chi-squared with (possibly non-integer) df: 2 * Gamma(df/2).
     [[nodiscard]] double chi_squared(double df);
 
+    /// Non-throwing gamma for the noexcept kernels: NaN for a shape that is
+    /// NaN, infinite or <= 0, without consuming the stream (never loops,
+    /// never throws). Valid shapes give the same draw as gamma().
+    [[nodiscard]] double gamma_nothrow(double shape) noexcept;
+
+    /// Non-throwing chi-squared: 2 * gamma_nothrow(df / 2); NaN for bad df.
+    [[nodiscard]] double chi_squared_nothrow(double df) noexcept;
+
 private:
     std::mt19937_64 engine_;
 };

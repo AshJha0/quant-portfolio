@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -28,6 +29,17 @@ double Rng::gamma(double shape) {
   auto z = [this] { return normal(); };
   return qp::gamma_marsaglia_tsang(shape, u, z);
 }
+
+double Rng::gamma_nothrow(double shape) noexcept {
+  // Shape test first: qp::gamma_marsaglia_tsang recurses for shape <= 0
+  // and never terminates for NaN.
+  if (!(shape > 0.0) || !std::isfinite(shape)) return std::numeric_limits<double>::quiet_NaN();
+  auto u = [this] { return uniform(); };
+  auto z = [this] { return normal(); };
+  return qp::gamma_marsaglia_tsang(shape, u, z);
+}
+
+double Rng::chisq_nothrow(double df) noexcept { return 2.0 * gamma_nothrow(0.5 * df); }
 
 long Rng::poisson(double mu) {
   if (!(mu >= 0.0) || !std::isfinite(mu))

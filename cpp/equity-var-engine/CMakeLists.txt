@@ -105,6 +105,7 @@ if(BUILD_TESTING)
     test_monte_carlo
     test_backtest
     test_cross_language
+    test_oracle
     test_edge_cases
     test_fuzz
     test_conventions

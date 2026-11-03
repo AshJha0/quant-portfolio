@@ -4,7 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <utility>
 
 #include "fxvar/historical.hpp"
 #include "fxvar/monte_carlo.hpp"
@@ -228,4 +230,27 @@ TEST(MonteCarlo, BootstrapSeDegenerateConstantPnlIsFiniteNonNegative) {
   EXPECT_TRUE(std::isfinite(se));
   EXPECT_GE(se, 0.0);
   EXPECT_DOUBLE_EQ(se, 0.0);
+}
+
+// W4(c): the noexcept kernels draw chi-square through a non-throwing
+// sampler; a bad df gives NaN and never throws or loops.
+TEST(RngNothrow, BadShapeIsNaNAndDoesNotConsumeTheStream) {
+  static_assert(noexcept(std::declval<fxvar::Rng&>().gamma_nothrow(1.0)));
+  static_assert(noexcept(std::declval<fxvar::Rng&>().chisq_nothrow(1.0)));
+  for (double bad : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+                     std::numeric_limits<double>::infinity()}) {
+    fxvar::Rng a(9), b(9);
+    EXPECT_TRUE(std::isnan(a.gamma_nothrow(bad)));
+    EXPECT_TRUE(std::isnan(a.chisq_nothrow(bad)));
+    EXPECT_EQ(a.uniform(), b.uniform());
+    EXPECT_THROW((void)b.gamma(bad), std::invalid_argument);
+  }
+}
+
+TEST(RngNothrow, ValidShapeMatchesThrowingSampler) {
+  for (double shape : {0.3, 1.0, 2.5, 50.0}) {
+    fxvar::Rng a(11), b(11);
+    for (int k = 0; k < 100; ++k) EXPECT_EQ(a.gamma_nothrow(shape), b.gamma(shape));
+    EXPECT_EQ(a.chisq_nothrow(2 * shape), b.chisq(2 * shape));
+  }
 }
