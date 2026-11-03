@@ -1,0 +1,24 @@
+[package]
+name = "qp-ull-feed"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Crypto feed handler for Coinbase full/level2 and Binance diff-depth: A/B arbitration, snapshot buffering, stale-book flag, raw recorder and replay. std only, no network in tests."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_ull_feed"
+path = "src/lib.rs"
+
+[[bin]]
+name = "feed-bench"
+path = "src/bin/feed_bench.rs"
+
+# Standalone until integration adds rust/ull/* to the rust/ workspace members.
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
