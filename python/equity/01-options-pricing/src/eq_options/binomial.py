@@ -3,8 +3,9 @@
 Conventions match :mod:`eq_options.black_scholes`: continuously compounded
 annualised ``r`` and ``q`` (ACT/365F), ``T`` in years, ``sigma`` annualised.
 
-The backward induction is vectorised over tree nodes with NumPy: the only
-Python-level loop is over the ``n_steps`` time slices.
+The backward induction is the shared kernel :func:`qp_core.trees.crr_lattice`
+(W20), also used by ``fx_options.binomial``; this module keeps the input
+validation and the edge-case policy below.
 
 Edge-case policy
 ----------------
@@ -23,6 +24,7 @@ import math
 from typing import Literal
 
 import numpy as np
+from qp_core.trees import crr_lattice
 
 from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
 
@@ -133,33 +135,7 @@ def crr_price(
     if sigma == 0.0:
         return _deterministic_price(S, K, T, r, q, option_type, exercise, n_steps)
 
-    dt = T / n_steps
-    u = math.exp(sigma * math.sqrt(dt))
-    d = 1.0 / u
-    growth = math.exp((r - q) * dt)
-    p = (growth - d) / (u - d)
-    if not 0.0 < p < 1.0:
-        raise ValueError(
-            f"risk-neutral probability p={p:.6f} outside (0, 1); "
-            "increase n_steps or check r, q, sigma"
-        )
-    disc = math.exp(-r * dt)
-    pu, pd = disc * p, disc * (1.0 - p)
-
-    # Every node spot is S u^m for m = -n..n; precompute them once in log
-    # space (O(n) exps) so the backward induction does no transcendental
-    # work. Step i, node k sits at m = 2k - i.
-    american = exercise == "american"
-    log_u = sigma * math.sqrt(dt)
-    m = np.arange(-n_steps, n_steps + 1)
-    spots = np.exp(math.log(S) + m * log_u)
-    exercise_value = sign * (spots - K)
-    values = np.maximum(exercise_value[0::2], 0.0)  # m = -n, -n+2, ..., n
-    for i in range(n_steps - 1, -1, -1):
-        values = pu * values[1:] + pd * values[:-1]
-        if american:
-            np.maximum(values, exercise_value[n_steps - i:n_steps + i + 1:2], out=values)
-    return float(values[0])
+    return crr_lattice(S, K, T, r, q, sigma, sign, exercise == "american", n_steps)
 
 
 def early_exercise_premium(

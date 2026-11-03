@@ -41,6 +41,7 @@ use std::fmt;
 
 pub mod bench;
 pub mod black_scholes;
+pub mod crr;
 pub mod gemm;
 pub mod holidays;
 pub mod iv;

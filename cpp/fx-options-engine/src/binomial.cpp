@@ -6,31 +6,9 @@
 #include <vector>
 
 #include "fxopt/garman_kohlhagen.hpp"
+#include "qp/crr.hpp"
 
 namespace fxopt {
-
-namespace {
-
-/// Backward induction with the exercise style hoisted out of the inner loop
-/// (one instantiation each, no per-node branch).
-template <bool American>
-double induct(double* values, const double* exercise_value, std::size_t n, double disc,
-              double p) noexcept {
-    for (std::size_t step = n; step-- > 0;) {
-        const std::size_t offset = n - step;  // index of m = -step
-        for (std::size_t j = 0; j <= step; ++j) {
-            const double v = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
-            if constexpr (American) {
-                values[j] = std::max(v, exercise_value[offset + 2 * j]);
-            } else {
-                values[j] = v;
-            }
-        }
-    }
-    return values[0];
-}
-
-}  // namespace
 
 Result<double> try_binomial_price(double S, double K, double T, double r_d, double r_f,
                                   double sigma, OptionType type, int steps, Exercise exercise,
@@ -62,35 +40,19 @@ Result<double> try_binomial_price(double S, double K, double T, double r_d, doub
         return try_finite_result(best, "binomial_price");
     }
 
-    const double dt = T / static_cast<double>(steps);
-    const double u = std::exp(sigma * std::sqrt(dt));
-    const double d = 1.0 / u;
-    const double growth = std::exp((r_d - r_f) * dt);
-    const double p = (growth - d) / (u - d);
-    if (!(p >= 0.0 && p <= 1.0)) [[unlikely]] {
-        return std::unexpected(Error{Errc::ProbabilityOutOfRange, "p", p});
-    }
     const auto n = static_cast<std::size_t>(steps);
+    const qp::CrrStep st = qp::crr_step(T, r_d, r_f, sigma, n);
+    if (!(0.0 < st.p && st.p < 1.0)) [[unlikely]] {
+        return std::unexpected(Error{Errc::ProbabilityOutOfRange, "p", st.p});
+    }
     if (workspace.size() < binomial_workspace_size(steps)) [[unlikely]] {
         return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_binomial_price",
                                      static_cast<double>(workspace.size()),
                                      static_cast<double>(binomial_workspace_size(steps))});
     }
-    const double disc = std::exp(-r_d * dt);
-
-    // Node spots S u^m, m = -n..n, computed once (O(n) powers); step i,
-    // node j sits at m = 2j - i, so backward induction does no pow().
-    double* exercise_value = workspace.data();      // 2n + 1
-    double* values = workspace.data() + 2 * n + 1;  // n + 1
-    for (std::size_t idx = 0; idx <= 2 * n; ++idx) {
-        const double m = static_cast<double>(idx) - static_cast<double>(n);
-        exercise_value[idx] = p_sign * (S * std::pow(u, m) - K);
-    }
-    for (std::size_t j = 0; j <= n; ++j) values[j] = std::max(exercise_value[2 * j], 0.0);
-
-    const double v0 = exercise == Exercise::American
-                          ? induct<true>(values, exercise_value, n, disc, p)
-                          : induct<false>(values, exercise_value, n, disc, p);
+    // Shared lattice (qp/crr.hpp, W20): the equity tree with q = r_f.
+    const double v0 =
+        qp::crr_lattice(S, K, p_sign, exercise == Exercise::American, n, st, workspace.data());
     return try_finite_result(v0, "binomial_price");
 }
 
