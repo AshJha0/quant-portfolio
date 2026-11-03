@@ -14,6 +14,13 @@
 //!    max and mean, using the nearest-rank percentile (element
 //!    ceil(q * N) - 1 of the sorted samples).
 //!
+//! When B > 1 every sample is the mean of B calls, so p99, p99.9 and max are
+//! tails of B-call batch means, not of single calls: one 1 ms stall inside a
+//! batch of 1024 adds only about 1 us to its sample. They are labelled
+//! "p99 of B-call batch means" (the JSON field `tail_basis`, from
+//! [`tail_basis`]) and must not be quoted as per-call tail latency. When
+//! B = 1 the tails are per call.
+//!
 //! `f(i)` runs call number `i`; `i` counts every call, warm-up included, so
 //! the caller can vary inputs by `i`.
 
@@ -41,14 +48,28 @@ pub struct Summary {
     pub p50: f64,
     /// 90th percentile, ns per call.
     pub p90: f64,
-    /// 99th percentile, ns per call.
+    /// 99th percentile of the samples (of B-call batch means when B > 1).
     pub p99: f64,
-    /// 99.9th percentile, ns per call.
+    /// 99.9th percentile of the samples (of batch means when B > 1).
     pub p999: f64,
-    /// Slowest sample, ns per call.
+    /// Slowest sample, ns per call (a batch mean when B > 1).
     pub max: f64,
     /// Mean, ns per call.
     pub mean: f64,
+}
+
+/// What the tail figures describe, for the JSON field `tail_basis`.
+///
+/// `"per-call"` when `calls_per_sample` is 1, else
+/// `"p99 of B-call batch means"` with B written out, the same wording as
+/// the C++ harness.
+#[must_use]
+pub fn tail_basis(calls_per_sample: usize) -> String {
+    if calls_per_sample == 1 {
+        "per-call".to_string()
+    } else {
+        format!("p99 of {calls_per_sample}-call batch means")
+    }
 }
 
 /// Nearest-rank percentile of sorted data: element ceil(q * n) - 1.
@@ -117,6 +138,12 @@ pub fn measure(warm_calls: usize, call_budget: usize, mut f: impl FnMut(usize)) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tail_basis_matches_cpp_wording() {
+        assert_eq!(tail_basis(1), "per-call");
+        assert_eq!(tail_basis(32), "p99 of 32-call batch means");
+    }
 
     #[test]
     fn nearest_rank_matches_definition() {

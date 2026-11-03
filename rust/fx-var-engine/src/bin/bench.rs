@@ -212,7 +212,7 @@ fn main() {
             json,
             "  {{\"engine\": \"fx-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{}\", \"flags\": \"{}\", \
              \"cpu\": \"{}\", \"date\": \"{}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \
-             \"p10\": {:.0}, \"p50\": {:.0}, \"p90\": {:.0}, \"p99\": {:.0}, \"p999\": {:.0}, \"max\": {:.0}}}{}",
+             \"p10\": {:.0}, \"p50\": {:.0}, \"p90\": {:.0}, \"p99\": {:.0}, \"p999\": {:.0}, \"max\": {:.0}, \"tail_basis\": \"{}\"}}{}",
             s.kernel,
             toolchain,
             flags,
@@ -226,6 +226,7 @@ fn main() {
             s.p[3],
             s.p[4],
             s.p[5],
+            qp_core::bench::tail_basis(s.calls_per_sample),
             if n + 1 < stats.len() { "," } else { "" }
         );
     }

@@ -158,7 +158,8 @@ Regenerate after the golden JSON changes:
 `cargo run --release --bin bench` on an Intel Core 5 120U under WSL2,
 Rust 1.99.1. Numbers from this machine; the full table, method and
 caveats are in the README "Latency" section and in
-`bench/results.json`. Selected p50 / p99 / p99.9 per call (after):
+`bench/results.json`. Selected p50 / p99 / p99.9 (after). Rows timed as B-call averages give
+the p99 of B-call batch means, not per-call tails; see docs/BENCHMARKS.md:
 
 | Kernel | p50 | p99 | p99.9 |
 |---|---|---|---|
