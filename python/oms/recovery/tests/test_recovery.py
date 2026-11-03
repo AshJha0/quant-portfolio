@@ -84,8 +84,7 @@ def test_real_process_kill(tmp_path: Path, seed: int) -> None:
     # runner may not have traded at all after a fixed sleep. The kill then
     # still lands at a random moment after that.
     deadline = time.monotonic() + 60.0
-    while not (v.exists() and b"
-" in v.read_bytes()):
+    while not (v.exists() and v.read_bytes().count(10)):
         assert time.monotonic() < deadline, "child never traded"
         time.sleep(0.005)
     time.sleep(random.Random(seed).uniform(0.05, 0.4))
