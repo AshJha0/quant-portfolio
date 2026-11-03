@@ -77,21 +77,14 @@ if(QP_CORE_TESTS)
     FetchContent_MakeAvailable(googletest)
   endif()
   add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp tests/test_holidays.cpp
-<<<<<<< HEAD
-    tests/test_rates_vol.cpp)
-=======
-    tests/test_xva_capital.cpp)
->>>>>>> r8x/r16-xva
+    tests/test_rates_vol.cpp tests/test_xva_capital.cpp)
   target_link_libraries(qp_core_tests PRIVATE qp::core GTest::gtest GTest::gtest_main)
   # QuantLib holiday extract shared with the Rust calendar tests.
   target_compile_definitions(qp_core_tests PRIVATE
     QP_HOLIDAY_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/ql_holidays_2000_2030.txt"
-<<<<<<< HEAD
     # Python reference values for the rates-vol port (Round 11 W15).
-    QP_RATES_VOL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/rates_vol_parity.txt")
-=======
+    QP_RATES_VOL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/rates_vol_parity.txt"
     QP_XVA_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/xva_capital_parity.txt")
->>>>>>> r8x/r16-xva
   target_compile_options(qp_core_tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
