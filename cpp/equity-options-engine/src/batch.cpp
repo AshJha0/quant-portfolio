@@ -18,7 +18,18 @@ namespace eqopt {
 
 // Kernel attributes: an AVX2 clone on x86-64 Linux (GCC, Clang); on MSVC the
 // kernels are unused (the _fast entry points take the exact path there).
-#if defined(__x86_64__) && defined(__linux__) && (defined(__GNUC__) || defined(__clang__))
+// Under ThreadSanitizer there is no clone: the ifunc resolver runs during
+// dynamic relocation, before the TSan runtime is up, and its instrumented
+// body segfaults at load time.
+#if defined(__SANITIZE_THREAD__)
+#define QP_NO_CLONES 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define QP_NO_CLONES 1
+#endif
+#endif
+#if defined(__x86_64__) && defined(__linux__) && (defined(__GNUC__) || defined(__clang__)) && \
+    !defined(QP_NO_CLONES)
 #define QP_KERNEL_ATTR __attribute__((target_clones("avx2", "default")))
 #elif defined(_MSC_VER) && !defined(__clang__)
 #define QP_KERNEL_ATTR [[maybe_unused]]
