@@ -164,6 +164,7 @@ REGISTRY: dict[str, Entry] = {
         lambda pnl, window, alpha: ev.rolling_var_backtest(pnl, ev.historical_var, window, alpha),
         {"pnl": PNL, "window": 250, "alpha": 0.05}, ("pnl", "window", "alpha"), ("window",)),
     "BacktestResult": Entry(None, note="plain container built by rolling_var_backtest, which is fuzzed"),
+    "MonteCarloRisk": Entry(None, note="frozen result built by monte_carlo_risk, which is fuzzed"),
     # stress
     "StressScenario": Entry(lambda shock: _scenario(shock), {"shock": -0.1}, ("shock",)),
     "HISTORICAL_SCENARIOS": Entry(None, note="constant dict of StressScenario"),

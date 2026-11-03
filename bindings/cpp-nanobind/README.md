@@ -63,7 +63,7 @@ imported.
 | Function | Engine call |
 |---|---|
 | `eq_bs_price`, `eq_bs_greeks` | `eqopt::try_bs_price`, `try_bs_greeks` |
-| `eq_bs_price_batch`, `eq_bs_greeks_batch` | `eqopt::bs_price_batch`, `bs_greeks_batch` |
+| `eq_bs_price_batch`, `eq_bs_greeks_batch` | `eqopt::bs_price_batch_fast`, `bs_greeks_batch_fast` by default; `bs_price_batch`, `bs_greeks_batch` with `exact=True` |
 | `eq_implied_vol`, `eq_implied_vol_batch` | `eqopt::try_implied_vol` (batch loops in C++) |
 | `eq_crr_price` | `eqopt::try_crr_price` |
 | `eq_mc_price` | `eqopt::try_mc_price` with a `ThreadPool` of `threads - 1` workers |
@@ -151,6 +151,32 @@ as upper bounds. Repeat runs moved by up to a factor of 2. The kernel cost alone
 | `eq_bs_price_batch`, one call | 161 | 260 |
 | `eq_bs_greeks_batch`, one call | 247 | 299 |
 | `eq_bs_price_batch` of length 1, per call | 7,100 | 2,378 |
+
+Since Round 7 the equity batch calls default to the throughput kernels.
+
+The plain idea: the exact batch calls the same libm `exp`, `log` and `erfc`
+as the scalar pricer, one option at a time, so it returns the scalar's bits
+but cannot use vector instructions. The fast kernels use the branch-free
+functions of `qp/vmath.hpp`, which the compiler vectorises.
+
+Formally: `eq_bs_price_batch(..., exact=False)` (the default) calls
+`eqopt::bs_price_batch_fast`, within `1e-13 * max(1, S, K)` of the exact
+price; `eq_bs_greeks_batch` calls `bs_greeks_batch_fast`, each field
+within `1e-12 * max(1, S, K, |exact|)` (the bounds `eqopt/batch.hpp`
+documents, re-checked from Python in
+`tests/test_binding.py::test_eq_batch_default_is_fast_within_scaled_bounds`).
+Validation and errors are the same. `exact=True` gives the old bit-exact
+batch. On MSVC the fast entry points still take the exact path (see
+`cpp/equity-options-engine/src/batch.cpp`), so there the flag changes nothing.
+
+Worked example, WSL Ubuntu, GCC 15.2, Python 3.14.4, Intel Core 5 120U,
+2026-11-03, `python bench/overhead.py --repeat 15` (median over 15 runs of
+one 100,000-option call, divided by 100,000; a median, not a tail figure):
+
+| Call (ns per option) | default (fast) | `exact=True` | ratio |
+|---|---:|---:|---:|
+| `eq_bs_price_batch` | 19.4 | 75.0 | 3.9x |
+| `eq_bs_greeks_batch` | 38.9 | 97.6 | 2.5x |
 
 A batch call has a fixed cost of a few microseconds (argument conversion
 for seven arrays), so batches pay off from a few dozen options up.

@@ -351,7 +351,7 @@ def acerbi_szekely_z2(
 # --------------------------------------------------------------------------- #
 # Rolling backtest driver + reporting
 # --------------------------------------------------------------------------- #
-@dataclass
+@dataclass(frozen=True)
 class BacktestResult:
     """Container for one method's rolling backtest over a P&L history."""
 

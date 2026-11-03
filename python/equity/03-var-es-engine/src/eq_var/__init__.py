@@ -39,6 +39,7 @@ from .historical_var import (
     scale_var_sqrt_time,
 )
 from .monte_carlo_var import (
+    MonteCarloRisk,
     cholesky,
     higham_nearest_correlation,
     monte_carlo_pnl,
@@ -87,6 +88,7 @@ __all__ = [
     "BacktestResult",
     "EquityPosition",
     "FuturePosition",
+    "MonteCarloRisk",
     "OptionPosition",
     "Portfolio",
     "Position",

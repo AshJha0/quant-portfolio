@@ -19,6 +19,8 @@ All simulation takes an explicit seed or ``numpy.random.Generator``.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterator
+from dataclasses import dataclass, fields
 from typing import Literal
 
 import numpy as np
@@ -30,6 +32,7 @@ from ._validation import finite_array, finite_scalar, integer, validate_alpha
 from .portfolio import Portfolio
 
 __all__ = [
+    "MonteCarloRisk",
     "cholesky",
     "higham_nearest_correlation",
     "monte_carlo_pnl",
@@ -291,6 +294,36 @@ def monte_carlo_var(
     return _tail.var_es(pnl, alpha)[0]
 
 
+@dataclass(frozen=True)
+class MonteCarloRisk:
+    """Result of :func:`monte_carlo_risk`: VaR, ES and the bootstrap SE of the
+    VaR, all from the one scenario set in ``pnl``.
+
+    Frozen, so a result cannot be edited after the fact. Read the fields as
+    attributes (``res.var``); the mapping access of the old dict result
+    (``res["var"]``, ``res.keys()``, ``dict(res)``) still works.
+    """
+
+    var: float
+    es: float
+    var_se: float
+    pnl: np.ndarray
+
+    def __getitem__(self, key: str) -> object:
+        if key not in self.keys():
+            raise KeyError(key)
+        return getattr(self, key)
+
+    def keys(self) -> list[str]:
+        return [f.name for f in fields(self)]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.keys())
+
+    def __len__(self) -> int:
+        return len(fields(self))
+
+
 def monte_carlo_risk(
     portfolio: Portfolio,
     cov: np.ndarray,
@@ -302,11 +335,12 @@ def monte_carlo_risk(
     seed: int | np.random.Generator | None = 0,
     n_boot: int = 200,
     repair: Literal["clip", "higham"] | None = None,
-) -> dict[str, object]:
+) -> MonteCarloRisk:
     """Simulate once and report VaR, ES and the bootstrap VaR standard error (spec S10).
 
-    All three numbers come from the same scenario set. Returns ``var``,
-    ``es``, ``var_se`` (bootstrap, primary) and ``pnl``.
+    All three numbers come from the same scenario set. Returns a frozen
+    :class:`MonteCarloRisk` with ``var``, ``es``, ``var_se`` (bootstrap,
+    primary) and ``pnl``; ``res["var"]`` style access still works.
     """
     alpha = validate_alpha(alpha)
     n_boot = integer("n_boot", n_boot, min_value=2)
@@ -314,7 +348,7 @@ def monte_carlo_risk(
     pnl = monte_carlo_pnl(portfolio, cov, n_paths, dist, df, method, rng, repair)
     var, es = _tail.var_es(pnl, alpha)
     se = _bootstrap_se(pnl, alpha, n_boot, rng)
-    return {"var": var, "es": es, "var_se": se, "pnl": pnl}
+    return MonteCarloRisk(var=var, es=es, var_se=se, pnl=pnl)
 
 
 def _sample(pnl: object, min_size: int) -> np.ndarray:
