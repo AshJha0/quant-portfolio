@@ -236,6 +236,17 @@ proptest! {
         check!(historical_var(&book(), &market(), &rets_poison(120, i, x), &HistoricalOptions::default()).is_err());
         check!(historical_var(&Book::empty(), &market(), &rets(120), &HistoricalOptions::default()).is_err());
         check!(historical_var(&book(), &market(), &rets(10), &HistoricalOptions::default()).is_err());
+        let pz: Vec<f64> = (0..120).map(|k| f64::from(k) - 60.0).collect();
+        let mut pp = pz.clone();
+        pp[i % 120] = x;
+        for r in [HistRule::KthWorst, HistRule::Interpolated] {
+            check!(historical_var_from_pnl(&pp, 0.01, r).is_err());
+            check!(historical_var_from_pnl(&pz, a, r).is_err());
+        }
+        check!(interpolated_var(&pp, 0.01).is_err());
+        check!(interpolated_var(&[], 0.01).is_err());
+        let age_interp = HistoricalOptions { method: HsMethod::Age, rule: HistRule::Interpolated, ..Default::default() };
+        check!(historical_var(&book(), &market(), &rets(120), &age_interp).is_err());
         let d = HistoricalOptions::default();
         check!(historical_option_var(&book(), &market(), &eur_call(0.1), &eur_name(), &rets(120), &HistoricalOptions { alpha: a, ..Default::default() }, 0.0).is_err());
         check!(historical_option_var(&book(), &market(), &eur_call(x), &eur_name(), &rets(120), &d, 0.0).is_err());

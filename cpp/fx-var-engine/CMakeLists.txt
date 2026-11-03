@@ -103,6 +103,7 @@ if(BUILD_TESTING)
     test_book
     test_expected_shortfall
     test_historical
+    test_hist_rule
     test_parametric
     test_monte_carlo
     test_backtest

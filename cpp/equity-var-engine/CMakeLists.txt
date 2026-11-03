@@ -100,6 +100,7 @@ if(BUILD_TESTING)
     test_stats
     test_matrix
     test_historical
+    test_hist_rule
     test_parametric
     test_expected_shortfall
     test_monte_carlo

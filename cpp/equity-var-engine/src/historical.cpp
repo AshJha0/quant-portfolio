@@ -108,6 +108,29 @@ double historical_var(std::span<const double> pnl, double alpha) {
     return value_or_throw(try_historical_var(pnl, alpha, loss));
 }
 
+double interpolated_var(std::span<const double> pnl, double alpha) {
+    validate_alpha(alpha);
+    if (pnl.empty()) throw std::invalid_argument("interpolated_var: empty sample");
+    require_finite(pnl, "interpolated_var");
+    const std::size_t n = pnl.size();
+    std::vector<double> loss(n);
+    for (std::size_t i = 0; i < n; ++i) loss[i] = -pnl[i];
+    const double h = static_cast<double>(n - 1) * alpha;
+    const auto lo = static_cast<std::size_t>(std::floor(h));
+    const std::size_t hi = std::min(lo + 1, n - 1);
+    // Worst first: the hi+1 largest losses, sorted descending.
+    std::partial_sort(loss.begin(), loss.begin() + static_cast<std::ptrdiff_t>(hi + 1), loss.end(),
+                      std::greater<>());
+    return loss[lo] + (h - static_cast<double>(lo)) * (loss[hi] - loss[lo]);
+}
+
+double historical_var(std::span<const double> pnl, double alpha, HistRule rule) {
+    if (rule == HistRule::kKthWorst) return historical_var(pnl, alpha);
+    validate_alpha(alpha);
+    validate_pnl(pnl, kMinHistObs);
+    return interpolated_var(pnl, alpha);
+}
+
 std::vector<double> brw_weights(std::size_t n, double lam) {
     validate_lam(lam, "brw_weights");
     if (n < 1) throw std::invalid_argument("brw_weights: n must be >= 1");

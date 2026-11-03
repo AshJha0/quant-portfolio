@@ -60,6 +60,21 @@ quantile_linear(std::span<const double> x, double q);
 /// Requires at least kMinHistObs finite observations.
 [[nodiscard]] double historical_var(std::span<const double> pnl, double alpha = 0.01);
 
+/// Historical VaR quantile rule.
+///   kKthWorst     - L(m), m = ceil(n alpha) (BCBS MAR33.4 / MAR99: 99 % on
+///                   250 days is the 3rd worst). What historical_var(pnl, a) does.
+///   kInterpolated - type-7 linear quantile of the losses at h = (n-1) alpha,
+///                   counted 0-based from the worst (Hyndman-Fan definition 7);
+///                   equals numpy.quantile(-pnl, 1 - alpha) up to rounding.
+enum class HistRule { kKthWorst, kInterpolated };
+
+/// Plain historical VaR under `rule`. Requires at least kMinHistObs finite
+/// observations.
+[[nodiscard]] double historical_var(std::span<const double> pnl, double alpha, HistRule rule);
+
+/// Type-7 VaR of a non-empty finite sample (no minimum length).
+[[nodiscard]] double interpolated_var(std::span<const double> pnl, double alpha);
+
 /// Boudoukh-Richardson-Whitelaw exponential age weights. Observation i
 /// (0 = oldest, n-1 = most recent) gets weight (1-lam) lam^{n-1-i} / (1-lam^n).
 [[nodiscard]] std::vector<double> brw_weights(std::size_t n, double lam = 0.98);

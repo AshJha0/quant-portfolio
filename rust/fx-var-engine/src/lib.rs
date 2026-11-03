@@ -259,7 +259,10 @@ pub mod prelude {
         empirical_es, empirical_var, empirical_var_es, normal_es, normal_var, student_t_es,
         student_t_var,
     };
-    pub use crate::historical::{HistoricalOptions, HistoricalResult, HsMethod, historical_var};
+    pub use crate::historical::{
+        HistRule, HistoricalOptions, HistoricalResult, HsMethod, historical_var,
+        historical_var_from_pnl, interpolated_var,
+    };
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
         JumpSpec, MonteCarloOptions, MonteCarloResult, monte_carlo_var,

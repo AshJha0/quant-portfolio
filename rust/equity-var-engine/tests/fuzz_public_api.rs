@@ -104,6 +104,14 @@ proptest! {
         check!(historical_var(&p, a).is_err());
         check!(historical_var(&[], 0.01).is_err());
         check!(historical_var(&[1.0], 0.01).is_err());
+        for r in [HistRule::KthWorst, HistRule::Interpolated] {
+            check!(historical_var_with_rule(&poison(p.clone(), i, x), 0.01, r).is_err());
+            check!(historical_var_with_rule(&p, a, r).is_err());
+            check!(historical_var_with_rule(&[1.0], 0.01, r).is_err());
+        }
+        check!(interpolated_var(&poison(p.clone(), i, x), 0.01).is_err());
+        check!(interpolated_var(&p, a).is_err());
+        check!(interpolated_var(&[], 0.01).is_err());
         check!(age_weighted_var(&poison(p.clone(), i, x), 0.01, 0.97).is_err());
         check!(age_weighted_var(&p, a, 0.97).is_err());
         check!(age_weighted_var(&p, 0.01, l).is_err());
