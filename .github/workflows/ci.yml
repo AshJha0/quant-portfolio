@@ -25,6 +25,8 @@
 #   research     research/tools/prereg.py check, then pytest research/tests
 #   py data      python/data (qp-data) on Python 3.11 to 3.13, recorded responses
 #   learning     docs/notebooks and career-prep tests; nbmake on the solutions
+#   cookbook     every docs/COOKBOOK.md recipe run, quoted output checked
+#   recorder     tools/recorder tests; C++ and Rust replay required
 #   quantlib     the QuantLib cross-checks (Hull-White, ISDA CDS, Heston) against
 #                QuantLib from hash-locked wheels; any skip fails
 #   api diff     griffe public-API diff against the base commit (pull requests;
@@ -1016,7 +1018,7 @@ jobs:
         run: |
           bash .github/scripts/hashed_install.sh --group test --group notebooks --editable \
             python/core python/backtest python/equity/01-options-pricing python/equity/03-var-es-engine \
-            python/equity/04-fixed-income python/equity/08-algo-execution
+            python/execution python/equity/04-fixed-income python/equity/08-algo-execution
           python -m ipykernel install --user --name python3
       - name: pytest docs/notebooks/tests, career-prep/tests and docs/learn/tools
         run: python -m pytest -p no:cacheprovider -ra docs/notebooks/tests career-prep/tests docs/learn/tools
@@ -1024,6 +1026,76 @@ jobs:
         run: |
           python -m pytest -p no:cacheprovider --nbmake --nbmake-timeout=300 \
             --nbmake-kernel=python3 docs/notebooks/*-solution.ipynb research/notebooks/*-solution.ipynb
+
+  # Every Python recipe in docs/COOKBOOK.md, run from source in a fresh
+  # interpreter, its quoted output checked against what it printed
+  # (tests/test_cookbook.py, about 7 minutes). Recipes needing the compiled
+  # bindings or an extra that is not installed skip and name the module.
+  cookbook:
+    name: cookbook (docs/COOKBOOK.md recipes)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install every workspace project, pytest and QuantLib (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group oracle --editable \
+            python/core python/data python/backtest python/oms python/execution python/posttrade \
+            python/equity/01-options-pricing python/equity/02-volatility-modeling \
+            python/equity/03-var-es-engine python/equity/04-fixed-income python/equity/05-pairs-trading \
+            python/equity/06-credit-risk python/equity/07-portfolio-optimization \
+            python/equity/08-algo-execution python/equity/09-vol-surface python/equity/10-regime-switching \
+            python/foundations/01-risk-metrics python/foundations/02-trading-signal-backtest \
+            python/foundations/03-black-scholes-replication \
+            python/fx/01-options-pricing python/fx/02-volatility-modeling python/fx/03-var-es-engine \
+            python/fx/04-fixed-income python/fx/05-pairs-trading python/fx/06-credit-risk \
+            python/fx/07-portfolio-optimization python/fx/08-algo-execution python/fx/09-vol-surface \
+            python/fx/10-regime-switching
+      - name: pytest tests/test_cookbook.py
+        run: python -m pytest -p no:cacheprovider -ra tests/test_cookbook.py
+
+  # tools/recorder: offline recorder tests plus the live-replay parity check,
+  # which builds the C++ (g++) and Rust (cargo) replayers. With
+  # QP_RECORDER_REQUIRE_TOOLCHAINS=1 a missing toolchain fails instead of
+  # skipping. ubuntu-24.04 ships g++ and a stable cargo.
+  recorder:
+    name: recorder (tools/recorder, C++ and Rust replay)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install pytest, hypothesis and websockets (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group test --group recorder
+      - name: g++ and cargo are on PATH
+        run: g++ --version && cargo --version
+      - name: pytest tools/recorder/tests
+        env:
+          QP_RECORDER_REQUIRE_TOOLCHAINS: "1"
+        run: python -m pytest -p no:cacheprovider -ra tools/recorder/tests
 
   # Rust crates outside the engine matrix: the ULL stack (ring, QPBF, L3
   # book, bench harness, crypto feed handler, gateway), AAD and the dated
@@ -1338,6 +1410,8 @@ jobs:
       - research
       - python-data
       - learning
+      - cookbook
+      - recorder
       - quantlib
       - api-diff
       - hygiene

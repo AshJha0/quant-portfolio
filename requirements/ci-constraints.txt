@@ -364,6 +364,8 @@ tzdata==2026.6
     #   python-dateutil
 wcwidth==0.9.4
     # via prompt-toolkit
+websockets==17.4
+    # via -r requirements/ci-requirements.in
 wheel==0.48.0
     # via cibuildwheel
 wrapt==2.5.2

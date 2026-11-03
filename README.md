@@ -428,8 +428,9 @@ each language now has one kernel and the packages wrap it. Formally,
 `qp_core::black_scholes` (Rust) price `phi [S e^{-qT} N(phi d1) - K e^{-rT}
 N(phi d2)]` with `q = r - b`. Worked example: S = K = 100, T = 1, r = 5%,
 q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
-`gk_price` with r_d = 5%, r_f = 2%, and from the kernel. On a 5,944-quote
-grid no output bit changed in any language when the maths moved.
+`gk_price` with r_d = 5%, r_f = 2%, and from the kernel. On 5,944 quotes (the 1,944-entry
+grid of `tests/test_carry_twin.py` plus 4,000 seeded random quotes) no
+output bit changed in any language when the maths moved.
 
 On top of it: NumPy entry points `eq_options.bs_price_array`,
 `bs_greeks_array`, `fx_options.gk_price_array` and `gk_greeks_array`

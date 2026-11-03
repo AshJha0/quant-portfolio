@@ -4,13 +4,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <tuple>
-#include <unordered_map>
 #include <fstream>
 #include <map>
 #include <random>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include "qp/ull/decimal.hpp"
@@ -513,14 +513,16 @@ TEST(flat_l2_matches_map_book) {
     std::mt19937_64 rng(21);
     FlatL2Book f;
     L2Book m;
-    std::vector<std::pair<std::int64_t, std::int64_t>> b{{100 * kScale, kScale}}, a{{kScale * 101, kScale}};
+    std::vector<std::pair<std::int64_t, std::int64_t>> b{{100 * kScale, kScale}},
+        a{{kScale * 101, kScale}};
     f.load(b, a);
     m.set(Side::Bid, 100 * kScale, kScale);
     m.set(Side::Ask, 101 * kScale, kScale);
     for (int i = 0; i < 50000; ++i) {
         const Side s = rng() % 2 ? Side::Bid : Side::Ask;
-        const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
-                                (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 300) * (kScale / 100);
+        const std::int64_t px =
+            (s == Side::Bid ? 100 : 101) * kScale +
+            (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 300) * (kScale / 100);
         const std::int64_t q = rng() % 4 == 0 ? 0 : std::int64_t(1 + rng() % 5000) * 1000;
         f.set(s, px, q);
         m.set(s, px, q);
@@ -530,8 +532,10 @@ TEST(flat_l2_matches_map_book) {
     CHECK_EQ(f.dump(), m.dump());
     CHECK_EQ(f.get(Side::Bid, 100 * kScale), m.get(Side::Bid, 100 * kScale));
     // Off the grid, deep, and above u32 lots: the side store keeps them exact.
-    for (auto [px, q] : {std::pair{101 * kScale + 1, std::int64_t(1)}, {900 * kScale, 1},
-                         {101 * kScale, 43 * kScale}, {99 * kScale, 50 * kScale}}) {
+    for (auto [px, q] : {std::pair{101 * kScale + 1, std::int64_t(1)},
+                         {900 * kScale, 1},
+                         {101 * kScale, 43 * kScale},
+                         {99 * kScale, 50 * kScale}}) {
         const Side s = px < 100 * kScale ? Side::Bid : Side::Ask;
         f.set(s, px, q);
         m.set(s, px, q);
@@ -561,8 +565,9 @@ TEST(flat_l3_matches_map_book) {
         if (op < 4 || live.empty()) {
             std::string id = "o-" + std::to_string(next++);
             const Side s = rng() % 2 ? Side::Bid : Side::Ask;
-            const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
-                                    (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 200) * (kScale / 100);
+            const std::int64_t px =
+                (s == Side::Bid ? 100 : 101) * kScale +
+                (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 200) * (kScale / 100);
             const std::int64_t q = std::int64_t(rng() % 50) * 100000;  // includes 0
             f.open(id, s, px, q);
             m.open(id, s, px, q);
@@ -664,7 +669,8 @@ TEST(fast_depth_decoder_agrees_with_generic) {
         try {
             json::Value m = json::parse(raw);
             if (m.has("data") && m.has("stream")) m = json::Value(m.at("data"));
-            if (!m.has("e") || m.at("e").str() != "depthUpdate" || m.at("s").str() != "BTCUSDT") return false;
+            if (!m.has("e") || m.at("e").str() != "depthUpdate" || m.at("s").str() != "BTCUSDT")
+                return false;
             out = BinanceDepth::to_delta(m);
             return out.first <= out.last;
         } catch (const std::exception&) {
@@ -733,9 +739,10 @@ TEST(window_move_goes_stale_and_recovers) {
                std::to_string(u) + R"(,"b":[)" + b + R"(],"a":[)" + a + "]}";
     };
     h.on_message(ev(11, 11, R"(["100.00","1"])", ""), 0);
-    h.on_snapshot(R"({"lastUpdateId":10,"bids":[["100.00","2"]],"asks":[["100.02","1"],["150.00","3"]]})");
+    h.on_snapshot(
+        R"({"lastUpdateId":10,"bids":[["100.00","2"]],"asks":[["100.02","1"],["150.00","3"]]})");
     CHECK(!h.stale());
-    CHECK_EQ(h.book().far_levels(), 1u);  // the deep ask
+    CHECK_EQ(h.book().far_levels(), 1u);                   // the deep ask
     h.on_message(ev(12, 12, "", R"(["160.00","4"])"), 1);  // another deep ask: fine
     CHECK(!h.stale());
     CHECK_EQ(h.book().dump(), std::string("B 100 1\nA 100.02 1\nA 150 3\nA 160 4\n"));
@@ -744,7 +751,8 @@ TEST(window_move_goes_stale_and_recovers) {
     CHECK(h.stale());
     CHECK_EQ(h.stats().inconsistent, 1u);
     CHECK(requests > before);
-    h.on_snapshot(R"({"lastUpdateId":13,"bids":[["120.00","1"],["100.00","1"]],"asks":[["120.05","1"]]})");
+    h.on_snapshot(
+        R"({"lastUpdateId":13,"bids":[["120.00","1"],["100.00","1"]],"asks":[["120.05","1"]]})");
     CHECK(!h.stale());
     const auto [lo, hi] = h.book().window();
     CHECK(lo <= 120 * kScale && 120 * kScale < hi);  // re-centred

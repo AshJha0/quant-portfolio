@@ -245,7 +245,7 @@ def com_curvature(rows: Sequence[Cvr]) -> dict[str, float]:
     b = _int_buckets(rows, T.COM_RW, "commodity", lambda r: (r.name, r.location))
 
     def rho(bk: int, k: object, l: object) -> float:
-        p, q = k, l  # type: ignore[assignment]
+        p, q = k, l
         return (1.0 if p[0] == q[0] else T.COM_RHO[bk]) * (1.0 if p[1] == q[1] else T.COM_RHO_BASIS)  # type: ignore[index]
 
     return curvature_charge(b, rho, com_gamma)

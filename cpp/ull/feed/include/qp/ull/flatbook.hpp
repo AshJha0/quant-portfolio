@@ -55,8 +55,8 @@
 namespace qp::ull::feed {
 
 struct ProductSpec {
-    std::int64_t tick = kScale / 100;  // 0.01
-    std::int64_t lot = 1;              // 1e-8: up to ~42.9 units per order or level
+    std::int64_t tick = kScale / 100;   // 0.01
+    std::int64_t lot = 1;               // 1e-8: up to ~42.9 units per order or level
     std::uint32_t n_levels = 1u << 14;  // +-81.92 around the touch at a 0.01 tick
     std::uint32_t max_orders = 1u << 14;
 };
@@ -84,7 +84,8 @@ inline ::ull::qpbf::Side qside(Side s) {
 class FlatBase {
 public:
     explicit FlatBase(ProductSpec spec)
-        : spec_(spec), book_(std::make_unique<::ull::book::L3Book>(0, spec.n_levels, spec.max_orders)) {
+        : spec_(spec),
+          book_(std::make_unique<::ull::book::L3Book>(0, spec.n_levels, spec.max_orders)) {
         if (spec.tick <= 0 || spec.lot <= 0 || spec.n_levels < 4)
             throw std::invalid_argument("ProductSpec: tick, lot > 0 and n_levels >= 4");
     }
@@ -119,7 +120,8 @@ protected:
         t = px / spec_.tick;
         if (!in_window(t)) {
             const std::int64_t b = book_->base_price();
-            const bool beyond = s == Side::Bid ? t >= b + static_cast<std::int64_t>(spec_.n_levels) : t < b;
+            const bool beyond =
+                s == Side::Bid ? t >= b + static_cast<std::int64_t>(spec_.n_levels) : t < b;
             if (beyond && !snapshot) throw OutOfWindow();
             return false;
         }
@@ -202,7 +204,8 @@ public:
     std::int64_t get(Side s, std::int64_t px) const {
         std::int64_t q = far_.get(s, px);
         if (on_grid(px) && in_window(px / spec_.tick))
-            q += static_cast<std::int64_t>(book_->level_at(detail::qside(s), px / spec_.tick).qty) * spec_.lot;
+            q += static_cast<std::int64_t>(book_->level_at(detail::qside(s), px / spec_.tick).qty) *
+                 spec_.lot;
         return q;
     }
     // Load a snapshot: `bids` and `asks` are (px, qty) pairs in fixed point.
@@ -377,7 +380,8 @@ public:
         recentre_on(all.begin(), all.end());
         ids_.clear();
         far_orders_.clear();
-        for (const auto& r : rows) open_impl(std::get<0>(r), std::get<1>(r), std::get<2>(r), std::get<3>(r), true);
+        for (const auto& r : rows)
+            open_impl(std::get<0>(r), std::get<1>(r), std::get<2>(r), std::get<3>(r), true);
     }
     void open(std::string_view id, Side s, std::int64_t px, std::int64_t qty) {
         open_impl(id, s, px, qty, false);
@@ -459,7 +463,9 @@ private:
     std::unique_ptr<std::int64_t[]> tick_;
     std::unordered_map<std::string, Order> far_orders_;
 
-    static std::size_t slot(std::uint64_t h) { return static_cast<std::size_t>(h & ~IdInterner::kHandleBit); }
+    static std::size_t slot(std::uint64_t h) {
+        return static_cast<std::size_t>(h & ~IdInterner::kHandleBit);
+    }
     std::uint32_t live_qty(std::uint64_t h) const {
         ::ull::qpbf::Side s{};
         std::int64_t p = 0;

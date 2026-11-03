@@ -57,7 +57,8 @@ public:
     std::size_t i = 0;
 
     void ws() {
-        while (i < b_.size() && (b_[i] == ' ' || b_[i] == '\t' || b_[i] == '\n' || b_[i] == '\r')) ++i;
+        while (i < b_.size() && (b_[i] == ' ' || b_[i] == '\t' || b_[i] == '\n' || b_[i] == '\r'))
+            ++i;
     }
     bool at_end() {
         ws();
@@ -237,8 +238,8 @@ inline bool decode_depth(std::string_view raw, std::string_view sym, DepthDelta&
     const std::size_t start = (c.ws(), c.i);
     // Combined-stream wrapper, exactly {"stream": "...", "data": {...}}.
     std::string_view k, v;
-    if (c.eat('{') && c.str(k) && k == "stream" && c.eat(':') && c.str(v) && c.eat(',') && c.str(k) &&
-        k == "data" && c.eat(':')) {
+    if (c.eat('{') && c.str(k) && k == "stream" && c.eat(':') && c.str(v) && c.eat(',') &&
+        c.str(k) && k == "data" && c.eat(':')) {
         ok = detail::depth_event(c, sym, d) && c.eat('}') && c.at_end();
     } else {
         d.changes.clear();

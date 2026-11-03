@@ -81,7 +81,8 @@ TEST(Risk, MatchesPython) {
                 worst = std::max(worst, std::fabs(shortcut[k] - gam_w[k]));
                 scale = std::max(scale, std::fabs(gam_w[k]));
             }
-            EXPECT_GT(worst, 0.01 * scale) << "the shortcut without the curvature term must stay wrong";
+            EXPECT_GT(worst, 0.01 * scale)
+                << "the shortcut without the curvature term must stay wrong";
             ++n_curve;
             i = b + 3;
         } else if (r.tag == "GRID") {
@@ -141,7 +142,8 @@ TEST(Risk, RefusesSingularJacobianAndBadInputs) {
 }
 
 TEST(Risk, RoundTripAndWorkedExample) {
-    const std::vector<double> jac{1.02, 0.0, 0.1, 0.0, 2.0, 0.3, 0.05, 0.2, 0.9}, gz{1.0, -2.0, 3.5};
+    const std::vector<double> jac{1.02, 0.0, 0.1, 0.0, 2.0, 0.3, 0.05, 0.2, 0.9},
+        gz{1.0, -2.0, 3.5};
     const auto back = rk::quote_to_node_risk(jac, 3, rk::node_to_quote_risk(jac, 3, gz));
     for (std::size_t k = 0; k < 3; ++k) EXPECT_NEAR(back[k], gz[k], 1e-14);
     const std::vector<double> d{100.0}, m{0.1}, gm{40.0}, t{-1.0};
@@ -150,9 +152,11 @@ TEST(Risk, RoundTripAndWorkedExample) {
 
 TEST(Risk, FiniteDifferenceKernelsMatchAnalyticDerivatives) {
     const std::vector<double> x{0.3, 0.7};
-    auto f = [](std::span<const double> v) { return std::exp(v[0]) * std::sin(v[1]) + v[0] * v[0] * v[1]; };
-    const auto jac =
-        rk::fd_jacobian([&](std::span<const double> v) { return std::vector<double>{f(v)}; }, x, 1e-6);
+    auto f = [](std::span<const double> v) {
+        return std::exp(v[0]) * std::sin(v[1]) + v[0] * v[0] * v[1];
+    };
+    const auto jac = rk::fd_jacobian(
+        [&](std::span<const double> v) { return std::vector<double>{f(v)}; }, x, 1e-6);
     EXPECT_NEAR(jac[0], std::exp(0.3) * std::sin(0.7) + 2 * 0.3 * 0.7, 1e-8);
     EXPECT_NEAR(jac[1], std::exp(0.3) * std::cos(0.7) + 0.09, 1e-8);
     const auto h = rk::cross_gamma(f, x, 1e-4);

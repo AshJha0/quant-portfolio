@@ -61,7 +61,9 @@ struct HandlerStats {
 class CoinbaseFull {
 public:
     CoinbaseFull(std::string product, SyncConfig cfg = {}, ProductSpec spec = {})
-        : product_(std::move(product)), book_(spec), sync_(cfg, [this](const json::Value& m) { apply(m); }) {
+        : product_(std::move(product)),
+          book_(spec),
+          sync_(cfg, [this](const json::Value& m) { apply(m); }) {
         sync_.on_snapshot_needed = [this] {
             if (on_snapshot_needed) on_snapshot_needed();
         };
@@ -163,7 +165,9 @@ class BinanceDepth {
 public:
     BinanceDepth(std::string symbol, SyncConfig cfg = {}, ProductSpec spec = {},
                  std::size_t fast_changes = 4096)
-        : symbol_(std::move(symbol)), book_(spec), sync_(cfg, [this](const DepthDelta& d) { apply(d); }) {
+        : symbol_(std::move(symbol)),
+          book_(spec),
+          sync_(cfg, [this](const DepthDelta& d) { apply(d); }) {
         scratch_.changes.reserve(fast_changes);
         sync_.on_snapshot_needed = [this] {
             if (on_snapshot_needed) on_snapshot_needed();
@@ -240,9 +244,11 @@ public:
         d.first = m.at("U").i64();
         d.last = m.at("u").i64();
         for (const auto& r : m.at("b").arr)
-            d.changes.push_back({Side::Bid, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
+            d.changes.push_back(
+                {Side::Bid, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
         for (const auto& r : m.at("a").arr)
-            d.changes.push_back({Side::Ask, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
+            d.changes.push_back(
+                {Side::Ask, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
         return d;
     }
     // Frames decoded by the non-allocating path.

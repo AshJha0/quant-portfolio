@@ -105,18 +105,21 @@ TEST(binance_hot_path_allocates_nothing) {
 TEST(flat_l3_book_ops_allocate_nothing) {
     FlatL3Book b;
     std::vector<std::tuple<std::string, Side, std::int64_t, std::int64_t>> snap{
-        {"seed-bid", Side::Bid, 100 * kScale, kScale}, {"seed-ask", Side::Ask, 101 * kScale, kScale}};
+        {"seed-bid", Side::Bid, 100 * kScale, kScale},
+        {"seed-ask", Side::Ask, 101 * kScale, kScale}};
     b.load(snap);
     std::vector<std::string> ids;
-    for (int k = 0; k < 4000; ++k) ids.push_back("0e4f1c2a-0000-4000-8000-" + std::to_string(100000000000 + k));
+    for (int k = 0; k < 4000; ++k)
+        ids.push_back("0e4f1c2a-0000-4000-8000-" + std::to_string(100000000000 + k));
     const std::uint64_t before = g_allocs.load();
     std::uint64_t x = 88172645463325252ull;
     for (int round = 0; round < 25; ++round) {
         for (int k = 0; k < 4000; ++k) {
             x ^= x << 13, x ^= x >> 7, x ^= x << 17;
             const Side s = (k & 1) ? Side::Ask : Side::Bid;
-            const std::int64_t px = (s == Side::Bid ? 99 * kScale : 102 * kScale) +
-                                    static_cast<std::int64_t>(x % 200) * (kScale / 100) * (s == Side::Bid ? -1 : 1);
+            const std::int64_t px =
+                (s == Side::Bid ? 99 * kScale : 102 * kScale) +
+                static_cast<std::int64_t>(x % 200) * (kScale / 100) * (s == Side::Bid ? -1 : 1);
             b.open(ids[k], s, px, kScale / 10 * static_cast<std::int64_t>(1 + x % 9));
         }
         for (int k = 0; k < 4000; ++k) {
