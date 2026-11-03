@@ -123,7 +123,7 @@ pillars. PCHIP forwards are continuous with kinks at the pillars.
 ### 4.2 Extrapolation
 
 Beyond the last pillar the zero rate is held flat and every query emits an
-`ExtrapolationWarning`. A 10bp long-end slope error at 40y is about 0.4%
+`ExtrapolationWarning`. A 1bp error in the 40y zero rate is about 0.4%
 of PV.
 
 ### 4.3 Duration fails for non-parallel moves
