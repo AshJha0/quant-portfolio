@@ -26,7 +26,11 @@ from __future__ import annotations
 import math
 import numbers
 import warnings
+from collections.abc import Sequence
+from typing import Any, overload
 
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value
 from qp_core.iv_core import black_implied_vol
 
@@ -78,9 +82,24 @@ def d2(S: float, K: float, T: float, r_d: float, r_f: float,
     return d1(S, K, T, r_d, r_f, sigma) - sigma * math.sqrt(T)
 
 
+@overload
 def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
-             sigma: float, option_type: str) -> float:
+             sigma: float, option_type: str) -> float: ...
+@overload
+def gk_price(S: NDArray[Any] | Sequence[float],
+             K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
+             sigma: ArrayLike, option_type: str | ArrayLike) -> NDArray[np.float64]: ...
+def gk_price(S: ArrayLike, K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
+             sigma: ArrayLike, option_type: str | ArrayLike) -> float | NDArray[np.float64]:
     """Garman-Kohlhagen price of a European FX option.
+
+    Scalars in, a float out. If any argument is a NumPy array, list or
+    tuple, the call goes to :func:`fx_options.arrays.gk_price_array`
+    (broadcasting, same domain and boundary rules) and returns an array;
+    per element the two agree within 1e-15 * max(1, S, K)
+    (``tests/test_gk_array_tolerant.py``). For a type checker the array
+    overload needs ``S`` to be an array or a sequence; for other mixes call
+    ``gk_price_array`` directly.
 
     Price is in domestic (quote) currency per unit of foreign (base)
     notional, e.g. USD per EUR for EURUSD.
@@ -113,6 +132,15 @@ def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
     ValueError
         On invalid inputs (see :func:`fx_options._common.validate_inputs`).
     """
+    if any(isinstance(a, (np.ndarray, list, tuple)) for a in (S, K, T, r_d, r_f, sigma, option_type)):
+        from .arrays import gk_price_array
+
+        return gk_price_array(S, K, T=T, r_d=r_d, r_f=r_f, sigma=sigma, option_type=option_type)
+    return _gk_price_scalar(S, K, T, r_d, r_f, sigma, option_type)  # type: ignore[arg-type]
+
+
+def _gk_price_scalar(S: float, K: float, T: float, r_d: float, r_f: float,
+                     sigma: float, option_type: str) -> float:
     phi = validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T == 0.0:

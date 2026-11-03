@@ -93,24 +93,28 @@ void bind_eqopt(nb::module_& m) {
     m.def(
         "eq_bs_price_batch",
         [](const InVec& S, const InVec& K, const InVec& T, const InVec& r, const InVec& sigma,
-           const InVec& q, const InBool& is_call) {
+           const InVec& q, const InBool& is_call, bool exact) {
             Batch b = make_batch(S, K, T, r, sigma, q, is_call);
             Owned out = new_array(b.n);
             std::expected<void, eqopt::BatchError> res;
             {
                 nb::gil_scoped_release nogil;
-                res = eqopt::bs_price_batch(b.in, std::span<double>(out.data, b.n));
+                const std::span<double> o(out.data, b.n);
+                res = exact ? eqopt::bs_price_batch(b.in, o) : eqopt::bs_price_batch_fast(b.in, o);
             }
             if (!res) batch_fail(res.error());
             return out.array;
         },
-        "S"_a, "K"_a, "T"_a, "r"_a, "sigma"_a, "q"_a, "is_call"_a,
-        "Prices for equal-length float64 arrays (eqopt::bs_price_batch). GIL released.");
+        "S"_a, "K"_a, "T"_a, "r"_a, "sigma"_a, "q"_a, "is_call"_a, nb::kw_only(),
+        "exact"_a = false,
+        "Prices for equal-length float64 arrays. GIL released. Default: the throughput "
+        "kernel eqopt::bs_price_batch_fast, within 1e-13 * max(1, S, K) of the exact "
+        "price; exact=True calls eqopt::bs_price_batch, equal to eq_bs_price bit for bit.");
 
     m.def(
         "eq_bs_greeks_batch",
         [](const InVec& S, const InVec& K, const InVec& T, const InVec& r, const InVec& sigma,
-           const InVec& q, const InBool& is_call) {
+           const InVec& q, const InBool& is_call, bool exact) {
             Batch b = make_batch(S, K, T, r, sigma, q, is_call);
             const char* names[8] = {"price", "delta", "gamma", "vega",
                                     "theta", "rho",   "vanna", "volga"};
@@ -122,16 +126,19 @@ void bind_eqopt(nb::module_& m) {
             std::expected<void, eqopt::BatchError> res;
             {
                 nb::gil_scoped_release nogil;
-                res = eqopt::bs_greeks_batch(b.in, outs);
+                res = exact ? eqopt::bs_greeks_batch(b.in, outs)
+                            : eqopt::bs_greeks_batch_fast(b.in, outs);
             }
             if (!res) batch_fail(res.error());
             nb::dict d;
             for (int i = 0; i < 8; ++i) d[names[i]] = o[i].array;
             return d;
         },
-        "S"_a, "K"_a, "T"_a, "r"_a, "sigma"_a, "q"_a, "is_call"_a,
-        "Greeks for equal-length arrays (eqopt::bs_greeks_batch), dict of arrays. "
-        "GIL released.");
+        "S"_a, "K"_a, "T"_a, "r"_a, "sigma"_a, "q"_a, "is_call"_a, nb::kw_only(),
+        "exact"_a = false,
+        "Greeks for equal-length arrays, dict of arrays. GIL released. Default: "
+        "eqopt::bs_greeks_batch_fast, each field within 1e-12 * max(1, S, K, |exact|); "
+        "exact=True calls eqopt::bs_greeks_batch, equal to eq_bs_greeks bit for bit.");
 
     m.def(
         "eq_implied_vol",

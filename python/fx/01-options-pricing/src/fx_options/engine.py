@@ -16,6 +16,7 @@ engine in ``tests/test_engine_differential.py``. Greeks come back as
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from qp_core.engines import Engine, load_engine
 
 from .binomial import binomial_price as _binomial_price
@@ -69,14 +70,17 @@ def binomial_price(S: float, K: float, T: float, r_d: float, r_f: float, sigma: 
                                        american=style == "american"))
 
 
-def gk_price_batch(S, K, T, r_d, r_f, sigma, is_call, *, engine: Engine = "python") -> np.ndarray:
+def gk_price_batch(S: ArrayLike, K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
+                   sigma: ArrayLike, is_call: ArrayLike, *,
+                   engine: Engine = "python") -> NDArray[np.float64]:
     """Vectorised price over equal-length arrays; ``is_call`` is boolean.
     The Python engine loops over the reference scalar function."""
     mod = load_engine(engine)
     cols = [np.ascontiguousarray(a, dtype=np.float64) for a in (S, K, T, r_d, r_f, sigma)]
     flags = np.ascontiguousarray(is_call, dtype=np.bool_)
     if mod is not None:
-        return mod.fx_gk_price_batch(*cols, flags)
+        out: NDArray[np.float64] = mod.fx_gk_price_batch(*cols, flags)
+        return out
     if any(c.shape != flags.shape for c in cols) or flags.ndim != 1:
         raise ValueError("length mismatch: inputs must be equal-length 1-D arrays")
     s, k, t, rd, rf, v = cols
