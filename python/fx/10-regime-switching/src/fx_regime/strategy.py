@@ -24,7 +24,6 @@ price, so a pip on USDMXN at 17.5 is worth 1/17.5 of a pip on EURUSD).
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -174,7 +173,7 @@ def carry_accrual(
     weights: pd.Series,
     rates_row: pd.Series,
     usd_rate: float,
-    year_fraction: float | None = None,
+    year_fraction: float,
 ) -> float:
     """Carry over one accrual period: sum_i w_i * (r_i - r_USD) * year_fraction.
 
@@ -185,17 +184,9 @@ def carry_accrual(
     usd_rate : annualised USD deposit rate.
     year_fraction : accrual period in years. The backtest passes ACT/365,
         ``calendar_days / 365``, so a Friday-to-Monday period accrues three
-        days. Omitting it falls back to the old ACT/252 ``1/252`` with a
-        ``DeprecationWarning`` (removed next release).
+        days. It is required: the old ACT/252 fallback was removed in
+        v3.0.0.
     """
-    if year_fraction is None:
-        warnings.warn(
-            "carry_accrual without year_fraction uses 1/252 (ACT/252); pass "
-            "year_fraction=calendar_days/365 (ACT/365, the backtest convention)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        year_fraction = 1.0 / TRADING_DAYS
     if not np.isfinite(year_fraction) or year_fraction < 0:
         raise ValueError(f"year_fraction must be finite and >= 0, got {year_fraction}")
     if not np.isfinite(usd_rate):

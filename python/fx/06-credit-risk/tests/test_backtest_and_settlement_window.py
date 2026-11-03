@@ -28,8 +28,8 @@ def test_hl_dof_follows_sample_flag():
     y = (rng.random(500) < p).astype(float)
     assert fc.hosmer_lemeshow(y, p, out_of_sample=True).dof == 10
     assert fc.hosmer_lemeshow(y, p, out_of_sample=False).dof == 8
-    with pytest.warns(DeprecationWarning):
-        assert fc.hosmer_lemeshow(y, p).dof == 8
+    with pytest.raises(TypeError, match="out_of_sample"):
+        fc.hosmer_lemeshow(y, p)  # implicit in-sample default removed in v3.0.0
 
 
 def test_by_grade_hand_values():

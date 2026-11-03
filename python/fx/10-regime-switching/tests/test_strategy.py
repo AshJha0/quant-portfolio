@@ -63,8 +63,8 @@ def test_carry_accrual_exact_hand_computed():
     assert carry_accrual(w, RATES, 0.02, year_fraction=3 / 365.0) == pytest.approx(
         expected, abs=1e-15
     )
-    with pytest.warns(DeprecationWarning):
-        assert carry_accrual(w, RATES, 0.02) == pytest.approx(0.022 / 252.0)
+    with pytest.raises(TypeError):
+        carry_accrual(w, RATES, 0.02)  # type: ignore[call-arg]  # ACT/252 fallback removed in v3.0.0
 
 
 def test_carry_accrual_zero_for_flat_book():

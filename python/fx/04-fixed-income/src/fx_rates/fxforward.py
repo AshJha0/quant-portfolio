@@ -54,7 +54,7 @@ import pandas as pd
 from qp_core.holidays import fx_spot_date
 
 from ._validation import require_finite
-from .bootstrap import basis_adjusted_curve, basis_discount_curve
+from .bootstrap import basis_discount_curve
 from .curve import DiscountCurve
 
 __all__ = [
@@ -118,8 +118,8 @@ class MarketState:
         currency.
     basis_model : str
         ``"float_float"`` (default): ``basis_spreads`` are par spreads of
-        float-float basis swaps. ``"zero_spread"``: the old shortcut
-        ``z_adj = z_f + s`` on the base curve (deprecated).
+        float-float basis swaps, the only model since v3.0.0 (the old
+        ``"zero_spread"`` shortcut ``z_adj = z_f + s`` was removed).
     basis_frequency : int
         Resets per year of the quoted basis swaps (default 4).
     valuation_date : datetime.date, optional
@@ -172,15 +172,9 @@ class MarketState:
             raise ValueError(
                 f"collateral_ccy {self.collateral_ccy!r} must be one of {self.pair}"
             )
-        if self.basis_model not in ("float_float", "zero_spread"):
-            raise ValueError(f"unknown basis_model {self.basis_model!r}")
-        if self.basis_model == "zero_spread":
-            warnings.warn(
-                "basis_model='zero_spread' is deprecated: it makes basis risk "
-                "identical to base-curve rate risk. Use 'float_float'.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
+        if self.basis_model != "float_float":
+            raise ValueError(f"unknown basis_model {self.basis_model!r} (only 'float_float'; "
+                             "'zero_spread' was removed in v3.0.0)")
 
     def _resolve_spot_time(self) -> None:
         if self.spot_at_t0:
@@ -238,10 +232,6 @@ class MarketState:
         return self.pair[1] if self.collateral_ccy == self.pair[0] else self.pair[0]
 
     def _discount(self, projection: DiscountCurve, ccy: str) -> DiscountCurve:
-        if self.basis_model == "zero_spread":
-            if ccy != self.base_ccy:
-                return projection
-            return basis_adjusted_curve(projection, self.basis_spreads)
         if ccy != self.basis_ccy:
             return projection
         return basis_discount_curve(projection, self.basis_spreads, self.basis_frequency)

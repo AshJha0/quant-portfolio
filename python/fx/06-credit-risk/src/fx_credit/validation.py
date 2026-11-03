@@ -103,7 +103,8 @@ def hosmer_lemeshow(
     y: np.ndarray,
     pd_hat: np.ndarray,
     n_groups: int = 10,
-    out_of_sample: bool | None = None,
+    *,
+    out_of_sample: bool,
 ) -> HosmerLemeshowResult:
     """Hosmer-Lemeshow calibration test on ``n_groups`` predicted-PD groups.
 
@@ -122,15 +123,6 @@ def hosmer_lemeshow(
     even when discrimination (AUC) is fine: the typical failure in a
     contagion year.
     """
-    if out_of_sample is None:
-        warnings.warn(
-            "hosmer_lemeshow: pass out_of_sample=True for PDs scored on data "
-            "not used in fitting (dof = n_groups) or False for in-sample PDs "
-            "(dof = n_groups - 2); the implicit in-sample default will be removed",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out_of_sample = False
     y = _check_binary(y)
     p = _check_scores(pd_hat, y)
     if np.any((p < 0) | (p > 1)):

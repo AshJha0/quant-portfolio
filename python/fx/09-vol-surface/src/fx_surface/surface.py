@@ -369,7 +369,6 @@ class FXVolSurface:
         self,
         k_grid: Sequence[float] | None = None,
         tol: float = 1e-10,
-        deltas: Sequence[float] | None = None,
     ) -> list[dict]:
         """Calendar check at fixed forward moneyness across pillar expiries.
 
@@ -380,17 +379,9 @@ class FXVolSurface:
         This is the static no-arbitrage condition.  Returns violation
         records (empty means clean).
 
-        ``deltas`` is accepted for backward compatibility and forwards to
-        :meth:`delta_calendar_report` with a ``DeprecationWarning``.
+        The fixed-delta view is :meth:`delta_calendar_report`; the old
+        ``deltas=`` argument here was removed in v3.0.0.
         """
-        if deltas is not None:
-            import warnings
-            warnings.warn(
-                "calendar_arbitrage_report(deltas=...) is deprecated; the fixed-delta "
-                "view is delta_calendar_report()",
-                DeprecationWarning, stacklevel=2,
-            )
-            return self.delta_calendar_report(deltas=deltas, tol=tol)
         violations = []
         for s0, s1 in zip(self.slices, self.slices[1:], strict=False):
             if k_grid is None:
