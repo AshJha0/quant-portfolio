@@ -19,6 +19,12 @@ Bootstrap, in this order:
 Each new pillar is solved with Brent's method; dates between pillars use
 log-linear discount factors (the ``DiscountCurve`` default). Accruals are
 ``1/frequency`` (the package's 30/360-style simplification).
+
+These year-based functions are kept for the teaching notebooks. Dated
+curves (real schedules, ACT/360 accruals, payment lags, futures, FRAs) use
+:func:`bootstrap_projection_dated` here and
+:func:`fi_rates.bootstrap.bootstrap_ois_dated`; those are checked against
+QuantLib to 1e-12 in discount factor (``tests/test_bootstrap_dated.py``).
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from collections.abc import Sequence
 import numpy as np
 from scipy.optimize import brentq
 
+from .bootstrap import DatedBootstrapResult, DatedQuote, DfSource, bootstrap_dated
 from .curve import DiscountCurve
 
 
@@ -116,3 +123,21 @@ def ois_ibor_basis(discount: DiscountCurve, projection: DiscountCurve,
                    t1: float, t2: float) -> float:
     """Simple-forward spread of the index over OIS on ``[t1, t2]``."""
     return projection.simple_forward_rate(t1, t2) - discount.simple_forward_rate(t1, t2)
+
+
+def bootstrap_projection_dated(
+    quotes: Sequence[DatedQuote], discount: DfSource
+) -> DatedBootstrapResult:
+    """Dated projection curve for one index tenor, discounted on ``discount``.
+
+    Plain idea: after 2008 a collateralised swap's cash flows are discounted
+    on the overnight (OIS) curve, while a term index (3M, 6M) has its own,
+    higher, forward curve. Formal statement: with the OIS curve ``D`` fixed,
+    each pillar of the projection curve ``P`` solves
+    ``sum_j D(p_j) (P(s_j)/P(e_j) - 1) = K sum_i tau_i D(p_i)`` for swaps
+    and ``(P(s)/P(e) - 1)/tau = R`` for deposits and FRAs (Ametrano and
+    Bianchetti 2013, sec. 3; Henrard 2014, ch. 3). Worked example: the
+    ``term3m`` block of ``tests/data/dated_bootstrap_usd.txt``, where the
+    10Y pillar lands on QuantLib's 0.674649332561 to 1e-12.
+    """
+    return bootstrap_dated(quotes, discount=discount)

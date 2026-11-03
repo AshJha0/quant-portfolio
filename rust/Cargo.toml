@@ -11,6 +11,7 @@ members = [
     "fx-options-engine",
     "equity-var-engine",
     "fx-var-engine",
+    "rates-curves",
 ]
 
 [profile.release]
