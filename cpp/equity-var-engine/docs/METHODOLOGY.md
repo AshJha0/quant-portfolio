@@ -202,10 +202,17 @@ now wraps them. The rules that keep them the same:
   order; all matrices are row-major and the inner loops walk contiguous
   rows.
 - **Simulate once, store less.** `try_monte_carlo_var_factored` takes the
-  Cholesky factor and maps each simulated return vector to P&L at once, so
-  the n_paths x n scenario panel is never stored. The draws come in the
-  same order as `simulate_factor_returns`, so the P&L vector is the same.
-  VaR, ES, the bootstrap SE and the KDE SE all read that one P&L vector.
+  Cholesky factor L and forms v = L'w once per run. For a linear book a
+  path's P&L is w'(m L z) = m (L'w)'z, so each path costs one O(n) dot
+  product instead of an O(n^2) triangular matvec, and the n_paths x n
+  scenario panel is never stored. The draws come in the same order as
+  `simulate_factor_returns` (n normals, then the chi-square mixing draw),
+  but the sums run in a different order, so the P&L vector equals the
+  two-step path (`simulate_factor_returns` then `portfolio_pnl`) to
+  1e-12 x sum_i |w_i r_i| per path, not bit for bit, and VaR and ES agree
+  to 1e-12 relative. `monte_carlo_var` calls the same kernel, so the two
+  public entry points still agree bit for bit. VaR, ES, the bootstrap SE
+  and the KDE SE all read that one P&L vector.
 - **No allocation.** Selection buffers, the Cholesky factor and its
   jittered copy, and the Monte Carlo vectors are caller storage. The
   bootstrap reuses one resample buffer across replicates.

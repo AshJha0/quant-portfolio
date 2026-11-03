@@ -38,13 +38,15 @@ Known limits worth knowing before you read further:
   once, on or after 2028-11-13; anything printed before then is labelled
   INTERIM and decides nothing.
 - CI installs every Python package with its hash checked against
-  `uv.lock`; QuantLib cross-checks exist but run only where QuantLib is
-  installed.
+  `uv.lock`. The QuantLib cross-checks (Hull-White, ISDA CDS, Heston,
+  holiday calendars, FX spot dates) run in a required CI job that fails if
+  any of them skips; on a laptop without QuantLib they skip.
 - The only real-data studies use ECB daily reference rates. There is no
   point-in-time equity or intraday evidence.
 - Execution costs come from a schedule-level cost model on a bucket
   simulator, not from an order book. The figures are model-implied, and
-  they changed in v2.1.0 when a double-counted bucket width was removed
+  they rose about 3 to 4 times on the way to v3.0.0 (milestone v2.1) when
+  a double-counted bucket width was removed
   (equity 08 `docs/VALIDATION.md` section 6).
 
 After that, [LEARN.md](LEARN.md) is a study guide with self-test questions

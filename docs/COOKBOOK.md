@@ -1027,6 +1027,52 @@ DV01 `+4,843.18` against foreign DV01 `-4,840.99`, and basis DV01 `-4,810.23`.
 The opposite signs of the two rate DV01s are the long-base-forward pattern
 the test suite pins.
 
+### How do I price an FX forward from the spot date, a broken date and an NDF?
+
+A quoted spot rate is for delivery on the spot date (T+2 for EURUSD, T+1 for
+USDCAD), not today. Give `MarketState` a `valuation_date` and forwards carry
+from the spot date, `F = S DF_f(t_s, T) / DF_d(t_s, T)`
+(Clark 2011, ch. 1). Without it the old t = 0 reading still works but warns.
+
+```python
+import datetime as dt, math
+from fx_rates import (DiscountCurve, MarketState, market_forward, forward_for_date,
+                      forward_points_for_date, spot_date, NDF, ndf_fixing_date)
+
+def flat(r, name):
+    times = [0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+    return DiscountCurve(times, [math.exp(-r * t) for t in times], name=name)
+
+today = dt.date(2025, 6, 5)  # Thursday
+eur = MarketState(spot=1.0850, domestic_curve=flat(0.045, "USD"),
+                  foreign_curve=flat(0.025, "EUR"), pair=("EUR", "USD"),
+                  valuation_date=today)
+print("spot date:", eur.spot_date)
+print(f"1y forward: {market_forward(eur, 1.0):.6f}")
+print(f"broken date 2025-09-17: {forward_for_date(eur, dt.date(2025, 9, 17)):.6f}, "
+      f"{forward_points_for_date(eur, dt.date(2025, 9, 17)):.2f} points")
+print("USDCAD spot from Fri 2025-06-06:", spot_date(dt.date(2025, 6, 6), pair=("USD", "CAD")))
+
+brl = MarketState(spot=5.60, domestic_curve=flat(0.14, "BRL"),
+                  foreign_curve=flat(0.045, "USD"), pair=("USD", "BRL"),
+                  valuation_date=today)
+settle = dt.date(2025, 12, 5)
+ndf = NDF(notional_base=10_000_000, strike=5.80, fixing_date=ndf_fixing_date(settle, ("USD", "BRL")),
+          settlement_date=settle, pair=("USD", "BRL"), fixing_source="PTAX")
+print("fixing date:", ndf.fixing_date, "settlement ccy:", ndf.settlement_ccy)
+print(f"6m forward: {forward_for_date(brl, settle):.4f}")
+print(f"NDF value: {ndf.value(brl):,.0f} {ndf.settlement_ccy}")
+```
+
+Output: spot date `2025-06-09` (Thursday plus two business days), 1y
+forward `1.106676`, which is `1.0850 exp(0.02 (1 - 4/365))` and 2.43 pips
+below the `1.106918` a t = 0 reading gives; broken date `1.090962`
+(`59.62` points); USDCAD spot `2025-06-09` (T+1); NDF fixing date
+`2025-12-03`, settlement currency `USD`, 6m forward `5.8671` and value
+`111,768` USD, which is `10,000,000 DF_USD (1 - 5.80 / F)`. The forward
+uses the onshore rate only through the curves; there is no BRL holiday
+calendar, so BRL counts weekends only.
+
 ### How do I see fixed-income risk models break down for a non-parallel move?
 
 A single duration number is a *parallel*-shift approximation. `fi_rates`
@@ -1491,8 +1537,8 @@ for name, sched in schedules.items():
           f"arrival={res.arrival_price:8.4f}  buckets_traded={(res.fills['qty']>0).sum()}")
 ```
 
-Output (synthetic simulator): `TWAP filled=50,000 avg_price=100.3606 ... buckets_traded=26`,
-`VWAP avg_price=100.2134 buckets_traded=26`, `POV 10% avg_price=100.4560
+Output (synthetic simulator): `TWAP filled=50,000 avg_price=100.7554 ... buckets_traded=26`,
+`VWAP avg_price=100.5841 buckets_traded=26`, `POV 10% avg_price=100.9618
 buckets_traded=13` (POV finishes early because it participates at a capped
 rate of the heaviest-volume buckets first). All three fill the full parent.
 POV would instead raise `ValueError` if the day's capacity at that
@@ -1603,18 +1649,23 @@ print(tab.to_string())
 Output (200 seeded replications on the synthetic simulator, bps):
 
 ```
-              expected_is_bps  mean_is_bps  se_mean_is_bps  std_is_bps  mean_vs_vwap_bps  mean_vs_twap_bps
-TWAP                14.335673    30.563490        8.076130  114.213719         12.782250         12.061332
-VWAP                13.658359    29.107703        7.749112  109.588993         11.391778         10.667148
-AC lam=5e-06        15.096783    25.409703        5.416399   76.599451          7.248477          6.326222
+              model_implied_is_bps  expected_is_bps  mean_is_bps  se_mean_is_bps  std_is_bps  mean_vs_vwap_bps  mean_vs_twap_bps
+TWAP                     52.992935        52.992935    69.828451        8.110818  114.704282         51.977248         51.253418
+VWAP                     49.617713        49.617713    65.601374        7.779571  110.019754         47.820708         47.093336
+AC lam=5e-06             57.121044        57.121044    68.036190        5.436542   76.884313         49.798454         48.872217
 ```
 
-AC front-loads the schedule and cuts cost dispersion sharply (114 to 77 bps
+AC front-loads the schedule and cuts cost dispersion sharply (115 to 77 bps
 std) versus TWAP, the risk/cost trade a positive `lambda` is meant to buy.
-The gap in mean IS (about 5 bps) is within one standard error of the mean
-(`se_mean_is_bps`), so 200 replications do not show a mean-cost win.
-`expected_is_bps` is the model's own expected cost, and on that measure AC is
-slightly dearer than TWAP.
+The gap in mean IS (about 2 bps) is well within one standard error of the
+mean (`se_mean_is_bps`), so 200 replications do not show a mean-cost win.
+`model_implied_is_bps` is the cost the simulator's own impact model implies
+with no price noise, and on that measure AC is dearer than TWAP (57.1
+against 53.0 bps). `expected_is_bps` is the same column under its old name,
+kept until v4.0.0. These costs are about 3.7 times the v2.0.0 figures
+(TWAP 14.3 bps then), which divided participation by the number of buckets
+twice; see CHANGELOG. `eq_algo.power_law_trajectory` gives the schedule
+that is optimal under the simulator's own square-root law.
 
 ### How do I run transaction-cost analysis (implementation-shortfall decomposition) on a completed equity execution?
 
@@ -1637,9 +1688,9 @@ for k, v in rep.bps().items():
     print(f"  {k:16s} {v:+8.2f} bps")
 ```
 
-Output (synthetic simulator): `filled 50,000/50,000 @ avg 100.6303`, then `delay_bps +20.04`,
-`trading_bps +63.15`, `opportunity_bps -0.00`, `total_is_bps +83.19`. The
-83.19 bps of total shortfall is almost entirely the pre-release "decision to
+Output (synthetic simulator): `filled 50,000/50,000 @ avg 100.7469`, then `delay_bps +20.04`,
+`trading_bps +74.84`, `opportunity_bps -0.00`, `total_is_bps +94.88`. The
+94.88 bps of total shortfall is almost entirely the pre-release "decision to
 release" drift (delay) plus spread/impact during trading (trading), with
 zero opportunity cost because the order fully filled.
 
@@ -2133,7 +2184,7 @@ print(round(time_to_expiry(now, exp, cut="NY"), 6))   # 0.252397, ACT/365F to th
 ```
 
 Pass `holidays="auto"` to use the pair's joint settlement calendar from
-`fx_options.holidays` (rules-based, 2010 to 2099; a re-export of
+`fx_options.holidays` (rules-based, 2000 to 2099; a re-export of
 `qp_core.holidays`), or pass your own dates.
 The quoted butterfly is read as the smile strangle; if your broker quotes
 the market strangle, convert it first with

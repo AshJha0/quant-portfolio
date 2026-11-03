@@ -1002,7 +1002,7 @@ jobs:
         run: |
           bash .github/scripts/hashed_install.sh --group test --group oracle --editable \
             python/core python/equity/04-fixed-income python/equity/06-credit-risk \
-            python/fx/09-vol-surface
+            python/fx/04-fixed-income python/fx/09-vol-surface
           python -c 'import QuantLib; print("QuantLib", QuantLib.__version__)'
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest the QuantLib cross-checks (no skips allowed)
@@ -1013,6 +1013,11 @@ jobs:
             (cd "$project" && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
               tests/*quantlib*.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
           done
+          # Calendar and spot-date parity against QuantLib calendars (Round 6 W1/W2).
+          (cd python/core && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_one_calendar.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+          (cd python/fx/04-fixed-income && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_fx_spot_forwards.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
           if grep -q "SKIPPED" "$RUNNER_TEMP/ql/pytest.log"; then
             echo "::error::QuantLib cross-checks were skipped"
             exit 1

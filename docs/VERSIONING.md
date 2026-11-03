@@ -86,8 +86,10 @@ Following PEP 387:
 
 | Name | Deprecated in | Earliest removal | Replacement |
 |---|---|---|---|
-| `market_volumes=` (POV schedule, `eq_algo`, `fx_algo`) | 3.0.0 (milestone v2.1) | 4.0.0 | `forecast_volumes=` |
-| `expected_is_bps` (`eq_algo`, `fx_algo`) | 3.0.0 (milestone v2.1) | 4.0.0 | `model_implied_is_bps` |
+| `market_volumes=` (`eq_algo.pov_schedule`; `FutureWarning`) | 3.0.0 (milestone v2.1) | 4.0.0 | `forecast_volumes=` |
+| `expected_is_bps` column (`eq_algo.evaluate_schedules`; no warning, a column) | 3.0.0 (milestone v2.1) | 4.0.0 | `model_implied_is_bps` |
+| `qp_core.calendars` (module) | 3.0.0 (milestone v2.1) | 4.0.0 | `qp_core.holidays` |
+| `fx_rates.MarketState` with neither `valuation_date` nor `spot_time`, or `spot_at_t0=True` | 3.0.0 (milestone v2.1) | 4.0.0 | `valuation_date=` or `spot_time=` |
 
 A name deprecated on the way to v3.0.0 has never warned in a released
 version, so it ships in v3.0.0 still working, with its warning, and the

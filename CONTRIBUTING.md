@@ -165,6 +165,8 @@ passes only if every other CI job passed:
 | `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; any skipped case fails |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests` |
 | `counts` | sums executed pass counts into `counts.json`, then runs `tests/test_docs_counts.py` |
+| `quantlib` | QuantLib 1.44 from hash-locked wheels; runs the QuantLib cross-checks (Hull-White, ISDA CDS, Heston, holiday calendars 2000-2030, FX spot dates); any skip fails |
+| `api diff` | pull requests only: `.github/scripts/api_diff.py` compares every package's `__all__` and signatures with the base commit; the `api-break` label allows a deliberate break, which needs a `docs/MIGRATION.md` entry |
 
 CI runner benchmark numbers are not the published numbers. Runners are
 shared virtual machines, so the `bench` job only catches large regressions.
@@ -229,4 +231,6 @@ Explain every changed golden value in the commit message.
 
 Maintainers release from the Actions tab with the `release` workflow. It
 refuses unless `ci-ok` passed on the chosen commit and `CHANGELOG.md` has a
-section for the version.
+section for the version. What a version number promises, the deprecation
+rules and where releases are published are in
+[docs/VERSIONING.md](docs/VERSIONING.md).

@@ -279,9 +279,9 @@ State: `regime-fx-basket` signed and run once on the hold-out (H0 not
 rejected); `pairs-fx-g10` signed, then withdrawn before the hold-out
 (DR-R4-5); `pairs-fx-g10-v2` and `momentum-fx-g10` signed on 2026-11-02 and
 scored once on forward data (2026-11-03 to 2028-11-02, `research/forward/`),
-on or after 2028-11-13; `execution-lobster` an unsigned draft, blocked on
-LOBSTER data access. Equity pairs on a point-in-time universe are not
-drafted (Nasdaq Data Link needs an account). Diagram 11 shows the whole
+on or after 2028-11-13; the order-book execution study an unsigned draft,
+not done because its data needs an account. Equity pairs on a
+point-in-time universe are not drafted for the same reason. Diagram 11 shows the whole
 life of a study.
 
 ---

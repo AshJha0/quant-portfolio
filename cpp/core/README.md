@@ -23,6 +23,7 @@ Header-only C++23 library shared by the four C++ engines
 | `qp/philox.hpp` | Philox4x32-10 counter-based generator, `PhiloxStream` (Random123 known answers) | new, opt-in |
 | `qp/quantile.hpp` | `select_kth`, `quantile_type7`: O(n) selection, same bits as a sort | new, opt-in |
 | `qp/gemm.hpp` | `gemm_blocked`, `syrk_upper_blocked`: cache-blocked, same bits as the naive loops | eqvar `sample_covariance` |
+| `qp/holidays.hpp` | rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards and NDF value; tested against the same QuantLib extract as Rust (`rust/core/tests/data/ql_holidays_2000_2030.txt`) | new, opt-in |
 | `qp/vmath.hpp` | `qp::vm::exp_batch`, `erfc_batch`, `norm_cdf_batch`: branch-free batch kernels with documented tolerances | new, opt-in |
 | `qp/bench/latency.hpp`, `qp/tools/jsonl.hpp` | bench harness and JSON-lines reader for the shims | benches, shims |
 

@@ -18,8 +18,8 @@ from the repository root installs it with every project that depends on it.
 |---|---|---|
 | `qp_core.stats` | Sharpe ratio, Lo (2002) Sharpe standard error with a Newey-West long-run variance, deflated Sharpe ratio, PBO by CSCV, circular block bootstrap, seed distributions, `TrialLog` | eq_pairs, eq_algo, eq_regime, eq_signal_backtest, fx_pairs, fx_algo, fx_regime (through their `research_stats` modules) |
 | `qp_core.execution` | `ExecutionConfig` and `fill_price`: the t+1 fill rule | the same seven strategy projects |
-| `qp_core.calendars` | Partial business-day calendars (weekends and fixed-date holidays) and the four roll conventions | fi_rates, fx_rates |
-| `qp_core.holidays` | Full rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD (2010 to 2099, moveable feasts and observance rules included), `is_business_day`, `adjust_following`, `add_business_days`, and runtime one-off closures (`add_closure`, test hook `extra_closures`) | eq_credit (`isda_cds`), fx_options (re-exported as `fx_options.holidays`) |
+| `qp_core.holidays` | Rule-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD (2000 to 2099, moveable feasts, observance rules and proclamation holidays included); `HolidayCalendar`, `get_calendar`, `joint_calendar` and the four roll conventions; `is_business_day`, `adjust_following`, `add_business_days`; FX spot dates (`spot_lag`, `fx_spot_date`); runtime one-off closures (`add_closure`, test hook `extra_closures`). Matches QuantLib for every year 2000-2030 | qp_core.daycount, fi_rates, fx_rates, eq_credit (`isda_cds`), fx_options (re-exported as `fx_options.holidays`) |
+| `qp_core.calendars` | Deprecated shim over `qp_core.holidays`; importing it warns, removal in v4.0.0 | none (a test fails on any import) |
 | `qp_core.normal` | `norm_cdf`, `norm_pdf` for scalar floats (`erfc` form, full lower-tail precision) | eq_options, fx_options |
 | `qp_core.black_scholes` | Black-Scholes in cost-of-carry form (`b = r - q = r_d - r_f`): `carry_d1_d2`, `carry_price`, `carry_greeks` and the NumPy array forms, with a worked example in the module docstring | eq_options (prices, Greeks, arrays), fx_options (prices, d1/d2, arrays, gamma/vega/vanna/volga) |
 | `qp_core.iv_core` | Implied volatility from normalised Black, safeguarded Halley (the same algorithm as `qp/iv_core.hpp` and `qp_core::iv`) | eq_options, fx_options |
@@ -61,10 +61,10 @@ the config with 0.5 bp.
 
 ## Limitations
 
-`qp_core.calendars` knows fixed-date holidays only; moveable feasts and
-observance rules are missing there. `qp_core.holidays` has the full rules
-for its seven centres, but only the closures known when the rules were
-written. A newly announced one-off closure (a state funeral, say) goes in
+`qp_core.holidays` has the full rules for its seven centres, but only the
+closures known when the rules were written. Onshore calendars for NDF
+currencies (BRL, INR, KRW, TWD) are not shipped; those currencies count
+weekends only. A newly announced one-off closure (a state funeral, say) goes in
 two steps: `add_closure("GBP", date)` at runtime straight away, then a
 dated line in the currency's rule function with its official notice cited
 and a test that pins it. The module docstring spells out the procedure.

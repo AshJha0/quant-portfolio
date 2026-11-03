@@ -17,8 +17,10 @@ bootstrap per ccy          float-float basis swaps          xccy and basis swaps
 
 Conventions: pairs BASE/QUOTE (EURUSD = USD per EUR); domestic = quote
 currency, foreign = base currency; zeros continuously compounded; PVs in
-the quote currency. Spot is T+2 business days on partial calendars; ON and
-TN settle before spot. See `docs/METHODOLOGY.md`.
+the quote currency. Spot is the pair's market lag (T+2, T+1 for USDCAD and
+a few others) on the rule-based calendars of both currencies, with the USD
+rule for crosses; forwards carry from the spot date; ON and TN settle
+before spot. NDFs are in `fx_rates.ndf`. See `docs/METHODOLOGY.md`.
 
 ## Quickstart
 

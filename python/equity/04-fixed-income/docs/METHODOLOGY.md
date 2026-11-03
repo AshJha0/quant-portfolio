@@ -176,7 +176,10 @@ Each assumption states what breaks if it is violated.
 3. **No settlement lag and no ex-dividend periods** in bond pricing.
    Settlement is the date passed in; `calendars.add_business_days` gives
    T+1 or T+2 if the caller wants it.
-4. **Partial calendars.** Weekend plus fixed-date holidays only.
+4. **Calendars cover seven centres.** USD, EUR (TARGET), GBP, JPY, CHF,
+   CAD and AUD from `qp_core.holidays`, 2000-2099. Until milestone v2.1
+   these were weekend plus fixed-date holidays only, so a schedule could
+   roll onto Good Friday or Thanksgiving; other centres are not covered.
 5. **30/360US without the end-of-February rule.**
 6. **Z-spread is the only credit treatment.** No default or recovery
    dynamics, no spread term structure.

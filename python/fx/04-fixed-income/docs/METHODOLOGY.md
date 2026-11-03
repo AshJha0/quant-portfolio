@@ -141,8 +141,12 @@ Each assumption states what breaks if violated.
 - **A5 Constant-notional basis swaps in `xccy`.** The MtM-resetting basis
   swap, the liquid instrument for the majors, lives in `xccy_float`
   (section below), with its convexity adjustment and seasoned valuation.
-- **A6 Partial calendars.** Weekends plus fixed-date holidays only; no
-  moveable feasts, no turn-of-year day-count spikes on the curve.
+- **A6 Calendars.** Rule-based calendars for USD, EUR, GBP, JPY, CHF, CAD
+  and AUD from `qp_core.holidays` (2000-2099, checked against QuantLib
+  2000-2030). Onshore calendars for NDF currencies (BRL, INR, KRW, TWD) are
+  not shipped; those count weekends only. No turn-of-year day-count spikes
+  on the curve. Until milestone v2.1 the calendars here were weekend plus
+  fixed-date holidays only.
 - **A7 One pair per `MarketState`.** Triangular consistency of CIP
   forwards is tested to 1e-12 across EURUSD, USDJPY and EURJPY.
 - **A8 Continuous compounding for zeros, simple compounding for deposits

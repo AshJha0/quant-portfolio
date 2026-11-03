@@ -25,10 +25,16 @@ Shared code: `cpp/core/include/qp/bench/latency.hpp` (C++) and
 3. N = max(31, call budget / B) samples, each one batch divided by B (ns per
    call). Nothing is subtracted.
 4. Percentiles by nearest rank (element ceil(qN) - 1 of the sorted
-   samples): p10, p50, p90, p99, p99.9, plus max and mean.
+   samples): p10, p50, p90, p99, p99.9, plus max and mean. When B > 1 these
+   are percentiles of B-call batch means, and the tails are labelled
+   "p99 of B-call batch means".
 
 Each record in the JSON output has `kernel`, `calls_per_sample`, `unit`
-(`ns`), `p10`, `p50`, `p90`, `p99`, `p999` and `max`.
+(`ns`), `p10`, `p50`, `p90`, `p99`, `p999`, `max` and `tail_basis`. The last
+field is `per-call` when B = 1 and otherwise reads, for example,
+`p99 of 32-call batch means`. The C++ harness
+(`cpp/core/include/qp/bench/latency.hpp`) and the Rust one
+(`rust/core/src/bench.rs`) write the same wording.
 
 Worked example. `bs_price` takes about 120 ns. One call is under 2 us, and
 so are batches of 2, 4 and 8; a batch of 16 takes about 1.9 us and one of 32
@@ -36,8 +42,9 @@ about 3.8 us, so B = 32 (or 16 on a faster machine). With a budget of
 100,000 calls that gives 3,125 samples, each a 32-call average.
 
 Percentiles of B-call averages are narrower than percentiles of single
-calls: a rare 10 us stall is spread over B calls. The p99.9 and max of a
-fast kernel are therefore not single-call tails. Slow kernels (Monte Carlo,
+calls: a rare 10 us stall is spread over B calls. The p99, p99.9 and max of
+a fast kernel are therefore the p99 of B-call batch means, not single-call
+tails, and must not be quoted as per-call tail latency or used for an SLO. Slow kernels (Monte Carlo,
 binomial trees, VaR over long histories) run with B = 1 and their tails are
 single calls.
 

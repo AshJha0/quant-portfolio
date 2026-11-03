@@ -183,11 +183,12 @@ A study runs in four steps:
 | `regime-fx-basket` | Signed by the maintainer on 2026-11-02. Hold-out run once on 2026-11-02 (2022-2025): H0 not rejected. The hold-out is spent. |
 | `pairs-fx-g10-v2` | Signed on 2026-11-02. Level-based z with a simulated power check. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. |
 | `momentum-fx-g10` | Signed on 2026-11-02. Monthly G10 spot momentum. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. Low power: a fail is the expected outcome even if a modest effect exists. |
-| `execution-lobster` | Unsigned draft. Needs LOBSTER sample files, which sit behind LOBSTER's terms of use. |
+| Order-book execution study | Unsigned draft in `research/prereg/`. Not done: its data needs an account and terms of use the owner decided not to accept. |
 
-Two studies are not done because their data needs an account: equity pairs
-on a point-in-time US universe (Nasdaq Data Link) and the LOBSTER execution
-study.
+Two studies are not done because their data needs an account, which the
+owner decided not to open: equity pairs on a point-in-time US universe and
+the order-book execution study. The free sources used instead are listed in
+[data/README.md](data/README.md).
 
 The training-period numbers (ECB data, 1999 to 2021) are in
 `research/results/`. They are not out-of-sample evidence. The pairs
@@ -269,13 +270,16 @@ re-exported from the package `__init__`.
 | Euler marginal, component, incremental VaR and ES | `eq_var.risk_attribution`, `fx_var.risk_attribution` | Hand example; Euler sum; finite-difference gradient; MC converges to the closed form |
 | FRTB IMA: liquidity-horizon ES, stressed ES, IMCC, capital, desk backtest, PLA | `eq_var.frtb_ima`, `fx_var.frtb_ima` | Hand cascade; sqrt(12) telescoping; table thresholds; scipy cross-check |
 | Stressed VaR, Basel 2.5 capital | `eq_var.stressed_var`, `fx_var.stressed_var` | Planted crisis window found; order statistic by hand |
+| Closed-form and historical VaR/ES, Kupiec, Christoffersen, Basel traffic light | `eq_var`, `fx_var` and the C++ and Rust VaR engines | An independent mpmath oracle (50 digits, no engine code; 196 values per project): closed forms to 1e-10, historical VaR exact, ES to 1e-12, engine Monte Carlo within 3 SE. It reproduces the BCBS (1996) traffic-light table and the Kupiec (1995) table, which the owner checked against the printed sources on 2026-11-03 |
+| Optimal schedule under square-root impact | `eq_algo.power_law_trajectory` | Equals the Almgren-Chriss closed form to 1e-8 of the order at delta = 1; bucket cost converges to the continuous integral |
 | EVT peaks over threshold (GPD) | `eq_var.evt`, `fx_var.evt` | Exact GPD quantile and integrated ES; MLE convergence; t(4) tail index |
 | t-copula Monte Carlo VaR and ES | `eq_var.copula_mc`, `fx_var.copula_mc` | Kendall tau mapping; tail dependence; Gaussian limit |
 | Option revaluation and P&L explain | `eq_var.revaluation`, `fx_var.revaluation` | Finite-difference Greeks; parity; the package `bs_*`/`gk_*` pricers; linear legs exact |
 | Limit hierarchy | `eq_var.limits`, `fx_var.limits` | Exact cases |
 | Johansen trace test | `research/studies/models.py` | statsmodels `coint_johansen`, 1e-9 relative |
 | Kalman hedge ratio | `research/studies/models.py` | Recursive least squares when delta = 0 |
-| Settlement calendars and business-day rolls | `qp_core.holidays` | Published holiday dates per centre; one-off closures through `add_closure` |
+| Settlement calendars, business-day rolls and FX spot dates | `qp_core.holidays` (also Rust `qp_core::holidays`, C++ `qp/holidays.hpp`) | Published holiday dates per centre; QuantLib 1.44 calendars for USD, GBP, TARGET, JPY, CHF, CAD and AUD on every year 2000-2030; one-off closures through `add_closure` |
+| FX forwards from the spot date, broken dates, NDFs | `fx_rates` (`MarketState(valuation_date=)`, `forward_for_date`, `ndf`) | Closed form S exp((r_d - r_f)(T - t_s)) to 1e-13; forward-points strip repriced to 1e-10 |
 | Standard normal CDF and density | `qp_core.normal` | One shared definition for the option packages; `erfc` form keeps the lower tail |
 
 The C++ and Rust equity options engines also gained Leisen-Reimer,
@@ -453,6 +457,8 @@ Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
 figures are in each engine README). Rust figures are rustc 1.99.1, release
 profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
 jitter, so read p99 as an upper bound. CI does not produce these numbers.
+The current harness reports tails of batch means; see
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) for what that label means.
 
 The two tables use different timing methods and should not be compared
 with each other. The C++ harness times every call separately (lfence,
@@ -465,7 +471,7 @@ accordingly.
 
 C++:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 (per call, old harness) |
 |---|---|---|---|
 | [equity-options](cpp/equity-options-engine/README.md#latency) | `bs_price` | 135 ns | 385 ns |
 | [equity-options](cpp/equity-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 23.95 ms | 29.75 ms |
@@ -478,7 +484,7 @@ C++:
 
 Rust:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 of B-call batch means |
 |---|---|---|---|
 | [equity-options](rust/equity-options-engine/README.md#latency) | `bs_price` | 44 ns | 116 ns |
 | [equity-options](rust/equity-options-engine/README.md#latency) | `mc_price`, 1M paths, antithetic + CV | 16.16 ms | 24.82 ms |

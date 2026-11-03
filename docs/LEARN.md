@@ -179,7 +179,7 @@ about:
   before it. Two later registrations (pairs v2, momentum), signed on
   2026-11-02, are scored once on forward data from 2026-11-03 to
   2028-11-02, on or after 2028-11-13. Every training, stress and
-  calibration run is logged in `research/results/trials.jsonl`. Equity pairs and the LOBSTER execution study are
+  calibration run is logged in `research/results/trials.jsonl`. Equity pairs and the order-book execution study are
   not done because their data needs an account.
 - **More models, each with an oracle.** American pricers (Leisen-Reimer,
   Crank-Nicolson, ALO), Bachelier, SABR, higher Greeks, FX smiles and
@@ -2667,7 +2667,7 @@ Assumption 7 in METHODOLOGY.md states the project assumes deterministic rates wi
 
 <details><summary>Answer</summary>
 
-`python/fx/04-fixed-income` (`fx_rates`) bootstraps one discount curve per currency (deposits + annual par swaps, same log-linear-DF machinery) and then prices FX forwards via covered interest parity, `F(T) = S * DF_f(T) / DF_d(T)`, where domestic = quote currency and foreign = base currency per `CONVENTIONS.md`'s BASE/QUOTE rule. Since 2008, market FX forwards systematically deviate from single-curve CIP, so `fx_rates` adds a maturity-dependent **cross-currency basis spread** `s(T)` applied to the foreign curve (`DF_f_adj(T) = DF_f(T) * exp(-s(T)*T)`), backed out from market forwards or basis-swap quotes via `bootstrap.implied_basis_from_forwards` / `bootstrap.curve_from_fx_forwards`. METHODOLOGY.md's own worked example shows the size of the effect: ignoring basis misprices the 5y EURUSD forward by 147 pips, a fictitious -$1.20m PV on a EUR 100m forward at the true market rate.
+`python/fx/04-fixed-income` (`fx_rates`) bootstraps one discount curve per currency (deposits + annual par swaps, same log-linear-DF machinery) and then prices FX forwards via covered interest parity, `F(T) = S * DF_f(t_s, T) / DF_d(t_s, T)`, where domestic = quote currency and foreign = base currency per `CONVENTIONS.md`'s BASE/QUOTE rule. The carry runs from the spot date `t_s` (T+2, or T+1 for USDCAD), not from today, because the quoted spot rate is itself for delivery on the spot date; reading spot as a t = 0 price overstates a 1y EURUSD forward at a 2% rate gap by 2.43 pips (`tests/test_fx_spot_forwards.py`). Since 2008, market FX forwards systematically deviate from single-curve CIP, so `fx_rates` adds a maturity-dependent **cross-currency basis spread** `s(T)` applied to the foreign curve (`DF_f_adj(T) = DF_f(T) * exp(-s(T)*T)`), backed out from market forwards or basis-swap quotes via `bootstrap.implied_basis_from_forwards` / `bootstrap.curve_from_fx_forwards`. METHODOLOGY.md's own worked example shows the size of the effect: ignoring basis misprices the 5y EURUSD forward by 147 pips, a fictitious -$1.20m PV on a EUR 100m forward at the true market rate.
 
 </details>
 

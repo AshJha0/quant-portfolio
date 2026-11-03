@@ -10,6 +10,154 @@ section below whose heading matches the version.
 
 ## [Unreleased]
 
+Toward v3.0.0, the only planned tag; `VERSION` is `3.0.0.dev0`. This
+section collects milestone v2.1 (Rounds 6 and 7). Numbers come from seeded
+synthetic data unless an entry names a reference. What callers need to do
+is in `docs/MIGRATION.md`.
+
+### Fixed
+
+- **Holiday calendars (`qp_core.daycount`, `fi_rates`, `fx_rates`).** These
+  used partial fixed-date tables with no Good Friday, Thanksgiving, UK bank
+  holidays or weekend substitutes, so rolls could land on closed days. Old
+  to new, each pinned by a test written first: GBP Good Friday 18-Apr-2025,
+  modified following, 2025-04-18 to 2025-04-22; EUR Good Friday 3-Apr-2026,
+  2026-04-03 to 2026-04-07; USD Thanksgiving 27-Nov-2025, 2025-11-27 to
+  2025-11-28; USD Sat 31-Aug-2024, following, 2024-09-02 (Labor Day) to
+  2024-09-03; USD 19-Jun-2020 holiday to business day (Juneteenth from
+  2022); USD Mon 5-Jul-2021 business day to holiday; GBP Christmas 2027
+  roll 2027-12-27 to 2027-12-29. In `qp_core.holidays`, the GBP
+  proclamation holidays of 2002, 2011 and 2012 are now closed (and
+  2002-05-27 and 2012-05-28 open), and the years 2000-2009 are supported
+  instead of raising. References: gov.uk bank holidays, ECB TARGET2
+  closing days, the Federal Reserve holiday list; QuantLib 1.44 agrees for
+  USD (FederalReserve), GBP, TARGET, JPY, CHF, CAD and AUD on every year
+  2000-2030.
+- **FX spot dates (`fx_rates.spot_date`).** The default lag is now the
+  pair's market lag. USDCAD traded Fri 6-Jun-2025 settles 2025-06-09
+  (T+1), not 2025-06-10; EURJPY traded Wed 2-Jul-2025 settles 2025-07-07,
+  not 2025-07-04, a USD holiday (Clark 2011, ch. 1; Wystup, ch. 1). 31 of
+  the 32 spot-table cases are cross-checked against the same rule on
+  QuantLib calendars (USDTRY has none).
+- **FX forwards carry from the spot date (`fx_rates.MarketState`).** A 1y
+  EURUSD forward (S = 1.0850, r_d = 4.5%, r_f = 2.5%, valued Thu
+  5-Jun-2025) is 1.106676, 2.43 pips below the old 1.106918, which carried
+  from today instead of from spot Mon 9-Jun. `fx_options.forward_from_dates`
+  for 5-Jun-2025 to 9-Jun-2026 gives 1.106918 (365 days of carry), where a
+  t = 0 reading gave 1.107161 (369 days). Closed form
+  S exp((r_d - r_f)(T - t_s)).
+- **Equity execution simulator (`eq_algo.intraday`).** Participation was
+  divided by the number of buckets a second time, so finer slicing looked
+  cheaper. A 100k-share TWAP on a flat day cost 5.26 / 3.72 / 2.63 /
+  1.86 bp on 13 / 26 / 52 / 104 buckets and now costs 18.97 bp on all four
+  (0.3 x 2% x sqrt 0.1); the bucket cost converges to the continuous
+  integral (error times n below 0.5). Seed-42 race, model-implied IS: VWAP
+  13.7 to 49.6 bp, TWAP 14.3 to 53.0, Almgren-Chriss 15.1 to 57.1, POV
+  17.2 to 68.0, Aggressive 27.5 to 124.7; the order is unchanged. TCA
+  aggregate trading cost 18.6 to 57.8 bp, total 14.3 to 53.5 bp. Costs
+  rise by roughly 3 to 4 times. The Almgren-Chriss frontier figures do not
+  use the simulator and are unchanged.
+- **FX execution simulator (`fx_algo`).** Impact was scaled by the
+  per-bucket volatility, so it depended on the grid. A 200mm two-hour
+  overlap TWAP: temporary impact 0.119 (1-minute grid) to 0.651 pips
+  (30-minute) is now 0.266 on every grid; permanent 0.314 to 0.057 is now
+  0.141. The 5-minute grid is unchanged. Fix study (1-minute grid):
+  fix-targeting tracking error +0.498 to +1.015 pips, self-impact 0.078 to
+  0.035, standard deviation unchanged.
+- **C++ VaR engines, noexcept paths.** `RandomStream::gamma` and
+  `Rng::chisq` throw and were reachable from noexcept kernels, where a
+  throw ends in `std::terminate`. New `gamma_nothrow` /
+  `chi_squared_nothrow` (equity) and `gamma_nothrow` / `chisq_nothrow`
+  (FX) return NaN on a bad shape without consuming the stream, and the
+  kernels report it as `McReturnsNotFinite`. `qp::gamma_marsaglia_tsang`
+  loops forever on a NaN shape and recurses without end on a shape <= 0;
+  it is now never called unguarded.
+
+### Changed
+
+- **Equity Monte Carlo VaR, linear book (C++ and Rust).** Each path costs
+  one O(n) dot product with `v = L'w`, formed once per run, instead of an
+  O(n^2) triangular matvec. Same draws, different summation order: results
+  are no longer bit-identical to 2.0.0 or to the two-step path; VaR and ES
+  agree to 1e-12 relative and each path to 1e-12 x sum |w_i r_i|. Rust, 10k
+  paths x 50 factors, local release build: 50.9 ms to 20.1 ms. FX Monte
+  Carlo VaR is non-linear and unchanged.
+- **One rule-based calendar.** `qp_core.holidays` (`HolidayCalendar`,
+  `CALENDARS`, `get_calendar`, `joint_calendar`) serves every package;
+  range 2000-2099. Ported to Rust (`rust/core/src/holidays.rs`) and C++
+  (`cpp/core/include/qp/holidays.hpp`) and tested in both against one
+  QuantLib extract for 2000-2030.
+- **Versions.** Every package carries the repository version,
+  `3.0.0.dev0`, from `VERSION` (the projects said `1.0.0`, `fx-var`
+  `1.1.0`, the bindings `0.1.0`); `tests/test_repo_policy.py` enforces it.
+  Every Python package, `qp-core` and both bindings included, ships
+  `py.typed`.
+- **Errors.** New `qp_core.errors`: `QPError`, `InputError` (a
+  `ValueError`), `ConvergenceError` (a `RuntimeError` and a `ValueError`),
+  `DataError` (a `RuntimeError`). The bindings raise `InputError` for bad
+  arguments and `ConvergenceError` for numerical failures; both remain
+  `ValueError`s.
+- **Benchmarks.** The C++ and Rust latency harnesses label their tails
+  "p99 of B-call batch means" (JSON field `tail_basis`; `per-call` when
+  B = 1). The README, ARCHITECTURE and BENCHMARKS tables say which column
+  is which. No number changes.
+- **Release workflow.** `release.yml` is manual dispatch only, with a dry
+  run, a `VERSION` check, cibuildwheel wheels for Linux, Windows and macOS
+  arm64, sdists, a CycloneDX 1.5 SBOM, `SHA256SUMS` and build provenance
+  attestation. GitHub Release only.
+- **Docs.** `docs/LEARN.md`: all 532 answers fold under `<details>` with a
+  tags line; the range-estimator efficiencies are sourced (Parkinson 4.91
+  derived, Garman-Klass 7.4, Rogers-Satchell about 6 by simulation); the
+  pairs-funnel figures are re-run at seed 7. `docs/index.html` gains a
+  dark theme. The equity C++ VaR docs say "to 1e-12" where they said "bit
+  for bit".
+
+### Added
+
+- `qp_core.holidays.spot_lag` and `fx_spot_date`; `MarketState`
+  `valuation_date=` / `spot_time=` and `spot_today`; `forward_for_date`,
+  `forward_points_for_date`, `curve_from_forward_points` (reprices an input
+  points strip to 1e-10); `fx_rates.ndf` (`NDF`, `ndf_fixing_date`); a
+  `t_spot` keyword and `forward_from_dates` in `fx_options.forwards`.
+- `eq_algo.power_law_trajectory` and `power_law_objective`: the optimal
+  schedule under the simulator's power-law impact (Newton on the discrete
+  Euler-Lagrange equations, one tridiagonal sweep per step; equals the
+  Almgren-Chriss closed form to 1e-8 of the order at delta = 1). Seed-42
+  race: 55.5 bp, standard deviation 71.6 (Almgren-Chriss 57.1 and 74.5).
+  Also `compare_impact_laws` and `realised_participation`.
+- An independent VaR oracle (`python/equity/03-var-es-engine/tests/golden/
+  var_oracle.py`, mpmath at 50 digits, no engine imports): 196 values per
+  project, emitted as C++ and Rust constants, checked in all three
+  languages. It reproduces all 11 cells of the BCBS (1996) traffic-light
+  table and 7 of 9 cells of the Kupiec (1995) table; the other two are
+  explained by the LR test and pinned. Every engine agreed with it.
+- `qp_core.logconfig` (JSON logging with a run context, `run_boundary`).
+- Hypothesis profiles `ci`, `nightly` and `dev` in the root `conftest.py`;
+  a nightly CI run; a required `quantlib` CI job (QuantLib 1.44 from
+  hash-locked wheels, no skips) and an `api diff` job for pull requests.
+- `docs/VERSIONING.md`, `docs/MIGRATION.md` and `docs/CONTRIBUTING.md`.
+
+### Deprecated
+
+Each still works in v3.0.0 and is removed no earlier than v4.0.0
+(`docs/VERSIONING.md`).
+
+- `qp_core.calendars`: a shim over `qp_core.holidays`; importing it emits
+  `DeprecationWarning`.
+- `fx_rates.MarketState` with neither `valuation_date` nor `spot_time`, or
+  with `spot_at_t0=True`: spot is treated as a t = 0 price;
+  `DeprecationWarning`.
+- `eq_algo.pov_schedule(market_volumes=)`: use `forecast_volumes=`;
+  `FutureWarning`.
+- The `expected_is_bps` column of `eq_algo.evaluate_schedules`: read
+  `model_implied_is_bps` (same values; a column cannot warn).
+
+### Removed
+
+- `BusinessCalendar.fixed_holidays`: the rule-based calendar has no
+  fixed-date table; use `.holidays(year)`. This is a public API break,
+  allowed at a major version and recorded in `docs/MIGRATION.md`.
+
 ## [2.0.0] - 2026-11-03
 
 One release, v2.0.0, is planned. Until then changes collect here. Results

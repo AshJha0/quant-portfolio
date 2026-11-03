@@ -178,16 +178,17 @@ See [forward/README.md](forward/README.md) for why and how to read it.
 |---|---|---|
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out run once 2026-11-02: H0 not rejected | `results/regime_fx_basket_train.json`, `results/regime_fx_basket_holdout.json` |
-| `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
+| order-book execution draft (in `prereg/`) | draft, unsigned; not done, its data needs an account | none |
 | `prereg/pairs-fx-g10-v2.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/pairs_fx_g10_v2_train.json` |
 | `prereg/momentum-fx-g10.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/momentum_fx_g10_train.json` |
 
 The two FX registrations were signed by the maintainer, to whom the
 repository owner delegated pre-registration signing. The signature records the hash
 printed by `prereg.py hash`; `prereg.py check` passes on both. The execution
-study needs LOBSTER files, which sit behind LOBSTER's terms of use, so it
-stays an unsigned draft. Equity pairs on a point-in-time universe need a
-Nasdaq Data Link account and are not drafted.
+study needs order-book files that sit behind an account and terms of use
+the owner decided not to accept, so it stays an unsigned draft and is not
+done. Equity pairs on a point-in-time universe need a paid data account
+and are not drafted (`data/README.md`).
 
 The pairs strategy is almost dormant in training: it trades in 3 of 19
 test years (2008, 2015, 2020; 7 entries, 79 active days), and the other

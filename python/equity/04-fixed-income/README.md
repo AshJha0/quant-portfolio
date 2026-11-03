@@ -18,10 +18,11 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
   and par swaps (Brent per pillar), plus a coupon-bond bootstrap. Inputs
   reprice to 1e-10 (measured 4e-16) under local interpolation.
 * **Dates** (`daycount.py`, `calendars.py`, built on `qp_core.daycount`
-  and `qp_core.calendars`): ACT/365F, ACT/360, 30/360US,
+  and `qp_core.holidays`): ACT/365F, ACT/360, 30/360US,
   ACT/ACT-ISDA, ACT/ACT-ICMA; schedules with the end-of-month rule;
-  partial business-day calendars (weekends plus fixed-date holidays for
-  USD, EUR, GBP, JPY) with following, modified following and preceding.
+  rule-based business-day calendars (Good Friday, Thanksgiving, UK bank
+  holidays and weekend substitutes included, checked against QuantLib
+  2000-2030) with following, modified following and preceding.
 * **Bonds** (`bond.py`): fixed coupon (clean, dirty, accrued, street YTM),
   government bonds on ACT/ACT-ICMA with exact c/f coupons, zero coupon,
   FRN (par at reset; mid-period with the current fixing), annuities,

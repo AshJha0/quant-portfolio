@@ -78,7 +78,8 @@ December.
   jump thresholds.
 - Model card: assumptions A1-A9 in METHODOLOGY.md. The main reservations
   are A2 (no OIS tenor basis or CSA optionality), A5 (MtM-resetting
-  swaps only in `xccy_float`) and A6 (partial calendars).
+  swaps only in `xccy_float`) and A6 (no onshore calendars for NDF
+  currencies).
 - Arbitrage monitor: `detect_cip_arbitrage` with `min_pnl` set to the
   balance-sheet charge, alerts to treasury. A non-finite quote raises a
   named error, so a broken feed reaches the alert queue instead of

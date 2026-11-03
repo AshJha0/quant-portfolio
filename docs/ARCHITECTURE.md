@@ -48,9 +48,9 @@ counted in them:
 
 | Path | Name | What it holds |
 |---|---|---|
-| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 16 Python projects; the shared normal CDF (`normal`), the Black-Scholes kernel in cost-of-carry form (`black_scholes`, scalar and NumPy) and the implied-vol solver (`iv_core`) behind both option packages |
-| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; the carry-form Black-Scholes kernel `qp/black_scholes.hpp` and its vectorised twin `qp/black_scholes_vm.hpp`; the latency harness `qp/bench/latency.hpp`; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
-| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; the carry-form kernel `black_scholes` and the latency harness `bench`; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
+| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, rule-based calendars and FX spot dates (`holidays`), structured errors (`errors`) and logging (`logconfig`), day counts, validation and metrics used by 16 Python projects; the shared normal CDF (`normal`), the Black-Scholes kernel in cost-of-carry form (`black_scholes`, scalar and NumPy) and the implied-vol solver (`iv_core`) behind both option packages |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; the carry-form Black-Scholes kernel `qp/black_scholes.hpp` and its vectorised twin `qp/black_scholes_vm.hpp`; the latency harness `qp/bench/latency.hpp`; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench; since milestone v2.1 `qp/holidays.hpp` (calendars, FX spot dates, spot-date forwards, NDF value) |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; the carry-form kernel `black_scholes` and the latency harness `bench`; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool`; since milestone v2.1 `holidays` (the same rules as `qp/holidays.hpp`) |
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
@@ -202,7 +202,7 @@ functions about 19x faster than a scalar loop; the COOKBOOK has the table.
 
 C++:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 (per call, old harness) |
 |---|---|---|---|
 | [equity-options](../cpp/equity-options-engine/README.md#latency) | `bs_price` | 135 ns | 385 ns |
 | [equity-options](../cpp/equity-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 23.95 ms | 29.75 ms |
@@ -215,7 +215,7 @@ C++:
 
 Rust:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 of B-call batch means |
 |---|---|---|---|
 | [equity-options](../rust/equity-options-engine/README.md#latency) | `bs_price` | 44 ns | 116 ns |
 | [equity-options](../rust/equity-options-engine/README.md#latency) | `mc_price`, 1M paths, antithetic + CV | 16.16 ms | 24.82 ms |
