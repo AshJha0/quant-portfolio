@@ -60,7 +60,8 @@ volatility. Implied volatility runs the formula backwards: the one sigma that
 reproduces a quoted price.
 
 **Formal statement** (Hull, *Options, Futures and Other Derivatives*, 11th
-ed., the Black-Scholes-Merton chapter):
+ed., the Black-Scholes-Merton chapter; the dividend yield $q$ is added as in
+Hull's chapter on index and currency options):
 $C = S e^{-qT} N(d_1) - K e^{-rT} N(d_2)$, with
 $d_{1,2} = [\\ln(S/K) + (r - q \\pm \\sigma^2/2)T] / (\\sigma\\sqrt{T})$.
 Vega is $\\partial C/\\partial\\sigma = S e^{-qT} \\varphi(d_1)\\sqrt{T}$, per
@@ -168,7 +169,8 @@ Expected shortfall (ES) is the average loss on those bad days, so it sees
 how deep the tail goes.
 
 **Formal statement** (McNeil, Frey and Embrechts, *Quantitative Risk
-Management*, 2nd ed., sec. 2.3): for P&L $X$ and tail probability $\\alpha$,
+Management*, 2nd ed., ch. 2, risk measures; they state it for losses, here
+it is written for P&L): for P&L $X$ and tail probability $\\alpha$,
 $\\mathrm{VaR}_\\alpha = -q_\\alpha(X)$ and
 $\\mathrm{ES}_\\alpha = -\\frac{1}{\\alpha}\\int_0^\\alpha q_u(X)\\,du$.
 For normal P&L with zero mean, $\\mathrm{VaR} = -z_\\alpha\\sigma$ and
