@@ -2,10 +2,10 @@
 // Student-t tail fattening, bitwise seed determinism, moment matching.
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <utility>
-#include <cmath>
 #include <vector>
 
 #include "eqvar/expected_shortfall.hpp"

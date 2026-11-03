@@ -6,7 +6,6 @@
 
 #include <bit>
 #include <cmath>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>

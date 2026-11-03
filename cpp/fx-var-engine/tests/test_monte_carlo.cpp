@@ -3,10 +3,10 @@
 
 #include <gtest/gtest.h>
 
-#include <limits>
-#include <utility>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <utility>
 
 #include "fxvar/historical.hpp"
 #include "fxvar/monte_carlo.hpp"

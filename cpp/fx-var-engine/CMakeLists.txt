@@ -106,6 +106,7 @@ if(BUILD_TESTING)
     test_parametric
     test_monte_carlo
     test_backtest
+    test_oracle
     test_stress
     test_golden_python
     test_conventions
