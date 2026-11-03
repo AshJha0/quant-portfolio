@@ -65,12 +65,12 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
      alt="CI status"></a></p>
   <table>
     <tr><th>Item</th><th>Value</th></tr>
-    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two drafts scored on forward data from 2026-11-03) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
+    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
     <tr><td>Sub-projects</td><td>31: 10 areas in equity and FX (20), 3 foundations projects, 4 engines in C++ and in Rust (8)</td></tr>
     <tr><td>Tests</td><td>Executed pass counts are written by the CI <code>counts</code> job to <code>counts.json</code> and the run summary. This page does not repeat them.</td></tr>
     <tr><td>Cross-language tests</td><td>Golden vectors (options from an mpmath oracle with a tolerance per output; VaR from the Python reference), checked by the <code>goldens --check</code> job, plus differential tests against the compiled engines.</td></tr>
-    <tr><td>Study guide</td><td>511 self-test questions in 18 sets</td></tr>
-    <tr><td>Cookbook</td><td>74 recipes, written against current main; outputs are indicative</td></tr>
+    <tr><td>Study guide</td><td>532 self-test questions in 19 sets</td></tr>
+    <tr><td>Cookbook</td><td>83 recipes, written against current main; outputs are indicative</td></tr>
   </table>
 
   <h2>The 10 project areas</h2>
@@ -121,9 +121,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
          dependencies beyond the standard library; C++ tests use GoogleTest.
          The VaR ports revalue linear positions and reprice European option legs in full. The Python packages call
          them through <code>engine="cpp"</code> or <code>engine="rust"</code>.
-         The shared core also has Philox, O(n) quantiles and blocked GEMM to the shared
-         core; the batch erfc and exp kernels were slower than libm on an SSE2
-         build (0.66x and 0.38x) and are not used by the engines. They are ports of the Python
+         The shared core holds one Black-Scholes kernel in cost-of-carry form
+         per language (Python, C++, Rust), which the equity and FX option code
+         wraps with no output bit changed; vectorised C++ batches and NumPy
+         array functions sit on it. It also has Philox, O(n) quantiles and
+         blocked GEMM. The engines are ports of the Python
          design, not independent derivations. Shared code lives in
          <code>cpp/core</code> and <code>rust/core</code>, and the
          <code>qp-cpp</code> and <code>qp-rust</code> packages in
@@ -132,6 +134,25 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <p>Each project states why it uses its model, what it assumes, how it was
          validated, where it fails and how it is meant to be used. Changes are
          listed in the <a href="https://github.com/AshJha0/quant-portfolio/blob/main/CHANGELOG.md">changelog</a>.</p></div>
+  </div>
+
+  <h2>Builds and checks</h2>
+  <div class="grid">
+    <div class="card"><span class="tag">Install</span><h3>Hash-checked</h3>
+      <p>Every Python install in CI comes from <code>uv.lock</code> with sha256
+         hashes checked; a file that does not match stops the job. The C++
+         engines install as the CMake package <code>QuantPortfolio</code>, and
+         CI builds wheels of both bindings as artefacts.</p></div>
+    <div class="card"><span class="tag">Latency</span><h3>Same-runner A/B</h3>
+      <p>C++ and Rust share one timing method: median with p10/p90 over at
+         least 31 samples. CI runs the old and new commit in turns on one
+         runner and fails only on a slowdown above 25% whose bands do not
+         overlap.</p></div>
+    <div class="card"><span class="tag">Research</span><h3>One look, logged trials</h3>
+      <p>Every training run is logged to <code>trials.jsonl</code>. The two
+         signed forward studies are scored once, on or after 2028-11-13; the
+         momentum test has about 13% power at a Sharpe of 0.4, so a fail is
+         the expected outcome.</p></div>
   </div>
 
   <h2>Quick start</h2>

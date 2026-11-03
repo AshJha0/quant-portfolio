@@ -45,6 +45,16 @@ dataset (the research entries use ECB reference rates).
   Hull-White zero-bond options and Jamshidian swaptions against QuantLib's
   `HullWhite` model (1e-15 abs and 1e-7 rel), and Heston COS and
   Gil-Pelaez prices against `AnalyticHestonEngine` (1e-9 and 1e-12 rel).
+- Documentation: nine new COOKBOOK recipes (NumPy array pricing and Greeks,
+  the shared carry-form kernel for equity, FX and futures, consuming the
+  C++ engines with `find_package(QuantPortfolio)`, installing CI wheels,
+  the hash-checked install, the bench gate, the QuantLib checks, the trials
+  log, interim forward figures); LEARN Set 19 (21 questions on the carry
+  form, VaR quantile conventions, optional stopping, power, false discovery
+  rate, hashed installs and latency measurement); DIAGRAMS gains the CI
+  pipeline as it now runs, the shared-kernel layout and the research
+  lifecycle. README, START_HERE, ARCHITECTURE and the site updated to match.
+
 #### Packaging
 
 - `cpp/CMakeLists.txt` installs the four C++ engines and `qp::core` as one
@@ -83,7 +93,6 @@ dataset (the research entries use ECB reference rates).
   (p = 0.010), but only 4 of 19 years beat the null at 5 % and
   Benjamini-Hochberg keeps 14 pairs. Cost (1/3/5 bp) and event-day stresses
   for pairs v2 and momentum: both stay negative at every cost in training.
-
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read
   (DR-R4-5 in `research/README.md`): on simulated pairs that are
   cointegrated by construction its Kalman one-step z almost never passed 2,
@@ -209,8 +218,7 @@ dataset (the research entries use ECB reference rates).
   sign a registration that names no recorded simulated power result
   (`research/power/*.json` with per-cell `reps` and `rejection_rate`).
 
-#### Fixes: options
-#### Round 4: varalo lane
+#### Option VaR and American pricing
 
 - Option VaR vol scenario modes. `eq_var.revaluation` and
   `fx_var.revaluation` `full_revaluation_pnl(..., vol_mode=...)` take
@@ -254,7 +262,7 @@ dataset (the research entries use ECB reference rates).
 - Fixed: mypy errors in `eq_var.stress_testing` and `fx_var.monte_carlo_var`
   (numpy scalar types; no behaviour change).
 
-#### Round 3 fixes: options lane
+#### Fixes: options
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
   (any `q`) and `r = 0 > q`; European where the carry `r K - q S` never
