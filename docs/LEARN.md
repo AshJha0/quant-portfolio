@@ -27,7 +27,7 @@ It is organized in four parts:
 - **Part III: Your learning path.** A suggested order to work through the
   portfolio, by background (quant-first, engineer-first, or starting from
   zero), with what to read and run at each step.
-- **Part IV: The exercise room.** 558 self-test questions and answers,
+- **Part IV: The exercise room.** 559 self-test questions and answers,
   organized into 19 sets by topic, grounded in this portfolio's actual code
   and actual documented assumptions, not generic textbook trivia. Use it to
   check your own understanding after working through a project, or to find
@@ -324,7 +324,7 @@ starting from. All three converge on the same question sets in Part IV.
 
 ## Part IV: The exercise room
 
-**558 questions across 19 sets**, organized to follow Part I's area-by-area
+**559 questions across 19 sets**, organized to follow Part I's area-by-area
 structure, then widen into the cross-cutting engineering and business
 material. Each answer is grounded in this portfolio's actual code,
 methodology docs, and test suite, where a number, function name, or file
@@ -348,7 +348,7 @@ answer always names the file, test or module its figures come from, and
 | 2 | Options Pricing & Greeks | 34 |
 | 3 | Implied Volatility & Numerical Solvers | 26 |
 | 4 | Volatility Modeling & Forecasting | 26 |
-| 5 | Volatility Surface & Stochastic Vol | 31 |
+| 5 | Volatility Surface & Stochastic Vol | 32 |
 | 6 | Market Risk: VaR Methods | 34 |
 | 7 | Expected Shortfall, Backtesting & Basel | 33 |
 | 8 | Fixed Income Pricing & Risk | 32 |
@@ -363,7 +363,7 @@ answer always names the file, test or module its figures come from, and
 | 17 | Business, Desk Usage & Model Risk Governance | 28 |
 | 18 | Real-World Postmortems & Judgment | 30 |
 | 19 | Shared Kernels, Honest Statistics & Safe Builds | 21 |
-| **Total** | | **558** |
+| **Total** | | **559** |
 
 
 ## Set 1: Quant & Math Foundations
@@ -3143,6 +3143,26 @@ conserves probability and keeps the forward a martingale exactly, so the
 density cannot go negative and call prices are convex in strike by
 construction. Source: the docstring of
 `python/core/src/qp_core/vol/sabr_pde.py`.
+
+</details>
+
+**Q32. Power-law SSVI underfits five-point FX smiles (finding F10). What do eSSVI by slice and raw SVI by slice achieve instead?**
+
+<sub>Tags: `L3`, `vol-surface`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+eSSVI gives each expiry its own `(theta, rho, psi)` and fits slice by slice
+inside a region that rules out butterfly arbitrage and wing crossings against
+the previous slice. On the stylised F10 presets it fits EURUSD within 0.03
+vol but still misses USDJPY's one-year slice by 0.115 vol, and an
+unconstrained eSSVI does no better, so three numbers per slice are the
+limit. Raw SVI per slice (`fit_svi_slices`, five numbers) with the same
+arbitrage checks fits USDJPY within 0.047 vol and EURUSD within 0.000. The
+presets are stylised, not market quotes: the ECB publishes no FX vols.
+
+Source: `python/fx/09-vol-surface/docs/VALIDATION.md` (F10 update) and
+`python/core/tests/test_vol_essvi.py`.
 
 </details>
 
@@ -7977,7 +7997,11 @@ Because neither leg can depend on the close of the day the signal was formed
 before that close is known, there is no path by which the strategy's P&L can
 use information it would not have had. The lag is not a validation check
 bolted on afterward: it is in the lines that define what "trading the
-strategy" means.
+strategy" means. Since v3.0.0 the P&L itself comes from the shared core
+`qp_bt` (`run_fast` with `NextBarFill`), and the cost is paid out of the
+trade on the notional at the fill: an entry day nets `(1 + b) / (1 + c) - 1`
+rather than `b - c`. Positions, trades and cost-free returns are unchanged to
+1e-12 (`engine.py` docstring; `python/backtest/README.md`).
 
 </details>
 

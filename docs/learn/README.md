@@ -3,7 +3,7 @@
 This folder is the front door to the teaching material. It sorts what you need
 to know into five levels, L0 to L4, and gives each level the same four parts:
 a plain idea, a formal statement, a worked example and a set of checks. The
-558 questions and answers stay in one appendix,
+559 questions and answers stay in one appendix,
 [LEARN.md](../LEARN.md), so that links into it keep working; every question
 there now carries a level tag, and each level folder lists its own questions.
 
@@ -39,7 +39,7 @@ L1 or L2 and drop back a level when a question stops making sense.
 
 - The level pages and chapters teach. They are short on purpose.
 - [LEARN.md](../LEARN.md) is the appendix: Parts I to III (orientation and
-  learning paths) and the 558-question exercise room.
+  learning paths) and the 559-question exercise room.
 - The [notebooks](../notebooks/README.md) are where you type the code
   yourself.
 - [CAREER_PREP.md](../CAREER_PREP.md) covers probability puzzles, mental
