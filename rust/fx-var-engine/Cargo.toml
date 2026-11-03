@@ -17,7 +17,8 @@ path = "src/bin/bench.rs"
 [dependencies]
 qp-core = { path = "../core" }
 # std plus the workspace's own qp-core (RNG, Cholesky kernel, thread
-# helper); no third-party crates. Special functions are in-crate.
+# helper, and since W20 the special functions in qp_core::stats); no
+# third-party crates.
 
 [dev-dependencies]
 proptest = "1"

@@ -98,32 +98,35 @@ fn monte_carlo_same_bits_for_any_thread_count() {
 #[test]
 fn monte_carlo_matches_pre_rewrite_bits() {
     // (var, es, se_var, se_var_kde).to_bits() from the serial code.
+    // Re-pinned in Round 8 (W20): the normals now come from the shared
+    // qp_core::stats inverse CDF, whose Halley step uses a lower-tail-exact
+    // normal CDF; every value moved by less than 1e-12 relative.
     let pinned: [(McDist, [u64; 4]); 3] = [
         (
             McDist::Normal,
             [
                 4685455079207104509,
-                4686410565451505560,
-                4657095559504160043,
-                4655565937955669656,
+                4686410565451505562,
+                4657095559504159879,
+                4655565937955669651,
             ],
         ),
         (
             McDist::StudentT,
             [
-                4686150028457073056,
-                4688374324442965622,
-                4659162002223065256,
-                4658866423433919198,
+                4686150028457073071,
+                4688374324442965625,
+                4659162002223065312,
+                4658866423433919213,
             ],
         ),
         (
             McDist::Jump,
             [
                 4685990298010813155,
-                4687073495714471209,
-                4657605887974892865,
-                4656117938015996231,
+                4687073495714471207,
+                4657605887974892853,
+                4656117938015996188,
             ],
         ),
     ];
