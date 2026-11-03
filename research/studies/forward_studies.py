@@ -182,7 +182,7 @@ def pairs_level_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
             "design": "static OLS hedge on the formation window, level z = residual / formation sd",
             "trial_count": PAIRS_V2_TRIALS, "folds": folds,
             "years_with_trades": int(sum(f["entries"] > 0 or f["days_in_market"] > 0 for f in folds)),
-            **_sharpe_block(r), "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=PAIRS_V2_TRIALS)}
+            **_sharpe_block(r), "deflated_sharpe": ho.deflated_sharpe_of(r)}
 
 
 def select_pairs(logp: pd.DataFrame, form: np.ndarray, p: dict = PAIRS_V2) -> list[tuple[str, str]]:
@@ -243,7 +243,7 @@ def variance_menu_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
             "variants": variants, "test_years": n_years,
             "min_active_year_frac": MIN_ACTIVE_YEAR_FRAC, "chosen_rule": chosen,
             "chosen_rule_without_activity_floor": chosen_unconstrained,
-            "deflated_sharpe_chosen": ho.deflated_sharpe_of(r_best, n_trials=PAIRS_V2_TRIALS)}
+            "deflated_sharpe_chosen": ho.deflated_sharpe_of(r_best)}
 
 
 def pairs_v2_study(px: pd.DataFrame, p: dict = PAIRS_V2) -> dict:
@@ -303,7 +303,7 @@ def momentum_study(px: pd.DataFrame, p: dict = MOMENTUM) -> dict:
     arr = r.to_numpy()
     return {"primary_metric": "annualised net Sharpe of the daily return (training)",
             "trial_count": p["trial_count"], **_sharpe_block(arr),
-            "deflated_sharpe": ho.deflated_sharpe_of(arr, n_trials=p["trial_count"]),
+            "deflated_sharpe": ho.deflated_sharpe_of(arr),
             "per_year_net_return": {int(y): float(v) for y, v in yearly.items()}}
 
 

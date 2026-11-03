@@ -25,18 +25,18 @@ Two estimators are provided and cross-validated in tests:
   differs only in the variance normalisation (1/n vs 1/(n-2)), so the two
   must agree closely: a useful implementation check.
 
-Adaptive hedge ratio ("Kalman-lite")
-------------------------------------
+Adaptive hedge ratio: recursive least squares
+--------------------------------------------
 :func:`rls_hedge_ratio` implements exponentially-weighted recursive least
 squares: at each step the coefficient estimate minimises
-sum_j lambda^{t-j} (y_j - a - b x_j)^2. This is algebraically the Kalman
-filter for a random-walk-coefficient state-space model in the special case
-where the implied state noise is tied to the forgetting factor, rather than
-estimated. A full Kalman filter adds: an explicit observation/state noise
-ratio (two extra hyperparameters to calibrate), proper state covariance
-dynamics, and smoothing. RLS keeps one interpretable knob (lambda, an
-effective memory of ~1/(1-lambda) observations) and is O(1) per step, which
-is why desks often prefer it for production hedge-ratio tracking; see
+sum_j lambda^{t-j} (y_j - a - b x_j)^2. It equals a Kalman filter for a
+random-walk coefficient only in the special case where the state noise is
+tied to the forgetting factor rather than estimated, so it is labelled RLS,
+not Kalman. The true state-space filter, with the observation and state
+noise variances estimated by maximum likelihood, is
+:func:`eq_pairs.kalman.kalman_hedge_ratio`. RLS keeps one interpretable knob
+(lambda, an effective memory of about 1/(1-lambda) observations) and is O(1)
+per step with nothing to fit; see
 docs/METHODOLOGY.md for the trade-off discussion.
 """
 
@@ -263,7 +263,7 @@ def rls_hedge_ratio(
     delta: float = 1e4,
     intercept: bool = True,
 ) -> pd.DataFrame:
-    """Recursive least squares hedge ratio with forgetting factor (Kalman-lite).
+    """Recursive least squares hedge ratio with a forgetting factor.
 
     At each t the estimate minimises sum_{j<=t} lam^{t-j} (y_j - a - b x_j)^2,
     updated in O(1) per observation:

@@ -15,9 +15,11 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(REPO / "research" / "tools"), str(REPO / "research" / "studies"), str(REPO / "data" / "fetch")]
+sys.path.insert(0, str(REPO / "research" / "lib"))
 
 import fx_studies  # noqa: E402
 import holdout as ho  # noqa: E402
+import multiplicity  # noqa: E402
 import prereg  # noqa: E402
 import qp_fetch  # noqa: E402
 from models import HoldoutViolation  # noqa: E402
@@ -53,7 +55,7 @@ def test_deflated_sharpe_matches_the_papers_worked_example():
 
 def test_deflated_sharpe_of_returns_matches_qp_core():
     r = np.random.default_rng(5).standard_normal(1000) * 0.01 + 0.0008
-    ours = ho.deflated_sharpe_of(r, n_trials=3)
+    ours = ho.deflated_sharpe_of(r, n_trials=3, trial_sr_variance=1.0 / (r.size - 1))
     assert ours["dsr"] == pytest.approx(deflated_sharpe_ratio(r, 3), rel=1e-12)
     assert ours["n_trials"] == 3
 
@@ -262,7 +264,8 @@ def test_prereg_check_refuses_dry_runs_and_dirty_trees_and_accepts_clean(dry_run
 def test_pairs_code_still_labels_the_bootstrap_bound_as_secondary(synth_px):
     res = fx_studies.pairs_study(synth_px, years=ho.HOLDOUT_YEARS)
     assert [f["year"] for f in res["folds"]] == list(ho.HOLDOUT_YEARS)
-    assert res["deflated_sharpe"]["n_trials"] == 3
+    # W6: the programme-wide count from trials.jsonl, not the hard-coded 3
+    assert res["deflated_sharpe"]["n_trials"] == multiplicity.programme_tally().n_trials > 3
     sec = fx_studies.pairs_decision(res)["secondary_bootstrap"]
     assert "not the decision" in sec["label"] and "lower_end" in sec
 

@@ -169,3 +169,73 @@ def test_sharpe_and_se_are_scale_invariant(scale, seed):
     r = 0.02 + np.random.default_rng(seed).standard_normal(200)
     assert sharpe_ratio(scale * r) == pytest.approx(sharpe_ratio(r), rel=1e-9)
     assert lo_sharpe_se(scale * r) == pytest.approx(lo_sharpe_se(r), rel=1e-9)
+
+
+# ---- Round 7 (W6): one DSR, Lo SE for low in-market series, financing ------
+
+def test_dsr_worked_example_from_docstring():
+    from qp_core.stats import deflated_sharpe_detail
+    rng = np.random.default_rng(1)
+    r = rng.standard_normal(1000)
+    r = (r - r.mean()) / r.std(ddof=1) + 0.05  # s = 0.05 exactly
+    d = deflated_sharpe_detail(r, 1, se_method="psr")
+    g3, g4 = d["skew"], d["kurtosis"]
+    z = 0.05 * math.sqrt(999) / math.sqrt(1 - g3 * 0.05 + (g4 - 1) / 4 * 0.0025)
+    assert d["z"] == pytest.approx(z, rel=1e-12)
+    assert d["sr0_per_period"] == 0.0
+
+
+def test_dsr_low_in_market_uses_lo_se():
+    """A strategy in the market on 10% of days: the PSR kurtosis term is an
+    artefact of the zeros, so 'auto' must switch to the Lo (2002) SE."""
+    from qp_core.stats import deflated_sharpe_detail
+    rng = np.random.default_rng(7)
+    r = np.zeros(2000)
+    on = rng.random(2000) < 0.1
+    r[on] = rng.standard_normal(on.sum()) * 0.01 + 0.002
+    d = deflated_sharpe_detail(r, 1)
+    assert d["in_market_fraction"] < 0.5
+    assert d["se_method"] == "lo"
+    se_lo = lo_sharpe_se(r, periods_per_year=1.0)
+    assert d["z"] == pytest.approx(d["sr_per_period"] / se_lo, rel=1e-12)
+    psr = deflated_sharpe_detail(r, 1, se_method="psr")
+    assert psr["kurtosis"] > 20  # the zeros inflate kurtosis
+    assert d["dsr"] != pytest.approx(psr["dsr"], abs=1e-6)
+
+
+def test_dsr_trial_variance_order_and_float_wrapper():
+    from qp_core.stats import deflated_sharpe_detail
+    rng = np.random.default_rng(3)
+    r = rng.standard_normal(500) + 0.1
+    a = deflated_sharpe_detail(r, 10, trial_sharpes=[0.0, 0.1, -0.1], trial_sr_variance=0.04)
+    assert a["trial_sr_variance"] == 0.04
+    b = deflated_sharpe_detail(r, 10, trial_sharpes=[0.0, 0.1, -0.1])
+    assert b["trial_sr_variance"] == pytest.approx(0.01)
+    assert deflated_sharpe_ratio(r, 10, [0.0, 0.1, -0.1]) == b["dsr"]
+    with pytest.raises(ValueError):
+        deflated_sharpe_detail(r, 10, se_method="bogus")
+
+
+def test_financing_weekend_worked_example():
+    import pandas as pd
+    from qp_core.stats import Financing
+    idx = pd.DatetimeIndex(["2026-10-30", "2026-11-02"])  # Friday, Monday
+    f = Financing(rate=0.04, borrow_spread_bp=50.0, basis=360.0)
+    rf, tau = f.accruals(idx)
+    assert tau[1] == pytest.approx(3 / 360)
+    assert rf[1] == pytest.approx(0.04 * 3 / 360)
+    assert f.cash_return(-0.5, rf[1], tau[1]) == pytest.approx(-1.875e-4, rel=1e-12)
+    assert f.cash_return(0.5, rf[1], tau[1]) == pytest.approx(0.5 * 0.04 * 3 / 360)
+
+
+def test_financing_uses_previous_rate_and_rejects_gaps():
+    import pandas as pd
+    from qp_core.stats import Financing
+    idx = pd.bdate_range("2026-01-05", periods=3)
+    rate = pd.Series([0.01, 0.05, 0.09], index=idx)
+    rf, _ = Financing(rate=rate, basis=365.0).accruals(idx)
+    assert rf[1] == pytest.approx(0.01 / 365) and rf[2] == pytest.approx(0.05 / 365)
+    with pytest.raises(ValueError):
+        Financing(rate=pd.Series([np.nan, 0.01, 0.02], index=idx)).accruals(idx)
+    with pytest.raises(ValueError):
+        Financing(rate=0.01, borrow_spread_bp=-1.0)

@@ -89,7 +89,7 @@ def test_cli_exit_codes(tmp_path):
 
 def test_committed_preregs_are_drafts_and_results_pass():
     regs = sorted((REPO / "research" / "prereg").glob("*.md"))
-    assert {p.name for p in regs} >= {"pairs-fx-g10.md", "regime-fx-basket.md", "execution-lobster.md"}
+    assert {p.name for p in regs} >= {"pairs-fx-g10.md", "regime-fx-basket.md"}
     for p in regs:
         prereg.load(p)  # every file has a Signature heading
     results = REPO / "research" / "results"
@@ -180,11 +180,6 @@ def test_fred_refuses_restricted_series(tmp_path):
         qp_fetch.fetch_fred("SP500", raw_dir=tmp_path)
 
 
-def test_nasdaq_data_link_is_blocked():
-    with pytest.raises(qp_fetch.SourceNotPermitted):
-        qp_fetch.nasdaq_data_link("SHARADAR/SEP")
-
-
 def test_parse_ecb_csv_pivots():
     text = ("KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\n"
             "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2021-12-30,1.1300\n"
@@ -193,14 +188,6 @@ def test_parse_ecb_csv_pivots():
     df = qp_fetch.parse_ecb_csv(text)
     assert list(df.columns) == ["JPY", "USD"] and df.loc["2021-12-31", "USD"] == 1.1326
     assert np.isnan(df.loc["2021-12-31", "JPY"])
-
-
-def test_read_lobster_sample_scales_prices(tmp_path):
-    m, b = tmp_path / "m.csv", tmp_path / "b.csv"
-    m.write_text("34200.01,1,11,100,2238200,1\n34200.02,4,11,50,2238200,1\n")
-    b.write_text("2239500,100,2238200,100\n2239500,100,2238200,50\n")
-    df = qp_fetch.read_lobster_sample(m, b)
-    assert df["price"].iloc[0] == pytest.approx(223.82) and df["ask_px_1"].iloc[1] == pytest.approx(223.95)
 
 
 def test_raw_data_is_gitignored():

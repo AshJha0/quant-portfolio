@@ -11,8 +11,9 @@ trustworthy afterwards and to make a second, accidental run impossible:
   UTC timestamp and the package versions, written into every result.
 - ``write_once``: opens the result file in exclusive-create mode, so an
   existing hold-out result is never overwritten.
-- ``deflated_sharpe``: the Bailey and Lopez de Prado (2014) deflated Sharpe
-  ratio from summary moments, checked against the paper's worked example.
+- ``deflated_sharpe`` and ``deflated_sharpe_of``: thin wrappers of the one
+  deflated Sharpe in ``qp_core.stats``, with the programme-wide trial count
+  and trial-Sharpe variance read from ``trials.jsonl`` (W6).
 - ``synthetic_ecb_csv``: a seeded fake ECB file dated 2012-2025, used by
   ``--dry-run`` so the whole hold-out path runs without real hold-out data.
 """
@@ -21,9 +22,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import platform
 import subprocess
+import sys as _sys
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
@@ -32,8 +33,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import prereg
-from qp_core.stats import expected_max_sharpe
-from scipy import stats as st
+from qp_core import stats as qstats
+
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import multiplicity
 
 HOLDOUT_START = pd.Timestamp("2022-01-01")
 HOLDOUT_END = pd.Timestamp("2025-12-31")
@@ -113,39 +116,33 @@ def write_once(path: Path, doc: dict[str, Any]) -> Path:
 
 def deflated_sharpe(sr: float, n_obs: int, skew: float, kurtosis: float, n_trials: int,
                     trial_sr_variance: float | None = None) -> dict[str, float]:
-    """Deflated Sharpe ratio (Bailey and Lopez de Prado 2014, eq. 2 with the
-    expected maximum of eq. 3), from per-period moments.
+    """Deflated Sharpe from per-period moments: a thin wrapper of
+    ``qp_core.stats.deflated_sharpe_from_moments`` (one DSR code, W6)."""
+    return qstats.deflated_sharpe_from_moments(sr, n_obs, skew, kurtosis, n_trials,
+                                               trial_sr_variance)
 
-    ``sr`` is the per-period (not annualised) Sharpe ratio over ``n_obs``
-    returns, ``kurtosis`` is the raw (non-excess) kurtosis. The benchmark
-    ``sr0`` is the expected maximum Sharpe of ``n_trials`` skill-less trials
-    whose Sharpe estimates have variance ``trial_sr_variance``; when that is
-    not given it is the sampling variance of a zero-Sharpe estimate,
-    ``1 / (n_obs - 1)``. Returns ``sr0`` and the deflated Sharpe, the
-    probability that the true Sharpe exceeds ``sr0``.
+
+def deflated_sharpe_of(returns: np.ndarray, n_trials: int | None = None,
+                       trial_sr_variance: float | None = None,
+                       log: Path | None = None) -> dict[str, Any]:
+    """Deflated Sharpe of a daily return series: wraps
+    ``qp_core.stats.deflated_sharpe_detail``.
+
+    ``n_trials`` and ``trial_sr_variance`` default to the programme-wide values
+    read from ``trials.jsonl`` (``research/lib/multiplicity.py``), withdrawn
+    variants included. Below 50% in-market days the Lo (2002) SE is used.
     """
-    if n_obs < 4:
-        raise ValueError(f"need at least 4 observations, got {n_obs}")
-    v = 1.0 / (n_obs - 1) if trial_sr_variance is None else float(trial_sr_variance)
-    sr0 = expected_max_sharpe(int(n_trials), v)
-    denom = 1.0 - skew * sr + (kurtosis - 1.0) / 4.0 * sr * sr
-    if not denom > 0:
-        raise ValueError("non-positive denominator; the moments are inconsistent")
-    z = (sr - sr0) * math.sqrt(n_obs - 1) / math.sqrt(denom)
-    return {"sr0_per_period": float(sr0), "dsr": float(st.norm.cdf(z)), "z": float(z)}
-
-
-def deflated_sharpe_of(returns: np.ndarray, n_trials: int) -> dict[str, Any]:
-    """Deflated Sharpe of a daily return series, with the moments it used."""
     r = np.asarray(returns, dtype=float)
     sd = float(r.std(ddof=1)) if r.size > 1 else 0.0
     if r.size < 4 or not sd > 0:
         return {"n_trials": n_trials, "dsr": None, "note": "flat or too-short series"}
-    sr = float(r.mean() / sd)
-    g3, g4 = float(st.skew(r)), float(st.kurtosis(r, fisher=False))
-    out = deflated_sharpe(sr, r.size, g3, g4, n_trials)
-    return {"n_trials": n_trials, "trial_sr_variance": "1/(n-1), null sampling variance",
-            "sr_per_period": sr, "skew": g3, "kurtosis": g4, "n_obs": int(r.size), **out}
+    if n_trials is None or trial_sr_variance is None:
+        tally = multiplicity.programme_tally(log)
+        n_trials = tally.n_trials if n_trials is None else n_trials
+        if trial_sr_variance is None and tally.trial_sr_variance is not None:
+            trial_sr_variance = tally.trial_sr_variance
+    d = qstats.deflated_sharpe_detail(r, int(n_trials), trial_sr_variance=trial_sr_variance)
+    return d
 
 
 # ---- synthetic data for --dry-run ----------------------------------------

@@ -201,7 +201,7 @@ def pairs_study(px: pd.DataFrame, p: dict = PAIRS, years: tuple[int, ...] | None
     r = np.concatenate(daily)
     return {"folds": folds, "candidate_pairs": math.comb(len(names), 2), "trial_count": 3,
             "primary_metric": "annualised net Sharpe, walk-forward test years", **_sharpe_block(r),
-            "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=3)}
+            "deflated_sharpe": ho.deflated_sharpe_of(r)}
 
 
 def usd_basket_returns(px: pd.DataFrame) -> pd.Series:

@@ -237,7 +237,9 @@ def evaluate(log_path: Path, history_path: Path, history_sha256: str, log_commit
                "period": {"start": FORWARD_START.isoformat(), "end": last.isoformat()},
                "forward_log_commit": log_commit, "history_sha256": history_sha256.lower(),
                "final": not why, "not_final_because": why, **stats,
-               "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=trials) if stats["sharpe"] is not None else None}
+               "deflated_sharpe": ho.deflated_sharpe_of(r, n_trials=trials) if stats["sharpe"] is not None else None,
+               "deflated_sharpe_programme": ho.deflated_sharpe_of(r) if stats["sharpe"] is not None else None,
+               "role": "monitoring (W6: single-series forward tests confirm nothing)"}
         if key == "pairs":
             rep["folds"] = folds
         if why:  # interim: no verdict is reported, only descriptive numbers
