@@ -1,6 +1,6 @@
 """W24b characterisation corpus: the current backtester output, captured
 before the move onto the qp_bt core. After migration every value must match
-to 1e-12, or the difference is listed in MIGRATION.md and checked against a
+to 1e-12 of each series' scale, or the difference is listed in MIGRATION.md and checked against a
 hand fixture (NEXT_RELEASE_PLAN W24 acceptance). Regenerate only on purpose:
 QP_REGEN_GOLDEN=1.
 """
@@ -42,7 +42,10 @@ def _check(cases):
     want = json.loads(GOLDEN.read_text())
     assert sorted(got) == sorted(want)
     for k in want:
-        np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12, err_msg=k)
+        # 1e-12 of the series' scale: the pip columns are quote P&L / pip_size,
+        # so floating-point reordering in the qp_bt engine shows at ~1e-12 pips
+        scale = max(1.0, float(np.nanmax(np.abs(want[k]))) if want[k] else 1.0)
+        np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12 * scale, err_msg=k)
 
 
 SPREADS = {"asia": 0.6, "london": 0.4, "overlap": 0.2, "ny": 0.4, "late": 1.0}

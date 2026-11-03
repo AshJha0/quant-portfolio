@@ -1,8 +1,12 @@
-"""W24b characterisation corpus: the current backtester output, captured
-before the move onto the qp_bt core. After migration every value must match
-to 1e-12, or the difference is listed in MIGRATION.md and checked against a
-hand fixture (NEXT_RELEASE_PLAN W24 acceptance). Regenerate only on purpose:
-QP_REGEN_GOLDEN=1.
+"""W24b characterisation corpus for the move onto the qp_bt core.
+
+``golden/characterisation_w24b_before.json`` is the output captured before
+the migration (Round 12, lane r12-l4-btfills). ``characterisation_w24b.json``
+pins the migrated output to 1e-12. The two differ by the wrong-answer fixes
+listed in the module docstring of ``backtest.py``; ``BEFORE_AFTER`` pins the
+summed series before and after so the documented numbers cannot drift, and
+each fix has a hand fixture in the package tests. Regenerate only on
+purpose: QP_REGEN_GOLDEN=1.
 """
 
 from __future__ import annotations
@@ -18,6 +22,23 @@ from fx_pairs.backtest import ExecutionConfig, run_backtest, walk_forward_backte
 from qp_core.stats import Financing
 
 GOLDEN = Path(__file__).parent / "golden" / "characterisation_w24b.json"
+BEFORE = Path(__file__).parent / "golden" / "characterisation_w24b_before.json"
+# key: (sum before migration, sum after), filled from the corpus
+BEFORE_AFTER: dict[str, tuple[float, float]] = {
+    "auction/carry": (-7.863722708182306e-05, -7.27138169237458e-05),
+    "auction/cost": (-0.03481492802796217, -0.034825286497679825),
+    "auction/total": (0.017276753381795833, 0.01774168401331547),
+    "next_fin/carry": (-80.34110808511139, -82.76228021598169),
+    "next_fin/cost": (-12501.241335511211, -12502.732727521012),
+    "next_fin/total": (9318.68838749192, 9728.79851813406),
+    "next_nofin_linear/carry": (-7.951337817616159e-05, -7.778639153279101e-05),
+    "next_nofin_linear/cost": (-0.012928020998947442, -0.012930510086637419),
+    "next_nofin_linear/total": (-0.012314429022478044, -0.011883059703965543),
+    "walk_forward/carry": (0.0028612307597038027, 0.0028476105375228773),
+    "walk_forward/cost": (-0.0005972340491412645, -0.0005957743190115672),
+    "walk_forward/total": (0.11050304329894778, 0.1099870381166468),
+}
+
 
 
 def _flat(obj, prefix=""):
@@ -45,6 +66,11 @@ def _check(cases):
     assert sorted(got) == sorted(want)
     for k in want:
         np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12, err_msg=k)
+    before = json.loads(BEFORE.read_text())
+    assert sorted(before) == sorted(want)
+    for k, (b, a) in BEFORE_AFTER.items():
+        assert abs(sum(before[k]) - b) <= 1e-10, k
+        assert abs(sum(got[k]) - a) <= 1e-10, k
 
 
 def _market(n=400, seed=11):

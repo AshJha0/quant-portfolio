@@ -32,8 +32,15 @@ fill fraction, see :mod:`qp_bt.fills`).
    it is solved to machine precision.
 4. Post-fill: the book earns ``N (w . b)``.
 
+5. Asset carry (optional, ``asset_carry``): a per-asset accrual ``d_i`` for
+   holding asset ``i`` over the period, such as the interest differential of
+   a currency against the funding currency (FX tom-next roll). It is earned
+   on the book held overnight, like financing, valued at close ``s-1``:
+   ``carry = h . d`` (``N w . d`` when the fill is at close ``s-1``).
+
 Ledger (fractions of ``NAV_{s-1}``): ``cost = m - N``,
-``gross = m - 1 + N (w . b)``, ``net = gross - cost - borrow + financing``,
+``gross = m - 1 + N (w . b)``, ``net = gross - cost - borrow + financing
++ carry``,
 ``turnover = sum |dv|``, ``excess = net - r_f``; the next ``h`` is
 ``w N (1 + b) / (1 + net)``. With no order in the period, ``gross = h . r``.
 
@@ -80,7 +87,7 @@ __all__ = [
 
 FloatArray = NDArray[np.float64]
 LEDGER_COLUMNS = ("gross_ret", "cost", "borrow", "financing", "net_ret", "risk_free",
-                  "excess_ret", "turnover", "nav")
+                  "excess_ret", "turnover", "nav", "carry")
 
 
 # --------------------------------------------------------------------------
@@ -291,6 +298,18 @@ def _accruals(index: pd.Index, financing: Financing | None) -> tuple[FloatArray,
     return financing.accruals(index)
 
 
+def _asset_carry(asset_carry: pd.DataFrame | FloatArray | None,
+                 shape: tuple[int, int]) -> FloatArray:
+    if asset_carry is None:
+        return np.zeros(shape)
+    d = np.asarray(asset_carry, dtype=float)
+    if d.shape != shape:
+        raise ValueError(f"asset_carry shape {d.shape} != {shape}")
+    if not np.isfinite(d).all():
+        raise ValueError("asset_carry must be finite")
+    return d
+
+
 def _fin(financing: Financing | None, cash_w: float, rf: float, tau: float) -> float:
     return financing.cash_return(cash_w, rf, tau) if financing is not None else 0.0
 
@@ -307,6 +326,7 @@ def run_fast(
     financing: Financing | None = None,
     borrow_bps_annual: float = 0.0,
     periods_per_year: float = 252.0,
+    asset_carry: pd.DataFrame | FloatArray | None = None,
 ) -> BacktestLedger:
     """Fast mode for a weight path.
 
@@ -323,6 +343,10 @@ def run_fast(
         See :class:`NextBarFill`, :mod:`qp_bt.costs`,
         :class:`qp_core.stats.Financing`; the borrow fee is
         ``borrow_bps_annual / periods_per_year`` per period on the short book.
+    asset_carry : (T, N), optional
+        Row ``s`` is the carry of holding one unit of NAV of each asset
+        overnight into period ``s`` (step 5 of the module docstring). Must be
+        finite. Reported in the ``carry`` column.
     """
     fm = fill if fill is not None else NextBarFill()
     if fm.max_participation is not None:
@@ -335,6 +359,7 @@ def run_fast(
     if tgt.shape != (t_n, n_assets):
         raise ValueError(f"targets shape {tgt.shape} != returns shape {r_all.shape}")
     rf_all, tau_all = _accruals(idx, financing)
+    d_all = _asset_carry(asset_carry, (t_n, n_assets))
     beta = borrow_bps_annual * 1e-4 / periods_per_year
     phi = fm.fraction
     out = np.zeros((t_n, len(LEDGER_COLUMNS)))
@@ -349,6 +374,7 @@ def run_fast(
         a = phi * r
         fin = _fin(financing, 1.0 - float(h.sum()), rf_all[s], tau_all[s])
         borrow = beta * float(np.sum(np.maximum(-h, 0.0) * (1.0 + a)))
+        carry = float(h @ d_all[s])
         post_fill_carry = phi == 0.0 and s > 0   # the fill is at close s-1
         dec = s - fm.lag
         w = tgt[dec] if dec >= 0 else None
@@ -374,14 +400,16 @@ def run_fast(
                 # filled at close s-1: what is held overnight is the new book
                 fin = _fin(financing, n_post * (1.0 - float(w.sum())), rf_all[s], tau_all[s])
                 borrow = beta * n_post * float(np.sum(np.maximum(-w, 0.0)))
-        net = gross - cost_v - borrow + fin
+                carry = n_post * float(w @ d_all[s])
+        net = gross - cost_v - borrow + fin + carry
         nav *= 1.0 + net
         if nav <= 0.0:
             net, nav, post = -1.0, 0.0, np.zeros(n_assets)
-            gross = net + cost_v + borrow - fin
+            gross = net + cost_v + borrow - fin - carry
         h = post / (1.0 + net) if nav > 0.0 else post
         w_close[s] = h
-        out[s] = (gross, cost_v, borrow, fin, net, rf_all[s], net - rf_all[s], turnover, nav)
+        out[s] = (gross, cost_v, borrow, fin, net, rf_all[s], net - rf_all[s], turnover, nav,
+                  carry)
     cols = getattr(returns, "columns", None)
     return BacktestLedger(
         ledger=pd.DataFrame(out, index=idx, columns=list(LEDGER_COLUMNS)),
@@ -429,6 +457,8 @@ class EventEngine:
         optional; default is the borrow fee on the short book at the fill point.
     financing : qp_core.stats.Financing, optional (cash earns / pays).
     volumes : (T, N) share volumes; needed when ``fill.max_participation``.
+    asset_carry : (T, N), optional: per-asset carry, as in :func:`run_fast`,
+        on the value held overnight at close ``s-1`` (``q p_{s-1} . d_s``).
     clock_calendar : passed to :class:`Clock`.
     """
 
@@ -437,7 +467,8 @@ class EventEngine:
                  carry: Carry | None = None, financing: Financing | None = None,
                  borrow_bps_annual: float = 0.0, periods_per_year: float = 252.0,
                  volumes: pd.DataFrame | None = None, initial_nav: float = 1.0,
-                 clock_calendar: str | tuple[str, ...] | None = None) -> None:
+                 clock_calendar: str | tuple[str, ...] | None = None,
+                 asset_carry: pd.DataFrame | FloatArray | None = None) -> None:
         p = prices.to_numpy(dtype=float)
         if not np.isfinite(p).all() or (p <= 0).any():
             raise ValueError("prices must be finite and positive")
@@ -454,6 +485,7 @@ class EventEngine:
         self.beta = borrow_bps_annual * 1e-4 / periods_per_year
         self.vol = None if volumes is None else volumes.to_numpy(dtype=float)
         self.initial_nav = float(initial_nav)
+        self.d = _asset_carry(asset_carry, p.shape)
 
     # -- carry ---------------------------------------------------------------
     def _carry(self, s: int, q: FloatArray, pf: FloatArray) -> dict[str, float]:
@@ -495,11 +527,13 @@ class EventEngine:
             if "bar" not in state or state["bar"] != s:
                 # opening of bar s: carry is set on what was held overnight
                 carry = self._carry(s, q.copy(), pf) if s > 0 else {}
+                acarry = float(q @ (p_prev * self.d[s])) if s > 0 else 0.0
                 cash_w = cash / nav_prev
                 fin = _fin(self.financing, cash_w, rf_all[s], tau_all[s]) * nav_prev
                 n_fills = len(fills)
                 state = {"bar": s, "carry": carry, "fin": fin, "pf": pf, "n_fills": n_fills,
-                         "pre": float(np.sum(q * (pf - p_prev))), "cost": {}, "traded": 0.0}
+                         "pre": float(np.sum(q * (pf - p_prev))), "cost": {}, "traded": 0.0,
+                         "acarry": acarry}
             if ev.kind == "fill":
                 cash, q = self._execute(ev, s, q, cash, nav_prev, state, fills, order_ids, queue,
                                         seq)
@@ -519,10 +553,11 @@ class EventEngine:
                 if self.fill.fraction == 0.0 and s > 0 and len(fills) > state["n_fills"]:
                     # filled at close s-1: what is held overnight is the new book
                     state["carry"] = self._carry(s, q.copy(), pf)
+                    state["acarry"] = float(q @ (p_prev * self.d[s]))
                     state["fin"] = _fin(self.financing, cash / nav_prev, rf_all[s],
                                         tau_all[s]) * nav_prev
                 carry_total = float(sum(state["carry"].values()))
-                cash += state["fin"] - carry_total
+                cash += state["fin"] - carry_total + state["acarry"]
                 nav = cash + float(q @ self.p[s])
                 if nav <= 0.0 and float(np.abs(q).sum()) == 0.0:
                     nav = 0.0
@@ -531,13 +566,14 @@ class EventEngine:
                 c = cost_total / nav_prev
                 bor = carry_total / nav_prev
                 fn = state["fin"] / nav_prev
-                rows[s] = (net + c + bor - fn, c, bor, fn, net, rf_all[s], net - rf_all[s],
-                           state["traded"] / nav_prev, nav / self.initial_nav)
+                ac = state["acarry"] / nav_prev
+                rows[s] = (net + c + bor - fn - ac, c, bor, fn, net, rf_all[s], net - rf_all[s],
+                           state["traded"] / nav_prev, nav / self.initial_nav, ac)
                 post = float(np.sum(q * (self.p[s] - pf)))
                 pnl_rows.append({"pre_fill_pnl": state["pre"], "post_fill_pnl": post, **{f"cost_{k}": v for k, v in
                                                            state["cost"].items()},
                                  **{f"carry_{k}": v for k, v in state["carry"].items()},
-                                 "financing": state["fin"]})
+                                 "financing": state["fin"], "asset_carry": state["acarry"]})
                 pos[s] = q
                 wts[s] = q * self.p[s] / nav if nav > 0.0 else 0.0
                 nav_prev = nav

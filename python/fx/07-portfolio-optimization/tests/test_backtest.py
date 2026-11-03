@@ -12,6 +12,7 @@ from fx_port import (
     total_log_returns,
 )
 from fx_port.data import make_panel
+from qp_core.execution import ExecutionConfig
 
 DT = 1.0 / 252
 
@@ -29,33 +30,59 @@ def _tiny_market():
     return spot, carry
 
 
+AUCTION = ExecutionConfig("close_auction", auction_cost_bp=0.0)
+
+
 def test_ledger_hand_computed_with_carry():
+    """Close-auction fill (the old fill price), 10 bp, one allocation.
+
+    Decided at close 2 and filled there, booked in row 3. Costs come out of
+    the trade: N = 1 / (1 + 10e-4 * 1.0). The book held overnight into day 3
+    is the new one, so day 3 earns N (w . R) and N (w . d), with
+    R = exp(spot) - 1 (simple returns).
+    """
     spot, carry = _tiny_market()
     w = pd.Series({"AUD": 0.5, "JPY": -0.5})
-
-    res = run_backtest(
-        spot, carry, lambda hist: w, est_window=3, rebalance_every=100,
-        cost_bps=10.0,
-    )
+    res = run_backtest(spot, carry, lambda hist: w, est_window=3, rebalance_every=100,
+                       cost_bps=10.0, execution=AUCTION)
     led = res.ledger
-    # first allocation decided on day index 2, applied from day index 3
     assert led.index[0] == spot.index[3]
-    # day 3 P&L by hand
-    exp_spot = 0.5 * spot.iloc[3]["AUD"] - 0.5 * spot.iloc[3]["JPY"]
-    exp_carry = 0.5 * carry.iloc[3]["AUD"] - 0.5 * carry.iloc[3]["JPY"]
-    exp_cost = (0.5 + 0.5) * 10.0 * 1e-4  # turnover 1.0 at 10 bps
+    wv = w.to_numpy()
+    n_post = 1.0 / (1.0 + 10e-4)
+    r3 = np.expm1(spot.iloc[3].to_numpy())
+    exp_spot = n_post * float(wv @ r3)
+    exp_carry = n_post * float(wv @ carry.iloc[3].to_numpy())
+    exp_cost = 1.0 - n_post
     assert led.iloc[0]["spot_pnl"] == pytest.approx(exp_spot, abs=1e-15)
     assert led.iloc[0]["carry_pnl"] == pytest.approx(exp_carry, abs=1e-15)
     assert led.iloc[0]["cost"] == pytest.approx(exp_cost, abs=1e-15)
-    assert led.iloc[0]["net"] == pytest.approx(
-        exp_spot + exp_carry - exp_cost, abs=1e-15
-    )
-    assert led.iloc[0]["turnover"] == pytest.approx(1.0, abs=1e-15)
-    # no further rebalance: zero cost afterwards, weights constant
+    assert led.iloc[0]["net"] == pytest.approx(exp_spot + exp_carry - exp_cost, abs=1e-15)
+    assert led.iloc[0]["turnover"] == pytest.approx(n_post, abs=1e-15)
+    # no further rebalance: no cost, and the book drifts with prices
     assert (led.iloc[1:]["cost"] == 0).all()
-    assert (res.weights["AUD"] == 0.5).all()
-    # carry leg present every day (accrual, not just at rebalance)
+    h3 = wv * n_post * (1 + r3) / (1 + led.iloc[0]["net"])
+    np.testing.assert_allclose(res.weights.iloc[0].to_numpy(), h3, rtol=0, atol=1e-15)
+    r4 = np.expm1(spot.iloc[4].to_numpy())
+    assert led.iloc[1]["spot_pnl"] == pytest.approx(float(h3 @ r4), abs=1e-15)
+    assert led.iloc[1]["carry_pnl"] == pytest.approx(float(h3 @ carry.iloc[4].to_numpy()),
+                                                     abs=1e-15)
     assert (led["carry_pnl"] != 0).all()
+
+
+def test_default_fill_is_next_bar_not_the_decision_close():
+    """Wrong answer fixed in W24b: the weights decided at close t used to earn
+    all of day t+1 for free. Now the fill is half-way through day t+1."""
+    spot, carry = _tiny_market()
+    w = pd.Series({"AUD": 1.0, "JPY": 0.0})
+    zero = carry * 0.0
+    res = run_backtest(spot, zero, lambda hist: w, est_window=3, rebalance_every=100,
+                       cost_bps=0.0)
+    r = np.expm1(spot.iloc[3]["AUD"])
+    # f = 0.5: the fill is at p_2 (1 + r/2); the book earns (1+r)/(1+r/2) - 1
+    assert res.ledger.iloc[0]["net"] == pytest.approx((1 + r) / (1 + 0.5 * r) - 1, abs=1e-15)
+    old = run_backtest(spot, zero, lambda hist: w, est_window=3, rebalance_every=100,
+                       cost_bps=0.0, execution=AUCTION)
+    assert old.ledger.iloc[0]["net"] == pytest.approx(r, abs=1e-15)
 
 
 def test_cost_charged_on_weight_changes_only():
@@ -68,13 +95,21 @@ def test_cost_charged_on_weight_changes_only():
         return pd.Series({"AUD": w, "JPY": -w})
 
     res = run_backtest(spot, carry, wf, est_window=3, rebalance_every=2,
-                       cost_bps=100.0)
+                       cost_bps=100.0, execution=AUCTION)
     led = res.ledger
-    # rebalances on rows 2,4,6 -> effective 3,5,7; costs on those days only
+    # rebalances on rows 2,4,6 -> filled at those closes, booked on 3,5,7
     cost_days = led[led["cost"] > 0].index
     assert list(cost_days) == [spot.index[3], spot.index[5], spot.index[7]]
-    # second rebalance turnover: |0.6-0.3|*2 legs = 0.6 at 100bps = 0.6%
-    assert led.loc[spot.index[5], "cost"] == pytest.approx(0.6 * 0.01, abs=1e-15)
+    # second rebalance: trade from the drifted book h back up to 0.6 / -0.6
+    # of the post-trade NAV N, paying 100 bp: N = 1 - 0.01 * |0.6 N - h|_1
+    h = res.weights.loc[spot.index[4]].to_numpy()
+    target = np.array([0.6, -0.6])
+    n_post = 1.0
+    for _ in range(100):
+        n_post = 1.0 - 0.01 * float(np.abs(target * n_post - h).sum())
+    assert led.loc[spot.index[5], "cost"] == pytest.approx(1.0 - n_post, abs=1e-15)
+    assert led.loc[spot.index[5], "turnover"] == pytest.approx(
+        float(np.abs(target * n_post - h).sum()), abs=1e-15)
 
 
 def test_rebalance_frequency_respected():

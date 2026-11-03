@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from fx_regime import ExecutionConfig, StrategyConfig, run_backtest
+from fx_regime.strategy import regime_weights
 
 CCYS = ["AUD", "JPY"]
 
@@ -32,9 +33,18 @@ def _two_leg_case(n=400, seed=0, aud_vol=0.006):
     return idx, rets, rates, cfg
 
 
+def _target(rets, rates, regime, t, cfg):
+    """The book the strategy targets for day t (decided at close t-1)."""
+    p = rets.shape[1]
+    cov = np.cov(rets.to_numpy()[t - cfg.cov_window : t].T, ddof=1).reshape(p, p)
+    return regime_weights(regime, list(rets.columns), rates.iloc[t - 1], cov, cfg).to_numpy()
+
+
 def test_fill_price_is_interpolated_t_plus_one_price():
-    """(a) Hand ledger: the new book earns p_{t+1}/p_fill - 1, the old book
-    p_fill/p_t - 1, with p_fill = p_t + f (p_{t+1} - p_t), from price levels."""
+    """(a) Hand ledger from price levels, no costs. Before the fill the book
+    held overnight, h, earns p_fill/p_t - 1; the trade resets it to the
+    target w of the NAV at the fill, which then earns p_{t+1}/p_fill - 1:
+    1 + net = (1 + h . a)(1 + w . b), p_fill = p_t + f (p_{t+1} - p_t)."""
     idx, rets, rates, cfg = _two_leg_case(n=60)
     regimes = pd.Series("risk_on", index=idx)
     regimes.iloc[40:] = "usd_squeeze"  # decided at close of idx[40]
@@ -42,12 +52,15 @@ def test_fill_price_is_interpolated_t_plus_one_price():
         bt = run_backtest(rets, rates, regimes, cfg, ExecutionConfig(fill_fraction=f))
         day = idx[41]  # first day the new book is filled
         k = bt.ledger.index.get_loc(day)
-        w_old, w_new = bt.weights.iloc[k - 1], bt.weights.iloc[k]
-        assert w_old["AUD"] > 0 > w_new["AUD"]
+        h = bt.weights.iloc[k - 1].to_numpy()
+        w = _target(rets, rates, "usd_squeeze", 41, cfg)
+        assert h[0] > 0 > w[0]
         p = np.exp(rets["AUD"].cumsum())  # AUDUSD level path, any start
         p_t, p_t1 = p.loc[idx[40]], p.loc[day]
         p_fill = p_t + f * (p_t1 - p_t)
-        expected = w_old["AUD"] * (p_fill / p_t - 1) + w_new["AUD"] * (p_t1 / p_fill - 1)
+        a = np.array([p_fill / p_t - 1, 0.0])
+        b = np.array([p_t1 / p_fill - 1, 0.0])
+        expected = (1 + h @ a) * (1 + w @ b) - 1
         assert bt.ledger.loc[day, "spot"] == pytest.approx(expected, rel=1e-12, abs=1e-16)
 
 
@@ -76,7 +89,7 @@ def test_perfect_foresight_signal_earns_nothing_with_next_close_fill():
 
 
 def test_close_auction_charges_exactly_the_auction_cost():
-    """(c) close_auction cost = spread cost + auction_cost_bp * turnover."""
+    """(c) close_auction premium = auction_cost_bp * traded notional."""
     idx, rets, rates, _cfg = _two_leg_case(n=200, seed=5)
     regimes = pd.Series(np.where(np.arange(200) % 30 < 15, "risk_on", "usd_squeeze"), index=idx)
     cfg_cost = StrategyConfig(
@@ -87,15 +100,25 @@ def test_close_auction_charges_exactly_the_auction_cost():
                      ExecutionConfig(mode="close_auction", auction_cost_bp=0.0))
     b = run_backtest(rets, rates, regimes, cfg_cost,
                      ExecutionConfig(mode="close_auction", auction_cost_bp=7.5))
-    extra = b.ledger["cost"] - a.ledger["cost"]
-    np.testing.assert_allclose(extra, 7.5e-4 * b.ledger["turnover"], rtol=0, atol=1e-16)
+    # the auction premium is paid on the notional actually traded (turnover
+    # depends on the post-trade NAV, so compare within run b): with zero
+    # spreads the whole cost is the premium
+    z = run_backtest(rets, rates, regimes, _cfg,
+                     ExecutionConfig(mode="close_auction", auction_cost_bp=7.5))
+    np.testing.assert_allclose(z.ledger["cost"], 7.5e-4 * z.ledger["turnover"], rtol=0,
+                               atol=1e-16)
+    assert (a.ledger["cost"] > 0).any()
     assert b.ledger["turnover"].sum() > 0
-    # close-auction books the full day's move on the new book
+    # close-auction: filled at close t-1, so the new book earns the whole day:
+    # spot = N (w . R) with N the NAV after paying for the trade
     day = b.ledger.index[50]
-    w = b.weights.loc[day]
+    t = rets.index.get_loc(day)
+    w = _target(rets, rates, regimes.iloc[t - 1], t, cfg_cost)
+    n_post = 1.0 - b.ledger.loc[day, "cost"]
     assert b.ledger.loc[day, "spot"] == pytest.approx(
-        float(w @ np.expm1(rets.loc[day])), rel=1e-12  # (1+R)/1-1 vs R: rounding only
+        n_post * float(w @ np.expm1(rets.loc[day])), rel=1e-12, abs=1e-16
     )
+
 
 
 @pytest.mark.parametrize(

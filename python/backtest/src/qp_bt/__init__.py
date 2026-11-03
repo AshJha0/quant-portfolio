@@ -21,7 +21,7 @@ from .core import (
     run_fast,
     solve_post_trade_nav,
 )
-from .costs import ZERO_COST, CostModel, LinearCost, SqrtImpactCost
+from .costs import ZERO_COST, CostModel, HalfSpreadCost, LinearCost, SqrtImpactCost
 from .fills import NextBarFill
 
 __all__ = [
@@ -33,6 +33,7 @@ __all__ = [
     "CostModel",
     "EventEngine",
     "FillRecord",
+    "HalfSpreadCost",
     "LinearCost",
     "MarketOrder",
     "NextBarFill",
