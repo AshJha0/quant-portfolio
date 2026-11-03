@@ -2712,10 +2712,10 @@ strikes = np.array([0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05])
 true = dict(alpha=0.02, beta=0.5, rho=-0.3, nu=0.4)
 vols = [sabr_vol(F, k, T, **true) for k in strikes]
 fit = sabr_calibrate(F, T, strikes, vols, beta=0.5)
-print(round(fit.alpha, 6), round(fit.rho, 6), round(fit.nu, 6), f"{fit.rmse:.1e}")
+print(round(fit.alpha, 6), round(fit.rho, 6), round(fit.nu, 6), fit.rmse < 1e-12)
 ```
 
-Output: `0.02 -0.3 0.4 4.5e-17`. The default expansion is Obloj (2008);
+Output: `0.02 -0.3 0.4 True` (the fit residual is at rounding level, about 1e-17, and its exact digits vary by platform). The default expansion is Obloj (2008);
 `variant="hagan"` gives Hagan et al. (2002). For low or negative rates pass
 `shift=`. `sabr_density_check` reports strikes where the implied density goes
 negative, which the expansion allows for long expiries and low strikes. SABR
