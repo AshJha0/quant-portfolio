@@ -86,7 +86,7 @@ any language; `tests/test_carry_twin.py` pins it. The C++ and Rust kernels
 take the normal CDF as a type parameter, because the equity and FX engines
 use different implementations. The Python FX `analytic_greeks` moves to
 the shared normal CDF in this release, which changes its outputs by at most
-1.4e-14 relative; see the CHANGELOG. Diagram 10 in
+2.13e-14 relative to max(1, |value|); see the CHANGELOG. Diagram 10 in
 [DIAGRAMS.md](DIAGRAMS.md) shows the layout.
 
 Packaging. The C++ engines and `qp::core` install as the CMake package

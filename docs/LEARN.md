@@ -2601,9 +2601,9 @@ So the two discount factors `e^{-qT}` and `e^{-rT}` are computed from the caller
 
 The equity and FX engines already used different normal CDF implementations (in C++, `norm_cdf_rcp` against `norm_cdf`; in Rust, plain erfc against a C1-truncated erfc). Forcing one would change bits in one engine's goldens. A type parameter shares the formula and keeps each engine's numbers exactly as they were.
 
-**Q4. The Python FX `analytic_greeks` is switching to the shared normal CDF. How large is the change, and why make it?**
+**Q4. The Python FX `analytic_greeks` now uses the shared normal CDF. How large is the change, and why make it?**
 
-It used `scipy.stats.norm.cdf` for its N(phi d) terms while everything else used `0.5 erfc(-x / sqrt 2)`. On the 5,944-quote grid the switch changes price by at most 1.42e-14 relative and the Greeks by at most 3.55e-15. That is far inside every test tolerance, and it leaves one normal CDF across the Python option code with full relative precision in the lower tail.
+It used to call `scipy.stats.norm.cdf` for its N(phi d) terms while everything else used `0.5 erfc(-x / sqrt 2)`. On the 5,944-quote grid the switch changed price by at most 2.13e-14 relative to max(1, |value|) and the Greeks by at most 2.66e-15 (gamma, vega, vanna and volga not at all; table in `python/fx/01-options-pricing/docs/VALIDATION.md` section 7). That is far inside every test tolerance, and it leaves one normal CDF across the Python option code with full relative precision in the lower tail.
 
 **Q5. Why does `carry_price` with `q = r` not match `black76_price` bit for bit?**
 

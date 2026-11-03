@@ -127,7 +127,7 @@ existing numbers on purpose, each with a before/after table: the deprecated
 P&L-level filtered historical VaR now uses the same quantile convention as
 every other VaR path (one golden moved, [docs/MARKET_RISK.md](docs/MARKET_RISK.md)),
 and the Python FX `analytic_greeks` now uses the shared normal CDF
-(changes of at most 1.4e-14 relative, CHANGELOG).
+(changes of at most 2.13e-14 relative to max(1, |value|), CHANGELOG).
 
 ### Engine switch
 

@@ -34,9 +34,9 @@ dataset (the research entries use ECB reference rates).
 - FX `analytic_greeks` (Python) now takes `N(phi d1)`, `N(phi d2)` and
   `n(d1)` from `qp_core.normal` (`0.5 erfc(-x / sqrt 2)`), the normal the
   shared kernel uses, instead of `scipy.stats.norm`. On 5,944 quotes price,
-  deltas, theta and both rhos move by at most 2.1e-14 relative to
-  `max(1, |value|)` (price 2.13e-14, deltas 2.2e-16, theta 2.7e-15, rhos
-  2.5e-15); gamma, vega, vanna and volga do not move; no golden moves. The
+  deltas, theta and both rhos move by at most 2.13e-14 relative to
+  `max(1, |value|)` (price 2.13e-14, deltas 2.2e-16, theta 2.66e-15, rhos
+  2.5e-15); gamma, vega, vanna and volga do not move; no FX options golden moves. The
   fields are now Python floats rather than `numpy.float64`. Table in
   `python/fx/01-options-pricing/docs/VALIDATION.md` section 7.
 - Deprecated P&L-level `filtered_historical_var` (Python, C++, Rust equity
