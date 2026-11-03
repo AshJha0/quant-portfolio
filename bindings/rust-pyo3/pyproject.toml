@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "qp-rust"
-version = "0.1.0"
+version = "3.0.0.dev0"
 description = "Python bindings (PyO3) for the quant-portfolio Rust option and VaR engines"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,8 +23,9 @@ locked = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-# Wheels are built by the ci "wheels" job with cibuildwheel and kept as
-# workflow artefacts; nothing is uploaded to PyPI. Inside the manylinux
+# Wheels are built with cibuildwheel by the ci "wheels" job (kept as
+# workflow artefacts) and by release.yml (attached to the GitHub Release);
+# nothing is uploaded to PyPI. Inside the manylinux
 # container rustup installs the channel pinned in rust/rust-toolchain.toml
 # (the job passes it as QP_RUST_CHANNEL).
 [tool.cibuildwheel]
@@ -38,3 +39,10 @@ manylinux-x86_64-image = "manylinux_2_34"
 before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $QP_RUST_CHANNEL"
 environment = { PATH = "$HOME/.cargo/bin:$PATH" }
 environment-pass = ["QP_RUST_CHANNEL"]
+
+# macOS wheels are built by the release workflow only (Apple silicon).
+# Deployment target 14.0 (macOS Sonoma) leaves room for the C++23 library
+# features the engines use; older targets are not built or tested.
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }

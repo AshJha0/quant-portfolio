@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-risk-metrics"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "Single-asset equity risk metrics: volatility (3 estimators), Value at Risk (3 methods), Expected Shortfall, drawdown, Sharpe/Sortino, normality diagnostics."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+eq_risk_metrics = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

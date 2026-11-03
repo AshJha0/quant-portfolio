@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-port"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX portfolio optimization & currency risk allocation: carry/momentum/value style portfolios, shrinkage covariance, mean-variance & risk parity, CVaR-constrained sizing (Rockafellar-Uryasev LP), optimal currency hedging, walk-forward backtesting with carry accrual"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ test = ["pytest>=7.4", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_port = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

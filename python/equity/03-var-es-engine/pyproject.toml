@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-var"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "Equity market risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall, Kupiec-Christoffersen backtesting, Basel traffic light, stress testing."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,10 +20,14 @@ dependencies = [
 [project.optional-dependencies]
 live = ["yfinance>=0.2"]
 plots = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4", "hypothesis>=6.100"]
+dev = ["pytest>=7.4", "hypothesis>=6.100", "mpmath>=1.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+eq_var = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

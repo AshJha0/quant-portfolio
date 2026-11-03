@@ -80,6 +80,10 @@ def count_questions() -> int:
     return len(re.findall(r"^\*\*Q\d+\.", _read(DOCS / "LEARN.md"), re.M))
 
 
+def count_sub_projects() -> int:
+    return sum(len(v) for v in PY_AREAS.values()) + len(CPP_ENGINES) + len(RUST_ENGINES)
+
+
 def count_recipes() -> int:
     heads = re.findall(r"^### (.+)$", _read(DOCS / "COOKBOOK.md"), re.M)
     return sum(1 for h in heads if h.startswith(("How do I", "What happens")))
@@ -96,10 +100,19 @@ DOC_FILES = (README, DOCS / "README.md", DOCS / "ARCHITECTURE.md", DOCS / "DIAGR
 
 # -------------------------------------------------------------------- tests --
 class TestStructure:
-    def test_31_sub_projects(self, readme):
-        n = sum(len(v) for v in PY_AREAS.values()) + len(CPP_ENGINES) + len(RUST_ENGINES)
-        assert n == 31
-        assert "31 sub-projects" in readme
+    def test_sub_project_count_is_derived_everywhere(self, readme):
+        # Generated, not typed: the number comes from the directory layout
+        # and every "<n> sub-projects" in the docs must equal it.
+        n = count_sub_projects()
+        assert f"{n} sub-projects" in readme
+        for f in (*DOC_FILES, DOCS / "START_HERE.md"):
+            for q in re.findall(r"(\d+) sub-projects", _read(f)):
+                assert int(q) == n, (f, q, n)
+
+    def test_31_sub_projects(self):
+        # The layout the README describes; a change here is a structural
+        # change and needs a docs review, not just a new number.
+        assert count_sub_projects() == 31
 
     def test_23_python_projects(self):
         assert sum(len(v) for v in PY_AREAS.values()) == 23

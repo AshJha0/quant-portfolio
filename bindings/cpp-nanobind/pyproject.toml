@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "qp-cpp"
-version = "0.1.0"
+version = "3.0.0.dev0"
 description = "Python bindings (nanobind) for the quant-portfolio C++ option and VaR engines"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,3 +39,10 @@ test-command = "python {project}/bindings/wheel_smoke.py qp_cpp"
 manylinux-x86_64-image = "manylinux_2_34"
 before-all = "dnf -y install gcc-toolset-15-gcc-c++"
 environment = { PATH = "/opt/rh/gcc-toolset-15/root/usr/bin:$PATH", CC = "gcc", CXX = "g++" }
+
+# macOS wheels are built by the release workflow only (Apple silicon).
+# Deployment target 14.0 (macOS Sonoma) leaves room for the C++23 library
+# features the engines use; older targets are not built or tested.
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }

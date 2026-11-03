@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fi-rates"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "Fixed income pricing & risk analytics: yield curve bootstrapping, bond pricing (YTM, z-spread, FRN), duration/convexity/DV01, key-rate durations, scenario analysis and carry/roll-down."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fi_rates = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -52,8 +52,12 @@ Download a CI wheel from the run's artefacts (`wheels-cpp-nanobind-<os>`) and
 
 ## What is exposed
 
-Functions are prefixed by engine. Every engine error raises `ValueError`
-with the engine's message. `available()` returns True when the extension
+Functions are prefixed by engine. Engine errors raise the `qp_core.errors`
+classes with the engine's message: `InputError` (a `ValueError`) for bad
+arguments, `ConvergenceError` (a `RuntimeError` and a `ValueError`) when a solver or a
+factorisation fails on well-formed input (the cases the C++ engines signal
+with `std::runtime_error`). If `qp_core` is not installed, both fall back
+to `ValueError`. `available()` returns True when the extension
 imported.
 
 | Function | Engine call |
@@ -86,7 +90,7 @@ Signatures and return types are in `src/qp_cpp/__init__.pyi`.
 - Batch calls take equal-length 1-D arrays. C-contiguous float64 arrays are
   read in place. Other arrays (strided views, other dtypes) are converted
   first. Outputs are new float64 arrays. The GIL is released while the
-  engine runs. A bad element raises `ValueError("element i: ...")` naming
+  engine runs. A bad element raises `InputError("element i: ...")` naming
   the first offending index.
 - Batch output equals the scalar call bit for bit (tested).
 - VaR inputs follow the reference packages: `alpha` is the tail probability

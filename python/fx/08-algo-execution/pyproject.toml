@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-algo"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX algorithmic trading & execution modeling for OTC dealer markets: intraday signal generation with point-in-time discipline, event-driven backtesting with session-dependent spreads and carry accrual, a 24h session-liquidity market simulator with sqrt impact and last-look dealer behaviour, TWAP/liquidity-weighted/POV/fix-targeting schedulers, piecewise Almgren-Chriss optimal execution under time-varying liquidity, and transaction-cost analysis (implementation-shortfall decomposition, venue comparison, WM/R fix benchmarking)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_algo = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

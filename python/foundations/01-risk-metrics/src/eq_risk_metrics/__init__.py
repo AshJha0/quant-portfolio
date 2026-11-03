@@ -34,7 +34,7 @@ from .volatility import (
     simple_returns,
 )
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
     # volatility

@@ -51,6 +51,7 @@ members = [
 ]
 
 [manifest.dependency-groups]
+api = [{ name = "griffe", specifier = "==2.4.1" }]
 backend = [{ name = "setuptools", specifier = ">=68" }]
 build = [
     { name = "cibuildwheel", specifier = "==3.1.4" },
@@ -64,6 +65,7 @@ lint = [
     { name = "ruff", specifier = "==0.17.3" },
     { name = "scipy-stubs", marker = "python_full_version >= '3.12'", specifier = "==1.18.1.1" },
 ]
+oracle = [{ name = "quantlib", specifier = "==1.44" }]
 test = [
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "pytest", specifier = ">=7.4" },
@@ -764,7 +766,7 @@ wheels = [
 
 [[package]]
 name = "eq-algo"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/08-algo-execution" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -802,7 +804,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-bs-replication"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/foundations/03-black-scholes-replication" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -835,7 +837,7 @@ provides-extras = ["plots", "test", "dev"]
 
 [[package]]
 name = "eq-credit"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/06-credit-risk" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -873,7 +875,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "eq-options"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/01-options-pricing" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -913,7 +915,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-pairs"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/05-pairs-trading" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -953,7 +955,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-port"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/07-portfolio-optimization" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -993,7 +995,7 @@ provides-extras = ["live", "dev", "test"]
 
 [[package]]
 name = "eq-regime"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/10-regime-switching" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1037,7 +1039,7 @@ provides-extras = ["crosscheck", "plots", "dev"]
 
 [[package]]
 name = "eq-risk-metrics"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/foundations/01-risk-metrics" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1075,7 +1077,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-signal-backtest"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/foundations/02-trading-signal-backtest" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1113,7 +1115,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-surface"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/09-vol-surface" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1141,7 +1143,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "eq-var"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/03-var-es-engine" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1155,6 +1157,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "hypothesis" },
+    { name = "mpmath" },
     { name = "pytest" },
 ]
 live = [
@@ -1168,6 +1171,7 @@ plots = [
 requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "matplotlib", marker = "extra == 'plots'", specifier = ">=3.7" },
+    { name = "mpmath", marker = "extra == 'dev'", specifier = ">=1.3" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
@@ -1179,7 +1183,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-vol"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/02-volatility-modeling" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1215,7 +1219,7 @@ provides-extras = ["test", "live"]
 
 [[package]]
 name = "fi-rates"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/equity/04-fixed-income" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1352,7 +1356,7 @@ wheels = [
 
 [[package]]
 name = "fx-algo"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/08-algo-execution" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1382,7 +1386,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-credit"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/06-credit-risk" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1414,7 +1418,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "fx-options"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/01-options-pricing" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1450,7 +1454,7 @@ provides-extras = ["plots", "dev"]
 
 [[package]]
 name = "fx-pairs"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/05-pairs-trading" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1482,7 +1486,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-port"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/07-portfolio-optimization" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1518,7 +1522,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "fx-rates"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/04-fixed-income" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1550,7 +1554,7 @@ provides-extras = ["test", "dev"]
 
 [[package]]
 name = "fx-regime"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/10-regime-switching" }
 dependencies = [
     { name = "hmmlearn" },
@@ -1584,7 +1588,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-surface"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/09-vol-surface" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1618,7 +1622,7 @@ provides-extras = ["test", "dev"]
 
 [[package]]
 name = "fx-var"
-version = "1.1.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/03-var-es-engine" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1633,12 +1637,14 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "hypothesis" },
+    { name = "mpmath" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
+    { name = "mpmath", marker = "extra == 'dev'", specifier = ">=1.3" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
@@ -1650,7 +1656,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-vol"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/fx/02-volatility-modeling" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1689,6 +1695,41 @@ requires-dist = [
     { name = "statsmodels", specifier = ">=0.14" },
 ]
 provides-extras = ["test", "dev", "live"]
+
+[[package]]
+name = "griffe"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "griffecli" },
+    { name = "griffelib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/33/a4/be055b9ced02e39ac0ab85960e0ed3d8c6017c03e90965e77ff276684418/griffe-2.4.1.tar.gz", hash = "sha256:766123e26ec35b2ead63202e9e43ec309d876085d571b7df288256cd6fe4a3ef", size = 450805, upload-time = "2026-10-22T11:20:02.532Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/29/93/67a1814b4b13e9a5cc02510dbfa1d3937603140192a701c96d861b272611/griffe-2.4.1-py3-none-any.whl", hash = "sha256:ca58ccdb1d8590ad062fad837a875dd704f94acf7a0104795a098a991ceaf728", size = 5100, upload-time = "2026-10-22T11:19:58.365Z" },
+]
+
+[[package]]
+name = "griffecli"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama" },
+    { name = "griffelib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/8e/d3130e17ae27c900f8f76c96ceb2f02edfe0c7db0366b49e033f81ff81d7/griffecli-2.4.1.tar.gz", hash = "sha256:6db9acad984990b08c833ab5ec73d5a604e317b2290074d04c91ca9e52d35a7b", size = 61762, upload-time = "2026-10-22T11:20:01.054Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/dc/5cdbbbfd1a9e8c0e9b6b8b6e6d839e67f82cb138b77cf74856e5b80527de/griffecli-2.4.1-py3-none-any.whl", hash = "sha256:1678938e7b75a0aa34d3e408d550707a192f5297c3005aa0f92660648c30bc0a", size = 11774, upload-time = "2026-10-22T11:19:57.134Z" },
+]
+
+[[package]]
+name = "griffelib"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/e2/0f5d8ed08766bc6dcd3eebf5a6623d83cbca33a6e4c90aef57156ce745ad/griffelib-2.4.1.tar.gz", hash = "sha256:40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff", size = 245153, upload-time = "2026-10-22T11:20:03.705Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/02/1156d5f5307f573b901b14373848b84e69ca6cab09169b8cc97d16a181f9/griffelib-2.4.1-py3-none-any.whl", hash = "sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce", size = 172983, upload-time = "2026-10-22T11:19:59.843Z" },
+]
 
 [[package]]
 name = "hmmlearn"
@@ -2984,7 +3025,7 @@ wheels = [
 
 [[package]]
 name = "qp-core"
-version = "1.0.0"
+version = "3.0.0.dev0"
 source = { editable = "python/core" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -3009,6 +3050,46 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.10" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "quantlib"
+version = "1.44"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/1b/91053cea97f9c993894895cef1871e489446dbb8f22118fc334cfdaa92b9/quantlib-1.44-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:a6c6c18096f0d35f92c465845cd0432a9b0b17bc1ec1ae7558a48b5307ecf4ce", size = 16812646, upload-time = "2026-10-13T10:30:24.608Z" },
+    { url = "https://files.pythonhosted.org/packages/80/2d/4527bcd25d28693d53cc7ebd3e2898ed71b8d94db81d08fce7d2c68fb64f/quantlib-1.44-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:dc07bc18089aa2fe35d19c4423a2f002be1c54707e7f21f3a747878d8a7f1c73", size = 15541225, upload-time = "2026-10-13T10:30:26.984Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/ec/f5bf8f933bd187f9470fc3bcd6068951a17dbed2bf48050cf22ba185f642/quantlib-1.44-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b35893e596ff5f444686b9f9960b2e5e73f75f4be102d42089c5a64e57d95b29", size = 19810639, upload-time = "2026-10-13T10:30:29.307Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/34/1ff428002f36f0a250efeea2218b15ddb51c36df782bf171f5107ec7d9c8/quantlib-1.44-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7f2ba85b2646ec6d717b01696f07ee002fea939f93e43dbb8f82cb3a675aa33c", size = 21022963, upload-time = "2026-10-13T10:30:31.634Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/cf/081f8e12145ffef98567d90ca3d9dc9aa327bda26243f85417f5c551daa8/quantlib-1.44-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:0af6c9bde3c03ffad4ca32d1b8dd4c0d0d37d343d6afd63fe0d0cacfa959ec45", size = 21456293, upload-time = "2026-10-13T10:30:34.214Z" },
+    { url = "https://files.pythonhosted.org/packages/35/e6/7571ab4ca7839a71be389a7dcf8cfa4df4fce222273cc4f38ab176d0d81c/quantlib-1.44-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:4c9159b9d2697a6cefd597a625e5c8391e2516f2357bf7ecf4c5eb4e069392c7", size = 27075810, upload-time = "2026-10-13T10:30:36.683Z" },
+    { url = "https://files.pythonhosted.org/packages/02/c8/5cce1ba9ae5c34e6f2398bec56cb83cd9b153fe5456bbbb6f3094554e34d/quantlib-1.44-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:7054f07aa62b70d86a74a1c17b8f51d5ca51b7b2016f218773223fedfe6eaa11", size = 22508994, upload-time = "2026-10-13T10:30:39.408Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/ec/5d23e1a57a355df691d3d35bf64a38cb8b3d70515fe706085659d2e1a753/quantlib-1.44-cp314-cp314t-win32.whl", hash = "sha256:4dcbac702b6d49a4fa16e8693ef3e3f4769e00dd0feb6f6b887137c0b8287a2c", size = 12524514, upload-time = "2026-10-13T10:30:41.804Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/03/fd6c1e3e9a39df98464f3df968442b76ace4252477a69596bc1e01278a63/quantlib-1.44-cp314-cp314t-win_amd64.whl", hash = "sha256:f2365fc09f97b08266312c80dc73f1174b9a8e9c23ef7f4d82c02c5aff12fc8a", size = 13577089, upload-time = "2026-10-13T10:30:44.101Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/d5/1b8c7beeaa2d59a78c101f9bf80a5bcbfff82f21a426ad77ef895efeb1e6/quantlib-1.44-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:85faeea570140620232d7cd3be881a24297e22bcf2952bff1c0c96fee3963e43", size = 16808729, upload-time = "2026-10-13T10:30:46.396Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/07/216694a3d20f74bca15264044723cfdaf23db3523322a2fe581003a75d2b/quantlib-1.44-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:b7e42b64feef678f670d75efd26f731cfe1588893bcd390078baab1899bfb407", size = 15538935, upload-time = "2026-10-13T10:30:48.593Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/c4/5bda49019eb3afeca3b2d9b671742a351efb45e52b42da4243b4c3c5181a/quantlib-1.44-cp315-cp315t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6652f92a52b7f95659d560f62cd66340d9fabb6f6d2319f6a2b97a9b2c0d596c", size = 19807135, upload-time = "2026-10-13T10:30:50.817Z" },
+    { url = "https://files.pythonhosted.org/packages/20/f9/d94cbc999c42236ca8643cb94c205203c89211476b07003ee774403d3861/quantlib-1.44-cp315-cp315t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b00c8bac5bacee5a233a99c0b67c2c7c370c8112b38f4c663e4f0bab330cae06", size = 21020630, upload-time = "2026-10-13T10:30:53.446Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/6d/d5abcae870f9a6ef510b5ed27435fa78ffb8fdea1d8c1700f7b3789a1786/quantlib-1.44-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:7169297cf5f929def4bbf59d2f1c3517d0fecdf507a9671980709ae38744409c", size = 21453485, upload-time = "2026-10-13T10:30:55.819Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/76/955f78ae0b48eb30fcfff211a8e9719c0c8c80b0ef1be35b8b11587fa334/quantlib-1.44-cp315-cp315t-musllinux_1_2_i686.whl", hash = "sha256:92d89388f74158aec1bf691acf1ef50262c68e724517987ed8899ac48a3dc425", size = 27078348, upload-time = "2026-10-13T10:30:58.545Z" },
+    { url = "https://files.pythonhosted.org/packages/65/cb/e6033d5615564a67fa8024d51e7f1c04a9b9e31e86006cbffc18f83056cb/quantlib-1.44-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:a53ddb33070aa84a89d813dce3c751dc03fa2427afdbbe1c3563732d4a1c4306", size = 22507773, upload-time = "2026-10-13T10:31:01.213Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/7a/680642aea09822d85e853af2c7243517e393c612e88be2ceef9afe87ab6d/quantlib-1.44-cp315-cp315t-win32.whl", hash = "sha256:c01089c2628432744c87b523002c77da79121d0fb6a611d79be5d5330cf93a93", size = 12479502, upload-time = "2026-10-13T10:31:03.74Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/6b/d4bd0effb3200ecf3e334d5ae47a50fe4c96214ea0faa3ae722e6d63c60f/quantlib-1.44-cp315-cp315t-win_amd64.whl", hash = "sha256:876fe01eb7606e264885ab57792d8a67013a0b751ae16b5615634d4536301510", size = 13495456, upload-time = "2026-10-13T10:31:05.79Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/73/f299bffacf56ee8f8094c78367403be777c666c9094b9d5a664f5765c4d6/quantlib-1.44-cp39-abi3-macosx_10_13_x86_64.whl", hash = "sha256:6b6e4a252172878d902279df81af1f94e48ac6dc1e184281f078223e5f985684", size = 16745441, upload-time = "2026-10-13T10:31:07.84Z" },
+    { url = "https://files.pythonhosted.org/packages/33/04/6af6b3f51b9666a4023a5854d622261e30a997afdc55410cf9004c0d1a74/quantlib-1.44-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:202a97b6363718d4dcb6b0e5727a9f6c309ddeafb1a1d02f3e1d30060f187da3", size = 15501946, upload-time = "2026-10-13T10:31:10.181Z" },
+    { url = "https://files.pythonhosted.org/packages/58/69/80f7e8b2e0eb5085884ff685fa46d1d005f91a8e011aa833b9d89129ac2a/quantlib-1.44-cp39-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fb76eb6695fdc178d7da063274e11b40ee772c9da046827616348d26242fdd02", size = 19736920, upload-time = "2026-10-13T10:31:12.441Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/e5/a69b69d734aaf47087c1631ca5543a196e9b7f203fe61d67d505dcade91c/quantlib-1.44-cp39-abi3-manylinux_2_24_i686.manylinux_2_28_i686.whl", hash = "sha256:7c40f1650ba21627147baa19ead638b965e45fcb20c450015daf81ab1574fe93", size = 24775492, upload-time = "2026-10-13T10:31:15.279Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/da/453ecc1c2397b6a72d569485a182513d74fac9027122b2095117900ea204/quantlib-1.44-cp39-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:60394d8c7f39a9c84a96da509c099e5f84fee50bf6b660fcf9515703fa4abb9b", size = 21096302, upload-time = "2026-10-13T10:31:17.714Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/bf/98686608fadf8b18ac4eb4ab36527f1d1dcdfa3f4e474d45503af2b864ea/quantlib-1.44-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:42d8810102cf6523e49a0bdd7be7b08d6f045da3164f82ca000ffc01ecc6823c", size = 21363666, upload-time = "2026-10-13T10:31:20.516Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/90/913b8c2f9f3e0c15ca1862b9a88b28244b222d454d6b4668f7aea61deb8c/quantlib-1.44-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:fdfdad6b48c57f7e5a72f5888f3eec8bd247a5bc740dc212a9674a2438497082", size = 26771653, upload-time = "2026-10-13T10:31:22.848Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/cb/0aeba76728c81fcf322bdd37b23d59053f240cc390c90dc66f0844e3e20d/quantlib-1.44-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e076bf8f7d3460a949e2ba11b258757c612251cc87d26e39459363814ae10a10", size = 22579269, upload-time = "2026-10-13T10:31:25.27Z" },
+    { url = "https://files.pythonhosted.org/packages/34/27/94a72689f1b19ecbad5220234993169b5d2d91d8d38bce546fc997d4716d/quantlib-1.44-cp39-abi3-win32.whl", hash = "sha256:0b3f973aef47716bbeb98f4bda88c97218c4173253a297189676bbf36cda3de6", size = 12230182, upload-time = "2026-10-13T10:31:27.506Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/3b/6061b99c2d1b16a856caabf3f30818e074f32ebb52dd8ac8f91f7900c9ca/quantlib-1.44-cp39-abi3-win_amd64.whl", hash = "sha256:2d1d331ecb00ffe6d06c6bf73fad0114687fb1179354002b6bba37bc1657ea1c", size = 13291176, upload-time = "2026-10-13T10:31:30.008Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/9c/0feefc6caf897800768ce7ddb27e37a1d5009ad80a26565f153113cad6c1/quantlib-1.44-pp311-pypy311_pp73-macosx_10_15_x86_64.whl", hash = "sha256:ec96845cbfec2d6ba5064b18b5cd951641cf1e27f2b536bd4e83360de893835c", size = 16617633, upload-time = "2026-10-13T10:31:32.392Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/c6/f6e908b793693e94f9de8b19065ba0b0926fedd21593a1f336b32e7e3589/quantlib-1.44-pp311-pypy311_pp73-macosx_11_0_arm64.whl", hash = "sha256:42e09dd70f4de49f1fe1c1bc72204d3c28e9e08433e0676d3578ba9442714edc", size = 15407326, upload-time = "2026-10-13T10:31:34.832Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/b0/d6546bdbdf5db5f478affaad82b2018fb972467939e2b930cf8bdb7a84c7/quantlib-1.44-pp311-pypy311_pp73-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a203d1a495fccd120859d0a52082bd93840f65797ce2190eb3622b29c205c57d", size = 19657811, upload-time = "2026-10-13T10:31:37.058Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/0e/90d5150c82e567168e1f9b7b4e5df416c5df33aa9ac29d356a611c753965/quantlib-1.44-pp311-pypy311_pp73-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8208b20e55c44102bad224db5d2536ed4b3167fed5483bacd722d3b327dd9c81", size = 20971630, upload-time = "2026-10-13T10:31:39.424Z" },
+    { url = "https://files.pythonhosted.org/packages/13/36/25b92a4ce1da7529145494ee62e84fd74b5bdfc3f942ee40a37f8834d07e/quantlib-1.44-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:14747cf77bc3d41863e65ef31248d08f479c672d31bec0a8b2bbec7e7b57cfa3", size = 13102067, upload-time = "2026-10-13T10:31:41.589Z" },
+]
 
 [[package]]
 name = "requests"

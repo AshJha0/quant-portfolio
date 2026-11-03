@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-pairs"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX statistical pairs / cross-rate mean-reversion trading: cross construction, Engle-Granger cointegration, OU spread modelling, carry-adjusted backtesting with pip costs"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_pairs = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

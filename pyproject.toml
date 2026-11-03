@@ -41,6 +41,8 @@ members = [
 #   lint   ruff, mypy and the type stubs (the lint job)
 #   backend  setuptools, which builds every project (pip --no-build-isolation)
 #   build  the two binding build backends (bindings and engine diff jobs)
+#   oracle   QuantLib, the independent reference for the required quantlib job
+#   api    griffe, the public-API diff (api-diff job; docs/VERSIONING.md)
 [dependency-groups]
 test = ["pytest>=7.4", "hypothesis>=6.100"]
 lint = [
@@ -50,6 +52,8 @@ lint = [
     "scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'",
 ]
 backend = ["setuptools>=68"]
+oracle = ["QuantLib==1.44"]
+api = ["griffe==2.4.1"]
 build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0", "cibuildwheel==3.1.4"]
 
 [tool.uv.sources]

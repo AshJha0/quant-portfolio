@@ -15,10 +15,21 @@
 //   4. Report the median (p50) with p10 and p90 as the spread, plus p99,
 //      p99.9, max and mean of the same per-call samples.
 //
+// What the tail columns are. When B > 1 every sample is the mean of B
+// back-to-back calls, so p99, p99.9 and max are percentiles of B-call
+// batch means, not of single calls. Averaging hides a rare slow call: one
+// 1 ms stall inside a batch of 1024 adds only about 1 us to that sample.
+// They are therefore labelled "p99 of B-call batch means" (stdout header,
+// the JSON field `tail_basis`, docs/BENCHMARKS.md) and must not be quoted
+// as per-call tail latency or used for an SLO. Per-call tail timing is a
+// separate harness (W12, later round). When B == 1 the tails are per call.
+//
 // Output: one line per kernel on stdout and, with --out PATH, a JSON array
 // with fields engine, kernel, label, compiler, flags, cpu, date, iters
 // (samples), calls_per_sample, unit, timer, p10, p50, p90, p99, p999, max,
-// mean. Options: --out PATH, --label NAME, --quick (10% of the samples),
+// mean, tail_basis ("per-call" when B == 1, else "p99 of B-call batch
+// means" with B written out). Options: --out PATH, --label NAME,
+// --quick (10% of the samples),
 // --only TEXT (run only kernels whose name contains TEXT).
 
 #ifndef QP_BENCH_LATENCY_HPP
@@ -135,7 +146,8 @@ public:
         std::printf("engine %s | %s | %s | timer steady_clock, batch to >= 2 us\n", engine_.c_str(),
                     compiler_id().c_str(), cpu_.c_str());
         std::printf("%-36s %6s %9s %9s %9s %9s %11s\n", "kernel (ns per call)", "B", "p10", "p50",
-                    "p90", "p99", "max");
+                    "p90", "p99*", "max*");
+        std::printf("* p99 and max are of B-call batch means when B > 1, not per-call tails\n");
     }
     Bench(const Bench&) = delete;
     Bench& operator=(const Bench&) = delete;
@@ -153,6 +165,9 @@ public:
         std::printf("%-36s %6zu %9.1f %9.1f %9.1f %9.1f %11.1f\n", kernel.c_str(), s.batch, s.p10,
                     s.p50, s.p90, s.p99, s.max);
         std::fflush(stdout);
+        const std::string tail_basis =
+            s.batch == 1 ? std::string("per-call")
+                         : "p99 of " + std::to_string(s.batch) + "-call batch means";
         char rec[1536];
         std::snprintf(rec, sizeof rec,
                       "  {\"engine\": \"%s\", \"kernel\": \"%s\", \"label\": \"%s\", "
@@ -160,10 +175,10 @@ public:
                       "\"date\": \"%s\", \"iters\": %zu, \"calls_per_sample\": %zu, "
                       "\"unit\": \"ns\", \"timer\": \"steady_clock\", \"p10\": %.2f, "
                       "\"p50\": %.2f, \"p90\": %.2f, \"p99\": %.2f, \"p999\": %.2f, "
-                      "\"max\": %.2f, \"mean\": %.2f}",
+                      "\"max\": %.2f, \"mean\": %.2f, \"tail_basis\": \"%s\"}",
                       engine_.c_str(), kernel.c_str(), label_.c_str(), compiler_id().c_str(),
                       QP_BENCH_FLAGS, cpu_.c_str(), today().c_str(), s.samples, s.batch, s.p10,
-                      s.p50, s.p90, s.p99, s.p999, s.max, s.mean);
+                      s.p50, s.p90, s.p99, s.p999, s.max, s.mean, tail_basis.c_str());
         records_.emplace_back(rec);
     }
 

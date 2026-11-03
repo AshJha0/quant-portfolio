@@ -23,12 +23,12 @@ OptionType ot(const std::string& s) { return ot(parse_call(s)); }
 
 template <class T>
 T unwrap(eqopt::Result<T>&& r) {
-    if (!r) value_error(eqopt::message(r.error()));
+    if (!r) raise_engine([&] { eqopt::throw_error(r.error()); });
     return *std::move(r);
 }
 
 [[noreturn]] void batch_fail(const eqopt::BatchError& e) {
-    value_error("element " + std::to_string(e.index) + ": " + eqopt::message(e.error));
+    raise_engine([&] { eqopt::throw_error(e.error); }, "element " + std::to_string(e.index) + ": ");
 }
 
 nb::dict greeks_dict(const eqopt::BSGreeks& g) {
