@@ -13,6 +13,15 @@
 // Field names are taken from those documents; the tests use fixtures in the
 // same shape (tests/fixtures/README.md says which are synthetic).
 //
+// Books: Coinbase `full` and Binance diff-depth keep their book in the part-1
+// flat-array L3 book through flatbook.hpp (per-product tick window, lot size,
+// id interning). An update outside the window is an inconsistency like any
+// other: the handler resets, the book is stale, and the recovery snapshot
+// re-centres the window. Binance frames are decoded by the non-allocating
+// fastdepth.hpp first; in sync and in order they are applied with no heap
+// allocation (tests/test_noalloc.cpp). Coinbase frames still go through
+// json::parse, which allocates; their book operations do not.
+//
 // The handlers never open sockets. The caller owns transport, which keeps
 // the tests offline and lets the recorder sit in front of the parser.
 #pragma once
@@ -26,6 +35,11 @@
 #include <unordered_set>
 #include <utility>
 
+#include <tuple>
+#include <vector>
+
+#include "qp/ull/fastdepth.hpp"
+#include "qp/ull/flatbook.hpp"
 #include "qp/ull/json.hpp"
 #include "qp/ull/l2book.hpp"
 #include "qp/ull/seqsync.hpp"
@@ -46,8 +60,8 @@ struct HandlerStats {
 
 class CoinbaseFull {
 public:
-    CoinbaseFull(std::string product, SyncConfig cfg = {})
-        : product_(std::move(product)), sync_(cfg, [this](const json::Value& m) { apply(m); }) {
+    CoinbaseFull(std::string product, SyncConfig cfg = {}, ProductSpec spec = {})
+        : product_(std::move(product)), book_(spec), sync_(cfg, [this](const json::Value& m) { apply(m); }) {
         sync_.on_snapshot_needed = [this] {
             if (on_snapshot_needed) on_snapshot_needed();
         };
@@ -95,28 +109,34 @@ public:
     void on_snapshot(std::string_view raw) {
         json::Value s = json::parse(raw);
         std::int64_t seq = s.at("sequence").i64();
-        sync_.on_snapshot(seq, [&] {
-            book_.clear();
-            for (const auto& r : s.at("bids").arr)
-                book_.open(r.at(2).str(), Side::Bid, parse_fixed(r.at(0).str()),
-                           parse_fixed(r.at(1).str()));
-            for (const auto& r : s.at("asks").arr)
-                book_.open(r.at(2).str(), Side::Ask, parse_fixed(r.at(0).str()),
-                           parse_fixed(r.at(1).str()));
-        });
+        std::vector<std::tuple<std::string, Side, std::int64_t, std::int64_t>> rows;
+        for (const auto& r : s.at("bids").arr)
+            rows.emplace_back(r.at(2).str(), Side::Bid, parse_fixed(r.at(0).str()),
+                              parse_fixed(r.at(1).str()));
+        for (const auto& r : s.at("asks").arr)
+            rows.emplace_back(r.at(2).str(), Side::Ask, parse_fixed(r.at(0).str()),
+                              parse_fixed(r.at(1).str()));
+        // Loading, or applying the buffered updates after it, can find an
+        // update the book cannot hold (e.g. outside the window): resync.
+        try {
+            sync_.on_snapshot(seq, [&] { book_.load(rows); });
+        } catch (const std::exception&) {
+            ++hs_.inconsistent;
+            sync_.reset();
+        }
     }
 
     void tick(std::int64_t now_ns) { sync_.tick(now_ns); }
     void reset() { sync_.reset(); }
 
     bool stale() const { return sync_.stale(); }
-    const L3Book& book() const { return book_; }
+    const FlatL3Book& book() const { return book_; }
     const SeqSync<json::Value>& sync() const { return sync_; }
     const HandlerStats& stats() const { return hs_; }
 
 private:
     std::string product_;
-    L3Book book_;
+    FlatL3Book book_;
     SeqSync<json::Value> sync_;
     HandlerStats hs_;
 
@@ -141,8 +161,10 @@ private:
 
 class BinanceDepth {
 public:
-    BinanceDepth(std::string symbol, SyncConfig cfg = {})
-        : symbol_(std::move(symbol)), sync_(cfg, [this](const json::Value& m) { apply(m); }) {
+    BinanceDepth(std::string symbol, SyncConfig cfg = {}, ProductSpec spec = {},
+                 std::size_t fast_changes = 4096)
+        : symbol_(std::move(symbol)), book_(spec), sync_(cfg, [this](const DepthDelta& d) { apply(d); }) {
+        scratch_.changes.reserve(fast_changes);
         sync_.on_snapshot_needed = [this] {
             if (on_snapshot_needed) on_snapshot_needed();
         };
@@ -156,6 +178,16 @@ public:
 
     void on_message(std::string_view raw, std::int64_t now_ns) {
         ++hs_.messages;
+        if (decode_depth(raw, symbol_, scratch_)) {
+            ++fast_;
+            try {
+                sync_.on_update(scratch_.first, scratch_.last, scratch_, now_ns);
+            } catch (const std::exception&) {
+                ++hs_.inconsistent;
+                sync_.reset();
+            }
+            return;
+        }
         try {
             json::Value m = json::parse(raw);
             if (m.has("data") && m.has("stream"))
@@ -170,8 +202,9 @@ public:
                 ++hs_.malformed;
                 return;
             }
+            DepthDelta d = to_delta(m);
             try {
-                sync_.on_update(first, last, std::move(m), now_ns);
+                sync_.on_update(first, last, std::move(d), now_ns);
             } catch (const std::exception&) {
                 ++hs_.inconsistent;
                 sync_.reset();
@@ -183,33 +216,55 @@ public:
 
     void on_snapshot(std::string_view raw) {
         json::Value s = json::parse(raw);
-        sync_.on_snapshot(s.at("lastUpdateId").i64(), [&] {
-            book_.clear();
-            for (const auto& r : s.at("bids").arr)
-                book_.set(Side::Bid, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
-            for (const auto& r : s.at("asks").arr)
-                book_.set(Side::Ask, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
-        });
+        const std::int64_t last_id = s.at("lastUpdateId").i64();
+        std::vector<std::pair<std::int64_t, std::int64_t>> b, a;
+        for (const auto& r : s.at("bids").arr)
+            b.emplace_back(parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
+        for (const auto& r : s.at("asks").arr)
+            a.emplace_back(parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
+        // See CoinbaseFull::on_snapshot: an update the book cannot hold resyncs.
+        try {
+            sync_.on_snapshot(last_id, [&] { book_.load(b, a); });
+        } catch (const std::exception&) {
+            ++hs_.inconsistent;
+            sync_.reset();
+        }
     }
+
+    // The generic decode of a parsed event (also the oracle for the fast one).
+    // A bad decimal throws here, before the update reaches the sync engine,
+    // so it counts as malformed and the frame is dropped (the next frame then
+    // shows a gap and the book resynchronises).
+    static DepthDelta to_delta(const json::Value& m) {
+        DepthDelta d;
+        d.first = m.at("U").i64();
+        d.last = m.at("u").i64();
+        for (const auto& r : m.at("b").arr)
+            d.changes.push_back({Side::Bid, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
+        for (const auto& r : m.at("a").arr)
+            d.changes.push_back({Side::Ask, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str())});
+        return d;
+    }
+    // Frames decoded by the non-allocating path.
+    std::uint64_t fast_decoded() const { return fast_; }
 
     void tick(std::int64_t now_ns) { sync_.tick(now_ns); }
     void reset() { sync_.reset(); }
     bool stale() const { return sync_.stale(); }
-    const L2Book& book() const { return book_; }
-    const SeqSync<json::Value>& sync() const { return sync_; }
+    const FlatL2Book& book() const { return book_; }
+    const SeqSync<DepthDelta>& sync() const { return sync_; }
     const HandlerStats& stats() const { return hs_; }
 
 private:
     std::string symbol_;
-    L2Book book_;
-    SeqSync<json::Value> sync_;
+    FlatL2Book book_;
+    SeqSync<DepthDelta> sync_;
     HandlerStats hs_;
+    DepthDelta scratch_;
+    std::uint64_t fast_ = 0;
 
-    void apply(const json::Value& m) {
-        for (const auto& r : m.at("b").arr)
-            book_.set(Side::Bid, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
-        for (const auto& r : m.at("a").arr)
-            book_.set(Side::Ask, parse_fixed(r.at(0).str()), parse_fixed(r.at(1).str()));
+    void apply(const DepthDelta& d) {
+        for (const auto& c : d.changes) book_.set(c.side, c.px, c.qty);
     }
 };
 

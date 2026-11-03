@@ -72,8 +72,11 @@ public:
     const SyncStats& stats() const { return st_; }
     std::size_t held_count() const { return held_.size(); }
 
-    // One update from either line. now_ns drives the gap timeout.
-    void on_update(std::int64_t first, std::int64_t last, Msg m, std::int64_t now_ns) {
+    // One update from either line. now_ns drives the gap timeout. `m` may be
+    // an lvalue the caller reuses: it is copied only when it must be held, so
+    // an in-order update on a synced book costs no allocation here.
+    template <class M>
+    void on_update(std::int64_t first, std::int64_t last, M&& m, std::int64_t now_ns) {
         bool was = stale();
         if (synced_ && last < applied_ + 1) {
             ++st_.duplicates;
@@ -93,7 +96,7 @@ public:
                 ++st_.overflow_resets;
                 request();
             }
-            held_.emplace(first, Held{last, now_ns, std::move(m)});
+            held_.emplace(first, Held{last, now_ns, Msg(std::forward<M>(m))});
             ++st_.held;
             if (synced_ && !requested_ && held_.size() > cfg_.reorder_window) declare_gap();
         }

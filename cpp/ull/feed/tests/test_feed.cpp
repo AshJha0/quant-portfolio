@@ -3,6 +3,9 @@
 // in the test. No test opens a socket.
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <tuple>
+#include <unordered_map>
 #include <fstream>
 #include <map>
 #include <random>
@@ -281,8 +284,8 @@ static std::string snapshot_body(const CoinbaseFull& ref) {
     std::string o = "{\"sequence\":" + std::to_string(ref.sync().applied_seq()) + ",\"bids\":[";
     std::string a = "],\"asks\":[";
     bool fb = true, fa = true;
-    std::vector<std::pair<std::string, L3Book::Order>> v(ref.book().orders().begin(),
-                                                         ref.book().orders().end());
+    const auto ords = ref.book().orders();  // by value: one copy, two iterators
+    std::vector<std::pair<std::string, L3Book::Order>> v(ords.begin(), ords.end());
     std::sort(v.begin(), v.end(), [](auto& x, auto& y) { return x.first < y.first; });
     for (auto& [id, ord] : v) {
         std::string row =
@@ -314,8 +317,8 @@ static std::string snapshot_body(const BinanceDepth& ref) {
     }
     return o + "]}";
 }
-static const L2Book& l2of(const CoinbaseFull& h) { return h.book().l2(); }
-static const L2Book& l2of(const BinanceDepth& h) { return h.book(); }
+static L2Book l2of(const CoinbaseFull& h) { return h.book().l2(); }
+static L2Book l2of(const BinanceDepth& h) { return h.book().to_l2(); }
 
 enum class Fault { DropOneLine, DropBoth, Duplicate, Reorder, Burst };
 
@@ -499,6 +502,240 @@ TEST(coinbase_level2_snapshot_dedupe_and_stale) {
     h.reset();
     CHECK(h.stale());
     CHECK((ev == std::vector<bool>{false, true}));
+}
+
+// ---- flat book (part-1 L3 book) parity and the fast decoder --------------------------
+//
+// The map-based L2Book and L3Book in l2book.hpp stay as the oracles: the flat
+// books must match them call for call, inside the window.
+
+TEST(flat_l2_matches_map_book) {
+    std::mt19937_64 rng(21);
+    FlatL2Book f;
+    L2Book m;
+    std::vector<std::pair<std::int64_t, std::int64_t>> b{{100 * kScale, kScale}}, a{{kScale * 101, kScale}};
+    f.load(b, a);
+    m.set(Side::Bid, 100 * kScale, kScale);
+    m.set(Side::Ask, 101 * kScale, kScale);
+    for (int i = 0; i < 50000; ++i) {
+        const Side s = rng() % 2 ? Side::Bid : Side::Ask;
+        const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
+                                (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 300) * (kScale / 100);
+        const std::int64_t q = rng() % 4 == 0 ? 0 : std::int64_t(1 + rng() % 5000) * 1000;
+        f.set(s, px, q);
+        m.set(s, px, q);
+        if (i % 997 == 0) CHECK(f.to_l2() == m);
+    }
+    CHECK(f.to_l2() == m);
+    CHECK_EQ(f.dump(), m.dump());
+    CHECK_EQ(f.get(Side::Bid, 100 * kScale), m.get(Side::Bid, 100 * kScale));
+    CHECK_THROWS(f.set(Side::Ask, 101 * kScale + 1, 1));        // off the tick grid
+    CHECK_THROWS(f.set(Side::Ask, 900 * kScale, 1));            // outside the window
+    CHECK_THROWS(f.set(Side::Ask, 101 * kScale, 43 * kScale));  // more than u32 lots
+    f.set(Side::Ask, 900 * kScale, 0);                          // absent: a no-op
+    CHECK(f.to_l2() == m);
+}
+
+TEST(flat_l3_matches_map_book) {
+    std::mt19937_64 rng(5);
+    FlatL3Book f;
+    L3Book m;
+    std::vector<std::tuple<std::string, Side, std::int64_t, std::int64_t>> snap{
+        {"s0", Side::Bid, 100 * kScale, kScale}, {"s1", Side::Ask, 101 * kScale, kScale}};
+    f.load(snap);
+    for (auto& [id, s, p, q] : snap) m.open(id, s, p, q);
+    std::vector<std::string> live{"s0", "s1"};
+    int next = 0;
+    for (int i = 0; i < 60000; ++i) {
+        const int op = int(rng() % 10);
+        if (op < 4 || live.empty()) {
+            std::string id = "o-" + std::to_string(next++);
+            const Side s = rng() % 2 ? Side::Bid : Side::Ask;
+            const std::int64_t px = (s == Side::Bid ? 100 : 101) * kScale +
+                                    (s == Side::Bid ? -1 : 1) * std::int64_t(rng() % 200) * (kScale / 100);
+            const std::int64_t q = std::int64_t(rng() % 50) * 100000;  // includes 0
+            f.open(id, s, px, q);
+            m.open(id, s, px, q);
+            live.push_back(id);
+            continue;
+        }
+        const std::size_t k = rng() % live.size();
+        const std::string id = live[k];
+        const std::int64_t cur = m.orders().at(id).qty;
+        if (op < 6) {
+            f.done(id);
+            m.done(id);
+            live[k] = live.back();
+            live.pop_back();
+        } else if (op < 8) {
+            const std::int64_t by = cur ? std::int64_t(rng() % (cur / 100000 + 1)) * 100000 : 0;
+            f.reduce(id, by);  // may leave a live zero-size order, as Coinbase does
+            m.reduce(id, by);
+        } else {
+            const std::int64_t q = std::int64_t(rng() % 50) * 100000;
+            f.resize(id, q);
+            m.resize(id, q);
+        }
+        if (i % 1009 == 0) {
+            CHECK(f.l2() == m.l2());
+            CHECK_EQ(f.order_count(), m.order_count());
+        }
+    }
+    CHECK(f.l2() == m.l2());
+    CHECK_EQ(f.order_count(), m.order_count());
+    auto fo = f.orders();
+    CHECK_EQ(fo.size(), m.orders().size());
+    bool same = true;
+    for (auto& [id, o] : m.orders()) {
+        auto it = fo.find(id);
+        same = same && it != fo.end() && it->second.side == o.side && it->second.px == o.px &&
+               it->second.qty == o.qty;
+    }
+    CHECK(same);
+    CHECK_THROWS(f.open(std::string(IdInterner::kMaxId + 1, 'x'), Side::Bid, 100 * kScale, 1));
+    f.open("z", Side::Bid, 100 * kScale, kScale);
+    CHECK_THROWS(f.reduce("z", 2 * kScale));
+}
+
+TEST(id_interner_matches_hash_map) {
+    IdInterner t(64);
+    std::unordered_map<std::string, std::uint64_t> m;
+    std::mt19937_64 rng(3);
+    for (int i = 0; i < 200000; ++i) {
+        const std::string k = "id" + std::to_string(rng() % 150);
+        switch (rng() % 3) {
+            case 0:
+                if (!m.count(k)) {
+                    if (m.size() == 64) {
+                        CHECK_THROWS(t.insert(k));
+                    } else {
+                        const std::uint64_t h = t.insert(k);
+                        for (auto& [kk, v] : m)
+                            if (v == h) CHECK(false);  // a live handle reused
+                        m[k] = h;
+                    }
+                }
+                break;
+            case 1:
+                t.erase(k);
+                m.erase(k);
+                break;
+            default: {
+                auto it = m.find(k);
+                if (t.get(k) != (it == m.end() ? 0 : it->second)) CHECK(false);
+            }
+        }
+        if (t.size() != m.size()) CHECK(false);
+    }
+    CHECK_EQ(t.size(), m.size());
+}
+
+TEST(fast_depth_decoder_agrees_with_generic) {
+    std::uint64_t accepted = 0, fuzz_accepted = 0, total = 0;
+    DepthDelta d;
+    d.changes.reserve(4096);
+    std::mt19937_64 rng(17);
+    auto generic = [](const std::string& raw, DepthDelta& out) -> bool {
+        try {
+            json::Value m = json::parse(raw);
+            if (m.has("data") && m.has("stream")) m = json::Value(m.at("data"));
+            if (!m.has("e") || m.at("e").str() != "depthUpdate" || m.at("s").str() != "BTCUSDT") return false;
+            out = BinanceDepth::to_delta(m);
+            return out.first <= out.last;
+        } catch (const std::exception&) {
+            return false;
+        }
+    };
+    for (const char* name : {"binance_depth_21", "binance_depth_22"}) {
+        const std::string fname = name;
+        for (const auto& r : records(fname)) {
+            if (r.kind != Kind::Frame) continue;
+            ++total;
+            DepthDelta g;
+            const bool ok = decode_depth(r.bytes, "BTCUSDT", d);
+            CHECK(ok);  // every fixture frame takes the fast path
+            CHECK(generic(r.bytes, g));
+            if (ok && d == g) ++accepted;
+            for (int rep = 0; rep < 8; ++rep) {
+                std::string m = r.bytes;
+                const std::size_t pos = rng() % m.size();
+                switch (rng() % 3) {
+                    case 0:
+                        m[pos] = char(rng() % 256);
+                        break;
+                    case 1:
+                        m.erase(pos, 1 + rng() % 3);
+                        break;
+                    default:
+                        m.insert(pos, 1, " ,:[]{}\"0.9e-\\"[rng() % 14]);
+                }
+                if (decode_depth(m, "BTCUSDT", d)) {
+                    ++fuzz_accepted;
+                    DepthDelta g2;
+                    if (!generic(m, g2) || !(g2 == d)) {
+                        CHECK(false);
+                        std::fprintf(stderr, "fast/generic disagree: %s\n", m.c_str());
+                    }
+                } else if (!d.changes.empty()) {
+                    CHECK(false);
+                }
+            }
+        }
+    }
+    CHECK(total > 1000);
+    CHECK_EQ(accepted, total);
+    CHECK(fuzz_accepted > 0);  // some mutations stay valid (a digit changed, say)
+    // Fallback cases: escape, wrong symbol, a before b, duplicate key, snapshot.
+    for (const char* raw : {R"({"e":"depthUpdate","s":"BTC\u0055SDT","U":1,"u":1,"b":[],"a":[]})",
+                            R"({"e":"depthUpdate","s":"ETHUSDT","U":1,"u":1,"b":[],"a":[]})",
+                            R"({"e":"depthUpdate","s":"BTCUSDT","U":1,"u":1,"a":[],"b":[]})",
+                            R"({"e":"depthUpdate","s":"BTCUSDT","U":1,"U":1,"u":1,"b":[],"a":[]})",
+                            R"({"lastUpdateId":1,"bids":[],"asks":[]})"})
+        CHECK(!decode_depth(raw, "BTCUSDT", d));
+}
+
+TEST(window_move_goes_stale_and_recovers) {
+    // A 64-tick window on the Binance fixture: levels spread wider than that,
+    // so updates fall outside it; each one resets the handler (stale), and the
+    // next snapshot re-centres the window. Whenever the handler is not stale,
+    // its book equals the reference book restricted to the window.
+    const std::string fname = "binance_depth_21";
+    const auto& recs = records(fname);
+    BinanceDepth ref("BTCUSDT");
+    ProductSpec narrow;
+    narrow.n_levels = 64;
+    BinanceDepth h("BTCUSDT", {}, narrow);
+    bool want = false;
+    h.on_snapshot_needed = [&] { want = true; };
+    int recoveries = 0, checked = 0;
+    for (const auto& r : recs) {
+        if (r.kind == Kind::Snapshot) {
+            ref.on_snapshot(r.bytes);
+            want = false;  // before: loading may itself reset and ask again
+            h.on_snapshot(r.bytes);
+            continue;
+        }
+        ref.on_message(r.bytes, std::int64_t(r.recv_ns));
+        h.on_message(r.bytes, std::int64_t(r.recv_ns));
+        if (want && !ref.stale()) {
+            want = false;
+            h.on_snapshot(snapshot_body(ref));
+            ++recoveries;
+        }
+        if (!h.stale() && !ref.stale() && h.sync().applied_seq() == ref.sync().applied_seq()) {
+            const auto [lo, hi] = h.book().window();
+            L2Book in;
+            for (Side s : {Side::Bid, Side::Ask})
+                for (const auto& l : ref.book().levels(s))
+                    if (l.px >= lo && l.px < hi) in.set(s, l.px, l.qty);
+            if (!(h.book().to_l2() == in)) CHECK(false);
+            ++checked;
+        }
+    }
+    CHECK(h.stats().inconsistent > 0);  // out-of-window updates were seen
+    CHECK(recoveries > 0);
+    CHECK(checked > 100);
+    CHECK(h.book().clipped() > 0);  // snapshots wider than the window were clipped
 }
 
 QPT_MAIN()
