@@ -167,6 +167,10 @@ An exception is a day with pnl < -VaR.
 
 ## 8. Special functions (`eqvar/stats.hpp`)
 
+`eqvar/stats.hpp` is a thin wrapper: the functions below live in
+`cpp/core/include/qp/var_stats.hpp`, shared with the FX engine, and the
+Rust twins in `qp_core::stats`.
+
 - Phi^{-1}: Acklam's rational approximation plus one Halley step. The upper
   half is routed through the lower tail (1 - p is exact for p in [0.5, 1)).
 - `log_gamma`: Lanczos (g = 7, 9 terms), about 1e-15 relative, with

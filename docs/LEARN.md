@@ -8293,8 +8293,8 @@ the workspace's own shared crate. `rust/core/Cargo.toml` has an empty
 `[dependencies]` table. The comment in `rust/equity-options-engine/Cargo.toml`
 says the RNG (SplitMix64 -> xoshiro256++) and the normal CDF (Cody's erfc)
 live in the std-only `qp-core` crate and that `proptest` is test-only.
-`rust/equity-var-engine/Cargo.toml` says the same and notes that its special
-functions stay in-crate. So the claim is checkable by reading two manifests:
+`rust/equity-var-engine/Cargo.toml` says the same; its special functions
+now come from `qp_core::stats` in the same std-only crate. So the claim is checkable by reading two manifests:
 no crate from outside the repository is compiled into an engine library.
 `proptest` appears only under `[dev-dependencies]`.
 

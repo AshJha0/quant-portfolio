@@ -569,6 +569,13 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: cargo clippy --release --all-targets --locked -p "$PACKAGE" -- -D warnings
+      # The 13 kernels held to independent-oracle goldens (rust/ORACLE_KERNELS.md):
+      # static checks, then each listed test run once.
+      - name: Oracle-kernel list (check_oracle_kernels.py --run)
+        if: matrix.crate == 'core'
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: python3 tools/check_oracle_kernels.py --run
       - name: Upload cargo test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

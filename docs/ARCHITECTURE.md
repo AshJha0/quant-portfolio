@@ -278,7 +278,9 @@ package `docs/VALIDATION.md` and in the README table.
 Rates curves now build in two layers: `fi_rates.multicurve` (OIS discount
 curve, then projection curves) feeds `fi_rates.rate_options` and
 `fi_rates.hull_white`. On the surface side `eq_surface.ssvi` feeds
-`eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`.
+`eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`; the SSVI
+and Dupire maths lives in `qp_core.vol` (`ssvi`, `dupire`, with `sabr`,
+`sabr_pde` and `essvi`), and `eq_surface`/`fx_surface` re-export it.
 
 The C++ headers and Rust golden modules are generated files. Every
 `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero when the

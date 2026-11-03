@@ -154,4 +154,4 @@ def parse_french(payload: bytes, table: str = "first") -> pd.DataFrame:
     return parse_french_csv(raw.decode("latin-1"), table=table)
 
 
-SOURCE = Source("french", french_url, parse_french)
+SOURCE: Source = Source("french", french_url, parse_french)

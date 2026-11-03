@@ -733,9 +733,6 @@ independent_checks = [
 
 [[model]]
 id = "EQ-SURF-SSVI"
-# eq_surface is being reworked by lane r08b; the decorator lands with it
-# (review/2026-11-03/handbacks/r8x/integration.md). Set true then.
-decorated = false
 name = "SSVI / eSSVI surface fit"
 owner = "maintainer"
 tier = 2
@@ -763,9 +760,6 @@ independent_checks = []
 
 [[model]]
 id = "EQ-SURF-DUPIRE"
-# eq_surface is being reworked by lane r08b; the decorator lands with it
-# (review/2026-11-03/handbacks/r8x/integration.md). Set true then.
-decorated = false
 name = "Dupire local volatility"
 owner = "maintainer"
 tier = 2
