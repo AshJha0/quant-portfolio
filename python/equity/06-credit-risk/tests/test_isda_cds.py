@@ -52,9 +52,13 @@ def test_date_helpers():
 
 
 # ----------------------------------------------------- exact integrals
-def test_leg_integrals_match_quadrature():
+@pytest.mark.parametrize("bias", [False, True])
+def test_leg_integrals_match_quadrature(bias):
+    # With the ISDA half-day bias the accrued-on-default integrand is
+    # (u - s + 1/730) instead of (u - s); quadrature checks both.
+    b = 1.0 / 730.0 if bias else 0.0
     hz = HazardCurve(np.array([1.2, 3.1, 5.15]), np.array([0.01, 0.018, 0.025]))
-    cds = IsdaCds(TRADE, date(2031, 12, 20), 0.01, 0.4)
+    cds = IsdaCds(TRADE, date(2031, 12, 20), 0.01, 0.4, half_day_bias=bias)
     out = legs(cds, hz, DISC)
     t_end = cds.t(date(2031, 12, 21))
     pts = sorted({*hz.times.tolist(), *DISC.times.tolist()})
@@ -71,7 +75,7 @@ def test_leg_integrals_match_quadrature():
     for s_d, e_d, pay in cds.periods():
         s, e = cds.t(s_d), cds.t(e_d)
         rpv += (e_d - s_d).days / 360 * float(hz.survival(e)[0]) * DISC.df(cds.t(pay) + 1 / 365)
-        rpv += 365 / 360 * quad(lambda u, s=s: (u - s) * dens(u), max(s, 0.0), e,
+        rpv += 365 / 360 * quad(lambda u, s=s: (u - s + b) * dens(u), max(s, 0.0), e,
                                 points=[p for p in pts if max(s, 0) < p < e] or None,
                                 epsabs=1e-15)[0]
     assert out["rpv01"] == pytest.approx(rpv, rel=1e-10)

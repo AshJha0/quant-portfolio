@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "hypothesis>=6.0"]
+# qp-exec: the W25 reference book the queue-fill tests bind to.
+dev = ["pytest>=7.4", "hypothesis>=6.0", "qp-exec>=3.0.0.dev0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

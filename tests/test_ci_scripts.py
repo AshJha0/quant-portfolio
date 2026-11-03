@@ -167,7 +167,31 @@ class TestDiscover:
                 '[project]\nname = "x"\n[project.optional-dependencies]\ntest = ["pytest"]\n', encoding="utf-8")
         assert [p["slug"] for p in disc.discover(tmp_path)] == ["equity__01-a", "fx__02-b"]
         core = disc.discover_core(tmp_path)
-        assert core == {"path": "python/core", "slug": "core", "extra": "test", "spec": ".[test]"}
+        assert core == {"path": "python/core", "slug": "core", "extra": "test", "spec": ".[test]", "deps": ""}
+
+    def test_workspace_deps_are_listed_transitively(self, tmp_path):
+        def proj(rel, name, deps, dev=()):
+            (tmp_path / rel).mkdir(parents=True)
+            text = "\n".join([
+                "[project]",
+                f'name = "{name}"',
+                "dependencies = " + json.dumps(list(deps)),
+                "[project.optional-dependencies]",
+                "dev = " + json.dumps(list(dev)),
+                "",
+            ])
+            (tmp_path / rel / "pyproject.toml").write_text(text, encoding="utf-8")
+        proj("python/core", "qp-core", [])
+        proj("python/oms", "qp-oms", ["qp-core"])
+        proj("python/execution", "qp-exec", ["qp-core", "numpy>=1.24"], dev=["qp-oms>=3"])
+        proj("python/backtest", "qp-bt", ["qp-core"], dev=["qp-exec"])
+        proj("python/equity/05-a", "eq-a", ["qp-bt>=3.0.0.dev0"], dev=["pytest"])
+        got = {p["path"]: p["deps"] for p in disc.discover(tmp_path)}
+        # the dev extra is followed only for the project itself
+        assert got["python/equity/05-a"] == "python/backtest"
+        assert got["python/backtest"] == "python/execution"
+        assert got["python/execution"] == "python/oms"
+        assert got["python/oms"] == ""
 
     def test_core_absent_returns_none(self, tmp_path):
         assert disc.discover_core(tmp_path) is None

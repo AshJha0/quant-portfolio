@@ -2,7 +2,7 @@
 
 Skipped unless QuantLib is installed (it is not a CI dependency):
 ``pip install QuantLib``. QuantLib 1.44, engine settings NoBias / Taylor /
-Piecewise, weekends-only calendar, flat continuous rate and flat hazard,
+Piecewise (and HalfDayBias, the default here), weekends-only calendar, flat continuous rate and flat hazard,
 both ACT/365F. Tolerances are what the two implementations achieve: the
 protection legs agree to 1e-12 relative or better; the risky annuity and
 the par spread to 1e-7 relative (about 1e-8 to 8e-8 seen), because the
@@ -26,7 +26,7 @@ CASES = [
 ]
 
 
-def _quantlib(td: date, mat: date, coupon: float, rec: float, r: float, lam: float):
+def _quantlib(td: date, mat: date, coupon: float, rec: float, r: float, lam: float, bias: bool = False):
     d = ql.Date(td.day, td.month, td.year)
     ql.Settings.instance().evaluationDate = d
     yc = ql.YieldTermStructureHandle(ql.FlatForward(d, r, ql.Actual365Fixed()))
@@ -39,17 +39,19 @@ def _quantlib(td: date, mat: date, coupon: float, rec: float, r: float, lam: flo
                                ql.Actual360(), True, True, d + 1, ql.FaceValueClaim(),
                                ql.Actual360(True), True, d, 3)
     cds.setPricingEngine(ql.IsdaCdsEngine(hc, rec, yc, False, ql.IsdaCdsEngine.Taylor,
-                                          ql.IsdaCdsEngine.NoBias, ql.IsdaCdsEngine.Piecewise))
+                                          ql.IsdaCdsEngine.HalfDayBias if bias else ql.IsdaCdsEngine.NoBias,
+                                          ql.IsdaCdsEngine.Piecewise))
     return cds, yc
 
 
+@pytest.mark.parametrize("bias", [False, True], ids=["NoBias", "HalfDayBias"])
 @pytest.mark.parametrize(("td", "mat", "coupon", "rec", "r", "lam"), CASES)
-def test_isda_cds_matches_quantlib(td, mat, coupon, rec, r, lam):
-    cds = IsdaCds(td, mat, coupon, rec)
+def test_isda_cds_matches_quantlib(td, mat, coupon, rec, r, lam, bias):
+    cds = IsdaCds(td, mat, coupon, rec, half_day_bias=bias)
     hz = HazardCurve(np.array([50.0]), np.array([lam]))
     disc = LogLinearCurve(np.array([50.0]), np.array([r]))
     ours = legs(cds, hz, disc)
-    q, yc = _quantlib(td, mat, coupon, rec, r, lam)
+    q, yc = _quantlib(td, mat, coupon, rec, r, lam, bias)
 
     assert ours["protection"] == pytest.approx(q.defaultLegNPV(), rel=1e-12, abs=1e-15)
     assert ours["rpv01"] == pytest.approx(-q.couponLegBPS() / 1e-4, rel=1e-7)

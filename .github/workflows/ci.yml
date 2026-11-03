@@ -221,6 +221,10 @@ jobs:
       # the files and the strictness (strict on python/core).
       - name: mypy
         run: uv run --no-sync mypy
+      # Every model in docs/models/models.toml is tagged with @model at its
+      # entrypoints, has an owner, a tier and independent checks (W12).
+      - name: Model inventory (docs/models/models.toml against the @model tags)
+        run: uv run --no-sync python -m pytest -p no:cacheprovider -q tests/test_model_inventory.py
 
   goldens:
     name: goldens --check
@@ -930,6 +934,7 @@ jobs:
             python/fx/05-pairs-trading/pyproject.toml
             python/fx/10-regime-switching/pyproject.toml
             python/data/pyproject.toml
+            python/backtest/pyproject.toml
       - name: Create a venv
         run: |
           python -m venv "$RUNNER_TEMP/venv"
@@ -940,11 +945,13 @@ jobs:
       - name: Install python/core, python/data, the FX pairs and regime packages and pytest (hashed, from uv.lock)
         run: |
           bash .github/scripts/hashed_install.sh --group test --editable \
-            python/core python/data python/fx/05-pairs-trading python/fx/10-regime-switching
+            python/core python/data python/backtest python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: prereg check
         run: python research/tools/prereg.py check
-      - name: pytest research/tests
-        run: python -m pytest -p no:cacheprovider -ra research/tests
+      # Every study folder's tests (panel, attribution, vix, tsmom, notebooks,
+      # ...). Test-file basenames are unique, so rootdir collection works.
+      - name: pytest research
+        run: python -m pytest -p no:cacheprovider -ra research
 
   # python/data (qp-data) is not under python/*/NN-*, so discover does not
   # list it. Tests run on recorded responses; live tests stay opt-in.
@@ -1001,15 +1008,115 @@ jobs:
       - name: Install the notebook packages, pytest, nbmake and ipykernel (hashed, from uv.lock)
         run: |
           bash .github/scripts/hashed_install.sh --group test --group notebooks --editable \
-            python/core python/equity/01-options-pricing python/equity/03-var-es-engine \
+            python/core python/backtest python/equity/01-options-pricing python/equity/03-var-es-engine \
             python/equity/04-fixed-income python/equity/08-algo-execution
           python -m ipykernel install --user --name python3
-      - name: pytest docs/notebooks/tests and career-prep/tests
-        run: python -m pytest -p no:cacheprovider -ra docs/notebooks/tests career-prep/tests
-      - name: nbmake the solution notebooks
+      - name: pytest docs/notebooks/tests, career-prep/tests and docs/learn/tools
+        run: python -m pytest -p no:cacheprovider -ra docs/notebooks/tests career-prep/tests docs/learn/tools
+      - name: nbmake the solution notebooks (docs and research)
         run: |
           python -m pytest -p no:cacheprovider --nbmake --nbmake-timeout=300 \
-            --nbmake-kernel=python3 docs/notebooks/*-solution.ipynb
+            --nbmake-kernel=python3 docs/notebooks/*-solution.ipynb research/notebooks/*-solution.ipynb
+
+  # Rust crates outside the engine matrix: the ULL stack (ring, QPBF, L3
+  # book, bench harness, crypto feed handler, gateway), AAD and the dated
+  # curve bootstrap. One job, one build cache; loom model-checks the ring.
+  rust-extra:
+    name: rust ull, aad, rates-curves
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the toolchain from rust/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust -> target
+          key: extra-${{ hashFiles('rust/Cargo.lock') }}
+      - name: cargo test and clippy -D warnings
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          set -o pipefail
+          for p in qp-ull-ring qp-ull-qpbf qp-ull-book qp-ull-bench qp-ull-feed qp-ull-gateway qp-aad qp-rates-curves; do
+            echo "::group::$p"
+            cargo test --release --locked -p "$p"
+            cargo clippy --release --all-targets --locked -p "$p" -- -D warnings
+            echo "::endgroup::"
+          done
+      - name: loom model check of the SPSC ring
+        env:
+          RUSTFLAGS: "--cfg loom"
+          CARGO_TARGET_DIR: target/loom
+        run: cargo test --release --locked -p qp-ull-ring --test loom
+
+  # C++ projects outside the engine matrix, each a standalone CMake project:
+  # exec-core (W25 book; its replay tool drives the Python differential
+  # test), rates-curves, aad, and the ULL feed, gateway and bench suites.
+  cpp-extra:
+    name: cpp exec-core, rates-curves, aad, ull
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the gcc toolchain, CMake, Ninja and GoogleTest
+        run: bash .github/scripts/install_cxx.sh gcc
+      - name: Lower mmap randomisation for the sanitizers
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Build and ctest each project (long-labelled tests run nightly)
+        run: bash .github/scripts/cpp_extra.sh . "$RUNNER_TEMP/cpp-extra"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core and python/execution (hashed, from uv.lock)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --group test --editable \
+            python/core python/execution
+      - name: Python book against the exec-core replay (no skips allowed)
+        working-directory: python/execution
+        env:
+          QP_EXEC_REPLAY: ${{ runner.temp }}/cpp-extra/exec-core/exec_core_replay
+        run: |
+          set -o pipefail
+          python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_differential_cpp.py | tee "$RUNNER_TEMP/diff.log"
+          if grep -q "SKIPPED" "$RUNNER_TEMP/diff.log"; then exit 1; fi
+
+  # D2 Java: ring, GC-free gateway, OMS core, parity with python/oms vectors.
+  java:
+    name: java (Temurin 21, mvnw verify)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: ./mvnw -B verify
+        run: |
+          chmod +x mvnw
+          ./mvnw -B --no-transfer-progress verify
 
   hygiene:
     name: hygiene
@@ -1213,6 +1320,9 @@ jobs:
       - clang-tidy
       - rust
       - rust-fmt
+      - rust-extra
+      - cpp-extra
+      - java
       - bindings
       - cmake-install
       - wheels

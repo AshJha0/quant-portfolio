@@ -15,6 +15,44 @@ decision, 2026-11-03). `main` carries `3.0.0.dev0` until then. Work lands
 in milestone pull requests; each milestone adds its notes below under its
 own heading, and the v3.0.0 notes are the sum of them.
 
+### Milestone v2.1 (Rounds 8-17)
+
+#### Monte Carlo numbers moved (equity VaR, C++ and Rust)
+
+- Each path now draws from its own Philox4x32-10 stream with AS 241
+  normals (before: mt19937_64 with Acklam in C++, xoshiro with Box-Muller
+  in Rust). For the same seed, MC VaR, ES, bootstrap SE and option MC
+  results change within Monte Carlo error. **What to do:** regenerate any
+  stored MC numbers. Rust `Rng` and C++ `RandomStream` remain for direct
+  use.
+- C++ `McVarWorkspace::reserve` also allocates `boot` (8 x n_paths
+  doubles); clear it to keep the old footprint (same results, one thread).
+- Rust `fx_var_engine::historical::HistoricalOptions` has a new field
+  `rule`; struct literals without `..Default::default()` must add it.
+- Historical VaR takes `rule="kth_worst"` (default) or `"interpolated"`.
+
+#### FX backtesters on the qp-bt core
+
+- `fx_port`: pass `execution=ExecutionConfig("close_auction",
+  auction_cost_bp=0.0)` for the old fill price. `ledger["net"]` is a simple
+  return and `weights` are the closing (drifted) weights.
+- `fx_regime`: `weights` are the closing weights, not the targets; carry is
+  earned on the overnight book.
+- `fx_pairs`: P&L is the USD change in value of the units held
+  (`BacktestResult.units`); cost is half the spread per unit traded.
+- `qp_bt` ledgers have a `carry` column; the event-mode `pnl` has
+  `asset_carry`. The nine migrated projects depend on `qp-bt`: install
+  `python/backtest` with them.
+
+#### Credit and post-trade
+
+- `eq_credit.isda_cds` now applies the ISDA half-day accrued-on-default
+  bias. Upfronts and par spreads move (largest at wide spreads); pass
+  `IsdaCds(..., half_day_bias=False)` for the old numbers.
+- `qp_posttrade.settlement.fx_spot_date` refuses currencies with no shipped
+  calendar (it used to refuse anything but USD, EUR, GBP; JPY, CHF, CAD
+  and AUD now work, and USDCAD is T+1). Dates outside 2000-2099 raise.
+
 ### Milestone v2.1 (Rounds 6-7)
 
 #### Versions

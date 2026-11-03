@@ -23,7 +23,12 @@ and Multi-name Credit Derivatives", ch. 5-7 for the maths):
   integrals below stay exact.
 * Accrued on default. Paid at the default time, accrued ACT/360 from the
   period start, integrated exactly (the 2009 corrected formula, not the
-  half-period approximation of ``cds.py``).
+  half-period approximation of ``cds.py``), with the ISDA half-day bias:
+  ``u0 - s`` becomes ``u0 - s + 1/730`` (the ISDA CDS Standard Model C
+  library does this; QuantLib calls it ``IsdaCdsEngine.HalfDayBias``).
+  Without it, 1000bp Markit-style cases are off by 148 to 441 per 10mm
+  notional (``qp_core.credit_index.isda`` validation, R16). Pass
+  ``half_day_bias=False`` for the unbiased integral (QuantLib ``NoBias``).
 
 Time ``t(d) = (d - T) / 365`` is the start of day ``d``, so the start of the
 step-in day is ``t = 0``. On a grid interval ``[u0, u1]`` with constant
@@ -157,6 +162,7 @@ class IsdaCds:
     coupon: float
     recovery: float = 0.4
     calendar: str | None = None
+    half_day_bias: bool = True
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.recovery < 1.0:
@@ -204,6 +210,10 @@ class IsdaCds:
         return self.coupon * (self.step_in - self.accrual_start).days / 360.0
 
 
+#: The ISDA Standard Model's half-day accrual bias, in years (ACT/365F).
+_HALF_DAY = 1.0 / 730.0
+
+
 def _grid(a: float, b: float, *extra: np.ndarray) -> np.ndarray:
     pts = [np.array([a, b])]
     for e in extra:
@@ -246,6 +256,7 @@ def _legs(cds: IsdaCds, hazard: HazardCurve, disc: Any) -> tuple[float, float, f
     prot *= 1.0 - cds.recovery
 
     prem = 0.0
+    bias = _HALF_DAY if cds.half_day_bias else 0.0
     for start, end, pay in cds.periods():
         s, e = cds.t(start), cds.t(end)
         prem += (end - start).days / 360.0 * float(hazard.survival(e)[0]) \
@@ -255,7 +266,7 @@ def _legs(cds: IsdaCds, hazard: HazardCurve, disc: Any) -> tuple[float, float, f
         for u0, u1 in zip(g[:-1], g[1:], strict=True):
             lam, f = lam_f(u0, u1)
             i0, i1, _ = _segment_terms(lam, f, u1 - u0)
-            aod += lam * qp(u0) * ((u0 - s) * i0 + i1)
+            aod += lam * qp(u0) * ((u0 - s + bias) * i0 + i1)
         prem += 365.0 / 360.0 * aod
     df_cash = float(np.asarray(disc.df(cds.t(cds.cash_settle) + _DAY)))
     return prot, prem, df_cash

@@ -17,6 +17,30 @@ is in `docs/MIGRATION.md`.
 
 ### Fixed
 
+- **ISDA CDS accrued-on-default (`eq_credit.isda_cds`).** The premium leg
+  had no ISDA half-day bias, so wide-spread names were mispriced: at a flat
+  17% hazard, 5y, the clean upfront was 379 per 10mm away from QuantLib's
+  `IsdaCdsEngine` with `HalfDayBias`; with the bias it is 0.23 (at a 2%
+  hazard: 12.6 before, 0.012 after). `IsdaCds(half_day_bias=True)` is the
+  default; `False` gives the unbiased integral (QuantLib `NoBias`). The
+  QuantLib cross-check now runs both settings.
+- **Post-trade settlement (`qp_posttrade.settlement`).** It carried 2026-only
+  holiday tables, so any trade from 31 Dec 2026 raised and USDCAD settled
+  T+2. It now uses `qp_core.holidays` (Fed, TARGET2, UK, ... and
+  `fx_spot_date`, so USDCAD is T+1) and an NYSE Rule 7.2 generator with the
+  one-off closures, 2000-2099. The 40 hand-worked 2026 cases are unchanged.
+- **Cross-platform parity fixtures.** `rates_vol_parity` (Rust) and the
+  Python freshness checks of `exotics_golden.txt` and
+  `xva_capital_parity.txt` compared last bits exactly, which failed on the
+  Linux runner (libm `ln`/`erf` differ by a few ulp from the machine that
+  wrote them). They now hold every number to 1e-12 relative, the bound the
+  C++ and Rust parity tests already use; labels and counts stay exact.
+- **Calendar property test (`qp_core`).** `test_adjusted_is_business_day`
+  asserted that no adjustment moves a date more than 7 days. Tokyo's 2019
+  accession Golden Week closed banks for 10 days (27 Apr to 6 May), so the
+  bound was wrong, not the calendar; the JPY bound is now 10 and the 2019
+  closure is pinned by its own test.
+
 - **Holiday calendars (`qp_core.daycount`, `fi_rates`, `fx_rates`).** These
   used partial fixed-date tables with no Good Friday, Thanksgiving, UK bank
   holidays or weekend substitutes, so rolls could land on closed days. Old
@@ -108,6 +132,28 @@ is in `docs/MIGRATION.md`.
   as well as `.`.
 
 ### Changed
+
+- **Workspace.** `python/backtest` (qp-bt), `python/oms` (qp-oms),
+  `python/execution` (qp-exec) and `python/posttrade` (qp-posttrade) are uv
+  workspace members, type-checked by mypy and tested in CI as projects of
+  their own; a project's workspace dependencies (e.g. qp-bt for the nine
+  migrated backtesters) are installed by `discover_projects.py`.
+- **Rust workspace.** `rust/ull/feed`, `rust/ull/gateway` and `rust/aad`
+  joined the workspace (one `Cargo.lock`); new CI jobs `rust-extra`
+  (tests, clippy, loom on the SPSC ring), `cpp-extra` (exec-core,
+  rates-curves, aad, ULL feed/gateway/bench, plus the Python book against
+  the exec-core replay) and `java` (Temurin 21, `./mvnw -B verify`). The
+  research job runs every `research/` test folder; the learning job adds
+  `docs/learn/tools` and the research solution notebooks; the lint job
+  checks the model inventory.
+- **`fi_rates` exports** `make_schedule`, `FixingStore`, `SOFR`, `ESTR`,
+  `SONIA`, `EURIBOR_3M`, `EURIBOR_6M`, `TERM_SOFR_3M`, `FixedLeg`,
+  `IborLeg`, `OvernightLeg`, `Swap` and `futures_convexity_adjustment`.
+- **`qp_data`** registers the `french:<dataset>` source, with a
+  conservative 45-business-day release bound.
+- **Model tags.** 31 more model entrypoints carry `@model`; the two
+  `eq_surface` entries (SSVI, Dupire) are `decorated = false` until the
+  surface rework lands.
 
 - **Equity Monte Carlo VaR, linear book (C++ and Rust).** Each path costs
   one O(n) dot product with `v = L'w`, formed once per run, instead of an
