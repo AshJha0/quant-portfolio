@@ -204,7 +204,7 @@ def test_fx_mc_brackets_closed_form_and_is_reproducible():
 
 def _eq_columns(seed, n=500):
     rows = _option_grid(seed, n)
-    S, K, T, r, q, sigma, side = (np.array(c) for c in zip(*rows))
+    S, K, T, r, q, sigma, side = (np.array(c) for c in zip(*rows, strict=False))
     return S, K, T, r, sigma, q, side == "call"
 
 
@@ -238,7 +238,7 @@ def test_eq_batch_equals_scalar_bit_for_bit():
 
 def test_fx_batch_equals_scalar_bit_for_bit():
     rows = _option_grid(22, 500, fx=True)
-    S, K, T, rd, rf, sigma, side = (np.array(c) for c in zip(*rows))
+    S, K, T, rd, rf, sigma, side = (np.array(c) for c in zip(*rows, strict=False))
     is_call = side == "call"
     prices = qp.fx_gk_price_batch(S, K, T, rd, rf, sigma, is_call)
     greeks = qp.fx_gk_greeks_batch(S, K, T, rd, rf, sigma, is_call)
@@ -265,7 +265,7 @@ def test_batch_does_not_modify_inputs_and_accepts_strided():
     S, K, T, r, sigma, q, is_call = _eq_columns(23, 64)
     keep = [a.copy() for a in (S, K, T, r, sigma, q)]
     out = qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call)
-    for a, b in zip((S, K, T, r, sigma, q), keep):
+    for a, b in zip((S, K, T, r, sigma, q), keep, strict=False):
         assert np.array_equal(a, b)
     # A strided view is converted, not rejected, and gives the same numbers.
     big = np.repeat(S, 2)

@@ -53,7 +53,7 @@ def test_unknown_engine_raises_value_error(mod, call):
 @pytest.mark.parametrize("engine,module", [("cpp", "qp_cpp"), ("rust", "qp_rust")])
 def test_missing_extension_raises_import_error_with_hint(engine, module, monkeypatch):
     monkeypatch.setitem(sys.modules, module, None)  # makes the import fail
-    with pytest.raises(ImportError, match=f"pip install ./bindings/"):
+    with pytest.raises(ImportError, match=r"pip install ./bindings/"):
         eq_engine.bs_price(100, 100, 1, 0.01, 0.2, engine=engine)
     assert engines.engine_available(engine) is False
 
