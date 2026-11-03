@@ -3,10 +3,10 @@
 //! Parametric (variance-covariance) VaR: closed-form identities, Student-t
 //! tail behaviour, Cornish-Fisher with validity-domain check.
 
+use eq_var_engine::TailModel;
 use eq_var_engine::matrix::Matrix;
 use eq_var_engine::parametric::*;
 use eq_var_engine::stats::{normal_ppf, student_t_ppf};
-use eq_var_engine::TailModel;
 
 #[test]
 fn portfolio_sigma_hand_computed_two_asset() {

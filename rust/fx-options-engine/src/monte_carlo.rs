@@ -35,7 +35,7 @@
 //! `f64::exp`/`ln` come from the platform libm.
 
 use crate::rng::Xoshiro256StarStar;
-use crate::{invalid, validate_inputs, FxResult, OptionType};
+use crate::{FxResult, OptionType, invalid, validate_inputs};
 
 /// Monte Carlo estimate with sampling-error diagnostics.
 #[derive(Debug, Clone, PartialEq)]

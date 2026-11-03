@@ -29,7 +29,7 @@
 
 use std::collections::HashMap;
 
-use crate::book::{fx_factor, ir_factor, Book, CompiledBook, Market};
+use crate::book::{Book, CompiledBook, Market, fx_factor, ir_factor};
 use crate::matrix::Matrix;
 use crate::rng::Rng;
 use crate::{FxVarError, Result};

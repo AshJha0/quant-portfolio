@@ -80,18 +80,22 @@ fn kupiec_struct_matches_formula_and_rejects_bad_counts() {
     let lr = -2.0 * ((n - x) * (1.0 - a).ln() + x * a.ln())
         + 2.0 * ((n - x) * (1.0 - p).ln() + x * p.ln());
     assert!((r.lr - lr).abs() < 1e-12);
-    assert!(kupiec_pof(&KupiecInput {
-        n_obs: 250,
-        n_exceptions: 251,
-        alpha: 0.01
-    })
-    .is_err());
-    assert!(kupiec_pof(&KupiecInput {
-        n_obs: 250,
-        n_exceptions: 5,
-        alpha: 0.99
-    })
-    .is_err());
+    assert!(
+        kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 251,
+            alpha: 0.01
+        })
+        .is_err()
+    );
+    assert!(
+        kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 5,
+            alpha: 0.99
+        })
+        .is_err()
+    );
     #[allow(deprecated)]
     let old = kupiec_pof_positional(250, 5, 0.01).unwrap();
     assert_eq!(old, r);
@@ -120,12 +124,14 @@ fn basel_zone_follows_the_window_not_the_raw_count() {
     }
     assert_eq!(z(250, 10, 0.01).zone, BaselZone::Red);
     // Old code clamped x > n; now an error.
-    assert!(basel_traffic_light(&BaselInput {
-        n_obs: 250,
-        n_exceptions: 300,
-        alpha: 0.01
-    })
-    .is_err());
+    assert!(
+        basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 300,
+            alpha: 0.01
+        })
+        .is_err()
+    );
     // Zone thresholds on F(x) for other windows.
     for (n, x, a) in [
         (500, 8, 0.01),
@@ -373,7 +379,7 @@ fn special_functions_never_panic_or_hang_on_non_finite_input() {
 
 #[test]
 fn ewma_covariance_seed_uses_first_window_rows_only() {
-    use eq_var_engine::matrix::{ewma_covariance, EWMA_COV_SEED_WINDOW};
+    use eq_var_engine::matrix::{EWMA_COV_SEED_WINDOW, ewma_covariance};
     // Two panels identical in the seed window, wildly different afterwards.
     // With lam -> 1 the forecast stays at the seed, so both must agree.
     let w = EWMA_COV_SEED_WINDOW;

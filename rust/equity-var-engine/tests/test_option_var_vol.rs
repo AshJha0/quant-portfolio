@@ -2,9 +2,9 @@
 //! axis (spot block, then one vol column per factor). Golden values from
 //! `cpp/equity-var-engine/tools/gen_option_var_golden.py`.
 
+use eq_var_engine::TailModel;
 use eq_var_engine::matrix::Matrix;
 use eq_var_engine::option_reval::*;
-use eq_var_engine::TailModel;
 
 const N: usize = 250;
 
@@ -154,33 +154,37 @@ fn rejects_bad_input() {
     assert!(
         historical_option_var_es_vol(&[], &W, &c, 0.01, 0.0, VolMode::StickyStrike, &[]).is_err()
     );
-    assert!(historical_option_var_es_vol(
-        &legs(),
-        &[1.0, 2.0, 3.0, 4.0],
-        &c,
-        0.01,
-        0.0,
-        VolMode::StickyStrike,
-        &[]
-    )
-    .is_err());
+    assert!(
+        historical_option_var_es_vol(
+            &legs(),
+            &[1.0, 2.0, 3.0, 4.0],
+            &c,
+            0.01,
+            0.0,
+            VolMode::StickyStrike,
+            &[]
+        )
+        .is_err()
+    );
     assert!(
         historical_option_var_es_vol(&legs(), &W, &c, 0.01, 0.0, VolMode::StickyDelta, &[1.0])
             .is_err()
     );
     let cov3 = Matrix::zeros(3, 3);
-    assert!(monte_carlo_option_run_vol(
-        &legs(),
-        &W,
-        &cov3,
-        0.01,
-        5000,
-        TailModel::Normal,
-        1,
-        50,
-        0.0,
-        VolMode::StickyStrike,
-        &[]
-    )
-    .is_err());
+    assert!(
+        monte_carlo_option_run_vol(
+            &legs(),
+            &W,
+            &cov3,
+            0.01,
+            5000,
+            TailModel::Normal,
+            1,
+            50,
+            0.0,
+            VolMode::StickyStrike,
+            &[]
+        )
+        .is_err()
+    );
 }

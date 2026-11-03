@@ -13,6 +13,7 @@
 //! `pub fn` appears in `src/` without being named in this file.
 #![allow(deprecated)]
 
+use eq_var_engine::TailModel;
 use eq_var_engine::backtest::*;
 use eq_var_engine::expected_shortfall::*;
 use eq_var_engine::historical::*;
@@ -23,7 +24,6 @@ use eq_var_engine::psd::*;
 use eq_var_engine::rng::Rng;
 use eq_var_engine::stats::*;
 use eq_var_engine::tail::*;
-use eq_var_engine::TailModel;
 use proptest::prelude::*;
 
 /// `prop_assert!` with the expression as a literal message (struct

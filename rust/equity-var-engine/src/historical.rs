@@ -11,7 +11,7 @@
 //! * weighted quantiles (BRW) use the same rule on the weighted step CDF.
 
 use crate::matrix::Matrix;
-use crate::{validate_alpha, EqVarError, Result};
+use crate::{EqVarError, Result, validate_alpha};
 
 /// EWMA seed window: the variance seed is the mean of `r^2` over the first
 /// `min(SEED_WINDOW, n)` observations.

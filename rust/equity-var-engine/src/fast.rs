@@ -20,11 +20,11 @@
 //! The MC draw stays on one thread. The RNG is one serial xoshiro256++
 //! stream and splitting it across threads would change the numbers.
 
+use crate::TailModel;
 use crate::matrix::Matrix;
 use crate::psd::PsdRepair;
 use crate::rng::Rng;
 use crate::stats::{normal_pdf, normal_ppf, student_t_pdf, student_t_ppf};
-use crate::TailModel;
 
 /// Error of the allocation-free API. `Copy`, no payload, no allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

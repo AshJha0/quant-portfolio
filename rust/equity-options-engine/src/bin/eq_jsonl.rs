@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
-use eq_options_engine::{black76_greeks, bs_greeks, crr_price, implied_vol, Exercise, OptionType};
+use eq_options_engine::{Exercise, OptionType, black76_greeks, bs_greeks, crr_price, implied_vol};
 
 type Req = HashMap<String, String>;
 

@@ -8,7 +8,7 @@
 //! back tagged with their task index and are returned in index order: the
 //! output does not depend on the number of workers or on scheduling.
 
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -30,16 +30,18 @@ impl ThreadPool {
         let workers = (0..workers.max(1))
             .map(|_| {
                 let rx = Arc::clone(&rx);
-                std::thread::spawn(move || loop {
-                    // A poisoned lock means another worker panicked while
-                    // holding it; the receiver is still usable.
-                    let job = match rx.lock() {
-                        Ok(g) => g.recv(),
-                        Err(p) => p.into_inner().recv(),
-                    };
-                    match job {
-                        Ok(job) => job(),
-                        Err(_) => break, // sender dropped: shut down
+                std::thread::spawn(move || {
+                    loop {
+                        // A poisoned lock means another worker panicked while
+                        // holding it; the receiver is still usable.
+                        let job = match rx.lock() {
+                            Ok(g) => g.recv(),
+                            Err(p) => p.into_inner().recv(),
+                        };
+                        match job {
+                            Ok(job) => job(),
+                            Err(_) => break, // sender dropped: shut down
+                        }
                     }
                 })
             })

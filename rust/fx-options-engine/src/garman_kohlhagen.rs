@@ -23,8 +23,8 @@
 //! `sigma = 0` (or `sigma*sqrt(T) = 0`) returns the discounted intrinsic
 //! on the forward, `e^{-r_d T} max(phi (F - K), 0)`.
 
-use crate::{invalid, validate_inputs, FxResult, OptionType};
-use qp_core::black_scholes::{carry_d1_d2, carry_value, TruncatedC1Normal};
+use crate::{FxResult, OptionType, invalid, validate_inputs};
+use qp_core::black_scholes::{TruncatedC1Normal, carry_d1_d2, carry_value};
 
 /// Threshold below which `sigma * sqrt(T)` is treated as zero vol.
 pub(crate) const MIN_VOL: f64 = 1e-12;

@@ -3,14 +3,13 @@
 //! for any thread count.
 
 use fx_options_engine::fast::{
-    binomial_price_ws, gk_price_batch, gk_price_k, greeks_batch, greeks_k, implied_vol_k,
-    mc_price_par, mc_price_ws, BinomialWorkspace, GkBatch, GreeksBatchOut, KernelError,
-    McWorkspace,
+    BinomialWorkspace, GkBatch, GreeksBatchOut, KernelError, McWorkspace, binomial_price_ws,
+    gk_price_batch, gk_price_k, greeks_batch, greeks_k, implied_vol_k, mc_price_par, mc_price_ws,
 };
 use fx_options_engine::rng::SplitMix64;
 use fx_options_engine::{
-    analytic_greeks, binomial_price, gk_price, implied_vol, mc_price, Exercise, GreeksResult,
-    McResult, OptionType,
+    Exercise, GreeksResult, McResult, OptionType, analytic_greeks, binomial_price, gk_price,
+    implied_vol, mc_price,
 };
 
 fn uni(r: &mut SplitMix64, lo: f64, hi: f64) -> f64 {

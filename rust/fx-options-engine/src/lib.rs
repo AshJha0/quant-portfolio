@@ -69,17 +69,17 @@ pub mod iv_core;
 pub mod monte_carlo;
 pub mod rng;
 
-pub use binomial::{binomial_price, Exercise};
+pub use binomial::{Exercise, binomial_price};
 pub use black76::{black76_from_spot, black76_price};
 pub use deltas::{
-    atm_dns_strike, atm_forward_strike, delta, forward_to_spot_delta, premium_adjust_spot_delta,
-    spot_to_forward_delta, strike_from_delta, DeltaConvention,
+    DeltaConvention, atm_dns_strike, atm_forward_strike, delta, forward_to_spot_delta,
+    premium_adjust_spot_delta, spot_to_forward_delta, strike_from_delta,
 };
 pub use forwards::{cip_forward, forward_points, synthetic_forward_from_options};
 pub use garman_kohlhagen::{d1, d2, gk_call, gk_price, gk_put};
-pub use greeks::{analytic_greeks, finite_difference_greeks, FdGreeks, GreeksResult};
+pub use greeks::{FdGreeks, GreeksResult, analytic_greeks, finite_difference_greeks};
 pub use implied_vol::implied_vol;
-pub use monte_carlo::{mc_price, McResult};
+pub use monte_carlo::{McResult, mc_price};
 
 use std::fmt;
 

@@ -54,7 +54,7 @@ Two further guards worth knowing about:
 
 ```
 fx-options-engine/
-├── Cargo.toml                # edition 2021, zero runtime dependencies
+├── Cargo.toml                # edition 2024, zero runtime dependencies
 ├── src/
 │   ├── lib.rs                 # OptionType, FxError, validation, N(x)/n(x)/N^-1(x), Brent
 │   ├── garman_kohlhagen.rs    # d1/d2, gk_price/gk_call/gk_put, limits
@@ -87,7 +87,7 @@ cargo run --release --locked -p fx-options-engine --bin bench -- --out /tmp/benc
 Without `--out` the bench writes `bench/results.json` in this crate.
 
 The toolchain is pinned in `rust/rust-toolchain.toml` (1.99.1, edition
-2021). No third-party runtime crates. The RNG, the Cody erfc, Brent and the
+2024). No third-party runtime crates. The RNG, the Cody erfc, Brent and the
 implied-vol core live in the workspace's own [`qp-core`](../core) crate
 (std only) and are re-exported, so public paths are unchanged.
 

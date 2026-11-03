@@ -1,7 +1,8 @@
 [package]
 name = "qp-core"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.99"
 description = "Shared numerical core of the quant-portfolio Rust engines: seeded RNG, Cody erfc and the normal distribution, the normalised-Black implied-vol core, Brent, Cholesky and fixed-chunk parallelism. std only."
 license = "MIT"
 publish = false

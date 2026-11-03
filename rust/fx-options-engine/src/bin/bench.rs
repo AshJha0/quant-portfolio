@@ -14,13 +14,13 @@ use std::hint::black_box;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fx_options_engine::{
-    analytic_greeks, binomial_price, gk_price, implied_vol, mc_price, strike_from_delta,
-    DeltaConvention, Exercise, OptionType,
+    DeltaConvention, Exercise, OptionType, analytic_greeks, binomial_price, gk_price, implied_vol,
+    mc_price, strike_from_delta,
 };
 // FAST-BEGIN
 use fx_options_engine::fast::{
-    binomial_price_ws, gk_price_batch, gk_price_k, greeks_batch, greeks_k, implied_vol_k,
-    mc_price_par, mc_price_ws, BinomialWorkspace, GkBatch, GreeksBatchOut, McWorkspace,
+    BinomialWorkspace, GkBatch, GreeksBatchOut, McWorkspace, binomial_price_ws, gk_price_batch,
+    gk_price_k, greeks_batch, greeks_k, implied_vol_k, mc_price_par, mc_price_ws,
 };
 // FAST-END
 

@@ -26,8 +26,8 @@
 
 use crate::book::{Book, CompiledBook, Market};
 use crate::expected_shortfall::empirical_var_es;
-use crate::option_reval::{layout_option_book, option_book_pnl, OptionLeg};
-use crate::returns::{ewma_volatility, flag_peg_factors, validate_returns, ReturnsMatrix};
+use crate::option_reval::{OptionLeg, layout_option_book, option_book_pnl};
+use crate::returns::{ReturnsMatrix, ewma_volatility, flag_peg_factors, validate_returns};
 use crate::stats::{validate_alpha, validate_horizon};
 use crate::{FxVarError, Result};
 
@@ -420,24 +420,28 @@ mod tests {
             "USD",
         )
         .unwrap();
-        assert!(historical_var(
-            &book,
-            &market(),
-            &returns(10),
-            &HistoricalOptions::default()
-        )
-        .is_err());
+        assert!(
+            historical_var(
+                &book,
+                &market(),
+                &returns(10),
+                &HistoricalOptions::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn empty_book_errors() {
-        assert!(historical_var(
-            &Book::empty(),
-            &market(),
-            &returns(120),
-            &HistoricalOptions::default()
-        )
-        .is_err());
+        assert!(
+            historical_var(
+                &Book::empty(),
+                &market(),
+                &returns(120),
+                &HistoricalOptions::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]

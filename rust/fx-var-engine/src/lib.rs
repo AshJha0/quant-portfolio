@@ -247,53 +247,54 @@ pub enum McDist {
 /// Convenience re-exports of the full public API.
 pub mod prelude {
     pub use crate::backtest::{
+        BacktestResult, BaselInput, KupiecInput, KupiecResult, LrTest, TrafficLight, Zone,
         acerbi_szekely_z2, basel_traffic_light, christoffersen_independence, conditional_coverage,
-        evaluate_var_backtest, kupiec_pof, BacktestResult, BaselInput, KupiecInput, KupiecResult,
-        LrTest, TrafficLight, Zone,
+        evaluate_var_backtest, kupiec_pof,
     };
     pub use crate::book::{
-        fx_factor, ir_factor, split_pair, Book, CashPosition, CompiledBook, ForwardPosition,
-        Market, PairLegs, Position, SpotPosition,
+        Book, CashPosition, CompiledBook, ForwardPosition, Market, PairLegs, Position,
+        SpotPosition, fx_factor, ir_factor, split_pair,
     };
     pub use crate::expected_shortfall::{
         empirical_es, empirical_var, empirical_var_es, normal_es, normal_var, student_t_es,
         student_t_var,
     };
-    pub use crate::historical::{historical_var, HistoricalOptions, HistoricalResult, HsMethod};
+    pub use crate::historical::{HistoricalOptions, HistoricalResult, HsMethod, historical_var};
     pub use crate::matrix::Matrix;
     pub use crate::monte_carlo::{
-        monte_carlo_var, monte_carlo_var_with_threads, simulate_factor_returns,
-        simulate_factor_returns_jitter, var_standard_error, var_standard_error_bootstrap,
-        var_standard_error_bootstrap_with_threads, JumpSpec, MonteCarloOptions, MonteCarloResult,
+        JumpSpec, MonteCarloOptions, MonteCarloResult, monte_carlo_var,
+        monte_carlo_var_with_threads, simulate_factor_returns, simulate_factor_returns_jitter,
+        var_standard_error, var_standard_error_bootstrap,
+        var_standard_error_bootstrap_with_threads,
     };
     pub use crate::parametric::{
-        cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
-        portfolio_sigma, var_covar, CovMethod, ParametricOptions, ParametricResult, VarEs,
+        CovMethod, ParametricOptions, ParametricResult, VarEs, cornish_fisher_valid,
+        cornish_fisher_var, cornish_fisher_z, parametric_var, portfolio_sigma, var_covar,
     };
     pub use crate::psd::{
-        cholesky_repair, clip_psd, higham_nearest, symmetric_eigen, CholeskyFactor, PsdRepair,
+        CholeskyFactor, PsdRepair, cholesky_repair, clip_psd, higham_nearest, symmetric_eigen,
     };
     pub use crate::returns::{
-        ewma_cov, ewma_volatility, flag_peg_factors, sample_cov, validate_returns, EwmaVolatility,
-        FactorCov, ReturnsMatrix, PEG_VOL_THRESHOLD, TRADING_DAYS_PER_YEAR,
+        EwmaVolatility, FactorCov, PEG_VOL_THRESHOLD, ReturnsMatrix, TRADING_DAYS_PER_YEAR,
+        ewma_cov, ewma_volatility, flag_peg_factors, sample_cov, validate_returns,
     };
     pub use crate::rng::Rng;
     pub use crate::stats::{
-        binom_cdf, chi2_sf, inv_norm_cdf, ln_gamma, moments, norm_cdf, norm_pdf, reg_inc_beta,
-        reg_lower_gamma, reg_upper_gamma, sample_std, student_t_cdf, student_t_pdf,
-        student_t_quantile, validate_alpha, validate_horizon, Moments,
+        Moments, binom_cdf, chi2_sf, inv_norm_cdf, ln_gamma, moments, norm_cdf, norm_pdf,
+        reg_inc_beta, reg_lower_gamma, reg_upper_gamma, sample_std, student_t_cdf, student_t_pdf,
+        student_t_quantile, validate_alpha, validate_horizon,
     };
     pub use crate::stress::{
-        historical_scenarios, peg_break_scenario, reverse_stress_for_loss, reverse_stress_linear,
-        reverse_stress_numerical, run_stress, simple_to_log, usd_broad_move, ReverseStress,
-        Scenario, StressRow,
+        ReverseStress, Scenario, StressRow, historical_scenarios, peg_break_scenario,
+        reverse_stress_for_loss, reverse_stress_linear, reverse_stress_numerical, run_stress,
+        simple_to_log, usd_broad_move,
     };
     pub use crate::tail::{empirical_var_es_into, empirical_var_into, tail_rank, weighted_var_es};
+    pub use crate::{FxVarError, KernelError, McDist, TailDist};
     /// Deprecated entry points, kept in the prelude for one release.
     #[allow(deprecated)]
     pub use crate::{
         backtest::{basel_traffic_light_confidence, kupiec_pof_confidence},
         parametric::cornish_fisher_domain_ok,
     };
-    pub use crate::{FxVarError, KernelError, McDist, TailDist};
 }

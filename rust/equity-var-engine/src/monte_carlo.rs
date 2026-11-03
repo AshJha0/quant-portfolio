@@ -25,7 +25,7 @@
 use crate::matrix::Matrix;
 use crate::psd::PsdRepair;
 use crate::rng::Rng;
-use crate::{validate_alpha, EqVarError, Result, TailModel};
+use crate::{EqVarError, Result, TailModel, validate_alpha};
 
 /// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off.
 /// It mirrors the C++ engine's `mc_tail_metrics` floor.

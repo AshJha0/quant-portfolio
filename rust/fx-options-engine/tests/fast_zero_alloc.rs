@@ -8,10 +8,10 @@ use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use fx_options_engine::fast::{
-    binomial_price_ws, gk_price_batch, gk_price_k, greeks_batch, greeks_k, implied_vol_k,
-    mc_price_ws, BinomialWorkspace, GkBatch, GreeksBatchOut, McWorkspace,
+    BinomialWorkspace, GkBatch, GreeksBatchOut, McWorkspace, binomial_price_ws, gk_price_batch,
+    gk_price_k, greeks_batch, greeks_k, implied_vol_k, mc_price_ws,
 };
-use fx_options_engine::{gk_price, Exercise, OptionType};
+use fx_options_engine::{Exercise, OptionType, gk_price};
 
 struct Counting;
 

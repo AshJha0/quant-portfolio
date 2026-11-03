@@ -11,7 +11,7 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::{delta, gk_price, DeltaConvention, OptionType};
+use fx_options_engine::{DeltaConvention, OptionType, delta, gk_price};
 
 #[test]
 fn call_equals_flipped_put_across_grid() {

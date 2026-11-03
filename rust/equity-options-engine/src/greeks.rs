@@ -13,8 +13,8 @@
 //!
 //! All rates continuously compounded, annualised; `t` in years (ACT/365F).
 
-use crate::black_scholes::{d1_d2, validate_inputs, validate_rates, OptionType, PricingError};
-use qp_core::black_scholes::{carry_greeks_with_d, ErfcNormal};
+use crate::black_scholes::{OptionType, PricingError, d1_d2, validate_inputs, validate_rates};
+use qp_core::black_scholes::{ErfcNormal, carry_greeks_with_d};
 
 /// Full Greek set of a European option (units in the module docs).
 ///

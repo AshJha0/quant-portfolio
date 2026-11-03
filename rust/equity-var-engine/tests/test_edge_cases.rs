@@ -6,7 +6,7 @@
 //! is also documented in docs/VALIDATION.md.
 
 use eq_var_engine::expected_shortfall::expected_shortfall;
-use eq_var_engine::historical::{historical_var, linear_quantile, MIN_OBS};
+use eq_var_engine::historical::{MIN_OBS, historical_var, linear_quantile};
 use eq_var_engine::matrix::Matrix;
 use eq_var_engine::monte_carlo::{monte_carlo_var, portfolio_pnl};
 use eq_var_engine::parametric::{parametric_var, portfolio_sigma};
@@ -265,7 +265,7 @@ fn non_finite_covariance_and_exposures_are_rejected_not_silently_zeroed() {
 #[test]
 fn backtests_reject_non_finite_series_instead_of_scoring_them_green() {
     use eq_var_engine::backtest::{
-        basel_traffic_light, exceptions_from_pnl, BaselInput, BaselZone,
+        BaselInput, BaselZone, basel_traffic_light, exceptions_from_pnl,
     };
 
     let mut pnl: Vec<f64> = (0..250).map(|t| 50.0 * (0.7 * t as f64).sin()).collect();
@@ -432,8 +432,8 @@ fn one_and_two_element_samples_behave_predictably() {
     let two_rows = Matrix::from_vec(2, 1, vec![0.01, -0.01]).unwrap();
     let cov = eq_var_engine::matrix::sample_covariance(&two_rows).unwrap();
     assert!((cov.get(0, 0) - 2.0e-4).abs() < 1e-18); // ((0.02)^2)/2 * ... hand check
-                                                     // A one-element exposure vector against that covariance is a legal,
-                                                     // fully specified single-asset book.
+    // A one-element exposure vector against that covariance is a legal,
+    // fully specified single-asset book.
     let var = parametric_var(&[1.0e6], &cov, 0.01, TailModel::Normal).unwrap();
     assert!(var > 0.0 && var.is_finite());
 }

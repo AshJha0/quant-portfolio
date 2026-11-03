@@ -3,7 +3,7 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::{gk_price, implied_vol, FxError, OptionType};
+use fx_options_engine::{FxError, OptionType, gk_price, implied_vol};
 
 #[test]
 fn round_trip_grid_to_1e10() {

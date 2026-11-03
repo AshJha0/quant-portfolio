@@ -24,7 +24,7 @@ use std::hint::black_box;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use eq_options_engine::{
-    black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price, Exercise, OptionType,
+    Exercise, OptionType, black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price,
 };
 
 /// One varied input row.
@@ -265,8 +265,8 @@ fn main() {
 #[cfg(not(before))]
 fn new_api(rs: &[Row], stats: &mut Vec<Stat>) {
     use eq_options_engine::fast::{
-        bs_greeks_batch, bs_price_batch, try_bs_greeks, try_bs_price, try_crr_price,
-        try_implied_vol, try_mc_price, BsBatch, GreeksOut,
+        BsBatch, GreeksOut, bs_greeks_batch, bs_price_batch, try_bs_greeks, try_bs_price,
+        try_crr_price, try_implied_vol, try_mc_price,
     };
     use eq_options_engine::{CrrWorkspace, McWorkspace};
 

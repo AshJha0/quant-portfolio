@@ -1,7 +1,7 @@
 //! Regression tests for wrong numbers at the edges of the input domain.
 
 use eq_options_engine::iv_core::black_implied_vol;
-use eq_options_engine::{bs_price, crr_price, implied_vol, mc_price, Exercise, OptionType};
+use eq_options_engine::{Exercise, OptionType, bs_price, crr_price, implied_vol, mc_price};
 
 #[test]
 fn sigma_zero_with_overflowing_forward_is_finite() {

@@ -3,7 +3,7 @@
 //! Beta is fitted on the antithetic pair averages (this crate already did
 //! so; the test guards the shared estimator across seeds).
 
-use fx_options_engine::{gk_price, mc_price, OptionType};
+use fx_options_engine::{OptionType, gk_price, mc_price};
 
 #[test]
 fn antithetic_plus_cv_beats_cv_alone_across_seeds() {

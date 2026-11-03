@@ -22,9 +22,9 @@
 //! Conventions: continuously compounded annualised `r`, `q` (ACT/365F),
 //! `t` in years, `sigma` annualised.
 
-use crate::black_scholes::{bs_price, validate_inputs, validate_rates, OptionType, PricingError};
+use crate::black_scholes::{OptionType, PricingError, bs_price, validate_inputs, validate_rates};
 use crate::fast::ErrorCode;
-use crate::rng::{box_muller, uniform_from_bits, Xoshiro256PlusPlus};
+use crate::rng::{Xoshiro256PlusPlus, box_muller, uniform_from_bits};
 
 /// Two-sided 95% normal quantile (matches the Python reference constant).
 const Z95: f64 = 1.959_963_984_540_054;

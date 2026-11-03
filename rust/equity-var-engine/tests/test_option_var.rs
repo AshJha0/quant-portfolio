@@ -3,11 +3,11 @@
 //! (Python reference `eq_var.revaluation` + S2 order statistic); the MC check
 //! is against the closed-form quantile of a monotone one-factor book.
 
+use eq_var_engine::TailModel;
 use eq_var_engine::matrix::Matrix;
 use eq_var_engine::monte_carlo::monte_carlo_run;
 use eq_var_engine::option_reval::*;
 use eq_var_engine::tail::empirical_var_es;
-use eq_var_engine::TailModel;
 
 const N: usize = 250;
 
@@ -159,18 +159,20 @@ fn rejects_bad_input() {
     bad[1].factor = 5;
     assert!(historical_option_var_es(&bad, &W, &x, 0.01, 0.0).is_err());
     let cov = Matrix::zeros(2, 2);
-    assert!(monte_carlo_option_run(
-        &legs(),
-        &[1.0],
-        &cov,
-        0.01,
-        500,
-        TailModel::Normal,
-        0,
-        10,
-        0.0
-    )
-    .is_err());
+    assert!(
+        monte_carlo_option_run(
+            &legs(),
+            &[1.0],
+            &cov,
+            0.01,
+            500,
+            TailModel::Normal,
+            0,
+            10,
+            0.0
+        )
+        .is_err()
+    );
     assert!(
         monte_carlo_option_run(&legs(), &W, &cov, 0.01, 50, TailModel::Normal, 0, 10, 0.0).is_err()
     );

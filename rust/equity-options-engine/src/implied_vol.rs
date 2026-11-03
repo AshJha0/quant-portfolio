@@ -8,7 +8,7 @@
 //! engines.
 
 use crate::black_scholes::{
-    bs_price, finite_result, validate_inputs, validate_rates, OptionType, PricingError,
+    OptionType, PricingError, bs_price, finite_result, validate_inputs, validate_rates,
 };
 use crate::iv_core::black_implied_vol;
 

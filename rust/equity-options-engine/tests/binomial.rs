@@ -2,7 +2,7 @@
 
 mod common;
 
-use eq_options_engine::{bs_price, crr_price, early_exercise_premium, Exercise, OptionType};
+use eq_options_engine::{Exercise, OptionType, bs_price, crr_price, early_exercise_premium};
 
 #[test]
 fn european_tree_converges_to_black_scholes() {
@@ -260,95 +260,109 @@ fn degenerate_spot_and_strike() {
 
 #[test]
 fn invalid_inputs_return_err() {
-    assert!(crr_price(
-        -1.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        100
-    )
-    .is_err());
-    assert!(crr_price(
-        100.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        0
-    )
-    .is_err());
+    assert!(
+        crr_price(
+            -1.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            100
+        )
+        .is_err()
+    );
+    assert!(
+        crr_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            0
+        )
+        .is_err()
+    );
     // dt too large for the drift: p outside (0, 1).
-    assert!(crr_price(
-        100.0,
-        100.0,
-        10.0,
-        0.9,
-        0.01,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        1
-    )
-    .is_err());
+    assert!(
+        crr_price(
+            100.0,
+            100.0,
+            10.0,
+            0.9,
+            0.01,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            1
+        )
+        .is_err()
+    );
     // Non-finite inputs (including r/q) are rejected, not propagated.
-    assert!(crr_price(
-        100.0,
-        100.0,
-        1.0,
-        f64::NAN,
-        0.2,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        100
-    )
-    .is_err());
-    assert!(crr_price(
-        100.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        f64::INFINITY,
-        OptionType::Call,
-        Exercise::American,
-        100
-    )
-    .is_err());
-    assert!(crr_price(
-        f64::INFINITY,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        100
-    )
-    .is_err());
+    assert!(
+        crr_price(
+            100.0,
+            100.0,
+            1.0,
+            f64::NAN,
+            0.2,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            100
+        )
+        .is_err()
+    );
+    assert!(
+        crr_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            f64::INFINITY,
+            OptionType::Call,
+            Exercise::American,
+            100
+        )
+        .is_err()
+    );
+    assert!(
+        crr_price(
+            f64::INFINITY,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            100
+        )
+        .is_err()
+    );
     // An absurd step count is rejected up front instead of hanging or
     // aborting in the allocator.
     use eq_options_engine::binomial::MAX_STEPS;
-    assert!(crr_price(
-        100.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        Exercise::European,
-        MAX_STEPS + 1
-    )
-    .is_err());
+    assert!(
+        crr_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            Exercise::European,
+            MAX_STEPS + 1
+        )
+        .is_err()
+    );
 }
 
 #[test]

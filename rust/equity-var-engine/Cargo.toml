@@ -1,7 +1,8 @@
 [package]
 name = "eq-var-engine"
 version = "0.3.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.99"
 description = "Equity market-risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall and regulatory backtesting. Zero runtime dependencies (std only); port of the Python eq_var library with full repricing of European option legs."
 license = "MIT"
 publish = false

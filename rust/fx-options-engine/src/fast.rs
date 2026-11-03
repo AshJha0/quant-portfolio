@@ -37,7 +37,7 @@ use crate::garman_kohlhagen::MIN_VOL;
 use crate::iv_core::black_implied_vol;
 use crate::rng::Xoshiro256StarStar;
 use crate::{Exercise, GreeksResult, McResult, OptionType};
-use qp_core::black_scholes::{carry_d1_d2, carry_greeks, carry_value, TruncatedC1Normal};
+use qp_core::black_scholes::{TruncatedC1Normal, carry_d1_d2, carry_greeks, carry_value};
 
 /// Error code of the low-latency kernels. `Copy`, one byte, no heap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

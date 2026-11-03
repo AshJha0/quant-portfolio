@@ -32,14 +32,14 @@
 
 use std::fmt;
 
-use crate::binomial::{crr_tree, deterministic_american, CrrWorkspace, Exercise, MAX_STEPS};
-use crate::black76::{b76_d1_d2_core, black76_greeks_core, black76_price_core, Black76Greeks};
+use crate::binomial::{CrrWorkspace, Exercise, MAX_STEPS, crr_tree, deterministic_american};
 use crate::black_scholes::{
-    bs_price_core, check_inputs, check_rates, d1_d2_core, OptionType, PricingError,
+    OptionType, PricingError, bs_price_core, check_inputs, check_rates, d1_d2_core,
 };
-use crate::greeks::{bs_greeks_core, BsGreeks};
+use crate::black76::{Black76Greeks, b76_d1_d2_core, black76_greeks_core, black76_price_core};
+use crate::greeks::{BsGreeks, bs_greeks_core};
 use crate::iv_core::black_implied_vol;
-use crate::monte_carlo::{mc_core, McResult, McWorkspace, MAX_PATHS};
+use crate::monte_carlo::{MAX_PATHS, McResult, McWorkspace, mc_core};
 
 /// Why a non-allocating pricer rejected its inputs or result.
 ///

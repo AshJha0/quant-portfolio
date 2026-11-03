@@ -26,8 +26,8 @@ use fx_var_engine::backtest::*;
 use fx_var_engine::expected_shortfall::empirical_var_es;
 use fx_var_engine::matrix::Matrix;
 use fx_var_engine::parametric::cornish_fisher_valid;
-use fx_var_engine::psd::{cholesky_repair, PsdRepair};
-use fx_var_engine::returns::{ewma_volatility, ReturnsMatrix};
+use fx_var_engine::psd::{PsdRepair, cholesky_repair};
+use fx_var_engine::returns::{ReturnsMatrix, ewma_volatility};
 
 /// `P_i = round2(1000 sin(0.37 i + 0.1) (1 + 0.5 cos(0.11 i)))`,
 /// `round2(x) = floor(100 x + 0.5) / 100`, i = 0..249.

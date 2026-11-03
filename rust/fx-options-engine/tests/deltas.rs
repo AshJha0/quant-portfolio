@@ -4,9 +4,9 @@ mod common;
 use common::assert_close;
 
 use fx_options_engine::{
-    atm_dns_strike, atm_forward_strike, cip_forward, delta, forward_to_spot_delta, gk_price,
-    premium_adjust_spot_delta, spot_to_forward_delta, strike_from_delta, DeltaConvention, FxError,
-    OptionType,
+    DeltaConvention, FxError, OptionType, atm_dns_strike, atm_forward_strike, cip_forward, delta,
+    forward_to_spot_delta, gk_price, premium_adjust_spot_delta, spot_to_forward_delta,
+    strike_from_delta,
 };
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);
@@ -174,55 +174,63 @@ fn wrong_sign_and_out_of_range_delta_err() {
         assert!(strike_from_delta(-0.25, s, t, rd, rf, sig, OptionType::Call, conv).is_err());
         assert!(strike_from_delta(0.25, s, t, rd, rf, sig, OptionType::Put, conv).is_err());
     }
-    assert!(strike_from_delta(
-        1.5,
-        s,
-        t,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        DeltaConvention::Forward
-    )
-    .is_err());
-    assert!(strike_from_delta(
-        f64::NAN,
-        s,
-        t,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        DeltaConvention::Spot
-    )
-    .is_err());
+    assert!(
+        strike_from_delta(
+            1.5,
+            s,
+            t,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            DeltaConvention::Forward
+        )
+        .is_err()
+    );
+    assert!(
+        strike_from_delta(
+            f64::NAN,
+            s,
+            t,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            DeltaConvention::Spot
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn strike_from_delta_requires_positive_t_and_sigma() {
     let (s, _, _, rd, rf, sig) = MKT;
-    assert!(strike_from_delta(
-        0.25,
-        s,
-        0.0,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        DeltaConvention::Spot
-    )
-    .is_err());
-    assert!(strike_from_delta(
-        0.25,
-        s,
-        0.5,
-        rd,
-        rf,
-        0.0,
-        OptionType::Call,
-        DeltaConvention::Spot
-    )
-    .is_err());
+    assert!(
+        strike_from_delta(
+            0.25,
+            s,
+            0.0,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            DeltaConvention::Spot
+        )
+        .is_err()
+    );
+    assert!(
+        strike_from_delta(
+            0.25,
+            s,
+            0.5,
+            rd,
+            rf,
+            0.0,
+            OptionType::Call,
+            DeltaConvention::Spot
+        )
+        .is_err()
+    );
 }
 
 #[test]

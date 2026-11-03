@@ -86,24 +86,30 @@ fn kupiec_degenerate_counts_and_monotonicity() {
         .pvalue
             < 0.05
     );
-    assert!(kupiec_pof(&KupiecInput {
-        n_obs: 0,
-        n_exceptions: 0,
-        alpha: 0.01
-    })
-    .is_err());
-    assert!(kupiec_pof(&KupiecInput {
-        n_obs: 250,
-        n_exceptions: 251,
-        alpha: 0.01
-    })
-    .is_err());
-    assert!(kupiec_pof(&KupiecInput {
-        n_obs: 250,
-        n_exceptions: -1,
-        alpha: 0.01
-    })
-    .is_err());
+    assert!(
+        kupiec_pof(&KupiecInput {
+            n_obs: 0,
+            n_exceptions: 0,
+            alpha: 0.01
+        })
+        .is_err()
+    );
+    assert!(
+        kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: 251,
+            alpha: 0.01
+        })
+        .is_err()
+    );
+    assert!(
+        kupiec_pof(&KupiecInput {
+            n_obs: 250,
+            n_exceptions: -1,
+            alpha: 0.01
+        })
+        .is_err()
+    );
 }
 
 #[test]
@@ -255,12 +261,14 @@ fn basel_exact_zone_boundaries_at_250_obs() {
         .zone,
         BaselZone::Red
     );
-    assert!(basel_traffic_light(&BaselInput {
-        n_obs: 250,
-        n_exceptions: -1,
-        alpha: 0.01
-    })
-    .is_err());
+    assert!(
+        basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: -1,
+            alpha: 0.01
+        })
+        .is_err()
+    );
 }
 
 #[test]

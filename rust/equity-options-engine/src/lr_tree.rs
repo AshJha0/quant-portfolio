@@ -5,7 +5,7 @@
 //! European error falls like `1/n^2`.
 
 use crate::binomial::Exercise;
-use crate::black_scholes::{d1_d2, validate_inputs, validate_rates, OptionType, PricingError};
+use crate::black_scholes::{OptionType, PricingError, d1_d2, validate_inputs, validate_rates};
 
 /// Peizer-Pratt method 2: binomial probability matching `N(z)` for odd `n`.
 pub fn peizer_pratt(z: f64, n: usize) -> Result<f64, PricingError> {
@@ -150,17 +150,19 @@ mod tests {
     #[test]
     fn rejects() {
         assert!(peizer_pratt(0.1, 10).is_err());
-        assert!(lr_price(
-            0.0,
-            100.0,
-            1.0,
-            0.05,
-            0.2,
-            0.0,
-            OptionType::Call,
-            Exercise::European,
-            11
-        )
-        .is_err());
+        assert!(
+            lr_price(
+                0.0,
+                100.0,
+                1.0,
+                0.05,
+                0.2,
+                0.0,
+                OptionType::Call,
+                Exercise::European,
+                11
+            )
+            .is_err()
+        );
     }
 }

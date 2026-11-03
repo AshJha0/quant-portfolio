@@ -21,7 +21,7 @@
 use crate::book::{Book, CompiledBook, Market};
 use crate::expected_shortfall::{normal_es, normal_var, student_t_es, student_t_var};
 use crate::matrix::Matrix;
-use crate::returns::{ewma_cov, flag_peg_factors, sample_cov, validate_returns, ReturnsMatrix};
+use crate::returns::{ReturnsMatrix, ewma_cov, flag_peg_factors, sample_cov, validate_returns};
 use crate::stats::{inv_norm_cdf, validate_alpha, validate_horizon};
 use crate::{FxVarError, Result, TailDist};
 

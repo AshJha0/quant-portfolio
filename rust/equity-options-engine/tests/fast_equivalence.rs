@@ -3,13 +3,12 @@
 //! and thread counts.
 
 use eq_options_engine::fast::{
-    bs_greeks_batch, bs_price_batch, try_black76_greeks, try_black76_price, try_bs_greeks,
-    try_bs_price, try_crr_price, try_implied_vol, try_mc_price, BatchError, BsBatch, ErrorCode,
-    GreeksOut,
+    BatchError, BsBatch, ErrorCode, GreeksOut, bs_greeks_batch, bs_price_batch, try_black76_greeks,
+    try_black76_price, try_bs_greeks, try_bs_price, try_crr_price, try_implied_vol, try_mc_price,
 };
 use eq_options_engine::{
-    black76_greeks, black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price, BsGreeks,
-    CrrWorkspace, Exercise, McWorkspace, OptionType,
+    BsGreeks, CrrWorkspace, Exercise, McWorkspace, OptionType, black76_greeks, black76_price,
+    bs_greeks, bs_price, crr_price, implied_vol, mc_price,
 };
 
 /// Small xorshift for varied inputs (test-only, fixed seed).

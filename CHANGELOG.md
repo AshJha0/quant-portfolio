@@ -16,6 +16,12 @@ dataset (the research entries use ECB reference rates).
 
 ### Changed
 
+- All Rust crates (the `rust/` workspace and the PyO3 binding) move to
+  edition 2024 with `rust-version = "1.99"`, matching the pinned 1.99.1
+  toolchain, and the workspace resolver to 3. Code changes are what the
+  edition brings: rustfmt's 2024 style, and four nested `if let` blocks in
+  `fx-var-engine` collapsed into let chains. No numeric output changes; all
+  605 workspace tests and the 85 binding tests pass.
 - The Black-Scholes maths the equity and FX options code carried twice now
   lives once per language, in cost-of-carry form (b = r - q = r_d - r_f):
   `qp_core.black_scholes` and `qp_core.iv_core` (Python), `qp/black_scholes.hpp`

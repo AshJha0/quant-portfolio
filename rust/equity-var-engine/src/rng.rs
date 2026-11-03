@@ -18,7 +18,7 @@
 //! lines of generator code freezes the stream definition forever and keeps
 //! the crate std-only (see docs/METHODOLOGY.md).
 
-use qp_core::rng::{marsaglia_tsang, GammaSource, Xoshiro256PlusPlus};
+use qp_core::rng::{GammaSource, Xoshiro256PlusPlus, marsaglia_tsang};
 
 /// Deterministic xoshiro256++ generator with Box–Muller normal caching.
 ///

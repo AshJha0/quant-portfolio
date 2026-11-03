@@ -15,11 +15,7 @@ use crate::{EqVarError, Result};
 /// `0 * ln 0 = 0` convention shared by the Kupiec and Christoffersen
 /// binomial/Markov log-likelihoods.
 fn xlogy(a: f64, b: f64) -> f64 {
-    if a > 0.0 && b > 0.0 {
-        a * b.ln()
-    } else {
-        0.0
-    }
+    if a > 0.0 && b > 0.0 { a * b.ln() } else { 0.0 }
 }
 
 /// Exception indicator per day: `1` iff `pnl_t < -var_t`.
@@ -184,11 +180,7 @@ fn check_coverage_input(inp: &KupiecInput) -> Result<()> {
 
 /// `x ln y` with `0 ln 0 = 0`.
 fn xlny(x: f64, y: f64) -> f64 {
-    if x == 0.0 {
-        0.0
-    } else {
-        x * y.ln()
-    }
+    if x == 0.0 { 0.0 } else { x * y.ln() }
 }
 
 /// Kupiec LR statistic for valid inputs:

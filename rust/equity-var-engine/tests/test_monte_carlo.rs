@@ -3,13 +3,13 @@
 //! Monte Carlo VaR: convergence to the parametric closed form within 3 SE,
 //! Student-t tail fattening, bitwise seed determinism, moment matching.
 
+use eq_var_engine::TailModel;
 use eq_var_engine::expected_shortfall::normal_es;
-use eq_var_engine::matrix::{covariance_from_vols, sample_covariance, Matrix};
+use eq_var_engine::matrix::{Matrix, covariance_from_vols, sample_covariance};
 use eq_var_engine::monte_carlo::*;
 use eq_var_engine::parametric::{parametric_var, portfolio_sigma};
 use eq_var_engine::rng::Rng;
 use eq_var_engine::stats::normal_ppf;
-use eq_var_engine::TailModel;
 
 fn demo_cov() -> Matrix {
     let vols = [0.010, 0.015, 0.020];
@@ -153,15 +153,17 @@ fn monte_carlo_validation() {
     assert!(monte_carlo_var(&[], &cov, 0.01, 1000, TailModel::Normal, 0).is_err());
     assert!(monte_carlo_var(&[1.0], &cov, 0.01, 1000, TailModel::Normal, 0).is_err());
     assert!(monte_carlo_var(&EXPOSURES, &cov, 0.6, 1000, TailModel::Normal, 0).is_err());
-    assert!(monte_carlo_var(
-        &EXPOSURES,
-        &cov,
-        0.01,
-        1000,
-        TailModel::StudentT { df: 2.0 },
-        0
-    )
-    .is_err());
+    assert!(
+        monte_carlo_var(
+            &EXPOSURES,
+            &cov,
+            0.01,
+            1000,
+            TailModel::StudentT { df: 2.0 },
+            0
+        )
+        .is_err()
+    );
     assert!(simulate_factor_returns(&cov, 0, TailModel::Normal, 0).is_err());
     let tiny_pnl = vec![0.0; 50];
     assert!(var_order_statistic_se(&tiny_pnl, 0.01).is_err());

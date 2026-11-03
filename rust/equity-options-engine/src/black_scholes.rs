@@ -24,7 +24,7 @@
 use std::fmt;
 
 use crate::fast::ErrorCode;
-use qp_core::black_scholes::{carry_d1_d2, carry_value, ErfcNormal};
+use qp_core::black_scholes::{ErfcNormal, carry_d1_d2, carry_value};
 
 /// Option payoff direction.
 ///

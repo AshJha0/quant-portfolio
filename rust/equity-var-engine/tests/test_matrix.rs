@@ -2,8 +2,8 @@
 #![allow(deprecated)]
 //! Matrix, Cholesky (clean + jitter fallback), covariance estimators.
 
-use eq_var_engine::matrix::{covariance_from_vols, ewma_covariance, sample_covariance, Matrix};
 use eq_var_engine::EqVarError;
+use eq_var_engine::matrix::{Matrix, covariance_from_vols, ewma_covariance, sample_covariance};
 
 fn spd3() -> Matrix {
     // SPD matrix built as A = B B^T + I from a fixed B.

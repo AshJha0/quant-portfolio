@@ -16,8 +16,8 @@
 //! of vol (divide by 100 for "per vol point").
 
 use crate::garman_kohlhagen::{d1 as d1_fn, gk_price};
-use crate::{invalid, norm_pdf, validate_inputs, FxResult, OptionType};
-use qp_core::black_scholes::{carry_greeks_with_d, CarryGreeks, TruncatedC1Normal};
+use crate::{FxResult, OptionType, invalid, norm_pdf, validate_inputs};
+use qp_core::black_scholes::{CarryGreeks, TruncatedC1Normal, carry_greeks_with_d};
 
 /// Full GK Greek set for one option.
 ///

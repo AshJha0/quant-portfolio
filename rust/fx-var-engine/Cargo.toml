@@ -1,7 +1,8 @@
 [package]
 name = "fx-var-engine"
 version = "0.3.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.99"
 description = "Multi-currency FX VaR/ES engine (historical, parametric, Monte Carlo, stress); port of python/fx/03-var-es-engine with full repricing of European option legs"
 license = "MIT"
 
