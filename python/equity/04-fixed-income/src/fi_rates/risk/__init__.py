@@ -14,6 +14,11 @@ price ``P``):
 Curve-based ("effective") measures bump all pillar zero rates in parallel and
 reprice: ``DV01_eff = (P(-h) - P(+h)) / 2`` with ``h = 1bp``.
 
+Instrument-space risk (W14) lives in the submodules: :mod:`fi_rates.risk.par`
+(quote-to-node Jacobian, par-rate DV01, quote-space cross-gamma) and
+:mod:`fi_rates.risk.explain` (daily carry / roll-down / market / unexplained
+explain of a cashflow book).
+
 Taylor P&L approximation for a yield move ``dy``:
 ``dP ~ -D_mod P dy + 0.5 C P dy^2``: compared against full repricing in
 :func:`pnl_approximation_table`.
@@ -28,7 +33,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .bond import (
+from ..bond import (
     FixedRateBond,
     _period_exponents,
     _require_finite,
@@ -37,22 +42,30 @@ from .bond import (
     price_from_ytm,
     ytm_from_price,
 )
-from .curve import DiscountCurve
+from ..curve import DiscountCurve
+from .explain import CashflowBook, explain_curve_day
+from .par import par_rate_gamma, par_rate_risk, par_rate_risk_by_rebuild, quote_jacobian
 
 __all__ = [
+    "CashflowBook",
     "Position",
     "ZeroNetValueWarning",
     "convexity",
     "convexity_curve",
     "dv01",
     "dv01_curve",
+    "explain_curve_day",
     "macaulay_duration",
     "modified_duration",
     "numerical_convexity",
     "numerical_modified_duration",
+    "par_rate_gamma",
+    "par_rate_risk",
+    "par_rate_risk_by_rebuild",
     "pnl_approximation_table",
     "portfolio_risk",
     "portfolio_value",
+    "quote_jacobian",
 ]
 
 
