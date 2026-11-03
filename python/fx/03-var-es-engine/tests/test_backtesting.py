@@ -7,7 +7,6 @@ from fx_var import (
     basel_traffic_light,
     christoffersen_independence,
     conditional_coverage,
-    es_backtest_acerbi_szekely,
     evaluate_var_backtest,
     kupiec_pof,
     normal_es,
@@ -244,21 +243,6 @@ def test_as_z2_null_sampler_used():
     r = acerbi_szekely_z2(pnl, var, es, alpha=0.1, n_sims=50,
                           null_sampler=lambda rng, k: np.tile(pnl, (k, 1)))
     assert r["p_value"] == pytest.approx(1.0)
-
-
-def test_deprecated_es_backtest_keeps_old_sign():
-    rng = np.random.default_rng(7)
-    n = 500
-    pnl = rng.standard_normal(n) * 2.0
-    var = np.full(n, norm.isf(0.025))
-    es = np.full(n, normal_es(1.0, 0.025))
-    with pytest.warns(DeprecationWarning):
-        z_old, p_old = es_backtest_acerbi_szekely(pnl, var, es, 0.975, n_sim=200, seed=3)
-    new = acerbi_szekely_z2(pnl, var, es, alpha=0.025, n_sims=200, seed=3)
-    # 1 - 0.975 = 0.025000000000000022 in binary, so the two alphas differ
-    # by 1 ulp of 0.025 and Z2 by a few ulps; rel 1e-12 bounds that.
-    assert z_old == pytest.approx(-new["z2"], rel=1e-12)
-    assert p_old == pytest.approx(new["p_value"])
 
 
 def test_as_z2_validation():

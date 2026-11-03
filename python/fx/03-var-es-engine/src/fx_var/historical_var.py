@@ -81,7 +81,7 @@ def historical_var_from_pnl(pnl, alpha: float = 0.01, *, rule: str = "kth_worst"
     worst loss, so 99 % on 250 days is the 3rd worst. ``rule="interpolated"``:
     :func:`interpolated_var`. Both are checked against the mpmath oracle.
     """
-    alpha = resolve_alpha(alpha, None)
+    alpha = resolve_alpha(alpha)
     if _validate_rule(rule) == "interpolated":
         return interpolated_var(pnl, alpha)
     return empirical_var_es(pnl, alpha)[0]
@@ -157,7 +157,6 @@ def historical_var(
     option_method: str = "full",
     warn_pegs: bool = True,
     *,
-    confidence: float | None = None,
     rule: str = "kth_worst",
 ) -> HistoricalVaRResult:
     """Historical-simulation VaR/ES for ``book`` at ``market``.
@@ -186,8 +185,6 @@ def historical_var(
         Option revaluation passed to ``Book.pnl``.
     warn_pegs : bool
         Emit :class:`PegBlindnessWarning` for near-zero-vol FX factors.
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
     rule : {"kth_worst", "interpolated"}
         Quantile rule for the VaR (see :func:`historical_var_from_pnl`).
         ``"interpolated"`` needs equal weights, so only ``method="plain"``
@@ -202,7 +199,7 @@ def historical_var(
     ValueError
         If the book has no positions or no risk factors.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     rule = _validate_rule(rule)
     if rule == "interpolated" and method == "age":
         raise ValueError("rule='interpolated' needs equal weights; use method='plain' or 'fhs'")

@@ -123,31 +123,12 @@ def validate_alpha(alpha: float) -> float:
     return a
 
 
-def resolve_alpha(alpha: float | None, confidence: float | None,
-                  default: float = 0.01, stacklevel: int = 3) -> float:
-    """Resolve the ``alpha`` / deprecated ``confidence`` keyword pair.
+def resolve_alpha(alpha: float | None, default: float = 0.01) -> float:
+    """``alpha`` (tail probability) or ``default`` when it is None, validated.
 
-    ``confidence=`` is the pre-1.1 keyword (0.99 = 99 %).  It still works
-    for one release with a :class:`DeprecationWarning` and maps to
-    ``alpha = 1 - confidence``.
+    The pre-1.1 ``confidence=`` keyword (0.99 = 99 %) was removed in v3.0.0.
     """
-    import warnings as _w
-
-    if confidence is not None:
-        if alpha is not None:
-            raise ValueError("pass alpha (tail probability) or the deprecated "
-                             "confidence, not both")
-        _w.warn(
-            "confidence= is deprecated; pass alpha= as the tail probability "
-            "(alpha = 1 - confidence, e.g. 0.01 for 99 %)",
-            DeprecationWarning,
-            stacklevel=stacklevel,
-        )
-        validate_finite(confidence=confidence)
-        alpha = 1.0 - float(confidence)
-    elif alpha is None:
-        alpha = default
-    return validate_alpha(alpha)
+    return validate_alpha(default if alpha is None else alpha)
 
 
 def require_positions(book) -> None:

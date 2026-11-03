@@ -165,7 +165,7 @@ def var_report(
     """Historical/MC VaR and ES of ``book`` over scenario rows, in ``reporting_ccy``."""
     if not isinstance(scenarios, pd.DataFrame) or scenarios.empty:
         raise ValueError("scenarios must be a non-empty DataFrame of factor shocks")
-    a = resolve_alpha(alpha, None)
+    a = resolve_alpha(alpha)
     pnl = np.atleast_1d(
         reporting_pnl(book, market, scenarios, reporting_ccy=reporting_ccy,
                       conversion=conversion, option_method=option_method)

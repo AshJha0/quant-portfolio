@@ -7,7 +7,6 @@ from fx_var import (
     Book,
     PegBlindnessWarning,
     Spot,
-    cornish_fisher_domain_ok,
     cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
@@ -176,8 +175,6 @@ def test_cf_counterexample_minimum_is_at_the_endpoint_and_alpha_aware():
     assert a < 0
     assert a * 16 - 4 * b + c == pytest.approx(-9.15e-4, abs=1e-6)
     assert a * 16 + 4 * b + c > 0
-    with pytest.warns(DeprecationWarning):
-        assert not cornish_fisher_domain_ok(skew, k)
     assert cornish_fisher_valid(skew, k, 0.01)
     assert cornish_fisher_valid(skew, k, 0.001)
     assert np.isfinite(cornish_fisher_var(1.0, skew, k, 0.01))

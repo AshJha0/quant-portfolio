@@ -135,8 +135,6 @@ CASES: dict[str, list[tuple[str, object, object]]] = {
     "evaluate_var_backtest": [("pnl", lambda x: fv.evaluate_var_backtest(
         _arr_with(PNL, x), np.full(300, 2e5), 0.01), 0.0)],
     "rolling_backtest": [("returns", _rolling, 0.001)],
-    "es_backtest_acerbi_szekely": [("pnl", lambda x: fv.es_backtest_acerbi_szekely(
-        _arr_with(PNL, x), np.full(300, 2e5), np.full(300, 2.5e5), n_sim=5), 0.0)],
     "acerbi_szekely_z2": [("pnl", lambda x: fv.acerbi_szekely_z2(
         _arr_with(PNL, x), np.full(300, 2e5), np.full(300, 2.5e5), alpha=0.025, n_sims=5), 0.0),
                           ("es", lambda x: fv.acerbi_szekely_z2(
@@ -167,7 +165,6 @@ EXEMPT = {
     "TrafficLight": "output record",
     "BacktestResult": "output record",
     "historical_scenarios": "takes no input",
-    "cornish_fisher_domain_ok": "deprecated; keeps its old False-for-NaN result for one release",
 }
 
 #: run_stress takes no numeric input of its own; it is fuzzed through a
