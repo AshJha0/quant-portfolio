@@ -10,6 +10,8 @@ section below whose heading matches the version.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-03
+
 One release, v2.0.0, is planned. Until then changes collect here. Results
 quoted below come from seeded synthetic data unless an entry names a
 dataset (the research entries use ECB reference rates).
@@ -868,5 +870,6 @@ of the fixes changed a golden-vector value.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is 9.5%, not 5%. Treat p-values near 0.05 as inconclusive.
 
-[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/AshJha0/quant-portfolio/releases/tag/v1.1.0
