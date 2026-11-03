@@ -342,7 +342,10 @@ curve, then projection curves) feeds `fi_rates.rate_options` and
 `fi_rates.hull_white`. On the surface side `eq_surface.ssvi` feeds
 `eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`; the SSVI
 and Dupire maths lives in `qp_core.vol` (`ssvi`, `dupire`, with `sabr`,
-`sabr_pde` and `essvi`), and `eq_surface`/`fx_surface` re-export it.
+`sabr_pde` and `essvi`), and `eq_surface`/`fx_surface` re-export it. The
+Heston characteristic function also lives there (`qp_core.vol.heston`):
+`eq_surface.heston.heston_cf` and `fx_surface.heston.heston_cf` are thin
+shims over it, while each package keeps its own pricers and `HestonParams`.
 
 The C++ headers and Rust golden modules are generated files. Every
 `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero when the
