@@ -17,8 +17,8 @@
 #   rust fmt     cargo fmt --all --check over the workspace
 #   bindings     qp-cpp (nanobind) and qp-rust (PyO3) built and tested
 #   cmake install  cpp/ installed as one CMake package; find_package consumer
-#   wheels       cibuildwheel wheels for both bindings (artefacts only, not
-#                gated by ci-ok, never published)
+#   wheels       cibuildwheel wheels for both bindings (artefacts only, never
+#                published; gated by ci-ok)
 #   bench        same-runner base-vs-head bench gate (bench_ab.py)
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
@@ -1027,6 +1027,7 @@ jobs:
       - rust-fmt
       - bindings
       - cmake-install
+      - wheels
       - bench
       - engine-differential
       - research

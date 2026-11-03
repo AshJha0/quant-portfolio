@@ -217,12 +217,10 @@ flowchart TD
     HASH -.->|installs for| PYC & PY & LINT & BIND & DIFF & RES
     DISC --> PY
     PY & PYC & CPP & RUST & BIND --> CNT
-    DISC & PYC & PY & LINT & GOLD & CPP & CORE & FMT & RUST & BIND & DIFF & CMI & BENCH & HYG & RES & CNT --> OK
-    WHL -.->|not yet gated| OK
+    DISC & PYC & PY & LINT & GOLD & CPP & CORE & FMT & RUST & BIND & DIFF & CMI & WHL & BENCH & HYG & RES & CNT --> OK
 ```
 
-The `wheels` job runs on every push but is not in `ci-ok` until it has a
-green history. The bench gate is described in [BENCHMARKS.md](BENCHMARKS.md).
+The `wheels` job is part of `ci-ok`; it joined after its first green run. The bench gate is described in [BENCHMARKS.md](BENCHMARKS.md).
 
 ---
 

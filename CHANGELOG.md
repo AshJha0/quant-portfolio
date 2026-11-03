@@ -80,8 +80,8 @@ dataset (the research entries use ECB reference rates).
   and Clang 21.
 - CI job `wheels`: cibuildwheel wheels for `qp-cpp` and `qp-rust`, CPython
   3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, each smoke-tested
-  by `bindings/wheel_smoke.py`. Artefacts only, never published; not yet
-  gated by `ci-ok`.
+  by `bindings/wheel_smoke.py`. Artefacts only, never published; gated by
+  `ci-ok` after its first green run.
 - `eqopt::bs_price_batch_fast` and `fxopt::gk_price_batch_fast`: batch
   pricers that vectorise (branch-free exp, log and erfc from `qp/vmath.hpp`,
   plus an AVX2 clone on x86-64 Linux). Not bit-exact; tested within

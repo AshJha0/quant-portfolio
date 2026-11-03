@@ -400,14 +400,14 @@ the same engine and platform.
 | `rust fmt` | `cargo fmt --check` over the workspace. |
 | `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
 | `cmake install (<toolchain>)` | Installs the `QuantPortfolio` CMake package with GCC 15 or Clang 21, moves the source tree aside, and builds and runs `cpp/tests/find_package_consumer` against the prefix. |
-| `wheels <package> (<os>)` | cibuildwheel wheels of `qp-cpp` and `qp-rust`, CPython 3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, smoke-tested by `bindings/wheel_smoke.py`; artefacts `wheels-*`, never published. Not yet in `ci-ok`. |
+| `wheels <package> (<os>)` | cibuildwheel wheels of `qp-cpp` and `qp-rust`, CPython 3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, smoke-tested by `bindings/wheel_smoke.py`; artefacts `wheels-*`, never published. |
 | `bench` | Builds base and head on one runner and runs their C++ and Rust benches in three alternating rounds pinned to CPU 1; fails a kernel only when the head median is more than 25% above base and head p10 is above base p90 ([BENCHMARKS.md](BENCHMARKS.md)). Artefact `bench-results`. |
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). Runs `tests/test_ci_scripts.py`. |
 | `cpp core (<preset>)` | Builds and tests `cpp/core` (including the kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
-| `ci-ok` | Succeeds only when every job above except `wheels` succeeded. This is the required check. |
+| `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 
 ## Determinism
 
