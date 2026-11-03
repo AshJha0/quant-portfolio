@@ -73,11 +73,20 @@ _BUILD = Path(tempfile.gettempdir()) / "qp-career-prep-cxx"
 
 
 def compile_cpp(
-    sources: list[Path], extra: list[str] | None = None, include: list[Path] | None = None
+    sources: list[Path],
+    extra: list[str] | None = None,
+    include: list[Path] | None = None,
+    *,
+    strict: bool = True,
 ) -> Path:
-    """Compile ``sources`` into one executable; cached on the content hash."""
+    """Compile ``sources`` into one executable; cached on the content hash.
+
+    ``strict=False`` drops the warning flags, for the "what does this print"
+    snippets that deliberately do things a warning would flag.
+    """
     prefix = require_compiler()
-    flags = STD_FLAGS + (extra if extra is not None else SAN_FLAGS)
+    base = STD_FLAGS if strict else ["-std=c++20", "-O1", "-g"]
+    flags = base + (extra if extra is not None else SAN_FLAGS)
     inc = [f"-I{_host(d)}" for d in (include or [])]
     h = hashlib.sha256(" ".join(flags + inc).encode())
     for s in sources:
