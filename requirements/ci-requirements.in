@@ -31,3 +31,8 @@ setuptools>=68
 QuantLib==1.44
 # Public-API diff for the api-diff job (group "api").
 griffe==2.4.1
+# Learning notebooks: nbmake and the python3 kernel (group "notebooks").
+nbmake>=1.5
+ipykernel>=6.29
+# qp-data parquet extra (the store writes parquet when pyarrow is present).
+pyarrow>=14

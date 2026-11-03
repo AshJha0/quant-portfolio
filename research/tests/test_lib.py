@@ -266,3 +266,14 @@ def test_panel_power_formula_matches_simulation():
         fm = panel.fama_macbeth(pd.DataFrame(x), pd.DataFrame(y))
         hits += fm["t"] > 1.645
     assert hits / 400 == pytest.approx(expect, abs=3 * math.sqrt(expect * (1 - expect) / 400))
+
+
+def test_check_series_release_uses_the_shared_qp_data_rules():
+    """W6 look-ahead check goes through qp_data's issuer release calendars:
+    DGS10 for Mon 1-Jul-2024 is published on 2-Jul (H.15, next business day)."""
+    import datetime as dt
+
+    pytest.importorskip("qp_data")
+    xr.check_series_release("fred:DGS10", [dt.date(2024, 7, 1)], [dt.date(2024, 7, 2)])
+    with pytest.raises(ValueError, match="used before release"):
+        xr.check_series_release("fred:DGS10", [dt.date(2024, 7, 1)], [dt.date(2024, 7, 1)])

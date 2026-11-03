@@ -195,7 +195,7 @@ def test_binance_klines():
 
 def test_unknown_source():
     with pytest.raises(KeyError, match="unknown source"):
-        sources.build_url("nasdaqx:FOO")
+        sources.build_url("nosuchsource:FOO")
 
 
 # --------------------------------------------------------------- release --

@@ -23,6 +23,8 @@
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
 #   research     research/tools/prereg.py check, then pytest research/tests
+#   py data      python/data (qp-data) on Python 3.11 to 3.13, recorded responses
+#   learning     docs/notebooks and career-prep tests; nbmake on the solutions
 #   quantlib     the QuantLib cross-checks (Hull-White, ISDA CDS, Heston) against
 #                QuantLib from hash-locked wheels; any skip fails
 #   api diff     griffe public-API diff against the base commit (pull requests;
@@ -923,6 +925,7 @@ jobs:
             python/core/pyproject.toml
             python/fx/05-pairs-trading/pyproject.toml
             python/fx/10-regime-switching/pyproject.toml
+            python/data/pyproject.toml
       - name: Create a venv
         run: |
           python -m venv "$RUNNER_TEMP/venv"
@@ -930,14 +933,79 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.6"
-      - name: Install python/core, the FX pairs and regime packages and pytest (hashed, from uv.lock)
+      - name: Install python/core, python/data, the FX pairs and regime packages and pytest (hashed, from uv.lock)
         run: |
           bash .github/scripts/hashed_install.sh --group test --editable \
-            python/core python/fx/05-pairs-trading python/fx/10-regime-switching
+            python/core python/data python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: prereg check
         run: python research/tools/prereg.py check
       - name: pytest research/tests
         run: python -m pytest -p no:cacheprovider -ra research/tests
+
+  # python/data (qp-data) is not under python/*/NN-*, so discover does not
+  # list it. Tests run on recorded responses; live tests stay opt-in.
+  python-data:
+    name: py data (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core and python/data with pytest (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --editable \
+            python/core python/data
+      - name: pytest python/data
+        working-directory: python/data
+        run: python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE"
+
+  # The learning notebooks and the career-prep pack: their tests, then every
+  # solution notebook executed by nbmake on the pinned python3 kernel.
+  learning:
+    name: learning (notebooks, career-prep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install the notebook packages, pytest, nbmake and ipykernel (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group notebooks --editable \
+            python/core python/equity/01-options-pricing python/equity/03-var-es-engine \
+            python/equity/04-fixed-income python/equity/08-algo-execution
+          python -m ipykernel install --user --name python3
+      - name: pytest docs/notebooks/tests and career-prep/tests
+        run: python -m pytest -p no:cacheprovider -ra docs/notebooks/tests career-prep/tests
+      - name: nbmake the solution notebooks
+        run: |
+          python -m pytest -p no:cacheprovider --nbmake --nbmake-timeout=300 \
+            --nbmake-kernel=python3 docs/notebooks/*-solution.ipynb
 
   hygiene:
     name: hygiene
@@ -1015,7 +1083,7 @@ jobs:
           done
           # Calendar and spot-date parity against QuantLib calendars (Round 6 W1/W2).
           (cd python/core && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
-            tests/test_one_calendar.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+            tests/test_one_calendar.py tests/test_usd_govt.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
           (cd python/fx/04-fixed-income && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
             tests/test_fx_spot_forwards.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
           if grep -q "SKIPPED" "$RUNNER_TEMP/ql/pytest.log"; then
@@ -1147,6 +1215,8 @@ jobs:
       - bench
       - engine-differential
       - research
+      - python-data
+      - learning
       - quantlib
       - api-diff
       - hygiene

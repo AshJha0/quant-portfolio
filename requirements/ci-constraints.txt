@@ -1,7 +1,15 @@
+appnope==1.0.0 ; sys_platform == 'darwin'
+    # via ipykernel
 arch==8.0.0
     # via -r requirements/ci-requirements.in
 ast-serialize==0.13.1
     # via mypy
+asttokens==3.0.2
+    # via stack-data
+attrs==26.1.0
+    # via
+    #   jsonschema
+    #   referencing
 bashlex==0.18
     # via cibuildwheel
 bracex==3.2
@@ -10,6 +18,8 @@ build==1.6.1
     # via cibuildwheel
 certifi==2026.10.23
     # via cibuildwheel
+cffi==2.1.1 ; implementation_name == 'pypy'
+    # via pyzmq
 cibuildwheel==3.1.4
     # via -r requirements/ci-requirements.in
 cloudpickle==3.1.2
@@ -18,15 +28,24 @@ colorama==0.4.6
     # via
     #   build
     #   griffecli
+    #   ipython
     #   pytest
+comm==0.2.3
+    # via ipykernel
 contourpy==1.3.3 ; python_full_version < '3.12'
     # via matplotlib
 contourpy==1.4.0 ; python_full_version >= '3.12'
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
+debugpy==1.8.22
+    # via ipykernel
 dependency-groups==1.3.2
     # via cibuildwheel
+executing==2.3.0
+    # via stack-data
+fastjsonschema==2.22.3
+    # via nbformat
 filelock==4.2.7
     # via cibuildwheel
 fonttools==4.68.0
@@ -51,14 +70,42 @@ iniconfig==2.3.1
     # via pytest
 interface-meta==2.0.1
     # via formulaic
+ipykernel==7.4.0
+    # via
+    #   -r requirements/ci-requirements.in
+    #   nbmake
+ipython==9.18.1
+    # via ipykernel
+ipython-pygments-lexers==1.1.1
+    # via ipython
+jedi==0.20.1
+    # via ipython
 joblib==1.6.0
     # via scikit-learn
+jsonschema==4.26.0
+    # via nbformat
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+jupyter-client==8.10.0
+    # via
+    #   ipykernel
+    #   nbclient
+jupyter-core==5.9.1
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   nbclient
+    #   nbformat
 kiwisolver==1.5.1
     # via matplotlib
 librt==0.16.0 ; platform_python_implementation != 'PyPy'
     # via mypy
 matplotlib==3.11.2
     # via -r requirements/ci-requirements.in
+matplotlib-inline==0.2.2
+    # via
+    #   ipykernel
+    #   ipython
 maturin==1.16.0
     # via -r requirements/ci-requirements.in
 mpmath==1.4.1
@@ -73,6 +120,16 @@ narwhals==2.28.0
     # via
     #   formulaic
     #   scikit-learn
+nbclient==0.11.0
+    # via nbmake
+nbformat==5.11.1
+    # via
+    #   nbclient
+    #   nbmake
+nbmake==1.5.5
+    # via -r requirements/ci-requirements.in
+nest-asyncio2==1.7.4
+    # via ipykernel
 numpy==2.4.6 ; python_full_version < '3.12'
     # via
     #   -r requirements/ci-requirements.in
@@ -112,6 +169,7 @@ packaging==26.3
     #   build
     #   cibuildwheel
     #   dependency-groups
+    #   ipykernel
     #   matplotlib
     #   patsy
     #   pytest
@@ -126,6 +184,8 @@ pandas==3.1.0
     #   statsmodels
 pandas-stubs==3.1.0.261029 ; python_full_version >= '3.12'
     # via -r requirements/ci-requirements.in
+parso==0.8.7
+    # via jedi
 patchelf==0.19.1.0 ; (platform_machine == 'aarch64' and sys_platform == 'darwin') or (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cibuildwheel
 pathspec==1.1.1
@@ -134,28 +194,63 @@ pathspec==1.1.1
     #   scikit-build-core
 patsy==1.0.3
     # via statsmodels
+pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
+    # via ipython
 pillow==13.0.0
     # via matplotlib
 platformdirs==4.14.3
-    # via cibuildwheel
+    # via
+    #   cibuildwheel
+    #   jupyter-core
 pluggy==1.7.0
     # via pytest
+prompt-toolkit==3.0.53
+    # via ipython
+psutil==7.2.2 ; sys_platform != 'android' and sys_platform != 'cygwin' and sys_platform != 'emscripten'
+    # via ipython
+ptyprocess==0.7.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
+    # via pexpect
+pure-eval==0.2.4
+    # via stack-data
+pyarrow==26.0.1
+    # via -r requirements/ci-requirements.in
+pycparser==3.12 ; implementation_name == 'pypy'
+    # via cffi
 pyelftools==0.33
     # via cibuildwheel
 pygments==2.21.0
-    # via pytest
+    # via
+    #   ipython
+    #   ipython-pygments-lexers
+    #   nbmake
+    #   pytest
 pyparsing==3.3.3
     # via matplotlib
 pyproject-hooks==1.3.3
     # via build
 pytest==9.2.0
-    # via -r requirements/ci-requirements.in
+    # via
+    #   -r requirements/ci-requirements.in
+    #   nbmake
 python-dateutil==4.0.0
     # via
+    #   jupyter-client
     #   matplotlib
     #   pandas
+pyzmq==27.2.0
+    # via
+    #   ipykernel
+    #   jupyter-client
 quantlib==1.44
     # via -r requirements/ci-requirements.in
+referencing==0.37.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+rpds-py==2026.9.1
+    # via
+    #   jsonschema
+    #   referencing
 ruff==0.17.3
     # via -r requirements/ci-requirements.in
 scikit-build-core==1.1.1
@@ -186,21 +281,41 @@ setuptools==84.2.1
     # via -r requirements/ci-requirements.in
 sortedcontainers==2.4.0
     # via hypothesis
+stack-data==0.6.3
+    # via ipython
 statsmodels==0.15.0
     # via
     #   -r requirements/ci-requirements.in
     #   arch
 threadpoolctl==3.7.0
     # via scikit-learn
+tornado==6.6
+    # via
+    #   ipykernel
+    #   jupyter-client
+traitlets==5.16.1
+    # via
+    #   ipykernel
+    #   ipython
+    #   jupyter-client
+    #   jupyter-core
+    #   matplotlib-inline
+    #   nbclient
+    #   nbformat
 typing-extensions==4.16.0
     # via
     #   formulaic
+    #   ipython
+    #   jupyter-client
     #   mypy
     #   optype
+    #   referencing
 tzdata==2026.6
     # via
     #   pandas
     #   python-dateutil
+wcwidth==0.9.4
+    # via prompt-toolkit
 wheel==0.48.0
     # via cibuildwheel
 wrapt==2.5.2

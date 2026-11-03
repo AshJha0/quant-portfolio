@@ -51,7 +51,7 @@ class TestOneVersion:
 
     def test_every_pyproject_has_the_repo_version(self):
         projects = _pyprojects()
-        assert len(projects) == 26  # python/core, 23 projects, 2 bindings
+        assert len(projects) == 27  # python/core, python/data, 23 projects, 2 bindings
         bad = {}
         for p in projects:
             v = tomllib.loads(p.read_text(encoding="utf-8"))["project"]["version"]
@@ -113,11 +113,7 @@ ALLOWED = {
 # Files that still name an excluded source and are owned by other work
 # (removal is tracked in review/2026-11-03/handbacks/r6/L4.md). The list
 # only shrinks: an entry that no longer matches fails the test.
-PENDING_REMOVAL = {
-    "data/fetch/qp_fetch.py",
-    "research/prereg/execution-lobster.md",
-    "research/tests/test_research.py",
-}
+PENDING_REMOVAL: set[str] = set()
 
 
 def test_excluded_data_sources_are_not_named_elsewhere():
