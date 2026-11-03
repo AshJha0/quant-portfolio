@@ -73,8 +73,8 @@ def _check(cases):
     before = json.loads(BEFORE.read_text())
     assert sorted(before) == sorted(want)
     for k, (b, a) in BEFORE_AFTER.items():
-        assert abs(sum(before[k]) - b) <= 1e-10, k
-        assert abs(sum(got[k]) - a) <= 1e-10, k
+        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), k  # relative: last-ulp libm differences across OSes
+        assert abs(sum(got[k]) - a) <= 1e-12 * max(1.0, abs(a)) * len(got[k]), k
 
 
 def _market(n=400, seed=11):
