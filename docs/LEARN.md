@@ -1,5 +1,13 @@
 # Learn: A Structured Guide to This Portfolio
 
+> **Start at [docs/learn/](learn/README.md).** The teaching now runs by level,
+> L0 to L4, each with a plain idea, a formal statement, a worked example and
+> checks, plus chapters on stochastic calculus, rates, credit and
+> microstructure. This file is the appendix those pages point into: the
+> orientation in Parts I to III and the question bank in Part IV. Every
+> question carries a level tag, and `docs/learn/L0/QUESTIONS.md` to
+> `docs/learn/L4/QUESTIONS.md` list them by level.
+
 This is the teaching companion to quant-portfolio. [README.md](../README.md)
 tells you what the portfolio contains and how it is tested (test counts
 come from the CI counts job, not from hand-typed totals). [ARCHITECTURE.md](ARCHITECTURE.md) and
@@ -328,8 +336,11 @@ Every question carries tags: its topic (one per set, for example
 `options` or `execution`), `numeric` when the answer quotes figures that you
 can check against a VALIDATION file or test, and `code-reading` when it
 points at specific functions or files. Search for a tag, for example
-`` `execution` ``, to study one topic across the sets. Levels L0 to L4
-arrive in a later round.
+`` `execution` ``, to study one topic across the sets. Each question also
+carries a level, `L0` (orientation) to `L4` (desk and validation judgement);
+the levels are explained in [learn/README.md](learn/README.md). A `numeric`
+answer always names the file, test or module its figures come from, and
+`docs/learn/tools/lint_learn.py` reports any that does not.
 
 | Set | Topic | Questions |
 |---|---|---|

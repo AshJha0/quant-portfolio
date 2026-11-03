@@ -67,3 +67,33 @@ def test_long_prose_line_fails_but_table_row_does_not() -> None:
     long = "word " * 100
     assert any("characters" in f for f in L.lint(long))
     assert L.lint("| " + long + " |") == []
+
+
+def test_level_question_lists_are_current() -> None:
+    import build_index
+
+    assert build_index.main(["build_index.py", "--check"]) == 0
+
+
+def test_learn_pages_cite_existing_paths_and_wrap() -> None:
+    pages = [*sorted((L.LEARN.parent / "learn").glob("L[0-4]/*.md")), L.LEARN.parent / "learn" / "README.md"]
+    assert len(pages) >= 14
+    for page in pages:
+        text = page.read_text(encoding="utf-8")
+        assert all(len(line) <= L.MAX_LINE for line in text.splitlines()), page
+        for p in L.PATH.findall(text):
+            if p.startswith(("../", "./")) or "/" not in p.split("`")[0]:
+                continue
+            assert L._path_exists(p), f"{page.name}: {p}"
+
+
+def test_relative_links_in_learn_pages_resolve() -> None:
+    import re
+
+    link = re.compile(r"\]\(([^)#\s]+)(?:#[^)]*)?\)")
+    pages = sorted((L.LEARN.parent / "learn").rglob("*.md"))
+    for page in pages:
+        for target in link.findall(page.read_text(encoding="utf-8")):
+            if "://" in target:
+                continue
+            assert (page.parent / target).exists(), f"{page.name}: {target}"
