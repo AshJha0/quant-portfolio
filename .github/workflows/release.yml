@@ -1,13 +1,32 @@
-# Tag-on-green release.
+# Tag-on-green release with wheels, an SBOM and build provenance.
 #
-# Run from the Actions tab with a version (X.Y.Z) and, optionally, a commit.
-# The workflow refuses unless:
+# Run from the Actions tab with a version (X.Y.Z), optionally a commit, and
+# optionally dry_run. The workflow refuses unless:
 #   * the commit is on main,
 #   * the ci-ok check run on that exact commit concluded "success",
+#   * VERSION at that commit is X.Y.Z (docs/VERSIONING.md),
 #   * CHANGELOG.md at that commit has a "## [X.Y.Z]" section,
 #   * the tag vX.Y.Z does not exist yet.
-# It then creates the tag vX.Y.Z on that commit and a GitHub Release whose
-# notes are that CHANGELOG section.
+# A dry run skips the last three checks, builds and attests everything, and
+# keeps the files as a workflow artefact instead of creating a tag.
+#
+# What a release carries (owner decision D7: GitHub Releases only, nothing
+# goes to PyPI or TestPyPI):
+#   * a wheel and an sdist for python/core and each of the 23 projects;
+#   * qp-cpp and qp-rust wheels, CPython 3.11-3.13, for Linux x86_64
+#     (manylinux_2_34), Windows amd64 and macOS arm64, built by cibuildwheel
+#     and smoke-tested in a clean environment (bindings/wheel_smoke.py);
+#   * the qp-rust sdist (maturin vendors the engine crates). There is no
+#     qp-cpp sdist: its CMake build reads ../../cpp, so it builds only from
+#     the repository; the source archive GitHub attaches is that source;
+#   * sbom.cdx.json: a CycloneDX 1.5 SBOM of the packages and their locked
+#     runtime dependencies (every extra), exported from uv.lock;
+#   * SHA256SUMS, and a SLSA build-provenance attestation for every file
+#     (verify with `gh attestation verify <file> --repo <owner>/<repo>`).
+#
+# Every build tool comes from uv.lock with hashes checked
+# (.github/scripts/hashed_install.sh); actions are pinned to commit SHAs.
+# GitHub-hosted runners and attestations are free for public repositories.
 
 name: release
 
@@ -22,6 +41,11 @@ on:
         description: "Commit to release (default: head of main)"
         required: false
         type: string
+      dry_run:
+        description: "Build and attest only; no tag, no Release"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,19 +54,26 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUTF8: "1"
+
 jobs:
-  release:
-    name: release
+  preflight:
+    name: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write   # create the tag and the Release
+      contents: read
       checks: read      # read the ci-ok check run
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       VERSION: ${{ inputs.version }}
       INPUT_SHA: ${{ inputs.sha }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
       - name: Validate the version string
         run: |
@@ -65,7 +96,7 @@ jobs:
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Releasing $sha"
+          echo "Releasing $sha (dry run: $DRY_RUN)"
 
       - name: ci-ok succeeded on this exact commit
         env:
@@ -79,37 +110,218 @@ jobs:
             exit 1
           fi
 
-      - name: Tag does not exist yet
-        run: |
-          if gh api "repos/$REPO/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "::error::tag v$VERSION already exists"
-            exit 1
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.sha.outputs.sha }}
           persist-credentials: false
 
-      - name: Extract the CHANGELOG section
+      - name: VERSION, CHANGELOG and tag agree with the release
         run: |
+          file_version=$(tr -d '[:space:]' < VERSION)
+          problems=()
+          [ "$file_version" = "$VERSION" ] || problems+=("VERSION says '$file_version', not '$VERSION'")
           awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" { on = 1; next }
             on && /^## \[/ { exit }
             on { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
-            echo "::error::CHANGELOG.md has no non-empty '## [$VERSION]' section"
-            exit 1
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md" \
+            || problems+=("CHANGELOG.md has no non-empty '## [$VERSION]' section")
+          if gh api "repos/$REPO/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
+            problems+=("tag v$VERSION already exists")
           fi
+          for p in "${problems[@]}"; do
+            if [ "$DRY_RUN" = "true" ]; then echo "::warning::$p (ignored: dry run)"; else echo "::error::$p"; fi
+          done
+          if [ "${#problems[@]}" -gt 0 ] && [ "$DRY_RUN" != "true" ]; then exit 1; fi
           cat "$RUNNER_TEMP/notes.md"
 
-      - name: Create the tag and the GitHub Release
-        env:
-          SHA: ${{ steps.sha.outputs.sha }}
+      - name: Keep the release notes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  binding-wheels:
+    name: wheels ${{ matrix.package }} (${{ matrix.os }})
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        package: [cpp-nanobind, rust-pyo3]
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Read the pinned Rust channel
+        if: matrix.package == 'rust-pyo3'
+        shell: bash
         run: |
-          gh release create "v$VERSION" \
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)
+          test -n "$channel"
+          echo "QP_RUST_CHANNEL=$channel" >> "$GITHUB_ENV"
+      # On Linux rustup runs inside the manylinux container (pyproject.toml).
+      - name: Install the pinned Rust toolchain (Windows, macOS)
+        if: matrix.package == 'rust-pyo3' && runner.os != 'Linux'
+        shell: bash
+        run: |
+          rustup toolchain install "$QP_RUST_CHANNEL" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$QP_RUST_CHANNEL" >> "$GITHUB_ENV"
+      - name: Create a venv
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ "$RUNNER_OS" = Windows ]; then bin="$RUNNER_TEMP/venv/Scripts"; else bin="$RUNNER_TEMP/venv/bin"; fi
+          echo "$bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install cibuildwheel (hashed, from uv.lock)
+        shell: bash
+        run: bash .github/scripts/hashed_install.sh --group build
+      - name: cibuildwheel bindings/${{ matrix.package }}
+        shell: bash
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse "bindings/$PACKAGE"
+          ls -l wheelhouse
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.package }}-${{ matrix.os }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  python-dists:
+    name: python sdists and wheels, SBOM
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install the build backends (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group build
+      # No build isolation: setuptools and maturin are the hashed copies.
+      - name: Build python/core and the 23 projects (sdist and wheel each)
+        run: |
+          uv build --all-packages --no-build-isolation --python "$RUNNER_TEMP/venv/bin/python" -o dist
+          n_sdist=$(ls dist/*.tar.gz | wc -l); n_wheel=$(ls dist/*.whl | wc -l)
+          echo "sdists: $n_sdist, wheels: $n_wheel"
+          test "$n_sdist" -eq 24 && test "$n_wheel" -eq 24
+      - name: Build the qp-rust sdist
+        run: uv build --sdist --no-build-isolation --python "$RUNNER_TEMP/venv/bin/python" -o dist bindings/rust-pyo3
+      # A dry run may build a .devN version; the check then only reports.
+      - name: Every wheel carries the release version and py.typed
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          python - <<'EOF'
+          import os, pathlib, zipfile
+          want = os.environ["VERSION"]
+          bad = []
+          for whl in sorted(pathlib.Path("dist").glob("*.whl")):
+              version = whl.name.split("-")[1]
+              names = zipfile.ZipFile(whl).namelist()
+              if not any(n.endswith("/py.typed") for n in names):
+                  bad.append(f"{whl.name}: no py.typed")
+              if version != want:
+                  bad.append(f"{whl.name}: version {version}, expected {want}")
+          print("\n".join(bad) or "all wheels carry the release version and py.typed")
+          dry = os.environ.get("DRY_RUN") == "true"
+          if bad and not dry:
+              raise SystemExit(1)
+          EOF
+      - name: CycloneDX SBOM of the locked dependency closure
+        run: |
+          uv export --frozen --all-packages --all-extras --no-default-groups --format cyclonedx1.5 \
+            --preview-features sbom-export -o dist/sbom.cdx.json
+          python -c 'import json; d = json.load(open("dist/sbom.cdx.json")); print(d["bomFormat"], d["specVersion"], len(d["components"]), "components")'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-python
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: attest and publish
+    needs: [preflight, binding-wheels, python-dists]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write       # create the tag and the Release
+      id-token: write       # sign the provenance (Sigstore, keyless)
+      attestations: write   # store the attestations
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+      SHA: ${{ needs.preflight.outputs.sha }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Count the files and write SHA256SUMS
+        run: |
+          cd dist
+          ls -l
+          n_bind=$(ls qp_cpp-*.whl qp_rust-*.whl | wc -l)
+          echo "binding wheels: $n_bind"
+          # 2 packages x 3 OS x 3 CPython (qp-rust is abi3: one wheel per OS).
+          test "$(ls qp_cpp-*.whl | wc -l)" -eq 9
+          test "$(ls qp_rust-*.whl | wc -l)" -ge 3
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Build provenance for every file
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ !inputs.dry_run }}
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}
+      - name: Create the tag and the GitHub Release with the files
+        if: ${{ !inputs.dry_run }}
+        run: |
+          gh release create "v$VERSION" dist/* \
             --repo "$REPO" \
             --target "$SHA" \
             --title "v$VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md"
+      - name: Dry run, keep the files as an artefact
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dry-run
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

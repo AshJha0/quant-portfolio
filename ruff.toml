@@ -33,3 +33,10 @@ extend-immutable-calls = [
 
 [format]
 quote-style = "double"
+
+[lint.isort]
+# Each project's tests import their own tests/conftest.py as `conftest`. The
+# repository-root conftest.py (Hypothesis profiles) would otherwise make
+# ruff file that import as first-party; it stays in the third-party block,
+# where it sat before the root file existed.
+known-third-party = ["conftest"]

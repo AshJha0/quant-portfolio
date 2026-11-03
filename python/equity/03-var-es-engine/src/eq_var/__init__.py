@@ -153,4 +153,4 @@ __all__ = [
     "var_standard_error_kde",
 ]
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"

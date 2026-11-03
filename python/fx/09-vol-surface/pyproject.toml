@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-surface"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX volatility surface from delta-space quotes (ATM/RR/BF), vanna-volga & SVI smiles, Garman-Kohlhagen, Heston calibration, pricing, and Greeks"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,10 @@ dev = ["pytest>=7.0", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_surface = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

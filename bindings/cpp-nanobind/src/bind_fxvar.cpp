@@ -16,7 +16,7 @@ namespace {
 
 template <class T>
 T unwrap(fxvar::Result<T>&& r) {
-    if (!r) value_error(fxvar::message(r.error()));
+    if (!r) raise_engine([&] { fxvar::throw_error(r.error()); });
     return *std::move(r);
 }
 

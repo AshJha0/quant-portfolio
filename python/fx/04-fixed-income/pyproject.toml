@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-rates"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX-linked fixed income: multi-currency curve bootstrapping, CIP forward curves, cross-currency basis, FX forward/swap and cross-currency swap pricing and risk (DV01/KRD per currency, basis DV01, scenario engine, CIP arbitrage detector)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ dev = ["pytest>=7.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_rates = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-algo"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "Equity algorithmic trading & execution modeling: point-in-time cross-sectional alpha (momentum, reversal, vol, RSI, volume), IC-based signal evaluation with Newey-West and deflated Sharpe, long-short backtest with linear + square-root impact costs, intraday execution simulator (U-shaped volume, temporary/permanent impact), VWAP/TWAP/POV schedulers, Almgren-Chriss optimal execution, and Perold implementation-shortfall TCA."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+eq_algo = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

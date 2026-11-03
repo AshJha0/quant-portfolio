@@ -27,3 +27,7 @@ scipy-stubs==1.18.1.1 ; python_version >= "3.12"
 # Build backend of every Python project; CI installs it from uv.lock and
 # builds with --no-build-isolation.
 setuptools>=68
+# Independent reference for the required quantlib job (group "oracle").
+QuantLib==1.44
+# Public-API diff for the api-diff job (group "api").
+griffe==2.4.1

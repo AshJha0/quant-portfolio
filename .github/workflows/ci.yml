@@ -23,9 +23,18 @@
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
 #   research     research/tools/prereg.py check, then pytest research/tests
-#   hygiene      hard ban on the hiring-process word; voice report (report-only)
+#   quantlib     the QuantLib cross-checks (Hull-White, ISDA CDS, Heston) against
+#                QuantLib from hash-locked wheels; any skip fails
+#   api diff     griffe public-API diff against the base commit (pull requests;
+#                label api-break to allow a deliberate break, docs/VERSIONING.md)
+#   hygiene      hard ban on the hiring-process word; voice report (report-only);
+#                version, excluded-source and Hypothesis-profile policy tests
 #   counts       sums executed pass counts into counts.json, then checks the docs
 #   ci-ok        fails unless every job above succeeded; the only required check
+#
+# Hypothesis runs with the derandomised "ci" profile (conftest.py), so a red
+# run reproduces exactly; the nightly schedule runs everything with the
+# random "nightly" profile and ten times the examples.
 #
 # Third-party actions are pinned to full commit SHAs. Dependabot keeps them
 # current (.github/dependabot.yml).
@@ -37,6 +46,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"   # nightly, 03:17 UTC: random Hypothesis profile
 
 permissions:
   contents: read
@@ -48,6 +59,7 @@ concurrency:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONUTF8: "1"
+  QP_HYPOTHESIS_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'ci' }}
 
 jobs:
   discover:
@@ -107,7 +119,7 @@ jobs:
       - name: pytest
         working-directory: python/core
         run: |
-          python -m pytest -p no:cacheprovider -ra \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -163,7 +175,7 @@ jobs:
       - name: pytest
         working-directory: ${{ matrix.project.path }}
         run: |
-          python -m pytest -p no:cacheprovider -ra \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -646,7 +658,8 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: |
-          python -m pytest -p no:cacheprovider -ra "$GITHUB_WORKSPACE/bindings/$PACKAGE/tests" \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
+            "$GITHUB_WORKSPACE/bindings/$PACKAGE/tests" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -960,6 +973,104 @@ jobs:
           python -m pytest -p no:cacheprovider -q tests/test_ci_scripts.py
       - name: CI install scripts (hashed_install, check_constraints_lock)
         run: python -m pytest -p no:cacheprovider -q tests/test_ci_install.py
+      - name: Repository policy (one version, excluded sources, Hypothesis profiles)
+        run: python -m pytest -p no:cacheprovider -q tests/test_repo_policy.py
+
+  # The independent reference (plan principle 2): the QuantLib cross-checks
+  # that skip when QuantLib is absent run here against QuantLib from
+  # hash-locked wheels (the "oracle" group in the root pyproject.toml), and
+  # a skip fails the job.
+  quantlib:
+    name: quantlib
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core, the three checked projects and QuantLib (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group oracle --editable \
+            python/core python/equity/04-fixed-income python/equity/06-credit-risk \
+            python/fx/09-vol-surface
+          python -c 'import QuantLib; print("QuantLib", QuantLib.__version__)'
+          python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
+      - name: pytest the QuantLib cross-checks (no skips allowed)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ql"
+          for project in python/equity/04-fixed-income python/equity/06-credit-risk python/fx/09-vol-surface; do
+            (cd "$project" && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+              tests/*quantlib*.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+          done
+          if grep -q "SKIPPED" "$RUNNER_TEMP/ql/pytest.log"; then
+            echo "::error::QuantLib cross-checks were skipped"
+            exit 1
+          fi
+      - name: Upload the QuantLib results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quantlib
+          path: |
+            ${{ runner.temp }}/ql/
+            ${{ runner.temp }}/pip-freeze.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  # Public API (docs/VERSIONING.md): every package's __all__ and signatures
+  # at the base commit against the head. Pull requests only; a push to main
+  # was already checked as a pull request. The label api-break allows a
+  # deliberate break, which must come with a docs/MIGRATION.md entry.
+  api-diff:
+    name: api diff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install griffe (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group api
+      - name: griffe check against the base commit
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ALLOW_BREAK: ${{ contains(github.event.pull_request.labels.*.name, 'api-break') }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Not a pull request: nothing to compare against."
+            exit 0
+          fi
+          if python .github/scripts/api_diff.py "$BASE_SHA"; then
+            exit 0
+          fi
+          if [ "$ALLOW_BREAK" = "true" ]; then
+            echo "::warning::public API break allowed by the api-break label; docs/MIGRATION.md must say so"
+            exit 0
+          fi
+          exit 1
 
   counts:
     name: counts
@@ -1031,6 +1142,8 @@ jobs:
       - bench
       - engine-differential
       - research
+      - quantlib
+      - api-diff
       - hygiene
       - counts
     if: ${{ always() }}
