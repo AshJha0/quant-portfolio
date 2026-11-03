@@ -89,7 +89,7 @@ def _env() -> dict[str, str]:
     srcs = sorted(REPO.glob("python/*/src")) + sorted(REPO.glob("python/*/*/src"))
     paths = [str(p) for p in srcs] + [str(REPO / "research")]
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    env["PYTHONPATH"] = os.pathsep.join(paths + [env.get("PYTHONPATH", "")])
+    env["PYTHONPATH"] = os.pathsep.join([*paths, env.get("PYTHONPATH", "")])
     return env
 
 
