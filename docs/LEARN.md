@@ -831,8 +831,8 @@ stochastic routine in this project takes an explicit seed so results are
 reproducible." Without a fixed seed, a test asserting "MC price is within 3
 standard errors of the closed form" would be nondeterministic, passing on some
 runs and failing on others purely from RNG luck, which is exactly the kind of
-flaky test the portfolio's testing contract (`CONVENTIONS.md`: "tests...
-deterministic seeds") is designed to rule out. It also makes bug reports
+flaky test the portfolio's testing contract (`CONVENTIONS.md`: synthetic data is
+"seeded") is designed to rule out. It also makes bug reports
 reproducible: "seed 2 on the 01-risk-metrics synthetic generator produced this
 exact number" is a debuggable claim; "some random run produced a weird number"
 is not.
@@ -2308,7 +2308,7 @@ Diebold–Mariano test with Harvey small-sample correction, computed by
 Ranking by QLIKE: GJR (-7.6027) > EGARCH (-7.5785) > GARCH (-7.5638) >
 EWMA(0.94) (-7.4996) > rolling 21-day historical (-7.4963), against an oracle
 QLIKE of -7.6067 (the true conditional variance of the data-generating
-process). GJR's DM stat vs GARCH is -2.91 (p=0.004), a statistically
+process). GJR's DM stat vs GARCH is -2.75 (p=0.006), a statistically
 significant win, and it captures about 91% of the achievable QLIKE gap between
 GARCH and the oracle ((7.6027 − 7.5638) / (7.6067 − 7.5638)), which is
 expected because the simulated truth had genuine leverage (gamma=0.12) that
@@ -2343,9 +2343,9 @@ economically correct asymmetry (under-forecasting vol is the expensive error).
 
 `tests/test_arch_crosscheck.py` benchmarks against Kevin Sheppard's `arch`
 package purely as an oracle. On 5,000 simulated GARCH observations,
-alpha/beta/omega agree to `arch` to within 1e-6–4e-6, and, the strongest
+alpha/beta/omega agree to `arch` to within 1.6e-6 to 4.7e-6, and, the strongest
 statement in VALIDATION.md, evaluating this project's own log-likelihood at
-`arch`'s fitted parameters agrees with `arch`'s own log-likelihood to 1.8e-12,
+`arch`'s fitted parameters agrees with `arch`'s own log-likelihood to 3.6e-12,
 meaning the recursion and density are "line-for-line equivalent" and the
 residual parameter differences are pure optimizer tolerance, not
 implementation bugs.
@@ -4697,10 +4697,10 @@ linear in ln P(t), equivalent to piecewise-constant instantaneous forwards),
 zeros). The choice is exposed as a constructor argument rather than hard-coded
 because it's a risk decision, not plumbing: VALIDATION.md §4.1 shows actual
 computed forward rates around the 10y/15y/20y pillars where `linear_zero`
-produces a sawtooth (a 22.4bp jump down at each pillar as the forward resets),
-`loglinear_df` jumps only *at* pillars (up to 29bp, but flat and unbiased
-between them), and `pchip_zero` is continuous (max ~2bp jump from discrete
-differencing) at the cost of being non-local.
+produces a sawtooth (the 6M forward drops by about 20bp at each pillar: -19.3, -21.3 and
+-12.3bp at 10y, 15y and 20y), `loglinear_df` jumps only *at* pillars
+(about 3 to 11bp instantaneous, flat between them), and `pchip_zero` is
+continuous (about 1bp from discrete differencing) at the cost of being non-local.
 
 </details>
 
@@ -4889,8 +4889,8 @@ special-casing the curve's shape. DESK_GUIDE.md's 2022 hiking-cycle scenario
 (a bear-flattening/inverting move: 2y +370bp vs 10y +235bp) is the concrete
 real-world case: the desk-guide lesson is explicitly that short-end key-rate
 durations, "usually ignored," dominated the P&L in that episode, and the
-duration+convexity Taylor proxy still missed the true loss by 13% (VALIDATION
-§4.3) because full revaluation, not a single duration number, was needed to
+duration+convexity Taylor proxy still missed the true loss by 11% (+26,228 on
+-228,406; VALIDATION §4.3) because full revaluation, not a single duration number, was needed to
 capture the twist.
 
 </details>
@@ -4936,8 +4936,8 @@ maturity-dependent **cross-currency basis spread** `s(T)` applied to the
 foreign curve (`DF_f_adj(T) = DF_f(T) * exp(-s(T)*T)`), backed out from market
 forwards or basis-swap quotes via `bootstrap.implied_basis_from_forwards` /
 `bootstrap.curve_from_fx_forwards`. METHODOLOGY.md's own worked example shows
-the size of the effect: ignoring basis misprices the 5y EURUSD forward by 147
-pips, a fictitious -$1.20m PV on a EUR 100m forward at the true market rate.
+the size of the effect: ignoring basis misprices the 5y EURUSD forward by 148
+pips, a fictitious -$1.21m PV on a EUR 100m forward at the true market rate.
 
 </details>
 
@@ -6293,8 +6293,10 @@ are equal" but dominates the sample mean in total squared error for N ≥ 4
 Stein, 1961). In the project's synthetic estimation-error study (20 windows on
 each of 10 panels), average James-Stein intensity is φ = 0.94, so the data
 essentially say to ignore the sample means, and shrunk-mean tangency's mean
-true Sharpe (0.328, long-only) beats raw-mean long-only tangency (0.279), a
-paired difference whose 95% CI excludes zero (`VALIDATION.md` §3).
+true Sharpe (0.328, long-only) beats raw-mean long-only tangency (0.279)
+(`VALIDATION.md` §3). The table gives paired CIs against MinVar only (raw
+-0.054 [-0.078, -0.030]; James-Stein -0.005 [-0.012, 0.001]), so the
+James-Stein-versus-raw gap has no CI of its own.
 
 </details>
 
@@ -8589,8 +8591,8 @@ in Q7.
 Within a single engine on one platform, a fixed seed reproduces the exact same
 sequence of draws, hence the exact same output, on every run:
 `rust/equity-var-engine/tests/test_monte_carlo.rs` asserts bitwise equality
-across runs, and `cpp/equity-var-engine/include/eqvar/monte_carlo.hpp` states
-that results "repeat exactly for a given seed on one platform." Across
+across runs, and `cpp/equity-var-engine/include/eqvar/monte_carlo.hpp` describes one
+Philox4x32-10 stream per path, so results repeat for a given seed. Across
 platforms the last bits can differ, because `std::log`, `std::exp` and
 `std::erfc` are not correctly rounded and differ between glibc, MSVC and Apple
 libm, and compilers may contract to FMA. So the guarantee is an equality, not
@@ -9405,10 +9407,10 @@ besides a bad upstream feed.
 <details><summary>Answer</summary>
 
 Beyond happy paths and edge cases, the contract requires "analytic identities
-(put-call parity, Greeks vs finite differences, martingale checks),
-convergence (tree → BS, MC → BS), and failure behaviour (invalid inputs raise
-`ValueError` with informative messages)", plus "property-based checks where
-natural (monotonicity in vol, convexity in strike)". The emphasis throughout
+(put-call parity, Greeks against finite differences, martingale checks),
+convergence (tree to Black-Scholes, Monte Carlo to Black-Scholes) and failure
+behaviour", plus property tests with `hypothesis` or `proptest` "where the
+property is natural" (`CONVENTIONS.md`, Testing). The emphasis throughout
 is on properties the model is *mathematically required* to have, not just a
 table of input/output pairs.
 
@@ -9802,10 +9804,9 @@ market risk manager, and the desk must either cut risk or obtain a documented
 temporary limit increase, no quiet override. A VaR SE-adjusted breach (inside
 one standard error of the limit) is still treated as a breach out of
 conservatism, just flagged as statistically marginal rather than definitive.
-Separately, §3 describes a quarterly model review where a backtest method
-failing Kupiec/CC tests for two consecutive quarters is formally remediated or
-replaced, with the backtest evidence attached going through model-risk
-governance, an escalation path distinct from the daily breach path.
+Separately, §3 calls for a quarterly review of the Kupiec and
+conditional-coverage p-values per method, a governance path distinct from
+the daily breach path.
 
 </details>
 
