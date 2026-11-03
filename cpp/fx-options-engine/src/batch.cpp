@@ -1,9 +1,41 @@
 #include "fxopt/batch.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
+
+#include "qp/black_scholes_vm.hpp"
 
 namespace fxopt {
+
+#if defined(_MSC_VER)
+#define QP_RESTRICT __restrict
+#else
+#define QP_RESTRICT __restrict__
+#endif
+
+// Kernel attributes: an AVX2 clone on x86-64 Linux (GCC, Clang); on MSVC the
+// kernels are unused (the _fast entry points take the exact path there).
+// Under ThreadSanitizer there is no clone: the ifunc resolver runs during
+// dynamic relocation, before the TSan runtime is up, and its instrumented
+// body segfaults at load time.
+#if defined(__SANITIZE_THREAD__)
+#define QP_NO_CLONES 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define QP_NO_CLONES 1
+#endif
+#endif
+#if defined(__x86_64__) && defined(__linux__) && (defined(__GNUC__) || defined(__clang__)) && \
+    !defined(QP_NO_CLONES)
+#define QP_KERNEL_ATTR __attribute__((target_clones("avx2", "default")))
+#elif defined(_MSC_VER) && !defined(__clang__)
+#define QP_KERNEL_ATTR [[maybe_unused]]
+#else
+#define QP_KERNEL_ATTR
+#endif
 
 namespace {
 
@@ -45,6 +77,110 @@ unsigned any_bad(const GkBatchInputs& in, std::size_t n) noexcept {
     return bad;
 }
 
+/// `mask ? a : b` for an all-ones or all-zeros mask, as bit operations so
+/// that GCC does not turn it into a branch (which blocks vectorisation).
+[[maybe_unused]] inline double blend(std::uint64_t mask, double a, double b) noexcept {
+    return std::bit_cast<double>((std::bit_cast<std::uint64_t>(a) & mask) |
+                                 (std::bit_cast<std::uint64_t>(b) & ~mask));
+}
+
+/// Vectorised pass over one block: the fast price for every element and
+/// slow[i] = 1 where the scalar formula is needed; returns non-zero if any
+/// slow flag is set. On x86-64 Linux with GCC or Clang it is also compiled
+/// for AVX2 and the loader picks that clone where the CPU has it. AVX2 alone
+/// does not enable FMA, so both clones return the same bits.
+QP_KERNEL_ATTR
+unsigned fast_block(const double* S, const double* K, const double* T, const double* rd,
+                    const double* rf, const double* v, const OptionType* ty, double* o,
+                    std::uint8_t* slow, std::size_t m) noexcept {
+    unsigned any_slow = 0;
+    for (std::size_t i = 0; i < m; ++i) {
+        const double Si = S[i], Ki = K[i], Ti = T[i], rdi = rd[i], rfi = rf[i], vi = v[i];
+        const double p = 1.0 - 2.0 * static_cast<double>(ty[i] != OptionType::Call);
+        const double ratio = Si / Ki;
+        const double vst_raw = vi * std::sqrt(Ti);
+        const int ok = static_cast<int>(vst_raw > kMinVol) & static_cast<int>(ratio >= 0x1p-1022) &
+                       static_cast<int>(ratio <= kMax);
+        const std::uint64_t mask = std::uint64_t{0} - static_cast<std::uint64_t>(ok);
+        const double Ts = blend(mask, Ti, 1.0);
+        const double vs = blend(mask, vi, 1.0);
+        const double xs = blend(mask, ratio, 1.0);
+        // Shared carry-form body (qp/black_scholes_vm.hpp); r_f is the carry yield.
+        o[i] = qp::carry_price_vm(Si, Ki, xs, Ts, rdi, rfi, vs, p);
+        slow[i] = static_cast<std::uint8_t>(ok ^ 1);
+        any_slow |= static_cast<unsigned>(ok ^ 1);
+    }
+    return any_slow;
+}
+
+/// Vectorised Greeks over one block. Validation has already required S, K,
+/// T, sigma > 0 and sigma sqrt(T) > kMinVol; slow[i] = 1 only where S / K
+/// is outside the normal range.
+QP_KERNEL_ATTR
+// Every pointer is restrict-qualified: with 7 inputs and up to 11
+// outputs GCC would need more run-time alias checks than it allows
+// (--param vect-max-version-for-alias-checks=10) and leaves the loop scalar.
+unsigned fast_greeks_block(const double* QP_RESTRICT S, const double* QP_RESTRICT K,
+                           const double* QP_RESTRICT T, const double* QP_RESTRICT rd,
+                           const double* QP_RESTRICT rf, const double* QP_RESTRICT v,
+                           const OptionType* ty, double* QP_RESTRICT o0, double* QP_RESTRICT o1,
+                           double* QP_RESTRICT o2, double* QP_RESTRICT o3, double* QP_RESTRICT o4,
+                           double* QP_RESTRICT o5, double* QP_RESTRICT o6, double* QP_RESTRICT o7,
+                           double* QP_RESTRICT o8, double* QP_RESTRICT o9, std::uint8_t* slow,
+                           std::size_t m) noexcept {
+    unsigned any_slow = 0;
+    for (std::size_t i = 0; i < m; ++i) {
+        const double Si = S[i], Ki = K[i], Ti = T[i], rdi = rd[i], rfi = rf[i], vi = v[i];
+        const double p = 1.0 - 2.0 * static_cast<double>(ty[i] != OptionType::Call);
+        const double ratio = Si / Ki;
+        const int ok = static_cast<int>(ratio >= 0x1p-1022) & static_cast<int>(ratio <= kMax);
+        const std::uint64_t mask = std::uint64_t{0} - static_cast<std::uint64_t>(ok);
+        const double xs = blend(mask, ratio, 1.0);
+        // Shared carry-form body (qp/black_scholes_vm.hpp); r_f is the carry yield.
+        const qp::CarryGreeksVm g = qp::carry_greeks_vm(Si, Ki, xs, Ti, rdi, rfi, vi, p);
+        o0[i] = g.price;
+        o1[i] = g.delta;
+        o2[i] = g.delta_forward;
+        o3[i] = g.gamma;
+        o4[i] = g.vega;
+        o5[i] = g.theta;
+        o6[i] = g.rho;
+        o7[i] = g.rho_q;
+        o8[i] = g.vanna;
+        o9[i] = g.volga;
+        slow[i] = static_cast<std::uint8_t>(ok ^ 1);
+        any_slow |= static_cast<unsigned>(ok ^ 1);
+    }
+    return any_slow;
+}
+
+/// Full validation pass; on failure, the first bad index and its scalar error.
+std::expected<void, BatchError> check_price_inputs(const GkBatchInputs& in,
+                                                   std::size_t n) noexcept {
+    if (any_bad<false>(in, n) != 0) [[unlikely]] {
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto r =
+                try_validate_inputs(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i], in.sigma[i]);
+            if (!r) return std::unexpected(BatchError{i, r.error()});
+        }
+    }
+    return {};
+}
+
+/// First non-finite output, if any, as a NonFiniteResult error.
+std::expected<void, BatchError> check_finite_outputs(std::span<const double> out) noexcept {
+    unsigned non_finite = 0;
+    for (double x : out) non_finite |= static_cast<unsigned>(!(std::fabs(x) <= kMax));
+    if (non_finite != 0) [[unlikely]] {
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            if (!std::isfinite(out[i])) {
+                return std::unexpected(BatchError{i, Error{Errc::NonFiniteResult, "gk_price"}});
+            }
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 std::expected<void, BatchError> gk_price_batch(const GkBatchInputs& in,
@@ -55,29 +191,53 @@ std::expected<void, BatchError> gk_price_batch(const GkBatchInputs& in,
             BatchError{0, Error{Errc::SizeMismatch, "gk_price_batch",
                                 static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
-    if (any_bad<false>(in, n) != 0) [[unlikely]] {
-        for (std::size_t i = 0; i < n; ++i) {
-            const auto r =
-                try_validate_inputs(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i], in.sigma[i]);
-            if (!r) return std::unexpected(BatchError{i, r.error()});
-        }
-    }
+    if (auto e = check_price_inputs(in, n); !e) [[unlikely]]
+        return e;
     for (std::size_t i = 0; i < n; ++i) {
         out[i] = gk_price_unchecked(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i], in.sigma[i],
                                     in.type[i]);
     }
-    unsigned non_finite = 0;
-    for (std::size_t i = 0; i < n; ++i) {
-        non_finite |= static_cast<unsigned>(!(std::fabs(out[i]) <= kMax));
+    return check_finite_outputs(out);
+}
+
+std::expected<void, BatchError> gk_price_batch_fast(const GkBatchInputs& in,
+                                                    std::span<double> out) noexcept {
+#if defined(_MSC_VER) && !defined(__clang__)
+    // MSVC does not vectorise the kernel and the scalar vmath code is about
+    // 3-4x slower than the library calls (measured), so use the exact path.
+    return gk_price_batch(in, out);
+#else
+    const std::size_t n = out.size();
+    if (!same_length(in, n)) [[unlikely]] {
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "gk_price_batch_fast",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
     }
-    if (non_finite != 0) [[unlikely]] {
-        for (std::size_t i = 0; i < n; ++i) {
-            if (!std::isfinite(out[i])) {
-                return std::unexpected(BatchError{i, Error{Errc::NonFiniteResult, "gk_price"}});
+    if (auto e = check_price_inputs(in, n); !e) [[unlikely]]
+        return e;
+    // Blocks: a vectorised pass, then the scalar formula for the few elements
+    // it does not cover (T = 0, sigma sqrt(T) <= kMinVol, S / K not normal).
+    constexpr std::size_t kBlock = 256;
+    std::uint8_t slow[kBlock];
+    for (std::size_t b = 0; b < n; b += kBlock) {
+        const std::size_t m = std::min(kBlock, n - b);
+        const double* S = in.S.data() + b;
+        const double* K = in.K.data() + b;
+        const double* T = in.T.data() + b;
+        const double* rd = in.r_d.data() + b;
+        const double* rf = in.r_f.data() + b;
+        const double* v = in.sigma.data() + b;
+        const OptionType* ty = in.type.data() + b;
+        double* o = out.data() + b;
+        if (fast_block(S, K, T, rd, rf, v, ty, o, slow, m) != 0) [[unlikely]] {
+            for (std::size_t i = 0; i < m; ++i) {
+                if (slow[i] != 0)
+                    o[i] = gk_price_unchecked(S[i], K[i], T[i], rd[i], rf[i], v[i], ty[i]);
             }
         }
     }
-    return {};
+    return check_finite_outputs(out);
+#endif
 }
 
 std::expected<void, BatchError> gk_greeks_batch(const GkBatchInputs& in,
@@ -115,6 +275,64 @@ std::expected<void, BatchError> gk_greeks_batch(const GkBatchInputs& in,
         out.volga[i] = g.volga;
     }
     return {};
+}
+
+std::expected<void, BatchError> gk_greeks_batch_fast(const GkBatchInputs& in,
+                                                     const GkGreeksBatchOutputs& out) noexcept {
+#if defined(_MSC_VER) && !defined(__clang__)
+    // MSVC does not vectorise the kernel and the scalar vmath code is about
+    // 3-4x slower than the library calls (measured), so use the exact path.
+    return gk_greeks_batch(in, out);
+#else
+    const std::size_t n = out.price.size();
+    const bool sizes = same_length(in, n) && out.delta_spot.size() == n &&
+                       out.delta_forward.size() == n && out.gamma.size() == n &&
+                       out.vega.size() == n && out.theta.size() == n &&
+                       out.rho_domestic.size() == n && out.rho_foreign.size() == n &&
+                       out.vanna.size() == n && out.volga.size() == n;
+    if (!sizes) [[unlikely]] {
+        return std::unexpected(
+            BatchError{0, Error{Errc::SizeMismatch, "gk_greeks_batch_fast",
+                                static_cast<double>(in.S.size()), static_cast<double>(n)}});
+    }
+    if (any_bad<true>(in, n) != 0) [[unlikely]] {
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto r = try_analytic_greeks(in.S[i], in.K[i], in.T[i], in.r_d[i], in.r_f[i],
+                                               in.sigma[i], in.type[i]);
+            if (!r) return std::unexpected(BatchError{i, r.error()});
+        }
+    }
+    constexpr std::size_t kBlock = 256;
+    std::uint8_t slow[kBlock];
+    for (std::size_t b = 0; b < n; b += kBlock) {
+        const std::size_t m = std::min(kBlock, n - b);
+        double* const o[10] = {out.price.data() + b,         out.delta_spot.data() + b,
+                               out.delta_forward.data() + b, out.gamma.data() + b,
+                               out.vega.data() + b,          out.theta.data() + b,
+                               out.rho_domestic.data() + b,  out.rho_foreign.data() + b,
+                               out.vanna.data() + b,         out.volga.data() + b};
+        const double* S = in.S.data() + b;
+        const double* K = in.K.data() + b;
+        const double* T = in.T.data() + b;
+        const double* rd = in.r_d.data() + b;
+        const double* rf = in.r_f.data() + b;
+        const double* v = in.sigma.data() + b;
+        const OptionType* ty = in.type.data() + b;
+        if (fast_greeks_block(S, K, T, rd, rf, v, ty, o[0], o[1], o[2], o[3], o[4], o[5], o[6],
+                              o[7], o[8], o[9], slow, m) != 0) [[unlikely]] {
+            for (std::size_t i = 0; i < m; ++i) {
+                if (slow[i] == 0) continue;
+                const GreeksResult g =
+                    analytic_greeks_unchecked(S[i], K[i], T[i], rd[i], rf[i], v[i], ty[i]);
+                const double vals[10] = {g.price, g.delta_spot, g.delta_forward, g.gamma,
+                                         g.vega,  g.theta,      g.rho_domestic,  g.rho_foreign,
+                                         g.vanna, g.volga};
+                for (int f = 0; f < 10; ++f) o[f][i] = vals[f];
+            }
+        }
+    }
+    return {};
+#endif
 }
 
 }  // namespace fxopt

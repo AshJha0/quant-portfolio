@@ -82,14 +82,14 @@ pub mod lr_tree;
 pub mod monte_carlo;
 pub mod rng;
 
-pub use bachelier::{bachelier_greeks, bachelier_implied_vol, bachelier_price, BachelierGreeks};
-pub use binomial::{crr_price, early_exercise_premium, CrrWorkspace, Exercise};
-pub use black76::{b76_d1_d2, black76_greeks, black76_price, Black76Greeks};
+pub use bachelier::{BachelierGreeks, bachelier_greeks, bachelier_implied_vol, bachelier_price};
+pub use binomial::{CrrWorkspace, Exercise, crr_price, early_exercise_premium};
 pub use black_scholes::{
-    bs_price, d1_d2, forward_price, intrinsic_value, OptionType, PricingError,
+    OptionType, PricingError, bs_price, d1_d2, forward_price, intrinsic_value,
 };
-pub use greeks::{bs_greeks, fd_greeks, BsGreeks};
-pub use greeks_higher::{higher_greeks, HigherGreeks};
+pub use black76::{Black76Greeks, b76_d1_d2, black76_greeks, black76_price};
+pub use greeks::{BsGreeks, bs_greeks, fd_greeks};
+pub use greeks_higher::{HigherGreeks, higher_greeks};
 pub use implied_vol::implied_vol;
 pub use lr_tree::{lr_price, peizer_pratt};
-pub use monte_carlo::{mc_price, McResult, McWorkspace};
+pub use monte_carlo::{McResult, McWorkspace, mc_price};

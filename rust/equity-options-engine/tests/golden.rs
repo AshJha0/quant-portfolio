@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use eq_options_engine::golden::{GoldenRecord, RECORDS};
-use eq_options_engine::{black76_greeks, bs_greeks, bs_price, crr_price, implied_vol, Exercise};
+use eq_options_engine::{Exercise, black76_greeks, bs_greeks, bs_price, crr_price, implied_vol};
 
 fn evaluate(r: &GoldenRecord) -> HashMap<&'static str, f64> {
     let x = &r.inputs;

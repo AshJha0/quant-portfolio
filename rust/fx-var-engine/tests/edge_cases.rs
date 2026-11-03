@@ -39,7 +39,7 @@ fn hand_exact_acerbi_tasche_es() {
         -50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 5.0, 15.0, 25.0, 35.0,
     ];
     assert_eq!(empirical_es(&pnl, 0.20, None).unwrap(), 45.0); // 2 worst losses averaged
-                                                               // alpha=0.25: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
+    // alpha=0.25: tail mass 0.25 = 0.1+0.1+0.05 fractional atom share.
     let es = empirical_es(&pnl, 0.25, None).unwrap();
     assert!((es - 42.0).abs() < 1e-9);
     for a in [0.01, 0.1, 0.25, 0.45] {
@@ -362,11 +362,13 @@ fn non_finite_market_and_book_inputs_are_rejected() {
             );
         }
         // A clean book still builds, so the guards are not rejecting all input.
-        assert!(Book::new(
-            vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
-            "USD"
-        )
-        .is_ok());
+        assert!(
+            Book::new(
+                vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, None))],
+                "USD"
+            )
+            .is_ok()
+        );
         let _ = m;
     }
 }
@@ -461,16 +463,18 @@ fn non_finite_returns_covariances_and_scalars_are_rejected() {
         );
         assert!(student_t_var(1.0, 0.01, 6.0, bad).is_err());
         assert!(student_t_es(1.0, 0.01, bad, 0.0).is_err());
-        assert!(var_covar(
-            &[1e6],
-            &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
-            0.01,
-            1.0,
-            TailDist::Normal,
-            6.0,
-            bad
-        )
-        .is_err());
+        assert!(
+            var_covar(
+                &[1e6],
+                &Matrix::from_rows(&[vec![1e-4]]).unwrap(),
+                0.01,
+                1.0,
+                TailDist::Normal,
+                6.0,
+                bad
+            )
+            .is_err()
+        );
         assert!(
             var_covar(
                 &[1e6],

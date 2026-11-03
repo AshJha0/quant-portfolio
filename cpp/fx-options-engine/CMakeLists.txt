@@ -87,7 +87,8 @@ add_library(fxopt STATIC
   src/monte_carlo.cpp
   src/batch.cpp
 )
-target_include_directories(fxopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(fxopt PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_link_libraries(fxopt PUBLIC Threads::Threads fxopt_tuning PRIVATE fxopt_warnings)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)
@@ -112,6 +113,8 @@ target_link_libraries(fxopt_jsonl PRIVATE fxopt fxopt_warnings)
 # -------------------------------------------------------------- benchmark ----
 add_executable(fxopt_bench bench/bench_main.cpp)
 target_link_libraries(fxopt_bench PRIVATE fxopt fxopt_warnings)
+add_executable(fxopt_batch_bench tools/batch_bench.cpp)
+target_link_libraries(fxopt_batch_bench PRIVATE fxopt fxopt_warnings)
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _fxopt_bt)
 set(_fxopt_flags "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_fxopt_bt}}")
 if(FXOPT_NATIVE)

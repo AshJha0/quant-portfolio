@@ -1865,7 +1865,7 @@ from the CI `counts` job.
 
 ### How do I build and test one Rust engine with warnings-as-errors?
 
-Rust engines are 2021-edition crates in one Cargo workspace under `rust/`,
+Rust engines are 2024-edition crates in one Cargo workspace under `rust/`,
 with no third-party dependencies outside tests. Their shared code is the
 workspace crate `qp-core`. The CI job `rust <crate>` in
 `.github/workflows/ci.yml` denies warnings. Reproduce that locally from
@@ -2270,3 +2270,301 @@ print(round(a.total, 2), np.round(a.component, 2), round(float(np.sum(a.componen
 The components sum to the total because VaR is homogeneous of degree one
 in the positions. The short position reduces risk, so its component is
 negative. `simulation_attribution` does the same from scenarios.
+
+
+## Arrays, Packaging, CI Checks and the Forward Log
+
+Recipes for the NumPy entry points, the shared option kernel, the installed
+C++ package and the checks that sit around the code: the hash-checked
+install, the bench gate, the optional QuantLib tests, the trials log and the
+forward evaluation. Python outputs below come from one run on Windows with
+Python 3.12; timings name the machine they came from.
+
+### How do I price and get Greeks for a whole array of options at once?
+
+Needs `python/core`, `python/equity/01-options-pricing` and, for the FX
+half, `python/fx/01-options-pricing`.
+
+The plain idea: when you have thousands of quotes, pass NumPy arrays instead
+of looping over the scalar function. The array functions run the same
+formula on the whole array and apply the same boundary rules (`T == 0`,
+`sigma == 0`, and for equity `S == 0` or `K == 0`) element by element.
+
+Formally, `bs_price_array(S, K, *, T, r, sigma, q=0.0, option_type="call")`
+and `bs_greeks_array(...)` live in `eq_options.arrays`;
+`gk_price_array(S, K, *, T, r_d, r_f, sigma, option_type)` and
+`gk_greeks_array(...)` in `fx_options.arrays`. Every argument after `K` is
+keyword-only, inputs broadcast against each other, and `option_type` may be
+one string or an array of `"call"`/`"put"`. The Greeks functions return a
+dict of arrays. A bad element raises `ValueError` naming the field and the
+first flat index that failed. The scalar functions are unchanged.
+
+```python
+import numpy as np
+from eq_options import bs_price
+from eq_options.arrays import bs_price_array, bs_greeks_array
+from fx_options.arrays import gk_price_array
+
+S = np.array([90.0, 100.0, 110.0])
+print(bs_price_array(S, 100.0, T=0.5, r=0.03, sigma=0.2, q=0.01))
+# [ 1.97906455  6.09012722 12.88139102]
+print(bs_price(100.0, 100.0, 0.5, 0.03, 0.2, q=0.01))      # 6.090127223710589, same bits
+print(sorted(bs_greeks_array(S, 100.0, T=0.5, r=0.03, sigma=0.2, q=0.01)))
+# ['delta', 'gamma', 'price', 'rho', 'theta', 'vanna', 'vega', 'volga']
+print(gk_price_array(np.array([1.08, 1.085, 1.09]), 1.10, T=0.25,
+                     r_d=0.045, r_f=0.03, sigma=0.08, option_type="call"))
+# [0.010483   0.01240375 0.01454642]
+```
+
+Worked timing. On 10,000 random options a scalar `bs_price` loop took
+5.9 us per option and `bs_price_array` 0.31 us, about 19x (Intel Core 5
+120U, WSL2, measured when the functions were added). A rerun of the same
+comparison on Windows for this page gave 2.7 us against 0.13 us: the ratio
+holds, the absolute numbers depend on the machine.
+
+The C++ engines have batch functions too. `eqopt::bs_price_batch` and
+`fxopt::gk_price_batch` give the same bits as the scalar call;
+`bs_price_batch_fast`, `bs_greeks_batch_fast`, `gk_price_batch_fast` and
+`gk_greeks_batch_fast` vectorise and are tested within `1e-13 * max(1, S, K)`
+for prices and `1e-12 * max(1, S, K, |exact|)` for Greeks. Median ns per
+option, exact batch then fast batch, from
+`cpp/{equity,fx}-options-engine/tools/batch_bench.cpp` (median of 21 runs,
+same laptop):
+
+| Kernel | GCC 15 | Clang 21 |
+|---|---|---|
+| equity price | 94 -> 23 | 185 -> 73 |
+| equity Greeks | 91 -> 29 | 197 -> 101 |
+| FX price | 89 -> 28 | 81 -> 33 |
+| FX Greeks | 110 -> 27 | 91 -> 55 |
+
+On MSVC the `_fast` functions call the exact batch, because there the
+vectorised code measured 3-4x slower.
+
+### How do I use the shared cost-of-carry kernel for equity, FX and futures?
+
+Needs `python/core`; the comparisons also need the two option packages.
+
+The plain idea: a stock paying a dividend yield `q`, a currency earning a
+foreign rate `r_f` and a futures contract differ only in how fast the
+underlying drifts under the pricing measure. That drift is the cost of
+carry `b`. One kernel takes the discount rate `r` and the carry yield
+`q = r - b` and prices all three.
+
+Formally, `qp_core.black_scholes.carry_price(S, K, T, r, q, sigma, phi)`
+with `phi = +1` for a call and `-1` for a put. Equity passes its `q`
+(`b = r - q`); FX passes `r = r_d` and `q = r_f` (`b = r_d - r_f`); an
+option on a futures price `F` passes `S = F` and `q = r`, so `b = 0`, which
+is Black (1976). The same kernel is `qp/black_scholes.hpp` in C++ and
+`qp_core::black_scholes` in Rust; there the normal CDF is a type parameter,
+because the equity and FX engines use different `N` implementations and
+must keep their bits. The kernel does no validation; the packages do.
+
+```python
+from qp_core.black_scholes import carry_price
+from eq_options import bs_price, black76_price
+from fx_options import gk_price
+
+print(carry_price(100.0, 100.0, 1.0, 0.05, 0.02, 0.2, 1.0))   # 9.227005508154036
+print(bs_price(100.0, 100.0, 1.0, 0.05, 0.2, q=0.02))          # 9.227005508154036
+print(gk_price(100.0, 100.0, 1.0, 0.05, 0.02, 0.2, "call"))    # 9.227005508154036
+print(carry_price(100.0, 100.0, 1.0, 0.05, 0.05, 0.2, 1.0))   # 7.577082146427273
+print(black76_price(100.0, 100.0, 1.0, 0.05, 0.2))             # 7.57708214642728
+```
+
+The first three agree to the last bit: the equity and FX packages call the
+kernel. The futures case agrees with `black76_price` to about 1e-15
+relative, not bit for bit, because `black76_price` has its own code and
+forms the terms in a different order. `tests/test_carry_twin.py` pins
+equity-with-yield against FX-with-foreign-rate on its test grid.
+
+### How do I use the C++ engines from my own CMake project?
+
+Needs CMake 3.25 or later and a C++23 compiler (CI builds the consumer with
+GCC 15 and Clang 21).
+
+The plain idea: install the engines once into a prefix, then any project
+finds them by name, the way it finds any other installed library.
+
+Formally, `cpp/CMakeLists.txt` installs `qp::core`, `qp::eqopt`,
+`qp::eqvar`, `qp::fxopt` and `qp::fxvar` as the CMake package
+`QuantPortfolio` 1.0.0 (`SameMajorVersion`; it pulls in `Threads`).
+
+```bash
+cmake -S cpp -B build/cpp-install -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpp-install -j
+cmake --install build/cpp-install --prefix "$HOME/.local/qp"
+
+# the consumer the CI job builds; it knows nothing about the source tree
+cmake -S cpp/tests/find_package_consumer -B build/consumer \
+      -DCMAKE_PREFIX_PATH="$HOME/.local/qp"
+cmake --build build/consumer && ctest --test-dir build/consumer
+```
+
+In your own `CMakeLists.txt`:
+
+```cmake
+find_package(QuantPortfolio 1.0 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE qp::eqopt qp::fxvar)
+```
+
+The `cmake install` CI job does this with GCC 15 and Clang 21, with the
+source tree moved aside first, so an exported path that still points into
+the build tree fails the job.
+
+### How do I install the Python bindings from a CI wheel?
+
+The plain idea: CI compiles the bindings into wheel files so you need
+neither a C++23 compiler nor a Rust toolchain on your machine.
+
+The `wheels` job runs cibuildwheel for `qp-cpp` and `qp-rust`, CPython
+3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, and smoke-tests each
+wheel with `bindings/wheel_smoke.py`. The wheels are kept as run artefacts
+(`wheels-<package>-<os>`, 14 days) and are not published anywhere. The job
+is not yet part of the required `ci-ok` check.
+
+```bash
+# after downloading the wheels-cpp-nanobind-<os> artefact from a CI run
+pip install qp_cpp-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl
+python bindings/wheel_smoke.py qp_cpp
+# qp_cpp 0.1.0: ok (eq_bs_price = 10.450583572185565)
+```
+
+Pick the file whose `cpXY` tag matches your Python. After that,
+`engine="cpp"` works in the Python packages (see the engine-switch recipe
+above).
+
+### How do I reproduce the hash-checked install locally?
+
+Needs `uv` on `PATH`, bash, and a virtual environment with pip. Run from the
+repository root.
+
+The plain idea: every third-party wheel CI installs is checked against a
+sha256 recorded in `uv.lock`. If a file on the package index were replaced
+by a tampered one with the same version number, the hash would not match
+and the install would stop.
+
+Formally, `.github/scripts/hashed_install.sh` (1) exports the locked
+third-party closure of the named projects with `uv export`, hashes
+included; (2) installs it with `pip --require-hashes --only-binary :all:
+--no-deps`; (3) installs the local projects with `--no-deps
+--no-build-isolation`, so even the build backend comes from the hashed set;
+(4) runs `pip check`.
+
+```bash
+python -m venv /tmp/qp-hashed && . /tmp/qp-hashed/bin/activate
+bash .github/scripts/hashed_install.sh --group test --editable \
+     python/core python/equity/01-options-pricing
+python -m pytest -q python/core
+```
+
+A wheel whose hash is missing from the lock, or an sdist, fails step 2.
+Editing one hash in the exported file makes pip refuse with "THESE
+PACKAGES DO NOT MATCH THE HASHES", which is how the check was shown to
+bite. For a quick local install without uv, `pip install -c
+requirements/ci-constraints.txt` still works; the lint job fails if those
+pins drift from `uv.lock`. Details in
+[`requirements/README.md`](../requirements/README.md).
+
+### How do I read the CI bench gate, and benchmark locally the same way?
+
+The plain idea: a slowdown counts only if it shows up on the same machine,
+in alternating runs, and is large compared with the run-to-run spread.
+
+The `bench` job builds the base commit and the head commit on one runner,
+runs base, head, base, head, base, head pinned to CPU 1, and fails a kernel
+only when the head median is more than 25% above the base median and head
+p10 is above base p90. The job summary has the table; the `bench-results`
+artifact has each round's JSON plus `summary.md` and `ab.json`.
+[BENCHMARKS.md](BENCHMARKS.md) states the method in full.
+
+Reading a row, with the example from BENCHMARKS.md: base 100 ns [90, 110],
+head 150 ns [140, 160] fails (+50% and 140 > 110). Head 150 ns [105, 400]
+does not fail: the bands overlap, so it is reported as `slower`.
+
+Locally, every bench binary uses the same harness
+(`qp/bench/latency.hpp` in C++, `qp_core::bench` in Rust), so a local run
+reports the same `p10`/`p50`/`p90` fields. To compare two commits the way
+CI does, run the CI script on Linux from a clean checkout of the head:
+
+```bash
+# builds BASE_SHA in a worktree beside this tree, then runs 3 alternating rounds
+bash .github/scripts/bench_ab_run.sh "$(git rev-parse origin/main)" /tmp/bench-ab 3
+# results: /tmp/bench-ab/r<k>/<base|head>/<lang>-<engine>.json
+python .github/scripts/bench_ab.py --help   # one --engine, --base and --head list per engine
+```
+
+The CI job passes those files to `bench_ab.py` per engine; the summary it
+writes is the same table the job shows.
+
+Close other work first. A laptop under load moves medians by tens of
+percent. When the option kernels were moved into the shared core, an
+untouched kernel (`black76_price`) was timed alongside as a noise control,
+and its own before/after ratio wandered between 0.83 and 1.10.
+
+### How do I run the optional QuantLib cross-checks?
+
+Needs the fixed-income, credit and FX vol-surface packages and
+`pip install QuantLib`. CI does not install QuantLib, so these tests are
+skipped there.
+
+```bash
+pip install QuantLib
+python -m pytest -q python/equity/04-fixed-income/tests/test_hull_white_quantlib.py \
+                    python/fx/09-vol-surface/tests/test_heston_quantlib.py \
+                    python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py
+```
+
+Each file starts with `pytest.importorskip("QuantLib")`. Tolerances
+reached with QuantLib 1.44: Hull-White zero-bond options 1e-15 absolute,
+Jamshidian swaptions 1e-7 relative (QuantLib's root search sets that
+limit), Heston Gil-Pelaez 1e-12 relative, Heston COS 1e-9 relative, ISDA
+CDS protection legs 1e-12 relative. Each package's `docs/VALIDATION.md`
+lists the cases.
+
+### How do I read the trials log?
+
+The plain idea: every training, stress and calibration run appends one
+line to `research/results/trials.jsonl`, so the number of things tried is
+counted by the code, not remembered.
+
+Each line holds `study`, `kind` (`train`, `stress`, `calibration`),
+`git_commit`, `git_dirty`, `prereg` and `prereg_sha256`, `params`, `metric`,
+`result`, `python` and `timestamp_utc`. The file only grows; a test pins it
+to an anchor commit.
+
+```python
+import json
+rows = [json.loads(line) for line in open("research/results/trials.jsonl")]
+for d in rows:
+    print(d["study"], d["kind"], d["git_dirty"])
+print(rows[-1]["metric"])
+# {'total_bh_selected': 14, 'total_null_mean': 22.235,
+#  'total_perm_pvalue': 0.009950248756218905, 'total_selected': 53}
+```
+
+A line with `git_dirty: true` came from uncommitted code and cannot be
+reproduced from its commit; all 8 lines in the log today are `false`. The
+number of lines per study is the trial count to use when you correct a
+Sharpe ratio for multiple testing.
+
+### How do I look at the forward test before it is scored, and why should I not act on it?
+
+Needs `numpy` and `pandas`, plus a copy of `forward/log.jsonl` from the
+`forward-log` branch.
+
+```bash
+git fetch origin forward-log
+git show origin/forward-log:forward/log.jsonl > /tmp/log.jsonl
+python research/forward/evaluate.py --log /tmp/log.jsonl \
+    --history research/forward/history_1999-01-04_2026-11-02.csv \
+    --history-sha256 d2e62948442b8c42c3739f95f6db04ca4894bdb20cce11b50ea322c9a943b6ea \
+    --log-commit "$(git rev-parse origin/forward-log)"
+```
+
+Before 2028-11-13 the script prints statistics labelled INTERIM and writes
+no result file. Treat them as a check that the log is being written, not as
+evidence. The decision rule (Sharpe minus 1.645 Lo standard errors above
+zero) was set for one look after two full years. Looking every month and
+stopping when the number looks good raises the false-positive rate well
+above 5%. [LEARN.md](LEARN.md) Set 19 works through why.

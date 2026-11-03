@@ -2,8 +2,8 @@
 
 use fx_options_engine::iv_core::black_implied_vol;
 use fx_options_engine::{
-    binomial_price, delta, gk_price, implied_vol, mc_price, strike_from_delta, DeltaConvention,
-    Exercise, FxError, OptionType,
+    DeltaConvention, Exercise, FxError, OptionType, binomial_price, delta, gk_price, implied_vol,
+    mc_price, strike_from_delta,
 };
 
 #[test]

@@ -1,18 +1,24 @@
 // Per-call latency harness shared by the engine benchmarks.
 //
-// Each kernel is called `iters` times after `warmup` untimed calls. Every
-// call is timed on its own with the time-stamp counter (x86-64: lfence,
-// rdtscp, lfence; calibrated against std::chrono::steady_clock at start-up)
-// or with steady_clock elsewhere. The cost of an empty timed call is
-// measured the same way and its median is subtracted from every sample, so
-// the reported numbers are the kernel cost alone (clamped at zero). Samples
-// go into a buffer allocated before the timed loop and are sorted afterwards
-// for the percentiles.
+// The timing method is the same in the C++ and Rust benches (Rust:
+// qp_core::bench, rust/core/src/bench.rs); docs/BENCHMARKS.md states it.
+//
+//   1. Warm up: `warmup` untimed calls.
+//   2. Batch size B: the smallest power of two, at most 1024, for which one
+//      batch of B back-to-back calls takes at least 2 us on the monotonic
+//      clock (std::chrono::steady_clock here, std::time::Instant in Rust),
+//      judged on the fastest of 5 trial batches.
+//      Fast kernels are therefore timed as B-call averages, slow kernels
+//      one call at a time; B is recorded as `calls_per_sample`.
+//   3. N samples, N = max(31, iters / B): each sample is one batch, divided
+//      by B to give ns per call. Nothing is subtracted.
+//   4. Report the median (p50) with p10 and p90 as the spread, plus p99,
+//      p99.9, max and mean of the same per-call samples.
 //
 // Output: one line per kernel on stdout and, with --out PATH, a JSON array
-// with fields engine, kernel, label, compiler, flags, cpu, date, iters,
-// unit, timer, overhead_ns, p50, p90, p99, p999, max, mean.
-// Options: --out PATH, --label NAME (e.g. before/after), --quick (10% iters),
+// with fields engine, kernel, label, compiler, flags, cpu, date, iters
+// (samples), calls_per_sample, unit, timer, p10, p50, p90, p99, p999, max,
+// mean. Options: --out PATH, --label NAME, --quick (10% of the samples),
 // --only TEXT (run only kernels whose name contains TEXT).
 
 #ifndef QP_BENCH_LATENCY_HPP
@@ -20,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -28,14 +35,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
-#include <x86intrin.h>
-#define QP_BENCH_TSC 1
-#elif defined(_MSC_VER) && defined(_M_X64)
-#include <intrin.h>
-#define QP_BENCH_TSC 1
-#endif
 
 #ifndef QP_BENCH_FLAGS
 #define QP_BENCH_FLAGS "-O3 -DNDEBUG"
@@ -63,53 +62,23 @@ private:
 };
 
 struct Stats {
-    double p50 = 0, p90 = 0, p99 = 0, p999 = 0, max = 0, mean = 0;
+    double p10 = 0, p50 = 0, p90 = 0, p99 = 0, p999 = 0, max = 0, mean = 0;
+    std::size_t samples = 0, batch = 1;
 };
 
-class Timer {
-public:
-    Timer() {
-#ifdef QP_BENCH_TSC
-        const auto c0 = std::chrono::steady_clock::now();
-        const std::uint64_t t0 = now();
-        std::chrono::steady_clock::time_point c1;
-        do {
-            c1 = std::chrono::steady_clock::now();
-        } while (c1 - c0 < std::chrono::milliseconds(50));
-        const std::uint64_t t1 = now();
-        ns_per_tick_ = std::chrono::duration<double, std::nano>(c1 - c0).count() /
-                       static_cast<double>(t1 - t0);
-#endif
-    }
-    static std::uint64_t now() {
-#ifdef QP_BENCH_TSC
-        unsigned aux;
-        _mm_lfence();
-        const std::uint64_t t = __rdtscp(&aux);
-        _mm_lfence();
-        return t;
-#else
-        return static_cast<std::uint64_t>(
-            std::chrono::steady_clock::now().time_since_epoch().count());
-#endif
-    }
-    double to_ns(double ticks) const { return ticks * ns_per_tick_; }
-    static const char* name() {
-#ifdef QP_BENCH_TSC
-        return "rdtscp calibrated vs steady_clock";
-#else
-        return "steady_clock";
-#endif
-    }
+inline constexpr double kMinSampleNs = 2000.0;
+inline constexpr std::size_t kMaxBatch = 1024;
+inline constexpr std::size_t kMinSamples = 31;
+inline constexpr std::size_t kCalibrationTrials = 5;
 
-private:
-#ifdef QP_BENCH_TSC
-    double ns_per_tick_ = 1.0;
-#else
-    double ns_per_tick_ = 1e9 * static_cast<double>(std::chrono::steady_clock::period::num) /
-                          static_cast<double>(std::chrono::steady_clock::period::den);
-#endif
-};
+/// Percentile of sorted samples: element ceil(q * n) - 1 (nearest rank),
+/// the same rule as the Rust harness.
+inline double nearest_rank(const std::vector<double>& sorted, double q) {
+    const std::size_t n = sorted.size();
+    std::size_t i = static_cast<std::size_t>(std::ceil(q * static_cast<double>(n)));
+    i = std::clamp<std::size_t>(i, 1, n) - 1;
+    return sorted[i];
+}
 
 inline std::string read_cpu_model() {
     std::ifstream f("/proc/cpuinfo");
@@ -163,40 +132,38 @@ public:
             }
         }
         cpu_ = read_cpu_model();
-        overhead_ = run_raw([](std::size_t) {}, 10000, 200000).p50;
-        std::printf(
-            "engine %s | %s | %s | timer %s | empty-call overhead %.1f ns "
-            "(subtracted)\n",
-            engine_.c_str(), compiler_id().c_str(), cpu_.c_str(), Timer::name(), overhead_);
-        std::printf("%-36s %9s %9s %9s %9s %11s %11s\n", "kernel (ns per call)", "p50", "p90",
-                    "p99", "p99.9", "max", "mean");
+        std::printf("engine %s | %s | %s | timer steady_clock, batch to >= 2 us\n", engine_.c_str(),
+                    compiler_id().c_str(), cpu_.c_str());
+        std::printf("%-36s %6s %9s %9s %9s %9s %11s\n", "kernel (ns per call)", "B", "p10", "p50",
+                    "p90", "p99", "max");
     }
     Bench(const Bench&) = delete;
     Bench& operator=(const Bench&) = delete;
 
     bool quick() const { return scale_ < 1.0; }
 
-    /// Time `f(i)` for i in [0, iters) after `warmup` untimed calls.
+    /// Time `f(i)` (i counts calls) after `warmup` untimed calls; `iters`
+    /// is the call budget, split into samples of B calls (see the header).
     template <class F>
     void run(const std::string& kernel, F&& f, std::size_t warmup, std::size_t iters) {
         if (!only_.empty() && kernel.find(only_) == std::string::npos) return;
         iters = std::max<std::size_t>(
-            20, static_cast<std::size_t>(static_cast<double>(iters) * scale_));
-        const Stats s = run_raw(f, warmup, iters, overhead_);
-        std::printf("%-36s %9.1f %9.1f %9.1f %9.1f %11.1f %11.1f\n", kernel.c_str(), s.p50, s.p90,
-                    s.p99, s.p999, s.max, s.mean);
+            kMinSamples, static_cast<std::size_t>(static_cast<double>(iters) * scale_));
+        const Stats s = run_raw(f, warmup, iters);
+        std::printf("%-36s %6zu %9.1f %9.1f %9.1f %9.1f %11.1f\n", kernel.c_str(), s.batch, s.p10,
+                    s.p50, s.p90, s.p99, s.max);
         std::fflush(stdout);
         char rec[1536];
         std::snprintf(rec, sizeof rec,
                       "  {\"engine\": \"%s\", \"kernel\": \"%s\", \"label\": \"%s\", "
                       "\"compiler\": \"%s\", \"flags\": \"%s\", \"cpu\": \"%s\", "
-                      "\"date\": \"%s\", \"iters\": %zu, \"unit\": \"ns\", "
-                      "\"timer\": \"%s\", \"overhead_ns\": %.2f, \"p50\": %.2f, "
-                      "\"p90\": %.2f, \"p99\": %.2f, \"p999\": %.2f, \"max\": %.2f, "
-                      "\"mean\": %.2f}",
+                      "\"date\": \"%s\", \"iters\": %zu, \"calls_per_sample\": %zu, "
+                      "\"unit\": \"ns\", \"timer\": \"steady_clock\", \"p10\": %.2f, "
+                      "\"p50\": %.2f, \"p90\": %.2f, \"p99\": %.2f, \"p999\": %.2f, "
+                      "\"max\": %.2f, \"mean\": %.2f}",
                       engine_.c_str(), kernel.c_str(), label_.c_str(), compiler_id().c_str(),
-                      QP_BENCH_FLAGS, cpu_.c_str(), today().c_str(), iters, Timer::name(),
-                      overhead_, s.p50, s.p90, s.p99, s.p999, s.max, s.mean);
+                      QP_BENCH_FLAGS, cpu_.c_str(), today().c_str(), s.samples, s.batch, s.p10,
+                      s.p50, s.p90, s.p99, s.p999, s.max, s.mean);
         records_.emplace_back(rec);
     }
 
@@ -212,38 +179,48 @@ public:
 
 private:
     template <class F>
-    Stats run_raw(F&& f, std::size_t warmup, std::size_t iters, double subtract = 0.0) {
-        for (std::size_t i = 0; i < warmup; ++i) f(i);
-        std::vector<double> ns(iters);
-        for (std::size_t i = 0; i < iters; ++i) {
-            const std::uint64_t t0 = Timer::now();
-            f(i);
-            const std::uint64_t t1 = Timer::now();
-            ns[i] = std::max(0.0, timer_.to_ns(static_cast<double>(t1 - t0)) - subtract);
-        }
+    static Stats run_raw(F&& f, std::size_t warmup, std::size_t iters) {
+        using clock = std::chrono::steady_clock;
+        std::size_t i = 0;
+        for (; i < warmup; ++i) f(i);
+        const auto batch_ns = [&](std::size_t b) {
+            const auto t0 = clock::now();
+            for (std::size_t k = 0; k < b; ++k) f(i++);
+            return std::chrono::duration<double, std::nano>(clock::now() - t0).count();
+        };
+        std::size_t b = 1;
+        // The fastest of a few trial batches decides, so one preempted trial
+        // cannot stop the doubling early.
+        const auto fastest = [&](std::size_t bb) {
+            double best = batch_ns(bb);
+            for (std::size_t t = 1; t < kCalibrationTrials; ++t)
+                best = std::min(best, batch_ns(bb));
+            return best;
+        };
+        while (b < kMaxBatch && fastest(b) < kMinSampleNs) b *= 2;
+        const std::size_t n = std::max(kMinSamples, iters / b);
+        std::vector<double> ns(n);
+        for (double& v : ns) v = batch_ns(b) / static_cast<double>(b);
         Stats s;
+        s.samples = n;
+        s.batch = b;
         double sum = 0.0;
         for (const double v : ns) sum += v;
-        s.mean = sum / static_cast<double>(iters);
+        s.mean = sum / static_cast<double>(n);
         std::sort(ns.begin(), ns.end());
-        auto pct = [&](double p) {
-            return ns[static_cast<std::size_t>(p * static_cast<double>(iters - 1))];
-        };
-        s.p50 = pct(0.50);
-        s.p90 = pct(0.90);
-        s.p99 = pct(0.99);
-        s.p999 = pct(0.999);
+        s.p10 = nearest_rank(ns, 0.10);
+        s.p50 = nearest_rank(ns, 0.50);
+        s.p90 = nearest_rank(ns, 0.90);
+        s.p99 = nearest_rank(ns, 0.99);
+        s.p999 = nearest_rank(ns, 0.999);
         s.max = ns.back();
         return s;
     }
 
     std::string engine_, out_, label_ = "current", cpu_, only_;
     double scale_ = 1.0;
-    double overhead_ = 0.0;
-    Timer timer_;
     std::vector<std::string> records_;
 };
-
 }  // namespace qpbench
 
 #endif  // QP_BENCH_LATENCY_HPP

@@ -6,7 +6,7 @@ use common::assert_close;
 use fx_options_engine::greeks::{
     central_difference, gamma, second_central_difference, vanna, vega, volga,
 };
-use fx_options_engine::{analytic_greeks, finite_difference_greeks, gk_price, OptionType};
+use fx_options_engine::{OptionType, analytic_greeks, finite_difference_greeks, gk_price};
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);
 

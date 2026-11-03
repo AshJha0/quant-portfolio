@@ -130,12 +130,12 @@ impl Market {
             }
             spots.insert(c, s);
         }
-        if let Some(&usd) = spots.get("USD") {
-            if (usd - 1.0).abs() > 1e-12 {
-                return Err(FxVarError::invalid(
-                    "spot_usd['USD'] must be 1.0 (USD per USD)",
-                ));
-            }
+        if let Some(&usd) = spots.get("USD")
+            && (usd - 1.0).abs() > 1e-12
+        {
+            return Err(FxVarError::invalid(
+                "spot_usd['USD'] must be 1.0 (USD per USD)",
+            ));
         }
         spots.insert("USD".to_string(), 1.0);
         let mut rate_map = HashMap::new();
@@ -328,12 +328,12 @@ fn validate_position(p: &Position) -> Result<()> {
                     fw.expiry
                 )));
             }
-            if let Some(k) = fw.strike {
-                if !(k > 0.0) || !k.is_finite() {
-                    return Err(FxVarError::invalid(format!(
-                        "strike must be finite and > 0, got {k}"
-                    )));
-                }
+            if let Some(k) = fw.strike
+                && (!(k > 0.0) || !k.is_finite())
+            {
+                return Err(FxVarError::invalid(format!(
+                    "strike must be finite and > 0, got {k}"
+                )));
             }
             Ok(())
         }
@@ -1091,33 +1091,41 @@ mod tests {
 
     #[test]
     fn position_validation() {
-        assert!(Book::new(
-            vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, Some(-1.0)))],
-            "USD"
-        )
-        .is_err());
-        assert!(Book::new(
-            vec![Position::Forward(ForwardPosition::new(
-                "EURUSD", 1e6, -0.5, None
-            ))],
-            "USD"
-        )
-        .is_err());
-        assert!(Book::new(
-            vec![Position::Forward(ForwardPosition::new(
-                "EURUSD",
-                1e6,
-                0.5,
-                Some(0.0)
-            ))],
-            "USD"
-        )
-        .is_err());
-        assert!(Book::new(
-            vec![Position::Spot(SpotPosition::new("E2RUSD", 1e6, None))],
-            "USD"
-        )
-        .is_err());
+        assert!(
+            Book::new(
+                vec![Position::Spot(SpotPosition::new("EURUSD", 1e6, Some(-1.0)))],
+                "USD"
+            )
+            .is_err()
+        );
+        assert!(
+            Book::new(
+                vec![Position::Forward(ForwardPosition::new(
+                    "EURUSD", 1e6, -0.5, None
+                ))],
+                "USD"
+            )
+            .is_err()
+        );
+        assert!(
+            Book::new(
+                vec![Position::Forward(ForwardPosition::new(
+                    "EURUSD",
+                    1e6,
+                    0.5,
+                    Some(0.0)
+                ))],
+                "USD"
+            )
+            .is_err()
+        );
+        assert!(
+            Book::new(
+                vec![Position::Spot(SpotPosition::new("E2RUSD", 1e6, None))],
+                "USD"
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
 use fx_options_engine::{
-    analytic_greeks, atm_dns_strike, binomial_price, cip_forward, delta, implied_vol,
-    strike_from_delta, DeltaConvention, Exercise, OptionType,
+    DeltaConvention, Exercise, OptionType, analytic_greeks, atm_dns_strike, binomial_price,
+    cip_forward, delta, implied_vol, strike_from_delta,
 };
 
 type Req = HashMap<String, String>;

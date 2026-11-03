@@ -3,7 +3,7 @@
 mod common;
 
 use eq_options_engine::rng::Xoshiro256PlusPlus;
-use eq_options_engine::{bs_price, mc_price, OptionType};
+use eq_options_engine::{OptionType, bs_price, mc_price};
 
 #[test]
 fn mc_price_within_three_standard_errors_of_bs() {
@@ -272,80 +272,90 @@ fn deterministic_limits_have_zero_std_error() {
 
 #[test]
 fn invalid_inputs_return_err() {
-    assert!(mc_price(
-        -1.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        1000,
-        true,
-        true,
-        42
-    )
-    .is_err());
-    assert!(mc_price(
-        100.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        1,
-        true,
-        true,
-        42
-    )
-    .is_err());
+    assert!(
+        mc_price(
+            -1.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            1000,
+            true,
+            true,
+            42
+        )
+        .is_err()
+    );
+    assert!(
+        mc_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            1,
+            true,
+            true,
+            42
+        )
+        .is_err()
+    );
     // Non-finite inputs (including r/q) are rejected before any simulation.
-    assert!(mc_price(
-        100.0,
-        100.0,
-        1.0,
-        f64::NAN,
-        0.2,
-        0.0,
-        OptionType::Call,
-        1000,
-        true,
-        true,
-        42
-    )
-    .is_err());
-    assert!(mc_price(
-        100.0,
-        100.0,
-        f64::INFINITY,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        1000,
-        true,
-        true,
-        42
-    )
-    .is_err());
+    assert!(
+        mc_price(
+            100.0,
+            100.0,
+            1.0,
+            f64::NAN,
+            0.2,
+            0.0,
+            OptionType::Call,
+            1000,
+            true,
+            true,
+            42
+        )
+        .is_err()
+    );
+    assert!(
+        mc_price(
+            100.0,
+            100.0,
+            f64::INFINITY,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            1000,
+            true,
+            true,
+            42
+        )
+        .is_err()
+    );
     // Path counts that would ask the allocator for tens of GB are
     // rejected up front rather than aborting the process.
     use eq_options_engine::monte_carlo::MAX_PATHS;
-    assert!(mc_price(
-        100.0,
-        100.0,
-        1.0,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call,
-        MAX_PATHS + 1,
-        true,
-        true,
-        42
-    )
-    .is_err());
+    assert!(
+        mc_price(
+            100.0,
+            100.0,
+            1.0,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call,
+            MAX_PATHS + 1,
+            true,
+            true,
+            42
+        )
+        .is_err()
+    );
 }
 
 #[test]

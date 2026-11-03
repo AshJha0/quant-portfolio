@@ -10,9 +10,43 @@ section below whose heading matches the version.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-03
+
 One release, v2.0.0, is planned. Until then changes collect here. Results
 quoted below come from seeded synthetic data unless an entry names a
 dataset (the research entries use ECB reference rates).
+
+### Changed
+
+- All Rust crates (the `rust/` workspace and the PyO3 binding) move to
+  edition 2024 with `rust-version = "1.99"`, matching the pinned 1.99.1
+  toolchain, and the workspace resolver to 3. Code changes are what the
+  edition brings: rustfmt's 2024 style, and four nested `if let` blocks in
+  `fx-var-engine` collapsed into let chains. No numeric output changes; all
+  605 workspace tests and the 85 binding tests pass.
+- The Black-Scholes maths the equity and FX options code carried twice now
+  lives once per language, in cost-of-carry form (b = r - q = r_d - r_f):
+  `qp_core.black_scholes` and `qp_core.iv_core` (Python), `qp/black_scholes.hpp`
+  and `qp/black_scholes_vm.hpp` (C++), `qp_core::black_scholes` (Rust). The
+  equity and FX packages keep their names, signatures and validation and call
+  it. Every in-scope output is unchanged bit for bit on a 6,000-quote grid
+  (Python, C++ on GCC and Clang, Rust), signed zeros included; no golden
+  moves. `tests/test_carry_twin.py` pins equity-with-yield against
+  FX-with-foreign-rate.
+- FX `analytic_greeks` (Python) now takes `N(phi d1)`, `N(phi d2)` and
+  `n(d1)` from `qp_core.normal` (`0.5 erfc(-x / sqrt 2)`), the normal the
+  shared kernel uses, instead of `scipy.stats.norm`. On 5,944 quotes price,
+  deltas, theta and both rhos move by at most 2.13e-14 relative to
+  `max(1, |value|)` (price 2.13e-14, deltas 2.2e-16, theta 2.66e-15, rhos
+  2.5e-15); gamma, vega, vanna and volga do not move; no FX options golden moves. The
+  fields are now Python floats rather than `numpy.float64`. Table in
+  `python/fx/01-options-pricing/docs/VALIDATION.md` section 7.
+- Deprecated P&L-level `filtered_historical_var` (Python, C++, Rust equity
+  VaR engines) now reads its tail with the order statistic
+  L(ceil(n alpha)), like every other VaR path, instead of numpy type-7
+  interpolation. Golden `a_fhs_var_5pct_lam094` moves from
+  109.3777910164513 to 112.05212695060598; no other golden moves. Table and
+  references in docs/MARKET_RISK.md.
 
 ### Added
 
@@ -23,9 +57,58 @@ dataset (the research entries use ECB reference rates).
   or after 2028-11-13. Their formation/lookback history is one ECB EXR file,
   `research/forward/history_1999-01-04_2026-11-02.csv` (7,127 fixes, sha256
   d2e62948442b8c42c3739f95f6db04ca4894bdb20cce11b50ea322c9a943b6ea), fetched at signing.
+- Optional QuantLib cross-checks, skipped unless QuantLib is installed:
+  Hull-White zero-bond options and Jamshidian swaptions against QuantLib's
+  `HullWhite` model (1e-15 abs and 1e-7 rel), and Heston COS and
+  Gil-Pelaez prices against `AnalyticHestonEngine` (1e-9 and 1e-12 rel).
+- Documentation: nine new COOKBOOK recipes (NumPy array pricing and Greeks,
+  the shared carry-form kernel for equity, FX and futures, consuming the
+  C++ engines with `find_package(QuantPortfolio)`, installing CI wheels,
+  the hash-checked install, the bench gate, the QuantLib checks, the trials
+  log, interim forward figures); LEARN Set 19 (21 questions on the carry
+  form, VaR quantile conventions, optional stopping, power, false discovery
+  rate, hashed installs and latency measurement); DIAGRAMS gains the CI
+  pipeline as it now runs, the shared-kernel layout and the research
+  lifecycle. README, START_HERE, ARCHITECTURE and the site updated to match.
+
+#### Packaging
+
+- `cpp/CMakeLists.txt` installs the four C++ engines and `qp::core` as one
+  CMake package, `QuantPortfolio` 1.0.0 (targets `qp::core`, `qp::eqopt`,
+  `qp::eqvar`, `qp::fxopt`, `qp::fxvar`). The engines' include paths are now
+  wrapped in `BUILD_INTERFACE`/`INSTALL_INTERFACE`; standalone engine builds
+  are unchanged. A new required CI job, `cmake install`, builds
+  `cpp/tests/find_package_consumer` against the installed prefix with GCC 15
+  and Clang 21.
+- CI job `wheels`: cibuildwheel wheels for `qp-cpp` and `qp-rust`, CPython
+  3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, each smoke-tested
+  by `bindings/wheel_smoke.py`. Artefacts only, never published; gated by
+  `ci-ok` after its first green run.
+- `eqopt::bs_price_batch_fast` and `fxopt::gk_price_batch_fast`: batch
+  pricers that vectorise (branch-free exp, log and erfc from `qp/vmath.hpp`,
+  plus an AVX2 clone on x86-64 Linux). Not bit-exact; tested within
+  `1e-13 * max(1, S, K)`. Measured about 4x over `bs_price_batch` with
+  GCC 15 and 1.2-2.4x with Clang 21 (noisy laptop, WSL2); see the engine
+  METHODOLOGY. `bs_greeks_batch_fast` / `gk_greeks_batch_fast` added on the
+  same kernels (about 3-4x with GCC, tested within `1e-12 * max(1, S, K,
+  |exact|)`); `fxopt_batch_bench` added. On MSVC the `_fast` functions use
+  the exact path, because there they measured 3-4x slower. `qp::vm::log_batch` added; `qp::vm::erfc_batch` now actually
+  vectorises (its sign select had compiled to a branch).
+- `eq_options.bs_price_array`, `eq_options.bs_greeks_array`,
+  `fx_options.gk_price_array` and `fx_options.gk_greeks_array`: NumPy entry points with keyword-only
+  arguments after `K`. About 19x faster than a scalar loop for 10 000
+  options. Scalar functions unchanged.
 
 #### Research results (ECB reference rates)
 
+- Every training, stress and calibration run now appends a line to
+  `research/results/trials.jsonl` (git commit, registration hash, params,
+  metric), so trial counts come from the log rather than memory.
+- Pair-selection calibration (`research/studies/robustness.py`): 53 pairs
+  selected in 2003-2021 against 22 expected under a bootstrap null
+  (p = 0.010), but only 4 of 19 years beat the null at 5 % and
+  Benjamini-Hochberg keeps 14 pairs. Cost (1/3/5 bp) and event-day stresses
+  for pairs v2 and momentum: both stay negative at every cost in training.
 - `pairs-fx-g10` withdrawn on 2026-11-02, before any hold-out data was read
   (DR-R4-5 in `research/README.md`): on simulated pairs that are
   cointegrated by construction its Kalman one-step z almost never passed 2,
@@ -42,6 +125,25 @@ dataset (the research entries use ECB reference rates).
   about 13% rejection at a true Sharpe of about 0.4, 50% near 1.3. A fail
   on the forward data is the expected outcome. `prereg.py sign` refuses a
   registration that names no power file.
+
+#### Hash-checked CI installs
+
+- Every Python install in CI (`py core`, the 23 project jobs on 3.11 to 3.13,
+  bindings, engine differential, research, forward log) now comes from
+  `uv.lock` with sha256 hashes checked. `.github/scripts/hashed_install.sh`
+  exports the locked closure of the named projects with `uv export`, installs
+  it with `pip --require-hashes --only-binary :all: --no-deps`, then installs
+  the local packages with `--no-deps --no-build-isolation` and runs
+  `pip check`. A wheel whose hash is not in the lock fails the job.
+- The root `pyproject.toml` gains four dependency groups locked in `uv.lock`:
+  `test` (pytest, hypothesis), `lint` (ruff, mypy, stubs), `backend`
+  (setuptools) and `build` (nanobind, scikit-build-core, maturin). The lint
+  job installs them with `uv sync --group test --group lint`.
+- The bindings are built without build isolation, from the hashed backends,
+  so `PIP_CONSTRAINT` is gone from CI.
+- `requirements/ci-constraints.txt` stays for local `pip install -c`; the lint
+  job fails if it pins a different version from `uv.lock`
+  (`.github/scripts/check_constraints_lock.py`).
 
 #### CDS cross-check against QuantLib
 
@@ -132,8 +234,7 @@ dataset (the research entries use ECB reference rates).
   sign a registration that names no recorded simulated power result
   (`research/power/*.json` with per-cell `reps` and `rejection_rate`).
 
-#### Fixes: options
-#### Round 4: varalo lane
+#### Option VaR and American pricing
 
 - Option VaR vol scenario modes. `eq_var.revaluation` and
   `fx_var.revaluation` `full_revaluation_pnl(..., vol_mode=...)` take
@@ -177,7 +278,7 @@ dataset (the research entries use ECB reference rates).
 - Fixed: mypy errors in `eq_var.stress_testing` and `fx_var.monte_carlo_var`
   (numpy scalar types; no behaviour change).
 
-#### Round 3 fixes: options lane
+#### Fixes: options
 
 - `eq_options.alo` now prices negative rates. Single boundary for `r > 0`
   (any `q`) and `r = 0 > q`; European where the carry `r K - q S` never
@@ -477,6 +578,21 @@ dataset (the research entries use ECB reference rates).
 
 ### Changed
 
+- One latency method for the C++ and Rust benches (`qp/bench/latency.hpp`,
+  `qp_core::bench`): batches of back-to-back calls sized to at least 2 us,
+  median with p10/p90, nearest-rank percentiles. The CI bench job now builds
+  the base and head commits on one runner, runs them in three alternating
+  rounds and fails only when the head median is more than 25% slower with
+  head p10 above base p90 (`.github/scripts/bench_ab.py`, replacing
+  `bench_compare.py` and its 2x rule against laptop numbers). README latency
+  tables are labelled as the older laptop run. See `docs/BENCHMARKS.md`.
+
+- C++ equity and FX `try_mc_price` (and `mc_price`) run their chunks inline
+  below 16,384 independent draws (`kMcParallelMinDraws`) instead of on the
+  thread pool. At 10,000 paths, 4 threads measured 531 us against 424 us on
+  one thread; results are bit-identical. Crossover table in each engine's
+  `docs/METHODOLOGY.md`.
+
 - Python 3.10 dropped (end of life 2026-10-01). Every project and both
   bindings now declare `requires-python = ">=3.11"`; the CI matrix runs 3.11
   to 3.13; ruff targets `py311`. `uv.lock` and
@@ -754,5 +870,6 @@ of the fixes changed a golden-vector value.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is 9.5%, not 5%. Treat p-values near 0.05 as inconclusive.
 
-[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/AshJha0/quant-portfolio/releases/tag/v1.1.0

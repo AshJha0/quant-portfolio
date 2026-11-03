@@ -3,18 +3,18 @@
 //! (wrong number, panic, or a missing entry point) and passes now.
 #![allow(clippy::needless_range_loop)]
 
+use fx_var_engine::McDist;
 use fx_var_engine::backtest::*;
 use fx_var_engine::book::{Book, Market, Position, SpotPosition};
 use fx_var_engine::expected_shortfall::*;
-use fx_var_engine::historical::{historical_var, HistoricalOptions};
+use fx_var_engine::historical::{HistoricalOptions, historical_var};
 use fx_var_engine::matrix::Matrix;
 use fx_var_engine::monte_carlo::*;
 use fx_var_engine::parametric::*;
 use fx_var_engine::psd::*;
-use fx_var_engine::returns::{ewma_volatility, FactorCov, ReturnsMatrix};
+use fx_var_engine::returns::{FactorCov, ReturnsMatrix, ewma_volatility};
 use fx_var_engine::rng::Rng;
 use fx_var_engine::stats::*;
-use fx_var_engine::McDist;
 
 // ---------------------------------------------------------------- S1 alpha
 
@@ -28,12 +28,14 @@ fn confidence_levels_are_rejected_not_reinterpreted() {
             "{bad}"
         );
         assert!(normal_var(1.0, bad, 0.0).is_err());
-        assert!(kupiec_pof(&KupiecInput {
-            n_obs: 250,
-            n_exceptions: 3,
-            alpha: bad
-        })
-        .is_err());
+        assert!(
+            kupiec_pof(&KupiecInput {
+                n_obs: 250,
+                n_exceptions: 3,
+                alpha: bad
+            })
+            .is_err()
+        );
     }
     // Tail convention: alpha = 0.01 is 99 % VaR.
     assert!((normal_var(1.0, 0.01, 0.0).unwrap() - 2.326_347_874_040_840_8).abs() < 1e-9);
@@ -102,12 +104,14 @@ fn basel_plus_factor_uses_the_equivalent_250_day_count() {
     .unwrap();
     assert_eq!(t.zone, Zone::Yellow);
     assert!(t.plus_factor < 0.85);
-    assert!(basel_traffic_light(&BaselInput {
-        n_obs: 250,
-        n_exceptions: 251,
-        alpha: 0.01
-    })
-    .is_err());
+    assert!(
+        basel_traffic_light(&BaselInput {
+            n_obs: 250,
+            n_exceptions: 251,
+            alpha: 0.01
+        })
+        .is_err()
+    );
 }
 
 // --------------------------------------------------------------------- S5 Z2
@@ -248,16 +252,18 @@ fn former_panics_are_errors() {
         factors: vec!["FX:EUR".to_string()],
         cov: Matrix::from_rows(&[vec![1e-4]]).unwrap(),
     };
-    assert!(simulate_factor_returns(
-        &cov1,
-        10,
-        McDist::StudentT,
-        f64::NAN,
-        &JumpSpec::default(),
-        1,
-        1.0
-    )
-    .is_err());
+    assert!(
+        simulate_factor_returns(
+            &cov1,
+            10,
+            McDist::StudentT,
+            f64::NAN,
+            &JumpSpec::default(),
+            1,
+            1.0
+        )
+        .is_err()
+    );
     assert!(student_t_quantile(0.3, f64::NAN).is_err());
     let mut rng = Rng::new(1);
     assert!(rng.gamma(-1.0).is_nan());

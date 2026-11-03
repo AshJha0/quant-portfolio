@@ -10,7 +10,7 @@
 
 use crate::matrix::Matrix;
 use crate::stats::{normal_ppf, student_t_ppf};
-use crate::{validate_alpha, EqVarError, Result, TailModel};
+use crate::{EqVarError, Result, TailModel, validate_alpha};
 
 /// Portfolio P&L standard deviation `sqrt(w' Sigma w)` (currency units).
 ///

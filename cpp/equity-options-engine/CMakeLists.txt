@@ -86,7 +86,8 @@ add_library(eqopt
   src/lr_tree.cpp
   src/bachelier.cpp
 )
-target_include_directories(eqopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(eqopt PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_link_libraries(eqopt PUBLIC Threads::Threads eqopt_tuning PRIVATE eqopt_warnings)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)
@@ -111,6 +112,8 @@ target_link_libraries(eqopt_jsonl PRIVATE eqopt eqopt_warnings)
 # -------------------------------------------------------------- benchmark ----
 add_executable(eqopt_bench bench/bench_main.cpp)
 target_link_libraries(eqopt_bench PRIVATE eqopt eqopt_warnings)
+add_executable(eqopt_batch_bench tools/batch_bench.cpp)
+target_link_libraries(eqopt_batch_bench PRIVATE eqopt eqopt_warnings)
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _eqopt_bt)
 set(_eqopt_flags "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_eqopt_bt}}")
 if(EQOPT_NATIVE)

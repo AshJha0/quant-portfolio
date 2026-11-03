@@ -21,6 +21,8 @@ from the repository root installs it with every project that depends on it.
 | `qp_core.calendars` | Partial business-day calendars (weekends and fixed-date holidays) and the four roll conventions | fi_rates, fx_rates |
 | `qp_core.holidays` | Full rules-based settlement calendars for USD, EUR, GBP, JPY, CHF, CAD, AUD (2010 to 2099, moveable feasts and observance rules included), `is_business_day`, `adjust_following`, `add_business_days`, and runtime one-off closures (`add_closure`, test hook `extra_closures`) | eq_credit (`isda_cds`), fx_options (re-exported as `fx_options.holidays`) |
 | `qp_core.normal` | `norm_cdf`, `norm_pdf` for scalar floats (`erfc` form, full lower-tail precision) | eq_options, fx_options |
+| `qp_core.black_scholes` | Black-Scholes in cost-of-carry form (`b = r - q = r_d - r_f`): `carry_d1_d2`, `carry_price`, `carry_greeks` and the NumPy array forms, with a worked example in the module docstring | eq_options (prices, Greeks, arrays), fx_options (prices, d1/d2, arrays, gamma/vega/vanna/volga) |
+| `qp_core.iv_core` | Implied volatility from normalised Black, safeguarded Halley (the same algorithm as `qp/iv_core.hpp` and `qp_core::iv`) | eq_options, fx_options |
 | `qp_core.daycount` | ACT/365F, ACT/360, 30/360US, ACT/ACT-ISDA, ACT/ACT-ICMA; month arithmetic; coupon schedules; money-market day counts | fi_rates, fx_rates |
 | `qp_core.validation` | `require_finite`, `finite_scalar`, `finite_series` | fx_rates, fx_pairs |
 | `qp_core.metrics` | Downside deviation, drawdown (equity, returns, P&L), annualisation | eq_pairs, eq_port, eq_algo, eq_risk_metrics, fx_pairs, fx_port |

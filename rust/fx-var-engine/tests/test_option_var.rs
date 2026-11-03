@@ -6,10 +6,10 @@
 
 use fx_var_engine::book::{Book, CashPosition, Market, Position, SpotPosition};
 use fx_var_engine::historical::{
-    historical_option_var, historical_var, HistoricalOptions, HsMethod,
+    HistoricalOptions, HsMethod, historical_option_var, historical_var,
 };
 use fx_var_engine::matrix::Matrix;
-use fx_var_engine::monte_carlo::{monte_carlo_option_var, monte_carlo_var, MonteCarloOptions};
+use fx_var_engine::monte_carlo::{MonteCarloOptions, monte_carlo_option_var, monte_carlo_var};
 use fx_var_engine::option_reval::{OptionKind, OptionLeg};
 use fx_var_engine::returns::{FactorCov, ReturnsMatrix};
 

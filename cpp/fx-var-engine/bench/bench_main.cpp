@@ -4,8 +4,8 @@
 //
 // Book: 250 positions (200 spots, 50 forwards) on 45 synthetic currencies,
 // 50 factors (45 FX + 5 IR). History: 1,000 and 10,000 days simulated from a
-// full-rank AR(1) covariance (synthetic data). Every kernel is timed call by
-// call (see latency.hpp); inputs change between calls (a different history
+// full-rank AR(1) covariance (synthetic data). Every kernel is timed with
+// the shared harness (see latency.hpp); inputs change between calls (a different history
 // window, P&L vector or exposure scale), so no call repeats the previous
 // one. Under WSL2 the hypervisor adds scheduling jitter to p99.9 and max.
 

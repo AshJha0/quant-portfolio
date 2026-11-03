@@ -65,7 +65,8 @@ add_library(eqvar STATIC
   src/kernels.cpp
   src/option_reval.cpp
 )
-target_include_directories(eqvar PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(eqvar PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_compile_options(eqvar PRIVATE ${EQVAR_WARNINGS})
 target_link_libraries(eqvar PUBLIC eqvar_tuning)
 # Shared numerical core (cpp/core, header-only target qp::core).

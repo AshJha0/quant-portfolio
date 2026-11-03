@@ -17,10 +17,10 @@
 
 use crate::matrix::Matrix;
 use crate::monte_carlo::{
-    monte_carlo_run, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se, McRun, MIN_PATHS,
+    MIN_PATHS, McRun, monte_carlo_run, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se,
 };
 use crate::stats::{normal_cdf as ncdf, normal_pdf as npdf};
-use crate::{validate_alpha, EqVarError, Result, TailModel};
+use crate::{EqVarError, Result, TailModel, validate_alpha};
 
 /// Call or put.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

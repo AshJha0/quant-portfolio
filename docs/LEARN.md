@@ -19,8 +19,8 @@ It is organized in four parts:
 - **Part III: Your learning path.** A suggested order to work through the
   portfolio, by background (quant-first, engineer-first, or starting from
   zero), with what to read and run at each step.
-- **Part IV: The exercise room.** 511 self-test questions and answers,
-  organized into 18 sets by topic, grounded in this portfolio's actual code
+- **Part IV: The exercise room.** 532 self-test questions and answers,
+  organized into 19 sets by topic, grounded in this portfolio's actual code
   and actual documented assumptions, not generic textbook trivia. Use it to
   check your own understanding after working through a project, or to find
   the gaps before you claim you know an area.
@@ -41,8 +41,10 @@ the dividend yield replaced by the foreign interest rate) give a closed-form
 answer under a specific set of assumptions, constant volatility, frictionless
 markets, continuous trading, no dividends beyond a constant yield, European
 exercise. The Greeks (delta, gamma, vega, theta, rho) are the sensitivities a
-trading desk actually hedges against, not academic curiosities: a delta-hedged
-book is short gamma and long theta by construction, and knowing that trade-off
+trading desk actually hedges against, not academic curiosities: delta hedging removes
+the first-order exposure but leaves gamma and theta, which have opposite signs:
+a hedged long-option book is long gamma and pays theta, a hedged short-option
+book is short gamma and collects it, and knowing that trade-off
 numerically is the entire point of computing Greeks in the first place.
 Implied volatility inverts the pricing formula, given a market price, what
 constant volatility would have produced it?, which is how the market
@@ -138,11 +140,11 @@ exactly this bar, area by area.
 
 ## Part II: The Technology
 
-### Why Python first, and why only four areas get compiled ports
+### Why Python first, and why only two areas get compiled ports
 
 Every model in this portfolio has a Python reference implementation, full
-stop, including the four areas (options pricing/Greeks, VaR/ES, both equity
-and FX) that also have C++ and Rust performance ports (the VaR engines port the linear book plus full option repricing per scenario). Python is not a
+stop, including the two areas (options pricing/Greeks and VaR/ES, each in both
+equity and FX, so four engines) that also have C++ and Rust performance ports (the VaR engines port the linear book plus full option repricing per scenario). Python is not a
 prototype language here; it is the *source of truth*. The C++/Rust engines are
 required to match it, not the other way around, because Python's expressiveness
 makes the modeling logic auditable in a way that a hand-optimized C++ kernel
@@ -156,7 +158,7 @@ numerically well-enough understood, to justify the engineering cost of a
 second (or third) implementation: full-book Greeks revaluation and intraday
 VaR both run on the order of millions of evaluations per cycle, on a
 closed-form-or-Monte-Carlo core that doesn't change its semantics once
-correct. The other six areas, calibration, backtesting, portfolio
+correct. The other eight areas, such as calibration, backtesting and portfolio
 construction, are research workflows where Python's iteration speed matters
 more than microsecond latency, so a second implementation would be pure
 engineering cost with no corresponding desk benefit.
@@ -174,8 +176,10 @@ about:
   series; `research/` holds pre-registrations. The order is draft, sign,
   hash check, then run on the 2022-2025 hold-out. The regime study ran on
   the hold-out once and did not reject H0; the pairs study was withdrawn
-  before it. Two later drafts (pairs v2, momentum) are scored only on
-  forward data from 2026-11-03. Equity pairs and the LOBSTER execution study are
+  before it. Two later registrations (pairs v2, momentum), signed on
+  2026-11-02, are scored once on forward data from 2026-11-03 to
+  2028-11-02, on or after 2028-11-13. Every training, stress and
+  calibration run is logged in `research/results/trials.jsonl`. Equity pairs and the LOBSTER execution study are
   not done because their data needs an account.
 - **More models, each with an oracle.** American pricers (Leisen-Reimer,
   Crank-Nicolson, ALO), Bachelier, SABR, higher Greeks, FX smiles and
@@ -188,6 +192,17 @@ about:
   `cpp/core` and `rust/core`. The batch `erfc` and `exp` kernels turned
   out slower than libm on an SSE2 build, and the README reports that with
   the numbers.
+- **One option kernel per language.** Black-Scholes in cost-of-carry form
+  lives once in `qp_core.black_scholes` (Python), `qp/black_scholes.hpp`
+  (C++) and `qp_core::black_scholes` (Rust); the equity and FX packages
+  are wrappers that keep their names and validation. Every output stayed
+  bit-identical. NumPy entry points (`bs_price_array`, `gk_price_array`
+  and the Greeks versions) and vectorised C++ `_fast` batches sit on it.
+- **Builds you can check.** CI installs every Python package from
+  `uv.lock` with hashes checked, the C++ engines install as the CMake
+  package `QuantPortfolio`, CI builds wheels for the bindings, and the
+  bench job compares base and head on the same runner. Set 19 in Part IV
+  covers the ideas behind these.
 
 ### The determinism discipline
 
@@ -263,7 +278,7 @@ starting from. All three converge on the same question sets in Part IV.
 2. Go straight to whichever area's math you already know best, read its
    `docs/METHODOLOGY.md` "why this model vs. alternatives" section first,
    this portfolio's answer may differ from your intuition (e.g. why
-   Cornish-Fisher rather than a pure historical simulation for parametric
+   Cornish-Fisher rather than a Student-t or EVT tail for parametric
    VaR's tail correction), and that disagreement is exactly where you'll
    learn something.
 3. Read `docs/VALIDATION.md` for the same project and try to find a gap in
@@ -295,7 +310,7 @@ starting from. All three converge on the same question sets in Part IV.
 
 ## Part IV: The exercise room
 
-**511 questions across 18 sets**, organized to follow Part I's area-by-area
+**532 questions across 19 sets**, organized to follow Part I's area-by-area
 structure, then widen into the cross-cutting engineering and business
 material. Each answer is grounded in this portfolio's actual code,
 methodology docs, and test suite, where a number, function name, or file
@@ -303,7 +318,7 @@ path appears, it is real and checkable. Use this as a self-test: read the
 question, try to answer it from what you've learned, then check yourself
 against the answer.
 
-| Round | Topic | Questions |
+| Set | Topic | Questions |
 |---|---|---|
 | 1 | Quant & Math Foundations | 28 |
 | 2 | Options Pricing & Greeks | 34 |
@@ -323,7 +338,8 @@ against the answer.
 | 16 | Testing, Validation & the NaN Defect Class | 29 |
 | 17 | Business, Desk Usage & Model Risk Governance | 26 |
 | 18 | Real-World Postmortems & Judgment | 30 |
-| **Total** | | **511** |
+| 19 | Shared Kernels, Honest Statistics & Safe Builds | 21 |
+| **Total** | | **532** |
 
 
 ## Set 1: Quant & Math Foundations
@@ -338,7 +354,7 @@ At the 99th percentile on a 250-day sample, the empirical quantile is determined
 
 **Q3. What does it mean for the normal distribution to have "thin tails," and why does that make Gaussian VaR systematically wrong for daily equity returns?**
 
-The normal density decays like `exp(-x^2/2)`, so the probability it assigns to an extreme move falls off extremely fast, a 5-standard-deviation daily move is astronomically unlikely under Normal(mu, sigma). Real daily equity returns have excess kurtosis (fatter tails than normal: more mass in the extremes than a Gaussian would predict). `var_parametric` in `var_es.py` assumes `returns ~ Normal(mu, sigma)` and computes `VaR = -(mu + sigma*z)`; because the true tail is fatter than the normal model believes, this quantile sits closer to the center than the real one, so Gaussian VaR *understates* tail risk, precisely the gap the project ships historical VaR alongside it to expose (`docs/METHODOLOGY.md` §3.2).
+The normal density decays like `exp(-x^2/2)`, so the probability it assigns to an extreme move falls off extremely fast, a 5-standard-deviation daily move is astronomically unlikely under Normal(mu, sigma). Real daily equity returns have excess kurtosis (fatter tails than normal: more mass in the extremes than a Gaussian would predict). `var_parametric` in `var_es.py` assumes `returns ~ Normal(mu, sigma)` and computes `VaR = -(mu + sigma*z)`; because the true tail is fatter than the normal model believes, this quantile sits closer to the center than the real one, so at deep quantiles (99% and beyond) Gaussian VaR *understates* tail risk, precisely the gap the project ships historical VaR alongside it to expose (`docs/METHODOLOGY.md` §3.2).
 
 **Q4. Where does the Student-t distribution show up in this portfolio, and why is it the standard fix for fat tails?**
 
@@ -386,15 +402,15 @@ GBM is the stochastic process `dS = mu*S*dt + sigma*S*dW`, where `dW` is a Brown
 
 **Q15. Why does the GBM solution have a `- sigma^2/2` term in the drift (`S_T = S0*exp((r - sigma^2/2)T + sigma*sqrt(T)*Z)`) instead of just `r`?**
 
-This is Ito's lemma at work: applying Ito's lemma to `ln(S)` under `dS = r*S*dt + sigma*S*dW` (risk-neutral drift `r`) does not simply give `d(ln S) = r*dt + sigma*dW`, because Ito's lemma for a function of a stochastic process includes a second-order term (`-1/2 * sigma^2*S^2 * (d^2/dS^2) ln S * dt = -1/2*sigma^2*dt`) absent from ordinary calculus. So `ln(S_T/S_0) ~ N((r - sigma^2/2)T, sigma^2 T)`, and exponentiating gives the `- sigma^2/2` "Ito correction" in the exponent. This is exactly why `S` itself has expected growth rate `r` (its mean grows at the risk-free rate, as risk-neutral pricing requires) while `ln(S)` grows at the *lower* rate `r - sigma^2/2`, the correction is what reconciles the two, and it's the same correction that appears inside the Black-Scholes `d1` formula (`(r + sigma^2/2)*T` in the numerator, with the sign flipped because `d1` is derived from a different, but related, conditional expectation).
+This is Ito's lemma at work: applying Ito's lemma to `ln(S)` under `dS = r*S*dt + sigma*S*dW` (risk-neutral drift `r`) does not simply give `d(ln S) = r*dt + sigma*dW`, because Ito's lemma for a function of a stochastic process includes a second-order term (`-1/2 * sigma^2*S^2 * (d^2/dS^2) ln S * dt = -1/2*sigma^2*dt`) absent from ordinary calculus. So `ln(S_T/S_0) ~ N((r - sigma^2/2)T, sigma^2 T)`, and exponentiating gives the `- sigma^2/2` "Ito correction" in the exponent. This is exactly why `S` itself has expected growth rate `r` (its mean grows at the risk-free rate, as risk-neutral pricing requires) while `ln(S)` grows at the *lower* rate `r - sigma^2/2`, the correction is what reconciles the two, and it's the same correction that appears inside the Black-Scholes `d1` formula (`(r + sigma^2/2)*T` in the numerator). The sign flips because `d1` belongs to the stock-numeraire measure, under which the drift of `ln S` is `r + sigma^2/2` rather than `r - sigma^2/2`.
 
 **Q16. At a qualitative level, why does Ito's lemma applied to a delta-hedged options portfolio lead to the Black-Scholes PDE, and hence to a formula with no dependence on the stock's real-world drift `mu`?**
 
-Building a portfolio long an option and short `delta = dV/dS` shares of stock, then applying Ito's lemma to the option value `V(S,t)` as a function of the GBM process `S`, produces a portfolio whose stochastic (`dW`) term cancels exactly, the hedge removes all first-order sensitivity to the random shock, leaving only deterministic terms in `dt`. A position with literally zero risk must, under no-arbitrage, earn exactly the risk-free rate; setting the portfolio's deterministic drift equal to `r` times its value is what produces the Black-Scholes PDE. Because the risky drift `mu` cancelled out entirely in the hedging argument (it only ever entered through the `dW` term that the hedge removed), the resulting price and PDE contain no `mu` at all, which is why `call_price` in `black_scholes.py` takes `S, K, r, sigma, T` and never a real-world expected-return parameter; risk preferences and drift beliefs are hedged away, not needed. (`METHODOLOGY.md` calls this "the entire chain from the SDE to the price... a single well-understood special function" once you accept the replication argument, the full derivation is left to a later round; this is the qualitative shape of why the formula has no `mu`.)
+Building a portfolio long an option and short `delta = dV/dS` shares of stock, then applying Ito's lemma to the option value `V(S,t)` as a function of the GBM process `S`, produces a portfolio whose stochastic (`dW`) term cancels exactly, the hedge removes all first-order sensitivity to the random shock, leaving only deterministic terms in `dt`. A position with literally zero risk must, under no-arbitrage, earn exactly the risk-free rate; setting the portfolio's deterministic drift equal to `r` times its value is what produces the Black-Scholes PDE. Because the risky drift `mu` cancelled out entirely in the hedging argument (it enters through the `dt` term, `V_S mu S dt` from the option and `-delta mu S dt` from the hedge, and those two cancel because `delta = V_S`), the resulting price and PDE contain no `mu` at all, which is why `call_price` in `black_scholes.py` takes `S, K, r, sigma, T` and never a real-world expected-return parameter; risk preferences and drift beliefs are hedged away, not needed. (`METHODOLOGY.md` calls this "the entire chain from the SDE to the price... a single well-understood special function" once you accept the replication argument, the full derivation is left to a later round; this is the qualitative shape of why the formula has no `mu`.)
 
 **Q17. `03-black-scholes-replication/docs/METHODOLOGY.md` interprets `N(d2)` and `N(d1)` economically. What do they mean, and how does that follow from the GBM/Ito machinery above?**
 
-`N(d2)` is the risk-neutral probability that the option finishes in the money, it falls directly out of the lognormal terminal distribution of `S_T` that Ito's lemma produces: `d2` is (up to the `sigma*sqrt(T)` scaling) how many standard deviations `ln(K)` sits below the mean of `ln(S_T)`, so `N(d2) = P(S_T > K)` under the risk-neutral measure. `S0*N(d1)` is the discounted expected value of *receiving the stock*, conditional on exercise, `N(d1)` is not itself a probability under the same measure as `N(d2)`, but the analogous quantity under the "stock numeraire" measure. Both interpretations only make sense because `ln(S_T)` is exactly normal (GBM's defining property under Ito's lemma), the whole closed form is an integral against that specific lognormal density (`black_scholes.py` module docstring).
+`N(d2)` is the risk-neutral probability that the option finishes in the money, it falls directly out of the lognormal terminal distribution of `S_T` that Ito's lemma produces: `d2` is (up to the `sigma*sqrt(T)` scaling) how many standard deviations `ln(K)` sits below the mean of `ln(S_T)`, so `N(d2) = P(S_T > K)` under the risk-neutral measure. `S0*N(d1)` is the discounted expectation `e^{-rT} E[S_T 1{S_T > K}]`, the value of receiving the stock in the states where the option is exercised (an unconditional expectation, not one conditional on exercise). `N(d1)` itself is `P(S_T > K)` under the stock-numeraire measure, the analogue of `N(d2)` under a different measure. Both interpretations only make sense because `ln(S_T)` is exactly normal (GBM's defining property under Ito's lemma), the whole closed form is an integral against that specific lognormal density (`black_scholes.py` module docstring).
 
 **Q18. Why does Monte Carlo estimation error shrink as `1/sqrt(n)`, and where is that fact used explicitly in this portfolio?**
 
@@ -449,7 +465,7 @@ For a European call with continuous dividend yield, `python/equity/01-options-pr
 
 **Q2. What are d1 and d2, and how is N(d1) interpreted?**
 
-`d1_d2` computes `d1 = [ln(S/K) + (r - q + sigma^2/2) T] / (sigma sqrt(T))` and `d2 = d1 - sigma sqrt(T)`. `d1` measures how many volatility-standard-deviations the (risk-neutral, drift-adjusted) log-moneyness is from zero. `N(d1)` has two standard readings: it is the option's delta under a continuous dividend yield (`bs_greeks` returns `delta_ = df_q * norm.cdf(d1)` for a call, i.e. `e^{-qT} N(d1)`, not `N(d1)` alone), and it is the sensitivity of the option price to the discounted stock term, the hedge ratio a desk actually trades against.
+`d1_d2` computes `d1 = [ln(S/K) + (r - q + sigma^2/2) T] / (sigma sqrt(T))` and `d2 = d1 - sigma sqrt(T)`. `d1` measures how many volatility-standard-deviations the (risk-neutral, drift-adjusted) log-moneyness is from zero. `N(d1)` has two standard readings: it is the option's delta under a continuous dividend yield (`bs_greeks` returns `delta_ = df_q * norm.cdf(d1)` for a call, i.e. `e^{-qT} N(d1)`, not `N(d1)` alone), and it is `P(S_T > K)` under the measure that uses the stock as numeraire (Hull, ch. 15 and 28). With `q = 0` the first reading is plain `N(d1)`, the hedge ratio a desk actually trades against.
 
 **Q3. How is N(d2) interpreted, and why isn't it just "the real-world probability of finishing in the money"?**
 
@@ -457,11 +473,11 @@ For a European call with continuous dividend yield, `python/equity/01-options-pr
 
 **Q4. What is the GBM / constant-volatility assumption, and what breaks when it's violated?**
 
-`METHODOLOGY.md` §2 registers this as A1: the underlying follows lognormal GBM with continuous paths and a single constant `sigma`. Real returns have fat tails, jumps and stochastic vol, so a single BS vol cannot price every strike consistently, the market shows a skew/smile. `VALIDATION.md` §6.1 demonstrates this directly: pricing a synthetic skewed chain with one flat ATM vol underprices the 80-strike put by 5x (skew IV 25.6% vs a mispricing of −80% of value at ATM IV). Short-dated gamma/jump risk from the same assumption shows up again in the `DESK_GUIDE.md` earnings-jump scenario.
+`METHODOLOGY.md` §2 registers this as A1: the underlying follows lognormal GBM with continuous paths and a single constant `sigma`. Real returns have fat tails, jumps and stochastic vol, so a single BS vol cannot price every strike consistently, the market shows a skew/smile. `VALIDATION.md` §6.1 demonstrates this directly: pricing a synthetic skewed chain with one flat ATM vol underprices the 80-strike put by about 5x (0.0345 at the ATM vol against 0.1703 at its 25.6% skew vol, an 80% shortfall). Short-dated gamma/jump risk from the same assumption shows up again in the `DESK_GUIDE.md` earnings-jump scenario.
 
 **Q5. What does the "frictionless, continuous hedging" assumption cover, and what's the real cost of violating it?**
 
-A2 in `METHODOLOGY.md` assumes hedging can be done continuously with no transaction costs. The engine's discrete-hedging simulator quantifies the resulting irreducible P&L noise: std scales like `sigma * premium * sqrt(pi/4) / sqrt(N)`, tested to shrink as `1/sqrt(N)`; at N=4 rebalances on a 3-month option the std is about $1.61 on a ~$4.42 premium (36% of the premium, `VALIDATION.md` §5, §6.2). With 5bp proportional transaction costs, mean P&L drops from +$0.0014 to −$0.2341 at N=128 rebalances, cost drag that grows with hedging frequency even as the noise it removes shrinks.
+A2 in `METHODOLOGY.md` assumes hedging can be done continuously with no transaction costs. The engine's discrete-hedging simulator quantifies the resulting irreducible P&L noise: the Derman-Kamal estimate of its std is `sqrt(pi/4) * sigma * vega / sqrt(N)`, tested to shrink as `1/sqrt(N)`. Only at the money is `sigma * vega` close to the premium, so the shorthand "premium over root N" is an ATM rule. For the 3-month ATM case (S=100, r=2%, sigma=20%, vega about 19.85, premium about $4.42) the estimate at N=4 is $1.76, while the simulation gives $1.60 (36% of the premium, `VALIDATION.md` §5, §6.2). The gap is expected: the estimate is a large-N approximation that treats gamma as fixed over each interval, which is poor with only four rebalances. By N=256 the two agree (0.2195 simulated against 0.2199). With 5bp proportional transaction costs, mean P&L drops from +$0.0014 to −$0.2341 at N=128 rebalances, cost drag that grows with hedging frequency even as the noise it removes shrinks.
 
 **Q6. What does the constant risk-free rate assumption cover, and where does it break?**
 
@@ -489,7 +505,7 @@ A8 assumes tree/MC discretisation parameters (n_steps, n_paths) are large enough
 
 **Q12. What is put-call parity, and how does this portfolio use it as both a pricing identity and a test?**
 
-Put-call parity states `C - P = S e^{-qT} - K e^{-rT}` (equity) or `C - P = S e^{-r_f T} - K e^{-r_d T}` (FX, `garman_kohlhagen.py`). It follows purely from no-arbitrage replication, independent of any distributional assumption, so it's a much stronger check than "does the model match itself." `VALIDATION.md` (equity) enforces it to `< 1e-10` over a 1080-point grid spanning `S, K, T, r ∈ {-1%, 0, 5%}, q, sigma` (`test_put_call_parity_full_grid_1e10`); the FX project checks the two-rate version to 1e-10 over a 7-point grid including negative rates and JPY levels. As a *test*, it catches sign/discounting bugs that a single-price benchmark against a textbook value would miss.
+Put-call parity states `C - P = S e^{-qT} - K e^{-rT}` (equity) or `C - P = S e^{-r_f T} - K e^{-r_d T}` (FX, `garman_kohlhagen.py`). It follows purely from no-arbitrage replication, independent of any distributional assumption, so it's a much stronger check than "does the model match itself." `VALIDATION.md` (equity) enforces it to `< 1e-10` over a 1080-point grid (`S` in {50, 80, 100, 120, 200}, `K` in {60, 100, 140}, `T` from 0.02 to 3 years, `r` in {-1%, 0, 5%}, `q` in {0, 3%}, `sigma` in {5%, 20%, 60%}; `test_put_call_parity_full_grid_1e10`); the FX project checks the two-rate version to 1e-10 over a 7-point grid including negative rates and JPY levels. As a *test*, it catches sign/discounting bugs that a single-price benchmark against a textbook value would miss.
 
 **Q13. What is delta, and what does a trading desk actually do with it?**
 
@@ -501,11 +517,11 @@ Gamma (`d^2V/dS^2`) is `bs_greeks(...).gamma`. It spikes near expiry when spot s
 
 **Q15. What's the gamma/theta trade-off?**
 
-Theta (`dV/dt`) is the time-value bleed that funds a long-gamma position: for a short option, positive theta (collected as the option decays) is compensation for the negative-gamma exposure to large moves. The pinning scenario (Q14) makes the trade-off concrete, as gamma explodes near expiry, the same position's convexity risk grows faster than the time decay collected to fund it, which is exactly what makes expiry-day risk management distinct from ordinary theta harvesting.
+For a delta-hedged option under Black-Scholes, `theta + 0.5 sigma^2 S^2 gamma = r(V - delta S)`, so with small rates `theta ≈ -0.5 sigma^2 S^2 gamma` (Hull, ch. 19): theta scales with gamma and has the opposite sign. A long-gamma position pays theta; a short option collects positive theta as compensation for its negative-gamma exposure to large moves. Near expiry both grow together, so the extra risk on expiry day is not that convexity outruns decay in the model, it is gap risk and discrete-hedging risk: a move between rebalances on a position whose delta swings from 0 to 1 over a small range of spot (the pinning scenario, Q14).
 
 **Q16. What is vega, and how does a desk manage vega exposure?**
 
-Vega (`dV/dsigma`) is `bs_greeks(...).vega`, `S e^{-qT} phi(d1) sqrt(T)`, currency per unit of annualised vol (divide by 100 for "per vol point," per the `greeks.py` docstring). `DESK_GUIDE.md` §1.1 gives a market-making example: a 1y ATM option has vega ≈ 37.8 per unit vol (0.378 per vol point), so quoting a market 0.4 vols wide is about $0.15 of edge on a $9.83 option. §1.2 aggregates vega to book level by expiry bucket, with vanna/volga limits layered on top for the skew book, vega alone doesn't capture how the position moves when the *smile* moves, only a parallel shift.
+Vega (`dV/dsigma`) is `bs_greeks(...).vega`, `S e^{-qT} phi(d1) sqrt(T)`, currency per unit of annualised vol (divide by 100 for "per vol point," per the `greeks.py` docstring). `DESK_GUIDE.md` §1.1 gives a market-making example: a 1y ATM call (S = K = 100, sigma = 20%, r = 4%, q = 0) is worth $9.93 with vega ≈ 38.1 per unit vol (0.381 per vol point), so a market quoted 0.4 vols wide spans about $0.15, about $0.076 of edge on each side of mid. §1.2 aggregates vega to book level by expiry bucket, with vanna/volga limits layered on top for the skew book, vega alone doesn't capture how the position moves when the *smile* moves, only a parallel shift.
 
 **Q17. What is rho, and why is it usually a lower-priority Greek?**
 
@@ -513,7 +529,7 @@ Rho (`dV/dr`) is `bs_greeks(...).rho`, `K T e^{-rT} N(d2)` for a call. It's typi
 
 **Q18. Why is Garman-Kohlhagen "Black-Scholes with q = r_f"?**
 
-`fx_options/garman_kohlhagen.py`'s docstring states it directly: holding foreign currency pays the foreign risk-free rate, exactly as a dividend-paying stock pays its yield, so under the domestic risk-neutral measure the spot drifts at `r_d - r_f`. Substituting `q -> r_f` and `r -> r_d` into the BS formula gives `gk_price`: `call = S e^{-r_f T} N(d1) - K e^{-r_d T} N(d2)` with `d1 = [ln(S/K) + (r_d - r_f + sigma^2/2) T] / (sigma sqrt(T))`. The economic content of the substitution: a dividend yield is compensation you give up by holding the derivative instead of the asset; the foreign deposit rate is exactly that same forgone-carry cost when the "asset" is a unit of foreign currency. The equity project's `VALIDATION.md` confirms this isn't just an analogy, `test_black76_equals_bsm_on_model_forward`-style checks in the FX project verify GK against an independent dividend-yield BS implementation to 1e-14.
+`fx_options/garman_kohlhagen.py`'s docstring states it directly: holding foreign currency pays the foreign risk-free rate, exactly as a dividend-paying stock pays its yield, so under the domestic risk-neutral measure the spot drifts at `r_d - r_f`. Substituting `q -> r_f` and `r -> r_d` into the BS formula gives `gk_price`: `call = S e^{-r_f T} N(d1) - K e^{-r_d T} N(d2)` with `d1 = [ln(S/K) + (r_d - r_f + sigma^2/2) T] / (sigma sqrt(T))`. The economic content of the substitution: a dividend yield is compensation you give up by holding the derivative instead of the asset; the foreign deposit rate is exactly that same forgone-carry cost when the "asset" is a unit of foreign currency. The FX project's `VALIDATION.md` confirms this isn't just an analogy: `test_gk_equals_bs_with_dividend_yield` checks GK against an independent dividend-yield BS implementation to 1e-14.
 
 **Q19. What does the BASE/QUOTE convention mean, and how do r_d and r_f map onto it?**
 
@@ -525,7 +541,7 @@ Per `CONVENTIONS.md` and `garman_kohlhagen.py`'s docstring, FX pairs are quoted 
 
 **Q21. Why does premium adjustment exist, and what numerical wrinkle does it create?**
 
-Premium adjustment exists because a premium *received* in the base currency is itself a position in the underlying, e.g. a USDJPY option premium paid in JPY changes your yen exposure, so the "true" hedge ratio must net that out. The wrinkle: for premium-adjusted call deltas, the map from strike to delta, `(K/F) N(d2)`, is not monotone, it rises then falls, so a target delta can have 0, 1 or 2 solutions. `METHODOLOGY.md` documents the fix: market convention picks the larger-strike (decreasing) branch, and the strike-from-delta solver locates the fold point of `K N(d2)` (where `N(d2) sigma sqrt(T) = n(d2)`) and Brent-solves to its right, raising `ValueError` for unattainable deltas. `VALIDATION.md` §4 in the FX project reproduces the fold explicitly at USDJPY 35%-vol parameters, showing the second root lies left of the solver's returned strike.
+Premium adjustment exists because a premium paid in the base currency is itself a position in the underlying, e.g. a USDJPY option premium paid in USD (the base currency) changes your dollar exposure, so the "true" hedge ratio must net that out. The wrinkle: for premium-adjusted call deltas, the map from strike to delta, `(K/F) N(d2)`, is not monotone, it rises then falls, so a target delta can have 0, 1 or 2 solutions. `METHODOLOGY.md` documents the fix: market convention picks the larger-strike (decreasing) branch, and the strike-from-delta solver locates the fold point of `K N(d2)` (where `N(d2) sigma sqrt(T) = n(d2)`) and Brent-solves to its right, raising `ValueError` for unattainable deltas. `VALIDATION.md` §4 in the FX project reproduces the fold explicitly at USDJPY 35%-vol parameters, showing the second root lies left of the solver's returned strike.
 
 **Q22. Why doesn't equity need this delta-convention distinction?**
 
@@ -537,7 +553,7 @@ Equity options have one currency in the trade, the premium, the strike, and the 
 
 **Q24. When does American early exercise actually matter, and how does the tree detect it?**
 
-For calls with `q = 0`, Merton's no-early-exercise theorem says American and European calls are worth the same, `VALIDATION.md` §4 treats this as a sharp implementation test, since the tree's early-exercise branch must fire *never* despite being evaluated at every node, and confirms agreement to 1e-10. Early exercise matters whenever there's a carry cost to holding the option instead of the underlying: dividends (`q > 0`) make American calls valuable to exercise early, and any positive net cost of carry (`r - q` sign) makes American puts carry a premium over European. `binomial.py::early_exercise_premium` isolates this by differencing American-minus-European on the *same* tree, which cancels the shared O(1/n) discretisation error, the reference 1y ATM put (q=1%) shows a 0.423350 early-exercise premium at 2000 steps.
+For calls with `q = 0`, Merton's no-early-exercise theorem says American and European calls are worth the same, `VALIDATION.md` §4 treats this as a sharp implementation test, since the tree's early-exercise branch must fire *never* despite being evaluated at every node, and confirms agreement to 1e-10. Early exercise matters whenever there's a carry cost to holding the option instead of the underlying: dividends (`q > 0`) make American calls valuable to exercise early, and any positive interest rate (`r > 0`) gives the American put an early-exercise premium over the European, because deep in the money the interest earned on the strike received early outweighs the remaining optionality. `binomial.py::early_exercise_premium` isolates this by differencing American-minus-European on the *same* tree, which cancels the shared O(1/n) discretisation error, the reference 1y ATM put (q=1%) shows a 0.423350 early-exercise premium at 2000 steps.
 
 **Q25. Where do American and European prices diverge most sharply, and why?**
 
@@ -588,7 +604,7 @@ Black-Scholes (and Garman-Kohlhagen) give price as a function of sigma, `price(s
 
 **Q2. What equation is `implied_vol` actually solving?**
 
-Both `python/equity/01-options-pricing/src/eq_options/black_scholes.py::implied_vol` and `python/fx/01-options-pricing/src/fx_options/garman_kohlhagen.py::implied_vol` map the quote to normalised Black form and call the shared core `_iv_core.total_vol`. With forward `F`, discount factor `df` and `x = -|ln(F/K)| <= 0`, the out-of-the-money time value is normalised as `beta = (price - lower) / (df * sqrt(F K))`, and the solver finds the total volatility `s = sigma * sqrt(T)` with `b(x, s) = beta`, where `b(x, s) = e^{x/2} N(x/s + s/2) - e^{-x/2} N(x/s - s/2)` is the normalised out-of-the-money call. The answer is `sigma = s / sqrt(T)`. Because `b` is strictly increasing in `s`, the root is unique. The same algorithm, constants and branch thresholds run in the C++ (`eqopt/iv_core.hpp`) and Rust engines, so all six engines solve the same equation the same way.
+Both `python/equity/01-options-pricing/src/eq_options/black_scholes.py::implied_vol` and `python/fx/01-options-pricing/src/fx_options/garman_kohlhagen.py::implied_vol` map the quote to normalised Black form and call the shared core `qp_core.iv_core.total_vol` (`python/core/src/qp_core/iv_core.py`). With forward `F`, discount factor `df` and `x = -|ln(F/K)| <= 0`, the out-of-the-money time value is normalised as `beta = (price - lower) / (df * sqrt(F K))`, and the solver finds the total volatility `s = sigma * sqrt(T)` with `b(x, s) = beta`, where `b(x, s) = e^{x/2} N(x/s + s/2) - e^{-x/2} N(x/s - s/2)` is the normalised out-of-the-money call. The answer is `sigma = s / sqrt(T)`. Because `b` is strictly increasing in `s`, the root is unique. The same algorithm, constants and branch thresholds run in the C++ (`eqopt/iv_core.hpp`) and Rust engines, so all six engines solve the same equation the same way.
 
 **Q3. Why does the solver always work on the out-of-the-money side?**
 
@@ -596,7 +612,7 @@ An in-the-money price is mostly intrinsic value, and the vol only lives in the s
 
 **Q4. Write out the Newton and Halley update rules, and say which one this solver uses.**
 
-Newton: `s_{n+1} = s_n - f/f'`. Halley adds a curvature correction: `s_{n+1} = s_n - (f/f') / (1 - (f/f') f'' / (2 f'))`. In `_iv_core.total_vol` this is literally `newton = f / fp; den = 1 - 0.5 * newton * fpp / fp; s_new = s - newton / den`. The solver takes the Halley step when `den > 0.5` and the step stays inside the current bracket; otherwise it falls back to a Newton step, and only then to a bracket step (Q9). Newton converges quadratically near the root (correct digits roughly double each step); Halley converges cubically (they roughly triple), which is why the solver needs at most 10 evaluations and typically 2-4.
+Newton: `s_{n+1} = s_n - f/f'`. Halley adds a curvature correction: `s_{n+1} = s_n - (f/f') / (1 - (f/f') f'' / (2 f'))`. In `qp_core.iv_core.total_vol` this is literally `newton = f / fp; den = 1 - 0.5 * newton * fpp / fp; s_new = s - newton / den`. The solver takes the Halley step when `den > 0.5` and the step stays inside the current bracket; otherwise it falls back to a Newton step, and only then to a bracket step (Q9). Newton converges quadratically near the root (correct digits roughly double each step); Halley converges cubically (they roughly triple), which is why the solver needs at most 10 evaluations and typically 2-4.
 
 **Q5. Where do the derivatives come from: analytic or finite differences?**
 
@@ -648,7 +664,7 @@ Nothing: they are deprecated and ignored, and passing any of them raises a `Depr
 
 **Q17. Why is the same implied-vol algorithm shared by all six options engines rather than each engine choosing its own?**
 
-Because the C++ and Rust engines mirror the Python reference (`CONVENTIONS.md`: "Engines mirror the Python reference implementations and are cross-validated against them"), and one algorithm is easier to validate than six. The equity and FX Python engines share `_iv_core.py`, and the C++ and Rust engines implement the same constants and branch thresholds. The risk of sharing is that a design weakness would be reproduced everywhere, which is why the goldens are not generated from the shared code: the implied-vol golden cases invert an mpmath-computed quote whose true vol is known by construction (Set 15, Q3), and the differential tests compare Python, Rust and C++ on seeded random inputs through JSON-lines shims (`tests/test_differential.py`).
+Because the C++ and Rust engines mirror the Python reference (`CONVENTIONS.md`: "Engines mirror the Python reference implementations and are cross-validated against them"), and one algorithm is easier to validate than six. The equity and FX Python engines share `qp_core/iv_core.py`, and the C++ and Rust engines implement the same constants and branch thresholds. The risk of sharing is that a design weakness would be reproduced everywhere, which is why the goldens are not generated from the shared code: the implied-vol golden cases invert an mpmath-computed quote whose true vol is known by construction (Set 15, Q3), and the differential tests compare Python, Rust and C++ on seeded random inputs through JSON-lines shims (`tests/test_differential.py`).
 
 **Q18. Confirm: do the C++ and Rust equity engines document the same algorithm and accuracy as the Python reference?**
 
@@ -699,11 +715,11 @@ It means today's shock feeds directly into tomorrow's conditional variance. In G
 
 **Q3. Exactly which volatility models does this project implement, not in theory, but in the actual `src/` modules?**
 
-`python/equity/02-volatility-modeling/src/eq_vol/` has five: range/realized historical estimators (`historical.py`, close-to-close, Parkinson, Garman–Klass, Rogers–Satchell), RiskMetrics EWMA (`ewma.py`), GARCH(1,1) (`garch.py`), EGARCH(1,1) (`egarch.py`), and GJR-GARCH(1,1) (`gjr.py`), tied together by `forecasting.py` and scored by `evaluation.py`. The FX sibling (`fx_vol/`) has the same five plus a GARCH-X variant with an exogenous event-dummy term (`omega + gamma_x'x_t + alpha r^2 + beta sigma2`) and `vol_premium.py` for comparing model/realized vol against implied.
+`python/equity/02-volatility-modeling/src/eq_vol/` has six: range/realized historical estimators (`historical.py`, close-to-close, Parkinson, Garman–Klass, Rogers–Satchell), RiskMetrics EWMA (`ewma.py`), GARCH(1,1) (`garch.py`), EGARCH(1,1) (`egarch.py`), GJR-GARCH(1,1) (`gjr.py`), and the HAR-RV regression (`har_rv.py`), tied together by `forecasting.py` and scored by `evaluation.py`. The FX sibling (`fx_vol/`) has the same six plus a GARCH-X variant with an exogenous event-dummy term (`omega + gamma_x'x_t + alpha r^2 + beta sigma2`) and `vol_premium.py` for comparing model/realized vol against implied.
 
 **Q4. Why GARCH-family models rather than a full stochastic-volatility model like Heston?**
 
-METHODOLOGY.md's "Alternative A" is explicit: SV models are the theoretically "right" description (variance as its own latent process) but the likelihood requires filtering, particle filters, MCMC, or Kalman-type quasi-ML, an order of magnitude more machinery with harder diagnostics and governance. For one-step-ahead vol forecasting from daily returns, it cites Hansen–Lunde (2005), "Does anything beat a GARCH(1,1)?", which finds essentially no forecast gain from SV over GARCH-family models. GARCH instead gives an exact, closed-form likelihood, auditable to machine precision, which the project exploits directly in its `arch`-package cross-validation.
+METHODOLOGY.md's "Alternative A" is explicit: SV models are the theoretically "right" description (variance as its own latent process) but the likelihood requires filtering, particle filters, MCMC, or Kalman-type quasi-ML, an order of magnitude more machinery with harder diagnostics and governance. For one-step-ahead vol forecasting from daily returns, it cites Hansen–Lunde (2005), "Does anything beat a GARCH(1,1)?", which compares 330 ARCH-type models and finds little forecast gain over GARCH(1,1) for exchange rates. That study does not include stochastic-volatility models, so it supports the choice of GARCH(1,1) within its family, not a verdict against SV. GARCH instead gives an exact, closed-form likelihood, auditable to machine precision, which the project exploits directly in its `arch`-package cross-validation.
 
 **Q5. Why not realized-volatility / HAR models (Corsi 2009), which the docs admit often beat daily GARCH?**
 
@@ -723,7 +739,7 @@ Realized volatility is computed backward-looking from historical returns (or the
 
 **Q9. What does GARCH(1,1) add over EWMA, and what does its long-run/unconditional variance parameter mean?**
 
-GARCH(1,1) (`eq_vol/garch.py`) adds an intercept `omega > 0` and requires `alpha + beta < 1`, which gives a genuine unconditional variance `omega / (1 - alpha - beta)`, the level volatility reverts to over time, instead of EWMA's flat-forever forecast. The k-step forecast decays geometrically toward that level at rate `alpha+beta` (`forecast_garch` in `forecasting.py`), which is why GJR after a sell-off produces an upward-sloping term structure "exactly the shape the listed market shows" (DESK_GUIDE.md), something EWMA structurally cannot do.
+GARCH(1,1) (`eq_vol/garch.py`) adds an intercept `omega > 0` and requires `alpha + beta < 1`, which gives a genuine unconditional variance `omega / (1 - alpha - beta)`, the level volatility reverts to over time, instead of EWMA's flat-forever forecast. The k-step forecast decays geometrically toward that level at rate `alpha+beta` (`forecast_garch` in `forecasting.py`), which is why GJR after a sell-off, with current variance above the long-run level, produces a downward-sloping (inverted) term structure that decays from an elevated short end toward the long-run vol, the shape listed markets show after a shock (DESK_GUIDE.md), something EWMA structurally cannot do.
 
 **Q10. Mean reversion in volatility: what does it mean physically, and how is "persistence" and "half-life" defined in this codebase?**
 
@@ -739,7 +755,7 @@ GJR-GARCH (`eq_vol/gjr.py`): `sigma2_t = omega + (alpha + gamma*1[r_{t-1}<0]) r_
 
 **Q13. How does the historical/realized estimator suite differ from just squaring daily returns, and why does it matter?**
 
-`eq_vol/historical.py` implements four range-based one-day variance estimators beyond plain close-to-close `r_t^2`: Parkinson (~4.9x more efficient), Garman–Klass (~7.4x), and Rogers–Satchell (~6x, and uniquely drift-robust). "Efficiency" means lower sampling variance for the same data, METHODOLOGY.md notes a 21-day Parkinson estimate is roughly as precise as a ~100-day close-to-close one. The price is stronger assumptions (continuous monitoring, no overnight gaps, no microstructure noise); discrete trading biases the observed range down and bid–ask bounce biases it up, both demonstrated in `tests/test_historical.py`.
+`eq_vol/historical.py` implements four range-based one-day variance estimators beyond plain close-to-close `r_t^2`: Parkinson (~4.9x more efficient), Garman–Klass (~7.4x), Rogers–Satchell (~6x, and drift-robust), and Yang–Zhang (`yang_zhang_var`, which also handles the overnight gap). "Efficiency" means lower sampling variance for the same data, METHODOLOGY.md notes a 21-day Parkinson estimate is roughly as precise as a ~100-day close-to-close one. The price is stronger assumptions (continuous monitoring, no overnight gaps, no microstructure noise); discrete trading biases the observed range down and bid–ask bounce biases it up, both demonstrated in `tests/test_historical.py`.
 
 **Q14. How is a GARCH-type forecast actually validated in this codebase: what's the real backtest?**
 
@@ -747,7 +763,7 @@ GJR-GARCH (`eq_vol/gjr.py`): `sigma2_t = omega + (alpha + gamma*1[r_{t-1}<0]) r_
 
 **Q15. What did that out-of-sample race actually find (VALIDATION.md §4), and what does it mean that GJR beat GARCH?**
 
-Ranking by QLIKE: GJR (-7.6027) > EGARCH (-7.5785) > GARCH (-7.5638) > EWMA(0.94) (-7.4996) > rolling 21-day historical (-7.4963), against an oracle QLIKE of -7.6067 (the true conditional variance of the data-generating process). GJR's DM stat vs GARCH is -2.91 (p=0.004), a statistically significant win, and it captures about 94% of the achievable QLIKE gap between GARCH and the oracle, which is expected because the simulated truth had genuine leverage (gamma=0.12) that only GJR and EGARCH can represent.
+Ranking by QLIKE: GJR (-7.6027) > EGARCH (-7.5785) > GARCH (-7.5638) > EWMA(0.94) (-7.4996) > rolling 21-day historical (-7.4963), against an oracle QLIKE of -7.6067 (the true conditional variance of the data-generating process). GJR's DM stat vs GARCH is -2.91 (p=0.004), a statistically significant win, and it captures about 91% of the achievable QLIKE gap between GARCH and the oracle ((7.6027 − 7.5638) / (7.6067 − 7.5638)), which is expected because the simulated truth had genuine leverage (gamma=0.12) that only GJR and EGARCH can represent.
 
 **Q16. Why is QLIKE the headline loss function here rather than plain MSE, and is that an arbitrary choice?**
 
@@ -771,11 +787,11 @@ DESK_GUIDE.md's workflow step 4 is explicit: after a suspected regime break, sho
 
 **Q21. Beyond regime breaks, what other failure modes does VALIDATION.md document, and are they just described or also enforced in code?**
 
-Both. F2 (IGARCH boundary): as persistence approaches 1, unconditional variance explodes, so `unconditional_variance()` raises instead of returning garbage. F3 (fat tails): Gaussian QMLE stays consistent for alpha/beta even under Student-t innovations, but Gaussian VaR quantiles understate risk by roughly 10% when the truth is t(8), mitigated by `dist="t"`, with `nu` recovered within 0.2 of truth on 20k simulated observations. F5 (short samples): fitters refuse fewer than 100 observations with an informative error rather than returning a badly-identified fit. F6 (optimizer failure): the library never fails silently, a non-converging fit raises `ConvergenceError` or is flagged `converged=False`, tested by forcing a failure.
+Both. F2 (IGARCH boundary): as persistence approaches 1, unconditional variance explodes, so `unconditional_variance()` raises instead of returning garbage. F3 (fat tails): Gaussian QMLE stays consistent for alpha/beta even under Student-t innovations, but Gaussian VaR quantiles understate risk by about 8% when the truth is t(8) (the unit-variance t(8) 1% quantile is 2.508 against the normal 2.326; VALIDATION.md rounds this to 1.10x), mitigated by `dist="t"`, with `nu` recovered within 0.2 of truth on 20k simulated observations. F5 (short samples): fitters refuse fewer than 100 observations with an informative error rather than returning a badly-identified fit. F6 (optimizer failure): the library never fails silently, a non-converging fit raises `ConvergenceError` or is flagged `converged=False`, tested by forcing a failure.
 
 **Q22. How do these volatility forecasts actually get used downstream, per DESK_GUIDE.md, not hypothetically, concretely?**
 
-Four consumers are named explicitly. Option pricing/marking: `term_structure()`'s model vol is compared against implied vol, with `implied - forecast` used as the carry signal for variance-risk-premium strategies, and the model mark serves as a fallback for illiquid expiries. VaR/ES: 1-day 99% VaR is computed as `sigma_{t+1|t} * q_{0.01}` from `rolling_one_step_forecasts` combined with the fitted innovation quantile, using `dist="t"` because Gaussian tails understate 1% VaR by about 10% under t(8) returns. Vol targeting: a book scales exposure by `target_vol / forecast_vol`, which is exactly why QLIKE (which penalizes under-forecasting more) is the right evaluation metric, under-forecasting means being over-levered into a storm. Risk limits: persistence and half-life (`extra["halflife_days"]`) tell a risk manager how long a de-risking flag should stay on after a shock.
+Four consumers are named explicitly. Option pricing/marking: `term_structure()`'s model vol is compared against implied vol, with `implied - forecast` used as the carry signal for variance-risk-premium strategies, and the model mark serves as a fallback for illiquid expiries. VaR/ES: 1-day 99% VaR is computed as `sigma_{t+1|t} * q_{0.01}` from `rolling_one_step_forecasts` combined with the fitted innovation quantile, using `dist="t"` because Gaussian tails understate 1% VaR by about 8% under t(8) returns. Vol targeting: a book scales exposure by `target_vol / forecast_vol`, which is exactly why QLIKE (which penalizes under-forecasting more) is the right evaluation metric, under-forecasting means being over-levered into a storm. Risk limits: persistence and half-life (`extra["halflife_days"]`) tell a risk manager how long a de-risking flag should stay on after a shock.
 
 **Q23. Why does DESK_GUIDE.md insist on refitting parameters only every 5–25 days rather than every day, if markets move daily?**
 
@@ -830,7 +846,7 @@ Heston makes variance itself a second stochastic process rather than a constant:
 
 **Q9. Heston reprices "today's vanillas" only approximately, per METHODOLOGY.md's own comparison table. What's the actual trade-off against local vol (Dupire), and why does this portfolio still prefer Heston?**
 
-Local vol reprices today's vanillas *exactly* by construction, but the Hagan critique shows its forward smiles are known-wrong, they flatten over time, which mis-prices anything sensitive to how the smile evolves (forward-starts, cliquets, autocalls). Heston gives up exact repricing (METHODOLOGY.md documents a 2-3 vol-point short-dated residual) in exchange for forward smile dynamics that are qualitatively realistic, the smile moves with spot, vol clusters and mean-reverts, which is what actually matters for path- and dynamics-dependent exotics. The FX project's METHODOLOGY.md makes the identical trade-off explicit for Dupire vs. Heston under Garman-Kohlhagen, adding that FX pillar data (5 strikes x 6 expiries) is in any case too sparse to extract a stable local-vol surface.
+Local vol reprices today's vanillas *exactly* by construction, but Hagan et al. (2002) show its smile dynamics are wrong-way: when spot moves, the local-vol smile moves in the opposite direction to the one markets show, which mis-hedges anything sensitive to how the smile evolves. A related, separate weakness is that local-vol forward smiles flatten over time (Gatheral, 2006, ch. 4), which mis-prices forward-starts, cliquets and autocalls. Heston gives up exact repricing (METHODOLOGY.md documents a 2-3 vol-point short-dated residual) in exchange for forward smile dynamics that are qualitatively realistic, the smile moves with spot, vol clusters and mean-reverts, which is what actually matters for path- and dynamics-dependent exotics. The FX project's METHODOLOGY.md makes the identical trade-off explicit for Dupire vs. Heston under Garman-Kohlhagen, adding that FX pillar data (5 strikes x 6 expiries) is in any case too sparse to extract a stable local-vol surface.
 
 **Q10. What no-arbitrage conditions must a real vol surface satisfy, and does this portfolio's documentation show it actually checks for them?**
 
@@ -842,7 +858,7 @@ It depends on the fit mode. With the default `fit_svi(..., arbitrage_free=True)`
 
 **Q12. Why does the calendar-arbitrage running-max "fix" come with a warning that it's dangerous to blindly apply, per the equity DESK_GUIDE.md earnings scenario?**
 
-Real event variance (e.g. a single-name earnings print, or a central-bank date in FX) concentrates a jump in total variance at one specific expiry pillar in a way that looks identical, in smooth ACT/365F time, to a calendar-arbitrage violation: the post-event annualised vol can sit far below the pre-event pillar. Running `enforce_calendar=True` would smear that event variance across the term structure via the monotone running-max adjustment, destroying real information. The documented handling instead strips the event component (`w = w_diffusive + w_event * 1{T >= t_event}`), marks the diffusive surface, and re-adds the event, leaving `enforce_calendar` off and treating the calendar flag as the correct alarm, not a bug to suppress.
+Real event variance (e.g. a single-name earnings print, or a central-bank date in FX) concentrates a jump in total variance at one specific expiry pillar. That jump is not itself a calendar-arbitrage violation, total variance still rises with expiry, and the post-event annualised vol sitting far below the event pillar's is consistent with that. What it breaks is the smooth term structure the surface assumes in ACT/365F time, so the calendar check can fire around it (for example when one pillar's quote predates the event and its neighbour's does not). Running `enforce_calendar=True` would smear that event variance across the term structure via the monotone running-max adjustment, destroying real information. The documented handling instead strips the event component (`w = w_diffusive + w_event * 1{T >= t_event}`), marks the diffusive surface, and re-adds the event, leaving `enforce_calendar` off and treating the calendar flag as the correct alarm, not a bug to suppress.
 
 **Q13. Heston's characteristic function has a well-known numerical trap. What is it, and how does this code avoid it?**
 
@@ -858,7 +874,7 @@ Full-truncation Euler carries an O(dt) truncation bias from clipping negative va
 
 **Q16. What are antithetic variates, and why bother with them at all in a Monte Carlo pricer?**
 
-Antithetic variates are a variance-reduction technique: instead of drawing `n` independent standard normals, you draw `n/2` and pair each one `z` with its negation `-z`, then average the payoff over each pair. Because the payoff function applied to `z` and to `-z` tend to have errors that partially cancel (for a monotone or convex payoff, over- and under-shoots trade off), the pairwise-averaged estimator has lower variance than `n` fully independent draws for the same simulation cost. `fx_surface.heston_mc.simulate_terminal` implements this via `antithetic: bool = True`: for both Euler and QE it draws `n_base` normals and mirrors them (`np.concatenate([z1, -z1])`), and `mc_price` averages payoffs pairwise before computing the sample standard error, so the reported SE is not artificially deflated by the correlation the pairing itself introduces.
+Antithetic variates are a variance-reduction technique: instead of drawing `n` independent standard normals, you draw `n/2` and pair each one `z` with its negation `-z`, then average the payoff over each pair. For a payoff that is monotone in `z`, the values at `z` and `-z` are negatively correlated, so their errors partially cancel and the pairwise-averaged estimator has lower variance than `n` fully independent draws for the same simulation cost (Glasserman, 2003, §4.2). The guarantee is for monotone payoffs only: for a symmetric payoff such as a straddle the pair is positively correlated and antithetics can do worse than plain sampling. `fx_surface.heston_mc.simulate_terminal` implements this via `antithetic: bool = True`: for both Euler and QE it draws `n_base` normals and mirrors them (`np.concatenate([z1, -z1])`), and `mc_price` averages payoffs pairwise before computing the sample standard error, so the reported SE is not artificially inflated by the negative correlation the pairing itself introduces.
 
 **Q17. Why does `simulate_terminal` refuse an odd `n_paths` when `antithetic=True`? What would go wrong without the guard?**
 
@@ -866,7 +882,7 @@ An odd `n_paths` would break the antithetic pairing invariant the whole standard
 
 **Q18. Why is that failure mode specifically dangerous, arguably worse than a bug that produces a visibly wrong price?**
 
-Because the *price* estimate itself stays approximately correct (antithetic pairing barely nudges the mean); what goes wrong is the reported *standard error*, in the direction of being too small, i.e. it understated the pricer's own uncertainty. A visibly wrong price gets caught immediately, because someone compares it to the Fourier reference and it's obviously off. A confidently-wrong error bar does not get caught the same way: a risk or model-validation process that trusts "3 SE agreement" as its acceptance bar (this portfolio's own documented tolerance, per CONVENTIONS.md) would see an artificially tight SE make a marginal or biased result look like it passed comfortably, when the true uncertainty band was wider. An error bar that lies about its own size is more dangerous than a wrong point estimate precisely because it undermines the mechanism you'd normally use to catch the point estimate being wrong.
+Because the *price* estimate itself stays approximately correct (antithetic pairing barely nudges the mean); what goes wrong is the reported *standard error*: with the halves misaligned, the averaged "pairs" are no longer `z`/`-z` partners, so the SE no longer describes the estimator, and its error can go either way. A visibly wrong price gets caught immediately, because someone compares it to the Fourier reference and it's obviously off. A confidently-wrong error bar does not get caught the same way: a risk or model-validation process that trusts "3 SE agreement" as its acceptance bar (this portfolio's own documented tolerance, per CONVENTIONS.md) would be judging the result against an error bar that does not describe it: a wrong-but-tight SE makes a marginal or biased result look like it passed comfortably, and a wrong-but-loose one lets a real bias through. An error bar that lies about its own size is more dangerous than a wrong point estimate precisely because it undermines the mechanism you'd normally use to catch the point estimate being wrong.
 
 **Q19. What is the guard, and where does it live in the code?**
 
@@ -874,7 +890,7 @@ Because the *price* estimate itself stays approximately correct (antithetic pair
 
 **Q20. How exactly does `mc_price` use the antithetic pairing to compute its standard error, once `n_paths` is guaranteed even?**
 
-After `simulate_terminal` returns `n_paths` terminal spots, `mc_price` computes the discounted payoff for all of them, then, only when `antithetic=True`, splits the payoff vector exactly in half and averages each `z`/`-z` pair: `payoff = 0.5 * (payoff[:half] + payoff[half:])`. The standard error is then `np.std(payoff, ddof=1) / sqrt(len(payoff))` computed on that *halved, pre-averaged* array, not on the raw `n_paths` payoffs. This is the step that actually removes the antithetic correlation from the SE estimate: treating the `n_paths` raw draws as independent would understate variance because paired draws are negatively correlated by construction, so averaging within each pair first and computing dispersion across pairs is what makes "sample std / sqrt(n)" a valid SE formula again.
+After `simulate_terminal` returns `n_paths` terminal spots, `mc_price` computes the discounted payoff for all of them, then, only when `antithetic=True`, splits the payoff vector exactly in half and averages each `z`/`-z` pair: `payoff = 0.5 * (payoff[:half] + payoff[half:])`. The standard error is then `np.std(payoff, ddof=1) / sqrt(len(payoff))` computed on that *halved, pre-averaged* array, not on the raw `n_paths` payoffs. This is the step that actually removes the antithetic correlation from the SE estimate: treating the `n_paths` raw draws as independent would overstate the SE because paired draws are negatively correlated by construction (for a monotone payoff), so averaging within each pair first and computing dispersion across pairs is what makes "sample std / sqrt(n)" a valid SE formula again.
 
 **Q21. Does the equity project's Monte Carlo engine have the same antithetic-pairing exposure?**
 
@@ -882,7 +898,7 @@ It has the same option and the same guard. `eq_surface/heston_mc.py`'s `simulate
 
 **Q22. FX vol surfaces are quoted differently from equity ones. What does "ATM/RR/BF by tenor" actually mean, and why does the FX market quote this way instead of strike/expiry directly?**
 
-Per `fx_surface`'s METHODOLOGY.md, brokers quote five numbers per expiry, ATM (the delta-neutral straddle strike), 25-delta risk reversal `RR25 = sigma(25∆call) - sigma(25∆put)` (the skew, tradable as a package), and 25-delta butterfly `BF25 = 0.5*(sigma(25∆call) + sigma(25∆put)) - sigma_ATM` (the convexity), each repeated at 10-delta. This is quoted in delta space rather than strike space because FX spot moves ~1% a day, making any strike-based quote sheet stale within hours and incomparable across pairs trading at wildly different absolute levels (EURUSD ≈ 1.10 vs USDJPY ≈ 150); delta is a moneyness measured in probability units, so it's self-normalising across spot level, pair, and vol regime, exactly why the market settled on it.
+Per `fx_surface`'s METHODOLOGY.md, brokers quote five numbers per expiry, ATM (the delta-neutral straddle strike), 25-delta risk reversal `RR25 = sigma(25∆call) - sigma(25∆put)` (the skew, tradable as a package), and 25-delta butterfly `BF25 = 0.5*(sigma(25∆call) + sigma(25∆put)) - sigma_ATM` (the convexity), each repeated at 10-delta. This is quoted in delta space rather than strike space because G10 FX spot moves about 0.5-0.7% a day, making any strike-based quote sheet stale within hours and incomparable across pairs trading at wildly different absolute levels (EURUSD ≈ 1.10 vs USDJPY ≈ 150); delta is a moneyness measured in probability units, so it's self-normalising across spot level, pair, and vol regime, exactly why the market settled on it.
 
 **Q23. Given quotes in ATM/RR/BF form, how does the FX pipeline turn that into strikes it can actually build a surface from?**
 
@@ -910,7 +926,7 @@ Local vol is computed two ways, from total variance (Gatheral eq. 1.10) and from
 
 **Q29. Bates adds jumps to Heston. Which two limits make the oracles for `eq_surface.bates`?**
 
-With jump intensity zero, `bates_call` must equal the Heston price (to 1e-7). With vol of vol zero, variance is deterministic and the price must equal the Merton (1976) jump-diffusion series, `merton_call` (to 1e-8). Put-call parity and an Euler Monte Carlo within 4 standard errors complete the checks.
+With jump intensity zero, `bates_call` must equal the Heston price (to 1e-7). With vol of vol zero and `v0 = theta`, variance is constant and the price must equal the Merton (1976) jump-diffusion series, `merton_call` (to 1e-8). Put-call parity and an Euler Monte Carlo within 4 standard errors complete the checks.
 
 
 ## Set 6: Market Risk: VaR Methods
@@ -921,7 +937,7 @@ It is a quantile of the P&L distribution, not a prediction of the worst loss: it
 
 **Q2. Why is "VaR ignores tail severity" considered VaR's most-cited structural weakness?**
 
-Because a single number can pass every backtest while hiding an arbitrarily fat tail beyond it: `docs/VALIDATION.md` §5.1 shows the synthetic equity synthetic demo book's 99% VaR is $55k, but the 2020 COVID-replay stress loss is $254k and the historical 99% ES is $68k, a 5× gap between "the VaR number" and what actually happens once you're in the tail. VaR is a pass/fail line; it carries no information about the average or worst loss conditional on crossing it. This is the motivating defect fixed by Expected Shortfall (`ES_alpha = -E[P&L | P&L <= Q_alpha]`), which FRTB adopted precisely because it forces the tail's magnitude into the number.
+Because a single number can pass every backtest while hiding an arbitrarily fat tail beyond it: `docs/VALIDATION.md` §5.1 shows the synthetic equity demo book's 99% VaR is $55k, but the 2020 COVID-replay stress loss is $254k and the historical 99% ES is $68k, a 5× gap between "the VaR number" and what actually happens once you're in the tail. VaR is a pass/fail line; it carries no information about the average or worst loss conditional on crossing it. This is the motivating defect fixed by Expected Shortfall (`ES_alpha = -E[P&L | P&L <= Q_alpha]`), which FRTB adopted precisely because it forces the tail's magnitude into the number.
 
 **Q3. What does historical simulation assume, and what is its single biggest limitation?**
 
@@ -929,7 +945,7 @@ Plain historical VaR (`historical_var` in `eq_var/historical_var.py`) makes no d
 
 **Q4. What is "window myopia" (the "great moderation" problem) in historical VaR, and how is it demonstrated?**
 
-It is the failure mode where plain HS is only as good as its window: after a calm stretch followed by a short wild one, plain HS barely moves because the wild days are still a minority of the sample (`test_fhs_scales_up_after_vol_regime_switch`, `test_factor_fhs_reacts_to_a_vol_spike_and_hs_does_not`, which triples the last 10 days of factor moves and finds per-factor FHS roughly triples while plain HS rises by under half). Symmetrically, once a crisis rolls out of the window, plain HS understates current risk the day it leaves and overstates it while it is still in the window after the regime has calmed. The 500-day walk-forward backtest on synthetic GARCH(1,1)-t(5) data in `docs/VALIDATION.md` §4 turns this into p-values: plain HS draws 10 exceptions against an expectation of 5 (Kupiec p = 0.048, yellow zone), while per-factor FHS draws 4 (Kupiec p = 0.64, green). This is one seed of a synthetic process; the tests pin the properties, not the counts.
+It is the failure mode where plain HS is only as good as its window: after a calm stretch followed by a short wild one, plain HS barely moves because the wild days are still a minority of the sample (`test_fhs_scales_up_after_vol_regime_switch`, `test_factor_fhs_reacts_to_a_vol_spike_and_hs_does_not`, which triples the last 10 days of factor moves and finds per-factor FHS roughly triples while plain HS rises by under half). Symmetrically, after markets calm, plain HS overstates current risk for as long as the crisis days stay in the window, then drops abruptly on the day they roll out, with no change in the market (the ghost effect). The 500-day walk-forward backtest on synthetic GARCH(1,1)-t(5) data in `docs/VALIDATION.md` §4 turns this into p-values: plain HS draws 10 exceptions against an expectation of 5 (Kupiec p = 0.048, yellow zone), while per-factor FHS draws 4 (Kupiec p = 0.64, green). This is one seed of a synthetic process; the tests pin the properties, not the counts.
 
 **Q5. What does age-weighting (BRW) add over plain historical VaR, and why choose a particular decay `lam`?**
 
@@ -969,7 +985,7 @@ A grid scan flags non-monotonicity only if a sampled point shows a negative deri
 
 **Q14. Why is `(skew, excess_kurt) = (0.122, -0.427)` valid at `alpha = 0.01` but rejected by the old fixed-interval check, while `(-0.0105, 8.0001)` is invalid at every alpha?**
 
-`(0.122, -0.427)` gives a concave derivative (`A < 0`), so its minimum is at an endpoint. On the old fixed interval `|z| <= 4` the minimum is at `z = -4`, derivative about `-9.15e-4`, so the deprecated predicate rejects it. At `alpha = 0.01` the interval is `[-2.326, 2.326]`, the derivative there is positive, and `cornish_fisher_valid` accepts it; it is still valid at `alpha = 0.001` (`z_a = 3.090`). The dip at `z = -4` is beyond any quantile the engine is asked for, so rejecting the pair was too strict. `(-0.0105, 8.0001)` is the opposite case: its minimum, about `-2.5e-7`, sits at `z = 0.00175`, near the centre, so it lies inside every `[-z_a, z_a]` and the pair is invalid at every alpha (FX `docs/VALIDATION.md` table; `test_cf_counterexample_minimum_is_at_the_endpoint_and_alpha_aware`, `test_cf_valid_tightens_with_smaller_alpha`). The lesson: the validity region depends on which quantile you need, and an exact check can say so precisely.
+`(0.122, -0.427)` gives a concave derivative (`A < 0`), so its minimum is at an endpoint. On the FX engine's old fixed interval `|z| <= 4` the minimum is at `z = -4`, derivative about `-9.15e-4`, so the deprecated FX predicate rejects it (the equity engine's deprecated check uses `|z| <= 3.5`, where the derivative is still positive and the pair passes). At `alpha = 0.01` the interval is `[-2.326, 2.326]`, the derivative there is positive, and `cornish_fisher_valid` accepts it; it is still valid at `alpha = 0.001` (`z_a = 3.090`). The dip at `z = -4` is beyond any quantile the engine is asked for, so rejecting the pair was too strict. `(-0.0105, 8.0001)` is the opposite case: its minimum, about `-2.5e-7`, sits at `z = 0.00175`, near the centre, so it lies inside every `[-z_a, z_a]` and the pair is invalid at every alpha (FX `docs/VALIDATION.md` table; `test_cf_counterexample_minimum_is_at_the_endpoint_and_alpha_aware`, `test_cf_valid_tightens_with_smaller_alpha`). The lesson: the validity region depends on which quantile you need, and an exact check can say so precisely.
 
 **Q15. Why does Monte Carlo VaR fully revalue the book per scenario instead of using a linear or delta-gamma approximation?**
 
@@ -997,7 +1013,7 @@ Equity's Monte Carlo (`eq_var/monte_carlo_var.py`) revalues a `Portfolio` of lin
 
 **Q21. Why does FX VaR need the USD-triangulation factor scheme instead of one factor per traded pair?**
 
-If every traded pair (EURUSD, USDJPY, EURJPY, …) got its own risk factor, the covariance/scenario set would have to satisfy the non-linear constraint `log EURJPY = log EURUSD + log USDJPY` exactly, or a historical/parametric/MC scenario could move EURJPY without moving either USD leg, an arbitrage-inconsistent scenario. `fx_var/METHODOLOGY.md` §1.1 explains that mapping every currency to a single `FX:CCY` factor (the USD price of one unit of that currency) makes the identity hold *by construction* in every scenario, and a cross position such as EURJPY is simply decomposed into its two USD legs. This is tested to machine precision (`test_triangulation_identity_eurjpy`).
+If every traded pair (EURUSD, USDJPY, EURJPY, …) got its own risk factor, the covariance/scenario set would have to satisfy the constraint `log EURJPY = log EURUSD + log USDJPY` (linear in logs) exactly, or a historical/parametric/MC scenario could move EURJPY without moving either USD leg, an arbitrage-inconsistent scenario. `fx_var/METHODOLOGY.md` §1.1 explains that mapping every currency to a single `FX:CCY` factor (the USD price of one unit of that currency) makes the identity hold *by construction* in every scenario, and a cross position such as EURJPY is simply decomposed into its two USD legs. This is tested to machine precision (`test_triangulation_identity_eurjpy`).
 
 **Q22. How does `Book.pnl` compute base-currency P&L, and why does a pure base-currency cash balance carry zero risk?**
 
@@ -1021,7 +1037,7 @@ A raw multivariate Student-t with `df` degrees of freedom has covariance `df/(df
 
 **Q27. What is the practical trap in "switching to Student-t VaR to be more conservative," according to this portfolio's tests?**
 
-The variance-matched Student-t is fatter than the normal *only* in the deep tail, near the shoulder of the distribution (alpha around 5-10%) it is actually thinner, because matching the variance forces the t density to be lower near the centre to compensate for its fatter far tail. `docs/VALIDATION.md` §6.1 documents the crossover explicitly: t(5) charges *less* than normal at 95% VaR, with the crossover between t and normal occurring near alpha ≈ 2.8% (`test_t_vs_normal_var_crossover_is_between_2_5_and_5_percent`), while ES, which averages the whole tail rather than reading off one point, stays higher than normal at every alpha. The practical trap: someone switching a 95% VaR limit from normal to Student-t "to be conservative" would actually see the reported VaR *fall*.
+The variance-matched Student-t is fatter than the normal *only* in the deep tail, near the shoulder of the distribution (alpha around 5-10%) it is actually thinner, because matching the variance makes the t density more peaked at the centre and fatter in the far tail, which leaves less mass in the shoulders. `docs/VALIDATION.md` §6.1 documents the crossover explicitly: t(5) charges *less* than normal at 95% VaR, with the crossover between t and normal occurring near alpha ≈ 2.8% (`test_t_vs_normal_var_crossover_is_between_2_5_and_5_percent`), while ES, which averages the whole tail rather than reading off one point, stays higher than normal at every alpha. The practical trap: someone switching a 95% VaR limit from normal to Student-t "to be conservative" would actually see the reported VaR *fall*.
 
 **Q28. Why does the engine implement three VaR families instead of picking the "best" one?**
 
@@ -1112,7 +1128,7 @@ The bootstrap SE, which is what `monte_carlo_var` reports as `se_var` in every e
 
 **Q17. Same question, but the desk wants ES97.5 off a 250-day historical window rather than an MC VaR: does the SE story change?**
 
-The KDE bias doesn't apply to a purely historical ES (there's no density-at-a-quantile step there), but the small-sample problem gets *worse*, not better: ES averages over the whole `alpha` tail rather than reading off a single order statistic, so its estimation error exceeds VaR's at the same alpha (`es_standard_error_bootstrap`'s docstring makes this point explicitly). A 250-day window at `alpha=0.025` has only about 6 points in the tail being averaged, `docs/VALIDATION.md` calls this out directly: "a 250-day ES₉₇.₅ averages ~6 points, quote it with error bars." The equity engine's bootstrap SE test (`test_es_se_larger_for_smaller_alpha`) formalizes that ES's bootstrap SE is larger than VaR's bootstrap SE on the same sample.
+The KDE bias doesn't apply to a purely historical ES (there's no density-at-a-quantile step there), but the small-sample problem gets *worse*, not better: ES averages over the whole `alpha` tail rather than reading off a single order statistic, so under fat tails its estimation error exceeds VaR's at the same alpha, because the average is dominated by a few extreme points (`es_standard_error_bootstrap`'s docstring makes this point explicitly). A 250-day window at `alpha=0.025` has only about 6 points in the tail being averaged, `docs/VALIDATION.md` calls this out directly: "a 250-day ES₉₇.₅ averages ~6 points, quote it with error bars." The equity engine's bootstrap SE test (`test_es_se_larger_for_smaller_alpha`) formalizes that ES's bootstrap SE is larger than VaR's bootstrap SE on the same sample.
 
 **Q18. Why did FRTB replace 99% VaR with 97.5% ES as the headline market-risk capital measure, given ES's SE is worse at a fixed alpha?**
 
@@ -1128,7 +1144,7 @@ Z2 has no closed-form null distribution, so the function simulates one. It draws
 
 **Q21. What does Christoffersen's independence test catch that Kupiec's POF test misses entirely?**
 
-Kupiec only checks the *total* exception count against the expected rate, ten exceptions scattered randomly across 250 days and ten exceptions clustered in one bad week score identically under Kupiec. `christoffersen_independence` instead builds a first-order Markov transition count (`n00, n01, n10, n11`, exception yesterday vs today) and compares the Markov likelihood against the i.i.d. one; clustered exceptions inflate `n11` (exception-follows-exception) and the LR rejects. This matters operationally because clustering is the signature of a model that's slow to react to a genuine regime change (e.g. vol clustering under GARCH) rather than one that's simply miscalibrated on average, `exception_cluster_table`'s docstring notes gaps between exceptions should be roughly geometric with mean ~100 days under a correct i.i.d. 99% model, and a run of small gaps is the visual signature this LR test formalizes.
+Kupiec only checks the *total* exception count against the expected rate, ten exceptions scattered randomly across 250 days and ten exceptions clustered in one bad fortnight score identically under Kupiec. `christoffersen_independence` instead builds a first-order Markov transition count (`n00, n01, n10, n11`, exception yesterday vs today) and compares the Markov likelihood against the i.i.d. one; clustered exceptions inflate `n11` (exception-follows-exception) and the LR rejects. This matters operationally because clustering is the signature of a model that's slow to react to a genuine regime change (e.g. vol clustering under GARCH) rather than one that's simply miscalibrated on average, `exception_cluster_table`'s docstring notes gaps between exceptions should be roughly geometric with mean ~100 days under a correct i.i.d. 99% model, and a run of small gaps is the visual signature; that gap reading is a heuristic, the LR test itself uses only the day-to-day transition counts.
 
 **Q22. Walk through what `rolling_var_backtest` actually simulates, and why it uses a walk-forward design rather than one static fit.**
 
@@ -1171,7 +1187,7 @@ Basel 2.5 stressed VaR uses the 250-day window with the worst VaR in the history
 
 **Q1. Why does a bond's price move inversely with yield, and where does that fall out of the code?**
 
-A bond's price is the sum of its future cashflows discounted at the yield: in `fi_rates/bond.py::price_from_ytm`, dirty price is `sum(cf_i * (1 + y/m)^(-exp_i))`. Raising `y` raises every discount factor's exponent base, shrinking every `(1+y/m)^(-exp_i)` term, so price falls monotonically as yield rises, this is unit-tested as a structural invariant (price monotonicity in yield) rather than just checked pointwise. The relationship is convex, not linear, which is exactly why `price_from_ytm` can be inverted by `ytm_from_price` with a single-bracket Brent search: the price-yield curve only crosses any target once.
+A bond's price is the sum of its future cashflows discounted at the yield: in `fi_rates/bond.py::price_from_ytm`, dirty price is `sum(cf_i * (1 + y/m)^(-exp_i))`. Raising `y` raises every discount factor's exponent base, shrinking every `(1+y/m)^(-exp_i)` term, so price falls monotonically as yield rises, this is unit-tested as a structural invariant (price monotonicity in yield) rather than just checked pointwise. Because price is strictly monotone in yield, `price_from_ytm` can be inverted by `ytm_from_price` with a single-bracket Brent search: the price-yield curve crosses any target once, so a bracket with a sign change holds exactly one root. (The curve is also convex, but Brent does not need that.)
 
 **Q2. What does Macaulay duration actually measure, as implemented here?**
 
@@ -1183,7 +1199,7 @@ A bond's price is the sum of its future cashflows discounted at the yield: in `f
 
 **Q4. Why isn't duration alone enough to estimate a price move for a large yield shock?**
 
-Duration is a first-order (linear) Taylor term; the price-yield relationship is convex, not linear, so a straight-line duration estimate systematically deviates from the true curve as the shock size grows. `pnl_approximation_table` in `risk.py` builds exactly this comparison, `duration_only = -D_mod * P * dy` versus `full_repricing = price_from_ytm(ytm+dy) - price_from_ytm(ytm)`, across a shock grid from -200bp to +200bp, and VALIDATION.md §4.4 shows the duration-only error growing from -0.014 at 100bp to -1.664 at 200bp on a 10y government bond.
+Duration is a first-order (linear) Taylor term; the price-yield relationship is convex, not linear, so a straight-line duration estimate systematically deviates from the true curve as the shock size grows. `pnl_approximation_table` in `risk.py` builds exactly this comparison, `duration_only = -D_mod * P * dy` versus `full_repricing = price_from_ytm(ytm+dy) - price_from_ytm(ytm)`, across a shock grid from -200bp to +200bp, and VALIDATION.md §4.4 shows the duration-only error growing from -0.401 at -100bp to -1.664 at -200bp on a 10y government bond (-0.374 and -1.448 on the upside); adding convexity cuts the -100bp error to -0.014.
 
 **Q5. What is convexity, and how is it computed here?**
 
@@ -1219,7 +1235,7 @@ Three schemes share one code path (`curve.py`): `loglinear_df` (default, linear 
 
 **Q13. Why does locality of the interpolation scheme matter for hedging, specifically?**
 
-With `loglinear_df` or `linear_zero`, both **local** schemes, bumping one market quote (say the 10y swap) only moves discount factors between its neighboring pillars, so a bucketed DV01 report stays clean and a hedge trade in the 10y point doesn't leak risk into the 2y bucket. `pchip_zero` is **not** local: VALIDATION.md §1.1 measures that appending a new pillar under PCHIP reshapes the monotone cubic over already-solved earlier segments, so previously-repriced quotes drift by up to 3.6e-06 in rate terms, small, but enough that a PCHIP-built curve "cannot pass a 1e-10 repricing gate" that production build controls typically require (DESK_GUIDE.md §5).
+With `loglinear_df` or `linear_zero`, both **local** schemes, bumping one market quote (say the 10y swap) moves the 10y pillar and, because the bootstrap is sequential, the later pillars solved from it; earlier pillars do not move, so a bucketed DV01 report stays clean on the short end and a hedge trade in the 10y point doesn't leak risk into the 2y bucket. `pchip_zero` is **not** local: VALIDATION.md §1.1 measures that appending a new pillar under PCHIP reshapes the monotone cubic over already-solved earlier segments, so previously-repriced quotes drift by up to 3.6e-06 in rate terms, small, but enough that a PCHIP-built curve "cannot pass a 1e-10 repricing gate" that production build controls typically require (DESK_GUIDE.md §5).
 
 **Q14. What happens when the bootstrap is given a quote that can't be repriced, or when instruments are supplied out of order?**
 
@@ -1243,7 +1259,7 @@ METHODOLOGY.md's assumptions register lists this as "the big one": one curve bot
 
 **Q19. How does the curve behave beyond its last pillar, and what's the documented risk?**
 
-Both `curve.py` and VALIDATION.md §4.2 are explicit: beyond the last pillar, the zero rate is held flat, and **every query in that region emits an `ExtrapolationWarning`**, not suppressible by configuration, so callers must handle it consciously (DESK_GUIDE.md lists this as a control: warnings are treated as errors in the CI test profile except where explicitly expected). The risk is concrete, not academic: discounting a 40y cashflow off a 30y-last-pillar curve embeds an arbitrary flatness assumption directly into PV, and METHODOLOGY.md assumption 9 estimates a 10bp long-end slope error at 40y is worth about 0.4% of PV, material for pension/insurance liabilities.
+Both `curve.py` and VALIDATION.md §4.2 are explicit: beyond the last pillar, the zero rate is held flat, and **every query in that region emits an `ExtrapolationWarning`**, not suppressible by configuration, so callers must handle it consciously (DESK_GUIDE.md lists this as a control: warnings are treated as errors in the CI test profile except where explicitly expected). The risk is concrete, not academic: discounting a 40y cashflow off a 30y-last-pillar curve embeds an arbitrary flatness assumption directly into PV, and an error of 10bp in the 40y zero rate moves that cashflow's PV by about 4% (40 years × 0.10%); VALIDATION.md §4.2's figure of about 0.4% corresponds to a 1bp error. Either is material for pension/insurance liabilities.
 
 **Q20. How does the project handle zero or negative rates: is that an edge case that's broken, or supported?**
 
@@ -1286,7 +1302,7 @@ The model is fitted to today's curve, so zero bonds must reprice it. Bond-option
 
 **Q1. Two stocks have a 0.92 return correlation. Why isn't that enough to put on a pairs trade?**
 
-Return correlation only says the two names move together *day to day*; it says nothing about whether the *level* of one relative to the other is bounded. Two independent random walks can have high return correlation while their price levels drift apart without limit, there is no force pulling the spread back to a mean, so a "pairs trade" on them is really just a directional bet with extra steps. The equity project's own selection funnel demonstrates this directly: the trap pairs in the seed-7 panel have return correlations of 0.919–0.923, as high as the true cointegrated pairs, yet fail the Engle-Granger test (EG stats −1.45 to −2.13 vs a −3.34 critical value) and must be rejected (`docs/VALIDATION.md` §4).
+Return correlation only says the two names move together *day to day*; it says nothing about whether the *level* of one relative to the other is bounded. Two random walks driven by correlated shocks, with no cointegration, can have high return correlation while their price levels drift apart without limit, there is no force pulling the spread back to a mean, so a "pairs trade" on them is really just a directional bet with extra steps. The equity project's own selection funnel demonstrates this directly: the trap pairs in the seed-7 panel have return correlations of 0.919–0.923, as high as the true cointegrated pairs, yet fail the Engle-Granger test (EG stats −1.45 to −2.13 vs a −3.34 critical value) and must be rejected (`docs/VALIDATION.md` §3).
 
 **Q2. What does cointegration add that correlation doesn't?**
 
@@ -1310,7 +1326,7 @@ Because û isn't an observed series, OLS in step 1 chose (α, β) specifically t
 
 **Q7. Why does trading in ratio β:1 (not 1:1 dollars) make the combined position market-neutral, when 1:1 doesn't?**
 
-Market-neutrality means the position's P&L doesn't move with a common shock to both legs. If the two legs don't move one-for-one per dollar (β ≠ 1), which is the generic case, a naive equal-dollar 1:1 hedge still carries residual exposure to whatever the "1 share of y moves β× as much as 1 dollar of x" relationship implies. Sizing in the cointegrating ratio (`size_positions(..., mode="beta")`: `q_x = −β q_y`) makes the position track the *spread itself*, so a parallel move in both legs' common factor cancels exactly by construction, it's the ratio the regression estimated, not an assumed 1:1, that neutralizes the shared factor. The dollar-neutral mode (`mode="dollar"`, equal gross on each leg) is simpler and exactly dollar-neutral at entry but *deviates* from the cointegrating ratio, leaving small residual exposure, a trade-off the code documents explicitly in `signals.py`'s `size_positions` docstring.
+The neutrality here is to the pair's shared stochastic trend, the common shock both legs carry, not to the market's beta in the CAPM sense: the position's P&L should not move with that shared trend. If the two legs don't move one-for-one per dollar (β ≠ 1), which is the generic case, a naive equal-dollar 1:1 hedge still carries residual exposure to whatever the "1 share of y moves β× as much as 1 dollar of x" relationship implies. Sizing in the cointegrating ratio (`size_positions(..., mode="beta")`: `q_x = −β q_y`) makes the position track the *spread itself*, so a parallel move in both legs' common factor cancels exactly by construction, it's the ratio the regression estimated, not an assumed 1:1, that neutralizes the shared factor. The dollar-neutral mode (`mode="dollar"`, equal gross on each leg) is simpler and exactly dollar-neutral at entry but *deviates* from the cointegrating ratio, leaving small residual exposure, a trade-off the code documents explicitly in `signals.py`'s `size_positions` docstring.
 
 **Q8. What's the z-score entry/exit framework, and what are the actual default parameters this project's backtest uses?**
 
@@ -1322,7 +1338,7 @@ Market-neutrality means the position's P&L doesn't move with a common shock to b
 
 **Q10. Why "re-entry arming": what problem does it solve, and how large is its measured effect?**
 
-Without it, a hard stop at `|z| ≥ 4` would be immediately followed by re-entry at `|z| ≥ 2` on the very next bar, the state machine would re-fight the exact trade the stop just cut, since the spread is still extreme. The fix (`generate_signals`, the `armed` flag): after *any* exit, the pair cannot re-enter until `|z|` first drops back inside the entry band. This is what caps the loss in the project's regime-break case study, with stops and arming, the post-break loss is **−$20,963** (one entry, then the stop fires and arming blocks re-entry while z stays extreme); without any stop-loss/time-stop, the same book loses **−$715,158**, averaging into a spread that never reverts (`docs/VALIDATION.md` §9).
+Without it, a hard stop at `|z| ≥ 4` would be immediately followed by re-entry at `|z| ≥ 2` on the very next bar, the state machine would re-fight the exact trade the stop just cut, since the spread is still extreme. The fix (`generate_signals`, the `armed` flag): after *any* exit, the pair cannot re-enter until `|z|` first drops back inside the entry band. This is what caps the loss in the project's regime-break case study, with stops and arming, the post-break loss on seed 42 is about **−$25k** (one entry, then the stop fires and arming blocks re-entry while z stays extreme); without any stop-loss/time-stop, the same book loses about **−$724k**, averaging into a spread that never reverts (`docs/VALIDATION.md` §8).
 
 **Q11. Why is in-sample cointegration necessary but not sufficient for a live pairs trade: what does VALIDATION.md's regime-break case study show?**
 
@@ -1350,7 +1366,7 @@ Because price levels of two *independent* random walks are spuriously correlated
 
 **Q17. Why does this project choose Engle-Granger over Johansen, and over the classic distance method?**
 
-Against Johansen (ML rank/vector estimation for N-series VARs): for a **two-leg pair** the cointegration rank can only be 0 or 1, which is exactly what EG's single test answers; Johansen's VAR lag-order selection and eigenvalue machinery buy nothing at N=2 and it's documented as the scaling path for baskets of 3+ names instead. Against the distance method (Gatev-Goetzmann-Rouwenkamp SSD, ranking pairs by sum-of-squared normalized price gaps): it's cheap and assumption-light, kept as a pre-screen (`ssd_screen`), but has no null hypothesis, so it can't distinguish "these paths track because of a real common factor" from "they tracked by luck," and it gives no spread model, hence no principled half-life or time-stop. EG gives a testable null and its residual *is* the tradeable hedge ratio directly (`docs/METHODOLOGY.md` §1).
+Against Johansen (ML rank/vector estimation for N-series VARs): for a **two-leg pair** the cointegration rank can only be 0 or 1, which is exactly what EG's single test answers; at N=2 Johansen's VAR lag-order selection and eigenvalue machinery buy little beyond one real advantage, its result is symmetric in the two legs where EG's depends on which leg is the dependent variable, and it's documented as the scaling path for baskets of 3+ names instead. Against the distance method (Gatev-Goetzmann-Rouwenhorst SSD, ranking pairs by sum-of-squared normalized price gaps): it's cheap and assumption-light, kept as a pre-screen (`ssd_screen`), but has no null hypothesis, so it can't distinguish "these paths track because of a real common factor" from "they tracked by luck," and it gives no spread model, hence no principled half-life or time-stop. EG gives a testable null and its residual *is* the tradeable hedge ratio directly (`docs/METHODOLOGY.md` §1).
 
 **Q18. What's the adaptive alternative to the static OLS hedge ratio, and what does it trade off?**
 
@@ -1366,11 +1382,11 @@ The backtester decides the signal at the close of day t and fills at a modelled 
 
 **Q21. Sharpe ratio standard errors are computed two ways in this project: why, and what does the second method show?**
 
-`metrics.py` computes the Sharpe SE both under the iid assumption (`√((1+SR²/2)/T)`, Lo 2002) and **Lo-adjusted** for serial correlation, using a Bartlett/Newey-West long-run variance ratio on the mean return. Mean-reversion strategies produce autocorrelated P&L (a position held over several days generates correlated daily P&L within the trade), so the iid SE understates uncertainty exactly when it matters, tested to widen the SE by >30% at AR(1) φ=0.6. On the synthetic seed-7 book the two differ in both directions (in-sample 0.41 iid vs 0.29 Lo, walk-forward 0.45 vs 0.37, `docs/VALIDATION.md` §5), which is the point: the adjustment depends on the sign of the autocorrelation, and the iid number is not a safe default.
+`metrics.py` computes the Sharpe SE both under the iid assumption (`√((1+SR²/2)/T)`, Lo 2002) and **Lo-adjusted** for serial correlation, using a Bartlett/Newey-West long-run variance ratio on the mean return. Mean-reversion strategies produce autocorrelated P&L (a position held over several days generates correlated daily P&L within the trade), so with positive autocorrelation the iid SE understates uncertainty, tested to widen the SE by >30% at AR(1) φ=0.6. On the synthetic seed-7 book the Lo SE is the smaller one in both quoted cases (in-sample 0.41 iid vs 0.29 Lo, walk-forward 0.45 vs 0.37, `docs/VALIDATION.md` §5), so there the iid SE overstated the uncertainty. That is the point: the direction of the adjustment depends on the sign of the autocorrelation, and the iid number is not a safe default.
 
 **Q22. What is the "trap" the equity selection funnel is specifically built to catch, and how many pairs actually survive it?**
 
-Starting from 40 same-sector candidate pairs in the synthetic seed-7 20-name panel: 8 pass the return-correlation screen (ρ ≥ 0.6), and only 4 of those pass Engle-Granger at 5%, all four planted pairs. The three correlated-random-walk traps that passed the correlation screen are all rejected by EG (`docs/VALIDATION.md` §3). Over 30 synthetic seeds, planted pairs pass EG 3.93 of 4 times on average and traps 0.20 times. This is the funnel doing the job correlation alone cannot: separating shared-shock co-movement from a stationary spread.
+Starting from 40 same-sector candidate pairs in the synthetic seed-7 20-name panel: 8 pass the return-correlation screen (ρ ≥ 0.6), and only 4 of those pass Engle-Granger at 5%, all four planted pairs. EG rejects the other four, including all three correlated-random-walk traps that passed the correlation screen (`docs/VALIDATION.md` §3). Over 30 synthetic seeds, planted pairs pass EG 3.93 of 4 times on average and traps 0.20 times. This is the funnel doing the job correlation alone cannot: separating shared-shock co-movement from a stationary spread.
 
 **Q23. How does the FX project frame its version of this strategy differently from the equity one: what's actually being traded?**
 
@@ -1425,11 +1441,11 @@ Expected loss (EL) is the average credit loss a lender expects to realize on an 
 
 **Q6. Does this project implement all three components of EL (PD, LGD, EAD), or only PD?**
 
-The scorecard itself only estimates PD from data, LGD and EAD are treated as inputs, not modeled outputs. `expected_loss(pd, lgd, ead)` in `portfolio_risk.py` takes LGD and EAD as arguments rather than deriving them, and METHODOLOGY.md assumption 4 states this plainly: "LGD and EAD independent of PD... EL = PD·LGD·EAD multiplies point estimates" using externally supplied LGD/EAD. The synthetic demo book applies a flat 25% downturn-LGD haircut (EL rises from 605.5m to 754.3m) as a regulator-style stress adjustment rather than a fitted LGD model.
+The scorecard itself only estimates PD from data, LGD and EAD are treated as inputs, not modeled outputs. `expected_loss(pd, lgd, ead)` in `portfolio_risk.py` takes LGD and EAD as arguments rather than deriving them, and METHODOLOGY.md assumption 4 states this plainly: "LGD and EAD independent of PD... EL = PD·LGD·EAD multiplies point estimates" using externally supplied LGD/EAD. The synthetic demo book applies a 25% downturn-LGD haircut, multiplicative with LGD capped at 1 (EL rises from 605.3m to 754.2m, a little under 1.25x because of the cap), as a regulator-style stress adjustment rather than a fitted LGD model.
 
 **Q7. What is "wrong-way risk" and how does this project handle (or fail to handle) it?**
 
-Wrong-way risk is the phenomenon where PD and LGD (or exposure) rise together, collateral values fall exactly when defaults spike, as in 2008 commercial real estate. Because EL = PD·LGD·EAD multiplies independent point estimates, this project cannot capture that correlation directly (METHODOLOGY.md assumption 4); its only concession is the crude, flat downturn-LGD haircut applied portfolio-wide rather than a joint PD-LGD model. The FX project names the same gap explicitly for its expected loss on exposure (assumption A7): assuming exposure independent of counterparty default is "the worst possible assumption" for an EM sovereign on a long-USD forward, and VALIDATION.md §4.4 works a hand example (not code) in which ignoring it understates the loss about 6x.
+Wrong-way risk is exposure that rises as the counterparty's PD rises, for example a long-USD forward with an EM sovereign whose currency collapses as it defaults. The related effect where LGD rises with PD, collateral values falling exactly when defaults spike, as in 2008 commercial real estate, is recovery (PD-LGD) correlation. Because EL = PD·LGD·EAD multiplies independent point estimates, this project cannot capture that correlation directly (METHODOLOGY.md assumption 4); its only concession is the crude, flat downturn-LGD haircut applied portfolio-wide rather than a joint PD-LGD model. The FX project names the same gap explicitly for its expected loss on exposure (assumption A7): assuming exposure independent of counterparty default is "the worst possible assumption" for an EM sovereign on a long-USD forward, and VALIDATION.md §4.4 works a hand example (not code) in which ignoring it understates the loss about 6x.
 
 **Q8. How is the equity PD model validated for discrimination: how well does it rank-order risk?**
 
@@ -1473,7 +1489,7 @@ Leakage is when a feature encodes information that would not actually be availab
 
 **Q18. What out-of-sample / regime edge case does this project's validation construct, and what does it reveal?**
 
-The OOT (out-of-time) sample is built with a planted 0.5 drift plus a 0.5 log-odds calibration shift, lifting the realized default rate from 2.95% (training) to 4.78% (OOT), modeling a genuine regime change rather than resampling noise. This reveals that a PIT (point-in-time) scorecard degrades gracefully in discrimination (AUC only −1.7 points) but breaks sharply in calibration (HL p-value collapses from 0.022 to 3.8e-07, mean predicted PD 3.80% undershoots realized 4.78%), and crucially, PSI alone would have missed it (stayed at 0.074, "stable"), which is exactly why VALIDATION.md's failure-mode #1 insists monitoring must track realized-vs-predicted rates directly, not PSI alone.
+The OOT (out-of-time) sample is built with a planted 0.5 drift plus a 0.5 log-odds calibration shift, lifting the realized default rate from 2.95% (training) to 4.78% (OOT), modeling a genuine regime change rather than resampling noise. This reveals that a PIT (point-in-time) scorecard degrades gracefully in discrimination (AUC only −1.5 points) but breaks sharply in calibration (HL p-value collapses from 0.022 to 4.7e-06, mean predicted PD 3.81% undershoots realized 4.78%), and crucially, PSI alone would have missed it (stayed at 0.074, "stable"), which is exactly why VALIDATION.md's failure-mode #1 insists monitoring must track realized-vs-predicted rates directly, not PSI alone.
 
 **Q19. What is a Through-the-Cycle (TTC) vs Point-in-Time (PIT) PD, and which is this model?**
 
@@ -1501,11 +1517,11 @@ With only ~63 historical sovereign default events feeding 10 WOE coefficients, s
 
 **Q25. How does the equity project's validated output feed into desk-level credit limits and origination decisions?**
 
-DESK_GUIDE.md §2 describes cutoffs set directly from the KS/decile table: since the scorecard concentrates 11.2% of defaults in the worst decile versus 0.10% in the best (112x spread), the desk sets a score cutoff (e.g. auto-approve ≥ 620, manual review 560–620, decline < 560) that excludes the riskiest deciles, removing roughly 55% of expected defaults at the cost of about 20% of loan volume. Reason codes for declines read directly off the points table (e.g. "leverage > 0.94: 58 pts vs 117 for < 0.18"), which is only possible because the scorecard is interpretable by construction, a key reason METHODOLOGY.md gives for choosing it over a GBM.
+DESK_GUIDE.md §2 describes cutoffs set directly from the KS/decile table: since the default rate is 11.2% in the worst score decile versus 0.10% in the best (112x spread), the desk sets a score cutoff (e.g. auto-approve ≥ 620, manual review 560–620, decline < 560) that excludes the riskiest deciles, removing roughly 55% of expected defaults at the cost of about 20% of loan volume. Reason codes for declines read directly off the points table (e.g. "leverage > 0.94: 58 pts vs 117 for < 0.18"), which is only possible because the scorecard is interpretable by construction, a key reason METHODOLOGY.md gives for choosing it over a GBM.
 
 **Q26. How does the PD model feed into loss provisioning and regulatory capital, and why does the desk need to treat those two uses differently?**
 
-For provisioning, DESK_GUIDE.md §4 states IFRS 9/CECL Stage-1 expected credit loss is literally this model's output, 12-month ECL = PD₁y·LGD·EAD (605m, 1.47% of EAD on the synthetic demo book; 754m with the downturn-LGD haircut), and because the model is PIT, ECL rising with the cycle is *intended* under IFRS 9. For capital, however, DESK_GUIDE.md §5 and VALIDATION.md failure mode #5 warn that feeding the same PIT PDs into the Basel IRB formula makes capital procyclical (repricing at OOT-implied calibration raises every PD by ×1.26, demanding more capital exactly when it's scarcest); Basel expects long-run-average (TTC) PDs per grade, so IRB use requires a TTC overlay that this project documents as needed but does not itself build (METHODOLOGY.md §6). Treasury separately consumes the Vasicek economic-capital number (8.20% of EAD at 99.9% vs Basel K's 10.03%) for ICAAP and stress testing (DESK_GUIDE.md §5).
+For provisioning, DESK_GUIDE.md §4 states IFRS 9 Stage-1 expected credit loss is literally this model's output, 12-month ECL = PD₁y·LGD·EAD (605m, 1.47% of EAD on the synthetic demo book; 754m with the downturn-LGD haircut), and because the model is PIT, ECL rising with the cycle is *intended* under IFRS 9. US CECL has no stages: it books lifetime ECL from day one, so it would need the PD term structure, not this one-year PD alone. For capital, however, DESK_GUIDE.md §5 and VALIDATION.md failure mode #5 warn that feeding the same PIT PDs into the Basel IRB formula makes capital procyclical (repricing at OOT-implied calibration raises every PD by ×1.26, demanding more capital exactly when it's scarcest); Basel expects long-run-average (TTC) PDs per grade, so IRB use requires a TTC overlay that this project documents as needed but does not itself build (METHODOLOGY.md §6). Treasury separately consumes the Vasicek economic-capital number (8.20% of EAD at 99.9% vs Basel K's 10.03%) for ICAAP and stress testing (DESK_GUIDE.md §5).
 
 **Q27. What is a margin of conservatism in `eq_credit.calibration`, and what floor is applied?**
 
@@ -1524,7 +1540,7 @@ SA-CCR is the Basel standardised exposure (CRE52): replacement cost plus a multi
 
 **Q1. State the Markowitz mean-variance optimization problem. What is the efficient frontier?**
 
-Markowitz (1952) mean-variance optimization (MVO) either minimizes portfolio variance `w'Σw` subject to a target expected return `w'μ = m` and a budget `sum(w) = 1` (`target_return_portfolio` in `eq_port/mvo.py`), or equivalently maximizes expected return for a variance cap (`target_risk_portfolio`, which maximizes `w'μ` subject to `sqrt(w'Σw) ≤ target_vol`). Sweeping the target across its feasible range and recording the minimum-variance weight at each point traces the efficient frontier, the set of portfolios where no other combination gives higher return at the same risk. `efficient_frontier()` implements this sweep, either analytically (unconstrained) or numerically via repeated SLSQP solves (bounded).
+Markowitz (1952) mean-variance optimization (MVO) either minimizes portfolio variance `w'Σw` subject to a target expected return `w'μ = m` and a budget `sum(w) = 1` (`target_return_portfolio` in `eq_port/mvo.py`), or equivalently maximizes expected return for a variance cap (`target_risk_portfolio`, which maximizes `w'μ` subject to `sqrt(w'Σw) ≤ target_vol`). Sweeping the target across its feasible range and recording the minimum-variance weight at each point traces the minimum-variance frontier; its upper branch, the targets above the global minimum-variance portfolio's return, is the efficient frontier, the set of portfolios where no other combination gives higher return at the same risk. `efficient_frontier()` implements this sweep, either analytically (unconstrained) or numerically via repeated SLSQP solves (bounded).
 
 **Q2. Give the closed-form unconstrained tangency (maximum-Sharpe) portfolio, and say what code implements it.**
 
@@ -1540,7 +1556,7 @@ Variance estimates improve with the *number of observations*, so sampling daily 
 
 **Q5. What is James-Stein shrinkage, and quantitatively how much does the project's estimation-error study shrink toward it?**
 
-James-Stein shrinks each asset's sample mean toward the cross-sectional grand mean, with data-driven intensity `phi = clip((N−3)·σ̄²/T / Σᵢ(μᵢ−m̄)², 0, 1)` (`returns_est.py`, per `METHODOLOGY.md` §2). It is biased toward "all assets are equal" but dominates the sample mean in total squared error for N ≥ 4 (Stein 1956). In the project's synthetic estimation-error study (20 windows on each of 10 panels), average James-Stein intensity is φ = 0.94, so the data essentially say to ignore the sample means, and shrunk-mean tangency's mean true Sharpe (0.328, long-only) beats raw-mean long-only tangency (0.279), a paired difference whose 95% CI excludes zero (`VALIDATION.md` §3).
+James-Stein shrinks each asset's sample mean toward the cross-sectional grand mean, with data-driven intensity `phi = clip((N−3)·σ̄²/T / Σᵢ(μᵢ−m̄)², 0, 1)` (`returns_est.py`, per `METHODOLOGY.md` §2). It is biased toward "all assets are equal" but dominates the sample mean in total squared error for N ≥ 4 (Stein, 1956, proved the sample mean inadmissible; the estimator is James and Stein, 1961). In the project's synthetic estimation-error study (20 windows on each of 10 panels), average James-Stein intensity is φ = 0.94, so the data essentially say to ignore the sample means, and shrunk-mean tangency's mean true Sharpe (0.328, long-only) beats raw-mean long-only tangency (0.279), a paired difference whose 95% CI excludes zero (`VALIDATION.md` §3).
 
 **Q6. What are Black-Litterman and reverse optimization, and how do they sidestep the raw-sample-mean problem differently from James-Stein?**
 
@@ -1608,7 +1624,7 @@ VALIDATION.md §5 ("Numerical limits") states that perfectly correlated or `T �
 
 **Q22. What specifically goes wrong in a highly correlated basket in a crisis, quantitatively, per the project's crisis-regime results?**
 
-`VALIDATION.md` §5.1 reports realized average pairwise correlation jumping from 0.470 (calm) to 0.867 (crisis) in the synthetic seed-1 panel. With correlations pushed toward 1, diversification degrades for every strategy (all books' crisis vol runs ~2.5–3x their calm-period vol), but the degradation is uneven: broad, diversified books (ERC effective N 7.8, equal-weight 8.0) degrade "gracefully," while the concentrated raw-mean tangency book (effective N 1.92), which was already carrying idiosyncratic risk it thought it was diversifying away, posts the worst crisis vol (0.542), worst max drawdown (0.448), and worst crisis total return (−0.347) of any strategy tested. Min-variance, which holds the low-beta corner by construction, degrades least (vol 0.380, MaxDD 0.308).
+`VALIDATION.md` §6 reports realized average pairwise correlation jumping from 0.470 (calm) to 0.867 (crisis) in the synthetic seed-1 panel. With correlations pushed toward 1, diversification degrades for every strategy (all books' crisis vol runs ~2.5–3x their calm-period vol), but the degradation is uneven: broad, diversified books (ERC effective N 7.8, equal-weight 8.0) degrade "gracefully," while the concentrated raw-mean tangency book (effective N 1.92), which was already carrying idiosyncratic risk it thought it was diversifying away, posts the worst crisis vol (0.542), worst max drawdown (0.448), and worst crisis total return (−0.347) of any strategy tested. Min-variance, which holds the low-beta corner by construction, degrades least (vol 0.380, MaxDD 0.308).
 
 **Q23. Why is single-factor covariance always guaranteed PSD, and what's the trade-off documented against Ledoit-Wolf?**
 
@@ -1620,11 +1636,11 @@ FX `METHODOLOGY.md` §5 notes that variance is symmetric while carry's risk is n
 
 **Q25. Contrast the two Ledoit-Wolf shrinkage targets used in the equity vs FX projects, and explain why each is the natural choice for its asset class.**
 
-The equity project shrinks the sample covariance toward a *constant-correlation* target (`ledoit_wolf_cc`, `F` keeps sample variances, replaces every off-diagonal correlation with the average correlation `rbar`), natural for a single-market equity universe where all pairs share a broadly similar comovement level. The FX project instead shrinks toward a *scaled identity* with intensity `δ = min(b²,d²)/d²`, described as "minimax-safe", appropriate because FX pairs don't share a single natural "market" correlation the way same-market equities do (idiosyncratic pairs like EUR-CHF break a constant-correlation assumption), so shrinking toward "no correlation, own variance" is the safer default before layering in the explicit risk-on/off one-factor structure for stress logic.
+The equity project shrinks the sample covariance toward a *constant-correlation* target (`ledoit_wolf_cc`, `F` keeps sample variances, replaces every off-diagonal correlation with the average correlation `rbar`), natural for a single-market equity universe where all pairs share a broadly similar comovement level. The FX project instead shrinks toward a *scaled identity* with intensity `δ = min(b²,d²)/d²`, described as "minimax-safe", appropriate because FX pairs don't share a single natural "market" correlation the way same-market equities do (idiosyncratic pairs like EUR-CHF break a constant-correlation assumption), so shrinking toward "no correlation, equal variance" (every diagonal entry set to the average sample variance, `trace(S)/n`) is the safer default before layering in the explicit risk-on/off one-factor structure for stress logic.
 
 **Q26. What diagnostic thresholds does DESK_GUIDE.md specify for gating a rebalance, and what do they protect against?**
 
-`DESK_GUIDE.md` §2 and §7 list several gates checked before a trade is released: Ledoit-Wolf shrinkage intensity δ (alert if δ > 0.5, spiking toward 1 means the sample covariance is uninformative and should be investigated before being trusted), condition number (alert if > 1e3, flagging near-singular inputs of the kind in Q20/Q26), effective N ≥ 4 (a concentration floor, guards against the effective-N-1.57 collapse seen in the raw-tangency crisis results), ex-ante vol versus target, and realized risk contributions staying within ±25% of budget (catching drift away from the risk-parity mandate between rebalances). Together these turn the estimation-error and singularity failure modes documented in METHODOLOGY.md/VALIDATION.md into concrete, checkable pre-trade controls rather than only a backtest observation.
+`DESK_GUIDE.md` §2 and §7 list several gates checked before a trade is released: Ledoit-Wolf shrinkage intensity δ (alert if δ > 0.5, spiking toward 1 means the sample covariance is uninformative and should be investigated before being trusted), condition number (alert if > 1e3, flagging near-singular inputs of the kind in Q20), effective N ≥ 4 (a concentration floor, guards against the effective-N-1.92 collapse seen in the raw-tangency walk-forward results, `VALIDATION.md` §5), ex-ante vol versus target, and realized risk contributions staying within ±25% of budget (catching drift away from the risk-parity mandate between rebalances). Together these turn the estimation-error and singularity failure modes documented in METHODOLOGY.md/VALIDATION.md into concrete, checkable pre-trade controls rather than only a backtest observation.
 
 **Q27. What does hierarchical risk parity (`eq_port.hrp.hrp_weights`) avoid that mean-variance cannot?**
 
@@ -1663,7 +1679,7 @@ Because it concentrates trading where the market is naturally absorbing more vol
 
 **Q6. What is participation-rate (POV) scheduling, and what trade-off does it manage?**
 
-`pov_schedule(parent_qty, market_volumes, participation)` in `benchmarks.py` trades a fixed fraction (`participation * V_j`) of each bucket's volume until the parent is filled, capped at that percentage in every bucket. The trade-off is urgency versus impact: a higher participation rate finishes the order faster but takes a larger share of each bucket's liquidity (more impact per clip); a lower rate spreads out longer, reducing per-clip impact but exposing the unfilled remainder to more price drift over a longer horizon (timing risk). `docs/DESK_GUIDE.md` sets the default participation cap at 10% ADV and treats it as a "the desk's cue to split across days" limit rather than a knob to push arbitrarily higher.
+`pov_schedule(parent_qty, market_volumes, participation)` in `benchmarks.py` trades a fixed fraction (`participation * V_j`) of each bucket's volume until the parent is filled, capped at that percentage in every bucket. The trade-off is urgency versus impact: a higher participation rate finishes the order faster but takes a larger share of each bucket's liquidity (more impact per clip); a lower rate spreads out longer, reducing per-clip impact but exposing the unfilled remainder to more price drift over a longer horizon (timing risk). The participation rate is a share of each bucket's volume, not of ADV. Order size against ADV is a separate limit: `docs/VALIDATION.md` failure mode 2 notes that above about 10% of ADV the fitted square-root law understates cost, which is the desk's cue to split the order across days rather than push participation higher.
 
 **Q7. What happens in `pov_schedule` if the parent order is larger than the day's capacity at the chosen participation rate?**
 
@@ -1687,7 +1703,7 @@ It's a hybrid, per the Almgren-Chriss / Huberman-Stanzl split documented in `doc
 
 **Q12. Why does the project use square-root temporary impact in the simulator but linear temporary impact in the Almgren-Chriss optimizer, isn't that inconsistent?**
 
-Yes, and it's deliberate, not a bug. Classic Almgren-Chriss (`almgren_chriss.py`) is solved analytically under *linear* temporary impact (`eta`), which is what yields the closed-form `x_j = X*sinh(κ(T−t_j))/sinh(κT)` trajectory. The `IntradayMarket` simulator, used to *evaluate* any schedule (AC's or otherwise), charges the empirically-truer square-root temporary impact. `docs/METHODOLOGY.md` calls this "optimise in a tractable model, evaluate in a richer one" and states it "mirrors desk reality." `docs/VALIDATION.md` §6 quantifies the consequence on synthetic seed 42: concentrating flow (an aggressive schedule) has an expected IS of 27.5 bp against TWAP's 14.3, more than a linear-impact model would have predicted, so the *ranking* of schedules by variance is robust, but the absolute expected-cost numbers are model-dependent.
+Yes, and it's deliberate, not a bug. Classic Almgren-Chriss (`almgren_chriss.py`) is solved analytically under *linear* temporary impact (`eta`), which is what yields the closed-form `x_j = X*sinh(κ(T−t_j))/sinh(κT)` trajectory. The `IntradayMarket` simulator, used to *evaluate* any schedule (AC's or otherwise), charges the empirically-truer square-root temporary impact. `docs/METHODOLOGY.md` calls this "optimise in a tractable model, evaluate in a richer one" and states it "mirrors desk reality." `docs/VALIDATION.md` §6 quantifies the consequence on synthetic seed 42: concentrating flow (an aggressive schedule) has an expected IS of 27.5 bp against TWAP's 14.3. Square-root impact is concave, so it penalises that concentration less than linear impact would, and the optimiser's linear model and the simulator disagree on cost, so the *ranking* of schedules by variance is robust, but the absolute expected-cost numbers are model-dependent.
 
 **Q13. What is the closed-form Almgren-Chriss trajectory, and what do the two limiting cases of the risk-aversion parameter λ give?**
 
@@ -1794,7 +1810,7 @@ Looking at `src/eq_regime/backtest.py::walk_forward_backtest`, it builds point-i
 
 **Q12. Why are log returns used for return aggregation in this backtest instead of simple returns?**
 
-Because log returns are additive across time and simple returns are not: the log return over two periods is exactly `r_1 + r_2`, while the two-period simple return is `(1+r_1)(1+r_2) - 1 ≈ r_1 + r_2` only approximately (the cross term `r_1 r_2` is dropped). That makes log returns the natural unit for anything that sums or averages returns over time or across assets, feature construction (`build_features`), the HMM's Gaussian emission model, and vol targeting in `strategy.py::vol_target_scale` all consume log returns, and `docs/METHODOLOGY.md` §6 states this as a project-wide convention: "Daily log-returns; vols annualised ACT/252." Simple returns are still needed elsewhere, because P&L compounding is a multiplicative, not additive, process, which is exactly what `np.expm1` bridges (see Q13).
+Because log returns are additive across time and simple returns are not (across assets it is the other way round: a portfolio's simple return is the weighted sum of its assets' simple returns, and log returns do not add that way): the log return over two periods is exactly `r_1 + r_2`, while the two-period simple return is `(1+r_1)(1+r_2) - 1 ≈ r_1 + r_2` only approximately (the cross term `r_1 r_2` is dropped). That makes log returns the natural unit for anything that sums or averages returns over time, feature construction (`build_features`), the HMM's Gaussian emission model, and vol targeting in `strategy.py::vol_target_scale` all consume log returns, and `docs/METHODOLOGY.md` §6 states this as a project-wide convention: "Daily log-returns; vols annualised ACT/252." Simple returns are still needed elsewhere, because P&L compounding is a multiplicative, not additive, process, which is exactly what `np.expm1` bridges (see Q13).
 
 **Q13. Where in the code does `np.expm1` show up, and what numerical problem does it solve?**
 
@@ -1802,11 +1818,11 @@ In `src/eq_regime/backtest.py::walk_forward_backtest`: `asset_log_ret = np.log(p
 
 **Q14. The module docstring says returns are converted "internally" for compounding, walk through why the ledger needs simple returns specifically, not log returns.**
 
-`run_ledger()` compounds P&L as `equity = initial_equity * np.cumprod(1.0 + net)`, i.e. it treats each period's return as multiplicative growth: a portfolio holding weight `w` earns `w * r_simple` of the asset's simple return, and equity multiplies by `(1 + net_ret)` each day. That identity, `equity_t = equity_{t-1} * (1 + r_t)`, is only true for simple returns; log returns would need to be exponentiated and summed instead, or the ledger's cost/weight arithmetic (which is linear in return, e.g. `cost = cost_rate * |Δw|`, `gross = w * next_ret`) would need to change form. So the pipeline uses log returns everywhere the additive property is wanted (features, vol estimation) and converts to simple returns, via the numerically careful `expm1`, exactly at the one place, ledger compounding, where the multiplicative identity is what's actually needed.
+`run_ledger()` compounds P&L as `equity = initial_equity * np.cumprod(1.0 + net)`, i.e. it treats each period's return as multiplicative growth: a portfolio holding weight `w` earns `w * r_simple` of the asset's simple return, and equity multiplies by `(1 + net_ret)` each day. That identity, `equity_t = equity_{t-1} * (1 + r_t)`, is only true for simple returns; log returns would need to be summed and then exponentiated instead, or the ledger's cost/weight arithmetic (which is linear in return, e.g. `cost = cost_rate * |Δw|`, `gross = w * next_ret`) would need to change form. So the pipeline uses log returns everywhere the additive property is wanted (features, vol estimation) and converts to simple returns, via the numerically careful `expm1`, exactly at the one place, ledger compounding, where the multiplicative identity is what's actually needed.
 
-**Q15. The task description mentions this file was recently cleaned up around this log-return computation: what did that consolidation actually look like in the current code, and why does it matter?**
+**Q15. How does the current code derive log and simple returns from one computation, and why does it matter?**
 
-The current `walk_forward_backtest` computes `asset_log_ret` exactly once and derives both series it needs from that single array, `log_ret` by taking the mean directly, `simple_ret` by applying `np.expm1` to the same array before averaging, rather than computing log returns and simple returns via two independent expressions (e.g. a second, separately-written `prices / prices.shift(1) - 1` for the simple-return side). That's a small but meaningful numerical-hygiene fix: two independently written return computations can silently drift out of sync (different `shift`/`iloc` alignment, different NaN handling at the warm-up row) and are strictly more surface area to audit for correctness, whereas deriving both series from one already-log-returned array guarantees they are the same 252 dates with the same indexing by construction, with `expm1` doing the precision-preserving conversion rather than a second lossy log/subtract round-trip.
+The current `walk_forward_backtest` computes `asset_log_ret` exactly once and derives both series it needs from that single array, `log_ret` by taking the mean directly, `simple_ret` by applying `np.expm1` to the same array before averaging, rather than computing log returns and simple returns via two independent expressions (e.g. a second, separately-written `prices / prices.shift(1) - 1` for the simple-return side). That's a small but meaningful numerical-hygiene fix: two independently written return computations can silently drift out of sync (different `shift`/`iloc` alignment, different NaN handling at the warm-up row) and are strictly more surface area to audit for correctness, whereas deriving both series from one already-log-returned array guarantees they cover the same dates with the same indexing by construction, with `expm1` doing the precision-preserving conversion rather than a second lossy log/subtract round-trip.
 
 **Q16. What tests specifically defend the `run_ledger` arithmetic, beyond just checking it runs without error?**
 
@@ -1917,7 +1933,7 @@ Because seed selection is itself a place backtest-overfitting can hide, one leve
 
 **Q15. F3's closed form already checks put-call parity and its own Greeks against finite differences. What does agreement with an *independent* Monte Carlo pricer prove that those internal checks cannot?**
 
-`docs/METHODOLOGY.md` §1.2 names the gap precisely: `call_price`/`put_price` share one `_d1_d2` helper, so a bug in `_d1_d2`, a wrong sign, a misremembered `+sigma^2/2` vs `-sigma^2/2`, a subtly wrong `N(x)`, would corrupt every internal check identically and still pass all of them. Put-call parity, monotonicity, and Greeks-vs-finite-differences are all checks *internal* to the same closed-form code, so they share its blind spots by construction. The Monte Carlo pricer in `monte_carlo.py` shares no code with the closed form: it draws standard normals and builds `S_T = S0 exp((r - sigma^2/2)T + sigma sqrt(T) Z)` directly from the SDE's solution, then averages discounted payoffs. If the closed form had a sign or constant error, the two would disagree by far more than Monte Carlo noise, they would have to be wrong in *exactly the same way* to agree by coincidence across a convergence table spanning four sample sizes, each within 3 standard errors of a error bar shrinking at the correct O(1/√n) rate. An independent implementation using a different numerical method is the only kind of check that rules out a whole class of "consistently wrong in the same way" bugs; a self-consistency check, no matter how many identities it verifies, cannot.
+`docs/METHODOLOGY.md` §1.2 names the gap precisely: `call_price`/`put_price` share one `_d1_d2` helper, so a bug in `_d1_d2`, a wrong sign, a misremembered `+sigma^2/2` vs `-sigma^2/2`, a subtly wrong `N(x)`, would corrupt every internal check identically and still pass all of them. Put-call parity, monotonicity, and Greeks-vs-finite-differences are all checks *internal* to the same closed-form code, so they share its blind spots by construction. The Monte Carlo pricer in `monte_carlo.py` shares no code with the closed form: it draws standard normals and builds `S_T = S0 exp((r - sigma^2/2)T + sigma sqrt(T) Z)` directly from the SDE's solution, then averages discounted payoffs. If the closed form had a sign or constant error, the two would disagree by far more than Monte Carlo noise, they would have to be wrong in *exactly the same way* to agree by coincidence across a convergence table spanning four sample sizes, each within 3 standard errors, with the error bar shrinking at the correct O(1/√n) rate. An independent implementation using a different numerical method is the only kind of check that rules out a whole class of "consistently wrong in the same way" bugs; a self-consistency check, no matter how many identities it verifies, cannot.
 
 **Q16. F3's methodology says the antithetic-variate Monte Carlo standard error must be computed from "pair averages," not from the raw `2m` draws treated as independent. Why does that distinction matter for the cross-check in Q15 to mean anything?**
 
@@ -1925,7 +1941,7 @@ Antithetic sampling makes the mirrored draws negatively correlated by design, so
 
 **Q17. F3 produces a volatility smile from a model that assumes flat volatility. What is that experiment, and why publish a demonstrated failure of your own model?**
 
-Assumption A1 in `docs/METHODOLOGY.md` states Black-Scholes assumes geometric Brownian motion with constant volatility, so log-returns are exactly normal. The experiment prices a strike ladder by Monte Carlo under a Student-t(df=4), fat-tailed return distribution instead, then reads those prices back through the constant-vol closed form to recover an "implied" volatility per strike. On the reference numbers, that implied vol comes out higher at the wings than at the money (27.6% at K=70, 22.9% at K=105, 28.6% at K=140, a 5.2-vol-point smile) instead of the flat line constant-vol GBM predicts, qualitatively the same shape real equity- and index-option markets have shown since the 1987 crash. The project publishes this because it is the necessary completion of "prove the model right where theory says it should be right, and prove it wrong where reality says it should be wrong, with the same codebase", a from-scratch rebuild that only ever showed the model succeeding would be demonstrating agreement with itself, not understanding of where the model's assumptions actually bind.
+Assumption A1 in `docs/METHODOLOGY.md` states Black-Scholes assumes geometric Brownian motion with constant volatility, so log-returns are exactly normal. The experiment prices a strike ladder by Monte Carlo under a Student-t(df=4), fat-tailed return distribution instead, then reads those prices back through the constant-vol closed form to recover an "implied" volatility per strike. On the reference numbers, that implied vol comes out higher at the wings than at the money (27.6% at K=70, 22.9% at K=105, 28.6% at K=140, a 5.2-vol-point smile) instead of the flat line constant-vol GBM predicts. A symmetric fat-tailed distribution gives a symmetric smile; real equity-index options since the 1987 crash show a downward skew instead, low strikes much richer than high ones, which needs negative skewness or spot-vol correlation that this experiment does not include. The project publishes this because it is the necessary completion of "prove the model right where theory says it should be right, and prove it wrong where reality says it should be wrong, with the same codebase", a from-scratch rebuild that only ever showed the model succeeding would be demonstrating agreement with itself, not understanding of where the model's assumptions actually bind.
 
 **Q18. F1's `docs/VALIDATION.md` says the Kupiec pass for historical VaR is "close to tautological" even though it's presented as a validation result. What does that mean, and what does the test actually falsify?**
 
@@ -1952,7 +1968,7 @@ Read them first, and read them as complete stories, not reference material to sk
 
 **Q1. Why does this portfolio validate its C++/Rust engines against golden vectors generated FROM the Python reference's output, rather than having each language's engineer independently re-derive the pricing/VaR formulas from the math?**
 
-Independent re-derivation sounds more rigorous, but it isn't: if the C++ and Rust engineers both made the same conceptual mistake, say, both used the wrong sign convention for dividend yield, or both mis-derived the Cornish-Fisher correction term, their two implementations would still agree with each other perfectly while both being wrong. Cross-language *agreement* would then be indistinguishable from cross-language *correctness*, which is exactly the failure mode a validation scheme is supposed to catch. Generating golden vectors from the Python reference's own output instead proves a narrower, checkable claim: "the C++/Rust engine reproduces this specific, already-independently-validated reference," which only holds if the ported code actually mirrors the reference's semantics line for line.
+Independent re-derivation sounds more rigorous, but it isn't: if the C++ and Rust engineers both made the same conceptual mistake, say, both used the wrong sign convention for dividend yield, or both mis-derived the Cornish-Fisher correction term, their two implementations would still agree with each other perfectly while both being wrong. Cross-language *agreement* would then be indistinguishable from cross-language *correctness*, which is exactly the failure mode a validation scheme is supposed to catch. Freezing golden vectors instead proves a narrower, checkable claim. For the options engines the expected values come from an independent mpmath oracle at 50 digits, not from Python output; for the VaR engines they come from the already-validated Python reference on deterministic inputs. Either way the claim is "the C++/Rust engine reproduces this specific, independently anchored set of values", which only holds if the ported code actually has the reference's semantics.
 
 **Q2. `DIAGRAMS.md` diagram 2 says golden-vector agreement proves the C++/Rust engines "compute the same numbers as the Python reference," but explicitly does NOT prove "that the Python reference itself is correct." Where does that second burden of proof live instead?**
 
@@ -2012,11 +2028,11 @@ Each engine's `[dependencies]` table has one entry, `qp-core = { path = "../core
 
 **Q16. What does "warnings-as-errors", `-Wall -Wextra -Werror` in C++, `RUSTFLAGS=-D warnings` / `#![deny(warnings)]` in Rust, actually buy beyond "the build succeeds"?**
 
-`cpp/equity-options-engine/CMakeLists.txt` sets `add_compile_options(-Wall -Wextra -Werror -O2)`; `CONVENTIONS.md` states the Rust equivalent as `#![deny(warnings)]` in the CI profile, and `docs/DIAGRAMS.md` diagram 12 shows CI actually invoking `RUSTFLAGS='-D warnings'` before `cargo test --release`. The value isn't compilation success, a warning-free build with warnings merely printed would compile identically. It's that the class of bug a compiler warning flags (a signed/unsigned comparison that silently wraps, an unused-but-assigned variable that hints at a forgotten branch, a shadowed variable, an unreachable pattern arm) never gets the chance to sit in the tree as "just a warning nobody looked at", it fails CI the same day it's introduced, at the point where the author still has full context, rather than surfacing later as a numerical bug that has to be root-caused from scratch.
+`cpp/equity-options-engine/CMakeLists.txt` attaches `-Wall -Wextra -Wpedantic` to its targets (`/W4` on MSVC), plus `-Werror` (`/WX`) when `EQOPT_WERROR` is on; `CONVENTIONS.md` states the Rust equivalent as `#![deny(warnings)]` in the CI profile, and `docs/DIAGRAMS.md` diagram 12 shows CI actually invoking `RUSTFLAGS='-D warnings'` before `cargo test --release`. The value isn't compilation success, a warning-free build with warnings merely printed would compile identically. It's that the class of bug a compiler warning flags (a signed/unsigned comparison that silently wraps, an unused-but-assigned variable that hints at a forgotten branch, an unreachable pattern arm; shadowing is not in the set, since `-Wshadow` is not part of `-Wall` or `-Wextra`) never gets the chance to sit in the tree as "just a warning nobody looked at", it fails CI the same day it's introduced, at the point where the author still has full context, rather than surfacing later as a numerical bug that has to be root-caused from scratch.
 
 **Q17. What numerical problem does the Cholesky-with-jitter-escalation technique solve, and where does it appear across the three languages?**
 
-Plain Cholesky factorization requires the input covariance matrix to be strictly positive definite; it fails (or the code has to guard against a `sqrt` of a negative pivot) on a matrix that is only positive *semi*-definite, exactly singular or numerically indefinite due to floating-point noise. `cpp/equity-var-engine/include/eqvar/matrix.hpp`'s `cholesky(cov, repair)` (returning a `CholeskyResult` with `lower`, `jitter_added`, `repaired` and `warning`), Rust and the Rust `Matrix` types in `rust/equity-var-engine/src/matrix.rs` and `rust/fx-var-engine/src/matrix.rs` all implement the same fix: add a small multiple of the identity to the diagonal and retry.
+Plain Cholesky factorization requires the input covariance matrix to be strictly positive definite; it fails (or the code has to guard against a `sqrt` of a negative pivot) on a matrix that is only positive *semi*-definite, exactly singular or numerically indefinite due to floating-point noise. `cpp/equity-var-engine/include/eqvar/matrix.hpp`'s `cholesky(cov, repair)` (returning a `CholeskyResult` with `lower`, `jitter_added`, `repaired` and `warning`), and the Rust `Matrix` types in `rust/equity-var-engine/src/matrix.rs` and `rust/fx-var-engine/src/matrix.rs` all implement the same fix: add a small multiple of the identity to the diagonal and retry.
 
 **Q18. How does the jitter escalation actually work, mechanically?**
 
@@ -2048,7 +2064,7 @@ It tells them the C++/Rust engine's output for that specific input diverged from
 
 **Q25. Summarize the "validated three ways" structure `docs/ARCHITECTURE.md` describes for each of the four compiled engine pairs.**
 
-(1) The Python reference is validated against analytic identities and statistical backtests, put-call parity, Greeks-vs-finite-difference, tree-to-BS convergence, Kupiec/Basel, none of which involve the C++/Rust engines at all. (2) The C++ engine mirrors the Python semantics and is checked against golden vectors generated from the Python reference's output, to per-output tolerances (options) or the tolerances stated in the generated header (VaR/ES) via GoogleTest. (3) The Rust engine is checked against the same golden values via `cargo test`, to the same tolerances. The three legs carry different burdens of proof: leg 1 proves the *reference* is mathematically sound; legs 2 and 3 each prove their engine matches that reference. For the options engines the goldens come from an mpmath oracle, so legs 2 and 3 also check every engine against an independent high-precision computation, and the differential tests compare the three engines on random inputs. A market-risk function uses the same pattern when a new pricing library has to be proven against the incumbent before it is allowed to touch P&L.
+(1) The Python reference is validated against analytic identities and statistical backtests, put-call parity, Greeks-vs-finite-difference, tree-to-BS convergence, Kupiec/Basel, none of which involve the C++/Rust engines at all. (2) The C++ engine mirrors the Python semantics and is checked via GoogleTest against golden vectors: mpmath-oracle values with per-output tolerances for the options engines, and Python-reference values with the tolerances stated in the generated header for VaR/ES. (3) The Rust engine is checked against the same golden values via `cargo test`, to the same tolerances. The three legs carry different burdens of proof: leg 1 proves the *reference* is mathematically sound; legs 2 and 3 each prove their engine matches that reference. For the options engines the goldens come from an mpmath oracle, so legs 2 and 3 also check every engine against an independent high-precision computation, and the differential tests compare the three engines on random inputs. A market-risk function uses the same pattern when a new pricing library has to be proven against the incumbent before it is allowed to touch P&L.
 
 **Q26. Is the golden-vector methodology the same generation mechanism for every one of the four engine pairs (equity/FX × options/VaR), or does it vary?**
 
@@ -2060,7 +2076,7 @@ The pipeline is the same for all four: `generate_golden.py` → `golden_vectors.
 
 **Q28. Tie it together: why is "matches the reference" a different, and in some ways stronger, claim than "two independent teams re-derived the same formula," even though it sounds like a weaker bar?**
 
-Independent re-derivation only proves *convergence*: two engineers ending up in the same place tells you nothing about whether that place is correct, because a shared conceptual error survives the comparison undetected. "Matches the reference to a stated tolerance," by contrast, is a claim with a named, separately-validated anchor: the C++/Rust engine is being measured against a specific artifact (`golden_vectors.json` / a documented `repr()` dump) that itself was produced by code carrying its *own* independent burden of proof, put-call parity, Kupiec backtests, tree-to-BS convergence, none of which depend on the C++/Rust ports existing at all. The chain of trust is linear and auditable (reference validated by math → engines validated against reference) rather than circular (two implementations validated by mutual agreement), which is why a market-risk function uses this pattern when proving a new pricing library against an incumbent before it's allowed to touch P&L.
+Independent re-derivation only proves *convergence*: two engineers ending up in the same place tells you nothing about whether that place is correct, because a shared conceptual error survives the comparison undetected. "Matches the reference to a stated tolerance," by contrast, is a claim with a named, separately-validated anchor: the C++/Rust engine is being measured against a specific artifact (`golden_vectors.json` / a documented `repr()` dump) whose values carry their *own* independent burden of proof: for the options engines an mpmath computation at 50 digits, for the VaR engines a Python reference validated by Kupiec backtests and analytic identities, none of which depend on the C++/Rust ports existing at all. The chain of trust is linear and auditable (reference validated by math → engines validated against reference) rather than circular (two implementations validated by mutual agreement), which is why a market-risk function uses this pattern when proving a new pricing library against an incumbent before it's allowed to touch P&L.
 
 **Q29. How does `engine="cpp"` reach the C++ code, and what happens if the extension is not installed?**
 
@@ -2095,7 +2111,7 @@ A NaN spot price `S` reaching a Black-Scholes-style pricer that didn't reject it
 
 **Q5. What is the second documented consequence, NaN covariance into a VaR aggregator?**
 
-A NaN entry in a factor covariance matrix reaching the VaR aggregation step in the Rust and C++ VaR engines produced a portfolio VaR of *exactly zero*, because the aggregation step computes `max(NaN, 0.0)`, and IEEE 754's `max`/`fmax` semantics propagate the non-NaN operand when one argument is NaN. The NaN doesn't survive to the output, it gets silently discarded and replaced by the other operand.
+A NaN entry in a factor covariance matrix reaching the VaR aggregation step in the Rust VaR engine produced a portfolio VaR of *exactly zero*, because the aggregation step computes `var.max(0.0).sqrt()`, and Rust's `f64::max`, like C's `fmax`, follows the IEEE 754-2008 `maxNum` rule and returns the non-NaN operand. The C++ engine's `std::max(var, 0.0)` behaves differently: it is the comparison `var < 0.0 ? 0.0 : var`, which returns NaN in that argument order (and 0.0 with the arguments swapped). Both engines now reject a non-finite variance before this step. The NaN doesn't survive to the output, it gets silently discarded and replaced by the other operand.
 
 **Q6. Why is a VaR of exactly zero specifically called "more dangerous than a NaN" in the README?**
 
@@ -2135,7 +2151,7 @@ In a web app, a validation gap that lets bad data through more often surfaces as
 
 **Q15. Why is `max(NaN, 0.0)` propagating the non-NaN operand not itself a bug in IEEE 754, and why does that matter here?**
 
-It's specified behavior: IEEE 754 `fmax`/`max` are defined to return the non-NaN argument when exactly one operand is NaN, precisely so that a single missing/undefined data point doesn't poison an otherwise-valid aggregate elsewhere in a computation. That's a reasonable default for many uses of `max`, but it means `max` is not a safe substitute for an explicit NaN check when the *presence* of the NaN is itself the signal you need to detect, which is exactly the situation in VaR aggregation.
+It's specified behavior: IEEE 754-2008 `maxNum`, which C's `fmax` and Rust's `f64::max` implement, returns the non-NaN argument when exactly one operand is NaN (IEEE 754-2019 added `maximum`, which propagates NaN instead), precisely so that a single missing/undefined data point doesn't poison an otherwise-valid aggregate elsewhere in a computation. That's a reasonable default for many uses of `max`, but it means `max` is not a safe substitute for an explicit NaN check when the *presence* of the NaN is itself the signal you need to detect, which is exactly the situation in VaR aggregation.
 
 **Q16. What does a good test for this defect class actually look like, as opposed to a merely "adequate" one?**
 
@@ -2226,7 +2242,7 @@ The options desk guide ties the residual explicitly to specific mis-specificatio
 
 **Q8. What's an analogous "unexplained residual" check in the VaR/backtest world, distinct from options P&L attribution?**
 
-Backtest exceptions and their clustering. The equity VaR desk guide §3 describes checking, on any exception (realized loss worse than VaR), whether losses cluster within a short window: `exception_cluster_table` flags gaps ≤5 days via the Christoffersen independence test, because "a cluster with acceptable count still fails conditional coverage (yellow flag on the model, not the desk)." The FX desk guide states the lesson even more sharply: "clustered exceptions... trigger a model review even in the green zone, clustering means the model is slow, not unlucky." An occasional, isolated exception is expected statistical noise at a 99% confidence level; a cluster is the residual-attribution equivalent of "the model stopped explaining reality."
+Backtest exceptions and their clustering. The equity VaR desk guide §3 describes checking, on any exception (realized loss worse than VaR), whether losses cluster within a short window: `exception_cluster_table` flags gaps of 5 days or fewer (a simple heuristic), and the Christoffersen independence test, a likelihood-ratio test on the day-to-day Markov transition counts, formalises the clustering check, because "a cluster with acceptable count still fails conditional coverage (yellow flag on the model, not the desk)." The FX desk guide states the lesson even more sharply: "clustered exceptions... trigger a model review even in the green zone, clustering means the model is slow, not unlucky." An occasional, isolated exception is expected statistical noise at a 99% confidence level; a cluster is the residual-attribution equivalent of "the model stopped explaining reality."
 
 **Q9. What are position limits and risk limits, and why do they function as controls that don't require anyone to fully trust the model's exact number?**
 
@@ -2309,7 +2325,7 @@ A guard written as `if x <= 0: raise ValueError(...)` looks like it rejects bad 
 
 **Q2. Why is this specific failure mode more dangerous than the NaN itself?**
 
-Because of a second IEEE 754 quirk one step downstream: `max(NaN, 0.0)` in the Rust and C++ VaR engines propagates the *non-NaN* operand, so a NaN covariance that reaches the portfolio VaR aggregator does not surface as a NaN, it comes out as a portfolio VaR of exactly zero. A NaN price is at least visibly broken; a VaR of exactly 0.0 is a plausible number for a well-hedged book, so nothing downstream (a risk report, a limit check) has any reason to question it. README.md's "On input validation" section calls this out explicitly as the most dangerous manifestation.
+Because of a second IEEE 754 quirk one step downstream: `NaN.max(0.0)` (Rust's `f64::max`) returns the *non-NaN* operand, so a NaN covariance that reaches the portfolio VaR aggregator does not surface as a NaN, it comes out as a portfolio VaR of exactly zero. A NaN price is at least visibly broken; a VaR of exactly 0.0 is a plausible number for a well-hedged book, so nothing downstream (a risk report, a limit check) has any reason to question it. README.md's "On input validation" section calls this out explicitly as the most dangerous manifestation.
 
 **Q3. The README also mentions a third symptom involving backtesting. What was it?**
 
@@ -2351,7 +2367,7 @@ It has only two exits: a converged step (the relative step test, or a bracket na
 
 **Q12. Spot-checking the equity Python engine, where does `implied_vol` in `black_scholes.py` delegate the actual solve, and what does it do itself?**
 
-`implied_vol` validates the inputs, checks the quote against the no-arbitrage bounds, maps it to normalised Black form on the out-of-the-money side, and calls `_iv_core.black_implied_vol`, which runs `total_vol` (Set 3). Its old `tol`, `max_iter`, `sigma_lo` and `sigma_hi` keywords are deprecated and ignored with a `DeprecationWarning`, because the solver has no tuning parameters.
+`implied_vol` validates the inputs, checks the quote against the no-arbitrage bounds, maps it to normalised Black form on the out-of-the-money side, and calls `qp_core.iv_core.black_implied_vol`, which runs `total_vol` (Set 3). Its old `tol`, `max_iter`, `sigma_lo` and `sigma_hi` keywords are deprecated and ignored with a `DeprecationWarning`, because the solver has no tuning parameters.
 
 ---
 
@@ -2432,3 +2448,232 @@ A passing test suite is evidence of correctness only within the space of inputs 
 **Q30. What is the specific question this round wants you to walk away asking about any piece of numerical code you review, and how does it differ from asking "does this test pass"?**
 
 Ask "what property should always hold here, regardless of implementation, and am I actually testing that property, or just a handful of examples?": a NaN input should always be rejected, not just `-1` and `0`; a solver should be accurate to what the input supports across its whole domain, checked against an independent oracle; a domain check should agree with the exact analytic answer for *any* (skew, kurtosis, alpha), not just a hand-picked set; a reported standard error should track the true sampling variability across scenario counts and tail depths; an invariant like antithetic pairing should hold for *any* valid input shape. "Does this test pass" only tells you the code agrees with the examples you already thought to write down; asking what property must always hold is what surfaces the examples you didn't think to write down.
+
+
+## Set 19: Shared Kernels, Honest Statistics and Safe Builds
+
+This set covers seven ideas behind the most recent changes: one option
+kernel in cost-of-carry form, the quantile convention for historical VaR,
+optional stopping, statistical power, false discovery rate, hash-checked
+installs and honest latency measurement. Each starts with a short primer
+(the plain idea, the formal statement, a worked example), then questions.
+
+### Primer A: Black-Scholes in cost-of-carry form
+
+Plain idea. A stock paying a dividend yield, a currency earning a foreign
+interest rate and a futures contract are priced by one formula. Only the
+rate at which the underlying drifts under the pricing measure changes, and
+that rate is the cost of carry `b`.
+
+Formal statement (Generalised Black-Scholes; Garman and Kohlhagen 1983;
+Haug 2007, ch. 1). With `phi = +1` for a call, `-1` for a put, and the
+carry yield `q = r - b`:
+
+    d1 = [ln(S/K) + (b + sigma^2/2) T] / (sigma sqrt T),   d2 = d1 - sigma sqrt T
+    V  = phi [S e^{-qT} N(phi d1) - K e^{-rT} N(phi d2)]
+
+Equity: `b = r - q`. FX (Garman-Kohlhagen): `r = r_d`, `b = r_d - r_f`.
+Futures (Black 1976): `S = F`, `b = 0`.
+
+Worked example (`python/core/src/qp_core/black_scholes.py` docstring).
+S = K = 100, T = 1, r = 5%, q = 2%, sigma = 20%: `b = 3%`, `d1 = 0.25`,
+`d2 = 0.05`, call = 9.2270. A EURUSD-style call with r_d = 5%, r_f = 2%
+gives the same number.
+
+### Primer B: which sample quantile is "the" VaR
+
+Plain idea. "The 1% worst day" of 1,000 days is not one number until you
+say how to read between sorted observations. Software packages offer nine
+ways (Hyndman and Fan 1996).
+
+Formal statement. Type 1 is the inverse of the empirical distribution
+function: VaR is the loss L(m) with m = ceil(n alpha), no interpolation.
+Type 7 (numpy's default) interpolates linearly at position alpha (n - 1).
+Every historical VaR path here uses type 1 (`docs/MARKET_RISK.md`), the
+lower-quantile VaR on which Acerbi and Tasche (2002) build expected
+shortfall.
+
+Worked example. 1,000 N(0,1) draws (numpy seed 0), 99%: plain historical
+VaR is the 10th worst loss, 2.506. The deprecated P&L-level filtered
+historical VaR read its tail with type 7 and gave 2.778; with type 1 it
+gives 2.815. Golden `a_fhs_var_5pct_lam094` moved from 109.3777910164513
+to 112.05212695060598, and no other golden moved.
+
+### Primer C: optional stopping
+
+Plain idea. If you check a running test every month and stop the first time
+it looks significant, you will "find" an effect far more often than the 5%
+your test promises, even when there is none.
+
+Formal statement. A one-sided test at level 5% has a 5% false-positive rate
+for one look at a fixed sample. With k looks and "stop at the first
+rejection", the false-positive rate is P(at least one of k correlated test
+statistics crosses 1.645), which grows with k towards 1 (Armitage, McPherson
+and Rowe 1969). Sequential designs fix this by spending alpha across looks;
+the forward registrations here fix it more simply, with one look.
+
+Worked example. Both forward registrations (`research/prereg/pairs-fx-g10-v2.md`,
+`research/prereg/momentum-fx-g10.md`) score fixes from 2026-11-03 to
+2028-11-02 once. `research/forward/evaluate.py` gives a verdict only on or
+after 2028-11-13, once the log is complete and checked; before that it
+prints INTERIM numbers and writes nothing.
+
+### Primer D: statistical power
+
+Plain idea. Power is the chance that the test says "effect" when the effect
+is really there. A low-power test usually fails even when the idea is
+right, so a fail tells you little.
+
+Formal statement. Power = P(reject H0 | H1 true at a stated size). The
+momentum registration's rule is "reject if Sharpe - 1.645 x Lo SE > 0" on
+504 forward days. `research/studies/momentum_power.py` plants momentum of
+known strength in synthetic G10 returns and counts rejections over 200
+runs per cell (`research/power/momentum-fx-g10.json`).
+
+Worked example. Planted drift with a mean Sharpe of 0.36 (the "about 0.4"
+cell): 13% rejection. Mean Sharpe 1.29: 53%. No planted drift: 1.5%. So
+if momentum in G10 FX really earns a Sharpe near 0.4, the forward test
+still fails about 87 times in 100. `prereg.py sign` refuses a registration
+that names no power file.
+
+### Primer E: false discovery rate in pair selection
+
+Plain idea. Test 36 pairs at 5% and about two pass by luck each year. The
+question is how many of the passes are more than luck.
+
+Formal statement. Benjamini and Hochberg (1995): sort m p-values,
+p(1) <= ... <= p(m), and keep the largest k with p(k) <= k q / m. Under
+independence or positive regression dependence (PRDS) the expected share
+of false discoveries among the kept is at most q; under arbitrary
+dependence the Benjamini-Yekutieli version (q divided by the sum of 1/i)
+is needed. A
+complementary check compares the number selected with a null built by
+resampling whole days, which keeps the cross-section but destroys
+mean reversion (`research/studies/robustness.py`).
+
+Worked example (`research/results/pairs_selection_calibration.json`). Over
+19 training folds, 2003-2021, the registered rule selected 53 pairs; the
+null averaged 22.2 (95th percentile 34), permutation p = 0.010. Only 4 of
+the 19 years beat the null at 5%, and BH at q = 0.05 keeps 14 pairs, 8 of
+them in 2018, none in 15 years.
+
+### Primer F: hash-checked installs
+
+Plain idea. A version number names a package; a hash names the exact file.
+Pinning versions alone trusts the package index to serve the same file
+forever. Pinning hashes does not.
+
+Formal statement. `uv.lock` records the sha256 of every wheel.
+`.github/scripts/hashed_install.sh` exports that closure and installs it
+with `pip --require-hashes --only-binary :all: --no-deps`: a file whose
+hash differs, a missing hash, an sdist (which would run arbitrary build
+code) or a package not in the export all fail. Local projects then go in
+with `--no-deps --no-build-isolation`, so the build backend comes from the
+same hashed set, and `pip check` confirms the set is consistent.
+
+Worked example. In the local dry run, 79 of 79 installs (core, the 23
+projects, research and bindings sets on Python 3.11, 3.12 and 3.13, plus
+lint) succeeded, and an export with one hash edited was refused with
+"THESE PACKAGES DO NOT MATCH THE HASHES".
+
+### Primer G: honest latency measurement
+
+Plain idea. One timing is noise. Report the middle of many timings and how
+wide they spread, and compare two versions on the same machine, in turns.
+
+Formal statement (`docs/BENCHMARKS.md`). Each sample is a batch of calls
+lasting at least 2 us, divided by its size; at least 31 samples; p10, p50
+and p90 by nearest rank. The CI gate runs base and head alternately three
+times on one runner pinned to one CPU, and fails a kernel only if the head
+median is more than 25% above the base median and head p10 is above base
+p90.
+
+Worked example. When the option maths moved into the shared kernel, an
+unchanged kernel (`black76_price`) timed in the same runs moved by a ratio
+of 0.83 to 1.10. Every changed kernel's before/after ratio fell inside that
+band (largest: Clang `gk_greeks_batch_fast`, 1.12 with overlapping
+bands), so none was called a regression.
+
+**Q1. Why can one function price an equity option, an FX option and an option on a futures price?**
+
+All three are European payoffs on an underlying that grows at a known rate under the pricing measure, so only the carry `b` differs: `r - q` for a stock with yield `q`, `r_d - r_f` for a currency, 0 for a futures price. `qp_core.black_scholes.carry_price(S, K, T, r, q, sigma, phi)` takes the discount rate and the carry yield `q = r - b`; FX passes `r_d` and `r_f`, futures pass `q = r`.
+
+**Q2. Why does the kernel take `r` and `q` rather than `r` and `b`?**
+
+So the two discount factors `e^{-qT}` and `e^{-rT}` are computed from the caller's own numbers. Recovering `q` as `r - b` would round in the last bit, and the packages' golden values, which were generated before the kernel existed, would move. Taking `q` directly is how every in-scope output stayed bit-identical on the 5,944-quote check grid.
+
+**Q3. Why do the C++ and Rust kernels take the normal CDF as a template or type parameter?**
+
+The equity and FX engines already used different normal CDF implementations (in C++, `norm_cdf_rcp` against `norm_cdf`; in Rust, plain erfc against a C1-truncated erfc). Forcing one would change bits in one engine's goldens. A type parameter shares the formula and keeps each engine's numbers exactly as they were.
+
+**Q4. The Python FX `analytic_greeks` now uses the shared normal CDF. How large is the change, and why make it?**
+
+It used to call `scipy.stats.norm.cdf` for its N(phi d) terms while everything else used `0.5 erfc(-x / sqrt 2)`. On the 5,944-quote grid the switch changed price by at most 2.13e-14 relative to max(1, |value|) and the Greeks by at most 2.66e-15 (gamma, vega, vanna and volga not at all; table in `python/fx/01-options-pricing/docs/VALIDATION.md` section 7). That is far inside every test tolerance, and it leaves one normal CDF across the Python option code with full relative precision in the lower tail.
+
+**Q5. Why does `carry_price` with `q = r` not match `black76_price` bit for bit?**
+
+They are mathematically equal (Black 1976 is the `b = 0` case), but `black76_price` is separate code that forms the terms in a different order. Floating-point addition is not associative, so the results differ in the last bits: 7.577082146427273 against 7.57708214642728, about 1e-15 relative.
+
+**Q6. Historical VaR at 99% on 1,000 days: what are the type 1 and type 7 answers, and why pick type 1?**
+
+Type 1 is the 10th worst loss, L(ceil(1000 x 0.01)). Type 7 interpolates at position alpha (n - 1) = 9.99 between two order statistics. Type 1 returns an observed P&L, so Python, C++ and Rust agree exactly, and VaR and expected shortfall come from the same sorted tail (Acerbi and Tasche 2002). On the seed-0 N(0,1) sample the deprecated filtered VaR moved from 2.778 (type 7) to 2.815 (type 1); plain historical VaR there is 2.506.
+
+**Q7. After the convention change, the gap between plain historical VaR (2.506) and filtered VaR (2.815) is larger than before. Is that worse?**
+
+No. Before, part of the 2.506 vs 2.778 gap was the quantile convention, so the two numbers were not comparable. Now both use type 1, and the whole gap is the volatility filter, which is the thing you want to measure.
+
+**Q8. What is optional stopping, and how large can its effect be?**
+
+Repeatedly testing accumulating data and stopping at the first significant result. Each look is another chance to cross the threshold by luck, so the false-positive rate climbs with the number of looks and tends to 1 if you look forever. A test that promises 5% for one look can give several times that with monthly looks over two years.
+
+**Q9. Why is the forward test scored only on or after 2028-11-13, when the window ends on 2028-11-02?**
+
+The window is 2026-11-03 to 2028-11-02. The extra days let the last ECB fixes arrive and the log be checked for gaps before anyone looks. `evaluate.py` refuses a verdict before 2028-11-13, if any ECB business day is missing, if the history file's SHA-256 does not match, or if the registration is unsigned.
+
+**Q10. What should you do with an INTERIM figure from `evaluate.py`?**
+
+Use it to check that the log is being written and parsed. Do not change parameters, stop the study or announce a result on it: the decision rule was set for one look, and acting on interim looks is optional stopping. The script writes no result file for that reason.
+
+**Q11. The momentum test has about 13% power at a true Sharpe of about 0.4. If it fails in 2028, what have we learned?**
+
+Very little about whether momentum exists at that size: a real Sharpe-0.4 effect would fail about 87 times in 100. A fail rules out large effects (power is 53% near Sharpe 1.3), not small ones. That is why the registration says a fail is the expected outcome, and why `prereg.py sign` demands a power file: it makes the weakness visible before the data arrives, not after.
+
+**Q12. Why is a power check run on synthetic data with a planted effect, rather than on history?**
+
+Power is defined relative to a known truth. On history you do not know whether momentum is present or how strong it is, so you cannot count how often the test detects it. Planting an effect of known size in synthetic returns with realistic volatility (daily sd 0.006 here) gives a true positive to measure against.
+
+**Q13. Pair selection picked 53 pairs over 19 years against 22.2 expected by chance. Is the selection working?**
+
+Partly. Across all years it finds more than chance (permutation p = 0.010). Year by year it mostly does not: only 4 of 19 years beat the null at 5%, and Benjamini-Hochberg at q = 0.05 keeps 14 pairs, none in 15 of the years. So in most years the selected pairs are what chance alone would produce, and a forward pairs result should be read with that in mind.
+
+**Q14. Why does the pair-selection null resample whole days with replacement rather than permute them?**
+
+Resampling rows keeps each day's cross-section (correlations, fat tails, the dollar factor) and destroys order in time, so no spread can mean-revert. Permuting each series' returns also destroys order in time, but it keeps each series' start and end points, so the rebuilt spread is a random-walk bridge pinned at both ends. A bridge is not stationary, but because it is pulled back to its fixed end point it passes stationarity tests more often than a free random walk, and the null becomes too hard to beat. The unit tests in `research/tests/test_robustness.py` show this.
+
+**Q15. What does Benjamini-Hochberg control, and how does that differ from Bonferroni?**
+
+BH controls the false discovery rate: the expected share of false positives among the pairs kept, at most q. Bonferroni controls the family-wise error rate, the chance of any false positive at all, at alpha by testing each at alpha / m. With 36 candidates a year, Bonferroni would keep almost nothing; BH keeps more while bounding the share of mistakes.
+
+**Q16. Version pins already fix which package is installed. What do hashes add?**
+
+A version number names a release; a hash names an exact file. If an index served a different file under the same version (a compromised account, a re-upload, a mirror), version pins would install it and hashes would not. `--only-binary :all:` also refuses sdists, whose build step runs arbitrary code on the CI machine.
+
+**Q17. Why does `hashed_install.sh` install the local projects with `--no-build-isolation`?**
+
+With build isolation, pip fetches the build backend (setuptools, scikit-build-core, maturin) into a temporary environment from the index, unpinned and unhashed. Without it, the backend comes from the hashed set already installed (the `backend` and `build` dependency groups in `uv.lock`), so nothing enters the build that the lock did not name.
+
+**Q18. Why does every bench sample time a batch of calls rather than one call?**
+
+A 100 ns call is close to what the clock can resolve, and reading the clock costs time itself. Timing a batch of at least 2 us and dividing by the batch size puts the clock's cost and resolution well below the measurement. The price is that p99 and max of a fast kernel are batch averages, not single-call tails, which `docs/BENCHMARKS.md` states.
+
+**Q19. Why does the CI gate compare base and head on the same runner, in alternating rounds, rather than against stored numbers?**
+
+Cloud runners differ in CPU and load from run to run, so a stored number from another machine mixes the machine's speed with the code's. Building both commits on one runner and running base, head, base, head, base, head means both see the same hardware, and slow drift in the machine's state hits both sides.
+
+**Q20. Why does the gate need both a 25% median rise and non-overlapping bands?**
+
+Either test alone gives false alarms. A 25% median rise with overlapping p10-p90 bands can be noise on a shared runner; separate bands with a 5% rise are real but too small for three rounds to measure reliably. Requiring both means a failure is large and clearly outside the spread. Smaller regressions are reported in the summary, not failed.
+
+**Q21. How do you tell whether a 1.08 before/after latency ratio on a laptop is a regression?**
+
+Time an unchanged kernel in the same runs as a control. When the option kernels moved into the shared core, the control `black76_price` moved by 0.83 to 1.10 with no code change, so a 1.08 on a changed kernel is inside the noise. The arithmetic was also shown bit-identical, so any real difference could only come from instruction scheduling; the right next step is the CI gate, not a code change.

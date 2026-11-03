@@ -10,6 +10,8 @@ Header-only C++23 library shared by the four C++ engines
 |---|---|---|
 | `qp/normal.hpp` | `norm_pdf`, `norm_cdf` (erfc form), `norm_cdf_rcp`, `acklam_ppf`, `ppf_halley_step`, `norm_ppf_unchecked<Steps>` | all four |
 | `qp/iv_core.hpp` | implied volatility from normalised Black (`qp::iv_core`) | eqopt, fxopt |
+| `qp/black_scholes.hpp` | Black-Scholes in cost-of-carry form (`b = r - q = r_d - r_f`): `carry_d1_d2`, `carry_value`, `carry_price`, `carry_greeks`, templated on the normal cdf (`NormCdfRcp` for eqopt, `NormCdfDiv` for fxopt) | eqopt, fxopt |
+| `qp/black_scholes_vm.hpp` | the same kernel on the `qp/vmath.hpp` functions, force-inlined: the per-element body of the `_fast` batch pricers | eqopt, fxopt |
 | `qp/rng.hpp` | `splitmix64`, `uniform_open53`, `gamma_marsaglia_tsang` | all four |
 | `qp/special.hpp` | Lanczos `log_gamma_lanczos`, incomplete beta and gamma kernels, binomial cdf | eqvar, fxvar |
 | `qp/matrix.hpp` | `qp::Matrix`, `cholesky_raw`, `matvec_rows`, and in `qp::linalg` the validated Cholesky with jitter ladder, Jacobi eigen, eigenvalue-clip and Higham repair | eqvar, fxvar |
@@ -76,9 +78,11 @@ The engines' existing generators are unchanged, because switching them
 would move every Monte Carlo golden. Moving an engine to Philox is a
 release that regenerates those goldens.
 
-Latency. `bench_core` (built with the tests) prints p50, p90, p99, p99.9,
-max and mean per call for each new kernel next to the code it replaces. It
-records compiler, flags, CPU model and timer with each line, and writes
+Latency. `bench_core` (built with the tests) prints the batch size B and
+p10, p50, p90, p99 and max per call for each new kernel next to the code it
+replaces, timed with the method shared with the Rust benches
+([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). It records compiler,
+flags and CPU model with each line, and writes
 JSON with `--out`. The harness does not pin the thread to a core. Use
 `taskset -c 2 ./bench_core` for a pinned run.
 

@@ -6,12 +6,12 @@
 
 use fx_var_engine::book::{Book, CashPosition, Market, Position};
 use fx_var_engine::historical::{
-    historical_option_var, historical_option_var_vol, HistoricalOptions,
+    HistoricalOptions, historical_option_var, historical_option_var_vol,
 };
 use fx_var_engine::matrix::Matrix;
-use fx_var_engine::monte_carlo::{monte_carlo_option_var_vol, MonteCarloOptions};
+use fx_var_engine::monte_carlo::{MonteCarloOptions, monte_carlo_option_var_vol};
 use fx_var_engine::option_reval::{
-    layout_option_book, option_combined_factors, OptionKind, OptionLeg, VolMode, VolScenarios,
+    OptionKind, OptionLeg, VolMode, VolScenarios, layout_option_book, option_combined_factors,
 };
 use fx_var_engine::returns::{FactorCov, ReturnsMatrix};
 
@@ -229,56 +229,64 @@ fn rejects_bad_input() {
     let n = names(&["FX:EUR", "FX:AUD"]);
     let d = VolScenarios::default();
     // A spot-only panel has no VOL: columns.
-    assert!(historical_option_var_vol(
-        &cash_eur(),
-        &market(),
-        &legs(),
-        &n,
-        &spot_panel(),
-        &plain(),
-        0.0,
-        &d
-    )
-    .is_err());
-    assert!(historical_option_var_vol(
-        &cash_eur(),
-        &market(),
-        &[],
-        &[],
-        &vol_panel(false),
-        &plain(),
-        0.0,
-        &d
-    )
-    .is_err());
+    assert!(
+        historical_option_var_vol(
+            &cash_eur(),
+            &market(),
+            &legs(),
+            &n,
+            &spot_panel(),
+            &plain(),
+            0.0,
+            &d
+        )
+        .is_err()
+    );
+    assert!(
+        historical_option_var_vol(
+            &cash_eur(),
+            &market(),
+            &[],
+            &[],
+            &vol_panel(false),
+            &plain(),
+            0.0,
+            &d
+        )
+        .is_err()
+    );
     let bad = VolScenarios {
         mode: VolMode::StickyDelta,
         skews: vec![1.0],
     };
-    assert!(historical_option_var_vol(
-        &cash_eur(),
-        &market(),
-        &legs(),
-        &n,
-        &vol_panel(false),
-        &plain(),
-        0.0,
-        &bad
-    )
-    .is_err());
+    assert!(
+        historical_option_var_vol(
+            &cash_eur(),
+            &market(),
+            &legs(),
+            &n,
+            &vol_panel(false),
+            &plain(),
+            0.0,
+            &bad
+        )
+        .is_err()
+    );
     let cov = FactorCov {
         factors: names(&["FX:AUD", "FX:EUR"]),
         cov: Matrix::from_rows(&[vec![1e-4, 0.0], vec![0.0, 1e-4]]).unwrap(),
     };
-    assert!(monte_carlo_option_var_vol(
-        &cash_eur(),
-        &market(),
-        &legs(),
-        &n,
-        &cov,
-        &MonteCarloOptions::default(),
-        0.0,
-        &d
-    )
-    .is_err());
+    assert!(
+        monte_carlo_option_var_vol(
+            &cash_eur(),
+            &market(),
+            &legs(),
+            &n,
+            &cov,
+            &MonteCarloOptions::default(),
+            0.0,
+            &d
+        )
+        .is_err()
+    );
 }

@@ -11,7 +11,7 @@
 //! * weighted quantiles (BRW) use the same rule on the weighted step CDF.
 
 use crate::matrix::Matrix;
-use crate::{validate_alpha, EqVarError, Result};
+use crate::{EqVarError, Result, validate_alpha};
 
 /// EWMA seed window: the variance seed is the mean of `r^2` over the first
 /// `min(SEED_WINDOW, n)` observations.
@@ -320,14 +320,15 @@ pub fn filtered_historical_var_factors(
 /// 2. standardise `z_t = pnl_t / sigma_t` (i.i.d.-ish innovations);
 /// 3. rescale every innovation to tomorrow's forecast
 ///    `sigma_{T+1}^2 = lam * sigma_T^2 + (1 - lam) * pnl_T^2`;
-/// 4. type-7 `alpha` quantile of the rescaled scenarios (old arithmetic).
+/// 4. order-statistic `alpha` VaR of the rescaled scenarios, `m = ceil(n alpha)`
+///    ([`crate::tail::empirical_var`]), the same convention as every VaR path.
 ///
 /// Deprecated: filtering the scalar P&L ignores that the book's factor mix
 /// changes the P&L vol. Use [`filtered_historical_var_factors`].
 ///
-/// Kept for one release with its old arithmetic unchanged, as in the Python
-/// reference, so existing numbers do not move: full-sample population
-/// variance seed and type-7 interpolated quantile.
+/// Kept for one release with its full-sample population variance seed, as in
+/// the Python reference. Its tail used type-7 interpolation before; it now
+/// uses the order statistic so FHS and HS numbers are like for like.
 #[deprecated(
     since = "0.2.0",
     note = "P&L-level FHS; use filtered_historical_var_factors (per-factor S9)"
@@ -353,13 +354,12 @@ pub fn filtered_historical_var(pnl: &[f64], alpha: f64, lam: f64) -> Result<f64>
     let sigma: Vec<f64> = sig2.iter().map(|v| v.max(1e-32).sqrt()).collect();
     let sigma_next =
         (lam * sigma[n - 1] * sigma[n - 1] + (1.0 - lam) * pnl[n - 1] * pnl[n - 1]).sqrt();
-    let mut scenarios: Vec<f64> = pnl
+    let scenarios: Vec<f64> = pnl
         .iter()
         .zip(sigma.iter())
         .map(|(p, s)| p / s * sigma_next)
         .collect();
-    scenarios.sort_by(f64::total_cmp);
-    Ok(-linear_quantile_sorted(&scenarios, alpha))
+    crate::tail::empirical_var(&scenarios, alpha)
 }
 
 /// Square-root-of-time scaling: `VaR_h = VaR_1 * sqrt(h)`.

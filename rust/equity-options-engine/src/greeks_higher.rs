@@ -4,7 +4,7 @@
 //! sections 2.2-2.4. Time derivatives are `d/dt = -d/dT` per year,
 //! matching theta.
 
-use crate::black_scholes::{d1_d2, norm_cdf, norm_pdf, OptionType, PricingError};
+use crate::black_scholes::{OptionType, PricingError, d1_d2, norm_cdf, norm_pdf};
 
 /// Higher-order Black-Scholes-Merton Greeks.
 #[derive(Debug, Clone, Copy, PartialEq)]

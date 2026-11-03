@@ -17,6 +17,11 @@ Two things are worth looking at first:
   C++ and Rust. All three are tested against the same mpmath reference
   values and against each other on random inputs; a skipped comparison
   fails CI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **One option kernel, checkable builds.** Equity and FX Black-Scholes
+  share one cost-of-carry kernel per language, moved there with no output
+  bit changed. CI installs every Python package with its hash checked
+  against `uv.lock`, and flags a slowdown only when the same runner shows
+  it in alternating runs ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
 
 Quickstart (Python 3.11 to 3.13, about two minutes):
 
@@ -47,7 +52,7 @@ November 2026 release started parts of stages two and three.
 | Stage | What it means | Status |
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
-| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two drafts to be scored on forward data from 2026-11-03 |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
 | 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core, bindings and the `engine=` switch; no option revaluation in the VaR engines yet |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
@@ -76,7 +81,7 @@ quant-portfolio/
 │   ├── fx/01-…10-…        # 10 FX projects (separate code from equity)
 │   └── foundations/       # 3 single-asset projects
 ├── cpp/               # qp::core (header-only) + 4 engines, C++23, CMake presets, GoogleTest
-├── rust/              # Cargo workspace: qp-core + the same 4 engines, Rust 2021
+├── rust/              # Cargo workspace: qp-core + the same 4 engines, Rust edition 2024
 └── bindings/          # qp-cpp (nanobind) and qp-rust (PyO3) Python packages
 ```
 
@@ -117,8 +122,12 @@ Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 
 ## What the November 2026 release added
 
-Everything below is new code beside the old code: no existing golden,
-pinned number or cross-language value changed.
+Most of what follows is new code beside the old code. Two changes moved
+existing numbers on purpose, each with a before/after table: the deprecated
+P&L-level filtered historical VaR now uses the same quantile convention as
+every other VaR path (one golden moved, [docs/MARKET_RISK.md](docs/MARKET_RISK.md)),
+and the Python FX `analytic_greeks` now uses the shared normal CDF
+(changes of at most 2.13e-14 relative to max(1, |value|), CHANGELOG).
 
 ### Engine switch
 
@@ -172,8 +181,8 @@ A study runs in four steps:
 |---|---|
 | `pairs-fx-g10` | Signed on 2026-11-02, then withdrawn the same day before any hold-out data was read ([DR-R4-5](research/README.md#dr-r4-5-pairs-registration-withdrawn-2026-11-02)). Training result only; uninformative. |
 | `regime-fx-basket` | Signed by the maintainer on 2026-11-02. Hold-out run once on 2026-11-02 (2022-2025): H0 not rejected. The hold-out is spent. |
-| `pairs-fx-g10-v2` | Unsigned draft. Level-based z with a simulated power check. Scored only on forward data, 2026-11-03 to 2028-11-02. |
-| `momentum-fx-g10` | Unsigned draft. Monthly G10 spot momentum. Scored only on forward data, 2026-11-03 to 2028-11-02. Low power: a fail is the expected outcome even if a modest effect exists. |
+| `pairs-fx-g10-v2` | Signed on 2026-11-02. Level-based z with a simulated power check. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. |
+| `momentum-fx-g10` | Signed on 2026-11-02. Monthly G10 spot momentum. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. Low power: a fail is the expected outcome even if a modest effect exists. |
 | `execution-lobster` | Unsigned draft. Needs LOBSTER sample files, which sit behind LOBSTER's terms of use. |
 
 Two studies are not done because their data needs an account: equity pairs
@@ -201,17 +210,28 @@ so H0 is not rejected. The effect has the opposite sign to the hypothesis,
 but t = +0.94 is not evidence of a positive effect either. Result file:
 `research/results/regime_fx_basket_holdout.json`.
 
-Because the 2022-2025 window can be used only once, the two new drafts are
-scored on data nobody has seen yet: ECB fixes from 2026-11-03 onward,
-collected by a scheduled job into a forward log (`research/forward/`) and
-scored once, after 2028-11-02, by `research/forward/evaluate.py`. Before
-that date the script only prints interim reports with no verdict. The
+Because the 2022-2025 window can be used only once, the two later
+registrations are scored on data nobody had seen when they were signed:
+ECB fixes from 2026-11-03 onward, collected by a scheduled job into a
+forward log (`research/forward/`) and scored once, on or after 2028-11-13,
+by `research/forward/evaluate.py`. Before that date the script prints
+figures labelled INTERIM, decides nothing and writes no result: acting on
+them would be optional stopping (LEARN Set 19). The
 momentum test has low power. In a simulation with planted momentum
 (`research/power/momentum-fx-g10.json`, 200 runs per cell) it rejects H0
 about 13% of the time when the true Sharpe ratio is about 0.4, and needs a
 Sharpe ratio of about 1.3 to reject half the time. A fail on the forward
 data is therefore the expected outcome and will say little either way; the
 registration states this before any forward data exists.
+
+Every training, stress and calibration run now appends a line to
+`research/results/trials.jsonl` (commit, registration hash, parameters,
+metric), so trial counts come from a log. A calibration of the pairs
+selection against a null that resamples whole days found 53 pairs in
+2003-2021 against 22.2 expected by chance (p = 0.010), but only 4 of 19
+years beat the null and Benjamini-Hochberg at 5% keeps 14 pairs. Both
+forward strategies stay negative in training at 1, 3 and 5 bp costs
+(`research/README.md`, "Robustness checks").
 
 ### New models and their oracles
 
@@ -274,10 +294,15 @@ selection, cache-blocked GEMM and `D^T D`, branch-free batch `exp`, `erfc`
 and normal CDF, and (Rust) a persistent thread pool. C++ has a new
 `bench_core` latency bench. The equity VaR sample covariance in C++ and Rust
 now uses the blocked `D^T D` and gives the same bits as before. The engines
-do not use Philox or the batch kernels yet.
+do not use Philox. The batch kernels are used by the vectorised C++
+option batches described below, after `erfc_batch` was fixed: its sign
+select had compiled to a branch, which is why it did not vectorise in the
+table that follows.
 
 Measured with `bench_core` on an Intel Core 5 120U under WSL2, gcc 15.2
 `-O3`, default x86-64 target (SSE2 only); p50 in microseconds per call:
+
+> **How these figures were timed.** Old harness: each call timed on its own with rdtscp, empty-call overhead subtracted. They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; no results file was committed for it. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
 
 | Kernel | Old | New | Ratio |
 |---|---|---|---|
@@ -293,6 +318,39 @@ Clenshaw recurrence and two `exp` calls. A wider target (x86-64-v3) or
 as much per word as `mt19937_64`; it is there for reproducible parallel
 streams, not speed. These are one laptop run, and the tails are noisy. See
 [`cpp/core/README.md`](cpp/core/README.md).
+
+### Shared option kernel and array pricing
+
+The plain idea: equity Black-Scholes with a dividend yield and FX
+Garman-Kohlhagen are one formula with a different cost of carry `b`, so
+each language now has one kernel and the packages wrap it. Formally,
+`qp_core.black_scholes` (Python), `qp/black_scholes.hpp` (C++) and
+`qp_core::black_scholes` (Rust) price `phi [S e^{-qT} N(phi d1) - K e^{-rT}
+N(phi d2)]` with `q = r - b`. Worked example: S = K = 100, T = 1, r = 5%,
+q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
+`gk_price` with r_d = 5%, r_f = 2%, and from the kernel. On a 5,944-quote
+grid no output bit changed in any language when the maths moved.
+
+On top of it: NumPy entry points `eq_options.bs_price_array`,
+`bs_greeks_array`, `fx_options.gk_price_array` and `gk_greeks_array`
+(keyword-only after `K`; about 19x faster than a scalar loop on 10,000
+options), and C++ `_fast` batches that vectorise (GCC 15: 94 to 23 ns per
+option for equity prices, 110 to 27 for FX Greeks; tested within 1e-13 and
+1e-12 of the exact batch). Recipes and the full table are in
+[docs/COOKBOOK.md](docs/COOKBOOK.md), "Arrays, Packaging, CI Checks and the
+Forward Log".
+
+### Packaging and supply chain
+
+- The C++ engines install as the CMake package `QuantPortfolio` (see
+  "Using the C++ engines from another CMake project" below).
+- CI builds wheels of `qp-cpp` and `qp-rust` for CPython 3.11 to 3.13 on
+  Linux and Windows, as artefacts only.
+- Every Python install in CI comes from `uv.lock` with sha256 hashes
+  checked (`.github/scripts/hashed_install.sh`, `requirements/README.md`).
+- Optional QuantLib cross-checks for Hull-White, Heston and the ISDA CDS
+  run when QuantLib is installed; CI does not install it.
+- The Rust crates move to edition 2024.
 
 ## How to run
 
@@ -313,6 +371,25 @@ Projects that import `qp_core` need `python/core` installed first
 (`python -m pip install -e python/core` from the root). The alternative is
 the uv workspace: `uv sync --all-packages` from the root installs
 `python/core` and all 23 projects from `uv.lock`.
+
+### Using the C++ engines from another CMake project
+
+The four engines and `qp::core` install as one CMake package,
+`QuantPortfolio`, with targets `qp::core`, `qp::eqopt`, `qp::eqvar`,
+`qp::fxopt` and `qp::fxvar`:
+
+```bash
+cmake -S cpp -B build/cpp-install -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpp-install -j
+cmake --install build/cpp-install --prefix "$HOME/.local/qp"
+```
+
+A consumer then needs only `find_package(QuantPortfolio 1.0 CONFIG REQUIRED)`
+and `-DCMAKE_PREFIX_PATH=$HOME/.local/qp`. `cpp/tests/find_package_consumer`
+is that consumer; the `cmake install` CI job builds it against a fresh
+prefix with the source tree moved aside, so a build-tree path leaking into
+the exported files fails the job. Python wheels for the bindings are built
+by the `wheels` CI job and kept as artefacts (see `bindings/*/README.md`).
 
 ## How it is tested
 
@@ -367,7 +444,11 @@ numbers match the Python full revaluation to 1e-11 relative.
 
 ### Engine latency
 
-Indicative numbers from one laptop: Intel Core 5 120U (12 threads) under WSL2 on
+How latency is measured now, and where current figures are, is in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and
+a CI job that compares base and head on the same runner (`bench-results`
+artifact). The tables below are older: one laptop run with the previous
+harnesses, kept for the record. Intel Core 5 120U (12 threads) under WSL2 on
 Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
 figures are in each engine README). Rust figures are rustc 1.99.1, release
 profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
@@ -444,7 +525,7 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
   fx/09-vol-surface VALIDATION, finding F10.
 - One result here is out-of-sample: the regime hold-out, which did not
   reject H0. Everything else in `research/results/` is training-period
-  only. The two forward drafts cannot be scored before November 2028.
+  only. The two forward registrations cannot be scored before 2028-11-13.
 - The bindings (`qp-cpp`, `qp-rust`) cover pricing, Greeks, implied vol,
   binomial, Monte Carlo and the main VaR, ES and backtest calls. They do not
   bind the FX VaR Monte Carlo or book-level VaR, deltas and strikes from
@@ -453,8 +534,9 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
 - The `engine=` switch covers closed-form pricing, Greeks, implied vol,
   the binomial tree, batch pricing and the main VaR and ES calls. Monte
   Carlo, the backtests and the newer compiled ports are not behind it.
-- Python dependencies are pinned for CI only, in
-  `requirements/ci-constraints.txt`.
+- Python dependencies are locked with hashes in `uv.lock` and checked in
+  CI. `requirements/ci-constraints.txt` mirrors the pins for local `pip -c`
+  installs, without hashes.
 
 ## References
 

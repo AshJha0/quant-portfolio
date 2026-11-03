@@ -20,7 +20,7 @@
 //! (portfolio convention: no hidden global RNG state).
 
 use crate::stats::inv_norm_cdf_unchecked;
-use qp_core::rng::{marsaglia_tsang, GammaSource, Xoshiro256PlusPlus};
+use qp_core::rng::{GammaSource, Xoshiro256PlusPlus, marsaglia_tsang};
 
 /// xoshiro256++ deterministic generator with SplitMix64 seeding.
 ///

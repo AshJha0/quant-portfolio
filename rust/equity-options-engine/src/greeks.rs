@@ -13,9 +13,8 @@
 //!
 //! All rates continuously compounded, annualised; `t` in years (ACT/365F).
 
-use crate::black_scholes::{
-    d1_d2, norm_cdf, norm_pdf, validate_inputs, validate_rates, OptionType, PricingError,
-};
+use crate::black_scholes::{OptionType, PricingError, d1_d2, validate_inputs, validate_rates};
+use qp_core::black_scholes::{ErfcNormal, carry_greeks_with_d};
 
 /// Full Greek set of a European option (units in the module docs).
 ///
@@ -92,48 +91,25 @@ pub(crate) fn bs_greeks_core(
     d1: f64,
     d2: f64,
 ) -> BsGreeks {
-    let sqrt_t = t.sqrt();
-    let df_q = (-q * t).exp();
-    let df_r = (-r * t).exp();
-    let pdf_d1 = norm_pdf(d1);
-
-    let gamma = df_q * pdf_d1 / (s * sigma * sqrt_t);
-    let vega = s * df_q * pdf_d1 * sqrt_t;
-    let vanna = -df_q * pdf_d1 * d2 / sigma;
-    let volga = vega * d1 * d2 / sigma;
-    let common_theta = -s * df_q * pdf_d1 * sigma / (2.0 * sqrt_t);
-
-    let (price, delta, theta, rho) = match option_type {
-        OptionType::Call => {
-            let nd1 = norm_cdf(d1);
-            let nd2 = norm_cdf(d2);
-            (
-                s * df_q * nd1 - k * df_r * nd2,
-                df_q * nd1,
-                common_theta + q * s * df_q * nd1 - r * k * df_r * nd2,
-                k * t * df_r * nd2,
-            )
-        }
-        OptionType::Put => {
-            let nmd1 = norm_cdf(-d1);
-            let nmd2 = norm_cdf(-d2);
-            (
-                k * df_r * nmd2 - s * df_q * nmd1,
-                -df_q * nmd1,
-                common_theta - q * s * df_q * nmd1 + r * k * df_r * nmd2,
-                -k * t * df_r * nmd2,
-            )
-        }
+    // Shared carry-form kernel (qp_core::black_scholes). This engine has
+    // always added the theta terms call/put-wise rather than through phi,
+    // and its put price never returned -0.0; both are kept bit for bit.
+    let c = carry_greeks_with_d::<ErfcNormal>(s, k, t, r, q, sigma, option_type.sign(), d1, d2);
+    let a = q * s * c.df_q * c.n1;
+    let b = r * k * c.df_r * c.n2;
+    let theta = match option_type {
+        OptionType::Call => c.common_theta + a - b,
+        OptionType::Put => c.common_theta - a + b,
     };
     BsGreeks {
-        price,
-        delta,
-        gamma,
-        vega,
+        price: c.price + 0.0,
+        delta: c.delta,
+        gamma: c.gamma,
+        vega: c.vega,
         theta,
-        rho,
-        vanna,
-        volga,
+        rho: c.rho,
+        vanna: c.vanna,
+        volga: c.volga,
     }
 }
 

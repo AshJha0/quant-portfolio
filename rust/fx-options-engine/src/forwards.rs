@@ -9,7 +9,7 @@
 //! Forward points are quoted as `(F - S)` scaled by the pair's pip factor
 //! (1e4 for most pairs, 1e2 for JPY-quoted pairs).
 
-use crate::{invalid, require_finite, validate_inputs, FxResult};
+use crate::{FxResult, invalid, require_finite, validate_inputs};
 
 /// Standard pip scaling for most pairs (pip = 0.0001, e.g. EURUSD).
 pub const PIP_FACTOR_DEFAULT: f64 = 1e4;

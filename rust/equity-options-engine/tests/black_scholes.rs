@@ -5,7 +5,7 @@
 mod common;
 
 use eq_options_engine::black_scholes::{erfc, forward_price, norm_cdf};
-use eq_options_engine::{bs_price, d1_d2, OptionType, PricingError};
+use eq_options_engine::{OptionType, PricingError, bs_price, d1_d2};
 
 /// Grid shared by the parity / Black-76 / IV tests.
 fn grid() -> Vec<(f64, f64, f64, f64, f64, f64)> {

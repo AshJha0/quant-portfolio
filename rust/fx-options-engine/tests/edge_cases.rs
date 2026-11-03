@@ -6,7 +6,7 @@ use common::assert_close;
 
 use fx_options_engine::rng::Xoshiro256StarStar;
 use fx_options_engine::{
-    delta, gk_call, gk_price, gk_put, implied_vol, DeltaConvention, OptionType,
+    DeltaConvention, OptionType, delta, gk_call, gk_price, gk_put, implied_vol,
 };
 
 #[test]
@@ -102,10 +102,10 @@ fn rng_stream_is_pinned_across_releases() {
 #[test]
 fn every_entry_point_rejects_non_finite_inputs() {
     use fx_options_engine::{
-        analytic_greeks, atm_dns_strike, atm_forward_strike, binomial_price, black76_from_spot,
-        black76_price, cip_forward, d1, d2, finite_difference_greeks, forward_points,
-        forward_to_spot_delta, mc_price, premium_adjust_spot_delta, spot_to_forward_delta,
-        strike_from_delta, synthetic_forward_from_options, Exercise,
+        Exercise, analytic_greeks, atm_dns_strike, atm_forward_strike, binomial_price,
+        black76_from_spot, black76_price, cip_forward, d1, d2, finite_difference_greeks,
+        forward_points, forward_to_spot_delta, mc_price, premium_adjust_spot_delta,
+        spot_to_forward_delta, strike_from_delta, synthetic_forward_from_options,
     };
     let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
     let (s, k, t, rd, rf, sig) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);

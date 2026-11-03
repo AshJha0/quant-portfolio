@@ -21,6 +21,7 @@
 #include <cmath>
 
 #include "fxopt/common.hpp"
+#include "qp/black_scholes.hpp"
 
 namespace fxopt {
 
@@ -63,7 +64,7 @@ double gk_put(double S, double K, double T, double r_d, double r_f, double sigma
     if (vol_sqrt_t <= kMinVol) [[unlikely]] {
         return std::unexpected(Error{Errc::D1Undefined, "", vol_sqrt_t});
     }
-    return (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
+    return qp::carry_d1_d2(S, K, T, r_d, r_f, sigma).d1;
 }
 
 /// GK price on inputs the caller has validated (try_validate_inputs). The
@@ -79,9 +80,9 @@ inline double gk_price_unchecked(double S, double K, double T, double r_d, doubl
     const double disc_k = K * std::exp(-r_d * T);
     if (vol_sqrt_t <= kMinVol) [[unlikely]]
         return std::max(p * (disc_s - disc_k), 0.0);
-    const double d1v = (std::log(S / K) + (r_d - r_f + 0.5 * sigma * sigma) * T) / vol_sqrt_t;
-    const double d2v = d1v - vol_sqrt_t;
-    return p * (disc_s * norm_cdf(p * d1v) - disc_k * norm_cdf(p * d2v));
+    // Shared carry-form kernel (qp/black_scholes.hpp); r_f is the carry yield.
+    const qp::CarryD d = qp::carry_d1_d2(S, K, T, r_d, r_f, sigma);
+    return qp::carry_value<qp::NormCdfDiv>(disc_s, disc_k, d.d1, d.d2, p);
 }
 
 /// noexcept form of gk_price(): the same value, or the error the throwing

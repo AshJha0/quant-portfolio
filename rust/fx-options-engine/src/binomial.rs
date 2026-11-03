@@ -16,7 +16,7 @@
 //! European: mirroring the dividend-yield story for equities.
 
 use crate::garman_kohlhagen::gk_price;
-use crate::{invalid, validate_inputs, FxResult, OptionType};
+use crate::{FxResult, OptionType, invalid, validate_inputs};
 
 /// Largest accepted `steps`.
 ///

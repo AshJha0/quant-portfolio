@@ -11,7 +11,7 @@ import warnings
 import mpmath as mp
 import pytest
 from eq_options import bs_price, implied_vol
-from eq_options._iv_core import black_implied_vol
+from qp_core.iv_core import black_implied_vol
 
 mp.mp.dps = 50
 EPS = 2.220446049250313e-16

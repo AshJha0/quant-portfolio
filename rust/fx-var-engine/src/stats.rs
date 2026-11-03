@@ -378,11 +378,7 @@ fn t_cdf_unchecked(x: f64, df: f64) -> f64 {
         return 0.5;
     }
     let ib = inc_beta_unchecked(0.5 * df, 0.5, df / (df + x * x));
-    if x > 0.0 {
-        1.0 - 0.5 * ib
-    } else {
-        0.5 * ib
-    }
+    if x > 0.0 { 1.0 - 0.5 * ib } else { 0.5 * ib }
 }
 
 /// Standard Student-t quantile (inverse CDF) with `df > 0`.

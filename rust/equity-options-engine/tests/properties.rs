@@ -1,7 +1,7 @@
 //! Property-based tests (proptest): parity, monotonicity, convexity, delta
 //! bounds and the implied-vol round trip.
 
-use eq_options_engine::{bs_greeks, bs_price, implied_vol, OptionType};
+use eq_options_engine::{OptionType, bs_greeks, bs_price, implied_vol};
 use proptest::prelude::*;
 
 const EPS: f64 = f64::EPSILON;

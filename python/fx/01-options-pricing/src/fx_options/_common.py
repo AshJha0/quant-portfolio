@@ -17,6 +17,8 @@ from __future__ import annotations
 import math
 import numbers
 
+from qp_core.black_scholes import finite as finite_result
+from qp_core.black_scholes import safe_exp
 from qp_core.normal import norm_cdf
 
 __all__ = [
@@ -110,17 +112,5 @@ def validate_inputs(
 # Standard normal CDF via ``erfc``: full relative precision in the lower tail.
 ncdf = norm_cdf
 
-
-def safe_exp(x: float, what: str) -> float:
-    """``math.exp`` that raises ``ValueError`` instead of ``OverflowError``."""
-    try:
-        return math.exp(x)
-    except OverflowError:
-        raise ValueError(f"{what}: exp({x!r}) overflows a double") from None
-
-
-def finite_result(value: float, what: str) -> float:
-    """Return ``value`` or raise ``ValueError`` if it is not finite."""
-    if not math.isfinite(value):
-        raise ValueError(f"{what} is not representable as a finite double")
-    return value
+# ``safe_exp`` (exp that raises ValueError on overflow) and ``finite_result``
+# come from qp_core.black_scholes, shared with the equity package.

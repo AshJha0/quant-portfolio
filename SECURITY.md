@@ -27,6 +27,7 @@ CHANGELOG unless they ask not to be.
 ## Dependencies
 
 Dependabot checks pip, cargo and GitHub Actions dependencies weekly. CI
-installs Python packages from the pinned set in
-`requirements/ci-constraints.txt`, and every third-party action is pinned to
-a full commit SHA.
+installs every third-party Python package from `uv.lock` with its sha256
+hash checked (`pip install --require-hashes`, wheels only, through
+`.github/scripts/hashed_install.sh`), so a changed or substituted wheel fails
+the job. Every third-party action is pinned to a full commit SHA.

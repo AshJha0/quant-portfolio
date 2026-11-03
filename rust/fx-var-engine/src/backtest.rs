@@ -95,11 +95,7 @@ fn check_coverage_input(inp: &KupiecInput) -> Result<()> {
 
 /// `x ln y` with `0 ln 0 = 0`.
 fn xlny(x: f64, y: f64) -> f64 {
-    if x == 0.0 {
-        0.0
-    } else {
-        x * y.ln()
-    }
+    if x == 0.0 { 0.0 } else { x * y.ln() }
 }
 
 /// Kupiec LR statistic for valid inputs:
@@ -595,18 +591,22 @@ mod tests {
 
     #[test]
     fn invalid_inputs_error() {
-        assert!(kupiec_pof(&KupiecInput {
-            n_obs: 250,
-            n_exceptions: -1,
-            alpha: 0.01
-        })
-        .is_err());
-        assert!(kupiec_pof(&KupiecInput {
-            n_obs: 250,
-            n_exceptions: 251,
-            alpha: 0.01
-        })
-        .is_err());
+        assert!(
+            kupiec_pof(&KupiecInput {
+                n_obs: 250,
+                n_exceptions: -1,
+                alpha: 0.01
+            })
+            .is_err()
+        );
+        assert!(
+            kupiec_pof(&KupiecInput {
+                n_obs: 250,
+                n_exceptions: 251,
+                alpha: 0.01
+            })
+            .is_err()
+        );
         assert!(christoffersen_independence(&[0]).is_err());
         assert!(christoffersen_independence(&[0, 2]).is_err());
         assert!(evaluate_var_backtest(&[1.0], &[1.0, 2.0], 0.01).is_err());

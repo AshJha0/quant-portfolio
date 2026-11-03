@@ -2,7 +2,7 @@
 
 mod common;
 
-use eq_options_engine::{bs_price, implied_vol, OptionType, PricingError};
+use eq_options_engine::{OptionType, PricingError, bs_price, implied_vol};
 
 #[test]
 fn round_trip_recovers_sigma_within_condition_bound_across_grid() {

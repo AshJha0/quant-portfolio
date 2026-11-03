@@ -17,7 +17,9 @@ The repository is a study portfolio. The November 2026 release started
 the research platform (`data/` and `research/`), added the newer models
 and the performance kernels, and put an `engine=` switch over
 the bindings. All data is synthetic unless a page names a real source; the
-research studies use ECB data and have training-period results only. None
+research studies use ECB data. One study has a hold-out result (a null);
+two signed registrations are scored on forward data from 2026-11-03, once,
+on or after 2028-11-13. None
 of this code runs on a live book.
 
 ## The shape of the portfolio
@@ -46,9 +48,9 @@ counted in them:
 
 | Path | Name | What it holds |
 |---|---|---|
-| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 16 Python projects |
-| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
-| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
+| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 16 Python projects; the shared normal CDF (`normal`), the Black-Scholes kernel in cost-of-carry form (`black_scholes`, scalar and NumPy) and the implied-vol solver (`iv_core`) behind both option packages |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; the carry-form Black-Scholes kernel `qp/black_scholes.hpp` and its vectorised twin `qp/black_scholes_vm.hpp`; the latency harness `qp/bench/latency.hpp`; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; the carry-form kernel `black_scholes` and the latency harness `bench`; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
@@ -68,7 +70,31 @@ counts from every job into `counts.json`.
 Equity and FX conventions differ. Equity uses a continuous dividend yield. FX
 uses a domestic and foreign rate pair, BASE/QUOTE quoting, four delta
 conventions and pair-dependent day counts. The two codebases keep those
-differences explicit instead of sharing one asset-agnostic engine.
+differences explicit in their public functions.
+
+The Black-Scholes maths underneath is shared. The plain idea: a stock with
+dividend yield `q` and a currency with foreign rate `r_f` are the same
+contract to a pricer, because only the cost of carry `b` differs. Formally,
+one kernel per language prices `V = phi [S e^{-qT} N(phi d1) - K e^{-rT}
+N(phi d2)]` with `q = r - b`, and `eq_options`/`fx_options` (and the C++
+and Rust option engines) are wrappers that keep their own names, argument
+order, validation and boundary rules. Worked example: S = K = 100, T = 1,
+r = 5%, q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
+`gk_price` with `r_d = 5%`, `r_f = 2%`, and from the kernel itself. Moving
+the maths into the kernel changed no output bit on a 5,944-quote grid in
+any language; `tests/test_carry_twin.py` pins it. The C++ and Rust kernels
+take the normal CDF as a type parameter, because the equity and FX engines
+use different implementations. The Python FX `analytic_greeks` moves to
+the shared normal CDF in this release, which changes its outputs by at most
+2.13e-14 relative to max(1, |value|); see the CHANGELOG. Diagram 10 in
+[DIAGRAMS.md](DIAGRAMS.md) shows the layout.
+
+Packaging. The C++ engines and `qp::core` install as the CMake package
+`QuantPortfolio` 1.0.0 (`find_package(QuantPortfolio 1.0 CONFIG REQUIRED)`,
+targets `qp::core`, `qp::eqopt`, `qp::eqvar`, `qp::fxopt`, `qp::fxvar`).
+CI builds wheels of `qp-cpp` and `qp-rust` for CPython 3.11 to 3.13 on
+Linux and Windows and keeps them as artefacts. The Rust crates move to
+edition 2024 in this release.
 
 ## Directory layout
 
@@ -156,18 +182,23 @@ diagram 1 shows the layout.
 
 ## Engine latency
 
-Indicative numbers from one laptop: Intel Core 5 120U (12 threads) under WSL2 on
-Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
-figures are in each engine README). Rust figures are rustc 1.99.1, release
-profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
-jitter, so read p99 as an upper bound. CI does not produce these numbers.
+How latency is measured now is in [BENCHMARKS.md](BENCHMARKS.md): C++ and
+Rust use one harness (each sample a batch of calls lasting at least 2 us,
+at least 31 samples, median with p10/p90), and the CI `bench` job compares
+base and head on the same runner. Current figures are in that job's
+`bench-results` artifact.
 
-Do not compare the C++ and Rust tables with each other. The C++ harness
-times each call separately (lfence, rdtscp, timer overhead subtracted); the
-Rust bench times batches of calls with `Instant` and divides, which reads
-lower for the same work. The committed C++ `bs_price` p50 moves between
-about 98 and 149 ns across runs on the same machine, roughly plus or minus
-25%.
+The tables below are older. They are one laptop run (Intel Core 5 120U,
+WSL2, 2026-11-01; GCC 15.2 at `-O3 -DNDEBUG`, rustc 1.99.1 with
+`lto = "fat"`) with the previous harnesses, kept for the record. Then the
+C++ bench timed each call separately with rdtscp and subtracted the timer
+overhead, and the Rust bench timed batches with `Instant`, so the two
+tables are not comparable with each other. The C++ `bs_price` p50 moved
+between about 98 and 149 ns across runs on the same machine.
+
+For batch pricing, the C++ `_fast` batches measured 23-29 ns per option
+with GCC 15 against 91-110 ns for the exact batches, and the Python array
+functions about 19x faster than a scalar loop; the COOKBOOK has the table.
 
 C++:
 
@@ -358,7 +389,8 @@ the same engine and platform.
 | `discover` | Lists the Python projects and their test extra (`.github/scripts/discover_projects.py`). |
 | `py core` | pytest for `python/core` on Python 3.11 to 3.13. |
 | `py <project>` | One job per project and Python version (3.11, 3.12, 3.13). Installs `python/core` and the project in its own venv and runs pytest. Uploads JUnit XML. |
-| `lint` | `uv lock --check`, `uv sync --all-packages --locked`, `ruff check python`, `mypy`. Installs `pandas-stubs` and `scipy-stubs`, which `requirements/ci-constraints.txt` pins for Python 3.12 and later. |
+| (all Python jobs) | Third-party packages come from `uv.lock` with sha256 hashes checked (`.github/scripts/hashed_install.sh`; see `requirements/README.md`). |
+| `lint` | `uv lock --check`, `uv sync --all-packages --locked --group test --group lint`, a check that `requirements/ci-constraints.txt` matches `uv.lock`, `ruff check python`, `mypy`. The `lint` group holds `pandas-stubs` and `scipy-stubs` for Python 3.12 and later. |
 | `goldens --check` | Runs every `gen_golden_header.py --check` and `gen_golden_rs.py --check`. |
 | `cpp <engine> (<preset>)` | Each C++ engine with the `gcc`, `clang`, `asan` and `tsan` presets: configure, build, ctest. |
 | `cpp <engine> (gcc16-cxx26)` | The same in a `gcc:16` container with `QP_CXX26=ON`. |
@@ -367,7 +399,9 @@ the same engine and platform.
 | `rust <crate>` | `cargo test --release --locked` and clippy with warnings denied, per workspace crate including `qp-core`. |
 | `rust fmt` | `cargo fmt --check` over the workspace. |
 | `bind <package>` | Builds `qp-cpp` or `qp-rust` and runs its tests against the Python reference packages. |
-| `bench` | Runs the release benches; fails when a kernel whose committed p50 is above 1 µs is more than 2x slower. |
+| `cmake install (<toolchain>)` | Installs the `QuantPortfolio` CMake package with GCC 15 or Clang 21, moves the source tree aside, and builds and runs `cpp/tests/find_package_consumer` against the prefix. |
+| `wheels <package> (<os>)` | cibuildwheel wheels of `qp-cpp` and `qp-rust`, CPython 3.11 to 3.13, manylinux_2_34 x86_64 and Windows amd64, smoke-tested by `bindings/wheel_smoke.py`; artefacts `wheels-*`, never published. |
+| `bench` | Builds base and head on one runner and runs their C++ and Rust benches in three alternating rounds pinned to CPU 1; fails a kernel only when the head median is more than 25% above base and head p10 is above base p90 ([BENCHMARKS.md](BENCHMARKS.md)). Artefact `bench-results`. |
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). Runs `tests/test_ci_scripts.py`. |
 | `cpp core (<preset>)` | Builds and tests `cpp/core` (including the kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
@@ -388,9 +422,11 @@ state. This is a portfolio-wide rule in `CONVENTIONS.md` §"Code quality".
   through, because `NaN <= 0` is false. The VaR/ES, backtest, options, bond and
   Black-Scholes entry points use `isfinite` checks. `test_input_hardening.py`
   and `test_nan_guards.py` cover them.
-- **Equity and FX share conventions documentation, not code.** `CONVENTIONS.md`
-  states the rate, day-count and quoting rules once. Each codebase implements
-  them separately.
+- **Equity and FX share the option maths, not the conventions code.**
+  `CONVENTIONS.md` states the rate, day-count and quoting rules once and
+  each codebase implements them separately. The Black-Scholes kernel, the
+  implied-vol solver and the normal CDF are shared through the core library
+  of each language.
 - **The compiled engines use only the standard library.** The RNG, normal
   CDF/PPF and Cholesky factorisation are written in this repository, once per
   language, in `cpp/core` and `rust/core`.
@@ -400,7 +436,7 @@ Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 ## Further reading
 
 - [DIAGRAMS.md](DIAGRAMS.md): the same architecture as diagrams.
-- [LEARN.md](LEARN.md): a curriculum through every topic, with a 511-question
+- [LEARN.md](LEARN.md): a curriculum through every topic, with a 532-question
   self-test bank organised by round.
 - [COOKBOOK.md](COOKBOOK.md): recipes for common tasks in every area.
 - [MARKET_RISK.md](MARKET_RISK.md): the VaR/ES and backtesting workflow the

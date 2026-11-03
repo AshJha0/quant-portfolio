@@ -8,7 +8,7 @@
 //! Conventions: `alpha` = tail probability; ES positive for losses.
 
 use crate::stats::{normal_pdf, normal_ppf, student_t_pdf, student_t_ppf};
-use crate::{validate_alpha, EqVarError, Result};
+use crate::{EqVarError, Result, validate_alpha};
 
 /// Minimum P&L observations for an empirical ES estimate (a 3rd of
 /// [`crate::historical::MIN_OBS`]: ES averages several order statistics, so

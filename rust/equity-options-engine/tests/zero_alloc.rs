@@ -7,12 +7,12 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use eq_options_engine::fast::{
-    bs_greeks_batch, bs_price_batch, try_black76_greeks, try_black76_price, try_bs_greeks,
-    try_bs_price, try_crr_price, try_implied_vol, try_mc_price, BsBatch, GreeksOut,
+    BsBatch, GreeksOut, bs_greeks_batch, bs_price_batch, try_black76_greeks, try_black76_price,
+    try_bs_greeks, try_bs_price, try_crr_price, try_implied_vol, try_mc_price,
 };
 use eq_options_engine::{
-    black76_greeks, black76_price, bs_greeks, bs_price, crr_price, implied_vol, CrrWorkspace,
-    Exercise, McWorkspace, OptionType,
+    CrrWorkspace, Exercise, McWorkspace, OptionType, black76_greeks, black76_price, bs_greeks,
+    bs_price, crr_price, implied_vol,
 };
 
 struct Counting;

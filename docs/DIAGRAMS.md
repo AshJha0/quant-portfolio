@@ -34,7 +34,7 @@ flowchart TB
     subgraph PORTS["C++ and Rust ports of areas 01 and 03"]
         direction LR
         CPP["C++23 engines + qp::core<br/>GoogleTest"]
-        RUST["Rust 2021 engines<br/>cargo workspace + qp-core"]
+        RUST["Rust engines (edition 2024)<br/>cargo workspace + qp-core"]
     end
 
     A1 -.->|golden vectors| CPP & RUST
@@ -195,31 +195,32 @@ scenario, vol held fixed).
 ```mermaid
 flowchart TD
     DISC["discover<br/>(list Python projects + test extra)"]
+    HASH["hashed_install.sh<br/>uv export from uv.lock,<br/>pip --require-hashes --only-binary,<br/>local packages --no-build-isolation, pip check"]
     PYC["py core<br/>python/core x Python 3.11-3.13"]
     PY["py &lt;project&gt;<br/>per project x Python 3.11-3.13<br/>pytest, JUnit XML"]
-    LINT["lint<br/>uv lock --check, ruff, mypy"]
+    LINT["lint<br/>uv lock --check, constraints = lock,<br/>ruff, mypy"]
     GOLD["goldens --check<br/>gen_golden_header.py / gen_golden_rs.py"]
     CPP["cpp &lt;engine&gt; (&lt;preset&gt;)<br/>gcc, clang, asan, tsan,<br/>gcc16-cxx26, msvc"]
+    CORE["cpp core (&lt;preset&gt;)<br/>shared kernels + tests"]
     FMT["clang-format, clang-tidy"]
     RUST["rust &lt;crate&gt;, rust fmt<br/>qp-core + 4 engines<br/>cargo test, clippy -D warnings"]
     BIND["bind &lt;package&gt;<br/>qp-cpp, qp-rust"]
-    BENCH["bench<br/>2x p50 rule"]
-    HYG["hygiene<br/>banned-word check,<br/>voice report (report-only)"]
-    CORE["cpp core (&lt;preset&gt;)<br/>cpp/core tests,<br/>bench_core report-only"]
     DIFF["engine differential<br/>both bindings, 10,000-input harness,<br/>no skips allowed"]
+    CMI["cmake install (gcc, clang)<br/>install QuantPortfolio,<br/>build find_package consumer<br/>with source tree moved aside"]
+    WHL["wheels &lt;package&gt; (&lt;os&gt;)<br/>cibuildwheel cp311-cp313,<br/>manylinux_2_34 + Windows,<br/>artefacts wheels-*"]
+    BENCH["bench<br/>base vs head on one runner,<br/>3 alternating rounds, CPU 1;<br/>fail: median +25% AND head p10 &gt; base p90"]
+    HYG["hygiene<br/>banned-word check,<br/>voice report (report-only)"]
     RES["research<br/>prereg.py check, research/tests"]
-    CNT["counts<br/>aggregate executed counts<br/>into counts.json,<br/>run tests/test_docs_counts.py"]
-    OK(["ci-ok<br/>required check:<br/>every job succeeded"])
+    CNT["counts<br/>aggregate executed counts<br/>into counts.json"]
+    OK(["ci-ok<br/>required check:<br/>every gated job succeeded"])
 
+    HASH -.->|installs for| PYC & PY & LINT & BIND & DIFF & RES
     DISC --> PY
-    PY --> CNT
-    PYC --> CNT
-    CPP --> CNT
-    RUST --> CNT
-    BIND --> CNT
-    DISC & PYC & PY & LINT & GOLD & CPP & FMT & RUST & BIND & BENCH & HYG & CORE & DIFF & RES & CNT --> OK
+    PY & PYC & CPP & RUST & BIND --> CNT
+    DISC & PYC & PY & LINT & GOLD & CPP & CORE & FMT & RUST & BIND & DIFF & CMI & WHL & BENCH & HYG & RES & CNT --> OK
 ```
 
+The `wheels` job is part of `ci-ok`; it joined after its first green run. The bench gate is described in [BENCHMARKS.md](BENCHMARKS.md).
 
 ---
 
@@ -276,10 +277,12 @@ flowchart TD
 
 State: `regime-fx-basket` signed and run once on the hold-out (H0 not
 rejected); `pairs-fx-g10` signed, then withdrawn before the hold-out
-(DR-R4-5); `pairs-fx-g10-v2` and `momentum-fx-g10` unsigned drafts scored
-only on forward data (2026-11-03 to 2028-11-02, `research/forward/`); `execution-lobster` an unsigned draft, blocked on
+(DR-R4-5); `pairs-fx-g10-v2` and `momentum-fx-g10` signed on 2026-11-02 and
+scored once on forward data (2026-11-03 to 2028-11-02, `research/forward/`),
+on or after 2028-11-13; `execution-lobster` an unsigned draft, blocked on
 LOBSTER data access. Equity pairs on a point-in-time universe are not
-drafted (Nasdaq Data Link needs an account).
+drafted (Nasdaq Data Link needs an account). Diagram 11 shows the whole
+life of a study.
 
 ---
 
@@ -309,5 +312,74 @@ flowchart LR
     end
     REV -.->|goldens 1e-11| OR
 ```
+
+---
+
+## 10. Shared kernels and the packages that wrap them
+
+```mermaid
+flowchart TB
+    subgraph PYK["python/core (qp_core)"]
+        PBS["black_scholes<br/>carry form, scalar + NumPy"]
+        PIV["iv_core"]
+        PN["normal"]
+    end
+    subgraph CK["cpp/core (qp::core)"]
+        CBS["qp/black_scholes.hpp<br/>CDF as template parameter"]
+        CVM["qp/black_scholes_vm.hpp<br/>+ qp/vmath.hpp (vectorised)"]
+        CIV["qp/iv_core.hpp, qp/normal.hpp"]
+    end
+    subgraph RK["rust/core (qp_core)"]
+        RBS["black_scholes<br/>NormalDist type parameter"]
+        RIV["iv, special"]
+    end
+    subgraph WRAP["asset-class wrappers: names, argument order, validation, boundaries"]
+        EQ["eq_options<br/>q = dividend yield"]
+        FX["fx_options<br/>r = r_d, q = r_f"]
+        EQC["eqopt (C++), eq-options-engine (Rust)"]
+        FXC["fxopt (C++), fx-options-engine (Rust)"]
+    end
+    PBS --> EQ & FX
+    PIV --> EQ & FX
+    CBS --> EQC & FXC
+    CVM -->|_fast batches| EQC & FXC
+    RBS --> EQC & FXC
+    TW["tests/test_carry_twin.py<br/>equity(q) = FX(r_f)"] -.-> EQ & FX
+```
+
+The kernel is Black-Scholes in cost-of-carry form, `b = r - q`: equity
+passes its yield, FX passes `r_d` and `r_f`, futures pass `q = r`
+(`b = 0`). Moving the maths into the kernel changed no output bit in any
+language. The C++ and Rust kernels take the normal CDF as a parameter
+because the equity and FX engines use different implementations.
+
+---
+
+## 11. Research lifecycle of one study
+
+```mermaid
+flowchart LR
+    TR["train<br/>1999-2021, training_only guard;<br/>every run logged to<br/>results/trials.jsonl"]
+    PW{"power check<br/>synthetic planted effect,<br/>research/power/*.json"}
+    SG["sign<br/>prereg.py sign refuses<br/>without a power file;<br/>sha256 of the text"]
+    HO["hold-out 2022-2025<br/>run once (spent)"]
+    FL["forward log<br/>ECB fixes from 2026-11-03,<br/>forward-log branch, daily job"]
+    IN["INTERIM figures<br/>evaluate.py before 2028-11-13:<br/>decide nothing"]
+    SC(["scoring<br/>on or after 2028-11-13,<br/>one look"])
+    WD(["withdrawn<br/>before any hold-out read"])
+
+    TR --> PW
+    PW -->|signal cannot fire| WD
+    PW -->|power stated| SG
+    SG -->|regime study| HO
+    SG -->|pairs v2, momentum| FL
+    FL -.-> IN
+    FL --> SC
+```
+
+The hold-out was used once, by the regime study, and is spent: later
+studies can only be tested on data that did not exist when they were
+signed. The forward rule is scored once, so looking at interim numbers
+cannot change the outcome.
 
 Fix history is in [CHANGELOG.md](../CHANGELOG.md).

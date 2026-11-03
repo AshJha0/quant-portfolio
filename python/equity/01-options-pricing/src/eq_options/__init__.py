@@ -8,6 +8,7 @@ compounded, annualised, ACT/365F; ``T`` in years; vols quoted on
 log-returns, annualised.
 """
 
+from .arrays import bs_greeks_array, bs_price_array
 from .binomial import crr_price, early_exercise_premium
 from .black76 import Black76Greeks, b76_d1_d2, black76_greeks, black76_price
 from .black_scholes import (
@@ -47,8 +48,10 @@ __all__ = [
     # black76
     "black76_price",
     "bs_greeks",
+    "bs_greeks_array",
     # black_scholes
     "bs_price",
+    "bs_price_array",
     "compare_greeks",
     # comparison
     "compare_models",

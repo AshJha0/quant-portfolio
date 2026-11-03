@@ -72,6 +72,8 @@ period. Rows with 16 calls per sample report 16-call averages, because a
 single call is close to the timer resolution under WSL2. Batch rows
 report one 1,024-row batch divided by 1,024.
 
+> **How these figures were timed.** Old harness: `std::time::Instant` over a fixed batch per sample (16 or 64 calls for fast kernels, 1 for slow ones). They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
+
 | Kernel | Calls per sample | Before: p50 / p99 / p99.9 | After: p50 / p99 / p99.9 |
 |---|---|---|---|
 | `bs_price` | 16 | 55 ns / 146 ns / 609 ns | 44 ns / 116 ns / 576 ns |

@@ -1,28 +1,88 @@
 # requirements
 
+CI installs every third-party Python package from `uv.lock`, the lock file at
+the repository root, and pip checks each wheel against the sha256 hash the
+lock records. The files in this folder are for local installs with plain pip.
+
 | File | Purpose |
 |---|---|
-| `ci-requirements.in` | The union of every Python project's runtime dependencies, the test extras CI installs, the plotting extra, `pytest` and `hypothesis`, the lint tools (`ruff`, `mypy`) and the binding build backends (`nanobind`, `scikit-build-core`, `maturin`). Live-data extras (`yfinance`) are left out. |
-| `ci-constraints.txt` | One resolved version per package, with environment markers where the version differs by Python version. CI passes it to every install with `pip install -c`. |
+| `../uv.lock` | The source of truth: one resolved version per package (with Python-version markers where they differ) and the sha256 of every wheel and sdist. CI installs from it. |
+| `ci-requirements.in` | The union of every Python project's runtime dependencies, the test extras, the plotting extra, `pytest` and `hypothesis`, the lint tools, the binding build backends and `setuptools`. Live-data extras (`yfinance`) are left out. |
+| `ci-constraints.txt` | The same versions as `uv.lock`, without hashes, for local `pip install -c`. The `lint` job fails if the two disagree. |
+| `../.github/scripts/hashed_install.sh` | The install step every Python CI job runs. |
 
-The file is a constraints file, not a requirements file. It pins the version
-of anything a project installs and does not add packages a project did not ask
-for. Each project still declares its own dependencies in its `pyproject.toml`.
+## How a CI job installs
+
+The plain idea: pip is told exactly which file to download for each package
+and what its fingerprint must be, and refuses anything else.
+
+Formally, `hashed_install.sh [--extra E] [--group G] [--editable] PATH...`
+does four things:
+
+1. `uv export --frozen --no-emit-workspace` writes the locked third-party
+   closure of the projects at `PATH...` (with extra `E`) and of the root
+   dependency groups (`G`, plus `backend` always) to a requirements file,
+   each line carrying its `--hash=sha256:` values.
+2. `pip install --require-hashes --only-binary :all: --no-deps -r` that
+   file. A wheel whose hash is not listed, a line without a hash, or a
+   package with no wheel for the platform each stop the install, and
+   `--no-deps` means nothing outside the file is fetched.
+3. `pip install --no-deps --no-build-isolation -e PATH...` for the local
+   projects, so setuptools (the `backend` group) is the hashed copy rather
+   than a fresh download into an isolated build environment.
+4. `pip check`, which fails if the hashed set leaves any declared
+   dependency unmet.
+
+The root `pyproject.toml` defines the groups:
+
+| Group | Contents | Used by |
+|---|---|---|
+| `test` | pytest, hypothesis | every test job |
+| `lint` | ruff, mypy, pandas-stubs, scipy-stubs | `lint` (through `uv sync`) |
+| `backend` | setuptools | every install (added by the script) |
+| `build` | nanobind, scikit-build-core, maturin | `bind <package>`, `engine differential` |
+
+The bindings are then built with
+`pip install --no-deps --no-build-isolation ./bindings/<package>`, using the
+hashed backends from the `build` group.
+
+Worked example, the `py fx/05-pairs-trading (3.13)` job:
+
+```bash
+python -m venv "$RUNNER_TEMP/venv" && export PATH="$RUNNER_TEMP/venv/bin:$PATH"
+bash .github/scripts/hashed_install.sh --group test --extra dev \
+    --editable python/core python/fx/05-pairs-trading
+```
+
+`uv export` resolves `qp-core` and `fx-pairs` with the `dev` extra to 23
+locked packages (counted across markers); on Python 3.13 the markers select `numpy==2.5.4` and
+`scipy==1.18.1`. Each is downloaded and hash-checked, then the two local
+projects go in editable.
+
+Evidence: running the script locally on Ubuntu (WSL) for `python/core`, all
+23 projects, the research set and the bindings set on Python 3.11, 3.12 and
+3.13 installs cleanly and passes `pip check`; the same install with every
+hash in the exported file replaced by zeros is refused by pip with a hash
+mismatch.
 
 ## Regenerate
 
-Use [uv](https://docs.astral.sh/uv/) 0.13 or later from the repository root:
+From the repository root with [uv](https://docs.astral.sh/uv/) 0.13 or later:
 
 ```bash
+uv lock
 uv pip compile --universal --python-version 3.11 --no-header \
     requirements/ci-requirements.in -o requirements/ci-constraints.txt
+python .github/scripts/check_constraints_lock.py
 ```
 
-`--universal` resolves for every Python version from 3.11 up in one file.
-NumPy, SciPy, pandas and a few others need different versions across 3.11 to 3.13, so
-the output carries `python_full_version` markers.
+`uv lock` refreshes the lock (CI runs `uv lock --check`). The compile keeps
+the constraints file for local pip users; the last command confirms it pins
+the same versions as the lock. If it reports a difference, run
+`uv lock --upgrade-package <name>` or adjust `ci-requirements.in` until the
+two agree.
 
-Then check that the pinned set installs from binary wheels on each supported
+To check that the locked set installs from binary wheels on each supported
 version and on the CI platform:
 
 ```bash
@@ -34,31 +94,13 @@ for v in 3.11 3.12 3.13; do
 done
 ```
 
-The bindings job sets `PIP_CONSTRAINT` to this file, so pip's isolated build
-environments for `bindings/cpp-nanobind` and `bindings/rust-pyo3` use the
-pinned `nanobind`, `scikit-build-core` and `maturin`.
-
-## uv.lock and this file
-
-The root `pyproject.toml` defines a uv workspace of `python/core` and the 23
-projects, locked in `uv.lock`. The two files serve different jobs:
-
-| File | Used by | Regenerate with |
-|---|---|---|
-| `uv.lock` | `uv sync --all-packages` (local setup) and the `lint` job | `uv lock` from the root |
-| `requirements/ci-constraints.txt` | every pip install in CI (one project per venv, bindings) | the `uv pip compile` command above |
-
-CI fails if `uv.lock` is out of date (`uv lock --check`). When a dependency
-changes, regenerate both and keep their versions of NumPy, SciPy and pandas
-the same.
-
 ## When to regenerate
 
 - A project adds or raises a dependency in its `pyproject.toml`. Add it to
   `ci-requirements.in` too.
-- Dependabot opens a pull request against this folder.
+- Dependabot opens a pull request against this folder or a project.
 - A new Python version joins the CI matrix.
 
 The golden vectors depend on SciPy special functions at about 1e-12. When a
-regenerated file moves NumPy or SciPy, run the four golden suites
+regenerated lock moves NumPy or SciPy, run the four golden suites
 (`python/{equity,fx}/{01-options-pricing,03-var-es-engine}`) before merging.

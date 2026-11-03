@@ -125,7 +125,8 @@ CHANGELOG.md). CONTRIBUTING.md has the full list.
   OFF). CI turns it on. Code is formatted by the root `.clang-format` and
   checked with clang-tidy. No runtime dependencies beyond the standard
   library.
-- Rust 2021 edition. `rust/` is one Cargo workspace: the shared `qp-core`
+- Rust 2024 edition, `rust-version = "1.99"` in every manifest to match the
+  pinned toolchain. `rust/` is one Cargo workspace: the shared `qp-core`
   crate and the four engines, one `Cargo.lock`, toolchain pinned in
   `rust/rust-toolchain.toml`. Library crates have no third-party
   dependencies (`proptest` is test-only). Run commands from `rust/` with

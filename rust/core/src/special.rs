@@ -155,11 +155,7 @@ fn erfc_with_c1(x: f64, c1: f64) -> f64 {
         (-y16 * y16).exp() * (-del).exp() * r
     };
 
-    if x < 0.0 {
-        2.0 - result
-    } else {
-        result
-    }
+    if x < 0.0 { 2.0 - result } else { result }
 }
 
 /// Complementary error function `erfc(x) = 1 - erf(x)`, Cody's table.

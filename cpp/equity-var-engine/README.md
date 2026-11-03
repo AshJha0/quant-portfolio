@@ -170,7 +170,7 @@ independently. Selected values:
 | quantity (input) | Python value | tolerance |
 |---|---|---|
 | historical VaR 99 % (case A) | 141.75681075495305 | 1e-9 rel |
-| FHS VaR 95 %, deprecated P&L-level (case A) | 109.3777910164513 | 1e-9 rel |
+| FHS VaR 95 %, deprecated P&L-level (case A) | 112.05212695060598 | 1e-9 rel |
 | parametric VaR 99 % normal (case B) | 23176.07650751402 | 1e-9 rel |
 | Cornish-Fisher VaR 99 % (case B) | 28230.62626871169 | 1e-9 rel |
 | Kupiec LR (250 obs, 7 exceptions) | 5.496990447792697 | 1e-9 rel |
@@ -199,6 +199,8 @@ every run, both compilers, before and after, are in
 `bench/bench_main.cpp`. Inputs are synthetic: P&L samples rotate through 16
 synthetic series and alpha steps through 0.5% to 5%, so no call repeats the
 previous one.
+
+> **How these figures were timed.** Old harness: each call timed on its own with rdtscp, empty-call overhead subtracted. They are one laptop run (Intel Core 5 120U, WSL2) kept for the record; `bench/results.json` holds the same run. Benches now use one method in C++ and Rust: a batch of back-to-back calls sized to at least 2 us per sample, median with p10/p90 ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)). Current figures, measured base against head on one CI runner, are in the `bench-results` artifact of the [CI bench job](https://github.com/AshJha0/quant-portfolio/actions/workflows/ci.yml).
 
 | Kernel | Compiler | p50 before | p50 after | p99 before | p99 after | p99.9 after | max after |
 |---|---|---|---|---|---|---|---|

@@ -72,6 +72,38 @@ counting version and checks that every kernel success path makes zero heap
 allocations. The throwing `crr_price` and `mc_price` still allocate their
 buffers per call, as before; use the kernels on a latency path.
 
+### Monte Carlo threading crossover
+Splitting a small simulation across threads makes it slower. Handing work
+to the pool costs a wake-up and a join, roughly 100 to 200 us on a WSL2
+host, and a 10,000-path price takes only about 400 us on one thread. So
+`try_mc_price` sends its chunks to the pool only when there are at least
+`kMcParallelMinDraws` (16,384) independent draws (paths, or antithetic
+pairs); below that the same chunks run one after another on the calling
+thread. The chunking and the RNG streams depend only on `(seed, threads)`,
+so the result is bit-identical either way
+(`ThreadPoolMc.ParallelThresholdKeepsBitsOnBothSides`).
+
+Measured before the threshold was added (Core 5 120U, 12 logical CPUs,
+WSL2 Ubuntu, GCC 15.2 `-O3`, equity engine, antithetic and control
+variate, `default_thread_pool()`, median of 201 calls, 15 for 1M paths):
+
+| paths | 1 thread | 2 threads | 4 threads |
+|---:|---:|---:|---:|
+| 1,000 | 34 us | 150 us | 126 us |
+| 10,000 | 424 us | 626 us | 531 us |
+| 20,000 | 898 us | 1,068 us | 746 us |
+| 50,000 | 2,099 us | 1,999 us | 1,462 us |
+| 1,000,000 | 62.8 ms | 43.9 ms | 30.2 ms |
+
+Worked example: 10,000 antithetic paths are 5,000 draws, under the
+threshold, so `threads = 4` now runs four chunks inline at the one-thread
+cost (about 0.42 ms rather than 0.53 ms) and returns the same bits as
+before. 50,000 paths (25,000 draws) still use the pool. The threshold is
+conservative: at 20,000 paths four threads were 17% faster on this host,
+but two were slower, and the wake-up cost differs by host. Scaling stays
+well below linear even at 1M paths (2.1x on 4 threads); the serial
+control-variate and variance passes are part of that and are not split.
+
 ### Batch API
 `bs_price_batch(BsBatchInputs, out)` and `bs_greeks_batch` take one
 `std::span` per field. Each element is priced by the same inline kernel as
@@ -188,3 +220,74 @@ tree recomputes node spots in the American loop (O(n^2) `exp`); a
 precomputed spot table, as in the CRR kernel, is left for a later performance pass.
 Bachelier's implied vol inverts the out-of-the-money side so in-the-money
 quotes keep their digits.
+
+## Vectorised batch pricing (`bs_price_batch_fast`)
+
+**The plain idea.** Pricing a thousand options one at a time spends most of
+its time in `std::log`, `std::exp` and `std::erfc`, which are library calls
+the compiler cannot vectorise. `bs_price_batch_fast` replaces them with the
+branch-free versions in `qp/vmath.hpp` so the compiler can price two (SSE2)
+or four (AVX2) options per instruction. The price is not bit-identical to
+`bs_price`; `bs_price_batch` stays the bit-exact batch and is unchanged.
+
+**Formal statement.** Same validation, the same `BatchError` for the same
+first bad index, and the same `NonFiniteResult` check as `bs_price_batch`.
+For every element, `|fast - exact| <= 1e-13 * max(1, S, K)`
+(`BatchApi.FastPricesWithinDocumentedBound`, 100 000 random quotes plus the
+boundary grid). Elements with `T`, `sigma`, `S` or `K` equal to zero, or
+`S / K` outside the normal double range, go through `bs_price_unchecked` and
+match `bs_price` bit for bit. On x86-64 Linux with GCC or Clang the kernel is
+built twice (`target_clones("avx2", "default")`) and the loader picks the
+AVX2 copy where the CPU has it; AVX2 does not enable FMA, so both copies
+return the same bits. On MSVC the fast functions take the exact path (see the second pass below).
+
+Three changes were needed before the loop vectorised, each confirmed with
+`-fopt-info-vec` / `-Rpass=loop-vectorize`: the erfc reflection
+`x < 0 ? 2 - r : r` became a bit-mask blend (GCC turned it into a branch
+under the default `-ftrapping-math`), the Clenshaw loop is fully unrolled,
+and the `qp::vm` kernels are `always_inline` (Clang otherwise kept `erfc1` as
+a call). `qp::vm::log_batch` was added for `log(S / K)` (fdlibm reduction,
+tested within 2 ulp).
+
+**Worked example (measured).** `eqopt_batch_bench` (tools/batch_bench.cpp):
+1024 random quotes, median of 21 runs of 2000 batches, steady_clock,
+i5-120U under WSL2 with other jobs running (load average about 7, so the
+spread is wide). Release build, no `-march=native`:
+
+| Compiler | `try_bs_price` loop | `bs_price_batch` | `bs_price_batch_fast` | Speed-up over `bs_price_batch` |
+|---|---|---|---|---|
+| GCC 15.2 | 161 ns (130-244) | 135 ns (122-179) | 33 ns (30-41) | about 4x |
+| Clang 21.1 | 122-182 ns | 108-260 ns | 57-125 ns (47-318) | 1.2x to 2.4x, noisy |
+
+With `EQOPT_NATIVE=ON` (AVX2 and FMA) GCC measured 16-38 ns per option.
+Before the three fixes above the fast kernel was scalar and no faster than
+`bs_price_batch` (about 159 ns against 137 ns). `fxopt::gk_price_batch_fast` uses the same kernel and the
+same tests; it has no separate benchmark.
+
+### Greeks batch, FX numbers and MSVC (second pass)
+
+`bs_greeks_batch_fast` and `gk_greeks_batch_fast` use the same kernels.
+Bound per field: `|fast - exact| <= 1e-12 * max(1, S, K, |exact|)`
+(`BatchApi.FastGreeksWithinDocumentedBound`, 50 000 random quotes plus the
+grid). The Greeks loop only vectorised once every kernel pointer was a
+`__restrict__` parameter: with 7 inputs and up to 11 outputs GCC needs more
+run-time alias checks than `--param vect-max-version-for-alias-checks=10`
+allows.
+
+Measured with `eqopt_batch_bench` and `fxopt_batch_bench` (same method as
+above, a later and quieter run, median ns per option, GCC 15.2 Release):
+
+| Kernel | exact batch | `_fast` | Speed-up |
+|---|---|---|---|
+| equity price | 94 | 23 | about 4x |
+| equity Greeks | 91 | 29 | about 3x |
+| FX price | 89 | 28 | about 3x |
+| FX Greeks | 110 | 27 | about 4x |
+
+Clang 21.1 in the same session: equity 185 to 73 (price) and 197 to 101
+(Greeks), FX 81 to 33 and 91 to 55, so 1.6x to 2.5x.
+
+MSVC (VS 2022, `/O2`) does not vectorise the kernel and the scalar vmath code
+was 3-4x slower than the exact batch there (equity price 189 against 622 ns).
+On MSVC the four `_fast` functions therefore call the exact batch and are
+bit-exact; both engines build with `/W4 /WX` and pass ctest (92 and 90 tests).

@@ -3,7 +3,7 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::{gk_price, mc_price, OptionType};
+use fx_options_engine::{OptionType, gk_price, mc_price};
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);
 
@@ -222,35 +222,39 @@ fn antithetic_rounds_odd_path_counts_up_to_even() {
 #[test]
 fn invalid_inputs_err() {
     let (s, k, _, rd, rf, sig) = MKT;
-    assert!(mc_price(
-        s,
-        k,
-        0.0,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        1000,
-        0,
-        true,
-        true
-    )
-    .is_err());
+    assert!(
+        mc_price(
+            s,
+            k,
+            0.0,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            1000,
+            0,
+            true,
+            true
+        )
+        .is_err()
+    );
     assert!(mc_price(s, k, 0.5, rd, rf, sig, OptionType::Call, 1, 0, true, true).is_err());
-    assert!(mc_price(
-        -s,
-        k,
-        0.5,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        1000,
-        0,
-        true,
-        true
-    )
-    .is_err());
+    assert!(
+        mc_price(
+            -s,
+            k,
+            0.5,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            1000,
+            0,
+            true,
+            true
+        )
+        .is_err()
+    );
 }
 
 #[test]

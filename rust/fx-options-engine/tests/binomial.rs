@@ -3,7 +3,7 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::{binomial_price, gk_price, Exercise, OptionType};
+use fx_options_engine::{Exercise, OptionType, binomial_price, gk_price};
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.12, 0.5, 0.0425, 0.0290, 0.0925);
 
@@ -243,29 +243,33 @@ fn sigma_zero_american_optimises_deterministic_exercise() {
 #[test]
 fn invalid_steps_and_coarse_tree_err() {
     let (s, k, t, rd, rf, sig) = MKT;
-    assert!(binomial_price(
-        s,
-        k,
-        t,
-        rd,
-        rf,
-        sig,
-        OptionType::Call,
-        0,
-        Exercise::European
-    )
-    .is_err());
+    assert!(
+        binomial_price(
+            s,
+            k,
+            t,
+            rd,
+            rf,
+            sig,
+            OptionType::Call,
+            0,
+            Exercise::European
+        )
+        .is_err()
+    );
     // dt too large for |r_d - r_f| vs sigma: p outside [0, 1].
-    assert!(binomial_price(
-        s,
-        k,
-        1.0,
-        0.50,
-        0.0,
-        0.01,
-        OptionType::Call,
-        1,
-        Exercise::European
-    )
-    .is_err());
+    assert!(
+        binomial_price(
+            s,
+            k,
+            1.0,
+            0.50,
+            0.0,
+            0.01,
+            OptionType::Call,
+            1,
+            Exercise::European
+        )
+        .is_err()
+    );
 }

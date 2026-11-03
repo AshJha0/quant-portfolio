@@ -2,7 +2,7 @@
 
 mod common;
 
-use eq_options_engine::{bs_greeks, bs_price, fd_greeks, OptionType};
+use eq_options_engine::{OptionType, bs_greeks, bs_price, fd_greeks};
 
 #[test]
 fn analytic_matches_finite_difference_to_1e6() {
@@ -46,7 +46,7 @@ fn analytic_matches_finite_difference_to_1e6() {
 fn fd_greeks_work_for_any_pricer_closure() {
     // Use the CRR tree as the pricer under the generic FD engine; its
     // delta should sit close to the analytic BS delta.
-    use eq_options_engine::{crr_price, Exercise};
+    use eq_options_engine::{Exercise, crr_price};
     let pricer = |s: f64, k: f64, t: f64, r: f64, sigma: f64, q: f64, ot: OptionType| {
         crr_price(s, k, t, r, sigma, q, ot, Exercise::European, 800)
     };
@@ -91,17 +91,19 @@ fn greeks_reject_boundary_inputs() {
     assert!(bs_greeks(100.0, 100.0, 1.0, 0.05, 0.0, 0.0, OptionType::Call).is_err());
     assert!(bs_greeks(0.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Call).is_err());
     // FD theta bump needs T > h: tiny T is rejected cleanly.
-    assert!(fd_greeks(
-        bs_price,
-        100.0,
-        100.0,
-        1e-6,
-        0.05,
-        0.2,
-        0.0,
-        OptionType::Call
-    )
-    .is_err());
+    assert!(
+        fd_greeks(
+            bs_price,
+            100.0,
+            100.0,
+            1e-6,
+            0.05,
+            0.2,
+            0.0,
+            OptionType::Call
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -141,17 +143,19 @@ fn greeks_reject_non_finite_inputs() {
     }
     // Negative rates remain legal at both entry points.
     assert!(bs_greeks(100.0, 100.0, 1.0, -0.01, 0.2, -0.02, OptionType::Call).is_ok());
-    assert!(fd_greeks(
-        bs_price,
-        100.0,
-        100.0,
-        1.0,
-        -0.01,
-        0.2,
-        -0.02,
-        OptionType::Call
-    )
-    .is_ok());
+    assert!(
+        fd_greeks(
+            bs_price,
+            100.0,
+            100.0,
+            1.0,
+            -0.01,
+            0.2,
+            -0.02,
+            OptionType::Call
+        )
+        .is_ok()
+    );
 }
 
 #[test]

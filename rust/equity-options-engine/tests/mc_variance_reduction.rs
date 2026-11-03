@@ -4,7 +4,7 @@
 //! and pairing afterwards gave SE 0.0247 at 100k paths for this contract,
 //! worse than the control variate alone (0.0177).
 
-use eq_options_engine::{bs_price, mc_price, OptionType};
+use eq_options_engine::{OptionType, bs_price, mc_price};
 
 const OLD_COMBINED_SE: f64 = 0.0246;
 

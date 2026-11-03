@@ -3,7 +3,7 @@
 mod common;
 use common::assert_close;
 
-use fx_options_engine::{d1, d2, gk_call, gk_price, gk_put, FxError, OptionType};
+use fx_options_engine::{FxError, OptionType, d1, d2, gk_call, gk_price, gk_put};
 
 const MKT: (f64, f64, f64, f64, f64, f64) = (1.10, 1.05, 0.75, 0.0425, 0.0290, 0.0925);
 

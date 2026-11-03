@@ -33,6 +33,18 @@ are in the README.
   L = 14 the COS put carried a 9.7e-7 bias at every strike because the
   c2-only truncation interval was too narrow. COS prices more negative
   than 1e-12 K are returned as NaN with a warning instead of floored.
+* **Outside check against QuantLib** (`test_heston_quantlib.py`,
+  optional, skipped unless `pip install QuantLib`; CI does not install
+  it). QuantLib 1.44 `AnalyticHestonEngine` (integration tolerance
+  1e-14), flat ACT/365F curves, maturities a whole number of days so the
+  year fractions match. Four cases, calls and puts: the Fang-Oosterlee
+  set (S = K = 100, T = 1, v0 = 0.0175, kappa = 1.5768, theta = 0.0398,
+  xi = 0.5751, rho = -0.5711), an FX case with r_d = 3% and r_f = 1%,
+  T = 10 with xi = 1 and rho = -0.9, and a short 73-day case with
+  rho > 0. Gil-Pelaez agrees to 1e-12 relative (seen 1e-15 to 5e-14);
+  COS to 1e-9 relative (seen 4e-11 on Fang-Oosterlee, 3e-10 at T = 10).
+  On Fang-Oosterlee QuantLib gives 5.785155434, as do both methods here;
+  the published 5.785155450 differs from all three in the eighth digit.
 * **ξ→0 degeneracy**: Heston with ξ = 1e-4, ρ = 0 vs GK at the
   deterministic effective vol √(w̄/T): |diff| < 1e-6 (measured ~6e-10).
 * **Monte Carlo vs Fourier** (3-SE contract): full-truncation Euler,

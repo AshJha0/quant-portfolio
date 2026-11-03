@@ -42,7 +42,7 @@
 
 use crate::garman_kohlhagen::d1 as d1_fn;
 use crate::{
-    brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs, FxResult, OptionType,
+    FxResult, OptionType, brentq, invalid, norm_cdf, norm_ppf, require_finite, validate_inputs,
 };
 
 /// FX delta quoting convention (see the module docs for the formulae).

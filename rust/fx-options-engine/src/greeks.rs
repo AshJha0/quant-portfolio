@@ -16,7 +16,8 @@
 //! of vol (divide by 100 for "per vol point").
 
 use crate::garman_kohlhagen::{d1 as d1_fn, gk_price};
-use crate::{invalid, norm_cdf, norm_pdf, validate_inputs, FxResult, OptionType};
+use crate::{FxResult, OptionType, invalid, norm_pdf, validate_inputs};
+use qp_core::black_scholes::{CarryGreeks, TruncatedC1Normal, carry_greeks_with_d};
 
 /// Full GK Greek set for one option.
 ///
@@ -135,28 +136,30 @@ pub fn analytic_greeks(
     if t <= 0.0 || sigma <= 0.0 {
         return invalid("analytic_greeks requires T > 0 and sigma > 0");
     }
-    let (d1v, d2v, df_f, df_d) = core(s, k, t, r_d, r_f, sigma)?;
-    let sqrt_t = t.sqrt();
-    let n_d1 = norm_pdf(d1v);
-    let nc_pd1 = norm_cdf(phi * d1v);
-    let nc_pd2 = norm_cdf(phi * d2v);
+    let d1v = d1_fn(s, k, t, r_d, r_f, sigma)?;
+    let d2v = d1v - sigma * t.sqrt();
+    Ok(from_carry(&carry_greeks_with_d::<TruncatedC1Normal>(
+        s, k, t, r_d, r_f, sigma, phi, d1v, d2v,
+    )))
+}
 
-    let price = phi * (s * df_f * nc_pd1 - k * df_d * nc_pd2);
-    let delta_spot = phi * df_f * nc_pd1;
-    let theta = -s * df_f * n_d1 * sigma / (2.0 * sqrt_t)
-        + phi * (r_f * s * df_f * nc_pd1 - r_d * k * df_d * nc_pd2);
-    Ok(GreeksResult {
-        price,
-        delta_spot,
-        delta_forward: phi * nc_pd1,
-        gamma: df_f * n_d1 / (s * sigma * sqrt_t),
-        vega: s * df_f * n_d1 * sqrt_t,
-        theta,
-        rho_domestic: phi * k * t * df_d * nc_pd2,
-        rho_foreign: -phi * s * t * df_f * nc_pd1,
-        vanna: -df_f * n_d1 * d2v / sigma,
-        volga: s * df_f * n_d1 * sqrt_t * d1v * d2v / sigma,
-    })
+/// The engine's Greek names for the shared carry-form result
+/// (qp_core::black_scholes): r_f is the carry yield, so `rho_q` is
+/// `rho_foreign`.
+#[inline(always)]
+pub(crate) fn from_carry(g: &CarryGreeks) -> GreeksResult {
+    GreeksResult {
+        price: g.price,
+        delta_spot: g.delta,
+        delta_forward: g.delta_forward,
+        gamma: g.gamma,
+        vega: g.vega,
+        theta: g.theta,
+        rho_domestic: g.rho,
+        rho_foreign: g.rho_q,
+        vanna: g.vanna,
+        volga: g.volga,
+    }
 }
 
 /// Finite-difference Greeks (see [`finite_difference_greeks`]).

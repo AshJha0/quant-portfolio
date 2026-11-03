@@ -59,9 +59,10 @@ book the two agree by construction.
 
 The old `filtered_historical_var(pnl, ...)` filtered the scalar P&L. That
 mixes the vol of the factors with the book's changing mix of them. It stays
-one release, deprecated, with its old arithmetic (full-sample variance seed,
-type-7 quantile) so that its number does not move (*golden*
-`A_FHS_VAR_5PCT_LAM094`).
+one release, deprecated, with its full-sample variance seed. Its tail now
+uses the S2 order statistic like every other path; with type-7 interpolation
+it was not comparable with plain HS. *Golden* `A_FHS_VAR_5PCT_LAM094` moved
+from 109.3777910164513 to 112.05212695060598.
 
 **Square-root-of-time.** `VaR_h = VaR_1 sqrt(h)`. Exact only for i.i.d.
 zero-drift returns; it understates multi-day risk under volatility

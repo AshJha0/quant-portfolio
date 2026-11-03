@@ -4,7 +4,7 @@
 //! `K` may be negative; `sigma_n` is in price units per sqrt(year); theta
 //! is `-dV/dT` per year with `F` held.
 
-use crate::black_scholes::{norm_cdf, norm_pdf, OptionType, PricingError};
+use crate::black_scholes::{OptionType, PricingError, norm_cdf, norm_pdf};
 
 /// Bachelier price and Greeks.
 #[derive(Debug, Clone, Copy, PartialEq)]

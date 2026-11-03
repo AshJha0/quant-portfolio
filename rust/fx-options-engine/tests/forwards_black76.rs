@@ -5,8 +5,8 @@ use common::assert_close;
 
 use fx_options_engine::forwards::{PIP_FACTOR_DEFAULT, PIP_FACTOR_JPY};
 use fx_options_engine::{
-    black76_from_spot, black76_price, cip_forward, forward_points, gk_call, gk_price, gk_put,
-    synthetic_forward_from_options, OptionType,
+    OptionType, black76_from_spot, black76_price, cip_forward, forward_points, gk_call, gk_price,
+    gk_put, synthetic_forward_from_options,
 };
 
 #[test]

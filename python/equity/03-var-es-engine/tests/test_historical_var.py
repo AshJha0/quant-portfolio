@@ -221,3 +221,31 @@ class TestHorizonScaling:
         v10_sqrt = scale_var_sqrt_time(v1, 10)
         v10_overlap = historical_var(overlapping_horizon_pnl(pnl, 10), 0.05)
         assert v10_overlap == pytest.approx(v10_sqrt, rel=0.15)  # iid: both valid
+
+
+def test_pnl_fhs_uses_order_statistic_like_plain_hs():
+    """Deprecated P&L-level FHS reads its tail with the S2 order statistic.
+
+    Rebuild the rescaled scenarios by hand and take the ceil(n alpha)-th
+    largest loss; type-7 interpolation would give a different number here.
+    """
+    import warnings
+
+    import numpy as np
+    from eq_var.historical_var import filtered_historical_var
+
+    pnl = np.random.default_rng(0).standard_normal(1000)
+    lam, alpha = 0.94, 0.01
+    s2 = np.empty(pnl.size)
+    s2[0] = np.var(pnl)
+    for t in range(1, pnl.size):
+        s2[t] = lam * s2[t - 1] + (1 - lam) * pnl[t - 1] ** 2
+    sigma = np.sqrt(s2)
+    nxt = np.sqrt(lam * s2[-1] + (1 - lam) * pnl[-1] ** 2)
+    losses = np.sort(-(pnl / sigma * nxt))[::-1]
+    expected = losses[int(np.ceil(pnl.size * alpha)) - 1]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        got = filtered_historical_var(pnl, alpha, lam)
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert got != pytest.approx(-np.quantile(-losses, alpha), rel=1e-6)

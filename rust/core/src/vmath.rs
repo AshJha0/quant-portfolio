@@ -105,11 +105,7 @@ pub fn erfc1(x: f64) -> f64 {
     let zs = ((z * 16.0 + MAGIC) - MAGIC) * 0.0625;
     let d = z - zs;
     let r = t * exp1(-zs * zs) * exp1(g - d * (z + zs));
-    if x < 0.0 {
-        2.0 - r
-    } else {
-        r
-    }
+    if x < 0.0 { 2.0 - r } else { r }
 }
 
 /// `out[i] = exp(x[i])` over the common length.

@@ -34,6 +34,24 @@ members = [
     "python/fx/10-regime-switching",
 ]
 
+# Tools CI installs next to the projects. Not installed by a plain
+# `uv sync`; CI exports them from uv.lock with hashes through
+# .github/scripts/hashed_install.sh (see requirements/README.md).
+#   test   the test runner every job uses
+#   lint   ruff, mypy and the type stubs (the lint job)
+#   backend  setuptools, which builds every project (pip --no-build-isolation)
+#   build  the two binding build backends (bindings and engine diff jobs)
+[dependency-groups]
+test = ["pytest>=7.4", "hypothesis>=6.100"]
+lint = [
+    "ruff==0.17.3",
+    "mypy==2.4.1",
+    "pandas-stubs==3.1.0.261029 ; python_full_version >= '3.12'",
+    "scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'",
+]
+backend = ["setuptools>=68"]
+build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0", "cibuildwheel==3.1.4"]
+
 [tool.uv.sources]
 qp-core = { workspace = true }
 

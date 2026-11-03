@@ -7,8 +7,8 @@ use std::collections::HashMap;
 
 use fx_options_engine::golden::{GoldenRecord, RECORDS};
 use fx_options_engine::{
-    analytic_greeks, atm_dns_strike, binomial_price, cip_forward, delta, gk_price, implied_vol,
-    strike_from_delta, DeltaConvention, Exercise,
+    DeltaConvention, Exercise, analytic_greeks, atm_dns_strike, binomial_price, cip_forward, delta,
+    gk_price, implied_vol, strike_from_delta,
 };
 
 const CONVENTIONS: [DeltaConvention; 4] = [

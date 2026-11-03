@@ -16,7 +16,7 @@
 //! forward-space market data arrives.
 
 use crate::forwards::cip_forward;
-use crate::{invalid, norm_cdf, require_finite, FxResult, OptionType};
+use crate::{FxResult, OptionType, invalid, norm_cdf, require_finite};
 
 /// Black-76 price of a European FX option on the forward.
 ///

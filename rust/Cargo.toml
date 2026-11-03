@@ -4,7 +4,7 @@
 # one target directory (rust/target). Release profiles live here because
 # cargo ignores [profile] sections in member manifests.
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "core",
     "equity-options-engine",

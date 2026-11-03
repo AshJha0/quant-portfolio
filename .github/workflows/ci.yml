@@ -16,7 +16,10 @@
 #   rust         rust/ workspace: one entry per crate, cargo test + clippy
 #   rust fmt     cargo fmt --all --check over the workspace
 #   bindings     qp-cpp (nanobind) and qp-rust (PyO3) built and tested
-#   bench        Release benches vs committed bench/results.json (2x rule)
+#   cmake install  cpp/ installed as one CMake package; find_package consumer
+#   wheels       cibuildwheel wheels for both bindings (artefacts only, never
+#                published; gated by ci-ok)
+#   bench        same-runner base-vs-head bench gate (bench_ab.py)
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
 #   research     research/tools/prereg.py check, then pytest research/tests
@@ -83,20 +86,23 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             python/core/pyproject.toml
       - name: Create a venv for python/core only
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - name: Install python/core with its test dependencies
-        working-directory: python/core
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      # Third-party wheels come from uv.lock and are checked against its
+      # sha256 hashes (pip --require-hashes); see requirements/README.md.
+      - name: Install python/core with its test dependencies (hashed, from uv.lock)
         env:
-          SPEC: ${{ fromJSON(needs.discover.outputs.core).spec }}
+          EXTRA: ${{ fromJSON(needs.discover.outputs.core).extra }}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -c "$GITHUB_WORKSPACE/requirements/ci-constraints.txt" \
-            -e "$SPEC" pytest hypothesis
+          bash .github/scripts/hashed_install.sh --group test ${EXTRA:+--extra "$EXTRA"} \
+            --editable python/core
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest
         working-directory: python/core
@@ -133,26 +139,26 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             python/core/pyproject.toml
             ${{ matrix.project.path }}/pyproject.toml
       - name: Create a venv for this project only
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      # Outside the uv workspace the qp-core dependency resolves to the
-      # already installed local python/core, so it is installed first.
-      - name: Install python/core
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -c requirements/ci-constraints.txt -e python/core
-      - name: Install the project with its ${{ matrix.project.extra || 'base' }} dependencies
-        working-directory: ${{ matrix.project.path }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      # The locked third-party closure of python/core and the project (with
+      # its extra) goes in first with hashes checked, then both local
+      # packages with --no-deps; pip check confirms nothing is missing.
+      - name: Install python/core and the project with its ${{ matrix.project.extra || 'base' }} dependencies (hashed, from uv.lock)
         env:
-          SPEC: ${{ matrix.project.spec }}
+          EXTRA: ${{ matrix.project.extra }}
+          PROJECT: ${{ matrix.project.path }}
         run: |
-          python -m pip install -c "$GITHUB_WORKSPACE/requirements/ci-constraints.txt" \
-            -e "$SPEC" pytest hypothesis
+          bash .github/scripts/hashed_install.sh --group test ${EXTRA:+--extra "$EXTRA"} \
+            --editable python/core "$PROJECT"
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest
         working-directory: ${{ matrix.project.path }}
@@ -186,10 +192,11 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: uv.lock matches every pyproject.toml in the workspace
         run: uv lock --check
-      - name: Install the workspace from uv.lock, plus the pinned lint tools, stubs and test deps mypy imports
+      - name: Install the workspace with the test and lint groups from uv.lock
         run: |
-          uv sync --all-packages --locked
-          uv pip install -c requirements/ci-constraints.txt ruff mypy pandas-stubs scipy-stubs pytest hypothesis
+          uv sync --all-packages --locked --group test --group lint
+      - name: requirements/ci-constraints.txt pins the same versions as uv.lock
+        run: python .github/scripts/check_constraints_lock.py
       - name: ruff check python
         run: uv run --no-sync ruff check python
       # No arguments: the [tool.mypy] / mypy.ini config at the root decides
@@ -583,9 +590,6 @@ jobs:
             python: "3.13"
     env:
       CARGO_TERM_COLOR: never
-      # Applies to the isolated build environments too, so nanobind,
-      # scikit-build-core and maturin come from the pinned set.
-      PIP_CONSTRAINT: ${{ github.workspace }}/requirements/ci-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -595,7 +599,7 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             bindings/${{ matrix.package }}/pyproject.toml
       - name: Install GCC 15, CMake and Ninja
         if: matrix.package == 'cpp-nanobind'
@@ -618,18 +622,22 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - name: Install python/core and the four reference packages
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core, the four reference packages and the build backends (hashed, from uv.lock)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e python/core \
-            -e python/equity/01-options-pricing -e python/fx/01-options-pricing \
-            -e python/equity/03-var-es-engine -e python/fx/03-var-es-engine \
-            pytest hypothesis
+          bash .github/scripts/hashed_install.sh --group test --group build --editable \
+            python/core python/equity/01-options-pricing python/fx/01-options-pricing \
+            python/equity/03-var-es-engine python/fx/03-var-es-engine
+      # No build isolation: nanobind, scikit-build-core and maturin are the
+      # hashed copies installed above, not a fresh download.
       - name: pip install ./bindings/${{ matrix.package }}
         env:
           PACKAGE: ${{ matrix.package }}
         run: |
-          python -m pip install -v "./bindings/$PACKAGE"
+          python -m pip install -v --no-deps --no-build-isolation "./bindings/$PACKAGE"
+          python -m pip check
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       # Run from the temp dir so the installed package is imported, not the
       # source tree.
@@ -651,20 +659,126 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # CI runner numbers are not the published numbers in the engine READMEs.
-  # The job fails only on a p50 regression worse than 2.0x on a kernel whose
-  # committed p50 is above 1 us; everything else is report-only. See
-  # .github/scripts/bench_compare.py.
+  # The four engines and qp::core installed as one CMake package (cpp/
+  # CMakeLists.txt), then cpp/tests/find_package_consumer built against the
+  # install prefix alone. Catches a header left out of the install, a target
+  # missing from the export set, or a build-tree path leaking into it.
+  cmake-install:
+    name: cmake install (${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gcc, clang]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install ${{ matrix.toolchain }} toolchain, CMake and Ninja
+        env:
+          CXX_KIND: ${{ matrix.toolchain }}
+        run: bash .github/scripts/install_cxx.sh "$CXX_KIND"
+      - name: Build and install into a fresh prefix
+        env:
+          CXX_KIND: ${{ matrix.toolchain }}
+        run: |
+          if [ "$CXX_KIND" = clang ]; then cxx=clang++-21; else cxx=g++-15; fi
+          cmake -S cpp -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$cxx"
+          cmake --build "$RUNNER_TEMP/build" -j 4
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/prefix"
+          echo "CXX_BIN=$cxx" >> "$GITHUB_ENV"
+      # The consumer sees only the prefix: the source tree is moved aside so
+      # an absolute path into it in the exported files would fail the build.
+      - name: Build and run the find_package consumer
+        run: |
+          cp -r cpp/tests/find_package_consumer "$RUNNER_TEMP/consumer"
+          mv cpp "$RUNNER_TEMP/cpp-moved"
+          cmake -S "$RUNNER_TEMP/consumer" -B "$RUNNER_TEMP/consumer-build" -G Ninja \
+            -DCMAKE_CXX_COMPILER="$CXX_BIN" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/prefix"
+          cmake --build "$RUNNER_TEMP/consumer-build"
+          ctest --test-dir "$RUNNER_TEMP/consumer-build" --output-on-failure
+          mv "$RUNNER_TEMP/cpp-moved" cpp
+
+  # Wheels for qp-cpp and qp-rust, CPython 3.11 to 3.13, manylinux x86_64
+  # and Windows amd64, built with cibuildwheel (settings under
+  # [tool.cibuildwheel] in each bindings/*/pyproject.toml). Each wheel is
+  # installed in a clean environment and run through bindings/wheel_smoke.py.
+  # The wheels are kept as workflow artefacts for 14 days; nothing is
+  # published to PyPI.
+  wheels:
+    name: wheels ${{ matrix.package }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [cpp-nanobind, rust-pyo3]
+        os: [ubuntu-24.04, windows-2025]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Read the pinned Rust channel
+        if: matrix.package == 'rust-pyo3'
+        shell: bash
+        run: |
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)
+          test -n "$channel"
+          echo "QP_RUST_CHANNEL=$channel" >> "$GITHUB_ENV"
+      - name: Install the pinned Rust toolchain (Windows)
+        if: matrix.package == 'rust-pyo3' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          rustup toolchain install "$QP_RUST_CHANNEL" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$QP_RUST_CHANNEL" >> "$GITHUB_ENV"
+      - name: Create a venv
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ "$RUNNER_OS" = Windows ]; then bin="$RUNNER_TEMP/venv/Scripts"; else bin="$RUNNER_TEMP/venv/bin"; fi
+          echo "$bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install cibuildwheel (hashed, from uv.lock)
+        shell: bash
+        run: bash .github/scripts/hashed_install.sh --group build
+      - name: cibuildwheel bindings/${{ matrix.package }}
+        shell: bash
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse "bindings/$PACKAGE"
+          ls -l wheelhouse
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.package }}-${{ matrix.os }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  # Same-runner A/B latency gate. The base commit (pull request target, or
+  # the previous commit on a push) and the head are built on this runner
+  # and their benches run in alternating rounds. A kernel fails only when
+  # the head median is more than 25% above the base and head p10 is above
+  # base p90. See .github/scripts/bench_ab.py and docs/BENCHMARKS.md. The
+  # uploaded artifact is the source of the README latency figures.
   bench:
     name: bench
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -673,50 +787,31 @@ jobs:
       - name: Install the toolchain from rust/rust-toolchain.toml
         working-directory: rust
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: rust -> target
-          key: bench-${{ hashFiles('rust/Cargo.lock') }}
-      - name: C++ benches (preset gcc, Release)
+      - name: Build base and head, run interleaved rounds
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/bench"
-          mkdir -p "$out"
-          for pair in equity-options-engine:eqopt_bench equity-var-engine:bench_eqvar \
-                      fx-options-engine:fxopt_bench fx-var-engine:fxvar_bench; do
-            engine="${pair%%:*}"
-            target="${pair##*:}"
-            (
-              cd "cpp/$engine"
-              cmake --preset gcc -DCMAKE_BUILD_TYPE=Release
-              cmake --build --preset gcc --target "$target" -j 4
-              "build/gcc/$target" --label ci --out "$out/cpp-$engine.json"
-            )
-          done
-      - name: Rust benches (release)
-        working-directory: rust
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/bench"
-          for pair in equity-options-engine:eq-options-engine equity-var-engine:eq-var-engine \
-                      fx-options-engine:fx-options-engine fx-var-engine:fx-var-engine; do
-            crate="${pair%%:*}"
-            package="${pair##*:}"
-            cargo run --release --locked -p "$package" --bin bench -- --out "$out/rust-$crate.json"
-          done
-      - name: Compare p50 with the committed results
+          base="$BASE_SHA"
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          echo "base $base, head $(git rev-parse HEAD)"
+          bash .github/scripts/bench_ab_run.sh "$base" "$RUNNER_TEMP/bench" 3
+      - name: Compare head with base
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/bench"
           args=()
           for lang in cpp rust; do
             for engine in equity-options-engine equity-var-engine fx-options-engine fx-var-engine; do
-              args+=(--pair "$lang/$engine" "$lang/$engine/bench/results.json" "$out/$lang-$engine.json")
+              args+=(--engine "$lang/$engine"
+                     --base "$out"/r*/base/"$lang-$engine.json"
+                     --head "$out"/r*/head/"$lang-$engine.json")
             done
           done
           rc=0
-          python .github/scripts/bench_compare.py "${args[@]}" \
-            --summary "$out/summary.md" --json "$out/comparison.json" > /dev/null || rc=$?
+          python .github/scripts/bench_ab.py "${args[@]}"             --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
           cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Upload bench JSON
@@ -736,7 +831,6 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: never
-      PIP_CONSTRAINT: ${{ github.workspace }}/requirements/ci-constraints.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -746,7 +840,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             bindings/*/pyproject.toml
       - name: Install GCC 15, CMake and Ninja
         run: bash .github/scripts/install_cxx.sh gcc
@@ -764,14 +858,17 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - name: Install python/core, the four reference packages and both bindings
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core, the four reference packages and both bindings (hashed, from uv.lock)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e python/core \
-            -e python/equity/01-options-pricing -e python/fx/01-options-pricing \
-            -e python/equity/03-var-es-engine -e python/fx/03-var-es-engine \
-            pytest pandas scipy
-          python -m pip install ./bindings/cpp-nanobind ./bindings/rust-pyo3
+          bash .github/scripts/hashed_install.sh --group test --group build --editable \
+            python/core python/equity/01-options-pricing python/fx/01-options-pricing \
+            python/equity/03-var-es-engine python/fx/03-var-es-engine
+          python -m pip install --no-deps --no-build-isolation \
+            ./bindings/cpp-nanobind ./bindings/rust-pyo3
+          python -m pip check
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest tests/test_engine_differential.py (no skips allowed)
         run: |
@@ -809,7 +906,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            requirements/ci-constraints.txt
+            uv.lock
             python/core/pyproject.toml
             python/fx/05-pairs-trading/pyproject.toml
             python/fx/10-regime-switching/pyproject.toml
@@ -817,12 +914,13 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - name: Install python/core, the FX pairs and regime packages, pytest, statsmodels
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core, the FX pairs and regime packages and pytest (hashed, from uv.lock)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -c requirements/ci-constraints.txt -e python/core
-          python -m pip install -c requirements/ci-constraints.txt \
-            -e python/fx/05-pairs-trading -e python/fx/10-regime-switching pytest statsmodels
+          bash .github/scripts/hashed_install.sh --group test --editable \
+            python/core python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: prereg check
         run: python research/tools/prereg.py check
       - name: pytest research/tests
@@ -849,10 +947,19 @@ jobs:
           python-version: "3.12"
       - name: Voice report (em-dashes, banned phrases; report-only)
         run: python .github/scripts/style_report.py
-      - name: CI helper scripts (bench_compare, aggregate_counts, discover)
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install pytest (hashed, from uv.lock)
         run: |
-          python -m pip install pytest
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --group test
+      - name: CI helper scripts (bench_ab, aggregate_counts, discover)
+        run: |
           python -m pytest -p no:cacheprovider -q tests/test_ci_scripts.py
+      - name: CI install scripts (hashed_install, check_constraints_lock)
+        run: python -m pytest -p no:cacheprovider -q tests/test_ci_install.py
 
   counts:
     name: counts
@@ -888,11 +995,18 @@ jobs:
           path: counts.json
           if-no-files-found: error
           retention-days: 90
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install pytest (hashed, from uv.lock)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --group test
       - name: Docs quote the executed counts
         env:
           QP_COUNTS_JSON: ${{ github.workspace }}/counts.json
         run: |
-          python -m pip install pytest
           python -m pytest -p no:cacheprovider -q tests/test_docs_counts.py
 
   ci-ok:
@@ -912,6 +1026,8 @@ jobs:
       - rust
       - rust-fmt
       - bindings
+      - cmake-install
+      - wheels
       - bench
       - engine-differential
       - research

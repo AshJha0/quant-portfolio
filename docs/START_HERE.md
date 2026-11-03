@@ -25,15 +25,28 @@ read these five things in this order and skip the rest.
 
 Known limits worth knowing before you read further:
 
-- Equity and FX are separate codebases with much shared maths; the copies
-  have drifted. Treat the FX packages as convention variants.
-- Latency tables are from one laptop under WSL2. The C++ and Rust tables use
-  different timing methods and are not comparable with each other.
+- Equity and FX are separate codebases for conventions (quoting, rates,
+  day counts, delta styles). The Black-Scholes maths is shared: one
+  cost-of-carry kernel per language, which the two option packages wrap.
+  Other models (vol surfaces, VaR revaluation) still have one copy per
+  asset class.
+- The latency tables in the READMEs are one laptop run with an older
+  harness. Current figures come from the CI bench job, which runs the old
+  and new commit on the same runner ([BENCHMARKS.md](BENCHMARKS.md)).
 - One study has an out-of-sample result, and it is a null (regime
-  hold-out, H0 not rejected). The two forward drafts cannot be scored
-  before November 2028.
+  hold-out, H0 not rejected). The two forward registrations are scored
+  once, on or after 2028-11-13; anything printed before then is labelled
+  INTERIM and decides nothing.
+- CI installs every Python package with its hash checked against
+  `uv.lock`; QuantLib cross-checks exist but run only where QuantLib is
+  installed.
 - The only real-data studies use ECB daily reference rates. There is no
   point-in-time equity or intraday evidence.
 
 After that, [LEARN.md](LEARN.md) is a study guide with self-test questions
-and [COOKBOOK.md](COOKBOOK.md) has task recipes.
+(Set 19 covers power, optional stopping, false discovery rate, hashed
+installs and latency measurement) and [COOKBOOK.md](COOKBOOK.md) has task
+recipes, including NumPy array pricing, using the C++ engines through
+`find_package(QuantPortfolio)`, and reading the trials log.
+[DIAGRAMS.md](DIAGRAMS.md) has the CI pipeline, the shared-kernel layout
+and the life of a research study.

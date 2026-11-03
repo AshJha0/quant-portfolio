@@ -199,3 +199,17 @@ reference (paper, section, equation) and a worked example. In short:
   year in calendar time, the same sign convention as `theta`.
 * **Ladders and grids**: full revaluation, no Taylor terms; vega split
   linearly between neighbouring expiry buckets (a convention).
+
+
+## 5. Shared Black-Scholes kernel
+
+Black-Scholes-Merton with a dividend yield and Garman-Kohlhagen are one
+formula in cost-of-carry form (`b = r - q`). The arithmetic lives once, in
+`qp_core.black_scholes`, shared with the FX package; `bs_price`, `d1_d2`,
+`bs_greeks` and the array entry points call it and keep their own
+validation and boundary branches (`T`, `S`, `K` or `sigma` zero). The
+implied-vol solver is `qp_core.iv_core`. Every output is unchanged bit for
+bit (a 177,604-value before/after snapshot); the kernel's put price can be
+`-0.0` where this package has always returned `+0.0`, and the wrappers add
+`0.0` to keep it. `tests/test_carry_twin.py` at the repository root pins
+how closely equity-with-yield and FX-with-foreign-rate agree.

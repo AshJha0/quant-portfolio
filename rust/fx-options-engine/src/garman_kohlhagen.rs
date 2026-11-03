@@ -23,7 +23,8 @@
 //! `sigma = 0` (or `sigma*sqrt(T) = 0`) returns the discounted intrinsic
 //! on the forward, `e^{-r_d T} max(phi (F - K), 0)`.
 
-use crate::{invalid, norm_cdf, validate_inputs, FxResult, OptionType};
+use crate::{FxResult, OptionType, invalid, validate_inputs};
+use qp_core::black_scholes::{TruncatedC1Normal, carry_d1_d2, carry_value};
 
 /// Threshold below which `sigma * sqrt(T)` is treated as zero vol.
 pub(crate) const MIN_VOL: f64 = 1e-12;
@@ -57,7 +58,7 @@ pub fn d1(s: f64, k: f64, t: f64, r_d: f64, r_f: f64, sigma: f64) -> FxResult<f6
             "d1 undefined for sigma*sqrt(T)={vol_sqrt_t}; need sigma>0, T>0"
         ));
     }
-    Ok(((s / k).ln() + (r_d - r_f + 0.5 * sigma * sigma) * t) / vol_sqrt_t)
+    Ok(carry_d1_d2(s, k, t, r_d, r_f, sigma).0)
 }
 
 /// Garman–Kohlhagen `d2 = d1 - sigma*sqrt(T)`.  See [`d1`].
@@ -120,9 +121,9 @@ pub fn gk_price(
         // the forward itself overflows when (r_d - r_f) T > 709.
         (phi * (disc_s - disc_k)).max(0.0)
     } else {
-        let d1v = d1(s, k, t, r_d, r_f, sigma)?;
-        let d2v = d1v - sigma * t.sqrt();
-        phi * (disc_s * norm_cdf(phi * d1v) - disc_k * norm_cdf(phi * d2v))
+        // Shared carry-form kernel (qp_core::black_scholes); r_f is the carry yield.
+        let (d1v, d2v) = carry_d1_d2(s, k, t, r_d, r_f, sigma);
+        carry_value::<TruncatedC1Normal>(disc_s, disc_k, d1v, d2v, phi)
     };
     crate::finite_result(value, "gk_price")
 }

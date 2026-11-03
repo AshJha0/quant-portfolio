@@ -21,7 +21,7 @@
 //! `rho = -T * price`.
 
 use crate::black_scholes::{
-    norm_cdf, norm_pdf, validate_inputs, validate_rates, OptionType, PricingError,
+    OptionType, PricingError, norm_cdf, norm_pdf, validate_inputs, validate_rates,
 };
 
 /// Analytic Black-76 Greeks (with respect to the forward `f`).

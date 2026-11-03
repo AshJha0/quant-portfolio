@@ -137,7 +137,7 @@ Each assumption states what breaks when it is violated.
   solved on the out-of-the-money side by safeguarded Halley iteration on
   transformed objectives, from an asymptotic initial guess, with a relative
   stopping rule; at most 10 evaluations. The same algorithm and constants
-  run in the equity engine and in C++ and Rust (`_iv_core.py`). Accuracy:
+  run in the equity engine and in C++ and Rust (`qp_core.iv_core`). Accuracy:
   `max(eps price / vega, 1e-12 sigma)` against mpmath.
 - **Limits**: `T = 0` returns intrinsic; `σ = 0` returns discounted forward
   intrinsic, both exact, both unit-tested, no NaNs.
@@ -176,3 +176,24 @@ Each assumption states what breaks when it is violated.
   Reserve), EUR (TARGET2), GBP (England and Wales), JPY (Act on National
   Holidays plus bank days), CHF (Zurich), CAD (Bank of Canada) and AUD
   (NSW), 2010 to 2099. One-off closures announced later are not known.
+
+
+## 6. Shared Black-Scholes kernel
+
+Garman-Kohlhagen is Black-Scholes with the foreign rate in place of a
+dividend yield, so the arithmetic lives once, in
+`qp_core.black_scholes` (cost-of-carry form, `b = r_d - r_f`), shared with
+the equity package. This package keeps its names, argument order,
+validation and boundary rules (`T = 0`, `sigma sqrt(T) <= 1e-12`) and calls
+the kernel for `gk_price`, `d1`/`d2`, `gamma`, `vega`, `vanna`, `volga` and
+the array entry points. The implied-vol solver is `qp_core.iv_core`.
+
+Every output is unchanged bit for bit (a 177,604-value before/after
+snapshot, signed zeros included), with one deliberate exception made
+afterwards: `analytic_greeks` used to evaluate its `N(phi d1)`, `N(phi d2)`
+and `n(d1)` terms with `scipy.stats.norm`, and now uses the same
+`qp_core.normal` as the kernel, `0.5 erfc(-x / sqrt 2)`. Price, deltas,
+theta and both rhos move in the last bits (at most 2.1e-14 relative to
+`max(1, |value|)`); the table is in VALIDATION.md section 7.
+`tests/test_carry_twin.py` at the repository root pins
+how closely equity-with-yield and FX-with-foreign-rate agree today.

@@ -1,6 +1,6 @@
 """Unit tests for the CI helper scripts in .github/scripts.
 
-Covers bench_compare.py (the regression rule and both committed schemas),
+Covers bench_ab.py (the same-runner regression rule and the results schema),
 aggregate_counts.py (artefact names for presets, python/core and bindings)
 and discover_projects.py (python/core is found and kept out of the 23).
 
@@ -20,7 +20,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / ".github" / "scripts"
-FIX = Path(__file__).resolve().parent / "fixtures" / "bench"
 COMMITTED = sorted(REPO.glob("*/*/bench/results.json"))
 
 
@@ -32,7 +31,7 @@ def _load(name: str):
     return mod
 
 
-bc = _load("bench_compare")
+ab = _load("bench_ab")
 agg = _load("aggregate_counts")
 disc = _load("discover_projects")
 
@@ -42,80 +41,79 @@ def _write(p: Path, recs: object) -> Path:
     return p
 
 
-# ------------------------------------------------------------ bench_compare --
-class TestBenchLoad:
-    def test_cpp_schema_uses_after_records_and_median(self):
-        p50 = bc.load_p50(FIX / "cpp_committed.json")
-        assert p50["bs_price"] == 100.0           # median of 90 and 110; "before" 500 ignored
-        assert p50["mc_price n=10000"] == 5000.0  # median of 4000 and 6000
-        assert p50["only_committed"] == 3000.0    # 3 us converted to ns
-
-    def test_rust_schema_without_label(self):
-        p50 = bc.load_p50(FIX / "rust_committed.json")
-        assert p50 == {"pnl_one_scenario_250pos": 2026.0, "normal_var_closed_form": 12.5}
-
-    def test_wrapped_dict_is_accepted(self, tmp_path):
-        p = _write(tmp_path / "w.json", {"results": [{"kernel": "k", "p50": 7}]})
-        assert bc.load_p50(p) == {"k": 7.0}
-
-    def test_unknown_unit_is_an_input_error(self, tmp_path):
-        p = _write(tmp_path / "u.json", [{"kernel": "k", "p50": 1, "unit": "cycles"}])
-        with pytest.raises(bc.BenchInputError):
-            bc.load_p50(p)
-
-    @pytest.mark.parametrize("path", COMMITTED, ids=[p.parent.parent.relative_to(REPO).as_posix() for p in COMMITTED])
-    def test_every_committed_results_file_loads(self, path):
-        p50 = bc.load_p50(path)
-        assert p50, path
-        assert all(v > 0 for v in p50.values()), path
+# ----------------------------------------------------------------- bench_ab --
+def _rec(kernel, p10, p50, p90, unit="ns"):
+    return {"kernel": kernel, "unit": unit, "p10": p10, "p50": p50, "p90": p90}
 
 
-class TestBenchRule:
-    def test_regression_above_floor_fails(self):
-        rows = bc.compare("e", {"slow": 5000.0}, {"slow": 10001.0})
-        assert [r.status for r in rows] == ["fail"]
+class TestBenchAbRule:
+    B = ab.Band(90.0, 100.0, 110.0)
 
-    def test_exactly_two_times_passes(self):
-        assert bc.compare("e", {"slow": 5000.0}, {"slow": 10000.0})[0].status == "ok"
+    def test_clear_regression_fails(self):
+        assert ab.classify(self.B, ab.Band(140.0, 150.0, 160.0))[1] == "FAIL"
 
-    def test_kernel_at_or_below_one_microsecond_is_report_only(self):
-        rows = bc.compare("e", {"fast": 1000.0, "tiny": 12.5}, {"fast": 9000.0, "tiny": 500.0})
-        assert {r.kernel: r.status for r in rows} == {"fast": "report", "tiny": "report"}
+    def test_large_ratio_with_overlapping_bands_is_report_only(self):
+        # +50% on the median, but head p10 (105) is inside the base band.
+        assert ab.classify(self.B, ab.Band(105.0, 150.0, 400.0))[1] == "slower"
 
-    def test_new_and_missing_kernels_are_reported(self):
-        rows = bc.compare("e", {"gone": 5000.0}, {"added": 5000.0})
-        assert {r.kernel: r.status for r in rows} == {"gone": "missing", "added": "new"}
+    def test_small_shift_with_separate_bands_is_report_only(self):
+        # Bands do not overlap, but +20% is under the 25% threshold.
+        assert ab.classify(self.B, ab.Band(115.0, 120.0, 125.0))[1] == "same"
+
+    def test_speedup_new_and_removed(self):
+        assert ab.classify(self.B, ab.Band(40.0, 50.0, 60.0))[1] == "faster"
+        assert ab.classify(None, self.B)[1] == "new"
+        assert ab.classify(self.B, None)[1] == "removed"
 
 
-class TestBenchMain:
-    def test_end_to_end_fail_and_summary(self, tmp_path):
-        ci = _write(tmp_path / "ci.json", [
-            {"kernel": "bs_price", "label": "after", "p50": 900.0},           # 9x, committed <= 1 us
-            {"kernel": "mc_price n=10000", "label": "after", "p50": 10100.0},  # 2.02x of 5000: fail
-        ])
-        md, js = tmp_path / "s.md", tmp_path / "c.json"
-        rc = bc.main(["--pair", "cpp/eqopt", str(FIX / "cpp_committed.json"), str(ci),
+class TestBenchAbLoad:
+    def test_units_and_missing_band(self, tmp_path):
+        p = _write(tmp_path / "r.json", {"results": [
+            _rec("a", 1, 2, 3, unit="us"),
+            {"kernel": "old", "p50": 7},
+        ]})
+        bands = ab.load_bands(p)
+        assert bands["a"] == ab.Band(1000.0, 2000.0, 3000.0)
+        assert bands["old"] == ab.Band(7.0, 7.0, 7.0)
+
+    def test_pool_takes_median_per_percentile(self):
+        rounds = [{"k": ab.Band(1, 10, 20)}, {"k": ab.Band(3, 30, 90)}, {"k": ab.Band(2, 20, 40)}]
+        assert ab.pool(rounds)["k"] == ab.Band(2, 20, 40)
+
+    @pytest.mark.parametrize("path", COMMITTED, ids=lambda p: str(p.relative_to(REPO)))
+    def test_committed_results_parse(self, path):
+        assert ab.load_bands(path)
+
+
+class TestBenchAbMain:
+    def _rounds(self, tmp_path, side, p50s):
+        paths = []
+        for i, v in enumerate(p50s):
+            paths.append(str(_write(tmp_path / f"{side}{i}.json", [
+                _rec("slow_kernel", 0.95 * v, v, 1.05 * v), _rec("steady", 9, 10, 11)])))
+        return paths
+
+    def test_interleaved_regression_fails_and_writes_reports(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1010, 990])
+        head = self._rounds(tmp_path, "h", [1500, 1490, 1520])
+        md, js = tmp_path / "s.md", tmp_path / "s.json"
+        rc = ab.main(["--engine", "cpp/x", "--base", *base, "--head", *head,
                       "--summary", str(md), "--json", str(js)])
         assert rc == 1
-        text = md.read_text(encoding="utf-8")
-        assert "**1 failing kernel(s)**" in text and "**FAIL**" in text
-        assert "not the published numbers" in text
         rows = {r["kernel"]: r["status"] for r in json.loads(js.read_text(encoding="utf-8"))}
-        assert rows == {"bs_price": "report", "mc_price n=10000": "fail", "only_committed": "missing"}
+        assert rows == {"slow_kernel": "FAIL", "steady": "same"}
+        assert "same runner" in md.read_text(encoding="utf-8")
 
-    def test_end_to_end_pass_with_rust_schema(self, tmp_path):
-        ci = _write(tmp_path / "ci.json", [
-            {"engine": "fx-var-engine", "kernel": "pnl_one_scenario_250pos", "unit": "ns", "p50": 3900},
-            {"engine": "fx-var-engine", "kernel": "normal_var_closed_form", "unit": "ns", "p50": 80},
-        ])
-        assert bc.main(["--pair", "rust/fxvar", str(FIX / "rust_committed.json"), str(ci)]) == 0
+    def test_noise_passes(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1300, 900])
+        head = self._rounds(tmp_path, "h", [1100, 950, 1250])
+        assert ab.main(["--engine", "x", "--base", *base, "--head", *head]) == 0
 
-    def test_missing_ci_file_is_an_error(self, tmp_path):
-        assert bc.main(["--pair", "x", str(FIX / "rust_committed.json"), str(tmp_path / "none.json")]) == 2
-
-    def test_missing_committed_file_is_report_only(self, tmp_path):
-        ci = _write(tmp_path / "ci.json", [{"kernel": "k", "p50": 1e9}])
-        assert bc.main(["--pair", "x", str(tmp_path / "absent.json"), str(ci)]) == 0
+    def test_missing_head_is_an_error_and_missing_base_report_only(self, tmp_path):
+        head = self._rounds(tmp_path, "h", [10])
+        assert ab.main(["--engine", "x", "--base", str(tmp_path / "no.json"),
+                        "--head", str(tmp_path / "none.json")]) == 2
+        assert ab.main(["--engine", "x", "--base", str(tmp_path / "no.json"), "--head", *head]) == 0
 
 
 # --------------------------------------------------------- aggregate_counts --

@@ -35,6 +35,7 @@ sys.path[:0] = [str(HERE), str(REPO / "research" / "tools"), str(REPO / "data" /
 
 import holdout as ho  # noqa: E402
 import prereg  # noqa: E402
+import trials  # noqa: E402
 from fx_pairs.cointegration import engle_granger  # noqa: E402
 from fx_studies import PAIRS, _sharpe_block, pairs_fold_masks, usd_prices  # noqa: E402
 from models import johansen_trace, kalman_hedge, training_only  # noqa: E402
@@ -308,15 +309,22 @@ def momentum_study(px: pd.DataFrame, p: dict = MOMENTUM) -> dict:
 
 # ---- driver --------------------------------------------------------------
 
-def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict) -> Path:
+def _write(name: str, reg_file: str, period: tuple[str, str], payload: dict,
+           params: dict | None = None, kind: str = "train", git: tuple | None = None, metric: dict | None = None) -> Path:
+    """Write ``results/<name>.json`` and append the run to ``trials.jsonl``."""
     reg = prereg.load(PREREG / reg_file)
+    # Callers pass the git state read at the start of the run, before any
+    # output exists; reading it here is the fallback for single writes.
+    git = git if git is not None else trials.git_state(REPO)
     RESULTS.mkdir(parents=True, exist_ok=True)
     doc = {"prereg": f"research/prereg/{reg_file}", "prereg_sha256": reg.sha256,
-           "registration_signed": reg.signed, "mode": "train",
+           "registration_signed": reg.signed, "mode": kind,
            "period": {"start": period[0], "end": period[1]},
            "dataset": "ECB euro foreign exchange reference rates (EXR), daily", **payload}
     path = RESULTS / f"{name}.json"
     path.write_text(json.dumps(doc, indent=2, default=float) + "\n", encoding="utf-8")
+    trials.append(name, kind, f"research/prereg/{reg_file}", reg.sha256, f"research/results/{name}.json",
+                  params or {}, metric if metric is not None else trials.metric_of(payload), git=git)
     return path
 
 
@@ -324,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("which", nargs="?", default="all", choices=["pairs", "momentum", "all"])
     a = ap.parse_args(argv)
+    git = trials.git_state(REPO)  # before the run writes anything
     from qp_fetch import RAW_DIR, fetch_ecb_fx, parse_ecb_csv
 
     cached = RAW_DIR / f"ecb_exr_1999-01-01_{TRAIN_END}.csv"
@@ -331,9 +340,11 @@ def main(argv: list[str] | None = None) -> int:
     px = training_only(usd_prices(eur))
     period = (str(px.index.min().date()), str(px.index.max().date()))
     if a.which in ("pairs", "all"):
-        print(_write("pairs_fx_g10_v2_train", "pairs-fx-g10-v2.md", period, pairs_v2_study(px)))
+        print(_write("pairs_fx_g10_v2_train", "pairs-fx-g10-v2.md", period, pairs_v2_study(px),
+                     params=PAIRS_V2, git=git))
     if a.which in ("momentum", "all"):
-        print(_write("momentum_fx_g10_train", "momentum-fx-g10.md", period, momentum_study(px)))
+        print(_write("momentum_fx_g10_train", "momentum-fx-g10.md", period, momentum_study(px),
+                     params=MOMENTUM, git=git))
     return 0
 
 

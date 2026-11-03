@@ -49,9 +49,26 @@ struct BatchError {
 [[nodiscard]] std::expected<void, BatchError> gk_price_batch(const GkBatchInputs& in,
                                                              std::span<double> out) noexcept;
 
+/// \brief Throughput form of gk_price_batch(): the same validation and errors,
+///        with the pricing loop built on the branch-free exp, log and erfc of
+///        qp/vmath.hpp so the compiler can vectorise it. Not bit-identical to
+///        gk_price(); the tested bound is |fast - exact| <= 1e-13 * max(1, S, K).
+///        Elements with T = 0 or sigma sqrt(T) <= kMinVol take the scalar
+///        formula and match gk_price() bit for bit.
+[[nodiscard]] std::expected<void, BatchError> gk_price_batch_fast(const GkBatchInputs& in,
+                                                                  std::span<double> out) noexcept;
+
 /// Greeks for every element; each field equals try_analytic_greeks()
 /// exactly. Inputs must satisfy the analytic_greeks() domain.
 [[nodiscard]] std::expected<void, BatchError> gk_greeks_batch(
+    const GkBatchInputs& in, const GkGreeksBatchOutputs& out) noexcept;
+
+/// \brief Throughput form of gk_greeks_batch(): same validation and errors,
+///        vectorised with the qp/vmath.hpp kernels. Not bit-identical; the
+///        tested bound per field is |fast - exact| <= 1e-12 * max(1, S, K,
+///        |exact|). Elements with S / K outside the normal range take the
+///        scalar formula and match analytic_greeks() bit for bit.
+[[nodiscard]] std::expected<void, BatchError> gk_greeks_batch_fast(
     const GkBatchInputs& in, const GkGreeksBatchOutputs& out) noexcept;
 
 }  // namespace fxopt

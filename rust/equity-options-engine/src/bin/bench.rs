@@ -6,12 +6,10 @@
 //! cargo run --release --bin bench
 //! ```
 //!
-//! Each kernel runs a warm-up, then `n_iter` timed samples over a cycle of
-//! 1,024 varied inputs. A sample times `calls_per_sample` back-to-back
-//! calls with `std::time::Instant`; the reported value is the sample time
-//! divided by `calls_per_sample`. Kernels near the timer resolution
-//! (about 20-30 ns under WSL2) use 16 calls per sample, so their
-//! percentiles describe 16-call averages, not single calls.
+//! Every kernel is timed with the method shared with the C++ benches
+//! (`qp_core::bench`, docs/BENCHMARKS.md): a calibrated batch of
+//! back-to-back calls per sample (at least 2 us), median with p10/p90,
+//! over a cycle of 1,024 varied inputs.
 //! `std::hint::black_box` keeps the optimiser from deleting the work.
 //!
 //! Writes `bench/results.json` (crate-relative, or the path given with
@@ -23,10 +21,10 @@
 
 use std::fmt::Write as _;
 use std::hint::black_box;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use eq_options_engine::{
-    black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price, Exercise, OptionType,
+    Exercise, OptionType, black76_price, bs_greeks, bs_price, crr_price, implied_vol, mc_price,
 };
 
 /// One varied input row.
@@ -85,6 +83,7 @@ struct Stat {
     kernel: &'static str,
     n_iter: usize,
     calls_per_sample: usize,
+    p10: f64,
     p50: f64,
     p90: f64,
     p99: f64,
@@ -92,8 +91,9 @@ struct Stat {
     max: f64,
 }
 
-/// Time `n_iter` samples of `calls` calls of `f(row_index)` after `warm`
-/// warm-up samples.
+/// Time `f(row_index)` with the shared method (`qp_core::bench`): `warm`
+/// and `n_iter` are in units of `calls`, so the call budget is
+/// `n_iter * calls`; the batch size itself is calibrated.
 fn measure(
     kernel: &'static str,
     warm: usize,
@@ -101,38 +101,19 @@ fn measure(
     calls: usize,
     mut f: impl FnMut(usize) -> f64,
 ) -> Stat {
-    let mut idx = 0usize;
-    let mut sample = |f: &mut dyn FnMut(usize) -> f64| -> u64 {
-        let start = Instant::now();
-        let mut acc = 0.0;
-        for _ in 0..calls {
-            acc += f(idx % N_ROWS);
-            idx = idx.wrapping_add(1);
-        }
-        black_box(acc);
-        start.elapsed().as_nanos() as u64
-    };
-    for _ in 0..warm {
-        sample(&mut f);
-    }
-    let mut ns: Vec<u64> = Vec::with_capacity(n_iter);
-    for _ in 0..n_iter {
-        ns.push(sample(&mut f));
-    }
-    ns.sort_unstable();
-    let pick = |q: f64| -> f64 {
-        let i = ((q * n_iter as f64).ceil() as usize).clamp(1, n_iter) - 1;
-        ns[i] as f64 / calls as f64
-    };
+    let s = qp_core::bench::measure(warm * calls, n_iter * calls, |i| {
+        black_box(f(i % N_ROWS));
+    });
     Stat {
         kernel,
-        n_iter,
-        calls_per_sample: calls,
-        p50: pick(0.50),
-        p90: pick(0.90),
-        p99: pick(0.99),
-        p999: pick(0.999),
-        max: ns[n_iter - 1] as f64 / calls as f64,
+        n_iter: s.samples,
+        calls_per_sample: s.calls_per_sample,
+        p10: s.p10,
+        p50: s.p50,
+        p90: s.p90,
+        p99: s.p99,
+        p999: s.p999,
+        max: s.max,
     }
 }
 
@@ -262,10 +243,11 @@ fn main() {
             "  {{\"engine\": \"rust/equity-options-engine\", \"kernel\": \"{}\", \
              \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu}\", \
              \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \
-             \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+             \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
             s.kernel,
             s.n_iter,
             s.calls_per_sample,
+            s.p10,
             s.p50,
             s.p90,
             s.p99,
@@ -283,8 +265,8 @@ fn main() {
 #[cfg(not(before))]
 fn new_api(rs: &[Row], stats: &mut Vec<Stat>) {
     use eq_options_engine::fast::{
-        bs_greeks_batch, bs_price_batch, try_bs_greeks, try_bs_price, try_crr_price,
-        try_implied_vol, try_mc_price, BsBatch, GreeksOut,
+        BsBatch, GreeksOut, bs_greeks_batch, bs_price_batch, try_bs_greeks, try_bs_price,
+        try_crr_price, try_implied_vol, try_mc_price,
     };
     use eq_options_engine::{CrrWorkspace, McWorkspace};
 
@@ -456,7 +438,8 @@ fn new_api(rs: &[Row], stats: &mut Vec<Stat>) {
 #[cfg(not(before))]
 fn per_row(mut s: Stat) -> Stat {
     let n = N_ROWS as f64;
-    s.calls_per_sample = N_ROWS;
+    s.calls_per_sample *= N_ROWS;
+    s.p10 /= n;
     s.p50 /= n;
     s.p90 /= n;
     s.p99 /= n;

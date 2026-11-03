@@ -235,11 +235,7 @@ pub fn erf(x: f64) -> f64 {
         } else {
             gamma_series(0.5, x * x)
         };
-        if x >= 0.0 {
-            p
-        } else {
-            -p
-        }
+        if x >= 0.0 { p } else { -p }
     } else {
         1.0 - erfc(x)
     }

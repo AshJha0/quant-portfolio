@@ -358,12 +358,12 @@ pub fn option_book_pnl(
     let rets = scenarios.select(&layout.factors)?;
     let nf = layout.factors.len();
     let mut pnl = full_revaluation_pnl(&layout.legs, rets.data.as_slice(), &[], nf, dt)?;
-    if let Some(c) = &layout.linear {
-        if !c.factors().is_empty() {
-            let lin = c.pnl_scenarios(&rets)?;
-            for (p, l) in pnl.iter_mut().zip(lin) {
-                *p += l;
-            }
+    if let Some(c) = &layout.linear
+        && !c.factors().is_empty()
+    {
+        let lin = c.pnl_scenarios(&rets)?;
+        for (p, l) in pnl.iter_mut().zip(lin) {
+            *p += l;
         }
     }
     Ok(pnl)
@@ -458,12 +458,12 @@ pub fn option_book_pnl_vol(
         vol.mode,
         &vol.skews,
     )?;
-    if let Some(c) = &layout.linear {
-        if !c.factors().is_empty() {
-            let lin = c.pnl_scenarios(&rets)?;
-            for (p, l) in pnl.iter_mut().zip(lin) {
-                *p += l;
-            }
+    if let Some(c) = &layout.linear
+        && !c.factors().is_empty()
+    {
+        let lin = c.pnl_scenarios(&rets)?;
+        for (p, l) in pnl.iter_mut().zip(lin) {
+            *p += l;
         }
     }
     Ok(pnl)

@@ -26,9 +26,9 @@ vol surface marks (per strike/expiry)          trades & positions
 - Theo = `bs_price` (single names: `crr_price` American) at the desk's
   marked vol for that strike/expiry, **one vol per quote**, taken from
   the surface, never a single flat vol (see VALIDATION.md §6.1).
-- Bid/ask = theo ± max(vega · vol_spread, min_tick_edge). A 1y ATM option
-  has vega ≈ 37.8 per unit vol (0.378 per vol point): quoting 0.4 vols
-  wide ≈ $0.15 edge on a $9.83 option.
+- Bid/ask = theo ± max(vega · vol_spread, min_tick_edge). A 1y ATM call
+  (S = K = 100, sigma = 20%, r = 4%, q = 0) is worth $9.93 with vega ≈ 38.1
+  per unit vol (0.381 per vol point): quoting 0.4 vols wide ≈ $0.15 edge.
 - Index futures options are quoted with `black76_price` off the futures -
   the dividend assumption drops out entirely.
 - `implied_vol` runs on every incoming quote/print to map the market back

@@ -47,7 +47,7 @@ class SourceNotPermitted(RuntimeError):
 
 def _download(url: str, timeout: float = 60.0) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "quant-portfolio-research/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (fixed https hosts)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
 

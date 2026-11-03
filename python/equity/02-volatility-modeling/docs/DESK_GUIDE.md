@@ -11,7 +11,7 @@ numbers quoted here come from synthetic data via `python examples/run_pipeline.p
 annualised average vol to each horizon) is compared with implied vol:
 `implied - forecast` is the carry signal for short-vol strategies, and the
 model mark is a fallback for illiquid expiries. A GJR term structure after a
-sell-off slopes up from an elevated short end, as listed markets do. EWMA's
+sell-off slopes down from an elevated short end, as listed markets do. EWMA's
 term structure is flat by construction and cannot price calendar effects.
 
 **VaR / ES.** 1-day 99% VaR = `sigma_{t+1|t} q_{0.01}` from

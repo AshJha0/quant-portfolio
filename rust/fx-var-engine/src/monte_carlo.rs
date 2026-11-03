@@ -45,7 +45,7 @@ use std::collections::HashMap;
 use crate::book::{Book, CompiledBook, Market};
 use crate::expected_shortfall::empirical_var_es;
 use crate::matrix::Matrix;
-use crate::option_reval::{layout_option_book, option_book_pnl, OptionLeg};
+use crate::option_reval::{OptionLeg, layout_option_book, option_book_pnl};
 use crate::returns::{FactorCov, ReturnsMatrix};
 use crate::rng::Rng;
 use crate::stats::{inv_norm_cdf_unchecked, validate_alpha, validate_horizon};
@@ -861,8 +861,8 @@ pub fn monte_carlo_option_var_vol(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::book::{Position, SpotPosition};
     use crate::TailDist;
+    use crate::book::{Position, SpotPosition};
 
     fn cov1() -> FactorCov {
         FactorCov {
@@ -1045,13 +1045,15 @@ mod tests {
     #[test]
     fn empty_book_errors() {
         let market = Market::new([("EUR", 1.10)], [("USD", 0.05), ("EUR", 0.03)]).unwrap();
-        assert!(monte_carlo_var(
-            &Book::empty(),
-            &market,
-            &cov1(),
-            &MonteCarloOptions::default()
-        )
-        .is_err());
+        assert!(
+            monte_carlo_var(
+                &Book::empty(),
+                &market,
+                &cov1(),
+                &MonteCarloOptions::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1060,16 +1062,18 @@ mod tests {
             n_scenarios: 0,
             ..Default::default()
         };
-        assert!(simulate_factor_returns(
-            &cov1(),
-            opts.n_scenarios,
-            opts.dist,
-            opts.df,
-            &opts.jumps,
-            opts.seed,
-            1.0
-        )
-        .is_err());
+        assert!(
+            simulate_factor_returns(
+                &cov1(),
+                opts.n_scenarios,
+                opts.dist,
+                opts.df,
+                &opts.jumps,
+                opts.seed,
+                1.0
+            )
+            .is_err()
+        );
     }
 
     #[test]
