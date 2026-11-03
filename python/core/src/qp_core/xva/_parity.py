@@ -16,6 +16,7 @@ import sys
 
 import numpy as np
 
+from ..capital import frtb_sbm as sbm
 from ..capital import saccr as s
 from ..market import DiscountCurve
 from .adjustments import HazardCurve, cva, fva
@@ -106,6 +107,36 @@ def records() -> list[str]:
         )
     for n, q in [(1000, 0.95), (100, 0.99), (7, 0.5), (1, 0.975)]:
         out.append(f"PFE {n} {_f(q)} {pfe_index(n, q)}")
+    for tk, tl, same in [(0.25, 30.0, 1), (1.0, 5.0, 1), (1.0, 5.0, 0), (2.0, 3.0, 1), (10.0, 10.0, 0)]:
+        out.append(f"GRHO {_f(tk)} {_f(tl)} {same} {_f(sbm.girr_delta_rho(tk, tl, same_curve=bool(same)))}")
+    for rho in (0.0, 0.3, 0.5, 0.6, 0.97, 1.0):
+        for i, sc in enumerate(sbm.SCENARIOS):
+            out.append(f"SCEN {_f(rho)} {i} {_f(sbm.scenario_corr(rho, sc))}")
+    for _ in range(4):
+        n = int(rng.integers(1, 6))
+        ws = [float(x) for x in rng.normal(0, 50, n)]
+        tn = sorted(float(x) for x in rng.choice(sbm.GIRR_TENORS, n, replace=False))
+        rm = np.array([[sbm.girr_delta_rho(a, b) for b in tn] for a in tn])
+        out.append(
+            f"KB {n} "
+            + " ".join(_f(x) for x in ws)
+            + " "
+            + " ".join(_f(x) for x in rm.ravel())
+            + f" {_f(sbm.within_bucket(ws, rm))}"
+        )
+    for kb, sb, g in [
+        ([7.0, 7.0], [10.0, -10.0], 0.5),
+        ([7.0, 7.0], [5.0, -5.0], 0.5),
+        ([3.0, 4.0, 5.0], [2.0, 4.0, -5.0], 0.6),
+    ]:
+        gm = np.full((len(kb), len(kb)), g)
+        out.append(
+            f"ACROSS {len(kb)} "
+            + " ".join(_f(x) for x in kb)
+            + " "
+            + " ".join(_f(x) for x in sb)
+            + f" {_f(g)} {_f(sbm.across_buckets(kb, sb, gm))}"
+        )
     return out
 
 

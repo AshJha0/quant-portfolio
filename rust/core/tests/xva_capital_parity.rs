@@ -5,7 +5,8 @@
 use qp_core::xva::{
     Hazard, HullWhite, default_leg, eepe, fva, pfe_index, saccr_ir_effective_notional,
     saccr_maturity_factor, saccr_multiplier, saccr_single_factor_addon, saccr_supervisory_delta,
-    saccr_supervisory_duration,
+    saccr_supervisory_duration, sbm_across_buckets, sbm_girr_delta_rho, sbm_scenario_corr,
+    sbm_within_bucket,
 };
 
 fn close(got: f64, want: f64, what: &str) {
@@ -130,11 +131,29 @@ fn matches_python_fixture() {
                 let (n, q, w) = (r.u(), r.f(), r.u());
                 assert_eq!(pfe_index(n, q).unwrap(), w, "{line}");
             }
+            "GRHO" => {
+                let (a, b, same, w) = (r.f(), r.f(), r.b(), r.f());
+                close(sbm_girr_delta_rho(a, b, same).unwrap(), w, line);
+            }
+            "SCEN" => {
+                let (rho, sc, w) = (r.f(), r.u(), r.f());
+                close(sbm_scenario_corr(rho, sc as u8).unwrap(), w, line);
+            }
+            "KB" => {
+                let n = r.u();
+                let (ws, rho, w) = (r.v(n), r.v(n * n), r.f());
+                close(sbm_within_bucket(&ws, &rho).unwrap(), w, line);
+            }
+            "ACROSS" => {
+                let n = r.u();
+                let (k, s, g, w) = (r.v(n), r.v(n), r.f(), r.f());
+                close(sbm_across_buckets(&k, &s, g).unwrap(), w, line);
+            }
             other => panic!("unknown record {other}"),
         }
         seen += 1;
     }
-    assert_eq!(seen, 53);
+    assert_eq!(seen, 83);
 }
 
 #[test]

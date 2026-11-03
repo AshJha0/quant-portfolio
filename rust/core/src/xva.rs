@@ -368,3 +368,71 @@ pub fn pfe_index(n: usize, q: f64) -> Result<usize> {
     }
     Ok(((q * n as f64).ceil() as usize).saturating_sub(1))
 }
+
+// ------------------------------------------------------- FRTB SA (MAR21)
+
+/// exp(-theta |T_k - T_l| / min(T_k, T_l)).
+pub fn sbm_tenor_rho(tk: f64, tl: f64, theta: f64) -> Result<f64> {
+    if !(tk > 0.0 && tl > 0.0) {
+        return Err(bad("tenors must be positive"));
+    }
+    Ok((-theta * (tk - tl).abs() / tk.min(tl)).exp())
+}
+
+/// GIRR delta correlation (MAR21.46-47): max(exp(-3 % |dT| / min T), 40 %),
+/// times 99.9 % across curves.
+pub fn sbm_girr_delta_rho(tk: f64, tl: f64, same_curve: bool) -> Result<f64> {
+    let r = sbm_tenor_rho(tk, tl, 0.03)?.max(0.4);
+    Ok(if same_curve { r } else { 0.999 * r })
+}
+
+/// MAR21.6 correlation scenario: 0 medium, 1 high, 2 low.
+pub fn sbm_scenario_corr(rho: f64, scenario: u8) -> Result<f64> {
+    match scenario {
+        0 => Ok(rho),
+        1 => Ok((1.25 * rho).min(1.0)),
+        2 => Ok((2.0 * rho - 1.0).max(0.75 * rho)),
+        _ => Err(bad("scenario must be 0, 1 or 2")),
+    }
+}
+
+/// K_b = sqrt(max(0, WS' R WS)); `rho` row-major n x n.
+pub fn sbm_within_bucket(ws: &[f64], rho: &[f64]) -> Result<f64> {
+    let n = ws.len();
+    if rho.len() != n * n {
+        return Err(bad("rho must be n x n"));
+    }
+    let mut q = 0.0;
+    for i in 0..n {
+        let mut row = 0.0;
+        for j in 0..n {
+            row += rho[i * n + j] * ws[j];
+        }
+        q += ws[i] * row;
+    }
+    Ok(q.max(0.0).sqrt())
+}
+
+/// Across-bucket charge with uniform `gamma` and the MAR21.4(5)(b) clipped
+/// fallback.
+pub fn sbm_across_buckets(k: &[f64], s: &[f64], gamma: f64) -> Result<f64> {
+    if k.len() != s.len() {
+        return Err(bad("k and s must have equal length"));
+    }
+    let rad = |sv: &dyn Fn(usize) -> f64| -> f64 {
+        let mut q: f64 = k.iter().map(|x| x * x).sum();
+        for b in 0..k.len() {
+            for c in 0..k.len() {
+                if b != c {
+                    q += gamma * sv(b) * sv(c);
+                }
+            }
+        }
+        q
+    };
+    let mut q = rad(&|b| s[b]);
+    if q < 0.0 {
+        q = rad(&|b| s[b].min(k[b]).max(-k[b]));
+    }
+    Ok(q.max(0.0).sqrt())
+}

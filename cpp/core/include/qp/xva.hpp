@@ -226,4 +226,57 @@ inline void check_grid(std::span<const double> t, std::span<const double> p) {
     return c == 0 ? 0 : c - 1;
 }
 
+// ------------------------------------------------------- FRTB SA (MAR21)
+
+[[nodiscard]] inline double sbm_tenor_rho(double tk, double tl, double theta) {
+    if (!(tk > 0.0 && tl > 0.0)) throw std::invalid_argument("tenors must be positive");
+    return std::exp(-theta * std::abs(tk - tl) / std::min(tk, tl));
+}
+
+// GIRR delta correlation (MAR21.46-47).
+[[nodiscard]] inline double sbm_girr_delta_rho(double tk, double tl, bool same_curve) {
+    const double r = std::max(sbm_tenor_rho(tk, tl, 0.03), 0.4);
+    return same_curve ? r : 0.999 * r;
+}
+
+// MAR21.6 scenario: 0 medium, 1 high, 2 low.
+[[nodiscard]] inline double sbm_scenario_corr(double rho, int scenario) {
+    switch (scenario) {
+        case 0: return rho;
+        case 1: return std::min(1.25 * rho, 1.0);
+        case 2: return std::max(2.0 * rho - 1.0, 0.75 * rho);
+        default: throw std::invalid_argument("scenario must be 0, 1 or 2");
+    }
+}
+
+// K_b = sqrt(max(0, WS' R WS)); rho row-major n x n.
+[[nodiscard]] inline double sbm_within_bucket(std::span<const double> ws, std::span<const double> rho) {
+    const std::size_t n = ws.size();
+    if (rho.size() != n * n) throw std::invalid_argument("rho must be n x n");
+    double q = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        double row = 0.0;
+        for (std::size_t j = 0; j < n; ++j) row += rho[i * n + j] * ws[j];
+        q += ws[i] * row;
+    }
+    return std::sqrt(std::max(q, 0.0));
+}
+
+// Across-bucket charge, uniform gamma, MAR21.4(5)(b) clipped fallback.
+[[nodiscard]] inline double sbm_across_buckets(std::span<const double> k, std::span<const double> s, double gamma) {
+    if (k.size() != s.size()) throw std::invalid_argument("k and s must have equal length");
+    auto rad = [&](bool clip) {
+        auto sv = [&](std::size_t b) { return clip ? std::max(std::min(s[b], k[b]), -k[b]) : s[b]; };
+        double q = 0.0;
+        for (double x : k) q += x * x;
+        for (std::size_t b = 0; b < k.size(); ++b)
+            for (std::size_t c = 0; c < k.size(); ++c)
+                if (b != c) q += gamma * sv(b) * sv(c);
+        return q;
+    };
+    double q = rad(false);
+    if (q < 0.0) q = rad(true);
+    return std::sqrt(std::max(q, 0.0));
+}
+
 }  // namespace qp::xva

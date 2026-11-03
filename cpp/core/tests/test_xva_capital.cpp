@@ -105,12 +105,36 @@ TEST(XvaCapital, MatchesPythonFixture) {
             double q;
             in >> n >> q >> w;
             EXPECT_EQ(x::pfe_index(n, q), w) << line;
+        } else if (kind == "GRHO") {
+            double a, b, w;
+            int same;
+            in >> a >> b >> same >> w;
+            close(x::sbm_girr_delta_rho(a, b, same == 1), w, line);
+        } else if (kind == "SCEN") {
+            double rho, w;
+            int sc;
+            in >> rho >> sc >> w;
+            close(x::sbm_scenario_corr(rho, sc), w, line);
+        } else if (kind == "KB") {
+            std::size_t n;
+            in >> n;
+            const auto ws = vec(in, n), rho = vec(in, n * n);
+            double w;
+            in >> w;
+            close(x::sbm_within_bucket(ws, rho), w, line);
+        } else if (kind == "ACROSS") {
+            std::size_t n;
+            in >> n;
+            const auto k = vec(in, n), s = vec(in, n);
+            double g, w;
+            in >> g >> w;
+            close(x::sbm_across_buckets(k, s, g), w, line);
         } else {
             FAIL() << "unknown record " << kind;
         }
         ++seen;
     }
-    EXPECT_EQ(seen, 53);
+    EXPECT_EQ(seen, 83);
 }
 
 TEST(XvaCapital, BcbsExample1EndToEnd) {
