@@ -44,6 +44,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <span>
 
 // Force inlining so that a caller loop with several calls stays one
@@ -59,8 +60,10 @@ namespace qp::vm {
 
 namespace detail {
 
-inline constexpr double kLog2e = 0x1.71547652b82fep0;
-inline constexpr double kLn2Hi = 0x1.62e42fee00000p-1;
+inline constexpr double kLog2e = std::numbers::log2e;
+// High half of a Cody-Waite split of ln 2 (low 32 bits zero), so k * kLn2Hi
+// is exact; not std::numbers::ln2 on purpose.
+inline constexpr double kLn2Hi = 0x1.62e42fee00000p-1;  // NOLINT(modernize-use-std-numbers)
 inline constexpr double kLn2Lo = 0x1.a39ef35793c76p-33;
 inline constexpr double kMagic = 0x1.8p52;  // round-to-nearest-integer shifter
 inline constexpr double kExpLo = -746.0;    // below this exp underflows to 0
@@ -152,14 +155,16 @@ inline constexpr double kLg4 = 2.222219843214978396e-01;
 inline constexpr double kLg5 = 1.818357216161805012e-01;
 inline constexpr double kLg6 = 1.531383769920937332e-01;
 inline constexpr double kLg7 = 1.479819860511658591e-01;
-inline constexpr double kLogLn2Hi = 6.93147180369123816490e-01;
+// Split-ln2 high half for log1, not std::numbers::ln2 on purpose.
+inline constexpr double kLogLn2Hi =
+    6.93147180369123816490e-01;  // NOLINT(modernize-use-std-numbers)
 inline constexpr double kLogLn2Lo = 1.90821492927058770002e-10;
 
 /// log(x) for positive, normal, finite x. Other inputs give an unspecified
 /// finite or non-finite value; callers screen them out first.
 [[nodiscard]] QP_VM_INLINE double log1(double x) noexcept {
     // Shift the exponent so that the mantissa lands in [sqrt(1/2), sqrt 2).
-    std::uint64_t bits = std::bit_cast<std::uint64_t>(x);
+    auto bits = std::bit_cast<std::uint64_t>(x);
     bits += (0x3ff00000ULL - 0x3fe6a09eULL) << 32;
     const std::uint64_t ke = bits >> 52;  // k + 1023, in [1, 2046]
     bits = (bits & 0x000fffffffffffffULL) + (0x3fe6a09eULL << 32);

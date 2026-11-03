@@ -31,7 +31,7 @@ testpaths = ["tests"]
 build = "cp311-* cp312-* cp313-*"
 skip = "*-musllinux_* *-win32 *_i686"
 build-frontend = "build"
-test-command = "python {project}/../wheel_smoke.py qp_rust"
+test-command = "python {project}/bindings/wheel_smoke.py qp_rust"
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "manylinux_2_34"
