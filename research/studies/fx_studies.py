@@ -365,11 +365,11 @@ def main(argv: list[str] | None = None) -> int:
         for path in run_holdout(a.which, data, out, dry_run=False):
             print(path)
         return 0
-    train(a.which)
+    train(a.which, git=git)
     return 0
 
 
-def train(which: str) -> None:
+def train(which: str, git: tuple | None = None) -> None:
     from qp_fetch import RAW_DIR, fetch_ecb_fx, parse_ecb_csv
 
     cached = RAW_DIR / f"ecb_exr_1999-01-01_{TRAIN_END}.csv"

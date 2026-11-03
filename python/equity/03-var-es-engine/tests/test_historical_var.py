@@ -232,7 +232,6 @@ def test_pnl_fhs_uses_order_statistic_like_plain_hs():
     import warnings
 
     import numpy as np
-
     from eq_var.historical_var import filtered_historical_var
 
     pnl = np.random.default_rng(0).standard_normal(1000)

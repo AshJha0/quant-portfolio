@@ -280,3 +280,13 @@ def test_pair_activity_counts_agree_with_the_return_path():
     assert act["days_in_market"] >= act["entries"]
     if act["max_abs_z"] <= fx_studies.PAIRS["entry_z"]:
         assert act["entries"] == 0 and not np.any(r)
+
+
+def test_train_mode_passes_the_pre_run_git_state(monkeypatch):
+    """main() reads the git state before anything is written and hands it to
+    train(), which records it with each trial (it used to be a NameError)."""
+    seen = {}
+    monkeypatch.setattr(fx_studies.trials, "git_state", lambda repo: ("abc123", False))
+    monkeypatch.setattr(fx_studies, "train", lambda which, git=None: seen.update(which=which, git=git))
+    assert fx_studies.main(["pairs"]) == 0
+    assert seen == {"which": "pairs", "git": ("abc123", False)}
