@@ -106,7 +106,7 @@ with `PD(t) = 1 − e^{−ht}`, `h = −ln(1 − PD_1y)` from a real-world 1-yea
 CVA, but a CVA needs a risk-neutral hazard from CDS or proxy spreads, market
 LGD, collateral (CSA, margin period of risk), DVA, and EEPE or SA-CCR
 exposure; none of these is implemented, and a netting set holds one pair.
-`cva` and `cva_for_forward` remain as deprecated aliases.
+The old aliases `cva` and `cva_for_forward` were removed in 3.0.0.
 
 ### 2.4 Capital
 

@@ -505,7 +505,7 @@ Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 ## Further reading
 
 - [DIAGRAMS.md](DIAGRAMS.md): the same architecture as diagrams.
-- [LEARN.md](LEARN.md): a curriculum through every topic, with a 532-question
+- [LEARN.md](LEARN.md): a curriculum through every topic, with a 559-question
   self-test bank organised by round.
 - [COOKBOOK.md](COOKBOOK.md): recipes for common tasks in every area.
 - [MARKET_RISK.md](MARKET_RISK.md): the VaR/ES and backtesting workflow the

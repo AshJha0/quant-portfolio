@@ -1363,8 +1363,8 @@ exposure (EE) / potential future exposure (PFE) profile for an FX forward,
 then integrates EE against a PD term structure (flat hazard from the 1y PD).
 `expected_exposure_loss_for_forward` returns the expected loss on exposure
 (real-world PD), not a CVA: a CVA needs risk-neutral default probabilities
-implied from market spreads. The old name `cva_for_forward` is a deprecated
-alias.
+implied from market spreads. The old name `cva_for_forward` was removed in
+3.0.0.
 
 ```python
 from fx_credit import FXForward, expected_exposure_loss_for_forward

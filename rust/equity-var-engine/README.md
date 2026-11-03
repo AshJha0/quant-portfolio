@@ -65,13 +65,13 @@ let tl = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0
 
 | Old | New |
 |---|---|
-| type-7 `linear_quantile` on VaR paths | order statistic (`tail::empirical_var`); `linear_quantile` deprecated |
-| `kupiec_pof(n_obs, n_exceptions, alpha)` | `kupiec_pof(&KupiecInput { .. })`; old form `kupiec_pof_positional` deprecated |
+| type-7 `linear_quantile` on VaR paths | order statistic (`tail::empirical_var`); `linear_quantile` removed in 3.0.0 |
+| `kupiec_pof(n_obs, n_exceptions, alpha)` | `kupiec_pof(&KupiecInput { .. })`; old form `kupiec_pof_positional` removed in 3.0.0 |
 | `basel_traffic_light(n_exceptions, n_obs)`, zone by raw count, `x > n` clamped | `basel_traffic_light(&BaselInput { .. })`, zone by `Binomial(n, alpha)` CDF, `x > n` an error, new `plus_factor` field; old form `basel_traffic_light_250` deprecated |
-| `cornish_fisher_domain_ok(skew, kurt, 3.5, grid)` | `cornish_fisher_valid(skew, kurt, alpha) -> Result<bool>`; old predicate deprecated |
-| `Matrix::cholesky_jitter(jitter, tries)` | `Matrix::cholesky_repair(PsdRepair)` returning the jitter; old method deprecated |
-| P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function deprecated, old arithmetic kept |
-| `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function deprecated |
+| `cornish_fisher_domain_ok(skew, kurt, 3.5, grid)` | `cornish_fisher_valid(skew, kurt, alpha) -> Result<bool>`; old predicate removed in 3.0.0 |
+| `Matrix::cholesky_jitter(jitter, tries)` | `Matrix::cholesky_repair(PsdRepair)` returning the jitter; old method removed in 3.0.0 |
+| P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function removed in 3.0.0, old arithmetic kept |
+| `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function removed in 3.0.0 |
 | EWMA vol seeded with full-sample variance | seeded with mean `r^2` of the first `min(30, n)` points |
 | EWMA covariance seeded with the full-sample covariance | seeded with mean `r r'` of the first `min(30, T)` rows |
 | `ln_gamma(x) -> f64` | `ln_gamma(x) -> Result<f64>` |

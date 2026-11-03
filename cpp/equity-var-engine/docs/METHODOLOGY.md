@@ -32,7 +32,7 @@ conventions, the maths, the model choices and the assumptions.
 with `std::nth_element` (O(n)) and a partial sum of the m - 1 larger losses,
 with no full sort. The order statistic is a value from the sample, so it is
 the same in every language that rounds the inputs the same way. Type-7
-interpolation (`quantile_linear`) is deprecated and no VaR path uses it.
+interpolation (`quantile_linear`) was removed in 3.0.0; no VaR path used it.
 
 **BRW age-weighted VaR and ES** (Boudoukh, Richardson, Whitelaw):
 observation i (0 = oldest) gets weight (1-lam) lam^{n-1-i} / (1-lam^n), and
@@ -196,7 +196,7 @@ now wraps them. The rules that keep them the same:
 - **Selection, not sorting.** The order-statistic VaR / ES partitions the
   loss vector with `std::nth_element` around rank m: O(n) on average. The
   tail sum then adds the m - 1 largest losses in the order the partition
-  leaves them, as before. The deprecated `quantile_linear` used a full sort;
+  leaves them, as before. The removed `quantile_linear` used a full sort;
   it now uses `nth_element` for x(lo) and the minimum of the upper part for
   x(lo + 1), the same two order statistics. `var_es_weighted` (BRW) still
   sorts, because it needs the cumulative weight in loss order.

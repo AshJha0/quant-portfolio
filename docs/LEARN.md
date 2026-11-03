@@ -555,14 +555,14 @@ as `Sigma = L L^T` for a unique lower-triangular `L`. If `Z` is a vector of
 independent standard normal draws, then `Y = mu + L Z` has covariance
 `E[(LZ)(LZ)^T] = L E[ZZ^T] L^T = L I L^T = L L^T = Sigma` exactly, because
 `Z`'s covariance is the identity. `simulate_factor_returns` does exactly this:
-`chol = safe_cholesky(sig); z = rng.standard_normal((n_paths, n)); return mu + z @ chol.T`,
+`chol = cholesky(sig, repair); z = rng.standard_normal((n_paths, n)); return mu + z @ chol.T`,
 each row of independent normals is linearly mixed by `L` into a row with the
 desired covariance structure, at essentially the cost of one matrix multiply
 per path.
 
 </details>
 
-**Q11. What does "jitter escalation" mean in `safe_cholesky`, and why is it needed at all?**
+**Q11. What does "jitter escalation" mean in `cholesky`, and why is it needed at all?**
 
 <sub>Tags: `L1`, `foundations-maths`, `code-reading`</sub>
 
@@ -580,7 +580,7 @@ barely-perceptible nudge and grow it only as far as needed, so a borderline
 matrix gets a negligible perturbation. Past the cap the function raises unless
 the caller asked for an explicit repair (`repair="clip"` for eigenvalue
 clipping or `repair="higham"` for the nearest correlation matrix). The older
-`safe_cholesky` is a deprecated wrapper over the same capped ladder.
+`safe_cholesky` wrapper was removed in 3.0.0 (`docs/VERSIONING.md`).
 
 </details>
 
@@ -3412,9 +3412,9 @@ fine, leaves gaps between nodes where a violation can hide, whereas the closed
 form evaluates the *actual* minimum of a one-dimensional quadratic, which
 cannot be missed however thin the non-monotone region is. The interval depends
 on `alpha` because only the part of the curve up to the requested quantile
-matters. The old `cornish_fisher_domain_ok(skew, excess_kurt, z_range=3.5)` is
-kept for one release as a deprecated predicate on the fixed interval
-`[-z_range, z_range]`.
+matters. The old `cornish_fisher_domain_ok(skew, excess_kurt, z_range=3.5)`, a
+predicate on the fixed interval `[-z_range, z_range]`, was removed in 3.0.0
+(`docs/VERSIONING.md`).
 
 Source: `python/equity/03-var-es-engine/src/eq_var/parametric_var.py` (`cornish_fisher_valid`).
 
@@ -6036,7 +6036,7 @@ Garman-Kohlhagen GBM simulation and netting rules, with
 sovereign scorecard's PD term structure. That number is an expected loss on
 exposure under real-world PD, not a CVA (which would need risk-neutral default
 probabilities and a funding/discounting treatment); the old name
-`cva_for_forward` is deprecated for that reason.
+`cva_for_forward` was removed in 3.0.0 for that reason.
 
 </details>
 
@@ -10394,15 +10394,14 @@ in.
 
 <details><summary>Answer</summary>
 
-It is deprecated and kept for one release with its old meaning: monotonicity
-on the fixed interval `[-z_range, z_range]` regardless of alpha, now computed
-with the same exact minimum. Calling it raises a `DeprecationWarning` pointing
-to `cornish_fisher_valid`, and its `n_grid` argument is validated but unused.
+It was deprecated in v2.0.0 and removed in 3.0.0 (`docs/VERSIONING.md`).
+It checked monotonicity on the fixed interval `[-z_range, z_range]`
+regardless of alpha; `cornish_fisher_valid` replaces it.
 The fixed interval was the second problem with the old check: it ignored
 alpha, so it could reject pairs like `(0.122, -0.427)` that are valid at the
 quantile actually requested.
 
-Source: `python/equity/03-var-es-engine/src/eq_var/parametric_var.py` (`cornish_fisher_domain_ok`).
+Source: `docs/VERSIONING.md` (Removed in 3.0.0) and `python/equity/03-var-es-engine/src/eq_var/parametric_var.py` (`cornish_fisher_valid`).
 
 </details>
 
