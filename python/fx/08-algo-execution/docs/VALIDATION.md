@@ -134,12 +134,19 @@ the order's own permanent impact from the path.
 
 | schedule | TE vs print, mean [95% CI] | sd | TE vs unimpacted print | sd |
 |---|---:|---:|---:|---:|
-| fix-targeting (5-min window) | +0.498 [+0.423, +0.573] | 0.537 | +0.576 [+0.501, +0.651] | 0.537 |
-| TWAP 14:00-17:00 | +0.242 [-1.142, +1.625] | 9.921 | +0.346 [-1.037, +1.729] | 9.921 |
+| fix-targeting (5-min window) | +1.015 [+0.940, +1.090] | 0.537 | +1.050 [+0.975, +1.125] | 0.537 |
+| TWAP 14:00-17:00 | +0.341 [-1.042, +1.724] | 9.921 | +0.388 [-0.996, +1.771] | 9.921 |
 
-The fix schedule's own permanent impact moves the print by 0.078 pips. That
+This study runs on 1-minute buckets, so the W3 fix to the impact horizon
+(METHODOLOGY section 4) changed it. Before the fix (v2.0.0) the fix-targeting
+row was +0.498 [+0.423, +0.573] and TWAP +0.242: the 1-minute grid had
+understated temporary impact by a factor sqrt(5) and overstated permanent
+impact by the same factor. The tracking-error sd is unchanged.
+
+The fix schedule's own permanent impact moves the print by 0.035 pips
+(0.078 before the fix). That
 number has no seed variance in this model, because permanent impact is a
-deterministic function of the schedule. The fix schedule pays about half a
+deterministic function of the schedule. The fix schedule pays about one
 pip of spread and impact and carries about 0.5 pip of tracking-error sd; a
 3h TWAP is cheaper on average and carries about 10 pips of tracking-error sd.
 Tests: `test_fix_print_tracking_error_has_real_variance`,

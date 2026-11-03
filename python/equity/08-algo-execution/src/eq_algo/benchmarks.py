@@ -15,6 +15,8 @@ benchmark), in basis points of the benchmark.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from .intraday import ExecutionResult
@@ -23,6 +25,7 @@ __all__ = [
     "arrival_price",
     "benchmark_slippage",
     "pov_schedule",
+    "realised_participation",
     "slippage_bps",
     "twap",
     "twap_schedule",
@@ -132,21 +135,39 @@ def vwap_schedule(parent_qty: float, profile: np.ndarray) -> np.ndarray:
     return parent_qty * p / p.sum()
 
 
-def pov_schedule(parent_qty: float, market_volumes: np.ndarray,
-                 participation: float) -> np.ndarray:
-    """Percentage-of-volume schedule: trade ``participation * V_j`` per bucket
-    until done.
+def pov_schedule(parent_qty: float, forecast_volumes: np.ndarray | None = None,
+                 participation: float | None = None, *,
+                 market_volumes: np.ndarray | None = None) -> np.ndarray:
+    """Percentage-of-volume schedule: trade ``participation * F_j`` per bucket
+    until done, where ``F_j`` is the *forecast* bucket volume.
 
-    Uses the (forecast or realised) bucket volumes; the cap is respected in
-    every bucket.  If the parent cannot complete within the day at this cap,
-    a ``ValueError`` explains the shortfall, split the order across days or
+    The schedule is fixed before the day starts, so it must be built from a
+    forecast (for example ``config.profile * config.day_volume``), never from
+    the realised tape of the day it will trade: that would be foresight.  On
+    a day whose realised volume differs from the forecast the achieved
+    participation differs from the target; :func:`realised_participation`
+    measures it.  The cap is respected against the forecast in every bucket.
+    If the parent cannot complete within the day at this cap, a
+    ``ValueError`` explains the shortfall; split the order across days or
     raise the participation cap explicitly (see docs/DESK_GUIDE.md on caps).
+
+    ``market_volumes=`` is the v2.0.0 keyword; it still works for one
+    release and raises a ``FutureWarning``.
     """
+    if market_volumes is not None:
+        if forecast_volumes is not None:
+            raise TypeError("pass forecast_volumes only (market_volumes is its old name)")
+        warnings.warn("pov_schedule(market_volumes=...) is renamed forecast_volumes=; "
+                      "pass a forecast curve, not the realised tape",
+                      FutureWarning, stacklevel=2)
+        forecast_volumes = market_volumes
+    if forecast_volumes is None or participation is None:
+        raise TypeError("pov_schedule needs forecast_volumes and participation")
     if parent_qty <= 0:
         raise ValueError("parent_qty must be > 0")
     if not 0 < participation <= 1:
         raise ValueError("participation must be in (0, 1]")
-    v = np.asarray(market_volumes, dtype=float)
+    v = np.asarray(forecast_volumes, dtype=float)
     if not np.all(np.isfinite(v)):
         raise ValueError("market volumes must be finite (no NaN/Inf)")
     if np.any(v < 0):
@@ -168,3 +189,17 @@ def pov_schedule(parent_qty: float, market_volumes: np.ndarray,
             f"shares ({remaining:.0f} left). Split across days or raise the cap."
         )
     return q
+
+
+def realised_participation(result) -> np.ndarray:
+    """Achieved participation ``q_j / V_j`` per bucket on the realised tape.
+
+    Buckets with no order give 0.  Use it to see how far a POV schedule
+    built from a forecast drifted from its target on the day.
+    """
+    q = result.fills["qty"].to_numpy(dtype=float)
+    v = result.fills["market_volume"].to_numpy(dtype=float)
+    out = np.zeros_like(q)
+    m = q > 0
+    out[m] = q[m] / v[m]
+    return out

@@ -205,19 +205,29 @@ acp = ea.ACParams(total_shares=X, n_slices=icfg.n_buckets,
                   sigma=icfg.sigma_daily * icfg.mid0, eta=2.0e-6, gamma=1e-6,
                   epsilon=icfg.mid0 * icfg.spread_bps * 1e-4 / 2)
 lam_mid = 5e-6
+# W3: the optimum under the simulator's own square-root law, built from the
+# forecast volume curve: cost_k = c_k * n_k^1.5 with c_k = S * Y * sigma / V_k^0.5
+vol_fc = icfg.profile * icfg.day_volume
+c_pl = icfg.mid0 * icfg.temp_coef * icfg.sigma_daily / np.sqrt(vol_fc)
+x_pl = ea.power_law_trajectory(X, c_pl, 0.5, lam_mid,
+                               (icfg.mid0 * icfg.sigma_daily) ** 2 / icfg.n_buckets)
 schedules = {
     "TWAP": ea.twap_schedule(X, icfg.n_buckets),
     "VWAP": ea.vwap_schedule(X, icfg.profile),
-    "POV 10%": ea.pov_schedule(X, icfg.profile * icfg.day_volume, 0.10),
+    "POV 10%": ea.pov_schedule(X, forecast_volumes=vol_fc, participation=0.10),
     f"AC lam={lam_mid:g}": ea.ac_trades(acp, lam_mid),
+    f"Power law lam={lam_mid:g}": -np.diff(x_pl),
     "Aggressive (2 bkts)": np.r_[np.full(2, X / 2), np.zeros(icfg.n_buckets - 2)],
 }
 N_REPS = 500
 tab = ea.evaluate_schedules(mkt, schedules, side=1, n_reps=N_REPS, seed=SEED)
-print(f"\nExpected IS from the zero-noise simulator; Monte Carlo over {N_REPS} "
+print(f"\nModel-implied IS from the zero-noise simulator; Monte Carlo over {N_REPS} "
       f"replications for the spread (bps, + = cost):")
-print(tab[["expected_is_bps", "std_is_bps", "mean_is_bps", "se_mean_is_bps"]]
-      .sort_values("expected_is_bps").to_string())
+print(tab[["model_implied_is_bps", "std_is_bps", "mean_is_bps", "se_mean_is_bps"]]
+      .sort_values("model_implied_is_bps").to_string())
+
+hdr("Both optimisers under both impact laws (zero-noise simulator)")
+print(ea.compare_impact_laws(icfg, X, lam_mid).round(4).to_string())
 
 hdr("Almgren-Chriss efficient frontier (3 risk aversions)")
 front = ea.efficient_frontier(acp, [1e-6, 5e-6, 5e-5])

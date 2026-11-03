@@ -106,9 +106,11 @@ Last look, paired: effective cost 0.290 vs 0.309 pips for uninformed flow
 (last look cheaper by 0.018 [0.016, 0.020]) and 0.584 vs 0.309 for informed
 flow (dearer by 0.275 [0.271, 0.280], 41% rejects).
 
-Fix targeting, 100mm: tracking error to an independent fix print +0.498
-[+0.423, +0.573] pips with sd 0.54, against sd 9.9 for a 3h TWAP. The
-order's own impact moves the print by 0.078 pips.
+Fix targeting, 100mm: tracking error to an independent fix print +1.015
+[+0.940, +1.090] pips with sd 0.54, against sd 9.9 for a 3h TWAP. The
+order's own impact moves the print by 0.035 pips. (v2.0.0 reported +0.498
+and 0.078: on the 1-minute grid impact was scaled by the bucket vol; see
+docs/METHODOLOGY.md section 4.)
 
 Model anchors: piecewise AC equals closed-form AC at constant liquidity
 (< 1e-9); lambda -> 0 gives the liquidity-weighted schedule; IS components
