@@ -1,0 +1,56 @@
+{
+  "format": "QPRC v1",
+  "recordings": [
+    {
+      "file": "binance_btcusdt_depth_ab_20261103.qprc.gz",
+      "venue": "binance",
+      "symbol": "BTCUSDT",
+      "channel": "btcusdt@depth@100ms + /api/v3/depth?limit=1000",
+      "lines": 2,
+      "start_utc_ns": 1793732880744834900,
+      "seconds": 88.701,
+      "records": 1762,
+      "snapshots": 1,
+      "bytes": 1150048,
+      "sha256": "6ad07e002b63c9cd556e601a365d2645c9f84b3ae4f663f74d6a2d1b897f1728",
+      "stored_bytes": 101743,
+      "truncated": false,
+      "stored_in_repo": true,
+      "note": "Live capture, about 90 s, two independent websocket connections (lines A and B) and one REST snapshot."
+    },
+    {
+      "file": "binance_btcusdt_depth_ab_2snap_20261103.qprc.gz",
+      "venue": "binance",
+      "symbol": "BTCUSDT",
+      "channel": "btcusdt@depth@100ms + /api/v3/depth?limit=1000",
+      "lines": 2,
+      "start_utc_ns": 1793732496149213300,
+      "seconds": 58.694,
+      "records": 1174,
+      "snapshots": 2,
+      "bytes": 730866,
+      "sha256": "a6f90832dcf7965daca69b26c1fe1045046481d7590996aaffc4274f82f1c9f7",
+      "stored_bytes": 70396,
+      "truncated": false,
+      "stored_in_repo": true,
+      "note": "Live capture, about 60 s. Taken with an early recorder that fetched a second snapshot by mistake; kept because the second snapshot (same lastUpdateId as the live book) separates the C++ and Rust handlers: C++ ignores a snapshot not newer than its book, Rust reloads it and loses the levels beyond the snapshot's 1,000-level depth."
+    },
+    {
+      "file": "coinbase_btcusd_level2batch_20261103.qprc.gz",
+      "venue": "coinbase-level2",
+      "symbol": "BTC-USD",
+      "channel": "level2_batch (served as level2_50)",
+      "lines": 1,
+      "start_utc_ns": 1793732880448944800,
+      "seconds": 44.15,
+      "records": 684,
+      "snapshots": 0,
+      "bytes": 1334111,
+      "sha256": "b4730f172daca80c9833fe0047a4d0028f7c8cc4192665cd15d024c43ac70b5b",
+      "stored_bytes": 328333,
+      "truncated": false,
+      "stored_in_repo": true,
+      "note": "Live capture, about 45 s, one line; first frames are the subscriptions ack and the in-band snapshot."
+    }
+  ]
+}
