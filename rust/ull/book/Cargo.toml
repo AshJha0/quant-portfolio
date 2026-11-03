@@ -1,0 +1,15 @@
+[package]
+name = "qp-ull-book"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Allocation-free L3 order book on flat price-indexed arrays, with a naive reference book used as the test oracle. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_ull_book"
+path = "src/lib.rs"
+
+[dependencies]
+qp-ull-qpbf = { path = "../qpbf" }
