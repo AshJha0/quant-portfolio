@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qp-oms"
+version = "3.0.0.dev0"
+description = "Order management for quant-portfolio: FIX order state machine, hash-chained event log and a pure-Python FIX 4.4 session"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
+dependencies = [
+    "qp-core",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4", "hypothesis>=6.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+qp_oms = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/qp_oms"]
+addopts = "-q --doctest-modules --import-mode=importlib"
