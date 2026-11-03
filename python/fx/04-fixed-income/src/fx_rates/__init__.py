@@ -30,7 +30,7 @@ from .bootstrap import (
     reprice_deposits,
     reprice_swaps,
 )
-from .calendars import BusinessCalendar, get_calendar, joint_calendar
+from .calendars import BusinessCalendar, HolidayCalendar, get_calendar, joint_calendar
 from .curve import DiscountCurve
 from .daycount import (
     MONEY_MARKET_DAYCOUNT,
@@ -49,10 +49,14 @@ from .fxforward import (
     FXSwap,
     MarketState,
     cip_forward,
+    curve_from_forward_points,
+    forward_for_date,
     forward_points,
+    forward_points_for_date,
     forward_points_table,
     market_forward,
 )
+from .ndf import NDF, ndf_fixing_date
 from .risk import (
     basis_dv01,
     book_risk_report,
@@ -82,6 +86,7 @@ __version__ = "1.0.0"
 
 __all__ = [
     "MONEY_MARKET_DAYCOUNT",
+    "NDF",
     # daycount
     "VALID_CONVENTIONS",
     # xccy
@@ -96,6 +101,7 @@ __all__ = [
     "DiscountCurve",
     "FXForward",
     "FXSwap",
+    "HolidayCalendar",
     # fx forwards
     "MarketState",
     # scenarios
@@ -111,6 +117,7 @@ __all__ = [
     "bootstrap_curve",
     "carry_table",
     "cip_forward",
+    "curve_from_forward_points",
     "curve_from_fx_forwards",
     "deposit_rate_from_df",
     "detect_cip_arbitrage",
@@ -118,7 +125,9 @@ __all__ = [
     "df_from_deposit",
     "dv01",
     "forward_carry",
+    "forward_for_date",
     "forward_points",
+    "forward_points_for_date",
     "forward_points_table",
     "forward_settlement_date",
     # risk
@@ -130,6 +139,7 @@ __all__ = [
     "key_rate_dv01",
     "market_forward",
     "money_market_year_fraction",
+    "ndf_fixing_date",
     "no_arb_bounds",
     "pair_calendar",
     "par_swap_rate",

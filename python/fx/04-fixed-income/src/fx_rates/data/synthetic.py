@@ -186,6 +186,9 @@ def build_market_state(quotes: SyntheticMarket) -> MarketState:
         foreign_curve=for_,
         basis_spreads=quotes.basis_spreads,
         pair=quotes.pair,
+        # The synthetic quotes price spot as a t = 0 rate (forwards are
+        # generated as S * P_f(T) / P_d(T)), so the market says so.
+        spot_time=0.0,
     )
 
 

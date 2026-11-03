@@ -94,6 +94,7 @@ __all__ = [
     "MAX_YEAR",
     "MIN_YEAR",
     "ROLL_CONVENTIONS",
+    "T_PLUS_1_PAIRS",
     "HolidayCalendar",
     "add_business_days",
     "add_closure",
@@ -101,11 +102,13 @@ __all__ = [
     "clear_closures",
     "easter_sunday",
     "extra_closures",
+    "fx_spot_date",
     "get_calendar",
     "holidays",
     "is_business_day",
     "joint_calendar",
     "pair_holidays",
+    "spot_lag",
 ]
 
 Calendar = str | Iterable[str] | None
@@ -549,3 +552,74 @@ def joint_calendar(*names: str | HolidayCalendar) -> HolidayCalendar:
     if len(centres) == 1:
         return CALENDARS[centres[0]]
     return HolidayCalendar("+".join(centres), tuple(centres))
+
+
+# ---------------------------------------------------------------------- #
+# FX spot dates
+# ---------------------------------------------------------------------- #
+#: Pairs that settle T+1 against USD (Clark 2011, ch. 1; Wystup, ch. 1).
+T_PLUS_1_PAIRS = frozenset({"USDCAD", "USDTRY", "USDRUB", "USDPHP"})
+
+
+def _pair_codes(pair: str | tuple[str, str]) -> tuple[str, str]:
+    if isinstance(pair, str):
+        p = pair.upper().replace("/", "").strip()
+        if len(p) != 6 or not p.isalpha():
+            raise ValueError(f"pair must be six letters, got {pair!r}")
+        return p[:3], p[3:]
+    base, quote = (str(c).upper() for c in pair)
+    if len(base) != 3 or len(quote) != 3:
+        raise ValueError(f"pair must be two 3-letter codes, got {pair!r}")
+    return base, quote
+
+
+def spot_lag(pair: str | tuple[str, str]) -> int:
+    """Business days from trade date to spot: 1 for USDCAD, USDTRY, USDRUB,
+    USDPHP (either order), 2 otherwise."""
+    b, q = _pair_codes(pair)
+    return 1 if (b + q in T_PLUS_1_PAIRS or q + b in T_PLUS_1_PAIRS) else 2
+
+
+def _shipped(codes: Iterable[str]) -> tuple[str, ...]:
+    return tuple(c for c in codes if c in _RULES)
+
+
+def fx_spot_date(trade_date: dt.date, pair: str | tuple[str, str],
+                 lag: int | None = None) -> dt.date:
+    """Spot value date of an FX pair traded on ``trade_date``.
+
+    Plain idea: count ``lag`` good business days in the non-USD centres,
+    then roll forward until every centre, and New York, is open.
+
+    Formal rule (Clark 2011, ch. 1; Wystup 2017, ch. 1):
+
+    1. ``lag`` is :func:`spot_lag` unless given (T+2, or T+1 for USDCAD,
+       USDTRY, USDRUB, USDPHP).
+    2. The lag days are counted on the joint calendar of the non-USD
+       currencies of the pair. A USD holiday on T+1 does not stop the count
+       for a USD pair: EURUSD traded the day before 4 July still settles on
+       the next day that both centres are open.
+    3. The candidate is rolled forward (following) until it is a business
+       day in both currencies and in USD. For a cross such as EURJPY the
+       USD leg of the two settlements still has to clear, so a USD holiday
+       cannot be a spot date.
+
+    Currencies with no shipped calendar (``CURRENCIES``) count weekends
+    only; check them against the local market before relying on the date.
+
+    Worked example: EURUSD traded Wed 2 Jul 2025. Two TARGET days give
+    Fri 4 Jul, a USD holiday, so spot is Mon 7 Jul.
+    """
+    b, q = _pair_codes(pair)
+    if b == q:
+        raise ValueError(f"pair needs two different currencies, got {b}{q}")
+    n = spot_lag((b, q)) if lag is None else lag
+    if isinstance(n, bool) or int(n) != n or n < 0:
+        raise ValueError(f"lag must be a non-negative integer, got {lag!r}")
+    non_usd = _shipped(c for c in (b, q) if c != "USD")
+    count_cal = joint_calendar(*non_usd) if non_usd else CALENDARS["USD"]
+    d = trade_date
+    for _ in range(int(n)):
+        d = count_cal.add_business_days(d + _DAY, 0)
+    settle = joint_calendar(*_shipped((b, q, "USD")))
+    return settle.adjust(d, "following")
