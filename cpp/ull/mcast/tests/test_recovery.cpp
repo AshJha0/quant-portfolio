@@ -3,11 +3,11 @@
 // a burst wider than the window, corrupt packets, a corrupt snapshot)
 // must converge to the publisher's book, and the book must be flagged stale
 // whenever it is not known to be correct.
-#include "../feed_handler.hpp"
-#include "../snapshot.hpp"
+#include "../../bench/ull_test.hpp"
 #include "../../book/l3_book.hpp"
 #include "../../qpbf/generator.hpp"
-#include "../../bench/ull_test.hpp"
+#include "../feed_handler.hpp"
+#include "../snapshot.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -133,15 +133,24 @@ Outcome run(const Stream& s, const std::vector<Event>& sched, mcast::FeedConfig 
         bool first = true;
         mcast::build_snapshot(pb, kSession, as_of, now, [&](const std::uint8_t* p, std::size_t n) {
             Packet q(p, p + n);
-            if (first && corrupt_snapshots > 0) { q[2] ^= 0xFF; --corrupt_snapshots; }
+            if (first && corrupt_snapshots > 0) {
+                q[2] ^= 0xFF;
+                --corrupt_snapshots;
+            }
             first = false;
             fh.on_snapshot_packet(q.data(), q.size());
         });
     };
     auto check = [&](std::size_t step) {
-        if (fh.stale()) { ++o.stale_events; return; }
+        if (fh.stale()) {
+            ++o.stale_events;
+            return;
+        }
         const std::uint64_t upto = fh.next_seq() - 1;
-        if (upto < ref_upto) { ref = replay(s, upto); ref_upto = upto; }
+        if (upto < ref_upto) {
+            ref = replay(s, upto);
+            ref_upto = upto;
+        }
         while (ref_upto < upto) ref.apply(s.hist[ref_upto++]);
         const bool ok = (step % 64 == 0) ? same(sink.book, ref) : cheap_same(sink.book, ref);
         o.violations += !ok;
@@ -155,8 +164,14 @@ Outcome run(const Stream& s, const std::vector<Event>& sched, mcast::FeedConfig 
         // flips inside a field are the UDP checksum's job (QPBF.md s.8).
         if (e.corrupt) q[(e.pkt % 3 == 0) ? 0 : (e.pkt % 3 == 1 ? 2 : 18)] ^= 0x5A;
         fh.on_packet(e.line, q.data(), q.size(), now);
-        if (sink.want_snapshot && snap_due < 0) { snap_due = step + 20; sink.want_snapshot = false; }
-        if (snap_due >= 0 && step >= snap_due) { serve(); snap_due = -1; }
+        if (sink.want_snapshot && snap_due < 0) {
+            snap_due = step + 20;
+            sink.want_snapshot = false;
+        }
+        if (snap_due >= 0 && step >= snap_due) {
+            serve();
+            snap_due = -1;
+        }
         check(static_cast<std::size_t>(step));
         ++step;
     }
@@ -164,30 +179,40 @@ Outcome run(const Stream& s, const std::vector<Event>& sched, mcast::FeedConfig 
     for (int i = 0; i < 50 && (fh.stale() || sink.want_snapshot || snap_due >= 0); ++i) {
         now += cfg.gap_timeout_ns;
         fh.tick(now);
-        if (sink.want_snapshot) { sink.want_snapshot = false; serve(); snap_due = -1; }
-        if (snap_due >= 0) { serve(); snap_due = -1; }
+        if (sink.want_snapshot) {
+            sink.want_snapshot = false;
+            serve();
+            snap_due = -1;
+        }
+        if (snap_due >= 0) {
+            serve();
+            snap_due = -1;
+        }
     }
     const auto final_ref = replay(s, s.last_seq.back());
-    o.converged = !fh.stale() && fh.next_seq() == s.last_seq.back() + 1 && same(sink.book, final_ref);
+    o.converged =
+        !fh.stale() && fh.next_seq() == s.last_seq.back() + 1 && same(sink.book, final_ref);
     o.stats = fh.stats();
     o.apply_errors = sink.apply_errors;
     return o;
 }
 
 void report(const char* name, const Outcome& o) {
-    std::printf("%-28s converged=%d violations=%llu stale_events=%llu gaps=%llu dups=%llu "
-                "snap_req=%llu snap_applied=%llu bad=%llu evicted=%llu\n",
-                name, o.converged, static_cast<unsigned long long>(o.violations),
-                static_cast<unsigned long long>(o.stale_events),
-                static_cast<unsigned long long>(o.stats.gaps),
-                static_cast<unsigned long long>(o.stats.duplicates),
-                static_cast<unsigned long long>(o.stats.snapshots_requested),
-                static_cast<unsigned long long>(o.stats.snapshots_applied),
-                static_cast<unsigned long long>(o.stats.bad_packets),
-                static_cast<unsigned long long>(o.stats.overflow_evictions));
+    std::printf(
+        "%-28s converged=%d violations=%llu stale_events=%llu gaps=%llu dups=%llu "
+        "snap_req=%llu snap_applied=%llu bad=%llu evicted=%llu\n",
+        name, o.converged, static_cast<unsigned long long>(o.violations),
+        static_cast<unsigned long long>(o.stale_events),
+        static_cast<unsigned long long>(o.stats.gaps),
+        static_cast<unsigned long long>(o.stats.duplicates),
+        static_cast<unsigned long long>(o.stats.snapshots_requested),
+        static_cast<unsigned long long>(o.stats.snapshots_applied),
+        static_cast<unsigned long long>(o.stats.bad_packets),
+        static_cast<unsigned long long>(o.stats.overflow_evictions));
 }
 
-std::vector<Event> interleave(std::size_t n, std::function<bool(int, std::size_t)> keep, std::size_t lag_b = 0) {
+std::vector<Event> interleave(std::size_t n, std::function<bool(int, std::size_t)> keep,
+                              std::size_t lag_b = 0) {
     std::vector<Event> v;
     for (std::size_t i = 0; i < n + lag_b; ++i) {
         if (i < n && keep(0, i)) v.push_back({0, i});
@@ -219,13 +244,15 @@ int main() {
         // Packet 0 is kept: a receiver whose first packet is not seq 1 must
         // treat it as a late join and fetch a snapshot (tested below).
         for (std::size_t i = 1; i < tail; ++i) dropA[i] = r.below(10) == 0;
-        auto o = run(s, interleave(n, [&](int l, std::size_t i) { return l == 1 || !dropA[i]; }, 3), cfg);
+        auto o = run(
+            s, interleave(n, [&](int l, std::size_t i) { return l == 1 || !dropA[i]; }, 3), cfg);
         report("A drops 10%, B lags 3", o);
         ULL_CHECK(o.converged && o.violations == 0 && o.stats.gaps > 0 && o.stale_events > 0);
         ULL_CHECK(o.stats.snapshots_requested == 0);  // B filled every hole in time
     }
     {
-        auto o = run(s, interleave(n, [&](int, std::size_t i) { return i < 1000 || i >= 1030; }), cfg);
+        auto o =
+            run(s, interleave(n, [&](int, std::size_t i) { return i < 1000 || i >= 1030; }), cfg);
         report("both drop 30 packets", o);
         ULL_CHECK(o.converged && o.violations == 0 && o.stats.snapshots_applied >= 1);
     }
@@ -249,7 +276,8 @@ int main() {
         ULL_CHECK(o.converged && o.violations == 0);
     }
     {
-        auto o = run(s, interleave(n, [&](int, std::size_t i) { return i < 500 || i >= 3500; }), cfg);
+        auto o =
+            run(s, interleave(n, [&](int, std::size_t i) { return i < 500 || i >= 3500; }), cfg);
         report("burst 3000 pkts > window", o);
         ULL_CHECK(o.converged && o.violations == 0 && o.stats.snapshots_applied >= 1);
         ULL_CHECK(o.stale_events > 0);
@@ -266,7 +294,8 @@ int main() {
         ULL_CHECK(o.converged && o.violations == 0 && o.stats.bad_packets > 0 && o.stats.gaps == 0);
     }
     {
-        auto o = run(s, interleave(n, [&](int, std::size_t i) { return i < 1000 || i >= 1030; }), cfg, 1);
+        auto o = run(s, interleave(n, [&](int, std::size_t i) { return i < 1000 || i >= 1030; }),
+                     cfg, 1);
         report("gap + corrupt snapshot", o);
         ULL_CHECK(o.converged && o.violations == 0 && o.stats.snapshots_requested >= 2);
     }
@@ -282,14 +311,15 @@ int main() {
         // Sink-detected inconsistency (QPBF.md s.5 rule 5) forces recovery.
         Sink sink;
         mcast::FeedHandler<Sink> fh(sink, cfg);
-        for (std::size_t i = 0; i < 100; ++i) fh.on_packet(0, s.packets[i].data(), s.packets[i].size(), i * 1000);
+        for (std::size_t i = 0; i < 100; ++i)
+            fh.on_packet(0, s.packets[i].data(), s.packets[i].size(), i * 1000);
         ULL_CHECK(!fh.stale() && !sink.want_snapshot);
         fh.invalidate();
         ULL_CHECK(fh.stale() && sink.want_snapshot && fh.awaiting_snapshot());
         const auto pb = replay(s, s.last_seq[99]);
-        mcast::build_snapshot(pb, kSession, s.last_seq[99], 0, [&](const std::uint8_t* p, std::size_t n) {
-            fh.on_snapshot_packet(p, n);
-        });
+        mcast::build_snapshot(
+            pb, kSession, s.last_seq[99], 0,
+            [&](const std::uint8_t* p, std::size_t n) { fh.on_snapshot_packet(p, n); });
         ULL_CHECK(!fh.stale() && same(sink.book, pb));
     }
     ULL_TEST_MAIN_END();

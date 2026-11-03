@@ -103,6 +103,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from qp_core.model import model
 from scipy.special import ndtr
 
 from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
@@ -535,6 +536,7 @@ def alo_boundary(
     return _put_boundary(K, T, r, q, sigma, n_nodes, n_quad, iterations)
 
 
+@model(id="EQ-OPT-ALO")
 def alo_price(
     S: float,
     K: float,

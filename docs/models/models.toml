@@ -8,8 +8,8 @@
 # Checked by tests/test_model_inventory.py and
 #   python -m qp_core.model check docs/models/models.toml
 #
-# decorated = false: the @model decorator has not been applied to the
-# entrypoint yet. The check fails if the flag and the source disagree.
+# Every entrypoint carries @model(id=...). A future entry whose tag is not
+# applied yet sets decorated = false; the check fails if flag and source disagree.
 
 [[model]]
 id = "CORE-BS-CARRY"
@@ -46,7 +46,6 @@ independent_checks = [
   "python/equity/01-options-pricing/tests/test_differential.py::test_rust_matches_python",
   "python/equity/01-options-pricing/tests/test_differential.py::test_cpp_matches_python",
 ]
-decorated = false
 
 [[model]]
 id = "CORE-IV-BLACK"
@@ -81,7 +80,6 @@ independent_checks = [
   "cpp/core/fuzz/fuzz_implied_vol.cpp",
   "rust/core/fuzz/src/lib.rs::check_implied_vol",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-OPT-CRR"
@@ -111,7 +109,6 @@ tests = [
   "python/equity/01-options-pricing/tests/test_binomial.py::test_european_tree_tight_at_5000_steps",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-OPT-MC"
@@ -140,7 +137,6 @@ tests = [
   "python/equity/01-options-pricing/tests/test_edge_cases.py::test_t_zero_returns_intrinsic_tree_and_mc",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-OPT-CN"
@@ -170,7 +166,6 @@ tests = [
   "python/equity/01-options-pricing/tests/test_phase5_models.py::test_cn_american_second_order_and_matches_tree",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-OPT-ALO"
@@ -200,7 +195,6 @@ tests = [
 independent_checks = [
   "python/equity/01-options-pricing/tests/test_phase5_models.py::test_alo_matches_extrapolated_tree",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-OPT-SABR"
@@ -230,7 +224,6 @@ tests = [
   "python/equity/01-options-pricing/tests/test_phase5_models.py::test_sabr_beta1_nu0_is_flat_alpha",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-OPT-BACHELIER"
@@ -260,7 +253,6 @@ tests = [
 independent_checks = [
   "python/equity/01-options-pricing/tests/test_phase5_models.py::test_bachelier_matches_mpmath_integral",
 ]
-decorated = false
 
 [[model]]
 id = "FX-OPT-GK"
@@ -291,7 +283,6 @@ independent_checks = [
   "python/fx/01-options-pricing/tests/test_differential.py::test_rust_matches_python",
   "python/fx/01-options-pricing/tests/test_differential.py::test_cpp_matches_python",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VAR-PARAM"
@@ -326,7 +317,6 @@ independent_checks = [
   "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_parametric_closed_forms",
   "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_cornish_fisher",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VAR-HIST"
@@ -358,7 +348,6 @@ tests = [
 independent_checks = [
   "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_historical_order_statistics",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VAR-MC"
@@ -391,7 +380,6 @@ independent_checks = [
   "rust/equity-var-engine/fuzz/src/lib.rs::check_cholesky_repair",
   "cpp/core/fuzz/fuzz_cholesky_repair.cpp",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VAR-ES"
@@ -422,7 +410,6 @@ tests = [
 independent_checks = [
   "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_parametric_closed_forms",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VAR-EVT"
@@ -453,7 +440,6 @@ tests = [
   "python/equity/03-var-es-engine/tests/test_evt.py::test_fit_recovers_parameters",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-VAR-SVAR"
@@ -481,7 +467,6 @@ tests = [
   "python/equity/03-var-es-engine/tests/test_stressed_var.py::test_planted_stress_window",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-VAR-FRTB-IMA"
@@ -509,7 +494,6 @@ tests = [
   "python/equity/03-var-es-engine/tests/test_frtb_ima.py::test_capital_uses_average_when_larger",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "FX-VAR-PARAM"
@@ -539,7 +523,6 @@ tests = [
 independent_checks = [
   "python/fx/03-var-es-engine/tests/golden/test_oracle_fx.py::test_parametric_closed_forms",
 ]
-decorated = false
 
 [[model]]
 id = "FX-VAR-HIST"
@@ -569,7 +552,6 @@ tests = [
 independent_checks = [
   "python/fx/03-var-es-engine/tests/golden/test_oracle_fx.py::test_parametric_closed_forms",
 ]
-decorated = false
 
 [[model]]
 id = "FX-VAR-MC"
@@ -598,7 +580,6 @@ tests = [
   "python/fx/03-var-es-engine/tests/test_conventions.py::test_mc_never_raises_on_a_negative_vol_path",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-FI-BOOTSTRAP"
@@ -630,7 +611,6 @@ tests = [
 independent_checks = [
   "python/equity/04-fixed-income/tests/test_hull_white_quantlib.py::test_zero_bond_option_matches_quantlib",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-FI-HW"
@@ -661,7 +641,6 @@ tests = [
 independent_checks = [
   "python/equity/04-fixed-income/tests/test_hull_white_quantlib.py::test_jamshidian_swaption_matches_quantlib",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-CR-ISDA-CDS"
@@ -691,7 +670,6 @@ tests = [
 independent_checks = [
   "python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py::test_isda_cds_matches_quantlib",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-CR-PD-LOGIT"
@@ -722,7 +700,6 @@ tests = [
 independent_checks = [
   "python/equity/06-credit-risk/tests/test_model.py::test_matches_sklearn_to_1e6",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-SURF-HESTON"
@@ -753,10 +730,12 @@ independent_checks = [
   "python/equity/09-vol-surface/tests/test_edge_cases.py::test_xi_zero_consistency_fourier_vs_mc",
   "python/fx/09-vol-surface/tests/test_heston_quantlib.py::test_heston_matches_quantlib",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-SURF-SSVI"
+# eq_surface is being reworked by lane r08b; the decorator lands with it
+# (review/2026-11-03/handbacks/r8x/integration.md). Set true then.
+decorated = false
 name = "SSVI / eSSVI surface fit"
 owner = "maintainer"
 tier = 2
@@ -781,10 +760,12 @@ tests = [
   "python/equity/09-vol-surface/tests/test_round3_volsurface.py::test_ssvi_fit_recovers_params",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-SURF-DUPIRE"
+# eq_surface is being reworked by lane r08b; the decorator lands with it
+# (review/2026-11-03/handbacks/r8x/integration.md). Set true then.
+decorated = false
 name = "Dupire local volatility"
 owner = "maintainer"
 tier = 2
@@ -809,7 +790,6 @@ tests = [
   "python/equity/09-vol-surface/tests/test_round3_volsurface.py::test_dupire_flat_vol_returns_sigma",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-VOL-GARCH"
@@ -839,7 +819,6 @@ tests = [
 independent_checks = [
   "python/equity/02-volatility-modeling/tests/test_arch_crosscheck.py::TestGARCHCrossCheck.test_parameters_agree",
 ]
-decorated = false
 
 [[model]]
 id = "EQ-VOL-EWMA"
@@ -867,7 +846,6 @@ tests = [
   "python/equity/02-volatility-modeling/tests/test_ewma.py::TestForecast.test_flat_term_structure",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "EQ-VOL-HAR"
@@ -895,7 +873,6 @@ tests = [
   "python/equity/02-volatility-modeling/tests/test_har_rv.py::test_noiseless_series_recovers_exact_params",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "FX-CR-SACCR"
@@ -924,7 +901,6 @@ tests = [
   "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_saccr_multiplier_and_margined_rc",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "FX-CR-CVA"
@@ -953,7 +929,6 @@ tests = [
   "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_cva_dva_mirror_symmetry",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "FX-FI-BOOTSTRAP"
@@ -981,7 +956,6 @@ tests = [
   "python/fx/04-fixed-income/tests/test_bootstrap.py::TestBootstrapRoundTrip.test_reprices_quotes_to_1e10",
 ]
 independent_checks = []
-decorated = false
 
 [[model]]
 id = "FX-FI-XCCY"
@@ -1009,4 +983,3 @@ tests = [
   "python/fx/04-fixed-income/tests/test_xccy.py::TestParSolvers.test_par_basis_zeroes_pv",
 ]
 independent_checks = []
-decorated = false

@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 
 from .book import Book, Market
 from .common import (
@@ -416,6 +417,7 @@ def var_standard_error_bootstrap(
     return float(np.std(out, ddof=1))
 
 
+@model(id="FX-VAR-MC")
 def monte_carlo_var(
     book: Book,
     market: Market,

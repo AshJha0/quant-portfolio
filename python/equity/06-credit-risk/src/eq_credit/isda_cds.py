@@ -72,6 +72,7 @@ import numpy as np
 from qp_core.holidays import Calendar
 from qp_core.holidays import add_business_days as _add_bd
 from qp_core.holidays import adjust_following as _adj
+from qp_core.model import model
 from scipy.optimize import brentq
 
 from .cds import HazardCurve
@@ -278,6 +279,7 @@ def par_spread(cds: IsdaCds, hazard: HazardCurve, disc: Any) -> float:
     return prot / (rpv01 - acc_days * df_cash)
 
 
+@model(id="EQ-CR-ISDA-CDS")
 def bootstrap_isda(trade_date: date, maturities: list[date], spreads: list[float],
                    disc: Any, recovery: float = 0.4,
                    calendar: str | None = None) -> HazardCurve:

@@ -51,7 +51,8 @@ TEST(XvaCapital, MatchesPythonFixture) {
         } else if (kind == "MF") {
             double m, mp, w;
             in >> m >> mp >> w;
-            close(x::saccr_maturity_factor(m, mp >= 0.0 ? std::optional<double>(mp) : std::nullopt), w, line);
+            close(x::saccr_maturity_factor(m, mp >= 0.0 ? std::optional<double>(mp) : std::nullopt),
+                  w, line);
         } else if (kind == "MULT") {
             double v, c, a, w;
             in >> v >> c >> a >> w;
@@ -140,9 +141,11 @@ TEST(XvaCapital, MatchesPythonFixture) {
 TEST(XvaCapital, BcbsExample1EndToEnd) {
     // BCBS 279 Annex 4a Example 1: add-on 347, EAD 569 thousand.
     const double delta = x::saccr_supervisory_delta(0.06, 0.05, 0.5, 1.0, false, true);
-    const double usd = x::saccr_ir_effective_notional(0.0, -10000.0 * x::saccr_supervisory_duration(0.0, 4.0),
-                                                      10000.0 * x::saccr_supervisory_duration(0.0, 10.0));
-    const double eur = x::saccr_ir_effective_notional(0.0, 0.0, delta * 5000.0 * x::saccr_supervisory_duration(1.0, 11.0));
+    const double usd =
+        x::saccr_ir_effective_notional(0.0, -10000.0 * x::saccr_supervisory_duration(0.0, 4.0),
+                                       10000.0 * x::saccr_supervisory_duration(0.0, 10.0));
+    const double eur = x::saccr_ir_effective_notional(
+        0.0, 0.0, delta * 5000.0 * x::saccr_supervisory_duration(1.0, 11.0));
     const double addon = 0.005 * (usd + eur);
     const double ead = 1.4 * (60.0 + x::saccr_multiplier(60.0, 0.0, addon) * addon);
     EXPECT_EQ(std::round(addon), 347.0);

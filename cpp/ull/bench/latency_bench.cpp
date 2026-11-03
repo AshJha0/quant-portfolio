@@ -13,13 +13,13 @@
 // docs/LATENCY_METHOD.md for what these numbers mean and do not mean.
 //
 // Usage: ull_latency_bench [--cpu N] [--cpu2 M] [--calls N] [--rate-per-s R]
+#include "../book/l3_book.hpp"
+#include "../qpbf/generator.hpp"
+#include "../ring/spsc_ring.hpp"
 #include "harness.hpp"
 #include "histogram.hpp"
 #include "sysinfo.hpp"
 #include "tsc.hpp"
-#include "../book/l3_book.hpp"
-#include "../qpbf/generator.hpp"
-#include "../ring/spsc_ring.hpp"
 
 #include <atomic>
 #include <cstdio>
@@ -36,11 +36,12 @@ namespace {
 std::string pct_json(const bench::Histogram& h, double tpn) {
     char b[512];
     auto ns = [&](double p) { return h.value_at_percentile(p) / tpn; };
-    std::snprintf(b, sizeof b,
-                  "{\"n\":%llu,\"p50\":%.1f,\"p90\":%.1f,\"p99\":%.1f,\"p99_9\":%.1f,\"p99_99\":%.1f,"
-                  "\"max\":%.1f}",
-                  static_cast<unsigned long long>(h.count()), ns(50), ns(90), ns(99), ns(99.9),
-                  ns(99.99), h.max() / tpn);
+    std::snprintf(
+        b, sizeof b,
+        "{\"n\":%llu,\"p50\":%.1f,\"p90\":%.1f,\"p99\":%.1f,\"p99_9\":%.1f,\"p99_99\":%.1f,"
+        "\"max\":%.1f}",
+        static_cast<unsigned long long>(h.count()), ns(50), ns(90), ns(99), ns(99.9), ns(99.99),
+        h.max() / tpn);
     return b;
 }
 
@@ -51,10 +52,14 @@ int main(int argc, char** argv) {
     std::uint64_t calls = 2'000'000;
     double rate = 2e5;  // below decode_book capacity on the dev laptop
     for (int i = 1; i + 1 < argc; i += 2) {
-        if (!std::strcmp(argv[i], "--cpu")) cpu = std::atoi(argv[i + 1]);
-        else if (!std::strcmp(argv[i], "--cpu2")) cpu2 = std::atoi(argv[i + 1]);
-        else if (!std::strcmp(argv[i], "--calls")) calls = std::strtoull(argv[i + 1], nullptr, 10);
-        else if (!std::strcmp(argv[i], "--rate-per-s")) rate = std::atof(argv[i + 1]);
+        if (!std::strcmp(argv[i], "--cpu"))
+            cpu = std::atoi(argv[i + 1]);
+        else if (!std::strcmp(argv[i], "--cpu2"))
+            cpu2 = std::atoi(argv[i + 1]);
+        else if (!std::strcmp(argv[i], "--calls"))
+            calls = std::strtoull(argv[i + 1], nullptr, 10);
+        else if (!std::strcmp(argv[i], "--rate-per-s"))
+            rate = std::atof(argv[i + 1]);
     }
     const bool pinned = cpu >= 0 && bench::pin_to_cpu(cpu);
     const double tpn = bench::calibrate_ticks_per_ns(200);
@@ -73,7 +78,12 @@ int main(int argc, char** argv) {
     std::uint64_t seq = 1;
     for (std::uint64_t i = 0; i < npk; ++i) {
         w.begin(1, seq);
-        for (int k = 0; k < 8; ++k) { qpbf::Msg m; g.next(m); w.add(m); msgs.push_back(m); }
+        for (int k = 0; k < 8; ++k) {
+            qpbf::Msg m;
+            g.next(m);
+            w.add(m);
+            msgs.push_back(m);
+        }
         const auto n = w.finish();
         off.push_back(static_cast<std::uint32_t>(blob.size()));
         len.push_back(static_cast<std::uint32_t>(n));
@@ -82,7 +92,8 @@ int main(int argc, char** argv) {
     }
 
     auto fresh_books = [&] {
-        return book::BookSet(cfg.instruments, cfg.base_price, cfg.levels, cfg.max_live_per_instrument);
+        return book::BookSet(cfg.instruments, cfg.base_price, cfg.levels,
+                             cfg.max_live_per_instrument);
     };
     std::string out = "{\"label\":\"software in-process latency, not wire-to-wire\"";
     const auto si = bench::read_sysinfo();
@@ -121,7 +132,8 @@ int main(int argc, char** argv) {
             rc, svc, rsp);
         if (open) {
             out += ",\"decode_book_open_loop\":{\"rate_per_s\":" + std::to_string(rate) +
-                   ",\"service\":" + pct_json(svc, tpn) + ",\"response\":" + pct_json(rsp, tpn) + "}";
+                   ",\"service\":" + pct_json(svc, tpn) + ",\"response\":" + pct_json(rsp, tpn) +
+                   "}";
         } else {
             out += ",\"decode_book\":" + pct_json(svc, tpn);
         }

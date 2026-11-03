@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 from scipy import stats
 
 if TYPE_CHECKING:
@@ -109,6 +110,7 @@ class LogisticFit:
         )
 
 
+@model(id="EQ-CR-PD-LOGIT")
 def fit_logistic(
     X: np.ndarray | pd.DataFrame,
     y: np.ndarray | pd.Series,

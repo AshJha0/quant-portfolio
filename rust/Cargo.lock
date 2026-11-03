@@ -350,6 +350,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "qp-aad"
+version = "0.1.0"
+dependencies = [
+ "qp-core",
+ "qp-rates-curves",
+]
+
+[[package]]
 name = "qp-core"
 version = "0.1.0"
 dependencies = [
@@ -374,6 +382,17 @@ name = "qp-ull-book"
 version = "0.1.0"
 dependencies = [
  "qp-ull-qpbf",
+]
+
+[[package]]
+name = "qp-ull-feed"
+version = "0.1.0"
+
+[[package]]
+name = "qp-ull-gateway"
+version = "0.1.0"
+dependencies = [
+ "qp-ull-feed",
 ]
 
 [[package]]

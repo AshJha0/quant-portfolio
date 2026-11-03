@@ -44,6 +44,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from qp_core.model import model
 
 from .black76 import black76_price
 
@@ -71,6 +72,7 @@ def _check(F, K, T, alpha, beta, rho, nu, shift):
         raise ValueError("need T >= 0, alpha > 0, nu >= 0, 0 <= beta <= 1, -1 < rho < 1")
 
 
+@model(id="EQ-OPT-SABR")
 def sabr_vol(F: float, K: float, T: float, alpha: float, beta: float, rho: float, nu: float,
              shift: float = 0.0, variant: str = "obloj") -> float:
     """Black (lognormal) implied vol of the SABR model at strike ``K``."""

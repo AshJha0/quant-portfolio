@@ -27,25 +27,30 @@ inline constexpr double kBdPerYear = 250.0;
 // ------------------------------------------------------------------ SA-CCR
 
 [[nodiscard]] inline double saccr_supervisory_duration(double start, double end) {
-    if (!std::isfinite(start) || !std::isfinite(end)) throw std::invalid_argument("start and end must be finite");
+    if (!std::isfinite(start) || !std::isfinite(end))
+        throw std::invalid_argument("start and end must be finite");
     const double s = start > 0.0 ? std::max(start, 10.0 / kBdPerYear) : 0.0;
     const double e = std::max(end, 10.0 / kBdPerYear);
     if (e < s) throw std::invalid_argument("end must not precede start");
     return (std::exp(-0.05 * s) - std::exp(-0.05 * e)) / 0.05;
 }
 
-[[nodiscard]] inline double saccr_supervisory_delta(double price, double strike, double vol, double expiry,
-                                                    bool call, bool bought, double shift = 0.0) {
+[[nodiscard]] inline double saccr_supervisory_delta(double price, double strike, double vol,
+                                                    double expiry, bool call, bool bought,
+                                                    double shift = 0.0) {
     const double p = price + shift, k = strike + shift;
-    if (!(p > 0.0 && k > 0.0)) throw std::invalid_argument("shifted price and strike must be positive");
-    if (!(vol > 0.0 && expiry > 0.0)) throw std::invalid_argument("vol and expiry must be positive");
+    if (!(p > 0.0 && k > 0.0))
+        throw std::invalid_argument("shifted price and strike must be positive");
+    if (!(vol > 0.0 && expiry > 0.0))
+        throw std::invalid_argument("vol and expiry must be positive");
     const double srt = vol * std::sqrt(expiry);
     const double d1 = (std::log(p / k) + 0.5 * vol * vol * expiry) / srt;
     const double d = call ? qp::norm_cdf(d1) : -qp::norm_cdf(-d1);
     return bought ? d : -d;
 }
 
-[[nodiscard]] inline double saccr_maturity_factor(double maturity, std::optional<double> mpor_days) {
+[[nodiscard]] inline double saccr_maturity_factor(double maturity,
+                                                  std::optional<double> mpor_days) {
     if (mpor_days) {
         if (!(*mpor_days > 0.0)) throw std::invalid_argument("mpor must be positive");
         return 1.5 * std::sqrt(*mpor_days / kBdPerYear);
@@ -66,8 +71,10 @@ inline constexpr double kBdPerYear = 250.0;
     return std::sqrt(std::max(q, 0.0));
 }
 
-[[nodiscard]] inline double saccr_single_factor_addon(std::span<const double> addons, std::span<const double> rhos) {
-    if (addons.size() != rhos.size()) throw std::invalid_argument("addons and rhos must have equal length");
+[[nodiscard]] inline double saccr_single_factor_addon(std::span<const double> addons,
+                                                      std::span<const double> rhos) {
+    if (addons.size() != rhos.size())
+        throw std::invalid_argument("addons and rhos must have equal length");
     double sys = 0.0, idio = 0.0;
     for (std::size_t i = 0; i < addons.size(); ++i) {
         sys += rhos[i] * addons[i];
@@ -87,20 +94,24 @@ struct HullWhite {
             throw std::invalid_argument("a and sigma must be positive and finite");
     }
 
-    [[nodiscard]] double b(double t, double T) const noexcept { return (1.0 - std::exp(-a * (T - t))) / a; }
+    [[nodiscard]] double b(double t, double T) const noexcept {
+        return (1.0 - std::exp(-a * (T - t))) / a;
+    }
 
     [[nodiscard]] double v(double t, double T) const noexcept {
         const double tau = T - t;
-        return (sigma * sigma / (a * a)) *
-               (tau + 2.0 * std::exp(-a * tau) / a - std::exp(-2.0 * a * tau) / (2.0 * a) - 1.5 / a);
+        return (sigma * sigma / (a * a)) * (tau + 2.0 * std::exp(-a * tau) / a -
+                                            std::exp(-2.0 * a * tau) / (2.0 * a) - 1.5 / a);
     }
 
     [[nodiscard]] double log_a(double t, double T, double p_t, double p_T) const noexcept {
         return std::log(p_T / p_t) + 0.5 * (v(t, T) - v(0.0, T) + v(0.0, t));
     }
 
-    [[nodiscard]] double zcb_option(double T, double S, double p_T, double p_S, double strike, bool call) const {
-        if (!(0.0 < T && T < S && strike > 0.0)) throw std::invalid_argument("need 0 < T < S and strike > 0");
+    [[nodiscard]] double zcb_option(double T, double S, double p_T, double p_S, double strike,
+                                    bool call) const {
+        if (!(0.0 < T && T < S && strike > 0.0))
+            throw std::invalid_argument("need 0 < T < S and strike > 0");
         const double sp = sigma * std::sqrt((1.0 - std::exp(-2.0 * a * T)) / (2.0 * a)) * b(T, S);
         const double h = std::log(p_S / (p_T * strike)) / sp + 0.5 * sp;
         return call ? p_S * qp::norm_cdf(h) - strike * p_T * qp::norm_cdf(h - sp)
@@ -109,12 +120,14 @@ struct HullWhite {
 
     // European swaption by Jamshidian; p_pay[i] = P(0, pay_times[i]).
     [[nodiscard]] double swaption(double expiry, double p_exp, std::span<const double> pay_times,
-                                  std::span<const double> p_pay, std::span<const double> accruals, double strike,
-                                  bool payer) const {
+                                  std::span<const double> p_pay, std::span<const double> accruals,
+                                  double strike, bool payer) const {
         const std::size_t n = pay_times.size();
         if (n == 0 || p_pay.size() != n || accruals.size() != n)
-            throw std::invalid_argument("pay_times, p_pay and accruals must be non-empty and equal length");
-        if (!(expiry > 0.0) || std::any_of(pay_times.begin(), pay_times.end(), [&](double t) { return t <= expiry; }))
+            throw std::invalid_argument(
+                "pay_times, p_pay and accruals must be non-empty and equal length");
+        if (!(expiry > 0.0) ||
+            std::any_of(pay_times.begin(), pay_times.end(), [&](double t) { return t <= expiry; }))
             throw std::invalid_argument("pay times must follow expiry > 0");
         std::vector<double> c(n), la(n), bb(n);
         for (std::size_t i = 0; i < n; ++i) {
@@ -148,7 +161,8 @@ struct HullWhite {
         const double xstar = 0.5 * (lo + hi);
         double total = 0.0;
         for (std::size_t i = 0; i < n; ++i)
-            total += c[i] * zcb_option(expiry, pay_times[i], p_exp, p_pay[i], std::exp(la[i] - bb[i] * xstar), !payer);
+            total += c[i] * zcb_option(expiry, pay_times[i], p_exp, p_pay[i],
+                                       std::exp(la[i] - bb[i] * xstar), !payer);
         return total;
     }
 };
@@ -181,9 +195,11 @@ inline void check_grid(std::span<const double> t, std::span<const double> p) {
 }  // namespace detail
 
 // (1 - R) sum expo(t_k) [S(t_{k-1}) - S(t_k)] w(t_k); pass -ENE* for DVA.
-[[nodiscard]] inline double default_leg(std::span<const double> times, std::span<const double> expo, const Hazard& who,
-                                        double recovery, const Hazard* other = nullptr) {
-    if (!(recovery >= 0.0 && recovery <= 1.0)) throw std::invalid_argument("recovery must be in [0, 1]");
+[[nodiscard]] inline double default_leg(std::span<const double> times, std::span<const double> expo,
+                                        const Hazard& who, double recovery,
+                                        const Hazard* other = nullptr) {
+    if (!(recovery >= 0.0 && recovery <= 1.0))
+        throw std::invalid_argument("recovery must be in [0, 1]");
     detail::check_grid(times, expo);
     double acc = 0.0;
     for (std::size_t k = 1; k < times.size(); ++k) {
@@ -194,21 +210,25 @@ inline void check_grid(std::span<const double> t, std::span<const double> p) {
     return (1.0 - recovery) * acc;
 }
 
-[[nodiscard]] inline std::pair<double, double> fva(std::span<const double> times, std::span<const double> ee_disc,
-                                                   std::span<const double> ene_disc, double borrow, double lend,
-                                                   const Hazard& cpty, const Hazard& bank) {
+[[nodiscard]] inline std::pair<double, double> fva(std::span<const double> times,
+                                                   std::span<const double> ee_disc,
+                                                   std::span<const double> ene_disc, double borrow,
+                                                   double lend, const Hazard& cpty,
+                                                   const Hazard& bank) {
     detail::check_grid(times, ee_disc);
     detail::check_grid(times, ene_disc);
     double fca = 0.0, fba = 0.0;
     for (std::size_t k = 1; k < times.size(); ++k) {
-        const double w = (times[k] - times[k - 1]) * cpty.survival(times[k]) * bank.survival(times[k]);
+        const double w =
+            (times[k] - times[k - 1]) * cpty.survival(times[k]) * bank.survival(times[k]);
         fca += borrow * ee_disc[k] * w;
         fba += lend * -ene_disc[k] * w;
     }
     return {fca, fba};
 }
 
-[[nodiscard]] inline double eepe(std::span<const double> times, std::span<const double> ee, double maturity) {
+[[nodiscard]] inline double eepe(std::span<const double> times, std::span<const double> ee,
+                                 double maturity) {
     detail::check_grid(times, ee);
     const double h = std::min(maturity, 1.0);
     if (!(h > 0.0)) throw std::invalid_argument("maturity must be positive");
@@ -242,15 +262,20 @@ inline void check_grid(std::span<const double> t, std::span<const double> p) {
 // MAR21.6 scenario: 0 medium, 1 high, 2 low.
 [[nodiscard]] inline double sbm_scenario_corr(double rho, int scenario) {
     switch (scenario) {
-        case 0: return rho;
-        case 1: return std::min(1.25 * rho, 1.0);
-        case 2: return std::max(2.0 * rho - 1.0, 0.75 * rho);
-        default: throw std::invalid_argument("scenario must be 0, 1 or 2");
+        case 0:
+            return rho;
+        case 1:
+            return std::min(1.25 * rho, 1.0);
+        case 2:
+            return std::max(2.0 * rho - 1.0, 0.75 * rho);
+        default:
+            throw std::invalid_argument("scenario must be 0, 1 or 2");
     }
 }
 
 // K_b = sqrt(max(0, WS' R WS)); rho row-major n x n.
-[[nodiscard]] inline double sbm_within_bucket(std::span<const double> ws, std::span<const double> rho) {
+[[nodiscard]] inline double sbm_within_bucket(std::span<const double> ws,
+                                              std::span<const double> rho) {
     const std::size_t n = ws.size();
     if (rho.size() != n * n) throw std::invalid_argument("rho must be n x n");
     double q = 0.0;
@@ -263,10 +288,13 @@ inline void check_grid(std::span<const double> t, std::span<const double> p) {
 }
 
 // Across-bucket charge, uniform gamma, MAR21.4(5)(b) clipped fallback.
-[[nodiscard]] inline double sbm_across_buckets(std::span<const double> k, std::span<const double> s, double gamma) {
+[[nodiscard]] inline double sbm_across_buckets(std::span<const double> k, std::span<const double> s,
+                                               double gamma) {
     if (k.size() != s.size()) throw std::invalid_argument("k and s must have equal length");
     auto rad = [&](bool clip) {
-        auto sv = [&](std::size_t b) { return clip ? std::max(std::min(s[b], k[b]), -k[b]) : s[b]; };
+        auto sv = [&](std::size_t b) {
+            return clip ? std::max(std::min(s[b], k[b]), -k[b]) : s[b];
+        };
         double q = 0.0;
         for (double x : k) q += x * x;
         for (std::size_t b = 0; b < k.size(); ++b)

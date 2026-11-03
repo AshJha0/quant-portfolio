@@ -14,6 +14,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from scipy.stats import norm
 from scipy.stats import t as student_t
 
@@ -98,6 +99,7 @@ def portfolio_sigma(exposures: np.ndarray, cov: np.ndarray) -> float:
     return float(np.sqrt(max(var, 0.0)))
 
 
+@model(id="EQ-VAR-PARAM")
 def parametric_var(
     exposures: np.ndarray,
     cov: np.ndarray,
@@ -230,6 +232,7 @@ def cornish_fisher_domain_ok(
     return bool(_cf_min_derivative(skew, excess_kurt, -z_range, z_range) > 0.0)
 
 
+@model(id="EQ-VAR-PARAM")
 def cornish_fisher_var(
     sigma: float,
     alpha: float = 0.01,

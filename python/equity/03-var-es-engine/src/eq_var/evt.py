@@ -32,6 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 from scipy.stats import genpareto
 
 from . import _r3checks as chk
@@ -68,6 +69,7 @@ def _tail_args(alpha, u, xi, beta, n, n_u):
     return a, u, xi, beta, n, n_u
 
 
+@model(id="EQ-VAR-EVT")
 def pot_var(alpha: float, threshold: float, xi: float, beta: float, n: int, n_u: int) -> float:
     """POT VaR (McNeil-Frey eq. 9); ``alpha`` must be below ``n_u / n``."""
     a, u, xi, beta, n, n_u = _tail_args(alpha, threshold, xi, beta, n, n_u)
@@ -77,6 +79,7 @@ def pot_var(alpha: float, threshold: float, xi: float, beta: float, n: int, n_u:
     return u + beta / xi * (ratio ** (-xi) - 1.0)
 
 
+@model(id="EQ-VAR-EVT")
 def pot_es(alpha: float, threshold: float, xi: float, beta: float, n: int, n_u: int) -> float:
     """POT ES (McNeil-Frey eq. 10); finite only for ``xi < 1``."""
     a, u, xi, beta, n, n_u = _tail_args(alpha, threshold, xi, beta, n, n_u)

@@ -16,6 +16,9 @@ members = [
     "ull/qpbf",
     "ull/book",
     "ull/bench",
+    "ull/feed",
+    "ull/gateway",
+    "aad",
 ]
 
 [profile.release]

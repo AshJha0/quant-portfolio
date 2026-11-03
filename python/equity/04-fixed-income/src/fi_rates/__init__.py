@@ -37,6 +37,15 @@ from .daycount import (
     generate_schedule,
     year_fraction,
 )
+from .fixings import (
+    ESTR,
+    EURIBOR_3M,
+    EURIBOR_6M,
+    SOFR,
+    SONIA,
+    TERM_SOFR_3M,
+    FixingStore,
+)
 from .keyrates import (
     DEFAULT_KEY_TENORS,
     key_rate_convexities,
@@ -45,6 +54,7 @@ from .keyrates import (
     krd_report,
     triangle_weights,
 )
+from .legs import FixedLeg, IborLeg, OvernightLeg, Swap, futures_convexity_adjustment
 from .risk import (
     Position,
     ZeroNetValueWarning,
@@ -70,30 +80,43 @@ from .scenarios import (
     scenario_pnl_table,
     steepener_scenario,
 )
+from .schedule import make_schedule
 
 __version__ = "3.0.0.dev0"
 
 __all__ = [
     # keyrates
     "DEFAULT_KEY_TENORS",
+    # dated schedules, fixings and legs (W13a)
+    "ESTR",
+    "EURIBOR_3M",
+    "EURIBOR_6M",
     "FRA",
     "HISTORICAL_SCENARIOS",
     "INTERPOLATIONS",
+    "SOFR",
+    "SONIA",
     # daycount
     "SUPPORTED_CONVENTIONS",
     "SUPPORTED_FREQUENCIES",
+    "TERM_SOFR_3M",
     "BondQuote",
     # bootstrap
     "Deposit",
     # curve
     "DiscountCurve",
     "ExtrapolationWarning",
+    "FixedLeg",
     # bond
     "FixedRateBond",
+    "FixingStore",
+    "IborLeg",
+    "OvernightLeg",
     "ParSwap",
     "Position",
     # scenarios
     "Scenario",
+    "Swap",
     "ZeroCouponBond",
     "ZeroNetValueWarning",
     "accrued_interest",
@@ -114,6 +137,7 @@ __all__ = [
     "dv01",
     "dv01_curve",
     "frn_price_from_curve",
+    "futures_convexity_adjustment",
     "generate_schedule",
     "key_rate_convexities",
     "key_rate_durations",
@@ -121,6 +145,7 @@ __all__ = [
     "krd_report",
     # risk
     "macaulay_duration",
+    "make_schedule",
     "modified_duration",
     "numerical_convexity",
     "numerical_modified_duration",

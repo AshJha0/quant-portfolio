@@ -50,6 +50,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
+from qp_core.model import model
 from scipy.optimize import brentq
 
 from ._validation import require_finite
@@ -341,6 +342,7 @@ def solve_par_rate_base(swap: CrossCurrencySwap, market: MarketState) -> float:
     return (target - swap.notional_base * float(dfs[-1])) / annuity
 
 
+@model(id="FX-FI-XCCY")
 def solve_par_basis(
     swap: CrossCurrencySwap,
     market: MarketState,

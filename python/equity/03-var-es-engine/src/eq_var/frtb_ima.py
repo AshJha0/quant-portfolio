@@ -55,6 +55,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 
 from . import _r3checks as chk
 
@@ -113,6 +114,7 @@ def plus_factor(exceptions_99: int) -> float:
     return PLUS_FACTOR.get(n, 0.0)
 
 
+@model(id="EQ-VAR-FRTB-IMA")
 def ima_capital(imcc_history, ses_history, exceptions_99: int = 0) -> float:
     """MAR33.41 capital from the last 60 daily IMCC and SES values (latest last)."""
     i = chk.array("imcc_history", imcc_history, min_size=60)[-60:]

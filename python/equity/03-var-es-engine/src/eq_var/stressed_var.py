@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qp_core.model import model
+
 from . import _r3checks as chk
 
 
@@ -55,6 +57,7 @@ def find_stress_window(pnl, window: int = 250, alpha: float = 0.01) -> StressWin
     return best
 
 
+@model(id="EQ-VAR-SVAR")
 def stressed_var(pnl, window: int = 250, alpha: float = 0.01) -> float:
     """Historical VaR of the current book on its worst ``window``-day period."""
     return find_stress_window(pnl, window, alpha).var

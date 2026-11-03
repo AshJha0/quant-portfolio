@@ -42,6 +42,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 from scipy.optimize import brentq
 from scipy.stats import norm
 
@@ -81,6 +82,7 @@ class XvaResult:
         return self.dva - self.cva
 
 
+@model(id="FX-CR-CVA")
 def bilateral_cva(
     times: np.ndarray,
     epe: np.ndarray,

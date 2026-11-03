@@ -1,7 +1,7 @@
 // SPSC ring tests. Built twice by CMake: plain, and with -fsanitize=thread
 // (target ull_ring_tsan) so TSan checks the two-thread transfer for races.
-#include "../spsc_ring.hpp"
 #include "../../bench/ull_test.hpp"
+#include "../spsc_ring.hpp"
 
 #include <cstdint>
 #include <string>

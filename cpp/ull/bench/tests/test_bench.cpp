@@ -1,11 +1,11 @@
 // Harness tests: histogram accuracy against exact percentiles, and stall
 // injection showing up at the right rate (service) and with the queueing
 // effect (response) that coordinated omission would hide.
+#include "../../qpbf/generator.hpp"
 #include "../harness.hpp"
 #include "../histogram.hpp"
 #include "../sysinfo.hpp"
 #include "../ull_test.hpp"
-#include "../../qpbf/generator.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -62,19 +62,20 @@ static void stall_injection() {
     RunConfig c;
     c.calls = 400'000;
     c.warmup = 1000;
-    c.interval_ticks = ns(2'000);  // 2 us
-    c.stall_every = 2000;          // 0.05 % of calls
+    c.interval_ticks = ns(2'000);   // 2 us
+    c.stall_every = 2000;           // 0.05 % of calls
     c.stall_ticks = ns(1'000'000);  // 1 ms
     Histogram svc, rsp;
     run_open_loop(op, c, svc, rsp);
     const std::uint64_t stalls = c.calls / c.stall_every;
     const std::uint64_t svc_slow = svc.count_at_or_above(ns(900'000));
     const double rsp_slow_frac = static_cast<double>(rsp.count_at_or_above(ns(100'000))) / c.calls;
-    std::printf("stall test: %llu stalls injected; service >= 0.9 ms: %llu; "
-                "service p99.9 %.1f us p99.99 %.1f us; response p99 %.1f us, >= 0.1 ms: %.1f %%\n",
-                static_cast<unsigned long long>(stalls), static_cast<unsigned long long>(svc_slow),
-                svc.value_at_percentile(99.9) / tpn / 1e3, svc.value_at_percentile(99.99) / tpn / 1e3,
-                rsp.value_at_percentile(99.0) / tpn / 1e3, 100 * rsp_slow_frac);
+    std::printf(
+        "stall test: %llu stalls injected; service >= 0.9 ms: %llu; "
+        "service p99.9 %.1f us p99.99 %.1f us; response p99 %.1f us, >= 0.1 ms: %.1f %%\n",
+        static_cast<unsigned long long>(stalls), static_cast<unsigned long long>(svc_slow),
+        svc.value_at_percentile(99.9) / tpn / 1e3, svc.value_at_percentile(99.99) / tpn / 1e3,
+        rsp.value_at_percentile(99.0) / tpn / 1e3, 100 * rsp_slow_frac);
     // Service time sees each stall once: the exact injected count, plus at
     // most a few OS preemptions on a shared machine.
     ULL_CHECK(svc_slow >= stalls);

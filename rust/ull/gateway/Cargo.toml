@@ -13,6 +13,3 @@ path = "src/lib.rs"
 
 [dependencies]
 qp-ull-feed = { path = "../feed" }
-
-# Standalone until integration adds rust/ull/* to the rust/ workspace members.
-[workspace]

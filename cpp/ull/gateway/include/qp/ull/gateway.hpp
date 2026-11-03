@@ -38,85 +38,87 @@
 namespace qp::ull::gateway {
 
 struct NewOrder {
-  std::int64_t order_id = 0;  // gateway-internal id used by the kill contract
-  kill::Path path;            // (firm, desk, strategy, symbol); symbol == intent.symbol
-  risk::OrderIntent intent;
+    std::int64_t order_id = 0;  // gateway-internal id used by the kill contract
+    kill::Path path;            // (firm, desk, strategy, symbol); symbol == intent.symbol
+    risk::OrderIntent intent;
 };
 
 struct Decision {
-  bool accepted = false;
-  std::string reason;  // empty when accepted
+    bool accepted = false;
+    std::string reason;  // empty when accepted
 };
 
 class Gateway {
- public:
-  explicit Gateway(risk::Limits limits) : risk(limits) {}
+public:
+    explicit Gateway(risk::Limits limits) : risk(limits) {}
 
-  kill::KillSwitch kill;
-  risk::RiskBook risk;
+    kill::KillSwitch kill;
+    risk::RiskBook risk;
 
-  Decision submit(const NewOrder& o, std::int64_t now_ns) {
-    if (o.path[3] != o.intent.symbol) return {false, "PATH_SYMBOL_MISMATCH"};
-    if (auto r = kill.check(o.path)) return {false, *r};
-    if (stale_.count(o.intent.symbol)) return {false, "STALE_BOOK"};
-    if (auto r = risk.check_new(o.intent, now_ns)) return {false, *r};
-    kill.on_order_working(o.order_id, o.path);
-    orders_[o.order_id] = o;
-    return {true, ""};
-  }
-
-  // Venue reports a fill; `terminal` when the order has no quantity left.
-  void on_fill(std::int64_t order_id, double qty, bool terminal) {
-    auto it = orders_.find(order_id);
-    if (it == orders_.end()) return;
-    risk.on_fill(it->second.intent.cl_ord_id, qty);
-    if (terminal) on_terminal(order_id);
-  }
-
-  // Cancel ack, reject or expiry.
-  void on_terminal(std::int64_t order_id) {
-    auto it = orders_.find(order_id);
-    if (it != orders_.end()) {
-      risk.on_terminal(it->second.intent.cl_ord_id);
-      orders_.erase(it);
+    Decision submit(const NewOrder& o, std::int64_t now_ns) {
+        if (o.path[3] != o.intent.symbol) return {false, "PATH_SYMBOL_MISMATCH"};
+        if (auto r = kill.check(o.path)) return {false, *r};
+        if (stale_.count(o.intent.symbol)) return {false, "STALE_BOOK"};
+        if (auto r = risk.check_new(o.intent, now_ns)) return {false, *r};
+        kill.on_order_working(o.order_id, o.path);
+        orders_[o.order_id] = o;
+        return {true, ""};
     }
-    kill.on_order_terminal(order_id);
-  }
 
-  // K2: engage a kill; returns the order ids the caller must cancel.
-  std::vector<std::int64_t> engage(const kill::Path& scope, const std::string& actor, const std::string& reason) {
-    return kill.engage(scope, actor, reason).second;
-  }
-
-  // K6: a session dropped. Kills every strategy that has working orders on it.
-  std::vector<std::int64_t> on_disconnect(const std::string& session) {
-    std::vector<kill::Path> paths;
-    for (const auto& [id, o] : orders_)
-      if (o.intent.session == session) paths.push_back(o.path);
-    std::vector<std::int64_t> out;
-    for (auto& [kid, c] : kill.cancel_on_disconnect(paths)) out.insert(out.end(), c.begin(), c.end());
-    return out;
-  }
-
-  // Feed-handler seam: the stale flag for a symbol changed. Going stale
-  // returns the working orders on that symbol to cancel (pull quotes).
-  std::vector<std::int64_t> on_book_stale(const std::string& symbol, bool stale) {
-    std::vector<std::int64_t> out;
-    if (!stale) {
-      stale_.erase(symbol);
-      return out;
+    // Venue reports a fill; `terminal` when the order has no quantity left.
+    void on_fill(std::int64_t order_id, double qty, bool terminal) {
+        auto it = orders_.find(order_id);
+        if (it == orders_.end()) return;
+        risk.on_fill(it->second.intent.cl_ord_id, qty);
+        if (terminal) on_terminal(order_id);
     }
-    stale_.insert(symbol);
-    for (const auto& [id, o] : orders_)
-      if (o.intent.symbol == symbol) out.push_back(id);
-    return out;
-  }
 
-  bool is_working(std::int64_t order_id) const { return orders_.count(order_id) != 0; }
+    // Cancel ack, reject or expiry.
+    void on_terminal(std::int64_t order_id) {
+        auto it = orders_.find(order_id);
+        if (it != orders_.end()) {
+            risk.on_terminal(it->second.intent.cl_ord_id);
+            orders_.erase(it);
+        }
+        kill.on_order_terminal(order_id);
+    }
 
- private:
-  std::map<std::int64_t, NewOrder> orders_;
-  std::set<std::string> stale_;
+    // K2: engage a kill; returns the order ids the caller must cancel.
+    std::vector<std::int64_t> engage(const kill::Path& scope, const std::string& actor,
+                                     const std::string& reason) {
+        return kill.engage(scope, actor, reason).second;
+    }
+
+    // K6: a session dropped. Kills every strategy that has working orders on it.
+    std::vector<std::int64_t> on_disconnect(const std::string& session) {
+        std::vector<kill::Path> paths;
+        for (const auto& [id, o] : orders_)
+            if (o.intent.session == session) paths.push_back(o.path);
+        std::vector<std::int64_t> out;
+        for (auto& [kid, c] : kill.cancel_on_disconnect(paths))
+            out.insert(out.end(), c.begin(), c.end());
+        return out;
+    }
+
+    // Feed-handler seam: the stale flag for a symbol changed. Going stale
+    // returns the working orders on that symbol to cancel (pull quotes).
+    std::vector<std::int64_t> on_book_stale(const std::string& symbol, bool stale) {
+        std::vector<std::int64_t> out;
+        if (!stale) {
+            stale_.erase(symbol);
+            return out;
+        }
+        stale_.insert(symbol);
+        for (const auto& [id, o] : orders_)
+            if (o.intent.symbol == symbol) out.push_back(id);
+        return out;
+    }
+
+    bool is_working(std::int64_t order_id) const { return orders_.count(order_id) != 0; }
+
+private:
+    std::map<std::int64_t, NewOrder> orders_;
+    std::set<std::string> stale_;
 };
 
 }  // namespace qp::ull::gateway

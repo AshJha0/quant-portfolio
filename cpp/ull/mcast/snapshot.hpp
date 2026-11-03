@@ -27,18 +27,19 @@ void build_snapshot(const book::BookSet& books, std::uint32_t session, std::uint
         }
     };
     for (std::uint32_t i = 0; i < books.size(); ++i) {
-        books[i].for_each_live([&](std::uint64_t id, qpbf::Side s, std::int64_t px, std::uint32_t q) {
-            qpbf::Msg m;
-            m.type = qpbf::MsgType::Snapshot;
-            m.instrument = i;
-            m.ts_ns = ts_ns;
-            m.order_id = id;
-            m.side = s;
-            m.price = px;
-            m.qty = q;
-            m.as_of_seq = as_of;
-            push(m);
-        });
+        books[i].for_each_live(
+            [&](std::uint64_t id, qpbf::Side s, std::int64_t px, std::uint32_t q) {
+                qpbf::Msg m;
+                m.type = qpbf::MsgType::Snapshot;
+                m.instrument = i;
+                m.ts_ns = ts_ns;
+                m.order_id = id;
+                m.side = s;
+                m.price = px;
+                m.qty = q;
+                m.as_of_seq = as_of;
+                push(m);
+            });
     }
     qpbf::Msg end;
     end.type = qpbf::MsgType::Snapshot;

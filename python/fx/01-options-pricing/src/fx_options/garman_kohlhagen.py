@@ -33,6 +33,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value
 from qp_core.iv_core import black_implied_vol
+from qp_core.model import model
 
 from ._common import finite_result, safe_exp, validate_inputs, validate_option_type
 
@@ -89,6 +90,7 @@ def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
 def gk_price(S: NDArray[Any] | Sequence[float],
              K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
              sigma: ArrayLike, option_type: str | ArrayLike) -> NDArray[np.float64]: ...
+@model(id="FX-OPT-GK")
 def gk_price(S: ArrayLike, K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
              sigma: ArrayLike, option_type: str | ArrayLike) -> float | NDArray[np.float64]:
     """Garman-Kohlhagen price of a European FX option.

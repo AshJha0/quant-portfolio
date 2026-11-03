@@ -47,11 +47,11 @@ TEST(RatesVol, MatchesPython) {
             std::string variant;
             row >> variant >> s;
             const double want = std::stod(s);
-            const double got = rv::sabr_vol(x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7],
-                                            variant == "hagan" ? rv::Variant::hagan : rv::Variant::obloj);
+            const double got =
+                rv::sabr_vol(x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7],
+                             variant == "hagan" ? rv::Variant::hagan : rv::Variant::obloj);
             // 1e-14 relative: pow, log1p and expm1 differ by a few ulps between libms (glibc vs UCRT: 7 ulps seen).
-            EXPECT_LE(std::fabs(got - want), 1e-14 * std::fabs(want))
-                << lines[i];
+            EXPECT_LE(std::fabs(got - want), 1e-14 * std::fabs(want)) << lines[i];
             ++n_s;
             ++i;
         } else {
@@ -63,7 +63,8 @@ TEST(RatesVol, MatchesPython) {
             const auto c = floats(lines[i + 3]);
             std::vector<bool> e;
             for (double v : floats(lines[i + 4])) e.push_back(v == 1.0);
-            const double got = rv::bermudan_tree(std::stod(sa), std::stod(ss), t, d, c, e, sp == "1");
+            const double got =
+                rv::bermudan_tree(std::stod(sa), std::stod(ss), t, d, c, e, sp == "1");
             EXPECT_NEAR(got, std::stod(sw), 1e-13);
             ++n_b;
             i += 5;

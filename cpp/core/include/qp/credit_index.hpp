@@ -54,7 +54,8 @@ inline double df(std::span<const double> t, std::span<const double> z, double x)
     return std::exp(-(z[n - 1] * t[n - 1] + f * (x - t[n - 1])));
 }
 
-inline std::vector<double> grid(double a, double b, std::span<const double> x, std::span<const double> y) {
+inline std::vector<double> grid(double a, double b, std::span<const double> x,
+                                std::span<const double> y) {
     std::vector<double> p{a, b};
     for (double v : x)
         if (a < v && v < b) p.push_back(v);
@@ -72,7 +73,8 @@ inline std::pair<double, double> segment(double lam, double f, double d) {
     return {(1.0 - e) / k, (1.0 - e * (1.0 + x)) / (k * k)};
 }
 
-inline void check_curve(std::span<const double> t, std::span<const double> v, const std::string& what) {
+inline void check_curve(std::span<const double> t, std::span<const double> v,
+                        const std::string& what) {
     if (t.empty() || t.size() != v.size())
         throw std::invalid_argument(what + ": times and values must be non-empty and equal length");
     for (std::size_t i = 0; i < t.size(); ++i) {
@@ -92,20 +94,23 @@ struct Schedule {
 };
 
 // (protection PV, risky annuity incl. accrued-on-default, df to cash settlement).
-inline std::tuple<double, double, double> isda_legs(std::span<const double> hz_t, std::span<const double> hz_r,
-                                                    std::span<const double> df_t, std::span<const double> df_z,
-                                                    double recovery, double t_end, const Schedule& s,
-                                                    double t_cash) {
+inline std::tuple<double, double, double> isda_legs(
+    std::span<const double> hz_t, std::span<const double> hz_r, std::span<const double> df_t,
+    std::span<const double> df_z, double recovery, double t_end, const Schedule& s, double t_cash) {
     detail::check_curve(hz_t, hz_r, "hazard");
     detail::check_curve(df_t, df_z, "discount");
-    if (!(recovery >= 0.0 && recovery < 1.0)) throw std::invalid_argument("recovery must lie in [0, 1)");
+    if (!(recovery >= 0.0 && recovery < 1.0))
+        throw std::invalid_argument("recovery must lie in [0, 1)");
     const std::size_t n = s.acc_start.size();
     if (s.acc_end.size() != n || s.pay_time.size() != n || s.acc_frac.size() != n)
         throw std::invalid_argument("schedule arrays must have equal length");
     auto disc = [&](double u) { return detail::df(df_t, df_z, u); };
-    auto qp = [&](double u) { return std::exp(-detail::cum_hazard(hz_t, hz_r, u)) * disc(std::max(u, 0.0)); };
+    auto qp = [&](double u) {
+        return std::exp(-detail::cum_hazard(hz_t, hz_r, u)) * disc(std::max(u, 0.0));
+    };
     auto lam_f = [&](double u0, double u1) {
-        const double lam = (detail::cum_hazard(hz_t, hz_r, u1) - detail::cum_hazard(hz_t, hz_r, u0)) / (u1 - u0);
+        const double lam =
+            (detail::cum_hazard(hz_t, hz_r, u1) - detail::cum_hazard(hz_t, hz_r, u0)) / (u1 - u0);
         const double f = std::log(disc(std::max(u0, 0.0)) / disc(u1)) / (u1 - u0);
         return std::pair{lam, f};
     };

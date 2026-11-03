@@ -7,11 +7,11 @@
 // Skips (exit 0 with a message) when the host cannot route loopback
 // multicast, which is common in containers; CI then relies on
 // test_recovery, which covers the same logic without sockets.
+#include "../../bench/ull_test.hpp"
+#include "../../qpbf/generator.hpp"
 #include "../feed_handler.hpp"
 #include "../publisher.hpp"
 #include "../recording.hpp"
-#include "../../bench/ull_test.hpp"
-#include "../../qpbf/generator.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -54,7 +54,8 @@ int main() {
     qpbf::GeneratorConfig gc;
     gc.instruments = 4;
     gc.seed = 77;
-    auto pk = mcast::generate_packets(gc, 20'010, 0x51504246u);  // last packet not a drop-both index
+    auto pk =
+        mcast::generate_packets(gc, 20'010, 0x51504246u);  // last packet not a drop-both index
 
     // Recording round trip through a file.
     const char* path = "ull_loopback_test.qpbfrec";
@@ -124,16 +125,19 @@ int main() {
     book::BookSet truth(4, 100'000, 4096, 20'000);
     for (auto& p : pk) {
         qpbf::PacketHeader h;
-        qpbf::decode_packet(p.data(), p.size(), h, [&](std::uint64_t, const qpbf::Msg& m) { truth.apply(m); });
+        qpbf::decode_packet(p.data(), p.size(), h,
+                            [&](std::uint64_t, const qpbf::Msg& m) { truth.apply(m); });
     }
     const auto& st = fh.stats();
-    std::printf("loopback: %llu datagrams, gaps %llu, dups %llu, snapshots %llu/%llu, next %llu of %llu, stale %d\n",
-                static_cast<unsigned long long>(received), static_cast<unsigned long long>(st.gaps),
-                static_cast<unsigned long long>(st.duplicates),
-                static_cast<unsigned long long>(st.snapshots_applied),
-                static_cast<unsigned long long>(st.snapshots_requested),
-                static_cast<unsigned long long>(fh.next_seq() - 1), static_cast<unsigned long long>(last),
-                fh.stale());
+    std::printf(
+        "loopback: %llu datagrams, gaps %llu, dups %llu, snapshots %llu/%llu, next %llu of %llu, "
+        "stale %d\n",
+        static_cast<unsigned long long>(received), static_cast<unsigned long long>(st.gaps),
+        static_cast<unsigned long long>(st.duplicates),
+        static_cast<unsigned long long>(st.snapshots_applied),
+        static_cast<unsigned long long>(st.snapshots_requested),
+        static_cast<unsigned long long>(fh.next_seq() - 1), static_cast<unsigned long long>(last),
+        fh.stale());
     ULL_CHECK(!fh.stale());
     ULL_CHECK(fh.next_seq() == last + 1);
     ULL_CHECK(same(sink.books, truth));

@@ -39,15 +39,15 @@ inline constexpr std::size_t kCacheLine = 64;
 
 template <class T>
 class SpscRing {
-    static_assert(std::is_nothrow_move_constructible_v<T> ||
-                      std::is_trivially_copyable_v<T>,
+    static_assert(std::is_nothrow_move_constructible_v<T> || std::is_trivially_copyable_v<T>,
                   "T must be nothrow-movable so pop cannot leave a hole");
 
 public:
     explicit SpscRing(std::size_t capacity)
-        : cap_(capacity), mask_(capacity - 1),
-          slots_(static_cast<Slot*>(::operator new(
-              sizeof(Slot) * capacity, std::align_val_t{alignof(Slot)}))) {
+        : cap_(capacity),
+          mask_(capacity - 1),
+          slots_(static_cast<Slot*>(
+              ::operator new(sizeof(Slot) * capacity, std::align_val_t{alignof(Slot)}))) {
         if (capacity < 2 || (capacity & (capacity - 1)) != 0) {
             ::operator delete(slots_, std::align_val_t{alignof(Slot)});
             throw std::invalid_argument("SpscRing capacity must be a power of two >= 2");
@@ -71,8 +71,7 @@ public:
 
     // Producer side only.
     template <class... Args>
-    bool try_emplace(Args&&... args) noexcept(
-        std::is_nothrow_constructible_v<T, Args...>) {
+    bool try_emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
         const std::uint64_t t = prod_.tail.load(std::memory_order_relaxed);
         if (t - prod_.head_cache >= cap_) {
             prod_.head_cache = cons_.head.load(std::memory_order_acquire);

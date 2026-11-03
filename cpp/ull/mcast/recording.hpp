@@ -21,8 +21,10 @@ inline bool write_recording(const char* path, const std::vector<std::vector<std:
     if (!f) return false;
     bool ok = std::fwrite(kRecMagic, 1, 8, f) == 8;
     for (const auto& p : pkts) {
-        const std::uint8_t h[2] = {static_cast<std::uint8_t>(p.size()), static_cast<std::uint8_t>(p.size() >> 8)};
-        ok = ok && std::fwrite(h, 1, 2, f) == 2 && std::fwrite(p.data(), 1, p.size(), f) == p.size();
+        const std::uint8_t h[2] = {static_cast<std::uint8_t>(p.size()),
+                                   static_cast<std::uint8_t>(p.size() >> 8)};
+        ok =
+            ok && std::fwrite(h, 1, 2, f) == 2 && std::fwrite(p.data(), 1, p.size(), f) == p.size();
     }
     return std::fclose(f) == 0 && ok;
 }
@@ -37,9 +39,15 @@ inline bool read_recording(const char* path, std::vector<std::vector<std::uint8_
     std::uint8_t h[2];
     while (ok && std::fread(h, 1, 2, f) == 2) {
         const std::size_t n = h[0] | (h[1] << 8);
-        if (n > qpbf::kMaxPacketSize) { ok = false; break; }
+        if (n > qpbf::kMaxPacketSize) {
+            ok = false;
+            break;
+        }
         std::vector<std::uint8_t> p(n);
-        if (std::fread(p.data(), 1, n, f) != n) { ok = false; break; }
+        if (std::fread(p.data(), 1, n, f) != n) {
+            ok = false;
+            break;
+        }
         pkts.push_back(std::move(p));
     }
     std::fclose(f);

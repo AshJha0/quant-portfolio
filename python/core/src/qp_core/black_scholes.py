@@ -77,6 +77,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.special import erfc
 
+from qp_core.model import model
 from qp_core.normal import norm_cdf
 
 __all__ = [
@@ -133,6 +134,7 @@ def carry_value(disc_s: float, disc_k: float, d1: float, d2: float, phi: float) 
     return phi * (disc_s * norm_cdf(phi * d1) - disc_k * norm_cdf(phi * d2))
 
 
+@model(id="CORE-BS-CARRY")
 def carry_price(
     S: float, K: float, T: float, r: float, q: float, sigma: float, phi: float, what: str = "carry_price"
 ) -> float:
@@ -162,6 +164,7 @@ class CarryGreeks(NamedTuple):
     d2: float
 
 
+@model(id="CORE-BS-CARRY")
 def carry_greeks(
     S: float, K: float, T: float, r: float, q: float, sigma: float, is_call: bool
 ) -> CarryGreeks:

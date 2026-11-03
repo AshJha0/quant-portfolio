@@ -5,6 +5,7 @@ Expected values are worked by hand from the convention definitions.
 
 import calendar as pycal
 import datetime as dt
+from typing import ClassVar
 
 import pytest
 from hypothesis import given
@@ -144,7 +145,7 @@ class TestCalendars:
     # test_longest_closure_is_tokyo_2019). Tokyo's 2019 accession Golden
     # Week closed banks from Sat 27 Apr to Mon 6 May (Act on the Enthronement
     # Day holiday, 2018), so a Tokyo adjustment can move up to 10 days.
-    MAX_SHIFT = {"WEEKEND": 2, "USD": 7, "EUR": 7, "GBP": 7, "JPY": 10}
+    MAX_SHIFT: ClassVar[dict[str, int]] = {"WEEKEND": 2, "USD": 7, "EUR": 7, "GBP": 7, "JPY": 10}
 
     @given(dates)
     def test_adjusted_is_business_day(self, d):

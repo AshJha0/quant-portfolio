@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+from qp_core.model import model
 from scipy.optimize import minimize
 from scipy.signal import lfilter
 from scipy.special import gammaln
@@ -200,6 +201,7 @@ def _from_natural(omega: float, alpha: float, beta: float, dist: str, nu: float 
 # fitting
 # ---------------------------------------------------------------------------
 
+@model(id="EQ-VOL-GARCH")
 def fit_garch(
     returns: np.ndarray,
     dist: str = "normal",

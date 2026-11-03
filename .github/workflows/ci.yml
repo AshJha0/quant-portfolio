@@ -170,9 +170,13 @@ jobs:
         env:
           EXTRA: ${{ matrix.project.extra }}
           PROJECT: ${{ matrix.project.path }}
+          # Workspace packages the project needs (qp-bt, qp-oms, ...), listed
+          # by discover_projects.py; word-split on purpose.
+          DEPS: ${{ matrix.project.deps }}
         run: |
+          # shellcheck disable=SC2086
           bash .github/scripts/hashed_install.sh --group test ${EXTRA:+--extra "$EXTRA"} \
-            --editable python/core "$PROJECT"
+            --editable python/core $DEPS "$PROJECT"
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest
         working-directory: ${{ matrix.project.path }}
