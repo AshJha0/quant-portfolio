@@ -46,6 +46,24 @@ and tenor basis live in `multicurve.py`, below), curve
 inputs in year fractions rather than dated instruments, partial holiday
 calendars, KRDs in zero-rate space with no par-rate Jacobian.
 
+## Dated legs: schedules, fixings and swaps (W13a)
+
+Plain idea: a real swap pays on dates, not year fractions, and its
+floating leg compounds overnight fixings in arrears. `fi_rates.schedule`,
+`fi_rates.fixings` and `fi_rates.legs` model that.
+
+* `make_schedule` builds dated periods with front/back stubs, business-day
+  adjustment and payment lags.
+* `SOFR`, `ESTR`, `SONIA` compound in arrears with lookback, lockout and
+  observation shift; `EURIBOR_3M`, `EURIBOR_6M`, `TERM_SOFR_3M` are term
+  indices; `FixingStore` holds past fixings (and reads the NY Fed CSV).
+* `FixedLeg`, `IborLeg`, `OvernightLeg` and `Swap` give PVs and par rates;
+  `futures_convexity_adjustment` is the Hull-White futures-to-forward
+  adjustment.
+
+All of it is checked against QuantLib 1.44 on synthetic fixings (see
+`tests/*quantlib*.py`; evidence class: independent library).
+
 ## Quickstart
 
 ```bash
