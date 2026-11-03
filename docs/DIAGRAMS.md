@@ -387,4 +387,39 @@ studies can only be tested on data that did not exist when they were
 signed. The forward rule is scored once, so looking at interim numbers
 cannot change the outcome.
 
+---
+
+## 12. Desk stacks: from an order to post-trade (toward v3.0.0)
+
+```mermaid
+flowchart LR
+    subgraph CORE["qp_core"]
+        INS["instruments, market<br/>Instrument.pv(MarketSnapshot) -> Money"]
+        VOL["vol, trees, rng, exotics,<br/>risk, scenarios, aad, xva"]
+        EV["eventlog<br/>hash-chained log"]
+    end
+    BT["qp_bt<br/>fills, costs, ledger"]
+    OMS["qp_oms<br/>orders, FIX session, EMS,<br/>pre-trade risk, kill switch"]
+    SOR["qp_exec.sor<br/>smart order router"]
+    VEN["simulated venues<br/>qp_exec.lob reference book"]
+    PT["qp_posttrade<br/>booking, matching,<br/>settlement, best execution"]
+    KV[("python/oms/kill/vectors.json")]
+    GW["gateways<br/>cpp/ull, rust/ull, java"]
+
+    INS --> BT
+    VOL --> INS
+    BT -.->|reference book fills| VEN
+    OMS -->|parent order| SOR
+    SOR -->|child orders| VEN
+    VEN -->|execution reports| OMS
+    OMS -->|fills| PT
+    EV --> OMS
+    KV --> OMS
+    KV --> GW
+```
+
+Nothing in this diagram touches a real venue. The kill-switch vectors are
+the contract (`docs/KILL_CONTRACT.md`): Python, C++, Rust and Java each
+replay them and must produce the same bytes.
+
 Fix history is in [CHANGELOG.md](../CHANGELOG.md).

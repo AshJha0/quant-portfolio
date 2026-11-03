@@ -15,13 +15,18 @@ out-of-sample evidence.
 | [LEARN.md](LEARN.md) | Study guide: a tour of all 13 areas (Part I), design choices (Part II), learning paths (Part III) and 532 self-test questions in 19 sets (Part IV). |
 | [COOKBOOK.md](COOKBOOK.md) | 85 recipes ("how do I ...") across every area. They are written against current main; CI does not run them, so outputs are indicative. |
 | [MARKET_RISK.md](MARKET_RISK.md) | How the VaR, ES and backtesting code fits together, and its conventions. |
+| [learn/README.md](learn/README.md) | The levelled study path, L0 to L4: plain idea, formal statement, worked example, checks. LEARN.md is its appendix. |
+| [models/README.md](models/README.md) | Model inventory (`models.toml`), validation template and findings. |
+| [SLO.md](SLO.md), [RUNBOOK.md](RUNBOOK.md) | Service objectives for CI and the checks, and what to do when one is red. |
+| [BENCHMARKS.md](BENCHMARKS.md), [LATENCY_METHOD.md](LATENCY_METHOD.md) | How timings are taken; every latency figure is software in-process, not wire-to-wire. |
+| [QPBF.md](QPBF.md), [KILL_CONTRACT.md](KILL_CONTRACT.md) | The binary feed format and the kill-switch contract shared by Python, C++, Rust and Java. |
 | [CAREER_PREP.md](CAREER_PREP.md) | The four learning notebooks and the career-prep packs, both checked in CI. |
 | [VERSIONING.md](VERSIONING.md), [MIGRATION.md](MIGRATION.md) | The public API, the deprecation table, and what to change in your code for each release. |
 
 Where to start:
 
 - Ten minutes to spare: [START_HERE.md](START_HERE.md).
-- New to quant finance: [LEARN.md](LEARN.md) Part III, Path A.
+- New to quant finance: [learn/README.md](learn/README.md) from L0, or [LEARN.md](LEARN.md) Part III, Path A.
 - Know the maths, new to this code: [LEARN.md](LEARN.md) Part III, Path B.
 - Interested in the C++ and Rust ports: [LEARN.md](LEARN.md) Part III, Path C.
 - Want to run something: [COOKBOOK.md](COOKBOOK.md).
