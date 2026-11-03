@@ -48,6 +48,21 @@ centre, generated from these published rules:
   Oct), Christmas and Boxing Day, weekend days moved to the next weekday;
   2022-09-22 national day of mourning.
 
+* USD-GOVT, US government bond market: the holidays SIFMA recommends
+  (sifma.org, "Holiday Schedule"; QuantLib ``UnitedStates(GovernmentBond)``).
+  The Fed list plus Good Friday, with Jul 4, Juneteenth and Christmas on a
+  Saturday observed on the Friday before (New Year's Day and Veterans Day
+  on a Saturday are not moved). A Good Friday that is the first Friday of
+  the month, the Employment Situation release day, gets a noon early close
+  instead of a full close (2007, 2010, 2012, 2015, 2021, 2023, 2026); for
+  future years this is the forecast, and SIFMA confirms each year. One-off
+  closures: 2001-09-11/12, 2004-06-11, 2012-10-30, 2018-12-05, 2025-01-09.
+  Early closes (usually 14:00 New York before a holiday) are not modelled:
+  an early-close day is a business day here, which is right for settlement.
+  Use it for Treasury and agency bond schedules; swaps and FX keep ``USD``.
+  Aliases: ``SIFMA``. It is not a currency, so it is in ``CALENDAR_CODES``
+  but not in ``CURRENCIES``, and FX spot dates never use it.
+
 Limits: one-off closures announced after this code was written are not
 known to the rules. Only these seven currencies are shipped.
 
@@ -90,6 +105,7 @@ from functools import cache
 
 __all__ = [
     "CALENDARS",
+    "CALENDAR_CODES",
     "CURRENCIES",
     "MAX_YEAR",
     "MIN_YEAR",
@@ -167,6 +183,37 @@ def _usd(y: int) -> set[dt.date]:
     out = {d + _DAY if d.weekday() == 6 else d for d in fixed if d.weekday() != 5}
     out |= {_nth_weekday(y, 1, 0, 3), _nth_weekday(y, 2, 0, 3), _nth_weekday(y, 5, 0, -1),
             _nth_weekday(y, 9, 0, 1), _nth_weekday(y, 10, 0, 2), _nth_weekday(y, 11, 3, 4)}
+    return out
+
+
+def _sat_fri_sun_mon(d: dt.date) -> dt.date:
+    if d.weekday() == 5:
+        return d - _DAY
+    if d.weekday() == 6:
+        return d + _DAY
+    return d
+
+
+#: One-off SIFMA full closures. 2001-09-11/12 (markets closed after the
+#: attacks; TBMA reopened the bond market on 13 Sep), 2004-06-11 (President
+#: Reagan's funeral), 2012-10-30 (Hurricane Sandy), 2018-12-05 (President
+#: G. H. W. Bush's funeral), 2025-01-09 (President Carter's funeral).
+_GOVT_SPECIAL = (D(2001, 9, 11), D(2001, 9, 12), D(2004, 6, 11), D(2012, 10, 30),
+                 D(2018, 12, 5), D(2025, 1, 9))
+
+
+def _usd_govt(y: int) -> set[dt.date]:
+    out = {_nth_weekday(y, 1, 0, 3), _nth_weekday(y, 2, 0, 3), _nth_weekday(y, 5, 0, -1),
+           _nth_weekday(y, 9, 0, 1), _nth_weekday(y, 10, 0, 2), _nth_weekday(y, 11, 3, 4)}
+    for d in (D(y, 1, 1), D(y, 11, 11)):  # Sunday -> Monday; Saturday not moved
+        if d.weekday() != 5:
+            out.add(d + _DAY if d.weekday() == 6 else d)
+    fixed = [D(y, 7, 4), D(y, 12, 25)] + ([D(y, 6, 19)] if y >= 2022 else [])
+    out |= {_sat_fri_sun_mon(d) for d in fixed}
+    good_friday = easter_sunday(y) - 2 * _DAY
+    if good_friday.day > 7:  # first-Friday Good Friday: payrolls day, early close
+        out.add(good_friday)
+    out |= {d for d in _GOVT_SPECIAL if d.year == y}
     return out
 
 
@@ -272,16 +319,20 @@ def _aud(y: int) -> set[dt.date]:
 
 _RULES = {"USD": _usd, "EUR": _eur, "GBP": _gbp, "JPY": _jpy, "CHF": _chf, "CAD": _cad,
           "AUD": _aud}
+#: Currency settlement centres (FX spot, swaps, money markets).
 CURRENCIES = tuple(_RULES)
+_RULES["USD-GOVT"] = _usd_govt
+#: Every calendar code: the currencies plus ``USD-GOVT`` (SIFMA bond market).
+CALENDAR_CODES = tuple(_RULES)
 
 
-_EXTRA: dict[str, set[dt.date]] = {c: set() for c in CURRENCIES}
+_EXTRA: dict[str, set[dt.date]] = {c: set() for c in CALENDAR_CODES}
 
 
 def _check_ccy(currency: str) -> str:
     ccy = currency.upper()
     if ccy not in _RULES:
-        raise ValueError(f"no calendar for {currency!r}; shipped: {CURRENCIES}")
+        raise ValueError(f"no calendar for {currency!r}; shipped: {CALENDAR_CODES}")
     return ccy
 
 
@@ -323,7 +374,7 @@ def add_closure(currency: str, day: dt.date) -> None:
 
 def clear_closures(currency: str | None = None) -> None:
     """Drop runtime closures for one currency, or for all when ``None``."""
-    for c in CURRENCIES if currency is None else (_check_ccy(currency),):
+    for c in CALENDAR_CODES if currency is None else (_check_ccy(currency),):
         _EXTRA[c].clear()
 
 
@@ -354,7 +405,12 @@ def _centres(calendar: Calendar) -> tuple[str, ...]:
     if calendar is None:
         return ()
     if isinstance(calendar, str):
-        code = calendar.upper().replace("/", "").replace("+", "")
+        key = calendar.upper().strip()
+        if key in _RULES:
+            return (key,)
+        if "+" in key or "/" in key:
+            return _centres([p for p in re.split(r"[+/]", key) if p])
+        code = key
         if not code or len(code) % 3:
             raise ValueError(f"calendar code must be 3, 6, 9... letters, got {calendar!r}")
         calendar = [code[i:i + 3] for i in range(0, len(code), 3)]
@@ -429,7 +485,7 @@ ROLL_CONVENTIONS: tuple[str, ...] = (
     "unadjusted",
 )
 
-_ALIASES = {"TARGET": "EUR", "TARGET2": "EUR"}
+_ALIASES = {"TARGET": "EUR", "TARGET2": "EUR", "SIFMA": "USD-GOVT"}
 
 
 @dataclass(frozen=True)
@@ -511,7 +567,7 @@ class HolidayCalendar:
 
 CALENDARS: dict[str, HolidayCalendar] = {
     "WEEKEND": HolidayCalendar("WEEKEND"),
-    **{c: HolidayCalendar(c, (c,)) for c in CURRENCIES},
+    **{c: HolidayCalendar(c, (c,)) for c in CALENDAR_CODES},
 }
 
 

@@ -2,8 +2,9 @@
 //! 1.44 holiday lists, 2000-2030) and with the Python spot-date table.
 
 use qp_core::holidays::{
-    CURRENCIES, Date, easter_sunday, forward_flat, forward_from_dfs, fx_spot_date, holidays,
-    ndf_value, spot_lag, yf365,
+    CALENDAR_CODES, CURRENCIES, Date, easter_sunday, forward_flat, forward_from_dfs, fx_leg_value,
+    fx_spot_date, fx_swap_far_rate, holidays, is_business_day, ndf_value, spot_lag,
+    xccy_initial_exchange, yf365,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -28,13 +29,36 @@ fn matches_quantlib_2000_2030() {
         let d = parse(d);
         want.entry((ccy.to_string(), d.y)).or_default().insert(d);
     }
-    for ccy in CURRENCIES {
+    // SIFMA closures that QuantLib 1.44 does not list (see holidays.py).
+    let not_in_ql = [
+        Date::new(2001, 9, 11),
+        Date::new(2001, 9, 12),
+        Date::new(2025, 1, 9),
+    ];
+    assert_eq!(CALENDAR_CODES.len(), CURRENCIES.len() + 1);
+    for ccy in CALENDAR_CODES {
         for y in 2000..=2030 {
             let got = holidays(ccy, y).unwrap();
-            let exp = want.get(&(ccy.to_string(), y)).cloned().unwrap_or_default();
+            let mut exp = want.get(&(ccy.to_string(), y)).cloned().unwrap_or_default();
+            if ccy == "USD-GOVT" {
+                exp.extend(not_in_ql.iter().filter(|d| d.y == y));
+            }
             assert_eq!(got, exp, "{ccy} {y}");
         }
     }
+}
+
+#[test]
+fn usd_govt_named_days() {
+    let govt = ["USD-GOVT"];
+    // Good Friday 2025 closed for bonds, open at the Fed.
+    assert!(!is_business_day(Date::new(2025, 4, 18), &govt).unwrap());
+    assert!(is_business_day(Date::new(2025, 4, 18), &["USD"]).unwrap());
+    // First-Friday Good Friday 2026: early close, business day.
+    assert!(is_business_day(Date::new(2026, 4, 3), &govt).unwrap());
+    // Saturday Christmas 2027 observed Friday.
+    assert!(!is_business_day(Date::new(2027, 12, 24), &govt).unwrap());
+    assert_eq!(holidays("SIFMA", 2025), holidays("USD-GOVT", 2025));
 }
 
 #[test]
@@ -118,4 +142,38 @@ fn forward_and_ndf_closed_forms() {
     assert!((v - 48_861.053_538_993_1).abs() < 1e-6, "{v}");
     let q = ndf_value(10e6, 5.6, fwd, (-0.11 * t).exp(), false);
     assert!((q - 10e6 * (-0.11 * t).exp() * (fwd - 5.6)).abs() < 1e-9);
+}
+
+#[test]
+fn fx_swap_and_xccy_closed_forms() {
+    // Same numbers as python/fx/04-fixed-income/tests/test_fx_swaps_dated.py
+    // and test_xccy_initial_exchange.py (EURUSD 1.0850, flat 4.5% / 2.5%,
+    // valued Thu 5-Jun-2025, spot Mon 9-Jun).
+    let (s, rd, rf) = (1.0850_f64, 0.045_f64, 0.025_f64);
+    let val = Date::new(2025, 6, 5);
+    let ts = yf365(val, fx_spot_date(val, "EUR", "USD").unwrap());
+    let s_today = s * (-rd * ts).exp() / (-rf * ts).exp();
+    // tom-next points: (S - F(tom)) * 1e4
+    let f_tom = forward_flat(s, 1.0 / 365.0, ts, rd, rf);
+    assert!(((s - f_tom) * 1e4 - 1.7834150577589192).abs() < 1e-10);
+    // off-market swap legs, near 9-Jun-2025 at 1.08, far 9-Jun-2026 at 1.10
+    let tn = yf365(val, Date::new(2025, 6, 9));
+    let tf = yf365(val, Date::new(2026, 6, 9));
+    let near = fx_leg_value(10e6, 1.08, s_today, (-rf * tn).exp(), (-rd * tn).exp());
+    let far = fx_leg_value(-10e6, 1.10, s_today, (-rf * tf).exp(), (-rd * tf).exp());
+    assert!((near - 49975.348544692984).abs() < 1e-6, "{near}");
+    assert!((far + 66107.63627727056).abs() < 1e-6, "{far}");
+    // far rate for an off-market near leg at 1.07, far 9-Dec-2025
+    let t9 = yf365(val, Date::new(2025, 12, 9));
+    let v_near = fx_leg_value(10e6, 1.07, s_today, (-rf * tn).exp(), (-rd * tn).exp());
+    let kf = fx_swap_far_rate(
+        forward_flat(s, t9, ts, rd, rf),
+        v_near,
+        10e6,
+        (-rd * t9).exp(),
+    );
+    assert!((kf - 1.0805921852368006).abs() < 1e-13, "{kf}");
+    // xccy initial exchange, 150k off market
+    let x = xccy_initial_exchange(1.0, 11.0e6, 10e6, s, (-rd * ts).exp());
+    assert!((x - 149926.0456340816).abs() < 1e-6, "{x}");
 }

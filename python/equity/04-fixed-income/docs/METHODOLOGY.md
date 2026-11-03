@@ -108,10 +108,13 @@ Any quote that no discount factor in `(1e-8, 20)` can reprice raises
 * Schedules roll back from maturity. With the end-of-month rule (default
   on) a month-end maturity keeps every coupon on a month end: a 28-Feb
   maturity pays on 31 Aug.
-* `fi_rates.calendars` gives weekend plus fixed-date holiday calendars for
-  USD, EUR, GBP and JPY, joint calendars (`"EUR+USD"`), and following,
-  modified following and preceding rolls. The holiday lists are partial:
-  they omit moveable feasts, floating holidays and weekend observance.
+* `fi_rates.calendars` re-exports the rule-based calendars of
+  `qp_core.holidays` (USD, EUR, GBP, JPY, CHF, CAD, AUD and the SIFMA bond
+  calendar `USD-GOVT`), joint calendars (`"EUR+USD"`), and following,
+  modified following and preceding rolls. `TREASURY_CALENDAR = "USD-GOVT"`
+  is the default for `FixedRateBond.payment_dates`: a coupon due on Good
+  Friday 14 Apr 2028 is paid Mon 17 Apr, with accrual on the unadjusted
+  date. `SWAP_CALENDAR = "USD"` (Federal Reserve) is for swaps.
 
 ## 4. Bond pricing conventions
 
@@ -176,8 +179,10 @@ Each assumption states what breaks if it is violated.
 3. **No settlement lag and no ex-dividend periods** in bond pricing.
    Settlement is the date passed in; `calendars.add_business_days` gives
    T+1 or T+2 if the caller wants it.
-4. **Calendars cover seven centres.** USD, EUR (TARGET), GBP, JPY, CHF,
-   CAD and AUD from `qp_core.holidays`, 2000-2099. Until milestone v2.1
+4. **Calendars cover seven centres and the US bond market.** USD, EUR
+   (TARGET), GBP, JPY, CHF, CAD, AUD and USD-GOVT (SIFMA) from
+   `qp_core.holidays`, 2000-2099. Bond prices discount the unadjusted
+   coupon dates; only `payment_dates` applies the calendar. Until milestone v2.1
    these were weekend plus fixed-date holidays only, so a schedule could
    roll onto Good Friday or Thanksgiving; other centres are not covered.
 5. **30/360US without the end-of-February rule.**

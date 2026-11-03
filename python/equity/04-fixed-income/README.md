@@ -23,6 +23,9 @@ Yield curve construction -> Bootstrapping -> Bond pricing -> Duration
   rule-based business-day calendars (Good Friday, Thanksgiving, UK bank
   holidays and weekend substitutes included, checked against QuantLib
   2000-2030) with following, modified following and preceding.
+  Treasury coupon payment dates (`FixedRateBond.payment_dates`) roll on
+  the SIFMA bond-market calendar `USD-GOVT` (closed Good Friday); swaps
+  keep the Federal Reserve calendar `USD`.
 * **Bonds** (`bond.py`): fixed coupon (clean, dirty, accrued, street YTM),
   government bonds on ACT/ACT-ICMA with exact c/f coupons, zero coupon,
   FRN (par at reset; mid-period with the current fixing), annuities,

@@ -27,7 +27,7 @@ Schedules
 front stub if the effective date does not align. With ``eom=True`` (the
 default) a month-end maturity keeps every coupon date on a month end, so a
 28-Feb-2025 maturity pays on 31 Aug. Payment dates can be rolled with any
-calendar from :mod:`fi_rates.calendars` (``adjust=True``); accrual uses
+calendar from :mod:`qp_core.holidays` via :mod:`fi_rates.calendars` (``adjust=True``); accrual uses
 unadjusted dates. 30/360US omits the end-of-February rule.
 """
 

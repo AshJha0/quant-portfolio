@@ -10,6 +10,11 @@
 //!   holidays with the 2002, 2011, 2012, 2020, 2022 and 2023
 //!   proclamations), JPY (national holidays plus 2-3 Jan and 31 Dec), CHF
 //!   (Zurich), CAD (Toronto), AUD (Sydney), years 2000-2099.
+//! * USD-GOVT (alias SIFMA): the SIFMA US bond-market calendar, for
+//!   Treasury schedules. Fed list plus Good Friday (except a first-Friday
+//!   Good Friday, an early close), Saturday Jul 4, Juneteenth and Christmas
+//!   observed on Friday, one-off closures 2001-09-11/12, 2004-06-11,
+//!   2012-10-30, 2018-12-05, 2025-01-09. Early closes are not modelled.
 //! * FX spot: T+2, or T+1 for USDCAD, USDTRY, USDRUB, USDPHP; the lag is
 //!   counted on the non-USD centres and the result is rolled forward until
 //!   both centres and New York are open (Clark 2011, ch. 1; Wystup 2017,
@@ -29,6 +34,8 @@ pub const MIN_YEAR: i32 = 2000;
 pub const MAX_YEAR: i32 = 2099;
 /// Currencies with a shipped calendar.
 pub const CURRENCIES: [&str; 7] = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"];
+/// Every calendar code: the currencies plus `USD-GOVT` (SIFMA bond market).
+pub const CALENDAR_CODES: [&str; 8] = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "USD-GOVT"];
 
 /// A proleptic Gregorian calendar date.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -192,6 +199,60 @@ fn usd(y: i32, out: &mut BTreeSet<Date>) {
         nth_weekday(y, 11, 3, 4),
     ] {
         out.insert(d);
+    }
+}
+
+const GOVT_SPECIAL: [(i32, u32, u32); 6] = [
+    (2001, 9, 11),
+    (2001, 9, 12),
+    (2004, 6, 11),
+    (2012, 10, 30),
+    (2018, 12, 5),
+    (2025, 1, 9),
+];
+
+fn usd_govt(y: i32, out: &mut BTreeSet<Date>) {
+    for d in [
+        nth_weekday(y, 1, 0, 3),
+        nth_weekday(y, 2, 0, 3),
+        nth_weekday(y, 5, 0, -1),
+        nth_weekday(y, 9, 0, 1),
+        nth_weekday(y, 10, 0, 2),
+        nth_weekday(y, 11, 3, 4),
+    ] {
+        out.insert(d);
+    }
+    // New Year and Veterans Day: Sunday -> Monday, Saturday not moved.
+    for d in [Date::new(y, 1, 1), Date::new(y, 11, 11)] {
+        match d.weekday() {
+            5 => {}
+            6 => {
+                out.insert(d.add_days(1));
+            }
+            _ => {
+                out.insert(d);
+            }
+        }
+    }
+    let mut fixed = vec![Date::new(y, 7, 4), Date::new(y, 12, 25)];
+    if y >= 2022 {
+        fixed.push(Date::new(y, 6, 19));
+    }
+    for d in fixed {
+        out.insert(match d.weekday() {
+            5 => d.add_days(-1),
+            6 => d.add_days(1),
+            _ => d,
+        });
+    }
+    let good_friday = easter_sunday(y).add_days(-2);
+    if good_friday.d > 7 {
+        out.insert(good_friday);
+    }
+    for (yy, m, d) in GOVT_SPECIAL {
+        if yy == y {
+            out.insert(Date::new(yy, m, d));
+        }
     }
 }
 
@@ -424,6 +485,7 @@ pub fn holidays(ccy: &str, year: i32) -> Result<BTreeSet<Date>, CalendarError> {
         "CHF" => chf(year, &mut out),
         "CAD" => cad(year, &mut out),
         "AUD" => aud(year, &mut out),
+        "USD-GOVT" | "SIFMA" => usd_govt(year, &mut out),
         _ => return Err(CalendarError(format!("no calendar for {ccy:?}"))),
     }
     out.retain(|d| d.y == year && !d.is_weekend());
@@ -515,4 +577,23 @@ pub fn ndf_value(
     } else {
         notional_base * df_settle * (forward - strike)
     }
+}
+
+/// Value today, in quote currency, of buying `n` base units at `k` for
+/// value at time `t` (one FX swap leg or an outright):
+/// `n * (s_today * P_f(t) - k * P_d(t))`, with `s_today = S P_d(t_s)/P_f(t_s)`.
+pub fn fx_leg_value(n: f64, k: f64, s_today: f64, pf_t: f64, pd_t: f64) -> f64 {
+    n * (s_today * pf_t - k * pd_t)
+}
+
+/// Far rate that makes an FX swap worth zero: `F(T_f) - V_near / (n_f P_d(T_f))`.
+pub fn fx_swap_far_rate(forward_far: f64, v_near: f64, n_far: f64, pd_far: f64) -> f64 {
+    forward_far - v_near / (n_far * pd_far)
+}
+
+/// Value of a cross-currency swap's initial exchange on the spot date:
+/// `sign * P_d(t_s) * (N_quote - S * N_base)` (`sign` +1 when receiving the
+/// base leg, so paying base and receiving quote at the start).
+pub fn xccy_initial_exchange(sign: f64, n_quote: f64, n_base: f64, spot: f64, pd_ts: f64) -> f64 {
+    sign * pd_ts * (n_quote - spot * n_base)
 }

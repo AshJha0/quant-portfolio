@@ -104,7 +104,9 @@ Two episodes are discussed but not encoded as shift vectors:
 * Model risk: interpolation is an explicit parameter with a measured
   forward impact (VALIDATION §4.1); single-curve discounting is the
   largest known limitation (METHODOLOGY §7).
-* Calendars are partial (weekend plus fixed-date holidays).
+* Calendars are rule-based (`qp_core.holidays`). Bonds pay on the SIFMA
+  bond-market calendar (`USD-GOVT`, closed Good Friday); early closes are
+  not modelled.
 
 ## November 2026: rates products
 
