@@ -67,8 +67,11 @@ impl std::fmt::Debug for Var<'_> {
 
 impl Tape {
     /// An empty tape.
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            nodes: RefCell::new(Vec::new()),
+            adj: RefCell::new(Vec::new()),
+        }
     }
 
     /// An empty tape with room for `n` nodes (avoids regrowth on small pricers).
@@ -89,9 +92,17 @@ impl Tape {
         self.len() == 0
     }
 
+    /// Forget every node but keep the allocation, so a tape reused across
+    /// calls records without allocating (see [`bs::greeks_on`]).
+    pub fn clear(&self) {
+        self.rewind(0);
+    }
+
+    #[inline]
     fn push(&self, val: f64, a: u32, da: f64, b: u32, db: f64) -> Var<'_> {
         let mut n = self.nodes.borrow_mut();
-        n.push(Node { a, b, da, db });
+        let node = Node { a, b, da, db };
+        n.push(node);
         Var {
             tape: self,
             idx: (n.len() - 1) as u32,
@@ -104,6 +115,30 @@ impl Tape {
         self.push(val, NONE, 0.0, NONE, 0.0)
     }
 
+    /// `N` new independent inputs recorded with one borrow of the tape.
+    pub fn vars<const N: usize>(&self, vals: [f64; N]) -> [Var<'_>; N] {
+        let mut n = self.nodes.borrow_mut();
+        let first = n.len();
+        n.extend(std::iter::repeat_n(
+            Node {
+                a: NONE,
+                b: NONE,
+                da: 0.0,
+                db: 0.0,
+            },
+            N,
+        ));
+        let mut i = 0;
+        vals.map(|val| {
+            i += 1;
+            Var {
+                tape: self,
+                idx: (first + i - 1) as u32,
+                val,
+            }
+        })
+    }
+
     /// Position to come back to with [`Tape::rewind`].
     pub fn mark(&self) -> usize {
         self.len()
@@ -113,6 +148,21 @@ impl Tape {
     pub fn rewind(&self, mark: usize) {
         self.nodes.borrow_mut().truncate(mark);
         self.adj.borrow_mut().truncate(mark);
+    }
+
+    /// Zero every adjoint, then sweep from `output` (seed 1) down to node
+    /// `stop`: [`Tape::zero_adjoints`] and [`Tape::backward`] in one borrow.
+    pub fn reverse(&self, output: Var<'_>, stop: usize) {
+        assert!(
+            std::ptr::eq(output.tape, self),
+            "output was recorded on a different tape"
+        );
+        let nodes = self.nodes.borrow();
+        let mut adj = self.adj.borrow_mut();
+        adj.clear();
+        adj.resize(nodes.len(), 0.0);
+        adj[output.idx as usize] = 1.0;
+        Self::sweep(&nodes, &mut adj, output.idx as usize + 1, stop);
     }
 
     /// Set every adjoint to zero.
@@ -143,18 +193,26 @@ impl Tape {
 
     /// Push the adjoints of nodes `start-1` down to `stop` into their parents.
     pub fn propagate(&self, start: usize, stop: usize) {
-        let nodes = self.nodes.borrow();
-        let mut adj = self.adj.borrow_mut();
+        Self::sweep(
+            &self.nodes.borrow(),
+            &mut self.adj.borrow_mut(),
+            start,
+            stop,
+        );
+    }
+
+    #[inline]
+    fn sweep(nodes: &[Node], adj: &mut Vec<f64>, start: usize, stop: usize) {
         if adj.len() < nodes.len() {
             adj.resize(nodes.len(), 0.0);
         }
-        for i in (stop..start).rev() {
-            let w = adj[i];
-            if w == 0.0 {
-                continue;
-            }
-            let n = nodes[i];
-            if n.a != NONE {
+        let adj = &mut adj[..nodes.len()];
+        for (i, n) in nodes[stop..start].iter().enumerate().rev() {
+            let w = adj[stop + i];
+            // Inputs (`a == NONE`) have no parents; a node with one parent
+            // carries `b == NONE`. A zero adjoint is skipped so that a node
+            // off the output's path never turns an infinite partial into NaN.
+            if w != 0.0 && n.a != NONE {
                 adj[n.a as usize] += w * n.da;
                 if n.b != NONE {
                     adj[n.b as usize] += w * n.db;
@@ -164,12 +222,19 @@ impl Tape {
     }
 
     /// The accumulated adjoint of `v`.
+    #[inline]
     pub fn adjoint(&self, v: Var<'_>) -> f64 {
         self.adj
             .borrow()
             .get(v.idx as usize)
             .copied()
             .unwrap_or(0.0)
+    }
+
+    /// The accumulated adjoints of `N` variables, read with one borrow.
+    pub fn adjoints<const N: usize>(&self, vs: [Var<'_>; N]) -> [f64; N] {
+        let adj = self.adj.borrow();
+        vs.map(|v| adj.get(v.idx as usize).copied().unwrap_or(0.0))
     }
 
     /// `[d output / d x for x in inputs]` from one reverse sweep.
@@ -207,6 +272,29 @@ pub trait Real:
     fn rdiv(self, c: f64) -> Self;
     /// The value.
     fn val(self) -> f64;
+
+    // Fused operations. Each default is the plain composition, so `f64`
+    // computes exactly the same bits as the unfused expression; [`Var`]
+    // records each as one node with its local partials preaccumulated
+    // (statement-level preaccumulation: Griewank and Walther 2008, s.10.2;
+    // Savine 2018, ch. 15). Fewer nodes means a shorter reverse sweep.
+
+    /// `exp(-(self * o))`.
+    fn exp_neg_mul(self, o: Self) -> Self {
+        (-(self * o)).exp()
+    }
+    /// `ln(self / o)`.
+    fn ln_div(self, o: Self) -> Self {
+        (self / o).ln()
+    }
+    /// `ncdf(self * c)` for a constant `c`.
+    fn ncdf_scaled(self, c: f64) -> Self {
+        (self * c).ncdf()
+    }
+    /// `self * self * 0.5`.
+    fn half_square(self) -> Self {
+        self * self * 0.5
+    }
 }
 
 impl Real for f64 {
@@ -281,6 +369,23 @@ impl<'t> Real for Var<'t> {
     fn val(self) -> f64 {
         self.val
     }
+    fn exp_neg_mul(self, o: Self) -> Self {
+        let e = (-(self.val * o.val)).exp();
+        self.binary(o, e, -o.val * e, -self.val * e)
+    }
+    fn ln_div(self, o: Self) -> Self {
+        self.binary(o, (self.val / o.val).ln(), 1.0 / self.val, -1.0 / o.val)
+    }
+    fn ncdf_scaled(self, c: f64) -> Self {
+        let v = self.val * c;
+        self.unary(
+            qp_core::special::norm_cdf(v),
+            c * INV_SQRT_2PI * (-0.5 * v * v).exp(),
+        )
+    }
+    fn half_square(self) -> Self {
+        self.unary(self.val * self.val * 0.5, self.val)
+    }
 }
 
 impl<'t> Add for Var<'t> {
@@ -305,7 +410,8 @@ impl<'t> Div for Var<'t> {
     type Output = Self;
     fn div(self, o: Self) -> Self {
         let q = self.val / o.val;
-        self.binary(o, q, 1.0 / o.val, -q / o.val)
+        let inv = 1.0 / o.val;
+        self.binary(o, q, inv, -q * inv)
     }
 }
 impl<'t> Neg for Var<'t> {
@@ -329,6 +435,10 @@ impl<'t> Sub<f64> for Var<'t> {
 impl<'t> Mul<f64> for Var<'t> {
     type Output = Self;
     fn mul(self, c: f64) -> Self {
+        // `x * 1` is `x` bit for bit: record nothing (call payoffs, phi = 1).
+        if c == 1.0 {
+            return self;
+        }
         self.unary(self.val * c, c)
     }
 }

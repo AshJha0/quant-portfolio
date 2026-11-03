@@ -44,27 +44,60 @@ fixture. The adjoint quote Greeks match central bumps of each quote
 
 ## Cost ratio (AAD time / price time)
 
-`cargo run --release --example cost_ratio` takes the best of 21 runs. The
-ratios below come from one Windows laptop that was also running other
-builds, so treat them as a range, not a benchmark.
+`cargo run --release --example cost_ratio` takes the best of 21 runs (MC and
+swap). Black-Scholes takes about 20 ns, so its two timings are interleaved
+rep by rep over 201 reps of 20,000 calls, with every input passed through
+`black_box`; the ratio of the two best times and the median of the per-rep
+ratios are both printed. The ratios below come from one Windows laptop
+(WSL) that was also running other builds, so treat them as a range, not a
+benchmark.
 
 | Pricer | Rust | C++ (g++ 15.2 -O3, WSL) | Python |
 |---|---|---|---|
-| Black-Scholes (one price) | 13-34x | 2.9-3.4x | about 20x |
+| Black-Scholes (one price), Round 17 | 13-34x (about 10-12x measured fairly, see below) | 2.9-3.4x | 20-21x |
+| Black-Scholes (one price), Round 18 | 4.85-4.9x (per-thread tape); 4.5-4.6x (caller tape) | not changed | 12.5-13x |
 | MC European, 20k paths x 52 steps | 1.7-2.1x | 1.6-1.8x | about 3.4x (500 x 12) |
 | MC Asian, 20k paths x 52 steps | 3.0-6.4x | 2.4-3.5x | n/a (Asian not timed) |
 | Swap PV, 18 pillars, 10Y annual | 2.0-6.7x | 2.1-2.4x | about 3.6x |
+
+The Round 17 Rust figure was partly a measuring error: only the spot went
+through `black_box`, so the compiler folded most of the plain price and the
+denominator was about 9 ns instead of about 20 ns. Measured fairly, the
+Round 17 tape gave about 10-12x. Round 18 then made three changes, in
+Rust and in Python:
+
+1. **Tape reuse.** `bs::greeks` records on a per-thread tape that is
+   cleared, not reallocated, between calls; `bs::greeks_on` takes a
+   caller's tape. Inputs are recorded with one borrow (`Tape::vars`) and the
+   adjoints read with one (`Tape::adjoints`), and the sweep stops above the
+   inputs, which have no parents.
+2. **Fused nodes** (statement-level preaccumulation; Griewank and Walther
+   2008, s. 10.2; Savine 2018, ch. 15). `exp(-x y)`, `ln(x / y)`,
+   `ncdf(c x)` and `x^2 / 2` are each one node holding their local
+   partials, and `x * 1` records nothing. The Black-Scholes tape went from
+   34 nodes to 25. The `f64` path of each fused operation is the plain
+   composition, so the price did not move by a bit (tested).
+3. **One borrow per sweep.** `Tape::reverse` zeroes the adjoints and
+   sweeps in one borrow, over adjoints cut to the tape's length.
 
 The plan's bar is "all Greeks under 5x one PV" (W19).
 - The swap and the European MC meet it in every language.
 - The Asian MC meets it in C++. In Rust it meets it on a quiet run but not on
   a loaded one.
-- Black-Scholes in Rust misses it by a wide margin. The price takes about
-  20 ns, so the fixed cost of allocating a tape and the result vectors
-  dominates. That cost is about 0.5 us in Rust and about 0.2 us in C++. A
-  tape reused across calls would remove it, but we have not built one.
+- Black-Scholes in Rust now meets it, narrowly: 4.85-4.9x over five
+  runs of 201 interleaved reps each (ratio of best times; the median of the
+  per-rep ratios was 4.86-4.92x), and 4.5-4.6x when the caller keeps the
+  tape. On a heavily loaded machine single runs reached 5.2x, so this is
+  a just-under, not a comfortable margin. What is left is the arithmetic:
+  the two normal densities need two more `exp` calls than the price, and
+  the 19 recorded nodes are swept in order.
 - In Python every operation allocates an object, so its ratios measure
-  interpreter overhead as much as the method.
+  interpreter overhead as much as the method. Black-Scholes went from
+  20-21x to 12.5-13x (interleaved, 41 reps, before and after on the same
+  machine): the AAD call got about 35 % faster, mostly because one node is
+  now one tuple append instead of four list appends, and the plain price
+  about 5-9 % slower, from the extra function calls of the fused forms.
+  It stays far above 5x.
 
 The quote Greeks add 18 residual sweeps and one 18 x 18 solve. Bumping
 instead would take 36 full bootstraps, each of them a bisection per pillar.

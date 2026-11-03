@@ -317,3 +317,68 @@ fn swap_quote_greeks_match_rebootstrap() {
     }
     assert!(swap::quote_greeks(&quotes[1..], &days, base.dfs(), &sw).is_none());
 }
+
+#[test]
+fn fused_ops_give_the_unfused_f64_bits() {
+    // The f64 path of every fused operation is the plain composition, so the
+    // price (the cost-ratio denominator) did not move when the pricer was
+    // rewritten in fused form.
+    for &(a, b) in &[(0.05, 1.0), (0.02, 2.5), (100.0, 95.0), (-0.3, 0.7)] {
+        assert_eq!(a.exp_neg_mul(b).to_bits(), (-(a * b)).exp().to_bits());
+        assert_eq!(a.half_square().to_bits(), (a * a * 0.5).to_bits());
+        assert_eq!(
+            a.ncdf_scaled(-1.0).to_bits(),
+            (a * std::hint::black_box(-1.0)).ncdf().to_bits()
+        );
+        if a > 0.0 {
+            assert_eq!(a.ln_div(b).to_bits(), (a / b).ln().to_bits());
+        }
+    }
+}
+
+#[test]
+fn fused_var_partials_match_unfused() {
+    for &(a, b, c) in &[(0.05, 1.3, 1.0), (1.7, 0.4, -1.0)] {
+        let t = Tape::new();
+        let (x, y) = (t.var(a), t.var(b));
+        let fused = [
+            x.exp_neg_mul(y),
+            x.ln_div(y),
+            x.ncdf_scaled(c),
+            x.half_square() * y,
+            x * 1.0 * y,
+        ];
+        let plain = [
+            (-(x * y)).exp(),
+            (x / y).ln(),
+            (x * c).ncdf(),
+            x * x * 0.5 * y,
+            x * y,
+        ];
+        for (f, p) in fused.iter().zip(&plain) {
+            assert_eq!(f.value().to_bits(), p.value().to_bits());
+            let gf = t.gradient(*f, &[x, y]);
+            let gp = t.gradient(*p, &[x, y]);
+            for i in 0..2 {
+                assert!(close(gf[i], gp[i], 1e-14, 1e-15), "{gf:?} {gp:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn reused_tape_gives_identical_greeks() {
+    // The thread-local tape and a caller tape are cleared, not reallocated,
+    // between calls; nothing from one call may leak into the next.
+    let tape = Tape::new();
+    let a = bs::greeks_on(&tape, 100.0, 100.0, 1.0, 0.05, 0.02, 0.2, true);
+    let n = tape.len();
+    let _ = bs::greeks_on(&tape, 80.0, 120.0, 2.0, 0.01, 0.0, 0.4, false);
+    let b = bs::greeks_on(&tape, 100.0, 100.0, 1.0, 0.05, 0.02, 0.2, true);
+    assert_eq!(a, b);
+    assert_eq!(tape.len(), n);
+    assert_eq!(a, bs::greeks(100.0, 100.0, 1.0, 0.05, 0.02, 0.2, true));
+    assert_eq!(bs::greeks(100.0, 100.0, 1.0, 0.05, 0.02, 0.2, true), a);
+    // Worked example of the module docs.
+    assert!((a.price - 9.227_005_508_154_036).abs() < 1e-13);
+}
