@@ -35,6 +35,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 from qp_core.execution import ExecutionConfig
+from qp_core.stats import Financing, warn_no_financing
 
 from .signals import freeze_signal
 
@@ -117,6 +118,11 @@ class BacktestResult:
         return self.ledger["net_ret"]
 
     @property
+    def excess_returns(self) -> pd.Series:
+        """Net return minus the risk-free return; use these for Sharpe (W6d)."""
+        return self.ledger["excess_ret"]
+
+    @property
     def gross_returns(self) -> pd.Series:
         return self.ledger["gross_ret"]
 
@@ -180,7 +186,8 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
                  config: BacktestConfig | None = None,
                  volumes: pd.DataFrame | None = None,
                  vol_window: int = 63, adv_window: int = 21,
-                 execution: ExecutionConfig | None = None) -> BacktestResult:
+                 execution: ExecutionConfig | None = None,
+                 financing: Financing | None = None) -> BacktestResult:
     """Run the daily long-short backtest.
 
     Parameters
@@ -199,6 +206,12 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
     execution : ExecutionConfig, optional
         Fill convention; default ``ExecutionConfig()`` (fill at
         ``p_t + 0.5 (p_{t+1} - p_t)``).
+    financing : qp_core.stats.Financing, optional
+        Rate and spreads for cash (W6d). The cash residual
+        ``1 - net_exposure`` of the book held into day t earns, or when
+        negative pays, the rate over the period: ledger column ``financing``,
+        included in ``net_ret``. ``risk_free`` and ``excess_ret`` are added.
+        ``None`` keeps zero-rate cash and emits ``FinancingWarning``.
 
     Returns
     -------
@@ -208,7 +221,8 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
         close t) including the split around the fill; ``turnover``, ``cost``
         (linear + impact + auction) and ``borrow`` describe the trade filled
         on day t and the short book held after it;
-        ``net_ret = gross_ret - cost - borrow``.
+        ``net_ret = gross_ret - cost - borrow + financing``;
+        ``excess_ret = net_ret - risk_free``.
     """
     cfg = config or BacktestConfig()
     ex = execution or ExecutionConfig()
@@ -239,6 +253,12 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
     f = ex.fill_fraction
     auction = ex.mode == "close_auction"
     borrow_daily = cfg.borrow_bps_annual * 1e-4 / 252.0
+    if financing is None:
+        warn_no_financing("eq_algo.run_backtest")
+        rf_all = np.zeros(n_dates)
+        tau_all = np.zeros(n_dates)
+    else:
+        rf_all, tau_all = financing.accruals(prices.index)
 
     def trade_cost(i_dec: int, dw: np.ndarray) -> float:
         if cfg.aum is not None:
@@ -272,11 +292,16 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
             gross_ret = float(held_w @ r_pre + w_new @ r_post)
             cost = trade_cost(i - 1, dw) if i > 0 else 0.0
         borrow = borrow_daily * float(-w_new[w_new < 0].sum())
+        fin = (financing.cash_return(1.0 - float(held_w.sum()), rf_all[i], tau_all[i])
+               if financing is not None else 0.0)
         rows.append({
             "gross_ret": gross_ret,
             "cost": cost,
             "borrow": borrow,
-            "net_ret": gross_ret - cost - borrow,
+            "financing": fin,
+            "net_ret": gross_ret - cost - borrow + fin,
+            "risk_free": float(rf_all[i]),
+            "excess_ret": gross_ret - cost - borrow + fin - float(rf_all[i]),
             "turnover": float(np.abs(dw).sum()),
             "gross_exposure": float(np.abs(w_new).sum()),
             "net_exposure": float(w_new.sum()),

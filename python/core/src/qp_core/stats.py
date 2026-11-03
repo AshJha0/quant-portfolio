@@ -36,17 +36,23 @@ from scipy import stats as _st
 FloatArray = NDArray[np.float64]
 
 __all__ = [
+    "Financing",
+    "FinancingWarning",
     "FloatArray",
     "SeedSummary",
     "TrialLog",
     "block_bootstrap_ci",
+    "deflated_sharpe_detail",
+    "deflated_sharpe_from_moments",
     "deflated_sharpe_ratio",
     "expected_max_sharpe",
+    "in_market_fraction",
     "lo_sharpe_se",
     "newey_west_lag",
     "pbo_cscv",
     "seed_distribution",
     "sharpe_ratio",
+    "warn_no_financing",
 ]
 
 _EULER_GAMMA = 0.5772156649015329
@@ -150,37 +156,192 @@ def expected_max_sharpe(n_trials: int, trial_sr_variance: float) -> float:
     return float(math.sqrt(trial_sr_variance) * z)
 
 
-def deflated_sharpe_ratio(
+def in_market_fraction(returns: ArrayLike) -> float:
+    """Share of periods with a non-zero return (the strategy held a position)."""
+    r = _as_finite_1d(returns, "returns", min_len=1)
+    return float(np.count_nonzero(r) / r.size)
+
+
+def deflated_sharpe_from_moments(sr: float, n_obs: int, skew: float, kurtosis: float,
+                                 n_trials: int,
+                                 trial_sr_variance: float | None = None) -> dict[str, float]:
+    """PSR-form deflated Sharpe from per-period moments (raw kurtosis).
+
+    The same formula as :func:`deflated_sharpe_detail` with ``se_method="psr"``,
+    for callers that hold moments rather than the return series.
+    """
+    if n_obs < 4:
+        raise ValueError(f"need at least 4 observations, got {n_obs}")
+    v = 1.0 / (n_obs - 1) if trial_sr_variance is None else float(trial_sr_variance)
+    sr0 = expected_max_sharpe(int(n_trials), v)
+    denom = 1.0 - skew * sr + (kurtosis - 1.0) / 4.0 * sr * sr
+    if not denom > 0:
+        raise ValueError("non-positive PSR denominator; moments are inconsistent")
+    z = (sr - sr0) * math.sqrt(n_obs - 1) / math.sqrt(denom)
+    return {"sr0_per_period": float(sr0), "dsr": float(_st.norm.cdf(z)), "z": float(z)}
+
+
+def deflated_sharpe_detail(
     returns: ArrayLike,
     n_trials: int,
     trial_sharpes: Sequence[float] | None = None,
-) -> float:
-    """Deflated Sharpe ratio: P(true SR > expected max SR of ``n_trials`` nulls).
+    trial_sr_variance: float | None = None,
+    se_method: str = "auto",
+) -> dict[str, Any]:
+    """Deflated Sharpe ratio with every input it used. This is the one DSR code.
 
-    Works on per-period (not annualised) Sharpe ratios. ``trial_sharpes`` are
-    the per-period Sharpe ratios of all logged trials; their variance sets the
-    spread of the null maximum. Without them the null variance is the sampling
-    variance of a zero-SR estimate, ``1/(n-1)``. Skewness and kurtosis of the
-    returns enter the denominator as in the probabilistic Sharpe ratio.
+    Plain idea: a best-of-N backtest Sharpe is compared with the Sharpe that
+    the best of N skill-less trials would reach by luck. The result is the
+    probability that the true Sharpe beats that benchmark.
+
+    Formal statement (Bailey and Lopez de Prado, 2014, eqs. 2-3). Per-period
+    Sharpe ``s`` over ``n`` returns, benchmark ``sr0 = expected_max_sharpe(N, V)``:
+
+    * ``se_method="psr"``: ``z = (s - sr0) sqrt(n-1) / sqrt(1 - g3 s + (g4-1)/4 s^2)``;
+    * ``se_method="lo"``: ``z = (s - sr0) / se_lo``, with ``se_lo`` the Lo (2002)
+      Newey-West standard error of the per-period Sharpe;
+    * ``"auto"`` (the default) picks ``"lo"`` when the in-market fraction is
+      below 50%. A mostly-zero series has a kurtosis that comes from the zeros,
+      and its holding periods are serially dependent (Lo 2002, section 4).
+
+    ``V`` is, in order: ``trial_sr_variance``; the sample variance of the
+    per-period ``trial_sharpes``; else ``1/(n-1)``, the sampling variance of a
+    zero-Sharpe estimate.
+
+    Worked example: n = 1000, s = 0.05, N = 1, zero skew, kurtosis 3:
+    ``sr0 = 0``, ``z = 0.05 sqrt(999) / sqrt(1 + 0.5 * 0.0025) = 1.579``,
+    DSR = 0.943.
     """
+    if se_method not in ("auto", "psr", "lo"):
+        raise ValueError(f"se_method must be 'auto', 'psr' or 'lo', got {se_method!r}")
     r = _as_finite_1d(returns, "returns", min_len=4)
     n = r.size
     sd = r.std(ddof=1)
     if not sd > 0:
         raise ValueError("returns have zero variance; deflated Sharpe is undefined")
-    s = r.mean() / sd
-    if trial_sharpes is None:
-        v = 1.0 / (n - 1)
-    else:
+    s = float(r.mean() / sd)
+    if trial_sr_variance is not None:
+        if not (math.isfinite(trial_sr_variance) and trial_sr_variance >= 0):
+            raise ValueError("trial_sr_variance must be finite and >= 0")
+        v, v_src = float(trial_sr_variance), "given"
+    elif trial_sharpes is not None:
         ts = _as_finite_1d(trial_sharpes, "trial_sharpes", min_len=2)
-        v = float(ts.var(ddof=1))
+        v, v_src = float(ts.var(ddof=1)), f"variance of {ts.size} trial Sharpes"
+    else:
+        v, v_src = 1.0 / (n - 1), "1/(n-1), null sampling variance"
     sr0 = expected_max_sharpe(int(n_trials), v)
     g3 = float(_st.skew(r))
     g4 = float(_st.kurtosis(r, fisher=False))
-    denom = 1.0 - g3 * s + (g4 - 1.0) / 4.0 * s * s
-    if not denom > 0:
-        raise ValueError("non-positive PSR denominator; moments are inconsistent")
-    return float(_st.norm.cdf((s - sr0) * math.sqrt(n - 1) / math.sqrt(denom)))
+    frac = float(np.count_nonzero(r) / n)
+    method = se_method if se_method != "auto" else ("lo" if frac < 0.5 else "psr")
+    if method == "psr":
+        denom = 1.0 - g3 * s + (g4 - 1.0) / 4.0 * s * s
+        if not denom > 0:
+            raise ValueError("non-positive PSR denominator; moments are inconsistent")
+        se = math.sqrt(denom / (n - 1))
+    else:
+        se = lo_sharpe_se(r, periods_per_year=1.0)
+        if not se > 0:
+            raise ValueError("zero Lo standard error; deflated Sharpe is undefined")
+    z = (s - sr0) / se
+    return {"n_trials": int(n_trials), "trial_sr_variance": v, "trial_sr_variance_source": v_src,
+            "sr_per_period": s, "sr0_per_period": float(sr0), "se_per_period": float(se),
+            "se_method": method, "in_market_fraction": frac, "skew": g3, "kurtosis": g4,
+            "n_obs": int(n), "z": float(z), "dsr": float(_st.norm.cdf(z))}
+
+
+def deflated_sharpe_ratio(
+    returns: ArrayLike,
+    n_trials: int,
+    trial_sharpes: Sequence[float] | None = None,
+    trial_sr_variance: float | None = None,
+    se_method: str = "auto",
+) -> float:
+    """Deflated Sharpe ratio: P(true SR > expected max SR of ``n_trials`` nulls).
+
+    The probability from :func:`deflated_sharpe_detail`; see there for the
+    formula, the standard-error choice and where the trial variance comes from.
+    """
+    return float(deflated_sharpe_detail(returns, n_trials, trial_sharpes, trial_sr_variance,
+                                        se_method)["dsr"])
+
+
+# ---- financing ------------------------------------------------------------
+
+class FinancingWarning(UserWarning):
+    """A backtest ran with ``financing=None``: cash earns 0 and borrowing is free."""
+
+
+@dataclass(frozen=True)
+class Financing:
+    """Daily financing of a backtest's cash residual.
+
+    Plain idea: a book that holds less than 100% in assets keeps the rest as
+    cash, which earns the risk-free rate. A levered book borrows the shortfall
+    and pays the rate plus a spread. Leaving this out gives levered books free
+    money and understates unlevered ones.
+
+    Formal statement: annualised rate ``r_{t-1}`` (decimal, known at the start
+    of period t), accrual ``tau_t`` (calendar days / ``basis`` on a
+    DatetimeIndex, else ``1 / periods_per_year``) and cash ``c = 1 - sum(w)``:
+    ``fin_t = c (r_{t-1} - lend_spread) tau_t`` if ``c >= 0``, else
+    ``c (r_{t-1} + borrow_spread) tau_t``. The risk-free return used for
+    excess returns is ``rf_t = r_{t-1} tau_t``.
+
+    Worked example: 150% invested, rate 4%, borrow spread 50 bp, a Friday to
+    Monday period on ACT/360: ``fin = -0.5 * 0.045 * 3/360 = -1.875e-4``.
+    """
+
+    rate: Any  # float, or a pandas Series of annualised decimal rates by date
+    borrow_spread_bp: float = 0.0
+    lend_spread_bp: float = 0.0
+    basis: float = 360.0
+    periods_per_year: float = 252.0
+
+    def __post_init__(self) -> None:
+        for name in ("borrow_spread_bp", "lend_spread_bp", "basis", "periods_per_year"):
+            v = float(getattr(self, name))
+            if not math.isfinite(v) or v < 0:
+                raise ValueError(f"{name} must be finite and >= 0, got {v}")
+        if self.basis <= 0 or self.periods_per_year <= 0:
+            raise ValueError("basis and periods_per_year must be positive")
+
+    def accruals(self, index: Any) -> tuple[FloatArray, FloatArray]:
+        """(risk-free return, accrual fraction) per period of ``index``; row 0 is 0."""
+        import pandas as pd  # local import: the rest of qp_core.stats needs no pandas
+
+        idx = pd.Index(index)
+        n = len(idx)
+        tau = np.zeros(n)
+        if isinstance(idx, pd.DatetimeIndex):
+            days = np.diff(idx.to_numpy().astype("datetime64[D]")).astype(float)
+            tau[1:] = days / self.basis
+        else:
+            tau[1:] = 1.0 / self.periods_per_year
+        if isinstance(self.rate, pd.Series):
+            rate = self.rate.reindex(idx).ffill().to_numpy(dtype=float)
+        else:
+            rate = np.full(n, float(self.rate))
+        if n > 1 and not np.all(np.isfinite(rate[:-1])):
+            raise ValueError("financing rate is missing or non-finite on some dates")
+        rf = np.zeros(n)
+        rf[1:] = rate[:-1] * tau[1:]
+        return rf, tau
+
+    def cash_return(self, cash: float, rf_t: float, tau_t: float) -> float:
+        """Financing return on cash weight ``cash`` over one period."""
+        if cash >= 0:
+            return float(cash * (rf_t - self.lend_spread_bp * 1e-4 * tau_t))
+        return float(cash * (rf_t + self.borrow_spread_bp * 1e-4 * tau_t))
+
+
+def warn_no_financing(where: str) -> None:
+    """Emit :class:`FinancingWarning` for a backtest run without financing."""
+    import warnings
+
+    warnings.warn(f"{where}: financing=None, so cash earns 0 and leverage is free; pass "
+                  "qp_core.stats.Financing(rate=...) for excess-return accounting",
+                  FinancingWarning, stacklevel=3)
 
 
 def pbo_cscv(

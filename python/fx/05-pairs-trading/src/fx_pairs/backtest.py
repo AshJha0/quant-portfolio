@@ -39,6 +39,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 from qp_core.execution import ExecutionConfig
+from qp_core.stats import Financing, warn_no_financing
 
 from . import carry as carry_mod
 from ._validation import finite_series, require_finite
@@ -75,6 +76,17 @@ class BacktestResult:
     beta: pd.Series
     notional: float
     trades: list[Trade] = field(default_factory=list)
+    leg1_pnl: pd.Series | None = None
+    leg2_pnl: pd.Series | None = None
+    financing_pnl: pd.Series | None = None
+    risk_free_pnl: pd.Series | None = None
+
+    @property
+    def excess_pnl(self) -> pd.Series:
+        """P&L over the risk-free return on the posted capital: spot + carry +
+        cost. The FX legs are self-financing, so this is the excess P&L
+        whether or not financing was given; use it for Sharpe (W6d)."""
+        return (self.spot_pnl + self.carry_pnl + self.cost_pnl).rename("excess_pnl")
 
     def decomposition(self) -> dict[str, float]:
         """Cumulative P&L split: spot vs carry vs costs (sums of the ledgers)."""
@@ -109,6 +121,8 @@ def run_backtest(
     carry_method: str = "swap",
     trades: list[Trade] | None = None,
     execution: ExecutionConfig | None = None,
+    financing: Financing | None = None,
+    capital: float | None = None,
 ) -> BacktestResult:
     """Run the daily pairs backtest (see module docstring for accounting).
 
@@ -139,6 +153,21 @@ def run_backtest(
     execution : ExecutionConfig, optional
         Fill convention; default ``ExecutionConfig()`` (next-period modelled
         fill, ``f = 0.5``).
+    financing : qp_core.stats.Financing, optional
+        Rate earned on the posted ``capital`` (W6d). The FX legs are
+        self-financing (carry is in ``carry_pnl``), so financing is the
+        interest on collateral: ``financing_pnl = capital * (rf - lend
+        spread) tau``, added to ``total_pnl``; ``risk_free_pnl = capital *
+        rf``. ``None`` means the capital earns 0 and emits
+        ``FinancingWarning``.
+    capital : float, optional
+        Collateral in units of account; default ``notional``.
+
+    Numeraire: every P&L series is in units of account of the quote
+    currency of the pairs (USD for ``XXXUSD``), per ``notional`` of base.
+    ``leg1_pnl`` and ``leg2_pnl`` split spot + carry + cost by leg. Leg 2
+    is held short, and its series already carries that sign, so
+    ``leg1_pnl + leg2_pnl = total_pnl - financing_pnl``.
 
     Returns
     -------
@@ -196,14 +225,22 @@ def run_backtest(
     spot = np.zeros(n)
     car = np.zeros(n)
     cost = np.zeros(n)
+    leg1 = np.zeros(n)
+    leg2 = np.zeros(n)
     if ex.mode == "close_auction":
         spot[1:] = n1[:-1] * np.diff(lp1) - n2[:-1] * np.diff(lp2)
+        leg1[1:] = n1[:-1] * np.diff(lp1)
+        leg2[1:] = -n2[:-1] * np.diff(lp2)
         if accr1 is not None:
             car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * cast(np.ndarray, accr2)[1:]
+            leg1[1:] += n1[:-1] * accr1[1:]
+            leg2[1:] -= n2[:-1] * cast(np.ndarray, accr2)[1:]
         dn1 = np.abs(np.diff(np.concatenate([[0.0], n1])))
         dn2 = np.abs(np.diff(np.concatenate([[0.0], n2])))
         auc = ex.auction_cost_bp * 1e-4
         cost = -(dn1 * (ps1 / px1 + auc) + dn2 * (ps2 / px2 + auc))
+        leg1 -= dn1 * (ps1 / px1 + auc)
+        leg2 -= dn2 * (ps2 / px2 + auc)
     else:
         f = ex.fill_fraction
         # held before / after the fill inside period t (t = 1..n-1)
@@ -215,15 +252,30 @@ def run_backtest(
         lq1, lq2 = np.log(q1), np.log(q2)
         spot[1:] = (old1 * (lq1 - lp1[:-1]) + new1 * (lp1[1:] - lq1)
                     - old2 * (lq2 - lp2[:-1]) - new2 * (lp2[1:] - lq2))
+        leg1[1:] = old1 * (lq1 - lp1[:-1]) + new1 * (lp1[1:] - lq1)
+        leg2[1:] = -(old2 * (lq2 - lp2[:-1]) + new2 * (lp2[1:] - lq2))
         if accr1 is not None:
             car[1:] = ((f * old1 + (1 - f) * new1) * accr1[1:]
                        - (f * old2 + (1 - f) * new2) * cast(np.ndarray, accr2)[1:])
+            leg1[1:] += (f * old1 + (1 - f) * new1) * accr1[1:]
+            leg2[1:] -= (f * old2 + (1 - f) * new2) * cast(np.ndarray, accr2)[1:]
         cost[1:] = -(np.abs(new1 - old1) * ps1 / q1 + np.abs(new2 - old2) * ps2 / q2)
+        leg1[1:] -= np.abs(new1 - old1) * ps1 / q1
+        leg2[1:] -= np.abs(new2 - old2) * ps2 / q2
 
     spot_pnl = pd.Series(spot * notional, index=index, name="spot_pnl")
     carry_pnl = pd.Series(car * notional, index=index, name="carry_pnl")
     cost_pnl = pd.Series(cost * notional, index=index, name="cost_pnl")
-    total = spot_pnl + carry_pnl + cost_pnl
+    cap = notional if capital is None else float(capital)
+    if financing is None:
+        warn_no_financing("fx_pairs.run_backtest")
+        rf = np.zeros(n)
+        fin = np.zeros(n)
+    else:
+        rf, tau = financing.accruals(index)
+        fin = np.array([financing.cash_return(1.0, rf[t], tau[t]) for t in range(n)])
+    fin_pnl = pd.Series(fin * cap, index=index, name="financing_pnl")
+    total = spot_pnl + carry_pnl + cost_pnl + fin_pnl
     total.name = "total_pnl"
     return BacktestResult(
         positions=pd.Series(pos, index=index, name="position"),
@@ -231,6 +283,10 @@ def run_backtest(
         total_pnl=total, equity=total.cumsum().rename("equity"),
         beta=pd.Series(beta_s, index=index, name="beta"),
         notional=notional, trades=list(trades) if trades else [],
+        leg1_pnl=pd.Series(leg1 * notional, index=index, name="leg1_pnl"),
+        leg2_pnl=pd.Series(leg2 * notional, index=index, name="leg2_pnl"),
+        financing_pnl=fin_pnl,
+        risk_free_pnl=pd.Series(rf * cap, index=index, name="risk_free_pnl"),
     )
 
 

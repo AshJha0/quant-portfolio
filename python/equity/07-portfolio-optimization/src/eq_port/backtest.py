@@ -17,7 +17,9 @@ Mechanics (per day, oldest first; simple returns):
   that day's net return.
 * Between rebalances weights drift:
   ``w_i <- w_i (1 + r_i,t) / (1 + w' r_t)`` (fully-invested convention;
-  a weight sum != 1 is treated as the remainder held in zero-rate cash).
+  a weight sum != 1 is treated as the remainder held in cash, which earns
+  and, when negative, pays the ``financing`` rate; ``financing=None`` keeps
+  the old zero-rate cash and warns).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_core.stats import Financing, warn_no_financing
 
 from .covariance import ledoit_wolf_cc, psd_repair, sample_cov
 from .mvo import max_sharpe_qp, min_variance_constrained
@@ -70,6 +73,16 @@ class BacktestResult:
     weights: pd.DataFrame
     turnover: pd.Series
     costs: pd.Series
+    financing: pd.Series | None = None
+    risk_free: pd.Series | None = None
+
+    @property
+    def excess_returns(self) -> pd.Series:
+        """Net returns minus the risk-free return (net returns when no
+        financing was given). Sharpe ratios should use these."""
+        if self.risk_free is None:
+            return self.net_returns.rename("excess")
+        return (self.net_returns - self.risk_free).rename("excess")
 
     @property
     def total_cost(self) -> float:
@@ -83,6 +96,7 @@ def run_backtest(
     window: int,
     rebalance_every: int = 21,
     cost_bps: float = 0.0,
+    financing: Financing | None = None,
 ) -> BacktestResult:
     """Run a single-strategy walk-forward backtest.
 
@@ -93,7 +107,7 @@ def run_backtest(
     strategy : callable
         Maps the (window, N) estimation DataFrame (strictly past data) to
         an (N,) weight vector. Weights may be levered (sum != 1); the
-        remainder is zero-rate cash.
+        remainder ``1 - sum(w)`` is cash, financed by ``financing``.
     window : int
         Estimation window length in periods (>= 1); the backtest starts
         at row index ``window``.
@@ -102,6 +116,11 @@ def run_backtest(
     cost_bps : float
         One-way proportional cost in basis points applied to two-sided
         turnover (e.g. 10 => 10bp of each dollar traded).
+    financing : qp_core.stats.Financing, optional
+        Rate and spreads for the cash residual (W6d). Each day the drifted
+        cash ``c = 1 - sum(w)`` earns ``c (r - lend spread) tau`` or pays
+        ``c (r + borrow spread) tau``; this is part of ``gross_returns``.
+        ``None`` means zero-rate cash and emits ``FinancingWarning``.
 
     Returns
     -------
@@ -123,6 +142,13 @@ def run_backtest(
 
     r = returns.to_numpy(dtype=float)
     idx = returns.index
+    if financing is None:
+        warn_no_financing("eq_port.run_backtest")
+        rf_all = np.zeros(t_total)
+        tau_all = np.zeros(t_total)
+    else:
+        rf_all, tau_all = financing.accruals(idx)
+    fin = np.zeros(t_total - window)
     cost_rate = cost_bps / 1e4
 
     net = np.empty(t_total - window)
@@ -151,10 +177,12 @@ def run_backtest(
             reb_weights.append(w.copy())
             reb_turnover.append(turnover)
             reb_costs.append(cost_today)
-        g = float(w @ r[t])
+        if financing is not None:
+            fin[k] = financing.cash_return(1.0 - float(w.sum()), rf_all[t], tau_all[t])
+        g = float(w @ r[t]) + fin[k]
         gross[k] = g
         net[k] = g - cost_today
-        # drift weights with realised returns (cash residual has zero return)
+        # drift weights with realised returns (cash earns fin[k])
         w = w * (1.0 + r[t]) / (1.0 + g)
 
     span = idx[window:]
@@ -165,6 +193,8 @@ def run_backtest(
         weights=pd.DataFrame(reb_weights, index=reb_idx, columns=returns.columns),
         turnover=pd.Series(reb_turnover, index=reb_idx, name="turnover"),
         costs=pd.Series(reb_costs, index=reb_idx, name="cost"),
+        financing=pd.Series(fin, index=span, name="financing"),
+        risk_free=pd.Series(rf_all[window:], index=span, name="risk_free"),
     )
 
 

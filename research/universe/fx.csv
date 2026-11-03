@@ -1,0 +1,39 @@
+ccy,first,last,regime,reason,source
+USD,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+JPY,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+GBP,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+CHF,1999-01-04,,float,"ECB reference rate since the euro launch; EUR/CHF floor 2011-09-06 to 2015-01-15 (report with and without)",SNB press releases 2011-09-06 and 2015-01-15
+SEK,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+NOK,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+DKK,1999-01-04,,peg,ERM II central rate 7.46038 per EUR,ECB ERM II central rates
+AUD,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+CAD,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+NZD,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+HKD,1999-01-04,,peg,Linked exchange rate to USD since 1983,Hong Kong Monetary Authority
+SGD,1999-01-04,,float,"Managed float (MAS policy band)",Monetary Authority of Singapore
+KRW,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+ZAR,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+CZK,1999-01-04,,float,"EUR/CZK floor 2013-11-07 to 2017-04-06 (report with and without)",Czech National Bank press releases
+HUF,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+PLN,1999-01-04,,float,ECB reference rate since the euro launch,ECB euro foreign exchange reference rates
+SIT,1999-01-04,2006-12-29,peg,Euro adoption 2007-01-01 (last business day kept),ECB: Slovenia joins the euro area
+CYP,1999-01-04,2007-12-31,peg,Euro adoption 2008-01-01,ECB: Cyprus joins the euro area
+MTL,1999-01-04,2007-12-31,peg,Euro adoption 2008-01-01,ECB: Malta joins the euro area
+SKK,1999-01-04,2008-12-31,peg,Euro adoption 2009-01-01,ECB: Slovakia joins the euro area
+EEK,1999-01-04,2010-12-31,peg,Euro adoption 2011-01-01; currency board to EUR before,ECB: Estonia joins the euro area
+LVL,1999-01-04,2013-12-31,peg,Euro adoption 2014-01-01,ECB: Latvia joins the euro area
+LTL,1999-01-04,2014-12-31,peg,Euro adoption 2015-01-01; currency board to EUR before,ECB: Lithuania joins the euro area
+HRK,auto,2022-12-30,peg,Euro adoption 2023-01-01; ERM II from 2020-07-10,ECB: Croatia joins the euro area
+BGN,auto,,peg,Currency board to EUR at 1.95583,Bulgarian National Bank
+RUB,auto,2022-03-01,float,ECB suspended the RUB reference rate from 2022-03-02,ECB press release 2022-03-01
+TRY,auto,,float,Redenominated 2005-01-01; first ECB TRY observation read from the data,ECB euro foreign exchange reference rates
+RON,auto,,float,Redenominated 2005-07-01; first ECB RON observation read from the data,ECB euro foreign exchange reference rates
+CNY,auto,,peg,"Managed against a basket since 2005-07-21; USD peg before (report with and without)",People's Bank of China
+IDR,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+MYR,auto,,float,"USD peg 1998-09 to 2005-07-21 (report with and without)",Bank Negara Malaysia
+PHP,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+THB,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+BRL,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+MXN,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+INR,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates
+ILS,auto,,float,First ECB observation read from the data,ECB euro foreign exchange reference rates

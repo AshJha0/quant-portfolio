@@ -29,6 +29,7 @@ from .cointegration import (
     hedge_ratio,
     mackinnon_crit,
 )
+from .kalman import KalmanHedgeResult, kalman_hedge_ratio
 from .metrics import (
     avg_holding_period,
     cost_drag,
@@ -77,6 +78,7 @@ __all__ = [
     "CostModel",
     "EGResult",
     "ExecutionConfig",
+    "KalmanHedgeResult",
     # spread
     "OUFit",
     "PairResult",
@@ -101,6 +103,7 @@ __all__ = [
     "half_life_from_kappa",
     "hedge_ratio",
     "hit_rate",
+    "kalman_hedge_ratio",
     "log_returns",
     "mackinnon_crit",
     "max_drawdown",
