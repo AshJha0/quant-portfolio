@@ -4352,7 +4352,7 @@ does not need that.)
 
 <details><summary>Answer</summary>
 
-`macaulay_duration` in `fi_rates/risk.py` computes `D_mac = (1/P) * sum(t_i * cf_i * (1+y/m)^(-exp_i))`,
+`macaulay_duration` in `fi_rates/risk/__init__.py` computes `D_mac = (1/P) * sum(t_i * cf_i * (1+y/m)^(-exp_i))`,
 the present-value-weighted average time (in years) until each cashflow is
 received. It is a time measure, not a price-sensitivity measure by itself: the
 docstring notes it equals the weighted average cashflow time, and the test
@@ -4431,7 +4431,7 @@ magic-number check) across the whole shock grid so the sign relationship,
 dur+conv always closer than dur-only for a positive-convexity bond, is what's
 actually tested.
 
-Source: `python/equity/04-fixed-income/docs/VALIDATION.md` (the ±200bp rows) and `python/equity/04-fixed-income/src/fi_rates/risk.py` (`pnl_approximation_table`).
+Source: `python/equity/04-fixed-income/docs/VALIDATION.md` (the ±200bp rows) and `python/equity/04-fixed-income/src/fi_rates/risk/__init__.py` (`pnl_approximation_table`).
 
 </details>
 

@@ -65,14 +65,17 @@ def lines() -> list[str]:
     return out
 
 
-def _tok_equal(a: str, b: str, rtol: float) -> bool:
+def _tok_equal(a: str, b: str, rtol: float, atol: float = 1e-11) -> bool:
     if a == b:
         return True
     try:
         x, y = float(a), float(b)
     except ValueError:
         return False
-    return abs(x - y) <= rtol * max(abs(x), abs(y), 1e-300)
+    # Same rule as rust/core/tests/exotics_parity.rs: 1e-12 relative, floored
+    # at 1e-11 absolute (prices on a 100 notional; zeros like a knocked-out
+    # barrier come out as 0.0 or 1e-17 depending on libm).
+    return abs(x - y) <= max(rtol * max(abs(x), abs(y)), atol)
 
 
 def same_records(got: list[str], want: list[str], rtol: float = 1e-12) -> bool:
@@ -95,5 +98,10 @@ def same_records(got: list[str], want: list[str], rtol: float = 1e-12) -> bool:
 if __name__ == "__main__":
     text = "\n".join(lines()) + "\n"
     if "--check" in sys.argv:
-        sys.exit(0 if same_records(text.splitlines(), GOLDEN.read_text().splitlines()) else 1)
+        got, want = text.splitlines(), GOLDEN.read_text().splitlines()
+        if not same_records(got, want):
+            bad = [(g, w) for g, w in zip(got, want, strict=False) if not same_records([g], [w])]
+            print(f"{len(got)} vs {len(want)} lines; first mismatches: {bad[:5]}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
     GOLDEN.write_text(text, newline="\n")
