@@ -56,6 +56,7 @@ pub mod holidays;
 pub mod iv;
 pub mod linalg;
 pub mod par;
+pub mod path_rng;
 pub mod philox;
 pub mod pool;
 pub mod quantile;

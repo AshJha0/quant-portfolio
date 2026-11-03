@@ -21,8 +21,6 @@
 //! The caller validates inputs and handles `T = 0`, `sigma = 0`, `S = 0`
 //! and `K = 0` under its own documented policy.
 
-use std::cell::Cell;
-
 /// Why [`crr_lattice`] produced no value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CrrError {
@@ -50,7 +48,9 @@ pub enum CrrError {
 #[derive(Debug, Clone, Default)]
 pub struct CrrWorkspace {
     values: Vec<f64>,
+    next: Vec<f64>,
     exercise_value: Vec<f64>,
+    exercise_odd: Vec<f64>,
 }
 
 impl CrrWorkspace {
@@ -64,7 +64,9 @@ impl CrrWorkspace {
     pub fn with_steps(n_steps: usize) -> Self {
         Self {
             values: Vec::with_capacity(n_steps + 1),
-            exercise_value: Vec::with_capacity(2 * n_steps + 1),
+            next: Vec::with_capacity(n_steps + 1),
+            exercise_value: Vec::with_capacity(n_steps + 1),
+            exercise_odd: Vec::with_capacity(n_steps),
         }
     }
 }
@@ -115,52 +117,135 @@ pub fn crr_lattice(
     // work. The European tree needs only the terminal layer.
     let log_s = s.ln();
     let n_f = n_steps as f64;
-    resize_buf(&mut ws.values, n_steps + 1);
+    let n = n_steps;
+    // Exercise values phi (S u^m - K), m = idx - n, split by index parity so
+    // that step i reads a contiguous run (node j of step i sits at
+    // idx = (n - i) + 2 j, whose parity is fixed within the step). The
+    // induction double-buffers, so the inner loop has no loop-carried
+    // dependency or stride and vectorises; the arithmetic per node is
+    // unchanged (pu V_up + pd V_down, then max with exercise).
+    let ex_at = |idx: usize| sign * ((log_s + (idx as f64 - n_f) * log_u).exp() - k);
+    resize_buf(&mut ws.values, n + 1);
+    resize_buf(&mut ws.next, n + 1);
     if american {
-        resize_buf(&mut ws.exercise_value, 2 * n_steps + 1);
-        for (idx, e) in ws.exercise_value.iter_mut().enumerate() {
-            let m = idx as f64 - n_f;
-            *e = sign * ((log_s + m * log_u).exp() - k);
-        }
-        for (v, e) in ws
-            .values
-            .iter_mut()
-            .zip(ws.exercise_value.iter().step_by(2))
-        {
+        ws.exercise_value.clear();
+        ws.exercise_value.extend((0..=n).map(|h| ex_at(2 * h)));
+        ws.exercise_odd.clear();
+        ws.exercise_odd.extend((0..n).map(|h| ex_at(2 * h + 1)));
+        for (v, e) in ws.values.iter_mut().zip(ws.exercise_value.iter()) {
             *v = e.max(0.0);
         }
     } else {
         for (j, v) in ws.values.iter_mut().enumerate() {
-            let m = (2 * j) as f64 - n_f;
-            *v = (sign * ((log_s + m * log_u).exp() - k)).max(0.0);
+            *v = ex_at(2 * j).max(0.0);
         }
     }
 
-    let values = Cell::from_mut(ws.values.as_mut_slice()).as_slice_of_cells();
-    for i in (0..n_steps).rev() {
-        // Nodes 0..=i of step i read nodes j and j + 1 of step i + 1.
-        let Some(layer) = values.get(..i + 2) else {
-            debug_assert!(false, "values shorter than n_steps + 1");
-            return Err(CrrError::NonFinite);
-        };
+    for i in (0..n).rev() {
+        let m = i + 1;
+        let cur = ws.values.get(..m + 1).unwrap_or(&[]);
+        let nxt = ws.next.get_mut(..m).unwrap_or(&mut []);
+        let lo = cur.get(..m).unwrap_or(&[]);
+        let hi = cur.get(1..).unwrap_or(&[]);
         if american {
-            let offset = n_steps - i; // index of m = -i
-            let Some(ex) = ws.exercise_value.get(offset..) else {
-                debug_assert!(false, "exercise values shorter than 2 n_steps + 1");
-                return Err(CrrError::NonFinite);
+            let offset = n - i; // index of m = -i
+            let ex = if offset.is_multiple_of(2) {
+                ws.exercise_value.get(offset / 2..).unwrap_or(&[])
+            } else {
+                ws.exercise_odd.get(offset / 2..).unwrap_or(&[])
             };
-            for (w, &e) in layer.windows(2).zip(ex.iter().step_by(2)) {
-                let v = pu * w[1].get() + pd * w[0].get();
-                w[0].set(v.max(e));
+            let ex = ex.get(..m).unwrap_or(&[]);
+            debug_assert!(nxt.len() == m && ex.len() == m);
+            for (((o, &a), &b), &e) in nxt.iter_mut().zip(lo).zip(hi).zip(ex) {
+                *o = (pu * b + pd * a).max(e);
             }
         } else {
-            for w in layer.windows(2) {
-                w[0].set(pu * w[1].get() + pd * w[0].get());
+            for ((o, &a), &b) in nxt.iter_mut().zip(lo).zip(hi) {
+                *o = pu * b + pd * a;
             }
         }
+        std::mem::swap(&mut ws.values, &mut ws.next);
     }
+    let values = &ws.values;
     match values.first() {
-        Some(v) if v.get().is_finite() => Ok(v.get()),
+        Some(&v) if v.is_finite() => Ok(v),
         _ => Err(CrrError::NonFinite),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The in-place lattice this module used before the double-buffered
+    /// rewrite (Round 8 perf fix): spot `exp(ln S + m ln u)`, then
+    /// `V_j <- max(pu V_{j+1} + pd V_j, exercise)` in place.
+    #[allow(clippy::too_many_arguments, clippy::indexing_slicing)]
+    fn reference(
+        s: f64,
+        k: f64,
+        t: f64,
+        r: f64,
+        q: f64,
+        sigma: f64,
+        sign: f64,
+        american: bool,
+        n: usize,
+    ) -> f64 {
+        let dt = t / (n as f64);
+        let log_u = sigma * dt.sqrt();
+        let u = log_u.exp();
+        let d = 1.0 / u;
+        let p = (((r - q) * dt).exp() - d) / (u - d);
+        let disc = (-r * dt).exp();
+        let (pu, pd) = (disc * p, disc * (1.0 - p));
+        let log_s = s.ln();
+        let ex: Vec<f64> = (0..=2 * n)
+            .map(|idx| sign * ((log_s + (idx as f64 - n as f64) * log_u).exp() - k))
+            .collect();
+        let mut v: Vec<f64> = (0..=n).map(|j| ex[2 * j].max(0.0)).collect();
+        for i in (0..n).rev() {
+            for j in 0..=i {
+                let c = pu * v[j + 1] + pd * v[j];
+                v[j] = if american {
+                    c.max(ex[n - i + 2 * j])
+                } else {
+                    c
+                };
+            }
+        }
+        v[0]
+    }
+
+    #[test]
+    fn double_buffered_lattice_is_bit_identical_to_in_place_reference() {
+        let mut ws = CrrWorkspace::new();
+        let mut checked = 0;
+        for &s in &[50.0, 90.0, 100.0, 110.0, 250.0] {
+            for &sigma in &[0.05, 0.2, 0.6] {
+                for &(r, q) in &[(0.05, 0.02), (0.0, 0.0), (0.01, 0.07), (-0.005, 0.03)] {
+                    for &n in &[1usize, 2, 3, 17, 100, 501] {
+                        for &sign in &[1.0, -1.0] {
+                            for &american in &[false, true] {
+                                let got = crr_lattice(
+                                    s, 100.0, 0.75, r, q, sigma, sign, american, n, &mut ws,
+                                );
+                                let want =
+                                    reference(s, 100.0, 0.75, r, q, sigma, sign, american, n);
+                                if let Ok(g) = got {
+                                    assert_eq!(
+                                        g.to_bits(),
+                                        want.to_bits(),
+                                        "s={s} sigma={sigma} r={r} q={q} n={n} sign={sign} am={american}"
+                                    );
+                                    checked += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(checked > 1400, "{checked}");
     }
 }

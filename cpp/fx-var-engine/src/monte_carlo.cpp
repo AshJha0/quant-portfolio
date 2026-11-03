@@ -9,6 +9,8 @@
 #include "fxvar/expected_shortfall.hpp"
 #include "fxvar/kernels.hpp"
 #include "fxvar/stats.hpp"
+#include "path_sim.hpp"
+#include "qp/path_rng.hpp"
 #include "qp/rng.hpp"
 
 namespace fxvar {
@@ -91,6 +93,12 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov, std::size_t n_scenar
     for (const auto& [f, s] : jumps.stdev)
       if (!(s >= 0.0) || !std::isfinite(s))
         throw std::invalid_argument("jump stdev for " + f + " must be finite and >= 0");
+    const double lam_h = -std::log1p(-jumps.prob) * horizon_days;
+    if (lam_h > 700.0) {
+      std::ostringstream msg;
+      msg << "Poisson jump mean lam * h = " << lam_h << " is too large";
+      throw std::invalid_argument(msg.str());
+    }
   }
 
   Matrix a = cov.cov;
@@ -99,7 +107,6 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov, std::size_t n_scenar
   CholeskyResult chol = cholesky(a, repair);
   if (diag) *diag = chol;
 
-  Rng rng(seed);
   ReturnsMatrix out;
   out.factors = cov.factors;
   out.data = Matrix(n_scenarios, k);
@@ -123,34 +130,15 @@ ReturnsMatrix simulate_factor_returns(const FactorCov& cov, std::size_t n_scenar
     }
   }
 
-  std::vector<double> z(k);
   // Poisson jump count over the horizon: lam = -ln(1 - p) per day.
   const double jump_mu = (dist == McDist::kJump) ? -std::log1p(-jumps.prob) * horizon_days : 0.0;
   const double t_scale = (dist == McDist::kStudentT) ? std::sqrt((df - 2.0) / df) : 1.0;
-  for (std::size_t s = 0; s < n_scenarios; ++s) {
-    for (std::size_t j = 0; j < k; ++j) z[j] = rng.normal();
-    double* row = out.data.row(s);
-    // x = L z (lower-triangular product).
-    for (std::size_t i = 0; i < k; ++i) {
-      const double* li = chol.lower.row(i);
-      double acc = 0.0;
-      for (std::size_t j = 0; j <= i; ++j) acc += li[j] * z[j];
-      row[i] = acc;
-    }
-    if (dist == McDist::kStudentT) {
-      const double w = rng.chisq(df) / df;
-      const double m = t_scale / std::sqrt(w);
-      for (std::size_t i = 0; i < k; ++i) row[i] *= m;
-    } else if (dist == McDist::kJump) {
-      const long n_jumps = rng.poisson(jump_mu);
-      for (long q = 0; q < n_jumps; ++q) {
-        for (std::size_t j = 0; j < jump_col.size(); ++j) {
-          const double zj = (jump_std[j] > 0.0) ? rng.normal() : 0.0;
-          row[jump_col[j]] += jump_mean[j] + jump_std[j] * zj;
-        }
-      }
-    }
-  }
+  // Scenario s reads only its own Philox stream (seed, s), so the rows are
+  // independent and the result does not depend on evaluation order.
+  for (std::size_t s = 0; s < n_scenarios; ++s)
+    detail::simulate_path(chol.lower.row(0), k, dist, df, t_scale, jump_mu, jump_col.data(),
+                          jump_mean.data(), jump_std.data(), jump_col.size(), seed, s,
+                          out.data.row(s));
   return out;
 }
 
@@ -175,11 +163,13 @@ double var_standard_error_bootstrap(const std::vector<double>& pnl, double alpha
   // same length: calling empirical_var per resample reuses that exact
   // order-statistic rule (see expected_shortfall.cpp's make_tail) rather
   // than re-deriving it here.
-  Rng rng(seed);
+  // Resample b draws its n indices from its own Philox stream (seed, b)
+  // (W4(b)), as the equity engine and the Rust twin do.
   std::vector<double> resample(n);
   std::vector<double> ws(n);  // selection buffer, reused by every replicate
   std::vector<double> boot_vars(n_boot);
   for (std::size_t b = 0; b < n_boot; ++b) {
+    qp::PathRng rng(seed, b);
     for (std::size_t i = 0; i < n; ++i) {
       const auto idx = static_cast<std::size_t>(rng.uniform() * static_cast<double>(n));
       resample[i] = pnl[std::min(idx, n - 1)];

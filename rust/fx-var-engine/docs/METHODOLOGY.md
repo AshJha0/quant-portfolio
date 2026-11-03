@@ -126,8 +126,11 @@ repairs exist but the MC path never applies them on its own.
   6.220960574271784e-16), and `norm_cdf(-10)` was 0 and is now 7.62e-24.
   At the alphas the engine uses (0.001 to 0.05) values moved by at most
   4.8e-14 relative (CHANGELOG, milestone v2.1).
-- **RNG**: xoshiro256++ with the shared inverse normal CDF from
-  `qp_core::stats`. The FX engine has not moved to the per-path Philox
-  streams that the equity engine uses. The stream
-  differs from the C++ engine's `mt19937_64` and from NumPy's, so
-  cross-engine MC agreement is statistical.
+- **RNG**: scenario `s` draws from Philox4x32-10 stream `(seed, s)`
+  (Salmon et al., SC '11) with Wichura's AS 241 normals
+  (`qp_core::path_rng`): the `k` factor normals, then the Student-t
+  chi-square or the Poisson jump count and one normal per jump factor.
+  Bootstrap resample `b` reads stream `(seed ^ 0x9E3779B97F4A7C15, b)`.
+  Results are the same bits on any thread count and match the C++ engine
+  bit for bit on the same libm; NumPy's stream differs, so agreement with
+  Python is statistical.

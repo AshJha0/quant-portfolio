@@ -56,8 +56,7 @@ cargo run --release --locked -p fx-var-engine --bin bench -- --out /tmp/bench.js
 The tests are 71 unit, 62 integration and 8 doc tests. Without `--out`
 the bench writes `bench/results.json` in this crate.
 
-The special functions and moments (`qp_core::stats`), the xoshiro256++
-stream, the Acklam guess, the Cholesky kernel and the
+The special functions and moments (`qp_core::stats`), the per-path Philox stream with AS 241 normals (`path_rng`), the Acklam guess, the Cholesky kernel and the
 fixed-chunk thread helper come from the workspace's [`qp-core`](../core)
 crate (std only).
 

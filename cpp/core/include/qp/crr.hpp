@@ -58,7 +58,13 @@ double crr_induct(double* values, const double* exercise_value, std::size_t n, d
         const std::size_t offset = n - i;  // index of m = -i
         for (std::size_t j = 0; j <= i; ++j) {
             double cont = pu * values[j + 1] + pd * values[j];
-            if constexpr (American) cont = std::fmax(cont, exercise_value[offset + 2 * j]);
+            if constexpr (American) {
+                // A plain compare, not std::fmax: fmax's NaN rule makes GCC
+                // emit a libm call per node (5x slower at n = 1000). Values
+                // are finite here, where the two agree bit for bit.
+                const double ex = exercise_value[offset + 2 * j];
+                cont = cont < ex ? ex : cont;
+            }
             values[j] = cont;
         }
     }
