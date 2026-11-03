@@ -26,6 +26,7 @@
 #   py data      python/data (qp-data) on Python 3.11 to 3.13, recorded responses
 #   learning     docs/notebooks and career-prep tests; nbmake on the solutions
 #   cookbook     every docs/COOKBOOK.md recipe run, quoted output checked
+#   recorder     tools/recorder tests; C++ and Rust replay required
 #   quantlib     the QuantLib cross-checks (Hull-White, ISDA CDS, Heston) against
 #                QuantLib from hash-locked wheels; any skip fails
 #   api diff     griffe public-API diff against the base commit (pull requests;
@@ -1065,6 +1066,37 @@ jobs:
       - name: pytest tests/test_cookbook.py
         run: python -m pytest -p no:cacheprovider -ra tests/test_cookbook.py
 
+  # tools/recorder: offline recorder tests plus the live-replay parity check,
+  # which builds the C++ (g++) and Rust (cargo) replayers. With
+  # QP_RECORDER_REQUIRE_TOOLCHAINS=1 a missing toolchain fails instead of
+  # skipping. ubuntu-24.04 ships g++ and a stable cargo.
+  recorder:
+    name: recorder (tools/recorder, C++ and Rust replay)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install pytest, hypothesis and websockets (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group test --group recorder
+      - name: g++ and cargo are on PATH
+        run: g++ --version && cargo --version
+      - name: pytest tools/recorder/tests
+        env:
+          QP_RECORDER_REQUIRE_TOOLCHAINS: "1"
+        run: python -m pytest -p no:cacheprovider -ra tools/recorder/tests
+
   # Rust crates outside the engine matrix: the ULL stack (ring, QPBF, L3
   # book, bench harness, crypto feed handler, gateway), AAD and the dated
   # curve bootstrap. One job, one build cache; loom model-checks the ring.
@@ -1379,6 +1411,7 @@ jobs:
       - python-data
       - learning
       - cookbook
+      - recorder
       - quantlib
       - api-diff
       - hygiene
