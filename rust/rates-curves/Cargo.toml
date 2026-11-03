@@ -1,0 +1,14 @@
+[package]
+name = "qp-rates-curves"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Dated OIS, multi-curve and cross-currency curve bootstrap (W13b): the Rust port of fi_rates.bootstrap / multicurve and fx_rates.xccy, checked against the same QuantLib fixture. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_rates_curves"
+path = "src/lib.rs"
+
+[dependencies]

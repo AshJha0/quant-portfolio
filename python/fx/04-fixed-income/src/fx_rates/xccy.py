@@ -44,7 +44,10 @@ was worth -2,377.82 USD instead of zero.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 from scipy.optimize import brentq
@@ -55,9 +58,15 @@ from .fxforward import MarketState
 __all__ = [
     "BasisSwap",
     "CrossCurrencySwap",
+    "XccyBasisQuote",
+    "XccyBootstrapResult",
+    "XccyCurve",
+    "XccyFloatPeriod",
+    "bootstrap_xccy_discount",
     "solve_par_basis",
     "solve_par_rate_base",
     "solve_par_rate_quote",
+    "xccy_basis_residual",
 ]
 
 
@@ -363,3 +372,217 @@ def solve_par_basis(
             f"(PV({-bracket_bp}bp)={flo:.2f}, PV({bracket_bp}bp)={fhi:.2f})"
         )
     return float(brentq(pv, lo, hi, xtol=1e-16, rtol=8.9e-16))
+
+
+# ---------------------------------------------------------------------------
+# Dated cross-currency curve building (W13b)
+# ---------------------------------------------------------------------------
+#
+# Plain idea. A EUR cash flow paid under a USD collateral agreement is not
+# worth the same as one discounted on the EUR OIS curve: the market price of
+# swapping EUR funding into USD funding, the cross-currency basis, says how
+# much less. We build that "EUR in USD collateral" discount curve so that the
+# quoted constant-notional EURUSD float/float basis swaps are worth zero.
+#
+# Formal statement (Fujii, Shimada and Takahashi 2010, "A note on
+# construction of multiple swap curves with and without collateral", sec. 4;
+# Henrard 2014, ch. 7). Per unit of each notional, with notional exchanges at
+# the start s0 and end eN, the foreign leg is
+#
+#   V_f = -X(s0) + sum_j (F_j + q) tau_j X(p_j) + X(eN),
+#   F_j tau_j = P_f(s_j)/P_f(e_j) - 1,
+#
+# with X the curve being built, P_f the foreign projection (OIS) curve and q
+# the quoted basis on the foreign leg; the domestic leg V_d is the same with
+# the domestic curve D in place of X and P_f and no spread. Spot-starting at
+# the spot rate S, the swap is at par when
+#
+#   V_f / X(s0) = V_d / D(s0),
+#
+# independent of the notionals. Each quote adds the pillar eN (or its last
+# payment day) and the pillar's log discount factor is solved by the same
+# bisection on [ln 1e-8, ln 20] as ``fi_rates.bootstrap.bootstrap_dated``;
+# the curve is log-linear in t = days/365 with the last forward held flat.
+# The fx package does not depend on fi_rates, so the 40-line curve and the
+# bisection are repeated here; the Rust and C++ ports share one copy each.
+#
+# Worked example: the ``eur_xccy`` block of
+# ``python/equity/04-fixed-income/tests/data/dated_bootstrap_usd.txt``,
+# written by QuantLib 1.44's ConstNotionalCrossCurrencyBasisSwapRateHelper;
+# at -20 bp over 10 years the EUR-in-USD 10Y discount factor is QuantLib's
+# to 1e-12 (``tests/test_xccy_bootstrap.py``).
+
+
+_LN_DF_LO = math.log(1e-8)
+_LN_DF_HI = math.log(20.0)
+_DAYS_PER_YEAR = 365.0
+
+
+class DfSource(Protocol):
+    def df(self, day: float) -> float: ...
+
+
+class XccyCurve:
+    """Discount curve on integer day pillars, log-linear in t = days/365,
+    flat forward beyond the last pillar (same rule as
+    ``fi_rates.bootstrap.DatedCurve``)."""
+
+    __slots__ = ("_t", "_x", "days", "dfs")
+
+    def __init__(self, days: Sequence[int], dfs: Sequence[float]) -> None:
+        if len(days) == 0 or len(days) != len(dfs):
+            raise ValueError("days and dfs must be non-empty and of equal length")
+        prev = 0
+        for d in days:
+            if int(d) != d or d <= prev:
+                raise ValueError("pillar days must be integers, positive and strictly increasing")
+            prev = int(d)
+        for x in dfs:
+            if not (math.isfinite(x) and x > 0.0):
+                raise ValueError(f"discount factors must be finite and positive, got {x}")
+        self.days = tuple(int(d) for d in days)
+        self.dfs = tuple(float(x) for x in dfs)
+        self._t = [0.0] + [d / _DAYS_PER_YEAR for d in self.days]
+        self._x = [0.0] + [math.log(x) for x in self.dfs]
+
+    def df(self, day: float) -> float:
+        if not day >= 0.0:
+            raise ValueError(f"day must be >= 0, got {day}")
+        t = day / _DAYS_PER_YEAR
+        ts, xs = self._t, self._x
+        n = len(ts) - 1
+        if t >= ts[n]:
+            slope = (xs[n] - xs[n - 1]) / (ts[n] - ts[n - 1])
+            return math.exp(xs[n] + slope * (t - ts[n]))
+        lo, hi = 0, n
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            if ts[mid] <= t:
+                lo = mid
+            else:
+                hi = mid
+        w = (t - ts[lo]) / (ts[hi] - ts[lo])
+        return math.exp(xs[lo] + w * (xs[hi] - xs[lo]))
+
+
+@dataclass(frozen=True)
+class XccyFloatPeriod:
+    """Float coupon projected on ``[start, end]``, paid on ``pay`` (days)."""
+
+    start: int
+    end: int
+    pay: int
+    accrual: float
+
+
+@dataclass(frozen=True)
+class XccyBasisQuote:
+    """Constant-notional float/float basis swap, spread ``basis`` on the
+    foreign leg, notionals exchanged on ``start`` and ``end`` (days)."""
+
+    basis: float
+    start: int
+    end: int
+    foreign: tuple[XccyFloatPeriod, ...]
+    domestic: tuple[XccyFloatPeriod, ...]
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        require_finite(basis=self.basis)
+        if not (0 <= self.start < self.end) or not self.foreign or not self.domestic:
+            raise ValueError(f"bad basis quote {self.label!r}")
+        for p in (*self.foreign, *self.domestic):
+            if not (0 <= p.start < p.end) or p.pay < 0 or not p.accrual > 0:
+                raise ValueError(f"bad period {p!r} in {self.label!r}")
+
+    @property
+    def pillar(self) -> int:
+        return max(self.end, *(p.pay for p in self.foreign))
+
+
+def _leg_value(periods: Sequence[XccyFloatPeriod], spread: float, start: int, end: int,
+               disc: DfSource, proj: DfSource) -> tuple[float, float]:
+    """(value per unit notional incl. exchanges, annuity), both undivided."""
+    v = -disc.df(start) + disc.df(end)
+    ann = 0.0
+    for p in periods:
+        d = disc.df(p.pay)
+        v += d * (proj.df(p.start) / proj.df(p.end) - 1.0 + spread * p.accrual)
+        ann += p.accrual * d
+    return v, ann
+
+
+def xccy_basis_residual(q: XccyBasisQuote, foreign_discount: DfSource,
+                        foreign_projection: DfSource, domestic: DfSource) -> float:
+    """Par condition error in spread units: ``(V_f/X(s0) - V_d/D(s0)) / A_f``."""
+    vf, af = _leg_value(q.foreign, q.basis, q.start, q.end, foreign_discount, foreign_projection)
+    vd, _ = _leg_value(q.domestic, 0.0, q.start, q.end, domestic, domestic)
+    x0, d0 = foreign_discount.df(q.start), domestic.df(q.start)
+    return (vf / x0 - vd / d0) / (af / x0)
+
+
+def _bisect(f: Callable[[float], float]) -> tuple[float, int]:
+    lo, hi = _LN_DF_LO, _LN_DF_HI
+    flo, fhi = f(lo), f(hi)
+    if not (math.isfinite(flo) and math.isfinite(fhi)) or (flo > 0) == (fhi > 0):
+        raise ValueError(f"no sign change on the bracket (f(lo)={flo:.3e}, f(hi)={fhi:.3e})")
+    it = 0
+    while it < 200:
+        mid = 0.5 * (lo + hi)
+        if mid <= lo or mid >= hi:
+            break
+        it += 1
+        fm = f(mid)
+        if fm == 0.0:
+            return mid, it
+        if (fm > 0) == (flo > 0):
+            lo, flo = mid, fm
+        else:
+            hi, fhi = mid, fm
+    return (lo if abs(flo) <= abs(fhi) else hi), it
+
+
+@dataclass(frozen=True)
+class XccyBootstrapResult:
+    curve: XccyCurve
+    residuals: tuple[float, ...]  # spread units, in pillar order
+    iterations: tuple[int, ...]
+
+    @property
+    def max_abs_residual(self) -> float:
+        return max(abs(r) for r in self.residuals)
+
+
+def bootstrap_xccy_discount(quotes: Sequence[XccyBasisQuote], foreign_projection: DfSource,
+                            domestic: DfSource) -> XccyBootstrapResult:
+    """Foreign-currency discount curve under domestic collateral.
+
+    ``foreign_projection`` is the foreign OIS (or index) curve the foreign
+    coupons are projected on; ``domestic`` is the collateral currency's OIS
+    curve. Quotes are sorted by pillar; duplicates raise. With every basis
+    zero and a domestic leg at par, the result reproduces the foreign
+    projection curve on the pillars (tested).
+    """
+    if not quotes:
+        raise ValueError("no basis quotes supplied")
+    ordered = sorted(quotes, key=lambda q: q.pillar)
+    for a, b in zip(ordered, ordered[1:], strict=False):
+        if a.pillar == b.pillar:
+            raise ValueError(f"quotes {a.label!r} and {b.label!r} share pillar day {a.pillar}")
+    days: list[int] = []
+    dfs: list[float] = []
+    its: list[int] = []
+    for q in ordered:
+        def f(x: float, _q: XccyBasisQuote = q) -> float:
+            trial = XccyCurve([*days, _q.pillar], [*dfs, math.exp(x)])
+            return xccy_basis_residual(_q, trial, foreign_projection, domestic)
+        try:
+            x, n = _bisect(f)
+        except ValueError as exc:
+            raise ValueError(f"xccy bootstrap failed at {q.label or q.pillar}: {exc}") from exc
+        days.append(q.pillar)
+        dfs.append(math.exp(x))
+        its.append(n)
+    curve = XccyCurve(days, dfs)
+    res = tuple(xccy_basis_residual(q, curve, foreign_projection, domestic) for q in ordered)
+    return XccyBootstrapResult(curve, res, tuple(its))
