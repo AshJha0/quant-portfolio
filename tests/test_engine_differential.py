@@ -106,13 +106,21 @@ def _sides(is_call):
 @pytest.mark.parametrize("engine", COMPILED)
 def test_eq_options_10k(engine):
     S, K, T, r, q, sigma, is_call = _contracts(101)
-    got = eq_engine.bs_price_batch(S, K, T, r, sigma, q, is_call, engine=engine)
+    got = eq_engine.bs_price_batch(S, K, T, r, sigma, q, is_call, engine=engine, exact=True)
+    # The default C++ batch is the throughput kernel, documented within
+    # 1e-13 * max(1, S, K) of the exact price (eqopt/batch.hpp); Rust has
+    # only the exact batch, so its default must be bit-equal as well.
+    fast = eq_engine.bs_price_batch(S, K, T, r, sigma, q, is_call, engine=engine)
     n_iv = 0
     for i, side in enumerate(_sides(is_call)):
         a = (S[i], K[i], T[i], r[i], sigma[i], q[i], side)
         ref = eq_engine.bs_price(*a)
         assert abs(got[i] - ref) <= _closed_form_tol(S[i], K[i], T[i], r[i], q[i], sigma[i], ref), a
-        assert eq_engine.bs_price(*a, engine=engine) == got[i]  # batch == scalar
+        assert eq_engine.bs_price(*a, engine=engine) == got[i]  # exact batch == scalar
+        if engine == "cpp":
+            assert abs(fast[i] - got[i]) <= 1e-13 * max(1.0, S[i], K[i]), a
+        else:
+            assert fast[i] == got[i], a
         g_ref = eq_engine.bs_greeks(*a)
         g = eq_engine.bs_greeks(*a, engine=engine)
         for name, want in vars(g_ref).items():

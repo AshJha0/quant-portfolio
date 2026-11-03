@@ -167,9 +167,9 @@ TEST(NoexceptApi, FusedMonteCarloEqualsMonteCarloVar) {
         const Matrix scen = simulate_factor_returns(cov, paths, d, df, 42);
         const auto pnl = portfolio_pnl(scen, w);
         for (std::size_t p = 0; p < paths; ++p) {
-            double scale = 0.0;
-            for (std::size_t i = 0; i < n; ++i) scale += std::fabs(w[i] * scen(p, i));
-            ASSERT_LE(std::fabs(ws.pnl[p] - pnl[p]), 1e-12 * scale) << p;
+            double mag = 0.0;
+            for (std::size_t i = 0; i < n; ++i) mag += std::fabs(w[i] * scen(p, i));
+            ASSERT_LE(std::fabs(ws.pnl[p] - pnl[p]), 1e-12 * mag) << p;
         }
         const MonteCarloResult old = mc_tail_metrics(pnl, 0.01, 50, 42 ^ 0x9E3779B97F4A7C15ULL);
         EXPECT_LE(std::fabs(a->var - old.var), 1e-12 * std::fabs(old.var));

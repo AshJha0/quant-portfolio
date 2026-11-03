@@ -1,28 +1,45 @@
 //! Zero heap allocations on the success paths of `eq_var_engine::fast`.
 //!
-//! This file is its own test binary with one `#[test]`, so no other test
-//! thread allocates while a measured call runs. The counter is read just
-//! before and just after each measured call.
+//! This file is its own test binary with one `#[test]`. The counter is
+//! per thread, so it sees every allocation the measured call makes (the
+//! fast kernels run on the calling thread) and nothing the test harness's
+//! own threads do at the same time. A process-wide counter picked up stray
+//! harness allocations on a CI runner. The counter is read just before and
+//! just after each measured call.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
 
 use eq_var_engine::fast::*;
 use eq_var_engine::prelude::{Matrix, Rng, TailModel};
 
 struct Counting;
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
+
+thread_local! {
+    // Const-initialised and without a destructor, so touching it from
+    // inside the allocator never allocates or registers a TLS destructor.
+    static ALLOCS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn bump() {
+    // `try_with` so an allocation during thread teardown cannot panic.
+    let _ = ALLOCS.try_with(|c| c.set(c.get() + 1));
+}
+
+fn allocs() -> usize {
+    ALLOCS.with(Cell::get)
+}
 
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        ALLOCS.fetch_add(1, Ordering::SeqCst);
+        bump();
         unsafe { System.alloc(l) }
     }
     unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
         unsafe { System.dealloc(p, l) }
     }
     unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
-        ALLOCS.fetch_add(1, Ordering::SeqCst);
+        bump();
         unsafe { System.realloc(p, l, n) }
     }
 }
@@ -31,9 +48,9 @@ unsafe impl GlobalAlloc for Counting {
 static GLOBAL: Counting = Counting;
 
 fn count<T>(f: impl FnOnce() -> T) -> (T, usize) {
-    let before = ALLOCS.load(Ordering::SeqCst);
+    let before = allocs();
     let r = std::hint::black_box(f());
-    (r, ALLOCS.load(Ordering::SeqCst) - before)
+    (r, allocs() - before)
 }
 
 #[test]

@@ -81,7 +81,7 @@ TEST(Oracle, NormalVarEs) {
         {0.05, oracle::normal_var_unit_a005, oracle::normal_es_unit_a005,
          oracle::normal_var_odd_a005, oracle::normal_es_odd_a005},
     };
-    const Matrix one(1, 1, {1.0});
+    const Matrix one(1, 1, std::vector<double>{1.0});
     const std::vector<double> w1{1.0}, ws{kSig};
     for (const auto& r : rows) {
         const std::string a = std::to_string(r.a);
@@ -96,7 +96,7 @@ TEST(Oracle, NormalVarEs) {
 TEST(Oracle, StudentTVarEs) {
     const TRow rows[] = {QP_T_ALL(0.001, 0001), QP_T_ALL(0.01, 001), QP_T_ALL(0.025, 0025),
                          QP_T_ALL(0.05, 005)};
-    const Matrix one(1, 1, {1.0});
+    const Matrix one(1, 1, std::vector<double>{1.0});
     const std::vector<double> w1{1.0}, ws{kSig};
     for (const auto& r : rows) {
         const std::string tag = "a=" + std::to_string(r.a) + " df=" + std::to_string(r.df);

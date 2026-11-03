@@ -153,7 +153,10 @@ own heading, and the v3.0.0 notes are the sum of them.
   for crosses. USDCAD traded Fri 6-Jun-2025 now settles 2025-06-09 (was
   2025-06-10); EURJPY traded Wed 2-Jul-2025 settles 2025-07-07 (was
   2025-07-04, a USD holiday). New: `qp_core.holidays.spot_lag` and
-  `fx_spot_date`.
+  `fx_spot_date`. The same applies to `fx_rates.tenor_dates` and
+  `forward_settlement_date`, whose `spot_lag_days` default changed from
+  `2` to `None` (the pair's market lag). **What to do:** pass
+  `spot_lag_days=2` for the old fixed T+2.
 - **FX forwards run from the spot date.** `fx_rates.MarketState` takes
   `valuation_date=` or `spot_time=`, and forwards are
   `S DF_f(t_s, T) / DF_d(t_s, T)` in outright, FX swap and cross-currency
