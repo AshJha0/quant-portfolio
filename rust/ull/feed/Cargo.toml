@@ -14,3 +14,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "feed-bench"
 path = "src/bin/feed_bench.rs"
+
+[dependencies]
+qp-ull-book = { path = "../book" }
+qp-ull-qpbf = { path = "../qpbf" }

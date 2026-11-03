@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
             else
                 h.on_message(r->bytes, std::int64_t(r->recv_ns));
             std::printf("%llu %d %lld %016llx\n", (unsigned long long)i++, int(h.stale()),
-                        (long long)h.sync().applied_seq(), (unsigned long long)digest(h.book()));
+                        (long long)h.sync().applied_seq(), (unsigned long long)digest(h.book().to_l2()));
         }
     } else if (venue == "coinbase-level2") {
         CoinbaseLevel2 h(argv[3]);
