@@ -45,9 +45,10 @@
 //! `100 <= 101 <= 103`; `[104..=104]` continues. A later `[106..=107]` skips
 //! 105, so the book goes stale and a snapshot is requested.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::book::{CryptoBook, Delta, Snapshot};
+use crate::book::{ApplyError, CryptoBook, Delta, ProductSpec, Snapshot};
 
 /// What the caller should do after feeding the engine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +74,12 @@ pub struct SyncStats {
     pub snapshots_too_old: u64,
     /// Buffered deltas discarded because the buffer was full.
     pub buffer_overflow: u64,
+    /// Deltas whose price fell outside the product window (each one marks
+    /// the book stale; the recovery snapshot re-centres the window).
+    pub out_of_window: u64,
+    /// Snapshots the book could not hold (off-grid price, size too large,
+    /// or more entries than slots); the engine stays stale and asks again.
+    pub snapshots_rejected: u64,
 }
 
 /// Snapshot-synchronised book with a stale flag.
@@ -91,8 +98,13 @@ pub struct SyncEngine {
 impl SyncEngine {
     /// New engine buffering at most `cap` deltas while out of sync.
     pub fn new(cap: usize) -> Self {
+        Self::with_spec(cap, ProductSpec::default())
+    }
+
+    /// New engine for a product with its own book layout.
+    pub fn with_spec(cap: usize, spec: ProductSpec) -> Self {
         Self {
-            book: CryptoBook::new(),
+            book: CryptoBook::with_spec(spec),
             live: false,
             last: 0,
             requested: false,
@@ -139,7 +151,10 @@ impl SyncEngine {
 
     fn apply(&mut self, d: &Delta) -> bool {
         for c in &d.changes {
-            if self.book.apply(c).is_err() {
+            if let Err(e) = self.book.apply(c) {
+                if e == ApplyError::OutOfWindow {
+                    self.stats.out_of_window += 1;
+                }
                 return false;
             }
         }
@@ -150,8 +165,18 @@ impl SyncEngine {
 
     /// Feed one delta (already arbitrated).
     pub fn on_delta(&mut self, d: Delta) -> Action {
+        self.on_delta_cow(Cow::Owned(d))
+    }
+
+    /// Feed one borrowed delta. In sync and in order this does not allocate;
+    /// the delta is copied only when it must be buffered (stale or a gap).
+    pub fn on_delta_ref(&mut self, d: &Delta) -> Action {
+        self.on_delta_cow(Cow::Borrowed(d))
+    }
+
+    fn on_delta_cow(&mut self, d: Cow<'_, Delta>) -> Action {
         if !self.live {
-            self.push_buf(d);
+            self.push_buf(d.into_owned());
             return self.go_stale();
         }
         if d.last <= self.last {
@@ -163,14 +188,18 @@ impl SyncEngine {
         }
         // Hole, overlap, or a change the book cannot apply: resync.
         self.stats.gaps += 1;
-        self.push_buf(d);
+        self.push_buf(d.into_owned());
         self.go_stale()
     }
 
     /// Feed a snapshot (the reply to a [`Action::RequestSnapshot`]).
     pub fn on_snapshot(&mut self, s: &Snapshot) -> Action {
         self.requested = false;
-        self.book.reset(s);
+        if self.book.reset(s).is_err() {
+            self.stats.snapshots_rejected += 1;
+            self.live = false;
+            return self.go_stale();
+        }
         self.last = s.last;
         self.stats.snapshots += 1;
         while self.buf.front().is_some_and(|d| d.last <= s.last) {
@@ -260,6 +289,30 @@ impl Arbiter {
         }
     }
 
+    /// Fast path for a delta the caller still owns: when nothing is held and
+    /// the delta is either next in order or a duplicate, update the state
+    /// exactly as [`Self::on`] would and return `Some(true)` (pass it on) or
+    /// `Some(false)` (duplicate, drop it). Otherwise return `None` and change
+    /// nothing; the caller then hands an owned copy to [`Self::on`].
+    #[inline]
+    pub fn try_pass(&mut self, line: usize, first: u64, last: u64) -> Option<bool> {
+        if !self.held.is_empty() {
+            return None;
+        }
+        match self.next {
+            Some(next) if last < next => {
+                self.stats.duplicates += 1;
+                Some(false)
+            }
+            Some(next) if first > next => None,
+            _ => {
+                self.stats.won[line & 1] += 1;
+                self.next = Some(last + 1);
+                Some(true)
+            }
+        }
+    }
+
     /// Offer a delta from `line` (0 = A, 1 = B); in-order output goes to `out`.
     pub fn on(&mut self, line: usize, d: Delta, out: &mut Vec<Delta>) {
         let Some(next) = self.next else {
@@ -296,7 +349,15 @@ impl Arbiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::book::{Change, Side};
+    use crate::book::{Change, ProductSpec, Side};
+
+    // Unit tests use raw integer prices: one fixed-point unit per tick.
+    const UNIT: ProductSpec = ProductSpec {
+        tick: 1,
+        lot: 1,
+        n_levels: 1 << 12,
+        max_orders: 1 << 10,
+    };
 
     fn d(first: u64, last: u64) -> Delta {
         Delta {
@@ -312,7 +373,7 @@ mod tests {
 
     #[test]
     fn worked_example() {
-        let mut e = SyncEngine::new(16);
+        let mut e = SyncEngine::with_spec(16, UNIT);
         assert_eq!(e.on_delta(d(95, 99)), Action::RequestSnapshot);
         assert_eq!(e.on_delta(d(100, 103)), Action::None);
         e.on_delta(d(104, 104));
@@ -333,7 +394,7 @@ mod tests {
 
     #[test]
     fn snapshot_too_old_asks_again() {
-        let mut e = SyncEngine::new(16);
+        let mut e = SyncEngine::with_spec(16, UNIT);
         e.on_delta(d(50, 51));
         assert_eq!(
             e.on_snapshot(&Snapshot {

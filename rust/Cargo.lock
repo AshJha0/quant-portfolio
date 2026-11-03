@@ -387,6 +387,10 @@ dependencies = [
 [[package]]
 name = "qp-ull-feed"
 version = "0.1.0"
+dependencies = [
+ "qp-ull-book",
+ "qp-ull-qpbf",
+]
 
 [[package]]
 name = "qp-ull-gateway"
