@@ -1,8 +1,12 @@
-"""W24b characterisation corpus: the current backtester output, captured
-before the move onto the qp_bt core. After migration every value must match
-to 1e-12, or the difference is listed in MIGRATION.md and checked against a
-hand fixture (NEXT_RELEASE_PLAN W24 acceptance). Regenerate only on purpose:
-QP_REGEN_GOLDEN=1.
+"""W24b characterisation corpus for the move onto the qp_bt core.
+
+``golden/characterisation_w24b_before.json`` is the output captured before
+the migration (Round 12, lane r12-l4-btfills). ``characterisation_w24b.json``
+pins the migrated output to 1e-12. The two differ by the wrong-answer fixes
+listed in the module docstring of ``backtest.py``; ``BEFORE_AFTER`` pins the
+summed series before and after so the documented numbers cannot drift, and
+each fix has a hand fixture in the package tests. Regenerate only on
+purpose: QP_REGEN_GOLDEN=1.
 """
 
 from __future__ import annotations
@@ -16,6 +20,26 @@ import pandas as pd
 from fx_regime import ExecutionConfig, StrategyConfig, generate_roro_panel, run_backtest, static_carry_regimes
 
 GOLDEN = Path(__file__).parent / "golden" / "characterisation_w24b.json"
+BEFORE = Path(__file__).parent / "golden" / "characterisation_w24b_before.json"
+# key: (sum before migration, sum after), filled from the corpus
+BEFORE_AFTER: dict[str, tuple[float, float]] = {
+    "static/ledger/carry": (0.1055363695951425, 0.10516165412349429),
+    "static/ledger/cost": (0.0029993263224677405, 0.0031065291205613077),
+    "static/ledger/net": (0.0699743903064405, 0.07490397111623362),
+    "static/ledger/spot": (-0.03256265296623427, -0.027151153886699367),
+    "static/ledger/turnover": (7.7061588344582965, 7.986530247584562),
+    "switch/ledger/carry": (0.01059976231173355, 0.010330043991874517),
+    "switch/ledger/cost": (0.008228634595589288, 0.00836319420266507),
+    "switch/ledger/net": (-0.03885914636531946, -0.032881167409794465),
+    "switch/ledger/spot": (-0.04123027408146373, -0.034848017199003906),
+    "switch/ledger/turnover": (26.07048671098978, 26.43717628962606),
+    "switch_auction/ledger/carry": (0.010725465516769126, 0.010570811794275495),
+    "switch_auction/ledger/cost": (0.03429912130657907, 0.034845043476376514),
+    "switch_auction/ledger/net": (-0.1036759299916523, -0.09842065266325328),
+    "switch_auction/ledger/spot": (-0.08010227420184235, -0.07414642098115226),
+    "switch_auction/ledger/turnover": (26.07048671098978, 26.46891241284428),
+}
+
 
 
 def _flat(obj, prefix=""):
@@ -43,6 +67,11 @@ def _check(cases):
     assert sorted(got) == sorted(want)
     for k in want:
         np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12, err_msg=k)
+    before = json.loads(BEFORE.read_text())
+    assert sorted(before) == sorted(want)
+    for k, (b, a) in BEFORE_AFTER.items():
+        assert abs(sum(before[k]) - b) <= 1e-10, k
+        assert abs(sum(got[k]) - a) <= 1e-10, k
 
 
 def test_fx_regime_characterisation():
