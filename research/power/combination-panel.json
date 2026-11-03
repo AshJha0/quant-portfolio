@@ -1,0 +1,56 @@
+{
+  "what": "simulated power for research/combination/PREREG_DRAFT.md; synthetic data only",
+  "design": "panel_fama_macbeth",
+  "n_currencies": 30,
+  "months": 130,
+  "clusters": 5,
+  "rho_signal": 0.3,
+  "rho_noise": 0.3,
+  "decision_rule": "Fama-MacBeth mean slope, Newey-West lag 3, t > 1.645",
+  "estimator": "research/lib/panel.py::fama_macbeth",
+  "seed": 0,
+  "cells": [
+    {
+      "ic_monthly": 0.0,
+      "truth": "null",
+      "reps": 400,
+      "rejection_rate": 0.0575,
+      "mc_se": 0.011639775556255371
+    },
+    {
+      "ic_monthly": 0.02,
+      "truth": "planted IC",
+      "reps": 400,
+      "rejection_rate": 0.31,
+      "mc_se": 0.023124662159694356
+    },
+    {
+      "ic_monthly": 0.04,
+      "truth": "planted IC",
+      "reps": 400,
+      "rejection_rate": 0.7,
+      "mc_se": 0.022912878474779203
+    },
+    {
+      "ic_monthly": 0.06,
+      "truth": "planted IC",
+      "reps": 400,
+      "rejection_rate": 0.945,
+      "mc_se": 0.011399013115178002
+    },
+    {
+      "ic_monthly": 0.08,
+      "truth": "planted IC",
+      "reps": 400,
+      "rejection_rate": 0.9925,
+      "mc_se": 0.004313858481684336
+    },
+    {
+      "ic_monthly": 0.1,
+      "truth": "planted IC",
+      "reps": 400,
+      "rejection_rate": 1.0,
+      "mc_se": 0.0
+    }
+  ]
+}

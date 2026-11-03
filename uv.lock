@@ -75,6 +75,7 @@ notebooks = [
     { name = "nbmake", specifier = ">=1.5" },
 ]
 oracle = [{ name = "quantlib", specifier = "==1.44" }]
+recorder = [{ name = "websockets", specifier = "==17.4" }]
 test = [
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "pytest", specifier = ">=7.4" },

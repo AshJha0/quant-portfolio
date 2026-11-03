@@ -20,8 +20,28 @@ from collections.abc import Callable
 from dataclasses import dataclass, fields
 
 from qp_core.black_scholes import carry_greeks
+from qp_core.risk import SmileDynamics
 
 from .black_scholes import OptionType, bs_price, d1_d2, validate_inputs
+
+
+def _check_smile_dynamics(value: SmileDynamics | str) -> SmileDynamics:
+    """Validate ``smile_dynamics=`` (W14b).
+
+    The calls in this module price with one flat vol per option, so the
+    smile has no slope and ``d sigma / dS = 0`` under every dynamic: sticky
+    strike (the default, the numbers from before the keyword), sticky
+    moneyness and sticky delta give identical results here. The keyword
+    states the assumption and rejects typos; smile-consistent Greeks on a
+    sloped smile are ``qp_core.risk.smile_delta`` / ``smile_gamma``.
+    """
+    try:
+        return SmileDynamics(value)
+    except ValueError:
+        raise ValueError(
+            f"smile_dynamics must be one of {[d.value for d in SmileDynamics]}, got {value!r}"
+        ) from None
+
 
 __all__ = [
     "BSGreeks",
@@ -69,6 +89,8 @@ def bs_greeks(
     sigma: float,
     q: float = 0.0,
     option_type: OptionType = "call",
+    *,
+    smile_dynamics: SmileDynamics | str = "sticky_strike",
 ) -> BSGreeks:
     """Analytic Black-Scholes-Merton Greeks (with continuous dividend yield).
 
@@ -86,6 +108,9 @@ def bs_greeks(
         Continuously compounded annualised dividend yield.
     option_type : {"call", "put"}
         Option payoff direction.
+    smile_dynamics : {"sticky_strike", "sticky_moneyness", "sticky_delta"}
+        How the smile moves with spot. With a single flat ``sigma`` all
+        three give the same Greeks (see :func:`_check_smile_dynamics`).
 
     Returns
     -------
@@ -98,6 +123,7 @@ def bs_greeks(
         If inputs are invalid or ``S``, ``K``, ``T``, ``sigma`` are not
         strictly positive (Greeks are singular at the boundary).
     """
+    _check_smile_dynamics(smile_dynamics)
     d1_d2(S, K, T, r, sigma, q)  # validates; raises at the boundary
     if option_type not in ("call", "put"):
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
@@ -167,6 +193,8 @@ def fd_greeks(
     option_type: OptionType = "call",
     rel_bump: float = 1e-5,
     rel_bump2: float = 2e-4,
+    *,
+    smile_dynamics: SmileDynamics | str = "sticky_strike",
     **pricer_kwargs: object,
 ) -> BSGreeks:
     """Central finite-difference Greeks for *any* pricer with the BS signature.
@@ -193,6 +221,8 @@ def fd_greeks(
         Relative bump for second derivatives (gamma, vanna, volga), where
         round-off scales like ``eps / h^2`` and needs a larger ``h``
         (optimal ``h ~ eps^0.25``).
+    smile_dynamics
+        As in :func:`bs_greeks`; validated, not forwarded to ``pricer``.
     **pricer_kwargs
         Extra keyword arguments forwarded to ``pricer`` (e.g. ``n_steps``).
 
@@ -206,6 +236,7 @@ def fd_greeks(
     ValueError
         If inputs are invalid, or ``T`` is too small to bump centrally.
     """
+    _check_smile_dynamics(smile_dynamics)
     validate_inputs(S, K, T, sigma, option_type)
 
     def f(s: float = S, sig: float = sigma, t: float = T, rr: float = r) -> float:

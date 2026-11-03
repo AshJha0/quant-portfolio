@@ -1,0 +1,13 @@
+[package]
+name = "qp-recorder-replay"
+version = "0.1.0"
+edition = "2024"
+description = "Replays QPRC/QPRR1 live recordings through qp-ull-feed and prints per-record book digests for tools/recorder tests."
+license = "MIT"
+publish = false
+
+# Standalone: not a member of rust/Cargo.toml's workspace.
+[workspace]
+
+[dependencies]
+qp-ull-feed = { path = "../../../rust/ull/feed" }

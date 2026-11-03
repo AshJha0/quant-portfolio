@@ -38,9 +38,29 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from qp_core.risk import SmileDynamics
 
 from .common import NumericalWarning, fx_factor, ir_factor, split_pair, validate_finite, vol_factor
 from .gk import gk_delta, gk_gamma, gk_price, gk_vega
+
+
+def _check_smile_dynamics(value: SmileDynamics | str) -> SmileDynamics:
+    """Validate ``smile_dynamics=`` (W14b).
+
+    The calls in this module price with one flat vol per option, so the
+    smile has no slope and ``d sigma / dS = 0`` under every dynamic: sticky
+    strike (the default, the numbers from before the keyword), sticky
+    moneyness and sticky delta give identical results here. The keyword
+    states the assumption and rejects typos; smile-consistent Greeks on a
+    sloped smile are ``qp_core.risk.smile_delta`` / ``smile_gamma``.
+    """
+    try:
+        return SmileDynamics(value)
+    except ValueError:
+        raise ValueError(
+            f"smile_dynamics must be one of {[d.value for d in SmileDynamics]}, got {value!r}"
+        ) from None
+
 
 __all__ = ["Book", "Cash", "Forward", "Market", "Option", "Position", "Spot"]
 
@@ -414,11 +434,16 @@ class Book:
         raise TypeError(f"unknown position type {type(pos).__name__}")
 
     def value_usd(self, market: Market, shocks: ShockLike | None = None,
-                  option_method: str = "full"):
+                  option_method: str = "full", *,
+                  smile_dynamics: SmileDynamics | str = "sticky_strike"):
         """Book value in USD at ``market`` after applying ``shocks``.
 
         Broadcasts over scenario arrays in ``shocks``; scalar in/scalar out.
+        ``smile_dynamics``: ``Market`` holds one vol per pair, so an ``FX:*``
+        shock leaves option vols unchanged under every dynamic and the value
+        is the same for all three (see :func:`_check_smile_dynamics`).
         """
+        _check_smile_dynamics(smile_dynamics)
         if option_method not in ("full", "delta_vega", "delta_vega_gamma"):
             # Validated up front so a typo is caught even on option-free
             # books (where the per-position branch would never see it).
@@ -434,7 +459,8 @@ class Book:
         # empty book / all-scalar path returns a python float
         return total
 
-    def pnl(self, market: Market, shocks: ShockLike, option_method: str = "full"):
+    def pnl(self, market: Market, shocks: ShockLike, option_method: str = "full", *,
+            smile_dynamics: SmileDynamics | str = "sticky_strike"):
         """Base-currency P&L of the book under factor ``shocks``.
 
         Parameters
@@ -448,6 +474,9 @@ class Book:
         option_method : {"full", "delta_vega", "delta_vega_gamma"}
             Option revaluation: full Garman-Kohlhagen repricing or Greek
             mapping around the reference market.
+        smile_dynamics : {"sticky_strike", "sticky_moneyness", "sticky_delta"}
+            How option vols move with spot; identical results here (one
+            flat vol per pair). Validated so a typo is refused.
 
         Returns
         -------
@@ -455,6 +484,7 @@ class Book:
             Profit (+) / loss (-) in the base currency, one value per
             scenario.
         """
+        _check_smile_dynamics(smile_dynamics)
         sh = self._normalise_shocks(shocks)
         v0 = self.value_usd(market, None, option_method="full")
         v1 = self.value_usd(market, sh, option_method=option_method)
@@ -470,7 +500,8 @@ class Book:
         return np.asarray(out, dtype=float)
 
     def linear_exposures(self, market: Market, factors: Sequence[str] | None = None,
-                         bump: float = 1e-6) -> pd.Series:
+                         bump: float = 1e-6, *,
+                         smile_dynamics: SmileDynamics | str = "sticky_strike") -> pd.Series:
         """Delta exposures dPnL/dfactor by central finite differences.
 
         Units: base-ccy P&L per unit factor move - for ``FX:*`` per unit log
@@ -480,6 +511,7 @@ class Book:
         These are the mapping weights used by the variance-covariance method
         and the reverse-stress closed form.
         """
+        _check_smile_dynamics(smile_dynamics)
         if factors is None:
             factors = self.factors(market)
         vals = {}
