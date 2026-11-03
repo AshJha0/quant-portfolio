@@ -121,17 +121,6 @@ pub fn kupiec_pof(input: &KupiecInput) -> Result<KupiecResult> {
     })
 }
 
-/// Old positional Kupiec call `(n_obs, n_exceptions, alpha)`, kept for one
-/// release. It forwards to [`kupiec_pof`], so it now rejects `alpha >= 0.5`.
-#[deprecated(since = "0.2.0", note = "use kupiec_pof(&KupiecInput { .. })")]
-pub fn kupiec_pof_positional(n_obs: i64, n_exceptions: i64, alpha: f64) -> Result<KupiecResult> {
-    kupiec_pof(&KupiecInput {
-        n_obs,
-        n_exceptions,
-        alpha,
-    })
-}
-
 /// Inputs of the coverage tests ([`kupiec_pof`], [`basel_traffic_light`]).
 ///
 /// Named fields make the old silent swap of `n_obs` and `n_exceptions`
@@ -474,18 +463,5 @@ pub fn basel_traffic_light(input: &BaselInput) -> Result<TrafficLightResult> {
         multiplier: 3.0 + plus,
         plus_factor: plus,
         cumulative_prob: f,
-    })
-}
-
-/// Old 250-day call `(n_exceptions, n_obs)` at alpha 0.01, kept for one
-/// release. It forwards to [`basel_traffic_light`]: the zone now follows
-/// the binomial rule for the given window, and `n_exceptions > n_obs` is
-/// an error instead of being clamped.
-#[deprecated(since = "0.2.0", note = "use basel_traffic_light(&BaselInput { .. })")]
-pub fn basel_traffic_light_250(n_exceptions: i64, n_obs: i64) -> Result<TrafficLightResult> {
-    basel_traffic_light(&BaselInput {
-        n_obs,
-        n_exceptions,
-        alpha: 0.01,
     })
 }

@@ -294,10 +294,4 @@ pub mod prelude {
     };
     pub use crate::tail::{empirical_var_es_into, empirical_var_into, tail_rank, weighted_var_es};
     pub use crate::{FxVarError, KernelError, McDist, TailDist};
-    /// Deprecated entry points, kept in the prelude for one release.
-    #[allow(deprecated)]
-    pub use crate::{
-        backtest::{basel_traffic_light_confidence, kupiec_pof_confidence},
-        parametric::cornish_fisher_domain_ok,
-    };
 }

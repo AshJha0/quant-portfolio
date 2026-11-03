@@ -305,26 +305,6 @@ fn cf_min_derivative(skew: f64, excess_kurt: f64, z_range: f64) -> f64 {
     ends
 }
 
-/// Old fixed-interval check `g'(z) > 0` on `[-z_range, z_range]`, kept for
-/// one release (the old call used `|z| <= 4`). The interval should follow
-/// the VaR level; use [`cornish_fisher_valid`]. Non-finite input returns
-/// `false`; `n_grid` is ignored (the check is closed form).
-#[deprecated(
-    since = "0.2.0",
-    note = "use cornish_fisher_valid(skew, excess_kurtosis, alpha)"
-)]
-pub fn cornish_fisher_domain_ok(
-    skew: f64,
-    excess_kurtosis: f64,
-    z_range: f64,
-    _n_grid: usize,
-) -> bool {
-    if !skew.is_finite() || !excess_kurtosis.is_finite() || !z_range.is_finite() {
-        return false;
-    }
-    cf_min_derivative(skew, excess_kurtosis, z_range) > 0.0
-}
-
 /// Cornish-Fisher VaR (positive loss) from the P&L sigma, skewness and
 /// excess kurtosis at tail probability `alpha`:
 /// `VaR = -mean h - sigma sqrt(h) z_cf`, `z_cf = cornish_fisher_z(Phi^{-1}(alpha))`.
@@ -423,8 +403,6 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn cornish_fisher_domain_rejects_extreme_moments() {
-        assert!(!cornish_fisher_domain_ok(5.0, 50.0, 4.0, 801));
-        assert!(cornish_fisher_domain_ok(0.1, 0.5, 4.0, 801));
         assert!(!cornish_fisher_valid(5.0, 50.0, 0.01).unwrap());
         assert!(cornish_fisher_valid(0.1, 0.5, 0.01).unwrap());
     }

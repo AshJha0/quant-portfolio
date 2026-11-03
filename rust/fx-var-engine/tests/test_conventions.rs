@@ -45,21 +45,6 @@ fn confidence_levels_are_rejected_not_reinterpreted() {
     assert_eq!(ParametricOptions::default().alpha, 0.01);
 }
 
-#[test]
-#[allow(deprecated)]
-fn deprecated_confidence_shims_convert() {
-    let new = kupiec_pof(&KupiecInput {
-        n_obs: 250,
-        n_exceptions: 8,
-        alpha: 0.01,
-    })
-    .unwrap();
-    let old = kupiec_pof_confidence(8, 250, 0.99).unwrap();
-    assert!((new.lr - old.lr).abs() < 1e-12);
-    let t = basel_traffic_light_confidence(5, 250, 0.99).unwrap();
-    assert_eq!(t.zone, Zone::Yellow);
-}
-
 // ------------------------------------------------------------- S2 estimator
 
 #[test]
@@ -268,7 +253,4 @@ fn former_panics_are_errors() {
     let mut rng = Rng::new(1);
     assert!(rng.gamma(-1.0).is_nan());
     assert!(rng.gamma(f64::NAN).is_nan());
-    #[allow(deprecated)]
-    let ok = cornish_fisher_domain_ok(0.0, 0.0, 4.0, 0); // n_grid < 3 used to assert!
-    assert!(ok);
 }

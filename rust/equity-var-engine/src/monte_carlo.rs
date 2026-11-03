@@ -337,14 +337,6 @@ fn linear_pnl_jitter(
     Ok((pnl, jitter))
 }
 
-fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
-    let mut v = pnl.to_vec();
-    // `total_cmp` orders every f64 bit pattern, so this sort has no panic
-    // path (the callers validate finiteness first regardless).
-    v.sort_by(f64::total_cmp);
-    v
-}
-
 fn validate_pnl_mc(pnl: &[f64]) -> Result<()> {
     if pnl.len() < MIN_PATHS {
         return Err(EqVarError::InvalidInput(format!(
@@ -391,37 +383,6 @@ pub fn monte_carlo_es(
     let pnl = monte_carlo_pnl(exposures, cov, n_paths, tail, seed)?;
     validate_pnl_mc(&pnl)?;
     crate::expected_shortfall::expected_shortfall(&pnl, alpha)
-}
-
-/// Old symmetric order-statistic finite-difference SE, kept for one
-/// release. Use [`var_bootstrap_se`] (primary) or [`var_kde_se`].
-///
-/// Order-statistic standard error of the `alpha`-quantile VaR estimate on a
-/// scenario P&L sample.
-///
-/// Asymptotic quantile variance `alpha(1-alpha) / (n f(q)^2)`, with the
-/// density `f` estimated by a symmetric order-statistic finite difference of
-/// bandwidth `ceil(sqrt(alpha * n))` around the quantile rank. Returns `0`
-/// in the degenerate case where the local window has zero spread (e.g. a
-/// riskless / zero-variance portfolio).
-#[deprecated(since = "0.2.0", note = "use var_bootstrap_se (primary) or var_kde_se")]
-pub fn var_order_statistic_se(pnl: &[f64], alpha: f64) -> Result<f64> {
-    validate_alpha(alpha)?;
-    validate_pnl_mc(pnl)?;
-    let sorted = sorted_copy(pnl);
-    let n = sorted.len();
-    let h = alpha * (n - 1) as f64;
-    let rank = (h.round() as usize).min(n - 1);
-    let m = ((alpha * n as f64).sqrt().ceil() as usize).max(1);
-    let ilo = rank.saturating_sub(m);
-    let ihi = (rank + m).min(n - 1);
-    let dx = sorted[ihi] - sorted[ilo];
-    if dx > 0.0 {
-        let f_hat = ((ihi - ilo) as f64 / n as f64) / dx;
-        Ok((alpha * (1.0 - alpha) / n as f64).sqrt() / f_hat)
-    } else {
-        Ok(0.0)
-    }
 }
 
 /// Everything one Monte Carlo simulation gives: see [`monte_carlo_run`].

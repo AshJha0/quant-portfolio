@@ -164,6 +164,9 @@ pub mod prelude {
         historical_var_ws, parametric_es_fast, parametric_var_fast, portfolio_sigma_fast,
         var_bootstrap_se_ws,
     };
+    /// P&L-level FHS, deprecated; kept until the shared golden key goes.
+    #[allow(deprecated)]
+    pub use crate::historical::filtered_historical_var;
     pub use crate::historical::{
         HistRule, MIN_OBS, age_weighted_var, brw_weights, ewma_volatility,
         ewma_volatility_forecast, fhs_factor_scenarios, filtered_historical_var_factors,
@@ -191,12 +194,4 @@ pub mod prelude {
     };
     pub use crate::tail::{empirical_var, empirical_var_es, tail_rank, weighted_var_es};
     pub use crate::{EqVarError, TailModel};
-    /// Deprecated entry points, kept in the prelude for one release.
-    #[allow(deprecated)]
-    pub use crate::{
-        backtest::{basel_traffic_light_250, kupiec_pof_positional},
-        historical::{filtered_historical_var, linear_quantile},
-        monte_carlo::var_order_statistic_se,
-        parametric::cornish_fisher_domain_ok,
-    };
 }

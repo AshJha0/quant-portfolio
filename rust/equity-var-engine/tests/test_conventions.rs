@@ -96,9 +96,6 @@ fn kupiec_struct_matches_formula_and_rejects_bad_counts() {
         })
         .is_err()
     );
-    #[allow(deprecated)]
-    let old = kupiec_pof_positional(250, 5, 0.01).unwrap();
-    assert_eq!(old, r);
 }
 
 // ------------------------------------------------------------------- S4 Basel

@@ -225,7 +225,6 @@ proptest! {
         check!(cornish_fisher_var(1.0, 0.0, 0.0, a, 0.0, 1.0, true).is_err());
         check!(cornish_fisher_var(1.0, 0.0, 0.0, 0.01, x, 1.0, true).is_err());
         check!(cornish_fisher_var(1.0, 0.0, 0.0, 0.01, 0.0, x, true).is_err());
-        check!(!cornish_fisher_domain_ok(x, 0.0, 4.0, 801));
         check!(cornish_fisher_z(f64::NAN, 0.1, 0.1).is_nan());
     }
 
@@ -274,10 +273,8 @@ proptest! {
         check!(kupiec_pof(&KupiecInput { n_obs: neg, n_exceptions: 0, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: neg, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
-        check!(kupiec_pof_confidence(5, 250, x).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: a }).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 300, alpha: 0.01 }).is_err());
-        check!(basel_traffic_light_confidence(5, 250, x).is_err());
         check!(christoffersen_independence(&[1]).is_err());
         check!(christoffersen_independence(&[0, 2]).is_err());
         check!(conditional_coverage(&[0, 1, 0, 0], a).is_err());
