@@ -32,7 +32,7 @@ treated as a t = 0 price, which overstated a 1y EURUSD forward by about
 2.4 pips at a 2% rate differential. That behaviour is kept, with a
 ``DeprecationWarning``, when a ``MarketState`` gets neither a
 ``valuation_date`` nor a ``spot_time`` (or gets ``spot_at_t0=True``); it
-will be removed in v2.3.0.
+will be removed in v4.0.0.
 
 All position values are expressed in the **quote (domestic) currency**.
 A positive ``notional_base`` means long the base currency forward
@@ -188,7 +188,8 @@ class MarketState:
                 raise ValueError("spot_at_t0=True excludes valuation_date and spot_time")
             warnings.warn(
                 "spot_at_t0=True is deprecated: a quoted spot rate is for the spot "
-                "date, not today. Pass valuation_date or spot_time.",
+                "date, not today; it will be removed in v4.0.0. Pass valuation_date "
+                "or spot_time.",
                 DeprecationWarning, stacklevel=4)
             object.__setattr__(self, "spot_time", 0.0)
             return
@@ -207,7 +208,7 @@ class MarketState:
         if self.spot_time is None:
             warnings.warn(
                 "MarketState without valuation_date or spot_time treats spot as a "
-                "t = 0 price; this is deprecated and will be removed in v2.3.0. Pass "
+                "t = 0 price; this is deprecated and will be removed in v4.0.0. Pass "
                 "valuation_date (or spot_time) so forwards run from the spot date.",
                 DeprecationWarning, stacklevel=4)
             object.__setattr__(self, "spot_time", 0.0)

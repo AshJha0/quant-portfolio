@@ -42,11 +42,7 @@ def _pyprojects() -> list[Path]:
 # __init__.py files whose package belongs to another lane this round; the
 # integration lane sets their __version__ line when the lanes merge
 # (review/2026-11-03/handbacks/r6/L4.md). Remove each entry once done.
-VERSION_PENDING: set[str] = {
-    "python/equity/08-algo-execution/src/eq_algo/__init__.py",
-    "python/fx/08-algo-execution/src/fx_algo/__init__.py",
-    "python/fx/04-fixed-income/src/fx_rates/__init__.py",
-}
+VERSION_PENDING: set[str] = set()
 
 
 class TestOneVersion:
@@ -118,11 +114,7 @@ ALLOWED = {
 # (removal is tracked in review/2026-11-03/handbacks/r6/L4.md). The list
 # only shrinks: an entry that no longer matches fails the test.
 PENDING_REMOVAL = {
-    "README.md",
     "data/fetch/qp_fetch.py",
-    "docs/DIAGRAMS.md",
-    "docs/LEARN.md",
-    "research/README.md",
     "research/prereg/execution-lobster.md",
     "research/tests/test_research.py",
 }

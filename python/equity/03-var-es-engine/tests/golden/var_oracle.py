@@ -222,7 +222,7 @@ def kupiec(n: int, x: int, a: mp.mpf):
 
 def christoffersen(ex: list[int], a: mp.mpf):
     n00 = n01 = n10 = n11 = 0
-    for prev, cur in zip(ex[:-1], ex[1:]):
+    for prev, cur in zip(ex[:-1], ex[1:], strict=True):
         if prev == 0 and cur == 0:
             n00 += 1
         elif prev == 0:

@@ -15,7 +15,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from fx_var.backtesting import (
     basel_traffic_light,
     christoffersen_independence,

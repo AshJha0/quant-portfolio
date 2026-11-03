@@ -5,7 +5,8 @@ Modules
 stats       Sharpe ratio, Lo / Newey-West Sharpe standard error, deflated
             Sharpe ratio, PBO by CSCV, block bootstrap, seed distributions.
 execution   ExecutionConfig and the t+1 fill rule.
-calendars   Partial business-day calendars and roll conventions.
+holidays    Rule-based settlement calendars 2000-2099, roll conventions and
+            FX spot dates (calendars is a deprecated shim over it).
 daycount    Day count fractions, month arithmetic, coupon schedules.
 validation  Finite-input guards.
 metrics     Drawdown, downside deviation, annualisation.

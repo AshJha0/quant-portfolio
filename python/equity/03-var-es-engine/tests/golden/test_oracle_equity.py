@@ -15,7 +15,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from eq_var.backtesting import (
     basel_traffic_light,
     christoffersen_cc,

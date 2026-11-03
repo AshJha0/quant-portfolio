@@ -158,7 +158,8 @@ def pov_schedule(parent_qty: float, forecast_volumes: np.ndarray | None = None,
         if forecast_volumes is not None:
             raise TypeError("pass forecast_volumes only (market_volumes is its old name)")
         warnings.warn("pov_schedule(market_volumes=...) is renamed forecast_volumes=; "
-                      "pass a forecast curve, not the realised tape",
+                      "pass a forecast curve, not the realised tape; market_volumes= will be "
+                      "removed in v4.0.0",
                       FutureWarning, stacklevel=2)
         forecast_volumes = market_volumes
     if forecast_volumes is None or participation is None:
