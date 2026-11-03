@@ -11,6 +11,10 @@ members = [
     "fx-options-engine",
     "equity-var-engine",
     "fx-var-engine",
+    "ull/ring",
+    "ull/qpbf",
+    "ull/book",
+    "ull/bench",
 ]
 
 [profile.release]
