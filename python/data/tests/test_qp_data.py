@@ -249,8 +249,12 @@ def store(tmp_path):
 
 def test_fetch_stores_bytes_manifest_and_release(store):
     e = qp_data.fetch(
-        "fred:DGS10", D(2024, 6, 24), D(2024, 7, 8), store=store,
-        opener=recorded("fred_DGS10.csv"), retrieved_at="2024-07-09T12:00:00Z",
+        "fred:DGS10",
+        D(2024, 6, 24),
+        D(2024, 7, 8),
+        store=store,
+        opener=recorded("fred_DGS10.csv"),
+        retrieved_at="2024-07-09T12:00:00Z",
     )
     assert e.n_rows == 10 and e.source == "fred" and e.release_date == "2024-07-09"
     assert store.get_bytes(e.sha256) == fx("fred_DGS10.csv")
@@ -266,8 +270,9 @@ def test_same_bytes_not_duplicated(store):
 
 
 def test_as_of_hides_unreleased_observations(store):
-    qp_data.fetch("fred:DGS10", store=store, opener=recorded("fred_DGS10.csv"),
-                  retrieved_at="2024-06-01T00:00:00Z")
+    qp_data.fetch(
+        "fred:DGS10", store=store, opener=recorded("fred_DGS10.csv"), retrieved_at="2024-06-01T00:00:00Z"
+    )
     # Morning of 2 July: 1 July (released 2 July) is known, 2 July is not
     f = store.get("fred:DGS10", as_of=D(2024, 7, 2))
     assert f.index.max() == pd.Timestamp("2024-07-01")
@@ -315,8 +320,18 @@ def test_parquet_round_trip(tmp_path):
 
 
 def test_every_source_has_a_release_rule_for_its_example_key():
-    for key in ["fred:DGS10", "ecb:EXR:USD", "ecb:ESTR", "frankfurter:USD", "nyfed:SOFR",
-                "boe:IUDSOIA", "ust:par", "cboe:VIX", "coinbase:BTC-USD:1d", "binance:BTCUSDT:1d"]:
+    for key in [
+        "fred:DGS10",
+        "ecb:EXR:USD",
+        "ecb:ESTR",
+        "frankfurter:USD",
+        "nyfed:SOFR",
+        "boe:IUDSOIA",
+        "ust:par",
+        "cboe:VIX",
+        "coinbase:BTC-USD:1d",
+        "binance:BTCUSDT:1d",
+    ]:
         release.rule_for(key)
         sources.build_url(key, D(2024, 7, 1), D(2024, 7, 5))
 
@@ -413,3 +428,14 @@ def test_fi_rates_refuses_without_opt_in(monkeypatch):
     monkeypatch.delenv("QP_DATA_ALLOW_NETWORK", raising=False)
     with pytest.raises(RuntimeError, match="Network access is disabled"):
         live.load_fred_cmt()
+
+
+def test_oecd_mei_on_fred_permitted_with_m_plus_2_release():
+    # Round 18: OECD MEI (CC BY 4.0) interbank rates and CPI for the FX panel.
+    assert "IR3TIB01GBM156N" in sources.build_url("fred:IR3TIB01GBM156N")
+    assert "GBRCPIALLMINMEI" in sources.build_url("fred:GBRCPIALLMINMEI")
+    with pytest.raises(SourceNotPermitted):
+        sources.build_url("fred:GBRCPIALLMINXYZ")
+    # March 2015 observation is known from 1 May 2015 (a Friday, not a US holiday).
+    assert release.release_date("fred:IR3TIB01GBM156N", D(2015, 3, 1)) == D(2015, 5, 1)
+    assert release.release_date("fred:JPNCPIALLMINMEI", D(2015, 3, 1)) == D(2015, 5, 1)

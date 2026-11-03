@@ -1,0 +1,1000 @@
+{
+  "what": "SHA-256 of every Round 18 download; bytes live in data/store (git-ignored)",
+  "store_root": "data/store",
+  "fetched": [
+    {
+      "series": "ecb:EXR:USD",
+      "sha256": "8664ee9d886a8fc171ad90fabb7c65124f0e2edb79e2c2530c6c70d12b3ad58f",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:10.182338+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01USM156N",
+      "sha256": "27702e49ee14dec951c78226c48e072ef3fc000fe7e7b20a64d553e520699648",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01USM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.344016+00:00",
+      "n_rows": 320,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:USACPIALLMINMEI",
+      "sha256": "d5d53baa65f56e18727a6c1684d9f4217e28ccc717724708b32e80aa86fffb49",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=USACPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.363614+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "fred:IR3TIB01EZM156N",
+      "sha256": "f1451db4eb5eecf20c212834a210e2285035fb4c8d5a47b77d719bfeae0489e5",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01EZM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.391794+00:00",
+      "n_rows": 313,
+      "first": "2000-01-01",
+      "last": "2026-01-01"
+    },
+    {
+      "series": "ecb:EXR:JPY",
+      "sha256": "73c3b530859708038916ecd556f3c95f74b50368f75cf2430c0fea57c87cb010",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.JPY.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:10.422232+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01JPM156N",
+      "sha256": "7d7336c147e74b18a02b6cb8628918d339bd53126c89e5f712609e04d95f6d11",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01JPM156N",
+      "retrieved_at": "2026-11-03T19:04:27.180531+00:00",
+      "n_rows": 293,
+      "first": "2002-04-01",
+      "last": "2026-08-01"
+    },
+    {
+      "series": "fred:JPNCPIALLMINMEI",
+      "sha256": "04e840af41e3b5876b534ea6de4df36a687160a4b888fcfd63636abccb1457d1",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=JPNCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.582818+00:00",
+      "n_rows": 258,
+      "first": "2000-01-01",
+      "last": "2021-06-01"
+    },
+    {
+      "series": "ecb:EXR:GBP",
+      "sha256": "7540d66fc0a97309bfd5434a7c9e36711344adc58a1bb344c91766f16ccebe30",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.GBP.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:10.600754+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01GBM156N",
+      "sha256": "7ae8880218431058ddafbe3185036768912129b44c809951f5e1829208cb9eef",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01GBM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.770777+00:00",
+      "n_rows": 313,
+      "first": "2000-01-01",
+      "last": "2026-01-01"
+    },
+    {
+      "series": "fred:GBRCPIALLMINMEI",
+      "sha256": "4e7662fdffb8e103e4950c7a14f961bed2561cef660ca0ca99dff75f294969d2",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=GBRCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:10.798474+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:CHF",
+      "sha256": "35875f78bf1c4cbd9e95b01101d28487171bb03e4e0703f60230ae71c89680ba",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CHF.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:11.325996+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01CHM156N",
+      "sha256": "68798f91f73b85e68d714b1a0c7132f574a1c802d53a4196d6a5ec1486bab3fa",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01CHM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:11.505499+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:CHECPIALLMINMEI",
+      "sha256": "bfb628e0d6bdccb8356b545e1dffaae8552a3d6f37a6456d1f394d77933ef537",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CHECPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:11.534109+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:SEK",
+      "sha256": "a1d6612c1137cc1b3a87e2d2f8b1a83425b8d79582b1be7c3435b9daebfe95e8",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.SEK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:11.564683+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01SEM156N",
+      "sha256": "26760b799a52947bf0d5ed219d2cc4616389a5aad338d10b47d74ef4c29e08a0",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01SEM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:11.738100+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:SWECPIALLMINMEI",
+      "sha256": "b6654ba2dec7182417b1e8821200621799595de9a0467848b0d79b6ace9c5d78",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=SWECPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:11.769563+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:NOK",
+      "sha256": "cf7da02cb14a35c182d6b13d3d6e818529279035ca0aad834bc4b28ed2370002",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.NOK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:12.148905+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01NOM156N",
+      "sha256": "29938607a3f50bca69578fc44faf81c48d7e2efafc2b2277a2b922be5cda6a35",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01NOM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:12.325529+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:NORCPIALLMINMEI",
+      "sha256": "3313036be852cf092eae6d1b25c9ab0f7a60448bb2c271ba14dcb1d063ce7090",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=NORCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:12.343084+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:DKK",
+      "sha256": "14cd753bfaa9b30e0443d438ca4456aa53a1e4734bb0b825b68af0581236f72d",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.DKK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:14.491057+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01DKM156N",
+      "sha256": "2d9b6e4b31edee70488e29285a83570ed0f95cdd5fb58afd39fbf0a6ac7d0a72",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01DKM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:14.633576+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:DNKCPIALLMINMEI",
+      "sha256": "4a88c73bd2c2d81d414ed818d3e489adce89a26261842219dc42a15450f20e52",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DNKCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:14.651040+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:AUD",
+      "sha256": "136586eeb19f6db1f9239321e33a3211fbcfdbc3d976a31ea63adb6515934756",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.AUD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:14.678569+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01AUM156N",
+      "sha256": "156fbfa0ebc6b854cc8b6b21220b657d1b083d61a0c6096fdc26dc7e2ee6ac4f",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01AUM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:14.811221+00:00",
+      "n_rows": 320,
+      "first": "2000-01-01",
+      "last": "2026-08-01"
+    },
+    {
+      "series": "ecb:EXR:CAD",
+      "sha256": "ebeee8b5b859bbca991cfa2606184ec1036a9f4ec157cb05050761dc004ec9f7",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CAD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:34.611722+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01CAM156N",
+      "sha256": "834fd8b28473b565376d564c0df15ff27517d26606daf1683109bae0c3c5950c",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01CAM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:34.722567+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:CANCPIALLMINMEI",
+      "sha256": "b56204a0eb80934858036faa970c27601a33e81828459352ade62dc86c2021e3",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CANCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:34.741787+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:NZD",
+      "sha256": "3c42cc3546b888f5ae77058d8f3a520e2e40047bbf31ab43dbbfe3161cf6d7f8",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.NZD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:34.759179+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01NZM156N",
+      "sha256": "27494ea3511696df019087d6de904a7da439a9d53c736d96a7a29bae3a81fa3d",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01NZM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:34.923901+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "ecb:EXR:KRW",
+      "sha256": "b0e386e42a499513a6e1d80ed601a4b95731aff9b084e85a01226558a7f1f8d3",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.KRW.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:43.335666+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01KRM156N",
+      "sha256": "85312a5202350ddf956aea80e01bfe344ed4f4451789efe78044f1f07e58628b",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01KRM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:43.484439+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:KORCPIALLMINMEI",
+      "sha256": "5711d3d8d681266cbfc8b38b1c867f3ec5ff6f50a3abad20bf676f0f23a30987",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=KORCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:43.506728+00:00",
+      "n_rows": 287,
+      "first": "2000-01-01",
+      "last": "2023-11-01"
+    },
+    {
+      "series": "ecb:EXR:ZAR",
+      "sha256": "9d27e361054c61e9c7f8afe6c52c761a16ed198780a8b09bf62c4ea91588c27a",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.ZAR.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:44.928110+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01ZAM156N",
+      "sha256": "af7516a3455bc1a09bc14f74218b160a977649800ec8b839ed47d30c00e4d3a2",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01ZAM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:45.111525+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:ZAFCPIALLMINMEI",
+      "sha256": "7d74c75ba8f2be7191fd81d73191220d9f1dea585834338a8ed2b2581a0ddefd",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=ZAFCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:45.142957+00:00",
+      "n_rows": 301,
+      "first": "2000-01-01",
+      "last": "2025-01-01"
+    },
+    {
+      "series": "ecb:EXR:CZK",
+      "sha256": "f7f8a1e9e94a10e09b2a23948f3597928d47261f2c3ce0278c4c2ed3a579a759",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CZK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:52.171812+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01CZM156N",
+      "sha256": "6c0a4ab2f4396e93f33125886f61e27a140686824127bf28518fb7fefc1f3886",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01CZM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.336854+00:00",
+      "n_rows": 320,
+      "first": "2000-01-01",
+      "last": "2026-08-01"
+    },
+    {
+      "series": "fred:CZECPIALLMINMEI",
+      "sha256": "de8683c82731118c5a462e1e923f9c5d482f0a358930860c95db1715db724382",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CZECPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.367749+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:HUF",
+      "sha256": "bc645c771d74c0dd2063e535d9113ebf9856880f42e4c0d4584c503f7f55caa0",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.HUF.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:52.397754+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01HUM156N",
+      "sha256": "50351beba0b9d7105b9ea5b39f6e5667905c748b71a056cc14cc3bbca5cc45d2",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01HUM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.585791+00:00",
+      "n_rows": 292,
+      "first": "2000-01-01",
+      "last": "2026-08-01"
+    },
+    {
+      "series": "fred:HUNCPIALLMINMEI",
+      "sha256": "1c6b6a114927211620511995b2ace538b1420c4a4feb9ebcce5556063292b9db",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=HUNCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.615754+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:PLN",
+      "sha256": "b29c083e5720b4e8609794a36f80390b93eeccd1ead65473c28c0d019106d04b",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.PLN.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:52.647229+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01PLM156N",
+      "sha256": "f4ba9cc91c38d965e4bdbabcdadf749bea5cced90fd8336b692f44250c5f12af",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01PLM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.793897+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:POLCPIALLMINMEI",
+      "sha256": "c4f41e1300baa958d9aa0cbd13006b17c7f3b4a2bd9099f92ab5e55e183a4794",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=POLCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:52.817597+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:SIT",
+      "sha256": "7fd2438b6db78f0c52a215e68f0022a0f49dc390d5ce5cfadf70fa1f361d9e20",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.SIT.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:55.106017+00:00",
+      "n_rows": 1790,
+      "first": "2000-01-03",
+      "last": "2006-12-29"
+    },
+    {
+      "series": "fred:IR3TIB01SIM156N",
+      "sha256": "c0e1023d206cecb41b5618820124de81bd1b8c585ab7ebbdabbc29bc8fb12077",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01SIM156N",
+      "retrieved_at": "2026-11-03T19:12:00.628343+00:00",
+      "n_rows": 297,
+      "first": "2002-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:SVNCPIALLMINMEI",
+      "sha256": "e70d1b9e3a8aea13b6fce32a7f0939833a5f9dd0571c6c57768185f9d9a8218d",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=SVNCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:18:55.170859+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:SKK",
+      "sha256": "121323c964ca0f06e2c094fec4d27556de641de09873fdcdc79dba3d24436d57",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.SKK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:17.038452+00:00",
+      "n_rows": 2301,
+      "first": "2000-01-03",
+      "last": "2008-12-31"
+    },
+    {
+      "series": "fred:IR3TIB01SKM156N",
+      "sha256": "0c189d00bd7f50628d5a013015ab59b84f0d9b6ee76a66e56396e19cc59b1f1f",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01SKM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:17.089249+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:SVKCPIALLMINMEI",
+      "sha256": "e947f208309b25b116e2514afde541a261c2c0b5b7aad2402d33269e784453da",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=SVKCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:17.108083+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:EEK",
+      "sha256": "33a5254da7d51edde27cdbf6db1d32f14503e3f32f2b925eeb11f852918bee17",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.EEK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:17.129266+00:00",
+      "n_rows": 2815,
+      "first": "2000-01-03",
+      "last": "2010-12-31"
+    },
+    {
+      "series": "fred:IR3TIB01EEM156N",
+      "sha256": "12d90347417c34b0006b54834cd0c556c1063aa9c8aef12c3037c47fe618a0b5",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01EEM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:17.191328+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "ecb:EXR:LVL",
+      "sha256": "a5d4e0c1ef6c58f7f6c05479447680a8fda80bf5801fd1ac818c03dca0047dcd",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.LVL.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:17.210046+00:00",
+      "n_rows": 3583,
+      "first": "2000-01-03",
+      "last": "2013-12-31"
+    },
+    {
+      "series": "ecb:EXR:LTL",
+      "sha256": "cdc3a4f3354e277a55de92d5d63a430f54fe4f84a1093c5a491f40696b48cb5d",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.LTL.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:20.116969+00:00",
+      "n_rows": 3838,
+      "first": "2000-01-03",
+      "last": "2014-12-31"
+    },
+    {
+      "series": "ecb:EXR:RUB",
+      "sha256": "375105c166e34c982f751107c8b4d45b49d94935f4b8d5d8d1f9428c06db3207",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.RUB.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:20.200620+00:00",
+      "n_rows": 5673,
+      "first": "2000-01-03",
+      "last": "2022-03-01"
+    },
+    {
+      "series": "fred:IR3TIB01RUM156N",
+      "sha256": "d50efb490f110892a9629357c0bca0eb79c5bec02797a8decb8f2a6d425941ba",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01RUM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:20.333242+00:00",
+      "n_rows": 263,
+      "first": "2000-01-01",
+      "last": "2022-02-01"
+    },
+    {
+      "series": "fred:RUSCPIALLMINMEI",
+      "sha256": "a2160d7bcfdf2fab891d57ebc1a072b6b65f8923acba8307513c2a93672572d7",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=RUSCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:20.357685+00:00",
+      "n_rows": 267,
+      "first": "2000-01-01",
+      "last": "2022-03-01"
+    },
+    {
+      "series": "ecb:EXR:TRY",
+      "sha256": "c9f695f637f23ecb56994a27304ae2135209ebbeef9c1eda670d259f21b33a32",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.TRY.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:24.895499+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01TRM156N",
+      "sha256": "cd518e00c08486d2c68205f1a64403da131a753399431649c44ea199d6fec29c",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01TRM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:25.054126+00:00",
+      "n_rows": 74,
+      "first": "2000-01-01",
+      "last": "2008-04-01"
+    },
+    {
+      "series": "fred:TURCPIALLMINMEI",
+      "sha256": "2c8c5f33b7dfa6061ac0baf6c28972787750da2e77957847ec68d6edcf6e180f",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=TURCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:25.065080+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:RON",
+      "sha256": "aed82aa1c7daa160e2431ceb909be00ad334778a7eb4ed0ab47a6d6baefcd6bb",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.RON.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:36.284088+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:CNY",
+      "sha256": "42d628ad96d418908f598fb06e4df8d2a84e9f7f8297de7a015b6322fe31693b",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CNY.EUR.SP00.A?format=csvdata&startPeriod=1999-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:16:13.890745+00:00",
+      "n_rows": 6861,
+      "first": "2000-01-13",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01CNM156N",
+      "sha256": "41507e9cbe185921f3d8410f42d0dd06a0426477057d87e10bb3471f01ba6b6f",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01CNM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:36.434311+00:00",
+      "n_rows": 319,
+      "first": "2000-01-01",
+      "last": "2026-08-01"
+    },
+    {
+      "series": "fred:CHNCPIALLMINMEI",
+      "sha256": "1aa442450086853a13f631b5f48ab41a1977b2e68bebb1656d1277069de90935",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CHNCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:36.454014+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:IDR",
+      "sha256": "52cd61450151ca0d27d354b38459fd79532a4347f516aac3bdca30403ae7c0ea",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.IDR.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:39.841916+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01IDM156N",
+      "sha256": "51bf2e0b57bf8e627791880ef965e88dc008ed8030bb4d577ce4e7d45af0a1a3",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01IDM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:39.972315+00:00",
+      "n_rows": 312,
+      "first": "2000-01-01",
+      "last": "2025-12-01"
+    },
+    {
+      "series": "fred:IDNCPIALLMINMEI",
+      "sha256": "3f6a9a1fac0337d4ef9423e1cae3efe0eae4bca9f9d585d08d7ccc3d00ee90b3",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IDNCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:39.990966+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:BRL",
+      "sha256": "2b1483cafe46fca618372082227ddc7a15420892f2d656807d5eca7d7bb5f72d",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.BRL.EUR.SP00.A?format=csvdata&startPeriod=1999-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:17:18.314530+00:00",
+      "n_rows": 6861,
+      "first": "2000-01-13",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:BRACPIALLMINMEI",
+      "sha256": "f11864e75417534032583c3ff8adf0ea4b70c21eb4c06187024e81cab4b61e08",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BRACPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:40.013005+00:00",
+      "n_rows": 304,
+      "first": "2000-01-01",
+      "last": "2025-04-01"
+    },
+    {
+      "series": "ecb:EXR:MXN",
+      "sha256": "ee9b0681bcfda8e0fb91ba8ef6d605d3cb9f2d03521bfa54c67a376e2c2ad66f",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.MXN.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:19:46.683152+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01MXM156N",
+      "sha256": "b2c3393b2273e570267c4eda5f0d18871dd759408f2fe7277dab4562fa069e90",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01MXM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:46.931288+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:MEXCPIALLMINMEI",
+      "sha256": "5e4d66f0901844eab9478675bddb847c87a56a967ff7dcd438c724aec05f75e8",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MEXCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:19:46.971049+00:00",
+      "n_rows": 295,
+      "first": "2000-01-01",
+      "last": "2024-07-01"
+    },
+    {
+      "series": "ecb:EXR:INR",
+      "sha256": "1a1b9062a30830eeb0141f4f90ffc76a3d7d45350c9c56181f303ad4f8069b13",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.INR.EUR.SP00.A?format=csvdata&startPeriod=1999-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:18:19.363440+00:00",
+      "n_rows": 6861,
+      "first": "2000-01-13",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:INDCPIALLMINMEI",
+      "sha256": "13089aaaaf4430a306546ba3b0bb1edfeeda64e0963b4862b2b3ece54a4e42cb",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=INDCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:00.158064+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:ILS",
+      "sha256": "3c7bd0ebaf1fd2122e099c3e3ddbedcfe9a90bf821c97ca8a54c39c2d158b413",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.ILS.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:03.934830+00:00",
+      "n_rows": 6860,
+      "first": "2000-01-13",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "fred:IR3TIB01ILM156N",
+      "sha256": "15aed7f0586e605e9e5082586122aa624fc01262359bf306fb1e21b5c03e047e",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=IR3TIB01ILM156N&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:04.155439+00:00",
+      "n_rows": 321,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:ISRCPIALLMINMEI",
+      "sha256": "b80512ba022c231806b0d3e12af1bc4607b727315420a381c2876336cf966280",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=ISRCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:04.187278+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "ecb:EXR:HKD",
+      "sha256": "776e0ec53638340ca333b1320338b624e5a8ee6d9bb15689d06801d334b7a06a",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.HKD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:09.454412+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:SGD",
+      "sha256": "385885f0681965855ab063efcc88030d0f41c2203d6fac4b8ed161c8b24114c9",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.SGD.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:09.653294+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:MYR",
+      "sha256": "574d19bf79a5f991de1b4d3bb8c9a4de4bfeb3191690223cce9cab1e94fe10b1",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.MYR.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:13.326839+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:PHP",
+      "sha256": "517f6c8f737977ab306f97647832da0739735a2dfaf077db495d194879d6fa92",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.PHP.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:13.722792+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:THB",
+      "sha256": "e87958a73f99d55be4e7936a52fbbb77aaae3698a3d7cfcdfda5518bd8f44795",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.THB.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:13.904264+00:00",
+      "n_rows": 6869,
+      "first": "2000-01-03",
+      "last": "2026-11-03"
+    },
+    {
+      "series": "ecb:EXR:CYP",
+      "sha256": "f9831fbb632f258d9489fadcae8f0864aa85755b1d6d5f703461b156ca17bc5e",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CYP.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:19.632716+00:00",
+      "n_rows": 2045,
+      "first": "2000-01-03",
+      "last": "2007-12-31"
+    },
+    {
+      "series": "ecb:EXR:MTL",
+      "sha256": "29a71f907d1c36634c6d2b55548a33344d8a5d398049b16d04baa27ef6e2c8ba",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.MTL.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:33.220644+00:00",
+      "n_rows": 2045,
+      "first": "2000-01-03",
+      "last": "2007-12-31"
+    },
+    {
+      "series": "ecb:EXR:HRK",
+      "sha256": "23b092c698394746970f1af13b0c1785dcdbcc8d8817237eafe36a4115bd7679",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.HRK.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:33.282875+00:00",
+      "n_rows": 5880,
+      "first": "2000-01-13",
+      "last": "2022-12-30"
+    },
+    {
+      "series": "ecb:EXR:BGN",
+      "sha256": "ec5508895f39e5af68a129a5948435d6523e4708d80fe12615461d2f34bd2296",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.BGN.EUR.SP00.A?format=csvdata&startPeriod=2000-01-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:33.404502+00:00",
+      "n_rows": 6515,
+      "first": "2000-07-19",
+      "last": "2025-12-31"
+    },
+    {
+      "series": "fred:CPIAUCSL",
+      "sha256": "24c03d8062d14e2574c81cfd054b3e3f1d661e05714a564907685dfcd1d0f8e8",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:33.516352+00:00",
+      "n_rows": 320,
+      "first": "2000-01-01",
+      "last": "2026-09-01"
+    },
+    {
+      "series": "fred:DEUCPIALLMINMEI",
+      "sha256": "7e6d93429d99cacc8ba30ff912d5e64c8ea65bbc8243c1b10a5eb04b80247687",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEUCPIALLMINMEI&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:52.515523+00:00",
+      "n_rows": 303,
+      "first": "2000-01-01",
+      "last": "2025-03-01"
+    },
+    {
+      "series": "fred:DTB3",
+      "sha256": "50e365df592442042e2c7f8619690511a3d114165ae35889dec9f473f70344ce",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:33.533993+00:00",
+      "n_rows": 6711,
+      "first": "2000-01-03",
+      "last": "2026-10-30"
+    },
+    {
+      "series": "fred:DGS2",
+      "sha256": "f3d166bbce25066404ea45219f33d6765a7c06d2a2bb85ec872f1f8f72a3d401",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:33.679262+00:00",
+      "n_rows": 6711,
+      "first": "2000-01-03",
+      "last": "2026-10-30"
+    },
+    {
+      "series": "fred:DGS10",
+      "sha256": "8dafdf2c9526d9d620451108fe80e1cee994aa029601dac0d3ead5b41307e87d",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=2000-01-01",
+      "retrieved_at": "2026-11-03T19:20:33.832650+00:00",
+      "n_rows": 6711,
+      "first": "2000-01-03",
+      "last": "2026-10-30"
+    },
+    {
+      "series": "fred:SOFR",
+      "sha256": "0a349829954ee089ff0195225bc5edbff467ce87842533f9198d70b34fc2b7c9",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=SOFR",
+      "retrieved_at": "2026-11-03T19:20:33.953131+00:00",
+      "n_rows": 2144,
+      "first": "2018-04-03",
+      "last": "2026-11-02"
+    },
+    {
+      "series": "nyfed:SOFR",
+      "sha256": "fec3399bc3787fc33e122d880fa1c688a056d0bb08f28575cd9e91a8e62059ea",
+      "url": "https://markets.newyorkfed.org/api/rates/secured/sofr/search.json?startDate=2023-12-01&endDate=2025-01-31",
+      "retrieved_at": "2026-11-03T19:20:34.001817+00:00",
+      "n_rows": 291,
+      "first": "2023-12-01",
+      "last": "2025-01-31"
+    },
+    {
+      "series": "ecb:ESTR",
+      "sha256": "1e11ac645179f7b7f1377aba2fd00bb6d4a43c4db9573e1f7b3b75b2198eb031",
+      "url": "https://data-api.ecb.europa.eu/service/data/EST/B.EU000A2X2A25.WT?format=csvdata&startPeriod=2019-10-01&endPeriod=2026-11-03",
+      "retrieved_at": "2026-11-03T19:20:34.023237+00:00",
+      "n_rows": 1816,
+      "first": "2019-10-01",
+      "last": "2026-11-02"
+    },
+    {
+      "series": "boe:IUDSOIA",
+      "sha256": "abeee1e02efbd465a1965e65345cf6ec57c6ee41b66f7df5355a4cf04523b3d9",
+      "url": "https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes&Datefrom=01/Jan/2000&Dateto=03/Nov/2026&SeriesCodes=IUDSOIA&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N",
+      "retrieved_at": "2026-11-03T19:20:34.064168+00:00",
+      "n_rows": 6780,
+      "first": "2000-01-04",
+      "last": "2026-10-30"
+    },
+    {
+      "series": "ust:par",
+      "sha256": "6775840b76cd7fd41121f61d6f6c60184eca6b2ba49954ec7372c463cbeef34d",
+      "url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2024/all?type=daily_treasury_yield_curve&field_tdr_date_value=2024&page&_format=csv",
+      "retrieved_at": "2026-11-03T19:20:34.197919+00:00",
+      "n_rows": 250,
+      "first": "2024-01-02",
+      "last": "2024-12-31"
+    }
+  ],
+  "failed": [
+    {
+      "series": "fred:EA19CPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:AUSCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:NZLCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:ESTCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01LVM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:LVACPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01LTM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:LTUCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01ROM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:ROUCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01BRM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01INM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01HKM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:HKGCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01SGM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:SGPCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01MYM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:MYSCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01PHM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:PHLCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01THM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:THACPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01CYM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:CYPCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01MTM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:MLTCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01HRM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:HRVCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:IR3TIB01BGM156N",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "fred:BGRCPIALLMINMEI",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "cboe:VIX",
+      "error": "not fetched (no data at the source or refused)"
+    },
+    {
+      "series": "french:F-F_Research_Data_Factors",
+      "error": "not fetched (no data at the source or refused)"
+    }
+  ]
+}

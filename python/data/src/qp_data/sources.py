@@ -57,11 +57,17 @@ __all__ = [
 # public domain. FRED also hosts third-party series under copyright (equity
 # indices, for example), so this is an allow-list: a new series is checked
 # on its FRED page, then added here.
-FRED_PERMITTED_PREFIXES = ("DEX", "DGS", "DTB", "DFF", "SOFR", "FEDFUNDS", "CPIAUCSL")
+FRED_PERMITTED_PREFIXES = ("DEX", "DGS", "DTB", "DFF", "SOFR", "FEDFUNDS", "CPIAUCSL", "IR3TIB01")
+# OECD Main Economic Indicators republished on FRED: 3-month interbank rates
+# (``IR3TIB01<CC>M156N``) and CPI all items (``<ISO3>CPIALLMINMEI``). OECD
+# data are licensed CC BY 4.0 (OECD terms and conditions, July 2024), so
+# they may be stored and redistributed with attribution "Source: OECD".
+FRED_PERMITTED_SUFFIXES = ("CPIALLMINMEI",)
 
 
 def fred_permitted(series: str) -> bool:
-    return series.upper().startswith(FRED_PERMITTED_PREFIXES)
+    u = series.upper()
+    return u.startswith(FRED_PERMITTED_PREFIXES) or u.endswith(FRED_PERMITTED_SUFFIXES)
 
 
 def _frame(index: pd.Index | pd.Series, cols: dict[str, object]) -> pd.DataFrame:

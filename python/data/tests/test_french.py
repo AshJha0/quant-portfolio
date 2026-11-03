@@ -59,12 +59,15 @@ def test_daily_codes_and_missing_values():
     assert np.isnan(f.loc["2024-01-02", "B"].item()) and np.isnan(f.loc["2024-01-03", "A"].item())
 
 
-@pytest.mark.parametrize("text", [
-    "no table here\n",
-    ",A,B\n202401, 1.0\n",           # ragged row
-    ",A\n202401, x\n",              # non-numeric
-    ",A\n202402, 1\n202401, 1\n",   # out of order
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "no table here\n",
+        ",A,B\n202401, 1.0\n",  # ragged row
+        ",A\n202401, x\n",  # non-numeric
+        ",A\n202402, 1\n202401, 1\n",  # out of order
+    ],
+)
 def test_schema_errors(text):
     with pytest.raises(SchemaError):
         french.parse_french(text.encode())
@@ -72,7 +75,8 @@ def test_schema_errors(text):
 
 def test_url_allow_list():
     assert french.french_url("french:F-F_Research_Data_Factors") == (
-        french.BASE_URL + "F-F_Research_Data_Factors_CSV.zip")
+        french.BASE_URL + "F-F_Research_Data_Factors_CSV.zip"
+    )
     with pytest.raises(SourceNotPermitted):
         french.french_url("french:Some_Other_File")
     assert french.SOURCE.name == "french"
