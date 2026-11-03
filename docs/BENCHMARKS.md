@@ -57,6 +57,14 @@ the first run of the gate, rust/fx-var-engine `portfolio_sigma_50f` looked
 1.49x slower (4,599 ns against 3,085 ns) with identical library code; timed
 with one harness, base and head both gave a median of 2,342 ns on a laptop.
 
+Both sides are also compiled from one staging directory with the same build
+directories. Source paths are baked into the executables (Rust panic
+locations, C++ `__FILE__`), so identical code built from two different
+directories gives differently laid-out binaries, and code alignment alone
+made rust/equity-options-engine `crr_price n=1000` look 1.45x slower on a
+docs-only change. Staged at one path, identical code builds to identical
+bytes (checked for all eight benches).
+
 A kernel fails the job only when both hold:
 
 - the head median is more than 25% above the base median, and

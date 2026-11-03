@@ -46,22 +46,30 @@ for e in "${engines[@]}"; do
     fi
 done
 
+# Both sides are compiled from the same staging path with the same build
+# directories. Source paths end up in the binaries (Rust panic locations,
+# C++ __FILE__), so building identical code from two different directories
+# gives differently laid-out executables, and code alignment alone moved
+# rust/equity-options-engine crr_price n=1000 by 1.45x on a docs-only change.
+# Staged at one path, identical code builds to identical bytes.
+stage="$RUNNER_TEMP/bench-stage"
 build() {  # build <tree> <bin dir>
     local tree="$1" bin="$2"
     mkdir -p "$bin"
+    rm -rf "$stage" "$RUNNER_TEMP/bench-build" "$RUNNER_TEMP/bench-target"
+    mkdir -p "$stage"
+    cp -r "$tree/cpp" "$tree/rust" "$stage/"
     for e in "${engines[@]}"; do
         IFS=: read -r engine target package <<<"$e"
-        if [ -d "$tree/cpp/$engine" ] &&
-           cmake -S "$tree/cpp/$engine" -B "$bin/build-$engine" -G Ninja \
-                 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-15 > /dev/null &&
-           cmake --build "$bin/build-$engine" --target "$target" -j 4 > /dev/null; then
-            cp "$bin/build-$engine/$target" "$bin/cpp-$engine"
+        if [ -d "$stage/cpp/$engine" ] &&
+           cmake -S "$stage/cpp/$engine" -B "$RUNNER_TEMP/bench-build/$engine" -G Ninja                  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-15 > /dev/null &&
+           cmake --build "$RUNNER_TEMP/bench-build/$engine" --target "$target" -j 4 > /dev/null; then
+            cp "$RUNNER_TEMP/bench-build/$engine/$target" "$bin/cpp-$engine"
         else
             echo "::warning::C++ bench $engine did not build at $tree"
         fi
-        if (cd "$tree/rust" && CARGO_TARGET_DIR="$bin/target" \
-                cargo build --release --locked -p "$package" --bin bench > /dev/null); then
-            cp "$bin/target/release/bench" "$bin/rust-$engine"
+        if (cd "$stage/rust" && CARGO_TARGET_DIR="$RUNNER_TEMP/bench-target"                 cargo build --release --locked -p "$package" --bin bench > /dev/null); then
+            cp "$RUNNER_TEMP/bench-target/release/bench" "$bin/rust-$engine"
         else
             echo "::warning::Rust bench $engine did not build at $tree"
         fi
