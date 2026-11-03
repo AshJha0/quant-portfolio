@@ -8,7 +8,7 @@ every report carries the stamp `synthetic venue`.
 
 | Module | Plain idea | Source |
 |---|---|---|
-| `settlement` | When is a trade paid for? US equities T+1, FX spot T+2, 2026 holiday tables | SEC Rule 15c6-1 (T+1 from 2024-05-28); ISDA 1998 FX Definitions; NYSE, Federal Reserve, ECB TARGET2, UK calendars |
+| `settlement` | When is a trade paid for? US equities T+1, FX spot T+2, rules-based calendars (qp_core.holidays, NYSE Rule 7.2) | SEC Rule 15c6-1 (T+1 from 2024-05-28); ISDA 1998 FX Definitions; NYSE, Federal Reserve, ECB TARGET2, UK calendars |
 | `booking` | Fills become booked trades; amend, cancel and novation append versions; confirmations are matched field by field | FINOS CDM lifecycle events; SWIFT MT300 fields |
 | `tca` | Implementation shortfall and effective spread per fill, totals by venue | Perold (1988); SEC Rule 605 (2024) |
 | `bestex` | RTS 28-layout top-venue table and Rule 605-style size buckets, reconciled to TCA totals | (EU) 2017/576 (deleted 2024), SEC Rule 605 |

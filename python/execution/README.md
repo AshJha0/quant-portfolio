@@ -74,7 +74,7 @@ evidence about equities.
 
 ## What is not here
 
-* No Nasdaq ITCH or LOBSTER data (no accounts).
+* No licensed exchange or vendor order-book data (no accounts; data/README.md lists the excluded sources).
 * Self-trade prevention is not modelled.
 * The C++ book has no Python binding yet; Python talks to it through the
   replay tool and the shared event file.

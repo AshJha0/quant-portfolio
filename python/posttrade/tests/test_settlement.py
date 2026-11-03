@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from qp_posttrade.settlement import fx_spot_date, us_equity_settle
+from qp_posttrade.settlement import fx_spot_date, nyse_holidays, us_equity_settle
 
 D = date
 EQ = [
@@ -69,9 +69,53 @@ def test_fx_spot(pair: str, td: date, want: date, why: str) -> None:
     assert fx_spot_date(pair, td) == want, why
 
 
-def test_year_end_runs_off_table_raises() -> None:
-    with pytest.raises(ValueError, match="2027"):
-        us_equity_settle(D(2026, 12, 31))
+def test_year_end_rolls_into_next_year() -> None:
+    # The calendars are rules-based (qp_core.holidays and nyse_holidays), so a
+    # trade on 31 Dec 2026 settles over New Year's Day (Fri 1 Jan 2027).
+    assert us_equity_settle(D(2026, 12, 31)) == D(2027, 1, 4)
+
+
+def test_outside_the_rules_range_raises() -> None:
+    with pytest.raises(ValueError, match="2100"):
+        us_equity_settle(D(2099, 12, 31))
+    with pytest.raises(ValueError, match="1999"):
+        fx_spot_date("EURUSD", D(1999, 12, 30))
+
+
+# The 2026 tables the 40 cases were worked from by hand (NYSE and Fed
+# published calendars). The rule generators must reproduce them exactly.
+NYSE_2026 = {D(2026, m, d) for m, d in [(1, 1), (1, 19), (2, 16), (4, 3), (5, 25), (6, 19), (7, 3),
+                                         (9, 7), (11, 26), (12, 25)]}
+FED_2026 = {D(2026, m, d) for m, d in [(1, 1), (1, 19), (2, 16), (5, 25), (6, 19), (9, 7), (10, 12),
+                                        (11, 11), (11, 26), (12, 25)]}
+
+
+def test_nyse_rules_reproduce_the_2026_table() -> None:
+    assert set(nyse_holidays(2026)) == NYSE_2026
+
+
+def test_core_fed_calendar_reproduces_the_2026_table() -> None:
+    from qp_core.holidays import holidays
+
+    assert set(holidays("USD", 2026)) == FED_2026
+
+
+@pytest.mark.parametrize(("year", "day"), [
+    (2022, D(2021, 12, 31)),  # Sat New Year: NYSE does not close Fri 31 Dec
+    (2021, D(2021, 12, 24)),  # Sat Christmas observed Friday
+    (2023, D(2023, 1, 2)),    # Sun New Year observed Monday
+    (2012, D(2012, 10, 29)),  # Hurricane Sandy
+])
+def test_nyse_observance_rules(year: int, day: date) -> None:
+    if year == 2022:
+        assert day not in nyse_holidays(2021) and D(2022, 1, 1) not in nyse_holidays(2022)
+    else:
+        assert day in nyse_holidays(year)
+
+
+def test_usdcad_is_t_plus_1() -> None:
+    # The old 2026-only tables had no CAD calendar; qp_core ships one.
+    assert fx_spot_date("USDCAD", D(2026, 11, 2)) == D(2026, 11, 3)
 
 
 @pytest.mark.parametrize("bad", [D(2026, 11, 7), D(2026, 11, 26), D(2026, 4, 3)])
@@ -81,5 +125,7 @@ def test_non_trading_day_raises(bad: date) -> None:
 
 
 def test_unknown_currency_raises() -> None:
-    with pytest.raises(ValueError, match="JPY"):
-        fx_spot_date("USDJPY", D(2026, 11, 2))
+    # qp_core counts weekends only for a currency it has no calendar for;
+    # post-trade refuses instead of returning a possibly wrong value date.
+    with pytest.raises(ValueError, match="MXN"):
+        fx_spot_date("USDMXN", D(2026, 11, 2))

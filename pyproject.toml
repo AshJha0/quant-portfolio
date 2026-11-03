@@ -10,6 +10,10 @@
 members = [
     "python/core",
     "python/data",
+    "python/backtest",
+    "python/oms",
+    "python/execution",
+    "python/posttrade",
     "python/equity/01-options-pricing",
     "python/equity/02-volatility-modeling",
     "python/equity/03-var-es-engine",
@@ -62,6 +66,10 @@ build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0", "cibu
 [tool.uv.sources]
 qp-core = { workspace = true }
 qp-data = { workspace = true }
+qp-bt = { workspace = true }
+qp-oms = { workspace = true }
+qp-exec = { workspace = true }
+qp-posttrade = { workspace = true }
 
 [tool.mypy]
 # Default (non-strict) checking for the projects; python/core is strict.

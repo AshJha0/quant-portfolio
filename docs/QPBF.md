@@ -4,9 +4,9 @@ QPBF is a small market-data feed format written for this repository. It
 exists so the low-latency code (`cpp/ull/`, and the Rust lane's matching
 crate) has a realistic binary feed to decode, arbitrate and recover without
 any licensed exchange data. It is modelled on the general shape of
-order-by-order exchange feeds such as Nasdaq TotalView-ITCH and CME MDP 3.0
+order-by-order exchange feeds such as CME MDP 3.0 and the US equity venues' direct feeds
 (fixed-size binary messages, per-message sequence numbers, two redundant
-multicast lines and a separate recovery channel). It does not copy either
+multicast lines and a separate recovery channel). It does not copy any
 format, and nothing in it claims to match a real venue.
 
 This page is the specification. The C++ reference implementation is

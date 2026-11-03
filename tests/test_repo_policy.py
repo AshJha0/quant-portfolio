@@ -51,7 +51,9 @@ class TestOneVersion:
 
     def test_every_pyproject_has_the_repo_version(self):
         projects = _pyprojects()
-        assert len(projects) == 27  # python/core, python/data, 23 projects, 2 bindings
+        # python/core, python/data, the four shared stacks (backtest, oms,
+        # execution, posttrade), 23 projects, 2 bindings
+        assert len(projects) == 31
         bad = {}
         for p in projects:
             v = tomllib.loads(p.read_text(encoding="utf-8"))["project"]["version"]

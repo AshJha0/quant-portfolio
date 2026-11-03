@@ -28,7 +28,7 @@
 // request_snapshot() is called, and a snapshot as of 12 (say) is applied,
 // buffered 7-9 are discarded as older than 12, 13.. continue.
 //
-// References: CME MDP 3.0 "Market Data Recovery" and Nasdaq MoldUDP64 both
+// References: CME MDP 3.0 "Market Data Recovery" and the MoldUDP64 framing both
 // describe A/B feeds with sequence-gap recovery; this design follows the
 // common pattern, not either venue's exact protocol (QPBF.md section 7).
 #pragma once
