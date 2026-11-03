@@ -37,15 +37,17 @@ PAYOFFS = ("european", "asian")
 
 def _path_payoff(log_s0: Real, drift: Real, vol: Real, K: Real, z: Sequence[float],
                  payoff: str) -> Real:
-    x = log_s0
-    total: Real = 0.0
-    s: Real = 0.0
-    for zi in z:
-        x = x + drift + vol * float(zi)
-        s = exp(x)
-        if payoff == "asian":
-            total = total + s
-    under = total / len(z) if payoff == "asian" else s
+    if payoff == "european":
+        # ln S_T depends on the inputs only through sum(z): one exp and four
+        # tape nodes per path, whatever the number of steps.
+        under = exp(log_s0 + drift * len(z) + vol * float(sum(z)))
+    else:
+        x = log_s0
+        total: Real = 0.0
+        for zi in z:
+            x = x + drift + vol * float(zi)
+            total = total + exp(x)
+        under = total / len(z)
     return under - K if under > K else 0.0
 
 
