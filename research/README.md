@@ -437,3 +437,16 @@ be a new trial and needs a new registration, W23).
 
 Tests: `python -m pytest research/tests` (needs qp-core, fx-pairs,
 fx-regime; statsmodels for the Johansen oracle).
+
+## Sub-folders added in milestone v2.1
+
+| Folder | What it is | Evidence class |
+|---|---|---|
+| [`panel/`](panel/README.md) | FX carry, value and momentum on the 38-currency point-in-time panel (W23 part 1) | real data, preregistered |
+| [`attribution/`](attribution/README.md) | Regress a return on DOL/HML_FX or Fama-French premia before calling it alpha (W23a); OLS with HAC errors matches statsmodels to 1e-10 | method, oracle-checked |
+| `cli/qp_run.py` | `qp-run sweep` logs every grid point as a trial with input and `uv.lock` SHA-256s; `trials query`; `trials rerun` re-executes a row and compares to 1e-12 (the nightly job reruns a random row) | tooling |
+| [`vix/`](vix/README.md) | VIX against later realised variance (study E), descriptive, from the CBOE's free published closes | real data, descriptive |
+| [`tsmom/`](tsmom/README.md) | Cross-asset time-series momentum after Moskowitz, Ooi and Pedersen (2012) (study F); preregistration drafted, unsigned | exploratory until signed; training months before 2016 only |
+| [`notebooks/`](notebooks/README.md) | VIX premium, time-series momentum and purged cross-validation, each as an exercise and a solution generated from one cell list | teaching |
+
+Tests: `python -m pytest research/tests research/panel/tests research/attribution/tests research/vix/tests research/tsmom/tests research/notebooks/tests research/cli/tests`.
