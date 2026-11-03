@@ -1,25 +1,36 @@
-"""Walk-forward backtesting for currency portfolios.
+"""Walk-forward backtesting for currency portfolios, on the shared ``qp_bt`` core.
 
 Design rules (all tested):
 
 * **No lookahead**: the weight function receives history strictly up to and
-  including the rebalance date *t*; new weights take effect from *t+1*.
-  Carry accrual inside the returns already uses previous-close rates (see
-  :mod:`fx_port.returns_est`).
-* **Carry in the P&L**: the ledger splits every day's P&L into a spot leg
-  and a carry-accrual leg; their sum plus costs is the net return.
-* **Transaction costs in pips**: FX costs quote as a spread in pips;
-  :func:`pips_to_bps` converts ``pips × pip_size / spot`` into basis points
-  of notional.  The engine charges ``cost_rate × turnover`` on the day new
-  weights take effect, with turnover = sum |w_new - w_old| (weights are
-  treated as reset to target at each rebalance; intra-period drift of
-  long-short FX weights is second-order and documented as a simplification).
+  including the rebalance date *t*; the order fills in period *t+1* under
+  ``execution`` (default: next bar, ``f = 0.5``, the repository convention
+  in :class:`qp_core.execution.ExecutionConfig`).
+* **One core**: the period arithmetic is :func:`qp_bt.run_fast`: the book is
+  traded to target weights of the post-trade NAV, costs come out of the
+  trade, and between rebalances the book drifts with prices (no free daily
+  reset to target). Spot log returns are turned into simple returns,
+  ``R = exp(x) - 1``, before they reach the core.
+* **Carry in the P&L**: the ledger splits each day into a spot leg (the
+  core's ``gross_ret``) and a carry leg (``asset_carry``: the accrual of each
+  currency, earned on the book held overnight). Net = spot + carry - cost.
+* **Transaction costs in pips**: :func:`pips_to_bps` converts
+  ``pips * pip_size / spot`` into bps of notional; the core charges
+  ``cost_bps * 1e-4`` per unit of traded notional (:class:`qp_bt.HalfSpreadCost`).
 * **Base-currency reporting**: helpers convert USD-base log total returns to
-  any base (the GBP option for a London desk).  For LOG returns the change of
+  any base (the GBP option for a London desk). For LOG returns the change of
   base adds the SAME conversion term to every asset, so a dollar-neutral
-  portfolio's log-return series is EXACTLY invariant to the base currency
-  (the common term multiplies sum(w) = 0); a net-long book shifts by the base
-  currency's own total return.  Both identities are unit-tested.
+  portfolio's linearly aggregated log-return series is EXACTLY invariant to
+  the base currency (the common term multiplies sum(w) = 0); a net-long book
+  shifts by the base currency's own total return. Both identities are
+  unit-tested.
+
+Migration (Round 12, W24b). Before, the book earned the whole day after the
+decision close (a free fill at the decision close), weights were reset to
+target every day for free, and the day's P&L was the weighted sum of log
+returns. Each is listed with before/after numbers in the handback and
+checked by a hand fixture in ``tests/test_backtest.py``. The old fill price
+is ``execution=ExecutionConfig("close_auction", auction_cost_bp=0.0)``.
 """
 
 from __future__ import annotations
@@ -29,6 +40,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_bt import HalfSpreadCost, NextBarFill, run_fast
+from qp_core.execution import ExecutionConfig
 
 from .returns_est import DT
 
@@ -64,10 +77,11 @@ class BacktestResult:
     Attributes
     ----------
     ledger : pd.DataFrame
-        Daily rows: ``spot_pnl``, ``carry_pnl``, ``cost``, ``net``
-        (= spot + carry - cost) and ``turnover``.
+        Daily rows, fractions of the previous close's NAV: ``spot_pnl``,
+        ``carry_pnl``, ``cost``, ``net`` (= spot + carry - cost, a simple
+        return) and ``turnover`` (traded notional over that NAV).
     weights : pd.DataFrame
-        Target weights as applied on each day (post-lag).
+        Weights held at each close (after the day's fill and drift).
     """
 
     ledger: pd.DataFrame
@@ -81,6 +95,7 @@ def run_backtest(
     est_window: int = 252,
     rebalance_every: int = 21,
     cost_bps: float | pd.Series = 1.0,
+    execution: ExecutionConfig | None = None,
 ) -> BacktestResult:
     """Walk-forward backtest with rebalancing, pip costs and carry accrual.
 
@@ -88,20 +103,22 @@ def run_backtest(
     ----------
     spot_returns, carry_returns : pd.DataFrame
         Daily spot log returns and carry accrual per asset (same shape;
-        their sum is the total return).  Obtain them from
+        their sum is the total log return). Obtain them from
         :func:`fx_port.returns_est.total_log_returns`.
     weight_func : callable
         ``weight_func(history)`` -> weights Series, where ``history`` is the
-        TOTAL return panel up to and including the rebalance date.  Called
-        first on row ``est_window - 1`` (i.e. after ``est_window`` days of
-        history) and then every ``rebalance_every`` days.
+        TOTAL return panel up to and including the rebalance date. Called
+        first on row ``est_window - 1`` and then every ``rebalance_every``
+        days.
     est_window : int
         Minimum history before the first allocation (>= 2).
     rebalance_every : int
         Days between rebalances (>= 1).
     cost_bps : float or pd.Series
-        One-way transaction cost per unit of turnover, in bps of notional,
-        scalar or per-asset.
+        One-way cost per unit of traded notional, in bps, scalar or per asset.
+    execution : ExecutionConfig, optional
+        Fill convention; default next bar, ``f = 0.5``. A close-auction fill
+        is booked in the next day's row.
 
     Returns
     -------
@@ -118,9 +135,7 @@ def run_backtest(
         raise ValueError("spot_returns and carry_returns must be aligned")
     n_days = len(spot_returns)
     if est_window < 2 or est_window >= n_days:
-        raise ValueError(
-            f"need 2 <= est_window < n_days, got {est_window} vs {n_days}"
-        )
+        raise ValueError(f"need 2 <= est_window < n_days, got {est_window} vs {n_days}")
     if rebalance_every < 1:
         raise ValueError(f"rebalance_every must be >= 1, got {rebalance_every}")
     cols = list(spot_returns.columns)
@@ -133,42 +148,28 @@ def run_backtest(
         raise ValueError("cost_bps must be non-negative and cover all assets")
 
     total = spot_returns + carry_returns
-    spot_np, carry_np = spot_returns.to_numpy(), carry_returns.to_numpy()
-    cost_np = cost_rate.to_numpy()
-
-    w_current = np.zeros(len(cols))
-    pending: tuple[int, np.ndarray] | None = None
-    rows, w_rows, dates = [], [], []
-    rebalance_days = set(range(est_window - 1, n_days, rebalance_every))
+    targets = np.full((n_days, len(cols)), np.nan)
     for t in range(est_window - 1, n_days):
-        if pending is not None and pending[0] == t:
-            w_new = pending[1]
-            turnover = float(np.abs(w_new - w_current).sum())
-            cost = float(np.abs(w_new - w_current) @ cost_np)
-            w_current = w_new
-            pending = None
-        else:
-            turnover, cost = 0.0, 0.0
-        if t > est_window - 1:  # P&L accrues only after the first allocation
-            spot_pnl = float(w_current @ spot_np[t])
-            carry_pnl = float(w_current @ carry_np[t])
-            rows.append(
-                [spot_pnl, carry_pnl, cost, spot_pnl + carry_pnl - cost, turnover]
-            )
-            w_rows.append(w_current.copy())
-            dates.append(spot_returns.index[t])
-        if t in rebalance_days:
-            hist = total.iloc[: t + 1]
-            w = pd.Series(weight_func(hist)).reindex(cols)
+        if (t - est_window + 1) % rebalance_every == 0:
+            w = pd.Series(weight_func(total.iloc[: t + 1])).reindex(cols)
             if w.isna().any():
                 raise ValueError("weight_func returned NaN or missing assets")
-            pending = (t + 1, w.to_numpy(dtype=float))
-    ledger = pd.DataFrame(
-        rows,
-        index=pd.DatetimeIndex(dates),
-        columns=["spot_pnl", "carry_pnl", "cost", "net", "turnover"],
+            targets[t] = w.to_numpy(dtype=float)
+    run = run_fast(
+        pd.DataFrame(np.expm1(spot_returns.to_numpy(dtype=float)), index=spot_returns.index,
+                     columns=cols),
+        targets,
+        fill=NextBarFill.from_execution(execution, auction_booked="next"),
+        cost=HalfSpreadCost(np.asarray(cost_rate, dtype=np.float64)),
+        asset_carry=carry_returns.to_numpy(dtype=float),
     )
-    weights = pd.DataFrame(w_rows, index=ledger.index, columns=cols)
+    led = run.ledger.iloc[est_window:]
+    ledger = pd.DataFrame(
+        {"spot_pnl": led["gross_ret"], "carry_pnl": led["carry"], "cost": led["cost"],
+         "net": led["net_ret"], "turnover": led["turnover"]},
+        index=pd.DatetimeIndex(led.index),
+    )
+    weights = run.weights.iloc[est_window:].set_axis(ledger.index)
     return BacktestResult(ledger=ledger, weights=weights)
 
 

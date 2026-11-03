@@ -17,6 +17,15 @@ auction. Carry accrues at the daily rollover (5pm NY = 21:00 London
 here) to the position held across it, time-weighted by ``f`` when the
 position changes inside the bar.
 
+The bar loop is the shared ``qp_bt`` event engine (Round 12, W24b): the
+position is a share-like holding of base units, the fill is
+:class:`qp_bt.NextBarFill` (a close-auction fill is booked on the decision
+bar, lag 0), the session half-spread is the engine's unit cost and the
+rollover carry its carry hook. The engine's P&L split in quote currency is
+the ledger below. It reproduces the pre-migration output to 1e-12 of each
+series' scale (the pip series are quote P&L times ``1 / pip_size``, so the
+last bits of a sum of ~1e-16 rounding differences show at ~1e-12 pips).
+
 Units
 -----
 * Positions: base-currency notional units (1.0 = 1 unit of base).
@@ -35,6 +44,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from qp_bt import BarContext, EventEngine, NextBarFill, TargetPosition
 from qp_core.execution import ExecutionConfig as _CoreExecutionConfig
 
 from .research_stats import lo_sharpe_se
@@ -157,31 +167,8 @@ class IntradayBacktester:
         ex = execution if execution is not None else ExecutionConfig()
         if not np.all(np.isfinite(close)):
             raise ValueError("bars close contains NaN/inf")
-        pos_prev = np.concatenate([[0.0], pos[:-1]])    # decided at t-1
-        pos_prev2 = np.concatenate([[0.0, 0.0], pos[:-2]])[:n]  # decided at t-2
-        dmid = np.concatenate([[0.0], np.diff(close)])
         spread_hs = 0.5 * self._spread_pips(hour) * cfg.pip_size
         close_prev = np.concatenate([[np.nan], close[:-1]])
-
-        if ex.mode == "next":
-            f = ex.fill_fraction
-            # Bar t books the move close_{t-1} -> close_t. The position
-            # decided at t-1 fills at close_{t-1} + f * dmid_t; until then
-            # the position decided at t-2 is held.
-            held = f * pos_prev2 + (1.0 - f) * pos_prev
-            gross_q = pos_prev2 * f * dmid + pos_prev * (1.0 - f) * dmid
-            turnover = np.abs(pos_prev - pos_prev2)
-            cost_q = turnover * spread_hs
-            fill_price = close_prev + f * dmid
-        else:
-            held = pos_prev
-            gross_q = pos_prev * dmid
-            turnover = np.abs(pos - pos_prev)
-            cost_q = turnover * (spread_hs + ex.auction_cost_bp * 1e-4 * close)
-            fill_price = close.copy()
-
-        # Carry accrues at bar t if the holding interval (t-1, t] contains
-        # the rollover instant, to the position held over that interval.
         hour_prev = np.concatenate([[np.nan], hour[:-1]])
         crossed = self._crosses_rollover(hour_prev, hour)
         if carry is None:
@@ -190,9 +177,56 @@ class IntradayBacktester:
             if not bars.index.equals(carry.index):
                 raise ValueError("carry index must equal bars index")
             carry_rate = carry.to_numpy(dtype=float)
-        carry_q = np.where(
-            crossed, held * close_prev * carry_rate / cfg.days_per_year, 0.0
-        )
+        if ex.mode == "next":
+            fill = NextBarFill.from_execution(ex)
+            f = fill.fraction
+        else:
+            fill = NextBarFill.from_execution(ex, auction_booked="decision")
+            f = 0.0  # the new position is on before the bar opens
+
+        def unit_cost(s: int, asset: int, dq: float, price: float) -> dict[str, float]:
+            # half the session spread of the bar the order fills in
+            return {"spread": abs(dq) * float(spread_hs[s])}
+
+        def rollover(s: int, q: np.ndarray, pf: np.ndarray) -> dict[str, float]:
+            # carry at the rollover inside bar s, on the position held across
+            # it, time-weighted by f when the order fills inside the bar
+            if not crossed[s]:
+                return {"carry": 0.0}
+            held = f * float(q[0]) + (1.0 - f) * float(pos[s - 1])
+            return {"carry": -held * float(close_prev[s]) * float(carry_rate[s])
+                    / cfg.days_per_year}
+
+        class _Path:
+            def on_bar(self, ctx: BarContext) -> list[TargetPosition]:
+                t = ctx.bar
+                if pos[t] == ctx.positions[0]:
+                    return []
+                target = np.array([float(pos[t])])
+
+                def resolve(_pf: np.ndarray) -> np.ndarray:
+                    return target
+
+                return [TargetPosition(resolve)]
+
+        # NAV only has to stay positive for the engine's wipe-out rule; the
+        # quote-currency P&L is read from its pnl split, not from NAV.
+        nav0 = 1.0 + 1e6 * (1.0 + float(np.abs(pos).max(initial=0.0)) * float(np.abs(close).max()))
+        # the engine's clock is positional: bar labels here may be hours that wrap
+        run = EventEngine(pd.DataFrame({"close": close}, index=pd.RangeIndex(n)), fill,
+                          unit_cost=unit_cost, carry=rollover, initial_nav=nav0).run(_Path())
+        pnl = run.pnl
+        assert pnl is not None
+        gross_q = (pnl["pre_fill_pnl"] + pnl["post_fill_pnl"]).to_numpy(dtype=float)
+        cost_q = pnl.get("cost_spread", pd.Series(0.0, index=pnl.index)).to_numpy(dtype=float)
+        cost_q = cost_q + pnl.get("cost_extra", pd.Series(0.0, index=pnl.index)).to_numpy(
+            dtype=float)
+        carry_q = -pnl.get("carry_carry", pd.Series(0.0, index=pnl.index)).to_numpy(dtype=float)
+        turnover = np.zeros(n)
+        fill_price = np.full(n, np.nan)
+        for rec in run.fills:
+            turnover[rec.bar] += abs(rec.quantity)
+            fill_price[rec.bar] = rec.price
         carry_q = np.nan_to_num(carry_q)
 
         net_q = gross_q - cost_q + carry_q

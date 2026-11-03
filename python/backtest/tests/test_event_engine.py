@@ -179,3 +179,14 @@ def test_oms_interface_invariants():
     with pytest.raises(ValueError, match="leaves"):
         oms.ExecutionReport("c1", "e", oms.ExecType.CANCELED, oms.OrdStatus.CANCELED,
                             100.0, 10.0, 90.0)
+
+
+def test_half_spread_cost_per_asset_and_per_bar():
+    from qp_bt import HalfSpreadCost
+
+    c = HalfSpreadCost(np.array([1e-4, 4e-4]))
+    assert c(0, np.array([0.5, -0.25])) == pytest.approx(1.5e-4, abs=1e-18)
+    c2 = HalfSpreadCost(np.array([[1e-4, 4e-4], [2e-4, 0.0]]))
+    assert c2(1, np.array([0.5, -0.25])) == pytest.approx(1e-4, abs=1e-18)
+    with pytest.raises(ValueError):
+        HalfSpreadCost(np.array([-1e-4]))

@@ -28,18 +28,20 @@ def test_hand_ledger_fill_price(f):
                           execution=fp.ExecutionConfig(fill_fraction=f))
     q_buy = px[1] + f * (px[2] - px[1])   # fills during period 2
     q_sell = px[3] + f * (px[4] - px[3])  # fills during period 4
+    # 1 USD of exposure buys u = 1 / q_buy units, held until sold at q_sell
+    u = 1.0 / q_buy
     spot = np.zeros(5)
-    spot[2] = np.log(px[2] / q_buy)
-    spot[3] = np.log(px[3] / px[2])
-    spot[4] = np.log(q_sell / px[3])
+    spot[2] = u * (px[2] - q_buy)
+    spot[3] = u * (px[3] - px[2])
+    spot[4] = u * (q_sell - px[3])
     cost = np.zeros(5)
-    cost[2] = -0.5 * 2.0 * 1e-4 / q_buy
-    cost[4] = -0.5 * 2.0 * 1e-4 / q_sell
+    cost[2] = -u * 0.5 * 2.0 * 1e-4   # half the spread on the units traded
+    cost[4] = -u * 0.5 * 2.0 * 1e-4
     np.testing.assert_allclose(res.spot_pnl.values, spot, rtol=0, atol=1e-15)
     np.testing.assert_allclose(res.cost_pnl.values, cost, rtol=0, atol=1e-18)
-    # the round trip earns exactly log(q_sell / q_buy): bought at the modelled
+    # the round trip earns exactly q_sell / q_buy - 1: bought at the modelled
     # t+1 price, never at the decision close
-    assert res.spot_pnl.sum() == pytest.approx(np.log(q_sell / q_buy), abs=1e-15)
+    assert res.spot_pnl.sum() == pytest.approx(q_sell / q_buy - 1, abs=1e-15)
 
 
 def test_perfect_foresight_cannot_profit_with_next_close_fill():
@@ -56,11 +58,13 @@ def test_perfect_foresight_cannot_profit_with_next_close_fill():
     g = nxt.spot_pnl.values[1:]
     se = g.std(ddof=1) / np.sqrt(g.size)
     assert abs(g.mean()) < 4 * se
-    # a same-close fill would earn |r| every day; the old engine did this
+    # a same-close fill earns on every day (it knows the next move); the
+    # old engine did this by default
     same = fp.run_backtest(p1, p2, signal, 0.0, pip_spread_1=0.0, pip_spread_2=0.0,
                            execution=fp.ExecutionConfig("close_auction",
                                                         auction_cost_bp=0.0))
-    assert same.spot_pnl.sum() == pytest.approx(np.abs(lr).sum(), rel=1e-12)
+    assert (same.spot_pnl.values[1:] >= -1e-15).all()
+    assert same.spot_pnl.sum() > 0.5 * np.abs(lr).sum()
 
 
 def test_default_is_next_with_half_fill():
@@ -79,9 +83,11 @@ def test_close_auction_charges_exactly_the_auction_cost():
                         execution=fp.ExecutionConfig("close_auction", auction_cost_bp=0.0))
     b = fp.run_backtest(p1, p2, pos, beta, pip_spread_1=1.0, pip_spread_2=1.0,
                         execution=fp.ExecutionConfig("close_auction", auction_cost_bp=12.5))
-    dn = np.abs(np.diff(np.concatenate([[0.0], pos])))
-    expected = -12.5e-4 * dn * (1.0 + abs(beta))
-    np.testing.assert_allclose((b.cost_pnl - a.cost_pnl).values, expected, atol=1e-18)
+    # the premium is 12.5 bp of the notional traded at the fill price p_t
+    du = np.abs(np.diff(b.units.to_numpy(), axis=0, prepend=0.0))
+    expected = -12.5e-4 * (du[:, 0] * p1.values + du[:, 1] * p2.values)
+    np.testing.assert_allclose((b.cost_pnl - a.cost_pnl).values, expected, rtol=0, atol=1e-17)
+    np.testing.assert_array_equal(a.units.to_numpy(), b.units.to_numpy())
     np.testing.assert_array_equal(a.spot_pnl.values, b.spot_pnl.values)
 
 

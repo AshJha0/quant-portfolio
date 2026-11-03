@@ -69,4 +69,25 @@ fill is half-way through a +2% day (`a = 1%`):
   at zero (an absorbing state).
 * Partial fills apply to share orders in event mode only. Fast mode rejects a
   participation cap.
-* Queue-aware fills through the W25 order book are W24b, in Round 12.
+
+## Queue-aware fills and the portfolio layer
+
+* `qp_bt.fills` holds `NextBarFill` (the bar-level fill above) and the W24b
+  queue-aware model for resting limit orders: `QueueAwareFillModel` tracks
+  the quantity ahead of a simulated order, attributes cancels in front of or
+  behind it by the power rule, and fills on trades at or through its price;
+  `fill_marketable` walks the visible book for an IOC order. The model reads
+  a book only through the two-method `BookView` protocol.
+* `qp_bt.fills.ReferenceBookView` binds the W25 reference book
+  (`qp_exec.lob.ReferenceBook`) to `BookView`: ticks to prices, lots to
+  floats, and our own order hidden from the public view. `qp_bt` does not
+  import `qp_exec`; the book is duck-typed.
+* Evidence: `tests/test_queue_fills.py` runs 200 random flows per cancel
+  assumption against a minimal FIFO book and the same 400 against the W25
+  book, checking fills and queue-ahead after every event. Telling the model
+  the wrong cancel side makes seeds fail, so the check discriminates.
+* `qp_bt.portfolio` (W24c) holds Ledoit-Wolf and PCA covariance,
+  mean-variance with bounds and an L1 turnover cost, risk parity, volatility
+  targeting and a walk-forward portfolio P&L.
+* The old top-level imports `fills` and `portfolio` (with `python/backtest`
+  on the path) still work through shims.

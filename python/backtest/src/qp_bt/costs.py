@@ -19,7 +19,7 @@ from typing import Protocol
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["ZERO_COST", "CostModel", "LinearCost", "SqrtImpactCost"]
+__all__ = ["ZERO_COST", "CostModel", "HalfSpreadCost", "LinearCost", "SqrtImpactCost"]
 
 FloatArray = NDArray[np.float64]
 
@@ -47,6 +47,32 @@ class LinearCost:
 
     def __call__(self, decision_bar: int, dv: FloatArray) -> float:
         return float(self.bps * 1e-4 * np.abs(dv).sum())
+
+
+@dataclass(frozen=True)
+class HalfSpreadCost:
+    """``sum_i |dv_i| * rate_i``: a per-asset (and optionally per-bar) rate.
+
+    ``rate`` is a fraction of traded notional: shape ``(N,)`` for a fixed
+    rate per asset, or ``(T, N)`` with row ``decision_bar`` used, so a cost
+    quoted in pips can follow the price level (``pips * pip_size / spot``).
+
+    Worked example: rates ``(1e-4, 4e-4)`` on trades ``(0.5, -0.25)`` cost
+    ``0.5e-4 + 1e-4 = 1.5e-4`` of NAV.
+    """
+
+    rate: FloatArray
+    source: str = "ASSUMPTION: half the quoted bid-ask spread per unit traded"
+
+    def __post_init__(self) -> None:
+        r = np.asarray(self.rate, dtype=float)
+        if r.ndim not in (1, 2) or not np.isfinite(r).all() or (r < 0).any():
+            raise ValueError("rate must be a finite, non-negative (N,) or (T, N) array")
+        object.__setattr__(self, "rate", r)
+
+    def __call__(self, decision_bar: int, dv: FloatArray) -> float:
+        r = self.rate if self.rate.ndim == 1 else self.rate[decision_bar]
+        return float(np.abs(dv) @ r)
 
 
 @dataclass(frozen=True)

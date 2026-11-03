@@ -1,8 +1,12 @@
-"""W24b characterisation corpus: the current backtester output, captured
-before the move onto the qp_bt core. After migration every value must match
-to 1e-12, or the difference is listed in MIGRATION.md and checked against a
-hand fixture (NEXT_RELEASE_PLAN W24 acceptance). Regenerate only on purpose:
-QP_REGEN_GOLDEN=1.
+"""W24b characterisation corpus for the move onto the qp_bt core.
+
+``golden/characterisation_w24b_before.json`` is the output captured before
+the migration (Round 12, lane r12-l4-btfills). ``characterisation_w24b.json``
+pins the migrated output to 1e-12. The two differ by the wrong-answer fixes
+listed in the module docstring of ``backtest.py``; ``BEFORE_AFTER`` pins the
+summed series before and after so the documented numbers cannot drift, and
+each fix has a hand fixture in the package tests. Regenerate only on
+purpose: QP_REGEN_GOLDEN=1.
 """
 
 from __future__ import annotations
@@ -16,6 +20,19 @@ import pandas as pd
 from fx_port import run_backtest
 
 GOLDEN = Path(__file__).parent / "golden" / "characterisation_w24b.json"
+BEFORE = Path(__file__).parent / "golden" / "characterisation_w24b_before.json"
+# key: (sum before migration, sum after), filled from the corpus
+BEFORE_AFTER: dict[str, tuple[float, float]] = {
+    "a/ledger/carry_pnl": (-0.0025106026217990907, -0.002635134605532181),
+    "a/ledger/cost": (0.0007163280739112415, 0.0007282437548880027),
+    "a/ledger/net": (-0.04183837019222526, -0.03887369077416137),
+    "a/ledger/turnover": (7.163280739112414, 7.282437548880378),
+    "b/ledger/carry_pnl": (-0.006580465801792353, -0.006675252377918253),
+    "b/ledger/cost": (0.001711875693357934, 0.0017703470238493724),
+    "b/ledger/net": (-0.071556169339078, -0.08535754181391182),
+    "b/ledger/turnover": (16.42033324085268, 16.705501417179487),
+}
+
 
 
 def _flat(obj, prefix=""):
@@ -43,6 +60,11 @@ def _check(cases):
     assert sorted(got) == sorted(want)
     for k in want:
         np.testing.assert_allclose(got[k], want[k], rtol=0, atol=1e-12, err_msg=k)
+    before = json.loads(BEFORE.read_text())
+    assert sorted(before) == sorted(want)
+    for k, (b, a) in BEFORE_AFTER.items():
+        assert abs(sum(before[k]) - b) <= 1e-10, k
+        assert abs(sum(got[k]) - a) <= 1e-10, k
 
 
 def _panel(n=300, seed=5):
