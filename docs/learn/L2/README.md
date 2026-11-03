@@ -21,6 +21,9 @@ hedges.
   100 for the change per vol point.
 - Bonds, duration and convexity: [rates chapter](rates.md).
 - Hazard rates and CDS: [credit chapter](credit.md).
+- Dated legs, overnight compounding, bond futures and credit indices:
+  [dated swaps chapter](dated-swaps-and-bond-futures.md).
+- CVA and regulatory exposure: [counterparty chapter](counterparty-and-capital.md).
 
 ## Worked example
 

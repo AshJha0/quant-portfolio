@@ -27,7 +27,7 @@ It is organized in four parts:
 - **Part III: Your learning path.** A suggested order to work through the
   portfolio, by background (quant-first, engineer-first, or starting from
   zero), with what to read and run at each step.
-- **Part IV: The exercise room.** 532 self-test questions and answers,
+- **Part IV: The exercise room.** 558 self-test questions and answers,
   organized into 19 sets by topic, grounded in this portfolio's actual code
   and actual documented assumptions, not generic textbook trivia. Use it to
   check your own understanding after working through a project, or to find
@@ -324,7 +324,7 @@ starting from. All three converge on the same question sets in Part IV.
 
 ## Part IV: The exercise room
 
-**532 questions across 19 sets**, organized to follow Part I's area-by-area
+**558 questions across 19 sets**, organized to follow Part I's area-by-area
 structure, then widen into the cross-cutting engineering and business
 material. Each answer is grounded in this portfolio's actual code,
 methodology docs, and test suite, where a number, function name, or file
@@ -348,22 +348,22 @@ answer always names the file, test or module its figures come from, and
 | 2 | Options Pricing & Greeks | 34 |
 | 3 | Implied Volatility & Numerical Solvers | 26 |
 | 4 | Volatility Modeling & Forecasting | 26 |
-| 5 | Volatility Surface & Stochastic Vol | 29 |
-| 6 | Market Risk: VaR Methods | 32 |
-| 7 | Expected Shortfall, Backtesting & Basel | 30 |
-| 8 | Fixed Income Pricing & Risk | 28 |
+| 5 | Volatility Surface & Stochastic Vol | 31 |
+| 6 | Market Risk: VaR Methods | 34 |
+| 7 | Expected Shortfall, Backtesting & Basel | 33 |
+| 8 | Fixed Income Pricing & Risk | 32 |
 | 9 | Statistical Pairs Trading | 29 |
-| 10 | Credit Risk / PD Modeling | 29 |
+| 10 | Credit Risk / PD Modeling | 32 |
 | 11 | Portfolio Optimization & Risk Allocation | 29 |
-| 12 | Algorithmic Trading & Execution | 26 |
+| 12 | Algorithmic Trading & Execution | 32 |
 | 13 | Regime-Switching Quant Strategy | 27 |
 | 14 | The Foundations Trilogy | 22 |
-| 15 | Cross-Language Engineering | 31 |
+| 15 | Cross-Language Engineering | 35 |
 | 16 | Testing, Validation & the NaN Defect Class | 29 |
-| 17 | Business, Desk Usage & Model Risk Governance | 26 |
+| 17 | Business, Desk Usage & Model Risk Governance | 28 |
 | 18 | Real-World Postmortems & Judgment | 30 |
 | 19 | Shared Kernels, Honest Statistics & Safe Builds | 21 |
-| **Total** | | **532** |
+| **Total** | | **558** |
 
 
 ## Set 1: Quant & Math Foundations
@@ -3109,6 +3109,43 @@ With jump intensity zero, `bates_call` must equal the Heston price (to 1e-7). Wi
 
 </details>
 
+**Q30. Why does `qp_core.vol.sabr` offer both Hagan's formula and Obloj's correction, and how far apart are they?**
+
+<sub>Tags: `L3`, `vol-surface`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Both come from the same SABR dynamics; they are different asymptotic
+expansions of the implied vol. They agree at the money and drift apart in the
+wings, where Obloj (2008) is the more accurate. With `F = K = 3 %`, `T = 5`,
+`alpha = 0.02`, `beta = 0.5`, `rho = -0.3`, `nu = 0.4` both give 12.1209 % at
+the money; at a 1 % strike Obloj gives 28.346 % and Hagan 28.182 %. The code
+makes the choice an explicit `variant=` argument so a calibration is
+reproducible.
+
+Source: `python/core/src/qp_core/vol/sabr.py` (module docstring) and
+`docs/learn/tools/test_worked_examples.py::test_rates_vol_and_explain`.
+
+</details>
+
+**Q31. What is wrong with Hagan's SABR formula at low strikes and long expiries, and what does `qp_core.vol.sabr_pde` do about it?**
+
+<sub>Tags: `L4`, `vol-surface`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+The formula is an expansion of the implied vol, and there it implies a
+negative probability density: a butterfly with a negative price, which is an
+arbitrage. `sabr_density_check` in `qp_core.vol.sabr` finds it. The PDE module
+follows Hagan and co-authors (2014): it solves a one-dimensional forward
+equation for the density with the SABR effective volatility, in a scheme that
+conserves probability and keeps the forward a martingale exactly, so the
+density cannot go negative and call prices are convex in strike by
+construction. Source: the docstring of
+`python/core/src/qp_core/vol/sabr_pde.py`.
+
+</details>
+
 
 ## Set 6: Market Risk: VaR Methods
 
@@ -3746,6 +3783,44 @@ today's level).
 
 </details>
 
+**Q33. How do the C++ and Rust equity Monte Carlo VaR engines get the same answer on any number of threads?**
+
+<sub>Tags: `L3`, `var`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+Since v3.0.0 each path owns its own random stream: path `p` of seed `s` is
+Philox4x32-10 stream `(s, p)`, a counter-based generator, so any thread can
+produce path `p` without knowing what other threads drew. Each normal is
+Wichura's AS 241 inverse CDF of one uniform, and bootstrap resample `b` draws
+from stream `(s ^ 0x9E3779B97F4A7C15, b)`. The result is the same bits for any
+pool size, and the same streams in both languages; only `log` and `sqrt` in
+the AS 241 tails can differ in the last bit between libm builds. The older
+design seeded one stream per thread, so changing the thread count changed the
+answer. Source: the header comment of
+`cpp/equity-var-engine/include/eqvar/monte_carlo.hpp` and `PathRng` in
+`rust/equity-var-engine/src/rng.rs`.
+
+</details>
+
+**Q34. What does the `rule=` argument of `eq_var.historical_var.historical_var` choose, and what is the default?**
+
+<sub>Tags: `L2`, `var`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+Which sample quantile is called the VaR. `rule="kth_worst"`, the default,
+takes the k-th worst loss, the convention in the Basel text (MAR33.4);
+`rule="interpolated"` interpolates between neighbouring order statistics. Any
+other value raises `ValueError`. The weighted (BRW) VaR inverts its weighted
+step CDF with the same rule, and the FX engine and the Rust
+`HistoricalOptions` carry the same field. Source:
+`python/equity/03-var-es-engine/src/eq_var/historical_var.py`
+(`validate_rule`, `historical_var`); appendix Set 19, Primer B, explains why
+the choice matters.
+
+</details>
+
 
 ## Set 7: Expected Shortfall, Backtesting & Basel
 
@@ -4324,6 +4399,64 @@ Basel 2.5 stressed VaR uses the 250-day window with the worst VaR in the history
 
 </details>
 
+**Q31. What is a P&L explain, and what does a large unexplained P&L tell a risk manager?**
+
+<sub>Tags: `L3`, `es-backtesting`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+It compares the full-revaluation P&L (HPL) with the P&L the risk numbers
+predict, `RTPL = theta + delta . dx + 0.5 dx' G dx`. Delta 100 and gamma 40 to
+a factor that moves 0.1, theta -1 and HPL 9.25 give RTPL 9.2 and an
+unexplained 0.05. Small and random leftovers are fine. A leftover that is
+large on volatile days means a sensitivity is missing (a cross term, a vol
+move, a basis); one that drifts means a carry or roll term is wrong. The FRTB
+P&L attribution test turns the comparison into a pass or fail for internal
+models.
+
+Source: `python/core/src/qp_core/risk/pnl_explain.py` and
+`docs/learn/tools/test_worked_examples.py::test_rates_vol_and_explain`.
+
+</details>
+
+**Q32. How is the 2015 Swiss franc shock in `qp_core.scenarios.historical` built, and why from the published series rather than a round number?**
+
+<sub>Tags: `L3`, `es-backtesting`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+The ECB EURCHF fixing went from 1.2010 on 14 January 2015 to 1.0280 on the
+15th, when the SNB removed its floor. The FX shock is the log move,
+`ln(1.0280 / 1.2010) = -0.1555`, applied as `q exp(dx)`, so a snapshot quoting
+1.2010 lands exactly on 1.0280. Building from the frozen source series means
+the scenario can be checked against the record to the last bit, and anyone
+can see where each number came from; a round "-15 %" cannot be audited.
+
+Source: `python/core/src/qp_core/scenarios/historical.py` (module docstring)
+and `docs/learn/tools/test_worked_examples.py::test_rates_vol_and_explain`.
+
+</details>
+
+**Q33. Walk through the SA-CCR exposure at default for the BCBS Example 1 netting set.**
+
+<sub>Tags: `L2`, `es-backtesting`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Three interest-rate trades (two USD swaps in opposite directions, 10 and 4
+years, and a bought EUR swaption on a 10-year swap starting in a year) with net
+mark-to-market 60. Replacement cost is `max(60 - 0, 0) = 60`. Each trade's
+effective notional is notional times supervisory duration (7.8694 for a 10-year
+trade starting today) times supervisory delta (-0.2694 for the swaption)
+times maturity factor; they net within currency across three maturity
+buckets, and the add-on comes to 347. `EAD = 1.4 x (60 + 347) = 569`, the
+Basel Committee's published figure.
+
+Source: `python/core/src/qp_core/capital/saccr.py` and
+`docs/learn/tools/test_worked_examples.py::test_counterparty_and_capital`.
+
+</details>
+
 
 ## Set 8: Fixed Income Pricing & Risk
 
@@ -4848,6 +4981,72 @@ goes to 0 a caplet is worth its intrinsic value, and small mean reversion
 gives a normal vol close to sigma. `calibrate_hull_white` fits it to a
 swaption grid by least squares on prices, with mean reversion either fixed
 (the usual desk choice) or fitted.
+
+</details>
+
+**Q29. A SOFR period runs Thursday 4 to Monday 8 January 2024, with fixings 5.30 % (Thursday) and 5.31 % (Friday). What is the compounded rate?**
+
+<sub>Tags: `L2`, `fixed-income`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Friday's fixing applies for three days. With ACT/360,
+`R = ((1 + 0.0530 / 360)(1 + 0.0531 x 3 / 360) - 1) x 360 / 4 = 5.3081 %`,
+against a day-weighted average of 5.3075 %: compounding adds 0.06 basis points.
+`fi_rates.legs.compounded_rate` returns the same figure and also the share of
+days already fixed (1.0 here).
+
+Source: `python/equity/04-fixed-income/src/fi_rates/legs.py` and
+`docs/learn/tools/test_worked_examples.py::test_dated_swaps_and_bond_futures`.
+
+</details>
+
+**Q30. How are the dated bootstrap functions checked, and why are the old year-based ones still there?**
+
+<sub>Tags: `L3`, `fixed-income`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+`fi_rates.bootstrap.bootstrap_ois_dated` and
+`fi_rates.multicurve.bootstrap_projection_dated` take real schedules from
+`fi_rates.schedule` and are compared with QuantLib to 1e-12 in discount
+factor (`python/equity/04-fixed-income/tests/test_bootstrap_dated.py`). The
+year-based `bootstrap_curve`, `bootstrap_ois` and `bootstrap_projection` stay
+because the notebooks teach with them; new dated code should use the
+`*_dated` functions.
+
+</details>
+
+**Q31. What is a Treasury futures conversion factor, and what is it for the 3 3/4 % note of 15 November 2018 into the December 2008 contract?**
+
+<sub>Tags: `L2`, `fixed-income`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+The price per unit of par of the bond at a 6 % yield, with the remaining term
+rounded down to whole months and then quarters. It puts every bond in the
+delivery basket on one footing: the invoice is futures price times the factor
+plus accrued. For CME's own example the remaining term rounds to 9 years
+9 months and the factor is 0.8357. Source:
+`python/equity/04-fixed-income/src/fi_rates/bond_futures.py`
+(`cme_conversion_factor`) and
+`docs/learn/tools/test_worked_examples.py::test_dated_swaps_and_bond_futures`.
+
+</details>
+
+**Q32. How does `fi_rates.bond_futures.cheapest_to_deliver` rank the basket?**
+
+<sub>Tags: `L3`, `fixed-income`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+By implied repo rate, highest first. The implied repo is the financing rate
+at which buying the bond today, carrying it and delivering it into the future
+breaks even; the bond with the highest implied repo is the cheapest to
+deliver, because it is the most profitable to deliver. The value of being able
+to switch between bonds later is priced separately by `delivery_option`, in a
+one-factor yield model. Source:
+`python/equity/04-fixed-income/src/fi_rates/bond_futures.py`.
 
 </details>
 
@@ -5933,6 +6132,56 @@ period of risk) and wrong-way risk.
 
 </details>
 
+**Q30. What is the ISDA half-day bias in `eq_credit.isda_cds`, and why is it on by default?**
+
+<sub>Tags: `L3`, `credit`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+In the accrued-on-default integral the ISDA CDS Standard Model C library
+replaces `u0 - s` with `u0 - s + 1/730`: half a day of extra accrual. It is a
+convention, not a modelling choice, so a price that is meant to match the
+market's tools has to reproduce it. Since the Rounds 8-17 integration
+`half_day_bias=True` is the default, matching QuantLib's
+`IsdaCdsEngine.HalfDayBias`; `half_day_bias=False` matches QuantLib's `NoBias`.
+Without the bias the module docstring records 1000 bp Markit-style cases off
+by 148 to 441 per 10mm notional. Source:
+`python/equity/06-credit-risk/src/eq_credit/isda_cds.py` and
+`python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py`, which checks
+both settings.
+
+</details>
+
+**Q31. A 125-name CDS index loses one name with 30 % auction recovery. What happens to the factor and to the protection buyer?**
+
+<sub>Tags: `L2`, `credit`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+The factor drops to `124 / 125 = 0.992`. The buyer receives
+`(1 - 0.3) / 125 = 0.008 x 0.7 = 0.0056` per unit of original notional, and
+every later upfront and coupon is on the reduced notional, so it is the old
+one times 0.992. Source: `python/core/src/qp_core/credit_index/index.py`
+(module docstring) and
+`docs/learn/tools/test_worked_examples.py::test_dated_swaps_and_bond_futures`.
+
+</details>
+
+**Q32. What is CVA, and what is it for a flat discounted exposure of 1 over 5 years, hazard 2 % and recovery 40 %?**
+
+<sub>Tags: `L2`, `credit`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+The expected loss from the counterparty defaulting while it owes you money:
+loss given default times discounted expected exposure, integrated against
+the default probability. Here the 5-year default probability is
+`1 - e^{-0.1} = 0.0952`, so `CVA = 0.6 x 0.0952 = 0.0571`. Source:
+`python/core/src/qp_core/xva/adjustments.py` (`cva`) and
+`docs/learn/tools/test_worked_examples.py::test_counterparty_and_capital`.
+
+</details>
+
 
 ## Set 11: Portfolio Optimization & Risk Allocation
 
@@ -6080,6 +6329,13 @@ the picture is more modest: raw tangency has the lowest mean net Sharpe
 (−0.200 vs −0.083 for MinVar), but no difference from min-variance is
 significant at 5% (`VALIDATION.md` §5). Absolute Sharpes are negative because
 every panel contains a crisis with a large negative market drift.
+
+These figures were produced by the v2.0 `run_backtest`, which filled the
+weights chosen at close t-1 at that same close, for free. Since v3.0.0 the
+default `execution=` fills at the next bar with `f = 0.5` (one asset bought
+on a +2 % day earns `1.02 / 1.01 - 1 = 0.0099`, not 0.02; the W24a migration
+in `python/backtest/README.md`). The race numbers above are kept as the
+recorded result and are pending rerun as a new trial.
 
 </details>
 
@@ -6981,6 +7237,105 @@ benchmark, which is why benchmark design (window length, what counts as
 
 </details>
 
+**Q27. In Avellaneda-Stoikov with the paper's parameters and a long inventory of 2, where are the quotes and why?**
+
+<sub>Tags: `L3`, `execution`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+`s = 100`, `gamma = 0.1`, `sigma = 2`, `k = 1.5`, one unit of time left. The
+reservation price is `100 - 2 x 0.1 x 4 x 1 = 99.2` and the spread
+`0.4 + 20 ln(1 + 0.1 / 1.5) = 1.6908`, so the bid is 98.3546 and the ask
+100.0454. Both quotes move below the mid: a long maker wants to sell, so it
+makes its ask more attractive and its bid less. Source:
+`python/execution/src/qp_exec/mm/quotes.py` (`avellaneda_stoikov`) and
+`docs/learn/tools/test_worked_examples.py::test_market_making_and_routing`.
+
+</details>
+
+**Q28. Why does the GLFT market maker quote no bid when its inventory is at the bound `Q`?**
+
+<sub>Tags: `L3`, `execution`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+Gueant, Lehalle and Fernandez-Tapia solve the problem with inventory
+restricted to `{-Q, ..., Q}`. A bid at `+Q` could only be filled into a
+position the model forbids, so it is not quoted; likewise no ask at `-Q`.
+The bound has value of its own, which is why GLFT and Avellaneda-Stoikov
+differ even at small risk aversion when `Q` is small; the tests compare them
+at `Q = 20`. Source: `python/execution/src/qp_exec/mm/quotes.py` (`GLFT`).
+
+</details>
+
+**Q29. Why does `qp_exec.sor.allocation.solve_allocation` forbid sending more child quantity than the parent has left, and what does it give in the one-venue example?**
+
+<sub>Tags: `L3`, `execution`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Cont and Kukanov allow oversubscription, which can overfill. Desks usually
+forbid it, and with `M + sum L_k <= S` the overfill penalty vanishes and the
+problem becomes an exact linear program, solved with HiGHS. With
+`h = 0.5`, `f = 0.3`, rebate `0.2`, `lambda_u = 2`, flow uniform on 0 to 9 and
+8 lots, the router posts 5 lots and sends 3 as a market order. Source:
+`python/execution/src/qp_exec/sor/allocation.py` (module docstring) and
+`docs/learn/tools/test_worked_examples.py::test_market_making_and_routing`.
+
+</details>
+
+**Q30. What markup maximises expected RFQ profit under a logistic hit ratio with `a = 1` and `b = -200`?**
+
+<sub>Tags: `L3`, `execution`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Expected profit is `m p(m)` with `p(m) = 1 / (1 + exp(-(a + b m)))`. Setting
+the derivative to zero gives `m* = (1 + W(e^(a - 1))) / (-b)`, `W` the
+Lambert W function: here 0.007836. If winning also reduces the dealer's
+inventory risk, that value is added to the markup and the dealer quotes
+tighter on that side. Source: `python/execution/src/qp_exec/rfq/quote.py`
+and `docs/learn/tools/test_worked_examples.py::test_market_making_and_routing`.
+
+</details>
+
+**Q31. What does a central risk book buy a bank that runs several desks?**
+
+<sub>Tags: `L2`, `execution`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Netting before hedging. If the cash desk buys 10 ES and the derivatives desk
+sells 7, the book is net 3 and gross 17; hedging the net trades 3 contracts
+instead of 17 and pays the spread once. `qp_exec.crb.hedge.to_oms_orders`
+turns the hedge into orders for the OMS. Source:
+`python/execution/src/qp_exec/crb/book.py` and
+`docs/learn/tools/test_worked_examples.py::test_market_making_and_routing`.
+
+</details>
+
+**Q32. What changed in the backtesters' fill and cost arithmetic in v3.0.0, and what happens to the published study results?**
+
+<sub>Tags: `L3`, `execution`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+All the equity and FX backtesters now book through one core, `qp_bt`. A weight
+chosen at close `t` fills at the next bar, by default halfway through the
+day's move (`f = 0.5`); the book drifts between trades; the trade back to
+target is paid for; and costs come out of the trade. One asset bought ahead
+of a +2 % day used to earn 0.02 in the equity portfolio backtester and now
+earns `1.02 / 1.01 - 1 = 0.0099`. On the FX test corpus, for example, the
+`fx_pairs` next-fill total moved from 9318.69 to 9728.80 per 1e6 notional, and
+each package pins the old and new sums in its characterisation test.
+Headline study results built on the old engines are kept as recorded and are
+pending rerun as a new trial, because a rerun counts as a new trial in the
+research register. Source: `python/backtest/README.md` and
+`python/fx/05-pairs-trading/tests/test_characterisation_w24b.py`
+(`BEFORE_AFTER`).
+
+</details>
+
 
 ## Set 13: Regime-Switching Quant Strategy
 
@@ -7247,9 +7602,17 @@ i.e. it treats each period's return as multiplicative growth: a portfolio
 holding weight `w` earns `w * r_simple` of the asset's simple return, and
 equity multiplies by `(1 + net_ret)` each day. That identity, `equity_t = equity_{t-1} * (1 + r_t)`,
 is only true for simple returns; log returns would need to be summed and then
-exponentiated instead, or the ledger's cost/weight arithmetic (which is linear
-in return, e.g. `cost = cost_rate * |Δw|`, `gross = w * next_ret`) would need
-to change form. So the pipeline uses log returns everywhere the additive
+exponentiated instead, or the ledger's cost and weight arithmetic would need
+to change form. Since v3.0.0 that arithmetic runs on the shared `qp_bt` core:
+the book drifts with the market between closes, the trade back to target is
+paid for, and the cost comes out of the trade, so a day's net return is a
+product such as `(1 + gross) / (1 + c) - 1` rather than `gross - c`. With 10 bp
+of cost, the hand scenario in the tests moves day 1 net from 0.009 to
+0.0089910, that is `1.01 / 1.001 - 1`
+(`python/equity/10-regime-switching/tests/test_backtest.py`,
+`test_hand_computed_scenario`).
+Regime study headlines built on the old ledger are pending rerun as a new
+trial. So the pipeline uses log returns everywhere the additive
 property is wanted (features, vol estimation) and converts to simple returns,
 via the numerically careful `expm1`, exactly at the one place, ledger
 compounding, where the multiplicative identity is what's actually needed.
@@ -8159,6 +8522,17 @@ best fits its own standard-library situation,
 because "Rust's standard library ships no RNG at all." The cross-language
 contract is about the *statistical* answer, not the *path*.
 
+Since v3.0.0 the equity **VaR** engines are the exception. Their Monte Carlo
+paths now use one stream definition in both languages: path `p` of seed `s` is
+Philox4x32-10 stream `(s, p)`, each normal is Wichura's AS 241 inverse CDF of
+one uniform, and bootstrap resample `b` draws from stream
+`(s ^ 0x9E3779B97F4A7C15, b)`. So the C++ and Rust equity VaR numbers agree,
+and give the same bits on any thread count; only the last bits of `log` and
+`sqrt` in the AS 241 tails can differ between libm builds. Source: the header
+comment of `cpp/equity-var-engine/include/eqvar/monte_carlo.hpp` and
+`rust/equity-var-engine/src/rng.rs` (`PathRng`). The FX VaR engines and the
+option engines keep the generators described above.
+
 </details>
 
 **Q8. Given three different RNGs, what does "cross-language Monte Carlo agreement" actually mean in this portfolio?**
@@ -8175,7 +8549,10 @@ from NumPy, so agreement with the Python engine is statistical (within Monte
 Carlo error), not exact"). What's checked is that each estimate falls within
 its own reported confidence interval of the analytic (or reference) value;
 `eqopt::MCResult::contains()` and the Rust `McResult::contains()` exist to
-test that CI-membership property.
+test that CI-membership property. Python against either compiled engine is
+still statistical. C++ against Rust for equity Monte Carlo VaR is now exact
+up to libm last bits, because both use the per-path Philox stream described
+in Q7.
 
 </details>
 
@@ -8222,6 +8599,9 @@ RNGs (`rust/equity-options-engine/src/rng.rs`,
 module doc over inverse-CDF and over Ziggurat ("large tables, harder to
 audit"), but the reasoning is the same: own the transform so the stream layout
 is fixed rather than delegated to an unspecified standard-library algorithm.
+The equity VaR Monte Carlo has since moved to AS 241 of one uniform per normal
+in both languages (`rust/equity-var-engine/src/rng.rs`, `norm_ppf_as241`), so
+Box-Muller there is now only used by the older `Rng` kept for direct callers.
 
 </details>
 
@@ -8259,7 +8639,10 @@ not bit-equal)." So `mc_price(..., seed=42, threads=4)` reproduces exactly on
 every run with `threads=4` on the same platform, but will not match
 `mc_price(..., seed=42, threads=1)` bit-for-bit, same statistical answer,
 different stream partition, same pattern as the cross-language case one level
-down.
+down. The equity VaR engines took the other route in v3.0.0: one stream per
+path rather than per thread, so the answer is bit-identical for any thread
+count (`cpp/equity-var-engine/include/eqvar/monte_carlo.hpp`, header comment).
+The option engine above still partitions by thread.
 
 </details>
 
@@ -8642,6 +9025,73 @@ compare bit for bit, including sizes that are not multiples of the 64 tile.
 Selection returns the same order statistic as a full sort. A fused
 multiply-add (`-march=native` or `-ffp-contract=fast`) would break that
 identity; the default target has none.
+
+</details>
+
+**Q32. How does one kill-switch contract stay identical across Python, C++, Rust and Java?**
+
+<sub>Tags: `L3`, `cross-language`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+By golden vectors rather than shared code. `docs/KILL_CONTRACT.md` states the
+rules (K1 block, K2 mass cancel, K3 acknowledged, K4 two-person reset, K5
+nesting), `python/oms/kill/contract.py` is the reference, and
+`python/oms/kill/vectors.json` records command sequences and the expected
+event lines. The C++ and Rust gateways and the Java order path replay the
+file and must match byte for byte after canonical JSON encoding. The Java
+parity test reads the file by relative path, so moving it breaks the build
+on purpose.
+
+</details>
+
+**Q33. What does the C++ feed handler do when an update arrives with a gap in its sequence numbers?**
+
+<sub>Tags: `L3`, `cross-language`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+It holds the update and marks the book stale. If the missing update turns up
+(reordering, or the other line of an A/B pair), held updates drain and the
+book is fresh again. If the hole is older than 50 ms or more than 64 updates
+are held, it requests one snapshot, keeps buffering, rebuilds, discards what
+the snapshot covers and applies the rest. A snapshot older than the book is
+ignored. The stale flag drives the gateway to cancel working orders on the
+symbol and refuse new ones. Source: `cpp/ull/feed/README.md` and
+`seqsync.hpp`.
+
+</details>
+
+**Q34. Why must every latency figure from `cpp/ull/` carry the label "software in-process, not wire-to-wire"?**
+
+<sub>Tags: `L3`, `cross-language`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+Because that is what it measures: time inside one process to decode a
+binary packet, apply it to the order book, or hop a message between two
+threads, with inputs generated before the clock starts, on a general-purpose
+machine. It leaves out the network card, the kernel or kernel bypass, the
+switch and the exchange. Quoting it next to wire-to-wire numbers from a
+trading firm would compare different things. `docs/LATENCY_METHOD.md`
+starts with that sentence, and goes on to the clock, the
+histogram and coordinated omission.
+
+</details>
+
+**Q35. What does AAD cost compared with one price, and why is Black-Scholes in Rust the exception?**
+
+<sub>Tags: `L4`, `cross-language`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Theory says a small constant, about 4 to 5 for the arithmetic. Measured on
+one loaded laptop: 1.6 to 2.1 times one price for a European Monte Carlo and
+2.0 to 6.7 for an 18-pillar swap, across Rust and C++. A single Black-Scholes
+price in Rust costs 13 to 34 times, because the price itself takes about
+20 ns and allocating the tape costs more than the arithmetic. A tape reused
+across calls would remove that, and is not built. Source:
+`rust/aad/README.md` ("Cost ratio").
 
 </details>
 
@@ -9622,6 +10072,38 @@ it be used on a desk" one of six mandatory documentation questions alongside
 the math: a model whose usage, consumers, and controls were never worked out
 on paper is a model whose governance gap will be discovered by a regulator or
 a loss, not by a code review.
+
+</details>
+
+**Q27. Why does the kill switch need two different people to reset it?**
+
+<sub>Tags: `L2`, `desk-governance`, `code-reading`</sub>
+
+<details><summary>Answer</summary>
+
+A kill is pulled when something has gone wrong. One person who is wrong,
+tired or compromised should not be able to restart the flow alone. Under
+rule K4 a reset needs a request from actor A and approval from actor B; an
+approval by A is refused and recorded, and the kill stays RESET_PENDING.
+A reset is also refused while cancels are still outstanding. Source:
+`docs/KILL_CONTRACT.md` and `python/oms/kill/contract.py`.
+
+</details>
+
+**Q28. A US equity trade is done on Friday 9 October 2026. When does it settle, and why does the answer need two calendars?**
+
+<sub>Tags: `L2`, `desk-governance`, `numeric`</sub>
+
+<details><summary>Answer</summary>
+
+Tuesday 13 October. Settlement is T+1 on a day when both the NYSE and the
+Federal Reserve are open, and Monday 12 October is Columbus Day: the
+exchange trades but the Fed is shut, so cash cannot move. The NYSE calendar
+is generated from Rule 7.2 for 2000-2099; before the Rounds 8-17
+integration the tables stopped at 2026 and a trade on 31 December 2026
+raised an error instead of settling on 4 January 2027. Source:
+`python/posttrade/src/qp_posttrade/settlement.py` and
+`docs/learn/tools/test_worked_examples.py::test_trading_systems`.
 
 </details>
 

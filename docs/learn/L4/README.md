@@ -66,4 +66,6 @@ a pegged currency shows almost no volatility in the window, so its VaR is
 near zero while the devaluation risk is large
 (`python/fx/03-var-es-engine/docs/DESK_GUIDE.md` §3).
 
+Chapter: [adjoint algorithmic differentiation](aad.md).
+
 Next: [L4 questions](QUESTIONS.md) and appendix Sets 17 and 18.

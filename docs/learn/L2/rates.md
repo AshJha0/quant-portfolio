@@ -59,9 +59,10 @@ Source: every figure above is recomputed with the package code in
 
 ## Where the repository goes further
 
-- Curves instead of one yield: `fi_rates.curve` and the bootstrap and
-  multicurve modules. Those are being reworked in Round 10 (W13b); this
-  chapter will gain a bootstrap section once that work is merged.
+- Curves instead of one yield, real schedules, overnight compounding and
+  bond futures: the [dated swaps chapter](dated-swaps-and-bond-futures.md)
+  (`fi_rates.legs`, `fi_rates.bootstrap`, `fi_rates.multicurve`,
+  `fi_rates.bond_futures`).
 - Key-rate durations: `fi_rates.keyrates`.
 - Short-rate models and rate options: `fi_rates.hull_white` and
   `fi_rates.rate_options`.

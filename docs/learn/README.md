@@ -3,7 +3,7 @@
 This folder is the front door to the teaching material. It sorts what you need
 to know into five levels, L0 to L4, and gives each level the same four parts:
 a plain idea, a formal statement, a worked example and a set of checks. The
-532 questions and answers stay in one appendix,
+558 questions and answers stay in one appendix,
 [LEARN.md](../LEARN.md), so that links into it keep working; every question
 there now carries a level tag, and each level folder lists its own questions.
 
@@ -28,12 +28,18 @@ L1 or L2 and drop back a level when a question stops making sense.
 | [Rates](L2/rates.md) | L2 | Bond prices, yield, duration and convexity |
 | [Credit](L2/credit.md) | L2 | Hazard rates, survival, the CDS legs and the credit triangle |
 | [Microstructure](L3/microstructure.md) | L3 | Spreads, the Roll estimator, Kyle's lambda and the square-root impact law |
+| [Dated swaps, curve building and bond futures](L2/dated-swaps-and-bond-futures.md) | L2 | SOFR compounded in arrears, dated bootstrap, conversion factors, credit index defaults |
+| [Counterparty risk and capital](L2/counterparty-and-capital.md) | L2 | CVA and SA-CCR, with the Basel Committee's Example 1 |
+| [Rates volatility, P&L explain and historical stress](L3/rates-vol-and-pnl-explain.md) | L3 | SABR (Hagan and Obloj), risk-theoretical P&L, the 2015 franc shock |
+| [Market making, routing and the risk book](L3/market-making-and-routing.md) | L3 | Avellaneda-Stoikov, GLFT, smart order routing as a linear program, RFQ markup, netting |
+| [Trading systems](L3/trading-systems.md) | L3 | One backtest core, the kill switch, a feed handler that admits gaps, settlement calendars |
+| [Adjoint algorithmic differentiation](L4/aad.md) | L4 | The tape, one reverse sweep for all Greeks, and what it costs in practice |
 
 ## How the pieces fit
 
 - The level pages and chapters teach. They are short on purpose.
 - [LEARN.md](../LEARN.md) is the appendix: Parts I to III (orientation and
-  learning paths) and the 532-question exercise room.
+  learning paths) and the 558-question exercise room.
 - The [notebooks](../notebooks/README.md) are where you type the code
   yourself.
 - [CAREER_PREP.md](../CAREER_PREP.md) covers probability puzzles, mental
