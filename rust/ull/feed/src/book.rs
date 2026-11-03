@@ -20,12 +20,14 @@
 //! (`qp_ull_book::Book`, integer ticks, u64 ids, u32 sizes). A per-product
 //! [`ProductSpec`] maps decimal prices to ticks inside a fixed window and
 //! decimal sizes to whole lots; Coinbase UUIDs are interned to u64 handles in
-//! a fixed-capacity table. A price outside the window (or off the tick grid)
-//! is [`ApplyError::OutOfWindow`]: the sync engine marks the book stale and
-//! recovers from a snapshot, which re-centres the window. After construction,
-//! applying a change never allocates (tests/no_alloc.rs).
+//! a fixed-capacity table. Entries the window cannot hold (deep levels, odd
+//! prices, huge sizes) sit in an exact side store, so the book is always
+//! complete. A bid above the window or an ask below it means the touch has
+//! moved out: [`ApplyError::OutOfWindow`], and the sync engine marks the book
+//! stale and recovers from a snapshot, which re-centres the window. Near the
+//! touch, applying a change never allocates (tests/no_alloc.rs).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use qp_ull_book::{Book, BookError};
 use qp_ull_qpbf::Side as QSide;
@@ -302,31 +304,66 @@ pub enum ApplyError {
     UnknownOrder,
     /// Match larger than the resting size, or a negative size.
     BadSize,
-    /// Price outside the product's window, or not a multiple of the tick:
-    /// the engine marks the book stale and recovers from a snapshot, which
+    /// The touch has left the window: a bid above it or an ask below it.
+    /// The engine marks the book stale and recovers from a snapshot, which
     /// re-centres the window.
     OutOfWindow,
-    /// Size not a whole number of lots, or more than `u32::MAX` lots.
-    Unrepresentable,
     /// Every order slot (or interned id) is in use.
     Full,
 }
 
-/// L2 levels plus (for order feeds) the live orders behind them, held in the
-/// part-1 flat-array book (`qp_ull_book::Book`).
+/// Levels and orders the flat book cannot hold: deep levels outside the
+/// window, prices off the tick grid, and sizes above `u32::MAX` lots. Kept
+/// exact in ordered maps. Updates that land here allocate; the near-touch
+/// updates that make up the hot path do not.
+#[derive(Clone, Debug, Default)]
+struct Far {
+    bids: BTreeMap<i64, i64>,
+    asks: BTreeMap<i64, i64>,
+    orders: HashMap<u128, (Side, i64, i64)>,
+}
+
+impl Far {
+    fn side(&mut self, s: Side) -> &mut BTreeMap<i64, i64> {
+        match s {
+            Side::Bid => &mut self.bids,
+            Side::Ask => &mut self.asks,
+        }
+    }
+    fn add(&mut self, s: Side, px: i64, dq: i64) {
+        let m = self.side(s);
+        let e = m.entry(px).or_insert(0);
+        *e += dq;
+        if *e == 0 {
+            m.remove(&px);
+        }
+    }
+    fn clear(&mut self) {
+        self.bids.clear();
+        self.asks.clear();
+        self.orders.clear();
+    }
+}
+
+/// L2 levels plus (for order feeds) the live orders behind them.
 ///
-/// A level feed stores each level as one synthetic order whose id is
+/// The touch lives in the part-1 flat-array book (`qp_ull_book::Book`): a
+/// level feed stores each level as one synthetic order whose id is
 /// `2 * tick + side + 1`; an order feed interns each UUID to a u64 handle.
-/// After construction no operation on this book allocates, except
-/// [`CryptoBook::reset`] when the snapshot's touch has left the middle half
-/// of the window (it then rebuilds the book around the new touch).
+/// What the window cannot hold goes to an exact side store (deep levels,
+/// off-grid prices, sizes above `u32::MAX` lots), so the book always equals
+/// the venue's book. A bid above the window or an ask below it means the
+/// touch has moved out: that is [`ApplyError::OutOfWindow`], and the engine
+/// goes stale and re-centres on the next snapshot.
+///
+/// Updates near the touch never allocate. [`CryptoBook::reset`] allocates
+/// when it re-centres, and updates that land in the side store allocate.
 pub struct CryptoBook {
     spec: ProductSpec,
     book: Book,
     base: i64, // first tick of the window
     ids: Interner,
-    /// Snapshot entries dropped because they lay outside the window.
-    pub clipped: u64,
+    far: Far,
 }
 
 fn qside(s: Side) -> QSide {
@@ -354,7 +391,7 @@ impl std::fmt::Debug for CryptoBook {
 }
 
 /// Two books are equal when their levels and live orders are equal (the
-/// window position and internal handles do not matter).
+/// window position, internal handles and storage tier do not matter).
 impl PartialEq for CryptoBook {
     fn eq(&self, o: &Self) -> bool {
         self.levels(Side::Bid) == o.levels(Side::Bid)
@@ -365,13 +402,19 @@ impl PartialEq for CryptoBook {
 
 impl Eq for CryptoBook {}
 
+/// Where a (side, price, size) goes.
+enum Place {
+    Flat(i64, u32),
+    Far,
+}
+
 impl CryptoBook {
     /// Empty book with the default [`ProductSpec`].
     pub fn new() -> Self {
         Self::with_spec(ProductSpec::default())
     }
 
-    /// Empty book for one product. All memory is allocated here.
+    /// Empty book for one product. All flat-book memory is allocated here.
     pub fn with_spec(spec: ProductSpec) -> Self {
         assert!(spec.tick > 0 && spec.lot > 0 && spec.n_levels >= 4 && spec.max_orders > 0);
         Self {
@@ -379,7 +422,7 @@ impl CryptoBook {
             book: Book::new(0, spec.n_levels, spec.max_orders),
             base: 0,
             ids: Interner::new(spec.max_orders),
-            clipped: 0,
+            far: Far::default(),
         }
     }
 
@@ -394,20 +437,47 @@ impl CryptoBook {
         self.spec
     }
 
-    #[inline]
-    fn tick_of(&self, px: i64) -> Result<i64, ApplyError> {
-        if px < 0 || px % self.spec.tick != 0 {
-            return Err(ApplyError::OutOfWindow);
-        }
-        Ok(px / self.spec.tick)
+    /// Levels and orders held outside the flat book (diagnostics).
+    pub fn far_count(&self) -> usize {
+        self.far.bids.len() + self.far.asks.len() + self.far.orders.len()
     }
 
     #[inline]
-    fn lots_of(&self, qty: i64) -> Result<u32, ApplyError> {
-        if qty % self.spec.lot != 0 {
-            return Err(ApplyError::Unrepresentable);
+    fn grid(&self, px: i64) -> Option<i64> {
+        (px >= 0 && px % self.spec.tick == 0).then(|| px / self.spec.tick)
+    }
+
+    #[inline]
+    fn in_window(&self, t: i64) -> bool {
+        t >= self.base && t < self.base + self.spec.n_levels as i64
+    }
+
+    /// Flat when on the grid, inside the window and small enough; the side
+    /// store for deep or odd entries; an error when the touch has left the
+    /// window (unless `snapshot`, where the window is about to be set).
+    #[inline]
+    fn place(&self, s: Side, px: i64, qty: i64, snapshot: bool) -> Result<Place, ApplyError> {
+        let Some(t) = self.grid(px) else {
+            return Ok(Place::Far);
+        };
+        if !self.in_window(t) {
+            let beyond_touch = match s {
+                Side::Bid => t >= self.base + self.spec.n_levels as i64,
+                Side::Ask => t < self.base,
+            };
+            return if beyond_touch && !snapshot {
+                Err(ApplyError::OutOfWindow)
+            } else {
+                Ok(Place::Far)
+            };
         }
-        u32::try_from(qty / self.spec.lot).map_err(|_| ApplyError::Unrepresentable)
+        if qty % self.spec.lot != 0 {
+            return Ok(Place::Far);
+        }
+        match u32::try_from(qty / self.spec.lot) {
+            Ok(l) if l > 0 => Ok(Place::Flat(t, l)),
+            _ => Ok(Place::Far),
+        }
     }
 
     #[inline]
@@ -427,9 +497,7 @@ impl CryptoBook {
 
     /// Replace the whole book with a snapshot. The window is re-centred on
     /// the snapshot's touch when the touch has left the middle half of the
-    /// current window. Entries outside the window are dropped and counted in
-    /// `clipped` (SPEC CHOICE: the book is exact inside its window; size the
-    /// window to cover the snapshot depth you request).
+    /// current window; entries outside the window go to the side store.
     pub fn reset(&mut self, snap: &Snapshot) -> Result<(), ApplyError> {
         let mut bb: Option<i64> = None;
         let mut ba: Option<i64> = None;
@@ -439,10 +507,10 @@ impl CryptoBook {
             .map(|&(s, p, q)| (s, p, q))
             .chain(snap.orders.iter().map(|&(_, s, p, q)| (s, p, q)));
         for (s, p, q) in entries {
+            let Some(t) = self.grid(p) else { continue };
             if q <= 0 {
                 continue;
             }
-            let t = self.tick_of(p)?;
             match s {
                 Side::Bid => bb = Some(bb.map_or(t, |b| b.max(t))),
                 Side::Ask => ba = Some(ba.map_or(t, |a| a.min(t))),
@@ -466,14 +534,10 @@ impl CryptoBook {
             _ => self.book.clear(),
         }
         self.ids.clear();
+        self.far.clear();
         for &(s, p, q) in &snap.levels {
             if q > 0 {
-                let t = self.tick_of(p)?;
-                let lots = self.lots_of(q)?;
-                match self.book.add(Self::level_id(t, s), qside(s), t, lots) {
-                    Err(BookError::OutOfRange(_)) => self.clipped += 1,
-                    r => r.map_err(Self::map)?,
-                }
+                self.set_level(s, p, q, true)?;
             }
         }
         for &(id, s, p, q) in &snap.orders {
@@ -482,83 +546,136 @@ impl CryptoBook {
         Ok(())
     }
 
-    fn open(&mut self, id: u128, s: Side, px: i64, qty: i64, clip: bool) -> Result<(), ApplyError> {
-        if qty <= 0 {
+    #[inline]
+    fn set_level(
+        &mut self,
+        side: Side,
+        px: i64,
+        qty: i64,
+        snapshot: bool,
+    ) -> Result<(), ApplyError> {
+        if qty < 0 {
             return Err(ApplyError::BadSize);
         }
-        let t = self.tick_of(px)?;
-        let lots = self.lots_of(qty)?;
-        if let Some(h) = self.ids.get(id) {
-            // Re-open of a live id replaces it.
-            let (_, _, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
-            self.book.cancel(h, q0).map_err(Self::map)?;
-            self.ids.remove(id);
+        let flat_id = self
+            .grid(px)
+            .filter(|&t| self.in_window(t))
+            .map(|t| Self::level_id(t, side));
+        let far_side = match side {
+            Side::Bid => &mut self.far.bids,
+            Side::Ask => &mut self.far.asks,
+        };
+        if !far_side.is_empty() {
+            far_side.remove(&px);
         }
-        let h = self.ids.insert(id).ok_or(ApplyError::Full)?;
-        match self.book.add(h, qside(s), t, lots) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                self.ids.remove(id);
-                if clip && matches!(e, BookError::OutOfRange(_)) {
-                    self.clipped += 1;
-                    Ok(())
-                } else {
-                    Err(Self::map(e))
-                }
+        if qty == 0 {
+            // Removing an absent level is a no-op, as before.
+            if let Some(id) = flat_id
+                && let Some((_, _, q0)) = self.book.order(id)
+            {
+                self.book.cancel(id, q0).map_err(Self::map)?;
             }
+            return Ok(());
         }
-    }
-
-    /// Apply one change. Does not allocate.
-    #[inline]
-    pub fn apply(&mut self, c: &Change) -> Result<(), ApplyError> {
-        match *c {
-            Change::Level { side, px, qty } => {
-                if qty < 0 {
-                    return Err(ApplyError::BadSize);
-                }
-                let t = self.tick_of(px)?;
+        match self.place(side, px, qty, snapshot)? {
+            Place::Flat(t, lots) => {
                 let id = Self::level_id(t, side);
-                if qty == 0 {
-                    // Removing an absent level is a no-op, as before; that
-                    // includes a level outside the window, which this book
-                    // never holds.
-                    if let Some((_, _, q0)) = self.book.order(id) {
-                        self.book.cancel(id, q0).map_err(Self::map)?;
-                    }
-                    return Ok(());
-                }
-                let lots = self.lots_of(qty)?;
                 if self.book.order(id).is_some() {
                     self.book.modify(id, t, lots).map_err(Self::map)
                 } else {
                     self.book.add(id, qside(side), t, lots).map_err(Self::map)
                 }
             }
+            Place::Far => {
+                if let Some(id) = flat_id
+                    && let Some((_, _, q0)) = self.book.order(id)
+                {
+                    self.book.cancel(id, q0).map_err(Self::map)?;
+                }
+                self.far.side(side).insert(px, qty);
+                Ok(())
+            }
+        }
+    }
+
+    fn remove_order(&mut self, id: u128) -> Result<bool, ApplyError> {
+        if let Some(h) = self.ids.get(id) {
+            let (_, _, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
+            self.book.cancel(h, q0).map_err(Self::map)?;
+            self.ids.remove(id);
+            return Ok(true);
+        }
+        if let Some((s, p, q)) = self.far.orders.remove(&id) {
+            self.far.add(s, p, -q);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn open(
+        &mut self,
+        id: u128,
+        s: Side,
+        px: i64,
+        qty: i64,
+        snapshot: bool,
+    ) -> Result<(), ApplyError> {
+        if qty <= 0 {
+            return Err(ApplyError::BadSize);
+        }
+        let place = self.place(s, px, qty, snapshot)?;
+        // Re-open of a live id replaces it.
+        self.remove_order(id)?;
+        match place {
+            Place::Flat(t, lots) => {
+                let h = self.ids.insert(id).ok_or(ApplyError::Full)?;
+                if let Err(e) = self.book.add(h, qside(s), t, lots) {
+                    self.ids.remove(id);
+                    return Err(Self::map(e));
+                }
+            }
+            Place::Far => {
+                self.far.orders.insert(id, (s, px, qty));
+                self.far.add(s, px, qty);
+            }
+        }
+        Ok(())
+    }
+
+    /// Apply one change. Near the touch this does not allocate.
+    #[inline]
+    pub fn apply(&mut self, c: &Change) -> Result<(), ApplyError> {
+        match *c {
+            Change::Level { side, px, qty } => self.set_level(side, px, qty, false),
             Change::Open { id, side, px, qty } => self.open(id, side, px, qty, false),
             Change::Done { id } => {
                 // Coinbase sends `done` for orders that never rested (fully
                 // filled on arrival); those are not on the book and are ignored.
-                if let Some(h) = self.ids.get(id) {
-                    let (_, _, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
-                    self.book.cancel(h, q0).map_err(Self::map)?;
-                    self.ids.remove(id);
-                }
-                Ok(())
+                self.remove_order(id).map(|_| ())
             }
             Change::Match { id, qty } => {
-                let h = self.ids.get(id).ok_or(ApplyError::UnknownOrder)?;
-                let (_, _, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
-                if qty <= 0 {
+                if let Some(h) = self.ids.get(id) {
+                    let (_, _, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
+                    let lot = self.spec.lot;
+                    if qty <= 0 || qty % lot != 0 || qty / lot > q0 as i64 {
+                        return Err(ApplyError::BadSize);
+                    }
+                    let lots = (qty / lot) as u32;
+                    self.book.execute(h, lots).map_err(Self::map)?;
+                    if lots == q0 {
+                        self.ids.remove(id);
+                    }
+                    return Ok(());
+                }
+                let &(s, p, q) = self.far.orders.get(&id).ok_or(ApplyError::UnknownOrder)?;
+                if qty <= 0 || qty > q {
                     return Err(ApplyError::BadSize);
                 }
-                let lots = self.lots_of(qty)?;
-                if lots > q0 {
-                    return Err(ApplyError::BadSize);
-                }
-                self.book.execute(h, lots).map_err(Self::map)?;
-                if lots == q0 {
-                    self.ids.remove(id);
+                self.far.add(s, p, -qty);
+                if qty == q {
+                    self.far.orders.remove(&id);
+                } else {
+                    self.far.orders.insert(id, (s, p, q - qty));
                 }
                 Ok(())
             }
@@ -568,13 +685,32 @@ impl CryptoBook {
                 }
                 // A change for an order not on the book is a received-only order.
                 if let Some(h) = self.ids.get(id) {
-                    let (_, t, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
+                    let (qs, t, q0) = self.book.order(h).ok_or(ApplyError::UnknownOrder)?;
                     if qty == 0 {
                         self.book.cancel(h, q0).map_err(Self::map)?;
                         self.ids.remove(id);
+                        return Ok(());
+                    }
+                    let side = if qs == QSide::Buy {
+                        Side::Bid
                     } else {
-                        let lots = self.lots_of(qty)?;
-                        self.book.modify(h, t, lots).map_err(Self::map)?;
+                        Side::Ask
+                    };
+                    let px = t * self.spec.tick;
+                    match self.place(side, px, qty, true)? {
+                        Place::Flat(_, lots) => self.book.modify(h, t, lots).map_err(Self::map)?,
+                        Place::Far => {
+                            self.remove_order(id)?;
+                            self.far.orders.insert(id, (side, px, qty));
+                            self.far.add(side, px, qty);
+                        }
+                    }
+                } else if let Some(&(s, p, q)) = self.far.orders.get(&id) {
+                    self.far.add(s, p, qty - q);
+                    if qty == 0 {
+                        self.far.orders.remove(&id);
+                    } else {
+                        self.far.orders.insert(id, (s, p, qty));
                     }
                 }
                 Ok(())
@@ -582,32 +718,53 @@ impl CryptoBook {
         }
     }
 
-    #[inline]
-    fn top(&self, x: Option<(i64, u64, u32)>) -> Option<(i64, i64)> {
-        x.map(|(t, q, _)| (t * self.spec.tick, q as i64 * self.spec.lot))
+    fn best(&self, s: Side) -> Option<(i64, i64)> {
+        let flat = match s {
+            Side::Bid => self.book.best_bid(),
+            Side::Ask => self.book.best_ask(),
+        }
+        .map(|(t, q, _)| (t * self.spec.tick, q as i64 * self.spec.lot));
+        let far = match s {
+            Side::Bid => self.far.bids.iter().next_back(),
+            Side::Ask => self.far.asks.iter().next(),
+        }
+        .map(|(&p, &q)| (p, q));
+        match (flat, far) {
+            (Some(a), Some(b)) if a.0 == b.0 => Some((a.0, a.1 + b.1)),
+            (Some(a), Some(b)) => {
+                let better = match s {
+                    Side::Bid => a.0 > b.0,
+                    Side::Ask => a.0 < b.0,
+                };
+                Some(if better { a } else { b })
+            }
+            (x, None) | (None, x) => x,
+        }
     }
 
     /// Best bid (price, total).
     pub fn best_bid(&self) -> Option<(i64, i64)> {
-        self.top(self.book.best_bid())
+        self.best(Side::Bid)
     }
     /// Best ask (price, total).
     pub fn best_ask(&self) -> Option<(i64, i64)> {
-        self.top(self.book.best_ask())
+        self.best(Side::Ask)
     }
     /// Levels of one side, best first. Allocates (a reporting call, not the
     /// hot path).
     pub fn levels(&self, s: Side) -> Vec<(i64, i64)> {
-        let mut out: Vec<(i64, i64)> = Vec::new();
+        let mut m: BTreeMap<i64, i64> = match s {
+            Side::Bid => self.far.bids.clone(),
+            Side::Ask => self.far.asks.clone(),
+        };
         let (tick, lot) = (self.spec.tick, self.spec.lot);
         self.book.for_each_order(qside(s), |t, _, q| {
-            let px = t * tick;
-            match out.last_mut() {
-                Some(l) if l.0 == px => l.1 += q as i64 * lot,
-                _ => out.push((px, q as i64 * lot)),
-            }
+            *m.entry(t * tick).or_insert(0) += q as i64 * lot;
         });
-        out
+        match s {
+            Side::Bid => m.into_iter().rev().collect(),
+            Side::Ask => m.into_iter().collect(),
+        }
     }
     /// Live orders by venue id: (id, side, px, qty), sorted by id.
     pub fn orders(&self) -> Vec<(u128, Side, i64, i64)> {
@@ -624,18 +781,19 @@ impl CryptoBook {
                     (k, side, t * self.spec.tick, q as i64 * self.spec.lot)
                 })
             })
+            .chain(self.far.orders.iter().map(|(&k, &(s, p, q))| (k, s, p, q)))
             .collect();
         v.sort_unstable_by_key(|e| e.0);
         v
     }
     /// Number of live orders (order feeds).
     pub fn order_count(&self) -> usize {
-        self.ids.len()
+        self.ids.len() + self.far.orders.len()
     }
     /// Levels equal the per-price sum of live orders (order feeds only), and
-    /// every interned id maps to a live book order.
+    /// every interned id maps to a live flat-book order.
     pub fn check_invariant(&self) -> bool {
-        if self.ids.len() == 0 {
+        if self.order_count() == 0 {
             return true;
         }
         let mut b = BTreeMap::new();
@@ -652,8 +810,7 @@ impl CryptoBook {
             let v: Vec<_> = m.into_iter().collect();
             if r { v.into_iter().rev().collect() } else { v }
         };
-        self.orders().len() == self.ids.len()
-            && self.book.len() == self.ids.len()
+        self.book.len() == self.ids.len()
             && rev(b, true) == self.levels(Side::Bid)
             && rev(a, false) == self.levels(Side::Ask)
     }
@@ -769,36 +926,111 @@ mod tests {
     }
 
     #[test]
-    fn off_grid_and_oversize_are_errors_not_panics() {
-        let mut b = CryptoBook::new(); // 0.01 tick, 1e-8 lot
+    fn odd_and_deep_entries_are_exact_and_touch_moves_are_errors() {
+        // 0.01 tick, 1e-8 lot, a window of +-5.12 around the touch.
+        let mut b = CryptoBook::with_spec(ProductSpec {
+            n_levels: 1024,
+            ..ProductSpec::default()
+        });
         b.reset(&Snapshot {
             last: 1,
-            levels: vec![(Side::Bid, 100 * SCALE, SCALE)],
+            levels: vec![
+                (Side::Bid, 100 * SCALE, SCALE),
+                (Side::Ask, 102 * SCALE, SCALE),
+                (Side::Ask, 2_000 * SCALE, SCALE),
+            ],
             orders: vec![],
         })
         .unwrap();
-        let lv = |px, qty| Change::Level {
+        assert_eq!(b.far_count(), 1); // the deep ask
+        let lv = |side, px, qty| Change::Level { side, px, qty };
+        // Off the tick grid, deep asks and huge sizes go to the side store.
+        b.apply(&lv(Side::Ask, 100 * SCALE + 1, 1)).unwrap();
+        b.apply(&lv(Side::Ask, 10_000 * SCALE, 1)).unwrap();
+        b.apply(&lv(Side::Ask, 101 * SCALE, 43 * SCALE)).unwrap();
+        assert_eq!(b.best_ask(), Some((100 * SCALE + 1, 1)));
+        assert_eq!(
+            b.levels(Side::Ask),
+            vec![
+                (100 * SCALE + 1, 1),
+                (101 * SCALE, 43 * SCALE),
+                (102 * SCALE, SCALE),
+                (2_000 * SCALE, SCALE),
+                (10_000 * SCALE, 1)
+            ]
+        );
+        // Shrinking the huge level brings it back into the flat book.
+        b.apply(&lv(Side::Ask, 101 * SCALE, 42 * SCALE)).unwrap();
+        assert_eq!(b.far_count(), 3);
+        // A bid above the window (or an ask below it): the touch moved out.
+        let (lo, hi) = b.window();
+        assert_eq!(b.apply(&lv(Side::Bid, hi, 1)), Err(ApplyError::OutOfWindow));
+        assert_eq!(
+            b.apply(&lv(Side::Ask, lo - SCALE / 100, 1)),
+            Err(ApplyError::OutOfWindow)
+        );
+        // A deep bid below the window is fine.
+        b.apply(&lv(Side::Bid, lo - SCALE / 100, 5)).unwrap();
+        assert_eq!(
+            b.levels(Side::Bid),
+            vec![(100 * SCALE, SCALE), (lo - SCALE / 100, 5)]
+        );
+        // Removing what is absent is a no-op anywhere.
+        b.apply(&lv(Side::Ask, 50_000 * SCALE, 0)).unwrap();
+    }
+
+    #[test]
+    fn far_orders_follow_the_order_feed_rules() {
+        let mut b = CryptoBook::new();
+        b.reset(&Snapshot {
+            last: 1,
+            levels: vec![],
+            orders: vec![
+                (1, Side::Bid, 100 * SCALE, SCALE),
+                (2, Side::Ask, 101 * SCALE, SCALE),
+            ],
+        })
+        .unwrap();
+        let open = |id, px, qty| Change::Open {
+            id,
             side: Side::Ask,
             px,
             qty,
         };
+        b.apply(&open(3, 900 * SCALE, 2 * SCALE)).unwrap(); // deep
+        b.apply(&open(4, 101 * SCALE, 50 * SCALE)).unwrap(); // too big for u32 lots
+        b.apply(&Change::Match {
+            id: 4,
+            qty: 10 * SCALE,
+        })
+        .unwrap();
+        b.apply(&Change::Resize {
+            id: 4,
+            qty: 5 * SCALE,
+        })
+        .unwrap();
+        b.apply(&Change::Resize {
+            id: 2,
+            qty: 60 * SCALE,
+        })
+        .unwrap(); // flat -> far
+        assert_eq!(b.best_ask(), Some((101 * SCALE, 65 * SCALE)));
+        assert!(b.check_invariant());
+        assert_eq!(b.order_count(), 4);
+        b.apply(&Change::Done { id: 3 }).unwrap();
+        b.apply(&Change::Match {
+            id: 2,
+            qty: 60 * SCALE,
+        })
+        .unwrap();
+        assert_eq!(b.levels(Side::Ask), vec![(101 * SCALE, 5 * SCALE)]);
         assert_eq!(
-            b.apply(&lv(100 * SCALE + 1, 1)),
-            Err(ApplyError::OutOfWindow)
+            b.apply(&Change::Match {
+                id: 4,
+                qty: 6 * SCALE
+            }),
+            Err(ApplyError::BadSize)
         );
-        assert_eq!(
-            b.apply(&lv(10_000 * SCALE, 1)),
-            Err(ApplyError::OutOfWindow)
-        );
-        assert_eq!(
-            b.apply(&lv(101 * SCALE, 43 * SCALE)),
-            Err(ApplyError::Unrepresentable)
-        );
-        assert_eq!(b.apply(&lv(101 * SCALE, 42 * SCALE)), Ok(()));
-        // Removing a level that is not there (even far outside) is a no-op.
-        assert_eq!(b.apply(&lv(10_000 * SCALE, 0)), Ok(()));
-        assert_eq!(b.best_ask(), Some((101 * SCALE, 42 * SCALE)));
-        let (lo, hi) = b.window();
-        assert!(lo <= 100 * SCALE && 101 * SCALE < hi);
+        assert!(b.check_invariant());
     }
 }

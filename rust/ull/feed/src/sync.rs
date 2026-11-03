@@ -80,6 +80,8 @@ pub struct SyncStats {
     /// Snapshots the book could not hold (off-grid price, size too large,
     /// or more entries than slots); the engine stays stale and asks again.
     pub snapshots_rejected: u64,
+    /// Snapshots ignored because they were not newer than the live book.
+    pub snapshots_not_newer: u64,
 }
 
 /// Snapshot-synchronised book with a stale flag.
@@ -195,6 +197,14 @@ impl SyncEngine {
     /// Feed a snapshot (the reply to a [`Action::RequestSnapshot`]).
     pub fn on_snapshot(&mut self, s: &Snapshot) -> Action {
         self.requested = false;
+        if self.live && s.last <= self.last {
+            // Not newer than the book we hold (the request raced the stream,
+            // or a second REST reply came back). Reloading it would rewind
+            // the book and drop the levels the stream added beyond the
+            // snapshot's depth. Keep our book, as cpp/ull/feed does.
+            self.stats.snapshots_not_newer += 1;
+            return Action::None;
+        }
         if self.book.reset(s).is_err() {
             self.stats.snapshots_rejected += 1;
             self.live = false;
@@ -439,5 +449,40 @@ mod tests {
         let ids: Vec<u64> = out.iter().map(|x| x.first).collect();
         assert_eq!(ids, [1, 3, 4, 5]);
         assert_eq!(a.stats.gaps_released, 1);
+    }
+
+    #[test]
+    fn snapshot_not_newer_than_live_book_is_ignored() {
+        let lv = |px: i64, qty: i64| Change::Level {
+            side: Side::Bid,
+            px,
+            qty,
+        };
+        let mut e = SyncEngine::with_spec(16, UNIT);
+        e.on_delta(Delta {
+            first: 11,
+            last: 11,
+            changes: vec![lv(5, 1)],
+        });
+        let snap = |last: u64| Snapshot {
+            last,
+            levels: vec![(Side::Bid, 5, 1)],
+            orders: vec![],
+        };
+        assert_eq!(e.on_snapshot(&snap(10)), Action::None);
+        assert!(!e.is_stale());
+        // A level the snapshot (limited depth) does not carry.
+        e.on_delta(Delta {
+            first: 12,
+            last: 12,
+            changes: vec![lv(3, 7)],
+        });
+        let before = e.book().levels(Side::Bid);
+        assert_eq!(e.on_snapshot(&snap(12)), Action::None); // same id: not newer
+        assert_eq!(e.on_snapshot(&snap(11)), Action::None); // older
+        assert_eq!(e.book().levels(Side::Bid), before);
+        assert_eq!(e.stats.snapshots_not_newer, 2);
+        assert_eq!(e.last_id(), 12);
+        assert!(!e.is_stale());
     }
 }

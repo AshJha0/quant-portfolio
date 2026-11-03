@@ -159,9 +159,9 @@ fn fast_decoder_agrees_with_generic_parser() {
 fn window_move_marks_stale_and_recovers() {
     use qp_ull_feed::book::ProductSpec;
     // A narrow window (64 ticks of 0.01 around the touch) on a generated day:
-    // the generator's quotes reach 25 ticks from a drifting mid, so updates
-    // land outside the window, the book goes stale, and a fresh snapshot
-    // re-centres it. After each recovery the book equals the reference.
+    // the mid drifts, so the touch leaves the window, the book goes stale,
+    // and a fresh snapshot re-centres it. Whenever the handler is fresh its
+    // whole book (flat window plus side store) equals the reference.
     let spec = ProductSpec {
         n_levels: 64,
         ..ProductSpec::default()
@@ -179,15 +179,9 @@ fn window_move_marks_stale_and_recovers() {
         }
         if !h.is_stale() {
             let (rb, ra) = (g.levels(Side::Bid), g.levels(Side::Ask));
-            let inside = |v: &Vec<(i64, i64)>| -> Vec<(i64, i64)> {
-                let (lo, hi) = h.engine.book().window();
-                v.iter()
-                    .copied()
-                    .filter(|(p, _)| *p >= lo && *p < hi)
-                    .collect()
-            };
-            assert_eq!(h.engine.book().levels(Side::Bid), inside(&rb));
-            assert_eq!(h.engine.book().levels(Side::Ask), inside(&ra));
+            // Deep levels sit in the side store: the whole book is exact.
+            assert_eq!(h.engine.book().levels(Side::Bid), rb);
+            assert_eq!(h.engine.book().levels(Side::Ask), ra);
             checked += 1;
         }
     }
