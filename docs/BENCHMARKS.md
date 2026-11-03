@@ -94,3 +94,44 @@ reported without a gate, and so is a base library that does not build under
 the head's harness (the job prints a warning naming the engine). Pinning
 to one CPU also serialises the multi-threaded Monte Carlo kernels; both sides
 pay that equally.
+
+## Per-call tails: the specification (W12, not yet implemented)
+
+The batch-mean tails above cannot support a latency objective
+(`docs/SLO.md`, S6). W12 replaces them for SLOs and the gate with per-call
+timing. This section is the contract that implementation must meet; until
+it lands, every tail figure in this repository is a batch-mean figure and
+is labelled so.
+
+The plain idea. Time every call on its own, with a clock cheap and fine
+enough that its own cost is small next to a 100 ns call, and report how
+much the clock itself costs so the reader can subtract it in their head.
+
+The method, stated exactly (x86-64; other targets keep the batch method
+and say so in `tail_basis`):
+
+1. Check the TSC is invariant (CPUID leaf 0x80000007, EDX bit 8) and read
+   its frequency once against `steady_clock` over 100 ms. Without an
+   invariant TSC, fall back to the batch method and say so.
+2. Each sample is `lfence; rdtscp` before the call and `rdtscp; lfence`
+   after (Intel, "How to Benchmark Code Execution Times on Intel IA-32 and
+   IA-64 Instruction Set Architectures", 2010), converted to ns.
+3. Timer overhead: the same pair around an empty body, 10,000 times; its
+   median and p99 are reported as `timer_overhead_p50` and
+   `timer_overhead_p99` and are not subtracted.
+4. `calls_per_sample` = 1 and `tail_basis` = `per-call`; p50, p90, p99,
+   p99.9 and max by nearest rank as above.
+5. Coordinated omission: the bench calls back-to-back, so a stall delays
+   later calls rather than hiding them; the stall is counted once, in the
+   call that suffered it (Tene, 2015). The figures are service times, not
+   response times under an arrival process, and are labelled so.
+
+Acceptance (from the plan): a test bench that stalls for 1 ms on one call
+in every 500 must show a per-call p99.9 of at least 1 ms, and one that
+stalls one call in 100,000 must not. The rate is 1 in 500, not 1 in 1,000,
+on purpose: with N samples and exactly N/1,000 stalls, nearest-rank p99.9
+is element ceil(0.999 N) - 1, the largest call that did not stall.
+
+Fuzzing is not benchmarking, but the two share CI time on free runners:
+the nightly fuzz workflow (`.github/workflows/fuzz.yml`) spends 100 s per
+target and runs at 03:17 UTC, away from the bench jobs.

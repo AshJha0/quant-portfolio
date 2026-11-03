@@ -1,0 +1,40 @@
+# Coverage-guided fuzz targets for qp-core (W12).
+#
+# Detached from the rust/ workspace (its own [workspace] table) because
+# cargo-fuzz builds on nightly with sanitizer flags. Two ways to run:
+#   nightly + cargo-fuzz:  cargo +nightly fuzz run implied_vol -- -max_total_time=60
+#   stable, corpus replay: cargo test        (tests/replay.rs)
+# The properties live in src/lib.rs so both paths check the same thing.
+[package]
+name = "qp-core-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+qp-core = { path = ".." }
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[features]
+fuzz = ["dep:libfuzzer-sys"]
+
+[[bin]]
+name = "implied_vol"
+path = "fuzz_targets/implied_vol.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz"]
+
+[[bin]]
+name = "cholesky_lower"
+path = "fuzz_targets/cholesky_lower.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz"]

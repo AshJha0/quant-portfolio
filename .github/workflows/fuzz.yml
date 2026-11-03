@@ -1,0 +1,124 @@
+# Coverage-guided fuzzing (W12). Free GitHub-hosted runners only.
+#
+#   replay         every push / pull request touching the fuzzed code: the
+#                  checked-in corpus and every regression reproducer, C++
+#                  under GCC + ASan/UBSan, Rust on stable. Seconds.
+#   cpp-libfuzzer  nightly: each C++ target for 100 s under clang libFuzzer
+#                  with ASan/UBSan (5 minutes in all).
+#   rust-cargo-fuzz nightly: each Rust target for 100 s under cargo-fuzz.
+#
+# A nightly finding uploads the crash file as an artefact. To keep it fixed,
+# add it to cpp/core/fuzz/regressions/<target>/ with a name that says what
+# it found; the replay job then runs it on every change.
+name: fuzz
+
+on:
+  push:
+    branches: [main]
+    paths: ["cpp/core/**", "rust/core/**", "rust/equity-var-engine/**", ".github/workflows/fuzz.yml"]
+  pull_request:
+    paths: ["cpp/core/**", "rust/core/**", "rust/equity-var-engine/**", ".github/workflows/fuzz.yml"]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: replay corpus (C++ gcc+asan, Rust stable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install gcc toolchain and CMake
+        run: bash .github/scripts/install_cxx.sh gcc
+      - name: C++ replay build
+        run: |
+          cmake -S cpp/core/fuzz -B build-replay -G Ninja -DCMAKE_CXX_COMPILER=g++-15 -DQP_FUZZ_ENGINE=replay
+          cmake --build build-replay
+      - name: C++ replay
+        run: |
+          for t in implied_vol cholesky_repair jsonl_parse; do
+            mkdir -p "cpp/core/fuzz/regressions/$t"
+            "build-replay/fuzz_$t" "cpp/core/fuzz/corpus/$t" "cpp/core/fuzz/regressions/$t"
+          done
+      - name: Rust replay (qp-core, eq-var-engine)
+        run: |
+          cargo test --manifest-path rust/core/fuzz/Cargo.toml --locked
+          cargo test --manifest-path rust/equity-var-engine/fuzz/Cargo.toml --locked
+
+  cpp-libfuzzer:
+    name: cpp libFuzzer (${{ matrix.target }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [implied_vol, cholesky_repair, jsonl_parse]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install clang toolchain and CMake
+        run: bash .github/scripts/install_cxx.sh clang
+      - name: Build
+        run: |
+          cmake -S cpp/core/fuzz -B build-fuzz -G Ninja -DCMAKE_CXX_COMPILER=clang++-21 -DQP_FUZZ_ENGINE=libfuzzer
+          cmake --build build-fuzz --target "fuzz_${{ matrix.target }}"
+      - name: Fuzz 100 s
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p findings work "cpp/core/fuzz/regressions/$TARGET"
+          "build-fuzz/fuzz_$TARGET" -max_total_time=100 -timeout=10 -rss_limit_mb=2048 \
+            -artifact_prefix=findings/ work "cpp/core/fuzz/corpus/$TARGET" "cpp/core/fuzz/regressions/$TARGET"
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-fuzz-findings-${{ matrix.target }}
+          path: findings/
+
+  rust-cargo-fuzz:
+    name: rust cargo-fuzz (${{ matrix.target }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { dir: rust/core, target: implied_vol }
+          - { dir: rust/core, target: cholesky_lower }
+          - { dir: rust/equity-var-engine, target: cholesky_repair }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install nightly and cargo-fuzz 0.12.0
+        run: |
+          rustup toolchain install nightly --profile minimal
+          cargo +nightly install cargo-fuzz --version 0.12.0 --locked
+      - name: Fuzz 100 s
+        working-directory: ${{ matrix.dir }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo +nightly fuzz run --features fuzz "$TARGET" -- -max_total_time=100 -timeout=10
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-fuzz-findings-${{ matrix.target }}
+          path: ${{ matrix.dir }}/fuzz/artifacts/
