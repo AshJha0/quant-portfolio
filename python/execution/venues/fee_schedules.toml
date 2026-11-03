@@ -1,0 +1,71 @@
+# Venue fee schedules for the W27 smart order router simulation.
+#
+# Units: US dollars per share. maker > 0 is a rebate paid to the liquidity
+# provider; maker < 0 is a fee charged to it. taker > 0 is a fee charged to the
+# liquidity taker; taker < 0 is a rebate paid to it ("inverted" venues).
+#
+# These are STYLISED schedules in the shapes found in public US equity fee
+# schedules, not the current schedule of any named exchange. Sources for the
+# shapes and bounds:
+#   - SEC Regulation NMS Rule 610(c) (17 CFR 242.610(c)) capped access fees for
+#     protected quotations at $0.003 per share for quotes priced at $1.00 or
+#     more. In September 2024 the SEC adopted amendments that lower the cap
+#     (Release No. 34-101070); check the current rule before quoting a figure.
+#     Every taker fee here is at or below $0.003.
+#   - Maker-taker venues pay a maker rebate below the taker fee; inverted
+#     ("taker-maker") venues charge the maker and pay the taker. Both models
+#     are described in the SEC Division of Trading and Markets memo "Maker-Taker
+#     Fees on Equities Exchanges" (October 2015), which is the reference for
+#     the shapes used here.
+# Latencies are round-trip one-way order-entry assumptions in microseconds for
+# a co-located router; they are illustrative, not measured.
+# Dark venues charge both sides a flat fee and trade at the midpoint.
+
+[lit.LIT_A]
+model = "maker-taker"
+maker = 0.0020
+taker = 0.0030
+latency_us = 40
+
+[lit.LIT_B]
+model = "maker-taker"
+maker = 0.0015
+taker = 0.0028
+latency_us = 120
+
+[lit.LIT_C]
+model = "inverted"
+maker = -0.0010
+taker = -0.0005
+latency_us = 80
+
+[lit.LIT_D]
+model = "flat"
+maker = 0.0000
+taker = 0.0009
+latency_us = 250
+
+[dark.DARK_MID]
+model = "midpoint-continuous"
+fee = 0.0010
+latency_us = 150
+min_qty = 0
+
+[dark.DARK_BLOCK]
+model = "midpoint-continuous"
+fee = 0.0012
+latency_us = 300
+min_qty = 20
+
+[dark.DARK_COND]
+model = "conditional"
+fee = 0.0010
+latency_us = 300
+min_qty = 10
+
+[dark.DARK_FBA]
+model = "periodic-auction"
+fee = 0.0008
+latency_us = 200
+min_qty = 0
+interval_us = 100000
