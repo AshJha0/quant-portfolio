@@ -12,7 +12,6 @@ from eq_var import (
     monte_carlo_risk,
     monte_carlo_var,
     parametric_var,
-    safe_cholesky,
     simulate_factor_returns,
     var_confidence_interval,
     var_standard_error_bootstrap,
@@ -96,8 +95,7 @@ class TestReproducibility:
 
 class TestSafeCholesky:
     def test_plain_cholesky_on_spd_matrix(self):
-        with pytest.deprecated_call():
-            chol = safe_cholesky(COV)
+        chol = cholesky(COV)
         np.testing.assert_allclose(chol @ chol.T, COV, atol=1e-15)
 
     def test_jitter_path_on_singular_matrix(self):
@@ -140,8 +138,6 @@ class TestSafeCholesky:
         with L L' - A = I (jitter = 100 % of the mean variance) and no warning."""
         with pytest.raises(np.linalg.LinAlgError, match=r"-0.8"):
             cholesky(self.A)
-        with pytest.deprecated_call(), pytest.raises(np.linalg.LinAlgError):
-            safe_cholesky(self.A)
 
     def test_jitter_never_exceeds_the_cap(self):
         """Smallest eigenvalue -1e-7 x mean variance: the cap (1e-6) succeeds

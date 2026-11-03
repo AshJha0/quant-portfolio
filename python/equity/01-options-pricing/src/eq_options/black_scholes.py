@@ -23,7 +23,6 @@ Edge-case policy (documented + unit tested)
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Sequence
 from typing import Any, Literal, overload
 
@@ -282,10 +281,6 @@ def implied_vol(
     r: float,
     q: float = 0.0,
     option_type: OptionType = "call",
-    tol: float | None = None,
-    max_iter: int | None = None,
-    sigma_lo: float | None = None,
-    sigma_hi: float | None = None,
 ) -> float:
     """Implied Black-Scholes volatility, solved on the out-of-the-money side.
 
@@ -319,8 +314,6 @@ def implied_vol(
         As in :func:`bs_price`. ``S``, ``K`` and ``T`` must be strictly positive.
     option_type : {"call", "put"}
         Option payoff direction.
-    tol, max_iter, sigma_lo, sigma_hi
-        Deprecated and ignored. The solver has no tuning parameters.
 
     Returns
     -------
@@ -334,15 +327,6 @@ def implied_vol(
         the ``sigma -> inf`` bound, if ``T == 0``, if any input is invalid,
         or if the solver fails to converge.
     """
-    for name, value in (("tol", tol), ("max_iter", max_iter),
-                        ("sigma_lo", sigma_lo), ("sigma_hi", sigma_hi)):
-        if value is not None:
-            warnings.warn(
-                f"implied_vol({name}=...) is deprecated and ignored; "
-                "the solver has no tuning parameters",
-                DeprecationWarning,
-                stacklevel=2,
-            )
     validate_inputs(S, K, T, 0.0, option_type)
     _check_rates(r=r, q=q)
     if not math.isfinite(price):

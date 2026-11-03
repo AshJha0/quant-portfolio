@@ -405,9 +405,6 @@ class TestNonFiniteRejection:
         with pytest.raises(ValueError, match="NaN or infinite"):
             overlapping_horizon_pnl(p, 10)
 
-    def test_ewma_volatility_rejects_unknown_init(self):
-        with pytest.deprecated_call(), pytest.raises(ValueError, match="init must be"):
-            ewma_volatility(np.zeros(10), init="backcast")
 
 
 # --------------------------------------------------------------------------- #

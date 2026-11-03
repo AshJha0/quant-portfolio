@@ -6,7 +6,6 @@ offline, the test suite depends only on this module, never on live data.
 
 from __future__ import annotations
 
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -73,7 +72,7 @@ def simulate_returns(
 def simulate_garch_returns(
     n_days: int,
     cov: np.ndarray,
-    omega_frac: object = None,
+    *,
     alpha_g: float = 0.09,
     beta_g: float = 0.86,
     innovations: Literal["normal", "t"] = "t",
@@ -88,13 +87,10 @@ def simulate_garch_returns(
     equals ``cov[i, i]``; cross-sectional correlation comes from correlated
     innovations (Cholesky of the correlation matrix); ``innovations="t"``
     (default, df=7) adds conditional fat tails on top of the clustering.
-    ``omega_frac`` is deprecated and ignored (omega is fixed by the
-    unconditional variance). A ``burn_in`` period removes the influence of
+    The ignored ``omega_frac`` argument was removed in v3.0.0, and the
+    model parameters are keyword-only. A ``burn_in`` period removes the influence of
     the initial variance.
     """
-    if omega_frac is not None:
-        warnings.warn("simulate_garch_returns(omega_frac=...) is ignored and deprecated",
-                      DeprecationWarning, stacklevel=2)
     if n_days < 1:
         raise ValueError(f"n_days must be >= 1, got {n_days}")
     if not 0.0 < alpha_g + beta_g < 1.0:

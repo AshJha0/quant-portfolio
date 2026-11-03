@@ -40,7 +40,6 @@ __all__ = [
     "monte_carlo_risk",
     "monte_carlo_var",
     "repair_covariance",
-    "safe_cholesky",
     "simulate_factor_returns",
     "var_confidence_interval",
     "var_standard_error_bootstrap",
@@ -185,22 +184,6 @@ def cholesky(cov: np.ndarray, repair: Literal["clip", "higham"] | None = None) -
             raise ValueError(f"repair must be None, 'clip' or 'higham', got {repair!r}")
         sig = _repaired(sig, repair)
     return _jitter_cholesky(sig)
-
-
-def safe_cholesky(cov: np.ndarray, jitter: float = 1e-10, max_tries: int = 12) -> np.ndarray:
-    """Deprecated alias of ``cholesky(cov)``.
-
-    The old version escalated jitter to 10 x the mean variance without a
-    warning. The alias keeps the name for one release but applies the
-    ``cholesky`` cap and warning. ``jitter`` and ``max_tries`` are ignored.
-    """
-    warnings.warn(
-        "safe_cholesky is deprecated; use cholesky(cov, repair=None|'clip'|'higham'). "
-        "Jitter is now capped at 1e-6 x mean variance",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return cholesky(cov)
 
 
 def simulate_factor_returns(
