@@ -3,10 +3,10 @@
 // Plain idea: a level-2 book is, per side, a map from price to total size.
 // A level-3 book (Coinbase `full`) also knows each resting order; its levels
 // are the per-price sums of those orders. This is the feed handler's own
-// small book, keyed by exact fixed-point prices. The flat price-indexed L3
-// book for QPBF is part 1 (cpp/ull/book, lane r13-l2-ull-cpp); crypto prices
-// span too wide a range for a dense array without a tick-size table, which
-// this handler does not assume.
+// small map-based book, keyed by exact fixed-point prices. The handlers now
+// keep their books in the part-1 flat book (flatbook.hpp); these map books
+// remain as the test oracle, as the flat books' exact side store, and as the
+// Coinbase level2 book.
 #pragma once
 
 #include <cstdint>
@@ -73,6 +73,11 @@ public:
         return o;
     }
     bool empty() const { return bids_.empty() && asks_.empty(); }
+    // Best price on a side, or INT64_MIN when the side is empty.
+    std::int64_t best(Side s) const {
+        if (s == Side::Bid) return bids_.empty() ? INT64_MIN : bids_.begin()->first;
+        return asks_.empty() ? INT64_MIN : asks_.begin()->first;
+    }
     bool crossed() const {
         return !bids_.empty() && !asks_.empty() && bids_.begin()->first >= asks_.begin()->first;
     }

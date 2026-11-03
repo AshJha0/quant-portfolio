@@ -529,11 +529,21 @@ TEST(flat_l2_matches_map_book) {
     CHECK(f.to_l2() == m);
     CHECK_EQ(f.dump(), m.dump());
     CHECK_EQ(f.get(Side::Bid, 100 * kScale), m.get(Side::Bid, 100 * kScale));
-    CHECK_THROWS(f.set(Side::Ask, 101 * kScale + 1, 1));        // off the tick grid
-    CHECK_THROWS(f.set(Side::Ask, 900 * kScale, 1));            // outside the window
-    CHECK_THROWS(f.set(Side::Ask, 101 * kScale, 43 * kScale));  // more than u32 lots
-    f.set(Side::Ask, 900 * kScale, 0);                          // absent: a no-op
+    // Off the grid, deep, and above u32 lots: the side store keeps them exact.
+    for (auto [px, q] : {std::pair{101 * kScale + 1, std::int64_t(1)}, {900 * kScale, 1},
+                         {101 * kScale, 43 * kScale}, {99 * kScale, 50 * kScale}}) {
+        const Side s = px < 100 * kScale ? Side::Bid : Side::Ask;
+        f.set(s, px, q);
+        m.set(s, px, q);
+    }
     CHECK(f.to_l2() == m);
+    CHECK(f.far_levels() >= 3);
+    f.set(Side::Ask, 101 * kScale, 2 * kScale);  // back into the flat book
+    m.set(Side::Ask, 101 * kScale, 2 * kScale);
+    f.set(Side::Ask, 5000 * kScale, 0);  // absent: a no-op
+    CHECK(f.to_l2() == m);
+    CHECK_THROWS(f.set(Side::Bid, f.window().second, 1));  // touch above the window
+    CHECK(!f.crossed());
 }
 
 TEST(flat_l3_matches_map_book) {
@@ -592,7 +602,22 @@ TEST(flat_l3_matches_map_book) {
                it->second.qty == o.qty;
     }
     CHECK(same);
-    CHECK_THROWS(f.open(std::string(IdInterner::kMaxId + 1, 'x'), Side::Bid, 100 * kScale, 1));
+    // A long id, a deep order and a huge one go to the side store.
+    for (auto& [id, px, q] : std::vector<std::tuple<std::string, std::int64_t, std::int64_t>>{
+             {std::string(IdInterner::kMaxId + 1, 'x'), 99 * kScale, 1},
+             {"deep", 10 * kScale, kScale},
+             {"huge", 99 * kScale, 60 * kScale}}) {
+        f.open(id, Side::Bid, px, q);
+        m.open(id, Side::Bid, px, q);
+    }
+    f.reduce("huge", 10 * kScale);
+    m.reduce("huge", 10 * kScale);
+    f.resize("huge", kScale);
+    m.resize("huge", kScale);
+    f.done("deep");
+    m.done("deep");
+    CHECK(f.l2() == m.l2());
+    CHECK_EQ(f.order_count(), m.order_count());
     f.open("z", Side::Bid, 100 * kScale, kScale);
     CHECK_THROWS(f.reduce("z", 2 * kScale));
 }
@@ -695,47 +720,37 @@ TEST(fast_depth_decoder_agrees_with_generic) {
 }
 
 TEST(window_move_goes_stale_and_recovers) {
-    // A 64-tick window on the Binance fixture: levels spread wider than that,
-    // so updates fall outside it; each one resets the handler (stale), and the
-    // next snapshot re-centres the window. Whenever the handler is not stale,
-    // its book equals the reference book restricted to the window.
-    const std::string fname = "binance_depth_21";
-    const auto& recs = records(fname);
-    BinanceDepth ref("BTCUSDT");
+    // Window of 64 ticks (0.64) around the touch. A deep ask goes to the side
+    // store; a bid above the window means the touch moved: the handler resets
+    // (stale) and asks for a snapshot, which re-centres the window.
     ProductSpec narrow;
     narrow.n_levels = 64;
     BinanceDepth h("BTCUSDT", {}, narrow);
-    bool want = false;
-    h.on_snapshot_needed = [&] { want = true; };
-    int recoveries = 0, checked = 0;
-    for (const auto& r : recs) {
-        if (r.kind == Kind::Snapshot) {
-            ref.on_snapshot(r.bytes);
-            want = false;  // before: loading may itself reset and ask again
-            h.on_snapshot(r.bytes);
-            continue;
-        }
-        ref.on_message(r.bytes, std::int64_t(r.recv_ns));
-        h.on_message(r.bytes, std::int64_t(r.recv_ns));
-        if (want && !ref.stale()) {
-            want = false;
-            h.on_snapshot(snapshot_body(ref));
-            ++recoveries;
-        }
-        if (!h.stale() && !ref.stale() && h.sync().applied_seq() == ref.sync().applied_seq()) {
-            const auto [lo, hi] = h.book().window();
-            L2Book in;
-            for (Side s : {Side::Bid, Side::Ask})
-                for (const auto& l : ref.book().levels(s))
-                    if (l.px >= lo && l.px < hi) in.set(s, l.px, l.qty);
-            if (!(h.book().to_l2() == in)) CHECK(false);
-            ++checked;
-        }
-    }
-    CHECK(h.stats().inconsistent > 0);  // out-of-window updates were seen
-    CHECK(recoveries > 0);
-    CHECK(checked > 100);
-    CHECK(h.book().clipped() > 0);  // snapshots wider than the window were clipped
+    int requests = 0;
+    h.on_snapshot_needed = [&] { ++requests; };
+    auto ev = [](int U, int u, const std::string& b, const std::string& a) {
+        return R"({"e":"depthUpdate","s":"BTCUSDT","U":)" + std::to_string(U) + R"(,"u":)" +
+               std::to_string(u) + R"(,"b":[)" + b + R"(],"a":[)" + a + "]}";
+    };
+    h.on_message(ev(11, 11, R"(["100.00","1"])", ""), 0);
+    h.on_snapshot(R"({"lastUpdateId":10,"bids":[["100.00","2"]],"asks":[["100.02","1"],["150.00","3"]]})");
+    CHECK(!h.stale());
+    CHECK_EQ(h.book().far_levels(), 1u);  // the deep ask
+    h.on_message(ev(12, 12, "", R"(["160.00","4"])"), 1);  // another deep ask: fine
+    CHECK(!h.stale());
+    CHECK_EQ(h.book().dump(), std::string("B 100 1\nA 100.02 1\nA 150 3\nA 160 4\n"));
+    const int before = requests;
+    h.on_message(ev(13, 13, R"(["120.00","1"])", ""), 2);  // bid above the window
+    CHECK(h.stale());
+    CHECK_EQ(h.stats().inconsistent, 1u);
+    CHECK(requests > before);
+    h.on_snapshot(R"({"lastUpdateId":13,"bids":[["120.00","1"],["100.00","1"]],"asks":[["120.05","1"]]})");
+    CHECK(!h.stale());
+    const auto [lo, hi] = h.book().window();
+    CHECK(lo <= 120 * kScale && 120 * kScale < hi);  // re-centred
+    CHECK_EQ(h.book().dump(), std::string("B 120 1\nB 100 1\nA 120.05 1\n"));
+    h.on_message(ev(14, 14, R"(["120.01","2"])", ""), 3);
+    CHECK(!h.stale());
 }
 
 QPT_MAIN()
