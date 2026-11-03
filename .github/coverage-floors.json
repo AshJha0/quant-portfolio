@@ -1,0 +1,5 @@
+{
+  "_comment": "Line-coverage floors in percent (W12). null = record only. After the first green coverage run, set each floor to the measured value rounded down to a whole percent; .github/scripts/coverage_floor.py fails the job if a value drops below its floor, and prints a raise-the-floor note when it rises by 1 point or more.",
+  "python/core": null,
+  "rust/core": null
+}
