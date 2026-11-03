@@ -57,6 +57,11 @@ def run(prices, targets, phi, lag, cost_bp, extra_bp, rate, tau, borrow_per_peri
             cost = c * traded
             cash = cash - sum((a - b) * pi for a, b, pi in zip(q_new, q, pf, strict=True)) - cost
             q = q_new
+            if phi == 0 and s > 0:
+                # filled at close s-1: the new book is what is held overnight
+                fin = cash / nav_prev * rf * nav_prev
+                borrow = borrow_per_period * sum(-qi * pi for qi, pi in zip(q, pf, strict=True)
+                                                 if qi < 0)
         cash = cash + fin - borrow
         nav = cash + sum(qi * pi for qi, pi in zip(q, p, strict=True))
         net = nav / nav_prev - 1

@@ -182,7 +182,8 @@ def strategy_returns(
     targets = np.where(changed, sig, np.nan)[:, None]
     fill = NextBarFill.from_execution(execution, auction_booked="next")
     run = run_fast(rets.to_frame(), targets, fill, LinearCost(cost_bps))
-    strat_rets = run.ledger["net_ret"].rename(prices.name)
+    strat_rets = pd.Series(run.ledger["net_ret"].to_numpy(), index=prices.index,
+                           name=prices.name)
     return strat_rets, position, trades
 
 

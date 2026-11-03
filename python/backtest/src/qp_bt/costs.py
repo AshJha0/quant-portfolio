@@ -27,7 +27,7 @@ FloatArray = NDArray[np.float64]
 class CostModel(Protocol):
     """Cost of a trade, as a fraction of the period's opening NAV."""
 
-    def __call__(self, decision_bar: int, dv: FloatArray) -> float: ...
+    def __call__(self, decision_bar: int, dv: FloatArray, /) -> float: ...
 
 
 @dataclass(frozen=True)

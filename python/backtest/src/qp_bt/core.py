@@ -17,7 +17,9 @@ Formal statement (one period ``s``, from close ``s-1`` to close ``s``)
 ``b = (1 + r)/(1 + a) - 1`` the pre- and post-fill returns (``phi`` is the
 fill fraction, see :mod:`qp_bt.fills`).
 
-1. Carry, on what was held overnight: financing on the cash weight
+1. Carry, on what was held overnight (the book after the trade when the
+   fill fraction is 0, i.e. the fill is at close ``s-1``; the book before it
+   otherwise): financing on the cash weight
    ``c = 1 - sum(h)`` (``qp_core.stats.Financing``: ``c (r_f -/+ spread)
    tau``) and borrow on the short book at the fill point,
    ``beta * sum(max(-h, 0)(1 + a))`` with ``beta`` the per-period borrow rate.
@@ -347,6 +349,7 @@ def run_fast(
         a = phi * r
         fin = _fin(financing, 1.0 - float(h.sum()), rf_all[s], tau_all[s])
         borrow = beta * float(np.sum(np.maximum(-h, 0.0) * (1.0 + a)))
+        post_fill_carry = phi == 0.0 and s > 0   # the fill is at close s-1
         dec = s - fm.lag
         w = tgt[dec] if dec >= 0 else None
         if w is not None and not np.isnan(w).any() and _no_trade(w, h * (1.0 + a),
@@ -367,6 +370,10 @@ def run_fast(
             turnover = float(np.abs(w * n_post - held).sum())
             gross = m - 1.0 + n_post * float(w @ b)
             post = w * n_post * (1.0 + b)
+            if post_fill_carry:
+                # filled at close s-1: what is held overnight is the new book
+                fin = _fin(financing, n_post * (1.0 - float(w.sum())), rf_all[s], tau_all[s])
+                borrow = beta * n_post * float(np.sum(np.maximum(-w, 0.0)))
         net = gross - cost_v - borrow + fin
         nav *= 1.0 + net
         if nav <= 0.0:
@@ -490,7 +497,8 @@ class EventEngine:
                 carry = self._carry(s, q.copy(), pf) if s > 0 else {}
                 cash_w = cash / nav_prev
                 fin = _fin(self.financing, cash_w, rf_all[s], tau_all[s]) * nav_prev
-                state = {"bar": s, "carry": carry, "fin": fin, "pf": pf,
+                n_fills = len(fills)
+                state = {"bar": s, "carry": carry, "fin": fin, "pf": pf, "n_fills": n_fills,
                          "pre": float(np.sum(q * (pf - p_prev))), "cost": {}, "traded": 0.0}
             if ev.kind == "fill":
                 cash, q = self._execute(ev, s, q, cash, nav_prev, state, fills, order_ids, queue,
@@ -508,6 +516,11 @@ class EventEngine:
                                                  next(seq), "fill",
                                                  (next(order_ids), s, intent, None)))
             else:  # close
+                if self.fill.fraction == 0.0 and s > 0 and len(fills) > state["n_fills"]:
+                    # filled at close s-1: what is held overnight is the new book
+                    state["carry"] = self._carry(s, q.copy(), pf)
+                    state["fin"] = _fin(self.financing, cash / nav_prev, rf_all[s],
+                                        tau_all[s]) * nav_prev
                 carry_total = float(sum(state["carry"].values()))
                 cash += state["fin"] - carry_total
                 nav = cash + float(q @ self.p[s])

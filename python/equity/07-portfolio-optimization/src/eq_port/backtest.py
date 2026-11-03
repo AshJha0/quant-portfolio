@@ -10,11 +10,13 @@ Mechanics (per day, oldest first; simple returns):
 * On a rebalance day the strategy sees ``returns.iloc[t - window : t]``:
   the window ends at day t-1, STRICTLY before the day whose return the
   new weights earn. No estimate ever uses information from day t onward.
-* Turnover at a rebalance is ``sum_i |w_target_i - w_drift_i|`` where
-  ``w_drift`` are the previous target weights drifted by realised returns
-  (zero before the first trade, so the initial buy-in counts as turnover
-  of ``sum |w|``). Cost = ``cost_bps / 1e4 * turnover``, deducted from
-  that day's net return.
+* The new weights fill during day t (``execution``, default half-way from
+  close t-1 to close t); the old book earns the move up to the fill.
+* Turnover at a rebalance is the traded notional over the day's opening
+  NAV, ``sum_i |w_target_i N - w_drift_i (1 + a_i)|`` (``N`` the post-trade
+  NAV); the initial buy-in counts. Cost = ``cost_bps / 1e4`` of the traded
+  notional, paid out of the trade, so the book holds exactly the target
+  after the fill. The arithmetic is the shared core ``qp_bt.run_fast``.
 * Between rebalances weights drift:
   ``w_i <- w_i (1 + r_i,t) / (1 + w' r_t)`` (fully-invested convention;
   a weight sum != 1 is treated as the remainder held in cash, which earns
@@ -29,6 +31,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_bt import LinearCost, NextBarFill, run_fast
+from qp_core.execution import ExecutionConfig
 from qp_core.stats import Financing, warn_no_financing
 
 from .covariance import ledoit_wolf_cc, psd_repair, sample_cov
@@ -97,6 +101,7 @@ def run_backtest(
     rebalance_every: int = 21,
     cost_bps: float = 0.0,
     financing: Financing | None = None,
+    execution: ExecutionConfig | None = None,
 ) -> BacktestResult:
     """Run a single-strategy walk-forward backtest.
 
@@ -121,6 +126,12 @@ def run_backtest(
         cash ``c = 1 - sum(w)`` earns ``c (r - lend spread) tau`` or pays
         ``c (r + borrow spread) tau``; this is part of ``gross_returns``.
         ``None`` means zero-rate cash and emits ``FinancingWarning``.
+    execution : qp_core.execution.ExecutionConfig, optional
+        When the weights chosen at close t-1 fill. Default ``ExecutionConfig()``:
+        at ``p_{t-1} + 0.5 (p_t - p_{t-1})`` during day t. Before qp_bt they
+        filled at close t-1 for free, the same-close fill the repository rule
+        forbids; ``ExecutionConfig("close_auction", auction_cost_bp=0.0)``
+        reproduces that price, booked on day t.
 
     Returns
     -------
@@ -140,61 +151,43 @@ def run_backtest(
             f"need more than window={window} rows, got {t_total}: nothing to backtest"
         )
 
-    r = returns.to_numpy(dtype=float)
     idx = returns.index
     if financing is None:
         warn_no_financing("eq_port.run_backtest")
-        rf_all = np.zeros(t_total)
-        tau_all = np.zeros(t_total)
-    else:
-        rf_all, tau_all = financing.accruals(idx)
-    fin = np.zeros(t_total - window)
-    cost_rate = cost_bps / 1e4
+    ex = execution if execution is not None else ExecutionConfig()
 
-    net = np.empty(t_total - window)
-    gross = np.empty(t_total - window)
+    # Decisions: the weights for day t are chosen at close t-1 from returns
+    # ending at t-1, and fill during day t under ``execution`` (qp_bt).
+    targets = np.full((t_total, n), np.nan)
     reb_dates: list = []
-    reb_weights: list[np.ndarray] = []
-    reb_turnover: list[float] = []
-    reb_costs: list[float] = []
-
-    w = np.zeros(n)  # holdings before the first trade
-    for k, t in enumerate(range(window, t_total)):
-        cost_today = 0.0
-        if (t - window) % rebalance_every == 0:
-            est = returns.iloc[t - window : t]  # ends at t-1: strictly past
-            w_new = np.asarray(strategy(est), dtype=float).ravel()
-            if w_new.shape[0] != n:
-                raise ValueError(
-                    f"strategy returned {w_new.shape[0]} weights for {n} assets"
-                )
-            if not np.all(np.isfinite(w_new)):
-                raise ValueError("strategy returned non-finite weights")
-            turnover = float(np.abs(w_new - w).sum())
-            cost_today = cost_rate * turnover
-            w = w_new.copy()
-            reb_dates.append(idx[t])
-            reb_weights.append(w.copy())
-            reb_turnover.append(turnover)
-            reb_costs.append(cost_today)
-        if financing is not None:
-            fin[k] = financing.cash_return(1.0 - float(w.sum()), rf_all[t], tau_all[t])
-        g = float(w @ r[t]) + fin[k]
-        gross[k] = g
-        net[k] = g - cost_today
-        # drift weights with realised returns (cash earns fin[k])
-        w = w * (1.0 + r[t]) / (1.0 + g)
-
+    for t in range(window, t_total, rebalance_every):
+        est = returns.iloc[t - window : t]  # ends at t-1: strictly past
+        w_new = np.asarray(strategy(est), dtype=float).ravel()
+        if w_new.shape[0] != n:
+            raise ValueError(
+                f"strategy returned {w_new.shape[0]} weights for {n} assets"
+            )
+        if not np.all(np.isfinite(w_new)):
+            raise ValueError("strategy returned non-finite weights")
+        targets[t - 1] = w_new
+        reb_dates.append(idx[t])
+    fill = NextBarFill.from_execution(ex, auction_booked="next")
+    run = run_fast(returns, targets, fill, LinearCost(cost_bps), financing=financing)
+    led = run.ledger.iloc[window:]
     span = idx[window:]
     reb_idx = pd.Index(reb_dates)
+    reb_rows = led.loc[reb_idx]
+    fin = led["financing"].to_numpy()
     return BacktestResult(
-        net_returns=pd.Series(net, index=span, name="net"),
-        gross_returns=pd.Series(gross, index=span, name="gross"),
-        weights=pd.DataFrame(reb_weights, index=reb_idx, columns=returns.columns),
-        turnover=pd.Series(reb_turnover, index=reb_idx, name="turnover"),
-        costs=pd.Series(reb_costs, index=reb_idx, name="cost"),
+        net_returns=pd.Series(led["net_ret"].to_numpy(), index=span, name="net"),
+        gross_returns=pd.Series(led["gross_ret"].to_numpy() + fin, index=span, name="gross"),
+        weights=pd.DataFrame(targets[list(range(window - 1, t_total - 1, rebalance_every))],
+                             index=reb_idx,
+                             columns=returns.columns),
+        turnover=pd.Series(reb_rows["turnover"].to_numpy(), index=reb_idx, name="turnover"),
+        costs=pd.Series(reb_rows["cost"].to_numpy(), index=reb_idx, name="cost"),
         financing=pd.Series(fin, index=span, name="financing"),
-        risk_free=pd.Series(rf_all[window:], index=span, name="risk_free"),
+        risk_free=pd.Series(led["risk_free"].to_numpy(), index=span, name="risk_free"),
     )
 
 

@@ -38,18 +38,23 @@ def test_ledger_hand_computed_exact_close_auction():
     # weights every day: C,D long 0.5 each; A,B short 0.5 each
     w = res.weights.iloc[0]
     np.testing.assert_allclose(w[list("ABCD")], [-0.5, -0.5, 0.5, 0.5], atol=1e-12)
-    # day0: no prior position -> gross 0; trade turnover 2.0, cost 10bp*2 = 2e-3
+    # day0: no prior position -> gross 0; buy gross 2 at 10 bp with the cost
+    # paid out of the trade: N = 1 - 2 c N
+    c = 10e-4
+    n0 = 1.0 / (1.0 + 2 * c)
     assert led["gross_ret"].iloc[0] == 0.0
-    assert led["turnover"].iloc[0] == pytest.approx(2.0, abs=1e-12)
-    assert led["cost"].iloc[0] == pytest.approx(2e-3, abs=1e-15)
-    assert led["net_ret"].iloc[0] == pytest.approx(-2e-3, abs=1e-15)
+    assert led["turnover"].iloc[0] == pytest.approx(2.0 * n0, abs=1e-15)
+    assert led["cost"].iloc[0] == pytest.approx(1.0 - n0, abs=1e-15)
+    assert led["net_ret"].iloc[0] == pytest.approx(n0 - 1.0, abs=1e-15)
     # day1 gross: -0.5*(0.1) -0.5*(-0.05) + 0.5*(0.1) + 0.5*(-0.05) = 0.0
     r_a, r_b, r_c, r_d = 0.1, -0.05, 0.1, -0.05
     expected = -0.5 * r_a - 0.5 * r_b + 0.5 * r_c + 0.5 * r_d
     assert led["gross_ret"].iloc[1] == pytest.approx(expected, abs=1e-15)
-    # day1: same weights -> zero turnover, zero cost, net == gross
-    assert led["turnover"].iloc[1] == pytest.approx(0.0, abs=1e-12)
-    assert led["net_ret"].iloc[1] == pytest.approx(expected, abs=1e-15)
+    # day1: the book drifted with the day's move and is traded back to the
+    # target at close 1; that trade costs c per unit traded
+    assert led["turnover"].iloc[1] > 0
+    assert led["cost"].iloc[1] == pytest.approx(c * led["turnover"].iloc[1], abs=1e-15)
+    assert led["net_ret"].iloc[1] == pytest.approx(expected - led["cost"].iloc[1], abs=1e-15)
     # day2 gross: flat prices -> 0
     assert led["gross_ret"].iloc[2] == pytest.approx(0.0, abs=1e-15)
 
@@ -111,8 +116,8 @@ def test_impact_cost_increases_total_cost_and_scales_with_aum():
     c0, c1, c2 = (r.ledger["cost"].sum() for r in (base, small, big))
     assert c1 > c0
     assert c2 > c1  # impact grows with AUM (sqrt law)
-    # gross returns identical: costs never feed back into positions
-    pd.testing.assert_series_equal(base.ledger["gross_ret"], big.ledger["gross_ret"])
+    # the targets are identical: costs never feed back into the decisions
+    pd.testing.assert_frame_equal(base.weights, big.weights)
 
 
 def test_rebalance_band_reduces_turnover_in_backtest():
