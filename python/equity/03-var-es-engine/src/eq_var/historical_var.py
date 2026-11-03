@@ -23,6 +23,7 @@ from . import _tail
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
+    "HIST_RULES",
     "age_weighted_es",
     "age_weighted_var",
     "brw_weights",
@@ -58,15 +59,36 @@ def _validate_pnl(pnl: object, alpha: float, min_obs: int = MIN_OBS) -> np.ndarr
     return arr
 
 
-def historical_var(pnl: np.ndarray, alpha: float = 0.01) -> float:
+HIST_RULES = ("kth_worst", "interpolated")
+
+
+def validate_rule(rule: object) -> str:
+    """Return ``rule`` if it is one of :data:`HIST_RULES`, else raise ``ValueError``."""
+    if rule not in HIST_RULES:
+        raise ValueError(f"rule must be 'kth_worst' or 'interpolated', got {rule!r}")
+    return str(rule)
+
+
+def historical_var(pnl: np.ndarray, alpha: float = 0.01, *, rule: str = "kth_worst") -> float:
     """Plain historical-simulation VaR (equal weights).
 
-    Returns ``L(m)``, the ``m``-th largest loss with ``m = ceil(n * alpha)``
-    (spec S2). Raises when ``n < 50``. If ``n * alpha < 1`` the rank is
-    clamped to 1 and the VaR is the largest loss in the sample.
+    ``rule="kth_worst"`` (default, spec S2, BCBS MAR33.4 / MAR99): ``L(m)``,
+    the ``m``-th largest loss with ``m = ceil(n * alpha)``; 99 % on 250 days
+    is the 3rd worst. If ``n * alpha < 1`` the rank is clamped to 1.
+
+    ``rule="interpolated"``: the type-7 linear quantile of the losses at
+    ``h = (n - 1) * alpha`` counted from the worst (0-based), i.e.
+    ``numpy.quantile(losses, 1 - alpha)``. 99 % on 250 days interpolates
+    between the 3rd and 4th worst with weight 0.49 on the 4th.
+
+    Both are checked against the mpmath oracle in ``tests/golden``. Raises
+    when ``n < 50``.
     """
     alpha = validate_alpha(alpha)
+    rule = validate_rule(rule)
     arr = _validate_pnl(pnl, alpha)
+    if rule == "interpolated":
+        return _tail.interpolated_var(arr, alpha)
     return _tail.var_es(arr, alpha)[0]
 
 

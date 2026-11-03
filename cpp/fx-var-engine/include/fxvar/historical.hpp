@@ -37,6 +37,21 @@ namespace fxvar {
 
 enum class HsMethod { kPlain, kAge, kFiltered };
 
+/// Historical VaR quantile rule.
+///   kKthWorst     - the ceil(n alpha)-th worst loss (BCBS MAR33.4 / MAR99:
+///                   99 % on 250 days is the 3rd worst). The default.
+///   kInterpolated - type-7 linear quantile of the losses at h = (n-1) alpha
+///                   counted 0-based from the worst (Hyndman-Fan def. 7).
+/// ES is the exact tail average under either rule.
+enum class HistRule { kKthWorst, kInterpolated };
+
+/// Type-7 VaR of a non-empty finite P&L sample (see HistRule::kInterpolated).
+[[nodiscard]] double interpolated_var(std::span<const double> pnl, double alpha);
+
+/// Equal-weight historical VaR of a P&L sample under `rule`.
+[[nodiscard]] double historical_var_from_pnl(std::span<const double> pnl, double alpha = 0.01,
+                                             HistRule rule = HistRule::kKthWorst);
+
 struct HistoricalOptions {
   double alpha = 0.01;        ///< tail probability (0.01 = 99 % VaR)
   double horizon_days = 1.0;  ///< > 1 uses sqrt-time scaling
@@ -45,6 +60,7 @@ struct HistoricalOptions {
   double ewma_lambda = 0.94;  ///< FHS devolatilisation (method kFiltered)
   std::size_t min_obs = 60;
   bool warn_pegs = true;
+  HistRule rule = HistRule::kKthWorst;  ///< kInterpolated needs equal weights (not kAge)
 };
 
 /// Result of a historical-simulation VaR run.  `var`/`es` are positive

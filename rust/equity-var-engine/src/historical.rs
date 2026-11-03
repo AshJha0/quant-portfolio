@@ -114,6 +114,55 @@ pub fn historical_var(pnl: &[f64], alpha: f64) -> Result<f64> {
     crate::tail::empirical_var(pnl, alpha)
 }
 
+/// Historical VaR quantile rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistRule {
+    /// `L(m)`, `m = ceil(n alpha)` (BCBS MAR33.4 / MAR99: 99 % on 250 days
+    /// is the 3rd worst). What [`historical_var`] does. The default.
+    #[default]
+    KthWorst,
+    /// Type-7 linear quantile of the losses at `h = (n - 1) alpha`, counted
+    /// 0-based from the worst (Hyndman and Fan 1996, definition 7); equals
+    /// `numpy.quantile(-pnl, 1 - alpha)` up to rounding.
+    Interpolated,
+}
+
+/// Type-7 VaR of a non-empty finite sample (no minimum length); see
+/// [`HistRule::Interpolated`].
+///
+/// # Errors
+/// [`EqVarError::InvalidInput`] for an empty or non-finite sample or an
+/// invalid `alpha`.
+pub fn interpolated_var(pnl: &[f64], alpha: f64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    validate_pnl(pnl, 1)?;
+    let n = pnl.len();
+    let mut loss: Vec<f64> = pnl.iter().map(|x| -x).collect();
+    let h = (n - 1) as f64 * alpha;
+    let lo = h.floor() as usize;
+    let hi = (lo + 1).min(n - 1);
+    // Worst first: the hi+1 largest losses, sorted descending.
+    loss.select_nth_unstable_by(hi, |a, b| b.total_cmp(a));
+    loss[..=hi].sort_unstable_by(|a, b| b.total_cmp(a));
+    Ok(loss[lo] + (h - lo as f64) * (loss[hi] - loss[lo]))
+}
+
+/// Plain historical VaR under `rule`. Requires at least [`MIN_OBS`] finite
+/// observations.
+///
+/// # Errors
+/// As [`historical_var`].
+pub fn historical_var_with_rule(pnl: &[f64], alpha: f64, rule: HistRule) -> Result<f64> {
+    match rule {
+        HistRule::KthWorst => historical_var(pnl, alpha),
+        HistRule::Interpolated => {
+            validate_alpha(alpha)?;
+            validate_pnl(pnl, MIN_OBS)?;
+            interpolated_var(pnl, alpha)
+        }
+    }
+}
+
 /// Boudoukh–Richardson–Whitelaw exponential age weights.
 ///
 /// Observation `i` (0 = oldest, `n - 1` = most recent) gets weight

@@ -42,6 +42,61 @@ pub enum HsMethod {
     Filtered,
 }
 
+/// Historical VaR quantile rule.
+///
+/// ES is the exact tail average under either rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistRule {
+    /// The `ceil(n alpha)`-th worst loss (BCBS MAR33.4 / MAR99: 99 % on 250
+    /// days is the 3rd worst). The default.
+    #[default]
+    KthWorst,
+    /// Type-7 linear quantile of the losses at `h = (n - 1) alpha`, counted
+    /// 0-based from the worst (Hyndman and Fan 1996, definition 7). Needs
+    /// equal weights, so not with [`HsMethod::Age`].
+    Interpolated,
+}
+
+/// Type-7 VaR of a non-empty finite P&L sample (see [`HistRule::Interpolated`]).
+///
+/// # Errors
+/// [`FxVarError::Invalid`] for an empty or non-finite sample or an invalid `alpha`.
+pub fn interpolated_var(pnl: &[f64], alpha: f64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    if pnl.is_empty() || pnl.iter().any(|x| !x.is_finite()) {
+        return Err(FxVarError::Invalid(
+            "interpolated_var: need a non-empty finite sample".to_string(),
+        ));
+    }
+    let n = pnl.len();
+    let mut loss: Vec<f64> = pnl.iter().map(|x| -x).collect();
+    let h = (n - 1) as f64 * alpha;
+    let lo = h.floor() as usize;
+    let hi = (lo + 1).min(n - 1);
+    // Worst first: the hi+1 largest losses, sorted descending.
+    loss.select_nth_unstable_by(hi, |a, b| b.total_cmp(a));
+    loss[..=hi].sort_unstable_by(|a, b| b.total_cmp(a));
+    Ok(loss[lo] + (h - lo as f64) * (loss[hi] - loss[lo]))
+}
+
+/// Equal-weight historical VaR of a P&L sample under `rule`.
+///
+/// # Errors
+/// As [`empirical_var_es`] and [`interpolated_var`].
+pub fn historical_var_from_pnl(pnl: &[f64], alpha: f64, rule: HistRule) -> Result<f64> {
+    match rule {
+        HistRule::KthWorst => Ok(empirical_var_es(pnl, alpha, None)?.0),
+        HistRule::Interpolated => interpolated_var(pnl, alpha),
+    }
+}
+
+fn finish_var(pnl: &[f64], opts: &HistoricalOptions, var1: f64) -> Result<f64> {
+    match opts.rule {
+        HistRule::KthWorst => Ok(var1),
+        HistRule::Interpolated => interpolated_var(pnl, opts.alpha),
+    }
+}
+
 /// Options controlling [`historical_var`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoricalOptions {
@@ -59,6 +114,8 @@ pub struct HistoricalOptions {
     pub min_obs: usize,
     /// Whether to screen `FX:*` factors for peg blindness.
     pub warn_pegs: bool,
+    /// VaR quantile rule (default [`HistRule::KthWorst`]).
+    pub rule: HistRule,
 }
 
 impl Default for HistoricalOptions {
@@ -71,6 +128,7 @@ impl Default for HistoricalOptions {
             ewma_lambda: 0.94,
             min_obs: 60,
             warn_pegs: true,
+            rule: HistRule::KthWorst,
         }
     }
 }
@@ -150,7 +208,7 @@ pub fn historical_var(
     res.weights = weights.clone();
     let (var1, es1) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
     let scale = opts.horizon_days.sqrt();
-    res.var = var1 * scale;
+    res.var = finish_var(&res.pnl, opts, var1)? * scale;
     res.es = es1 * scale;
     Ok(res)
 }
@@ -162,6 +220,11 @@ fn prepare_scenarios(
     opts: &HistoricalOptions,
     res: &mut HistoricalResult,
 ) -> Result<Vec<f64>> {
+    if opts.rule == HistRule::Interpolated && opts.method == HsMethod::Age {
+        return Err(FxVarError::Invalid(
+            "rule Interpolated needs equal weights; use method Plain or Filtered".to_string(),
+        ));
+    }
     if opts.warn_pegs {
         res.flagged_peg_factors = flag_peg_factors(rets, crate::returns::PEG_VOL_THRESHOLD)?;
         for f in &res.flagged_peg_factors {
@@ -261,7 +324,7 @@ pub fn historical_option_var(
     res.pnl = option_book_pnl(&layout, &rets, dt)?;
     let (var, es) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
     res.weights = weights;
-    res.var = var;
+    res.var = finish_var(&res.pnl, opts, var)?;
     res.es = es;
     Ok(res)
 }
@@ -317,7 +380,7 @@ pub fn historical_option_var_vol(
     res.pnl = crate::option_reval::option_book_pnl_vol(&layout, &rets, dt, vol)?;
     let (var, es) = empirical_var_es(&res.pnl, opts.alpha, Some(&weights))?;
     res.weights = weights;
-    res.var = var;
+    res.var = finish_var(&res.pnl, opts, var)?;
     res.es = es;
     Ok(res)
 }

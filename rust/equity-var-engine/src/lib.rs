@@ -165,14 +165,16 @@ pub mod prelude {
         var_bootstrap_se_ws,
     };
     pub use crate::historical::{
-        MIN_OBS, age_weighted_var, brw_weights, ewma_volatility, ewma_volatility_forecast,
-        fhs_factor_scenarios, filtered_historical_var_factors, historical_var,
-        overlapping_horizon_pnl, scale_var_sqrt_time,
+        HistRule, MIN_OBS, age_weighted_var, brw_weights, ewma_volatility,
+        ewma_volatility_forecast, fhs_factor_scenarios, filtered_historical_var_factors,
+        historical_var, historical_var_with_rule, interpolated_var, overlapping_horizon_pnl,
+        scale_var_sqrt_time,
     };
     pub use crate::matrix::{Matrix, covariance_from_vols, ewma_covariance, sample_covariance};
     pub use crate::monte_carlo::{
-        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_run, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se,
+        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_pnl_threads, monte_carlo_run,
+        monte_carlo_var, portfolio_pnl, simulate_factor_returns, simulate_factor_returns_jitter,
+        var_bootstrap_se, var_kde_se,
     };
     pub use crate::parametric::{
         cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,

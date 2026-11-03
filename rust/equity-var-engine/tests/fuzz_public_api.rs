@@ -104,6 +104,14 @@ proptest! {
         check!(historical_var(&p, a).is_err());
         check!(historical_var(&[], 0.01).is_err());
         check!(historical_var(&[1.0], 0.01).is_err());
+        for r in [HistRule::KthWorst, HistRule::Interpolated] {
+            check!(historical_var_with_rule(&poison(p.clone(), i, x), 0.01, r).is_err());
+            check!(historical_var_with_rule(&p, a, r).is_err());
+            check!(historical_var_with_rule(&[1.0], 0.01, r).is_err());
+        }
+        check!(interpolated_var(&poison(p.clone(), i, x), 0.01).is_err());
+        check!(interpolated_var(&p, a).is_err());
+        check!(interpolated_var(&[], 0.01).is_err());
         check!(age_weighted_var(&poison(p.clone(), i, x), 0.01, 0.97).is_err());
         check!(age_weighted_var(&p, a, 0.97).is_err());
         check!(age_weighted_var(&p, 0.01, l).is_err());
@@ -258,6 +266,14 @@ proptest! {
         check!(portfolio_pnl(&panel(10), &[]).is_err());
         check!(monte_carlo_pnl(&[x, 1.0], &c, 200, TailModel::Normal, 1).is_err());
         check!(monte_carlo_pnl(&W, &cp, 200, TailModel::Normal, 1).is_err());
+        check!(monte_carlo_pnl_threads(&[x, 1.0], &c, 200, TailModel::Normal, 1, 3).is_err());
+        check!(monte_carlo_pnl_threads(&W, &cp, 200, TailModel::Normal, 1, 0).is_err());
+        // The per-path generator: NaN in gives NaN out, never a panic.
+        check!(eq_var_engine::rng::norm_ppf_as241(x).is_nan());
+        check!(eq_var_engine::rng::PathRng::new(1, 2).chi_square(x).is_nan());
+        let mut zz = [0.0; 3];
+        eq_var_engine::rng::PathRng::new(1, 2).fill_normals(&mut zz);
+        check!(zz.iter().all(|v| v.is_finite()));
         check!(monte_carlo_var(&W, &c, a, 200, TailModel::Normal, 1).is_err());
         check!(monte_carlo_var(&W, &c, 0.01, 10, TailModel::Normal, 1).is_err());
         check!(monte_carlo_es(&W, &c, a, 200, TailModel::Normal, 1).is_err());

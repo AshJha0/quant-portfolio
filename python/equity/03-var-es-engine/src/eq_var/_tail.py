@@ -39,6 +39,23 @@ def var_es(pnl: np.ndarray, alpha: float) -> tuple[float, float]:
     return var, float(es)
 
 
+def interpolated_var(pnl: np.ndarray, alpha: float) -> float:
+    """Type-7 (linear) quantile of the losses, worst first, at ``h = (n - 1) * alpha``.
+
+    ``VaR = L(lo) + (h - lo) * (L(lo + 1) - L(lo))`` with 0-based ``lo = floor(h)``
+    on losses sorted descending; equal to ``numpy.quantile(-pnl, 1 - alpha)``
+    up to rounding. On 250 days at 99 % ``h = 2.49``: between the 3rd and 4th
+    worst loss (Hyndman and Fan 1996, definition 7).
+    """
+    losses = -np.asarray(pnl, dtype=float)
+    n = losses.size
+    h = (n - 1) * alpha
+    lo = int(math.floor(h))
+    hi = min(lo + 1, n - 1)
+    top = np.sort(np.partition(losses, n - hi - 1)[n - hi - 1 :])[::-1]
+    return float(top[lo] + (h - lo) * (top[hi] - top[lo]))
+
+
 def var_rows(pnl_rows: np.ndarray, alpha: float) -> np.ndarray:
     """Row-wise S2 VaR of a 2-D array (used by the bootstrap)."""
     losses = -np.asarray(pnl_rows, dtype=float)
