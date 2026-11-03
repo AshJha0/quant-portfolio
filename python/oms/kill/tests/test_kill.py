@@ -74,9 +74,11 @@ paths = st.tuples(
 
 @settings(max_examples=200, deadline=None)
 @given(st.lists(st.tuples(st.integers(0, 3), paths, st.sampled_from(list(Level))), max_size=40))
-def test_property_no_covered_order_survives_a_kill(ops: list) -> None:
+def test_property_no_covered_order_survives_a_kill(
+    ops: list[tuple[int, tuple[str, str, str, str], Level]],
+) -> None:
     ks = KillSwitch()
-    working: dict[int, tuple] = {}
+    working: dict[int, tuple[str, str, str, str]] = {}
     nid = 0
     for kind, p, lvl in ops:
         if kind <= 1:

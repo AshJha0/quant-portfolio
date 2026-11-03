@@ -76,7 +76,7 @@ def test_amend_up_checked_and_pending_counts_max() -> None:
 
 @settings(max_examples=300, deadline=None)
 @given(st.lists(st.tuples(st.integers(0, 5), st.integers(1, 100), st.integers(0, 9)), max_size=60))
-def test_property_venue_exposure_never_exceeds_limit(ops: list) -> None:
+def test_property_venue_exposure_never_exceeds_limit(ops: list[tuple[int, int, int]]) -> None:
     """A venue applies amends/cancels/fills in any order; true worst case <= limit."""
     lim = Limits(100, 1e12, 1.0, 250, 1e12, 10**9, 1)
     b = RiskBook(lim, ref_px={"X": 100.0})
@@ -123,3 +123,11 @@ def test_property_venue_exposure_never_exceeds_limit(ops: list) -> None:
         # true worst case: venue qty, or pending amend qty that the venue may still apply
         true_worst = pos + sum(max(v, pend_amend.get(k, 0.0)) for k, v in venue.items())
         assert true_worst <= lim.position_limit + 1e-9
+
+
+def test_ems_slices_exempt_from_content_dup_but_not_clordid() -> None:
+    b = book()
+    a = OrderIntent("p.1", "A", "S", "X", Side.BUY, 10, 100.0, "p")
+    assert b.check_new(a, 0) is None
+    assert b.check_new(OrderIntent("p.2", "A", "S", "X", Side.BUY, 10, 100.0, "p"), 1) is None
+    assert b.check_new(a, 2) == "DUP_CLORDID"

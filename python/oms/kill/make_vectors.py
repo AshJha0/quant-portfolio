@@ -2,11 +2,12 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 from qp_oms.kill import replay
 
 P = ["QP", "RATES", "MM1", "UST10Y"]
-CASES = [
+CASES: list[dict[str, Any]] = [
     {
         "name": "worked_example",
         "commands": [

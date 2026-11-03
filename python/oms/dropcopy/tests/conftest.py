@@ -14,7 +14,7 @@ try:
     _mod = importlib.import_module("qp_oms")
 except ImportError:
     _mod = types.ModuleType("qp_oms")
-    _mod.__path__ = []  # type: ignore[attr-defined]
+    _mod.__path__ = []
     sys.modules["qp_oms"] = _mod
 if _root not in list(_mod.__path__):
     _mod.__path__.append(_root)

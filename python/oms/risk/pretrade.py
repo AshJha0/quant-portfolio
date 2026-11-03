@@ -47,6 +47,7 @@ class OrderIntent:
     side: Side
     qty: float
     px: float
+    parent_id: str = ""  # set for EMS child slices
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,10 @@ class RiskBook:
         key = (o.account, o.symbol, o.side, o.qty, o.px)
         while self._recent and self._recent[0][0] <= now_ns - L.dup_window_ns:
             self._recent.popleft()
-        if any(k == key for _, k in self._recent):
+        # Content duplicates catch a manual double submit. EMS slices of one parent
+        # repeat size and price on purpose, so they are exempt (ClOrdID dedupe
+        # still applies to them).
+        if not o.parent_id and any(k == key for _, k in self._recent):
             return "DUP_CONTENT"
         if o.qty > L.max_order_qty:
             return "FAT_FINGER_QTY"
