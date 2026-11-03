@@ -14,10 +14,8 @@
 #include "fxvar/monte_carlo.hpp"
 #include "qp/path_rng.hpp"
 
-namespace fxvar {
-
 // ------------------------------------------------------------ W4(b) paths
-namespace detail {
+namespace fxvar::detail {
 
 /// Poisson(mu) by sequential inversion from one uniform of the path stream,
 /// mu <= 700 so exp(-mu) does not underflow. Same algorithm and operation
@@ -61,7 +59,7 @@ inline void simulate_path(const double* lower, std::size_t k, McDist dist, doubl
     const double m = t_scale / std::sqrt(w);
     for (std::size_t i = 0; i < k; ++i) row[i] *= m;
   } else if (dist == McDist::kJump) {
-    const double nj = static_cast<double>(path_poisson(rng, jump_mu));
+    const auto nj = static_cast<double>(path_poisson(rng, jump_mu));
     for (std::size_t j = 0; j < n_jump; ++j) {
       const double zj = jump_std[j] > 0.0 ? rng.normal() : 0.0;
       if (nj > 0.0) {
@@ -72,6 +70,4 @@ inline void simulate_path(const double* lower, std::size_t k, McDist dist, doubl
   }
 }
 
-}  // namespace detail
-
-}  // namespace fxvar
+}  // namespace fxvar::detail
