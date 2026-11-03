@@ -105,8 +105,14 @@ constexpr std::size_t cholesky_workspace_size(std::size_t n) noexcept { return n
 
 // ----------------------------------------------------------- Monte Carlo
 
+/// Bootstrap resample buffers in McVarWorkspace::boot (one per pool task).
+inline constexpr std::size_t kBootSlots = 8;
+
 /// Reusable buffers for the Monte Carlo kernels. Size once with reserve();
 /// the kernels then never allocate. One workspace per concurrent caller.
+/// `boot` (kBootSlots x n_paths) lets the bootstrap run on the default
+/// thread pool; with it empty the bootstrap runs on the calling thread and
+/// gives the same bits.
 class McVarWorkspace {
 public:
     /// Room for `n_factors` factors and `n_paths` scenarios. May allocate.
@@ -116,8 +122,9 @@ public:
         if (pnl.size() < n_paths) pnl.resize(n_paths);
         if (loss.size() < n_paths) loss.resize(n_paths);
         if (work.size() < n_paths) work.resize(n_paths);
+        if (boot.size() < kBootSlots * n_paths) boot.resize(kBootSlots * n_paths);
     }
-    std::vector<double> z, row, pnl, loss, work;
+    std::vector<double> z, row, pnl, loss, work, boot;
 };
 
 /// noexcept mc_tail_metrics(): VaR, ES, bootstrap SE and KDE SE of one

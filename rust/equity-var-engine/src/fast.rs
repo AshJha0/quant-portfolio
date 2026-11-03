@@ -23,7 +23,6 @@
 use crate::TailModel;
 use crate::matrix::Matrix;
 use crate::psd::PsdRepair;
-use crate::rng::Rng;
 use crate::stats::{normal_pdf, normal_ppf, student_t_pdf, student_t_ppf};
 
 /// Error of the allocation-free API. `Copy`, no payload, no allocation.
@@ -281,7 +280,7 @@ pub fn parametric_es_fast(
 }
 
 /// Bootstrap SE core shared by [`var_bootstrap_se_ws`] and the MC
-/// workspace. Same RNG calls, same order, same sums as
+/// workspace: the same per-resample Philox streams and sums as
 /// [`crate::monte_carlo::var_bootstrap_se`].
 fn bootstrap_core(
     pnl: &[f64],
@@ -295,21 +294,10 @@ fn bootstrap_core(
     let buf = buf.get_mut(..n).ok_or(VarFault::WorkspaceTooSmall)?;
     let est = est.get_mut(..n_boot).ok_or(VarFault::WorkspaceTooSmall)?;
     let m = rank(n, alpha);
-    let nf = n as f64;
-    let last = n - 1;
-    let mut rng = Rng::new(seed);
-    let mut sum = 0.0;
-    for e in est.iter_mut() {
-        for slot in buf.iter_mut() {
-            let idx = ((rng.uniform() * nf) as usize).min(last);
-            // `idx <= n - 1` by the `min`; `get` keeps the path panic-free.
-            *slot = -pnl.get(idx).copied().unwrap_or(0.0);
-        }
-        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
-        let v = *lm;
-        *e = v;
-        sum += v;
+    for (b, e) in est.iter_mut().enumerate() {
+        *e = crate::monte_carlo::bootstrap_resample_var(pnl, m, seed, b as u64, buf);
     }
+    let sum: f64 = est.iter().sum();
     let mean = sum / n_boot as f64;
     let ss: f64 = est.iter().map(|v| (v - mean) * (v - mean)).sum();
     Ok((ss / (n_boot - 1) as f64).sqrt())

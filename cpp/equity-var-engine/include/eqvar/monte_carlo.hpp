@@ -7,13 +7,17 @@
 // scenario distribution with the order statistic. The VaR standard error is
 // a bootstrap (primary) plus a KDE value (diagnostic).
 //
-// Determinism: every draw comes from a seeded std::mt19937_64 through an
-// inverse-CDF normal transform (normal_ppf on 53-bit uniforms) and a
-// Marsaglia-Tsang gamma sampler on the same primitives, never
-// std::normal_distribution. Results repeat exactly for a given seed on one
-// platform. Across platforms they can differ in the last bits, because
-// std::log, std::exp and std::erfc are not correctly rounded and differ
-// between glibc, MSVC and Apple libm.
+// Determinism (W4(b), v3.0.0): path p of a run with seed s draws from its
+// own Philox4x32-10 stream (s, p): one 53-bit uniform per 64-bit word, a
+// normal by Wichura's AS 241 inverse CDF, the n factor normals first and
+// then (Student-t) the Marsaglia-Tsang chi-square. Bootstrap resample b
+// draws its indices from stream (s ^ 0x9E3779B97F4A7C15, b). The kernels
+// therefore run on qp::default_thread_pool() and give the same bits for any
+// pool size, and they use the same streams as the Rust engine. Across
+// platforms results can differ in the last bits only through std::log and
+// std::sqrt in the AS 241 tails and the gamma sampler (not correctly
+// rounded on every libm). RandomStream (mt19937_64 + normal_ppf) remains for
+// callers that use it directly.
 //
 // RNG streams differ from NumPy, so agreement with the Python engine is
 // statistical (within Monte Carlo error), not exact.
