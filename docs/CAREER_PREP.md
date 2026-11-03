@@ -5,7 +5,7 @@ so a wrong answer key or a notebook that no longer runs fails the build.
 
 ## Learning notebooks
 
-[`docs/notebooks/`](notebooks/README.md) holds four notebooks, each as an
+[`docs/notebooks/`](notebooks/README.md) holds eight notebooks, each as an
 exercise copy and a solution copy:
 
 | Notebook | Topic | Library code it calls |
@@ -14,6 +14,10 @@ exercise copy and a solution copy:
 | 02 | Value at risk and expected shortfall | `eq_var` |
 | 03 | Yield-curve bootstrap | `fi_rates` |
 | 04 | Almgren-Chriss optimal execution | `eq_algo` |
+| 05 | Greeks by adjoint algorithmic differentiation | `qp_core.aad` |
+| 06 | Avellaneda-Stoikov market-making quotes | `qp_exec.mm` |
+| 07 | Credit valuation adjustment | `qp_core.xva` |
+| 08 | Risk parity and Ledoit-Wolf shrinkage | `qp_bt.portfolio` |
 
 The plain idea comes first, then the formal statement with its textbook
 source, then a worked example whose numbers are recomputed independently in
@@ -28,17 +32,22 @@ CI (`learning` job) runs `pytest docs/notebooks/tests` and executes every
 ## Career-prep packs
 
 [`career-prep/`](../career-prep/README.md) holds practice packs for quant,
-risk, trading and engineering roles:
+risk, trading and engineering roles. Start with the
+[study paths](../career-prep/paths/README.md): 4, 8 and 12-week plans and one
+path for each of 13 roles, each ending in a timed mock round.
 
-- **Probability:** 60 problems, with the answer key in a separate file.
-  Every answer is recomputed twice, by enumeration or an exact solve and by
-  a seeded simulation (`career-prep/probability/verify.py`).
-- **Games:** a mental-maths drill generator and a market-making game on the
-  sum of three dice.
+| Group | Packs |
+|---|---|
+| Maths | [probability](../career-prep/probability/questions.md) (60), [stats](../career-prep/stats/questions.md) (25), [numerics](../career-prep/numerics/questions.md) (25), [stochastic](../career-prep/stochastic/questions.md) (22) |
+| Products and risk | [derivatives](../career-prep/derivatives/questions.md) (22), [fixed-income](../career-prep/fixed-income/questions.md) (22), [risk](../career-prep/risk/questions.md) (20 + 4), [portfolio](../career-prep/portfolio/questions.md) (15 + 4) |
+| Research | [alpha](../career-prep/alpha/questions.md) (14 + 5), [ml](../career-prep/ml/questions.md) (25) |
+| Engineering | [cpp](../career-prep/cpp/questions.md) (24), [algorithms](../career-prep/algorithms/questions.md) (33), [python](../career-prep/python/questions.md), [rust](../career-prep/rust/questions.md), [java](../career-prep/java/questions.md), [sql](../career-prep/sql/questions.md), [tools](../career-prep/tools/questions.md), [system-design](../career-prep/system-design/questions.md) (8) |
+| Trading and rounds | [games](../career-prep/games/README.md), [case](../career-prep/case/questions.md) (6 + 6), [mock-rounds](../career-prep/mock-rounds/README.md) (6) |
 
-CI (`learning` job) runs `pytest career-prep/tests`. More packs are planned
-for later rounds of the v3.0.0 plan; until they exist, they are not listed
-here.
+Numbers in brackets are graded problems (+ discussion prompts). Every key
+sits in a separate `keys/` file, and every numeric answer is recomputed by a
+second route (a `verify.py`, a compiled solution or a simulation) in
+`career-prep/tests/`, which the CI `learning` job runs.
 
 ## How to use them
 

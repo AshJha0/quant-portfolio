@@ -46,10 +46,10 @@ def _run(path: Path) -> str:
     return out.getvalue()
 
 
-def test_four_notebooks_in_round_7() -> None:
+def test_eight_notebooks() -> None:
     assert [n[3:] for n in NAMES] == [
         "black-scholes-implied-vol", "value-at-risk", "yield-curve-bootstrap",
-        "optimal-execution"]
+        "optimal-execution", "aad-greeks", "market-making", "cva", "risk-parity"]
 
 
 def test_committed_notebooks_match_the_builder() -> None:
@@ -90,7 +90,9 @@ def test_exercise_stub_fails_its_check(name: str) -> None:
 
 
 def test_notebooks_use_library_code_and_no_network() -> None:
-    lib = {"01": "eq_options", "02": "eq_var", "03": "fi_rates", "04": "eq_algo"}
+    lib = {"01": "eq_options", "02": "eq_var", "03": "fi_rates", "04": "eq_algo",
+           "05": "qp_core.aad", "06": "qp_exec.mm", "07": "qp_core.xva",
+           "08": "qp_bt.portfolio"}
     for name in NAMES:
         src = "\n".join(_code(HERE / f"{name}-solution.ipynb"))
         assert f"from {lib[name[:2]]}" in src
