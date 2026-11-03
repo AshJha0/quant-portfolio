@@ -264,23 +264,22 @@ def ncdf(x: Real) -> Real:
 
 def exp_neg_mul(x: Real, y: Real) -> Real:
     """``exp(-x * y)``, e.g. a discount factor ``exp(-r T)``."""
+    if not isinstance(x, Var) and not isinstance(y, Var):
+        return math.exp(-x * y)  # the plain-float pricer: checked first
     if isinstance(x, Var) and isinstance(y, Var):
-        xv, yv = x.value, y.value
-        e = math.exp(-xv * yv)
-        return x.tape._push(e, x.idx, -yv * e, y.idx, -xv * e)
-    if isinstance(x, Var) or isinstance(y, Var):
-        return exp(-x * y)
-    return math.exp(-x * y)
+        e = math.exp(-x.value * y.value)
+        return x.tape._push(e, x.idx, -y.value * e, y.idx, -x.value * e)
+    return exp(-x * y)
 
 
 def ln_div(x: Real, y: Real) -> Real:
     """``log(x / y)``, e.g. the log-moneyness ``log(S / K)``."""
+    if not isinstance(x, Var) and not isinstance(y, Var):
+        return math.log(x / y)
     if isinstance(x, Var) and isinstance(y, Var):
-        xv, yv = x.value, y.value
-        return x.tape._push(math.log(xv / yv), x.idx, 1.0 / xv, y.idx, -1.0 / yv)
-    if isinstance(x, Var) or isinstance(y, Var):
-        return log(x / y)
-    return math.log(x / y)
+        return x.tape._push(math.log(x.value / y.value), x.idx, 1.0 / x.value,
+                            y.idx, -1.0 / y.value)
+    return log(x / y)
 
 
 def ncdf_scaled(x: Real, c: float) -> Real:

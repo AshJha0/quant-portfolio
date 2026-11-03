@@ -54,8 +54,8 @@ benchmark.
 
 | Pricer | Rust | C++ (g++ 15.2 -O3, WSL) | Python |
 |---|---|---|---|
-| Black-Scholes (one price), Round 17 | 13-34x | 2.9-3.4x | about 18-20x |
-| Black-Scholes (one price), Round 18 | @@BS_RUST@@ | not changed | @@BS_PY@@ |
+| Black-Scholes (one price), Round 17 | 13-34x (about 10-12x measured fairly, see below) | 2.9-3.4x | 20-21x |
+| Black-Scholes (one price), Round 18 | 4.85-4.9x (per-thread tape); 4.5-4.6x (caller tape) | not changed | 12.5-13x |
 | MC European, 20k paths x 52 steps | 1.7-2.1x | 1.6-1.8x | about 3.4x (500 x 12) |
 | MC Asian, 20k paths x 52 steps | 3.0-6.4x | 2.4-3.5x | n/a (Asian not timed) |
 | Swap PV, 18 pillars, 10Y annual | 2.0-6.7x | 2.1-2.4x | about 3.6x |
@@ -77,16 +77,27 @@ Rust and in Python:
    partials, and `x * 1` records nothing. The Black-Scholes tape went from
    34 nodes to 25. The `f64` path of each fused operation is the plain
    composition, so the price did not move by a bit (tested).
-3. **A leaner sweep**: one bounds check per node instead of three.
+3. **One borrow per sweep.** `Tape::reverse` zeroes the adjoints and
+   sweeps in one borrow, over adjoints cut to the tape's length.
 
 The plan's bar is "all Greeks under 5x one PV" (W19).
 - The swap and the European MC meet it in every language.
 - The Asian MC meets it in C++. In Rust it meets it on a quiet run but not on
   a loaded one.
-- Black-Scholes in Rust: @@BS_VERDICT@@
+- Black-Scholes in Rust now meets it, narrowly: 4.85-4.9x over five
+  runs of 201 interleaved reps each (ratio of best times; the median of the
+  per-rep ratios was 4.86-4.92x), and 4.5-4.6x when the caller keeps the
+  tape. On a heavily loaded machine single runs reached 5.2x, so this is
+  a just-under, not a comfortable margin. What is left is the arithmetic:
+  the two normal densities need two more `exp` calls than the price, and
+  the 19 recorded nodes are swept in order.
 - In Python every operation allocates an object, so its ratios measure
-  interpreter overhead as much as the method. Tape reuse and fused nodes
-  cut the Black-Scholes ratio, but it stays far above 5x.
+  interpreter overhead as much as the method. Black-Scholes went from
+  20-21x to 12.5-13x (interleaved, 41 reps, before and after on the same
+  machine): the AAD call got about 35 % faster, mostly because one node is
+  now one tuple append instead of four list appends, and the plain price
+  about 5-9 % slower, from the extra function calls of the fused forms.
+  It stays far above 5x.
 
 The quote Greeks add 18 residual sweeps and one 18 x 18 solve. Bumping
 instead would take 36 full bootstraps, each of them a bisection per pillar.

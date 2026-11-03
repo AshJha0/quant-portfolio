@@ -150,6 +150,21 @@ impl Tape {
         self.adj.borrow_mut().truncate(mark);
     }
 
+    /// Zero every adjoint, then sweep from `output` (seed 1) down to node
+    /// `stop`: [`Tape::zero_adjoints`] and [`Tape::backward`] in one borrow.
+    pub fn reverse(&self, output: Var<'_>, stop: usize) {
+        assert!(
+            std::ptr::eq(output.tape, self),
+            "output was recorded on a different tape"
+        );
+        let nodes = self.nodes.borrow();
+        let mut adj = self.adj.borrow_mut();
+        adj.clear();
+        adj.resize(nodes.len(), 0.0);
+        adj[output.idx as usize] = 1.0;
+        Self::sweep(&nodes, &mut adj, output.idx as usize + 1, stop);
+    }
+
     /// Set every adjoint to zero.
     pub fn zero_adjoints(&self) {
         let n = self.len();
@@ -178,8 +193,16 @@ impl Tape {
 
     /// Push the adjoints of nodes `start-1` down to `stop` into their parents.
     pub fn propagate(&self, start: usize, stop: usize) {
-        let nodes = self.nodes.borrow();
-        let mut adj = self.adj.borrow_mut();
+        Self::sweep(
+            &self.nodes.borrow(),
+            &mut self.adj.borrow_mut(),
+            start,
+            stop,
+        );
+    }
+
+    #[inline]
+    fn sweep(nodes: &[Node], adj: &mut Vec<f64>, start: usize, stop: usize) {
         if adj.len() < nodes.len() {
             adj.resize(nodes.len(), 0.0);
         }

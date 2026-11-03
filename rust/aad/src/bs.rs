@@ -68,9 +68,8 @@ pub fn greeks_on(
         x[5],
         if is_call { 1.0 } else { -1.0 },
     );
-    tape.zero_adjoints();
     // Inputs have no parents, so the sweep stops above them.
-    tape.backward(v, 1.0, x.len());
+    tape.reverse(v, x.len());
     let g = tape.adjoints(x);
     Greeks {
         price: v.value(),
