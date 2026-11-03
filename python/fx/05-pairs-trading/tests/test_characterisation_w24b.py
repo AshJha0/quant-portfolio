@@ -40,7 +40,6 @@ BEFORE_AFTER: dict[str, tuple[float, float]] = {
 }
 
 
-
 def _flat(obj, prefix=""):
     out = {}
     if isinstance(obj, pd.DataFrame):
@@ -73,7 +72,9 @@ def _check(cases):
     before = json.loads(BEFORE.read_text())
     assert sorted(before) == sorted(want)
     for k, (b, a) in BEFORE_AFTER.items():
-        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), k  # relative: last-ulp libm differences across OSes
+        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), (
+            k
+        )  # relative: last-ulp libm differences across OSes
         assert abs(sum(got[k]) - a) <= 1e-12 * max(1.0, abs(a)) * len(got[k]), k
 
 
@@ -82,17 +83,30 @@ def _market(n=400, seed=11):
     idx = pd.bdate_range("2019-01-01", periods=n)
     common = np.cumsum(rng.normal(0, 0.004, n))
     p2 = pd.Series(1.30 * np.exp(common), index=idx)
-    p1 = pd.Series(1.10 * np.exp(0.9 * common + 0.02 * np.sin(np.arange(n) / 9)
-                                 + rng.normal(0, 0.002, n)), index=idx)
+    p1 = pd.Series(
+        1.10 * np.exp(0.9 * common + 0.02 * np.sin(np.arange(n) / 9) + rng.normal(0, 0.002, n)), index=idx
+    )
     pos = np.sign(np.sin(np.arange(n) / 13)) * (np.arange(n) % 5 != 0)
-    rates = {"rb1": 0.02, "rq1": 0.05, "rb2": pd.Series(0.01 + 0.001 * np.cos(np.arange(n) / 50), index=idx),
-             "rq2": 0.045}
+    rates = {
+        "rb1": 0.02,
+        "rq1": 0.05,
+        "rb2": pd.Series(0.01 + 0.001 * np.cos(np.arange(n) / 50), index=idx),
+        "rq2": 0.045,
+    }
     return p1, p2, pos.astype(float), rates
 
 
 def _res(r):
-    return {"spot": r.spot_pnl, "carry": r.carry_pnl, "cost": r.cost_pnl, "total": r.total_pnl,
-            "leg1": r.leg1_pnl, "leg2": r.leg2_pnl, "fin": r.financing_pnl, "rf": r.risk_free_pnl}
+    return {
+        "spot": r.spot_pnl,
+        "carry": r.carry_pnl,
+        "cost": r.cost_pnl,
+        "total": r.total_pnl,
+        "leg1": r.leg1_pnl,
+        "leg2": r.leg2_pnl,
+        "fin": r.financing_pnl,
+        "rf": r.risk_free_pnl,
+    }
 
 
 def test_fx_pairs_characterisation():
@@ -101,14 +115,48 @@ def test_fx_pairs_characterisation():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         cases = {
-            "next_fin": _res(run_backtest(p1, p2, pos, 0.85, pair1="EURUSD", pair2="GBPUSD", pip_spread_1=0.8,
-                                          pip_spread_2=1.2, rates=rates, notional=1e6, financing=fin,
-                                          capital=2e5)),
-            "next_nofin_linear": _res(run_backtest(p1, p2, pos, 0.85, rates=rates, carry_method="linear",
-                                                   execution=ExecutionConfig(fill_fraction=0.25))),
-            "auction": _res(run_backtest(p1, p2, pos, 0.85, rates=rates, financing=fin,
-                                         execution=ExecutionConfig(mode="close_auction", auction_cost_bp=0.7))),
-            "walk_forward": _res(walk_forward_backtest(p1, p2, formation=120, trading=40, require_coint=False,
-                                                       rates=rates, financing=fin).result),
+            "next_fin": _res(
+                run_backtest(
+                    p1,
+                    p2,
+                    pos,
+                    0.85,
+                    pair1="EURUSD",
+                    pair2="GBPUSD",
+                    pip_spread_1=0.8,
+                    pip_spread_2=1.2,
+                    rates=rates,
+                    notional=1e6,
+                    financing=fin,
+                    capital=2e5,
+                )
+            ),
+            "next_nofin_linear": _res(
+                run_backtest(
+                    p1,
+                    p2,
+                    pos,
+                    0.85,
+                    rates=rates,
+                    carry_method="linear",
+                    execution=ExecutionConfig(fill_fraction=0.25),
+                )
+            ),
+            "auction": _res(
+                run_backtest(
+                    p1,
+                    p2,
+                    pos,
+                    0.85,
+                    rates=rates,
+                    financing=fin,
+                    execution=ExecutionConfig(mode="close_auction", auction_cost_bp=0.7),
+                )
+            ),
+            "walk_forward": _res(
+                walk_forward_backtest(
+                    p1, p2, formation=120, trading=40, require_coint=False, rates=rates, financing=fin
+                ).result
+            ),
         }
     _check(cases)

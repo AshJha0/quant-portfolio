@@ -34,7 +34,6 @@ BEFORE_AFTER: dict[str, tuple[float, float]] = {
 }
 
 
-
 def _flat(obj, prefix=""):
     out = {}
     if isinstance(obj, pd.DataFrame):
@@ -67,7 +66,9 @@ def _check(cases):
     before = json.loads(BEFORE.read_text())
     assert sorted(before) == sorted(want)
     for k, (b, a) in BEFORE_AFTER.items():
-        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), k  # relative: last-ulp libm differences across OSes
+        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), (
+            k
+        )  # relative: last-ulp libm differences across OSes
         assert abs(sum(got[k]) - a) <= 1e-12 * max(1.0, abs(a)) * len(got[k]), k
 
 
@@ -89,8 +90,10 @@ def test_fx_port_characterisation():
     spot, carry = _panel()
     costs = pd.Series({"AUD": 1.0, "JPY": 0.5, "EUR": 0.3, "MXN": 4.0})
     cases = {}
-    for name, kw in {"a": {"est_window": 60, "rebalance_every": 21, "cost_bps": 1.0},
-                     "b": {"est_window": 30, "rebalance_every": 5, "cost_bps": costs}}.items():
+    for name, kw in {
+        "a": {"est_window": 60, "rebalance_every": 21, "cost_bps": 1.0},
+        "b": {"est_window": 30, "rebalance_every": 5, "cost_bps": costs},
+    }.items():
         r = run_backtest(spot, carry, _inv_vol, **kw)
         cases[name] = {"ledger": r.ledger, "weights": r.weights}
     _check(cases)

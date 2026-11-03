@@ -41,7 +41,6 @@ BEFORE_AFTER: dict[str, tuple[float, float]] = {
 }
 
 
-
 def _flat(obj, prefix=""):
     out = {}
     if isinstance(obj, pd.DataFrame):
@@ -74,7 +73,9 @@ def _check(cases):
     before = json.loads(BEFORE.read_text())
     assert sorted(before) == sorted(want)
     for k, (b, a) in BEFORE_AFTER.items():
-        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), k  # relative: last-ulp libm differences across OSes
+        assert abs(sum(before[k]) - b) <= 1e-12 * max(1.0, abs(b)) * len(before[k]), (
+            k
+        )  # relative: last-ulp libm differences across OSes
         assert abs(sum(got[k]) - a) <= 1e-12 * max(1.0, abs(a)) * len(got[k]), k
 
 
@@ -83,9 +84,11 @@ def test_fx_regime_characterisation():
     idx = panel.returns.index
     labels = pd.Series(np.where((np.arange(len(idx)) // 60) % 2 == 0, "risk_on", "risk_off"), index=idx)
     cases = {}
-    for name, (reg, ex) in {"static": (static_carry_regimes(idx), None),
-                            "switch": (labels, None),
-                            "switch_auction": (labels, ExecutionConfig(mode="close_auction"))}.items():
+    for name, (reg, ex) in {
+        "static": (static_carry_regimes(idx), None),
+        "switch": (labels, None),
+        "switch_auction": (labels, ExecutionConfig(mode="close_auction")),
+    }.items():
         r = run_backtest(panel.returns, panel.deposit_rates, reg, StrategyConfig(), execution=ex)
         cases[name] = {"ledger": r.ledger.select_dtypes("number"), "weights": r.weights}
     _check(cases)
