@@ -25,8 +25,8 @@
 #define QP_BENCH_LATENCY_HPP
 
 #include <algorithm>
-#include <cmath>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -132,10 +132,10 @@ public:
             }
         }
         cpu_ = read_cpu_model();
-        std::printf("engine %s | %s | %s | timer steady_clock, batch to >= 2 us\n",
-                    engine_.c_str(), compiler_id().c_str(), cpu_.c_str());
-        std::printf("%-36s %6s %9s %9s %9s %9s %11s\n", "kernel (ns per call)", "B", "p10",
-                    "p50", "p90", "p99", "max");
+        std::printf("engine %s | %s | %s | timer steady_clock, batch to >= 2 us\n", engine_.c_str(),
+                    compiler_id().c_str(), cpu_.c_str());
+        std::printf("%-36s %6s %9s %9s %9s %9s %11s\n", "kernel (ns per call)", "B", "p10", "p50",
+                    "p90", "p99", "max");
     }
     Bench(const Bench&) = delete;
     Bench& operator=(const Bench&) = delete;
@@ -193,7 +193,8 @@ private:
         // cannot stop the doubling early.
         const auto fastest = [&](std::size_t bb) {
             double best = batch_ns(bb);
-            for (std::size_t t = 1; t < kCalibrationTrials; ++t) best = std::min(best, batch_ns(bb));
+            for (std::size_t t = 1; t < kCalibrationTrials; ++t)
+                best = std::min(best, batch_ns(bb));
             return best;
         };
         while (b < kMaxBatch && fastest(b) < kMinSampleNs) b *= 2;

@@ -377,8 +377,8 @@ TEST(ThreadPoolMc, ParallelThresholdKeepsBitsOnBothSides) {
     ws.reserve(at, true);
     ThreadPool p3(3);
     for (std::size_t n : {below, at}) {
-        const auto ref = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, n,
-                                      Seed{11}, true, true, 4, ws, nullptr);
+        const auto ref = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, n, Seed{11},
+                                      true, true, 4, ws, nullptr);
         const auto pooled = try_mc_price(1.1, 1.15, 1, 0.04, 0.02, 0.25, OptionType::Put, n,
                                          Seed{11}, true, true, 4, ws, &p3);
         ASSERT_TRUE(ref.has_value() && pooled.has_value());
