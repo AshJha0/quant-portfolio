@@ -142,3 +142,20 @@ is element ceil(0.999 N) - 1, the largest call that did not stall.
 Fuzzing is not benchmarking, but the two share CI time on free runners:
 the nightly fuzz workflow (`.github/workflows/fuzz.yml`) spends 100 s per
 target and runs at 03:17 UTC, away from the bench jobs.
+
+## Deliberate slowdowns (`bench-accepted`)
+
+The bench gate fails a kernel whose head median is more than 25% above the
+base and whose head p10 is above the base p90. A slowdown that buys something
+we want can pass only if it is named in `.github/bench-accepted.json`, with a
+ratio ceiling and a reason, and the pull request carries the `bench-accepted`
+label. Listed rows are reported as `ACCEPTED`; a listed row above its ceiling,
+or any row not listed, still fails.
+
+Listed today: the Rust bootstrap standard-error kernels in the equity and FX
+VaR engines, about 1.4-1.5x the v2.0 timing on the CI runner. The cost comes
+from drawing each bootstrap resample from its own Philox4x32-10 stream, which
+makes the result identical on any number of threads and bit-identical between
+the C++ and Rust engines; the old xoshiro stream could not do either.
+Vectorising the Philox rounds is the follow-up; when a row is back inside the
+gate it is removed from the file.

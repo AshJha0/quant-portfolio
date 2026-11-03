@@ -831,9 +831,18 @@ jobs:
           echo "base $base, head $(git rev-parse HEAD)"
           bash .github/scripts/bench_ab_run.sh "$base" "$RUNNER_TEMP/bench" 3
       - name: Compare head with base
+        env:
+          # The bench-accepted label lets the rows named in
+          # .github/bench-accepted.json pass as ACCEPTED (each capped by its
+          # max_ratio); every other slowdown still fails.
+          ALLOW_ACCEPTED: ${{ contains(github.event.pull_request.labels.*.name, 'bench-accepted') }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/bench"
+          accepted=()
+          if [ "$ALLOW_ACCEPTED" = "true" ]; then
+            accepted=(--accepted .github/bench-accepted.json --allow-accepted)
+          fi
           args=()
           for lang in cpp rust; do
             for engine in equity-options-engine equity-var-engine fx-options-engine fx-var-engine; do
@@ -843,7 +852,7 @@ jobs:
             done
           done
           rc=0
-          python .github/scripts/bench_ab.py "${args[@]}"             --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
+          python .github/scripts/bench_ab.py "${args[@]}" "${accepted[@]}" --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
           cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Upload bench JSON

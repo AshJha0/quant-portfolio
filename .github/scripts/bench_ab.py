@@ -66,7 +66,7 @@ class Row:
     base: Band | None
     head: Band | None
     ratio: float | None
-    status: str  # FAIL, slower, faster, same, new, removed
+    status: str  # FAIL, ACCEPTED, slower, faster, same, new, removed
 
 
 def _records(data: object, path: Path) -> list[dict]:
@@ -149,7 +149,7 @@ def markdown(rows: list[Row], notes: list[str], n_rounds: int) -> str:
         "",
         f"{n_rounds} interleaved rounds; median over rounds of each percentile, ns per call, "
         "shown as p50 [p10, p90]. FAIL = head median more than 25% above base and "
-        "head p10 above base p90.",
+        "head p10 above base p90. ACCEPTED = a listed, deliberate slowdown.",
         "",
         "| engine | kernel | base | head | head/base | status |",
         "|---|---|---:|---:|---:|---|",
@@ -163,6 +163,38 @@ def markdown(rows: list[Row], notes: list[str], n_rounds: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def load_accepted(path: Path) -> dict[tuple[str, str], dict]:
+    """Rows a pull request may let through with the ``bench-accepted`` label.
+
+    Each entry names one engine and kernel exactly, gives a ceiling on the
+    head/base ratio and says why the slowdown is deliberate. A row not listed,
+    or slower than its ceiling, still fails.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[tuple[str, str], dict] = {}
+    for e in data["accepted"]:
+        if not (e.get("engine") and e.get("kernel") and e.get("reason")):
+            raise BenchInputError(f"{path}: every entry needs engine, kernel and reason")
+        out[(e["engine"], e["kernel"])] = e
+    return out
+
+
+def apply_accepted(rows: list[Row], accepted: dict[tuple[str, str], dict]) -> list[Row]:
+    """Turn FAIL into ACCEPTED for listed rows within their ratio ceiling."""
+    result = []
+    for r in rows:
+        e = accepted.get((r.engine, r.kernel))
+        if (
+            r.status == "FAIL"
+            and e is not None
+            and r.ratio is not None
+            and r.ratio <= float(e["max_ratio"])
+        ):
+            r = Row(r.engine, r.kernel, r.base, r.head, r.ratio, "ACCEPTED")
+        result.append(r)
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--engine", action="append", required=True)
@@ -170,6 +202,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--head", action="append", nargs="+", default=[])
     ap.add_argument("--summary", type=Path)
     ap.add_argument("--json", type=Path)
+    ap.add_argument(
+        "--accepted",
+        type=Path,
+        help="JSON list of deliberate slowdowns; applied only with --allow-accepted",
+    )
+    ap.add_argument("--allow-accepted", action="store_true")
     a = ap.parse_args(argv)
     if not (len(a.engine) == len(a.base) == len(a.head)):
         ap.error("give one --base and one --head list per --engine")
@@ -190,6 +228,13 @@ def main(argv: list[str] | None = None) -> int:
                 notes.append(f"{engine}: no base results (bench missing on base), report-only")
             n_rounds = max(n_rounds, len(heads))
             rows += compare(engine, pool(bases) if bases else {}, pool(heads))
+        if a.allow_accepted and a.accepted:
+            rows = apply_accepted(rows, load_accepted(a.accepted))
+            if any(r.status == "ACCEPTED" for r in rows):
+                notes.append(
+                    f"ACCEPTED rows are deliberate slowdowns listed in {a.accepted}, "
+                    "allowed by the bench-accepted label; see docs/BENCHMARKS.md."
+                )
     except BenchInputError as e:
         print(f"bench_ab: {e}", file=sys.stderr)
         return 2

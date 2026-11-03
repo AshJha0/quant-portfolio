@@ -104,6 +104,33 @@ class TestBenchAbMain:
         assert rows == {"slow_kernel": "FAIL", "steady": "same"}
         assert "same runner" in md.read_text(encoding="utf-8")
 
+    def _accepted(self, tmp_path, max_ratio):
+        return str(_write(tmp_path / "acc.json", {"accepted": [{
+            "engine": "cpp/x", "kernel": "slow_kernel", "max_ratio": max_ratio,
+            "reason": "deliberate"}]}))
+
+    def test_accepted_row_passes_only_with_the_label(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1010, 990])
+        head = self._rounds(tmp_path, "h", [1500, 1490, 1520])
+        acc = self._accepted(tmp_path, 1.6)
+        common = ["--engine", "cpp/x", "--base", *base, "--head", *head, "--accepted", acc]
+        assert ab.main(common) == 1  # listed, but no label
+        js = tmp_path / "a.json"
+        assert ab.main([*common, "--allow-accepted", "--json", str(js)]) == 0
+        rows = {r["kernel"]: r["status"] for r in json.loads(js.read_text(encoding="utf-8"))}
+        assert rows["slow_kernel"] == "ACCEPTED"
+
+    def test_accepted_row_over_its_ceiling_still_fails(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1010, 990])
+        head = self._rounds(tmp_path, "h", [1500, 1490, 1520])
+        acc = self._accepted(tmp_path, 1.3)
+        assert ab.main(["--engine", "cpp/x", "--base", *base, "--head", *head,
+                        "--accepted", acc, "--allow-accepted"]) == 1
+
+    def test_committed_accepted_file_is_valid(self):
+        rows = ab.load_accepted(REPO / ".github" / "bench-accepted.json")
+        assert rows and all(e["max_ratio"] < 2.0 for e in rows.values())
+
     def test_noise_passes(self, tmp_path):
         base = self._rounds(tmp_path, "b", [1000, 1300, 900])
         head = self._rounds(tmp_path, "h", [1100, 950, 1250])

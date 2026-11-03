@@ -1,0 +1,23 @@
+{
+  "_doc": "Deliberate slowdowns a PR may let through with the bench-accepted label. Each row is named exactly, capped by max_ratio, and explained. Remove a row once it is fast again. See docs/BENCHMARKS.md.",
+  "accepted": [
+    {
+      "engine": "rust/equity-var-engine",
+      "kernel": "var_bootstrap_se n=250 B=200 (main API)",
+      "max_ratio": 1.6,
+      "reason": "Per-resample Philox4x32-10 streams (Round 9, W4b): the bootstrap SE is identical on any thread count and bit-identical between C++ and Rust. Costs about 1.4-1.5x the old xoshiro stream; vectorising it is follow-up work."
+    },
+    {
+      "engine": "rust/equity-var-engine",
+      "kernel": "var_bootstrap_se_ws n=250 B=200 (fast)",
+      "max_ratio": 1.6,
+      "reason": "Same per-resample Philox streams as the main-API row."
+    },
+    {
+      "engine": "rust/fx-var-engine",
+      "kernel": "var_se_bootstrap_100k_x200",
+      "max_ratio": 1.6,
+      "reason": "FX MC VaR moved to the same per-resample Philox streams (Round 18): thread-count determinism and C++/Rust parity, as for equity."
+    }
+  ]
+}
