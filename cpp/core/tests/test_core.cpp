@@ -11,11 +11,13 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "qp/black_scholes.hpp"
 #include "qp/black_scholes_vm.hpp"
 #include "qp/brent.hpp"
+#include "qp/crr.hpp"
 #include "qp/expected.hpp"
 #include "qp/iv_core.hpp"
 #include "qp/matrix.hpp"
@@ -392,3 +394,39 @@ TEST(IvCore, RecoversBlackVol) {
 }
 
 }  // namespace
+
+// The Round 8 perf fix replaced std::fmax in the American step of
+// qp::crr_lattice with a plain compare (GCC emitted a libm call per node).
+// For finite values the two agree bit for bit; this checks it against the
+// fmax form on a grid of puts and calls.
+TEST(Crr, AmericanCompareMatchesFmaxReferenceBitForBit) {
+    auto reference = [](double S, double K, double phi, std::size_t n, const qp::CrrStep& st) {
+        std::vector<double> ex(2 * n + 1), v(n + 1);
+        const double log_s0 = std::log(S);
+        for (std::size_t idx = 0; idx <= 2 * n; ++idx) {
+            const double m = static_cast<double>(idx) - static_cast<double>(n);
+            ex[idx] = phi * (std::exp(log_s0 + m * st.log_u) - K);
+        }
+        for (std::size_t j = 0; j <= n; ++j) v[j] = std::fmax(ex[2 * j], 0.0);
+        for (std::size_t i = n; i-- > 0;)
+            for (std::size_t j = 0; j <= i; ++j)
+                v[j] = std::fmax(st.pu * v[j + 1] + st.pd * v[j], ex[n - i + 2 * j]);
+        return v[0];
+    };
+    int checked = 0;
+    for (double S : {50.0, 90.0, 100.0, 110.0, 250.0})
+        for (double sigma : {0.05, 0.2, 0.6})
+            for (auto [r, q] : {std::pair{0.05, 0.02}, {0.0, 0.0}, {0.01, 0.07}, {-0.005, 0.03}})
+                for (std::size_t n : {1u, 2u, 3u, 17u, 100u, 501u})
+                    for (double phi : {1.0, -1.0}) {
+                        const qp::CrrStep st = qp::crr_step(0.75, r, q, sigma, n);
+                        if (!(st.p > 0.0 && st.p < 1.0)) continue;
+                        std::vector<double> ws(3 * n + 2);
+                        const double got = qp::crr_lattice(S, 100.0, phi, true, n, st, ws.data());
+                        EXPECT_EQ(std::bit_cast<std::uint64_t>(got),
+                                  std::bit_cast<std::uint64_t>(reference(S, 100.0, phi, n, st)))
+                            << S << " " << sigma << " " << r << " " << q << " " << n << " " << phi;
+                        ++checked;
+                    }
+    EXPECT_GT(checked, 700);
+}

@@ -12,10 +12,6 @@ use crate::black_scholes::{
 };
 use crate::iv_core::black_implied_vol;
 
-/// Former absolute price tolerance of the bisection solver. Unused.
-#[deprecated(note = "the implied-vol solver no longer uses a price tolerance")]
-pub const IV_PRICE_TOL: f64 = 1e-10;
-
 /// Implied Black-Scholes volatility from an observed premium.
 ///
 /// Accuracy: within `max(eps * price / vega, 1e-12 * sigma)` of the true

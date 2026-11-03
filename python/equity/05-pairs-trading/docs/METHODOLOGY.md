@@ -72,7 +72,10 @@ Three hedge-ratio methods are wired into the walk-forward
 
 RLS with a forgetting factor is the Kalman filter for a random-walk
 coefficient with the noise ratio tied to the forgetting factor rather than
-estimated. With a short memory an intercept is nearly collinear with the
+estimated, so it is called RLS here, not Kalman. The full filter, with the
+observation and state noise estimated by maximum likelihood, is
+`eq_pairs.kalman.kalman_hedge_ratio`; it is not one of the three pipeline
+hedges. With a short memory an intercept is nearly collinear with the
 price level, so RLS runs without one and the rolling z-score removes the
 level. All three use the same Engle-Granger and half-life gates on the
 formation window. The pipeline logs all three as trials (VALIDATION §6).

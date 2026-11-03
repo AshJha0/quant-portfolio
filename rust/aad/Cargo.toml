@@ -1,0 +1,16 @@
+[package]
+name = "qp-aad"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Tape-based reverse-mode AAD (W19): Black-Scholes, pathwise Monte Carlo and swap PV off the dated OIS bootstrap, with curve and quote Greeks. The Rust port of qp_core.aad. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_aad"
+path = "src/lib.rs"
+
+[dependencies]
+qp-core = { path = "../core" }
+qp-rates-curves = { path = "../rates-curves" }

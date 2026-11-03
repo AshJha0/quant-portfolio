@@ -1,15 +1,15 @@
-"""Tests for qp_core.calendars and qp_core.daycount.
+"""Tests for the qp_core.holidays calendar objects and qp_core.daycount.
 
 Expected values are worked by hand from the convention definitions.
 """
 
 import calendar as pycal
 import datetime as dt
+from typing import ClassVar
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as hst
-from qp_core.calendars import CALENDARS, ROLL_CONVENTIONS, get_calendar, joint_calendar
 from qp_core.daycount import (
     MONEY_MARKET_DAYCOUNT,
     add_months,
@@ -21,9 +21,10 @@ from qp_core.daycount import (
     roll_months,
     year_fraction,
 )
+from qp_core.holidays import CALENDARS, ROLL_CONVENTIONS, get_calendar, joint_calendar
 
 D = dt.date
-dates = hst.dates(min_value=D(1990, 1, 1), max_value=D(2090, 12, 31))
+dates = hst.dates(min_value=D(2000, 1, 15), max_value=D(2090, 12, 31))
 
 
 class TestYearFraction:
@@ -113,8 +114,9 @@ class TestCalendars:
     def test_rolls(self):
         usd = CALENDARS["USD"]
         sat = D(2024, 8, 31)  # Saturday, month end
-        # Labor Day (2 Sep) is a floating holiday, not in the partial list.
-        assert usd.adjust(sat, "following") == D(2024, 9, 2)
+        # Labor Day is Mon 2 Sep 2024, so following lands on Tue 3 Sep. The
+        # partial fixed-date table used before round 6 gave Mon 2 Sep.
+        assert usd.adjust(sat, "following") == D(2024, 9, 3)
         assert usd.adjust(sat, "preceding") == D(2024, 8, 30)
         assert usd.adjust(sat, "modified_following") == D(2024, 8, 30)
         assert usd.adjust(sat, "unadjusted") == sat
@@ -138,15 +140,28 @@ class TestCalendars:
         with pytest.raises(ValueError):
             wk.add_business_days(D(2024, 1, 5), -1)
 
+    # Upper bound on the move an adjustment can make, from the longest run of closed
+    # days in each calendar over 2000-2090 (an exhaustive scan, pinned in
+    # test_longest_closure_is_tokyo_2019). Tokyo's 2019 accession Golden
+    # Week closed banks from Sat 27 Apr to Mon 6 May (Act on the Enthronement
+    # Day holiday, 2018), so a Tokyo adjustment can move up to 10 days.
+    MAX_SHIFT: ClassVar[dict[str, int]] = {"WEEKEND": 2, "USD": 7, "EUR": 7, "GBP": 7, "JPY": 10}
+
     @given(dates)
     def test_adjusted_is_business_day(self, d):
-        for name in ("WEEKEND", "USD", "EUR", "GBP", "JPY"):
+        for name, bound in self.MAX_SHIFT.items():
             cal = CALENDARS[name]
             for conv in ("following", "modified_following", "preceding"):
                 out = cal.adjust(d, conv)
                 assert cal.is_business_day(out)
-                assert abs((out - d).days) <= 7
+                assert abs((out - d).days) <= bound
             assert cal.adjust(d, "modified_following").month == d.month
+
+    def test_longest_closure_is_tokyo_2019(self):
+        jpy = CALENDARS["JPY"]
+        assert jpy.adjust(D(2019, 4, 27), "following") == D(2019, 5, 7)
+        assert jpy.adjust(D(2019, 5, 6), "preceding") == D(2019, 4, 26)
+        assert not any(jpy.is_business_day(D(2019, 4, 27) + dt.timedelta(days=k)) for k in range(10))
 
     def test_last_business_day(self):
         assert last_business_day(2024, 8, CALENDARS["USD"]) == D(2024, 8, 30)

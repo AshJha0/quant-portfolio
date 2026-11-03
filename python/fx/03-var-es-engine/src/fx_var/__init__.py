@@ -13,7 +13,6 @@ from .backtesting import (
     basel_traffic_light,
     christoffersen_independence,
     conditional_coverage,
-    es_backtest_acerbi_szekely,
     evaluate_var_backtest,
     kupiec_pof,
     rolling_backtest,
@@ -52,7 +51,6 @@ from .monte_carlo_var import (
 )
 from .parametric_var import (
     ParametricVaRResult,
-    cornish_fisher_domain_ok,
     cornish_fisher_valid,
     cornish_fisher_var,
     cornish_fisher_z,
@@ -72,7 +70,7 @@ from .stress_testing import (
     usd_broad_move,
 )
 
-__version__ = "1.1.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
     "PEG_VOL_THRESHOLD",
@@ -100,7 +98,6 @@ __all__ = [
     "basel_traffic_light",
     "christoffersen_independence",
     "conditional_coverage",
-    "cornish_fisher_domain_ok",
     "cornish_fisher_valid",
     "cornish_fisher_var",
     "cornish_fisher_z",
@@ -108,7 +105,6 @@ __all__ = [
     # ES
     "empirical_var",
     "empirical_var_es",
-    "es_backtest_acerbi_szekely",
     "evaluate_var_backtest",
     "ewma_cov",
     "ewma_volatility",

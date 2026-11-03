@@ -40,7 +40,7 @@ fn normal_converges_to_parametric_within_3se() {
     let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 200_000, TailModel::Normal, 7).unwrap();
     let mc_var = monte_carlo_var(&EXPOSURES, &cov, 0.01, 200_000, TailModel::Normal, 7).unwrap();
     let mc_es = monte_carlo_es(&EXPOSURES, &cov, 0.01, 200_000, TailModel::Normal, 7).unwrap();
-    let se = var_order_statistic_se(&pnl, 0.01).unwrap();
+    let se = var_kde_se(&pnl, 0.01).unwrap();
     assert!(se > 0.0);
     assert!(se < 0.02 * exact_var);
     assert!(
@@ -84,7 +84,7 @@ fn student_t_fatter_than_normal_at_99_and_converges_to_closed_form() {
         11,
     )
     .unwrap();
-    let se_t = var_order_statistic_se(&pnl_t, 0.01).unwrap();
+    let se_t = var_kde_se(&pnl_t, 0.01).unwrap();
     assert!((t_var - exact_t).abs() < 3.0 * se_t);
 }
 
@@ -165,8 +165,8 @@ fn monte_carlo_validation() {
         .is_err()
     );
     assert!(simulate_factor_returns(&cov, 0, TailModel::Normal, 0).is_err());
-    let tiny_pnl = vec![0.0; 50];
-    assert!(var_order_statistic_se(&tiny_pnl, 0.01).is_err());
+    let tiny_pnl = vec![0.0; 5];
+    assert!(var_kde_se(&tiny_pnl, 0.01).is_err());
 }
 
 #[test]
@@ -205,10 +205,10 @@ fn bootstrap_se_errors_on_degenerate_n_boot() {
 }
 
 #[test]
-fn bootstrap_se_within_3x_of_order_statistic_se_on_large_sample() {
+fn bootstrap_se_within_3x_of_kde_se_on_large_sample() {
     let cov = demo_cov();
     let pnl = monte_carlo_pnl(&EXPOSURES, &cov, 100_000, TailModel::Normal, 21).unwrap();
-    let se_os = var_order_statistic_se(&pnl, 0.01).unwrap();
+    let se_os = var_kde_se(&pnl, 0.01).unwrap();
     let se_boot = var_bootstrap_se(&pnl, 0.01, 500, 21).unwrap();
     assert!(se_boot > 0.0);
     assert!(
@@ -223,4 +223,19 @@ fn bootstrap_se_degenerate_constant_pnl_is_zero_not_nan() {
     let se = var_bootstrap_se(&pnl, 0.01, 200, 0).unwrap();
     assert!(se.is_finite());
     assert_eq!(se, 0.0);
+}
+
+/// W4(c) parity: the gamma / chi-square sampler on the hot path never
+/// panics and never loops; a bad shape gives NaN without consuming the
+/// stream (the C++ engines' gamma_nothrow has the same contract).
+#[test]
+fn rng_gamma_bad_shape_is_nan_and_leaves_stream() {
+    use eq_var_engine::rng::Rng;
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let mut a = Rng::new(9);
+        let mut b = Rng::new(9);
+        assert!(a.gamma(bad).is_nan());
+        assert!(a.chi_square(bad).is_nan());
+        assert_eq!(a.standard_normal().to_bits(), b.standard_normal().to_bits());
+    }
 }

@@ -15,8 +15,11 @@ from .almgren_chriss import (
                        ac_kappa,
                        ac_trades,
                        ac_trajectory,
+                       compare_impact_laws,
                        efficient_frontier,
                        evaluate_schedules,
+                       power_law_objective,
+                       power_law_trajectory,
 )
 from .backtest import (
                        BacktestConfig,
@@ -30,6 +33,7 @@ from .benchmarks import (
                        arrival_price,
                        benchmark_slippage,
                        pov_schedule,
+                       realised_participation,
                        slippage_bps,
                        twap,
                        twap_schedule,
@@ -76,19 +80,16 @@ from .signals import (
 )
 from .tca import ISReport, aggregate_tca, is_decomposition, slippage_attribution, tca_report
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
-                       # almgren-chriss
+                       # Sorted alphabetically (ruff RUF022); see the import blocks above for the module of each name.
                        "ACParams",
                        "BacktestConfig",
                        "BacktestResult",
-                       # data
                        "DailyPanel",
-                       # backtest
                        "ExecutionConfig",
                        "ExecutionResult",
-                       # tca
                        "ISReport",
                        "IntradayConfig",
                        "IntradayMarket",
@@ -104,6 +105,7 @@ __all__ = [
                        "capacity_curve",
                        "combine_equal_weight",
                        "combine_ic_weighted",
+                       "compare_impact_laws",
                        "cs_rank",
                        "cs_zscore",
                        "decile_portfolios",
@@ -111,7 +113,6 @@ __all__ = [
                        "efficient_frontier",
                        "evaluate_schedules",
                        "expected_max_sharpe",
-                       # signals
                        "forward_returns",
                        "freeze_signal",
                        "generate_daily_panel",
@@ -121,15 +122,16 @@ __all__ = [
                        "long_short_weights",
                        "ma_crossover",
                        "max_drawdown",
-                       # features
                        "momentum",
-                       # evaluation
                        "newey_west_se",
                        "newey_west_tstat",
                        "perf_summary",
                        "pov_schedule",
+                       "power_law_objective",
+                       "power_law_trajectory",
                        "probabilistic_sharpe_ratio",
                        "quantile_monotonicity",
+                       "realised_participation",
                        "realized_vol",
                        "rsi",
                        "run_backtest",
@@ -144,9 +146,7 @@ __all__ = [
                        "turnover_zscore",
                        "twap",
                        "twap_schedule",
-                       # intraday
                        "u_shaped_profile",
-                       # benchmarks
                        "vwap",
                        "vwap_schedule",
                        "winsorize",

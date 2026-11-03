@@ -30,9 +30,29 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from qp_core.risk import SmileDynamics
 
 from .black_scholes import OptionType, bs_price
 from .greeks import bs_greeks
+
+
+def _check_smile_dynamics(value: SmileDynamics | str) -> SmileDynamics:
+    """Validate ``smile_dynamics=`` (W14b).
+
+    The calls in this module price with one flat vol per option, so the
+    smile has no slope and ``d sigma / dS = 0`` under every dynamic: sticky
+    strike (the default, the numbers from before the keyword), sticky
+    moneyness and sticky delta give identical results here. The keyword
+    states the assumption and rejects typos; smile-consistent Greeks on a
+    sloped smile are ``qp_core.risk.smile_delta`` / ``smile_gamma``.
+    """
+    try:
+        return SmileDynamics(value)
+    except ValueError:
+        raise ValueError(
+            f"smile_dynamics must be one of {[d.value for d in SmileDynamics]}, got {value!r}"
+        ) from None
+
 
 __all__ = ["Position", "book_value", "scenario_grid", "spot_ladder", "vega_ladder"]
 
@@ -45,8 +65,14 @@ def book_value(positions: Sequence[Position], S: float, r: float, sigma: float, 
 
 
 def spot_ladder(positions: Sequence[Position], S: float, r: float, sigma: float, q: float = 0.0,
-                shifts: Sequence[float] = (-0.2, -0.1, -0.05, 0.0, 0.05, 0.1, 0.2)) -> dict:
-    """Return ``{"shift", "spot", "value", "delta", "gamma"}`` arrays, one entry per shift."""
+                shifts: Sequence[float] = (-0.2, -0.1, -0.05, 0.0, 0.05, 0.1, 0.2), *,
+                smile_dynamics: SmileDynamics | str = "sticky_strike") -> dict:
+    """Return ``{"shift", "spot", "value", "delta", "gamma"}`` arrays, one entry per shift.
+
+    ``smile_dynamics``: the book has one flat ``sigma``, so the vol does not
+    move with spot under any dynamic and the ladder is the same for all three.
+    """
+    _check_smile_dynamics(smile_dynamics)
     h = np.asarray(shifts, dtype=float)
     if np.any(h <= -1.0):
         raise ValueError("shifts must be > -1")
@@ -62,8 +88,13 @@ def spot_ladder(positions: Sequence[Position], S: float, r: float, sigma: float,
 
 
 def vega_ladder(positions: Sequence[Position], S: float, r: float, sigma: float, q: float = 0.0,
-                buckets: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 5.0)) -> dict[float, float]:
-    """Vega per expiry bucket (linear split between neighbouring buckets)."""
+                buckets: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 5.0), *,
+                smile_dynamics: SmileDynamics | str = "sticky_strike") -> dict[float, float]:
+    """Vega per expiry bucket (linear split between neighbouring buckets).
+
+    ``smile_dynamics`` is validated; with a flat ``sigma`` it does not change vega.
+    """
+    _check_smile_dynamics(smile_dynamics)
     b = np.asarray(buckets, dtype=float)
     if b.ndim != 1 or b.size == 0 or np.any(np.diff(b) <= 0.0):
         raise ValueError("buckets must be a non-empty increasing sequence")
@@ -84,8 +115,14 @@ def vega_ladder(positions: Sequence[Position], S: float, r: float, sigma: float,
 
 def scenario_grid(positions: Sequence[Position], S: float, r: float, sigma: float, q: float = 0.0,
                   spot_shifts: Sequence[float] = (-0.1, -0.05, 0.0, 0.05, 0.1),
-                  vol_shifts: Sequence[float] = (-0.05, 0.0, 0.05)) -> np.ndarray:
-    """Full-revaluation P&L matrix, rows = spot shifts, columns = vol shifts."""
+                  vol_shifts: Sequence[float] = (-0.05, 0.0, 0.05), *,
+                  smile_dynamics: SmileDynamics | str = "sticky_strike") -> np.ndarray:
+    """Full-revaluation P&L matrix, rows = spot shifts, columns = vol shifts.
+
+    ``smile_dynamics``: with one flat ``sigma`` a spot shift leaves the vol
+    where it is under every dynamic, so the grid is the same for all three.
+    """
+    _check_smile_dynamics(smile_dynamics)
     base = book_value(positions, S, r, sigma, q)
     grid = np.empty((len(spot_shifts), len(vol_shifts)))
     for i, h in enumerate(spot_shifts):

@@ -3,8 +3,11 @@
 Functions are prefixed by engine: ``eq_`` (equity options and equity VaR)
 and ``fx_`` (FX options and FX VaR). Scalar functions take floats; ``*_batch``
 functions take equal-length 1-D float64 arrays (used in place when
-C-contiguous) and return new arrays. Engine errors raise ``ValueError`` with
-the engine's message.
+C-contiguous) and return new arrays. Engine errors raise
+``qp_core.errors.InputError`` (a ``ValueError``) for bad arguments and
+``qp_core.errors.ConvergenceError`` (a ``RuntimeError`` and a ``ValueError``) when a numerical
+method fails on well-formed input, with the engine's message. Without
+``qp_core`` installed both fall back to ``ValueError``.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ try:
 except ImportError as exc:  # pragma: no cover - only when the build is broken
     _IMPORT_ERROR = exc
 
-__version__ = "0.1.0"
+__version__ = "3.0.0.dev0"
 
 
 def available() -> bool:

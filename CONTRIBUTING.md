@@ -8,8 +8,9 @@ for docs, and how to regenerate golden vectors.
 | Path | What it is |
 |---|---|
 | `python/core/` | `qp-core` (import `qp_core`): the shared statistics, execution, calendar, day-count, validation and metrics code. |
+| `python/data/` | `qp-data` (import `qp_data`): keyless public data sources, the content-addressed store, publication-lag rules and `get(series, as_of=...)`. Tests use recorded responses; set `QP_DATA_ALLOW_NETWORK=1` to run the live tests. |
 | `python/{equity,fx,foundations}/NN-name/` | 23 Python projects. Each has its own `pyproject.toml`, `src/` and `tests/`. Twelve of them depend on `qp-core`. |
-| `pyproject.toml`, `uv.lock` | The uv workspace: `python/core` and the 23 projects, locked together. |
+| `pyproject.toml`, `uv.lock` | The uv workspace: `python/core`, `python/data` and the 23 projects, locked together. |
 | `cpp/core/` | `qp::core`, a header-only CMake target shared by the engines. |
 | `cpp/<engine>/` | 4 C++ engines built with CMake presets. Tests use GoogleTest. |
 | `rust/` | Cargo workspace: `core` (`qp-core`) and the 4 engine crates, one `Cargo.lock`. Library crates have no third-party dependencies. |
@@ -25,7 +26,7 @@ for docs, and how to regenerate golden vectors.
 ### Python
 
 Python 3.11 to 3.13. The quickest setup is the uv workspace, which installs
-`python/core` and all 23 projects into one `.venv` at the root from
+`python/core`, `python/data` and all 23 projects into one `.venv` at the root from
 `uv.lock`:
 
 ```bash
@@ -164,7 +165,11 @@ passes only if every other CI job passed:
 | `cpp core (<preset>)` | builds and tests `cpp/core`; the gcc job also runs `bench_core --quick`, report-only |
 | `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; any skipped case fails |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests` |
+| `py data (<version>)` | pytest for `python/data` on Python 3.11 to 3.13 (recorded responses only) |
+| `learning (notebooks, career-prep)` | `pytest docs/notebooks/tests career-prep/tests`; nbmake on the four solution notebooks |
 | `counts` | sums executed pass counts into `counts.json`, then runs `tests/test_docs_counts.py` |
+| `quantlib` | QuantLib 1.44 from hash-locked wheels; runs the QuantLib cross-checks (Hull-White, ISDA CDS, Heston, holiday calendars 2000-2030 including USD-GOVT, FX spot dates); any skip fails |
+| `api diff` | pull requests only: `.github/scripts/api_diff.py` compares every package's `__all__` and signatures with the base commit; the `api-break` label allows a deliberate break, which needs a `docs/MIGRATION.md` entry |
 
 CI runner benchmark numbers are not the published numbers. Runners are
 shared virtual machines, so the `bench` job only catches large regressions.
@@ -229,4 +234,6 @@ Explain every changed golden value in the commit message.
 
 Maintainers release from the Actions tab with the `release` workflow. It
 refuses unless `ci-ok` passed on the chosen commit and `CHANGELOG.md` has a
-section for the version.
+section for the version. What a version number promises, the deprecation
+rules and where releases are published are in
+[docs/VERSIONING.md](docs/VERSIONING.md).

@@ -18,16 +18,15 @@ def test_keyword_construction_has_no_warning(recwarn):
     assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
 
 
-def test_positional_keeps_historical_order_with_warning():
-    with pytest.warns(DeprecationWarning, match="positional HestonParams"):
-        p = HestonParams(0.04, 1.5, 0.045, 0.4, -0.6)
-    assert p == HestonParams(**KW)
+def test_positional_construction_removed_in_3_0():
+    with pytest.raises(TypeError):
+        HestonParams(0.04, 1.5, 0.045, 0.4, -0.6)  # type: ignore[misc]
 
 
 def test_bad_arguments():
     with pytest.raises(TypeError, match="missing"):
         HestonParams(v0=0.04, kappa=1.5, theta=0.045, xi=0.4)
-    with pytest.raises(TypeError, match="unexpected"):
+    with pytest.raises(TypeError, match="unexpected keyword"):
         HestonParams(**KW, sigma=0.1)
     with pytest.raises(ValueError, match="rho"):
         HestonParams(**{**KW, "rho": 1.5})

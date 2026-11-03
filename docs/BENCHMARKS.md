@@ -12,6 +12,13 @@ To decide whether a change made the code slower, the CI bench job does not
 compare with numbers from another machine. It builds the old commit and the
 new one on the same runner and runs them in turns.
 
+This page covers the engine and kernel benches. The low-latency track
+(`cpp/ull`, `rust/ull`) times single calls with coordinated-omission
+correction instead; its method is [LATENCY_METHOD.md](LATENCY_METHOD.md),
+and the Java figures (JMH and `LatencyMain`) are in
+[`../java/README.md`](../java/README.md). All of them are software,
+in-process latency on one machine, not wire-to-wire.
+
 ## The method, stated exactly
 
 Shared code: `cpp/core/include/qp/bench/latency.hpp` (C++) and
@@ -25,10 +32,16 @@ Shared code: `cpp/core/include/qp/bench/latency.hpp` (C++) and
 3. N = max(31, call budget / B) samples, each one batch divided by B (ns per
    call). Nothing is subtracted.
 4. Percentiles by nearest rank (element ceil(qN) - 1 of the sorted
-   samples): p10, p50, p90, p99, p99.9, plus max and mean.
+   samples): p10, p50, p90, p99, p99.9, plus max and mean. When B > 1 these
+   are percentiles of B-call batch means, and the tails are labelled
+   "p99 of B-call batch means".
 
 Each record in the JSON output has `kernel`, `calls_per_sample`, `unit`
-(`ns`), `p10`, `p50`, `p90`, `p99`, `p999` and `max`.
+(`ns`), `p10`, `p50`, `p90`, `p99`, `p999`, `max` and `tail_basis`. The last
+field is `per-call` when B = 1 and otherwise reads, for example,
+`p99 of 32-call batch means`. The C++ harness
+(`cpp/core/include/qp/bench/latency.hpp`) and the Rust one
+(`rust/core/src/bench.rs`) write the same wording.
 
 Worked example. `bs_price` takes about 120 ns. One call is under 2 us, and
 so are batches of 2, 4 and 8; a batch of 16 takes about 1.9 us and one of 32
@@ -36,8 +49,9 @@ about 3.8 us, so B = 32 (or 16 on a faster machine). With a budget of
 100,000 calls that gives 3,125 samples, each a 32-call average.
 
 Percentiles of B-call averages are narrower than percentiles of single
-calls: a rare 10 us stall is spread over B calls. The p99.9 and max of a
-fast kernel are therefore not single-call tails. Slow kernels (Monte Carlo,
+calls: a rare 10 us stall is spread over B calls. The p99, p99.9 and max of
+a fast kernel are therefore the p99 of B-call batch means, not single-call
+tails, and must not be quoted as per-call tail latency or used for an SLO. Slow kernels (Monte Carlo,
 binomial trees, VaR over long histories) run with B = 1 and their tails are
 single calls.
 
@@ -87,3 +101,61 @@ reported without a gate, and so is a base library that does not build under
 the head's harness (the job prints a warning naming the engine). Pinning
 to one CPU also serialises the multi-threaded Monte Carlo kernels; both sides
 pay that equally.
+
+## Per-call tails: the specification (W12, not yet implemented)
+
+The batch-mean tails above cannot support a latency objective
+(`docs/SLO.md`, S6). W12 replaces them for SLOs and the gate with per-call
+timing. This section is the contract that implementation must meet; until
+it lands, every tail figure in this repository is a batch-mean figure and
+is labelled so.
+
+The plain idea. Time every call on its own, with a clock cheap and fine
+enough that its own cost is small next to a 100 ns call, and report how
+much the clock itself costs so the reader can subtract it in their head.
+
+The method, stated exactly (x86-64; other targets keep the batch method
+and say so in `tail_basis`):
+
+1. Check the TSC is invariant (CPUID leaf 0x80000007, EDX bit 8) and read
+   its frequency once against `steady_clock` over 100 ms. Without an
+   invariant TSC, fall back to the batch method and say so.
+2. Each sample is `lfence; rdtscp` before the call and `rdtscp; lfence`
+   after (Intel, "How to Benchmark Code Execution Times on Intel IA-32 and
+   IA-64 Instruction Set Architectures", 2010), converted to ns.
+3. Timer overhead: the same pair around an empty body, 10,000 times; its
+   median and p99 are reported as `timer_overhead_p50` and
+   `timer_overhead_p99` and are not subtracted.
+4. `calls_per_sample` = 1 and `tail_basis` = `per-call`; p50, p90, p99,
+   p99.9 and max by nearest rank as above.
+5. Coordinated omission: the bench calls back-to-back, so a stall delays
+   later calls rather than hiding them; the stall is counted once, in the
+   call that suffered it (Tene, 2015). The figures are service times, not
+   response times under an arrival process, and are labelled so.
+
+Acceptance (from the plan): a test bench that stalls for 1 ms on one call
+in every 500 must show a per-call p99.9 of at least 1 ms, and one that
+stalls one call in 100,000 must not. The rate is 1 in 500, not 1 in 1,000,
+on purpose: with N samples and exactly N/1,000 stalls, nearest-rank p99.9
+is element ceil(0.999 N) - 1, the largest call that did not stall.
+
+Fuzzing is not benchmarking, but the two share CI time on free runners:
+the nightly fuzz workflow (`.github/workflows/fuzz.yml`) spends 100 s per
+target and runs at 03:17 UTC, away from the bench jobs.
+
+## Deliberate slowdowns (`bench-accepted`)
+
+The bench gate fails a kernel whose head median is more than 25% above the
+base and whose head p10 is above the base p90. A slowdown that buys something
+we want can pass only if it is named in `.github/bench-accepted.json`, with a
+ratio ceiling and a reason, and the pull request carries the `bench-accepted`
+label. Listed rows are reported as `ACCEPTED`; a listed row above its ceiling,
+or any row not listed, still fails.
+
+Listed today: the Rust bootstrap standard-error kernels in the equity and FX
+VaR engines, about 1.4-1.5x the v2.0 timing on the CI runner. The cost comes
+from drawing each bootstrap resample from its own Philox4x32-10 stream, which
+makes the result identical on any number of threads and bit-identical between
+the C++ and Rust engines; the old xoshiro stream could not do either.
+Vectorising the Philox rounds is the follow-up; when a row is back inside the
+gate it is removed from the file.

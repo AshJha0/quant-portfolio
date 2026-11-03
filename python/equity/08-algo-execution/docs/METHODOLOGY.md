@@ -119,17 +119,39 @@ evaluated in exponential form so it stays finite for kappa T > 710.
 - Volume profile `p_j proportional to 1 + c (2 u_j - 1)^2`, U-shaped.
 - Permanent impact `perm = perm_coef sigma (q / V_day) mid`, linear, as
   Huberman-Stanzl (2004) require for no price manipulation.
-- Temporary impact `temp = temp_coef sigma sqrt(q_j / (n_buckets v_j)) mid`
-  where v_j is the bucket's market volume. With a flat profile this is
-  sqrt(q / V_day). A child order in a thin bucket costs more than the same
-  order in a heavy bucket.
+- Temporary impact `temp = temp_coef sigma (q_j / v_j)^delta mid` where
+  v_j is the bucket's market volume, so q_j / v_j is the participation rate
+  over the bucket horizon (dimensionless), sigma is the daily vol as a
+  fraction of price and delta = `impact_exponent` (0.5 by default, the
+  square-root law of Almgren, Thum, Hauptmann and Li 2005; 1 is the linear
+  law). Because participation does not change when the same trading rate is
+  cut into finer buckets, the summed cost converges to the integral of
+  temp_coef sigma (v/V)^delta v dt (VALIDATION section 6). Up to v2.0.0 the
+  code divided by n_buckets v_j, counting the bucket width twice, so cost
+  fell as 1/sqrt(n_buckets). A child order in a thin bucket costs more than
+  the same order in a heavy bucket.
 - Market orders always fill at mid plus side times (half spread +
   temporary impact). No queues, no partial fills.
 - Per-bucket noise sigma_daily / sqrt(n_buckets).
 
-The AC optimiser uses linear temporary impact and is evaluated in the
-square-root simulator. Schedules are ranked by the expected IS on the
-zero-noise simulator and by the Monte Carlo std (`evaluate_schedules`).
+### Power-law optimiser
+
+Under temporary cost c_k n_k^(1+delta) per slice, with
+c_k = S temp_coef sigma / v_k^delta, there is no closed form.
+`power_law_trajectory` minimises sum c_k |n_k|^(1+delta) + lambda sum s2 x_k^2
+by Newton's method. Slice k couples only x_{k-1} and x_k, so each Newton step
+is a tridiagonal solve: the backward-forward sweep of dynamic programming on
+the local quadratic model. With delta = 1 one step is exact and equals the
+closed form to 1e-8 of X (tested). `compare_impact_laws` scores the
+linear-law and the power-law optimum under both laws side by side.
+
+POV is built from a forecast volume curve (`pov_schedule(...,
+forecast_volumes=...)`), never from the realised tape of the day it trades;
+`realised_participation` measures the drift on the day.
+
+Schedules are ranked by the model-implied IS on the zero-noise simulator and
+by the Monte Carlo std (`evaluate_schedules`). All of this is a
+schedule-level cost model on a bucket simulator.
 
 ---
 

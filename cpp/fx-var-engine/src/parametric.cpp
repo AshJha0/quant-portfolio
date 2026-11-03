@@ -97,15 +97,6 @@ bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha) {
   return cf_min_derivative(skew, excess_kurtosis, norm_ppf(1.0 - alpha)) > 0.0;
 }
 
-bool cornish_fisher_domain_ok(double skew, double excess_kurtosis, double z_range, int n_grid) {
-  if (n_grid < 3) throw std::invalid_argument("n_grid must be >= 3");
-  if (!(z_range > 0.0) || !std::isfinite(z_range))
-    throw std::invalid_argument("z_range must be finite and > 0");
-  if (!std::isfinite(skew) || !std::isfinite(excess_kurtosis))
-    throw std::invalid_argument("skew and excess_kurtosis must be finite");
-  return cf_min_derivative(skew, excess_kurtosis, z_range) > 0.0;
-}
-
 double cornish_fisher_var(double sigma, double skew, double excess_kurtosis, double alpha,
                           double mean, double horizon_days, bool check_domain) {
   validate_alpha(alpha);

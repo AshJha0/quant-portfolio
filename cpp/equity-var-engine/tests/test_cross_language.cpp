@@ -123,10 +123,10 @@ TEST(CrossLanguage, CaseC_CovarianceEstimators) {
 }
 
 TEST(CrossLanguage, CaseC_BacktestStatistics) {
-    const KupiecResult k7 = kupiec_pof(250, 7, 0.01);
+    const KupiecResult k7 = kupiec_pof({.n_obs = 250, .n_exceptions = 7, .alpha = 0.01});
     expect_rel(k7.lr, golden::c_kupiec_lr_250_7, "C kupiec LR (250, 7)");
     expect_rel(k7.pvalue, golden::c_kupiec_p_250_7, "C kupiec p (250, 7)");
-    const KupiecResult k0 = kupiec_pof(250, 0, 0.01);
+    const KupiecResult k0 = kupiec_pof({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01});
     expect_rel(k0.lr, golden::c_kupiec_lr_250_0, "C kupiec LR (250, 0)");
     expect_rel(k0.pvalue, golden::c_kupiec_p_250_0, "C kupiec p (250, 0)");
 

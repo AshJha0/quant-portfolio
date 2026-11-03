@@ -40,7 +40,9 @@ The root `pyproject.toml` defines the groups:
 | `test` | pytest, hypothesis | every test job |
 | `lint` | ruff, mypy, pandas-stubs, scipy-stubs | `lint` (through `uv sync`) |
 | `backend` | setuptools | every install (added by the script) |
-| `build` | nanobind, scikit-build-core, maturin | `bind <package>`, `engine differential` |
+| `build` | nanobind, scikit-build-core, maturin, cibuildwheel | `bind <package>`, `engine differential`, `wheels`, `release` |
+| `oracle` | QuantLib | `quantlib` (the independent-reference job) |
+| `api` | griffe | `api-diff` (docs/VERSIONING.md) |
 
 The bindings are then built with
 `pip install --no-deps --no-build-isolation ./bindings/<package>`, using the

@@ -12,7 +12,6 @@ from eq_var import (
     monte_carlo_risk,
     monte_carlo_var,
     parametric_var,
-    safe_cholesky,
     simulate_factor_returns,
     var_confidence_interval,
     var_standard_error_bootstrap,
@@ -96,8 +95,7 @@ class TestReproducibility:
 
 class TestSafeCholesky:
     def test_plain_cholesky_on_spd_matrix(self):
-        with pytest.deprecated_call():
-            chol = safe_cholesky(COV)
+        chol = cholesky(COV)
         np.testing.assert_allclose(chol @ chol.T, COV, atol=1e-15)
 
     def test_jitter_path_on_singular_matrix(self):
@@ -140,8 +138,6 @@ class TestSafeCholesky:
         with L L' - A = I (jitter = 100 % of the mean variance) and no warning."""
         with pytest.raises(np.linalg.LinAlgError, match=r"-0.8"):
             cholesky(self.A)
-        with pytest.deprecated_call(), pytest.raises(np.linalg.LinAlgError):
-            safe_cholesky(self.A)
 
     def test_jitter_never_exceeds_the_cap(self):
         """Smallest eigenvalue -1e-7 x mean variance: the cap (1e-6) succeeds
@@ -257,3 +253,19 @@ class TestStandardErrors:
             simulate_factor_returns(COV, 10, dist="t", df=1.5)
         with pytest.raises(ValueError, match="mean"):
             simulate_factor_returns(COV, 10, mean=np.zeros(3))
+
+
+def test_monte_carlo_risk_result_is_frozen_and_mapping_compatible():
+    """W22: a typed, frozen result; the old dict-style access still works."""
+    import dataclasses
+
+    from eq_var import MonteCarloRisk
+
+    out = monte_carlo_risk(linear_portfolio(), COV, 0.01, n_paths=5_000, seed=4, n_boot=20)
+    assert isinstance(out, MonteCarloRisk)
+    assert out["var"] == out.var and out["es"] == out.es and out["var_se"] == out.var_se
+    assert set(dict(out)) == {"var", "es", "var_se", "pnl"}
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        out.var = 0.0  # type: ignore[misc]
+    with pytest.raises(KeyError):
+        out["nope"]

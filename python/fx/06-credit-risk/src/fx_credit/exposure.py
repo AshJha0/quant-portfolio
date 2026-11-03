@@ -35,12 +35,11 @@ implied from CDS or proxy spreads and market LGD. There is no collateral
 (CSA, margin period of risk), no DVA, no EEPE or SA-CCR exposure measure,
 and a netting set holds one currency pair. A quantity built on a
 statistical PD cannot be hedged with CDS. The old names ``cva`` and
-``cva_for_forward`` remain as deprecated aliases.
+``cva_for_forward`` were removed in v3.0.0.
 """
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -48,8 +47,6 @@ import numpy as np
 __all__ = [
     "ExposureProfile",
     "FXForward",
-    "cva",
-    "cva_for_forward",
     "expected_exposure_loss",
     "expected_exposure_loss_for_forward",
     "exposure_profile",
@@ -355,22 +352,3 @@ def expected_exposure_loss_for_forward(
         return 0.0, prof
     q = pd_term_structure(pd_1y, prof.times)
     return expected_exposure_loss(prof.times, prof.ee, q, lgd, r_d), prof
-
-
-def cva(*args, **kwargs) -> float:
-    """Deprecated alias of :func:`expected_exposure_loss` (not a CVA)."""
-    warnings.warn(
-        "cva() is deprecated: the quantity uses a real-world PD and is an "
-        "expected loss on exposure, not a CVA; use expected_exposure_loss()",
-        DeprecationWarning, stacklevel=2,
-    )
-    return expected_exposure_loss(*args, **kwargs)
-
-
-def cva_for_forward(*args, **kwargs) -> tuple[float, ExposureProfile]:
-    """Deprecated alias of :func:`expected_exposure_loss_for_forward`."""
-    warnings.warn(
-        "cva_for_forward() is deprecated; use expected_exposure_loss_for_forward()",
-        DeprecationWarning, stacklevel=2,
-    )
-    return expected_exposure_loss_for_forward(*args, **kwargs)

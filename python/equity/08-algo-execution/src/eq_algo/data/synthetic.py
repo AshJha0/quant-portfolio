@@ -45,20 +45,6 @@ class DailyPanel:
     volumes: pd.DataFrame
     returns: pd.DataFrame = field(repr=False)
 
-    @property
-    def adv_dollars(self) -> pd.Series:
-        """Full-sample average daily dollar volume per name.
-
-        Deprecated: a full-sample mean uses future volume. Use
-        :meth:`trailing_adv_dollars`, which is known at each close.
-        """
-        import warnings
-
-        warnings.warn("DailyPanel.adv_dollars is a full-sample mean and uses future "
-                      "data; use trailing_adv_dollars(window)", DeprecationWarning,
-                      stacklevel=2)
-        return (self.prices * self.volumes).mean()
-
     def trailing_adv_dollars(self, window: int = 21) -> pd.DataFrame:
         """Trailing ``window``-day mean dollar volume, known at each close."""
         if window < 1:

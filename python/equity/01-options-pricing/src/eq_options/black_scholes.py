@@ -23,9 +23,11 @@ Edge-case policy (documented + unit tested)
 from __future__ import annotations
 
 import math
-import warnings
-from typing import Literal
+from collections.abc import Sequence
+from typing import Any, Literal, overload
 
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value, finite, safe_exp
 from qp_core.iv_core import black_implied_vol
 from qp_core.normal import norm_cdf
@@ -171,16 +173,36 @@ def d1_d2(
     return carry_d1_d2(S, K, T, r, q, sigma)
 
 
+def _any_array(*args: object) -> bool:
+    """True when any argument is an array or a list/tuple (the array path)."""
+    return any(isinstance(a, (np.ndarray, list, tuple)) for a in args)
+
+
+@overload
+def bs_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0,
+             option_type: OptionType = "call") -> float: ...
+@overload
+def bs_price(S: NDArray[Any] | Sequence[float],
+             K: ArrayLike, T: ArrayLike, r: ArrayLike, sigma: ArrayLike,
+             q: ArrayLike = 0.0, option_type: str | ArrayLike = "call") -> NDArray[np.float64]: ...
 def bs_price(
-    S: float,
-    K: float,
-    T: float,
-    r: float,
-    sigma: float,
-    q: float = 0.0,
-    option_type: OptionType = "call",
-) -> float:
+    S: ArrayLike,
+    K: ArrayLike,
+    T: ArrayLike,
+    r: ArrayLike,
+    sigma: ArrayLike,
+    q: ArrayLike = 0.0,
+    option_type: str | ArrayLike = "call",
+) -> float | NDArray[np.float64]:
     """Black-Scholes-Merton price of a European option with dividend yield.
+
+    Scalars in, a float out. If any argument is a NumPy array, list or
+    tuple, the call goes to :func:`eq_options.arrays.bs_price_array`
+    (broadcasting, the same domain and boundary rules) and returns an
+    array. Per element the two agree within 1e-15 * max(1, S, K)
+    (``tests/test_bs_array_tolerant.py``; measured 5.2e-16 on 20,000 random
+    contracts). For a type checker the array overload needs ``S`` to be an
+    array or a sequence; for other mixes call ``bs_price_array`` directly.
 
     Parameters
     ----------
@@ -216,6 +238,15 @@ def bs_price(
     ``T == 0`` returns intrinsic value; ``sigma == 0`` returns the
     discounted intrinsic on the forward, ``exp(-rT) max(±(F - K), 0)``.
     """
+    if _any_array(S, K, T, r, sigma, q, option_type):
+        from .arrays import bs_price_array
+
+        return bs_price_array(S, K, T=T, r=r, sigma=sigma, q=q, option_type=option_type)
+    return _bs_price_scalar(S, K, T, r, sigma, q, option_type)  # type: ignore[arg-type]
+
+
+def _bs_price_scalar(S: float, K: float, T: float, r: float, sigma: float, q: float,
+                     option_type: OptionType) -> float:
     validate_inputs(S, K, T, sigma, option_type)
     _check_rates(r=r, q=q)
     if T == 0.0:
@@ -250,10 +281,6 @@ def implied_vol(
     r: float,
     q: float = 0.0,
     option_type: OptionType = "call",
-    tol: float | None = None,
-    max_iter: int | None = None,
-    sigma_lo: float | None = None,
-    sigma_hi: float | None = None,
 ) -> float:
     """Implied Black-Scholes volatility, solved on the out-of-the-money side.
 
@@ -287,8 +314,6 @@ def implied_vol(
         As in :func:`bs_price`. ``S``, ``K`` and ``T`` must be strictly positive.
     option_type : {"call", "put"}
         Option payoff direction.
-    tol, max_iter, sigma_lo, sigma_hi
-        Deprecated and ignored. The solver has no tuning parameters.
 
     Returns
     -------
@@ -302,15 +327,6 @@ def implied_vol(
         the ``sigma -> inf`` bound, if ``T == 0``, if any input is invalid,
         or if the solver fails to converge.
     """
-    for name, value in (("tol", tol), ("max_iter", max_iter),
-                        ("sigma_lo", sigma_lo), ("sigma_hi", sigma_hi)):
-        if value is not None:
-            warnings.warn(
-                f"implied_vol({name}=...) is deprecated and ignored; "
-                "the solver has no tuning parameters",
-                DeprecationWarning,
-                stacklevel=2,
-            )
     validate_inputs(S, K, T, 0.0, option_type)
     _check_rates(r=r, q=q)
     if not math.isfinite(price):

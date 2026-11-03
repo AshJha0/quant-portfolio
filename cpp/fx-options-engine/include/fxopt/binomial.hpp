@@ -27,7 +27,7 @@ enum class Exercise { European, American };
 
 /// CRR binomial price of an FX option, domestic ccy per unit foreign
 /// notional.  Throws std::invalid_argument on invalid inputs, steps < 1,
-/// or if the tree probability falls outside [0, 1] (time step too coarse
+/// or if the tree probability falls outside (0, 1) (time step too coarse
 /// for the drift/vol combination).  sigma = 0 defers to the analytic limit
 /// (European) or deterministic exercise optimisation (American).
 double binomial_price(double S, double K, double T, double r_d, double r_f, double sigma,

@@ -8,7 +8,7 @@ confident-looking set of regimes.
 
 import numpy as np
 import pytest
-from eq_regime.detection import flip_flop_rate, label_states, labels_from_vol_means, min_duration_filter
+from eq_regime.detection import label_states, labels_from_vol_means
 from eq_regime.gmm import fit_gmm, match_permutation
 from eq_regime.hmm import (
     expected_durations,
@@ -284,15 +284,3 @@ def test_gmm_rejects_non_finite_observations():
     x_inf[5, 1] = -np.inf
     with pytest.raises(ValueError, match="NaN or Inf"):
         fit_gmm(x_inf, 2, seed=0)
-
-
-def test_min_duration_filter_on_degenerate_paths():
-    """Constant path and alternating path: the filter must be idempotent on
-    the former and fully smooth the latter."""
-    const = np.zeros(50, dtype=int)
-    assert np.array_equal(min_duration_filter(const, 5), const)
-    alt = np.arange(50) % 2
-    smoothed = min_duration_filter(alt, 5)
-    assert flip_flop_rate(smoothed) < flip_flop_rate(alt)
-    with pytest.raises(ValueError, match="min_duration"):
-        min_duration_filter(const, 0)

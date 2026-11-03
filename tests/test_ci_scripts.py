@@ -104,6 +104,33 @@ class TestBenchAbMain:
         assert rows == {"slow_kernel": "FAIL", "steady": "same"}
         assert "same runner" in md.read_text(encoding="utf-8")
 
+    def _accepted(self, tmp_path, max_ratio):
+        return str(_write(tmp_path / "acc.json", {"accepted": [{
+            "engine": "cpp/x", "kernel": "slow_kernel", "max_ratio": max_ratio,
+            "reason": "deliberate"}]}))
+
+    def test_accepted_row_passes_only_with_the_label(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1010, 990])
+        head = self._rounds(tmp_path, "h", [1500, 1490, 1520])
+        acc = self._accepted(tmp_path, 1.6)
+        common = ["--engine", "cpp/x", "--base", *base, "--head", *head, "--accepted", acc]
+        assert ab.main(common) == 1  # listed, but no label
+        js = tmp_path / "a.json"
+        assert ab.main([*common, "--allow-accepted", "--json", str(js)]) == 0
+        rows = {r["kernel"]: r["status"] for r in json.loads(js.read_text(encoding="utf-8"))}
+        assert rows["slow_kernel"] == "ACCEPTED"
+
+    def test_accepted_row_over_its_ceiling_still_fails(self, tmp_path):
+        base = self._rounds(tmp_path, "b", [1000, 1010, 990])
+        head = self._rounds(tmp_path, "h", [1500, 1490, 1520])
+        acc = self._accepted(tmp_path, 1.3)
+        assert ab.main(["--engine", "cpp/x", "--base", *base, "--head", *head,
+                        "--accepted", acc, "--allow-accepted"]) == 1
+
+    def test_committed_accepted_file_is_valid(self):
+        rows = ab.load_accepted(REPO / ".github" / "bench-accepted.json")
+        assert rows and all(e["max_ratio"] < 2.0 for e in rows.values())
+
     def test_noise_passes(self, tmp_path):
         base = self._rounds(tmp_path, "b", [1000, 1300, 900])
         head = self._rounds(tmp_path, "h", [1100, 950, 1250])
@@ -167,7 +194,31 @@ class TestDiscover:
                 '[project]\nname = "x"\n[project.optional-dependencies]\ntest = ["pytest"]\n', encoding="utf-8")
         assert [p["slug"] for p in disc.discover(tmp_path)] == ["equity__01-a", "fx__02-b"]
         core = disc.discover_core(tmp_path)
-        assert core == {"path": "python/core", "slug": "core", "extra": "test", "spec": ".[test]"}
+        assert core == {"path": "python/core", "slug": "core", "extra": "test", "spec": ".[test]", "deps": ""}
+
+    def test_workspace_deps_are_listed_transitively(self, tmp_path):
+        def proj(rel, name, deps, dev=()):
+            (tmp_path / rel).mkdir(parents=True)
+            text = "\n".join([
+                "[project]",
+                f'name = "{name}"',
+                "dependencies = " + json.dumps(list(deps)),
+                "[project.optional-dependencies]",
+                "dev = " + json.dumps(list(dev)),
+                "",
+            ])
+            (tmp_path / rel / "pyproject.toml").write_text(text, encoding="utf-8")
+        proj("python/core", "qp-core", [])
+        proj("python/oms", "qp-oms", ["qp-core"])
+        proj("python/execution", "qp-exec", ["qp-core", "numpy>=1.24"], dev=["qp-oms>=3"])
+        proj("python/backtest", "qp-bt", ["qp-core"], dev=["qp-exec"])
+        proj("python/equity/05-a", "eq-a", ["qp-bt>=3.0.0.dev0"], dev=["pytest"])
+        got = {p["path"]: p["deps"] for p in disc.discover(tmp_path)}
+        # the dev extra is followed only for the project itself
+        assert got["python/equity/05-a"] == "python/backtest"
+        assert got["python/backtest"] == "python/execution"
+        assert got["python/execution"] == "python/oms"
+        assert got["python/oms"] == ""
 
     def test_core_absent_returns_none(self, tmp_path):
         assert disc.discover_core(tmp_path) is None

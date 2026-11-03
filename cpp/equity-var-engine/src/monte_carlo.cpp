@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "eqvar/historical.hpp"
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
+#include "path_rng.hpp"
 #include "qp/rng.hpp"
 
 namespace eqvar {
@@ -30,6 +32,19 @@ double RandomStream::gamma(double shape) {
     auto u = [this] { return uniform(); };
     auto z = [this] { return gaussian(); };
     return qp::gamma_marsaglia_tsang(shape, u, z);
+}
+
+double RandomStream::gamma_nothrow(double shape) noexcept {
+    // The shape test comes first: qp::gamma_marsaglia_tsang recurses for
+    // shape <= 0 and never terminates for NaN.
+    if (!(shape > 0.0) || !std::isfinite(shape)) return std::numeric_limits<double>::quiet_NaN();
+    auto u = [this] { return uniform(); };
+    auto z = [this] { return gaussian(); };
+    return qp::gamma_marsaglia_tsang(shape, u, z);
+}
+
+double RandomStream::chi_squared_nothrow(double df) noexcept {
+    return 2.0 * gamma_nothrow(0.5 * df);
 }
 
 double RandomStream::chi_squared(double df) {
@@ -54,11 +69,14 @@ Matrix simulate_factor_returns(const Matrix& cov, std::size_t n_paths, Dist dist
         for (std::size_t i = 0; i < n * n; ++i) scale.data()[i] *= (df - 2.0) / df;
     }
     const Matrix chol = cholesky(scale, repair).lower;  // capped jitter, optional repair
-    RandomStream rng(seed);
     Matrix out(n_paths, n);
     std::vector<double> z(n);
     for (std::size_t p = 0; p < n_paths; ++p) {
-        for (std::size_t j = 0; j < n; ++j) z[j] = rng.gaussian();
+        // W4(b): path p has its own Philox stream (src/path_rng.hpp).
+        detail::PathRng rng(seed, p);
+        for (std::size_t j0 = 0; j0 < n; j0 += 2 * detail::kPathLanes) {
+            rng.fill_normals(z.data() + j0, std::min(n - j0, 2 * detail::kPathLanes));
+        }
         // r = L z (lower-triangular product; no allocation in the hot loop).
         double* row = out.data() + p * n;
         for (std::size_t i = 0; i < n; ++i) {

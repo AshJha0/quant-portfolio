@@ -82,10 +82,6 @@ KupiecResult kupiec_pof(const KupiecInput& in) {
     return res;
 }
 
-KupiecResult kupiec_pof(int n_obs, int n_exceptions, double alpha) {
-    return kupiec_pof(KupiecInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = alpha});
-}
-
 ChristoffersenResult christoffersen_independence(std::span<const std::uint8_t> exceptions) {
     if (exceptions.size() < 2) {
         throw std::invalid_argument("christoffersen_independence: need at least 2 observations");
@@ -152,11 +148,6 @@ BaselResult basel_traffic_light(const BaselInput& in) {
     }
     res.multiplier = 3.0 + res.plus_factor;
     return res;
-}
-
-BaselResult basel_traffic_light(int n_exceptions, int n_obs) {
-    return basel_traffic_light(
-        BaselInput{.n_obs = n_obs, .n_exceptions = n_exceptions, .alpha = 0.01});
 }
 
 double acerbi_szekely_z2(std::span<const double> pnl, std::span<const double> var,

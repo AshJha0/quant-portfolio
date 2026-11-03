@@ -83,6 +83,40 @@ nothing).
 - Seed determinism on the same build (`simulate_is_deterministic_for_fixed_seed`).
 - Bootstrap and KDE SE agree within 3x at `alpha = 0.001` on 20 000 draws.
 
+## Reference: the independent mpmath oracle
+
+The reference values for this engine come from an oracle that shares no
+code with any engine: `python/equity/03-var-es-engine/tests/golden/var_oracle.py`.
+It uses mpmath at 50 digits and exact `Fraction` arithmetic for order
+statistics and the binomial CDF, and imports nothing but the standard
+library and mpmath (a test scans its imports). The Student-t quantile is
+found by bisection on the CDF written as a regularized incomplete beta, not
+by a library ppf. It writes 196 values to
+`python/fx/03-var-es-engine/tests/golden/oracle_vectors.json`, and
+`emit_oracle_consts.py` turns them into the C++ and Rust constants; a
+Python test fails if the emitted files are stale.
+
+What it covers: normal and variance-matched Student-t VaR and ES at alpha
+0.001, 0.01, 0.025 and 0.05 and df 3, 4, 6, 10 and 30; Cornish-Fisher;
+the case-B portfolio sigma and its 1-day and 10-day VaR; historical VaR on
+a 250-value sample under the regulatory k-th-worst rule and the
+interpolated (type 7) rule; Acerbi-Tasche ES; Kupiec LR and p-value (18
+cases); Christoffersen independence and conditional coverage; and the
+Basel binomial CDF (15 cases).
+
+Published tables. The oracle reproduces all 11 cells of the BCBS (1996)
+traffic-light cumulative probabilities to 0.01%, and 7 of the 9 cells of
+the Kupiec (1995) non-rejection regions as tabulated by Jorion. The other
+two follow from the LR test itself and are pinned by tests: at T = 255,
+p = 1%, N = 0 gives LR = 5.126 > 3.841, so it is rejected and the table
+prints no lower bound; at T = 255, p = 5%, N = 20 gives LR = 3.727 < 3.841,
+so it is accepted where the table stops at 19. The BCBS 1996
+traffic-light and Kupiec 1995 tables were checked against the printed
+sources by the owner, 2026-11-03.
+
+This engine (Rust, `tests/test_oracle.rs`, constants in `tests/oracle/mod.rs`) agrees with the oracle: closed forms to
+1e-10 relative, historical VaR exactly, ES to 1e-12, and Monte Carlo VaR (case B, normal and t5, 3 seeds, 200,000 paths) within 3 standard errors.
+
 ## 6. Failure modes
 
 - **F1 Peg blindness.** A pegged currency contributes near-zero historical
@@ -98,9 +132,11 @@ nothing).
 - **F4 Square-root-of-time** on carry books understates 10-day risk.
 - **F5 KDE SE** understates the SE deep in the tail; the bootstrap SE is
   primary.
-- **F6 Engines do not match each other draw for draw.** Rust uses xoshiro256++,
-  C++ `mt19937_64`; MC agreement across engines is statistical. No
-  cross-platform reproducibility is claimed either.
+- **F6 Engines match draw for draw only on the same libm.** Since Round 8
+  Rust and C++ share the per-path Philox stream and give the same bits on
+  Linux x86-64 with glibc (pinned in both `test_w4b` suites); another libm
+  can move the last bit of `ln`/`exp`/`sqrt`. Python (NumPy) agreement is
+  statistical.
 - **F7 Kupiec at 250 days, 1 %.** The chi2(1) test is oversized there
   (expected count 2.5); read p-values near 0.05 with care.
 - **F8 NaN.** Validation uses `is_finite()` and `!(x > 0.0)`; `x <= 0.0` is

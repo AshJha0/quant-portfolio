@@ -61,9 +61,9 @@ Between reset dates `ln(D/P)` is linear in `t`, so zero spreads give
 carries the basis; for USDJPY the JPY (quote) curve does, not the USD one.
 Market forwards are `F_mkt(T) = S * D_base(T) / D_quote(T)`.
 
-`basis_adjusted_curve` keeps the older zero-spread shortcut
-(`z_adj = z_f + s`) and `basis_model="zero_spread"` selects it with a
-DeprecationWarning. Under it a parallel foreign-rate move and a basis move
+`basis_adjusted_curve` used to offer the older zero-spread shortcut
+(`z_adj = z_f + s`) as `basis_model="zero_spread"`; it was removed in 3.0.0.
+Under it a parallel foreign-rate move and a basis move
 are the same risk factor. `implied_basis_from_forwards` inverts forwards to
 that zero-spread equivalent; it differs from the float-float par spread by
 the gap between `T` and the spread annuity (under 0.3bp in the synthetic
@@ -73,12 +73,19 @@ normal regime, 2.3bp in the crisis regime).
 
 - FX forward (outright): above.
 - FX swap: near and far exchange of the same base notional, valued as the
-  four-cashflow sum and tested against two outrights.
+  four-cashflow sum and tested against two outrights. `FXSwap` takes times
+  in years; `fx_rates.swaps.DatedFXSwap` takes value dates and adds swap
+  points, tom-next, rolls, uneven notionals and carry (section 1.6).
 - Fixed-fixed cross-currency swap: two fixed-rate bonds with final
   (optionally initial) notional exchange, each leg discounted on its
   currency's collateral-consistent curve. Par rates are closed-form.
   `solve_par_basis` solves a parallel shift of the basis quotes that zeroes
-  the PV.
+  the PV. The initial exchange is on the spot date at the quoted spot
+  rate, worth `sign * P_d(t_s) * (N_quote - S * N_base)` today; until
+  round 7 it was taken undiscounted, as if it happened today (150,000.00
+  instead of 149,926.05 for a 150,000 USD off-market exchange at 4.5% with
+  spot four days out). The basis swap's initial exchange had the same fault
+  and was worth -2,377.82 USD on an at-market 10m EUR swap instead of zero.
 - Float-float basis swap (`BasisSwap`): constant notionals. The
   mark-to-market resetting variant, with its convexity adjustment, is
   `FloatFloatXccy(mtm_reset=True)` in `fx_rates.xccy_float`.
@@ -86,19 +93,55 @@ normal regime, 2.3bp in the crisis regime).
 ### 1.5 Dates and day counts
 
 - `spot_date` counts business days on the non-USD calendars, then rolls to
-  a day good in both currencies plus USD (T+2 default, T+1 via
-  `spot_lag_days`).
+  a day good in both currencies plus USD (T+2, or T+1 for USDCAD, USDTRY,
+  USDRUB, USDPHP). The rule is `qp_core.holidays.fx_spot_date`, shared with
+  `fx_options.cuts.spot_date` since round 7.
 - `tenor_dates`: ON runs T to T+1, TN runs T+1 to spot, SN runs spot to
   spot+1; W/M/Y tenors run from spot with modified following and the
   end-end rule.
 - Money-market accrual per currency (`MONEY_MARKET_DAYCOUNT`): ACT/360 for
   USD, EUR, JPY, CHF; ACT/365F for GBP, AUD, CAD, NZD. `CIPQuotes` takes
   per-currency accruals `tau_dom` and `tau_for`.
-- Calendars (`fx_rates.calendars`) are partial: weekends plus fixed-date
-  holidays for USD, EUR, GBP, JPY.
+- Calendars (`fx_rates.calendars`) are the rule-based calendars of
+  `qp_core.holidays`: USD (Federal Reserve), EUR (TARGET2), GBP, JPY, CHF,
+  CAD, AUD, 2000-2099, checked against QuantLib for 2000-2030. The SIFMA
+  bond-market calendar `USD-GOVT` is for Treasury schedules, not FX.
 - Curve times are year fractions; instruments are specified in years.
 
-### 1.6 Risk
+### 1.6 Dated FX swaps (`fx_rates.swaps`, round 7)
+
+Plain idea: an FX swap buys a currency for one value date and sells it
+back for a later one. The far rate minus the near rate is the swap points,
+which at market is the interest differential over the period (covered
+interest parity). Desks use swaps to move positions in time: tom-next
+moves a spot position from tomorrow to spot, and a roll moves a maturing
+forward to a later date.
+
+Formal statement (Clark 2011, ch. 1-2; Wystup 2017, ch. 1). With `n` base
+bought on the near date at `K_n`, `n_f` sold on the far date at `K_f`,
+`S_0 = S P_d(t_s)/P_f(t_s)`:
+
+    V_near = n (S_0 P_f(T_n) - K_n P_d(T_n)),   V_far = -n_f (S_0 P_f(T_f) - K_f P_d(T_f)).
+
+A leg dated before the valuation date has settled and drops out. Fair
+points are `(F(T_f) - F(T_n)) * factor`. `price_fx_swap` solves
+`K_f = F(T_f) - V_near / (n_f P_d(T_f))`, so an off-market near rate is
+carried, with interest, into the far rate. An uneven swap (`n_f != n`) is
+an even swap plus an outright of `n - n_f` base. `roll_position` rolls a
+forward at market (the old trade's result is paid on the near date) or at
+the historical rate (the result moves into the far rate). `carry` is the
+value change to a horizon with spot and the zero curves unchanged.
+
+Worked example: Thursday 5 June 2025, EURUSD 1.0850, flat 4.5% USD and
+2.5% EUR. Tom is Friday 6 June, spot Monday 9 June, and tom-next is
+`1.0850 (1 - exp(-0.02 * 3/365)) * 1e4 = 1.78` points. Traded Wednesday
+2 July, tom-next runs Thursday 3 July to Monday 7 July (4 July is a USD
+holiday) and covers four nights. Spot to 9 September is 54.8 points.
+Every number is a closed-form test in `tests/test_fx_swaps_dated.py`; the
+Rust and C++ ports (`qp_core::holidays::fx_leg_value`,
+`fx_swap_far_rate`, `xccy_initial_exchange`) reproduce them.
+
+### 1.7 Risk
 
 - FX delta `dV/dS` in quote currency per unit of spot. For an outright it
   is `N * D_base(T)`.
@@ -141,8 +184,12 @@ Each assumption states what breaks if violated.
 - **A5 Constant-notional basis swaps in `xccy`.** The MtM-resetting basis
   swap, the liquid instrument for the majors, lives in `xccy_float`
   (section below), with its convexity adjustment and seasoned valuation.
-- **A6 Partial calendars.** Weekends plus fixed-date holidays only; no
-  moveable feasts, no turn-of-year day-count spikes on the curve.
+- **A6 Calendars.** Rule-based calendars for USD, EUR, GBP, JPY, CHF, CAD
+  and AUD from `qp_core.holidays` (2000-2099, checked against QuantLib
+  2000-2030). Onshore calendars for NDF currencies (BRL, INR, KRW, TWD) are
+  not shipped; those count weekends only. No turn-of-year day-count spikes
+  on the curve. Until milestone v2.1 the calendars here were weekend plus
+  fixed-date holidays only.
 - **A7 One pair per `MarketState`.** Triangular consistency of CIP
   forwards is tested to 1e-12 across EURUSD, USDJPY and EURJPY.
 - **A8 Continuous compounding for zeros, simple compounding for deposits

@@ -67,6 +67,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
+from qp_core.vol.heston import heston_cf as _core_cf
 from scipy.integrate import quad
 
 __all__ = [
@@ -86,7 +88,7 @@ class FellerWarning(UserWarning):
     """Warns when 2*kappa*theta < xi^2 (variance can touch zero)."""
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, kw_only=True)
 class HestonParams:
     """Heston model parameters (annualised variance units).
 
@@ -103,10 +105,10 @@ class HestonParams:
     rho : float
         Spot-variance correlation, in [-1, 1] (boundaries allowed).
 
-    Pass the parameters by keyword. The field order is
+    The parameters are keyword-only. The field order is
     ``(v0, kappa, theta, xi, rho)``, the same as ``fx_surface.HestonParams``.
-    Positional construction still works and keeps this package's historical
-    order ``(v0, kappa, theta, rho, xi)``, with a ``DeprecationWarning``.
+    Positional construction in the old order ``(v0, kappa, theta, rho, xi)``
+    was removed in v3.0.0.
     """
 
     v0: float
@@ -114,30 +116,6 @@ class HestonParams:
     theta: float
     xi: float
     rho: float
-
-    _LEGACY_ORDER = ("v0", "kappa", "theta", "rho", "xi")
-
-    def __init__(self, *args: float, **kwargs: float) -> None:
-        if args:
-            if len(args) > 5:
-                raise TypeError(f"HestonParams takes at most 5 positional arguments, got {len(args)}")
-            warnings.warn(
-                "positional HestonParams(v0, kappa, theta, rho, xi) is deprecated; pass "
-                "keywords (the field order is now v0, kappa, theta, xi, rho, as in fx_surface)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            for name, value in zip(self._LEGACY_ORDER, args, strict=False):
-                if name in kwargs:
-                    raise TypeError(f"HestonParams got multiple values for argument {name!r}")
-                kwargs[name] = value
-        missing = [n for n in self._LEGACY_ORDER if n not in kwargs]
-        unknown = [n for n in kwargs if n not in self._LEGACY_ORDER]
-        if missing or unknown:
-            raise TypeError(f"HestonParams: missing {missing}, unexpected {unknown}")
-        for name in ("v0", "kappa", "theta", "xi", "rho"):
-            object.__setattr__(self, name, kwargs[name])
-        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.v0 <= 0.0:
@@ -197,26 +175,15 @@ def heston_cf(
     ``v(t) = theta + (v0 - theta) e^{-kappa t}``, and the CF degenerates to
     the Gaussian CF with integrated variance
     ``IV = theta T + (v0 - theta)(1 - e^{-kappa T})/kappa``.
+
+    A shim over :func:`qp_core.vol.heston.heston_cf` (Round 18): the one
+    characteristic function shared with ``fx_surface``. Bit-identical to the
+    copy that lived here before.
     """
     if T < 0.0:
         raise ValueError(f"T must be non-negative, got {T}")
-    u = np.asarray(u, dtype=complex)
-    x0 = np.log(S) + (r - q) * T  # log-forward
-
-    if p.xi < 1e-12:
-        iv = p.theta * T + (p.v0 - p.theta) * (1.0 - np.exp(-p.kappa * T)) / p.kappa
-        out = np.exp(1j * u * (x0 - 0.5 * iv) - 0.5 * u * u * iv)
-        return out if out.ndim else complex(out)
-
-    xi2 = p.xi * p.xi
-    b = p.kappa - 1j * p.rho * p.xi * u
-    d = np.sqrt(b * b + xi2 * (1j * u + u * u))
-    g2 = (b - d) / (b + d)
-    e_dT = np.exp(-d * T)
-    C = (p.kappa * p.theta / xi2) * ((b - d) * T - 2.0 * np.log((1.0 - g2 * e_dT) / (1.0 - g2)))
-    D = ((b - d) / xi2) * (1.0 - e_dT) / (1.0 - g2 * e_dT)
-    out = np.exp(1j * u * x0 + C + D * p.v0)
-    return out if out.ndim else complex(out)
+    return _core_cf(u, T, v0=p.v0, kappa=p.kappa, theta=p.theta, xi=p.xi, rho=p.rho,
+                    x0=np.log(S), mu=r - q)
 
 
 def _u_max(
@@ -407,6 +374,7 @@ def heston_call_gl(
     return prices if np.ndim(K) else float(prices[0])
 
 
+@model(id="EQ-SURF-HESTON")
 def heston_call(
     S: float,
     K: float,

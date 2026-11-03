@@ -37,63 +37,6 @@ fn validate_pnl(pnl: &[f64], min_obs: usize) -> Result<()> {
     Ok(())
 }
 
-fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
-    let mut v = pnl.to_vec();
-    // `total_cmp` is a total order on all f64 bit patterns, so this sort
-    // cannot panic even if a caller reaches it with a NaN (the public
-    // entry points reject NaN first; this removes the panic path entirely
-    // rather than relying on that).
-    v.sort_by(f64::total_cmp);
-    v
-}
-
-/// Empirical quantile with NumPy-default linear (Hyndman–Fan type-7)
-/// interpolation, kept for one release. No VaR path uses it any more.
-///
-/// `h = (n - 1) q`, result
-/// `x_(floor(h)) + (h - floor(h)) * (x_(floor(h)+1) - x_(floor(h)))` on the
-/// ascending order statistics.
-///
-/// `q` must be in `[0, 1]`; input needs at least one finite observation.
-#[deprecated(
-    since = "0.2.0",
-    note = "VaR is the order statistic now; use tail::empirical_var"
-)]
-pub fn linear_quantile(pnl: &[f64], q: f64) -> Result<f64> {
-    if pnl.is_empty() {
-        return Err(EqVarError::InvalidInput(
-            "quantile of an empty sample is undefined".to_string(),
-        ));
-    }
-    if !(0.0..=1.0).contains(&q) {
-        return Err(EqVarError::InvalidInput(format!(
-            "quantile level must be in [0, 1], got {q}"
-        )));
-    }
-    if pnl.iter().any(|v| !v.is_finite()) {
-        return Err(EqVarError::InvalidInput(
-            "pnl contains NaN or infinite values".to_string(),
-        ));
-    }
-    let sorted = sorted_copy(pnl);
-    Ok(linear_quantile_sorted(&sorted, q))
-}
-
-/// Type-7 quantile on an already ascending-sorted, non-empty slice.
-fn linear_quantile_sorted(sorted: &[f64], q: f64) -> f64 {
-    let n = sorted.len();
-    if n == 1 {
-        return sorted[0];
-    }
-    let h = (n - 1) as f64 * q;
-    let lo = h.floor() as usize;
-    if lo + 1 >= n {
-        return sorted[n - 1];
-    }
-    let frac = h - lo as f64;
-    sorted[lo] + frac * (sorted[lo + 1] - sorted[lo])
-}
-
 /// Plain historical-simulation VaR (equal weights).
 ///
 /// Returns the loss order statistic `L(m)`, `m = ceil(n alpha - 1e-9)`
@@ -112,6 +55,55 @@ pub fn historical_var(pnl: &[f64], alpha: f64) -> Result<f64> {
     validate_alpha(alpha)?;
     validate_pnl(pnl, MIN_OBS)?;
     crate::tail::empirical_var(pnl, alpha)
+}
+
+/// Historical VaR quantile rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistRule {
+    /// `L(m)`, `m = ceil(n alpha)` (BCBS MAR33.4 / MAR99: 99 % on 250 days
+    /// is the 3rd worst). What [`historical_var`] does. The default.
+    #[default]
+    KthWorst,
+    /// Type-7 linear quantile of the losses at `h = (n - 1) alpha`, counted
+    /// 0-based from the worst (Hyndman and Fan 1996, definition 7); equals
+    /// `numpy.quantile(-pnl, 1 - alpha)` up to rounding.
+    Interpolated,
+}
+
+/// Type-7 VaR of a non-empty finite sample (no minimum length); see
+/// [`HistRule::Interpolated`].
+///
+/// # Errors
+/// [`EqVarError::InvalidInput`] for an empty or non-finite sample or an
+/// invalid `alpha`.
+pub fn interpolated_var(pnl: &[f64], alpha: f64) -> Result<f64> {
+    validate_alpha(alpha)?;
+    validate_pnl(pnl, 1)?;
+    let n = pnl.len();
+    let mut loss: Vec<f64> = pnl.iter().map(|x| -x).collect();
+    let h = (n - 1) as f64 * alpha;
+    let lo = h.floor() as usize;
+    let hi = (lo + 1).min(n - 1);
+    // Worst first: the hi+1 largest losses, sorted descending.
+    loss.select_nth_unstable_by(hi, |a, b| b.total_cmp(a));
+    loss[..=hi].sort_unstable_by(|a, b| b.total_cmp(a));
+    Ok(loss[lo] + (h - lo as f64) * (loss[hi] - loss[lo]))
+}
+
+/// Plain historical VaR under `rule`. Requires at least [`MIN_OBS`] finite
+/// observations.
+///
+/// # Errors
+/// As [`historical_var`].
+pub fn historical_var_with_rule(pnl: &[f64], alpha: f64, rule: HistRule) -> Result<f64> {
+    match rule {
+        HistRule::KthWorst => historical_var(pnl, alpha),
+        HistRule::Interpolated => {
+            validate_alpha(alpha)?;
+            validate_pnl(pnl, MIN_OBS)?;
+            interpolated_var(pnl, alpha)
+        }
+    }
 }
 
 /// Boudoukh–Richardson–Whitelaw exponential age weights.

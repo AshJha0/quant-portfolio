@@ -4,7 +4,7 @@ Conventions
 -----------
 * ``alpha`` is the tail probability: 0.01 means 99 % VaR.  Every function
   rejects ``alpha`` outside (0, 0.5).  The keyword ``confidence=`` (0.99)
-  still works for one release with a ``DeprecationWarning``.
+  was removed in v3.0.0.
 * P&L arrays are profit (+) / loss (-).  VaR and ES are reported as
   positive loss amounts in the book's base currency.
 * Empirical VaR (uniform weights): sort losses ``L = -pnl`` descending,
@@ -102,8 +102,7 @@ def _es_from_tail(losses_d: np.ndarray, w_d, idx: int, alpha: float) -> float:
     return (full + frac * float(losses_d[idx])) / alpha
 
 
-def empirical_var(pnl, alpha: float | None = None, weights=None, *,
-                  confidence: float | None = None) -> float:
+def empirical_var(pnl, alpha: float | None = None, weights=None) -> float:
     """Empirical VaR (positive loss) at tail probability ``alpha``.
 
     Parameters
@@ -115,26 +114,22 @@ def empirical_var(pnl, alpha: float | None = None, weights=None, *,
     weights : array_like, optional
         Non-negative scenario weights (age-weighted HS), normalised
         internally.  Uniform if omitted.
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     losses_d, _, idx = _tail(pnl, alpha, weights)
     return float(losses_d[idx])
 
 
-def empirical_es(pnl, alpha: float | None = None, weights=None, *,
-                 confidence: float | None = None) -> float:
+def empirical_es(pnl, alpha: float | None = None, weights=None) -> float:
     """Empirical ES (positive loss), Acerbi-Tasche estimator."""
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     losses_d, w_d, idx = _tail(pnl, alpha, weights)
     return float(_es_from_tail(losses_d, w_d, idx, alpha))
 
 
-def empirical_var_es(pnl, alpha: float | None = None, weights=None, *,
-                     confidence: float | None = None) -> tuple[float, float]:
+def empirical_var_es(pnl, alpha: float | None = None, weights=None) -> tuple[float, float]:
     """Return ``(VaR, ES)`` from one pass over the sample."""
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     losses_d, w_d, idx = _tail(pnl, alpha, weights)
     return float(losses_d[idx]), float(_es_from_tail(losses_d, w_d, idx, alpha))
 
@@ -145,18 +140,16 @@ def _check_sigma(sigma: float, mean: float) -> None:
         raise ValueError("sigma must be >= 0")
 
 
-def normal_var(sigma: float, alpha: float | None = None, mean: float = 0.0, *,
-               confidence: float | None = None) -> float:
+def normal_var(sigma: float, alpha: float | None = None, mean: float = 0.0) -> float:
     """Closed-form Normal VaR: ``-mean + sigma * Phi^{-1}(1 - alpha)``."""
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     _check_sigma(sigma, mean)
     return float(-mean + sigma * norm.isf(alpha))
 
 
-def normal_es(sigma: float, alpha: float | None = None, mean: float = 0.0, *,
-              confidence: float | None = None) -> float:
+def normal_es(sigma: float, alpha: float | None = None, mean: float = 0.0) -> float:
     """Closed-form Normal ES: ``-mean + sigma phi(z) / alpha``."""
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     _check_sigma(sigma, mean)
     z = norm.isf(alpha)
     return float(-mean + sigma * norm.pdf(z) / alpha)
@@ -170,13 +163,13 @@ def _t_scale(df: float) -> float:
 
 
 def t_var(sigma: float, alpha: float | None = None, df: float = 6.0,
-          mean: float = 0.0, *, confidence: float | None = None) -> float:
+          mean: float = 0.0) -> float:
     """Unit-variance Student-t VaR with P&L standard deviation ``sigma``.
 
     The scaling ``sqrt((df-2)/df)`` makes ``sigma`` the actual standard
     deviation, so normal and t VaR are comparable at equal risk.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     _check_sigma(sigma, mean)
     scale = _t_scale(df)
     q = student_t.isf(alpha, df)
@@ -184,13 +177,13 @@ def t_var(sigma: float, alpha: float | None = None, df: float = 6.0,
 
 
 def t_es(sigma: float, alpha: float | None = None, df: float = 6.0,
-         mean: float = 0.0, *, confidence: float | None = None) -> float:
+         mean: float = 0.0) -> float:
     """Unit-variance Student-t ES (closed form).
 
     For the standard t, ``E[X | X > q] = f(q) (df + q^2) / (alpha (df - 1))``
     with ``q`` the upper ``alpha`` quantile.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     _check_sigma(sigma, mean)
     scale = _t_scale(df)
     q = student_t.isf(alpha, df)

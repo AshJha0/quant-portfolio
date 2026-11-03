@@ -1,6 +1,8 @@
 #include "fxvar/historical.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 
@@ -27,6 +29,10 @@ std::vector<double> prepare_scenarios(ReturnsMatrix& rets, const HistoricalOptio
     }
   }
 
+  if (opts.rule == HistRule::kInterpolated && opts.method == HsMethod::kAge) {
+    throw std::invalid_argument(
+        "rule kInterpolated needs equal weights; use method kPlain or kFiltered");
+  }
   const std::size_t n = rets.n_obs();
   std::vector<double> weights;
   if (opts.method == HsMethod::kPlain) {
@@ -55,7 +61,36 @@ std::vector<double> prepare_scenarios(ReturnsMatrix& rets, const HistoricalOptio
   return weights;
 }
 
+double finish_var(const HistoricalResult& res, const HistoricalOptions& opts, double var1) {
+  return opts.rule == HistRule::kInterpolated ? interpolated_var(res.pnl, opts.alpha) : var1;
+}
+
 }  // namespace
+
+double interpolated_var(std::span<const double> pnl, double alpha) {
+  if (pnl.empty()) throw std::invalid_argument("interpolated_var: empty sample");
+  if (!(alpha > 0.0 && alpha < 1.0)) {
+    throw std::invalid_argument("interpolated_var: alpha must be in (0, 1)");
+  }
+  const std::size_t n = pnl.size();
+  std::vector<double> loss(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(pnl[i])) throw std::invalid_argument("interpolated_var: non-finite P&L");
+    loss[i] = -pnl[i];
+  }
+  const double h = static_cast<double>(n - 1) * alpha;
+  const auto lo = static_cast<std::size_t>(std::floor(h));
+  const std::size_t hi = std::min(lo + 1, n - 1);
+  // Worst first: the hi+1 largest losses, sorted descending.
+  std::partial_sort(loss.begin(), loss.begin() + static_cast<std::ptrdiff_t>(hi + 1), loss.end(),
+                    std::greater<>());
+  return loss[lo] + (h - static_cast<double>(lo)) * (loss[hi] - loss[lo]);
+}
+
+double historical_var_from_pnl(std::span<const double> pnl, double alpha, HistRule rule) {
+  if (rule == HistRule::kInterpolated) return interpolated_var(pnl, alpha);
+  return empirical_var_es(std::vector<double>(pnl.begin(), pnl.end()), alpha).first;
+}
 
 HistoricalResult historical_var(const Book& book, const Market& market,
                                 const ReturnsMatrix& returns, const HistoricalOptions& opts) {
@@ -85,7 +120,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
   res.weights = weights;
   const auto [var1, es1] = empirical_var_es(res.pnl, opts.alpha, weights);
   const double scale = std::sqrt(opts.horizon_days);
-  res.var = var1 * scale;
+  res.var = finish_var(res, opts, var1) * scale;
   res.es = es1 * scale;
   return res;
 }
@@ -116,7 +151,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
   res.pnl = option_book_pnl(layout, rets, dt);
   res.weights = weights;
   const auto [var1, es1] = empirical_var_es(res.pnl, opts.alpha, weights);
-  res.var = var1;
+  res.var = finish_var(res, opts, var1);
   res.es = es1;
   return res;
 }
@@ -148,7 +183,7 @@ HistoricalResult historical_var(const Book& book, const Market& market,
   res.pnl = option_book_pnl(layout, rets, dt, vol);
   res.weights = weights;
   const auto [var1, es1] = empirical_var_es(res.pnl, opts.alpha, weights);
-  res.var = var1;
+  res.var = finish_var(res, opts, var1);
   res.es = es1;
   return res;
 }

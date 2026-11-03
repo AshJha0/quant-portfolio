@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-credit"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "FX / cross-border credit risk: sovereign PD scorecard (WOE/IV + IRLS logistic), FX settlement (Herstatt) risk, counterparty pre-settlement exposure (EE/PFE/CVA) and capital (EL, Basel standardized, Vasicek economic capital)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ test = ["pytest>=7.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+fx_credit = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

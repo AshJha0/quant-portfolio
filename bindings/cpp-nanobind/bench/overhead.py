@@ -2,8 +2,11 @@
 
 Usage: python bench/overhead.py [--module qp_cpp|qp_rust] [--n 100000]
 
-Prints the median time per option of: the Python reference engine, the
-binding's scalar call in a Python loop, and one batch call over n options.
+Prints, per option: the median over --repeat runs of the Python reference
+engine in a loop, the binding's scalar call in a loop, and one batch call
+over n options (each median divided by the options in one run). It is a
+median of whole-run times, not a tail figure. For qp_cpp the batch rows
+are printed for the default (fast) kernel and for exact=True.
 """
 
 from __future__ import annotations
@@ -66,6 +69,12 @@ def main() -> None:
 
     ones = [x[:1].copy() for x in (S, K, T, r, sig, q, is_call)]
 
+    def batch_exact():
+        qp.eq_bs_price_batch(S, K, T, r, sig, q, is_call, exact=True)
+
+    def batch_greeks_exact():
+        qp.eq_bs_greeks_batch(S, K, T, r, sig, q, is_call, exact=True)
+
     def one():
         qp.eq_bs_price_batch(*ones)
 
@@ -78,6 +87,12 @@ def main() -> None:
         ("binding eq_bs_greeks_batch, one call", _median_ns(batch_greeks, a.repeat) / n),
         ("binding eq_bs_price_batch, length 1", _median_ns(one, 2001)),
     ]
+    if a.module == "qp_cpp":
+        rows[3:3] = [
+            ("binding eq_bs_price_batch exact=True, one call", _median_ns(batch_exact, a.repeat) / n),
+            ("binding eq_bs_greeks_batch exact=True, one call",
+             _median_ns(batch_greeks_exact, a.repeat) / n),
+        ]
     print("| call | ns per option |")
     print("|---|---:|")
     for name, ns in rows:

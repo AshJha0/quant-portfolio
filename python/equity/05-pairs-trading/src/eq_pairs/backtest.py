@@ -44,6 +44,7 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
+from qp_bt import BarContext, EventEngine, NextBarFill, TargetPosition
 from qp_core.execution import ExecutionConfig
 
 from .cointegration import engle_granger
@@ -294,90 +295,97 @@ def backtest_pair(
         sig_x = np.full(n, float(leg_vol[1]))
 
     auction = execution.mode == "close_auction"
-    f = 0.0 if auction else execution.fill_fraction
     auction_rate = execution.auction_cost_bp / 1e4 if auction else 0.0
+    # The fill rule lives in qp_bt: next mode fills tgt[t-1] on day t at
+    # p_{t-1} + f (p_t - p_{t-1}); close-auction fills tgt[t] at p_t, booked on t.
+    fill = (NextBarFill(1.0, 0) if auction
+            else NextBarFill(execution.fill_fraction, 1))
+    desired = np.zeros(n, dtype=int)
+    if auction:
+        desired[:] = tgt
+    else:
+        desired[1:] = tgt[:-1]
+    if close_at_end:
+        desired[-1] = 0
+    sigma = (sig_y, sig_x)
 
-    idx = y.index
-    daily = {
-        k: np.zeros(n)
-        for k in ("gross_pnl", *COST_COLUMNS, "net_pnl", "q_y", "q_x",
-                  "gross_exposure", "net_exposure")
-    }
-    position = np.zeros(n, dtype=int)
-    ledger_rows: list[dict] = []
-    trade_rows: list[dict] = []
-
-    q_y = q_x = 0.0
-    direction = 0
-    open_trade: dict | None = None
-
-    def execute_leg(t: int, leg: str, d_shares: float, price: float, sigma: float) -> dict:
+    def unit_cost(t: int, leg: int, d_shares: float, price: float) -> dict[str, float]:
         notional = abs(d_shares) * price
-        c = {
+        return {
             "commission": notional * costs.cost_bps / 1e4,
             "slippage": notional * costs.slippage_bps / 1e4,
-            "impact": notional * costs.impact_coef * sigma
+            "impact": notional * costs.impact_coef * sigma[leg][t]
             * math.sqrt(notional / costs.adv_dollars),
             "auction": notional * auction_rate,
         }
-        if d_shares != 0.0:
-            ledger_rows.append({"date": idx[t], "leg": leg, "shares": d_shares,
-                                "price": price, "notional": notional, **c})
-        return c
 
+    def carry(t: int, q: np.ndarray, pf: np.ndarray) -> dict[str, float]:
+        # overnight carry of the legs held into day t, valued at the fill price
+        q_y, q_x = float(q[0]), float(q[1])
+        pf_y, pf_x = float(pf[0]), float(pf[1])
+        short_mv = (-q_y * pf_y if q_y < 0 else 0.0) + (-q_x * pf_x if q_x < 0 else 0.0)
+        long_mv = (q_y * pf_y if q_y > 0 else 0.0) + (q_x * pf_x if q_x > 0 else 0.0)
+        return {"borrow": short_mv * costs.daily_borrow_rate,
+                "financing": long_mv * costs.daily_financing_rate
+                - short_mv * costs.daily_rebate_rate}
+
+    class _Pair:
+        direction = 0
+
+        def on_bar(self, ctx: BarContext) -> list[TargetPosition]:
+            t = ctx.bar + fill.lag
+            if t >= n or desired[t] == self.direction:
+                return []
+            want = int(desired[t])
+            out = []
+            if self.direction != 0:
+                out.append(TargetPosition(lambda pf: np.zeros(2), "exit"))
+            if want != 0:
+                out.append(TargetPosition(
+                    lambda pf: np.array(size_positions(float(pf[0]), float(pf[1]), want, beta,
+                                                       gross=gross, mode=sizing)), "entry"))
+            self.direction = want
+            return out
+
+    prices = pd.DataFrame({"y": yv, "x": xv}, index=y.index)
+    run = EventEngine(prices, fill, unit_cost=unit_cost, carry=carry,
+                      initial_nav=1e6 * gross).run(_Pair())
+    assert run.positions is not None and run.pnl is not None
+    pnl = run.pnl.reindex(columns=["pre_fill_pnl", "post_fill_pnl",
+                                   *(f"cost_{k}" for k in ("commission", "slippage", "impact",
+                                                           "auction")),
+                                   "carry_borrow", "carry_financing"], fill_value=0.0)
+    idx = y.index
+    daily = {k: np.zeros(n) for k in ("gross_pnl", *COST_COLUMNS, "net_pnl")}
+    for k in ("commission", "slippage", "impact", "auction"):
+        daily[k] = pnl[f"cost_{k}"].to_numpy(dtype=float)
+    daily["borrow"] = pnl["carry_borrow"].to_numpy(dtype=float)
+    daily["financing"] = pnl["carry_financing"].to_numpy(dtype=float)
+    carried = pnl["pre_fill_pnl"].to_numpy(dtype=float)
+    new = pnl["post_fill_pnl"].to_numpy(dtype=float)
+    daily["gross_pnl"] = carried + new
     for t in range(n):
-        # 1) fill price for today's trade and the decision being filled
-        if auction:
-            pf_y, pf_x = yv[t], xv[t]
-            desired = int(tgt[t])
-        elif t == 0:
-            pf_y, pf_x = yv[0], xv[0]
-            desired = 0
-        else:
-            pf_y = yv[t - 1] + f * (yv[t] - yv[t - 1])
-            pf_x = xv[t - 1] + f * (xv[t] - xv[t - 1])
-            desired = int(tgt[t - 1])
-        if close_at_end and t == n - 1:
-            desired = 0
+        daily["net_pnl"][t] = daily["gross_pnl"][t] - sum(daily[k][t] for k in COST_COLUMNS)
+    qy = run.positions["y"].to_numpy(dtype=float)
+    qx = run.positions["x"].to_numpy(dtype=float)
+    leg_cost = {"exit": np.zeros(n), "entry": np.zeros(n)}
+    ledger_rows = []
+    for fr in run.fills:
+        leg_cost[fr.tag][fr.bar] += sum(fr.costs.values())
+        ledger_rows.append({"date": idx[fr.bar], "leg": "yx"[fr.asset], "shares": fr.quantity,
+                            "price": fr.price, "notional": abs(fr.quantity) * fr.price,
+                            **fr.costs})
 
-        # 2) carried holdings: price move up to the fill, overnight carry costs
-        carried_pnl = carry_cost = 0.0
-        if t > 0 and direction != 0:
-            carried_pnl = q_y * (pf_y - yv[t - 1]) + q_x * (pf_x - xv[t - 1])
-            short_mv = (-q_y * pf_y if q_y < 0 else 0.0) + (-q_x * pf_x if q_x < 0 else 0.0)
-            long_mv = (q_y * pf_y if q_y > 0 else 0.0) + (q_x * pf_x if q_x > 0 else 0.0)
-            daily["borrow"][t] = short_mv * costs.daily_borrow_rate
-            daily["financing"][t] = (long_mv * costs.daily_financing_rate
-                                     - short_mv * costs.daily_rebate_rate)
-            carry_cost = daily["borrow"][t] + daily["financing"][t]
-
-        # 3) trade at the fill price
-        exit_cost = entry_cost = 0.0
-        traded = desired != direction
-        if traded:
-            if direction != 0:
-                for leg, q, p, sg in (("y", -q_y, pf_y, sig_y[t]), ("x", -q_x, pf_x, sig_x[t])):
-                    c = execute_leg(t, leg, q, p, sg)
-                    for k, v in c.items():
-                        daily[k][t] += v
-                    exit_cost += sum(c.values())
-                q_y = q_x = 0.0
-            if desired != 0:
-                q_y, q_x = size_positions(pf_y, pf_x, desired, beta, gross=gross, mode=sizing)
-                for leg, q, p, sg in (("y", q_y, pf_y, sig_y[t]), ("x", q_x, pf_x, sig_x[t])):
-                    c = execute_leg(t, leg, q, p, sg)
-                    for k, v in c.items():
-                        daily[k][t] += v
-                    entry_cost += sum(c.values())
-
-        # 4) holdings after the fill earn the rest of the day
-        new_pnl = q_y * (yv[t] - pf_y) + q_x * (xv[t] - pf_x)
-        daily["gross_pnl"][t] = carried_pnl + new_pnl
-
-        # 5) trade bookkeeping
-        if traded:
+    # round-trip bookkeeping (reporting only; the P&L is the engine's)
+    trade_rows: list[dict] = []
+    position = np.zeros(n, dtype=int)
+    direction = 0
+    open_trade: dict | None = None
+    for t in range(n):
+        carry_cost = daily["borrow"][t] + daily["financing"][t]
+        if desired[t] != direction:
             if open_trade is not None:
-                open_trade["pnl"] += carried_pnl - carry_cost - exit_cost
+                open_trade["pnl"] += carried[t] - carry_cost - leg_cost["exit"][t]
                 open_trade["exit_date"] = idx[t]
                 open_trade["bars_held"] += 1
                 last_signal = tgt[t] if auction else tgt[t - 1]
@@ -387,25 +395,23 @@ def backtest_pair(
                 )
                 trade_rows.append(open_trade)
                 open_trade = None
-            if desired != 0:
+            if desired[t] != 0:
                 open_trade = {"entry_date": idx[t], "exit_date": pd.NaT,
-                              "direction": desired, "bars_held": 0,
-                              "pnl": new_pnl - entry_cost, "exit_reason": ""}
-            direction = desired
+                              "direction": int(desired[t]), "bars_held": 0,
+                              "pnl": new[t] - leg_cost["entry"][t], "exit_reason": ""}
+            direction = int(desired[t])
         elif open_trade is not None:
-            open_trade["pnl"] += carried_pnl + new_pnl - carry_cost
+            open_trade["pnl"] += carried[t] + new[t] - carry_cost
             if t > 0:
                 open_trade["bars_held"] += 1
-
-        # 6) end-of-day state
         position[t] = direction
-        daily["q_y"][t] = q_y
-        daily["q_x"][t] = q_x
-        daily["gross_exposure"][t] = abs(q_y) * yv[t] + abs(q_x) * xv[t]
-        daily["net_exposure"][t] = q_y * yv[t] + q_x * xv[t]
-        daily["net_pnl"][t] = daily["gross_pnl"][t] - sum(daily[k][t] for k in COST_COLUMNS)
 
-    df = pd.DataFrame(daily, index=idx)
+    daily["q_y"] = qy
+    daily["q_x"] = qx
+    daily["gross_exposure"] = np.abs(qy) * yv + np.abs(qx) * xv
+    daily["net_exposure"] = qy * yv + qx * xv
+    df = pd.DataFrame(daily, index=idx)[["gross_pnl", *COST_COLUMNS, "net_pnl", "q_y", "q_x",
+                                         "gross_exposure", "net_exposure"]]
     df["position"] = position
     ledger = pd.DataFrame(ledger_rows, columns=_LEDGER_COLS)
     trades = pd.DataFrame(trade_rows, columns=_TRADE_COLS)

@@ -30,15 +30,15 @@ def test_permanent_impact_persists_temporary_reverts():
     cfg = IntradayConfig(mid0=100.0, day_volume=1e6, n_buckets=10,
                          sigma_daily=0.02, spread_bps=4.0, temp_coef=1.0,
                          perm_coef=0.5, price_noise=0.0, curvature=0.0)
-    # flat profile: bucket volume x n_buckets = day volume, so the bucket-
-    # volume square-root law reduces to sqrt(q / V_day)
+    # flat profile: each bucket prints V_day / 10, so the bucket
+    # participation is q / (V_day / 10) = 0.5 (W3: no extra 1/n_buckets)
     mkt = IntradayMarket(cfg)
     q = np.zeros(10)
     q[0] = 50_000.0
     res = mkt.execute(q, side=1, seed=0)
     part = 50_000.0 / 1e6
     perm = 0.5 * 0.02 * part * 100.0               # 0.05 currency
-    temp = 1.0 * 0.02 * np.sqrt(part) * 100.0      # sqrt law, currency
+    temp = 1.0 * 0.02 * np.sqrt(part * 10) * 100.0  # sqrt of bucket participation
     half_spread = 100.0 * 4.0e-4 / 2.0
     fill = res.fills["price"].iloc[0]
     assert fill == pytest.approx(100.0 + half_spread + temp, rel=1e-12)
@@ -160,6 +160,6 @@ def test_thin_bucket_costs_more_than_heavy_bucket():
     assert c_mid > c_open
     # exact ratio from the square-root law on bucket volume
     assert c_mid / c_open == pytest.approx(np.sqrt(prof[0] / prof[5]), rel=1e-12)
-    # hand value at the open: 1.0 * 0.02 * sqrt(q / (n * v_0)) * mid
-    assert c_open == pytest.approx(0.02 * np.sqrt(5_000.0 / (10 * prof[0] * 1e6)) * 100.0,
+    # hand value at the open: 1.0 * 0.02 * sqrt(q / V_0) * mid, V_0 = p_0 * V_day
+    assert c_open == pytest.approx(0.02 * np.sqrt(5_000.0 / (prof[0] * 1e6)) * 100.0,
                                    rel=1e-12)

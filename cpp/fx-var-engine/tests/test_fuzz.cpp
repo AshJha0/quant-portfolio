@@ -103,7 +103,7 @@ TEST(Fuzz, MatrixAndReturns) {
     Matrix c = fcov().cov;
     c(0, 1) = c(1, 0) = b;
     EXPECT_INVALID(cholesky(c));
-    EXPECT_INVALID(robust_cholesky(c));
+    EXPECT_INVALID(cholesky(c));
     EXPECT_INVALID(repair_covariance(c, Repair::kHigham));
     EXPECT_INVALID(symmetric_eigen(c));
     EXPECT_INVALID(matvec(fcov().cov, {b, 1.0}));
@@ -175,7 +175,6 @@ TEST(Fuzz, ExpectedShortfallAndParametric) {
     EXPECT_INVALID(cornish_fisher_z(b, 0.0, 0.0));
     EXPECT_INVALID(cornish_fisher_valid(b, 0.0, 0.01));
     EXPECT_INVALID(cornish_fisher_valid(0.0, 0.0, b));
-    EXPECT_INVALID(cornish_fisher_domain_ok(0.0, b));
     EXPECT_INVALID(cornish_fisher_var(b, 0.0, 0.0));
     EXPECT_INVALID(cornish_fisher_var(1.0, b, 0.0, 0.01, 0.0, 1.0, false));
     EXPECT_INVALID(cornish_fisher_var(1.0, 0.0, 0.0, 0.01, b));
@@ -244,9 +243,9 @@ TEST(Fuzz, BacktestAndStress) {
   const std::vector<double> pnl = good_pnl(250);
   for (double b : kBad) {
     EXPECT_INVALID(kupiec_pof({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
-    EXPECT_INVALID(kupiec_pof(3, 250, b));
+    EXPECT_INVALID(kupiec_pof({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
     EXPECT_INVALID(basel_traffic_light(BaselInput{.n_obs = 250, .n_exceptions = 3, .alpha = b}));
-    EXPECT_INVALID(basel_traffic_light(3, 250, b));
+    EXPECT_INVALID(basel_traffic_light({.n_obs = 250, .n_exceptions = 3, .alpha = b}));
     EXPECT_INVALID(conditional_coverage(std::vector<int>(10, 0), b));
     EXPECT_INVALID(acerbi_szekely_z2(with_bad(pnl, b), {150.0}, {180.0}, 0.025));
     EXPECT_INVALID(acerbi_szekely_z2(pnl, {b}, {180.0}, 0.025));

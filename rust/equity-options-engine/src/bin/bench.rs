@@ -243,7 +243,7 @@ fn main() {
             "  {{\"engine\": \"rust/equity-options-engine\", \"kernel\": \"{}\", \
              \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu}\", \
              \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \
-             \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
+             \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}, \"tail_basis\": \"{}\"}}{}\n",
             s.kernel,
             s.n_iter,
             s.calls_per_sample,
@@ -253,6 +253,7 @@ fn main() {
             s.p99,
             s.p999,
             s.max,
+            qp_core::bench::tail_basis(s.calls_per_sample),
             if i + 1 < stats.len() { "," } else { "" }
         );
     }

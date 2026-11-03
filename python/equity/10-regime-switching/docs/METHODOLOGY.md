@@ -85,7 +85,7 @@ market-stress factor loading on all vol/correlation/drawdown measures.
 * **Minimum duration (optional)**: `min_duration=k` holds the effective
   regime until a new one has persisted k consecutive days. It is causal
   (`strategy.causal_min_duration`). The older `detection.min_duration_filter`
-  relabels a run after its end is known, is not causal, and is deprecated.
+  relabels a run after its end is known, is not causal, and was removed in 3.0.0.
 
 ### Execution, costs and financing
 

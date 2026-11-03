@@ -1,0 +1,20 @@
+[package]
+name = "qp-ull-ring"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Bounded single-producer single-consumer ring (Lamport 1983 with Vyukov-style cached indices) for the W30-rs low-latency hot path. std only; loom model-checked."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_ull_ring"
+path = "src/lib.rs"
+
+[dependencies]
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

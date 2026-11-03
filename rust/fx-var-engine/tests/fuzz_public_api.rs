@@ -225,7 +225,6 @@ proptest! {
         check!(cornish_fisher_var(1.0, 0.0, 0.0, a, 0.0, 1.0, true).is_err());
         check!(cornish_fisher_var(1.0, 0.0, 0.0, 0.01, x, 1.0, true).is_err());
         check!(cornish_fisher_var(1.0, 0.0, 0.0, 0.01, 0.0, x, true).is_err());
-        check!(!cornish_fisher_domain_ok(x, 0.0, 4.0, 801));
         check!(cornish_fisher_z(f64::NAN, 0.1, 0.1).is_nan());
     }
 
@@ -236,6 +235,17 @@ proptest! {
         check!(historical_var(&book(), &market(), &rets_poison(120, i, x), &HistoricalOptions::default()).is_err());
         check!(historical_var(&Book::empty(), &market(), &rets(120), &HistoricalOptions::default()).is_err());
         check!(historical_var(&book(), &market(), &rets(10), &HistoricalOptions::default()).is_err());
+        let pz: Vec<f64> = (0..120).map(|k| f64::from(k) - 60.0).collect();
+        let mut pp = pz.clone();
+        pp[i % 120] = x;
+        for r in [HistRule::KthWorst, HistRule::Interpolated] {
+            check!(historical_var_from_pnl(&pp, 0.01, r).is_err());
+            check!(historical_var_from_pnl(&pz, a, r).is_err());
+        }
+        check!(interpolated_var(&pp, 0.01).is_err());
+        check!(interpolated_var(&[], 0.01).is_err());
+        let age_interp = HistoricalOptions { method: HsMethod::Age, rule: HistRule::Interpolated, ..Default::default() };
+        check!(historical_var(&book(), &market(), &rets(120), &age_interp).is_err());
         let d = HistoricalOptions::default();
         check!(historical_option_var(&book(), &market(), &eur_call(0.1), &eur_name(), &rets(120), &HistoricalOptions { alpha: a, ..Default::default() }, 0.0).is_err());
         check!(historical_option_var(&book(), &market(), &eur_call(x), &eur_name(), &rets(120), &d, 0.0).is_err());
@@ -263,10 +273,8 @@ proptest! {
         check!(kupiec_pof(&KupiecInput { n_obs: neg, n_exceptions: 0, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: neg, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
-        check!(kupiec_pof_confidence(5, 250, x).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: a }).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 300, alpha: 0.01 }).is_err());
-        check!(basel_traffic_light_confidence(5, 250, x).is_err());
         check!(christoffersen_independence(&[1]).is_err());
         check!(christoffersen_independence(&[0, 2]).is_err());
         check!(conditional_coverage(&[0, 1, 0, 0], a).is_err());

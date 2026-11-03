@@ -3,8 +3,11 @@
 //! Functions are prefixed by engine: `eq_` (equity options, equity VaR) and
 //! `fx_` (FX options, FX VaR). Batch functions read C-contiguous float64
 //! arrays in place, write new arrays, and release the GIL while the engine
-//! runs. Every engine error becomes a Python `ValueError` carrying the
-//! engine's message.
+//! runs. Engine errors raise the `qp_core.errors` classes with the engine's
+//! message: `ConvergenceError` when a solver or other numerical method fails
+//! on well-formed input, `InputError` for everything else. Both are
+//! `ValueError`s; `ConvergenceError` is also a `RuntimeError`. When `qp_core`
+//! is not installed they fall back to `ValueError`.
 
 use std::borrow::Cow;
 use std::fmt::Display;
@@ -12,15 +15,105 @@ use std::fmt::Display;
 use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyType};
 
 use eq_options_engine as eqo;
 use eq_var_engine as eqv;
 use fx_options_engine as fxo;
 use fx_var_engine as fxv;
 
-fn verr<E: Display>(e: E) -> PyErr {
-    PyValueError::new_err(e.to_string())
+/// Which `qp_core.errors` class an engine failure maps to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    Input,
+    Convergence,
+}
+
+/// Engine error types and the Python error class each variant maps to.
+trait Classify: Display {
+    fn kind(&self) -> Kind;
+}
+
+impl Classify for eqo::fast::ErrorCode {
+    fn kind(&self) -> Kind {
+        match self {
+            eqo::fast::ErrorCode::NoConvergence => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+impl Classify for eqo::PricingError {
+    fn kind(&self) -> Kind {
+        match self {
+            eqo::PricingError::NoConvergence(_) => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+impl Classify for fxo::fast::KernelError {
+    fn kind(&self) -> Kind {
+        match self {
+            fxo::fast::KernelError::NoConvergence => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+impl Classify for fxo::FxError {
+    fn kind(&self) -> Kind {
+        match self {
+            fxo::FxError::Numerical(_) => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+impl Classify for eqv::EqVarError {
+    fn kind(&self) -> Kind {
+        match self {
+            eqv::EqVarError::Numerical(_) => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+impl Classify for fxv::FxVarError {
+    fn kind(&self) -> Kind {
+        match self {
+            fxv::FxVarError::Numerical(_) => Kind::Convergence,
+            _ => Kind::Input,
+        }
+    }
+}
+
+/// Build the Python exception for `kind`: the `qp_core.errors` class when
+/// `qp_core` imports, `ValueError` otherwise. Only called on the error path.
+fn qp_error(kind: Kind, msg: String) -> PyErr {
+    let name = match kind {
+        Kind::Input => "InputError",
+        Kind::Convergence => "ConvergenceError",
+    };
+    Python::attach(|py| {
+        let cls = py
+            .import("qp_core.errors")
+            .and_then(|m| m.getattr(name))
+            .and_then(|c| c.cast_into::<PyType>().map_err(PyErr::from));
+        match cls {
+            Ok(cls) => PyErr::from_type(cls, (msg,)),
+            Err(_) => PyValueError::new_err(msg),
+        }
+    })
+}
+
+/// Bad caller input (`InputError`, a `ValueError`).
+fn input_err(msg: String) -> PyErr {
+    qp_error(Kind::Input, msg)
+}
+
+fn verr<E: Classify>(e: E) -> PyErr {
+    qp_error(e.kind(), e.to_string())
 }
 
 fn slice<'a>(a: &'a PyReadonlyArray1<'_, f64>) -> Cow<'a, [f64]> {
@@ -38,7 +131,7 @@ fn check_len(n: usize, m: usize, name: &str) -> PyResult<()> {
     if n == m {
         Ok(())
     } else {
-        Err(PyValueError::new_err(format!(
+        Err(input_err(format!(
             "length mismatch: {name} has {m} elements, expected {n}"
         )))
     }
@@ -48,7 +141,7 @@ fn parse_call(s: &str) -> PyResult<bool> {
     match s {
         "call" => Ok(true),
         "put" => Ok(false),
-        _ => Err(PyValueError::new_err(format!(
+        _ => Err(input_err(format!(
             "option_type must be 'call' or 'put', got '{s}'"
         ))),
     }
@@ -71,7 +164,7 @@ fn eq_ot(call: bool) -> eqo::OptionType {
 }
 
 fn eq_batch_err(e: eqo::fast::BatchError) -> PyErr {
-    PyValueError::new_err(format!("element {}: {}", e.index, e.code))
+    qp_error(e.code.kind(), format!("element {}: {}", e.index, e.code))
 }
 
 #[pyfunction]
@@ -332,7 +425,7 @@ fn eq_mc_price<'py>(
     if threads == 0 {
         // Both engines reject 0 (Rust: ErrorCode::BadThreads); checking here
         // gives the same Python error message as the C++ binding.
-        return Err(PyValueError::new_err("threads must be >= 1, got 0"));
+        return Err(input_err("threads must be >= 1, got 0".to_owned()));
     }
     let res = py
         .detach(|| {
@@ -374,7 +467,7 @@ fn fx_ot(call: bool) -> fxo::OptionType {
 }
 
 fn fx_batch_err(e: fxo::fast::BatchError) -> PyErr {
-    PyValueError::new_err(format!("element {}: {}", e.index, e.error))
+    qp_error(e.error.kind(), format!("element {}: {}", e.index, e.error))
 }
 
 const FX_GREEKS: [&str; 10] = [
@@ -683,7 +776,7 @@ fn eq_tail(dist: &str, df: f64) -> PyResult<eqv::TailModel> {
     match dist {
         "normal" => Ok(eqv::TailModel::Normal),
         "t" => Ok(eqv::TailModel::StudentT { df }),
-        _ => Err(PyValueError::new_err(format!(
+        _ => Err(input_err(format!(
             "dist must be 'normal' or 't', got '{dist}'"
         ))),
     }
@@ -802,7 +895,7 @@ fn fx_tail(dist: &str) -> PyResult<fxv::TailDist> {
     match dist {
         "normal" => Ok(fxv::TailDist::Normal),
         "t" => Ok(fxv::TailDist::StudentT),
-        _ => Err(PyValueError::new_err(format!(
+        _ => Err(input_err(format!(
             "dist must be 'normal' or 't', got '{dist}'"
         ))),
     }

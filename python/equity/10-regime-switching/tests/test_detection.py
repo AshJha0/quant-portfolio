@@ -14,7 +14,6 @@ from eq_regime.detection import (
     flip_flop_rate,
     label_states,
     labels_from_vol_means,
-    min_duration_filter,
     smoothed_probabilities,
 )
 from eq_regime.hmm import HMMFit
@@ -121,36 +120,14 @@ class TestStability:
         assert flip_flop_rate(np.array([1])) == 0.0
         assert flip_flop_rate(np.array([0, 1, 0, 1])) == 1.0
 
-    def test_min_duration_filter_removes_flicker(self):
-        s = np.array([0] * 10 + [1] * 2 + [0] * 10)
-        out = min_duration_filter(s, 5)
-        np.testing.assert_array_equal(out, np.zeros(22, dtype=int))
 
-    def test_min_duration_filter_keeps_long_runs(self):
-        s = np.array([0] * 10 + [1] * 8 + [0] * 10)
-        out = min_duration_filter(s, 5)
-        np.testing.assert_array_equal(out, s)
 
-    def test_min_duration_filter_chained_flickers(self):
-        s = np.array([0] * 6 + [1, 1] + [2, 2] + [0] * 6)
-        out = min_duration_filter(s, 3)
-        np.testing.assert_array_equal(out, np.zeros(16, dtype=int))
+    def test_min_duration_filter_removed_in_3_0(self):
+        import eq_regime
+        from eq_regime import detection
 
-    def test_min_duration_filter_first_run_kept(self):
-        s = np.array([1, 1] + [0] * 10)
-        out = min_duration_filter(s, 5)
-        np.testing.assert_array_equal(out, s)
-
-    def test_min_duration_filter_noop_and_errors(self):
-        s = np.array([0, 1, 0])
-        np.testing.assert_array_equal(min_duration_filter(s, 1), s)
-        with pytest.raises(ValueError, match="min_duration"):
-            min_duration_filter(s, 0)
-
-    def test_filter_reduces_flip_flop_rate(self, detection_small):
-        codes = pd.Categorical(detection_small["regime"]).codes
-        filtered = min_duration_filter(codes, 5)
-        assert flip_flop_rate(filtered) <= flip_flop_rate(codes)
+        assert not hasattr(detection, "min_duration_filter")
+        assert "min_duration_filter" not in eq_regime.__all__
 
 
 class TestDetectionTable:

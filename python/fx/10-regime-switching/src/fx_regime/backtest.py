@@ -1,23 +1,30 @@
-"""Walk-forward backtest engine with an exact ledger and no lookahead.
+"""Walk-forward backtest of the regime strategy, on the shared ``qp_bt`` core.
 
 Execution convention (the same in every strategy project of this repo):
 
 * Signals use data up to the close of day t. Orders fill at a modelled
   t+1 price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a
   close-auction variant fills at p_t and pays an auction cost.
-* Here the regime label decided at the close of t sets the book w_t.
-  Over day t+1 the old book w_{t-1} earns the move from p_t to the fill
-  price, ``p_fill / p_t - 1 = f R``, and the new book earns the rest,
-  ``p_{t+1} / p_fill - 1 = (1 + R) / (1 + f R) - 1``, where R is the
-  simple return of the currency against USD over day t+1. f = 1 is a fill
-  at the next close.
-* Carry accrues ACT/365 over the calendar gap between the two closes,
-  split between the two books in the same proportion f : (1 - f).
-* Costs: half-spread per leg on turnover (pips converted with each pair's
-  pip size and quote level), plus ``auction_cost_bp`` per unit of traded
+* The regime label decided at the close of t sets the target book w_t. The
+  period arithmetic is :func:`qp_bt.run_fast`: the book is traded to w_t as
+  weights of the post-trade NAV during day t+1, costs come out of the trade,
+  and on days with no rebalance the book drifts with prices (it is not
+  reset to w for free). R is the simple return of the currency against USD.
+* Carry is the deposit-rate differential over USD at close t, ACT/365 over
+  the calendar gap to the next close, earned on the book held overnight
+  (``asset_carry``; the FX roll is paid on what is held at the roll).
+* Costs: half-spread per leg on traded notional (pips converted with each
+  pair's pip size and quote level at the decision close,
+  :class:`qp_bt.HalfSpreadCost`), plus ``auction_cost_bp`` per unit of traded
   notional in close-auction mode.
 
 Ledger identity (tested exactly): net = spot + carry - cost, row by row.
+
+Migration (Round 12, W24b). Before, the book was reset to its target every
+day for free, the fill day was split additively between the old and new
+books (missing the cross term), costs were charged on the pre-trade NAV,
+and carry was time-weighted f : (1 - f) between the two books. Before/after
+numbers are in the handback; hand fixtures are in ``tests/test_backtest.py``.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_bt import HalfSpreadCost, NextBarFill, run_fast
 from qp_core.execution import ExecutionConfig
 
 from .data.synthetic import QUOTES, quote_levels
@@ -49,8 +57,8 @@ class BacktestResult:
         ``regime`` (label decided at the previous close, whose book is
         filled during this day), ``spot``, ``carry``, ``cost``,
         ``net`` (= spot + carry - cost), ``turnover``.
-    weights : DataFrame (dates x currencies): the book decided at the
-        previous close and filled during each day.
+    weights : DataFrame (dates x currencies): the book held at each close
+        (after the day's fill and drift), as weights of that close's NAV.
     """
 
     ledger: pd.DataFrame
@@ -115,82 +123,65 @@ def run_backtest(
     if len(trade_days) < 2:
         raise ValueError("sample too short to trade after warm-up")
 
-    reg_full = regimes.reindex(idx)
-    reg_vals = reg_full.to_numpy(dtype=object)
+    reg_vals = regimes.reindex(idx).to_numpy(dtype=object)
     # half-spread of each leg, as a fraction of notional, at each close
     levels = quote_levels(returns).to_numpy()
     half_ref = half_spreads(currencies, cfg.spread_pips).to_numpy()
     ref_lvl = np.array([QUOTES[c][2] if c in QUOTES else 1.0 for c in currencies])
-    half_all = half_ref[None, :] * ref_lvl[None, :] / levels  # pips*pip/level
+    half_all = np.asarray(half_ref[None, :] * ref_lvl[None, :] / levels, dtype=np.float64)
     rates_np = rates[currencies].to_numpy(dtype=float)
     usd_np = rates["USD"].to_numpy(dtype=float)
-
-    dates = []
-    rows = []
-    w_rows = []
-    p = len(currencies)
-    w_prev = np.zeros(p)
-    last_regime: str | None = None
-    days_since_rebal = 0
-
     ret_np = returns.to_numpy(dtype=float)
-    simple = np.expm1(ret_np)
-    f = 0.0 if ex.mode == "close_auction" else ex.fill_fraction
     if isinstance(idx, pd.DatetimeIndex):
         gaps = np.r_[1.0, (idx[1:] - idx[:-1]).days.to_numpy(dtype=float)]
     else:
         gaps = np.ones(len(idx))
+    # carry of row t: the differential at close t-1 over the gap to close t
+    carry = np.zeros_like(ret_np)
+    carry[1:] = (rates_np[:-1] - usd_np[:-1, None]) * (gaps[1:, None] / 365.0)
 
+    p = len(currencies)
+    targets = np.full((len(idx), p), np.nan)
+    labels: list[str] = []
+    w_prev = np.zeros(p)
+    last_regime: str | None = None
+    days_since_rebal = 0
     for t in trade_days:
         regime = reg_vals[t - 1]
         if not isinstance(regime, str):
-            # no signal yet at the decision date -> stay flat
-            regime = None
+            regime = None  # no signal yet at the decision date -> stay flat
         if regime is None:
             w = np.zeros(p)
-        elif (
-            regime != last_regime
-            or days_since_rebal >= cfg.rebalance_every
-            or not np.any(w_prev)
-        ):
-            cov = np.cov(
-                ret_np[t - cfg.cov_window : t].T, ddof=1
-            ).reshape(p, p)
-            w = regime_weights(
-                regime, currencies, rates.iloc[t - 1], cov, cfg
-            ).to_numpy(dtype=float)
+        elif (regime != last_regime or days_since_rebal >= cfg.rebalance_every
+              or not np.any(w_prev)):
+            cov = np.cov(ret_np[t - cfg.cov_window : t].T, ddof=1).reshape(p, p)
+            w = regime_weights(regime, currencies, rates.iloc[t - 1], cov,
+                               cfg).to_numpy(dtype=float)
             days_since_rebal = 0
         else:
             w = w_prev
-        dw = np.abs(w - w_prev)
-        turnover = float(dw.sum())
-        cost = float(dw @ half_all[t - 1])
-        if ex.mode == "close_auction":
-            cost += ex.auction_cost_bp * 1e-4 * turnover
-        R = simple[t]
-        old_leg = f * R
-        new_leg = (1.0 + R) / (1.0 + f * R) - 1.0
-        spot = float(w_prev @ old_leg + w @ new_leg)
-        diffs = (rates_np[t - 1] - usd_np[t - 1]) * (gaps[t] / 365.0)
-        carry = float(f * (w_prev @ diffs) + (1.0 - f) * (w @ diffs))
-        rows.append(
-            {
-                "regime": regime if regime is not None else "flat",
-                "spot": spot,
-                "carry": carry,
-                "cost": cost,
-                "net": spot + carry - cost,
-                "turnover": turnover,
-            }
-        )
-        dates.append(idx[t])
-        w_rows.append(w)
+        if w is not w_prev:
+            targets[t - 1] = w
+        labels.append(regime if regime is not None else "flat")
         w_prev = w
         last_regime = regime
         days_since_rebal += 1
 
-    ledger = pd.DataFrame(rows, index=pd.Index(dates, name="date"))
-    weights = pd.DataFrame(np.array(w_rows), index=ledger.index, columns=currencies)
+    run = run_fast(
+        pd.DataFrame(np.expm1(ret_np), index=idx, columns=currencies),
+        targets,
+        fill=NextBarFill.from_execution(ex, auction_booked="next"),
+        cost=HalfSpreadCost(half_all),
+        asset_carry=carry,
+    )
+    led = run.ledger.iloc[trade_days[0]:]
+    ledger = pd.DataFrame(
+        {"regime": labels, "spot": led["gross_ret"].to_numpy(), "carry": led["carry"].to_numpy(),
+         "cost": led["cost"].to_numpy(), "net": led["net_ret"].to_numpy(),
+         "turnover": led["turnover"].to_numpy()},
+        index=pd.Index(idx[trade_days[0]:], name="date"),
+    )
+    weights = run.weights.iloc[trade_days[0]:].set_axis(ledger.index)
     return BacktestResult(ledger=ledger, weights=weights)
 
 

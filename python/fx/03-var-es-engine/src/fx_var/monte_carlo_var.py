@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 
 from .book import Book, Market
 from .common import (
@@ -209,8 +210,7 @@ def _jittered_cholesky(a: np.ndarray) -> np.ndarray | None:
     return None
 
 
-def robust_cholesky(cov: np.ndarray, max_tries: int | None = None,
-                    repair: str | None = None) -> np.ndarray:
+def robust_cholesky(cov: np.ndarray, repair: str | None = None) -> np.ndarray:
     """Cholesky factor of ``cov`` with capped jitter and optional repair.
 
     Parameters
@@ -218,9 +218,9 @@ def robust_cholesky(cov: np.ndarray, max_tries: int | None = None,
     cov : array_like
         Symmetric covariance.  Symmetry is checked relatively:
         ``|A - A'| <= 1e-10 max|A|``.
-    max_tries : int, optional
-        Deprecated and ignored.  The jitter schedule is fixed: from
-        ``1e-12 * mean(diag)``, x10 per try, capped at ``1e-6 * mean(diag)``.
+        The jitter schedule is fixed: from ``1e-12 * mean(diag)``, x10 per
+        try, capped at ``1e-6 * mean(diag)`` (``max_tries`` was removed in
+        v3.0.0).
     repair : {None, "clip", "higham"}
         ``None``: raise past the jitter cap.  ``"clip"``: clip eigenvalues
         to ``1e-10 * mean(diag)`` and restore the original variances.
@@ -233,9 +233,6 @@ def robust_cholesky(cov: np.ndarray, max_tries: int | None = None,
         Non-square, non-finite or asymmetric input, or not factorisable
         within the jitter cap and ``repair`` is None.
     """
-    if max_tries is not None:
-        _w.warn("robust_cholesky(max_tries=...) is deprecated and ignored; the "
-                "jitter cap is 1e-6 * mean(diag)", DeprecationWarning, stacklevel=2)
     a = np.asarray(cov, dtype=float)
     if a.ndim != 2 or a.shape[0] != a.shape[1] or a.shape[0] == 0:
         raise ValueError("cov must be a non-empty square matrix")
@@ -350,8 +347,7 @@ def _check_pnl(pnl, min_n: int = 10) -> np.ndarray:
     return arr
 
 
-def var_standard_error(pnl: np.ndarray, alpha: float | None = None, *,
-                       confidence: float | None = None) -> float:
+def var_standard_error(pnl: np.ndarray, alpha: float | None = None) -> float:
     """Diagnostic asymptotic standard error of the empirical VaR.
 
     ``SE = sqrt(alpha (1-alpha) / n) / f_hat(q)``, where ``q`` is the
@@ -361,7 +357,7 @@ def var_standard_error(pnl: np.ndarray, alpha: float | None = None, *,
     :func:`var_standard_error_bootstrap`, which is what
     :func:`monte_carlo_var` reports.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     arr = _check_pnl(pnl)
     n = arr.size
     losses_d, _, idx = _tail(arr, alpha, None)
@@ -387,8 +383,6 @@ def var_standard_error_bootstrap(
     alpha: float | None = None,
     n_boot: int = 500,
     seed: int | np.random.Generator = 0,
-    *,
-    confidence: float | None = None,
 ) -> float:
     """Bootstrap standard error of the empirical (order-statistic) VaR.
 
@@ -399,7 +393,7 @@ def var_standard_error_bootstrap(
     one at a time, so memory is O(n) and no ``n_boot x n`` index matrix
     is ever built.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     if int(n_boot) != n_boot or n_boot < 2:
         raise ValueError(f"n_boot must be an integer >= 2, got {n_boot}")
     n_boot = int(n_boot)
@@ -416,6 +410,7 @@ def var_standard_error_bootstrap(
     return float(np.std(out, ddof=1))
 
 
+@model(id="FX-VAR-MC")
 def monte_carlo_var(
     book: Book,
     market: Market,
@@ -431,7 +426,6 @@ def monte_carlo_var(
     *,
     n_boot: int = 200,
     repair: str | None = None,
-    confidence: float | None = None,
 ) -> MonteCarloVaRResult:
     """Monte Carlo VaR/ES with full revaluation of the book.
 
@@ -446,7 +440,7 @@ def monte_carlo_var(
         Empty book, missing factors, bad inputs, or a non-finite revalued
         P&L.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
     validate_horizon(horizon_days)
     require_positions(book)
     factors = book.factors(market)

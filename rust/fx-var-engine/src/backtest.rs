@@ -238,20 +238,6 @@ pub fn kupiec_pof(input: &KupiecInput) -> Result<KupiecResult> {
     })
 }
 
-/// Old Kupiec call `(n_exceptions, n_obs, confidence)`, kept for one
-/// release. `alpha = 1 - confidence`; forwards to [`kupiec_pof`].
-#[deprecated(
-    since = "0.2.0",
-    note = "use kupiec_pof(&KupiecInput { n_obs, n_exceptions, alpha })"
-)]
-pub fn kupiec_pof_confidence(n_exceptions: i64, n_obs: i64, confidence: f64) -> Result<LrTest> {
-    kupiec_pof(&KupiecInput {
-        n_obs,
-        n_exceptions,
-        alpha: 1.0 - confidence,
-    })
-}
-
 /// Christoffersen (1998) independence test on a 0/1 exception series
 /// (first-order Markov alternative); `chi2(1)`. Degenerate series (no
 /// transitions of one kind) return `LR = 0`.
@@ -382,24 +368,6 @@ pub fn basel_traffic_light(input: &BaselInput) -> Result<TrafficLight> {
         cumulative_prob: f,
         plus_factor: plus,
         multiplier: 3.0 + plus,
-    })
-}
-
-/// Old call `(n_exceptions, n_obs, confidence)`, kept for one release.
-/// `alpha = 1 - confidence`; forwards to [`basel_traffic_light`].
-#[deprecated(
-    since = "0.2.0",
-    note = "use basel_traffic_light(&BaselInput { n_obs, n_exceptions, alpha })"
-)]
-pub fn basel_traffic_light_confidence(
-    n_exceptions: i64,
-    n_obs: i64,
-    confidence: f64,
-) -> Result<TrafficLight> {
-    basel_traffic_light(&BaselInput {
-        n_obs,
-        n_exceptions,
-        alpha: 1.0 - confidence,
     })
 }
 

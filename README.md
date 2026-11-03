@@ -7,7 +7,7 @@ independent references, and used for a small amount of honest research on
 free data. It is for anyone who wants to read or check a worked
 implementation of a model, not for running a live book.
 
-Two things are worth looking at first:
+Three things are worth looking at first:
 
 - **The research workflow.** Studies are registered and hashed before the
   hold-out data is touched, a checker refuses results that do not match a
@@ -52,8 +52,8 @@ November 2026 release started parts of stages two and three.
 | Stage | What it means | Status |
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
-| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: ECB and FRED fetchers; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
-| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Not yet: dated rates schedules, trade and portfolio objects, order management, execution venues |
+| 2. Research platform | Free public data, pre-registered experiments, reported results | Started: one keyless data layer (`qp_data`: FRED, ECB, Frankfurter, NY Fed, BoE, US Treasury, CBOE, Coinbase/Binance) with publication-lag checks; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Toward v3.0.0: dated rates schedules, trade and market-snapshot objects, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA and a low-latency track (see below). Not yet: any connection to a real venue |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
 The CI `counts` job writes the executed pass counts to `counts.json` and shows
@@ -64,6 +64,14 @@ Further reading in [`docs/`](docs/README.md):
 [DIAGRAMS](docs/DIAGRAMS.md), [LEARN](docs/LEARN.md) (study guide and
 self-test question bank), [COOKBOOK](docs/COOKBOOK.md) (recipes) and
 [MARKET_RISK](docs/MARKET_RISK.md) (the VaR, ES and backtesting workflow).
+The levelled study path is [docs/learn](docs/learn/README.md) (LEARN.md is
+its appendix and question bank). Model inventory: [docs/models](docs/models/README.md);
+operations: [SLO](docs/SLO.md) and [RUNBOOK](docs/RUNBOOK.md); low latency:
+[LATENCY_METHOD](docs/LATENCY_METHOD.md), [QPBF](docs/QPBF.md),
+[KILL_CONTRACT](docs/KILL_CONTRACT.md) and [java/README.md](java/README.md).
+For practice, [CAREER_PREP](docs/CAREER_PREP.md) points to the four
+[learning notebooks](docs/notebooks/README.md) and the
+[career-prep packs](career-prep/README.md); CI checks both.
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ```
@@ -72,16 +80,24 @@ quant-portfolio/
 ├── CONTRIBUTING.md    # setup, test gate, golden regeneration
 ├── CHANGELOG.md
 ├── docs/              # architecture, study guide, recipes, market-risk workflow
+│   └── notebooks/     # four learning notebooks (exercise and solution copies)
+├── career-prep/       # practice packs with separately kept, CI-checked answer keys
 ├── data/              # free-data fetch scripts; downloads go to data/raw/ (git-ignored)
 ├── research/          # pre-registrations, studies, results, the hash checker
-├── pyproject.toml     # uv workspace: python/core and the 23 projects (uv.lock)
+├── pyproject.toml     # uv workspace: shared stacks and the 23 projects (uv.lock)
 ├── python/
-│   ├── core/          # qp-core: shared Python code used by 16 projects
+│   ├── core/          # qp-core: shared maths, trade layer, XVA, AAD, calendars
+│   ├── data/          # qp-data: keyless public data, content-addressed store, release lags
+│   ├── backtest/      # qp-bt: one backtest core (fills, costs, ledger)
+│   ├── oms/           # qp-oms: orders, FIX session, EMS, pre-trade risk, kill switch
+│   ├── execution/     # qp-exec: reference book, impact, market making, SOR, CRB, RFQ
+│   ├── posttrade/     # qp-posttrade: settlement, booking, best execution, surveillance
 │   ├── equity/01-…10-…    # 10 equity projects
 │   ├── fx/01-…10-…        # 10 FX projects (separate code from equity)
 │   └── foundations/       # 3 single-asset projects
-├── cpp/               # qp::core (header-only) + 4 engines, C++23, CMake presets, GoogleTest
-├── rust/              # Cargo workspace: qp-core + the same 4 engines, Rust edition 2024
+├── cpp/               # qp::core + 4 engines, exec-core, rates-curves, aad, ull/ (C++23, GoogleTest)
+├── rust/              # Cargo workspace: qp-core + 4 engines, rates-curves, aad, ull/ (edition 2024)
+├── java/              # qp-ull-java: ring buffer, garbage-free gateway and OMS core (JDK 21)
 └── bindings/          # qp-cpp (nanobind) and qp-rust (PyO3) Python packages
 ```
 
@@ -119,6 +135,81 @@ Foundations projects are smaller: one asset, Python only, no FX version.
 
 Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
+
+## What the v3.0.0 milestone adds (Rounds 8-17, not yet released)
+
+The plain idea: until now each area priced, risked and backtested its own
+toy objects. The milestone adds the layers a trading desk has around those
+models (trades and market data as objects, one backtest core, order
+management, execution research, post-trade) and a low-latency track in C++,
+Rust and Java. Nothing here is connected to a venue. Order books, fills and
+venues are simulated, and every post-trade report is stamped
+`synthetic venue`.
+
+Formally, the new code sits outside the 31 sub-projects as shared stacks.
+Each has its own README with the plain idea, the formal statement, a worked
+example and sources:
+
+| Stack | Path | What it is |
+|---|---|---|
+| Trade layer | [`python/core`](python/core/README.md) `qp_core.instruments`, `qp_core.market` | `Instrument` protocol (`pv(MarketSnapshot) -> Money`, `cashflows()`, `risk()`), trades, a market snapshot; adapters from the per-package trade classes |
+| Shared maths | `qp_core.vol` (SABR, SABR PDE, SSVI, eSSVI, Dupire), `qp_core.trees`, `qp_core.rng`, `qp_core.exotics`, `qp_core.risk`, `qp_core.scenarios`, `qp_core.hedging`, `qp_core.eventlog` | Moved out of the packages that first had them; the packages re-export |
+| Counterparty and capital | `qp_core.xva`, `qp_core.capital` (SA-CCR, FRTB SBM), `qp_core.credit_index` | CVA/DVA exposure on Hull-White, SA-CCR, CDS index and ISDA standard model |
+| AAD | `qp_core.aad`, [`cpp/aad`](cpp/aad/README.md), [`rust/aad`](rust/aad/README.md) | Tape-based reverse mode, same tape layout in three languages |
+| Backtest core | [`python/backtest`](python/backtest/README.md) (`qp_bt`) | One fill, cost and ledger core used by the equity and FX backtesters |
+| Data | [`python/data`](python/data/README.md) (`qp_data`) | Keyless public sources, content-addressed store, release-lag checks |
+| Order management | [`python/oms`](python/oms/README.md) (`qp_oms`) | Order state machine, event log, FIX session, EMS, drop copy, reconciliation, pre-trade risk, kill switch ([KILL_CONTRACT](docs/KILL_CONTRACT.md)) |
+| Execution research | [`python/execution`](python/execution/README.md) (`qp_exec`), [`cpp/exec-core`](cpp/exec-core) | Reference limit order book, order flow, impact, market making (Avellaneda-Stoikov, GLFT), smart order router, central risk book, RFQ |
+| Post-trade | [`python/posttrade`](python/posttrade/README.md) | Settlement dates, booking and confirmation matching, best-execution reports, surveillance |
+| Low latency | [`cpp/ull`](cpp/ull/feed/README.md), [`rust/ull`](rust/ull/bench/METHODOLOGY.md), [`java`](java/README.md) | Binary feed format ([QPBF](docs/QPBF.md)), SPSC ring, L3 book, feed handler with gap recovery, order gateway with the shared kill contract, latency harness |
+| Rates curves | [`cpp/rates-curves`](cpp/rates-curves), [`rust/rates-curves`](rust/rates-curves) | Dated curve bootstrap ports |
+
+A worked example of how the pieces meet: a parent order enters `qp_oms`,
+passes the pre-trade checks and the kill switch, is split by the smart order
+router in `qp_exec.sor` across simulated venues, and the fills are booked,
+matched and reported for best execution in `qp_posttrade`. The C++, Rust and
+Java gateways replay the same kill-switch vectors
+(`python/oms/kill/vectors.json`) byte for byte.
+
+Model governance, operations and learning pages that came with it:
+[docs/models](docs/models/README.md) (the model inventory, checked by
+`tests/test_model_inventory.py`), [SLO](docs/SLO.md),
+[RUNBOOK](docs/RUNBOOK.md), [LATENCY_METHOD](docs/LATENCY_METHOD.md) and the
+levelled study path [docs/learn](docs/learn/README.md) (L0 to L4).
+
+### New checks against independent references
+
+| Check | Where | Result |
+|---|---|---|
+| ISDA CDS accrued-on-default | `eq_credit.isda_cds`, `test_isda_cds_quantlib.py` | Against QuantLib 1.44 `IsdaCdsEngine`, both `HalfDayBias` (now the default) and `NoBias`. Before the fix the clean upfront per 10mm, 5y, R = 0.4, r = 3%, was 12.59 off at hazard 2% and 379.1 off at hazard 17%; after, 0.012 and 0.23 |
+| SA-CCR | `qp_core.capital.saccr` doctest | BCBS 279 Annex 4a, Example 1 (published EAD 569 thousand) |
+| AAD Greeks | `qp_core.aad`, `cpp/aad`, `rust/aad` tests | Bump-and-reprice to 1e-6; Black-Scholes Greeks equal the closed form to 1e-12. Cost ratios per language in [`rust/aad/README.md`](rust/aad/README.md) |
+| Ledoit-Wolf shrinkage | `qp_bt.portfolio.covariance`, `python/backtest/tests/test_portfolio_layer.py` | scikit-learn `ledoit_wolf` to 1e-12 (same 1/T sample covariance) |
+| HAC regression | `research/attribution`, `research/attribution/tests/test_attribution.py` | statsmodels OLS `cov_type="HAC"` to 1e-10 |
+| Kill switch | `qp_oms.kill`, `cpp/ull/gateway`, `rust/ull/gateway`, `java` | One vector file replayed byte for byte in four languages |
+| Settlement dates | `qp_posttrade.settlement` | Generated NYSE and Federal Reserve calendars reproduce the old hand tables for 2026 exactly |
+
+### Numbers that moved
+
+Fixing wrong answers moved some outputs. The before/after tables live with
+the code; the main ones:
+
+- **Backtesters.** `eq_port`, `eq_regime`, `eq_signal`, `eq_algo` and the FX
+  backtesters now run on `qp_bt`. `eq_port` and `fx_port` used to fill at
+  the decision close for free; they now fill on the next bar by default. The
+  FX P&L definitions changed (simple returns on a held book, costs paid from
+  the trade). The before/after sums are pinned in each package's
+  characterisation test. Any study result built on these backtesters is
+  pending rerun as a new trial; none has been silently changed.
+- **Monte Carlo VaR (equity, C++ and Rust).** Each path now draws from its
+  own Philox4x32-10 stream with AS 241 normals, so for the same seed MC VaR,
+  ES, bootstrap SE and option MC results change within Monte Carlo error
+  ([docs/MIGRATION.md](docs/MIGRATION.md)). Historical VaR gained
+  `rule="kth_worst"` (default, unchanged) or `"interpolated"`.
+- **Execution costs.** The equity schedule-level costs rose about 3 to 4
+  times when a double-counted bucket width was removed (equity 08
+  `docs/VALIDATION.md` section 6).
+- **ISDA CDS.** As in the table above.
 
 ## What the November 2026 release added
 
@@ -183,11 +274,12 @@ A study runs in four steps:
 | `regime-fx-basket` | Signed by the maintainer on 2026-11-02. Hold-out run once on 2026-11-02 (2022-2025): H0 not rejected. The hold-out is spent. |
 | `pairs-fx-g10-v2` | Signed on 2026-11-02. Level-based z with a simulated power check. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. |
 | `momentum-fx-g10` | Signed on 2026-11-02. Monthly G10 spot momentum. Scored once on forward data, 2026-11-03 to 2028-11-02, on or after 2028-11-13. Low power: a fail is the expected outcome even if a modest effect exists. |
-| `execution-lobster` | Unsigned draft. Needs LOBSTER sample files, which sit behind LOBSTER's terms of use. |
+| Order-book execution study | Unsigned draft in `research/prereg/`. Not done: its data needs an account and terms of use the owner decided not to accept. |
 
-Two studies are not done because their data needs an account: equity pairs
-on a point-in-time US universe (Nasdaq Data Link) and the LOBSTER execution
-study.
+Two studies are not done because their data needs an account, which the
+owner decided not to open: equity pairs on a point-in-time US universe and
+the order-book execution study. The free sources used instead are listed in
+[data/README.md](data/README.md).
 
 The training-period numbers (ECB data, 1999 to 2021) are in
 `research/results/`. They are not out-of-sample evidence. The pairs
@@ -269,13 +361,21 @@ re-exported from the package `__init__`.
 | Euler marginal, component, incremental VaR and ES | `eq_var.risk_attribution`, `fx_var.risk_attribution` | Hand example; Euler sum; finite-difference gradient; MC converges to the closed form |
 | FRTB IMA: liquidity-horizon ES, stressed ES, IMCC, capital, desk backtest, PLA | `eq_var.frtb_ima`, `fx_var.frtb_ima` | Hand cascade; sqrt(12) telescoping; table thresholds; scipy cross-check |
 | Stressed VaR, Basel 2.5 capital | `eq_var.stressed_var`, `fx_var.stressed_var` | Planted crisis window found; order statistic by hand |
+| Closed-form and historical VaR/ES, Kupiec, Christoffersen, Basel traffic light | `eq_var`, `fx_var` and the C++ and Rust VaR engines | An independent mpmath oracle (50 digits, no engine code; 196 values per project): closed forms to 1e-10, historical VaR exact, ES to 1e-12, engine Monte Carlo within 3 SE. It reproduces the BCBS (1996) traffic-light table and the Kupiec (1995) table, which the owner checked against the printed sources on 2026-11-03 |
+| Optimal schedule under square-root impact | `eq_algo.power_law_trajectory` | Equals the Almgren-Chriss closed form to 1e-8 of the order at delta = 1; bucket cost converges to the continuous integral |
 | EVT peaks over threshold (GPD) | `eq_var.evt`, `fx_var.evt` | Exact GPD quantile and integrated ES; MLE convergence; t(4) tail index |
 | t-copula Monte Carlo VaR and ES | `eq_var.copula_mc`, `fx_var.copula_mc` | Kendall tau mapping; tail dependence; Gaussian limit |
 | Option revaluation and P&L explain | `eq_var.revaluation`, `fx_var.revaluation` | Finite-difference Greeks; parity; the package `bs_*`/`gk_*` pricers; linear legs exact |
 | Limit hierarchy | `eq_var.limits`, `fx_var.limits` | Exact cases |
 | Johansen trace test | `research/studies/models.py` | statsmodels `coint_johansen`, 1e-9 relative |
 | Kalman hedge ratio | `research/studies/models.py` | Recursive least squares when delta = 0 |
-| Settlement calendars and business-day rolls | `qp_core.holidays` | Published holiday dates per centre; one-off closures through `add_closure` |
+| Kalman hedge ratio with noise variances by maximum likelihood | `eq_pairs.kalman.kalman_hedge_ratio` | Exact Gaussian likelihood to 1e-10 relative; ridge-OLS posterior when the state noise is zero (1e-8); planted variances recovered at n = 3000 |
+| Deflated Sharpe ratio with the programme trial count | `qp_core.stats.deflated_sharpe_detail` | Trial count and trial-Sharpe variance read from `research/results/trials.jsonl`; Lo (2002) standard error below 50% in-market days, tested on a 10%-in-market fixture |
+| Backtest financing and excess returns | `qp_core.stats.Financing` in `eq_port`, `eq_algo`, `fx_pairs` `run_backtest` | Hand fixtures: 150% invested at 4% + 50 bp over a weekend, ACT/360; dollar-neutral capital earning the rate; zero excess return on flat prices |
+| Research power gate | `research/lib/power_gate.py` | Analytic panel power within 3 SE of a 400-run Monte Carlo; a single series is monitoring only |
+| Point-in-time look-ahead check | `qp_data.release.check_release` | Issuer release calendars; FEDFUNDS June 2024 used on 28 June raises (released 1 July) |
+| Settlement calendars, business-day rolls and FX spot dates | `qp_core.holidays` (also Rust `qp_core::holidays`, C++ `qp/holidays.hpp`) | Published holiday dates per centre; QuantLib 1.44 calendars for USD, GBP, TARGET, JPY, CHF, CAD, AUD and USD-GOVT (SIFMA; three listed SIFMA closures QuantLib omits) on every year 2000-2030; one-off closures through `add_closure` |
+| FX forwards from the spot date, broken dates, NDFs | `fx_rates` (`MarketState(valuation_date=)`, `forward_for_date`, `ndf`) | Closed form S exp((r_d - r_f)(T - t_s)) to 1e-13; forward-points strip repriced to 1e-10 |
 | Standard normal CDF and density | `qp_core.normal` | One shared definition for the option packages; `erfc` form keeps the lower tail |
 
 The C++ and Rust equity options engines also gained Leisen-Reimer,
@@ -328,8 +428,9 @@ each language now has one kernel and the packages wrap it. Formally,
 `qp_core::black_scholes` (Rust) price `phi [S e^{-qT} N(phi d1) - K e^{-rT}
 N(phi d2)]` with `q = r - b`. Worked example: S = K = 100, T = 1, r = 5%,
 q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
-`gk_price` with r_d = 5%, r_f = 2%, and from the kernel. On a 5,944-quote
-grid no output bit changed in any language when the maths moved.
+`gk_price` with r_d = 5%, r_f = 2%, and from the kernel. On 5,944 quotes (the 1,944-entry
+grid of `tests/test_carry_twin.py` plus 4,000 seeded random quotes) no
+output bit changed in any language when the maths moved.
 
 On top of it: NumPy entry points `eq_options.bs_price_array`,
 `bs_greeks_array`, `fx_options.gk_price_array` and `gk_greeks_array`
@@ -348,8 +449,9 @@ Forward Log".
   Linux and Windows, as artefacts only.
 - Every Python install in CI comes from `uv.lock` with sha256 hashes
   checked (`.github/scripts/hashed_install.sh`, `requirements/README.md`).
-- Optional QuantLib cross-checks for Hull-White, Heston and the ISDA CDS
-  run when QuantLib is installed; CI does not install it.
+- The QuantLib cross-checks (Hull-White, Heston, the ISDA CDS, holiday
+  calendars, FX spot dates) run in the `quantlib` CI job against QuantLib
+  1.44 from hash-locked wheels; a skip there fails the job.
 - The Rust crates move to edition 2024.
 
 ## How to run
@@ -410,6 +512,9 @@ single required check is `ci-ok`, which passes only when every job passed.
 | `engine differential` | builds both bindings and runs `tests/test_engine_differential.py`; a skipped compiled case fails the job |
 | `research (prereg check, tests)` | `python research/tools/prereg.py check` and the `research/tests` suite |
 | `hygiene` | banned-word check, a voice report and the tests for the CI scripts |
+| `rust-extra`, `cpp-extra`, `java` | the ull, aad and rates-curves crates and libraries (Rust incl. loom), exec-core with the Python replay differential, and `mvnw verify` on Temurin 21 |
+| `quantlib` | the QuantLib cross-checks against QuantLib 1.44 from hash-locked wheels; any skip fails |
+| `learning` | the career-prep checkers, the notebooks with nbmake and `docs/learn/tools` (LEARN lint) |
 | `counts` | sums executed pass counts into `counts.json` and runs `tests/test_docs_counts.py` |
 
 ### Cross-language tests
@@ -444,6 +549,10 @@ numbers match the Python full revaluation to 1e-11 relative.
 
 ### Engine latency
 
+Every latency figure in this repository is software, in-process latency
+measured on one machine, not wire-to-wire ([docs/LATENCY_METHOD.md](docs/LATENCY_METHOD.md)).
+No network card, kernel bypass or exchange is involved.
+
 How latency is measured now, and where current figures are, is in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and
 a CI job that compares base and head on the same runner (`bench-results`
@@ -453,6 +562,8 @@ Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
 figures are in each engine README). Rust figures are rustc 1.99.1, release
 profile with `lto = "fat"` and `codegen-units = 1`. WSL2 adds scheduler
 jitter, so read p99 as an upper bound. CI does not produce these numbers.
+The current harness reports tails of batch means; see
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) for what that label means.
 
 The two tables use different timing methods and should not be compared
 with each other. The C++ harness times every call separately (lfence,
@@ -465,7 +576,7 @@ accordingly.
 
 C++:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 (per call, old harness) |
 |---|---|---|---|
 | [equity-options](cpp/equity-options-engine/README.md#latency) | `bs_price` | 135 ns | 385 ns |
 | [equity-options](cpp/equity-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 23.95 ms | 29.75 ms |
@@ -478,7 +589,7 @@ C++:
 
 Rust:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 of B-call batch means |
 |---|---|---|---|
 | [equity-options](rust/equity-options-engine/README.md#latency) | `bs_price` | 44 ns | 116 ns |
 | [equity-options](rust/equity-options-engine/README.md#latency) | `mc_price`, 1M paths, antithetic + CV | 16.16 ms | 24.82 ms |
@@ -516,9 +627,11 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
   default risk charge. CHANGELOG.md lists the other known issues.
 - The ISDA CDS module has not been compared with ISDA's published test
   grid (a licence click-through). It is checked against QuantLib 1.44
-  `IsdaCdsEngine` in an optional test (`test_isda_cds_quantlib.py`, skipped
-  unless QuantLib is installed; not run in CI): protection legs to 1e-12,
-  risky annuity and par spread to 1e-7 relative. Business-day calendars are optional (`calendar=`); the default is
+  `IsdaCdsEngine` with both `HalfDayBias` (the default) and `NoBias` in an
+  test (`test_isda_cds_quantlib.py`) that skips on a laptop without
+  QuantLib and runs in the required `quantlib` CI job, where a skip fails:
+  protection legs to 1e-12, risky annuity and par spread to
+  1e-7 relative. Business-day calendars are optional (`calendar=`); the default is
   weekends only.
 - `fx_surface.ssvi` misses five-point FX smiles by up to about one vol
   point on USDJPY (about 0.5 on EURUSD); eSSVI does not close the gap. See
@@ -531,6 +644,9 @@ with a `DeprecationWarning`. CHANGELOG.md lists them.
   bind the FX VaR Monte Carlo or book-level VaR, deltas and strikes from
   delta, Black-76, Christoffersen or Acerbi-Szekely. See each binding
   README.
+- The OMS, router, venues and post-trade code run on simulated markets
+  only. The low-latency figures are single-laptop runs with large
+  run-to-run spread (`rust/ull/bench/METHODOLOGY.md`, `java/README.md`).
 - The `engine=` switch covers closed-form pricing, Greeks, implied vol,
   the binomial tree, batch pricing and the main VaR and ES calls. Monte
   Carlo, the backtests and the newer compiled ports are not behind it.

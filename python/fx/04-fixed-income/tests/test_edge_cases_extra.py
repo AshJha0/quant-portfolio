@@ -262,11 +262,13 @@ class TestBasisEconomics:
     def test_implied_basis_round_trips_through_the_forwards(self,
                                                             simple_market):
         tenors = (0.5, 1.0, 2.0, 5.0)
-        fwds = [(t, market_forward(simple_market, t)) for t in tenors]
-        # the forward inversion is the zero-spread definition of the basis
-        with pytest.warns(DeprecationWarning):
-            legacy = simple_market.replace(basis_model="zero_spread")
-        fwds = [(t, market_forward(legacy, t)) for t in tenors]
+        # the forward inversion is the zero-spread definition of the basis:
+        # forwards off the foreign curve shifted by the basis spread
+        from fx_rates import basis_adjusted_curve
+
+        adjusted = basis_adjusted_curve(simple_market.foreign_curve, simple_market.basis_spreads)
+        fwds = [(t, cip_forward(simple_market.spot, simple_market.domestic_curve, adjusted, t))
+                for t in tenors]
         implied = implied_basis_from_forwards(
             simple_market.spot, simple_market.domestic_curve,
             simple_market.foreign_curve, fwds)

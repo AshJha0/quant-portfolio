@@ -1,0 +1,33 @@
+# Coverage-guided fuzz targets for eq-var-engine PSD repair (W12).
+#
+# Detached from the rust/ workspace (its own [workspace] table) because
+# cargo-fuzz builds on nightly with sanitizer flags. Two ways to run:
+#   nightly + cargo-fuzz:  cargo +nightly fuzz run cholesky_repair -- -max_total_time=60
+#   stable, corpus replay: cargo test        (tests/replay.rs)
+# The properties live in src/lib.rs so both paths check the same thing.
+[package]
+name = "eq-var-engine-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+eq-var-engine = { path = ".." }
+qp-core-fuzz = { path = "../../core/fuzz" }
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[features]
+fuzz = ["dep:libfuzzer-sys"]
+
+[[bin]]
+name = "cholesky_repair"
+path = "fuzz_targets/cholesky_repair.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz"]

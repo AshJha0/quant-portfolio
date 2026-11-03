@@ -35,7 +35,7 @@ TEST(Matrix, BasicOpsAndMatmul) {
 
 TEST(Cholesky, ReconstructsPositiveDefinite) {
   const Matrix cov = Matrix::from_rows({{4.0, 2.0, 0.6}, {2.0, 3.0, 0.4}, {0.6, 0.4, 1.0}});
-  const CholeskyResult res = robust_cholesky(cov);
+  const CholeskyResult res = cholesky(cov);
   EXPECT_FALSE(res.jittered);
   EXPECT_EQ(res.jitter, 0.0);
   const Matrix rec = matmul(res.lower, res.lower.transpose());
@@ -46,7 +46,7 @@ TEST(Cholesky, ReconstructsPositiveDefinite) {
 TEST(Cholesky, SingularCovarianceGetsJitterAndWarning) {
   // Two perfectly correlated factors: a pegged pair to the same anchor.
   const Matrix cov = Matrix::from_rows({{1e-4, 1e-4}, {1e-4, 1e-4}});
-  const CholeskyResult res = robust_cholesky(cov);
+  const CholeskyResult res = cholesky(cov);
   EXPECT_TRUE(res.jittered);
   EXPECT_GT(res.jitter, 0.0);
   EXPECT_FALSE(res.warning.empty());
@@ -56,8 +56,8 @@ TEST(Cholesky, SingularCovarianceGetsJitterAndWarning) {
 }
 
 TEST(Cholesky, RejectsAsymmetricAndNonSquare) {
-  EXPECT_THROW(robust_cholesky(Matrix::from_rows({{1.0, 0.5}, {0.2, 1.0}})), std::invalid_argument);
-  EXPECT_THROW(robust_cholesky(Matrix(2, 3)), std::invalid_argument);
+  EXPECT_THROW(cholesky(Matrix::from_rows({{1.0, 0.5}, {0.2, 1.0}})), std::invalid_argument);
+  EXPECT_THROW(cholesky(Matrix(2, 3)), std::invalid_argument);
 }
 
 TEST(NormalDistribution, PdfCdfKnownValues) {
@@ -152,7 +152,7 @@ TEST(Cholesky, SymmetryToleranceIsRelativeToScale) {
   // Asymmetric input is still rejected.
   Matrix asym = big;
   asym(1, 0) = 5e11 * 1.01;
-  EXPECT_THROW(robust_cholesky(asym), std::invalid_argument);
+  EXPECT_THROW(cholesky(asym), std::invalid_argument);
 }
 
 TEST(Cholesky, RejectsNonFiniteEntries) {
@@ -162,8 +162,8 @@ TEST(Cholesky, RejectsNonFiniteEntries) {
   Matrix b = Matrix::from_rows({{1e-4, inf}, {inf, 1e-4}});
   // Previously these ground through the whole jitter ladder and surfaced
   // as a misleading "not factorisable" runtime_error.
-  EXPECT_THROW(robust_cholesky(a), std::invalid_argument);
-  EXPECT_THROW(robust_cholesky(b), std::invalid_argument);
+  EXPECT_THROW(cholesky(a), std::invalid_argument);
+  EXPECT_THROW(cholesky(b), std::invalid_argument);
 }
 
 TEST(Cholesky, IndefiniteCovarianceStillFails) {
@@ -171,7 +171,7 @@ TEST(Cholesky, IndefiniteCovarianceStillFails) {
   // 1e-5 * mean(diag), far below the 1e-4 negative eigenvalue here, so the
   // matrix is reported as unusable instead of being silently "repaired".
   const Matrix indefinite = Matrix::from_rows({{1e-4, 2e-4}, {2e-4, 1e-4}});
-  EXPECT_THROW(robust_cholesky(indefinite), std::runtime_error);
+  EXPECT_THROW(cholesky(indefinite), std::runtime_error);
 }
 
 TEST(Validation, AlphaExtremesInsideTheOpenInterval) {

@@ -171,7 +171,11 @@ Each assumption states what breaks when it is violated.
   the latest business day whose spot date is on or before delivery. Cuts
   NY 10:00, Tokyo 15:00, ECB 14:15 Frankfurt, via `zoneinfo`; time to
   expiry is ACT/365F to the cut instant. Holidays are either supplied by
-  the caller or `"auto"`: the union of both currencies' calendars from
+  the caller or `"auto"` (the default since round 7). With `"auto"` the
+  spot date is `qp_core.holidays.fx_spot_date`: the lag counts on the
+  non-USD centres, then rolls until both centres and New York are open, so
+  EURUSD traded Wed 25 Nov 2026 spots Fri 27 Nov (before round 7: Mon
+  30 Nov); expiry and delivery roll on the union of both currencies' calendars from
   `fx_options.holidays`, a deterministic rules generator for USD (Federal
   Reserve), EUR (TARGET2), GBP (England and Wales), JPY (Act on National
   Holidays plus bank days), CHF (Zurich), CAD (Bank of Canada) and AUD

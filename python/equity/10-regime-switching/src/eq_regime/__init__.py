@@ -26,7 +26,6 @@ from .detection import (
     flip_flop_rate,
     label_states,
     labels_from_vol_means,
-    min_duration_filter,
     smoothed_probabilities,
 )
 from .features import (
@@ -68,7 +67,7 @@ from .strategy import (
     vol_target_scale,
 )
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
     # backtest
@@ -110,7 +109,6 @@ __all__ = [
     "labels_from_vol_means",
     "ma_timing_weights",
     "match_permutation",
-    "min_duration_filter",
     "naive_threshold_regime",
     "per_regime_stats",
     "project",

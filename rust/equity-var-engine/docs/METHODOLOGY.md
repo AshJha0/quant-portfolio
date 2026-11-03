@@ -44,7 +44,7 @@ the rounding is fixed. Until 0.2.0 this crate used type-7 interpolation. On
 the 100-point case A sample that moved 99 % VaR from 122.41 to 141.76
 (*golden* `A_HIST_VAR_1PCT`): at `n alpha = 1` the order statistic is the
 worst loss, while type-7 interpolated between the worst and second worst.
-`linear_quantile` stays one release, deprecated.
+`linear_quantile` was removed in 3.0.0.
 
 **BRW age weights.** Observation `i` (0 = oldest) gets
 `w_i = (1-lam) lam^{n-1-i} / (1-lam^n)`. VaR uses the weighted S2 rule.
@@ -129,7 +129,7 @@ Worked example (*golden* `CONV_CF_VALID_*`): `(S, K) = (0.122, -0.427)`.
 fixed interval `|z| <= 4` the minimum is at `z = -4` and is negative. At
 `alpha = 0.01` (`z_a = 2.33`) and at `alpha = 0.001` (`z_a = 3.09`) it is
 positive, so the map is valid. The old fixed-interval predicate
-`cornish_fisher_domain_ok` stays one release, deprecated.
+`cornish_fisher_domain_ok` was removed in 3.0.0.
 
 ## 5. Monte Carlo (`src/monte_carlo.rs`)
 
@@ -160,15 +160,20 @@ Cholesky jitter.
   `0.9 min(sd, IQR/1.34) n^{-1/5}`. A fixed bandwidth is tuned to the bulk,
   so deep in the tail it tends to understate the SE.
 
-The old symmetric finite-difference SE (`var_order_statistic_se`) stays one
-release, deprecated.
+The old symmetric finite-difference SE (`var_order_statistic_se`) was removed
+in 3.0.0.
 
-**Determinism.** One seeded `Rng` (xoshiro256++, Box-Muller, Marsaglia-Tsang
-gamma) drives every draw. A seed repeats exactly on the same build and
-platform (*test* `bitwise_seed_determinism`). Across platforms `ln`, `sin`
-and `cos` come from the platform libm, so no cross-platform claim is made.
-The stream differs from NumPy's and the C++ engine's, so cross-engine MC
-agreement is statistical.
+**Determinism.** Each Monte Carlo path `p` draws from its own
+Philox4x32-10 counter stream `(seed, p)` (Salmon et al. 2011) with AS 241
+normals (Wichura 1988), and paths run on all cores. The result has the same
+bits on any thread count, and C++ and Rust produce the same numbers for the
+same seed (*tests* in `monte_carlo.rs` and the C++ twin; milestone v2.1,
+Round 9). Chi-square mixing draws still use Marsaglia-Tsang gamma. Across
+platforms the last bits can still differ, because `ln` comes from the
+platform libm. The stream differs from NumPy's, so Python-to-engine MC
+agreement is statistical. Before milestone v2.1 the engine used one serial
+xoshiro256++ stream with Box-Muller normals; stored MC numbers from then do
+not repeat (docs/MIGRATION.md).
 
 ## 6. Expected Shortfall (`src/expected_shortfall.rs`)
 

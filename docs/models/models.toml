@@ -1,0 +1,979 @@
+# Model inventory (W11). One [[model]] table per model.
+#
+# A model is any function or class whose output is a price, a sensitivity,
+# a risk measure or a forecast (SR 11-7 section III; PRA SS1/23 principle 1).
+# Field meanings and the review process are in docs/models/README.md; the
+# per-model validation write-up follows docs/models/VALIDATION_TEMPLATE.md.
+#
+# Checked by tests/test_model_inventory.py and
+#   python -m qp_core.model check docs/models/models.toml
+#
+# Every entrypoint carries @model(id=...). A future entry whose tag is not
+# applied yet sets decorated = false; the check fails if flag and source disagree.
+
+[[model]]
+id = "CORE-BS-CARRY"
+name = "Black-Scholes-Merton with continuous carry (shared kernel)"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "European price and Greeks for every Python options package; the C++ and Rust kernels port it."
+entrypoints = [
+  "python/core/src/qp_core/black_scholes.py::carry_price",
+  "python/core/src/qp_core/black_scholes.py::carry_greeks",
+]
+assumptions = [
+  "lognormal spot, constant volatility, rate and carry",
+  "frictionless continuous hedging",
+]
+limitations = [
+  "no smile, no jumps, no discrete dividends",
+  "deep-OTM tails below about 1e-300 underflow to zero",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "put-call parity residual <= 1e-12 x spot",
+  "golden-vector worst deviation inside tolerance",
+]
+tests = [
+  "python/core/tests/test_black_scholes.py::test_worked_example",
+  "python/core/tests/test_black_scholes.py::test_put_call_parity",
+]
+independent_checks = [
+  "python/equity/01-options-pricing/tests/test_golden.py::test_record_matches_oracle",
+  "python/equity/01-options-pricing/tests/test_differential.py::test_rust_matches_python",
+  "python/equity/01-options-pricing/tests/test_differential.py::test_cpp_matches_python",
+]
+
+[[model]]
+id = "CORE-IV-BLACK"
+name = "Black implied volatility (shared solver)"
+owner = "maintainer"
+tier = 1
+kind = "sensitivity"
+purpose = "Inverts a Black price to a volatility; used by every smile, surface and IV reporting path."
+entrypoints = [
+  "python/core/src/qp_core/iv_core.py::black_implied_vol",
+]
+assumptions = [
+  "the quote lies strictly inside the no-arbitrage bounds",
+]
+limitations = [
+  "quotes within rounding of a bound are refused, not solved",
+  "where vega is tiny only the price, not the vol, is recoverable",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "round-trip vol error vs mpmath reference",
+  "iterations per solve",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_implied_vol.py::test_round_trip_sigma_price_sigma",
+  "python/equity/01-options-pricing/tests/test_iv_accuracy.py::test_k90_otm_put_recovers_to_1e12",
+]
+independent_checks = [
+  "python/equity/01-options-pricing/tests/test_iv_accuracy.py::test_iv_round_trip_against_mpmath",
+  "cpp/core/fuzz/fuzz_implied_vol.cpp",
+  "rust/core/fuzz/src/lib.rs::check_implied_vol",
+]
+
+[[model]]
+id = "EQ-OPT-CRR"
+name = "Cox-Ross-Rubinstein binomial tree"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "American and European equity option prices by lattice."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/binomial.py::crr_price",
+]
+assumptions = [
+  "recombining lattice; discrete-time limit of Black-Scholes",
+]
+limitations = [
+  "first-order convergence with odd-even oscillation",
+  "cost grows with steps squared",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "error vs Black-Scholes at 500 and 5000 steps",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_binomial.py::test_european_tree_converges_to_bs_500_steps",
+  "python/equity/01-options-pricing/tests/test_binomial.py::test_european_tree_tight_at_5000_steps",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-OPT-MC"
+name = "Monte Carlo European pricer and pathwise / likelihood-ratio Greeks"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Simulation price and Greeks; the reference for path-dependent extensions."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/monte_carlo.py::mc_price",
+]
+assumptions = [
+  "geometric Brownian motion under the risk-neutral measure",
+]
+limitations = [
+  "standard error falls as 1/sqrt(paths)",
+  "pathwise Greeks need a payoff differentiable almost everywhere",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "price within 3 standard errors of Black-Scholes",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_edge_cases.py::test_t_zero_returns_intrinsic_tree_and_mc",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-OPT-CN"
+name = "Crank-Nicolson finite-difference pricer"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "European and American prices on a PDE grid."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/pde.py::cn_price",
+]
+assumptions = [
+  "Black-Scholes PDE on a truncated log-spot grid",
+]
+limitations = [
+  "Rannacher start needed for kinked payoffs",
+  "grid truncation error at the boundaries",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "error vs Black-Scholes; error vs extrapolated tree for Americans",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_cn_european_matches_bs",
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_cn_american_second_order_and_matches_tree",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-OPT-ALO"
+name = "Andersen-Lake-Offengenden American option pricer"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "Fast high-accuracy American prices."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/alo.py::alo_price",
+]
+assumptions = [
+  "Black-Scholes dynamics; exercise boundary found by fixed-point iteration",
+]
+limitations = [
+  "accuracy depends on collocation and quadrature settings",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "difference vs extrapolated binomial tree",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_alo_no_early_exercise_regions_are_european",
+]
+independent_checks = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_alo_matches_extrapolated_tree",
+]
+
+[[model]]
+id = "EQ-OPT-SABR"
+name = "SABR implied volatility (Hagan 2002 expansion)"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Smile interpolation for rates-style and equity quotes."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/sabr.py::sabr_vol",
+]
+assumptions = [
+  "SABR stochastic-volatility dynamics, short-expiry asymptotic expansion",
+]
+limitations = [
+  "negative densities at low strikes for long expiries",
+  "expansion error grows with nu^2 T",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "ATM match to the Hagan ATM formula",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_sabr_atm_matches_hagan_atm_formula",
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_sabr_beta1_nu0_is_flat_alpha",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-OPT-BACHELIER"
+name = "Bachelier (normal) option model"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Prices options on quantities that can go negative."
+entrypoints = [
+  "python/equity/01-options-pricing/src/eq_options/bachelier.py::bachelier_price",
+]
+assumptions = [
+  "arithmetic Brownian motion of the forward",
+]
+limitations = [
+  "unbounded below; unsuitable for strictly positive assets at long expiry",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "difference vs mpmath integral",
+]
+tests = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_bachelier_worked_example_negative_forward_and_parity",
+]
+independent_checks = [
+  "python/equity/01-options-pricing/tests/test_phase5_models.py::test_bachelier_matches_mpmath_integral",
+]
+
+[[model]]
+id = "FX-OPT-GK"
+name = "Garman-Kohlhagen FX option model"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "FX vanilla prices and Greeks in the FX options package."
+entrypoints = [
+  "python/fx/01-options-pricing/src/fx_options/garman_kohlhagen.py::gk_price",
+]
+assumptions = [
+  "lognormal spot, constant domestic and foreign rates and volatility",
+]
+limitations = [
+  "no smile; settlement-date and premium-currency conventions handled outside the kernel",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "parity residual; three-language agreement",
+]
+tests = [
+  "python/fx/01-options-pricing/tests/test_arrays.py::test_matches_scalar_on_boundary_grid",
+]
+independent_checks = [
+  "python/fx/01-options-pricing/tests/test_differential.py::test_rust_matches_python",
+  "python/fx/01-options-pricing/tests/test_differential.py::test_cpp_matches_python",
+]
+
+[[model]]
+id = "EQ-VAR-PARAM"
+name = "Parametric (delta-normal and Cornish-Fisher) VaR"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "One-day equity book VaR from a covariance matrix."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/parametric_var.py::parametric_var",
+  "python/equity/03-var-es-engine/src/eq_var/parametric_var.py::cornish_fisher_var",
+]
+assumptions = [
+  "jointly normal returns (Cornish-Fisher: mild skew and kurtosis)",
+  "linear book over the horizon",
+]
+limitations = [
+  "understates fat-tailed losses",
+  "Cornish-Fisher invalid outside its monotone domain",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "Kupiec POF p-value on backtest",
+  "closed-form agreement with the oracle",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_edge_cases.py::TestSingleAsset.test_parametric_equals_mc_for_single_normal_asset",
+]
+independent_checks = [
+  "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_parametric_closed_forms",
+  "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_cornish_fisher",
+]
+
+[[model]]
+id = "EQ-VAR-HIST"
+name = "Historical simulation VaR (plain, age-weighted, filtered)"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "Equity VaR from replayed historical returns."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/historical_var.py::historical_var",
+  "python/equity/03-var-es-engine/src/eq_var/historical_var.py::filtered_historical_var",
+]
+assumptions = [
+  "the look-back window is representative of the next day",
+]
+limitations = [
+  "slow to react to regime change (plain variant)",
+  "quantile noise for short windows",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "exceptions vs Basel traffic light",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_edge_cases.py::TestZeroVolAsset.test_zero_vol_pnl_series_var_is_zero",
+]
+independent_checks = [
+  "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_historical_order_statistics",
+]
+
+[[model]]
+id = "EQ-VAR-MC"
+name = "Monte Carlo VaR with full revaluation"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "Equity VaR for option books via simulated factor returns."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/monte_carlo_var.py::monte_carlo_var",
+]
+assumptions = [
+  "multivariate normal factor returns from a repaired covariance",
+]
+limitations = [
+  "simulation noise in the quantile; standard error reported",
+  "tails only as heavy as the factor model",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "VaR standard error; parity with the parametric VaR for a linear normal book",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_edge_cases.py::TestOptionsOnlyPortfolio.test_var_computes_and_short_option_var_positive",
+]
+independent_checks = [
+  "python/equity/03-var-es-engine/tests/test_edge_cases.py::TestSingleAsset.test_parametric_equals_mc_for_single_normal_asset",
+  "rust/equity-var-engine/fuzz/src/lib.rs::check_cholesky_repair",
+  "cpp/core/fuzz/fuzz_cholesky_repair.cpp",
+]
+
+[[model]]
+id = "EQ-VAR-ES"
+name = "Expected shortfall (historical and parametric)"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "Tail-average loss for the FRTB-style reports."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/expected_shortfall.py::expected_shortfall",
+  "python/equity/03-var-es-engine/src/eq_var/expected_shortfall.py::parametric_es",
+]
+assumptions = [
+  "same as the VaR method it is computed with",
+]
+limitations = [
+  "few observations beyond the quantile; high estimation error",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "Acerbi-Szekely Z2 backtest",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_edge_cases.py::TestZeroVolAsset.test_zero_vol_pnl_series_var_is_zero",
+]
+independent_checks = [
+  "python/equity/03-var-es-engine/tests/golden/test_oracle_equity.py::test_parametric_closed_forms",
+]
+
+[[model]]
+id = "EQ-VAR-EVT"
+name = "Peaks-over-threshold EVT tail VaR and ES"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Extreme quantiles beyond the data with a generalised Pareto tail."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/evt.py::pot_var",
+  "python/equity/03-var-es-engine/src/eq_var/evt.py::pot_es",
+]
+assumptions = [
+  "exceedances over the threshold are GPD and independent",
+]
+limitations = [
+  "threshold choice drives the answer",
+  "ES undefined for xi >= 1",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "parameter recovery on simulated GPD data",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_evt.py::test_pot_matches_exact_gpd_tail",
+  "python/equity/03-var-es-engine/tests/test_evt.py::test_fit_recovers_parameters",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-VAR-SVAR"
+name = "Stressed VaR and Basel 2.5 capital"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "VaR on the worst 12-month window, combined into Basel 2.5 capital."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/stressed_var.py::stressed_var",
+]
+assumptions = [
+  "the chosen stress window is relevant to the current book",
+]
+limitations = [
+  "window search is in-sample",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "planted stress window recovered",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_stressed_var.py::test_planted_stress_window",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-VAR-FRTB-IMA"
+name = "FRTB internal-models capital (liquidity-adjusted ES)"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Teaching implementation of the FRTB IMA capital stack."
+entrypoints = [
+  "python/equity/03-var-es-engine/src/eq_var/frtb_ima.py::ima_capital",
+]
+assumptions = [
+  "liquidity horizons and risk-factor mapping as configured",
+]
+limitations = [
+  "not a regulatory implementation; no NMRF charge or DRC",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "capital formula cases",
+]
+tests = [
+  "python/equity/03-var-es-engine/tests/test_frtb_ima.py::test_capital_uses_average_when_larger",
+]
+independent_checks = []
+
+[[model]]
+id = "FX-VAR-PARAM"
+name = "FX parametric VaR"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "FX book VaR from a covariance of FX returns."
+entrypoints = [
+  "python/fx/03-var-es-engine/src/fx_var/parametric_var.py::parametric_var",
+]
+assumptions = [
+  "jointly normal FX returns; linear book",
+]
+limitations = [
+  "understates fat-tailed losses",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "closed-form agreement with the FX oracle",
+]
+tests = [
+  "python/fx/03-var-es-engine/tests/test_backtesting.py::test_garch_data_parametric_normal_fails_fhs_passes",
+]
+independent_checks = [
+  "python/fx/03-var-es-engine/tests/golden/test_oracle_fx.py::test_parametric_closed_forms",
+]
+
+[[model]]
+id = "FX-VAR-HIST"
+name = "FX historical simulation VaR"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "FX VaR from replayed historical returns."
+entrypoints = [
+  "python/fx/03-var-es-engine/src/fx_var/historical_var.py::historical_var",
+]
+assumptions = [
+  "look-back window representative",
+]
+limitations = [
+  "slow to react to regime change",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "exceptions vs Basel traffic light",
+]
+tests = [
+  "python/fx/03-var-es-engine/tests/test_backtesting.py::test_rolling_backtest_shapes_and_window",
+]
+independent_checks = [
+  "python/fx/03-var-es-engine/tests/golden/test_oracle_fx.py::test_parametric_closed_forms",
+]
+
+[[model]]
+id = "FX-VAR-MC"
+name = "FX Monte Carlo VaR"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "FX VaR with optional jumps via simulated factor returns."
+entrypoints = [
+  "python/fx/03-var-es-engine/src/fx_var/monte_carlo_var.py::monte_carlo_var",
+]
+assumptions = [
+  "normal factor returns plus optional compound-Poisson jumps",
+]
+limitations = [
+  "simulation noise in the quantile",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "VaR standard error",
+]
+tests = [
+  "python/fx/03-var-es-engine/tests/test_conventions.py::test_higham_and_clip_repair",
+  "python/fx/03-var-es-engine/tests/test_conventions.py::test_mc_never_raises_on_a_negative_vol_path",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-FI-BOOTSTRAP"
+name = "Single-curve bootstrap (deposits, FRAs, swaps)"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "Discount curve that reprices its input instruments."
+entrypoints = [
+  "python/equity/04-fixed-income/src/fi_rates/bootstrap.py::bootstrap_curve",
+]
+assumptions = [
+  "instruments quoted consistently on one curve",
+]
+limitations = [
+  "no multi-curve basis in this entrypoint",
+  "interpolation choice affects forwards between pillars",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "max repricing error of input instruments",
+]
+tests = [
+  "python/equity/04-fixed-income/tests/test_bootstrap.py::TestRoundTrip.test_deposits_and_swaps_reprice_to_1e10",
+  "python/equity/04-fixed-income/tests/test_bootstrap.py::TestRoundTrip.test_fra_repricing",
+]
+independent_checks = [
+  "python/equity/04-fixed-income/tests/test_hull_white_quantlib.py::test_zero_bond_option_matches_quantlib",
+]
+
+[[model]]
+id = "EQ-FI-HW"
+name = "Hull-White one-factor model and swaption calibration"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "Rate options and swaptions under a calibrated short-rate model."
+entrypoints = [
+  "python/equity/04-fixed-income/src/fi_rates/hull_white.py::calibrate_hull_white",
+]
+assumptions = [
+  "Gaussian short rate with constant mean reversion and volatility",
+]
+limitations = [
+  "negative rates possible",
+  "one factor: perfectly correlated curve moves",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "calibration RMSE; agreement with QuantLib",
+]
+tests = [
+  "python/equity/04-fixed-income/tests/test_round3_fix_rates.py::test_calibration_recovers_known_parameters",
+]
+independent_checks = [
+  "python/equity/04-fixed-income/tests/test_hull_white_quantlib.py::test_jamshidian_swaption_matches_quantlib",
+]
+
+[[model]]
+id = "EQ-CR-ISDA-CDS"
+name = "ISDA standard CDS model and hazard bootstrap"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "CDS pricing and par-spread to hazard-curve bootstrap."
+entrypoints = [
+  "python/equity/06-credit-risk/src/eq_credit/isda_cds.py::bootstrap_isda",
+]
+assumptions = [
+  "piecewise-constant hazard; ISDA standard model conventions",
+]
+limitations = [
+  "recovery is an input, not estimated",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-05-03
+kpis = [
+  "par-spread repricing error; agreement with QuantLib",
+]
+tests = [
+  "python/equity/06-credit-risk/tests/test_isda_cds.py::test_bootstrap_reprices_every_par_spread",
+]
+independent_checks = [
+  "python/equity/06-credit-risk/tests/test_isda_cds_quantlib.py::test_isda_cds_matches_quantlib",
+]
+
+[[model]]
+id = "EQ-CR-PD-LOGIT"
+name = "Logistic-regression PD scorecard"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Probability of default from obligor features (teaching scorecard)."
+entrypoints = [
+  "python/equity/06-credit-risk/src/eq_credit/model.py::fit_logistic",
+]
+assumptions = [
+  "log-odds linear in WoE-binned features; independent obligors",
+]
+limitations = [
+  "quasi-separation inflates coefficients (warned)",
+  "trained on synthetic or public data only",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "AUC, Gini, calibration by decile",
+]
+tests = [
+  "python/equity/06-credit-risk/tests/test_edge_cases.py::test_zero_defaults_raises_everywhere",
+]
+independent_checks = [
+  "python/equity/06-credit-risk/tests/test_model.py::test_matches_sklearn_to_1e6",
+]
+
+[[model]]
+id = "EQ-SURF-HESTON"
+name = "Heston stochastic-volatility pricer"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Smile-consistent prices from the Heston characteristic function."
+entrypoints = [
+  "python/equity/09-vol-surface/src/eq_surface/heston.py::heston_call",
+]
+assumptions = [
+  "Heston variance dynamics; Feller condition warned, not required",
+]
+limitations = [
+  "numerical integration error at very short expiries",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "parity residual; Fourier vs Monte Carlo",
+]
+tests = [
+  "python/equity/09-vol-surface/tests/test_heston.py::test_put_call_parity",
+]
+independent_checks = [
+  "python/equity/09-vol-surface/tests/test_edge_cases.py::test_xi_zero_consistency_fourier_vs_mc",
+  "python/fx/09-vol-surface/tests/test_heston_quantlib.py::test_heston_matches_quantlib",
+]
+
+[[model]]
+id = "EQ-SURF-SSVI"
+name = "SSVI / eSSVI surface fit"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Arbitrage-aware implied-volatility surface from quotes."
+entrypoints = [
+  "python/core/src/qp_core/vol/ssvi.py::fit_ssvi",
+]
+assumptions = [
+  "SSVI parameterisation of total variance",
+]
+limitations = [
+  "fit quality limited by the parametric form at the wings",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "fit RMSE; calendar arbitrage check",
+]
+tests = [
+  "python/equity/09-vol-surface/tests/test_round3_volsurface.py::test_ssvi_fit_recovers_params",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-SURF-DUPIRE"
+name = "Dupire local volatility"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Local volatility surface from total variance or prices."
+entrypoints = [
+  "python/core/src/qp_core/vol/dupire.py::local_vol_from_total_variance",
+]
+assumptions = [
+  "an arbitrage-free, twice-differentiable input surface",
+]
+limitations = [
+  "amplifies noise in the input surface",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "flat-vol recovery",
+]
+tests = [
+  "python/equity/09-vol-surface/tests/test_round3_volsurface.py::test_dupire_flat_vol_returns_sigma",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-VOL-GARCH"
+name = "GARCH(1,1) volatility forecast"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Conditional variance forecasts for VaR filtering and research."
+entrypoints = [
+  "python/equity/02-volatility-modeling/src/eq_vol/garch.py::fit_garch",
+]
+assumptions = [
+  "GARCH(1,1) with normal or Student-t innovations",
+]
+limitations = [
+  "symmetric response to shocks (see GJR, EGARCH)",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "QLIKE and MSE vs realised variance",
+]
+tests = [
+  "python/equity/02-volatility-modeling/tests/test_edge_cases.py::TestDegenerateSeries.test_constant_series_garch_raises",
+]
+independent_checks = [
+  "python/equity/02-volatility-modeling/tests/test_arch_crosscheck.py::TestGARCHCrossCheck.test_parameters_agree",
+]
+
+[[model]]
+id = "EQ-VOL-EWMA"
+name = "EWMA (RiskMetrics) volatility forecast"
+owner = "maintainer"
+tier = 3
+kind = "forecast"
+purpose = "Simple exponentially weighted variance forecast."
+entrypoints = [
+  "python/equity/02-volatility-modeling/src/eq_vol/ewma.py::ewma_forecast",
+]
+assumptions = [
+  "variance is an exponentially weighted average of squared returns",
+]
+limitations = [
+  "flat term structure: no mean reversion",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "QLIKE vs realised variance",
+]
+tests = [
+  "python/equity/02-volatility-modeling/tests/test_ewma.py::TestForecast.test_flat_term_structure",
+]
+independent_checks = []
+
+[[model]]
+id = "EQ-VOL-HAR"
+name = "HAR-RV realised-variance forecast"
+owner = "maintainer"
+tier = 3
+kind = "forecast"
+purpose = "Daily, weekly and monthly realised-variance regression forecast."
+entrypoints = [
+  "python/equity/02-volatility-modeling/src/eq_vol/har_rv.py::fit_har",
+]
+assumptions = [
+  "linear cascade of realised-variance averages",
+]
+limitations = [
+  "needs intraday data for realised variance",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "parameter recovery on simulated HAR",
+]
+tests = [
+  "python/equity/02-volatility-modeling/tests/test_har_rv.py::test_noiseless_series_recovers_exact_params",
+]
+independent_checks = []
+
+[[model]]
+id = "FX-CR-SACCR"
+name = "SA-CCR exposure at default for FX trades"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Counterparty EAD under the Basel SA-CCR rules (FX asset class)."
+entrypoints = [
+  "python/fx/06-credit-risk/src/fx_credit/saccr.py::saccr_ead",
+]
+assumptions = [
+  "BCBS 279 supervisory factors for FX",
+]
+limitations = [
+  "FX asset class only",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "hand-computed EAD",
+]
+tests = [
+  "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_saccr_unmargined_hand_value",
+  "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_saccr_multiplier_and_margined_rc",
+]
+independent_checks = []
+
+[[model]]
+id = "FX-CR-CVA"
+name = "Bilateral CVA / DVA"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Credit valuation adjustment from simulated exposures and flat hazards."
+entrypoints = [
+  "python/fx/06-credit-risk/src/fx_credit/xva.py::bilateral_cva",
+]
+assumptions = [
+  "independence of exposure and default except in the wrong-way variant",
+]
+limitations = [
+  "flat hazard curves",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "closed form for constant exposure",
+]
+tests = [
+  "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_unilateral_cva_constant_exposure_closed_form",
+  "python/fx/06-credit-risk/tests/test_xva_saccr.py::test_cva_dva_mirror_symmetry",
+]
+independent_checks = []
+
+[[model]]
+id = "FX-FI-BOOTSTRAP"
+name = "FX-implied and basis-adjusted curve bootstrap"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Discount curves from deposits, swaps and FX forwards."
+entrypoints = [
+  "python/fx/04-fixed-income/src/fx_rates/bootstrap.py::bootstrap_curve",
+]
+assumptions = [
+  "covered interest parity up to the quoted basis",
+]
+limitations = [
+  "interpolation choice affects forwards between pillars",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "repricing error of input quotes",
+]
+tests = [
+  "python/fx/04-fixed-income/tests/test_bootstrap.py::TestBootstrapRoundTrip.test_reprices_quotes_to_1e10",
+]
+independent_checks = []
+
+[[model]]
+id = "FX-FI-XCCY"
+name = "Cross-currency basis swap par basis"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Par basis and PV for cross-currency swaps."
+entrypoints = [
+  "python/fx/04-fixed-income/src/fx_rates/xccy.py::solve_par_basis",
+]
+assumptions = [
+  "two discount curves consistent with FX forwards",
+]
+limitations = [
+  "no mark-to-market resets in this entrypoint",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-03
+next_review = 2027-11-03
+kpis = [
+  "par basis zeroes PV",
+]
+tests = [
+  "python/fx/04-fixed-income/tests/test_xccy.py::TestParSolvers.test_par_basis_zeroes_pv",
+]
+independent_checks = []

@@ -13,21 +13,24 @@
 //! it; option books go through
 //! [`crate::option_reval::monte_carlo_option_run`], which reprices every path.
 //!
-//! Determinism: every draw comes from a seeded [`crate::rng::Rng`]
-//! (xoshiro256++, Box–Muller normals, Marsaglia–Tsang gamma). There is no
-//! platform-dependent RNG, so results repeat exactly for a given seed on
-//! the same build and platform. Mirrors `eq_var.monte_carlo_var` semantically (same
-//! factor model, same quantile convention); the RNG stream differs from
-//! NumPy's and from the C++ engine's `std::mt19937_64` stream, so
-//! cross-language / cross-engine agreement is statistical (within
-//! order-statistic error bars), not bitwise.
+//! Determinism (W4(b), v3.0.0): path `p` of a run with seed `s` draws from
+//! its own Philox4x32-10 stream `(s, p)` ([`crate::rng::PathRng`]): one
+//! uniform per 64-bit word, a normal by Wichura's AS 241 inverse CDF, the
+//! `n` factor normals first and then (Student-t) the Marsaglia-Tsang
+//! chi-square. A path depends only on `(s, p)`, so [`monte_carlo_pnl`],
+//! [`monte_carlo_var`] and [`monte_carlo_run`] run on all cores and give the
+//! same bits on any thread count, and the C++ engine uses the same stream
+//! definition (agreement to rounding, not by luck of seeds). Bootstrap
+//! resample `b` likewise draws its indices from Philox stream `(s', b)`, so
+//! [`var_bootstrap_se`] is threaded too. NumPy's stream differs, so Python
+//! agreement is statistical.
 
 use crate::matrix::Matrix;
 use crate::psd::PsdRepair;
-use crate::rng::Rng;
+use crate::rng::PathRng;
 use crate::{EqVarError, Result, TailModel, validate_alpha};
 
-/// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off.
+/// Minimum scenario count for [`var_kde_se`] / the tail read-off.
 /// It mirrors the C++ engine's `mc_tail_metrics` floor.
 pub const MIN_PATHS: usize = 100;
 
@@ -83,6 +86,37 @@ pub fn simulate_factor_returns_jitter(
         ));
     }
     let n = cov.rows();
+    let (chol, df, jitter) = scaled_factor(cov, tail)?;
+    let mut out = Matrix::zeros(n_paths, n);
+    let mut z = vec![0.0; n];
+    for p in 0..n_paths {
+        let mut rng = PathRng::new(seed, p as u64);
+        rng.fill_normals(&mut z);
+        // r = L z (lower-triangular product).
+        for i in 0..n {
+            let mut s = 0.0;
+            for (j, zj) in z.iter().enumerate().take(i + 1) {
+                s += chol.get(i, j) * zj;
+            }
+            out.set(p, i, s);
+        }
+        if let Some(df) = df {
+            let w = rng.chi_square(df) / df;
+            let m = 1.0 / w.sqrt();
+            for i in 0..n {
+                let v = out.get(p, i) * m;
+                out.set(p, i, v);
+            }
+        }
+    }
+    Ok((out, jitter))
+}
+
+/// Factor `cov` (scaled by `(df - 2) / df` for Student-t) as the
+/// simulation uses it: returns the lower factor, the Student-t df (if any)
+/// and the Cholesky jitter.
+pub(crate) fn scaled_factor(cov: &Matrix, tail: TailModel) -> Result<(Matrix, Option<f64>, f64)> {
+    let n = cov.rows();
     let df = match tail {
         TailModel::Normal => None,
         TailModel::StudentT { df } => {
@@ -109,32 +143,86 @@ pub fn simulate_factor_returns_jitter(
         }
     };
     let cf = scale.cholesky_repair(PsdRepair::None)?;
-    let chol = cf.factor;
-    let mut rng = Rng::new(seed);
-    let mut out = Matrix::zeros(n_paths, n);
-    let mut z = vec![0.0; n];
-    for p in 0..n_paths {
-        for zi in z.iter_mut() {
-            *zi = rng.standard_normal();
-        }
-        // r = L z (lower-triangular product).
-        for i in 0..n {
-            let mut s = 0.0;
-            for (j, zj) in z.iter().enumerate().take(i + 1) {
-                s += chol.get(i, j) * zj;
-            }
-            out.set(p, i, s);
-        }
-        if let Some(df) = df {
-            let w = rng.chi_square(df) / df;
-            let m = 1.0 / w.sqrt();
-            for i in 0..n {
-                let v = out.get(p, i) * m;
-                out.set(p, i, v);
-            }
+    Ok((cf.factor, df, cf.jitter))
+}
+
+/// Scenario P&L of a linear book straight from the lower factor `chol`
+/// (`n x n`, row-major), without forming the factor panel (W4(a)).
+///
+/// For a linear book `P&L_p = w . (m_p L z_p) = m_p (L^T w) . z_p`, so
+/// `v = L^T w` is computed once (O(n^2)) and each path costs one O(n) dot
+/// product instead of an O(n^2) triangular matvec. The draw order is that
+/// of [`simulate_factor_returns`] (n normals, then the Student-t mixing
+/// chi-square), so the result equals [`simulate_factor_returns`] followed
+/// by [`portfolio_pnl`] to rounding only (summation order differs).
+/// `v` and `z` are scratch of length `n`.
+pub(crate) fn linear_pnl_from_factor(
+    chol: &[f64],
+    exposures: &[f64],
+    df: Option<f64>,
+    seed: u64,
+    out: &mut [f64],
+    v: &mut [f64],
+    z: &mut [f64],
+) {
+    exposure_loadings(chol, exposures, v);
+    for (p, o) in out.iter_mut().enumerate() {
+        *o = linear_path(v, df, seed, p as u64, z);
+    }
+}
+
+/// `v = L^T w` for the lower factor `chol` (`n x n`, row-major).
+fn exposure_loadings(chol: &[f64], exposures: &[f64], v: &mut [f64]) {
+    let n = exposures.len();
+    v.iter_mut().for_each(|x| *x = 0.0);
+    for (i, (row, w)) in chol.chunks_exact(n).zip(exposures).enumerate() {
+        for (vj, l) in v.iter_mut().zip(&row[..=i]) {
+            *vj += l * w;
         }
     }
-    Ok((out, cf.jitter))
+}
+
+/// P&L of path `p`: `m_p v . z_p` with `z_p` from [`PathRng::new`]`(seed, p)`.
+#[inline]
+fn linear_path(v: &[f64], df: Option<f64>, seed: u64, p: u64, z: &mut [f64]) -> f64 {
+    let mut rng = PathRng::new(seed, p);
+    rng.fill_normals(z);
+    let mut acc = 0.0;
+    for (vj, zj) in v.iter().zip(z.iter()) {
+        acc += vj * zj;
+    }
+    if let Some(df) = df {
+        // PathRng::chi_square never panics: a bad df gives NaN, which the
+        // callers reject as a non-finite P&L.
+        let w = rng.chi_square(df) / df;
+        acc *= 1.0 / w.sqrt();
+    }
+    acc
+}
+
+/// Paths per thread below which the run stays on the caller's thread.
+const MIN_PATHS_PER_THREAD: usize = 2_048;
+
+/// [`linear_pnl_from_factor`] on `threads` threads. Every path has its own
+/// stream, so the result is bit-identical for any `threads`.
+fn linear_pnl_threaded(
+    chol: &[f64],
+    exposures: &[f64],
+    df: Option<f64>,
+    seed: u64,
+    out: &mut [f64],
+    threads: usize,
+) {
+    let n = exposures.len();
+    let mut v = vec![0.0; n];
+    exposure_loadings(chol, exposures, &mut v);
+    let v = &v;
+    qp_core::par::for_row_chunks(out, 1, MIN_PATHS_PER_THREAD, threads, |first, chunk| {
+        let mut z = vec![0.0; n];
+        for (k, o) in chunk.iter_mut().enumerate() {
+            *o = linear_path(v, df, seed, (first + k) as u64, &mut z);
+        }
+    });
 }
 
 /// Linear-portfolio scenario P&L: `pnl[t] = sum_j exposures[j] * returns(t, j)`.
@@ -162,13 +250,39 @@ pub fn portfolio_pnl(returns: &Matrix, exposures: &[f64]) -> Result<Vec<f64>> {
 }
 
 /// Simulate factor returns and revalue the linear portfolio in one step:
-/// `simulate_factor_returns` followed by `portfolio_pnl`.
+/// `simulate_factor_returns` followed by `portfolio_pnl`, to rounding.
+/// Runs on [`qp_core::par::default_threads`] threads; the result does not
+/// depend on the thread count (see [`monte_carlo_pnl_threads`]).
 pub fn monte_carlo_pnl(
     exposures: &[f64],
     cov: &Matrix,
     n_paths: usize,
     tail: TailModel,
     seed: u64,
+) -> Result<Vec<f64>> {
+    monte_carlo_pnl_threads(
+        exposures,
+        cov,
+        n_paths,
+        tail,
+        seed,
+        qp_core::par::default_threads(),
+    )
+}
+
+/// [`monte_carlo_pnl`] on at most `threads` threads (`0` is taken as 1).
+/// Path `p` draws from its own Philox stream ([`PathRng`]), so the output
+/// is bit-identical for every `threads`.
+///
+/// # Errors
+/// As [`monte_carlo_pnl`].
+pub fn monte_carlo_pnl_threads(
+    exposures: &[f64],
+    cov: &Matrix,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    threads: usize,
 ) -> Result<Vec<f64>> {
     if exposures.is_empty() {
         return Err(EqVarError::InvalidInput(
@@ -183,16 +297,44 @@ pub fn monte_carlo_pnl(
             exposures.len()
         )));
     }
-    let scen = simulate_factor_returns(cov, n_paths, tail, seed)?;
-    portfolio_pnl(&scen, exposures)
+    Ok(linear_pnl_jitter(exposures, cov, n_paths, tail, seed, threads)?.0)
 }
 
-fn sorted_copy(pnl: &[f64]) -> Vec<f64> {
-    let mut v = pnl.to_vec();
-    // `total_cmp` orders every f64 bit pattern, so this sort has no panic
-    // path (the callers validate finiteness first regardless).
-    v.sort_by(f64::total_cmp);
-    v
+/// O(n) per path linear P&L plus the Cholesky jitter (shared by
+/// [`monte_carlo_pnl`] and [`monte_carlo_run`]). Validates like
+/// [`simulate_factor_returns`] and [`portfolio_pnl`] together.
+fn linear_pnl_jitter(
+    exposures: &[f64],
+    cov: &Matrix,
+    n_paths: usize,
+    tail: TailModel,
+    seed: u64,
+    threads: usize,
+) -> Result<(Vec<f64>, f64)> {
+    if n_paths < 1 {
+        return Err(EqVarError::InvalidInput(
+            "simulate_factor_returns: n_paths must be >= 1".to_string(),
+        ));
+    }
+    if exposures.iter().any(|w| !w.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "portfolio_pnl: exposures and returns must be finite".to_string(),
+        ));
+    }
+    if !cov.all_finite() {
+        return Err(EqVarError::InvalidInput(
+            "simulate_factor_returns: covariance contains NaN or infinite entries".to_string(),
+        ));
+    }
+    let (chol, df, jitter) = scaled_factor(cov, tail)?;
+    let mut pnl = vec![0.0; n_paths];
+    linear_pnl_threaded(chol.as_slice(), exposures, df, seed, &mut pnl, threads);
+    if pnl.iter().any(|x| !x.is_finite()) {
+        return Err(EqVarError::InvalidInput(
+            "portfolio_pnl: exposures and returns must be finite".to_string(),
+        ));
+    }
+    Ok((pnl, jitter))
 }
 
 fn validate_pnl_mc(pnl: &[f64]) -> Result<()> {
@@ -241,37 +383,6 @@ pub fn monte_carlo_es(
     let pnl = monte_carlo_pnl(exposures, cov, n_paths, tail, seed)?;
     validate_pnl_mc(&pnl)?;
     crate::expected_shortfall::expected_shortfall(&pnl, alpha)
-}
-
-/// Old symmetric order-statistic finite-difference SE, kept for one
-/// release. Use [`var_bootstrap_se`] (primary) or [`var_kde_se`].
-///
-/// Order-statistic standard error of the `alpha`-quantile VaR estimate on a
-/// scenario P&L sample.
-///
-/// Asymptotic quantile variance `alpha(1-alpha) / (n f(q)^2)`, with the
-/// density `f` estimated by a symmetric order-statistic finite difference of
-/// bandwidth `ceil(sqrt(alpha * n))` around the quantile rank. Returns `0`
-/// in the degenerate case where the local window has zero spread (e.g. a
-/// riskless / zero-variance portfolio).
-#[deprecated(since = "0.2.0", note = "use var_bootstrap_se (primary) or var_kde_se")]
-pub fn var_order_statistic_se(pnl: &[f64], alpha: f64) -> Result<f64> {
-    validate_alpha(alpha)?;
-    validate_pnl_mc(pnl)?;
-    let sorted = sorted_copy(pnl);
-    let n = sorted.len();
-    let h = alpha * (n - 1) as f64;
-    let rank = (h.round() as usize).min(n - 1);
-    let m = ((alpha * n as f64).sqrt().ceil() as usize).max(1);
-    let ilo = rank.saturating_sub(m);
-    let ihi = (rank + m).min(n - 1);
-    let dx = sorted[ihi] - sorted[ilo];
-    if dx > 0.0 {
-        let f_hat = ((ihi - ilo) as f64 / n as f64) / dx;
-        Ok((alpha * (1.0 - alpha) / n as f64).sqrt() / f_hat)
-    } else {
-        Ok(0.0)
-    }
 }
 
 /// Everything one Monte Carlo simulation gives: see [`monte_carlo_run`].
@@ -334,8 +445,14 @@ pub fn monte_carlo_run(
             exposures.len()
         )));
     }
-    let (scen, jitter) = simulate_factor_returns_jitter(cov, n_paths, tail, seed)?;
-    let pnl = portfolio_pnl(&scen, exposures)?;
+    let (pnl, jitter) = linear_pnl_jitter(
+        exposures,
+        cov,
+        n_paths,
+        tail,
+        seed,
+        qp_core::par::default_threads(),
+    )?;
     validate_pnl_mc(&pnl)?;
     let (var, es) = crate::tail::empirical_var_es(&pnl, alpha)?;
     let se = var_bootstrap_se(&pnl, alpha, n_boot, seed ^ 0x9E37_79B9_7F4A_7C15)?;
@@ -381,23 +498,58 @@ pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Re
     }
     let n = pnl.len();
     let m = crate::tail::tail_rank(n, alpha)?;
-    let mut rng = Rng::new(seed);
-    let mut buf = vec![0.0; n];
-    let mut sum = 0.0;
-    let mut est = Vec::with_capacity(n_boot);
-    for _ in 0..n_boot {
-        for slot in buf.iter_mut() {
-            let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
-            *slot = -pnl[idx];
-        }
-        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
-        let v = *lm;
-        est.push(v);
-        sum += v;
-    }
+    let mut est = vec![0.0; n_boot];
+    // Resample b has its own Philox stream (seed, b), so the resamples run
+    // on all cores and the estimates do not depend on the thread count.
+    let min_rows = (1usize << 16).div_ceil(n).max(1);
+    qp_core::par::for_row_chunks(
+        &mut est,
+        1,
+        min_rows,
+        qp_core::par::default_threads(),
+        |first, chunk| {
+            let mut buf = vec![0.0; n];
+            for (k, e) in chunk.iter_mut().enumerate() {
+                *e = bootstrap_resample_var(pnl, m, seed, (first + k) as u64, &mut buf);
+            }
+        },
+    );
+    let sum: f64 = est.iter().sum();
     let mean = sum / n_boot as f64;
     let ss: f64 = est.iter().map(|v| (v - mean) * (v - mean)).sum();
     Ok((ss / (n_boot - 1) as f64).sqrt())
+}
+
+/// VaR (`m`-th largest loss) of bootstrap resample `b`: `n` indices
+/// `min(n - 1, floor(u n))` from Philox stream `(seed, b)` (W4(b)).
+/// `buf` is scratch of length `pnl.len()`.
+pub(crate) fn bootstrap_resample_var(
+    pnl: &[f64],
+    m: usize,
+    seed: u64,
+    b: u64,
+    buf: &mut [f64],
+) -> f64 {
+    let n = pnl.len();
+    let nf = n as f64;
+    // Uniforms come from the batched Philox generator (LANES blocks side by
+    // side, the same words as `PhiloxStream::new(seed, b)`; a test checks
+    // it). The one-word-at-a-time stream cost more than the rest of the
+    // resample put together.
+    let mut u = [0.0f64; 2 * crate::rng::LANES];
+    let mut block = 0u64;
+    for chunk in buf.chunks_mut(2 * crate::rng::LANES) {
+        let uc = &mut u[..chunk.len()];
+        crate::rng::philox_uniforms(seed, b, block, uc);
+        block += crate::rng::LANES as u64;
+        for (slot, &ui) in chunk.iter_mut().zip(uc.iter()) {
+            let idx = ((ui * nf) as usize).min(n - 1);
+            // `idx <= n - 1` by the `min`; `get` keeps the path panic-free.
+            *slot = -pnl.get(idx).copied().unwrap_or(0.0);
+        }
+    }
+    let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+    *lm
 }
 
 /// Kernel-density standard error of the VaR (diagnostic only).

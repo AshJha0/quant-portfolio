@@ -58,6 +58,15 @@ pytest -q                          # 286 tests, offline, about 110 s
 
 ## Headline numbers (synthetic)
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> The P&L was n x notional x d log p, a USD exposure reset every day for free. The USD exposure is now bought as base units at the fill and held; spot P&L is the USD change in value and cost is half the spread per unit traded.
+> Worked example: round trip, before log(q_sell/q_buy), after q_sell/q_buy - 1. On the test corpus the next-fill total moves 9318.69 -> 9728.80 (notional 1e6), auction 0.017277 -> 0.017742, walk-forward 0.110503 -> 0.109987.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in `BEFORE_AFTER` in the characterisation test, with the old golden in `tests/golden/characterisation_w24b_before.json` (source: `docs/MIGRATION.md`, milestone v2.1).
+
 From `python examples/run_pipeline.py`: mean [95% CI] over 60 synthetic seeds
 (1000 to 1059) unless a seed is named.
 

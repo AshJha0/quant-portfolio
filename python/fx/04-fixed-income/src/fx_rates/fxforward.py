@@ -19,6 +19,21 @@ float-float basis-swap quotes (``bootstrap.basis_discount_curve``):
 For EURUSD the EUR curve carries the basis; for USDJPY it is the JPY
 (quote) curve, not the USD one.
 
+Spot is a price for delivery on the spot date ``t_s`` (T+2, or T+1 for
+USDCAD, USDTRY, USDRUB, USDPHP; see :func:`qp_core.holidays.fx_spot_date`),
+not today. The forward to time ``T`` (years from the valuation date) is
+
+    F(T) = S * DF_f(t_s, T) / DF_d(t_s, T) = S * [P_f(T)/P_f(t_s)] / [P_d(T)/P_d(t_s)]
+
+(Clark 2011, ch. 1; Wystup 2017, ch. 1). The value today of one unit of
+base currency delivered at spot is ``S * P_d(t_s) / P_f(t_s)`` in quote
+currency, :attr:`MarketState.spot_today`. Until round 6 the spot rate was
+treated as a t = 0 price, which overstated a 1y EURUSD forward by about
+2.4 pips at a 2% rate differential. That behaviour is kept, with a
+``DeprecationWarning``, when a ``MarketState`` gets neither a
+``valuation_date`` nor a ``spot_time`` (or gets ``spot_at_t0=True``); it
+will be removed in v4.0.0.
+
 All position values are expressed in the **quote (domestic) currency**.
 A positive ``notional_base`` means long the base currency forward
 (receive base, pay quote at expiry).
@@ -26,6 +41,8 @@ A positive ``notional_base`` means long the base currency forward
 
 from __future__ import annotations
 
+import datetime as dt
+import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -34,9 +51,10 @@ from functools import cached_property
 
 import numpy as np
 import pandas as pd
+from qp_core.holidays import fx_spot_date
 
 from ._validation import require_finite
-from .bootstrap import basis_adjusted_curve, basis_discount_curve
+from .bootstrap import basis_discount_curve
 from .curve import DiscountCurve
 
 __all__ = [
@@ -44,9 +62,13 @@ __all__ = [
     "FXSwap",
     "MarketState",
     "cip_forward",
+    "curve_from_forward_points",
+    "forward_for_date",
     "forward_points",
+    "forward_points_for_date",
     "forward_points_table",
     "market_forward",
+    "year_fraction_365",
 ]
 
 POINT_FACTORS = {"EURUSD": 1e4, "USDJPY": 1e2, "EURJPY": 1e2}
@@ -76,9 +98,9 @@ class MarketState:
     Attributes
     ----------
     spot : float
-        Spot rate, quote currency per 1 base currency (e.g. EURUSD 1.0850).
-        Interpreted at t = 0: curve times run from the valuation date and the
-        spot lag is not discounted separately.
+        Spot rate, quote currency per 1 base currency (e.g. EURUSD 1.0850),
+        for delivery on the spot date. Curve times run from the valuation
+        date (ACT/365F).
     domestic_curve : DiscountCurve
         Quote-currency discount curve (USD for EURUSD).
     foreign_curve : DiscountCurve
@@ -96,10 +118,21 @@ class MarketState:
         currency.
     basis_model : str
         ``"float_float"`` (default): ``basis_spreads`` are par spreads of
-        float-float basis swaps. ``"zero_spread"``: the old shortcut
-        ``z_adj = z_f + s`` on the base curve (deprecated).
+        float-float basis swaps, the only model since v3.0.0 (the old
+        ``"zero_spread"`` shortcut ``z_adj = z_f + s`` was removed).
     basis_frequency : int
         Resets per year of the quoted basis swaps (default 4).
+    valuation_date : datetime.date, optional
+        Valuation (trade) date. Sets ``spot_date`` from the pair's
+        calendars and ``spot_time = (spot_date - valuation_date) / 365``.
+        Needed for date-based (broken-date) forwards and NDFs.
+    spot_time : float, optional
+        Year fraction from valuation to the spot date, when no dates are
+        at hand. Give this or ``valuation_date``, not both.
+    spot_at_t0 : bool
+        Deprecated: treat spot as a t = 0 price (the pre-round-6
+        behaviour). It is also the fallback, with a warning, when neither
+        ``valuation_date`` nor ``spot_time`` is given.
     """
 
     spot: float
@@ -110,8 +143,12 @@ class MarketState:
     collateral_ccy: str | None = None
     basis_model: str = "float_float"
     basis_frequency: int = 4
+    valuation_date: dt.date | None = None
+    spot_time: float | None = None
+    spot_at_t0: bool = False
 
     def __post_init__(self) -> None:
+        self._resolve_spot_time()
         require_finite(spot=self.spot)
         for _t, _s in self.basis_spreads:
             require_finite(basis_tenor=_t, basis_spread=_s)
@@ -135,15 +172,59 @@ class MarketState:
             raise ValueError(
                 f"collateral_ccy {self.collateral_ccy!r} must be one of {self.pair}"
             )
-        if self.basis_model not in ("float_float", "zero_spread"):
-            raise ValueError(f"unknown basis_model {self.basis_model!r}")
-        if self.basis_model == "zero_spread":
+        if self.basis_model != "float_float":
+            raise ValueError(f"unknown basis_model {self.basis_model!r} (only 'float_float'; "
+                             "'zero_spread' was removed in v3.0.0)")
+
+    def _resolve_spot_time(self) -> None:
+        if self.spot_at_t0:
+            if self.valuation_date is not None or self.spot_time not in (None, 0.0):
+                raise ValueError("spot_at_t0=True excludes valuation_date and spot_time")
             warnings.warn(
-                "basis_model='zero_spread' is deprecated: it makes basis risk "
-                "identical to base-curve rate risk. Use 'float_float'.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
+                "spot_at_t0=True is deprecated: a quoted spot rate is for the spot "
+                "date, not today; it will be removed in v4.0.0. Pass valuation_date "
+                "or spot_time.",
+                DeprecationWarning, stacklevel=4)
+            object.__setattr__(self, "spot_time", 0.0)
+            return
+        if self.valuation_date is not None:
+            if isinstance(self.valuation_date, dt.datetime) or not isinstance(
+                    self.valuation_date, dt.date):
+                raise TypeError("valuation_date must be a datetime.date")
+            ts = year_fraction_365(self.valuation_date,
+                                   fx_spot_date(self.valuation_date, self.pair))
+            if self.spot_time is not None and abs(float(self.spot_time) - ts) > 1e-15:
+                raise ValueError(
+                    f"spot_time {self.spot_time} contradicts valuation_date "
+                    f"{self.valuation_date} (spot time {ts}); give one of them")
+            object.__setattr__(self, "spot_time", ts)
+            return
+        if self.spot_time is None:
+            warnings.warn(
+                "MarketState without valuation_date or spot_time treats spot as a "
+                "t = 0 price; this is deprecated and will be removed in v4.0.0. Pass "
+                "valuation_date (or spot_time) so forwards run from the spot date.",
+                DeprecationWarning, stacklevel=4)
+            object.__setattr__(self, "spot_time", 0.0)
+            return
+        require_finite(spot_time=self.spot_time)
+        if self.spot_time < 0.0:
+            raise ValueError(f"spot_time must be >= 0, got {self.spot_time}")
+        object.__setattr__(self, "spot_time", float(self.spot_time))
+
+    @property
+    def spot_date(self) -> dt.date | None:
+        """Spot value date, when ``valuation_date`` is set."""
+        if self.valuation_date is None:
+            return None
+        return fx_spot_date(self.valuation_date, self.pair)
+
+    @cached_property
+    def spot_today(self) -> float:
+        """Today's value, in quote currency, of one base unit delivered at spot:
+        ``S * P_d(t_s) / P_f(t_s)`` on the discount curves."""
+        return _spot_t0(self.spot, self.spot_time, self.domestic_curve_adjusted,
+                        self.foreign_curve_adjusted)
 
     @property
     def basis_ccy(self) -> str:
@@ -151,10 +232,6 @@ class MarketState:
         return self.pair[1] if self.collateral_ccy == self.pair[0] else self.pair[0]
 
     def _discount(self, projection: DiscountCurve, ccy: str) -> DiscountCurve:
-        if self.basis_model == "zero_spread":
-            if ccy != self.base_ccy:
-                return projection
-            return basis_adjusted_curve(projection, self.basis_spreads)
         if ccy != self.basis_ccy:
             return projection
         return basis_discount_curve(projection, self.basis_spreads, self.basis_frequency)
@@ -185,6 +262,17 @@ class MarketState:
 # ---------------------------------------------------------------------- #
 # forward curve
 # ---------------------------------------------------------------------- #
+def year_fraction_365(start: dt.date, end: dt.date) -> float:
+    """ACT/365F year fraction, the time basis of every curve in this module."""
+    return (end - start).days / 365.0
+
+
+def _spot_t0(spot: float, ts: float | None, dom: DiscountCurve,
+             for_: DiscountCurve) -> float:
+    if not ts:
+        return float(spot)
+    return float(spot * dom.df(ts) / for_.df(ts))
+
 def cip_forward(
     spot: float,
     domestic_curve: DiscountCurve,
@@ -207,7 +295,8 @@ def cip_forward(
 def market_forward(market: MarketState, expiry) -> float:
     """Basis-consistent market forward ``S * D_base(T) / D_quote(T)``."""
     return cip_forward(
-        market.spot, market.domestic_curve_adjusted, market.foreign_curve_adjusted, expiry
+        market.spot_today, market.domestic_curve_adjusted, market.foreign_curve_adjusted,
+        expiry,
     )
 
 
@@ -237,8 +326,10 @@ def forward_points_table(
     if point_factor is None:
         point_factor = _point_factor(market.pair)
     rows = []
+    s0_cip = _spot_t0(market.spot, market.spot_time, market.domestic_curve,
+                      market.foreign_curve)
     for t in tenors:
-        f_cip = cip_forward(market.spot, market.domestic_curve, market.foreign_curve, t)
+        f_cip = cip_forward(s0_cip, market.domestic_curve, market.foreign_curve, t)
         f_mkt = market_forward(market, t)
         s_bp = -np.log(f_mkt / f_cip) / t * 1e4 if t > 0 else 0.0
         rows.append(
@@ -318,7 +409,7 @@ class FXForward:
         df_d = market.domestic_curve_adjusted.df(t)
         df_f = market.foreign_curve_adjusted.df(t)
         if method == "cashflows":
-            return n * market.spot * df_f - n * k * df_d
+            return n * market.spot_today * df_f - n * k * df_d
         if method == "forward":
             return n * df_d * (market_forward(market, t) - k)
         raise ValueError(f"unknown valuation method {method!r}")
@@ -387,7 +478,7 @@ class FXSwap:
                 f"market pair {market.pair} does not match position pair {self.pair}"
             )
         n = self.notional_base
-        s = market.spot
+        s = market.spot_today
         dfd, dff = market.domestic_curve_adjusted.df, market.foreign_curve_adjusted.df
         v = 0.0
         v += n * s * dff(self.near_expiry)                     # receive base near
@@ -395,3 +486,79 @@ class FXSwap:
         v -= n * s * dff(self.far_expiry)                      # pay base far
         v += n * self.far_strike * dfd(self.far_expiry)        # receive quote far
         return v
+
+
+# ---------------------------------------------------------------------- #
+# dated (broken-date) forwards
+# ---------------------------------------------------------------------- #
+def _time_to(market: MarketState, value_date: dt.date) -> float:
+    if market.valuation_date is None:
+        raise ValueError("date-based forwards need a MarketState with valuation_date")
+    if value_date < market.valuation_date:
+        raise ValueError(
+            f"value date {value_date} precedes valuation date {market.valuation_date}")
+    return year_fraction_365(market.valuation_date, value_date)
+
+
+def forward_for_date(market: MarketState, value_date: dt.date) -> float:
+    """Outright forward for any value date, a quoted tenor or a broken date.
+
+    ``T = (value_date - valuation_date) / 365`` and the forward is
+    ``S * DF_f(t_s, T) / DF_d(t_s, T)`` on the curves. A broken date gets
+    the rate the curves imply between the neighbouring pillars (log-linear
+    discount factors), not a straight-line blend of quoted points. Value
+    dates before spot (ON, TN) are allowed: the same formula discounts back
+    from spot.
+    """
+    return market_forward(market, _time_to(market, value_date))
+
+
+def forward_points_for_date(market: MarketState, value_date: dt.date,
+                            point_factor: float | None = None) -> float:
+    """Forward points ``(F - S) * factor`` for a value date."""
+    return forward_points(market, _time_to(market, value_date), point_factor)
+
+
+def curve_from_forward_points(
+    spot: float,
+    domestic_curve: DiscountCurve,
+    strip: Sequence[tuple[dt.date, float]],
+    valuation_date: dt.date,
+    pair: tuple[str, str] = ("EUR", "USD"),
+    point_factor: float | None = None,
+    name: str = "implied-foreign",
+) -> DiscountCurve:
+    """Base-currency discount curve that reprices a forward-points strip.
+
+    ``strip`` holds ``(value_date, points)`` pairs. Each gives
+    ``F_i = S + points_i / factor``, and inverting the spot-date forward
+    gives
+
+        P_f(T_i) = F_i * P_d(T_i) * P_f(t_s) / (S * P_d(t_s)).
+
+    ``P_f(t_s)`` lies before the first pillar, where the curve is
+    log-linear from ``P_f(0) = 1``, so ``ln P_f(t_s) = (t_s / T_1) ln P_f(T_1)``
+    and the first pillar is solved in closed form. A ``MarketState`` with
+    this curve as ``foreign_curve`` (no basis quotes) and the same
+    ``valuation_date`` reprices every input point to rounding.
+    """
+    require_finite(spot=spot)
+    if spot <= 0.0:
+        raise ValueError(f"spot must be > 0, got {spot}")
+    pf = _point_factor((pair[0], pair[1])) if point_factor is None else point_factor
+    ts = year_fraction_365(valuation_date, fx_spot_date(valuation_date, pair))
+    rows = sorted((year_fraction_365(valuation_date, d), spot + pts / pf) for d, pts in strip)
+    if not rows:
+        raise ValueError("strip must not be empty")
+    if rows[0][0] <= ts:
+        raise ValueError("every strip date must be after the spot date")
+    if any(f <= 0.0 for _, f in rows):
+        raise ValueError("forward points imply a non-positive forward")
+    pd_ts = domestic_curve.df(ts)
+    t1, f1 = rows[0]
+    ln_p1 = (math.log(f1) - math.log(spot) - math.log(pd_ts)
+             + math.log(domestic_curve.df(t1))) / (1.0 - ts / t1)
+    pf_ts = math.exp(ts / t1 * ln_p1)
+    times = [t for t, _ in rows]
+    dfs = [f * domestic_curve.df(t) * pf_ts / (spot * pd_ts) for t, f in rows]
+    return DiscountCurve(times, dfs, name=name)

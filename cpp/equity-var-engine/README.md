@@ -13,7 +13,7 @@ returns panel (T x n) -- sample / EWMA covariance -- Cholesky (capped jitter, PS
    |
    +-- Historical VaR: order statistic / BRW age-weighted / per-factor FHS
    +-- Parametric VaR: normal / variance-matched Student-t / Cornish-Fisher
-   +-- Monte Carlo VaR: MVN and multivariate t, seeded mt19937_64, bootstrap SE
+   +-- Monte Carlo VaR: MVN and multivariate t, per-path Philox4x32-10, threaded bootstrap SE
    +-- Expected Shortfall: Acerbi-Tasche with the fractional atom / closed forms
    +-- Backtesting: Kupiec POF, Christoffersen IND/CC, Acerbi-Szekely Z2
    +-- Basel traffic light: binomial zones on any window and alpha
@@ -37,8 +37,11 @@ each convention in full.
 - **Hot-path API.** `eqvar/kernels.hpp` gives noexcept `try_*` kernels that
   return `std::expected<T, eqvar::Error>`, take their work buffers from the
   caller and never allocate once those are sized.
-- **Repeatability.** Every draw comes from a seeded `std::mt19937_64`
-  through the engine's own inverse-CDF transforms, never
+- **Repeatability.** Each Monte Carlo path draws from its own
+  Philox4x32-10 stream `(seed, path)` with AS 241 normals
+  (`qp/philox.hpp`), so a seed gives the same bits on any thread count and
+  the same numbers as the Rust engine (since milestone v2.1; before, one
+  `std::mt19937_64` stream with Acklam normals). Never
   `std::normal_distribution`. A seed repeats exactly on one platform. Across
   platforms the last bits can differ: `std::log`, `std::exp` and `std::erfc`
   are not correctly rounded, and glibc, MSVC and Apple libm differ.
@@ -133,9 +136,13 @@ Result<MonteCarloResult> r =
 
 Every throwing function is now a thin wrapper over its `try_*` form and
 keeps its exception types and messages. A program that prints 5,557
-legacy-API results and exception texts in hex-float gives identical output
-against the library before and after this change, with GCC 15.2 and
-Clang 21.1.
+legacy-API results and exception texts in hex-float gave identical output
+against the library before and after that change, with GCC 15.2 and
+Clang 21.1. One later change moves numbers on purpose: since milestone v2.1
+the linear Monte Carlo kernel computes each path as one O(n) dot product
+with v = L'w, so Monte Carlo VaR and ES match 2.0.0 and the two-step
+`simulate_factor_returns` + `portfolio_pnl` path to 1e-12 relative, not bit
+for bit (docs/METHODOLOGY.md, `docs/MIGRATION.md` at the repository root).
 
 ## Shared core, presets and C++26
 

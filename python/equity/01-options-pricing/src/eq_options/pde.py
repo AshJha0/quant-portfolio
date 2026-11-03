@@ -35,6 +35,7 @@ import math
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 
 from .black_scholes import OptionType, _check_rates, validate_inputs
 
@@ -77,6 +78,7 @@ def _solve_tridiag(
     return x
 
 
+@model(id="EQ-OPT-CN")
 def cn_price(
     S: float,
     K: float,

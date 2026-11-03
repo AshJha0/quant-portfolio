@@ -75,7 +75,8 @@ def test_position_uses_previous_day_regime():
 
 
 def test_spot_pnl_hand_check():
-    """Single-day spot P&L equals w . R (simple return) when the book is unchanged."""
+    """On a day with no trade the book held at the previous close, h, earns
+    h . R (simple returns) and the carry h . d; it is not reset to target."""
     idx = pd.bdate_range("2020-01-01", periods=80)
     ccys = ["AUD", "NZD", "JPY", "CHF"]
     rets = pd.DataFrame(0.001, index=idx, columns=ccys)
@@ -86,23 +87,23 @@ def test_spot_pnl_hand_check():
     regimes = pd.Series("risk_off", index=idx)
     cfg = StrategyConfig(cov_window=30)
     bt = run_backtest(rets, rates, regimes, cfg)
-    t = 10
-    w = bt.weights.iloc[t]
+    t = int(np.flatnonzero(bt.ledger["turnover"].to_numpy() == 0.0)[1])  # no trade
+    h = bt.weights.iloc[t - 1]
     date = bt.weights.index[t]
-    assert (bt.weights.iloc[t - 1] == w).all()
     assert bt.ledger["spot"].iloc[t] == pytest.approx(
-        float(w @ np.expm1(rets.loc[date])), abs=1e-15
+        float(h @ np.expm1(rets.loc[date])), abs=1e-15
     )
-    # risk_off book: equal returns cancel (long havens = short risk)
+    # risk_off book: equal returns cancel (long havens = short risk), and
+    # equal returns keep the dollar-neutral book dollar-neutral
     assert bt.ledger["spot"].iloc[t] == pytest.approx(0.0, abs=1e-12)
-    # carry: known rates -> hand value  0.5*(0+(-0.01)) - 0.5*(0.04+0.05)
-    # differential vs USD: 0.5*(-0.02-0.03) - 0.5*(0.02+0.03) = -0.05 p.a.
-    # ACT/365 on the calendar gap since the previous close
-    scale = w["JPY"] / 0.5
+    # carry: differential vs USD 0.5*(-0.02-0.03) - 0.5*(0.02+0.03) = -0.05
+    # p.a. per unit of |w|/0.5, ACT/365 on the calendar gap
+    scale = h["JPY"] / 0.5
     gap = (date - bt.weights.index[t - 1]).days
-    assert bt.ledger["carry"].iloc[t] == pytest.approx(
-        -0.05 * gap / 365 * scale, rel=1e-9
-    )
+    assert bt.ledger["carry"].iloc[t] == pytest.approx(-0.05 * gap / 365 * scale, rel=1e-9)
+    # the book drifts: h_t = h_{t-1} (1 + R) / (1 + net), R = exp(0.001) - 1
+    np.testing.assert_allclose(
+        bt.weights.iloc[t], h * np.exp(0.001) / (1 + bt.ledger["net"].iloc[t]), rtol=0, atol=1e-14)
 
 
 def test_static_baseline_is_always_risk_on(backtests2):
@@ -121,16 +122,22 @@ def test_oracle_uses_true_states(panel2, backtests2):
     assert (led["regime"].to_numpy() == expected).all()
 
 
-def test_turnover_matches_weight_changes(backtests2):
+def test_turnover_and_drift(backtests2, panel2):
+    """Turnover is the notional traded at the fill; on days without a trade
+    the book drifts, h_t = h_{t-1} (1 + R_t) / (1 + net_t), and pays nothing."""
     bt = backtests2["filtered"]
-    dw = bt.weights.diff().abs().sum(axis=1)
-    # first row turnover is the full initial position
-    assert np.allclose(
-        bt.ledger["turnover"].iloc[1:], dw.iloc[1:], atol=1e-12
-    )
-    assert bt.ledger["turnover"].iloc[0] == pytest.approx(
-        bt.weights.iloc[0].abs().sum()
-    )
+    led = bt.ledger
+    assert led["turnover"].iloc[0] > 0
+    assert ((led["turnover"] > 0) == (led["cost"] > 0)).all()
+    quiet = np.flatnonzero(led["turnover"].to_numpy() == 0.0)
+    quiet = quiet[quiet > 0]
+    assert len(quiet) > 10
+    r = np.expm1(panel2.returns.loc[led.index].to_numpy())
+    h = bt.weights.to_numpy()
+    net = led["net"].to_numpy()
+    for k in quiet:
+        np.testing.assert_allclose(h[k], h[k - 1] * (1 + r[k]) / (1 + net[k]), rtol=0,
+                                   atol=1e-14)
 
 
 def test_invalid_inputs_raise(panel2, det2):

@@ -23,12 +23,28 @@ Portfolio: factor mapping (prices, index, implied vol)
 order statistic `L(ceil(n alpha))` of the losses, with no interpolation. The
 full list of conventions is in [METHODOLOGY.md](docs/METHODOLOGY.md) §2.
 
+## Historical VaR rule (`rule=`)
+
+Plain idea: with 250 daily P&Ls, "the 99 % VaR" is a loss exceeded on
+about 2.5 days, so it must be read off between order statistics. Two
+conventions exist and they differ by a few percent on short windows.
+
+Formal statement: `rule="kth_worst"` (the default) returns the `m`-th
+largest loss with `m = ceil(n * alpha)`, clamped to 1 (BCBS MAR33.4 and
+MAR99 use the 3rd worst of 250 days at 99 %). `rule="interpolated"`
+returns the type-7 (linear) quantile of the losses (Hyndman and Fan 1996).
+Both match an independent mpmath oracle, and the C++ (`HistRule`) and
+Rust (`HistRule`) engines implement the same two rules.
+
+Worked example: losses 1, 2, ..., 250 at alpha = 1 %: `kth_worst` gives
+248 (the 3rd worst); `interpolated` gives 247.51.
+
 ## Quickstart
 
 ```bash
 cd python/equity/03-var-es-engine
 pip install -e .[dev]
-python -m pytest -p no:cacheprovider -q   # 636 tests, offline
+python -m pytest -p no:cacheprovider -q   # 676 tests, offline
 python examples/run_pipeline.py           # full demo
 ```
 
@@ -44,6 +60,8 @@ ev.monte_carlo_risk(pf, cov, 0.01, n_paths=100_000, seed=7)       # MC VaR, ES, 
 ev.expected_shortfall(pf.pnl(rets), 0.025)                        # ES 97.5 %
 ev.kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)              # backtest
 ev.basel_traffic_light(n_obs=250, n_exceptions=5, alpha=0.01)     # zone and multiplier
+ev.historical_var(pf.pnl(rets), 0.01)                             # k-th worst loss (default)
+ev.historical_var(pf.pnl(rets), 0.01, rule="interpolated")        # type-7 quantile
 ```
 
 ## Results on the synthetic demo book

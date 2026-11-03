@@ -104,6 +104,14 @@ proptest! {
         check!(historical_var(&p, a).is_err());
         check!(historical_var(&[], 0.01).is_err());
         check!(historical_var(&[1.0], 0.01).is_err());
+        for r in [HistRule::KthWorst, HistRule::Interpolated] {
+            check!(historical_var_with_rule(&poison(p.clone(), i, x), 0.01, r).is_err());
+            check!(historical_var_with_rule(&p, a, r).is_err());
+            check!(historical_var_with_rule(&[1.0], 0.01, r).is_err());
+        }
+        check!(interpolated_var(&poison(p.clone(), i, x), 0.01).is_err());
+        check!(interpolated_var(&p, a).is_err());
+        check!(interpolated_var(&[], 0.01).is_err());
         check!(age_weighted_var(&poison(p.clone(), i, x), 0.01, 0.97).is_err());
         check!(age_weighted_var(&p, a, 0.97).is_err());
         check!(age_weighted_var(&p, 0.01, l).is_err());
@@ -128,9 +136,6 @@ proptest! {
         check!(overlapping_horizon_pnl(&poison(p.clone(), i, x), 5).is_err());
         check!(overlapping_horizon_pnl(&p, 0).is_err());
         check!(overlapping_horizon_pnl(&[], 1).is_err());
-        check!(linear_quantile(&poison(p.clone(), i, x), 0.5).is_err());
-        check!(linear_quantile(&p, x).is_err());
-        check!(linear_quantile(&[], 0.5).is_err());
     }
 
     #[test]
@@ -189,7 +194,6 @@ proptest! {
         check!(cornish_fisher_var(1.0, 0.01, x, 0.0, 0.0, false).is_err());
         check!(cornish_fisher_var(1.0, 0.01, 0.0, x, 0.0, false).is_err());
         check!(cornish_fisher_var(1.0, 0.01, 0.0, 0.0, x, false).is_err());
-        check!(!cornish_fisher_domain_ok(x, 0.0, 3.5, 10));
     }
 
     #[test]
@@ -203,10 +207,8 @@ proptest! {
         check!(kupiec_pof(&KupiecInput { n_obs: neg, n_exceptions: 0, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: neg, alpha: 0.01 }).is_err());
         check!(kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 251, alpha: 0.01 }).is_err());
-        check!(kupiec_pof_positional(250, 5, a).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: a }).is_err());
         check!(basel_traffic_light(&BaselInput { n_obs: neg, n_exceptions: 0, alpha: 0.01 }).is_err());
-        check!(basel_traffic_light_250(300, 250).is_err());
         check!(christoffersen_cc(&[0, 1, 0, 0], a).is_err());
         check!(christoffersen_independence(&[1]).is_err());
         check!(christoffersen_independence(&[]).is_err());
@@ -223,7 +225,6 @@ proptest! {
         let cp = cov2_poison(i, x);
         check!(Matrix::from_vec(2, 2, vec![1.0]).is_err());
         check!(cp.cholesky().is_err());
-        check!(cp.cholesky_jitter(1e-10, 5).is_err());
         check!(cp.cholesky_repair(PsdRepair::None).is_err());
         check!(cholesky_repair(&cp, PsdRepair::Higham).is_err());
         check!(cholesky_repair(&Matrix::zeros(0, 0), PsdRepair::None).is_err());
@@ -258,6 +259,14 @@ proptest! {
         check!(portfolio_pnl(&panel(10), &[]).is_err());
         check!(monte_carlo_pnl(&[x, 1.0], &c, 200, TailModel::Normal, 1).is_err());
         check!(monte_carlo_pnl(&W, &cp, 200, TailModel::Normal, 1).is_err());
+        check!(monte_carlo_pnl_threads(&[x, 1.0], &c, 200, TailModel::Normal, 1, 3).is_err());
+        check!(monte_carlo_pnl_threads(&W, &cp, 200, TailModel::Normal, 1, 0).is_err());
+        // The per-path generator: NaN in gives NaN out, never a panic.
+        check!(eq_var_engine::rng::norm_ppf_as241(x).is_nan());
+        check!(eq_var_engine::rng::PathRng::new(1, 2).chi_square(x).is_nan());
+        let mut zz = [0.0; 3];
+        eq_var_engine::rng::PathRng::new(1, 2).fill_normals(&mut zz);
+        check!(zz.iter().all(|v| v.is_finite()));
         check!(monte_carlo_var(&W, &c, a, 200, TailModel::Normal, 1).is_err());
         check!(monte_carlo_var(&W, &c, 0.01, 10, TailModel::Normal, 1).is_err());
         check!(monte_carlo_es(&W, &c, a, 200, TailModel::Normal, 1).is_err());
@@ -273,8 +282,6 @@ proptest! {
         check!(var_kde_se(&poison(p.clone(), i, x), 0.01).is_err());
         check!(var_kde_se(&p, a).is_err());
         check!(var_kde_se(&[1.0], 0.01).is_err());
-        check!(var_order_statistic_se(&poison(p.clone(), i, x), 0.01).is_err());
-        check!(var_order_statistic_se(&p, a).is_err());
     }
 
     #[test]

@@ -24,7 +24,7 @@ loan book ─► clean ─► WOE/IV ─► IRLS logit ─► PD ─► score �
 ```bash
 cd python/equity/06-credit-risk
 pip install -e ".[dev]"
-pytest -q                      # 185 tests, about 60 s, offline, seeded
+pytest -q                      # 199 tests (QuantLib cross-checks skip without it), offline, seeded
 python examples/run_pipeline.py  # full pipeline, about 70 s
 ```
 

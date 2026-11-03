@@ -17,8 +17,10 @@ bootstrap per ccy          float-float basis swaps          xccy and basis swaps
 
 Conventions: pairs BASE/QUOTE (EURUSD = USD per EUR); domestic = quote
 currency, foreign = base currency; zeros continuously compounded; PVs in
-the quote currency. Spot is T+2 business days on partial calendars; ON and
-TN settle before spot. See `docs/METHODOLOGY.md`.
+the quote currency. Spot is the pair's market lag (T+2, T+1 for USDCAD and
+a few others) on the rule-based calendars of both currencies, with the USD
+rule for crosses; forwards carry from the spot date; ON and TN settle
+before spot. NDFs are in `fx_rates.ndf`. See `docs/METHODOLOGY.md`.
 
 ## Quickstart
 
@@ -78,6 +80,8 @@ docs/                    METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 
 ## November 2026 additions
 
+- `swaps.py`: dated FX swaps: swap points, tom-next, rolls (market or
+  historical rate), both legs' mark-to-market, uneven notionals and carry
 - `xccy_float.py`: float-float cross-currency swaps on four curves
   (projection and discount per currency), constant-notional or
   mark-to-market resetting, with a par-spread solver. Tests:

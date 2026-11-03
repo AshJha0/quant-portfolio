@@ -15,7 +15,7 @@ namespace {
 
 template <class T>
 T unwrap(eqvar::Result<T>&& r) {
-    if (!r) value_error(eqvar::message(r.error()));
+    if (!r) raise_engine([&] { eqvar::throw_error(r.error()); });
     return *std::move(r);
 }
 

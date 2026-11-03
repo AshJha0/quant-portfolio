@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-options"
-version = "1.0.0"
+version = "3.0.0.dev0"
 description = "Equity options pricing and Greeks engine: Black-Scholes, CRR binomial, Black-76, Monte Carlo, delta hedging, model comparison."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,10 @@ dev = ["pytest>=7.4", "hypothesis>=6.100", "mpmath>=1.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# PEP 561: the package ships inline type information.
+eq_options = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,23 +1,28 @@
-"""Business-day calendars and roll conventions. The code lives in :mod:`qp_core.calendars`.
+"""Business-day calendars and roll conventions, from :mod:`qp_core.holidays`.
 
-This module re-exports it so ``fx_rates.calendars`` keeps working. The
-calendars are partial: weekends plus fixed-date holidays only.
+This module re-exports the rule-based calendars so ``fx_rates.calendars``
+keeps working. Until round 6 it re-exported partial fixed-date tables;
+see :mod:`qp_core.holidays` for the rules and their sources.
+``BusinessCalendar`` is kept as a name for ``HolidayCalendar``.
 """
 
 from __future__ import annotations
 
-from qp_core.calendars import (
+from qp_core.holidays import (
     CALENDARS,
     ROLL_CONVENTIONS,
-    BusinessCalendar,
+    HolidayCalendar,
     get_calendar,
     joint_calendar,
 )
+
+BusinessCalendar = HolidayCalendar
 
 __all__ = [
     "CALENDARS",
     "ROLL_CONVENTIONS",
     "BusinessCalendar",
+    "HolidayCalendar",
     "get_calendar",
     "joint_calendar",
 ]

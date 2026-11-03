@@ -1,0 +1,144 @@
+# Line coverage with per-package floors, and mutation testing (W12).
+#
+# Free GitHub-hosted runners and open-source tools only; reports are kept
+# as workflow artefacts, nothing is sent to a hosted coverage service.
+#
+#   coverage-python  python/core under coverage.py; floor from
+#                    .github/coverage-floors.json (null = record only).
+#   coverage-rust    rust/core under cargo-llvm-cov; same floor file.
+#   mutants-rust     cargo-mutants on the implied-vol and Cholesky kernels
+#                    of rust/core; weekly and on demand, report only.
+#
+# The floor rule: a package's line coverage may not fall below its floor.
+# Floors move up by hand in a reviewed pull request; the job prints the
+# value to raise a floor to when coverage has grown a whole point.
+name: coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ["python/core/**", "rust/core/**", ".github/workflows/coverage.yml", ".github/coverage-floors.json", ".github/scripts/coverage_floor.py"]
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage-python:
+    name: coverage python/core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core with its test dependencies (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group test --editable python/core
+      # coverage has no runtime dependencies, so --no-deps installs exactly
+      # one pinned distribution. Moving it into the uv.lock test group (and
+      # so under --require-hashes) is an open integration item.
+      - name: Install coverage
+        run: python -m pip install --no-deps coverage==7.10.7
+      - name: pytest under coverage
+        working-directory: python/core
+        run: |
+          python -m coverage run --source=src/qp_core --branch -m pytest -p no:cacheprovider -q \
+            --confcutdir="$GITHUB_WORKSPACE"
+          python -m coverage report --precision=2 | tee "$RUNNER_TEMP/coverage-python-core.txt"
+          python -m coverage json -o "$RUNNER_TEMP/coverage-python-core.json"
+      - name: Floor
+        run: |
+          pct=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['totals']['percent_covered'])" \
+            "$RUNNER_TEMP/coverage-python-core.json")
+          python .github/scripts/coverage_floor.py .github/coverage-floors.json python/core "$pct" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-python-core
+          path: ${{ runner.temp }}/coverage-python-core.*
+          retention-days: 30
+
+  coverage-rust:
+    name: coverage rust/core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain (rust-toolchain.toml) with llvm-tools, and cargo-llvm-cov 0.6.16
+        working-directory: rust
+        run: |
+          rustup show active-toolchain
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --version 0.6.16 --locked
+      - name: cargo llvm-cov
+        working-directory: rust
+        run: |
+          cargo llvm-cov --package qp-core --json --summary-only --output-path "$RUNNER_TEMP/coverage-rust-core.json"
+          cargo llvm-cov report --package qp-core | tee "$RUNNER_TEMP/coverage-rust-core.txt"
+      - name: Floor
+        run: |
+          pct=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['data'][0]['totals']['lines']['percent'])" \
+            "$RUNNER_TEMP/coverage-rust-core.json")
+          python3 .github/scripts/coverage_floor.py .github/coverage-floors.json rust/core "$pct" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-rust-core
+          path: ${{ runner.temp }}/coverage-rust-core.*
+          retention-days: 30
+
+  mutants-rust:
+    name: mutants rust/core (iv, linalg)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: cargo-mutants 25.3.1
+        run: cargo install cargo-mutants --version 25.3.1 --locked
+      - name: Mutate the implied-vol and Cholesky kernels
+        working-directory: rust
+        run: |
+          cargo mutants --package qp-core --file core/src/iv.rs --file core/src/linalg.rs \
+            --timeout 120 --output "$RUNNER_TEMP" || true
+          # Report only: a surviving mutant is a missing test, listed in the
+          # artefact and summarised here; the plan gates BS, IV and VaR quarterly.
+          {
+            echo "### cargo-mutants (rust/core iv.rs, linalg.rs)"
+            for f in caught missed timeout unviable; do
+              n=$(wc -l < "$RUNNER_TEMP/mutants.out/$f.txt" 2>/dev/null || echo 0)
+              echo "- $f: $n"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants-rust-core
+          path: ${{ runner.temp }}/mutants.out/
+          retention-days: 90

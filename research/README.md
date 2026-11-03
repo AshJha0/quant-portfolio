@@ -151,8 +151,16 @@ Formally (Bailey and Lopez de Prado 2014, eqs. 2-3), with per-day Sharpe
 SR over T returns, skewness g3 and raw kurtosis g4,
 SR0 = sqrt(V) ((1 - gamma) Phi^-1(1 - 1/N) + gamma Phi^-1(1 - 1/(N e))) and
 DSR = Phi((SR - SR0) sqrt(T - 1) / sqrt(1 - g3 SR + (g4 - 1) SR^2 / 4)).
-V, the variance of the trial Sharpes, is taken as 1/(T - 1) because the
-three training variants' Sharpes were not logged.
+Since Round 7 (W6) there is one DSR code, `qp_core.stats.deflated_sharpe_detail`;
+`studies/holdout.py` only wraps it. N and V are programme-wide and come from
+`results/trials.jsonl` through `lib/multiplicity.py`: N sums the trial counts
+of every distinct training or calibration run of every registration
+(withdrawn ones included), and V is the variance of their per-day Sharpes
+together with the stress cells. On the committed log this gives N = 13
+(it was 3, hard-coded, before) and V = 1.15e-4 per day squared. When a
+series is in the market on fewer than half its days, the Lo (2002)
+Newey-West standard error replaces the PSR denominator, because the zeros
+make the sample kurtosis meaningless. The result records which was used.
 
 Worked example (the paper's section 4, reproduced in
 `tests/test_holdout.py`): annualised SR 2.5 over 1,250 days, g3 = -3,
@@ -178,16 +186,18 @@ See [forward/README.md](forward/README.md) for why and how to read it.
 |---|---|---|
 | `prereg/pairs-fx-g10.md` | signed 2026-11-02; **withdrawn** 2026-11-02 before the hold-out (DR-R4-5); hold-out never run | `results/pairs_fx_g10_train.json` |
 | `prereg/regime-fx-basket.md` | signed 2026-11-02; hold-out run once 2026-11-02: H0 not rejected | `results/regime_fx_basket_train.json`, `results/regime_fx_basket_holdout.json` |
-| `prereg/execution-lobster.md` | draft, unsigned, blocked on data access | none |
+| order-book execution draft | **withdrawn** 2026-11-03, never signed, no data ever scored (`withdrawals/2026-11-03-execution-impact-draft.md`) | none |
 | `prereg/pairs-fx-g10-v2.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/pairs_fx_g10_v2_train.json` |
 | `prereg/momentum-fx-g10.md` | signed 2026-11-02; forward-only (fixes from 2026-11-03), evaluation on or after 2028-11-13 | `results/momentum_fx_g10_train.json` |
 
 The two FX registrations were signed by the maintainer, to whom the
 repository owner delegated pre-registration signing. The signature records the hash
 printed by `prereg.py hash`; `prereg.py check` passes on both. The execution
-study needs LOBSTER files, which sit behind LOBSTER's terms of use, so it
-stays an unsigned draft. Equity pairs on a point-in-time universe need a
-Nasdaq Data Link account and are not drafted.
+draft needed order-book files behind an account and terms of use the owner
+decided not to accept. It was withdrawn on 2026-11-03 with a dated note in
+`withdrawals/`; it was never signed and no data was scored, so the trial
+count is unchanged. Equity pairs on a point-in-time universe need a paid data account
+and are not drafted (`data/README.md`).
 
 The pairs strategy is almost dormant in training: it trades in 3 of 19
 test years (2008, 2015, 2020; 7 entries, 79 active days), and the other
@@ -368,14 +378,75 @@ event days made money (+6.5 % over 68 days): dropping them makes it worse.
 Files: `results/pairs_fx_g10_v2_stress.json`,
 `results/momentum_fx_g10_stress.json` (event dates listed in each).
 
+## Research correctness (W6, Round 7)
+
+These are the rules every new registration follows. The signed
+registrations above are not edited; where a rule changes how one of them is
+read, the change is a new dated record.
+
+| Rule | Code | Test |
+|---|---|---|
+| Excess returns via CIP: spot + carry, carry from rates known at the time | `lib/excess_returns.py` | two-day hand example; weekend accrual |
+| Publication lags: monthly series from the first business day of m+2; daily fixings from d+1 | `lib/excess_returns.py: as_known, assert_known` | a naive in-month use raises `LookAheadViolation` |
+| Point-in-time universe (W6c), 38 currencies with sourced first/last dates and peg flags | `universe/fx.csv`, `lib/universe.py` | holding LTL in 2015 raises `UniverseViolation` |
+| Programme-wide trial count and trial-Sharpe variance | `lib/multiplicity.py` | hand log; committed log gives N >= 13 |
+| One DSR, Lo SE below 50% in-market | `qp_core.stats.deflated_sharpe_detail` | hand example with dispersed trial Sharpes |
+| Tiered costs, vol-percentile stress, 0x/1x/2x and breakeven | `lib/costs.py` | tiers, stress cap, grid |
+| One-day fill lag; concentration (top-k share, by year, without 2015, kurtosis gate); pairs P&L per leg in EUR | `lib/diagnostics.py` | EUR two-day hand example |
+| Power gate: single series = monitoring; confirmatory = 30+ currency Fama-MacBeth panel at 80% power | `lib/power_gate.py`, `lib/panel.py` | blocks the 13% momentum file; passes a panel fixture; analytic power within 3 SE of a Monte Carlo |
+| Financing of cash and leverage in every backtester (W6d) | `qp_core.stats.Financing`; `eq_port`, `eq_algo`, `fx_pairs` `run_backtest(financing=...)` | hand fixtures in each package |
+
+Plain idea of the power gate: a confirmatory test that would miss a real
+effect most of the time is not worth a multiplicity slot. One basket over two
+years cannot reach 80% power at any Sharpe ratio seen since 2010 (power is
+`Phi(SR sqrt(years) - 1.645)`, 11% at SR 0.3 over two years), so such tests are
+logged as monitoring. A panel of 30 currencies gains breadth: the monthly
+Fama-MacBeth slope has Sharpe `IC sqrt(N_eff)`, so with IC 0.06 and 15
+effective currencies over the 2016-2026 hold-out the power is 84%. The IC and
+N_eff must be sourced in the registration. The two signed forward tests
+(pairs v2 and momentum, kept under D4) are now reported with
+`role: monitoring` and a programme-wide DSR next to their registered one.
+
+Evidence classes: the CIP identity, publication timings and the DSR are
+published methods; the euro adoption and suspension dates are from the ECB
+and central-bank releases named in `universe/fx.csv`; first dates marked
+`auto` are read from the ECB file itself; the cost tier levels and the
+kurtosis threshold of 30 are the maintainer's assumptions, so every study
+also reports 0x, 1x, 2x and breakeven.
+
+Not done in this round: the LRV six-portfolio reproduction against
+Verdelhan's published HML_FX (needs the keyless download of his series and of
+the forward rates; `lib/panel.py: lrv_sort, correlation_check` hold the code
+and its tests), and running the existing studies on excess returns (that would
+be a new trial and needs a new registration, W23).
+
 ## Models added here
 
 - `studies/models.py: johansen_trace`, the Johansen (1991) trace test with
   an unrestricted constant. Oracle: statsmodels `coint_johansen`, matched to
   1e-9 relative.
 - `studies/models.py: kalman_hedge`, a random-walk hedge ratio (Harvey
-  1989, section 3.2). Oracle: with delta = 0 it equals recursive least
-  squares.
+  1989, section 3.2) with the noise ratio fixed by the registration (delta).
+  Oracle: with delta = 0 it equals recursive least squares.
+- `eq_pairs.kalman.kalman_hedge_ratio` (Round 7): the same state space with
+  the observation and state noise variances estimated by maximum likelihood
+  (prediction-error decomposition, Durbin and Koopman 2012, section 7.2).
+  Oracles: the exact multivariate normal likelihood of y on a small case
+  (1e-10 relative), ridge-OLS when the state noise is zero, and recovery of
+  planted variances. It replaces the "Kalman-lite" label on the RLS tracker.
 
 Tests: `python -m pytest research/tests` (needs qp-core, fx-pairs,
 fx-regime; statsmodels for the Johansen oracle).
+
+## Sub-folders added in milestone v2.1
+
+| Folder | What it is | Evidence class |
+|---|---|---|
+| [`panel/`](panel/README.md) | FX carry, value and momentum on the 38-currency point-in-time panel (W23 part 1) | real data, preregistered |
+| [`attribution/`](attribution/README.md) | Regress a return on DOL/HML_FX or Fama-French premia before calling it alpha (W23a); OLS with HAC errors matches statsmodels to 1e-10 | method, oracle-checked |
+| `cli/qp_run.py` | `qp-run sweep` logs every grid point as a trial with input and `uv.lock` SHA-256s; `trials query`; `trials rerun` re-executes a row and compares to 1e-12 (the nightly job reruns a random row) | tooling |
+| [`vix/`](vix/README.md) | VIX against later realised variance (study E), descriptive, from the CBOE's free published closes | real data, descriptive |
+| [`tsmom/`](tsmom/README.md) | Cross-asset time-series momentum after Moskowitz, Ooi and Pedersen (2012) (study F); preregistration drafted, unsigned | exploratory until signed; training months before 2016 only |
+| [`notebooks/`](notebooks/README.md) | VIX premium, time-series momentum and purged cross-validation, each as an exercise and a solution generated from one cell list | teaching |
+
+Tests: `python -m pytest research/tests research/panel/tests research/attribution/tests research/vix/tests research/tsmom/tests research/notebooks/tests research/cli/tests`.

@@ -247,10 +247,6 @@ class TestAcerbiSzekely:
                                 null_sampler=lambda rng, m, t: np.tile(p, (m, 1)))
         assert res["p_value"] == 1.0
 
-    def test_positional_alpha_is_deprecated(self):
-        with pytest.deprecated_call():
-            acerbi_szekely_z2(np.zeros(10), 5.0, 6.0, 0.025)
-
 
 class TestRollingBacktest:
     def test_exception_indicator_sign_convention(self):
@@ -348,20 +344,10 @@ class TestKupiecExactSize:
         with pytest.raises(ValueError, match="tail probability"):
             basel_traffic_light(n_obs=250, n_exceptions=3, alpha=0.99)
 
-    def test_basel_positional_form_is_deprecated_but_same_at_250(self):
-        with pytest.deprecated_call():
-            old = basel_traffic_light(7)
-        assert old == basel_traffic_light(n_obs=250, n_exceptions=7)
-
     def test_kupiec_rejects_confidence_level_as_alpha(self):
         """Old code accepted alpha=0.99 and tested a 99 % exception rate."""
         with pytest.raises(ValueError, match="tail probability"):
             kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.99)
-
-    def test_kupiec_positional_form_is_deprecated_and_keeps_order(self):
-        with pytest.deprecated_call():
-            old = kupiec_pof(250, 5, 0.01)
-        assert old == kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
 
     def test_basel_zone_uses_probability_for_non_250_windows(self):
         # MIN-14: 500 days with 8 exceptions is yellow by the raw 5-9 count

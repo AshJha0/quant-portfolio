@@ -1,0 +1,51 @@
+{
+  "what": "simulated detection rate for research/ust/PREREG_DRAFT.md (descriptive); synthetic data only",
+  "design": "single_series",
+  "months": 442,
+  "carry_ar1_phi": 0.95,
+  "decision_rule": "descriptive; reported rate = share with Newey-West lag 3 t > 1.645",
+  "costs": "not simulated (0.5 bp of DV01 per unit turnover in the registration)",
+  "seed": 1,
+  "cells": [
+    {
+      "beta": 0.0,
+      "truth": "null",
+      "reps": 1000,
+      "rejection_rate": 0.054,
+      "mc_se": 0.007147307185227175,
+      "approx_sharpe_annual": 0.0
+    },
+    {
+      "beta": 0.05,
+      "truth": "planted carry predictability",
+      "reps": 1000,
+      "rejection_rate": 0.197,
+      "mc_se": 0.012577400367325514,
+      "approx_sharpe_annual": 0.1381976597885342
+    },
+    {
+      "beta": 0.1,
+      "truth": "planted carry predictability",
+      "reps": 1000,
+      "rejection_rate": 0.492,
+      "mc_se": 0.015809364313595912,
+      "approx_sharpe_annual": 0.2763953195770684
+    },
+    {
+      "beta": 0.15,
+      "truth": "planted carry predictability",
+      "reps": 1000,
+      "rejection_rate": 0.793,
+      "mc_se": 0.012812142677944232,
+      "approx_sharpe_annual": 0.4145929793656025
+    },
+    {
+      "beta": 0.2,
+      "truth": "planted carry predictability",
+      "reps": 1000,
+      "rejection_rate": 0.931,
+      "mc_se": 0.008014923580421711,
+      "approx_sharpe_annual": 0.5527906391541368
+    }
+  ]
+}

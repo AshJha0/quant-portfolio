@@ -28,6 +28,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 
 ALPHA = 1.4
 SF_FX = 0.04
@@ -81,6 +82,7 @@ class SaccrResult:
     ead: float
 
 
+@model(id="FX-CR-SACCR")
 def saccr_ead(
     trades: list[FxTrade],
     mtm: float,

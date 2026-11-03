@@ -18,9 +18,7 @@ Tests implemented
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -83,8 +81,7 @@ def _counts(n_obs: object, n_exceptions: object, alpha: object) -> tuple[int, in
     return n, x, validate_alpha(alpha)
 
 
-def kupiec_pof(*args: Any, n_obs: int | None = None, n_exceptions: int | None = None,
-               alpha: float | None = None) -> dict[str, float]:
+def kupiec_pof(*, n_obs: int, n_exceptions: int, alpha: float) -> dict[str, float]:
     """Kupiec proportion-of-failures test (unconditional coverage), spec S3.
 
     Call as ``kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)``.
@@ -93,28 +90,9 @@ def kupiec_pof(*args: Any, n_obs: int | None = None, n_exceptions: int | None = 
     and 99 % the asymptotic test rejects a correct model about 9.5 % of the
     time at the nominal 5 % level (docs/VALIDATION.md).
 
-    The positional form ``kupiec_pof(n_obs, n_exceptions, alpha=0.01)`` is
-    deprecated and still accepted for one release.
+    The positional form ``kupiec_pof(n_obs, n_exceptions, alpha)`` was
+    removed in v3.0.0.
     """
-    if args:
-        if len(args) > 3 or n_obs is not None or n_exceptions is not None:
-            raise TypeError("kupiec_pof takes keyword arguments n_obs, n_exceptions, alpha")
-        warnings.warn(
-            "positional kupiec_pof(n_obs, n_exceptions, alpha) is deprecated; "
-            "call kupiec_pof(n_obs=..., n_exceptions=..., alpha=...)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        n_obs = args[0]
-        n_exceptions = args[1] if len(args) > 1 else None
-        if len(args) > 2:
-            if alpha is not None:
-                raise TypeError("alpha given twice")
-            alpha = args[2]
-        if alpha is None:
-            alpha = 0.01
-    if n_obs is None or n_exceptions is None or alpha is None:
-        raise TypeError("kupiec_pof requires n_obs, n_exceptions and alpha")
     n, x, a = _counts(n_obs, n_exceptions, alpha)
     p = x / n
 
@@ -214,8 +192,7 @@ def _basel(n: int, x: int, a: float) -> dict[str, object]:
     return {"zone": zone, "multiplier": 3.0 + plus, "plus_factor": plus, "cumulative_prob": cum_p}
 
 
-def basel_traffic_light(*args: Any, n_obs: int | None = None, n_exceptions: int | None = None,
-                        alpha: float = 0.01) -> dict[str, object]:
+def basel_traffic_light(*, n_obs: int, n_exceptions: int, alpha: float = 0.01) -> dict[str, object]:
     """Basel (1996) traffic light for any window and any alpha (spec S4).
 
     ``F(x) = P(X <= x)``, ``X ~ Binomial(n_obs, alpha)``. The zone is green
@@ -227,26 +204,8 @@ def basel_traffic_light(*args: Any, n_obs: int | None = None, n_exceptions: int 
 
     Returns ``zone``, ``multiplier`` (k = 3 + plus), ``plus_factor`` and
     ``cumulative_prob``. The positional form ``basel_traffic_light(n_exceptions,
-    n_obs=250)`` is deprecated and still accepted for one release.
+    n_obs=250)`` was removed in v3.0.0.
     """
-    if args:
-        if len(args) > 2 or n_exceptions is not None:
-            raise TypeError("basel_traffic_light takes keyword arguments n_obs, n_exceptions, alpha")
-        warnings.warn(
-            "positional basel_traffic_light(n_exceptions, n_obs) is deprecated; call "
-            "basel_traffic_light(n_obs=..., n_exceptions=..., alpha=...)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        n_exceptions = args[0]
-        if len(args) > 1:
-            if n_obs is not None:
-                raise TypeError("n_obs given twice")
-            n_obs = args[1]
-        if n_obs is None:
-            n_obs = 250
-    if n_obs is None or n_exceptions is None:
-        raise TypeError("basel_traffic_light requires n_obs and n_exceptions")
     return _basel(*_counts(n_obs, n_exceptions, alpha))
 
 
@@ -284,8 +243,8 @@ def acerbi_szekely_z2(
     pnl: np.ndarray,
     var: np.ndarray | float,
     es: np.ndarray | float,
-    *args: Any,
-    alpha: float | None = None,
+    *,
+    alpha: float = 0.025,
     n_sims: int = 10_000,
     seed: int | np.random.Generator | None = 0,
     null_sampler=None,
@@ -302,22 +261,12 @@ def acerbi_szekely_z2(
     phi(z)``, ``z = Phi^{-1}(1 - alpha)``. Pass ``null_sampler(rng, n_sims, T)``
     returning an ``(n_sims, T)`` array to use the model's own distribution.
 
-    Returns ``z2``, ``p_value`` and ``n_exceptions``. Passing ``alpha``
-    positionally is deprecated. ``alpha`` defaults to 0.025.
+    Returns ``z2``, ``p_value`` and ``n_exceptions``. ``alpha`` is
+    keyword-only (the positional form was removed in v3.0.0) and defaults
+    to 0.025.
     """
     from scipy.stats import norm
 
-    if args:
-        if len(args) > 1 or alpha is not None:
-            raise TypeError("acerbi_szekely_z2 takes alpha as a keyword argument")
-        warnings.warn(
-            "positional alpha in acerbi_szekely_z2 is deprecated; pass alpha=...",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        alpha = args[0]
-    if alpha is None:
-        alpha = 0.025
     alpha = validate_alpha(alpha)
     n_sims = integer("n_sims", n_sims, min_value=1)
     p = finite_array("pnl", pnl, ndim=1, min_size=1)
@@ -351,7 +300,7 @@ def acerbi_szekely_z2(
 # --------------------------------------------------------------------------- #
 # Rolling backtest driver + reporting
 # --------------------------------------------------------------------------- #
-@dataclass
+@dataclass(frozen=True)
 class BacktestResult:
     """Container for one method's rolling backtest over a P&L history."""
 

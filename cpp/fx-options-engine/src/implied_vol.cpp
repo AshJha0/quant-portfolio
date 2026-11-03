@@ -66,9 +66,4 @@ double implied_vol(double price, double S, double K, double T, double r_d, doubl
     return value_or_throw(try_implied_vol(price, S, K, T, r_d, r_f, type));
 }
 
-double implied_vol(double price, double S, double K, double T, double r_d, double r_f,
-                   OptionType type, double /*tol*/, int /*max_iter*/) {
-    return implied_vol(price, S, K, T, r_d, r_f, type);
-}
-
 }  // namespace fxopt

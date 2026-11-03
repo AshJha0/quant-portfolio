@@ -84,7 +84,7 @@ revalues a leg as v0 exp(dfx - T dr): spot S exp(r) on log returns.
 | A6 | Covariance is stationary within the window. | Regime breaks; EWMA recovers with a lag; the peg screen and stress add-on cover the gap. |
 | A7 | i.i.d. scenarios in plain HS. | Christoffersen failures under clustering; use FHS. |
 | A8 | Pegged currencies: history has no break. | HS and parametric VaR near 0 on the peg. The engine flags it and prices it through jumps and peg-break scenarios. |
-| A9 | Repeatability uses library-owned transforms over `mt19937_64`. | `std::normal_distribution` would change streams between standard libraries. Last-bit differences across libms remain. |
+| A9 | Repeatability: scenario `s` draws from Philox4x32-10 stream `(seed, s)` with AS 241 normals (`qp/path_rng.hpp`, Round 8), so results do not depend on thread count and match the Rust engine bit for bit. | `std::normal_distribution` would change streams between standard libraries. Last-bit differences across libms remain. |
 | A10 | Linear instruments only. | Option books need the Python engine. |
 | A11 | Jumps are uncompensated. | With mu_J != 0 the jump overlay shifts the mean by lam h mu_J. |
 
@@ -117,6 +117,7 @@ revalues a leg as v0 exp(dfx - T dr): spot S exp(r) on log returns.
   quadratic form, Cholesky and the scenario product L z read rows
   contiguously. Summation order is never changed for speed, since that
   would change results in the last bits.
-- **Special functions in the library.** Acklam plus Halley inverse normal,
+- **Special functions in `cpp/core`** (`qp/var_stats.hpp`, shared with the
+  equity engine since milestone v2.1; `fxvar/stats.hpp` wraps it). Acklam plus Halley inverse normal,
   Lanczos `log_gamma` (thread-safe; `std::lgamma` writes glibc's global
   `signgam`), incomplete gamma and beta, binomial CDF by pmf recursion.

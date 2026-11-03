@@ -1,5 +1,7 @@
 #include "fxvar/kernels.hpp"
 
+#include "path_sim.hpp"
+
 #include "qp/matrix.hpp"
 
 #include <algorithm>
@@ -318,25 +320,12 @@ Result<void> try_simulate_factor_returns(std::span<const double> lower, std::siz
     return too_small("try_simulate_factor_returns (lower)", lower.size(), k * k);
   if (out.size() < n_scenarios * k) [[unlikely]]
     return too_small("try_simulate_factor_returns", out.size(), n_scenarios * k);
-  Rng rng(seed);
   const double t_scale = dist == McDist::kStudentT ? std::sqrt((df - 2.0) / df) : 1.0;
-  for (std::size_t s = 0; s < n_scenarios; ++s) {
-    double* row = out.data() + s * k;
-    // Draw z into the row, then x = L z in place from the last row up:
-    // row i needs z_0..z_i only, and z_i is overwritten after its last use.
-    for (std::size_t j = 0; j < k; ++j) row[j] = rng.normal();
-    for (std::size_t i = k; i-- > 0;) {
-      const double* li = lower.data() + i * k;
-      double acc = 0.0;
-      for (std::size_t j = 0; j <= i; ++j) acc += li[j] * row[j];
-      row[i] = acc;
-    }
-    if (dist == McDist::kStudentT) {
-      const double w = rng.chisq(df) / df;
-      const double m = t_scale / std::sqrt(w);
-      for (std::size_t i = 0; i < k; ++i) row[i] *= m;
-    }
-  }
+  // Scenario s on its own Philox stream (W4(b)): the same bits as
+  // simulate_factor_returns.
+  for (std::size_t s = 0; s < n_scenarios; ++s)
+    detail::simulate_path(lower.data(), k, dist, df, t_scale, 0.0, nullptr, nullptr, nullptr, 0,
+                          seed, s, out.data() + s * k);
   return {};
 }
 

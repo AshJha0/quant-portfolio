@@ -108,10 +108,13 @@ Any quote that no discount factor in `(1e-8, 20)` can reprice raises
 * Schedules roll back from maturity. With the end-of-month rule (default
   on) a month-end maturity keeps every coupon on a month end: a 28-Feb
   maturity pays on 31 Aug.
-* `fi_rates.calendars` gives weekend plus fixed-date holiday calendars for
-  USD, EUR, GBP and JPY, joint calendars (`"EUR+USD"`), and following,
-  modified following and preceding rolls. The holiday lists are partial:
-  they omit moveable feasts, floating holidays and weekend observance.
+* `fi_rates.calendars` re-exports the rule-based calendars of
+  `qp_core.holidays` (USD, EUR, GBP, JPY, CHF, CAD, AUD and the SIFMA bond
+  calendar `USD-GOVT`), joint calendars (`"EUR+USD"`), and following,
+  modified following and preceding rolls. `TREASURY_CALENDAR = "USD-GOVT"`
+  is the default for `FixedRateBond.payment_dates`: a coupon due on Good
+  Friday 14 Apr 2028 is paid Mon 17 Apr, with accrual on the unadjusted
+  date. `SWAP_CALENDAR = "USD"` (Federal Reserve) is for swaps.
 
 ## 4. Bond pricing conventions
 
@@ -176,7 +179,12 @@ Each assumption states what breaks if it is violated.
 3. **No settlement lag and no ex-dividend periods** in bond pricing.
    Settlement is the date passed in; `calendars.add_business_days` gives
    T+1 or T+2 if the caller wants it.
-4. **Partial calendars.** Weekend plus fixed-date holidays only.
+4. **Calendars cover seven centres and the US bond market.** USD, EUR
+   (TARGET), GBP, JPY, CHF, CAD, AUD and USD-GOVT (SIFMA) from
+   `qp_core.holidays`, 2000-2099. Bond prices discount the unadjusted
+   coupon dates; only `payment_dates` applies the calendar. Until milestone v2.1
+   these were weekend plus fixed-date holidays only, so a schedule could
+   roll onto Good Friday or Thanksgiving; other centres are not covered.
 5. **30/360US without the end-of-February rule.**
 6. **Z-spread is the only credit treatment.** No default or recovery
    dynamics, no spread term structure.
@@ -237,3 +245,55 @@ given only `sigma` is fitted, which is the usual choice because one
 expiry column barely pins `a` down. Checked by round trip: prices from a
 known model, turned into normal or Black vols, give back `a` and `sigma`
 to 1e-6 relative.
+
+## Milestone v2.1: dated curve bootstrap (W13b)
+
+Plain idea. The year-based bootstrap places pillars at round year
+fractions. A desk curve is built on dates: each deposit, future and swap
+pays on a business day from its own schedule, and the curve must reprice
+every one of those instruments. The dated bootstrap takes the periods as
+explicit integer days from the valuation date and solves one pillar at a
+time.
+
+Formal statement.
+
+- `DatedCurve` holds discount factors on integer days. It is log-linear in
+  `t = days/365` between pillars, with flat-forward extrapolation, so the
+  instantaneous forward does not jump at the last pillar.
+- `ForwardQuote` covers deposits, FRAs and futures; `SwapQuote` covers OIS
+  and term swaps. Periods are any objects with `pay`/`accrual` (fixed) or
+  `start`/`end`/`pay`/`accrual` (float), the `FixedPeriodLike` and
+  `FloatPeriodLike` protocols, so `fi_rates.legs` schedules plug in.
+- `bootstrap_ois_dated` / `bootstrap_dated` bisect on `ln P` in the stated
+  bracket `[ln 1e-8, ln 20]` until each quote reprices.
+- A compounded overnight leg needs only its accrual start and end, because
+  on one curve daily compounding telescopes exactly to `P(s)/P(e)`.
+  Lookback, lockout and observation shift break that identity; those legs
+  are priced from daily forwards in `fi_rates.legs`, not by this solver.
+- SOFR futures carry the Hull-White convexity bias
+  (`hull_white_convexity`, QuantLib's `HullWhite::convexityBias`) at
+  a = 0.03, sigma = 0.0085. These are a stated assumption, not a
+  calibration.
+- `fi_rates.multicurve.bootstrap_projection_dated(quotes, discount)` builds a
+  term-index projection curve discounted on the OIS curve.
+  `fx_rates.xccy.bootstrap_xccy_discount` builds a foreign curve under
+  domestic collateral from constant-notional basis swaps (par condition
+  `V_f / X(s0) = V_d / D(s0)`).
+- Rust (`rust/rates-curves`) and C++ (`cpp/rates-curves`) use the same
+  algorithm and loop order.
+
+Worked example. On the shared fixture (USD SOFR: ON deposit, 1W/1M/3M OIS,
+four 3M SOFR futures, OIS 18M-30Y, 2-day payment lag) the bootstrap returns
+18 pillars. Every pillar discount factor matches QuantLib 1.44 within
+2.8e-13, and the largest quote residual is 3.6e-15 (3.55e-11 bp). Without
+multi-curve, the 10Y projection discount factor of the TERM3M curve is off
+by more than 1e-5; with it, all 12 pillars match to 1e-12.
+
+The quotes are illustrative, shaped like mid-2024 curves, not market data
+(stated in the fixture). The year-based `bootstrap_curve`, `bootstrap_ois`
+and `bootstrap_projection` remain for the notebooks.
+
+Sources: Ametrano and Bianchetti (2013), "Everything you always wanted to
+know about multiple interest rate curve bootstrapping"; Hull and White
+(1990); QuantLib 1.44 `PiecewiseYieldCurve`, its OIS and swap
+rate helpers and `ConstNotionalCrossCurrencyBasisSwapRateHelper`.

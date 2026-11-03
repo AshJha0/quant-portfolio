@@ -115,3 +115,7 @@ impl Rng {
         2.0 * self.gamma(0.5 * df)
     }
 }
+
+/// Per-path Philox stream, AS 241 normals and the batched generator, now in
+/// [`qp_core::path_rng`] and shared with the FX engine.
+pub use qp_core::path_rng::{LANES, PathRng, norm_ppf_as241, philox_uniforms};

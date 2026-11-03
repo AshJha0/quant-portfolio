@@ -44,7 +44,8 @@ cargo run --release --locked -p eq-var-engine --bin bench -- --out /tmp/bench.js
 The tests are 138 integration tests and 16 doctests. Without `--out` the
 bench writes `bench/results.json` in this crate.
 
-The xoshiro256++ stream, the Acklam guess and the Cholesky kernel come from
+The Philox4x32-10 path streams, the xoshiro256++ stream (still used outside
+the MC VaR), the Acklam guess and the Cholesky kernel come from
 the workspace's [`qp-core`](../core) crate (std only).
 
 ```rust
@@ -64,13 +65,13 @@ let tl = basel_traffic_light(&BaselInput { n_obs: 250, n_exceptions: 5, alpha: 0
 
 | Old | New |
 |---|---|
-| type-7 `linear_quantile` on VaR paths | order statistic (`tail::empirical_var`); `linear_quantile` deprecated |
-| `kupiec_pof(n_obs, n_exceptions, alpha)` | `kupiec_pof(&KupiecInput { .. })`; old form `kupiec_pof_positional` deprecated |
+| type-7 `linear_quantile` on VaR paths | order statistic (`tail::empirical_var`); `linear_quantile` removed in 3.0.0 |
+| `kupiec_pof(n_obs, n_exceptions, alpha)` | `kupiec_pof(&KupiecInput { .. })`; old form `kupiec_pof_positional` removed in 3.0.0 |
 | `basel_traffic_light(n_exceptions, n_obs)`, zone by raw count, `x > n` clamped | `basel_traffic_light(&BaselInput { .. })`, zone by `Binomial(n, alpha)` CDF, `x > n` an error, new `plus_factor` field; old form `basel_traffic_light_250` deprecated |
-| `cornish_fisher_domain_ok(skew, kurt, 3.5, grid)` | `cornish_fisher_valid(skew, kurt, alpha) -> Result<bool>`; old predicate deprecated |
-| `Matrix::cholesky_jitter(jitter, tries)` | `Matrix::cholesky_repair(PsdRepair)` returning the jitter; old method deprecated |
-| P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function deprecated, old arithmetic kept |
-| `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function deprecated |
+| `cornish_fisher_domain_ok(skew, kurt, 3.5, grid)` | `cornish_fisher_valid(skew, kurt, alpha) -> Result<bool>`; old predicate removed in 3.0.0 |
+| `Matrix::cholesky_jitter(jitter, tries)` | `Matrix::cholesky_repair(PsdRepair)` returning the jitter; old method removed in 3.0.0 |
+| P&L-level `filtered_historical_var` | `filtered_historical_var_factors`; old function removed in 3.0.0, old arithmetic kept |
+| `var_order_statistic_se` | `var_bootstrap_se` (primary), `var_kde_se` (diagnostic); old function removed in 3.0.0 |
 | EWMA vol seeded with full-sample variance | seeded with mean `r^2` of the first `min(30, n)` points |
 | EWMA covariance seeded with the full-sample covariance | seeded with mean `r r'` of the first `min(30, T)` rows |
 | `ln_gamma(x) -> f64` | `ln_gamma(x) -> Result<f64>` |
@@ -128,9 +129,12 @@ book path by path and never builds the `n_paths x n` scenario panel.
 `tests/test_fast_alloc.rs` counts heap allocations with a global allocator
 and requires zero for every call above.
 
-The MC draw stays on one thread. The RNG is one serial xoshiro256++
-stream, and splitting it across threads would change the numbers. Books
-are independent, so run one workspace per book per core instead.
+Since milestone v2.1 the MC draw is threaded: each path has its own
+Philox4x32-10 stream with AS 241 normals, so the bits are the same on any
+thread count and match the C++ engine. The bootstrap SE is threaded the
+same way. At 10k paths x 50 factors the main API is 4.7x faster than in
+2.0.0 on a 12-thread laptop (CHANGELOG, milestone v2.1; one laptop run, not a CI
+figure).
 
 ## Latency
 
@@ -155,8 +159,8 @@ bounds. Sibling builds shared the machine during the run.
 | parametric VaR normal, 100 assets | 9 504 / 29 060 / 64 916 | 5 502 / 15 222 / 46 006 |
 | parametric VaR t(6), 100 assets | 16 866 / 47 069 / 111 335 | 13 468 / 31 496 / 66 041 |
 | bootstrap SE, n = 250, B = 200 | 261 361 / 540 601 / 1 449 138 | 226 851 / 506 750 / 900 697 |
-| MC run, 20 factors x 10k paths, B = 50 | 9.59 / 21.5 / 25.6 ms | 7.08 / 19.2 / 24.8 ms |
-| MC VaR only, 20 factors x 10k paths | 5.83 / 9.05 / 9.96 ms | 3.91 / 10.4 / 11.9 ms |
+| MC run, 20 factors x 10k paths, B = 50 (old serial stream) | 9.59 / 21.5 / 25.6 ms | 7.08 / 19.2 / 24.8 ms |
+| MC VaR only, 20 factors x 10k paths (old serial stream) | 5.83 / 9.05 / 9.96 ms | 3.91 / 10.4 / 11.9 ms |
 
 Where the time goes:
 
@@ -165,7 +169,7 @@ Where the time goes:
 - Parametric: `w' S w` runs four matrix rows side by side. Each row keeps
   its own left-to-right sum, so the bits match `Matrix::matvec`. The
   finite check over the covariance and the t quantile solve are the rest.
-- MC: the Box-Muller draws (`ln`, `sqrt`, `sin`, `cos`) dominate. The
+- MC (old serial stream, as timed above): the Box-Muller draws (`ln`, `sqrt`, `sin`, `cos`) dominated; the MC rows predate the Philox rewrite and are kept as the recorded "before" run. The
   workspace saves the panel allocation and the second pass over it.
 
 Vectorisation (`RUSTFLAGS=-Cremark=loop-vectorize`, LTO off so remarks
@@ -188,8 +192,8 @@ src/
   backtest.rs            Kupiec, Christoffersen, Basel, Acerbi-Szekely Z2
   matrix.rs              dense Matrix, covariance estimators
   psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
-  stats.rs               special functions, moments
-  rng.rs                 Rng over qp-core's xoshiro256++ (Box-Muller), gamma
+  stats.rs               wrappers over qp_core::stats (special functions, moments)
+  rng.rs                 PathRng (Philox4x32-10, AS 241) for MC; Rng over xoshiro256++; gamma
   bin/bench.rs           per-call latency distribution, writes bench/results.json
 tests/                   16 integration files; golden/mod.rs is generated
 docs/                    METHODOLOGY, VALIDATION, DESK_GUIDE

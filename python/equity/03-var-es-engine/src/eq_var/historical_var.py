@@ -18,11 +18,13 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+from qp_core.model import model
 
 from . import _tail
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
+    "HIST_RULES",
     "age_weighted_es",
     "age_weighted_var",
     "brw_weights",
@@ -58,15 +60,37 @@ def _validate_pnl(pnl: object, alpha: float, min_obs: int = MIN_OBS) -> np.ndarr
     return arr
 
 
-def historical_var(pnl: np.ndarray, alpha: float = 0.01) -> float:
+HIST_RULES = ("kth_worst", "interpolated")
+
+
+def validate_rule(rule: object) -> str:
+    """Return ``rule`` if it is one of :data:`HIST_RULES`, else raise ``ValueError``."""
+    if rule not in HIST_RULES:
+        raise ValueError(f"rule must be 'kth_worst' or 'interpolated', got {rule!r}")
+    return str(rule)
+
+
+@model(id="EQ-VAR-HIST")
+def historical_var(pnl: np.ndarray, alpha: float = 0.01, *, rule: str = "kth_worst") -> float:
     """Plain historical-simulation VaR (equal weights).
 
-    Returns ``L(m)``, the ``m``-th largest loss with ``m = ceil(n * alpha)``
-    (spec S2). Raises when ``n < 50``. If ``n * alpha < 1`` the rank is
-    clamped to 1 and the VaR is the largest loss in the sample.
+    ``rule="kth_worst"`` (default, spec S2, BCBS MAR33.4 / MAR99): ``L(m)``,
+    the ``m``-th largest loss with ``m = ceil(n * alpha)``; 99 % on 250 days
+    is the 3rd worst. If ``n * alpha < 1`` the rank is clamped to 1.
+
+    ``rule="interpolated"``: the type-7 linear quantile of the losses at
+    ``h = (n - 1) * alpha`` counted from the worst (0-based), i.e.
+    ``numpy.quantile(losses, 1 - alpha)``. 99 % on 250 days interpolates
+    between the 3rd and 4th worst with weight 0.49 on the 4th.
+
+    Both are checked against the mpmath oracle in ``tests/golden``. Raises
+    when ``n < 50``.
     """
     alpha = validate_alpha(alpha)
+    rule = validate_rule(rule)
     arr = _validate_pnl(pnl, alpha)
+    if rule == "interpolated":
+        return _tail.interpolated_var(arr, alpha)
     return _tail.var_es(arr, alpha)[0]
 
 
@@ -120,7 +144,7 @@ def _window_seed(arr: np.ndarray, seed_window: int) -> float:
 
 
 def ewma_volatility(
-    x: np.ndarray, lam: float = 0.94, init: object = _UNSET, *, seed_window: int = SEED_WINDOW
+    x: np.ndarray, lam: float = 0.94, *, seed_window: int = SEED_WINDOW
 ) -> np.ndarray:
     """One-step-ahead EWMA (RiskMetrics) volatility forecasts.
 
@@ -129,8 +153,8 @@ def ewma_volatility(
     ``sigma[t]`` is the forecast for day ``t``. Apart from the seed window it
     uses information up to ``t-1`` only.
 
-    ``init`` is deprecated: ``"sample"`` (full-sample variance, a look-ahead)
-    and ``"first"`` (``x[0]**2``) keep their old meaning for one release.
+    The ``init`` argument (``"sample"``, a full-sample look-ahead, and
+    ``"first"``) was removed in v3.0.0.
 
     Returns an array of the same length as ``x``.
     """
@@ -139,21 +163,7 @@ def ewma_volatility(
     if arr.size < 2:
         raise ValueError("need at least 2 observations for EWMA volatility")
     seed_window = integer("seed_window", seed_window, min_value=1)
-    if init is _UNSET:
-        seed = _window_seed(arr, seed_window)
-    else:
-        warnings.warn(
-            "ewma_volatility(init=...) is deprecated; the seed is now the mean of x**2 "
-            "over the first seed_window observations",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if init == "sample":
-            seed = float(np.var(arr))
-        elif init == "first":
-            seed = float(arr[0] ** 2)
-        else:
-            raise ValueError(f"init must be 'sample' or 'first', got {init!r}")
+    seed = _window_seed(arr, seed_window)
     return np.sqrt(np.maximum(_ewma_var_path(arr, lam, seed)[:-1], 1e-32))
 
 
@@ -211,10 +221,12 @@ def factor_filtered_historical_var(
     return historical_var(pnl, alpha)
 
 
+@model(id="EQ-VAR-HIST")
 def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.94) -> float:
     """Deprecated P&L-level FHS. Use ``factor_filtered_historical_var``.
 
-    Kept for one release with its full-sample EWMA seed. The tail is read
+    Kept with its full-sample EWMA seed until the C++ and Rust engines drop
+    their copies and the shared golden key (open item for v3.0.0). The tail is read
     with the same order statistic as every other VaR path
     (``eq_var._tail.var_es``, ``m = ceil(n alpha)``). It used numpy type-7
     interpolation before, so FHS and HS numbers were not like for like.

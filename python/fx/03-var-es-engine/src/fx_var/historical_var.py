@@ -32,12 +32,59 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 
 from .book import Book, Market
 from .common import require_positions, resolve_alpha, validate_horizon, validate_returns, warn_peg_factors
 from .expected_shortfall import empirical_var_es
 
-__all__ = ["HistoricalVaRResult", "ewma_volatility", "historical_var"]
+__all__ = [
+    "HIST_RULES",
+    "HistoricalVaRResult",
+    "ewma_volatility",
+    "historical_var",
+    "historical_var_from_pnl",
+    "interpolated_var",
+]
+
+HIST_RULES = ("kth_worst", "interpolated")
+
+
+def _validate_rule(rule: object) -> str:
+    if rule not in HIST_RULES:
+        raise ValueError(f"rule must be 'kth_worst' or 'interpolated', got {rule!r}")
+    return str(rule)
+
+
+def interpolated_var(pnl, alpha: float) -> float:
+    """Type-7 (linear) quantile of the losses, worst first, at ``h = (n - 1) * alpha``.
+
+    ``VaR = L(lo) + (h - lo) * (L(lo + 1) - L(lo))``, 0-based ``lo = floor(h)``
+    on losses sorted descending (Hyndman and Fan 1996, definition 7); the same
+    as ``numpy.quantile(-pnl, 1 - alpha)`` up to rounding.
+    """
+    losses = -np.asarray(pnl, dtype=float)
+    if losses.ndim != 1 or losses.size == 0 or not np.all(np.isfinite(losses)):
+        raise ValueError("pnl must be a non-empty finite 1-D array")
+    n = losses.size
+    h = (n - 1) * alpha
+    lo = int(np.floor(h))
+    hi = min(lo + 1, n - 1)
+    top = np.sort(np.partition(losses, n - hi - 1)[n - hi - 1:])[::-1]
+    return float(top[lo] + (h - lo) * (top[hi] - top[lo]))
+
+
+def historical_var_from_pnl(pnl, alpha: float = 0.01, *, rule: str = "kth_worst") -> float:
+    """Equal-weight historical VaR of a P&L sample under either rule.
+
+    ``rule="kth_worst"`` (default; BCBS MAR33.4 / MAR99): the ``ceil(n alpha)``-th
+    worst loss, so 99 % on 250 days is the 3rd worst. ``rule="interpolated"``:
+    :func:`interpolated_var`. Both are checked against the mpmath oracle.
+    """
+    alpha = resolve_alpha(alpha)
+    if _validate_rule(rule) == "interpolated":
+        return interpolated_var(pnl, alpha)
+    return empirical_var_es(pnl, alpha)[0]
 
 
 @dataclass(frozen=True)
@@ -96,6 +143,7 @@ def ewma_volatility(returns: pd.DataFrame, lam: float = 0.94,
     return sigma, sigma_next
 
 
+@model(id="FX-VAR-HIST")
 def historical_var(
     book: Book,
     market: Market,
@@ -109,7 +157,7 @@ def historical_var(
     option_method: str = "full",
     warn_pegs: bool = True,
     *,
-    confidence: float | None = None,
+    rule: str = "kth_worst",
 ) -> HistoricalVaRResult:
     """Historical-simulation VaR/ES for ``book`` at ``market``.
 
@@ -137,8 +185,10 @@ def historical_var(
         Option revaluation passed to ``Book.pnl``.
     warn_pegs : bool
         Emit :class:`PegBlindnessWarning` for near-zero-vol FX factors.
-    confidence : float, optional
-        Deprecated.  ``alpha = 1 - confidence``.
+    rule : {"kth_worst", "interpolated"}
+        Quantile rule for the VaR (see :func:`historical_var_from_pnl`).
+        ``"interpolated"`` needs equal weights, so only ``method="plain"``
+        or ``"fhs"``; ES is the exact tail average either way.
 
     Returns
     -------
@@ -149,7 +199,10 @@ def historical_var(
     ValueError
         If the book has no positions or no risk factors.
     """
-    alpha = resolve_alpha(alpha, confidence)
+    alpha = resolve_alpha(alpha)
+    rule = _validate_rule(rule)
+    if rule == "interpolated" and method == "age":
+        raise ValueError("rule='interpolated' needs equal weights; use method='plain' or 'fhs'")
     validate_horizon(horizon_days)
     require_positions(book)
     factors = book.factors(market)
@@ -180,6 +233,8 @@ def historical_var(
 
     pnl = np.asarray(book.pnl(market, scen, option_method=option_method), dtype=float)
     var1, es1 = empirical_var_es(pnl, alpha, weights)
+    if rule == "interpolated":
+        var1 = interpolated_var(pnl, alpha)
     scale = float(np.sqrt(horizon_days))
     return HistoricalVaRResult(var1 * scale, es1 * scale, alpha, horizon_days,
                                method, pnl, weights, flagged)

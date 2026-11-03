@@ -1,0 +1,2 @@
+*.qprc binary
+*.expected text eol=lf

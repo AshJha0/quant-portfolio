@@ -117,9 +117,20 @@ repairs exist but the MC path never applies them on its own.
   gone. `stress.rs` builds its library constants without `unwrap`.
   The fuzz walk (`tests/fuzz_public_api.rs`) covers every public function.
 - **Refuse, never impute.** An empty book is an error, not a zero VaR.
-- **Special functions in-crate**, with the series and continued-fraction
-  stopping threshold at one machine epsilon (the old `1e-16` passed only on
-  exact equality).
-- **RNG**: xoshiro256++ with a crate-owned inverse normal CDF. The stream
-  differs from the C++ engine's `mt19937_64` and from NumPy's, so
-  cross-engine MC agreement is statistical.
+- **Special functions from `qp_core::stats`** (one copy shared with the
+  equity engine since milestone v2.1; `stats.rs` here is a wrapper), with
+  the series and continued-fraction stopping threshold at one machine
+  epsilon. The shared normal CDF uses the `erfc` form; the old in-crate
+  `(1 - P(1/2, x^2/2))/2` cancelled in the lower tail: `norm_cdf(-8)` was
+  6.106e-16 (1.8 % low) and is now 6.220960574271834e-16 (mpmath
+  6.220960574271784e-16), and `norm_cdf(-10)` was 0 and is now 7.62e-24.
+  At the alphas the engine uses (0.001 to 0.05) values moved by at most
+  4.8e-14 relative (CHANGELOG, milestone v2.1).
+- **RNG**: scenario `s` draws from Philox4x32-10 stream `(seed, s)`
+  (Salmon et al., SC '11) with Wichura's AS 241 normals
+  (`qp_core::path_rng`): the `k` factor normals, then the Student-t
+  chi-square or the Poisson jump count and one normal per jump factor.
+  Bootstrap resample `b` reads stream `(seed ^ 0x9E3779B97F4A7C15, b)`.
+  Results are the same bits on any thread count and match the C++ engine
+  bit for bit on the same libm; NumPy's stream differs, so agreement with
+  Python is statistical.

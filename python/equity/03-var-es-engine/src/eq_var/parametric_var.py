@@ -10,17 +10,16 @@ covariance in factor-return units matching ``Portfolio.delta_exposures``.
 
 from __future__ import annotations
 
-import warnings
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from scipy.stats import norm
 from scipy.stats import t as student_t
 
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
 
 __all__ = [
-    "cornish_fisher_domain_ok",
     "cornish_fisher_valid",
     "cornish_fisher_var",
     "cornish_fisher_z",
@@ -98,6 +97,7 @@ def portfolio_sigma(exposures: np.ndarray, cov: np.ndarray) -> float:
     return float(np.sqrt(max(var, 0.0)))
 
 
+@model(id="EQ-VAR-PARAM")
 def parametric_var(
     exposures: np.ndarray,
     cov: np.ndarray,
@@ -209,27 +209,7 @@ def cornish_fisher_valid(skew: float, excess_kurt: float, alpha: float) -> bool:
     return bool(_cf_min_derivative(skew, excess_kurt, -z_a, z_a) > 0.0)
 
 
-def cornish_fisher_domain_ok(
-    skew: float, excess_kurt: float, z_range: float = 3.5, n_grid: int = 2001
-) -> bool:
-    """Deprecated: use ``cornish_fisher_valid(skew, excess_kurt, alpha)``.
-
-    Kept for one release with its old meaning: monotonicity on the fixed
-    interval ``[-z_range, z_range]`` regardless of alpha. ``n_grid`` is unused.
-    """
-    warnings.warn(
-        "cornish_fisher_domain_ok is deprecated; use cornish_fisher_valid(skew, excess_kurt, alpha), "
-        "which checks the interval implied by alpha",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    z_range = finite_scalar("z_range", z_range, min_value=0.0, strict=True)
-    integer("n_grid", n_grid, min_value=2)
-    skew = finite_scalar("skew", skew)
-    excess_kurt = finite_scalar("excess_kurt", excess_kurt)
-    return bool(_cf_min_derivative(skew, excess_kurt, -z_range, z_range) > 0.0)
-
-
+@model(id="EQ-VAR-PARAM")
 def cornish_fisher_var(
     sigma: float,
     alpha: float = 0.01,

@@ -30,12 +30,15 @@ install_gcc() {
 }
 
 install_clang() {
-  curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
-    | sudo gpg --dearmor --yes -o /usr/share/keyrings/llvm.gpg
+  # apt.llvm.org has short DNS/connect outages; retry before failing the job.
+  local key
+  key="$(curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 \
+    https://apt.llvm.org/llvm-snapshot.gpg.key)"
+  printf '%s\n' "$key" | sudo gpg --dearmor --yes -o /usr/share/keyrings/llvm.gpg
   echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/${codename}/ llvm-toolchain-${codename}-21 main" \
     | sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq --no-install-recommends clang-21 libclang-rt-21-dev "$@"
+  sudo apt-get -o Acquire::Retries=5 update -qq
+  sudo apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends clang-21 libclang-rt-21-dev "$@"
   clang++-21 --version | head -1
 }
 

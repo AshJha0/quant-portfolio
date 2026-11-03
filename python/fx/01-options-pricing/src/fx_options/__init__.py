@@ -22,13 +22,18 @@ from .deltas import (
                          spot_to_forward_delta,
                          strike_from_delta,
 )
-from .forwards import cip_forward, forward_points, synthetic_forward_from_options
+from .forwards import (
+    cip_forward,
+    forward_from_dates,
+    forward_points,
+    synthetic_forward_from_options,
+)
 from .garman_kohlhagen import d1, d2, gk_call, gk_price, gk_put, implied_vol
 from .greeks import GreeksResult, analytic_greeks, finite_difference_greeks, gamma, vanna, vega, volga
 from .hedging import HedgeResult, hedge_frequency_study, simulate_delta_hedge
 from .monte_carlo import MCResult, digital_price, mc_digital_price, mc_price
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
                          "CONVENTIONS",
@@ -51,6 +56,7 @@ __all__ = [
                          "delta",
                          "digital_price",
                          "finite_difference_greeks",
+                         "forward_from_dates",
                          "forward_points",
                          "forward_to_spot_delta",
                          "gamma",

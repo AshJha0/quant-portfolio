@@ -7,13 +7,23 @@ Market-structure model (see docs/METHODOLOGY.md for the full register):
   a :class:`~fx_algo.sessions.PairProfile`.  The London-NY overlap is the
   deepest and tightest window of the FX day.
 * **Impact**: executing ``q`` (mm base) in a bucket with depth ``D``
-  (mm base absorbed per bucket) and vol ``sigma`` (pips per bucket):
+  (mm base absorbed per bucket), so participation ``rho = |q| / D`` is a
+  dimensionless rate, and session vol ``sigma_H`` in pips over a fixed
+  reference horizon ``H = impact_horizon_minutes`` (default 5):
 
   - temporary (fill-only, fully decays next bucket):
-    ``k_temp * sigma * sqrt(|q| / D)`` pips: the empirical square-root
-    law, scaled by session depth;
-  - permanent (shifts all later mids): ``k_perm * sigma * (|q| / D)``
-    pips: linear, so the no-dynamic-arbitrage condition holds.
+    ``k_temp * sigma_H * rho ** impact_exponent`` pips: the empirical
+    square-root law by default (exponent 0.5), linear with exponent 1;
+  - permanent (shifts all later mids): ``k_perm * sigma_H * |q| / D_H``
+    pips with ``D_H = depth_per_minute * H``: linear in quantity, so the
+    total permanent move of an order does not depend on how it is sliced
+    and the no-dynamic-arbitrage condition holds.
+
+  ``H`` is fixed, not the bucket width, so a given trading-rate profile
+  costs the same on a 1-minute or a 30-minute grid (tested).  Up to
+  v2.0.0 both terms used the per-bucket vol ``sigma * sqrt(dt)``, which
+  made temporary cost grow as ``sqrt(dt)`` and permanent impact shrink as
+  ``1/sqrt(dt)``.  With ``dt = H = 5`` the numbers are unchanged.
 
 * **Venues**: a *firm-liquidity ECN* fills every order at the quoted
   price; a *last-look dealer* shows a tighter spread but holds the order
@@ -206,6 +216,13 @@ class MarketSimulator:
         Temporary (sqrt) impact coefficient, dimensionless.
     k_perm : float
         Permanent (linear) impact coefficient, dimensionless.
+    impact_exponent : float
+        Power on participation in the temporary impact (0.5 square root,
+        1.0 linear).
+    impact_horizon_minutes : float
+        Fixed horizon over which the vol and depth that scale impact are
+        measured; independent of ``dt_minutes`` so results do not depend
+        on bucket width.
     max_participation : float
         Hard cap on ``|q_t| / depth_t`` per bucket; a child order above
         it raises ``ValueError`` (split across more buckets/sessions).
@@ -228,9 +245,15 @@ class MarketSimulator:
         max_participation: float = 0.3,
         vol_scale: float = 1.0,
         tradeable: np.ndarray | None = None,
+        impact_exponent: float = 0.5,
+        impact_horizon_minutes: float = 5.0,
     ) -> None:
         if k_temp < 0 or k_perm < 0:
             raise ValueError("impact coefficients must be >= 0")
+        if not np.isfinite(impact_exponent) or impact_exponent <= 0:
+            raise ValueError("impact_exponent must be > 0 (0.5 square root, 1 linear)")
+        if not np.isfinite(impact_horizon_minutes) or impact_horizon_minutes <= 0:
+            raise ValueError("impact_horizon_minutes must be > 0")
         if not (0 < max_participation <= 1):
             raise ValueError(f"max_participation must be in (0,1], got {max_participation}")
         self.profile = profile
@@ -242,6 +265,10 @@ class MarketSimulator:
         self.depth_bucket = profile.depth_at(mid_hours) * dt_minutes
         self.sigma_bucket_pips = vol_scale * profile.vol_at(mid_hours) * np.sqrt(dt_minutes)
         self.k_temp = k_temp
+        self.impact_exponent = float(impact_exponent)
+        self.impact_horizon_minutes = float(impact_horizon_minutes)
+        self.sigma_impact_pips = (vol_scale * profile.vol_at(mid_hours)
+                                  * np.sqrt(self.impact_horizon_minutes))
         self.k_perm = k_perm
         self.max_participation = max_participation
         if tradeable is None:
@@ -328,8 +355,13 @@ class MarketSimulator:
         z, u = self._draw(seed)
         pip = self.profile.pip_size
         part = np.abs(q) / self.depth_bucket
-        temp_pips = np.where(np.abs(q) > 0, self.k_temp * self.sigma_bucket_pips * np.sqrt(part), 0.0)
-        perm_pips = side * self.k_perm * self.sigma_bucket_pips * part  # signed, price dir
+        temp_pips = np.where(np.abs(q) > 0,
+                             self.k_temp * self.sigma_impact_pips * part ** self.impact_exponent,
+                             0.0)
+        # linear permanent impact against depth over the reference horizon:
+        # k * sigma_H * |q| / (depth_per_min * H), slicing-independent
+        part_h = part * self.dt_minutes / self.impact_horizon_minutes
+        perm_pips = side * self.k_perm * self.sigma_impact_pips * part_h  # signed, price dir
         drift = alpha_pips_per_bucket * side * self.tradeable
         diffusion = self.sigma_bucket_pips * z
         inc = diffusion + drift  # exogenous move per bucket, pips

@@ -275,8 +275,8 @@ fn main() {
     let mut json = String::from("[\n");
     for (i, r) in rows.iter().enumerate() {
         json.push_str(&format!(
-            "  {{\"engine\": \"rust/equity-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{toolchain}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
-            r.kernel, r.n_iter, r.k, r.p[0], r.p[1], r.p[2], r.p[3], r.p[4], r.p[5],
+            "  {{\"engine\": \"rust/equity-var-engine\", \"kernel\": \"{}\", \"toolchain\": \"{toolchain}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}, \"tail_basis\": \"{}\"}}{}\n",
+            r.kernel, r.n_iter, r.k, r.p[0], r.p[1], r.p[2], r.p[3], r.p[4], r.p[5], qp_core::bench::tail_basis(r.k),
             if i + 1 < rows.len() { "," } else { "" }
         ));
     }

@@ -1,0 +1,240 @@
+{
+ "contract": "docs/KILL_CONTRACT.md",
+ "version": 1,
+ "cases": [
+  {
+   "name": "worked_example",
+   "commands": [
+    {
+     "op": "working",
+     "id": 7,
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ]
+    },
+    {
+     "op": "engage",
+     "scope": [
+      "QP",
+      "RATES",
+      "*",
+      "*"
+     ],
+     "actor": "alice",
+     "reason": "desk loss limit"
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "RATES",
+      "MM2",
+      "UST2Y"
+     ]
+    },
+    {
+     "op": "request_reset",
+     "kill_id": 1,
+     "actor": "alice"
+    },
+    {
+     "op": "terminal",
+     "id": 7
+    },
+    {
+     "op": "request_reset",
+     "kill_id": 1,
+     "actor": "alice"
+    },
+    {
+     "op": "approve_reset",
+     "kill_id": 1,
+     "actor": "alice"
+    },
+    {
+     "op": "approve_reset",
+     "kill_id": 1,
+     "actor": "bob"
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ]
+    }
+   ],
+   "expected": [
+    "{\"actor\":\"alice\",\"cancel\":[7],\"event\":\"engage\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"desk loss limit\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":1,\"state\":\"ENGAGED\"}",
+    "{\"check\":[\"QP\",\"RATES\",\"MM2\",\"UST2Y\"],\"result\":\"KILLED:DESK:QP/RATES/*/*\"}",
+    "{\"actor\":\"alice\",\"cancel\":[],\"event\":\"reset_rejected\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"state=ENGAGED\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":2,\"state\":\"ENGAGED\"}",
+    "{\"actor\":\"system\",\"cancel\":[],\"event\":\"killed\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":3,\"state\":\"KILLED\"}",
+    "{\"actor\":\"alice\",\"cancel\":[],\"event\":\"reset_requested\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":4,\"state\":\"RESET_PENDING\"}",
+    "{\"actor\":\"alice\",\"cancel\":[],\"event\":\"reset_rejected\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"same_actor\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":5,\"state\":\"RESET_PENDING\"}",
+    "{\"actor\":\"bob\",\"cancel\":[],\"event\":\"cleared\",\"kill_id\":1,\"level\":\"DESK\",\"reason\":\"\",\"scope\":[\"QP\",\"RATES\",\"*\",\"*\"],\"seq\":6,\"state\":\"CLEARED\"}",
+    "{\"check\":[\"QP\",\"RATES\",\"MM1\",\"UST10Y\"],\"result\":null}"
+   ]
+  },
+  {
+   "name": "nesting_and_duplicate",
+   "commands": [
+    {
+     "op": "engage",
+     "scope": [
+      "QP",
+      "*",
+      "*",
+      "*"
+     ],
+     "actor": "a"
+    },
+    {
+     "op": "engage",
+     "scope": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ],
+     "actor": "a"
+    },
+    {
+     "op": "engage",
+     "scope": [
+      "QP",
+      "*",
+      "*",
+      "*"
+     ],
+     "actor": "a"
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ]
+    },
+    {
+     "op": "request_reset",
+     "kill_id": 1,
+     "actor": "a"
+    },
+    {
+     "op": "approve_reset",
+     "kill_id": 1,
+     "actor": "b"
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ]
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST2Y"
+     ]
+    }
+   ],
+   "expected": [
+    "{\"actor\":\"a\",\"cancel\":[],\"event\":\"engage\",\"kill_id\":1,\"level\":\"FIRM\",\"reason\":\"\",\"scope\":[\"QP\",\"*\",\"*\",\"*\"],\"seq\":1,\"state\":\"KILLED\"}",
+    "{\"actor\":\"a\",\"cancel\":[],\"event\":\"engage\",\"kill_id\":2,\"level\":\"SYMBOL\",\"reason\":\"\",\"scope\":[\"QP\",\"RATES\",\"MM1\",\"UST10Y\"],\"seq\":2,\"state\":\"KILLED\"}",
+    "{\"actor\":\"a\",\"cancel\":[],\"event\":\"engage_dup\",\"kill_id\":1,\"level\":\"FIRM\",\"reason\":\"\",\"scope\":[\"QP\",\"*\",\"*\",\"*\"],\"seq\":3,\"state\":\"KILLED\"}",
+    "{\"check\":[\"QP\",\"RATES\",\"MM1\",\"UST10Y\"],\"result\":\"KILLED:FIRM:QP/*/*/*\"}",
+    "{\"actor\":\"a\",\"cancel\":[],\"event\":\"reset_requested\",\"kill_id\":1,\"level\":\"FIRM\",\"reason\":\"\",\"scope\":[\"QP\",\"*\",\"*\",\"*\"],\"seq\":4,\"state\":\"RESET_PENDING\"}",
+    "{\"actor\":\"b\",\"cancel\":[],\"event\":\"cleared\",\"kill_id\":1,\"level\":\"FIRM\",\"reason\":\"\",\"scope\":[\"QP\",\"*\",\"*\",\"*\"],\"seq\":5,\"state\":\"CLEARED\"}",
+    "{\"check\":[\"QP\",\"RATES\",\"MM1\",\"UST10Y\"],\"result\":\"KILLED:SYMBOL:QP/RATES/MM1/UST10Y\"}",
+    "{\"check\":[\"QP\",\"RATES\",\"MM1\",\"UST2Y\"],\"result\":null}"
+   ]
+  },
+  {
+   "name": "cancel_on_disconnect",
+   "commands": [
+    {
+     "op": "working",
+     "id": 1,
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST10Y"
+     ]
+    },
+    {
+     "op": "working",
+     "id": 2,
+     "path": [
+      "QP",
+      "RATES",
+      "MM1",
+      "UST2Y"
+     ]
+    },
+    {
+     "op": "working",
+     "id": 3,
+     "path": [
+      "QP",
+      "FX",
+      "MM9",
+      "EURUSD"
+     ]
+    },
+    {
+     "op": "disconnect",
+     "paths": [
+      [
+       "QP",
+       "RATES",
+       "MM1",
+       "UST10Y"
+      ],
+      [
+       "QP",
+       "RATES",
+       "MM1",
+       "UST2Y"
+      ]
+     ]
+    },
+    {
+     "op": "terminal",
+     "id": 2
+    },
+    {
+     "op": "terminal",
+     "id": 1
+    },
+    {
+     "op": "check",
+     "path": [
+      "QP",
+      "FX",
+      "MM9",
+      "EURUSD"
+     ]
+    }
+   ],
+   "expected": [
+    "{\"actor\":\"system:cod\",\"cancel\":[1,2],\"event\":\"engage\",\"kill_id\":1,\"level\":\"STRATEGY\",\"reason\":\"cancel_on_disconnect\",\"scope\":[\"QP\",\"RATES\",\"MM1\",\"*\"],\"seq\":1,\"state\":\"ENGAGED\"}",
+    "{\"actor\":\"system\",\"cancel\":[],\"event\":\"killed\",\"kill_id\":1,\"level\":\"STRATEGY\",\"reason\":\"\",\"scope\":[\"QP\",\"RATES\",\"MM1\",\"*\"],\"seq\":2,\"state\":\"KILLED\"}",
+    "{\"check\":[\"QP\",\"FX\",\"MM9\",\"EURUSD\"],\"result\":null}"
+   ]
+  }
+ ]
+}

@@ -46,11 +46,6 @@ using BaselInput = KupiecInput;
 /// outside (0, 0.5), n_obs < 1, n_exceptions < 0 or n_exceptions > n_obs.
 LrTest kupiec_pof(const KupiecInput& in);
 
-/// Old argument order (n_exceptions, n_obs, alpha). alpha now means the tail
-/// probability, so the old default 0.99 throws.
-[[deprecated("use kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha}). Removed next release.")]]
-LrTest kupiec_pof(int n_exceptions, int n_obs, double alpha = 0.01);
-
 /// Christoffersen (1998) independence test on a 0/1 exception series
 /// (first-order Markov alternative); chi2(1). Degenerate series (no
 /// transitions of one kind) return LR = 0. Requires >= 2 observations
@@ -74,13 +69,6 @@ struct TrafficLight {
 
 /// Basel traffic light for any window and tail probability (see header).
 TrafficLight basel_traffic_light(const BaselInput& in);
-
-/// Old argument order (n_exceptions, n_obs, alpha); alpha is now the tail
-/// probability.
-[[deprecated(
-    "use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
-    "Removed next release.")]]
-TrafficLight basel_traffic_light(int n_exceptions, int n_obs = 250, double alpha = 0.01);
 
 /// Acerbi-Szekely (2014) Z2 statistic for an ES backtest:
 ///   Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1,  I_t = 1{pnl_t < -VaR_t}.

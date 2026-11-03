@@ -23,9 +23,22 @@
 #   engine diff  both bindings installed; tests/test_engine_differential.py,
 #                any skip fails (python vs C++ vs Rust engines)
 #   research     research/tools/prereg.py check, then pytest research/tests
-#   hygiene      hard ban on the hiring-process word; voice report (report-only)
+#   py data      python/data (qp-data) on Python 3.11 to 3.13, recorded responses
+#   learning     docs/notebooks and career-prep tests; nbmake on the solutions
+#   cookbook     every docs/COOKBOOK.md recipe run, quoted output checked
+#   recorder     tools/recorder tests; C++ and Rust replay required
+#   quantlib     the QuantLib cross-checks (Hull-White, ISDA CDS, Heston) against
+#                QuantLib from hash-locked wheels; any skip fails
+#   api diff     griffe public-API diff against the base commit (pull requests;
+#                label api-break to allow a deliberate break, docs/VERSIONING.md)
+#   hygiene      hard ban on the hiring-process word; voice report (report-only);
+#                version, excluded-source and Hypothesis-profile policy tests
 #   counts       sums executed pass counts into counts.json, then checks the docs
 #   ci-ok        fails unless every job above succeeded; the only required check
+#
+# Hypothesis runs with the derandomised "ci" profile (conftest.py), so a red
+# run reproduces exactly; the nightly schedule runs everything with the
+# random "nightly" profile and ten times the examples.
 #
 # Third-party actions are pinned to full commit SHAs. Dependabot keeps them
 # current (.github/dependabot.yml).
@@ -37,6 +50,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"   # nightly, 03:17 UTC: random Hypothesis profile
 
 permissions:
   contents: read
@@ -48,6 +63,7 @@ concurrency:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONUTF8: "1"
+  QP_HYPOTHESIS_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'ci' }}
 
 jobs:
   discover:
@@ -107,7 +123,7 @@ jobs:
       - name: pytest
         working-directory: python/core
         run: |
-          python -m pytest -p no:cacheprovider -ra \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -156,14 +172,18 @@ jobs:
         env:
           EXTRA: ${{ matrix.project.extra }}
           PROJECT: ${{ matrix.project.path }}
+          # Workspace packages the project needs (qp-bt, qp-oms, ...), listed
+          # by discover_projects.py; word-split on purpose.
+          DEPS: ${{ matrix.project.deps }}
         run: |
+          # shellcheck disable=SC2086
           bash .github/scripts/hashed_install.sh --group test ${EXTRA:+--extra "$EXTRA"} \
-            --editable python/core "$PROJECT"
+            --editable python/core $DEPS "$PROJECT"
           python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
       - name: pytest
         working-directory: ${{ matrix.project.path }}
         run: |
-          python -m pytest -p no:cacheprovider -ra \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -203,6 +223,10 @@ jobs:
       # the files and the strictness (strict on python/core).
       - name: mypy
         run: uv run --no-sync mypy
+      # Every model in docs/models/models.toml is tagged with @model at its
+      # entrypoints, has an owner, a tier and independent checks (W12).
+      - name: Model inventory (docs/models/models.toml against the @model tags)
+        run: uv run --no-sync python -m pytest -p no:cacheprovider -q tests/test_model_inventory.py
 
   goldens:
     name: goldens --check
@@ -547,6 +571,13 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: cargo clippy --release --all-targets --locked -p "$PACKAGE" -- -D warnings
+      # The 13 kernels held to independent-oracle goldens (rust/ORACLE_KERNELS.md):
+      # static checks, then each listed test run once.
+      - name: Oracle-kernel list (check_oracle_kernels.py --run)
+        if: matrix.crate == 'core'
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: python3 tools/check_oracle_kernels.py --run
       - name: Upload cargo test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -646,7 +677,8 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: |
-          python -m pytest -p no:cacheprovider -ra "$GITHUB_WORKSPACE/bindings/$PACKAGE/tests" \
+          python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE" \
+            "$GITHUB_WORKSPACE/bindings/$PACKAGE/tests" \
             --junitxml="$RUNNER_TEMP/junit/junit.xml"
       - name: Upload JUnit XML
         if: always()
@@ -799,9 +831,18 @@ jobs:
           echo "base $base, head $(git rev-parse HEAD)"
           bash .github/scripts/bench_ab_run.sh "$base" "$RUNNER_TEMP/bench" 3
       - name: Compare head with base
+        env:
+          # The bench-accepted label lets the rows named in
+          # .github/bench-accepted.json pass as ACCEPTED (each capped by its
+          # max_ratio); every other slowdown still fails.
+          ALLOW_ACCEPTED: ${{ contains(github.event.pull_request.labels.*.name, 'bench-accepted') }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/bench"
+          accepted=()
+          if [ "$ALLOW_ACCEPTED" = "true" ]; then
+            accepted=(--accepted .github/bench-accepted.json --allow-accepted)
+          fi
           args=()
           for lang in cpp rust; do
             for engine in equity-options-engine equity-var-engine fx-options-engine fx-var-engine; do
@@ -811,7 +852,7 @@ jobs:
             done
           done
           rc=0
-          python .github/scripts/bench_ab.py "${args[@]}"             --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
+          python .github/scripts/bench_ab.py "${args[@]}" "${accepted[@]}" --summary "$out/summary.md" --json "$out/ab.json" > /dev/null || rc=$?
           cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - name: Upload bench JSON
@@ -910,6 +951,8 @@ jobs:
             python/core/pyproject.toml
             python/fx/05-pairs-trading/pyproject.toml
             python/fx/10-regime-switching/pyproject.toml
+            python/data/pyproject.toml
+            python/backtest/pyproject.toml
       - name: Create a venv
         run: |
           python -m venv "$RUNNER_TEMP/venv"
@@ -917,14 +960,251 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.6"
-      - name: Install python/core, the FX pairs and regime packages and pytest (hashed, from uv.lock)
+      - name: Install python/core, python/data, the FX pairs and regime packages and pytest (hashed, from uv.lock)
         run: |
           bash .github/scripts/hashed_install.sh --group test --editable \
-            python/core python/fx/05-pairs-trading python/fx/10-regime-switching
+            python/core python/data python/backtest python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: prereg check
         run: python research/tools/prereg.py check
-      - name: pytest research/tests
-        run: python -m pytest -p no:cacheprovider -ra research/tests
+      # Every study folder's tests (panel, attribution, vix, tsmom, notebooks,
+      # ...). Test-file basenames are unique, so rootdir collection works.
+      - name: pytest research
+        run: python -m pytest -p no:cacheprovider -ra research
+
+  # python/data (qp-data) is not under python/*/NN-*, so discover does not
+  # list it. Tests run on recorded responses; live tests stay opt-in.
+  python-data:
+    name: py data (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core and python/data with pytest (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --editable \
+            python/core python/data
+      - name: pytest python/data
+        working-directory: python/data
+        run: python -m pytest -p no:cacheprovider -ra --confcutdir="$GITHUB_WORKSPACE"
+
+  # The learning notebooks and the career-prep pack: their tests, then every
+  # solution notebook executed by nbmake on the pinned python3 kernel.
+  learning:
+    name: learning (notebooks, career-prep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install the notebook packages, pytest, nbmake and ipykernel (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group notebooks --editable \
+            python/core python/backtest python/equity/01-options-pricing python/equity/03-var-es-engine \
+            python/execution python/equity/04-fixed-income python/equity/08-algo-execution
+          python -m ipykernel install --user --name python3
+      - name: pytest docs/notebooks/tests, career-prep/tests and docs/learn/tools
+        run: python -m pytest -p no:cacheprovider -ra docs/notebooks/tests career-prep/tests docs/learn/tools
+      - name: nbmake the solution notebooks (docs and research)
+        run: |
+          python -m pytest -p no:cacheprovider --nbmake --nbmake-timeout=300 \
+            --nbmake-kernel=python3 docs/notebooks/*-solution.ipynb research/notebooks/*-solution.ipynb
+
+  # Every Python recipe in docs/COOKBOOK.md, run from source in a fresh
+  # interpreter, its quoted output checked against what it printed
+  # (tests/test_cookbook.py, about 7 minutes). Recipes needing the compiled
+  # bindings or an extra that is not installed skip and name the module.
+  cookbook:
+    name: cookbook (docs/COOKBOOK.md recipes)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install every workspace project, pytest and QuantLib (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group oracle --editable \
+            python/core python/data python/backtest python/oms python/execution python/posttrade \
+            python/equity/01-options-pricing python/equity/02-volatility-modeling \
+            python/equity/03-var-es-engine python/equity/04-fixed-income python/equity/05-pairs-trading \
+            python/equity/06-credit-risk python/equity/07-portfolio-optimization \
+            python/equity/08-algo-execution python/equity/09-vol-surface python/equity/10-regime-switching \
+            python/foundations/01-risk-metrics python/foundations/02-trading-signal-backtest \
+            python/foundations/03-black-scholes-replication \
+            python/fx/01-options-pricing python/fx/02-volatility-modeling python/fx/03-var-es-engine \
+            python/fx/04-fixed-income python/fx/05-pairs-trading python/fx/06-credit-risk \
+            python/fx/07-portfolio-optimization python/fx/08-algo-execution python/fx/09-vol-surface \
+            python/fx/10-regime-switching
+      - name: pytest tests/test_cookbook.py
+        run: python -m pytest -p no:cacheprovider -ra tests/test_cookbook.py
+
+  # tools/recorder: offline recorder tests plus the live-replay parity check,
+  # which builds the C++ (g++) and Rust (cargo) replayers. With
+  # QP_RECORDER_REQUIRE_TOOLCHAINS=1 a missing toolchain fails instead of
+  # skipping. ubuntu-24.04 ships g++ and a stable cargo.
+  recorder:
+    name: recorder (tools/recorder, C++ and Rust replay)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install pytest, hypothesis and websockets (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group test --group recorder
+      - name: g++ and cargo are on PATH
+        run: g++ --version && cargo --version
+      - name: pytest tools/recorder/tests
+        env:
+          QP_RECORDER_REQUIRE_TOOLCHAINS: "1"
+        run: python -m pytest -p no:cacheprovider -ra tools/recorder/tests
+
+  # Rust crates outside the engine matrix: the ULL stack (ring, QPBF, L3
+  # book, bench harness, crypto feed handler, gateway), AAD and the dated
+  # curve bootstrap. One job, one build cache; loom model-checks the ring.
+  rust-extra:
+    name: rust ull, aad, rates-curves
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the toolchain from rust/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust -> target
+          key: extra-${{ hashFiles('rust/Cargo.lock') }}
+      - name: cargo test and clippy -D warnings
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          set -o pipefail
+          for p in qp-ull-ring qp-ull-qpbf qp-ull-book qp-ull-bench qp-ull-feed qp-ull-gateway qp-aad qp-rates-curves; do
+            echo "::group::$p"
+            cargo test --release --locked -p "$p"
+            cargo clippy --release --all-targets --locked -p "$p" -- -D warnings
+            echo "::endgroup::"
+          done
+      - name: loom model check of the SPSC ring
+        env:
+          RUSTFLAGS: "--cfg loom"
+          CARGO_TARGET_DIR: target/loom
+        run: cargo test --release --locked -p qp-ull-ring --test loom
+
+  # C++ projects outside the engine matrix, each a standalone CMake project:
+  # exec-core (W25 book; its replay tool drives the Python differential
+  # test), rates-curves, aad, and the ULL feed, gateway and bench suites.
+  cpp-extra:
+    name: cpp exec-core, rates-curves, aad, ull
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the gcc toolchain, CMake, Ninja and GoogleTest
+        run: bash .github/scripts/install_cxx.sh gcc
+      - name: Lower mmap randomisation for the sanitizers
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Build and ctest each project (long-labelled tests run nightly)
+        run: bash .github/scripts/cpp_extra.sh . "$RUNNER_TEMP/cpp-extra"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core and python/execution (hashed, from uv.lock)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --group test --editable \
+            python/core python/execution
+      - name: Python book against the exec-core replay (no skips allowed)
+        working-directory: python/execution
+        env:
+          QP_EXEC_REPLAY: ${{ runner.temp }}/cpp-extra/exec-core/exec_core_replay
+        run: |
+          set -o pipefail
+          python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_differential_cpp.py | tee "$RUNNER_TEMP/diff.log"
+          if grep -q "SKIPPED" "$RUNNER_TEMP/diff.log"; then exit 1; fi
+
+  # D2 Java: ring, GC-free gateway, OMS core, parity with python/oms vectors.
+  java:
+    name: java (Temurin 21, mvnw verify)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: ./mvnw -B verify
+        run: |
+          chmod +x mvnw
+          ./mvnw -B --no-transfer-progress verify
 
   hygiene:
     name: hygiene
@@ -960,6 +1240,109 @@ jobs:
           python -m pytest -p no:cacheprovider -q tests/test_ci_scripts.py
       - name: CI install scripts (hashed_install, check_constraints_lock)
         run: python -m pytest -p no:cacheprovider -q tests/test_ci_install.py
+      - name: Repository policy (one version, excluded sources, Hypothesis profiles)
+        run: python -m pytest -p no:cacheprovider -q tests/test_repo_policy.py
+
+  # The independent reference (plan principle 2): the QuantLib cross-checks
+  # that skip when QuantLib is absent run here against QuantLib from
+  # hash-locked wheels (the "oracle" group in the root pyproject.toml), and
+  # a skip fails the job.
+  quantlib:
+    name: quantlib
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install python/core, the three checked projects and QuantLib (hashed, from uv.lock)
+        run: |
+          bash .github/scripts/hashed_install.sh --group test --group oracle --editable \
+            python/core python/equity/04-fixed-income python/equity/06-credit-risk \
+            python/fx/04-fixed-income python/fx/09-vol-surface
+          python -c 'import QuantLib; print("QuantLib", QuantLib.__version__)'
+          python -m pip freeze > "$RUNNER_TEMP/pip-freeze.txt"
+      - name: pytest the QuantLib cross-checks (no skips allowed)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ql"
+          for project in python/equity/04-fixed-income python/equity/06-credit-risk python/fx/09-vol-surface; do
+            (cd "$project" && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+              tests/*quantlib*.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+          done
+          # Calendar and spot-date parity against QuantLib calendars (Round 6 W1/W2).
+          (cd python/core && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_one_calendar.py tests/test_usd_govt.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+          (cd python/fx/04-fixed-income && python -m pytest -p no:cacheprovider -rs --confcutdir="$GITHUB_WORKSPACE" \
+            tests/test_fx_spot_forwards.py) | tee -a "$RUNNER_TEMP/ql/pytest.log"
+          if grep -q "SKIPPED" "$RUNNER_TEMP/ql/pytest.log"; then
+            echo "::error::QuantLib cross-checks were skipped"
+            exit 1
+          fi
+      - name: Upload the QuantLib results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quantlib
+          path: |
+            ${{ runner.temp }}/ql/
+            ${{ runner.temp }}/pip-freeze.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  # Public API (docs/VERSIONING.md): every package's __all__ and signatures
+  # at the base commit against the head. Pull requests only; a push to main
+  # was already checked as a pull request. The label api-break allows a
+  # deliberate break, which must come with a docs/MIGRATION.md entry.
+  api-diff:
+    name: api diff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Create a venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install griffe (hashed, from uv.lock)
+        run: bash .github/scripts/hashed_install.sh --group api
+      - name: griffe check against the base commit
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ALLOW_BREAK: ${{ contains(github.event.pull_request.labels.*.name, 'api-break') }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Not a pull request: nothing to compare against."
+            exit 0
+          fi
+          if python .github/scripts/api_diff.py "$BASE_SHA"; then
+            exit 0
+          fi
+          if [ "$ALLOW_BREAK" = "true" ]; then
+            echo "::warning::public API break allowed by the api-break label; docs/MIGRATION.md must say so"
+            exit 0
+          fi
+          exit 1
 
   counts:
     name: counts
@@ -1025,12 +1408,21 @@ jobs:
       - clang-tidy
       - rust
       - rust-fmt
+      - rust-extra
+      - cpp-extra
+      - java
       - bindings
       - cmake-install
       - wheels
       - bench
       - engine-differential
       - research
+      - python-data
+      - learning
+      - cookbook
+      - recorder
+      - quantlib
+      - api-diff
       - hygiene
       - counts
     if: ${{ always() }}

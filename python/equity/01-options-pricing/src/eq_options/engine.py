@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Literal
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from qp_core.engines import Engine, load_engine
 
 from .binomial import crr_price as _crr_price
@@ -78,14 +79,26 @@ def crr_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0
                                   american=style == "american", n_steps=n_steps))
 
 
-def bs_price_batch(S, K, T, r, sigma, q, is_call, *, engine: Engine = "python") -> np.ndarray:
+def bs_price_batch(S: ArrayLike, K: ArrayLike, T: ArrayLike, r: ArrayLike, sigma: ArrayLike,
+                   q: ArrayLike, is_call: ArrayLike, *, engine: Engine = "python",
+                   exact: bool = False) -> NDArray[np.float64]:
     """Vectorised price over equal-length arrays; ``is_call`` is boolean.
-    The Python engine loops over the reference scalar function."""
+
+    The Python engine loops over the reference scalar function, so it is
+    always exact. ``engine="cpp"`` runs the throughput kernel
+    ``eqopt::bs_price_batch_fast`` by default (within 1e-13 * max(1, S, K)
+    of the exact price, ``eqopt/batch.hpp``) and the bit-exact batch with
+    ``exact=True``. ``engine="rust"`` is always the bit-exact batch.
+    """
     mod = load_engine(engine)
     cols = [np.ascontiguousarray(a, dtype=np.float64) for a in (S, K, T, r, sigma, q)]
     flags = np.ascontiguousarray(is_call, dtype=np.bool_)
     if mod is not None:
-        return mod.eq_bs_price_batch(*cols, flags)
+        if engine == "cpp":
+            out: NDArray[np.float64] = mod.eq_bs_price_batch(*cols, flags, exact=exact)
+        else:
+            out = mod.eq_bs_price_batch(*cols, flags)
+        return out
     if any(c.shape != flags.shape for c in cols) or flags.ndim != 1:
         raise ValueError("length mismatch: inputs must be equal-length 1-D arrays")
     s, k, t, rr, v, qq = cols

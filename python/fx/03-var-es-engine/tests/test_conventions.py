@@ -70,16 +70,6 @@ def test_tail_alpha_accepted(name):
     assert out is not None
 
 
-def test_confidence_keyword_is_deprecated_and_maps_to_one_minus():
-    with pytest.warns(DeprecationWarning, match="confidence"):
-        old = empirical_var(PNL, confidence=0.99)
-    assert old == empirical_var(PNL, 0.01)
-    with pytest.warns(DeprecationWarning):
-        assert normal_es(2.0, confidence=0.975) == pytest.approx(normal_es(2.0, 0.025), rel=1e-12)
-    with pytest.raises(ValueError, match="not both"):
-        empirical_es(PNL, 0.01, confidence=0.99)
-
-
 def test_tail_alpha_formulas():
     assert normal_var(1.0, 0.01) == pytest.approx(norm.ppf(0.99), rel=1e-14)
     assert normal_es(1.0, 0.025) == pytest.approx(norm.pdf(norm.ppf(0.975)) / 0.025, rel=1e-14)
@@ -94,11 +84,7 @@ def test_order_statistic_with_fractional_k():
 
 
 # ------------------------------------------------------------------ S3
-def test_kupiec_keyword_api_and_old_order():
-    lr, _p = kupiec_pof(n_obs=250, n_exceptions=5, alpha=0.01)
-    with pytest.warns(DeprecationWarning, match="positional"):
-        lr_old, _p_old = kupiec_pof(5, 250, 0.99)
-    assert lr_old == pytest.approx(lr, rel=1e-12)
+def test_kupiec_keyword_api():
     with pytest.raises(ValueError, match="must not exceed"):
         kupiec_pof(n_obs=10, n_exceptions=11, alpha=0.01)
     with pytest.raises(ValueError, match="tail probability"):
@@ -123,12 +109,6 @@ def test_basel_any_window_maps_to_250_day_equivalent(n, x, alpha, zone, mult):
     assert tl.multiplier == pytest.approx(mult, abs=1e-15)
     assert tl.plus_factor == pytest.approx(mult - 3.0, abs=1e-15)
     assert tl.cumulative_prob == pytest.approx(binom.cdf(x, n, alpha), abs=1e-12)
-
-
-def test_basel_old_positional_form_deprecated():
-    with pytest.warns(DeprecationWarning):
-        tl = basel_traffic_light(5, 250, 0.99)
-    assert (tl.zone, tl.multiplier) == ("yellow", 3.40)
 
 
 # ------------------------------------------------------------------ S7
@@ -174,11 +154,6 @@ def test_higham_and_clip_repair():
         warnings.simplefilter("ignore")
         clip = _repair(a, "clip")
     assert np.linalg.norm(c - a) <= np.linalg.norm(clip - a) + 1e-12
-
-
-def test_max_tries_is_deprecated():
-    with pytest.warns(DeprecationWarning):
-        robust_cholesky(np.eye(2), max_tries=3)
 
 
 # ------------------------------------------------------------------ H-9

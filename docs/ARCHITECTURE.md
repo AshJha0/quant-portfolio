@@ -48,11 +48,53 @@ counted in them:
 
 | Path | Name | What it holds |
 |---|---|---|
-| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, calendars, day counts, validation and metrics used by 16 Python projects; the shared normal CDF (`normal`), the Black-Scholes kernel in cost-of-carry form (`black_scholes`, scalar and NumPy) and the implied-vol solver (`iv_core`) behind both option packages |
-| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; the carry-form Black-Scholes kernel `qp/black_scholes.hpp` and its vectorised twin `qp/black_scholes_vm.hpp`; the latency harness `qp/bench/latency.hpp`; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench |
-| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; the carry-form kernel `black_scholes` and the latency harness `bench`; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool` |
+| `python/core` | `qp-core` (import `qp_core`) | Statistics, the t+1 fill rule, the trade layer (`instruments`, `market`), shared maths (`vol`, `trees`, `rng`, `exotics`, `risk`, `scenarios`, `hedging`, `aad`, `xva`, `capital`, `credit_index`, `eventlog`; see "Desk stacks" below), rule-based calendars and FX spot dates (`holidays`), structured errors (`errors`) and logging (`logconfig`), day counts, validation and metrics used by 16 Python projects; the shared normal CDF (`normal`), the Black-Scholes kernel in cost-of-carry form (`black_scholes`, scalar and NumPy) and the implied-vol solver (`iv_core`) behind both option packages |
+| `cpp/core` | `qp::core` (header-only CMake target) | Normal CDF, implied-vol core, RNG, special functions, matrix and linear algebra, Brent, thread pool; the carry-form Black-Scholes kernel `qp/black_scholes.hpp` and its vectorised twin `qp/black_scholes_vm.hpp`; the latency harness `qp/bench/latency.hpp`; since November 2026 `qp/philox.hpp`, `qp/quantile.hpp`, `qp/gemm.hpp`, `qp/vmath.hpp` and the `bench_core` latency bench; since milestone v2.1 `qp/holidays.hpp` (calendars, FX spot dates, spot-date forwards, NDF value) |
+| `rust/core` | `qp-core` crate | RNGs, special functions, implied-vol core, `brentq`, Cholesky, thread partitioning; the carry-form kernel `black_scholes` and the latency harness `bench`; since November 2026 `philox`, `quantile`, `gemm`, `vmath` and the persistent thread pool `pool`; since milestone v2.1 `holidays` (the same rules as `qp/holidays.hpp`) |
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
+
+## Desk stacks (toward v3.0.0, Rounds 8-17)
+
+The plain idea: the 31 sub-projects price and risk models in isolation. A
+desk also needs trades as objects, one way to backtest, orders, venues and
+the paperwork after a fill. Those layers are shared stacks beside the 31,
+not counted in them, and each depends only on the layers above it in this
+table:
+
+| Layer | Path (import) | Holds | Depends on |
+|---|---|---|---|
+| Trade layer | `python/core` (`qp_core.instruments`, `qp_core.market`) | `Instrument` protocol: `pv(MarketSnapshot) -> Money`, `cashflows()`, `risk()` with keys `delta:<quote>`, `pv01:<ccy>`; trades and serialisation; adapters from the per-package trade classes | `qp_core` |
+| Shared maths | `qp_core.vol` (SABR, SABR PDE, SSVI, eSSVI, Dupire), `qp_core.trees` (CRR lattice), `qp_core.rng`, `qp_core.exotics`, `qp_core.risk`, `qp_core.scenarios`, `qp_core.hedging`, `qp_core.aad`, `qp_core.xva`, `qp_core.capital`, `qp_core.credit_index`, `qp_core.eventlog` | Maths that more than one package needs; the packages that first had it now re-export it | `qp_core` |
+| Data | `python/data` (`qp_data`) | Keyless sources, content-addressed store, release-lag checks | `qp_core` |
+| Backtest core | `python/backtest` (`qp_bt`) | Fills (`qp_bt.fills`), costs, ledger, portfolio layer; the equity and FX backtesters are thin wrappers over it | `qp_core`, optionally `qp_exec` for the reference book |
+| Order management | `python/oms` (`qp_oms`) | Order state machine (FIX 35=D / 35=8 semantics), FIX session over an in-memory link, EMS, drop copy, reconciliation, recovery, pre-trade risk, kill hierarchy (`docs/KILL_CONTRACT.md`) | `qp_core.eventlog` |
+| Execution research | `python/execution` (`qp_exec`) and `cpp/exec-core` | Reference limit order book (`lob`), Hawkes flow, schedules, market making (`mm`), smart order router (`sor`), central risk book (`crb`), RFQ | numpy, scipy; `qp_oms` for order kwargs |
+| Post-trade | `python/posttrade` (`qp_posttrade`) | Settlement dates on `qp_core.holidays`, booking and confirmation matching, TCA, best execution, surveillance; reports stamped `synthetic venue` | `qp_core` |
+| Low latency | `cpp/ull/{ring,qpbf,book,feed,gateway,mcast,bench}`, `rust/ull/{ring,qpbf,book,feed,gateway,bench}`, `java/` | SPSC ring, the QPBF binary feed (`docs/QPBF.md`), L3 book, feed handler with gap recovery, order gateway, latency harness (`docs/LATENCY_METHOD.md`) | standard library only (Java: JDK 21, JMH for benches) |
+| AAD and curves (compiled) | `cpp/aad`, `rust/aad`, `cpp/rates-curves`, `rust/rates-curves` | Ports of `qp_core.aad` and the dated bootstrap | `qp::core`, `qp-core` |
+
+Formally, the flow of one order is: `qp_oms` accepts a parent order, runs
+pre-trade checks and the kill switch, `qp_exec.sor` splits it across
+simulated venues, fills come back as execution reports, and `qp_posttrade`
+books, matches, settles and reports them. Worked example: a kill engaged on
+a desk blocks every new order whose (firm, desk, strategy, symbol) it
+covers and mass-cancels the working ones; the Python reference, the C++ and
+Rust gateways and the Java gateway all replay
+`python/oms/kill/vectors.json` and must produce the same bytes. Diagram 12
+in [DIAGRAMS.md](DIAGRAMS.md) draws the flow.
+
+Two structural notes. The OMS sub-packages outside `src/`
+(`python/oms/{dropcopy,ems,kill,recon,recovery,risk}`) are collected by
+pytest but not installed with the distribution; moving them would break the
+Java parity test's path to `kill/vectors.json`. And every latency figure
+from the low-latency track is software, in-process latency on one machine,
+not wire-to-wire.
+
+Fuzzing (W12): `cpp/core/fuzz` (implied vol, Cholesky repair, JSONL parse;
+libFuzzer), `rust/core/fuzz` and `rust/equity-var-engine/fuzz`
+(cargo-fuzz). `.github/workflows/fuzz.yml` replays the corpus and every
+regression on each change and fuzzes each target nightly.
 
 Since November 2026 the four packages with ports (`eq_options`, `fx_options`,
 `eq_var`, `fx_var`) each have an `engine` module whose functions take
@@ -81,8 +123,10 @@ and Rust option engines) are wrappers that keep their own names, argument
 order, validation and boundary rules. Worked example: S = K = 100, T = 1,
 r = 5%, q = 2%, sigma = 20% gives 9.227005508154036 from `bs_price`, from
 `gk_price` with `r_d = 5%`, `r_f = 2%`, and from the kernel itself. Moving
-the maths into the kernel changed no output bit on a 5,944-quote grid in
-any language; `tests/test_carry_twin.py` pins it. The C++ and Rust kernels
+the maths into the kernel changed no output bit on 5,944 quotes in any
+language (the 1,944-entry grid that `tests/test_carry_twin.py` pins, plus
+4,000 seeded random quotes; see
+`python/fx/01-options-pricing/docs/VALIDATION.md`). The C++ and Rust kernels
 take the normal CDF as a type parameter, because the equity and FX engines
 use different implementations. The Python FX `analytic_greeks` moves to
 the shared normal CDF in this release, which changes its outputs by at most
@@ -107,10 +151,14 @@ quant-portfolio/
 │   ├── README.md
 │   ├── ARCHITECTURE.md    # This file
 │   ├── DIAGRAMS.md
-│   ├── LEARN.md
+│   ├── LEARN.md           # appendix and question bank of docs/learn/
+│   ├── learn/             # levelled study path L0-L4 and the LEARN lint (tools/)
+│   ├── models/            # model inventory (models.toml) and validation findings
+│   ├── notebooks/         # learning notebooks (exercise and solution copies)
 │   ├── COOKBOOK.md
-│   └── MARKET_RISK.md
-├── pyproject.toml, uv.lock # uv workspace: python/core and the 23 projects; mypy config
+│   ├── MARKET_RISK.md
+│   └── SLO.md, RUNBOOK.md, BENCHMARKS.md, LATENCY_METHOD.md, QPBF.md, KILL_CONTRACT.md
+├── pyproject.toml, uv.lock # uv workspace: shared stacks and the 23 projects; mypy config
 ├── tests/                 # repository-level tests: docs counts, engine differential harness
 ├── data/                  # free-data fetchers (data/fetch/qp_fetch.py); downloads in data/raw/, git-ignored
 ├── research/              # research platform
@@ -121,6 +169,11 @@ quant-portfolio/
 │   └── tests/
 ├── python/
 │   ├── core/              # qp-core, shared Python code
+│   ├── data/              # qp-data: keyless public data, content-addressed store, release lags
+│   ├── backtest/          # qp-bt: one backtest core
+│   ├── oms/               # qp-oms: orders, FIX session, EMS, risk, kill switch
+│   ├── execution/         # qp-exec: reference book, market making, SOR, CRB, RFQ
+│   ├── posttrade/         # qp-posttrade: settlement, booking, best execution
 │   ├── equity/01-…10-…    # 10 equity projects, src/-layout Python packages
 │   ├── fx/01-…10-…        # 10 FX projects, same layout, separate code
 │   └── foundations/        # 3 single-asset Python projects
@@ -132,13 +185,19 @@ quant-portfolio/
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
 │   ├── equity-var-engine/
-│   └── fx-var-engine/
+│   ├── fx-var-engine/
+│   ├── exec-core/         # fast order book mirroring qp_exec.lob
+│   ├── rates-curves/, aad/
+│   └── ull/               # ring, qpbf, book, feed, gateway, mcast, bench
 ├── rust/                  # Cargo workspace (Cargo.toml, Cargo.lock, rust-toolchain.toml)
 │   ├── core/              # qp-core crate
 │   ├── equity-options-engine/
 │   ├── fx-options-engine/
 │   ├── equity-var-engine/
-│   └── fx-var-engine/
+│   ├── fx-var-engine/
+│   ├── rates-curves/, aad/
+│   └── ull/               # ring, qpbf, book, feed, gateway, bench
+├── java/                  # qp-ull-java: ring buffer, garbage-free gateway and OMS core
 └── bindings/
     ├── cpp-nanobind/      # qp-cpp
     └── rust-pyo3/         # qp-rust
@@ -182,6 +241,10 @@ diagram 1 shows the layout.
 
 ## Engine latency
 
+Every latency figure in this repository, engine or low-latency track, is
+software, in-process latency on one machine, not wire-to-wire
+([LATENCY_METHOD.md](LATENCY_METHOD.md)).
+
 How latency is measured now is in [BENCHMARKS.md](BENCHMARKS.md): C++ and
 Rust use one harness (each sample a batch of calls lasting at least 2 us,
 at least 31 samples, median with p10/p90), and the CI `bench` job compares
@@ -202,7 +265,7 @@ functions about 19x faster than a scalar loop; the COOKBOOK has the table.
 
 C++:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 (per call, old harness) |
 |---|---|---|---|
 | [equity-options](../cpp/equity-options-engine/README.md#latency) | `bs_price` | 135 ns | 385 ns |
 | [equity-options](../cpp/equity-options-engine/README.md#latency) | `try_mc_price`, 1M paths, 4 threads | 23.95 ms | 29.75 ms |
@@ -215,7 +278,7 @@ C++:
 
 Rust:
 
-| Engine | Kernel | p50 | p99 |
+| Engine | Kernel | p50 | p99 of B-call batch means |
 |---|---|---|---|
 | [equity-options](../rust/equity-options-engine/README.md#latency) | `bs_price` | 44 ns | 116 ns |
 | [equity-options](../rust/equity-options-engine/README.md#latency) | `mc_price`, 1M paths, antithetic + CV | 16.16 ms | 24.82 ms |
@@ -277,7 +340,12 @@ package `docs/VALIDATION.md` and in the README table.
 Rates curves now build in two layers: `fi_rates.multicurve` (OIS discount
 curve, then projection curves) feeds `fi_rates.rate_options` and
 `fi_rates.hull_white`. On the surface side `eq_surface.ssvi` feeds
-`eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`.
+`eq_surface.dupire`, and `eq_surface.bates` sits beside `heston`; the SSVI
+and Dupire maths lives in `qp_core.vol` (`ssvi`, `dupire`, with `sabr`,
+`sabr_pde` and `essvi`), and `eq_surface`/`fx_surface` re-export it. The
+Heston characteristic function also lives there (`qp_core.vol.heston`):
+`eq_surface.heston.heston_cf` and `fx_surface.heston.heston_cf` are thin
+shims over it, while each package keeps its own pricers and `HestonParams`.
 
 The C++ headers and Rust golden modules are generated files. Every
 `tools/gen_golden_*.py` script accepts `--check`, which exits non-zero when the
@@ -405,7 +473,13 @@ the same engine and platform.
 | `hygiene` | Fails on a banned word anywhere in the repo. Prints a voice report (report-only). Runs `tests/test_ci_scripts.py`. |
 | `cpp core (<preset>)` | Builds and tests `cpp/core` (including the kernel tests); the gcc job runs `bench_core --quick` pinned to one CPU and uploads the JSON, report-only. |
 | `engine differential` | Builds both bindings and runs `tests/test_engine_differential.py`; fails if any compiled case is skipped. |
-| `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research/tests`. |
+| `research (prereg check, tests)` | `python research/tools/prereg.py check` and `pytest research` (every study folder). |
+| `py data (<version>)` | pytest for `python/data` (`qp-data`) on Python 3.11 to 3.13, on recorded responses; live tests are opt-in. `discover` does not list it because it is not under `python/*/NN-*`. |
+| `learning (notebooks, career-prep)` | `pytest docs/notebooks/tests career-prep/tests docs/learn/tools` (the last is the LEARN lint), then nbmake on every docs and research `*-solution.ipynb` with the pinned `python3` kernel. |
+| `rust ull, aad, rates-curves` | `cargo test` and clippy with warnings denied for the low-latency, AAD and rates-curves crates, plus a loom model check of the SPSC ring. |
+| `cpp exec-core, rates-curves, aad, ull` | Builds and ctests each project with GCC (long-labelled tests run nightly), then runs the Python reference book against the exec-core replay with no skips allowed. |
+| `java (Temurin 21, mvnw verify)` | `./mvnw -B verify` for `java/`, including the kill-switch parity test against `python/oms/kill/vectors.json`. |
+| `py backtest`, `py oms`, `py execution`, `py posttrade` | The shared stacks on Python 3.11 to 3.13, each with its transitive workspace dependencies installed. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 
@@ -436,7 +510,7 @@ Fix history is in [CHANGELOG.md](../CHANGELOG.md).
 ## Further reading
 
 - [DIAGRAMS.md](DIAGRAMS.md): the same architecture as diagrams.
-- [LEARN.md](LEARN.md): a curriculum through every topic, with a 532-question
+- [LEARN.md](LEARN.md): a curriculum through every topic, with a 559-question
   self-test bank organised by round.
 - [COOKBOOK.md](COOKBOOK.md): recipes for common tasks in every area.
 - [MARKET_RISK.md](MARKET_RISK.md): the VaR/ES and backtesting workflow the

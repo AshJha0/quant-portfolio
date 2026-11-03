@@ -7,6 +7,9 @@
 #include <vector>
 
 #include "eqvar/backtest.hpp"
+#include "eqvar/historical.hpp"
+#include "eqvar/matrix.hpp"
+#include "eqvar/parametric.hpp"
 #include "eqvar/stats.hpp"
 
 using namespace eqvar;
@@ -29,7 +32,7 @@ TEST(Kupiec, HandComputedLrTo1e12) {
     const double ll0 = (T - x) * std::log(1.0 - p) + x * std::log(p);
     const double ll1 = (T - x) * std::log(1.0 - pihat) + x * std::log(pihat);
     const double lr_hand = -2.0 * (ll0 - ll1);
-    const KupiecResult r = kupiec_pof(250, 5, 0.01);
+    const KupiecResult r = kupiec_pof({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01});
     EXPECT_NEAR(r.lr, lr_hand, 1e-12);
     EXPECT_NEAR(r.pvalue, chi2_sf(lr_hand, 1.0), 1e-14);
     EXPECT_DOUBLE_EQ(r.expected, 2.5);
@@ -41,22 +44,25 @@ TEST(Kupiec, Chi2CriticalValueGivesPointOhFive) {
     // p-value machinery: chi2(1) sf at the critical value is 0.05 to 1e-4.
     EXPECT_NEAR(chi2_sf(3.841458820694124, 1.0), 0.05, 1e-4);
     // Exact-coverage sample: x/T == alpha -> LR = 0, p = 1.
-    const KupiecResult exact = kupiec_pof(200, 2, 0.01);
+    const KupiecResult exact = kupiec_pof({.n_obs = 200, .n_exceptions = 2, .alpha = 0.01});
     EXPECT_NEAR(exact.lr, 0.0, 1e-12);
     EXPECT_DOUBLE_EQ(exact.pvalue, 1.0);
 }
 
 TEST(Kupiec, DegenerateCountsAndMonotonicity) {
     // Zero exceptions on 250 days at 1 %: LR = -2 * 250 ln(0.99).
-    const KupiecResult zero = kupiec_pof(250, 0, 0.01);
+    const KupiecResult zero = kupiec_pof({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01});
     EXPECT_NEAR(zero.lr, -2.0 * 250.0 * std::log(0.99), 1e-12);
     // More excess exceptions -> larger LR.
-    EXPECT_GT(kupiec_pof(250, 10, 0.01).lr, kupiec_pof(250, 6, 0.01).lr);
+    EXPECT_GT(kupiec_pof({.n_obs = 250, .n_exceptions = 10, .alpha = 0.01}).lr,
+              kupiec_pof({.n_obs = 250, .n_exceptions = 6, .alpha = 0.01}).lr);
     // A materially bad model is rejected at 5 %.
-    EXPECT_LT(kupiec_pof(250, 10, 0.01).pvalue, 0.05);
-    EXPECT_THROW(kupiec_pof(0, 0, 0.01), std::invalid_argument);
-    EXPECT_THROW(kupiec_pof(250, 251, 0.01), std::invalid_argument);
-    EXPECT_THROW(kupiec_pof(250, -1, 0.01), std::invalid_argument);
+    EXPECT_LT(kupiec_pof({.n_obs = 250, .n_exceptions = 10, .alpha = 0.01}).pvalue, 0.05);
+    EXPECT_THROW(kupiec_pof({.n_obs = 0, .n_exceptions = 0, .alpha = 0.01}), std::invalid_argument);
+    EXPECT_THROW(kupiec_pof({.n_obs = 250, .n_exceptions = 251, .alpha = 0.01}),
+                 std::invalid_argument);
+    EXPECT_THROW(kupiec_pof({.n_obs = 250, .n_exceptions = -1, .alpha = 0.01}),
+                 std::invalid_argument);
 }
 
 TEST(Christoffersen, TransitionCountsOnTinyPattern) {
@@ -88,7 +94,7 @@ TEST(Christoffersen, DetectsPlantedClustering) {
 TEST(Christoffersen, ConditionalCoverageIsSumOfComponents) {
     std::vector<std::uint8_t> ex(250, 0);
     for (int t = 100; t < 108; ++t) ex[t] = 1;
-    const KupiecResult uc = kupiec_pof(250, 8, 0.01);
+    const KupiecResult uc = kupiec_pof({.n_obs = 250, .n_exceptions = 8, .alpha = 0.01});
     const ChristoffersenResult ind = christoffersen_independence(ex);
     const ConditionalCoverageResult cc = christoffersen_cc(ex, 0.01);
     EXPECT_NEAR(cc.lr, uc.lr + ind.lr, 1e-12);
@@ -100,30 +106,64 @@ TEST(Christoffersen, ConditionalCoverageIsSumOfComponents) {
 
 TEST(Basel, ExactZoneBoundariesAt250Obs) {
     // Green: 0-4 exceptions, multiplier 3.0.
-    EXPECT_EQ(basel_traffic_light(0).zone, BaselZone::Green);
-    EXPECT_EQ(basel_traffic_light(4).zone, BaselZone::Green);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(4).multiplier, 3.0);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 0, .alpha = 0.01}).zone,
+              BaselZone::Green);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 4, .alpha = 0.01}).zone,
+              BaselZone::Green);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 4, .alpha = 0.01}).multiplier, 3.0);
     // Yellow: 5-9 with the regulatory add-on ladder.
-    EXPECT_EQ(basel_traffic_light(5).zone, BaselZone::Yellow);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(5).multiplier, 3.40);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(6).multiplier, 3.50);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(7).multiplier, 3.65);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(8).multiplier, 3.75);
-    EXPECT_EQ(basel_traffic_light(9).zone, BaselZone::Yellow);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(9).multiplier, 3.85);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01}).zone,
+              BaselZone::Yellow);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 5, .alpha = 0.01}).multiplier, 3.40);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 6, .alpha = 0.01}).multiplier, 3.50);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 7, .alpha = 0.01}).multiplier, 3.65);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 8, .alpha = 0.01}).multiplier, 3.75);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 9, .alpha = 0.01}).zone,
+              BaselZone::Yellow);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 9, .alpha = 0.01}).multiplier, 3.85);
     // Red: 10 or more, multiplier 4.0.
-    EXPECT_EQ(basel_traffic_light(10).zone, BaselZone::Red);
-    EXPECT_DOUBLE_EQ(basel_traffic_light(10).multiplier, 4.0);
-    EXPECT_EQ(basel_traffic_light(15).zone, BaselZone::Red);
-    EXPECT_THROW(basel_traffic_light(-1), std::invalid_argument);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 10, .alpha = 0.01}).zone,
+              BaselZone::Red);
+    EXPECT_DOUBLE_EQ(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 10, .alpha = 0.01}).multiplier, 4.0);
+    EXPECT_EQ(basel_traffic_light({.n_obs = 250, .n_exceptions = 15, .alpha = 0.01}).zone,
+              BaselZone::Red);
+    EXPECT_THROW(basel_traffic_light({.n_obs = 250, .n_exceptions = -1, .alpha = 0.01}),
+                 std::invalid_argument);
 }
 
 TEST(Basel, BinomialZoneProbabilities) {
     // Under a correct 99 % model the green zone covers ~89.2 % of outcomes
     // and 9 exceptions is already the 99.97th percentile (scipy reference).
-    EXPECT_NEAR(basel_traffic_light(4).cumulative_prob, 0.89218762690362508, 1e-10);
-    EXPECT_NEAR(basel_traffic_light(9).cumulative_prob, 0.99974980993125950, 1e-10);
+    EXPECT_NEAR(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 4, .alpha = 0.01}).cumulative_prob,
+        0.89218762690362508, 1e-10);
+    EXPECT_NEAR(
+        basel_traffic_light({.n_obs = 250, .n_exceptions = 9, .alpha = 0.01}).cumulative_prob,
+        0.99974980993125950, 1e-10);
     EXPECT_EQ(to_string(BaselZone::Green), "green");
     EXPECT_EQ(to_string(BaselZone::Yellow), "yellow");
     EXPECT_EQ(to_string(BaselZone::Red), "red");
 }
+
+// v3.0.0 removed the positional entry points deprecated in v2.0.0
+// (docs/VERSIONING.md). A concept checks that the old call forms no longer
+// compile, without making this file ill-formed.
+template <class N>
+concept OldEqKupiec = requires(N n) { eqvar::kupiec_pof(n, n, 0.01); };
+template <class N>
+concept OldEqBasel = requires(N n) { eqvar::basel_traffic_light(n); };
+template <class N>
+concept OldEqQuantile = requires(N q, std::vector<double> x) { quantile_linear(x, q); };
+template <class N>
+concept OldEqCfDomain = requires(N s) { cornish_fisher_domain_ok(s, s); };
+template <class N>
+concept OldEqJitter = requires(N j, eqvar::Matrix m) { eqvar::cholesky(m, j, 12); };
+static_assert(!OldEqKupiec<int> && !OldEqBasel<int> && !OldEqQuantile<double> &&
+              !OldEqCfDomain<double> && !OldEqJitter<double>);

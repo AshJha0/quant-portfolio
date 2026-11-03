@@ -48,7 +48,7 @@ def test_bad_calendar_codes():
     with pytest.raises(ValueError):
         H.is_business_day(D(2026, 1, 5), ())
     with pytest.raises(ValueError):
-        H.is_business_day(D(2009, 1, 5), "USD")  # outside MIN_YEAR
+        H.is_business_day(D(1999, 1, 5), "USD")  # outside MIN_YEAR
 
 
 def test_adjust_following_crosses_holiday_run():

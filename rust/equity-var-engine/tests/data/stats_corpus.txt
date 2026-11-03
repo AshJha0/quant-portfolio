@@ -1,0 +1,285 @@
+# W20 stats characterisation corpus (Round 8). Columns: function, arguments, recorded f64 bits now;
+# rows the W20 merge moved by more than 1e-12 scaled also carry the pre-merge bits and the mpmath value.
+# Captured before the merge from this crate's own stats module; see tests/test_stats_corpus.rs.
+ln_gamma 0.001 401ba0f3807161ac
+ln_gamma 0.1 4002058e35f3deee
+ln_gamma 0.3 3ff188637a6c4196
+ln_gamma 0.5 3fe250d048e7a1b8
+ln_gamma 1 bcd0000000000000
+ln_gamma 1.5 bfbeeb95b094c180
+ln_gamma 2.5 3fd2383e809a6808
+ln_gamma 5 40096ca77c922cf5
+ln_gamma 10 40299a8921a7f7d2
+ln_gamma 50 4062121a930c6ec2
+ln_gamma 170.5 4086000911686cd4
+gamma_p 0.5 0.1 3fd6190dbc95cf08
+gamma_q 0.5 0.1 3fe4f37921b5187c
+gamma_p 0.5 2 3fee8b4307d3627a
+gamma_q 0.5 2 3fa74bcf82c9d859
+gamma_p 1 0.5 3fd92e9a0720d3f1
+gamma_q 1 0.5 3fe368b2fc6f9608
+gamma_p 2.5 1 3fc34f37283a59a3
+gamma_q 2.5 1 3feb2c3235f16997
+gamma_p 2.5 7 3fef8020ae8adece
+gamma_q 2.5 7 3f8ff7d45d484c75
+gamma_p 10 3 3f52102b9da301d0
+gamma_q 10 3 3feff6f7ea312e7f
+gamma_p 10 20 3fefd713dc702f60
+gamma_q 10 20 3f747611c7e84fe6
+gamma_p 125 130 3fe5cc8a19d1e690
+gamma_q 125 130 3fd466ebcc5c32df
+normal_cdf -38 00000000037b23b8
+normal_pdf -38 00000000845eb885
+normal_cdf -20 2d8c0bd0f18807e1
+normal_pdf -20 2dd1928c553065a4
+normal_cdf -10 3b226c75e84fb121
+normal_pdf -10 3b57416846b4d5da
+normal_cdf -8 3cc669d2c90d5601
+normal_pdf -8 3cf6c0df3a094835
+normal_cdf -6 3e10f30ef0092d54
+normal_pdf -6 3e3a1880fbd087fd
+normal_cdf -3 3f561de1f985b5e0
+normal_pdf -3 3f7227213fd77689
+normal_cdf -1.5 3fb11a46d89647dc
+normal_pdf -1.5 3fc0940856d21e85
+normal_cdf -0.3 3fd87423a677e90d
+normal_pdf -0.3 3fd868a8709fbbc0
+normal_cdf 0 3fe0000000000000
+normal_pdf 0 3fd9884533d43651
+normal_cdf 0.2 3fe2894ba87dce1d
+normal_pdf 0.2 3fd906d7ef7db768
+normal_cdf 1 3feaec4bd120d37e
+normal_pdf 1 3fcef8e58e331738
+normal_cdf 2.33 3fefaedfbecafe8c
+normal_pdf 2.33 3f9b0f8b6bd5f8ed
+normal_cdf 4 3fefffbd94a1aad4
+normal_pdf 4 3f218a98e2c0b4b5
+normal_cdf 7 3fefffffffffd2f8
+normal_pdf 7 3da41663f31db14b
+normal_cdf 9 3ff0000000000000
+normal_pdf 9 3c32f67c5e7a9a3a
+normal_ppf 0.000000000001 c01c234fba57a329
+normal_ppf 0.0000000001 c0197203597a2154
+normal_ppf 0.000001 c0130381a9799f7f
+normal_ppf 0.0001 c00dc08bb712893c
+normal_ppf 0.001 c008b8cbb7204471
+normal_ppf 0.0025 c00674ce1ece6f2c
+normal_ppf 0.01 c0029c5c4630ff0f
+normal_ppf 0.025 bfff5c0331eeff8e
+normal_ppf 0.05 bffa515209676ab1
+normal_ppf 0.1 bff4813c36e26d2b
+normal_ppf 0.3 bfe0c7e39582c5f8
+normal_ppf 0.5 0000000000000000
+normal_ppf 0.7 3fe0c7e39582c5f6
+normal_ppf 0.95 3ffa515209676aaa
+normal_ppf 0.99 40029c5c4630ff0f
+normal_ppf 0.999 4008b8cbb7204485
+normal_ppf 0.999999 40130381a979b412
+beta 0.5 0.5 0.3 3fd79ddc9edb5510
+beta 2 3 0.4 3fe0cb295e9e1afc
+beta 5 0.5 0.9 3fd443e0a52158f0
+beta 248 3 0.99 3fe161a3e612f8b6
+beta 0.5 2.5 0.01 3fc59f188bc3d2bc
+chi2_sf 0 1 3ff0000000000000
+chi2_sf 0.5 1 3fdeb02147ce2456
+chi2_sf 3.84 1 3fa99f4dee479cfe
+chi2_sf 10 2 3f7b993fe00d537f
+chi2_sf 25 1 3ea33ca2f213383b
+chi2_sf 60 1 3d055c27c95e13f5
+chi2_sf 5 7 3fe51e6b35032ef4
+binom 0 250 0.01 3fb4c0403bfa9593
+binom 1 250 0.01 3fd249c1a9394f0c
+binom 2 250 0.01 3fe161a3e612f8b6
+binom 3 250 0.01 3fe8427df2ee773e
+binom 4 250 0.01 3fec8ccd10ee4dc9
+binom 5 250 0.01 3feeaea09a68cba9
+binom 6 250 0.01 3fef8fc1fb31bac1
+binom 7 250 0.01 3fefdf0640bc1431
+binom 8 250 0.01 3feff7584a6f410e
+binom 9 250 0.01 3feffdf3503ac881
+binom 10 250 0.01 3fefff8ef764d488
+binom 11 250 0.01 3fefffe9b05569df
+binom 12 250 0.01 3feffffbf0b0e951
+binom 13 250 0.01 3fefffff50bb776f
+binom 14 250 0.01 3fefffffe47ac726
+t_pdf -6 2.5 3f68c1eefd8c2235
+t_cdf -6 2.5 3f7f4c0710ad50c0
+t_pdf -2 2.5 3fb1660e290fc358
+t_cdf -2 2.5 3fb425678f79785f
+t_pdf -0.5 2.5 3fd3993444a0665a
+t_cdf -0.5 2.5 3fd50bdc820f9ad8
+t_pdf 0 2.5 3fd727dfc747537e
+t_cdf 0 2.5 3fe0000000000000
+t_pdf 1 2.5 3fc9b3ae9a201085
+t_cdf 1 2.5 3fe988f74de406c4
+t_pdf 3 2.5 3f99a45d8e1bef69
+t_cdf 3 2.5 3feed6ba72b2541f
+t_ppf 0.000001 2.5 c06b858cbb591575
+t_ppf 0.001 2.5 c02ba4f67ed454b0
+t_ppf 0.0025 2.5 c0230e6044272c18
+t_ppf 0.01 2.5 c0156995f9b014e0
+t_ppf 0.025 2.5 c00c98e4a34726c0
+t_ppf 0.05 2.5 c004773b521ddbe0
+t_ppf 0.2 2.5 bff029a198588640
+t_ppf 0.5 2.5 0000000000000000
+t_ppf 0.9 2.5 3ffbaf1b99119c80
+t_ppf 0.99 2.5 40156995f9b014e0
+t_pdf -6 3 3f61d107108f0aad
+t_cdf -6 3 3f72fd92b9a8f30b
+t_pdf -2 3 3fb1485028b7298c
+t_cdf -2 3 3fb1d56eef38ccfd
+t_pdf -0.5 3 3fd40b27f2a0ec03
+t_cdf -0.5 3 3fd4d8a9670231b1
+t_pdf 0 3 3fd785fb53dcdc18
+t_cdf 0 3 3fe0000000000000
+t_pdf 1 3 3fca76babe58779d
+t_cdf 1 3 3fe9be74750ebe9a
+t_pdf 3 3 3f9785fb53dcdc19
+t_cdf 3 3 3fef13c9ca6413ef
+t_ppf 0.000001 3 c059d32a7ae8c606
+t_ppf 0.001 3 c0246dd71e741530
+t_ppf 0.0025 3 c01dd032b9e92d20
+t_ppf 0.01 3 c01229ae02999d30
+t_ppf 0.025 3 c00975a66893c240
+t_ppf 0.05 3 c002d3b035609c20
+t_ppf 0.2 3 bfef4fa52ab48b00
+t_ppf 0.5 3 0000000000000000
+t_ppf 0.9 3 3ffa34336c6557c0
+t_ppf 0.99 3 401229ae02999d30
+t_pdf -6 4 3f536dd52b26ac8e
+t_cdf -6 4 3f5fce45348cef11
+t_pdf -2 4 3fb0f876ccdf6ce1
+t_cdf -2 4 3fadb9cfff07aa15
+t_pdf -0.5 4 3fd49ff03e8dbde6
+t_cdf -0.5 4 3fd49628b80ce53e
+t_pdf 0 4 3fd800000000000c
+t_cdf 0 4 3fe0000000000000
+t_pdf 1 4 3fcb7a0fc8146983
+t_cdf 1 4 3fea04806b9cc678
+t_pdf 3 4 3f942a8848f9d649
+t_cdf 3 4 3fef5c65cf964e32
+t_ppf 0.000001 4 c044c9f71ff3053c
+t_ppf 0.001 4 c01cb156ae08db60
+t_ppf 0.0025 4 c01663e8f646d9a0
+t_ppf 0.01 4 c00df9bf8d599f40
+t_ppf 0.025 4 c0063628d9efb5e0
+t_ppf 0.05 4 c0010e05b01ad7e0
+t_ppf 0.2 4 bfee1c61bebd6d00
+t_ppf 0.5 4 0000000000000000
+t_ppf 0.9 4 3ff888034d51af40
+t_ppf 0.99 4 400df9bf8d599f40
+t_pdf -6 5 3f468f66d971f320
+t_cdf -6 5 3f4e3f43e4f90800
+t_pdf -2 5 3fb0a9c232233922
+t_cdf -2 5 3faa18b4a7bedad2
+t_pdf -0.5 5 3fd4fc9e01f225a1
+t_cdf -0.5 5 3fd46cf1c158b00e
+t_pdf 0 5 3fd84b79db8858f0
+t_cdf 0 5 3fe0000000000000
+t_pdf 1 5 3fcc1e77b49b706c
+t_cdf 1 5 3fea3042e171c6f8
+t_pdf 3 5 3f91b52551a44fc1
+t_cdf 3 5 3fef84b6a6aa56d7
+t_ppf 0.000001 5 c038c5623429dbb8
+t_ppf 0.001 5 c01792df30e9d1e0
+t_ppf 0.0025 5 c01317e6997a1810
+t_ppf 0.01 5 c00aeb606b5515c0
+t_ppf 0.025 5 c004908d359dff20
+t_ppf 0.05 5 c0001ed1ae7a9660
+t_ppf 0.2 5 bfed6ce713ebfd00
+t_ppf 0.5 5 0000000000000000
+t_ppf 0.9 5 3ff79d3897a63ac0
+t_ppf 0.99 5 400aeb606b5515c0
+t_pdf -6 6 3f3ba3bfb21c702d
+t_cdf -6 6 3f3f9b1b8ed44dbd
+t_pdf -2 6 3fb064abdc68a196
+t_cdf -2 6 3fa7a94031518624
+t_pdf -0.5 6 3fd53bd1676640a7
+t_cdf -0.5 6 3fd450efdc9c4da4
+t_pdf 0 6 3fd87eb1990b697c
+t_cdf 0 6 3fe0000000000000
+t_pdf 1 6 3fcc8fed34eba5d5
+t_cdf 1 6 3fea4e294243a3c0
+t_pdf 3 6 3f8fba3c19eacfbe
+t_cdf 3 6 3fef9da994c1923c
+t_ppf 0.000001 6 c031d48f7db9b62c
+t_ppf 0.001 6 c014d49bf90477e0
+t_ppf 0.0025 6 c011446e53025e30
+t_ppf 0.01 6 c009242f54f274c0
+t_ppf 0.025 6 c00393468546e5e0
+t_ppf 0.05 6 bfff174434b0b880
+t_ppf 0.2 6 bfecfb8574b75d00
+t_ppf 0.5 6 0000000000000000
+t_ppf 0.9 6 3ff7093d528bb640
+t_ppf 0.99 6 4009242f54f274c0
+t_pdf -6 10 3f17174ab67ff909
+t_cdf -6 10 3f1150d6782f44f5
+t_pdf -2 10 3faf4e7f7546e84b
+t_cdf -2 10 3fa2c98ee9420f05
+t_pdf -0.5 10 3fd5bd90ab4f841e
+t_cdf -0.5 10 3fd417b454c1131a
+t_pdf 0 10 3fd8e726d9eef1f5
+t_cdf 0 10 3fe0000000000000
+t_pdf 1 10 3fcd7c806cfd8628
+t_cdf 1 10 3fea8bb3a4954e7c
+t_pdf 3 10 3f87592bd8da6665
+t_cdf 3 10 3fefc95829e11a73
+t_ppf 0.000001 10 c02381058d90a8d0
+t_ppf 0.001 10 c010932638e96610
+t_ppf 0.0025 10 c00ca6b84b7d5f40
+t_ppf 0.01 10 c0061c3329623860
+t_ppf 0.025 10 c001d33a7661d3a0
+t_ppf 0.05 10 bffcffd73bfbf580
+t_ppf 0.2 10 bfec213de21d5d00
+t_ppf 0.5 10 0000000000000000
+t_ppf 0.9 10 3ff5f476d56acd40
+t_ppf 0.99 10 40061c3329623860
+t_pdf -6 30 3ec058c1027101b6
+t_cdf -6 30 3ea7645fa36731ca
+t_pdf -2 30 3fad1bbdcc0fd3e0
+t_cdf -2 30 3f9bf7d05b512ca2
+t_pdf -0.5 30 3fd643a484b1d1d0
+t_cdf -0.5 30 3fd3dcf67dbb6825
+t_pdf 0 30 3fd95209a7d75f2a
+t_cdf 0 30 3fe0000000000000
+t_pdf 1 30 3fce7690daf8a401
+t_cdf 1 30 3feacb89317a35f8
+t_pdf 3 30 3f7bc45cccac0a3c
+t_cdf 3 30 3fefe9ec3689c855
+t_ppf 0.000001 30 c0177c06205cbda0
+t_ppf 0.001 30 c00b14dbcdaf90c0
+t_ppf 0.0025 30 c0083d06d9e062c0
+t_ppf 0.01 30 c003a878bd52a220
+t_ppf 0.025 30 c0005692f10aaee0
+t_ppf 0.05 30 bffb27fb080b3740
+t_ppf 0.2 30 bfeb520fb84d4500
+t_ppf 0.5 30 0000000000000000
+t_ppf 0.9 30 3ff4f775bee3e3c0
+t_ppf 0.99 30 4003a878bd52a220
+t_pdf -6 200 3e5988cd32d9a685
+t_cdf -6 200 3e33931724d9c76a
+t_pdf -2 200 3fabe1b9d2450355
+t_cdf -2 200 3f97fd240cc61254
+t_pdf -0.5 200 3fd67de27cff7682
+t_cdf -0.5 200 3fd3c394fc0cc7b2
+t_pdf 0 200 3fd9801ae94f5b0d
+t_cdf 0 200 3fe0000000000000
+t_pdf 1 200 3fcee51d9e1d528e
+t_cdf 1 200 3feae758c7d11616
+t_pdf 3 200 3f7391554f06f0d3
+t_cdf 3 200 3feff3892242a63f
+t_ppf 0.000001 200 c01396d65cc91750
+t_ppf 0.001 200 c0090d4549f14fc0
+t_ppf 0.0025 200 c006b546aa22afa0
+t_ppf 0.01 200 c002c2d73b0787e0
+t_ppf 0.025 200 bfff8ce30df9cf80
+t_ppf 0.05 200 bffa70ac559c9cc0
+t_ppf 0.2 200 bfeafd5068f55b00
+t_ppf 0.5 200 0000000000000000
+t_ppf 0.9 200 3ff492a1c1971bc0
+t_ppf 0.99 200 4002c2d73b0787e0
+mean 401ca36b0e4103b6
+std 408b6008639e3f8c
+popvar 412753da7ff300bd
+skew bf768ed2347adbf0
+kurt bff7fb9d7033ae49

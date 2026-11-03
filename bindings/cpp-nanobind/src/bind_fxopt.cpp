@@ -23,12 +23,12 @@ OptionType ot(const std::string& s) { return ot(parse_call(s)); }
 
 template <class T>
 T unwrap(fxopt::Result<T>&& r) {
-    if (!r) value_error(fxopt::message(r.error()));
+    if (!r) raise_engine([&] { fxopt::throw_error(r.error()); });
     return *std::move(r);
 }
 
 [[noreturn]] void batch_fail(const fxopt::BatchError& e) {
-    value_error("element " + std::to_string(e.index) + ": " + fxopt::message(e.error));
+    raise_engine([&] { fxopt::throw_error(e.error); }, "element " + std::to_string(e.index) + ": ");
 }
 
 constexpr const char* kGreekNames[10] = {"price",        "delta_spot",  "delta_forward",

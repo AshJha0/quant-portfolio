@@ -1,7 +1,9 @@
 # Start here
 
 The repository is large: 23 Python projects, four C++ engines, four Rust
-crates and several thousand lines of study notes. If you have ten minutes,
+crates, shared stacks for backtesting, order management, execution and
+post-trade, a low-latency track in C++, Rust and Java, and several thousand
+lines of study notes. If you have ten minutes,
 read these five things in this order and skip the rest.
 
 1. **[`../README.md`](../README.md), first screen.** What the code is, what
@@ -23,6 +25,12 @@ read these five things in this order and skip the rest.
    Each model is listed with the independent check it passes and the
    tolerance.
 
+If you are here to learn rather than to review, start instead with the
+levelled path in [learn/README.md](learn/README.md) (L0 to L4; LEARN.md is
+its appendix and question bank), then the [learning notebooks](notebooks/README.md)
+and the [career-prep packs](../career-prep/README.md)
+([CAREER_PREP.md](CAREER_PREP.md) explains both).
+
 Known limits worth knowing before you read further:
 
 - Equity and FX are separate codebases for conventions (quoting, rates,
@@ -30,23 +38,36 @@ Known limits worth knowing before you read further:
   cost-of-carry kernel per language, which the two option packages wrap.
   Other models (vol surfaces, VaR revaluation) still have one copy per
   asset class.
-- The latency tables in the READMEs are one laptop run with an older
-  harness. Current figures come from the CI bench job, which runs the old
+- Every latency figure is software, in-process latency on one machine,
+  not wire-to-wire ([LATENCY_METHOD.md](LATENCY_METHOD.md)). The engine
+  tables in the READMEs are one laptop run with an older harness. Current figures come from the CI bench job, which runs the old
   and new commit on the same runner ([BENCHMARKS.md](BENCHMARKS.md)).
 - One study has an out-of-sample result, and it is a null (regime
   hold-out, H0 not rejected). The two forward registrations are scored
   once, on or after 2028-11-13; anything printed before then is labelled
   INTERIM and decides nothing.
 - CI installs every Python package with its hash checked against
-  `uv.lock`; QuantLib cross-checks exist but run only where QuantLib is
-  installed.
+  `uv.lock`. The QuantLib cross-checks (Hull-White, ISDA CDS, Heston,
+  holiday calendars, FX spot dates) run in a required CI job that fails if
+  any of them skips; on a laptop without QuantLib they skip.
 - The only real-data studies use ECB daily reference rates. There is no
   point-in-time equity or intraday evidence.
+- Execution costs come from a schedule-level cost model on a bucket
+  simulator, not from an order book. The figures are model-implied, and
+  they rose about 3 to 4 times on the way to v3.0.0 (milestone v2.1) when
+  a double-counted bucket width was removed
+  (equity 08 `docs/VALIDATION.md` section 6).
 
 After that, [LEARN.md](LEARN.md) is a study guide with self-test questions
-(Set 19 covers power, optional stopping, false discovery rate, hashed
+(each answer is folded so you can try first; each question is tagged by
+topic, so a search for a tag such as `` `execution` `` gives one subject;
+Set 19 covers power, optional stopping, false discovery rate, hashed
 installs and latency measurement) and [COOKBOOK.md](COOKBOOK.md) has task
 recipes, including NumPy array pricing, using the C++ engines through
 `find_package(QuantPortfolio)`, and reading the trials log.
+Reviewers of the desk-side code will want [models/README.md](models/README.md)
+(model inventory), [SLO.md](SLO.md), [RUNBOOK.md](RUNBOOK.md),
+[KILL_CONTRACT.md](KILL_CONTRACT.md), [QPBF.md](QPBF.md) and
+[`../java/README.md`](../java/README.md).
 [DIAGRAMS.md](DIAGRAMS.md) has the CI pipeline, the shared-kernel layout
 and the life of a research study.

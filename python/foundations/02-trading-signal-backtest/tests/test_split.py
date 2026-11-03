@@ -180,13 +180,20 @@ class TestWalkForwardBacktest:
         new = sig.shift(1).fillna(0.0).to_numpy()
         old = sig.shift(2).fillna(0.0).to_numpy()
         p = context.to_numpy()
+        # Costs are paid out of the trade on the notional at the fill (qp_bt):
+        # an entry buys 1/(1+c) of NAV, an exit sells (1+a) of NAV and keeps
+        # (1+a)(1-c).
+        c = cost_bps / 10_000
         rets_arr = np.zeros(len(p))
         for d in range(1, len(p)):
             p_fill = p[d - 1] + 0.5 * (p[d] - p[d - 1])
-            gross = (1 + old[d] * (p_fill / p[d - 1] - 1)) * (
-                1 + new[d] * (p[d] / p_fill - 1)
-            ) - 1
-            rets_arr[d] = gross - abs(new[d] - old[d]) * cost_bps / 10_000
+            a, b = p_fill / p[d - 1] - 1, p[d] / p_fill - 1
+            if new[d] > old[d]:
+                rets_arr[d] = (1 + b) / (1 + c) - 1
+            elif new[d] < old[d]:
+                rets_arr[d] = (1 + a) * (1 - c) - 1
+            else:
+                rets_arr[d] = new[d] * (p[d] / p[d - 1] - 1)
         strat_rets = pd.Series(rets_arr, index=context.index)
         recon = strat_rets.loc[row["trading_start"] : row["trading_end"]]
 

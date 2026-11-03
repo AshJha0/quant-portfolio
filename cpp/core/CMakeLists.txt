@@ -76,8 +76,21 @@ if(QP_CORE_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
   endif()
-  add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp)
+  add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp tests/test_holidays.cpp
+    tests/test_rates_vol.cpp tests/test_xva_capital.cpp tests/test_credit_bondfut.cpp tests/test_var_stats.cpp
+    tests/test_risk.cpp)
   target_link_libraries(qp_core_tests PRIVATE qp::core GTest::gtest GTest::gtest_main)
+  # QuantLib holiday extract shared with the Rust calendar tests.
+  target_compile_definitions(qp_core_tests PRIVATE
+    QP_HOLIDAY_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/ql_holidays_2000_2030.txt"
+    # Python reference values for the rates-vol port (Round 11 W15).
+    QP_RATES_VOL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/rates_vol_parity.txt"
+    QP_XVA_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/xva_capital_parity.txt"
+    # Python reference values for the credit-index and bond-futures kernels (Round 16 W18).
+    QP_CREDIT_BONDFUT_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/credit_bondfut_parity.txt"
+    # Python reference values for the W14 risk kernels (Round 18).
+    QP_RISK_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/risk_parity.txt"
+    QP_VAR_STATS_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/var_stats_corpus.txt")
   target_compile_options(qp_core_tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->

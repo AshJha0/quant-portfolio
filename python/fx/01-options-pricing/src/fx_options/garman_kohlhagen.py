@@ -25,10 +25,14 @@ from __future__ import annotations
 
 import math
 import numbers
-import warnings
+from collections.abc import Sequence
+from typing import Any, overload
 
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from qp_core.black_scholes import carry_d1_d2, carry_discounts, carry_value
 from qp_core.iv_core import black_implied_vol
+from qp_core.model import model
 
 from ._common import finite_result, safe_exp, validate_inputs, validate_option_type
 
@@ -78,9 +82,25 @@ def d2(S: float, K: float, T: float, r_d: float, r_f: float,
     return d1(S, K, T, r_d, r_f, sigma) - sigma * math.sqrt(T)
 
 
+@overload
 def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
-             sigma: float, option_type: str) -> float:
+             sigma: float, option_type: str) -> float: ...
+@overload
+def gk_price(S: NDArray[Any] | Sequence[float],
+             K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
+             sigma: ArrayLike, option_type: str | ArrayLike) -> NDArray[np.float64]: ...
+@model(id="FX-OPT-GK")
+def gk_price(S: ArrayLike, K: ArrayLike, T: ArrayLike, r_d: ArrayLike, r_f: ArrayLike,
+             sigma: ArrayLike, option_type: str | ArrayLike) -> float | NDArray[np.float64]:
     """Garman-Kohlhagen price of a European FX option.
+
+    Scalars in, a float out. If any argument is a NumPy array, list or
+    tuple, the call goes to :func:`fx_options.arrays.gk_price_array`
+    (broadcasting, same domain and boundary rules) and returns an array;
+    per element the two agree within 1e-15 * max(1, S, K)
+    (``tests/test_gk_array_tolerant.py``). For a type checker the array
+    overload needs ``S`` to be an array or a sequence; for other mixes call
+    ``gk_price_array`` directly.
 
     Price is in domestic (quote) currency per unit of foreign (base)
     notional, e.g. USD per EUR for EURUSD.
@@ -113,6 +133,15 @@ def gk_price(S: float, K: float, T: float, r_d: float, r_f: float,
     ValueError
         On invalid inputs (see :func:`fx_options._common.validate_inputs`).
     """
+    if any(isinstance(a, (np.ndarray, list, tuple)) for a in (S, K, T, r_d, r_f, sigma, option_type)):
+        from .arrays import gk_price_array
+
+        return gk_price_array(S, K, T=T, r_d=r_d, r_f=r_f, sigma=sigma, option_type=option_type)
+    return _gk_price_scalar(S, K, T, r_d, r_f, sigma, option_type)  # type: ignore[arg-type]
+
+
+def _gk_price_scalar(S: float, K: float, T: float, r_d: float, r_f: float,
+                     sigma: float, option_type: str) -> float:
     phi = validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T == 0.0:
@@ -139,8 +168,7 @@ def gk_put(S: float, K: float, T: float, r_d: float, r_f: float,
 
 
 def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
-                r_f: float, option_type: str, tol: float | None = None,
-                max_iter: int | None = None) -> float:
+                r_f: float, option_type: str) -> float:
     """Implied Garman-Kohlhagen volatility from a domestic-currency premium.
 
     The quote is mapped to normalised Black form and solved on the
@@ -164,8 +192,6 @@ def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
         As in :func:`gk_price`.  Requires T > 0.
     option_type : str
         ``"call"`` or ``"put"``.
-    tol, max_iter
-        Deprecated and ignored. The solver has no tuning parameters.
 
     Returns
     -------
@@ -178,12 +204,6 @@ def implied_vol(price: float, S: float, K: float, T: float, r_d: float,
         If the price lies outside ``(lower - tau_lo, upper - tau)``, if T = 0,
         if an input is invalid, or if the solver does not converge.
     """
-    for name, value in (("tol", tol), ("max_iter", max_iter)):
-        if value is not None:
-            warnings.warn(
-                f"implied_vol({name}=...) is deprecated and ignored; "
-                "the solver has no tuning parameters",
-                DeprecationWarning, stacklevel=2)
     phi = validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, 0.0)
     if T <= 0.0:

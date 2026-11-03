@@ -78,12 +78,14 @@ Download a CI wheel from the run's artefacts (`wheels-rust-pyo3-<os>`) and
 Conventions are those of `qp_cpp`: `"call"`/`"put"` strings in scalar
 calls, a boolean `is_call` array in batch calls, equal-length 1-D arrays
 read in place when C-contiguous float64, new output arrays, the GIL
-released while the engine runs, `ValueError` with the engine's message on
-any error, `alpha` as the tail probability and keyword-only backtests.
+released while the engine runs, the `qp_core.errors` classes with the
+engine's message on any error (`InputError`, a `ValueError`, for bad
+arguments; `ConvergenceError`, a `RuntimeError` and a `ValueError`, for solver and
+factorisation failures; plain `ValueError` without `qp_core`), `alpha` as the tail probability and keyword-only backtests.
 Error messages are the Rust engines' own text, which differs from the C++
 text.
 
-`eq_mc_price` rejects `threads=0` with `ValueError`, as `qp_cpp` does. The
+`eq_mc_price` rejects `threads=0` with `InputError`, as `qp_cpp` does. The
 engine function it calls, `fast::try_mc_price`, rejects 0 as well
 (`ErrorCode::BadThreads`); the binding checks first so the message is the
 same in both packages. CONVENTIONS.md lists how each engine entry point

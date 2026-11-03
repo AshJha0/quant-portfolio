@@ -100,9 +100,10 @@ peg-break scenario, which the covariance cannot represent.
 - **Scope**: options are Python-only; books routed here must be linear. The
   scenario-shock map ignores unknown factor keys by convention and rejects
   the `"FX:USD"` pivot.
-- **Rust vs C++ on MC**: different RNG cores (xoshiro256++ vs
-  `mt19937_64`), so MC draws differ. Agreement within a few combined
-  bootstrap SEs is expected; a larger gap on the same book and covariance
-  points to a bug.
+- **Rust vs C++ on MC**: since Round 8 both engines draw scenario `s`
+  from the same Philox4x32-10 stream `(seed, s)` with AS 241 normals, and
+  give the same bits on Linux x86-64 with glibc (`tests/test_w4b.rs` and
+  the C++ `test_w4b.cpp` pin the same words). Any difference on the same
+  book, covariance and seed points to a bug.
 - **Audit**: seed, code version and book snapshot determine every MC number
   on a given build.

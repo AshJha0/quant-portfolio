@@ -134,8 +134,8 @@ def test_calendar_check_is_at_fixed_moneyness():
     assert surf.calendar_arbitrage_report() == []
     rep = surf.calendar_arbitrage_report(k_grid=[0.0])
     assert rep == []
-    with pytest.warns(DeprecationWarning):
-        surf.calendar_arbitrage_report(deltas=(0.25,))
+    with pytest.raises(TypeError):
+        surf.calendar_arbitrage_report(deltas=(0.25,))  # removed in v3.0.0
 
 
 # -- implied vol solver -------------------------------------------------

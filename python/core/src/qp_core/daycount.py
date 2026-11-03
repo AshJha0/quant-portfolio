@@ -29,7 +29,8 @@ from __future__ import annotations
 import calendar
 import datetime as dt
 
-from .calendars import BusinessCalendar, get_calendar
+from .holidays import HolidayCalendar as BusinessCalendar
+from .holidays import get_calendar
 
 __all__ = [
     "MONEY_MARKET_DAYCOUNT",
@@ -203,7 +204,7 @@ def adjust_modified_following(
     """Modified-following roll on ``calendar`` (default: weekends only).
 
     ``calendar`` is a name (``"USD"``, ``"EUR+USD"``) or a
-    :class:`qp_core.calendars.BusinessCalendar`.
+    :class:`qp_core.holidays.HolidayCalendar`.
     """
     return get_calendar(calendar).adjust(date, "modified_following")
 

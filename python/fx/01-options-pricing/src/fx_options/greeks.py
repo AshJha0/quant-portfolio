@@ -23,10 +23,30 @@ from dataclasses import asdict, dataclass
 
 from qp_core.black_scholes import CarryGreeks, carry_greeks
 from qp_core.normal import norm_cdf, norm_pdf
+from qp_core.risk import SmileDynamics
 
 from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import d1 as _d1_fn
 from .garman_kohlhagen import gk_price
+
+
+def _check_smile_dynamics(value: SmileDynamics | str) -> SmileDynamics:
+    """Validate ``smile_dynamics=`` (W14b).
+
+    The calls in this module price with one flat vol per option, so the
+    smile has no slope and ``d sigma / dS = 0`` under every dynamic: sticky
+    strike (the default, the numbers from before the keyword), sticky
+    moneyness and sticky delta give identical results here. The keyword
+    states the assumption and rejects typos; smile-consistent Greeks on a
+    sloped smile are ``qp_core.risk.smile_delta`` / ``smile_gamma``.
+    """
+    try:
+        return SmileDynamics(value)
+    except ValueError:
+        raise ValueError(
+            f"smile_dynamics must be one of {[d.value for d in SmileDynamics]}, got {value!r}"
+        ) from None
+
 
 __all__ = [
     "GreeksResult",
@@ -105,7 +125,8 @@ def volga(S: float, K: float, T: float, r_d: float, r_f: float,
 
 
 def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
-                    sigma: float, option_type: str) -> GreeksResult:
+                    sigma: float, option_type: str, *,
+                    smile_dynamics: SmileDynamics | str = "sticky_strike") -> GreeksResult:
     """Closed-form GK Greeks.
 
     Parameters
@@ -115,6 +136,9 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
         T > 0 and sigma > 0.
     option_type : str
         ``"call"`` or ``"put"``.
+    smile_dynamics : {"sticky_strike", "sticky_moneyness", "sticky_delta"}
+        How the smile moves with spot; with one flat ``sigma`` all three give
+        the same Greeks (see :func:`_check_smile_dynamics`).
 
     Returns
     -------
@@ -122,6 +146,7 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
         price, delta_spot, delta_forward, gamma, vega, theta (per year),
         rho_domestic, rho_foreign, vanna, volga.
     """
+    _check_smile_dynamics(smile_dynamics)
     phi = validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, sigma)
     if T <= 0.0 or sigma <= 0.0:
@@ -158,13 +183,15 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
 
 def finite_difference_greeks(S: float, K: float, T: float, r_d: float,
                              r_f: float, sigma: float, option_type: str,
-                             rel_bump: float = 1e-5) -> dict[str, float]:
+                             rel_bump: float = 1e-5, *,
+                             smile_dynamics: SmileDynamics | str = "sticky_strike") -> dict[str, float]:
     """Central finite-difference Greeks for validating the analytic set.
 
     Uses relative bumps of size ``rel_bump`` on S and sigma, absolute
     bumps on rates, and a forward difference in calendar time for theta
     (``theta = -dV/dT``).  Second-order Greeks (gamma, vanna, volga) use
-    the standard central stencils.
+    the standard central stencils. ``smile_dynamics`` is validated as in
+    :func:`analytic_greeks` and does not change the numbers (flat vol).
 
     Returns
     -------
@@ -172,6 +199,7 @@ def finite_difference_greeks(S: float, K: float, T: float, r_d: float,
         Keys matching :class:`GreeksResult` fields (except price and
         delta_forward).
     """
+    _check_smile_dynamics(smile_dynamics)
     validate_option_type(option_type)
     validate_inputs(S, K, T, r_d, r_f, sigma)
     h_s = S * rel_bump

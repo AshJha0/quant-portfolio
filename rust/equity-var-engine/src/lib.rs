@@ -164,15 +164,20 @@ pub mod prelude {
         historical_var_ws, parametric_es_fast, parametric_var_fast, portfolio_sigma_fast,
         var_bootstrap_se_ws,
     };
+    /// P&L-level FHS, deprecated; kept until the shared golden key goes.
+    #[allow(deprecated)]
+    pub use crate::historical::filtered_historical_var;
     pub use crate::historical::{
-        MIN_OBS, age_weighted_var, brw_weights, ewma_volatility, ewma_volatility_forecast,
-        fhs_factor_scenarios, filtered_historical_var_factors, historical_var,
-        overlapping_horizon_pnl, scale_var_sqrt_time,
+        HistRule, MIN_OBS, age_weighted_var, brw_weights, ewma_volatility,
+        ewma_volatility_forecast, fhs_factor_scenarios, filtered_historical_var_factors,
+        historical_var, historical_var_with_rule, interpolated_var, overlapping_horizon_pnl,
+        scale_var_sqrt_time,
     };
     pub use crate::matrix::{Matrix, covariance_from_vols, ewma_covariance, sample_covariance};
     pub use crate::monte_carlo::{
-        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_run, monte_carlo_var, portfolio_pnl,
-        simulate_factor_returns, simulate_factor_returns_jitter, var_bootstrap_se, var_kde_se,
+        McRun, monte_carlo_es, monte_carlo_pnl, monte_carlo_pnl_threads, monte_carlo_run,
+        monte_carlo_var, portfolio_pnl, simulate_factor_returns, simulate_factor_returns_jitter,
+        var_bootstrap_se, var_kde_se,
     };
     pub use crate::parametric::{
         cornish_fisher_valid, cornish_fisher_var, cornish_fisher_z, parametric_var,
@@ -189,12 +194,4 @@ pub mod prelude {
     };
     pub use crate::tail::{empirical_var, empirical_var_es, tail_rank, weighted_var_es};
     pub use crate::{EqVarError, TailModel};
-    /// Deprecated entry points, kept in the prelude for one release.
-    #[allow(deprecated)]
-    pub use crate::{
-        backtest::{basel_traffic_light_250, kupiec_pof_positional},
-        historical::{filtered_historical_var, linear_quantile},
-        monte_carlo::var_order_statistic_se,
-        parametric::cornish_fisher_domain_ok,
-    };
 }

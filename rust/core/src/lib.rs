@@ -24,14 +24,21 @@
 //! | [`philox`] | Philox4x32-10 counter-based generator (Random123 known answers) | new, opt-in |
 //! | [`quantile`] | O(n) selection and type-7 quantile, same bits as a sort | new, opt-in |
 //! | [`gemm`] | Cache-blocked GEMM and `D^T D`, same bits as the naive loops | eq VaR covariance |
+//! | [`holidays`] | Rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards, NDF value | new, opt-in |
+//! | [`credit_index`] | ISDA CDS Standard Model legs (credit indices, plan W18) | new, opt-in |
+//! | [`bond_futures`] | CME conversion factor, implied repo, net basis, delivery option (plan W18) | new, opt-in |
+//! | [`rates_vol`] | SABR implied vol (Hagan, Obloj, shifted) and the Hull-White trinomial Bermudan | new, opt-in |
+//! | [`risk`] | Quote-to-node Jacobian algebra, par DV01, quote gamma with the bootstrap-curvature term, vega grids, P&L-explain attribution (W14) | new, opt-in |
+//! | [`exotics`] | Closed-form barriers, touches, double barriers, Asians, eSSVI/SVI slices; twin of Python `qp_core.exotics` | new, opt-in |
+//! | [`stats`] | Incomplete gamma/beta, gamma-based erfc and normal, Student-t, chi-square, binomial, moments (W20) | both VaR engines |
 //! | [`vmath`] | Branch-free batch exp/erfc/normal CDF with documented tolerances | new, opt-in |
 //! | [`Error`] | Invalid-input / numerical-failure error shared by the fallible functions here | all four (via `From`) |
 //!
-//! What stayed in the engines: each VaR engine's special functions (the
-//! two use different erfc and incomplete-gamma algorithms), the PSD repair
-//! code (it is written against each engine's own `Matrix` type), and the
-//! engine error enums (their variant names differ and downstream code may
-//! implement traits on each separately).
+//! What stayed in the engines: the PSD repair code (it is written against
+//! each engine's own `Matrix` type) and the engine error enums (their
+//! variant names differ and downstream code may implement traits on each
+//! separately). The VaR special functions moved into [`stats`] in Round 8
+//! (plan W20); see that module for the one numerical change it made.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -40,17 +47,27 @@ use std::fmt;
 
 pub mod bench;
 pub mod black_scholes;
+pub mod bond_futures;
+pub mod credit_index;
+pub mod crr;
+pub mod exotics;
 pub mod gemm;
+pub mod holidays;
 pub mod iv;
 pub mod linalg;
 pub mod par;
+pub mod path_rng;
 pub mod philox;
 pub mod pool;
 pub mod quantile;
+pub mod rates_vol;
+pub mod risk;
 pub mod rng;
 pub mod roots;
 pub mod special;
+pub mod stats;
 pub mod vmath;
+pub mod xva;
 
 /// Error returned by the fallible functions in this crate.
 ///

@@ -28,7 +28,8 @@ def _signal_positions(p1, p2, form=252, window=126, entry=2.0, exit_=0.5,
 class TestHandLedger:
     def test_three_trade_ledger_exact(self):
         """Close-auction mode, every booked number checked against a
-        hand-built ledger: 3 position changes, a 3 bp auction charge, log-return spot P&L, linear carry with lagged
+        hand-built ledger: 3 position changes, a 3 bp auction charge, spot P&L
+        as the USD change in value of the units held, linear carry with lagged
         rates and ACT/365 gaps, half-spread costs on both legs."""
         idx = pd.bdate_range("2020-01-06", periods=6)  # Mon..Fri + Mon
         p1 = pd.Series([1.2000, 1.2100, 1.1900, 1.2050, 1.1980, 1.2020], index=idx)
@@ -43,29 +44,32 @@ class TestHandLedger:
                               pip_spread_2=2.0, rates=rates,
                               carry_method="linear", notional=1.0)
 
-        lp1, lp2 = np.log(p1.values), np.log(p2.values)
+        # USD exposures n1 = pos, n2 = -beta pos are bought at the fill
+        # (close t) as units of base u = e / p_t and held until pos changes
+        P = np.column_stack([p1.values, p2.values])
         dts = np.array([0, 1, 1, 1, 1, 3]) / 365.0  # Fri->Mon = 3 days
-        n1 = pos.values
-        n2 = pos.values * beta
+        expo = np.column_stack([pos.values, -beta * pos.values])
+        hs = np.array([0.5 * 1.0 * 1e-4, 0.5 * 2.0 * 1e-4])  # price units
+        diff = np.array([0.05 - 0.01, 0.02 - 0.01])
+        u = np.zeros(2)
         spot_exp = np.zeros(6)
         carry_exp = np.zeros(6)
         cost_exp = np.zeros(6)
-        for t in range(1, 6):
-            spot_exp[t] = n1[t - 1] * (lp1[t] - lp1[t - 1]) \
-                - n2[t - 1] * (lp2[t] - lp2[t - 1])
-            carry_exp[t] = n1[t - 1] * (0.05 - 0.01) * dts[t] \
-                - n2[t - 1] * (0.02 - 0.01) * dts[t]
         for t in range(6):
-            prev1 = n1[t - 1] if t > 0 else 0.0
-            prev2 = n2[t - 1] if t > 0 else 0.0
-            hs1 = 0.5 * 1.0 * 1e-4 / p1.values[t]
-            hs2 = 0.5 * 2.0 * 1e-4 / p2.values[t]
-            cost_exp[t] = -(abs(n1[t] - prev1) * (hs1 + 3e-4)
-                            + abs(n2[t] - prev2) * (hs2 + 3e-4))
+            if t > 0:
+                spot_exp[t] = float(u @ (P[t] - P[t - 1]))
+                carry_exp[t] = float((u * P[t - 1]) @ diff) * dts[t]
+            if t == 0 or (expo[t] != expo[t - 1]).any():
+                u_new = expo[t] / P[t]
+                cost_exp[t] = -float(np.abs(u_new - u) @ (hs + 3e-4 * P[t]))
+                u = u_new
+        # hand check of one number: day 2 holds 1/1.21 units of pair 1 and
+        # -0.8/0.755 of pair 2: spot = (1.19-1.21)/1.21 + 0.8 (0.748-0.755)/0.755
+        assert spot_exp[2] == pytest.approx(-0.02 / 1.21 + 0.8 * 0.007 / 0.755, abs=1e-15)
 
         assert np.allclose(res.spot_pnl.values, spot_exp, atol=1e-15)
-        assert np.allclose(res.carry_pnl.values, carry_exp, atol=1e-18)
-        assert np.allclose(res.cost_pnl.values, cost_exp, atol=1e-18)
+        assert np.allclose(res.carry_pnl.values, carry_exp, rtol=0, atol=1e-17)
+        assert np.allclose(res.cost_pnl.values, cost_exp, rtol=0, atol=1e-17)
         assert np.allclose(res.total_pnl.values,
                            spot_exp + carry_exp + cost_exp, atol=1e-15)
         # three position changes -> exactly three cost hits
@@ -98,13 +102,16 @@ class TestIdentities:
         accr2 = carry_accrual(0.02, 0.015, p1.index)
         # default execution: the order for pos[t-1] fills a fraction f = 0.5
         # into period t, so the carry of period t is earned by the
-        # time-weighted position f * pos[t-2] + (1 - f) * pos[t-1]
+        # time-weighted units f u[t-1] + (1 - f) u[t], valued at close t-1
         f = fp.ExecutionConfig().fill_fraction
-        held = f * np.concatenate([[0.0], pos[:-2]]) + (1 - f) * pos[:-1]
+        u = res_c.units.to_numpy()
+        pp = np.column_stack([p1.values, p2.values])
+        held = f * u[:-1] + (1 - f) * u[1:]
         ledger = np.zeros(len(p1))
-        ledger[1:] = held * accr1[1:] - held * eg.beta * accr2[1:]
+        ledger[1:] = (held[:, 0] * pp[:-1, 0] * accr1[1:]
+                      + held[:, 1] * pp[:-1, 1] * accr2[1:])
         assert np.allclose(res_c.total_pnl.values,
-                           res_no.total_pnl.values + ledger, atol=1e-18)
+                           res_no.total_pnl.values + ledger, rtol=0, atol=1e-17)
         assert np.allclose(res_c.spot_pnl.values, res_no.spot_pnl.values,
                            atol=0, rtol=0)
         assert np.allclose(res_c.cost_pnl.values, res_no.cost_pnl.values,

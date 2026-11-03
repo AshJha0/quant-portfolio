@@ -208,10 +208,38 @@ def _eq_columns(seed, n=500):
     return S, K, T, r, sigma, q, side == "call"
 
 
+def test_eq_batch_default_is_fast_within_scaled_bounds():
+    # W21: the default is the throughput kernel; the bounds are the ones
+    # eqopt/batch.hpp documents and tests (price 1e-13 * max(1, S, K);
+    # each Greek 1e-12 * max(1, S, K, |exact|)).
+    S, K, T, r, sigma, q, is_call = _eq_columns(22, n=2000)
+    fast = qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call)
+    exact = qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call, exact=True)
+    scale = np.maximum(1.0, np.maximum(S, K))
+    assert np.all(np.abs(fast - exact) <= 1e-13 * scale)
+    gf = qp.eq_bs_greeks_batch(S, K, T, r, sigma, q, is_call)
+    ge = qp.eq_bs_greeks_batch(S, K, T, r, sigma, q, is_call, exact=True)
+    for name in ge:
+        bound = 1e-12 * np.maximum(scale, np.abs(ge[name]))
+        assert np.all(np.abs(gf[name] - ge[name]) <= bound), name
+
+
+def test_eq_batch_fast_same_errors_as_exact():
+    S, K, T, r, sigma, q, is_call = _eq_columns(23, n=10)
+    sigma = sigma.copy()
+    sigma[4] = -0.1
+    msgs = []
+    for exact in (False, True):
+        with pytest.raises(ValueError) as ei:
+            qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call, exact=exact)
+        msgs.append(str(ei.value))
+    assert msgs[0].startswith("element 4") and msgs[1].startswith("element 4")
+
+
 def test_eq_batch_equals_scalar_bit_for_bit():
     S, K, T, r, sigma, q, is_call = _eq_columns(21)
-    prices = qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call)
-    greeks = qp.eq_bs_greeks_batch(S, K, T, r, sigma, q, is_call)
+    prices = qp.eq_bs_price_batch(S, K, T, r, sigma, q, is_call, exact=True)
+    greeks = qp.eq_bs_greeks_batch(S, K, T, r, sigma, q, is_call, exact=True)
     for i in range(S.size):
         side = "call" if is_call[i] else "put"
         assert prices[i] == qp.eq_bs_price(S[i], K[i], T[i], r[i], sigma[i], q[i], side)

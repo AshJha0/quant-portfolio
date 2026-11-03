@@ -25,10 +25,10 @@ decimals; ``cp=+1`` call / ``-1`` put on the base currency.
 from __future__ import annotations
 
 import math
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.vol.heston import heston_cf as _core_cf
 from scipy.integrate import quad
 
 from .garman_kohlhagen import gk_forward
@@ -43,7 +43,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, kw_only=True)
 class HestonParams:
     """Heston parameters.
 
@@ -52,10 +52,9 @@ class HestonParams:
     xi : vol-of-vol (of variance).
     rho : spot-vol correlation in [-1, 1].
 
-    Pass the parameters by keyword. The field order ``(v0, kappa, theta, xi,
-    rho)`` is shared with ``eq_surface.HestonParams``. Positional
-    construction still works in that order, with a ``DeprecationWarning``,
-    because the equity package used a different positional order.
+    The parameters are keyword-only (positional construction was removed in
+    v3.0.0). The field order ``(v0, kappa, theta, xi, rho)`` is shared with
+    ``eq_surface.HestonParams``.
     """
 
     v0: float
@@ -63,29 +62,6 @@ class HestonParams:
     theta: float
     xi: float
     rho: float
-
-    _ORDER = ("v0", "kappa", "theta", "xi", "rho")
-
-    def __init__(self, *args: float, **kwargs: float) -> None:
-        if args:
-            if len(args) > 5:
-                raise TypeError(f"HestonParams takes at most 5 positional arguments, got {len(args)}")
-            warnings.warn(
-                "positional HestonParams(...) is deprecated; pass v0, kappa, theta, xi, rho by keyword",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            for name, value in zip(self._ORDER, args, strict=False):
-                if name in kwargs:
-                    raise TypeError(f"HestonParams got multiple values for argument {name!r}")
-                kwargs[name] = value
-        missing = [n for n in self._ORDER if n not in kwargs]
-        unknown = [n for n in kwargs if n not in self._ORDER]
-        if missing or unknown:
-            raise TypeError(f"HestonParams: missing {missing}, unexpected {unknown}")
-        for name in self._ORDER:
-            object.__setattr__(self, name, kwargs[name])
-        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.v0 <= 0.0 or self.theta <= 0.0:
@@ -123,18 +99,14 @@ def heston_cf(
         Risk-neutral drift ``r_d - r_f``.
     x0 : float
         ``ln S_0`` (use 0 for the CF of the log-return).
+
+    A shim over :func:`qp_core.vol.heston.heston_cf` (Round 18): the one
+    characteristic function shared with ``eq_surface``. Bit-identical to the
+    copy that lived here before; a negative ``T`` now raises ``ValueError``.
     """
-    u = np.asarray(u, dtype=complex)
-    p = params
-    beta = p.kappa - 1j * p.rho * p.xi * u
-    d = np.sqrt(beta * beta + p.xi * p.xi * (1j * u + u * u))
-    g = (beta - d) / (beta + d)
-    e_dt = np.exp(-d * T)
-    D = (beta - d) / (p.xi * p.xi) * (1.0 - e_dt) / (1.0 - g * e_dt)
-    C = (p.kappa * p.theta / (p.xi * p.xi)) * (
-        (beta - d) * T - 2.0 * np.log((1.0 - g * e_dt) / (1.0 - g))
-    )
-    return np.exp(1j * u * (x0 + mu * T) + C + D * p.v0)
+    out = _core_cf(u, T, v0=params.v0, kappa=params.kappa, theta=params.theta,
+                   xi=params.xi, rho=params.rho, x0=x0, mu=mu)
+    return out if isinstance(out, np.ndarray) else np.complex128(out)
 
 
 # ----------------------------------------------------------------------

@@ -30,7 +30,7 @@ from .bootstrap import (
     reprice_deposits,
     reprice_swaps,
 )
-from .calendars import BusinessCalendar, get_calendar, joint_calendar
+from .calendars import BusinessCalendar, HolidayCalendar, get_calendar, joint_calendar
 from .curve import DiscountCurve
 from .daycount import (
     MONEY_MARKET_DAYCOUNT,
@@ -49,10 +49,14 @@ from .fxforward import (
     FXSwap,
     MarketState,
     cip_forward,
+    curve_from_forward_points,
+    forward_for_date,
     forward_points,
+    forward_points_for_date,
     forward_points_table,
     market_forward,
 )
+from .ndf import NDF, ndf_fixing_date
 from .risk import (
     basis_dv01,
     book_risk_report,
@@ -70,6 +74,13 @@ from .scenarios import (
     historical_scenarios,
     scenario_table,
 )
+from .swaps import (
+    DatedFXSwap,
+    fair_swap_points,
+    price_fx_swap,
+    roll_position,
+    tom_next_swap,
+)
 from .xccy import (
     BasisSwap,
     CrossCurrencySwap,
@@ -78,10 +89,11 @@ from .xccy import (
     solve_par_rate_quote,
 )
 
-__version__ = "1.0.0"
+__version__ = "3.0.0.dev0"
 
 __all__ = [
     "MONEY_MARKET_DAYCOUNT",
+    "NDF",
     # daycount
     "VALID_CONVENTIONS",
     # xccy
@@ -92,10 +104,13 @@ __all__ = [
     # arbitrage
     "CIPQuotes",
     "CrossCurrencySwap",
+    # dated FX swaps
+    "DatedFXSwap",
     # curve
     "DiscountCurve",
     "FXForward",
     "FXSwap",
+    "HolidayCalendar",
     # fx forwards
     "MarketState",
     # scenarios
@@ -111,14 +126,18 @@ __all__ = [
     "bootstrap_curve",
     "carry_table",
     "cip_forward",
+    "curve_from_forward_points",
     "curve_from_fx_forwards",
     "deposit_rate_from_df",
     "detect_cip_arbitrage",
     # bootstrap
     "df_from_deposit",
     "dv01",
+    "fair_swap_points",
     "forward_carry",
+    "forward_for_date",
     "forward_points",
+    "forward_points_for_date",
     "forward_points_table",
     "forward_settlement_date",
     # risk
@@ -130,12 +149,15 @@ __all__ = [
     "key_rate_dv01",
     "market_forward",
     "money_market_year_fraction",
+    "ndf_fixing_date",
     "no_arb_bounds",
     "pair_calendar",
     "par_swap_rate",
     "position_risk",
+    "price_fx_swap",
     "reprice_deposits",
     "reprice_swaps",
+    "roll_position",
     "scenario_table",
     "solve_par_basis",
     "solve_par_rate_base",
@@ -143,5 +165,6 @@ __all__ = [
     "spot_date",
     "tenor_dates",
     "tenor_to_years",
+    "tom_next_swap",
     "year_fraction",
 ]

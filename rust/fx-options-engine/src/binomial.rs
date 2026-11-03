@@ -14,6 +14,11 @@
 //! by holding the option instead of the currency makes early exercise
 //! optimal, giving the American call a strictly positive premium over
 //! European: mirroring the dividend-yield story for equities.
+//!
+//! The lattice is the shared [`qp_core::crr`] kernel (W20), called with
+//! `r = r_d` and `q = r_f`.
+
+use qp_core::crr::{CrrError, CrrWorkspace, crr_lattice};
 
 use crate::garman_kohlhagen::gk_price;
 use crate::{FxResult, OptionType, invalid, validate_inputs};
@@ -51,7 +56,7 @@ pub enum Exercise {
 ///
 /// [`crate::FxError::InvalidInput`] on invalid inputs, `steps` outside
 /// `[1, MAX_STEPS]`, or
-/// if the tree probability falls outside `[0, 1]` (time step too coarse
+/// if the tree probability falls outside `(0, 1)` (time step too coarse
 /// for the drift/vol combination).
 ///
 /// ```
@@ -103,38 +108,24 @@ pub fn binomial_price(
         return crate::finite_result(best, "binomial_price");
     }
 
-    let n = steps as usize;
-    let dt = t / f64::from(steps);
-    let u = (sigma * dt.sqrt()).exp();
-    let d = 1.0 / u;
-    let growth = ((r_d - r_f) * dt).exp();
-    let p = (growth - d) / (u - d);
-    if !(0.0..=1.0).contains(&p) {
-        return invalid(format!(
-            "risk-neutral probability {p:.6} outside [0, 1]; increase steps \
-             (dt too large for |r_d - r_f| vs sigma)"
-        ));
+    // Shared lattice (qp_core::crr, W20): the equity tree with q = r_f.
+    let mut ws = CrrWorkspace::with_steps(steps as usize);
+    match crr_lattice(
+        s,
+        k,
+        t,
+        r_d,
+        r_f,
+        sigma,
+        phi,
+        exercise == Exercise::American,
+        steps as usize,
+        &mut ws,
+    ) {
+        Ok(v) => Ok(v),
+        Err(CrrError::BadProbability(p)) => invalid(format!(
+            "risk-neutral probability {p:.6} outside (0, 1); increase steps              (dt too large for |r_d - r_f| vs sigma)"
+        )),
+        Err(CrrError::NonFinite) => crate::finite_result(f64::NAN, "binomial_price"),
     }
-    let disc = (-r_d * dt).exp();
-
-    // Node spots S u^m, m = -n..=n, computed once (O(n) powers); step i,
-    // node j sits at m = 2j - i, so backward induction does no powf.
-    let exercise_value: Vec<f64> = (0..=2 * n)
-        .map(|idx| phi * (s * u.powf(idx as f64 - n as f64) - k))
-        .collect();
-    let mut values: Vec<f64> = (0..=n).map(|j| exercise_value[2 * j].max(0.0)).collect();
-
-    let american = exercise == Exercise::American;
-    for step in (0..n).rev() {
-        let offset = n - step; // index of m = -step
-        for j in 0..=step {
-            let v = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
-            values[j] = if american {
-                v.max(exercise_value[offset + 2 * j])
-            } else {
-                v
-            };
-        }
-    }
-    crate::finite_result(values[0], "binomial_price")
 }

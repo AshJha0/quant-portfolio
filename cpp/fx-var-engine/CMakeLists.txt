@@ -69,6 +69,11 @@ add_library(fxvar
 target_include_directories(fxvar PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_compile_options(fxvar PRIVATE ${FXVAR_WARNINGS})
+# W4(b) Philox paths: no fused multiply-add, so the Monte Carlo scenarios
+# are the same bits as the Rust twin and do not change with -march (MSVC
+# does not contract under its default /fp:precise).
+target_compile_options(fxvar PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
 target_link_libraries(fxvar PUBLIC fxvar_tuning)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)
@@ -103,9 +108,12 @@ if(BUILD_TESTING)
     test_book
     test_expected_shortfall
     test_historical
+    test_hist_rule
     test_parametric
     test_monte_carlo
+    test_w4b
     test_backtest
+    test_oracle
     test_stress
     test_golden_python
     test_conventions

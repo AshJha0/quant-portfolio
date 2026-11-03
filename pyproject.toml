@@ -9,6 +9,11 @@
 [tool.uv.workspace]
 members = [
     "python/core",
+    "python/data",
+    "python/backtest",
+    "python/oms",
+    "python/execution",
+    "python/posttrade",
     "python/equity/01-options-pricing",
     "python/equity/02-volatility-modeling",
     "python/equity/03-var-es-engine",
@@ -41,8 +46,13 @@ members = [
 #   lint   ruff, mypy and the type stubs (the lint job)
 #   backend  setuptools, which builds every project (pip --no-build-isolation)
 #   build  the two binding build backends (bindings and engine diff jobs)
+#   oracle   QuantLib, the independent reference for the required quantlib job
+#   api    griffe, the public-API diff (api-diff job; docs/VERSIONING.md)
+#   recorder  websockets, the live market-data recorder (tools/recorder)
 [dependency-groups]
 test = ["pytest>=7.4", "hypothesis>=6.100"]
+#   notebooks  nbmake and the python3 kernel for the learning notebooks
+notebooks = ["nbmake>=1.5", "ipykernel>=6.29"]
 lint = [
     "ruff==0.17.3",
     "mypy==2.4.1",
@@ -50,18 +60,40 @@ lint = [
     "scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'",
 ]
 backend = ["setuptools>=68"]
+oracle = ["QuantLib==1.44"]
+api = ["griffe==2.4.1"]
+recorder = ["websockets==17.4"]
 build = ["nanobind==3.1.0", "scikit-build-core==1.1.1", "maturin==1.16.0", "cibuildwheel==3.1.4"]
 
 [tool.uv.sources]
 qp-core = { workspace = true }
+qp-data = { workspace = true }
+qp-bt = { workspace = true }
+qp-oms = { workspace = true }
+qp-exec = { workspace = true }
+qp-posttrade = { workspace = true }
 
 [tool.mypy]
 # Default (non-strict) checking for the projects; python/core is strict.
-files = ["python/core/src", "python/core/tests", "python/*/[0-9]*/src"]
+files = [
+    "python/core/src",
+    "python/core/tests",
+    "python/data/src",
+    "python/backtest/src",
+    "python/oms/src",
+    "python/execution/src",
+    "python/posttrade/src",
+    "python/*/[0-9]*/src",
+]
 explicit_package_bases = true
 namespace_packages = true
 mypy_path = [
     "python/core/src",
+    "python/data/src",
+    "python/backtest/src",
+    "python/oms/src",
+    "python/execution/src",
+    "python/posttrade/src",
     "python/equity/01-options-pricing/src",
     "python/equity/02-volatility-modeling/src",
     "python/equity/03-var-es-engine/src",
@@ -112,6 +144,5 @@ module = [
     "statsmodels.*", # statsmodels ships no py.typed marker
     "sklearn.*",     # scikit-learn ships no py.typed marker
     "yfinance.*",    # optional live-data extra, not installed in the lint venv
-    "requests.*",    # optional live-data extra; types-requests is not a project dependency
 ]
 ignore_missing_imports = true

@@ -49,11 +49,6 @@ using BaselInput = KupiecInput;
 /// n_exceptions < 0 or n_exceptions > n_obs (no clamping).
 [[nodiscard]] KupiecResult kupiec_pof(const KupiecInput& in);
 
-[[deprecated(
-    "use kupiec_pof(KupiecInput{.n_obs, .n_exceptions, .alpha}). Removed next "
-    "release.")]] [[nodiscard]] KupiecResult
-kupiec_pof(int n_obs, int n_exceptions, double alpha = 0.01);
-
 /// Christoffersen (1998) independence test result.
 struct ChristoffersenResult {
     double lr = 0.0;  ///< LR_ind statistic, chi2(1) under independence.
@@ -99,13 +94,6 @@ struct BaselResult {
 /// {5: 0.40, 6: 0.50, 7: 0.65, 8: 0.75, 9: 0.85}. At n = 250, alpha = 0.01
 /// this is the 1996 Basel table. Inputs validated as in kupiec_pof.
 [[nodiscard]] BaselResult basel_traffic_light(const BaselInput& in);
-
-/// Old argument order (n_exceptions, n_obs) at alpha = 0.01. Now zones by the
-/// binomial CDF at n_obs and throws when n_exceptions > n_obs.
-[[deprecated(
-    "use basel_traffic_light(BaselInput{.n_obs, .n_exceptions, .alpha}). "
-    "Removed next release.")]] [[nodiscard]] BaselResult
-basel_traffic_light(int n_exceptions, int n_obs = 250);
 
 /// Acerbi-Szekely (2014) Z2 statistic for an ES backtest:
 ///   Z2 = sum_t pnl_t I_t / (T alpha ES_t) + 1,  I_t = 1{pnl_t < -VaR_t}.

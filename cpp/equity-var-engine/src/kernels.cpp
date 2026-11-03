@@ -8,6 +8,8 @@
 
 #include "eqvar/returns.hpp"
 #include "eqvar/stats.hpp"
+#include "path_rng.hpp"
+#include "qp/thread_pool.hpp"
 
 namespace eqvar {
 
@@ -103,6 +105,11 @@ void throw_error(const Error& e) {
 
 namespace {
 
+// Work (paths x factors, or resamples x sample size) below which the Monte
+// Carlo kernels stay on the calling thread: waking the pool costs more than
+// it saves on small runs.
+constexpr std::size_t kMcParallelWork = std::size_t{1} << 16;
+
 inline std::unexpected<Error> fail(Errc c, const char* who = "", double a = 0.0, std::size_t n1 = 0,
                                    std::size_t n2 = 0) noexcept {
     return std::unexpected(Error{c, who, a, n1, n2});
@@ -142,25 +149,55 @@ TailRisk order_statistic(std::span<const double> pnl, double alpha, double* loss
 /// Plain Cholesky on raw row-major storage; false at a non-positive pivot.
 using qp::cholesky_raw;
 
+// VaR (m-th largest loss) of bootstrap resample b: n indices
+// min(n - 1, floor(u n)) from Philox stream (seed, b) (W4(b)); the Rust twin
+// is monte_carlo::bootstrap_resample_var. `loss` is scratch of n values.
+double bootstrap_resample_var(std::span<const double> pnl, std::size_t m, std::uint64_t seed,
+                              std::uint64_t b, double* loss) noexcept {
+    const std::size_t n = pnl.size();
+    qp::PhiloxStream rng(seed, b);
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t idx =
+            std::min(n - 1, static_cast<std::size_t>(rng.uniform() * static_cast<double>(n)));
+        loss[i] = -pnl[idx];
+    }
+    std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n, std::greater<>());
+    return loss[m - 1];
+}
+
+// Bootstrap SE of the VaR. Resample b has its own stream, so when `ws` has
+// room (McVarWorkspace::boot: kBootSlots scratch rows, plus n_boot values in
+// ws.work) the resamples run on the default pool, task t taking b = t,
+// t + kBootSlots, ...; the estimates are then folded in b order, so the bits
+// equal the sequential path whatever the pool size.
 Result<double> bootstrap_se(std::span<const double> pnl, double alpha, std::size_t n_boot,
-                            std::uint64_t seed, double* loss) noexcept {
+                            std::uint64_t seed, double* loss,
+                            McVarWorkspace* ws = nullptr) noexcept {
     const std::size_t n = pnl.size();
     const std::size_t m = tail_rank(n, alpha);
-    RandomStream rng(seed);
     double sum = 0.0, sum_sq_dev = 0.0;  // Welford
-    for (std::size_t b = 0; b < n_boot; ++b) {
-        for (std::size_t i = 0; i < n; ++i) {
-            const std::size_t idx =
-                std::min(n - 1, static_cast<std::size_t>(rng.uniform() * static_cast<double>(n)));
-            loss[i] = -pnl[idx];
-        }
-        std::nth_element(loss, loss + static_cast<std::ptrdiff_t>(m - 1), loss + n,
-                         std::greater<>());
-        const double v = loss[m - 1];
+    auto fold = [&](std::size_t b, double v) {
         const double prev_mean = (b == 0) ? 0.0 : sum / static_cast<double>(b);
         sum += v;
         const double mean = sum / static_cast<double>(b + 1);
         sum_sq_dev += (v - prev_mean) * (v - mean);
+    };
+    const bool threaded = ws != nullptr && ws->boot.size() >= kBootSlots * n &&
+                          ws->work.size() >= n_boot && n * n_boot >= kMcParallelWork;
+    if (threaded) {
+        double* est = ws->work.data();
+        double* scratch = ws->boot.data();
+        auto task = [&](unsigned t) noexcept {
+            for (std::size_t b = t; b < n_boot; b += kBootSlots) {
+                est[b] = bootstrap_resample_var(pnl, m, seed, b, scratch + t * n);
+            }
+        };
+        qp::default_thread_pool().for_each_task(static_cast<unsigned>(kBootSlots), task);
+        for (std::size_t b = 0; b < n_boot; ++b) fold(b, est[b]);
+    } else {
+        for (std::size_t b = 0; b < n_boot; ++b) {
+            fold(b, bootstrap_resample_var(pnl, m, seed, b, loss));
+        }
     }
     return std::sqrt(std::max(sum_sq_dev, 0.0) / static_cast<double>(n_boot - 1));
 }
@@ -446,7 +483,7 @@ Result<MonteCarloResult> try_mc_tail_metrics(std::span<const double> pnl, double
     res.es = tr.es;
     if (n_boot < 2) [[unlikely]]
         return fail(Errc::BootTooFewReps);
-    res.var_se = *bootstrap_se(pnl, alpha, n_boot, seed, ws.loss.data());
+    res.var_se = *bootstrap_se(pnl, alpha, n_boot, seed, ws.loss.data(), &ws);
     res.var_se_kde = kde_se(pnl, alpha, ws.loss.data(), ws.work.data());
     return res;
 }
@@ -474,36 +511,42 @@ Result<MonteCarloResult> try_monte_carlo_var_factored(std::span<const double> ex
         return fail(Errc::WorkspaceTooSmall, "try_monte_carlo_var_factored", 0.0, ws.pnl.size(),
                     n_paths);
     }
-    // Same draw order as simulate_factor_returns(); each scenario row is
-    // mapped to P&L at once, as portfolio_pnl() would, so the n_paths x n
-    // panel is never stored.
-    RandomStream rng(seed);
-    double* z = ws.z.data();
-    double* row = ws.row.data();
+    // Same draws as simulate_factor_returns(), but the factor panel is
+    // never formed. For a linear book
+    //     P&L_p = w' (m_p L z_p) = m_p (L' w)' z_p = m_p v' z_p,
+    // so v = L' w is computed once per run (O(n^2)) and each path costs one
+    // O(n) dot product instead of an O(n^2) triangular matvec (W4(a)).
+    // W4(b): path p draws from its own Philox stream (seed, p) with AS 241
+    // normals (src/path_rng.hpp), so paths are computed in fixed chunks on
+    // the default thread pool and the bits do not depend on the pool size.
+    double* v = ws.row.data();
     double* pnl = ws.pnl.data();
     const double* l = lower.data();
     const double* w = exposures.data();
-    bool finite = true;
-    for (std::size_t p = 0; p < n_paths; ++p) {
-        for (std::size_t j = 0; j < n; ++j) z[j] = rng.gaussian();
-        for (std::size_t i = 0; i < n; ++i) {
-            const double* li = l + i * n;
-            double s = 0.0;
-            for (std::size_t j = 0; j <= i; ++j) s += li[j] * z[j];
-            row[i] = s;
-        }
-        if (student) {
-            const double wmix = rng.chi_squared(df) / df;
-            const double m = 1.0 / std::sqrt(wmix);
-            for (std::size_t i = 0; i < n; ++i) row[i] *= m;
-        }
-        double acc = 0.0;
-        for (std::size_t j = 0; j < n; ++j) {
-            finite = finite && std::isfinite(row[j]);
-            acc += row[j] * w[j];
-        }
-        pnl[p] = acc;
+    for (std::size_t j = 0; j < n; ++j) v[j] = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double* li = l + i * n;
+        const double wi = w[i];
+        for (std::size_t j = 0; j <= i; ++j) v[j] += li[j] * wi;
     }
+    bool finite = all_finite({v, n});
+    // A bad df would give NaN (chi_squared never throws) and
+    // McReturnsNotFinite below; df > 2 is checked above.
+    constexpr std::size_t kChunk = 1024;
+    const std::size_t n_chunks = (n_paths + kChunk - 1) / kChunk;
+    auto task = [&](unsigned c) noexcept {
+        const std::size_t lo = c * kChunk;
+        const std::size_t hi = std::min(n_paths, lo + kChunk);
+        for (std::size_t p = lo; p < hi; ++p) {
+            pnl[p] = detail::linear_path(v, n, student, df, seed, p);
+        }
+    };
+    if (n_chunks > 1 && n_paths * n >= kMcParallelWork) {
+        qp::default_thread_pool().for_each_task(static_cast<unsigned>(n_chunks), task);
+    } else {
+        for (std::size_t c = 0; c < n_chunks; ++c) task(static_cast<unsigned>(c));
+    }
+    for (std::size_t p = 0; p < n_paths; ++p) finite = finite && std::isfinite(pnl[p]);
     if (!finite) [[unlikely]]
         return fail(Errc::McReturnsNotFinite);
     return try_mc_tail_metrics({pnl, n_paths}, alpha, n_boot, seed ^ 0x9E3779B97F4A7C15ULL, ws);

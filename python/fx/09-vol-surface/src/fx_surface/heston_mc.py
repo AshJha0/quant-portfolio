@@ -82,11 +82,14 @@ def simulate_terminal(
         # n_paths, so the *last* base draw loses its antithetic mirror while
         # every other draw keeps one. mc_price's pairwise averaging (which
         # is what removes the antithetic correlation from the standard-error
-        # estimate) then silently degrades to treating correlated pairs as
-        # independent samples, understating the reported standard error.
+        # estimate) then silently degrades: one draw has no mirror, so the
+        # pairs no longer line up. (Antithetic pairs are negatively
+        # correlated; treating them as independent samples would overstate
+        # the standard error, not understate it.)
         raise ValueError(
-            f"n_paths must be even when antithetic=True (odd n_paths breaks "
-            f"pairing and silently understates the standard error), got {n_paths}"
+            f"n_paths must be even when antithetic=True (odd n_paths leaves one "
+            f"draw without its antithetic mirror and breaks the pairing the "
+            f"standard error relies on), got {n_paths}"
         )
     gen = _rng(seed)
     p = params
@@ -203,7 +206,7 @@ def mc_price(
     (price, stderr) : tuple of float
         Discounted mean payoff and its Monte Carlo standard error
         (sample std / sqrt(n); antithetic pairs are averaged first so
-        the SE is not understated by pair correlation).
+        the negative pair correlation does not inflate the SE).
     """
     if cp not in (+1, -1):
         raise ValueError(f"cp must be +1 or -1, got {cp}")

@@ -420,8 +420,8 @@ fn main() {
     let mut json = String::from("[\n");
     for (i, r) in rows.iter().enumerate() {
         json.push_str(&format!(
-            "  {{\"engine\": \"rust/fx-options-engine\", \"kernel\": \"{}\", \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}}}{}\n",
-            r.kernel, r.n_iter, r.calls_per_sample, r.q[0], r.q[1], r.q[2], r.q[3], r.q[4], r.q[5],
+            "  {{\"engine\": \"rust/fx-options-engine\", \"kernel\": \"{}\", \"toolchain\": \"{tc}\", \"flags\": \"{flags}\", \"cpu\": \"{cpu} (WSL2)\", \"date\": \"{date}\", \"n_iter\": {}, \"calls_per_sample\": {}, \"unit\": \"ns\", \"p10\": {:.1}, \"p50\": {:.1}, \"p90\": {:.1}, \"p99\": {:.1}, \"p999\": {:.1}, \"max\": {:.1}, \"tail_basis\": \"{}\"}}{}\n",
+            r.kernel, r.n_iter, r.calls_per_sample, r.q[0], r.q[1], r.q[2], r.q[3], r.q[4], r.q[5], qp_core::bench::tail_basis(r.calls_per_sample),
             if i + 1 < rows.len() { "," } else { "" }
         ));
     }

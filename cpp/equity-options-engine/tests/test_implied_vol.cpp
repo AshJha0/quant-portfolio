@@ -118,3 +118,9 @@ TEST(ImpliedVol, LongDatedHighVolFlatVegaRegimeStaysAccurate) {
 }
 
 }  // namespace
+
+// v3.0.0 removed the tuning-parameter overload deprecated in v2.0.0.
+template <class D>
+concept OldEqIvOverload =
+    requires(D d) { eqopt::implied_vol(d, d, d, d, d, d, eqopt::OptionType::Call, d, 200, d, d); };
+static_assert(!OldEqIvOverload<double>);

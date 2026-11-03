@@ -5,9 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>quant-portfolio</title>
 <style>
-:root{--teal:#16697a;--green:#16a085;--ink:#1a1a2e;--muted:#556}
-body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:var(--ink);background:#f7f8fa}
-header{background:var(--teal);color:#fff;padding:3rem 2rem}
+:root{--teal:#16697a;--green:#16a085;--ink:#1a1a2e;--muted:#556;--bg:#f7f8fa;--card:#fff;--rule:#e3e8ec;--head:#16697a;--link:#16697a}
+@media (prefers-color-scheme: dark){
+  :root{--teal:#5fb8c9;--green:#2bb594;--ink:#e3e8ec;--muted:#a9b4bd;--bg:#12181d;--card:#1b232a;--rule:#2c3740;--head:#0f4c58;--link:#7fd0de}
+}
+body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:var(--ink);background:var(--bg)}
+a{color:var(--link)}
+header{background:var(--head);color:#fff;padding:3rem 2rem}
 header h1{margin:0 0 .5rem;font-size:2.2rem}
 header p{margin:0;max-width:52rem;opacity:.92;line-height:1.5}
 .wrap{max-width:64rem;margin:0 auto;padding:0 2rem}
@@ -15,19 +19,19 @@ nav{margin-top:1.2rem}
 nav a{display:inline-block;background:var(--green);color:#fff;text-decoration:none;
   padding:.55rem 1.1rem;margin-right:.6rem;margin-bottom:.5rem;border-radius:4px;font-weight:600}
 nav a.secondary{background:rgba(255,255,255,.15)}
-h2{color:var(--teal);border-bottom:2px solid #e3e8ec;padding-bottom:.3rem;margin-top:2.5rem}
+h2{color:var(--teal);border-bottom:2px solid var(--rule);padding-bottom:.3rem;margin-top:2.5rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr));gap:1rem;margin:1.2rem 0}
-.card{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);padding:1rem 1.2rem;border-radius:4px}
+.card{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12);padding:1rem 1.2rem;border-radius:4px}
 .card h3{margin:.1rem 0 .5rem;font-size:1.02rem;color:var(--teal)}
 .card p{margin:0;font-size:.9rem;color:var(--muted);line-height:1.45}
 .card .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.03em;
   color:var(--green);text-transform:uppercase;margin-bottom:.3rem}
 pre{background:#10222a;color:#d7e3ea;padding:1rem 1.2rem;border-radius:4px;overflow-x:auto;
   font-size:.85rem;line-height:1.5}
-.numbers{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);border-radius:4px;
+.numbers{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12);border-radius:4px;
   padding:1rem 1.4rem;font-family:Consolas,monospace;font-size:.88rem;line-height:1.7}
-table{border-collapse:collapse;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);width:100%;font-size:.9rem}
-th,td{text-align:left;padding:.45rem .7rem;border-bottom:1px solid #e3e8ec;vertical-align:top}
+table{border-collapse:collapse;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12);width:100%;font-size:.9rem}
+th,td{text-align:left;padding:.45rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
 footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
 </style>
 </head>
@@ -50,9 +54,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <!-- DIAGRAMS links to the GitHub blob view on purpose: the Pages build
            does not render Mermaid, and that page is all Mermaid diagrams. -->
       <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/DIAGRAMS.md">Diagrams</a>
-      <a href="LEARN.html">Learn</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/learn/README.md">Learn (L0-L4)</a>
+      <a href="LEARN.html">Question bank</a>
       <a href="COOKBOOK.html">Cookbook</a>
       <a href="MARKET_RISK.html">Market risk</a>
+      <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/models/README.md">Models</a>
       <a class="secondary" href="https://github.com/AshJha0/quant-portfolio">GitHub</a>
     </nav>
   </div>
@@ -65,12 +71,12 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
      alt="CI status"></a></p>
   <table>
     <tr><th>Item</th><th>Value</th></tr>
-    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13) and added an <code>engine=</code> switch over the compiled ports.</td></tr>
+    <tr><td>Stage</td><td>1 of 3: study portfolio. The November 2026 release started the research platform (ECB and FRED fetchers; one study run on the 2022-2025 hold-out, H0 not rejected; one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13) and added an <code>engine=</code> switch over the compiled ports. Toward v3.0.0 (not yet released): a trade layer, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA and a low-latency track in C++, Rust and Java. Nothing connects to a real venue.</td></tr>
     <tr><td>Sub-projects</td><td>31: 10 areas in equity and FX (20), 3 foundations projects, 4 engines in C++ and in Rust (8)</td></tr>
     <tr><td>Tests</td><td>Executed pass counts are written by the CI <code>counts</code> job to <code>counts.json</code> and the run summary. This page does not repeat them.</td></tr>
     <tr><td>Cross-language tests</td><td>Golden vectors (options from an mpmath oracle with a tolerance per output; VaR from the Python reference), checked by the <code>goldens --check</code> job, plus differential tests against the compiled engines.</td></tr>
-    <tr><td>Study guide</td><td>532 self-test questions in 19 sets</td></tr>
-    <tr><td>Cookbook</td><td>83 recipes, written against current main; outputs are indicative</td></tr>
+    <tr><td>Study guide</td><td>559 self-test questions in 19 sets; each answer is folded so you can try first, and each question is tagged by topic</td></tr>
+    <tr><td>Cookbook</td><td>98 recipes, written against current main; outputs are indicative</td></tr>
   </table>
 
   <h2>The 10 project areas</h2>
@@ -98,8 +104,11 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
       <p>Mean-variance, minimum-variance and risk-parity allocation, constrained
          optimisation, marginal/component risk attribution; HRP, robust and resampled MVO, costs and turnover, factor model, tracking error, Sharpe-ratio tests.</p></div>
     <div class="card"><span class="tag">08</span><h3>Algorithmic Execution</h3>
-      <p>TWAP/VWAP/participation-rate scheduling, market-impact modelling,
-         implementation-shortfall and transaction-cost analysis.</p></div>
+      <p>TWAP/VWAP/POV scheduling from a forecast volume curve, Almgren-Chriss
+         under linear and power-law impact (closed form and a Newton solver),
+         impact charged on each bucket's participation so cost does not depend
+         on slicing, implementation shortfall and TCA. A schedule-level cost
+         model on a bucket simulator; costs shown are model-implied.</p></div>
     <div class="card"><span class="tag">09</span><h3>Volatility Surfaces</h3>
       <p>Raw-SVI smile/skew surface construction with Durrleman no-arbitrage
          checks, Heston stochastic volatility (little-trap characteristic
@@ -130,6 +139,20 @@ footer{margin:3rem 0 2rem;color:var(--muted);font-size:.85rem;text-align:center}
          <code>cpp/core</code> and <code>rust/core</code>, and the
          <code>qp-cpp</code> and <code>qp-rust</code> packages in
          <code>bindings/</code> call the engines from Python.</p></div>
+    <div class="card"><span class="tag">Desk stacks</span><h3>Orders to post-trade</h3>
+      <p>Shared stacks outside the 31 sub-projects: <code>qp_bt</code> (one
+         backtest core), <code>qp_oms</code> (orders, FIX session, pre-trade
+         risk, kill switch per the <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/KILL_CONTRACT.md">kill contract</a>),
+         <code>qp_exec</code> (reference book, market making, smart order
+         router), <code>qp_posttrade</code> and <code>qp_data</code>. All
+         venues and fills are simulated.</p></div>
+    <div class="card"><span class="tag">Low latency</span><h3>C++, Rust, Java</h3>
+      <p><code>cpp/ull</code> and <code>rust/ull</code>: the <a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/QPBF.md">QPBF</a>
+         binary feed, an SPSC ring, an L3 book, a feed handler with gap
+         recovery and an order gateway; <a href="https://github.com/AshJha0/quant-portfolio/blob/main/java/README.md">java/</a>
+         holds a garbage-free gateway and OMS core. Every figure is software,
+         in-process latency on one machine, not wire-to-wire
+         (<a href="https://github.com/AshJha0/quant-portfolio/blob/main/docs/LATENCY_METHOD.md">method</a>).</p></div>
     <div class="card"><span class="tag">Docs</span><h3>Documentation contract</h3>
       <p>Each project states why it uses its model, what it assumes, how it was
          validated, where it fails and how it is meant to be used. Changes are

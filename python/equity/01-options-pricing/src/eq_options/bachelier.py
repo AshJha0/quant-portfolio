@@ -32,6 +32,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from qp_core.model import model
 from scipy.special import ndtr
 
 from .black_scholes import OptionType
@@ -51,6 +52,7 @@ def _check(F: float, K: float, T: float, sigma_n: float, r: float, option_type: 
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 
 
+@model(id="EQ-OPT-BACHELIER")
 def bachelier_price(F: float, K: float, T: float, sigma_n: float, r: float = 0.0,
                     option_type: OptionType = "call") -> float:
     """Bachelier price; ``F`` and ``K`` may be negative."""

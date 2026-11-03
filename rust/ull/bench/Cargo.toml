@@ -1,0 +1,21 @@
+[package]
+name = "qp-ull-bench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Per-call latency harness for the W30-rs hot path: rdtscp/lfence timing, log-linear histogram, coordinated-omission-aware load, environment readback. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_ull_bench"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ull-bench"
+path = "src/main.rs"
+
+[dependencies]
+qp-ull-ring = { path = "../ring" }
+qp-ull-qpbf = { path = "../qpbf" }
+qp-ull-book = { path = "../book" }
