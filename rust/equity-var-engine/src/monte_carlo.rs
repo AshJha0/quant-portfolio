@@ -20,13 +20,14 @@
 //! chi-square. A path depends only on `(s, p)`, so [`monte_carlo_pnl`],
 //! [`monte_carlo_var`] and [`monte_carlo_run`] run on all cores and give the
 //! same bits on any thread count, and the C++ engine uses the same stream
-//! definition (agreement to rounding, not by luck of seeds). The bootstrap
-//! standard error still uses the seeded xoshiro256++ [`crate::rng::Rng`].
-//! NumPy's stream differs, so Python agreement is statistical.
+//! definition (agreement to rounding, not by luck of seeds). Bootstrap
+//! resample `b` likewise draws its indices from Philox stream `(s', b)`, so
+//! [`var_bootstrap_se`] is threaded too. NumPy's stream differs, so Python
+//! agreement is statistical.
 
 use crate::matrix::Matrix;
 use crate::psd::PsdRepair;
-use crate::rng::{PathRng, Rng};
+use crate::rng::PathRng;
 use crate::{EqVarError, Result, TailModel, validate_alpha};
 
 /// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off.
@@ -536,23 +537,48 @@ pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Re
     }
     let n = pnl.len();
     let m = crate::tail::tail_rank(n, alpha)?;
-    let mut rng = Rng::new(seed);
-    let mut buf = vec![0.0; n];
-    let mut sum = 0.0;
-    let mut est = Vec::with_capacity(n_boot);
-    for _ in 0..n_boot {
-        for slot in buf.iter_mut() {
-            let idx = ((rng.uniform() * n as f64) as usize).min(n - 1);
-            *slot = -pnl[idx];
-        }
-        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
-        let v = *lm;
-        est.push(v);
-        sum += v;
-    }
+    let mut est = vec![0.0; n_boot];
+    // Resample b has its own Philox stream (seed, b), so the resamples run
+    // on all cores and the estimates do not depend on the thread count.
+    let min_rows = (1usize << 16).div_ceil(n).max(1);
+    qp_core::par::for_row_chunks(
+        &mut est,
+        1,
+        min_rows,
+        qp_core::par::default_threads(),
+        |first, chunk| {
+            let mut buf = vec![0.0; n];
+            for (k, e) in chunk.iter_mut().enumerate() {
+                *e = bootstrap_resample_var(pnl, m, seed, (first + k) as u64, &mut buf);
+            }
+        },
+    );
+    let sum: f64 = est.iter().sum();
     let mean = sum / n_boot as f64;
     let ss: f64 = est.iter().map(|v| (v - mean) * (v - mean)).sum();
     Ok((ss / (n_boot - 1) as f64).sqrt())
+}
+
+/// VaR (`m`-th largest loss) of bootstrap resample `b`: `n` indices
+/// `min(n - 1, floor(u n))` from Philox stream `(seed, b)` (W4(b)).
+/// `buf` is scratch of length `pnl.len()`.
+pub(crate) fn bootstrap_resample_var(
+    pnl: &[f64],
+    m: usize,
+    seed: u64,
+    b: u64,
+    buf: &mut [f64],
+) -> f64 {
+    let n = pnl.len();
+    let nf = n as f64;
+    let mut rng = qp_core::philox::PhiloxStream::new(seed, b);
+    for slot in buf.iter_mut() {
+        let idx = ((rng.uniform() * nf) as usize).min(n - 1);
+        // `idx <= n - 1` by the `min`; `get` keeps the path panic-free.
+        *slot = -pnl.get(idx).copied().unwrap_or(0.0);
+    }
+    let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+    *lm
 }
 
 /// Kernel-density standard error of the VaR (diagnostic only).

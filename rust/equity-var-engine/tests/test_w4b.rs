@@ -111,3 +111,22 @@ fn rebaseline_agrees_with_closed_form() {
     let exact = parametric_var(&w, &cov, 0.01, TailModel::Normal).unwrap();
     assert!((v - exact).abs() <= 3.0 * se, "{v} vs {exact} (se {se})");
 }
+
+/// The bootstrap SE is threaded in the main API (one Philox stream per
+/// resample) and sequential in the workspace: same bits.
+#[test]
+fn threaded_bootstrap_equals_workspace() {
+    let (w, cov) = book(50);
+    let pnl = monte_carlo_pnl(&w, &cov, 10_000, TailModel::Normal, 3).unwrap();
+    let main = var_bootstrap_se(&pnl, 0.01, 64, 9).unwrap();
+    let (mut buf, mut est) = (vec![0.0; 10_000], vec![0.0; 64]);
+    let ws =
+        eq_var_engine::fast::var_bootstrap_se_ws(&pnl, 0.01, 64, 9, &mut buf, &mut est).unwrap();
+    assert_eq!(main.to_bits(), ws.to_bits());
+    let mut mc = McWorkspace::new(50, 10_000, 50);
+    mc.prepare(&cov, TailModel::Normal).unwrap();
+    let a = mc.run(&w, 0.01, 10_000, 4, 50).unwrap();
+    let b = monte_carlo_run(&w, &cov, 0.01, 10_000, TailModel::Normal, 4, 50).unwrap();
+    assert_eq!(a.se.to_bits(), b.se.to_bits());
+    assert_eq!(a.var.to_bits(), b.var.to_bits());
+}

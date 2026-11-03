@@ -68,6 +68,11 @@ add_library(eqvar STATIC
 target_include_directories(eqvar PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 target_compile_options(eqvar PRIVATE ${EQVAR_WARNINGS})
+# W4(b): no fused multiply-add, so the Monte Carlo kernel gives the same bits
+# as the Rust twin and does not change with -march (MSVC does not contract
+# under its default /fp:precise).
+target_compile_options(eqvar PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
 target_link_libraries(eqvar PUBLIC eqvar_tuning)
 # Shared numerical core (cpp/core, header-only target qp::core).
 if(NOT TARGET qp::core)
@@ -104,6 +109,7 @@ if(BUILD_TESTING)
     test_parametric
     test_expected_shortfall
     test_monte_carlo
+    test_w4b
     test_backtest
     test_cross_language
     test_oracle
