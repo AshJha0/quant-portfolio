@@ -14,11 +14,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "feed-bench"
 path = "src/bin/feed_bench.rs"
-
-# Standalone until integration adds rust/ull/* to the rust/ workspace members.
-[workspace]
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1

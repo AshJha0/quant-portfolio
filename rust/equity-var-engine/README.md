@@ -188,7 +188,7 @@ src/
   backtest.rs            Kupiec, Christoffersen, Basel, Acerbi-Szekely Z2
   matrix.rs              dense Matrix, covariance estimators
   psd.rs                 Jacobi eigen, cholesky_repair, Clip, Higham
-  stats.rs               special functions, moments
+  stats.rs               wrappers over qp_core::stats (special functions, moments)
   rng.rs                 Rng over qp-core's xoshiro256++ (Box-Muller), gamma
   bin/bench.rs           per-call latency distribution, writes bench/results.json
 tests/                   16 integration files; golden/mod.rs is generated

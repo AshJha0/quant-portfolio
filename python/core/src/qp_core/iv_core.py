@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 
+from qp_core.model import model
 from qp_core.normal import norm_cdf, norm_pdf
 
 SQRT2 = 1.4142135623730951
@@ -198,6 +199,7 @@ def total_vol(beta: float, u: float, x: float, counter: list[int] | None = None)
     raise ValueError("implied vol: no convergence in 100 iterations")
 
 
+@model(id="CORE-IV-BLACK")
 def black_implied_vol(
     price: float,
     F: float,

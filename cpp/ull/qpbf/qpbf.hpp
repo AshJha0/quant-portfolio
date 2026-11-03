@@ -42,26 +42,40 @@ inline constexpr std::uint8_t kFlagLastInSnapshot = 0x01;
 // Size in bytes of each message type, header included.
 constexpr std::size_t msg_size(MsgType t) noexcept {
     switch (t) {
-        case MsgType::Add: return 40;
-        case MsgType::Modify: return 40;
-        case MsgType::Cancel: return 32;
-        case MsgType::Execute: return 40;
-        case MsgType::Trade: return 40;
-        case MsgType::Snapshot: return 48;
-        case MsgType::Heartbeat: return 16;
+        case MsgType::Add:
+            return 40;
+        case MsgType::Modify:
+            return 40;
+        case MsgType::Cancel:
+            return 32;
+        case MsgType::Execute:
+            return 40;
+        case MsgType::Trade:
+            return 40;
+        case MsgType::Snapshot:
+            return 48;
+        case MsgType::Heartbeat:
+            return 16;
     }
     return 0;
 }
 
 constexpr const char* msg_name(MsgType t) noexcept {
     switch (t) {
-        case MsgType::Add: return "add";
-        case MsgType::Modify: return "modify";
-        case MsgType::Cancel: return "cancel";
-        case MsgType::Execute: return "execute";
-        case MsgType::Trade: return "trade";
-        case MsgType::Snapshot: return "snapshot";
-        case MsgType::Heartbeat: return "heartbeat";
+        case MsgType::Add:
+            return "add";
+        case MsgType::Modify:
+            return "modify";
+        case MsgType::Cancel:
+            return "cancel";
+        case MsgType::Execute:
+            return "execute";
+        case MsgType::Trade:
+            return "trade";
+        case MsgType::Snapshot:
+            return "snapshot";
+        case MsgType::Heartbeat:
+            return "heartbeat";
     }
     return "?";
 }
@@ -106,9 +120,8 @@ enum class Status : std::uint8_t {
 
 constexpr const char* status_name(Status s) noexcept {
     constexpr std::array<const char*, 12> n{
-        "ok",        "truncated", "bad_magic",   "bad_version",
-        "bad_type",  "bad_length", "bad_side",   "bad_flags",
-        "bad_padding", "bad_field", "trailing_bytes", "too_large"};
+        "ok",       "truncated", "bad_magic",   "bad_version", "bad_type",       "bad_length",
+        "bad_side", "bad_flags", "bad_padding", "bad_field",   "trailing_bytes", "too_large"};
     return n[static_cast<std::size_t>(s)];
 }
 
@@ -276,8 +289,7 @@ inline void encode_header(const PacketHeader& h, std::uint8_t* out) noexcept {
     put64(out + 8, h.seq);
 }
 
-inline Status decode_header(const std::uint8_t* p, std::size_t n,
-                            PacketHeader& h) noexcept {
+inline Status decode_header(const std::uint8_t* p, std::size_t n, PacketHeader& h) noexcept {
     using namespace detail;
     if (n < kPacketHeaderSize) return Status::Truncated;
     if (n > kMaxPacketSize) return Status::TooLarge;
@@ -293,8 +305,7 @@ inline Status decode_header(const std::uint8_t* p, std::size_t n,
 // Validation is all-or-nothing: messages are delivered only after the whole
 // packet has been checked, so a malformed tail never half-applies a packet.
 template <class F>
-Status decode_packet(const std::uint8_t* p, std::size_t n, PacketHeader& h,
-                     F&& on_msg) noexcept {
+Status decode_packet(const std::uint8_t* p, std::size_t n, PacketHeader& h, F&& on_msg) noexcept {
     Status s = decode_header(p, n, h);
     if (s != Status::Ok) return s;
     std::size_t off = kPacketHeaderSize;
@@ -324,8 +335,7 @@ public:
         len_ = kPacketHeaderSize;
     }
     [[nodiscard]] bool fits(MsgType t) const noexcept {
-        return hdr_.msg_count < kMaxMessagesPerPacket &&
-               len_ + msg_size(t) <= kMaxPacketSize;
+        return hdr_.msg_count < kMaxMessagesPerPacket && len_ + msg_size(t) <= kMaxPacketSize;
     }
     bool add(const Msg& m) noexcept {
         if (!fits(m.type)) return false;

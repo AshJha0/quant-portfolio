@@ -28,9 +28,9 @@ mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html). Only the
 datasets in :data:`DATASETS` are wired; a new one is checked on the library
 page and added there.
 
-Integration note: ``qp_data.sources.SOURCES`` registers sources by key
-prefix. Add ``"french": french.SOURCE`` there to make ``french:<dataset>``
-usable through ``sources.build_url`` and ``sources.parse``.
+Registration: ``qp_data.sources.SOURCES["french"]`` is this module's
+:data:`SOURCE`, so ``french:<dataset>`` works through ``sources.build_url``
+and ``sources.parse``; ``qp_data.release`` bounds its publication lag.
 """
 
 from __future__ import annotations
@@ -154,4 +154,4 @@ def parse_french(payload: bytes, table: str = "first") -> pd.DataFrame:
     return parse_french_csv(raw.decode("latin-1"), table=table)
 
 
-SOURCE = Source("french", french_url, parse_french)
+SOURCE: Source = Source("french", french_url, parse_french)

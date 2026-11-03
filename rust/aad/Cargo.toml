@@ -7,10 +7,6 @@ description = "Tape-based reverse-mode AAD (W19): Black-Scholes, pathwise Monte 
 license = "MIT"
 publish = false
 
-# Standalone until integration adds "aad" to rust/Cargo.toml members; at
-# that point delete this empty table (cargo refuses a nested workspace).
-[workspace]
-
 [lib]
 name = "qp_aad"
 path = "src/lib.rs"
@@ -18,8 +14,3 @@ path = "src/lib.rs"
 [dependencies]
 qp-core = { path = "../core" }
 qp-rates-curves = { path = "../rates-curves" }
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1

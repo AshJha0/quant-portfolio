@@ -42,6 +42,10 @@ PY_AREAS = {
     "fx": sorted((REPO / "python/fx").glob("[0-9][0-9]-*")),
     "foundations": sorted((REPO / "python/foundations").glob("[0-9][0-9]-*")),
 }
+# Shared Python stacks CI tests as projects of their own (discover_projects.py
+# SHARED); their slug is the folder name.
+PY_SHARED = sorted(p.name for p in (REPO / "python").glob("*")
+                   if p.name in {"backtest", "oms", "execution", "posttrade"} and (p / "pyproject.toml").is_file())
 # Engines are the */*-engine directories. cpp/core and rust/core are shared
 # libraries, not sub-projects; rust/ also holds the workspace Cargo.toml.
 CPP_ENGINES = sorted(p for p in (REPO / "cpp").glob("*-engine") if p.is_dir())
@@ -213,7 +217,7 @@ class TestExecutedCounts:
 
     def test_every_project_and_engine_reported(self):
         c = executed_counts()
-        want_py = {f"{a}__{p.name}" for a, ps in PY_AREAS.items() for p in ps} | {"core"}
+        want_py = {f"{a}__{p.name}" for a, ps in PY_AREAS.items() for p in ps} | {"core"} | set(PY_SHARED)
         assert set(c["python"]) == want_py
         assert set(c["cpp"]) == {e.name for e in CPP_ENGINES}
         for e in CPP_ENGINES:

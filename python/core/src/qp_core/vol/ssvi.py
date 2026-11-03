@@ -45,6 +45,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
+from qp_core.model import model
+
 __all__ = [
     "ESSVIParams",
     "SSVIFitResult",
@@ -185,6 +187,7 @@ class SSVIFitResult:
     rmse_total_variance: float
 
 
+@model(id="EQ-SURF-SSVI")
 def fit_ssvi(
     k: Sequence[np.ndarray],
     w_market: Sequence[np.ndarray],

@@ -18,6 +18,7 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+from qp_core.model import model
 
 from . import _tail
 from ._validation import finite_array, finite_scalar, integer, validate_alpha
@@ -69,6 +70,7 @@ def validate_rule(rule: object) -> str:
     return str(rule)
 
 
+@model(id="EQ-VAR-HIST")
 def historical_var(pnl: np.ndarray, alpha: float = 0.01, *, rule: str = "kth_worst") -> float:
     """Plain historical-simulation VaR (equal weights).
 
@@ -233,6 +235,7 @@ def factor_filtered_historical_var(
     return historical_var(pnl, alpha)
 
 
+@model(id="EQ-VAR-HIST")
 def filtered_historical_var(pnl: np.ndarray, alpha: float = 0.01, lam: float = 0.94) -> float:
     """Deprecated P&L-level FHS. Use ``factor_filtered_historical_var``.
 

@@ -36,11 +36,11 @@ using qpbf::Side;
 
 enum class Result : std::uint8_t {
     Ok = 0,
-    Ignored,        // trade/heartbeat: no book change
+    Ignored,  // trade/heartbeat: no book change
     DuplicateId,
     UnknownId,
     PriceOutOfBand,
-    QtyTooLarge,    // cancel/execute more than the order has
+    QtyTooLarge,  // cancel/execute more than the order has
     PoolFull,
     BadSide,
 };
@@ -59,7 +59,9 @@ public:
     static constexpr std::int64_t kNoPrice = INT64_MIN;
 
     L3Book(std::int64_t base_price, std::uint32_t levels, std::uint32_t max_orders)
-        : base_(base_price), nlev_(levels), max_orders_(max_orders),
+        : base_(base_price),
+          nlev_(levels),
+          max_orders_(max_orders),
           bids_(std::make_unique<Level[]>(levels)),
           asks_(std::make_unique<Level[]>(levels)),
           pool_(std::make_unique<Order[]>(max_orders)) {
@@ -91,11 +93,14 @@ public:
             case MsgType::Snapshot:
                 if (m.type == MsgType::Snapshot && m.order_id == 0) return Result::Ignored;
                 return add(m.order_id, m.side, m.price, m.qty);
-            case MsgType::Modify: return modify(m.order_id, m.price, m.qty);
+            case MsgType::Modify:
+                return modify(m.order_id, m.price, m.qty);
             case MsgType::Cancel:
-            case MsgType::Execute: return reduce(m.order_id, m.qty);
+            case MsgType::Execute:
+                return reduce(m.order_id, m.qty);
             case MsgType::Trade:
-            case MsgType::Heartbeat: return Result::Ignored;
+            case MsgType::Heartbeat:
+                return Result::Ignored;
         }
         return Result::Ignored;
     }
@@ -180,7 +185,8 @@ public:
         for (std::uint32_t i = L.head; i != kNil; i = pool_[i].next) f(pool_[i].id, pool_[i].qty);
     }
     // Look up an order: returns false when unknown.
-    bool get_order(std::uint64_t id, Side& s, std::int64_t& price, std::uint32_t& qty) const noexcept {
+    bool get_order(std::uint64_t id, Side& s, std::int64_t& price,
+                   std::uint32_t& qty) const noexcept {
         const std::uint32_t oi = find(id);
         if (oi == kNil) return false;
         s = pool_[oi].side;
@@ -219,20 +225,31 @@ private:
         Level& L = level(o.side, o.lvl);
         o.prev = L.tail;
         o.next = kNil;
-        if (L.tail != kNil) pool_[L.tail].next = oi; else L.head = oi;
+        if (L.tail != kNil)
+            pool_[L.tail].next = oi;
+        else
+            L.head = oi;
         L.tail = oi;
         L.qty += o.qty;
         ++L.count;
         const auto li = static_cast<std::int64_t>(o.lvl);
-        if (o.side == Side::Bid) { if (li > best_bid_) best_bid_ = li; }
-        else if (li < best_ask_) best_ask_ = li;
+        if (o.side == Side::Bid) {
+            if (li > best_bid_) best_bid_ = li;
+        } else if (li < best_ask_)
+            best_ask_ = li;
     }
 
     void unlink(std::uint32_t oi) noexcept {
         Order& o = pool_[oi];
         Level& L = level(o.side, o.lvl);
-        if (o.prev != kNil) pool_[o.prev].next = o.next; else L.head = o.next;
-        if (o.next != kNil) pool_[o.next].prev = o.prev; else L.tail = o.prev;
+        if (o.prev != kNil)
+            pool_[o.prev].next = o.next;
+        else
+            L.head = o.next;
+        if (o.next != kNil)
+            pool_[o.next].prev = o.prev;
+        else
+            L.tail = o.prev;
         L.qty -= o.qty;
         --L.count;
         if (L.count == 0) {
@@ -309,17 +326,22 @@ class BookSet {
 public:
     BookSet(std::uint32_t n, std::int64_t base, std::uint32_t levels, std::uint32_t max_orders) {
         books_.reserve(n);
-        for (std::uint32_t i = 0; i < n; ++i) books_.emplace_back(std::make_unique<L3Book>(base, levels, max_orders));
+        for (std::uint32_t i = 0; i < n; ++i)
+            books_.emplace_back(std::make_unique<L3Book>(base, levels, max_orders));
     }
     Result apply(const Msg& m) noexcept {
         if (m.type == MsgType::Heartbeat || m.type == MsgType::Trade) return Result::Ignored;
         if (m.instrument >= books_.size()) return Result::UnknownId;
         return books_[m.instrument]->apply(m);
     }
-    void clear() noexcept { for (auto& b : books_) b->clear(); }
+    void clear() noexcept {
+        for (auto& b : books_) b->clear();
+    }
     L3Book& operator[](std::uint32_t i) noexcept { return *books_[i]; }
     const L3Book& operator[](std::uint32_t i) const noexcept { return *books_[i]; }
-    [[nodiscard]] std::uint32_t size() const noexcept { return static_cast<std::uint32_t>(books_.size()); }
+    [[nodiscard]] std::uint32_t size() const noexcept {
+        return static_cast<std::uint32_t>(books_.size());
+    }
 
 private:
     std::vector<std::unique_ptr<L3Book>> books_;

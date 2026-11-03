@@ -46,6 +46,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 from scipy.optimize import brentq, least_squares
 from scipy.stats import norm
 
@@ -217,6 +218,7 @@ class HullWhiteCalibration:
         return float(np.max(np.abs(self.model_prices - self.market_prices)))
 
 
+@model(id="EQ-FI-HW")
 def calibrate_hull_white(
     curve: DiscountCurve,
     quotes: Sequence[SwaptionQuote],

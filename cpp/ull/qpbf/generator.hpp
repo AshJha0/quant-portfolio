@@ -46,8 +46,7 @@ public:
     }
     // Uniform in [0, n) by Lemire's multiply-shift (bias < n / 2^64).
     std::uint64_t below(std::uint64_t n) noexcept {
-        return static_cast<std::uint64_t>(
-            (static_cast<unsigned __int128>((*this)()) * n) >> 64);
+        return static_cast<std::uint64_t>((static_cast<unsigned __int128>((*this)()) * n) >> 64);
     }
 
 private:
@@ -79,8 +78,7 @@ struct Ledger {
 
 class Generator {
 public:
-    explicit Generator(const GeneratorConfig& c)
-        : cfg_(c), rng_(c.seed), inst_(c.instruments) {
+    explicit Generator(const GeneratorConfig& c) : cfg_(c), rng_(c.seed), inst_(c.instruments) {
         for (auto& in : inst_) {
             in.mid = cfg_.base_price + cfg_.levels / 2;
             in.live.reserve(cfg_.max_live_per_instrument);
@@ -178,8 +176,7 @@ private:
                 const std::size_t k = rng_.below(in.live.size());
                 Live& o = in.live[k];
                 const bool full = rng_.below(3) != 0 || o.qty == 1;
-                const auto q = full ? o.qty
-                                    : static_cast<std::uint32_t>(1 + rng_.below(o.qty - 1));
+                const auto q = full ? o.qty : static_cast<std::uint32_t>(1 + rng_.below(o.qty - 1));
                 m.type = kind == 2 ? MsgType::Cancel : MsgType::Execute;
                 m.order_id = o.id;
                 m.qty = q;

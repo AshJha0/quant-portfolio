@@ -5,18 +5,18 @@
 // handler arbitration and gap buffering -> book update -> latency record)
 // over a generated stream that includes gaps filled by the second line.
 // The allocation count during the hot loop must be exactly zero.
-#include "../histogram.hpp"
-#include "../tsc.hpp"
-#include "../ull_test.hpp"
 #include "../../book/l3_book.hpp"
 #include "../../mcast/feed_handler.hpp"
 #include "../../qpbf/generator.hpp"
 #include "../../ring/spsc_ring.hpp"
+#include "../histogram.hpp"
+#include "../tsc.hpp"
+#include "../ull_test.hpp"
 
 #include <atomic>
-#include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 #include <vector>
 
@@ -30,7 +30,10 @@ void* operator new(std::size_t n) {
 void* operator new[](std::size_t n) { return operator new(n); }
 void* operator new(std::size_t n, std::align_val_t a) {
     ++g_allocs;
-    if (void* p = std::aligned_alloc(static_cast<std::size_t>(a), (n + static_cast<std::size_t>(a) - 1) & ~(static_cast<std::size_t>(a) - 1))) return p;
+    if (void* p =
+            std::aligned_alloc(static_cast<std::size_t>(a), (n + static_cast<std::size_t>(a) - 1) &
+                                                                ~(static_cast<std::size_t>(a) - 1)))
+        return p;
     throw std::bad_alloc();
 }
 void operator delete(void* p) noexcept { std::free(p); }
@@ -71,7 +74,11 @@ int main() {
     std::uint64_t seq = 1;
     for (int i = 0; i < 20000; ++i) {
         w.begin(1, seq);
-        for (int k = 0; k < 8; ++k) { qpbf::Msg m; g.next(m); w.add(m); }
+        for (int k = 0; k < 8; ++k) {
+            qpbf::Msg m;
+            g.next(m);
+            w.add(m);
+        }
         Pkt p{};
         p.len = static_cast<std::uint16_t>(w.finish());
         std::memcpy(p.bytes, w.data(), p.len);

@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 
 WEEK, MONTH = 5, 22
 
@@ -78,6 +79,7 @@ def _newey_west(X: np.ndarray, e: np.ndarray, lags: int) -> np.ndarray:
     return np.sqrt(np.diag(XtX_inv @ S @ XtX_inv) * n / (n - X.shape[1]))
 
 
+@model(id="EQ-VOL-HAR")
 def fit_har(rv: np.ndarray, hac_lags: int = MONTH) -> HARResult:
     """OLS fit of HAR-RV with Newey-West standard errors."""
     X, y = har_design(rv)

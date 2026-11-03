@@ -10,15 +10,15 @@
 #pragma once
 
 #include <arpa/inet.h>
-#include <cerrno>
-#include <cstdint>
-#include <cstring>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
+#include <string>
 
 namespace ull::mcast::net {
 
@@ -28,13 +28,20 @@ public:
     explicit Fd(int fd) : fd_(fd) {}
     Fd(Fd&& o) noexcept : fd_(o.fd_) { o.fd_ = -1; }
     Fd& operator=(Fd&& o) noexcept {
-        if (this != &o) { reset(); fd_ = o.fd_; o.fd_ = -1; }
+        if (this != &o) {
+            reset();
+            fd_ = o.fd_;
+            o.fd_ = -1;
+        }
         return *this;
     }
     Fd(const Fd&) = delete;
     Fd& operator=(const Fd&) = delete;
     ~Fd() { reset(); }
-    void reset() { if (fd_ >= 0) ::close(fd_); fd_ = -1; }
+    void reset() {
+        if (fd_ >= 0) ::close(fd_);
+        fd_ = -1;
+    }
     [[nodiscard]] int get() const { return fd_; }
     [[nodiscard]] bool ok() const { return fd_ >= 0; }
 
@@ -58,20 +65,25 @@ public:
         if (!fd_.ok()) return err("socket");
         in_addr ifa{};
         ::inet_pton(AF_INET, iface, &ifa);
-        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_IF, &ifa, sizeof ifa) != 0) return err("IP_MULTICAST_IF");
+        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_IF, &ifa, sizeof ifa) != 0)
+            return err("IP_MULTICAST_IF");
         unsigned char loop = 1, ttl = 0;
-        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_LOOP, &loop, 1) != 0) return err("IP_MULTICAST_LOOP");
-        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_TTL, &ttl, 1) != 0) return err("IP_MULTICAST_TTL");
+        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_LOOP, &loop, 1) != 0)
+            return err("IP_MULTICAST_LOOP");
+        if (::setsockopt(fd_.get(), IPPROTO_IP, IP_MULTICAST_TTL, &ttl, 1) != 0)
+            return err("IP_MULTICAST_TTL");
         dst_ = addr_of(group, port);
         return {};
     }
     bool send(const std::uint8_t* p, std::size_t n) {
-        return ::sendto(fd_.get(), p, n, 0, reinterpret_cast<const sockaddr*>(&dst_), sizeof dst_) ==
-               static_cast<ssize_t>(n);
+        return ::sendto(fd_.get(), p, n, 0, reinterpret_cast<const sockaddr*>(&dst_),
+                        sizeof dst_) == static_cast<ssize_t>(n);
     }
 
 private:
-    static std::string err(const char* what) { return std::string(what) + ": " + std::strerror(errno); }
+    static std::string err(const char* what) {
+        return std::string(what) + ": " + std::strerror(errno);
+    }
     Fd fd_;
     sockaddr_in dst_{};
 };
@@ -104,7 +116,9 @@ public:
     [[nodiscard]] int fd() const { return fd_.get(); }
 
 private:
-    static std::string err(const char* what) { return std::string(what) + ": " + std::strerror(errno); }
+    static std::string err(const char* what) {
+        return std::string(what) + ": " + std::strerror(errno);
+    }
     Fd fd_;
 };
 
@@ -112,7 +126,10 @@ private:
 inline bool write_all(int fd, const std::uint8_t* p, std::size_t n) {
     while (n > 0) {
         const ssize_t k = ::send(fd, p, n, MSG_NOSIGNAL);
-        if (k <= 0) { if (k < 0 && errno == EINTR) continue; return false; }
+        if (k <= 0) {
+            if (k < 0 && errno == EINTR) continue;
+            return false;
+        }
         p += k;
         n -= static_cast<std::size_t>(k);
     }
@@ -121,7 +138,10 @@ inline bool write_all(int fd, const std::uint8_t* p, std::size_t n) {
 inline bool read_all(int fd, std::uint8_t* p, std::size_t n) {
     while (n > 0) {
         const ssize_t k = ::recv(fd, p, n, 0);
-        if (k <= 0) { if (k < 0 && errno == EINTR) continue; return false; }
+        if (k <= 0) {
+            if (k < 0 && errno == EINTR) continue;
+            return false;
+        }
         p += k;
         n -= static_cast<std::size_t>(k);
     }
@@ -146,7 +166,8 @@ inline Fd tcp_listen(std::uint16_t port) {
     int one = 1;
     ::setsockopt(s.get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
     sockaddr_in a = addr_of("127.0.0.1", port);
-    if (::bind(s.get(), reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 || ::listen(s.get(), 4) != 0)
+    if (::bind(s.get(), reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 ||
+        ::listen(s.get(), 4) != 0)
         return Fd();
     return s;
 }

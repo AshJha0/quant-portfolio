@@ -76,3 +76,15 @@ def test_url_allow_list():
     with pytest.raises(SourceNotPermitted):
         french.french_url("french:Some_Other_File")
     assert french.SOURCE.name == "french"
+
+
+def test_french_is_registered_with_a_release_rule():
+    import datetime as dt
+
+    from qp_data import release, sources
+
+    assert sources.SOURCES["french"] is french.SOURCE
+    key = "french:" + next(iter(french.DATASETS))
+    assert sources.build_url(key).startswith(french.BASE_URL)
+    r = release.release_date(key, dt.date(2024, 3, 31))
+    assert dt.date(2024, 5, 1) < r <= dt.date(2024, 6, 15)

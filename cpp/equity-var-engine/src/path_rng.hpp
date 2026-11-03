@@ -191,8 +191,8 @@ private:
             c2[l] = static_cast<std::uint32_t>(b);
             c3[l] = static_cast<std::uint32_t>(b >> 32);
         }
-        std::uint32_t k0 = static_cast<std::uint32_t>(seed_);
-        std::uint32_t k1 = static_cast<std::uint32_t>(seed_ >> 32);
+        auto k0 = static_cast<std::uint32_t>(seed_);
+        auto k1 = static_cast<std::uint32_t>(seed_ >> 32);
         for (int r = 0; r < 10; ++r) {
             if (r > 0) {
                 k0 += 0x9E3779B9U;

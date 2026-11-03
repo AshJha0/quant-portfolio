@@ -30,7 +30,7 @@ throws. `docs/METHODOLOGY.md` has the full table.
 | `fxvar/book.hpp` | Book in a base currency: cash, spot, outright forwards (spot plus two deposit legs, CIP-consistent). Crosses decompose into USD legs. `CompiledBook` revalues with one `exp()` per leg per scenario. |
 | `fxvar/matrix.hpp` | Dense matrix; Cholesky with a capped jitter ladder (1e-12 to 1e-6 x mean(diag)) and optional eigenvalue-clip or Higham repair; cyclic Jacobi eigen solver. |
 | `fxvar/returns.hpp` | Labelled factor histories, sample and EWMA covariance, EWMA volatility (30-observation seed), input validation, near-zero-vol peg screen. |
-| `fxvar/stats.hpp` | Normal pdf/cdf/quantile, thread-safe Lanczos `log_gamma`, Student-t, incomplete gamma and beta, chi-square SF, binomial CDF by pmf recursion, moments. |
+| `fxvar/stats.hpp` | Wrappers over `qp/var_stats.hpp` in cpp/core: normal pdf/cdf/quantile, thread-safe Lanczos `log_gamma`, Student-t, incomplete gamma and beta, chi-square SF, binomial CDF by pmf recursion, moments. |
 | `fxvar/historical.hpp` | Plain, BRW age-weighted and per-factor filtered HS; sqrt-time scaling; peg warnings. |
 | `fxvar/parametric.hpp` | Variance-covariance VaR/ES (normal and standardised t on the same sigma); Cornish-Fisher with the alpha-aware validity check. |
 | `fxvar/monte_carlo.hpp` | Multivariate normal, covariance-matched Student-t, and a jump mixture (Poisson number of common jumps over the horizon, size per currency) with full revaluation. Seeded `mt19937_64` with library-owned transforms. Bootstrap VaR SE (primary) and KDE SE (diagnostic). |

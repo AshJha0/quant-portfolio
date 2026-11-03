@@ -87,7 +87,7 @@ def test_irs_cva_matches_swaption_strip() -> None:
         strip_ee.append(1e8 * HW.swaption(t, rest, accs, k, payer=True))
         strip_ene.append(-1e8 * HW.swaption(t, rest, accs, k, payer=False))
     assert grid == dates[:-1]
-    c_mc = cva(grid, prof.ee_disc, hc, 0.4)
+    c_mc = cva(grid, prof.ee_disc.tolist(), hc, 0.4)
     c_an = cva(grid, strip_ee, hc, 0.4)
     # Error bar: CVA is linear in EE*, bound by the sum of per-date SEs.
     lgd_pd = [0.6 * (hc.survival(grid[i - 1]) - hc.survival(grid[i])) for i in range(1, len(grid))]
@@ -96,7 +96,7 @@ def test_irs_cva_matches_swaption_strip() -> None:
     assert abs(c_mc - c_an) / c_an < 0.01
     for k_ in range(1, len(grid)):
         assert abs(prof.ee_disc[k_] - strip_ee[k_]) < 5.0 * prof.ee_disc_se[k_] + 1e-9
-    d_mc = dva(grid, prof.ene_disc, hc, 0.4)
+    d_mc = dva(grid, prof.ene_disc.tolist(), hc, 0.4)
     d_an = dva(grid, strip_ene, hc, 0.4)
     assert d_mc == pytest.approx(d_an, rel=0.01)
 

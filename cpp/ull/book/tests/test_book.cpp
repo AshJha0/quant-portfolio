@@ -5,9 +5,9 @@
 // Seam: the plan names the W25 reference book as the oracle. W25 is not
 // merged yet; RefBook below implements the same rules (QPBF.md section 5)
 // and is replaced by the W25 book at integration.
-#include "../l3_book.hpp"
-#include "../../qpbf/generator.hpp"
 #include "../../bench/ull_test.hpp"
+#include "../../qpbf/generator.hpp"
+#include "../l3_book.hpp"
 
 #include <cstdio>
 #include <list>
@@ -20,11 +20,17 @@ using namespace ull::qpbf;
 namespace {
 
 struct RefBook {
-    struct O { Side s; std::int64_t p; std::uint32_t q; };
+    struct O {
+        Side s;
+        std::int64_t p;
+        std::uint32_t q;
+    };
     std::unordered_map<std::uint64_t, O> orders;
     std::map<std::int64_t, std::list<std::uint64_t>> bids, asks;
 
-    std::map<std::int64_t, std::list<std::uint64_t>>& side(Side s) { return s == Side::Bid ? bids : asks; }
+    std::map<std::int64_t, std::list<std::uint64_t>>& side(Side s) {
+        return s == Side::Bid ? bids : asks;
+    }
 
     void remove_from_level(std::uint64_t id, const O& o) {
         auto& m = side(o.s);
@@ -41,7 +47,10 @@ struct RefBook {
                 break;
             case MsgType::Modify: {
                 O& o = orders.at(m.order_id);
-                if (m.price == o.p && m.qty <= o.q) { o.q = m.qty; break; }
+                if (m.price == o.p && m.qty <= o.q) {
+                    o.q = m.qty;
+                    break;
+                }
                 remove_from_level(m.order_id, o);
                 o.p = m.price;
                 o.q = m.qty;
@@ -51,11 +60,15 @@ struct RefBook {
             case MsgType::Cancel:
             case MsgType::Execute: {
                 O& o = orders.at(m.order_id);
-                if (m.qty == o.q) { remove_from_level(m.order_id, o); orders.erase(m.order_id); }
-                else o.q -= m.qty;
+                if (m.qty == o.q) {
+                    remove_from_level(m.order_id, o);
+                    orders.erase(m.order_id);
+                } else
+                    o.q -= m.qty;
                 break;
             }
-            default: break;
+            default:
+                break;
         }
     }
 };
@@ -115,12 +128,16 @@ void errors_and_priority() {
     // qty down at same price keeps place: 1 stays ahead of 2.
     ULL_CHECK(b.modify(1, 101, 3) == Result::Ok);
     std::uint64_t first = 0;
-    b.for_each_order(Side::Bid, 101, [&](std::uint64_t id, std::uint32_t) { if (!first) first = id; });
+    b.for_each_order(Side::Bid, 101, [&](std::uint64_t id, std::uint32_t) {
+        if (!first) first = id;
+    });
     ULL_CHECK(first == 1);
     // qty up loses place.
     ULL_CHECK(b.modify(1, 101, 4) == Result::Ok);
     first = 0;
-    b.for_each_order(Side::Bid, 101, [&](std::uint64_t id, std::uint32_t) { if (!first) first = id; });
+    b.for_each_order(Side::Bid, 101, [&](std::uint64_t id, std::uint32_t) {
+        if (!first) first = id;
+    });
     ULL_CHECK(first == 2);
     ULL_CHECK(b.level_at(Side::Bid, 101).qty == 9);
     // Pool slots are reused after removal.
@@ -147,7 +164,9 @@ void hash_deletion_stress() {
             live.pop_back();
         }
     }
-    Side s; std::int64_t p; std::uint32_t q;
+    Side s;
+    std::int64_t p;
+    std::uint32_t q;
     for (auto id : live) bad += !b.get_order(id, s, p, q);
     ULL_CHECK(bad == 0);
     ULL_CHECK(b.order_count() == live.size());
@@ -177,9 +196,10 @@ void against_reference(std::uint64_t seed, std::uint32_t instruments, std::uint6
             break;
         }
     }
-    std::printf("book vs reference: seed %llu, %u instrument(s), %llu messages, first mismatch %llu\n",
-                static_cast<unsigned long long>(seed), instruments, static_cast<unsigned long long>(n),
-                static_cast<unsigned long long>(first_bad));
+    std::printf(
+        "book vs reference: seed %llu, %u instrument(s), %llu messages, first mismatch %llu\n",
+        static_cast<unsigned long long>(seed), instruments, static_cast<unsigned long long>(n),
+        static_cast<unsigned long long>(first_bad));
     ULL_CHECK(all_equal);
     ULL_CHECK(rejects == 0);
 }
@@ -189,7 +209,11 @@ void comparison_detects_difference() {
     L3Book b(100, 8, 4);
     RefBook r;
     Msg m;
-    m.type = MsgType::Add; m.order_id = 1; m.side = Side::Bid; m.price = 101; m.qty = 5;
+    m.type = MsgType::Add;
+    m.order_id = 1;
+    m.side = Side::Bid;
+    m.price = 101;
+    m.qty = 5;
     b.apply(m);
     r.apply(m);
     ULL_CHECK(equal(b, r));

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from scipy.stats import norm
 from scipy.stats import t as student_t
 
@@ -37,6 +38,7 @@ def _sample(pnl: object, alpha: float) -> np.ndarray:
     return arr
 
 
+@model(id="EQ-VAR-ES")
 def expected_shortfall(pnl: np.ndarray, alpha: float = 0.01) -> float:
     """Empirical ES (spec S2).
 
@@ -82,6 +84,7 @@ def student_t_es(sigma: float, alpha: float = 0.01, df: float = 6.0, mean: float
     return float(sigma * es_std * np.sqrt((df - 2.0) / df) - mean)
 
 
+@model(id="EQ-VAR-ES")
 def parametric_es(
     exposures: np.ndarray,
     cov: np.ndarray,

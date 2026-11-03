@@ -23,5 +23,5 @@ where = ["src"]
 qp_oms = ["py.typed"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "src/qp_oms"]
-addopts = "-q --doctest-modules --import-mode=importlib"
+testpaths = ["tests", "src/qp_oms", "dropcopy", "ems", "kill", "recon", "recovery", "risk"]
+addopts = "-q --doctest-modules --import-mode=importlib --ignore=recovery/tests/_child.py"

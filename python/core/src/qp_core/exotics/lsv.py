@@ -94,7 +94,7 @@ def dupire_local_vol(w: TotalVariance, k: np.ndarray, T: float, dk: float = 1e-4
     den = 1.0 - k * wk / w0 + 0.25 * wk * wk * (-0.25 - 1.0 / w0 + k * k / (w0 * w0)) + 0.5 * wkk
     if np.any(den <= 0.0) or np.any(wT < 0.0):
         raise ValueError("surface has butterfly or calendar arbitrage at the requested points")
-    return np.sqrt(wT / den)
+    return np.asarray(np.sqrt(wT / den), dtype=float)
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ class LSVCalibration:
     heston: HestonParams
 
     def lev_at(self, i: int, x: np.ndarray) -> np.ndarray:
-        return np.interp(x, self.x_grids[i], self.leverage[i])
+        return np.asarray(np.interp(x, self.x_grids[i], self.leverage[i]), dtype=float)
 
 
 def _step(

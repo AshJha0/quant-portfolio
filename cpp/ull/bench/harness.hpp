@@ -62,7 +62,8 @@ RunResult run_open_loop(Op&& op, const RunConfig& c, Histogram& service, Histogr
             intended = s;
         }
         op(c.warmup + i);
-        if (c.stall_every != 0 && (i % c.stall_every) == c.stall_every - 1) spin_ticks(c.stall_ticks);
+        if (c.stall_every != 0 && (i % c.stall_every) == c.stall_every - 1)
+            spin_ticks(c.stall_ticks);
         const std::uint64_t e = tsc_stop();
         service.record(e - s);
         response.record(e - intended);

@@ -11,12 +11,15 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
+    "qp-core>=3.0.0.dev0",
     "numpy>=1.24",
     "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "hypothesis>=6.0"]
+# qp-oms runs the CRB -> OMS hand-off test; cvxpy (Clarabel) is the
+# independent optimiser the SOR allocation LP is checked against.
+dev = ["pytest>=7.4", "hypothesis>=6.0", "qp-oms>=3.0.0.dev0", "cvxpy>=1.5"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

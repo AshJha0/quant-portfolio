@@ -40,19 +40,24 @@ TEST(CreditBondFut, MatchesPython) {
         const auto x = floats(lines[i]);
         if (w[0] == "K") {
             // pow differs by a few ulps between libms (glibc vs UCRT)
-            const double got = qp::bond_futures::cme_cf(x[0], static_cast<unsigned>(std::stoul(w[2])),
-                                                        static_cast<unsigned>(std::stoul(w[3])), w[4] == "1");
+            const double got =
+                qp::bond_futures::cme_cf(x[0], static_cast<unsigned>(std::stoul(w[2])),
+                                         static_cast<unsigned>(std::stoul(w[3])), w[4] == "1");
             EXPECT_LE(std::fabs(got - x[4]), 1e-14 * std::fabs(x[4])) << lines[i];
             ++nk;
             ++i;
         } else if (w[0] == "R") {
-            EXPECT_LE(std::fabs(qp::bond_futures::implied_repo(x[0], x[1], x[2], x[3], x[4]) - x[5]), 1e-15)
+            EXPECT_LE(
+                std::fabs(qp::bond_futures::implied_repo(x[0], x[1], x[2], x[3], x[4]) - x[5]),
+                1e-15)
                 << lines[i];
             ++nr;
             ++i;
         } else if (w[0] == "N") {
-            EXPECT_LE(std::fabs(qp::bond_futures::net_basis(x[0], x[1], x[2], x[3], x[4], x[5], x[6]) - x[7]),
-                      1e-12)
+            EXPECT_LE(
+                std::fabs(qp::bond_futures::net_basis(x[0], x[1], x[2], x[3], x[4], x[5], x[6]) -
+                          x[7]),
+                1e-12)
                 << lines[i];
             ++nn;
             ++i;
@@ -60,7 +65,8 @@ TEST(CreditBondFut, MatchesPython) {
             std::vector<std::vector<double>> v;
             for (std::size_t k = 1; k <= 8; ++k) v.push_back(floats(lines[i + k]));
             const qp::credit_index::Schedule s{v[4], v[5], v[6], v[7]};
-            const auto [pr, rp, d] = qp::credit_index::isda_legs(v[0], v[1], v[2], v[3], x[0], x[1], s, x[2]);
+            const auto [pr, rp, d] =
+                qp::credit_index::isda_legs(v[0], v[1], v[2], v[3], x[0], x[1], s, x[2]);
             EXPECT_LE(std::fabs(pr - x[3]), 1e-14) << lines[i];
             EXPECT_LE(std::fabs(rp - x[4]), 1e-13 * std::fabs(x[4])) << lines[i];
             EXPECT_LE(std::fabs(d - x[5]), 1e-15) << lines[i];
@@ -77,7 +83,8 @@ TEST(CreditBondFut, MatchesPython) {
             }
             std::vector<qp::bond_futures::Bond> bonds;
             for (std::size_t b = 0; b < nb; ++b)
-                bonds.push_back({ex[b], fl[b], hdr[b][1], static_cast<unsigned>(hdr[b][0]), hdr[b][2], hdr[b][3]});
+                bonds.push_back({ex[b], fl[b], hdr[b][1], static_cast<unsigned>(hdr[b][0]),
+                                 hdr[b][2], hdr[b][3]});
             const auto [fair, opt] = qp::bond_futures::delivery_option(bonds, x[1]);
             EXPECT_LE(std::fabs(fair - x[2]), 1e-13 * std::fabs(x[2])) << lines[i];
             EXPECT_LE(std::fabs(opt - x[3]), 1e-11) << lines[i];
@@ -97,7 +104,9 @@ TEST(CreditBondFut, RejectsBadInput) {
     const qp::credit_index::Schedule s{one, one, one, one};
     EXPECT_THROW(qp::credit_index::isda_legs(t, r, t, r, 1.0, 1.0, s, 0.0), std::invalid_argument);
     const std::vector<double> t2{2.0, 1.0}, r2{0.01, 0.01};
-    EXPECT_THROW(qp::credit_index::isda_legs(t2, r2, t, r, 0.4, 1.0, s, 0.0), std::invalid_argument);
-    EXPECT_THROW(qp::bond_futures::implied_repo(100.0, 100.0, 0.0, 0.0, 0.0), std::invalid_argument);
+    EXPECT_THROW(qp::credit_index::isda_legs(t2, r2, t, r, 0.4, 1.0, s, 0.0),
+                 std::invalid_argument);
+    EXPECT_THROW(qp::bond_futures::implied_repo(100.0, 100.0, 0.0, 0.0, 0.0),
+                 std::invalid_argument);
     EXPECT_THROW(qp::bond_futures::delivery_option({}, 0.01), std::invalid_argument);
 }

@@ -185,6 +185,10 @@ _PREFIX_RULES: list[tuple[str, ReleaseRule]] = [
     ("fred:DEX", WeeklyRelease(0, "USD", "H.10: weekly, the Monday after the observation week")),
     ("coinbase:", CalendarDayLag(1, "UTC daily candle, complete at 00:00 UTC the next day")),
     ("binance:", CalendarDayLag(1, "UTC daily candle, complete at 00:00 UTC the next day")),
+    # The library posts a month's factors some weeks after month end and has
+    # no fixed schedule; 45 US business days (about two months) is a
+    # conservative upper bound, never earlier than the real posting.
+    ("french:", MonthEndLag(45, "USD", "French Data Library: monthly update, bounded at 45 business days")),
 ]
 
 

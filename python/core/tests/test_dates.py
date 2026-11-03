@@ -5,6 +5,7 @@ Expected values are worked by hand from the convention definitions.
 
 import calendar as pycal
 import datetime as dt
+from typing import ClassVar
 
 import pytest
 from hypothesis import given
@@ -139,15 +140,28 @@ class TestCalendars:
         with pytest.raises(ValueError):
             wk.add_business_days(D(2024, 1, 5), -1)
 
+    # Upper bound on the move an adjustment can make, from the longest run of closed
+    # days in each calendar over 2000-2090 (an exhaustive scan, pinned in
+    # test_longest_closure_is_tokyo_2019). Tokyo's 2019 accession Golden
+    # Week closed banks from Sat 27 Apr to Mon 6 May (Act on the Enthronement
+    # Day holiday, 2018), so a Tokyo adjustment can move up to 10 days.
+    MAX_SHIFT: ClassVar[dict[str, int]] = {"WEEKEND": 2, "USD": 7, "EUR": 7, "GBP": 7, "JPY": 10}
+
     @given(dates)
     def test_adjusted_is_business_day(self, d):
-        for name in ("WEEKEND", "USD", "EUR", "GBP", "JPY"):
+        for name, bound in self.MAX_SHIFT.items():
             cal = CALENDARS[name]
             for conv in ("following", "modified_following", "preceding"):
                 out = cal.adjust(d, conv)
                 assert cal.is_business_day(out)
-                assert abs((out - d).days) <= 7
+                assert abs((out - d).days) <= bound
             assert cal.adjust(d, "modified_following").month == d.month
+
+    def test_longest_closure_is_tokyo_2019(self):
+        jpy = CALENDARS["JPY"]
+        assert jpy.adjust(D(2019, 4, 27), "following") == D(2019, 5, 7)
+        assert jpy.adjust(D(2019, 5, 6), "preceding") == D(2019, 4, 26)
+        assert not any(jpy.is_business_day(D(2019, 4, 27) + dt.timedelta(days=k)) for k in range(10))
 
     def test_last_business_day(self):
         assert last_business_day(2024, 8, CALENDARS["USD"]) == D(2024, 8, 30)

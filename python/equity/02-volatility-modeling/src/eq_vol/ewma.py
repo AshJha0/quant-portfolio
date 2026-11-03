@@ -13,6 +13,7 @@ shocks never decay toward a long-run level, which is exactly why the EWMA
 from __future__ import annotations
 
 import numpy as np
+from qp_core.model import model
 from scipy.signal import lfilter
 
 from ._utils import validate_returns
@@ -128,6 +129,7 @@ def halflife_to_lambda(halflife: float) -> float:
     return float(2.0 ** (-1.0 / halflife))
 
 
+@model(id="EQ-VOL-EWMA")
 def ewma_forecast(
     returns: np.ndarray,
     horizon: int = 1,

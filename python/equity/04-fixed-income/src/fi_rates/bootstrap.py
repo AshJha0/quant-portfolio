@@ -50,6 +50,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
+from qp_core.model import model
 from scipy.optimize import brentq
 
 from .curve import DiscountCurve, ExtrapolationWarning
@@ -176,6 +177,7 @@ def _pv_error(ins: Instrument, curve: DiscountCurve) -> float:
         return model - ins.rate
 
 
+@model(id="EQ-FI-BOOTSTRAP")
 def bootstrap_curve(
     instruments: list[Instrument],
     interpolation: str = "loglinear_df",

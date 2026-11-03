@@ -67,6 +67,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from scipy.integrate import quad
 
 __all__ = [
@@ -407,6 +408,7 @@ def heston_call_gl(
     return prices if np.ndim(K) else float(prices[0])
 
 
+@model(id="EQ-SURF-HESTON")
 def heston_call(
     S: float,
     K: float,

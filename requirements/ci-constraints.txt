@@ -18,10 +18,14 @@ build==1.6.1
     # via cibuildwheel
 certifi==2026.10.23
     # via cibuildwheel
-cffi==2.1.1 ; implementation_name == 'pypy'
-    # via pyzmq
+cffi==2.1.1
+    # via
+    #   clarabel
+    #   pyzmq
 cibuildwheel==3.1.4
     # via -r requirements/ci-requirements.in
+clarabel==0.11.1
+    # via cvxpy
 cloudpickle==3.1.2
     # via joblib
 colorama==0.4.6
@@ -36,6 +40,8 @@ contourpy==1.3.3 ; python_full_version < '3.12'
     # via matplotlib
 contourpy==1.4.0 ; python_full_version >= '3.12'
     # via matplotlib
+cvxpy==1.9.3
+    # via -r requirements/ci-requirements.in
 cycler==0.12.1
     # via matplotlib
 debugpy==1.8.22
@@ -60,6 +66,8 @@ griffelib==2.4.1
     # via
     #   griffe
     #   griffecli
+highspy==1.15.1
+    # via cvxpy
 hmmlearn==0.3.3
     # via -r requirements/ci-requirements.in
 humanize==4.16.0
@@ -80,8 +88,12 @@ ipython-pygments-lexers==1.1.1
     # via ipython
 jedi==0.20.1
     # via ipython
+jinja2==3.1.6
+    # via osqp
 joblib==1.6.0
-    # via scikit-learn
+    # via
+    #   osqp
+    #   scikit-learn
 jsonschema==4.26.0
     # via nbformat
 jsonschema-specifications==2025.9.1
@@ -100,6 +112,8 @@ kiwisolver==1.5.1
     # via matplotlib
 librt==0.16.0 ; platform_python_implementation != 'PyPy'
     # via mypy
+markupsafe==3.0.4
+    # via jinja2
 matplotlib==3.11.2
     # via -r requirements/ci-requirements.in
 matplotlib-inline==0.2.2
@@ -134,35 +148,51 @@ numpy==2.4.6 ; python_full_version < '3.12'
     # via
     #   -r requirements/ci-requirements.in
     #   arch
+    #   clarabel
     #   contourpy
+    #   cvxpy
     #   formulaic
+    #   highspy
     #   hmmlearn
     #   matplotlib
+    #   osqp
     #   pandas
     #   patsy
+    #   qdldl
     #   scikit-learn
     #   scipy
+    #   scs
+    #   sparsediffpy
     #   statsmodels
 numpy==2.5.4 ; python_full_version >= '3.12'
     # via
     #   -r requirements/ci-requirements.in
     #   arch
+    #   clarabel
     #   contourpy
+    #   cvxpy
     #   formulaic
+    #   highspy
     #   hmmlearn
     #   matplotlib
     #   numpy-typing-compat
     #   optype
+    #   osqp
     #   pandas
     #   pandas-stubs
     #   patsy
+    #   qdldl
     #   scikit-learn
     #   scipy
+    #   scs
+    #   sparsediffpy
     #   statsmodels
 numpy-typing-compat==20260602.2.5 ; python_full_version >= '3.12'
     # via optype
 optype==0.19.0 ; python_full_version >= '3.12'
     # via scipy-stubs
+osqp==1.1.3
+    # via cvxpy
 packaging==26.3
     # via
     #   arch
@@ -214,7 +244,7 @@ pure-eval==0.2.4
     # via stack-data
 pyarrow==26.0.1
     # via -r requirements/ci-requirements.in
-pycparser==3.12 ; implementation_name == 'pypy'
+pycparser==3.12 ; implementation_name != 'PyPy'
     # via cffi
 pyelftools==0.33
     # via cibuildwheel
@@ -241,6 +271,8 @@ pyzmq==27.2.0
     # via
     #   ipykernel
     #   jupyter-client
+qdldl==0.1.9.post1
+    # via cvxpy
 quantlib==1.44
     # via -r requirements/ci-requirements.in
 referencing==0.37.0
@@ -263,24 +295,40 @@ scipy==1.17.1 ; python_full_version < '3.12'
     # via
     #   -r requirements/ci-requirements.in
     #   arch
+    #   clarabel
+    #   cvxpy
     #   formulaic
     #   hmmlearn
+    #   osqp
+    #   qdldl
     #   scikit-learn
+    #   scs
     #   statsmodels
 scipy==1.18.1 ; python_full_version >= '3.12'
     # via
     #   -r requirements/ci-requirements.in
     #   arch
+    #   clarabel
+    #   cvxpy
     #   formulaic
     #   hmmlearn
+    #   osqp
+    #   qdldl
     #   scikit-learn
+    #   scs
     #   statsmodels
 scipy-stubs==1.18.1.1 ; python_full_version >= '3.12'
     # via -r requirements/ci-requirements.in
+scs==3.3.1
+    # via cvxpy
 setuptools==84.2.1
-    # via -r requirements/ci-requirements.in
+    # via
+    #   -r requirements/ci-requirements.in
+    #   osqp
 sortedcontainers==2.4.0
     # via hypothesis
+sparsediffpy==0.6.1
+    # via cvxpy
 stack-data==0.6.3
     # via ipython
 statsmodels==0.15.0

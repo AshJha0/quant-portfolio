@@ -24,6 +24,7 @@ from dataclasses import dataclass, fields
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from scipy.stats import beta as beta_dist
 from scipy.stats import norm
 
@@ -278,6 +279,7 @@ def monte_carlo_pnl(
     return pnl
 
 
+@model(id="EQ-VAR-MC")
 def monte_carlo_var(
     portfolio: Portfolio,
     cov: np.ndarray,

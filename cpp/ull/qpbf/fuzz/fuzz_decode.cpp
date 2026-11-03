@@ -17,7 +17,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     PacketHeader h;
     Msg ms[kMaxMessagesPerPacket];
     int n = 0;
-    const Status s = decode_packet(data, size, h, [&](std::uint64_t, const Msg& m) { ms[n++] = m; });
+    const Status s =
+        decode_packet(data, size, h, [&](std::uint64_t, const Msg& m) { ms[n++] = m; });
     if (s != Status::Ok) return 0;
     PacketWriter w;
     w.begin(h.session_id, h.seq);

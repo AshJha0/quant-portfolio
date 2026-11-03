@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 from scipy.stats import norm
 
 from .book import Book, Market
@@ -161,6 +162,7 @@ def var_covar(
     raise ValueError(f"dist must be 'normal' or 't', got {dist!r}")
 
 
+@model(id="FX-VAR-PARAM")
 def parametric_var(
     book: Book,
     market: Market,

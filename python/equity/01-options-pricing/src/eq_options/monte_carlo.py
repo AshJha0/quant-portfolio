@@ -35,6 +35,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 
 from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
 
@@ -131,6 +132,7 @@ def _check_mc_inputs(S: float, K: float, T: float, sigma: float,
         )
 
 
+@model(id="EQ-OPT-MC")
 def mc_price(
     S: float,
     K: float,

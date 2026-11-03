@@ -51,6 +51,7 @@ market, book = demo_market(), demo_book()
 hist = simulate_history(book, market, 1000, seed=42, garch=True)
 
 fv.historical_var(book, market, hist, alpha=0.01, method="fhs")
+fv.historical_var(book, market, hist, alpha=0.01, rule="interpolated")  # type-7 quantile
 fv.parametric_var(book, market, hist, alpha=0.01, dist="t", df=5)
 fv.monte_carlo_var(book, market, fv.sample_cov(hist), alpha=0.01, dist="jump",
                    jumps=fv.JumpSpec(0.02, {"FX:MXN": -0.10}), seed=1)

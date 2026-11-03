@@ -64,14 +64,17 @@ public:
             {
                 std::lock_guard<std::mutex> lk(mu_);
                 qpbf::PacketHeader h;
-                qpbf::decode_packet(p.data(), p.size(), h, [&](std::uint64_t seq, const qpbf::Msg& m) {
-                    books_.apply(m);
-                    last_seq_ = seq;
-                });
+                qpbf::decode_packet(p.data(), p.size(), h,
+                                    [&](std::uint64_t seq, const qpbf::Msg& m) {
+                                        books_.apply(m);
+                                        last_seq_ = seq;
+                                    });
                 session_ = h.session_id;
             }
-            const bool both = cfg_.drop_both_every && (i % cfg_.drop_both_every) == cfg_.drop_both_every - 1;
-            const bool drop_a = both || (cfg_.drop_a_every && (i % cfg_.drop_a_every) == cfg_.drop_a_every - 1);
+            const bool both =
+                cfg_.drop_both_every && (i % cfg_.drop_both_every) == cfg_.drop_both_every - 1;
+            const bool drop_a =
+                both || (cfg_.drop_a_every && (i % cfg_.drop_a_every) == cfg_.drop_a_every - 1);
             if (!drop_a) a_.send(p.data(), p.size());
             if (!both) b_.send(p.data(), p.size());
             ++i;
@@ -96,9 +99,9 @@ private:
             std::vector<std::vector<std::uint8_t>> frames;
             {
                 std::lock_guard<std::mutex> lk(mu_);
-                build_snapshot(books_, session_, last_seq_, 0, [&](const std::uint8_t* p, std::size_t n) {
-                    frames.emplace_back(p, p + n);
-                });
+                build_snapshot(
+                    books_, session_, last_seq_, 0,
+                    [&](const std::uint8_t* p, std::size_t n) { frames.emplace_back(p, p + n); });
             }
             for (auto& f : frames)
                 if (!net::write_frame(conn.get(), f.data(), f.size())) break;
@@ -127,7 +130,11 @@ inline std::vector<std::vector<std::uint8_t>> generate_packets(const qpbf::Gener
     std::uint64_t seq = 1;
     for (std::size_t i = 0; i < n; ++i) {
         w.begin(session, seq);
-        for (std::uint32_t k = 0; k < per_packet; ++k) { qpbf::Msg m; g.next(m); w.add(m); }
+        for (std::uint32_t k = 0; k < per_packet; ++k) {
+            qpbf::Msg m;
+            g.next(m);
+            w.add(m);
+        }
         const auto len = w.finish();
         out.emplace_back(w.data(), w.data() + len);
         seq += per_packet;

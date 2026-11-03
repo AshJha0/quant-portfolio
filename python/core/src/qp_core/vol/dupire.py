@@ -46,6 +46,8 @@ from collections.abc import Callable
 
 import numpy as np
 
+from qp_core.model import model
+
 TotalVariance = Callable[[np.ndarray, float], np.ndarray]
 
 __all__ = [
@@ -61,6 +63,7 @@ class LocalVolArbitrageError(ValueError):
     """The input surface implies negative local variance at some point."""
 
 
+@model(id="EQ-SURF-DUPIRE")
 def local_vol_from_total_variance(
     w: TotalVariance,
     k: np.ndarray | float,

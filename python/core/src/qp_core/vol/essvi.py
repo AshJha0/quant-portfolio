@@ -278,7 +278,7 @@ class SVISlice:
 
 
 def _svi_grid(theta: float) -> np.ndarray:
-    return np.linspace(-10.0, 10.0, 401) * np.sqrt(theta)
+    return np.asarray(np.linspace(-10.0, 10.0, 401) * np.sqrt(theta), dtype=float)
 
 
 @dataclass(frozen=True)

@@ -43,25 +43,28 @@ inline double z_over_x(double z, double rho) {
 
 // Black (lognormal) implied vol of SABR at strike k. Throws std::invalid_argument
 // on the inputs the Python rejects.
-inline double sabr_vol(double f, double k, double t, double alpha, double beta, double rho, double nu,
-                       double shift = 0.0, Variant variant = Variant::obloj) {
+inline double sabr_vol(double f, double k, double t, double alpha, double beta, double rho,
+                       double nu, double shift = 0.0, Variant variant = Variant::obloj) {
     for (double v : {f, k, t, alpha, beta, rho, nu, shift})
         if (!std::isfinite(v)) throw std::invalid_argument("sabr_vol: inputs must be finite");
     if (f + shift <= 0.0 || k + shift <= 0.0)
         throw std::invalid_argument("sabr_vol: F + shift and K + shift must be > 0");
-    if (t < 0.0 || alpha <= 0.0 || nu < 0.0 || beta < 0.0 || beta > 1.0 || !(-1.0 < rho && rho < 1.0))
-        throw std::invalid_argument("sabr_vol: need T >= 0, alpha > 0, nu >= 0, 0 <= beta <= 1, -1 < rho < 1");
+    if (t < 0.0 || alpha <= 0.0 || nu < 0.0 || beta < 0.0 || beta > 1.0 ||
+        !(-1.0 < rho && rho < 1.0))
+        throw std::invalid_argument(
+            "sabr_vol: need T >= 0, alpha > 0, nu >= 0, 0 <= beta <= 1, -1 < rho < 1");
     const double fs = f + shift, ks = k + shift;
     const double omb = 1.0 - beta;
     const double log_fk = std::log(fs / ks);
     const double fk_mid = std::pow(fs * ks, 0.5 * omb);
-    const double correction =
-        1.0 + t * (omb * omb * alpha * alpha / (24.0 * fk_mid * fk_mid) + rho * beta * nu * alpha / (4.0 * fk_mid) +
-                   (2.0 - 3.0 * rho * rho) * nu * nu / 24.0);
+    const double correction = 1.0 + t * (omb * omb * alpha * alpha / (24.0 * fk_mid * fk_mid) +
+                                         rho * beta * nu * alpha / (4.0 * fk_mid) +
+                                         (2.0 - 3.0 * rho * rho) * nu * nu / 24.0);
     if (variant == Variant::hagan) {
         const double z = nu / alpha * fk_mid * log_fk;
         const double l2 = log_fk * log_fk;
-        const double denom = 1.0 + (omb * omb) / 24.0 * l2 + (omb * omb * omb * omb) / 1920.0 * (l2 * l2);
+        const double denom =
+            1.0 + (omb * omb) / 24.0 * l2 + (omb * omb * omb * omb) / 1920.0 * (l2 * l2);
         return alpha / (fk_mid * denom) * detail::z_over_x(z, rho) * correction;
     }
     double z = 0.0, lead = 0.0;
@@ -77,16 +80,20 @@ inline double sabr_vol(double f, double k, double t, double alpha, double beta, 
 }
 
 // Bermudan on a Hull-White trinomial tree; see bermudan_tree_core (Python).
-inline double bermudan_tree(double a, double sigma, std::span<const double> times, std::span<const double> dfs,
-                            std::span<const double> cash, const std::vector<bool>& exercise, bool payer) {
+inline double bermudan_tree(double a, double sigma, std::span<const double> times,
+                            std::span<const double> dfs, std::span<const double> cash,
+                            const std::vector<bool>& exercise, bool payer) {
     if (times.size() < 2 || dfs.size() != times.size() || cash.size() != times.size() ||
         exercise.size() != times.size())
-        throw std::invalid_argument("bermudan_tree: times, dfs, cash and exercise must have equal length >= 2");
+        throw std::invalid_argument(
+            "bermudan_tree: times, dfs, cash and exercise must have equal length >= 2");
     const std::size_t n = times.size() - 1;
     if (times[0] != 0.0) throw std::invalid_argument("bermudan_tree: times must start at 0");
     for (std::size_t i = 0; i < n; ++i)
-        if (times[i + 1] <= times[i]) throw std::invalid_argument("bermudan_tree: times must increase strictly");
-    if (!(a > 0.0 && sigma > 0.0)) throw std::invalid_argument("bermudan_tree: need a > 0 and sigma > 0");
+        if (times[i + 1] <= times[i])
+            throw std::invalid_argument("bermudan_tree: times must increase strictly");
+    if (!(a > 0.0 && sigma > 0.0))
+        throw std::invalid_argument("bermudan_tree: need a > 0 and sigma > 0");
 
     struct Probs {
         double p0, p1, p2;

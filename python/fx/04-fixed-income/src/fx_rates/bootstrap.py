@@ -30,6 +30,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from qp_core.model import model
 
 from ._validation import require_finite
 from .curve import DiscountCurve
@@ -87,6 +88,7 @@ def par_swap_rate(curve: DiscountCurve, maturity_years: int) -> float:
     return float((1.0 - dfs[-1]) / dfs.sum())
 
 
+@model(id="FX-FI-BOOTSTRAP")
 def bootstrap_curve(
     deposits: Sequence[Quote],
     swaps: Sequence[Quote],

@@ -2,9 +2,9 @@
 //
 //   test_qpbf            unit tests + 1e6-message round trip + mutation fuzz
 //   test_qpbf N          round trip of N messages (acceptance: N = 1e8)
+#include "../../bench/ull_test.hpp"
 #include "../generator.hpp"
 #include "../qpbf.hpp"
-#include "../../bench/ull_test.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -38,9 +38,8 @@ static void wire_layout_is_fixed() {
     std::uint8_t b[40];
     ULL_CHECK(encode_msg(m, b) == 40);
     const std::uint8_t want[40] = {
-        40, 0, 1, 0,  7, 0, 0, 0,  8, 7, 6, 5, 4, 3, 2, 1,
-        42, 0, 0, 0, 0, 0, 0, 0,  0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        100, 0, 0, 0,  2, 0, 0, 0};
+        40, 0, 1, 0, 7,    0,    0,    0,    8,    7,    6,    5,    4,   3, 2, 1, 42, 0, 0, 0,
+        0,  0, 0, 0, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 100, 0, 0, 0, 2,  0, 0, 0};
     ULL_CHECK(std::memcmp(b, want, 40) == 0);
 
     PacketWriter w;
@@ -49,7 +48,7 @@ static void wire_layout_is_fixed() {
     const std::size_t n = w.finish();
     ULL_CHECK(n == 56);
     const std::uint8_t hdr[16] = {0x51, 0x50, 1, 1, 0xDD, 0xCC, 0xBB, 0xAA,
-                                  0xE8, 0x03, 0, 0, 0, 0, 0, 0};
+                                  0xE8, 0x03, 0, 0, 0,    0,    0,    0};
     ULL_CHECK(std::memcmp(w.data(), hdr, 16) == 0);
 }
 
@@ -82,8 +81,8 @@ static void snapshot_messages() {
     const std::size_t n = w.finish();
     PacketHeader h;
     std::vector<Msg> got;
-    ULL_CHECK(decode_packet(w.data(), n, h, [&](std::uint64_t, const Msg& m) { got.push_back(m); }) ==
-              Status::Ok);
+    ULL_CHECK(decode_packet(w.data(), n, h,
+                            [&](std::uint64_t, const Msg& m) { got.push_back(m); }) == Status::Ok);
     ULL_CHECK(got.size() == 2 && got[0] == s && got[1] == end);
 
     // A marker without the LAST flag is rejected.
@@ -110,20 +109,75 @@ static void rejects_malformed() {
         return decode_packet(q.data(), q.size(), h, [](std::uint64_t, const Msg&) {});
     };
     ULL_CHECK(dec(p) == Status::Ok);
-    { auto q = p; q[0] ^= 1; ULL_CHECK(dec(q) == Status::BadMagic); }
-    { auto q = p; q[2] = 2; ULL_CHECK(dec(q) == Status::BadVersion); }
-    { auto q = p; q[3] = 2; ULL_CHECK(dec(q) == Status::Truncated); }
-    { auto q = p; q[3] = 0; ULL_CHECK(dec(q) == Status::TrailingBytes); }
-    { auto q = p; q.push_back(0); ULL_CHECK(dec(q) == Status::TrailingBytes); }
-    { auto q = p; q.pop_back(); ULL_CHECK(dec(q) == Status::Truncated); }
-    { auto q = p; q[16 + 2] = 9; ULL_CHECK(dec(q) == Status::BadType); }
-    { auto q = p; q[16 + 2] = 0; ULL_CHECK(dec(q) == Status::BadType); }
-    { auto q = p; q[16] = 40; ULL_CHECK(dec(q) == Status::BadLength); }
-    { auto q = p; q[16 + 3] = 1; ULL_CHECK(dec(q) == Status::BadFlags); }
-    { auto q = p; q[16 + 30] = 1; ULL_CHECK(dec(q) == Status::BadPadding); }
-    { auto q = p; for (int i = 0; i < 8; ++i) q[16 + 16 + i] = 0; ULL_CHECK(dec(q) == Status::BadField); }
-    { auto q = p; q.resize(10); ULL_CHECK(dec(q) == Status::Truncated); }
-    { std::vector<std::uint8_t> q(kMaxPacketSize + 1, 0); ULL_CHECK(dec(q) == Status::TooLarge); }
+    {
+        auto q = p;
+        q[0] ^= 1;
+        ULL_CHECK(dec(q) == Status::BadMagic);
+    }
+    {
+        auto q = p;
+        q[2] = 2;
+        ULL_CHECK(dec(q) == Status::BadVersion);
+    }
+    {
+        auto q = p;
+        q[3] = 2;
+        ULL_CHECK(dec(q) == Status::Truncated);
+    }
+    {
+        auto q = p;
+        q[3] = 0;
+        ULL_CHECK(dec(q) == Status::TrailingBytes);
+    }
+    {
+        auto q = p;
+        q.push_back(0);
+        ULL_CHECK(dec(q) == Status::TrailingBytes);
+    }
+    {
+        auto q = p;
+        q.pop_back();
+        ULL_CHECK(dec(q) == Status::Truncated);
+    }
+    {
+        auto q = p;
+        q[16 + 2] = 9;
+        ULL_CHECK(dec(q) == Status::BadType);
+    }
+    {
+        auto q = p;
+        q[16 + 2] = 0;
+        ULL_CHECK(dec(q) == Status::BadType);
+    }
+    {
+        auto q = p;
+        q[16] = 40;
+        ULL_CHECK(dec(q) == Status::BadLength);
+    }
+    {
+        auto q = p;
+        q[16 + 3] = 1;
+        ULL_CHECK(dec(q) == Status::BadFlags);
+    }
+    {
+        auto q = p;
+        q[16 + 30] = 1;
+        ULL_CHECK(dec(q) == Status::BadPadding);
+    }
+    {
+        auto q = p;
+        for (int i = 0; i < 8; ++i) q[16 + 16 + i] = 0;
+        ULL_CHECK(dec(q) == Status::BadField);
+    }
+    {
+        auto q = p;
+        q.resize(10);
+        ULL_CHECK(dec(q) == Status::Truncated);
+    }
+    {
+        std::vector<std::uint8_t> q(kMaxPacketSize + 1, 0);
+        ULL_CHECK(dec(q) == Status::TooLarge);
+    }
 }
 
 // Generate n messages, pack them, decode, compare field by field and
@@ -148,7 +202,10 @@ static void round_trip(std::uint64_t n, std::uint64_t seed, std::uint32_t instru
         w.begin(0x5E55, seq);
         std::uint32_t k = 0;
         while (k < want && done + k < n) {
-            if (!have_pending) { g.next(pending); have_pending = true; }
+            if (!have_pending) {
+                g.next(pending);
+                have_pending = true;
+            }
             if (!w.add(pending)) break;
             sent[k++] = pending;
             have_pending = false;
@@ -161,7 +218,10 @@ static void round_trip(std::uint64_t n, std::uint64_t seed, std::uint32_t instru
             got[i++] = m;
             ++decoded.by_type[static_cast<std::size_t>(m.type)];
         });
-        if (s != Status::Ok || i != k) { ++mismatches; break; }
+        if (s != Status::Ok || i != k) {
+            ++mismatches;
+            break;
+        }
         for (std::uint32_t j = 0; j < k; ++j) mismatches += !(got[j] == sent[j]);
         const std::size_t len2 = reencode(h, got, again);
         mismatches += (len2 != len || std::memcmp(again, w.data(), len) != 0);
@@ -171,8 +231,8 @@ static void round_trip(std::uint64_t n, std::uint64_t seed, std::uint32_t instru
     }
     const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::printf("round trip: %llu messages in %llu packets, %.1f s (%.1f M msg/s)\n",
-                static_cast<unsigned long long>(done), static_cast<unsigned long long>(packets), sec,
-                done / sec / 1e6);
+                static_cast<unsigned long long>(done), static_cast<unsigned long long>(packets),
+                sec, done / sec / 1e6);
     for (std::size_t t = 1; t < kNumMsgTypes; ++t)
         std::printf("  %-9s generated %llu decoded %llu\n", msg_name(static_cast<MsgType>(t)),
                     static_cast<unsigned long long>(g.ledger().by_type[t]),
@@ -189,13 +249,21 @@ static void generator_is_deterministic() {
     Generator a(cfg), b(cfg);
     Msg x, y;
     bool same = true;
-    for (int i = 0; i < 100000; ++i) { a.next(x); b.next(y); same &= (x == y); }
+    for (int i = 0; i < 100000; ++i) {
+        a.next(x);
+        b.next(y);
+        same &= (x == y);
+    }
     ULL_CHECK(same);
     cfg.seed = 100;
     Generator c(cfg);
     Generator d(GeneratorConfig{.seed = 99});
     int diff = 0;
-    for (int i = 0; i < 1000; ++i) { c.next(x); d.next(y); diff += !(x == y); }
+    for (int i = 0; i < 1000; ++i) {
+        c.next(x);
+        d.next(y);
+        diff += !(x == y);
+    }
     ULL_CHECK(diff > 900);
 }
 
@@ -216,15 +284,24 @@ static void mutation_fuzz(std::uint64_t iters) {
         w.begin(static_cast<std::uint32_t>(r()), r());
         const auto k = 1 + r.below(8);
         Msg m;
-        for (std::uint64_t j = 0; j < k; ++j) { g.next(m); w.add(m); }
+        for (std::uint64_t j = 0; j < k; ++j) {
+            g.next(m);
+            w.add(m);
+        }
         const std::size_t n = w.finish();
         buf.assign(w.data(), w.data() + n);
         const auto flips = r.below(4);
-        for (std::uint64_t f = 0; f < flips; ++f) buf[r.below(buf.size())] ^= static_cast<std::uint8_t>(1 + r.below(255));
+        for (std::uint64_t f = 0; f < flips; ++f)
+            buf[r.below(buf.size())] ^= static_cast<std::uint8_t>(1 + r.below(255));
         switch (r.below(4)) {
-            case 0: buf.resize(r.below(buf.size() + 1)); break;
-            case 1: buf.push_back(static_cast<std::uint8_t>(r())); break;
-            default: break;
+            case 0:
+                buf.resize(r.below(buf.size() + 1));
+                break;
+            case 1:
+                buf.push_back(static_cast<std::uint8_t>(r()));
+                break;
+            default:
+                break;
         }
         PacketHeader h;
         int i = 0;
@@ -251,10 +328,17 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 64; ++i) {
             PacketWriter w;
             w.begin(1, 1 + i * 4);
-            for (int k = 0; k < 1 + i % 4; ++k) { Msg m; g.next(m); w.add(m); }
+            for (int k = 0; k < 1 + i % 4; ++k) {
+                Msg m;
+                g.next(m);
+                w.add(m);
+            }
             const auto n = w.finish();
             const std::string path = std::string(argv[2]) + "/seed" + std::to_string(i);
-            if (std::FILE* f = std::fopen(path.c_str(), "wb")) { std::fwrite(w.data(), 1, n, f); std::fclose(f); }
+            if (std::FILE* f = std::fopen(path.c_str(), "wb")) {
+                std::fwrite(w.data(), 1, n, f);
+                std::fclose(f);
+            }
         }
         return 0;
     }

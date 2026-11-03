@@ -18,6 +18,7 @@ Parsers never touch the network, so tests run them on recorded responses in
 | ``cboe:VIX`` | CBOE VIX history CSV | free download |
 | ``coinbase:<PRODUCT>:1d`` | Coinbase Exchange public REST candles | public endpoint, no authentication |
 | ``binance:<SYMBOL>:1d`` | Binance public market-data REST (data-api.binance.vision) | public endpoint, no authentication |
+| ``french:<DATASET>`` | Kenneth R. French Data Library zip files (``qp_data.french``) | free with citation of the library |
 
 Websocket recording of the crypto order books belongs to W25/W30 and is not here.
 """
@@ -320,3 +321,10 @@ def build_url(key: str, start: dt.date | None = None, end: dt.date | None = None
 
 def parse(key: str, payload: bytes) -> pd.DataFrame:
     return _source(key).parse(payload)
+
+
+# Registered last: qp_data.french imports Source from this module, so the
+# import has to come after Source and SOURCES exist.
+from . import french as _french  # noqa: E402
+
+SOURCES["french"] = _french.SOURCE

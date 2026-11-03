@@ -57,7 +57,10 @@ struct SysInfo {
         std::ostringstream o;
         auto q = [](const std::string& s) {
             std::string r = "\"";
-            for (char c : s) { if (c == '"' || c == '\\') r += '\\'; r += c; }
+            for (char c : s) {
+                if (c == '"' || c == '\\') r += '\\';
+                r += c;
+            }
             return r + "\"";
         };
         o << "{\"cpu_model\":" << q(cpu_model) << ",\"tsc_flags\":" << q(cpu_flags_tsc)
@@ -80,8 +83,10 @@ inline SysInfo read_sysinfo() {
         tf += std::string(f) + (has ? "=yes " : "=no ");
     }
     s.cpu_flags_tsc = flags == "unavailable" ? flags : tf;
-    s.hypervisor = flags == "unavailable" ? flags
-                   : ((" " + flags + " ").find(" hypervisor ") != std::string::npos ? "yes" : "no");
+    s.hypervisor =
+        flags == "unavailable"
+            ? flags
+            : ((" " + flags + " ").find(" hypervisor ") != std::string::npos ? "yes" : "no");
     s.thp_enabled = read_first_line("/sys/kernel/mm/transparent_hugepage/enabled");
     s.hugepages_total = field_from("/proc/meminfo", "HugePages_Total");
     s.anon_huge_kb = field_from("/proc/self/smaps_rollup", "AnonHugePages");

@@ -32,6 +32,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from qp_core.model import model
 
 from .book import Book, Market
 from .common import require_positions, resolve_alpha, validate_horizon, validate_returns, warn_peg_factors
@@ -142,6 +143,7 @@ def ewma_volatility(returns: pd.DataFrame, lam: float = 0.94,
     return sigma, sigma_next
 
 
+@model(id="FX-VAR-HIST")
 def historical_var(
     book: Book,
     market: Market,

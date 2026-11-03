@@ -37,7 +37,8 @@ inline double cme_cf(double coupon, unsigned n, unsigned z, bool quarterly) {
     return a * (coupon / 2.0 + k + d) - b;
 }
 
-inline double implied_repo(double dirty_now, double invoice, double coupon_cash, double tau, double tau_c) {
+inline double implied_repo(double dirty_now, double invoice, double coupon_cash, double tau,
+                           double tau_c) {
     const double den = dirty_now * tau - coupon_cash * tau_c;
     if (!(den > 0.0)) throw std::invalid_argument("delivery must be after settlement");
     return (invoice + coupon_cash - dirty_now) / den;
@@ -62,7 +63,8 @@ namespace detail {
 inline double ratio(const Bond& b, double y) {
     const double m = static_cast<double>(b.freq);
     double p = 0.0;
-    for (std::size_t i = 0; i < b.exps.size(); ++i) p += b.flows[i] * std::pow(1.0 + y / m, -b.exps[i]);
+    for (std::size_t i = 0; i < b.exps.size(); ++i)
+        p += b.flows[i] * std::pow(1.0 + y / m, -b.exps[i]);
     return (p - b.accrued) / b.cf;
 }
 }  // namespace detail

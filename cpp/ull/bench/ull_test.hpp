@@ -15,31 +15,28 @@ inline int& failures() {
 }
 }  // namespace ull::test
 
-#define ULL_CHECK(cond)                                                        \
-    do {                                                                       \
-        if (!(cond)) {                                                         \
-            std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__,        \
-                         __LINE__, #cond);                                     \
-            ++::ull::test::failures();                                         \
-        }                                                                      \
+#define ULL_CHECK(cond)                                                                   \
+    do {                                                                                  \
+        if (!(cond)) {                                                                    \
+            std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond); \
+            ++::ull::test::failures();                                                    \
+        }                                                                                 \
     } while (0)
 
-#define ULL_REQUIRE(cond)                                                      \
-    do {                                                                       \
-        if (!(cond)) {                                                         \
-            std::fprintf(stderr, "%s:%d: REQUIRE failed: %s\n", __FILE__,      \
-                         __LINE__, #cond);                                     \
-            std::exit(1);                                                      \
-        }                                                                      \
+#define ULL_REQUIRE(cond)                                                                   \
+    do {                                                                                    \
+        if (!(cond)) {                                                                      \
+            std::fprintf(stderr, "%s:%d: REQUIRE failed: %s\n", __FILE__, __LINE__, #cond); \
+            std::exit(1);                                                                   \
+        }                                                                                   \
     } while (0)
 
-#define ULL_TEST_MAIN_END()                                                    \
-    do {                                                                       \
-        if (::ull::test::failures() != 0) {                                    \
-            std::fprintf(stderr, "%d check(s) failed\n",                       \
-                         ::ull::test::failures());                             \
-            return 1;                                                          \
-        }                                                                      \
-        std::printf("all checks passed\n");                                    \
-        return 0;                                                              \
+#define ULL_TEST_MAIN_END()                                                        \
+    do {                                                                           \
+        if (::ull::test::failures() != 0) {                                        \
+            std::fprintf(stderr, "%d check(s) failed\n", ::ull::test::failures()); \
+            return 1;                                                              \
+        }                                                                          \
+        std::printf("all checks passed\n");                                        \
+        return 0;                                                                  \
     } while (0)

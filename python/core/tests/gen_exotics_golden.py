@@ -65,8 +65,35 @@ def lines() -> list[str]:
     return out
 
 
+def _tok_equal(a: str, b: str, rtol: float) -> bool:
+    if a == b:
+        return True
+    try:
+        x, y = float(a), float(b)
+    except ValueError:
+        return False
+    return abs(x - y) <= rtol * max(abs(x), abs(y), 1e-300)
+
+
+def same_records(got: list[str], want: list[str], rtol: float = 1e-12) -> bool:
+    """Line-by-line equality; numeric tokens may differ in the last bits.
+
+    The fixtures are generated on one machine and checked on others; libm
+    (erf, exp, log) can differ by an ulp or two across platforms, so numbers
+    are compared to ``rtol`` relative, the same bound the Rust and C++
+    parity tests apply. Labels and the line count must match exactly.
+    """
+    if len(got) != len(want):
+        return False
+    for g, w in zip(got, want, strict=True):
+        gt, wt = g.split(), w.split()
+        if len(gt) != len(wt) or not all(_tok_equal(x, y, rtol) for x, y in zip(gt, wt, strict=True)):
+            return False
+    return True
+
+
 if __name__ == "__main__":
     text = "\n".join(lines()) + "\n"
     if "--check" in sys.argv:
-        sys.exit(0 if GOLDEN.read_text() == text else 1)
+        sys.exit(0 if same_records(text.splitlines(), GOLDEN.read_text().splitlines()) else 1)
     GOLDEN.write_text(text, newline="\n")

@@ -180,12 +180,12 @@ def touch_price(
     # Probability the barrier is NOT hit by T (risk-neutral), Haug B2 - B4 terms.
     p_no = N(eta * x2 - eta * v) - hs ** (2.0 * mu) * N(eta * y2 - eta * v)
     if not one:
-        return cash * df * p_no
+        return float(cash * df * p_no)
     if not pay_at_hit:
-        return cash * df * (1.0 - p_no)
+        return float(cash * df * (1.0 - p_no))
     lam = math.sqrt(mu * mu + 2.0 * r / (sigma * sigma))
     z = math.log(H / S) / v + lam * v
-    return cash * (hs ** (mu + lam) * N(eta * z) + hs ** (mu - lam) * N(eta * z - 2.0 * eta * lam * v))
+    return float(cash * (hs ** (mu + lam) * N(eta * z) + hs ** (mu - lam) * N(eta * z - 2.0 * eta * lam * v)))
 
 
 def double_knockout_price(

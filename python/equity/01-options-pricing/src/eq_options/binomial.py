@@ -24,6 +24,7 @@ import math
 from typing import Literal
 
 import numpy as np
+from qp_core.model import model
 from qp_core.trees import crr_lattice
 
 from .black_scholes import OptionType, _check_rates, bs_price, validate_inputs
@@ -53,6 +54,7 @@ def _deterministic_price(
     return float(np.max(np.exp(-r * times) * payoffs))
 
 
+@model(id="EQ-OPT-CRR")
 def crr_price(
     S: float,
     K: float,

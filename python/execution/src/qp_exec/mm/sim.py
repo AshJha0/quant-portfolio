@@ -38,6 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+
 from qp_exec.lob import Order, OrdType, ReferenceBook, Side, Tif
 
 from .controls import ControlParams, QuoteController

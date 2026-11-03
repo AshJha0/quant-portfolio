@@ -30,8 +30,11 @@ fn matches_python() {
             };
             let want: f64 = p[10].parse().unwrap();
             let got = sabr_vol(x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], variant).unwrap();
+            // 1e-12 relative, the repository's cross-language parity bound:
+            // the Obloj branch calls ln(), whose last bits differ between the
+            // libm that wrote the fixture and the runner's (CI saw 6.6 ulp).
             assert!(
-                (got - want).abs() <= 4.0 * f64::EPSILON * want.abs(),
+                (got - want).abs() <= 1e-12 * want.abs(),
                 "{}: {got} vs {want}",
                 lines[i]
             );
