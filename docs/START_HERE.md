@@ -42,9 +42,15 @@ Known limits worth knowing before you read further:
   installed.
 - The only real-data studies use ECB daily reference rates. There is no
   point-in-time equity or intraday evidence.
+- Execution costs come from a schedule-level cost model on a bucket
+  simulator, not from an order book. The figures are model-implied, and
+  they changed in v2.1.0 when a double-counted bucket width was removed
+  (equity 08 `docs/VALIDATION.md` section 6).
 
 After that, [LEARN.md](LEARN.md) is a study guide with self-test questions
-(Set 19 covers power, optional stopping, false discovery rate, hashed
+(each answer is folded so you can try first; each question is tagged by
+topic, so a search for a tag such as `` `execution` `` gives one subject;
+Set 19 covers power, optional stopping, false discovery rate, hashed
 installs and latency measurement) and [COOKBOOK.md](COOKBOOK.md) has task
 recipes, including NumPy array pricing, using the C++ engines through
 `find_package(QuantPortfolio)`, and reading the trials log.

@@ -7,7 +7,7 @@ independent references, and used for a small amount of honest research on
 free data. It is for anyone who wants to read or check a worked
 implementation of a model, not for running a live book.
 
-Two things are worth looking at first:
+Three things are worth looking at first:
 
 - **The research workflow.** Studies are registered and hashed before the
   hold-out data is touched, a checker refuses results that do not match a
