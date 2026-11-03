@@ -12,13 +12,15 @@ foreign currency (``r_f > r_d``): the foreign carry lost by holding the
 option instead of the currency makes early exercise optimal, giving the
 American call a strictly positive premium over European: mirroring the
 dividend-yield story for equities.
+
+The lattice itself is the shared kernel :func:`qp_core.trees.crr_lattice`
+(W20), called with ``r = r_d`` and ``q = r_f``; it is the equity tree.
 """
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
+from qp_core.trees import crr_lattice
 
 from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import gk_price
@@ -51,7 +53,7 @@ def binomial_price(S: float, K: float, T: float, r_d: float, r_f: float,
     ------
     ValueError
         On invalid inputs, non-positive ``steps``, unknown ``exercise``,
-        or if the tree probability falls outside [0, 1] (time step too
+        or if the tree probability falls outside (0, 1) (time step too
         coarse for the drift/vol combination).
     """
     phi = validate_option_type(option_type)
@@ -75,29 +77,7 @@ def binomial_price(S: float, K: float, T: float, r_d: float, r_f: float,
             phi * (S * np.exp(drift * times) - K), 0.0)
         return float(values.max())
 
-    dt = T / steps
-    u = math.exp(sigma * math.sqrt(dt))
-    d = 1.0 / u
-    growth = math.exp((r_d - r_f) * dt)
-    p = (growth - d) / (u - d)
-    if not 0.0 <= p <= 1.0:
-        raise ValueError(
-            f"risk-neutral probability {p:.6f} outside [0, 1]; "
-            "increase steps (dt too large for |r_d - r_f| vs sigma)"
-        )
-    disc = math.exp(-r_d * dt)
-
-    # Node spots S u^m, m = -n..n, computed once (O(n) powers); step i,
-    # node k sits at m = 2k - i, so backward induction does no pow().
-    m = np.arange(-steps, steps + 1)
-    exercise_value = phi * (S * u ** m.astype(float) - K)
-    values = np.maximum(exercise_value[0::2], 0.0)
-    american = exercise == "american"
-    for step in range(steps - 1, -1, -1):
-        values = disc * (p * values[1:] + (1.0 - p) * values[:-1])
-        if american:
-            values = np.maximum(values, exercise_value[steps - step:steps + step + 1:2])
-    return float(values[0])
+    return crr_lattice(S, K, T, r_d, r_f, sigma, phi, exercise == "american", steps)
 
 
 def binomial_convergence(S: float, K: float, T: float, r_d: float,

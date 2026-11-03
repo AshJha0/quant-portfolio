@@ -48,6 +48,7 @@ pub mod black_scholes;
 pub mod exotics;
 pub mod bond_futures;
 pub mod credit_index;
+pub mod crr;
 pub mod gemm;
 pub mod holidays;
 pub mod iv;

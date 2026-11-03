@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "eqopt/black_scholes.hpp"
+#include "qp/crr.hpp"
 
 namespace eqopt {
 
@@ -24,22 +25,6 @@ Result<double> deterministic_price(double S, double K, double T, double r, doubl
         best = std::fmax(best, value);
     }
     return try_finite(best, "crr_price");
-}
-
-/// Backward induction with the American/European choice hoisted out of the
-/// inner loop (one instantiation each, no per-node branch).
-template <bool American>
-double induct(double* values, const double* exercise_value, std::size_t n, double pu,
-              double pd) noexcept {
-    for (std::size_t i = n; i-- > 0;) {
-        const std::size_t offset = n - i;  // index of m = -i
-        for (std::size_t j = 0; j <= i; ++j) {
-            double cont = pu * values[j + 1] + pd * values[j];
-            if constexpr (American) cont = std::fmax(cont, exercise_value[offset + 2 * j]);
-            values[j] = cont;
-        }
-    }
-    return values[0];
 }
 
 }  // namespace
@@ -77,40 +62,19 @@ Result<double> try_crr_price(double S, double K, double T, double r, double sigm
         return deterministic_price(S, K, T, r, q, type, exercise, n_steps);
     }
 
-    const double dt = T / n_steps;
-    const double log_u = sigma * std::sqrt(dt);
-    const double u = std::exp(log_u);
-    const double d = 1.0 / u;
-    const double growth = std::exp((r - q) * dt);
-    const double p = (growth - d) / (u - d);
-    if (!(0.0 < p && p < 1.0)) [[unlikely]] {
-        return std::unexpected(Error{Errc::ProbabilityOutOfRange, "p", p});
-    }
     const auto n = static_cast<std::size_t>(n_steps);
+    const qp::CrrStep st = qp::crr_step(T, r, q, sigma, n);
+    if (!(0.0 < st.p && st.p < 1.0)) [[unlikely]] {
+        return std::unexpected(Error{Errc::ProbabilityOutOfRange, "p", st.p});
+    }
     if (workspace.size() < crr_workspace_size(n_steps)) [[unlikely]] {
         return std::unexpected(Error{Errc::WorkspaceTooSmall, "try_crr_price",
                                      static_cast<double>(workspace.size()),
                                      static_cast<double>(crr_workspace_size(n_steps))});
     }
-    const double disc = std::exp(-r * dt);
-    const double pu = disc * p;
-    const double pd = disc * (1.0 - p);
-    const double log_s0 = std::log(S);
-
-    // Every node spot is S u^m for m = -n..n; form the exercise values once
-    // in log space (O(n) exps) so backward induction does no transcendental
-    // work. Step i, node j sits at m = 2j - i.
-    double* exercise_value = workspace.data();      // 2n + 1
-    double* values = workspace.data() + 2 * n + 1;  // n + 1
-    for (std::size_t idx = 0; idx <= 2 * n; ++idx) {
-        const double m = static_cast<double>(idx) - static_cast<double>(n);
-        exercise_value[idx] = sign * (std::exp(log_s0 + m * log_u) - K);
-    }
-    for (std::size_t j = 0; j <= n; ++j) values[j] = std::fmax(exercise_value[2 * j], 0.0);
-
-    const double v0 = exercise == ExerciseStyle::American
-                          ? induct<true>(values, exercise_value, n, pu, pd)
-                          : induct<false>(values, exercise_value, n, pu, pd);
+    // Shared lattice (qp/crr.hpp, W20), also used by fxopt.
+    const double v0 =
+        qp::crr_lattice(S, K, sign, exercise == ExerciseStyle::American, n, st, workspace.data());
     return try_finite(v0, "crr_price");
 }
 

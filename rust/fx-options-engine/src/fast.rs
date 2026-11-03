@@ -38,6 +38,7 @@ use crate::iv_core::black_implied_vol;
 use crate::rng::Xoshiro256StarStar;
 use crate::{Exercise, GreeksResult, McResult, OptionType};
 use qp_core::black_scholes::{TruncatedC1Normal, carry_d1_d2, carry_greeks, carry_value};
+use qp_core::crr::{CrrError, CrrWorkspace, crr_lattice};
 
 /// Error code of the low-latency kernels. `Copy`, one byte, no heap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -484,10 +485,7 @@ pub fn greeks_batch(b: &GkBatch<'_>, out: &mut GreeksBatchOut<'_>) -> Result<(),
 /// `steps` seen and never shrinks.
 #[derive(Debug, Default, Clone)]
 pub struct BinomialWorkspace {
-    ex_even: Vec<f64>,
-    ex_odd: Vec<f64>,
-    cur: Vec<f64>,
-    next: Vec<f64>,
+    crr: CrrWorkspace,
 }
 
 impl BinomialWorkspace {
@@ -499,12 +497,8 @@ impl BinomialWorkspace {
     /// Workspace sized for trees up to `steps` steps: later calls with
     /// `steps` at or below this do not allocate.
     pub fn with_steps(steps: u32) -> Self {
-        let n = steps as usize;
         Self {
-            ex_even: Vec::with_capacity(n + 1),
-            ex_odd: Vec::with_capacity(n),
-            cur: Vec::with_capacity(n + 1),
-            next: Vec::with_capacity(n + 1),
+            crr: CrrWorkspace::with_steps(steps as usize),
         }
     }
 }
@@ -515,7 +509,7 @@ impl BinomialWorkspace {
 /// # Errors
 ///
 /// [`KernelError`] on invalid inputs, `steps` out of range, a tree
-/// probability outside `[0, 1]`, or an overflowing result.
+/// probability outside `(0, 1)`, or an overflowing result.
 pub fn binomial_price_ws(
     ws: &mut BinomialWorkspace,
     s: f64,
@@ -548,60 +542,24 @@ pub fn binomial_price_ws(
         }
         return finite(best);
     }
-    let n = steps as usize;
-    let dt = t / f64::from(steps);
-    let u = (sigma * dt.sqrt()).exp();
-    let d = 1.0 / u;
-    let growth = ((r_d - r_f) * dt).exp();
-    let p = (growth - d) / (u - d);
-    if !(0.0..=1.0).contains(&p) {
-        return Err(KernelError::TreeProbability);
-    }
-    let disc = (-r_d * dt).exp();
-    let q = 1.0 - p;
-
-    // Node payoffs phi (S u^m - K), m = idx - n, split by index parity so
-    // that step i reads a contiguous run: node j of step i sits at
-    // idx = (n - i) + 2j, whose parity is fixed for the whole step.
-    let ex_at = |idx: usize| phi * (s * u.powf(idx as f64 - n as f64) - k);
-    ws.ex_even.clear();
-    ws.ex_even.extend((0..=n).map(|h| ex_at(2 * h)));
-    ws.ex_odd.clear();
-    ws.ex_odd.extend((0..n).map(|h| ex_at(2 * h + 1)));
-    ws.cur.clear();
-    ws.cur.extend(ws.ex_even.iter().map(|e| e.max(0.0)));
-    ws.next.clear();
-    ws.next.resize(n + 1, 0.0);
-
-    // Double buffer: next[j] = f(cur[j], cur[j + 1]). Same arithmetic as
-    // the classic in-place loop, but with no loop-carried dependency, so
-    // the loop body can vectorise.
+    // Shared lattice (qp_core::crr, W20), as in crate::binomial_price.
     let american = exercise == Exercise::American;
-    for step in (0..n).rev() {
-        let m = step + 1;
-        let offset = n - step;
-        let cur = ws.cur.get(..m + 1).unwrap_or(&[]);
-        let nxt = ws.next.get_mut(..m).unwrap_or(&mut []);
-        let lo = cur.get(..m).unwrap_or(&[]);
-        let hi = cur.get(1..).unwrap_or(&[]);
-        if american {
-            let ex = if offset.is_multiple_of(2) {
-                ws.ex_even.get(offset / 2..).unwrap_or(&[])
-            } else {
-                ws.ex_odd.get(offset / 2..).unwrap_or(&[])
-            };
-            let ex = ex.get(..m).unwrap_or(&[]);
-            for (((o, &a), &b), &e) in nxt.iter_mut().zip(lo).zip(hi).zip(ex) {
-                *o = (disc * (p * b + q * a)).max(e);
-            }
-        } else {
-            for ((o, &a), &b) in nxt.iter_mut().zip(lo).zip(hi) {
-                *o = disc * (p * b + q * a);
-            }
-        }
-        std::mem::swap(&mut ws.cur, &mut ws.next);
+    match crr_lattice(
+        s,
+        k,
+        t,
+        r_d,
+        r_f,
+        sigma,
+        phi,
+        american,
+        steps as usize,
+        &mut ws.crr,
+    ) {
+        Ok(v) => Ok(v),
+        Err(CrrError::BadProbability(_)) => Err(KernelError::TreeProbability),
+        Err(CrrError::NonFinite) => finite(f64::NAN),
     }
-    finite(ws.cur.first().copied().unwrap_or(f64::NAN))
 }
 
 // ---------------------------------------------------------------------------

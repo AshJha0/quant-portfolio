@@ -16,7 +16,7 @@
 //!   intrinsic along the deterministic path `S exp((r - q) t_i)`.
 //! * Negative `s`, `k`, `t`, `sigma` and `n_steps == 0` are errors.
 
-use std::cell::Cell;
+use qp_core::crr::{CrrError, crr_lattice};
 
 use crate::black_scholes::{
     OptionType, PricingError, bs_price, finite_result, validate_inputs, validate_rates,
@@ -214,53 +214,10 @@ pub fn crr_price(
     }
 }
 
-/// Reusable buffers for the CRR tree.
-///
-/// Holds the node values and the exercise values. Capacity grows to the
-/// largest `n_steps` seen and is then reused, so repeated pricing with
-/// [`crate::fast::try_crr_price`] does not touch the heap.
-///
-/// # Examples
-///
-/// ```
-/// use eq_options_engine::{fast::try_crr_price, CrrWorkspace, Exercise, OptionType};
-/// let mut ws = CrrWorkspace::with_steps(500);
-/// let v = try_crr_price(100.0, 100.0, 1.0, 0.05, 0.2, 0.0, OptionType::Put,
-///                       Exercise::American, 500, &mut ws).unwrap();
-/// assert!(v > 0.0);
-/// ```
-#[derive(Debug, Clone, Default)]
-pub struct CrrWorkspace {
-    values: Vec<f64>,
-    exercise_value: Vec<f64>,
-}
+pub use qp_core::crr::CrrWorkspace;
 
-impl CrrWorkspace {
-    /// Empty workspace. The first call sizes it.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Workspace pre-sized for trees of up to `n_steps` steps (American
-    /// or European), so the first call does not allocate either.
-    pub fn with_steps(n_steps: usize) -> Self {
-        Self {
-            values: Vec::with_capacity(n_steps + 1),
-            exercise_value: Vec::with_capacity(2 * n_steps + 1),
-        }
-    }
-}
-
-/// Resize `v` to `len` without shrinking capacity. Allocates only when
-/// `len` exceeds the capacity already held.
-#[inline]
-fn resize_buf(v: &mut Vec<f64>, len: usize) {
-    v.clear();
-    v.resize(len, 0.0);
-}
-
-/// Backward induction on the CRR tree for validated inputs with
-/// `s, k, t, sigma > 0` and `1 <= n_steps <= MAX_STEPS`.
+/// Backward induction on the shared CRR lattice ([`qp_core::crr`], W20) for
+/// validated inputs with `s, k, t, sigma > 0` and `1 <= n_steps <= MAX_STEPS`.
 ///
 /// Returns [`ErrorCode::BadProbability`] when the risk-neutral
 /// probability leaves (0, 1), [`ErrorCode::NonFiniteResult`] when the
@@ -278,74 +235,23 @@ pub(crate) fn crr_tree(
     n_steps: usize,
     ws: &mut CrrWorkspace,
 ) -> Result<f64, ErrorCode> {
-    let sign = option_type.sign();
-    let dt = t / (n_steps as f64);
-    let log_u = sigma * dt.sqrt();
-    let u = log_u.exp();
-    let d = 1.0 / u;
-    let growth = ((r - q) * dt).exp();
-    let p = (growth - d) / (u - d);
-    if !(p > 0.0 && p < 1.0) {
-        return Err(ErrorCode::BadProbability);
-    }
-    let disc = (-r * dt).exp();
-    let (pu, pd) = (disc * p, disc * (1.0 - p));
-
-    // Every node spot is S u^m for m = -n..=n. Step i, node j sits at
-    // m = 2j - i. The American tree forms the exercise values once in log
-    // space (O(n) exps) so backward induction does no transcendental
-    // work. The European tree needs only the terminal layer.
-    let log_s = s.ln();
-    let n_f = n_steps as f64;
     let american = exercise == Exercise::American;
-    resize_buf(&mut ws.values, n_steps + 1);
-    if american {
-        resize_buf(&mut ws.exercise_value, 2 * n_steps + 1);
-        for (idx, e) in ws.exercise_value.iter_mut().enumerate() {
-            let m = idx as f64 - n_f;
-            *e = sign * ((log_s + m * log_u).exp() - k);
-        }
-        for (v, e) in ws
-            .values
-            .iter_mut()
-            .zip(ws.exercise_value.iter().step_by(2))
-        {
-            *v = e.max(0.0);
-        }
-    } else {
-        for (j, v) in ws.values.iter_mut().enumerate() {
-            let m = (2 * j) as f64 - n_f;
-            *v = (sign * ((log_s + m * log_u).exp() - k)).max(0.0);
-        }
-    }
-
-    let values = Cell::from_mut(ws.values.as_mut_slice()).as_slice_of_cells();
-    for i in (0..n_steps).rev() {
-        // Nodes 0..=i of step i read nodes j and j + 1 of step i + 1.
-        let Some(layer) = values.get(..i + 2) else {
-            debug_assert!(false, "values shorter than n_steps + 1");
-            return Err(ErrorCode::NonFiniteResult);
-        };
-        if american {
-            let offset = n_steps - i; // index of m = -i
-            let Some(ex) = ws.exercise_value.get(offset..) else {
-                debug_assert!(false, "exercise values shorter than 2 n_steps + 1");
-                return Err(ErrorCode::NonFiniteResult);
-            };
-            for (w, &e) in layer.windows(2).zip(ex.iter().step_by(2)) {
-                let v = pu * w[1].get() + pd * w[0].get();
-                w[0].set(v.max(e));
-            }
-        } else {
-            for w in layer.windows(2) {
-                w[0].set(pu * w[1].get() + pd * w[0].get());
-            }
-        }
-    }
-    match values.first() {
-        Some(v) if v.get().is_finite() => Ok(v.get()),
-        _ => Err(ErrorCode::NonFiniteResult),
-    }
+    crr_lattice(
+        s,
+        k,
+        t,
+        r,
+        q,
+        sigma,
+        option_type.sign(),
+        american,
+        n_steps,
+        ws,
+    )
+    .map_err(|e| match e {
+        CrrError::BadProbability(_) => ErrorCode::BadProbability,
+        CrrError::NonFinite => ErrorCode::NonFiniteResult,
+    })
 }
 
 /// American-minus-European value on the same CRR tree.

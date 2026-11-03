@@ -13,6 +13,18 @@
 //! (measured 1.0e-15 against the Cody erfc); `norm_cdf_batch` absolute
 //! error <= 4e-16 and relative <= 2e-15 for x >= -37 (measured 2.8e-16 and
 //! 1.1e-15). Inputs must be finite.
+//!
+//! Speed (W20, Round 8). The batch functions run eight lanes at a time
+//! through lane-wise copies of the scalar kernels, so LLVM emits packed
+//! code; every output is still bit-identical to the scalar kernel. On WSL,
+//! Intel Core 5 120U, `-C target-cpu=native`, 100,000 elements in
+//! [-6, 6], median of 31 runs, machine shared with other jobs, so read the
+//! figures as ranges: `erfc_batch` 105-126 -> 16-23 ns per element (Cody
+//! `erfc` 17-31 ns in the same runs), `norm_cdf_batch` 99-120 -> 16-24 ns,
+//! `exp_batch` 2.3-4.3 ns either way (`cargo run --release --example
+//! vmath_speed`). The Clenshaw recurrence is a serial chain, so latency,
+//! not width, now bounds `erfc_batch`; eight lanes keep two vectors in
+//! flight.
 
 const LOG2E: f64 = std::f64::consts::LOG2_E;
 const LN2_HI: f64 = f64::from_bits(0x3FE6_2E42_FEE0_0000); // fdlibm ln2_hi
@@ -21,7 +33,7 @@ const MAGIC: f64 = 6_755_399_441_055_744.0; // 1.5 * 2^52
 const EXP_LO: f64 = -746.0;
 const EXP_HI: f64 = 710.0;
 
-#[inline]
+#[inline(always)]
 fn pow2_int(k: f64) -> f64 {
     let bits = (k + MAGIC)
         .to_bits()
@@ -31,7 +43,7 @@ fn pow2_int(k: f64) -> f64 {
 }
 
 /// Scalar kernel of [`exp_batch`].
-#[inline]
+#[inline(always)]
 #[must_use]
 pub fn exp1(x: f64) -> f64 {
     let x = x.clamp(EXP_LO, EXP_HI);
@@ -88,45 +100,147 @@ const ERFC_CHEB: [f64; 26] = [
 ];
 
 /// Scalar kernel of [`erfc_batch`].
-#[inline]
+#[inline(always)]
 #[must_use]
 pub fn erfc1(x: f64) -> f64 {
     let z = x.abs().min(28.0);
     let t = 2.0 / (2.0 + z);
     let u = (2.0 * t - 1.0 - ERFC_T0) / (1.0 - ERFC_T0);
-    let (mut b1, mut b2) = (0.0, 0.0);
-    for &c in ERFC_CHEB[1..].iter().rev() {
-        let b0 = 2.0 * u * b1 - b2 + c;
-        b2 = b1;
-        b1 = b0;
+    // Clenshaw recurrence, written out by the macro so the body is
+    // straight-line code: a `for` over the table stays a loop inside the
+    // element loop, and LLVM only vectorises innermost loops.
+    let (mut b1, mut b2) = (0.0_f64, 0.0_f64);
+    macro_rules! step {
+        ($($i:literal)*) => {$(
+            let b0 = 2.0 * u * b1 - b2 + ERFC_CHEB[$i];
+            b2 = b1;
+            b1 = b0;
+        )*};
     }
+    step!(25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1);
     let g = ERFC_CHEB[0] + u * b1 - b2;
     // Exact split z^2 = zs^2 + d (z + zs), zs = z on a 1/16 grid (Cody 1969).
     let zs = ((z * 16.0 + MAGIC) - MAGIC) * 0.0625;
     let d = z - zs;
     let r = t * exp1(-zs * zs) * exp1(g - d * (z + zs));
+    // LLVM lowers this to a select (blend), not a branch.
     if x < 0.0 { 2.0 - r } else { r }
+}
+
+/// Lanes per chunk. Four `f64` fill one AVX2 register; on SSE2 LLVM
+/// splits each chunk into two halves.
+const LANES: usize = 8;
+type V = [f64; LANES];
+
+/// Lane-wise map: `v!(|i| expr)` builds `[expr(0), .., expr(3)]`.
+macro_rules! v {
+    (|$i:ident| $e:expr) => {{
+        let mut r: V = [0.0; LANES];
+        for $i in 0..LANES {
+            r[$i] = $e;
+        }
+        r
+    }};
+}
+
+/// Four-lane [`exp1`]. Every step is the scalar step applied lane by lane,
+/// in the same order, so each lane is bit-identical to `exp1`.
+#[inline(always)]
+fn exp4(x: V) -> V {
+    let x = v!(|i| x[i].clamp(EXP_LO, EXP_HI));
+    let n = v!(|i| (x[i] * LOG2E + MAGIC) - MAGIC);
+    let r = v!(|i| (x[i] - n[i] * LN2_HI) - n[i] * LN2_LO);
+    let mut p = [1.0 / 6_227_020_800.0; LANES];
+    for c in [
+        1.0 / 479_001_600.0,
+        1.0 / 39_916_800.0,
+        1.0 / 3_628_800.0,
+        1.0 / 362_880.0,
+        1.0 / 40_320.0,
+        1.0 / 5_040.0,
+        1.0 / 720.0,
+        1.0 / 120.0,
+        1.0 / 24.0,
+        1.0 / 6.0,
+        0.5,
+        1.0,
+        1.0,
+    ] {
+        p = v!(|i| p[i] * r[i] + c);
+    }
+    let n1 = v!(|i| ((n[i] * 0.5) + MAGIC) - MAGIC);
+    v!(|i| (p[i] * pow2_int(n1[i])) * pow2_int(n[i] - n1[i]))
+}
+
+/// Four-lane [`erfc1`], lane by lane in the scalar order.
+#[inline(always)]
+fn erfc4(x: V) -> V {
+    let z = v!(|i| x[i].abs().min(28.0));
+    let t = v!(|i| 2.0 / (2.0 + z[i]));
+    let u = v!(|i| (2.0 * t[i] - 1.0 - ERFC_T0) / (1.0 - ERFC_T0));
+    let (mut b1, mut b2) = ([0.0; LANES], [0.0; LANES]);
+    for k in (1..ERFC_CHEB.len()).rev() {
+        let c = ERFC_CHEB[k];
+        let b0 = v!(|i| 2.0 * u[i] * b1[i] - b2[i] + c);
+        b2 = b1;
+        b1 = b0;
+    }
+    let g = v!(|i| ERFC_CHEB[0] + u[i] * b1[i] - b2[i]);
+    let zs = v!(|i| ((z[i] * 16.0 + MAGIC) - MAGIC) * 0.0625);
+    let a = exp4(v!(|i| -zs[i] * zs[i]));
+    let b = exp4(v!(|i| g[i] - (z[i] - zs[i]) * (z[i] + zs[i])));
+    v!(|i| {
+        let r = t[i] * a[i] * b[i];
+        if x[i] < 0.0 { 2.0 - r } else { r }
+    })
+}
+
+/// Applies the four-lane kernel `f4` over full chunks and the scalar
+/// kernel `f1` over the tail.
+///
+/// Why chunks. A plain element loop over `exp1` or `erfc1` was left scalar
+/// by LLVM (Round 7 measured `erfc_batch` at about 27 ns per element against
+/// 13 ns for the Cody `erfc`; the AVX2 build emitted only `vmulsd`). The
+/// four-lane kernels are written as fixed-length lane loops, which LLVM
+/// turns into packed (`vmulpd`) code. Each lane performs the scalar
+/// operations in the scalar order, so outputs are bit-identical to
+/// `f1(x[i])` (tested).
+#[inline(always)]
+fn map_lanes(x: &[f64], out: &mut [f64], f4: impl Fn(V) -> V, f1: impl Fn(f64) -> f64) {
+    let n = x.len().min(out.len());
+    let (x, out) = (&x[..n], &mut out[..n]);
+    let (xc, xt) = x.as_chunks::<LANES>();
+    let (oc, ot) = out.as_chunks_mut::<LANES>();
+    for (o, v) in oc.iter_mut().zip(xc) {
+        *o = f4(*v);
+    }
+    for (o, &v) in ot.iter_mut().zip(xt) {
+        *o = f1(v);
+    }
 }
 
 /// `out[i] = exp(x[i])` over the common length.
 pub fn exp_batch(x: &[f64], out: &mut [f64]) {
-    for (o, &v) in out.iter_mut().zip(x) {
-        *o = exp1(v);
-    }
+    map_lanes(x, out, exp4, exp1);
 }
 
 /// `out[i] = erfc(x[i])` over the common length.
 pub fn erfc_batch(x: &[f64], out: &mut [f64]) {
-    for (o, &v) in out.iter_mut().zip(x) {
-        *o = erfc1(v);
-    }
+    map_lanes(x, out, erfc4, erfc1);
 }
 
 /// `out[i] = N(x[i]) = erfc(-x[i] / sqrt 2) / 2` over the common length.
 pub fn norm_cdf_batch(x: &[f64], out: &mut [f64]) {
-    for (o, &v) in out.iter_mut().zip(x) {
-        *o = 0.5 * erfc1(-v * std::f64::consts::FRAC_1_SQRT_2);
-    }
+    const R: f64 = std::f64::consts::FRAC_1_SQRT_2;
+    map_lanes(
+        x,
+        out,
+        |v| {
+            let e = erfc4(v!(|i| -v[i] * R));
+            v!(|i| 0.5 * e[i])
+        },
+        |v| 0.5 * erfc1(-v * R),
+    );
 }
 
 #[cfg(test)]
@@ -163,6 +277,37 @@ mod tests {
         assert!(worst <= 2e-15, "{worst}");
         assert_eq!(erfc1(30.0), 0.0);
         assert_eq!(erfc1(-30.0), 2.0);
+    }
+
+    /// The lane kernels must give the scalar kernels' bits, for every
+    /// tail length and across both branches of every select.
+    #[test]
+    fn batch_is_bit_identical_to_scalar() {
+        let mut g = crate::rng::SplitMix64::new(17);
+        for n in 0..40 {
+            let x: Vec<f64> = (0..n)
+                .map(|_| -40.0 + 80.0 * ((g.next_u64() >> 11) as f64 / 9_007_199_254_740_992.0))
+                .collect();
+            let mut y = vec![f64::NAN; n];
+            erfc_batch(&x, &mut y);
+            for (&a, &b) in x.iter().zip(&y) {
+                assert_eq!(b.to_bits(), erfc1(a).to_bits(), "erfc {a}");
+            }
+            let xe: Vec<f64> = x.iter().map(|v| v * 20.0).collect();
+            exp_batch(&xe, &mut y);
+            for (&a, &b) in xe.iter().zip(&y) {
+                assert_eq!(b.to_bits(), exp1(a).to_bits(), "exp {a}");
+            }
+            norm_cdf_batch(&x, &mut y);
+            for (&a, &b) in x.iter().zip(&y) {
+                let r = 0.5 * erfc1(-a * std::f64::consts::FRAC_1_SQRT_2);
+                assert_eq!(b.to_bits(), r.to_bits(), "cdf {a}");
+            }
+        }
+        // Unequal lengths: only the common prefix is written.
+        let mut y = [7.0; 3];
+        exp_batch(&[0.0; 10], &mut y);
+        assert_eq!(y, [1.0; 3]);
     }
 
     #[test]
