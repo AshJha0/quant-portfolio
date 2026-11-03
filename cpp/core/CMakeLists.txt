@@ -76,8 +76,11 @@ if(QP_CORE_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
   endif()
-  add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp)
+  add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp tests/test_holidays.cpp)
   target_link_libraries(qp_core_tests PRIVATE qp::core GTest::gtest GTest::gtest_main)
+  # QuantLib holiday extract shared with the Rust calendar tests.
+  target_compile_definitions(qp_core_tests PRIVATE
+    QP_HOLIDAY_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/ql_holidays_2000_2030.txt")
   target_compile_options(qp_core_tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->

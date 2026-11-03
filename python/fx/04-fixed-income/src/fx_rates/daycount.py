@@ -17,8 +17,9 @@ currencies' calendars, then rolls forward to a day that is good in every
 currency of the pair including USD. ``tenor_dates`` gives the start and end
 of each market tenor: ON runs trade date to T+1, TN runs T+1 to spot, SN
 runs spot to spot+1, and W/M/Y tenors run from spot with the end-end rule
-and modified following. Holiday calendars are partial (weekends and
-fixed-date holidays only, see :mod:`fx_rates.calendars`).
+and modified following. Holiday calendars are the rule-based ones in
+:mod:`qp_core.holidays` (sources listed there); a currency with no shipped
+calendar counts weekends only.
 
 All year fractions are returned as plain floats (units: years).
 """
@@ -32,6 +33,8 @@ from qp_core import daycount as _core
 from qp_core.daycount import MONEY_MARKET_DAYCOUNT, money_market_year_fraction
 from qp_core.daycount import add_months as _roll_months
 from qp_core.daycount import last_business_day as _last_business_day
+from qp_core.holidays import fx_spot_date as _fx_spot_date
+from qp_core.holidays import spot_lag as _spot_lag
 
 from .calendars import CALENDARS, BusinessCalendar, joint_calendar
 
@@ -96,7 +99,7 @@ def add_calendar_days(date: dt.date, days: int) -> dt.date:
 
 def spot_date(
     trade_date: dt.date,
-    spot_lag_days: int = 2,
+    spot_lag_days: int | None = None,
     pair: tuple[str, str] | None = None,
     calendar_days: bool = False,
 ) -> dt.date:
@@ -104,8 +107,13 @@ def spot_date(
 
     Business days are counted on the non-USD currencies of ``pair``; the
     result is then rolled forward to a day that is good in every currency
-    of the pair, USD included. With ``pair=None`` only weekends count.
-    Use ``spot_lag_days=1`` for USDCAD.
+    of the pair and in USD (a cross never settles on a New York holiday).
+    The rule lives in :func:`qp_core.holidays.fx_spot_date`. With
+    ``pair=None`` only weekends count.
+
+    ``spot_lag_days=None`` (the default) uses the pair's market lag: T+1
+    for USDCAD, USDTRY, USDRUB and USDPHP, T+2 otherwise. Before round 6
+    the default was 2 for every pair.
 
     ``calendar_days=True`` restores the old calendar-day arithmetic and is
     deprecated.
@@ -115,6 +123,8 @@ def spot_date(
     ValueError
         If ``spot_lag_days`` is negative.
     """
+    if spot_lag_days is None:
+        spot_lag_days = 2 if pair is None else _spot_lag(pair)
     if int(spot_lag_days) != spot_lag_days or spot_lag_days < 0:
         raise ValueError(f"spot_lag_days must be >= 0, got {spot_lag_days}")
     if calendar_days:
@@ -125,24 +135,18 @@ def spot_date(
         )
         return add_calendar_days(trade_date, spot_lag_days)
     if pair is None:
-        count_cal = CALENDARS["WEEKEND"]
-    else:
-        non_usd = [c for c in pair if c.upper() != "USD"]
-        if non_usd:
-            count_cal = joint_calendar(*(_ccy_calendar(c) for c in non_usd))
-        else:
-            count_cal = _ccy_calendar("USD")
-    d = trade_date
-    for _ in range(int(spot_lag_days)):
-        d = count_cal.add_business_days(d + dt.timedelta(days=1), 0)
-    return pair_calendar(pair).adjust(d, "following")
+        wk, d = CALENDARS["WEEKEND"], trade_date
+        for _ in range(int(spot_lag_days)):
+            d = wk.add_business_days(d + dt.timedelta(days=1), 0)
+        return wk.adjust(d, "following")
+    return _fx_spot_date(trade_date, pair, int(spot_lag_days))
 
 
 def tenor_dates(
     trade_date: dt.date,
     tenor: str,
     pair: tuple[str, str] | None = None,
-    spot_lag_days: int = 2,
+    spot_lag_days: int | None = None,
 ) -> tuple[dt.date, dt.date]:
     """Start and end (value) dates of a market tenor.
 
@@ -188,7 +192,7 @@ def tenor_dates(
 def forward_settlement_date(
     trade_date: dt.date,
     tenor: str,
-    spot_lag_days: int = 2,
+    spot_lag_days: int | None = None,
     pair: tuple[str, str] | None = None,
 ) -> dt.date:
     """Value date of an FX forward of market ``tenor`` (see :func:`tenor_dates`).

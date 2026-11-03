@@ -159,7 +159,7 @@ class CrossCurrencySwap:
                 f"market pair {market.pair} does not match position pair {self.pair}"
             )
         sign = 1.0 if self.receive_base else -1.0
-        v = sign * (market.spot * self.leg_pv_base(market) - self.leg_pv_quote(market))
+        v = sign * (market.spot_today * self.leg_pv_base(market) - self.leg_pv_quote(market))
         if self.include_initial_exchange:
             v += sign * (self.notional_quote - market.spot * self.notional_base)
         return v
@@ -251,7 +251,7 @@ class BasisSwap:
         pv_quote = self._leg_pv(market.domestic_curve, market.domestic_curve_adjusted,
                                 self.notional_quote, s_quote)
         sign = 1.0 if self.receive_base else -1.0
-        return sign * (market.spot * pv_base - pv_quote)
+        return sign * (market.spot_today * pv_base - pv_quote)
 
 
 # ---------------------------------------------------------------------- #
@@ -269,7 +269,7 @@ def solve_par_rate_quote(swap: CrossCurrencySwap, market: MarketState) -> float:
     annuity = swap.notional_quote * tau * float(np.sum(dfs))
     if annuity <= 0.0:
         raise ValueError("cannot solve par rate for zero quote notional")
-    target = market.spot * swap.leg_pv_base(market)
+    target = market.spot_today * swap.leg_pv_base(market)
     return (target - swap.notional_quote * float(dfs[-1])) / annuity
 
 
@@ -281,7 +281,7 @@ def solve_par_rate_base(swap: CrossCurrencySwap, market: MarketState) -> float:
     annuity = swap.notional_base * tau * float(np.sum(dfs))
     if annuity <= 0.0:
         raise ValueError("cannot solve par rate for zero base notional")
-    target = swap.leg_pv_quote(market) / market.spot
+    target = swap.leg_pv_quote(market) / market.spot_today
     return (target - swap.notional_base * float(dfs[-1])) / annuity
 
 

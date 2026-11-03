@@ -113,7 +113,7 @@ class TestCalendars:
         j = joint_calendar("EUR", "USD")
         assert not j.is_business_day(D(2025, 5, 1))
         assert not j.is_business_day(D(2025, 7, 4))
-        assert get_calendar("EUR+USD").fixed_holidays == j.fixed_holidays
+        assert get_calendar("EUR+USD").holidays(2025) == j.holidays(2025)
 
     def test_unknown_calendar_and_roll_rejected(self):
         with pytest.raises(ValueError, match="unknown calendar"):

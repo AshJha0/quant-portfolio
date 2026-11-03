@@ -24,6 +24,7 @@
 //! | [`philox`] | Philox4x32-10 counter-based generator (Random123 known answers) | new, opt-in |
 //! | [`quantile`] | O(n) selection and type-7 quantile, same bits as a sort | new, opt-in |
 //! | [`gemm`] | Cache-blocked GEMM and `D^T D`, same bits as the naive loops | eq VaR covariance |
+//! | [`holidays`] | Rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards, NDF value | new, opt-in |
 //! | [`vmath`] | Branch-free batch exp/erfc/normal CDF with documented tolerances | new, opt-in |
 //! | [`Error`] | Invalid-input / numerical-failure error shared by the fallible functions here | all four (via `From`) |
 //!
@@ -41,6 +42,7 @@ use std::fmt;
 pub mod bench;
 pub mod black_scholes;
 pub mod gemm;
+pub mod holidays;
 pub mod iv;
 pub mod linalg;
 pub mod par;
