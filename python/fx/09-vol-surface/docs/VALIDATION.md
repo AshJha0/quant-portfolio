@@ -200,6 +200,16 @@ arbitrage penalty `eta (1 + |rho|) <= 2` binds on USDJPY. Reproduce with
 `test_fit_from_pillars_reads_theta_at_forward_not_dns`. Use per-slice SVI
 or vanna-volga for pricing.
 
+*Update, milestone v2.1 (W21).* The per-slice route now exists as
+`qp_core.vol.essvi.fit_svi_slices`. With the butterfly and calendar
+checks enforced it fits the same USDJPY preset within 0.047 vol (worst
+slice 1y) and EURUSD within 0.000 vol, arbitrage-free. eSSVI fitted slice
+by slice reaches 0.115 vol on USDJPY and 0.03 on EURUSD; an unconstrained
+eSSVI does no better, so the limit is the eSSVI slice shape, not the
+penalty. The data are the stylised presets that define F10
+(`tests/data/fx_pillar_smiles.json`), not market quotes: the ECB publishes
+no FX vols. Test: `python/core/tests/test_vol_essvi.py`.
+
 ## 5. Convergence / stability studies
 
 * COS truncation and terms against Gil-Pelaez (1y, EURUSD-like

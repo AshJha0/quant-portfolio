@@ -255,3 +255,23 @@ not install it.
 | HW two-curve | exact-OU MC (200k paths) of the two-curve payoff | 4 SE + 2e-5 |
 | HW calibration | known (a, sigma) recovered from normal and Black vol grids | 1e-6 rel |
 | HW calibration | fixed a: sigma recovered; wrong a leaves a visible misfit | 1e-8 rel |
+
+## Milestone v2.1: dated bootstrap against QuantLib (W13b)
+
+Oracle: `tests/data/dated_bootstrap_usd.txt`, written by QuantLib 1.44
+through `tests/oracle/gen_dated_bootstrap_fixture.py`, with every period
+taken from QuantLib's own schedules. The Python, Rust and C++ bootstraps
+are each checked against QuantLib, not against one another.
+
+| Problem | Pillars | Largest gap to QuantLib | Test |
+|---|---|---|---|
+| USD SOFR OIS (deposit, OIS, 4 futures with HW convexity, OIS 18M-30Y) | 18 | 2.8e-13 in df; quote residual 3.6e-15 | `test_bootstrap_dated.py`, `test_dated_bootstrap_quantlib.py` |
+| TERM3M projection on OIS discounting | 12 | below 1e-12 in df | same |
+| EUR discount under USD collateral (1-10Y basis swaps) | 6 | 1.4e-13 in df | `python/fx/04-fixed-income/tests/test_xccy_bootstrap.py` |
+| Hull-White futures convexity | 3 points | 1e-13 relative | `test_bootstrap_dated.py` |
+
+Every quote reprices to 1e-10 in all three languages (enforced by a
+test). A finding while building the fixture: a hand-made 10Y basis-swap
+schedule put the 10Y point 1e-7 off; taking the periods from QuantLib's
+own helper legs fixed it, which is why the fixture stores periods rather
+than rebuilding them. The quotes are illustrative, not market data.
