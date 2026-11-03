@@ -1,0 +1,18 @@
+[package]
+name = "qp-ull-gateway"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Order gateway with pre-trade checks and the shared kill-switch contract (docs/KILL_CONTRACT.md), replaying python/oms/kill/vectors.json byte for byte. std only."
+license = "MIT"
+publish = false
+
+[lib]
+name = "qp_ull_gateway"
+path = "src/lib.rs"
+
+[dependencies]
+qp-ull-feed = { path = "../feed" }
+
+# Standalone until integration adds rust/ull/* to the rust/ workspace members.
+[workspace]
