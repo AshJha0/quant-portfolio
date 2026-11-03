@@ -60,7 +60,8 @@ def test_lag_zero_auction_fills_at_the_decision_close_in_the_same_row():
 def test_partial_fills_respect_participation_and_finish_later():
     prices = _prices()
     vol = pd.DataFrame({"A": [1000.0] * 6}, index=prices.index)
-    eng = EventEngine(prices, NextBarFill(1.0, 1, max_participation=0.1), volumes=vol)
+    eng = EventEngine(prices, NextBarFill(1.0, 1, max_participation=0.1), volumes=vol,
+                      initial_nav=1e6)
     res = eng.run(Once(0, [MarketOrder(0, 250.0)]))
     assert [f.quantity for f in res.fills] == [100.0, 100.0, 50.0]
     assert [f.bar for f in res.fills] == [1, 2, 3]
@@ -108,9 +109,25 @@ def test_invalid_fill_models(kw):
         NextBarFill(**kw)
 
 
-def test_solver_raises_when_cost_exceeds_what_is_traded():
-    with pytest.raises(RuntimeError):
-        solve_post_trade_nav(1.0, np.zeros(1), np.array([1.0]), lambda dv: 2.0 * abs(dv).sum())
+def test_solver_wipes_out_when_cost_exceeds_the_nav():
+    # selling a book of 1 at 200% cost leaves nothing: N = 0, absorbing
+    assert solve_post_trade_nav(1.0, np.ones(1), np.zeros(1), lambda dv: 2.0 * abs(dv).sum()) == 0.0
+
+
+def test_solver_bisects_when_iteration_would_diverge():
+    # buying at 200% cost from flat: N = 1 - 2 N, so N = 1/3; plain iteration diverges
+    n = solve_post_trade_nav(1.0, np.zeros(1), np.ones(1), lambda dv: 2.0 * abs(dv).sum())
+    assert n == pytest.approx(1.0 / 3.0, abs=1e-15)
+
+
+def test_fast_mode_absorbs_a_wipe_out():
+    from qp_bt import LinearCost, run_fast
+
+    rets = pd.DataFrame({"A": [0.0, 0.01, 0.01, 0.01]})
+    tgt = np.array([[1.0], [0.0], [1.0], [np.nan]])
+    led = run_fast(rets, tgt, NextBarFill(0.5, 1), LinearCost(20_000.0)).ledger
+    assert led["net_ret"].iloc[2] == -1.0
+    assert (led["nav"].iloc[2:] == 0.0).all()
 
 
 def test_prices_must_be_positive():
@@ -132,7 +149,8 @@ def test_fill_records_map_onto_valid_oms_execution_reports():
     oms = _oms()
     prices = _prices()
     vol = pd.DataFrame({"A": [1000.0] * 6}, index=prices.index)
-    res = EventEngine(prices, NextBarFill(1.0, 1, max_participation=0.1), volumes=vol).run(
+    res = EventEngine(prices, NextBarFill(1.0, 1, max_participation=0.1), volumes=vol,
+                      initial_nav=1e6).run(
         Once(0, [MarketOrder(0, -250.0)]))
     order = oms.Order("c1", "A", oms.Side.SELL, 250.0)
     cum = 0.0
