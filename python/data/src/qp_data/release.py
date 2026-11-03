@@ -178,6 +178,7 @@ class MonthEndLag(ReleaseRule):
 
 
 _H15 = BusinessDayLag(1, "USD", "H.15: prior business day, published the next US business day")
+_OECD_MEI = MonthlyBound(2, 1, "USD", description="OECD MEI monthly: bounded at the 1st of month m+2")
 _RULES: dict[str, ReleaseRule] = {}
 _PREFIX_RULES: list[tuple[str, ReleaseRule]] = [
     ("fred:DGS", _H15),
@@ -188,6 +189,10 @@ _PREFIX_RULES: list[tuple[str, ReleaseRule]] = [
     # The library posts a month's factors some weeks after month end and has
     # no fixed schedule; 45 US business days (about two months) is a
     # conservative upper bound, never earlier than the real posting.
+    # OECD MEI monthly series (interbank rates, CPI): national releases
+    # land within about six weeks; bounded at the 1st of month m+2 (the
+    # convention in research/lib/excess_returns.as_known).
+    ("fred:IR3TIB01", _OECD_MEI),
     ("french:", MonthEndLag(45, "USD", "French Data Library: monthly update, bounded at 45 business days")),
 ]
 
@@ -230,6 +235,8 @@ def rule_for(series: str) -> ReleaseRule:
     for prefix, rule in _PREFIX_RULES:
         if series.startswith(prefix):
             return rule
+    if series.startswith("fred:") and series.endswith("CPIALLMINMEI"):
+        return _OECD_MEI
     raise UnknownReleaseRule(
         f"no publication-lag rule for {series!r}; add one with register_rule() "
         "from the issuer's release calendar before using the series"

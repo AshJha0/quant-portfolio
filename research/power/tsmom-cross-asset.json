@@ -1,0 +1,53 @@
+{
+  "what": "simulated power for research/prereg/2026-11-03-tsmom-cross-asset.md; synthetic data only",
+  "design": "single_series (one portfolio mean)",
+  "assets": "30 FX (dollar loading 0.6, 10 % vol) + 1 equity (16 %)",
+  "months": 132,
+  "warmup_months": 24,
+  "monthly_drift_phi": 0.9,
+  "rule": "research/tsmom/tsmom.py defaults (12-month sign, 40 % target, EWMA com 12)",
+  "decision_rule": "portfolio mean, Newey-West lag 3, t > 1.645",
+  "seed": 2,
+  "cells": [
+    {
+      "drift_sd_annual": 0.0,
+      "truth": "null",
+      "reps": 300,
+      "rejection_rate": 0.05,
+      "mc_se": 0.012583057392117916,
+      "mean_sharpe": -0.043900737251681095
+    },
+    {
+      "drift_sd_annual": 0.02,
+      "truth": "planted momentum",
+      "reps": 300,
+      "rejection_rate": 0.04666666666666667,
+      "mc_se": 0.012177696674506895,
+      "mean_sharpe": 0.04817353319648325
+    },
+    {
+      "drift_sd_annual": 0.04,
+      "truth": "planted momentum",
+      "reps": 300,
+      "rejection_rate": 0.13333333333333333,
+      "mc_se": 0.019626135258506327,
+      "mean_sharpe": 0.16643325678501325
+    },
+    {
+      "drift_sd_annual": 0.06,
+      "truth": "planted momentum",
+      "reps": 300,
+      "rejection_rate": 0.45,
+      "mc_se": 0.028722813232690145,
+      "mean_sharpe": 0.4483896306926791
+    },
+    {
+      "drift_sd_annual": 0.08,
+      "truth": "planted momentum",
+      "reps": 300,
+      "rejection_rate": 0.7566666666666667,
+      "mc_se": 0.024773791408275413,
+      "mean_sharpe": 0.7095042804995774
+    }
+  ]
+}
