@@ -7,37 +7,49 @@ price, p_t + f (p_{t+1} - p_t) with f = 0.5 by default; a close-auction
 variant fills at p_t and pays an auction cost. For daily FX the t+1 price is
 the next daily close. See :class:`ExecutionConfig`.
 
-Accounting (all P&L as a fraction of base notional; multiply by ``notional``).
-``pos_t`` is the spread position decided at the close of ``t``; leg notionals
-are ``n1_t = pos_t`` (long pair 1) and ``n2_t = pos_t * beta_t`` (short pair 2).
+Accounting, on the shared ``qp_bt`` event engine (Round 12, W24b)
+------------------------------------------------------------------
+``pos_t`` is the spread position decided at the close of ``t``. Its legs are
+quote-currency (USD) exposures ``pos_t * notional`` in pair 1 and
+``-pos_t * beta_t * notional`` in pair 2, sized at the fill price: the order
+buys ``e / q`` units of base, where ``q`` is the fill price. The units are
+then held, and their USD value moves with the price, until the position
+changes. All P&L is in units of account of the quote currency.
 
-Mode ``"next"`` (default). The order for ``pos_{t-1}`` fills during period
-``t`` at ``q_t = p_{t-1} + f (p_t - p_{t-1})``. Booked at ``t``:
+Mode ``"next"`` (default). An order decided at ``t-1`` fills in period
+``t`` at ``q_t = p_{t-1} + f (p_t - p_{t-1})``. Booked at ``t``, per leg
+with ``u`` units of base held before the fill and ``u'`` after:
 
-* spot: ``n_{t-2} (log q_t - log p_{t-1}) + n_{t-1} (log p_t - log q_t)``
-  per leg (pair 2 with a minus sign). The pieces sum to the log return.
-* carry: ``(f n_{t-2} + (1 - f) n_{t-1}) * accr_t``, accruals from rates at
-  ``t-1`` and the calendar-day gap (ACT/365F).
-* cost: ``|n_{t-1} - n_{t-2}| * hs`` with half-spread fraction
-  ``hs = 0.5 * pip_spread * pip_size / q_t``.
+* spot: ``u (q_t - p_{t-1}) + u' (p_t - q_t)``;
+* carry: ``(f u + (1 - f) u') p_{t-1} accr_t``, accruals from rates at
+  ``t-1`` and the calendar-day gap (ACT/365F), time-weighted across the
+  fill as before;
+* cost: ``-|u' - u| * hs`` with half-spread ``hs = 0.5 * pip_spread *
+  pip_size`` in price units.
 
-Mode ``"close_auction"``. The order for ``pos_t`` fills at ``p_t``. Spot is
-``n_{t-1} dlog p_t``, carry ``n_{t-1} accr_t``, and the cost at ``t`` is
-``|n_t - n_{t-1}| * (hs_t + auction_cost_bp * 1e-4)``.
+Mode ``"close_auction"``. The order for ``pos_t`` fills at ``p_t``, booked
+at ``t``: spot ``u (p_t - p_{t-1})``, carry ``u p_{t-1} accr_t`` and cost
+``-|u' - u| (hs + auction_cost_bp * 1e-4 * p_t)``.
 
-Identity (unit tested): ``total = spot + carry + cost`` elementwise, with
-``cost <= 0``. No lookahead: P&L booked at ``t`` uses prices up to ``t`` and
-positions decided before ``t``. A detector test perturbs prices after day
-``k`` and asserts P&L through ``k`` is unchanged.
+Identity (unit tested): ``total = spot + carry + cost + financing``
+elementwise, with ``cost <= 0``. No lookahead: P&L booked at ``t`` uses
+prices up to ``t`` and positions decided before ``t``. A detector test
+perturbs prices after day ``k`` and asserts P&L through ``k`` is unchanged.
+
+Migration (W24b). Before, the P&L was ``n * notional * dlog p`` with the
+exposure reset to ``n * notional`` every day for free: log returns on a
+constant USD exposure. Now the exposure is bought once at the fill and
+drifts; spot P&L is the USD change in value of the units held. Before/after
+numbers are in the handback; hand fixtures are in ``tests/test_backtest.py``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
 
 import numpy as np
 import pandas as pd
+from qp_bt import BarContext, EventEngine, NextBarFill, TargetPosition
 from qp_core.execution import ExecutionConfig
 from qp_core.stats import Financing, warn_no_financing
 
@@ -80,6 +92,9 @@ class BacktestResult:
     leg2_pnl: pd.Series | None = None
     financing_pnl: pd.Series | None = None
     risk_free_pnl: pd.Series | None = None
+    units: pd.DataFrame | None = None
+    """Base-currency units held per leg at each close (``leg1``, ``leg2``;
+    leg 2 is negative when the spread is long). The P&L is earned on these."""
 
     @property
     def excess_pnl(self) -> pd.Series:
@@ -197,8 +212,8 @@ def run_backtest(
     beta_s = _as_series(beta, index, "beta").to_numpy()
     require_finite(beta=beta_s)
 
-    lp1 = np.log(finite_series(p1.to_numpy(dtype=float), "p1", positive=True))
-    lp2 = np.log(finite_series(p2.to_numpy(dtype=float), "p2", positive=True))
+    finite_series(p1.to_numpy(dtype=float), "p1", positive=True)
+    finite_series(p2.to_numpy(dtype=float), "p2", positive=True)
 
     ex = execution if execution is not None else ExecutionConfig()
     if not isinstance(ex, ExecutionConfig):
@@ -206,66 +221,86 @@ def run_backtest(
     px1 = p1.to_numpy(dtype=float)
     px2 = p2.to_numpy(dtype=float)
 
-    n1 = pos
-    n2 = pos * beta_s
-    accr1 = accr2 = None
+    e1 = pos * notional            # USD exposure, pair 1 (long the spread)
+    e2 = -pos * beta_s * notional  # USD exposure, pair 2 (short beta per unit)
+    accr = np.zeros((n, 2))
     if rates is not None:
         for key in ("rb1", "rq1", "rb2", "rq2"):
             if key not in rates:
                 raise ValueError(f"rates dict missing key {key!r}")
             # Named by dict key so the error points at the offending quote.
             require_finite(**{f"rates[{key!r}]": rates[key]})
-        accr1 = carry_mod.carry_accrual(rates["rb1"], rates["rq1"], index,
-                                        basis=basis, method=carry_method)
-        accr2 = carry_mod.carry_accrual(rates["rb2"], rates["rq2"], index,
-                                        basis=basis, method=carry_method)
-    ps1 = 0.5 * pip_spread_1 * _pip_size(pair1)
-    ps2 = 0.5 * pip_spread_2 * _pip_size(pair2)
-
-    spot = np.zeros(n)
-    car = np.zeros(n)
-    cost = np.zeros(n)
-    leg1 = np.zeros(n)
-    leg2 = np.zeros(n)
+        accr[:, 0] = carry_mod.carry_accrual(rates["rb1"], rates["rq1"], index,
+                                             basis=basis, method=carry_method)
+        accr[:, 1] = carry_mod.carry_accrual(rates["rb2"], rates["rq2"], index,
+                                             basis=basis, method=carry_method)
+    hs = np.array([0.5 * pip_spread_1 * _pip_size(pair1), 0.5 * pip_spread_2 * _pip_size(pair2)])
+    px = np.column_stack([px1, px2])
     if ex.mode == "close_auction":
-        spot[1:] = n1[:-1] * np.diff(lp1) - n2[:-1] * np.diff(lp2)
-        leg1[1:] = n1[:-1] * np.diff(lp1)
-        leg2[1:] = -n2[:-1] * np.diff(lp2)
-        if accr1 is not None:
-            car[1:] = n1[:-1] * accr1[1:] - n2[:-1] * cast(np.ndarray, accr2)[1:]
-            leg1[1:] += n1[:-1] * accr1[1:]
-            leg2[1:] -= n2[:-1] * cast(np.ndarray, accr2)[1:]
-        dn1 = np.abs(np.diff(np.concatenate([[0.0], n1])))
-        dn2 = np.abs(np.diff(np.concatenate([[0.0], n2])))
-        auc = ex.auction_cost_bp * 1e-4
-        cost = -(dn1 * (ps1 / px1 + auc) + dn2 * (ps2 / px2 + auc))
-        leg1 -= dn1 * (ps1 / px1 + auc)
-        leg2 -= dn2 * (ps2 / px2 + auc)
+        fill = NextBarFill.from_execution(ex, auction_booked="decision")
+        f = 0.0
     else:
-        f = ex.fill_fraction
-        # held before / after the fill inside period t (t = 1..n-1)
-        old1 = np.concatenate([[0.0], n1[:-2]])
-        old2 = np.concatenate([[0.0], n2[:-2]])
-        new1, new2 = n1[:-1], n2[:-1]
-        q1 = px1[:-1] + f * np.diff(px1)
-        q2 = px2[:-1] + f * np.diff(px2)
-        lq1, lq2 = np.log(q1), np.log(q2)
-        spot[1:] = (old1 * (lq1 - lp1[:-1]) + new1 * (lp1[1:] - lq1)
-                    - old2 * (lq2 - lp2[:-1]) - new2 * (lp2[1:] - lq2))
-        leg1[1:] = old1 * (lq1 - lp1[:-1]) + new1 * (lp1[1:] - lq1)
-        leg2[1:] = -(old2 * (lq2 - lp2[:-1]) + new2 * (lp2[1:] - lq2))
-        if accr1 is not None:
-            car[1:] = ((f * old1 + (1 - f) * new1) * accr1[1:]
-                       - (f * old2 + (1 - f) * new2) * cast(np.ndarray, accr2)[1:])
-            leg1[1:] += (f * old1 + (1 - f) * new1) * accr1[1:]
-            leg2[1:] -= (f * old2 + (1 - f) * new2) * cast(np.ndarray, accr2)[1:]
-        cost[1:] = -(np.abs(new1 - old1) * ps1 / q1 + np.abs(new2 - old2) * ps2 / q2)
-        leg1[1:] -= np.abs(new1 - old1) * ps1 / q1
-        leg2[1:] -= np.abs(new2 - old2) * ps2 / q2
+        fill = NextBarFill.from_execution(ex)
+        f = fill.fraction
+    lag = fill.lag
+    expo = np.column_stack([e1, e2])
+    changed = np.r_[True, np.any(np.diff(expo, axis=0) != 0.0, axis=1)]
+    changed &= ~((np.arange(n) == 0) & ~np.any(expo[0] != 0.0))
 
-    spot_pnl = pd.Series(spot * notional, index=index, name="spot_pnl")
-    carry_pnl = pd.Series(car * notional, index=index, name="carry_pnl")
-    cost_pnl = pd.Series(cost * notional, index=index, name="cost_pnl")
+    def target_units(t: int, pf: np.ndarray) -> np.ndarray:
+        return np.asarray(expo[t] / pf, dtype=float)
+
+    def unit_cost(s: int, asset: int, dq: float, price: float) -> dict[str, float]:
+        return {f"leg{asset + 1}": abs(dq) * float(hs[asset])}
+
+    def leg_carry(s: int, q: np.ndarray, pf: np.ndarray) -> dict[str, float]:
+        held = q
+        dec = s - lag
+        if f > 0.0 and dec >= 0 and changed[dec]:
+            held = f * q + (1.0 - f) * target_units(dec, pf)
+        c = held * px[s - 1] * accr[s]
+        return {"leg1": -float(c[0]), "leg2": -float(c[1])}
+
+    class _Path:
+        def on_bar(self, ctx: BarContext) -> list[TargetPosition]:
+            t = ctx.bar
+            if not changed[t]:
+                return []
+            def resolve(pf: np.ndarray) -> np.ndarray:
+                return target_units(t, pf)
+
+            return [TargetPosition(resolve)]
+
+    # NAV only has to stay positive for the engine's wipe-out rule; P&L is
+    # read from its per-leg split, not from NAV.
+    nav0 = 1.0 + 1e6 * (1.0 + float(np.abs(expo).sum(axis=1).max(initial=0.0)))
+    run = EventEngine(pd.DataFrame(px, index=pd.RangeIndex(n)), fill, unit_cost=unit_cost,
+                      carry=leg_carry, initial_nav=nav0).run(_Path())
+    assert run.positions is not None and run.pnl is not None
+    units = run.positions.to_numpy(dtype=float)
+    before = np.vstack([np.zeros((1, 2)), units[:-1]])
+    after = units
+    p_prev = np.vstack([px[:1], px[:-1]])
+    q_fill = p_prev + fill.fraction * (px - p_prev)
+    leg_spot = before * (q_fill - p_prev) + after * (px - q_fill)
+    leg_spot[0] = 0.0
+    leg_cost = np.zeros((n, 2))
+    for rec in run.fills:
+        leg_cost[rec.bar, rec.asset] -= float(sum(rec.costs.values()))
+    leg_car = np.zeros((n, 2))
+    for j in (0, 1):
+        col = f"carry_leg{j + 1}"
+        if col in run.pnl:
+            leg_car[:, j] = -run.pnl[col].to_numpy(dtype=float)
+    spot = leg_spot.sum(axis=1)
+    car = leg_car.sum(axis=1)
+    cost = leg_cost.sum(axis=1)
+    leg1 = leg_spot[:, 0] + leg_car[:, 0] + leg_cost[:, 0]
+    leg2 = leg_spot[:, 1] + leg_car[:, 1] + leg_cost[:, 1]
+
+    spot_pnl = pd.Series(spot, index=index, name="spot_pnl")
+    carry_pnl = pd.Series(car, index=index, name="carry_pnl")
+    cost_pnl = pd.Series(cost, index=index, name="cost_pnl")
     cap = notional if capital is None else float(capital)
     if financing is None:
         warn_no_financing("fx_pairs.run_backtest")
@@ -283,10 +318,11 @@ def run_backtest(
         total_pnl=total, equity=total.cumsum().rename("equity"),
         beta=pd.Series(beta_s, index=index, name="beta"),
         notional=notional, trades=list(trades) if trades else [],
-        leg1_pnl=pd.Series(leg1 * notional, index=index, name="leg1_pnl"),
-        leg2_pnl=pd.Series(leg2 * notional, index=index, name="leg2_pnl"),
+        leg1_pnl=pd.Series(leg1, index=index, name="leg1_pnl"),
+        leg2_pnl=pd.Series(leg2, index=index, name="leg2_pnl"),
         financing_pnl=fin_pnl,
         risk_free_pnl=pd.Series(rf * cap, index=index, name="risk_free_pnl"),
+        units=pd.DataFrame(units, index=index, columns=["leg1", "leg2"]),
     )
 
 
