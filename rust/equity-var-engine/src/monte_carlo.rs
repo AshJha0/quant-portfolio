@@ -30,7 +30,7 @@ use crate::psd::PsdRepair;
 use crate::rng::PathRng;
 use crate::{EqVarError, Result, TailModel, validate_alpha};
 
-/// Minimum scenario count for [`var_order_statistic_se`] / the tail read-off.
+/// Minimum scenario count for [`var_kde_se`] / the tail read-off.
 /// It mirrors the C++ engine's `mc_tail_metrics` floor.
 pub const MIN_PATHS: usize = 100;
 

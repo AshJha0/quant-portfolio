@@ -98,14 +98,6 @@ double cornish_fisher_z(double z, double skew, double excess_kurtosis);
 /// valid at alpha = 0.01 and 0.001 and fails only once z_a nears 4.
 bool cornish_fisher_valid(double skew, double excess_kurtosis, double alpha);
 
-/// Old predicate on the fixed interval [-z_range, z_range]. Non-finite
-/// moments now throw instead of returning false.
-[[deprecated(
-    "ignores alpha; use cornish_fisher_valid(skew, excess_kurtosis, alpha). "
-    "Removed next release.")]]
-bool cornish_fisher_domain_ok(double skew, double excess_kurtosis, double z_range = 4.0,
-                              int n_grid = 801);
-
 /// Cornish-Fisher VaR (positive loss) at tail probability alpha. Throws
 /// std::invalid_argument when check_domain is true and
 /// cornish_fisher_valid(skew, excess_kurtosis, alpha) is false. Non-finite

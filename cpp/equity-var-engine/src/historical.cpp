@@ -98,11 +98,6 @@ TailRisk var_es_weighted(std::span<const double> pnl, std::span<const double> we
     return r;
 }
 
-double quantile_linear(std::span<const double> x, double q) {
-    std::vector<double> work(x.size());
-    return value_or_throw(detail::try_quantile_linear(x, q, work));
-}
-
 double historical_var(std::span<const double> pnl, double alpha) {
     std::vector<double> loss(pnl.size());
     return value_or_throw(try_historical_var(pnl, alpha, loss));

@@ -106,10 +106,6 @@ CholeskyResult cholesky(const Matrix& cov, Repair repair) {
     return res;
 }
 
-CholeskyResult cholesky(const Matrix& cov, double /*jitter*/, int /*max_tries*/) {
-    return cholesky(cov, Repair::None);
-}
-
 Matrix sample_covariance(const Matrix& returns) {
     const std::size_t t = returns.rows(), n = returns.cols();
     if (t < 2) {

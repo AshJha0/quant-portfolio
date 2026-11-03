@@ -90,10 +90,7 @@ TEST(CornishFisher, LeftSkewAndFatTailsRaiseVar) {
 }
 
 TEST(CornishFisher, DomainCheckRejectsNonMonotoneRegion) {
-    EXPECT_TRUE(cornish_fisher_domain_ok(0.0, 0.0));
-    EXPECT_TRUE(cornish_fisher_domain_ok(-0.5, 1.0));
     // Large skew makes the cubic non-monotone: not a quantile function.
-    EXPECT_FALSE(cornish_fisher_domain_ok(3.0, 0.0));
     EXPECT_THROW(cornish_fisher_var(1.0e4, 0.01, 3.0, 0.0), std::invalid_argument);
     // Explicit override for diagnostics only.
     EXPECT_NO_THROW({
@@ -113,6 +110,5 @@ TEST(CornishFisher, DomainCheckIsExactNotGridResolutionDependent) {
     // (non-monotone).
     const double skew = -0.010499946187942602;
     const double excess_kurt = 8.000105998830488;
-    EXPECT_FALSE(cornish_fisher_domain_ok(skew, excess_kurt));
     EXPECT_THROW(cornish_fisher_var(1.0, 0.01, skew, excess_kurt), std::invalid_argument);
 }

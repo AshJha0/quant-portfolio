@@ -115,7 +115,6 @@ TEST(CornishFisher, AlphaAwareValidity) {
     // g'(-4) < 0 but g'(-z_a) > 0 for alpha = 0.01 and 0.001.
     EXPECT_TRUE(cornish_fisher_valid(0.122, -0.427, 0.01));
     EXPECT_TRUE(cornish_fisher_valid(0.122, -0.427, 0.001));
-    EXPECT_FALSE(cornish_fisher_domain_ok(0.122, -0.427, 4.0));
     EXPECT_TRUE(cornish_fisher_valid(0.0, 0.0, 0.01));
     // S = 1, K = 1: A = -1/24, B = 1/3, C = 73/72; minimum at -r:
     // r = 2.326 gives +0.013 (valid), r = 3.090 gives -0.415 (invalid).
