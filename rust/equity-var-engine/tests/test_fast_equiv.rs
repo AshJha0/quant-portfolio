@@ -170,3 +170,31 @@ fn fast_errors_are_reported_not_panics() {
         Err(VarFault::ShapeMismatch)
     );
 }
+
+/// W4(a): the linear MC P&L uses v = L^T w once per run (O(n) per path).
+/// It must equal the two-step panel path (simulate_factor_returns, then
+/// portfolio_pnl: a full triangular matvec per path) to rounding: per path
+/// within 1e-12 of sum_i |w_i r_i|, and VaR / ES within 1e-12 relative.
+#[test]
+fn linear_mc_equals_full_matvec_path() {
+    for seed in 0..4u64 {
+        for &n in &[1usize, 5, 30] {
+            let (w, cov) = book(seed + 200, n);
+            for tail in [TailModel::Normal, TailModel::StudentT { df: 4.5 }] {
+                let paths = 2_000;
+                let fast = monte_carlo_pnl(&w, &cov, paths, tail, seed).unwrap();
+                let scen = simulate_factor_returns(&cov, paths, tail, seed).unwrap();
+                let old = portfolio_pnl(&scen, &w).unwrap();
+                for p in 0..paths {
+                    let scale: f64 = (0..n).map(|i| (w[i] * scen.get(p, i)).abs()).sum();
+                    assert!((fast[p] - old[p]).abs() <= 1e-12 * scale, "{seed} {n} {p}");
+                }
+                let run = monte_carlo_run(&w, &cov, 0.01, paths, tail, seed, 20).unwrap();
+                let v0 = empirical_var(&old, 0.01).unwrap();
+                let e0 = expected_shortfall(&old, 0.01).unwrap();
+                assert!((run.var - v0).abs() <= 1e-12 * v0.abs());
+                assert!((run.es - e0).abs() <= 1e-12 * e0.abs());
+            }
+        }
+    }
+}

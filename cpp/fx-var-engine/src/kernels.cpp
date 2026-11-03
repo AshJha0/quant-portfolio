@@ -332,7 +332,7 @@ Result<void> try_simulate_factor_returns(std::span<const double> lower, std::siz
       row[i] = acc;
     }
     if (dist == McDist::kStudentT) {
-      const double w = rng.chisq(df) / df;
+      const double w = rng.chisq_nothrow(df) / df;  // never throws on the noexcept path
       const double m = t_scale / std::sqrt(w);
       for (std::size_t i = 0; i < k; ++i) row[i] *= m;
     }

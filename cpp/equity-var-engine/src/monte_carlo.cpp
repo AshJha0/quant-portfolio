@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,6 +31,19 @@ double RandomStream::gamma(double shape) {
     auto u = [this] { return uniform(); };
     auto z = [this] { return gaussian(); };
     return qp::gamma_marsaglia_tsang(shape, u, z);
+}
+
+double RandomStream::gamma_nothrow(double shape) noexcept {
+    // The shape test comes first: qp::gamma_marsaglia_tsang recurses for
+    // shape <= 0 and never terminates for NaN.
+    if (!(shape > 0.0) || !std::isfinite(shape)) return std::numeric_limits<double>::quiet_NaN();
+    auto u = [this] { return uniform(); };
+    auto z = [this] { return gaussian(); };
+    return qp::gamma_marsaglia_tsang(shape, u, z);
+}
+
+double RandomStream::chi_squared_nothrow(double df) noexcept {
+    return 2.0 * gamma_nothrow(0.5 * df);
 }
 
 double RandomStream::chi_squared(double df) {

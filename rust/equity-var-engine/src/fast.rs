@@ -431,6 +431,7 @@ pub struct McWorkspace {
     jitter: f64,
     prepared: bool,
     z: Vec<f64>,
+    v: Vec<f64>,
     pnl: Vec<f64>,
     buf: Vec<f64>,
     est: Vec<f64>,
@@ -447,6 +448,7 @@ impl McWorkspace {
             jitter: 0.0,
             prepared: false,
             z: vec![0.0; n],
+            v: vec![0.0; n],
             pnl: vec![0.0; max_paths],
             buf: vec![0.0; max_paths],
             est: vec![0.0; max_boot],
@@ -524,39 +526,16 @@ impl McWorkspace {
             .pnl
             .get_mut(..n_paths)
             .ok_or(VarFault::WorkspaceTooSmall)?;
-        let z = &mut self.z[..];
-        let chol = &self.chol[..];
-        let df = self.df;
-        let mut rng = Rng::new(seed);
-        for out in pnl.iter_mut() {
-            for zi in z.iter_mut() {
-                *zi = rng.standard_normal();
-            }
-            // Student-t mixing draw comes after the n normals, as in the
-            // main API, so the stream is consumed in the same order.
-            let m = match df {
-                Some(df) => {
-                    let w = rng.chi_square(df) / df;
-                    Some(1.0 / w.sqrt())
-                }
-                None => None,
-            };
-            // r_i = (L z)_i (times m), then P&L = sum_i w_i r_i with the
-            // accumulation order of `Matrix::matvec`.
-            let mut acc = 0.0;
-            for (i, (row, w)) in chol.chunks_exact(n).zip(exposures).enumerate() {
-                let mut s = 0.0;
-                for (l, zj) in row[..=i].iter().zip(z.iter()) {
-                    s += l * zj;
-                }
-                let r = match m {
-                    Some(m) => s * m,
-                    None => s,
-                };
-                acc += r * w;
-            }
-            *out = acc;
-        }
+        // O(n) per path via v = L^T w (W4(a)); same code as the main API.
+        crate::monte_carlo::linear_pnl_from_factor(
+            &self.chol,
+            exposures,
+            self.df,
+            seed,
+            pnl,
+            &mut self.v,
+            &mut self.z,
+        );
         check_finite(pnl)
     }
 

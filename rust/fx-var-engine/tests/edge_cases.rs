@@ -916,3 +916,18 @@ fn empirical_es_dominates_var_at_integer_boundaries() {
         }
     }
 }
+
+/// W4(c) parity: the gamma / chi-square sampler on the hot path never
+/// panics and never loops; a bad shape gives NaN without consuming the
+/// stream (the C++ engines' gamma_nothrow has the same contract).
+#[test]
+fn rng_gamma_bad_shape_is_nan_and_leaves_stream() {
+    use fx_var_engine::rng::Rng;
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let mut a = Rng::new(9);
+        let mut b = Rng::new(9);
+        assert!(a.gamma(bad).is_nan());
+        assert!(a.chi_square(bad).is_nan());
+        assert_eq!(a.normal().to_bits(), b.normal().to_bits());
+    }
+}

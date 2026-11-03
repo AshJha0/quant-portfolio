@@ -6,6 +6,7 @@
 
 #include <bit>
 #include <cmath>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -161,9 +162,19 @@ TEST(NoexceptApi, FusedMonteCarloEqualsMonteCarloVar) {
         const MonteCarloResult b = monte_carlo_var(w, cov, 0.01, paths, d, df, 42, 50);
         EXPECT_TRUE(same_bits(a->var, b.var) && same_bits(a->es, b.es) &&
                     same_bits(a->var_se, b.var_se) && same_bits(a->var_se_kde, b.var_se_kde));
-        // The fused P&L equals the two-step simulate + portfolio_pnl path.
-        const auto pnl = portfolio_pnl(simulate_factor_returns(cov, paths, d, df, 42), w);
-        for (std::size_t p = 0; p < paths; ++p) ASSERT_TRUE(same_bits(ws.pnl[p], pnl[p])) << p;
+        // W4(a): the fused kernel uses v = L'w once per run, so it equals the
+        // two-step simulate + portfolio_pnl path (full matvec per path) to
+        // rounding only. Per path the bound is 1e-12 of sum_i |w_i r_i|.
+        const Matrix scen = simulate_factor_returns(cov, paths, d, df, 42);
+        const auto pnl = portfolio_pnl(scen, w);
+        for (std::size_t p = 0; p < paths; ++p) {
+            double scale = 0.0;
+            for (std::size_t i = 0; i < n; ++i) scale += std::fabs(w[i] * scen(p, i));
+            ASSERT_LE(std::fabs(ws.pnl[p] - pnl[p]), 1e-12 * scale) << p;
+        }
+        const MonteCarloResult old = mc_tail_metrics(pnl, 0.01, 50, 42 ^ 0x9E3779B97F4A7C15ULL);
+        EXPECT_LE(std::fabs(a->var - old.var), 1e-12 * std::fabs(old.var));
+        EXPECT_LE(std::fabs(a->es - old.es), 1e-12 * std::fabs(old.es));
         // Re-running on the same workspace repeats the result exactly.
         const auto c = try_monte_carlo_var_factored(w, l, 0.01, paths, d, df, 42, 50, ws);
         EXPECT_TRUE(same_bits(a->var_se, c->var_se));

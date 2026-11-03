@@ -2,6 +2,9 @@
 // Student-t tail fattening, bitwise seed determinism, moment matching.
 #include <gtest/gtest.h>
 
+#include <limits>
+#include <stdexcept>
+#include <utility>
 #include <cmath>
 #include <vector>
 
@@ -178,4 +181,29 @@ TEST(MonteCarlo, Validation) {
     EXPECT_THROW(simulate_factor_returns(cov, 0), std::invalid_argument);
     const std::vector<double> tiny(50, 0.0);
     EXPECT_THROW(mc_tail_metrics(tiny, 0.01), std::invalid_argument);
+}
+
+// W4(c): the noexcept Monte Carlo kernel draws its chi-squared mixing
+// variable through a non-throwing sampler. A bad shape or df gives NaN
+// (which the kernel reports as McReturnsNotFinite) and never throws, so
+// relaxing the df check could not reach std::terminate.
+TEST(RandomStreamNothrow, BadShapeIsNaNAndDoesNotConsumeTheStream) {
+    static_assert(noexcept(std::declval<RandomStream&>().gamma_nothrow(1.0)));
+    static_assert(noexcept(std::declval<RandomStream&>().chi_squared_nothrow(1.0)));
+    for (double bad : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+                       std::numeric_limits<double>::infinity()}) {
+        RandomStream a(9), b(9);
+        EXPECT_TRUE(std::isnan(a.gamma_nothrow(bad)));
+        EXPECT_TRUE(std::isnan(a.chi_squared_nothrow(bad)));
+        EXPECT_EQ(a.uniform(), b.uniform());  // stream untouched
+        EXPECT_THROW((void)b.gamma(bad), std::invalid_argument);
+    }
+}
+
+TEST(RandomStreamNothrow, ValidShapeMatchesThrowingSampler) {
+    for (double shape : {0.3, 1.0, 2.5, 50.0}) {
+        RandomStream a(11), b(11);
+        for (int k = 0; k < 100; ++k) EXPECT_EQ(a.gamma_nothrow(shape), b.gamma(shape));
+        EXPECT_EQ(a.chi_squared_nothrow(2 * shape), b.chi_squared(2 * shape));
+    }
 }

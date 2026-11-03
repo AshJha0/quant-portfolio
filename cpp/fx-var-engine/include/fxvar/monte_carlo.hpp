@@ -66,6 +66,14 @@ class Rng {
 
   /// Chi-square with df > 0 degrees of freedom: 2 * Gamma(df/2, 1).
   double chisq(double df);
+
+  /// Non-throwing gamma for the noexcept kernels: NaN for a shape that is
+  /// NaN, infinite or <= 0, without consuming the stream (never loops,
+  /// never throws). Valid shapes give the same draw as gamma().
+  [[nodiscard]] double gamma_nothrow(double shape) noexcept;
+
+  /// Non-throwing chi-square: 2 * gamma_nothrow(df / 2); NaN for bad df.
+  [[nodiscard]] double chisq_nothrow(double df) noexcept;
   /// Poisson(mu) count, finite mu >= 0. Inversion by the pmf recursion for
   /// mu <= 30; larger means add independent Poisson(30) blocks (exact by
   /// additivity), so exp(-mu) never underflows.
