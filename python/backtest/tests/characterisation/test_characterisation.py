@@ -60,7 +60,9 @@ def test_signal_positions_and_cost_free_returns_match_to_1e12():
             assert _close(new[k], old), k
             continue
         trades = CORPUS[f"signal::{ek}|{c}|trades"] > 0
-        assert np.array_equal(new[k][~trades], old[~trades]), k
+        # non-trade days: unchanged to 1e-12 (bit-equal on one machine; the
+        # Linux runner differs in the last ulp of a few returns)
+        assert _close(new[k][~trades], old[~trades]), k
         p = cases._prices(1, 300, 1)["N00"].to_numpy()
         r = np.concatenate([[0.0], p[1:] / p[:-1] - 1])
         bound = cc * (np.abs(r) + cc) + 1e-15
