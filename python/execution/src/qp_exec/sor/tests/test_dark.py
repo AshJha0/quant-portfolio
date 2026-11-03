@@ -196,12 +196,20 @@ def test_randomised_router_is_not_pingable() -> None:
         assert not [f for f in r.fills if f.liquidity == "D" and f.counterparty == "predator"]
 
 
-@pytest.mark.skipif(not os.environ.get("QP_SLOW"), reason="about 4 minutes; set QP_SLOW=1")
+@pytest.mark.skipif(not os.environ.get("QP_SLOW"), reason="about 15 minutes; set QP_SLOW=1")
 def test_detector_auc_acceptance() -> None:
-    """Plan acceptance A1: detector AUC below 0.55 under randomisation."""
+    """Plan acceptance A1: detector AUC below 0.55 under randomisation.
+
+    Randomising size, timing and min-qty alone is not enough (AUC 0.59,
+    CI 0.53-0.66 at n=300): the parent depletes contra liquidity in the dark,
+    which pings then find less of on its side. Using each dark venue in only
+    a quarter of intervals removes that channel; the price is that more of
+    the order goes to lit venues, where net demand shows (imbalance AUC 0.70).
+    """
     from qp_exec.sor.gaming import detector_auc
 
-    det = detector_auc(False, n=120, seed=1)
-    rnd = detector_auc(True, n=120, seed=1)
+    det = detector_auc(False, n=300, seed=2)
+    rnd = detector_auc(True, n=300, seed=2, dark_participation=0.25)
     assert det.ci[0] > 0.55  # the regular router is detectable
     assert rnd.auc < 0.55
+    assert rnd.ci[0] < 0.5 < rnd.ci[1]

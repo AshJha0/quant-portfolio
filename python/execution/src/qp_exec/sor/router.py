@@ -97,6 +97,7 @@ class SmartRouter:
     use_lit_passive: bool = True
     randomise: bool = False
     min_qty_range: tuple[int, int] = (2, 10)
+    dark_participation: float = 1.0  # chance of using each dark venue in an interval
     fixed_child: int = 5  # deterministic market-child size when not randomising
     scores: VenueScores | None = None
     window: int = 20
@@ -190,6 +191,8 @@ class SmartRouter:
                         venues.append(n)
                         costs.append(-(h + v.sched.maker_ticks) + tox)
             for n in self.dark:
+                if self.dark_participation < 1.0 and rng.random() >= self.dark_participation:
+                    continue
                 tox = self.scores.toxicity(n) if self.scores else 0.0
                 venues.append(n)
                 costs.append(m.dark[n].sched.fee_ticks + tox)

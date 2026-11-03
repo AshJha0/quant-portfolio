@@ -68,7 +68,8 @@ def _features(m: Market, pred: Predator, t0: int, t1: int) -> tuple[list[float],
 
 
 def episode(seed: int, parent: bool, randomise: bool, qty: int = 100,
-            horizon_us: int = 2_000_000) -> tuple[list[float], float]:
+            horizon_us: int = 2_000_000, dark_participation: float = 1.0
+            ) -> tuple[list[float], float]:
     m = Market(seed, MarketParams(informed_share=0.0))
     pred = Predator(m)
     m.predators.append(pred)
@@ -76,7 +77,7 @@ def episode(seed: int, parent: bool, randomise: bool, qty: int = 100,
     t0 = m.t
     if parent:
         SmartRouter(m, Side.BUY, qty, horizon_us, dark=DARK, randomise=randomise,
-                    seed=seed, lam_u=1.0).run()
+                    seed=seed, lam_u=1.0, dark_participation=dark_participation).run()
     end = t0 + horizon_us + 200_000
     m.run_until(max(m.t, end))
     return _features(m, pred, t0, end)
@@ -118,12 +119,14 @@ class GamingResult:
     imbalance_auc: float
 
 
-def detector_auc(randomise: bool, n: int = 60, seed: int = 0, boot: int = 1000) -> GamingResult:
+def detector_auc(randomise: bool, n: int = 60, seed: int = 0, boot: int = 1000,
+                 dark_participation: float = 1.0) -> GamingResult:
     """Train on half the episodes, AUC on the other half, bootstrap CI."""
     xs, ys, imb = [], [], []
     for i in range(n):
         for parent in (True, False):
-            f, im = episode(seed * 100_000 + 2 * i + int(parent), parent, randomise)
+            f, im = episode(seed * 100_000 + 2 * i + int(parent), parent, randomise,
+                            dark_participation=dark_participation)
             xs.append(f)
             ys.append(int(parent))
             imb.append(im)
@@ -144,4 +147,5 @@ def detector_auc(randomise: bool, n: int = 60, seed: int = 0, boot: int = 1000) 
         bs.append(auc(sj[yj == 1], sj[yj == 0]))
     lo, hi = np.percentile(bs, [2.5, 97.5])
     ia = auc(ib[te][yt == 1], ib[te][yt == 0])
+    ia = max(ia, 1 - ia)  # direction-free: passive buying adds sell-aggressor volume
     return GamingResult(randomise, n, a, (float(lo), float(hi)), ia)

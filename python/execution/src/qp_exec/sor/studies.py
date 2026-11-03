@@ -12,6 +12,7 @@ they are not estimates of any real venue.
   actionable IOIs and non-actionable IOIs.
 * ``conditional_firm_up``: firm-up rates by participant on the conditional
   venue and whether the venue's penalty suspends the predator.
+* ``gaming_cost``: shortfall and dark share of the regular and randomised routers.
 * ``score_learning``: one toxic dark venue; does markout learning move flow
   away from it, and what does that save?
 """
@@ -195,4 +196,32 @@ def score_learning(seeds: range, qty: int = 300, horizon_us: int = 8_000_000) ->
             if vs is not None:
                 score.append(vs.score.get("DARK_MID", 0.0))
         rows.append(LearnRow(learn, est(share), est(sf), est(score)))
+    return rows
+
+
+@dataclass(frozen=True)
+class GamingCostRow:
+    label: str
+    shortfall: Est  # ticks per share, against the arrival mid, incl. fees
+    dark_share: Est  # share of the parent filled in dark venues
+
+
+def gaming_cost(seeds: range, qty: int = 100, horizon_us: int = 2_000_000) -> list[GamingCostRow]:
+    """What anti-gaming costs: shortfall with a pinging predator present, for
+    the regular router, the randomised router, and the randomised router that
+    uses each dark venue in a quarter of intervals (same seeds, paired)."""
+    cfgs = [("regular", False, 1.0), ("randomised", True, 1.0),
+            ("randomised, dark 25 %", True, 0.25)]
+    rows = []
+    for label, rnd, dp in cfgs:
+        sf, ds = [], []
+        for s in seeds:
+            m = Market(s, MarketParams(informed_share=0.0))
+            m.predators.append(Predator(m))
+            m.run_until(100_000)
+            r = SmartRouter(m, Side.BUY, qty, horizon_us, dark=("DARK_MID", "DARK_FBA"),
+                            randomise=rnd, seed=s, lam_u=1.0, dark_participation=dp).run()
+            sf.append(r.shortfall)
+            ds.append(sum(f.qty for f in r.fills if f.liquidity == "D") / r.filled)
+        rows.append(GamingCostRow(label, est(sf), est(ds)))
     return rows
