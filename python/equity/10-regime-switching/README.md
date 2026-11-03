@@ -53,6 +53,15 @@ The pipeline prints only; it writes nothing to disk.
 
 ## Headline results (synthetic)
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> `run_ledger` now lets the book drift between closes, pays costs out of the trade, and charges financing on the cash held overnight (no longer time-weighted).
+> Worked example: 10 bp cost, day 1 net: before 0.009, after 0.0089910. 0/1 paths and auction fills with no cost and no rate are unchanged.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in the package's characterisation tests (source: `docs/MIGRATION.md`, milestone v2.1).
+
 Command: `python examples/run_pipeline.py`. 20 fresh seeds per arm (101 to
 120), 2,520 days, 8 assets, net of costs and financing. Each cell is the mean
 annualised Sharpe ratio across seeds with a 95% confidence interval for that

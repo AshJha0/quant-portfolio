@@ -53,6 +53,15 @@ python examples/run_pipeline.py    # full demo, 175-247 s measured, writes nothi
 
 ## Results (synthetic data, `python examples/run_pipeline.py`)
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> Three wrong answers are fixed: the fill-day split was additive and missed the cross term; turnover ignored drift, so the daily trade back to target was never paid for; borrow was charged on shorts on their fill day.
+> Worked example: the new result stays within the stated bound G^2 r^2 + 2cG(r+c) + carry of the old one on the test corpus.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in the package's characterisation tests (source: `docs/MIGRATION.md`, milestone v2.1).
+
 ### Headline book across 20 seeds
 
 Combined signal (IC-weighted momentum 12-1, momentum 6-1, reversal 1m),

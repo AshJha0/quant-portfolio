@@ -163,12 +163,17 @@ Cholesky jitter.
 The old symmetric finite-difference SE (`var_order_statistic_se`) stays one
 release, deprecated.
 
-**Determinism.** One seeded `Rng` (xoshiro256++, Box-Muller, Marsaglia-Tsang
-gamma) drives every draw. A seed repeats exactly on the same build and
-platform (*test* `bitwise_seed_determinism`). Across platforms `ln`, `sin`
-and `cos` come from the platform libm, so no cross-platform claim is made.
-The stream differs from NumPy's and the C++ engine's, so cross-engine MC
-agreement is statistical.
+**Determinism.** Each Monte Carlo path `p` draws from its own
+Philox4x32-10 counter stream `(seed, p)` (Salmon et al. 2011) with AS 241
+normals (Wichura 1988), and paths run on all cores. The result has the same
+bits on any thread count, and C++ and Rust produce the same numbers for the
+same seed (*tests* in `monte_carlo.rs` and the C++ twin; milestone v2.1,
+Round 9). Chi-square mixing draws still use Marsaglia-Tsang gamma. Across
+platforms the last bits can still differ, because `ln` comes from the
+platform libm. The stream differs from NumPy's, so Python-to-engine MC
+agreement is statistical. Before milestone v2.1 the engine used one serial
+xoshiro256++ stream with Box-Muller normals; stored MC numbers from then do
+not repeat (docs/MIGRATION.md).
 
 ## 6. Expected Shortfall (`src/expected_shortfall.rs`)
 

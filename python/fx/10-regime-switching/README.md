@@ -71,6 +71,15 @@ design seeds. Evaluation then uses fresh seeds 2001-2008.
 
 ## Results on synthetic data
 
+> **Backtest core, milestone v2.1 (pending rerun as a new trial).**
+> The P&L loop now runs on the shared `qp_bt` core (`python/backtest`).
+> The fill-day split now includes the cross term, the book drifts instead of resetting to target for free, costs come out of the trade and carry is on the overnight book (not time-weighted).
+> Worked example: on the test corpus, static net 0.069974 -> 0.074904, switch -0.038859 -> -0.032881, switch_auction -0.103676 -> -0.098421.
+> The figures in this section were produced by the old loop. A rerun on
+> the new core counts as a new trial under the research protocol, so they
+> are kept as recorded and marked **pending rerun as a new trial**. The
+> before/after numbers are pinned in `BEFORE_AFTER` in the characterisation test, with the old golden in `tests/golden/characterisation_w24b_before.json` (source: `docs/MIGRATION.md`, milestone v2.1).
+
 Produced by `python examples/run_pipeline.py`: 3-state synthetic panels
 of 1,500 business days and 12 currencies, 8 evaluation seeds, net of
 costs, carry included, 10% vol target. Each cell is the mean across seeds

@@ -13,7 +13,7 @@ returns panel (T x n) -- sample / EWMA covariance -- Cholesky (capped jitter, PS
    |
    +-- Historical VaR: order statistic / BRW age-weighted / per-factor FHS
    +-- Parametric VaR: normal / variance-matched Student-t / Cornish-Fisher
-   +-- Monte Carlo VaR: MVN and multivariate t, seeded mt19937_64, bootstrap SE
+   +-- Monte Carlo VaR: MVN and multivariate t, per-path Philox4x32-10, threaded bootstrap SE
    +-- Expected Shortfall: Acerbi-Tasche with the fractional atom / closed forms
    +-- Backtesting: Kupiec POF, Christoffersen IND/CC, Acerbi-Szekely Z2
    +-- Basel traffic light: binomial zones on any window and alpha
@@ -37,8 +37,11 @@ each convention in full.
 - **Hot-path API.** `eqvar/kernels.hpp` gives noexcept `try_*` kernels that
   return `std::expected<T, eqvar::Error>`, take their work buffers from the
   caller and never allocate once those are sized.
-- **Repeatability.** Every draw comes from a seeded `std::mt19937_64`
-  through the engine's own inverse-CDF transforms, never
+- **Repeatability.** Each Monte Carlo path draws from its own
+  Philox4x32-10 stream `(seed, path)` with AS 241 normals
+  (`qp/philox.hpp`), so a seed gives the same bits on any thread count and
+  the same numbers as the Rust engine (since milestone v2.1; before, one
+  `std::mt19937_64` stream with Acklam normals). Never
   `std::normal_distribution`. A seed repeats exactly on one platform. Across
   platforms the last bits can differ: `std::log`, `std::exp` and `std::erfc`
   are not correctly rounded, and glibc, MSVC and Apple libm differ.
