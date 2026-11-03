@@ -26,6 +26,7 @@
 //! | [`gemm`] | Cache-blocked GEMM and `D^T D`, same bits as the naive loops | eq VaR covariance |
 //! | [`holidays`] | Rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards, NDF value | new, opt-in |
 //! | [`rates_vol`] | SABR implied vol (Hagan, Obloj, shifted) and the Hull-White trinomial Bermudan | new, opt-in |
+//! | [`exotics`] | Closed-form barriers, touches, double barriers, Asians, eSSVI/SVI slices; twin of Python `qp_core.exotics` | new, opt-in |
 //! | [`vmath`] | Branch-free batch exp/erfc/normal CDF with documented tolerances | new, opt-in |
 //! | [`Error`] | Invalid-input / numerical-failure error shared by the fallible functions here | all four (via `From`) |
 //!
@@ -42,6 +43,7 @@ use std::fmt;
 
 pub mod bench;
 pub mod black_scholes;
+pub mod exotics;
 pub mod gemm;
 pub mod holidays;
 pub mod iv;
