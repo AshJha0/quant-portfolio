@@ -132,9 +132,11 @@ This engine (Rust, `tests/test_oracle.rs`, constants in `tests/oracle/mod.rs`) a
 - **F4 Square-root-of-time** on carry books understates 10-day risk.
 - **F5 KDE SE** understates the SE deep in the tail; the bootstrap SE is
   primary.
-- **F6 Engines do not match each other draw for draw.** Rust uses xoshiro256++,
-  C++ `mt19937_64`; MC agreement across engines is statistical. No
-  cross-platform reproducibility is claimed either.
+- **F6 Engines match draw for draw only on the same libm.** Since Round 8
+  Rust and C++ share the per-path Philox stream and give the same bits on
+  Linux x86-64 with glibc (pinned in both `test_w4b` suites); another libm
+  can move the last bit of `ln`/`exp`/`sqrt`. Python (NumPy) agreement is
+  statistical.
 - **F7 Kupiec at 250 days, 1 %.** The chi2(1) test is oversized there
   (expected count 2.5); read p-values near 0.05 with care.
 - **F8 NaN.** Validation uses `is_finite()` and `!(x > 0.0)`; `x <= 0.0` is
