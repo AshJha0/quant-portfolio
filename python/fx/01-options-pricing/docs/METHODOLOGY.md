@@ -189,11 +189,11 @@ the kernel for `gk_price`, `d1`/`d2`, `gamma`, `vega`, `vanna`, `volga` and
 the array entry points. The implied-vol solver is `qp_core.iv_core`.
 
 Every output is unchanged bit for bit (a 177,604-value before/after
-snapshot, signed zeros included). One place still differs from the equity
-package: `analytic_greeks` evaluates its `N(phi d1)` and `N(phi d2)` terms
-with `scipy.stats.norm.cdf`, as it always has, while the kernel uses
-`0.5 erfc(-x / sqrt 2)`. Moving those terms to the kernel would change
-price, deltas, theta and both rhos by at most 1.4e-14 relative to
-`max(1, |value|)` (measured on 5,944 quotes), so it is left for a separate,
-deliberate change. `tests/test_carry_twin.py` at the repository root pins
+snapshot, signed zeros included), with one deliberate exception made
+afterwards: `analytic_greeks` used to evaluate its `N(phi d1)`, `N(phi d2)`
+and `n(d1)` terms with `scipy.stats.norm`, and now uses the same
+`qp_core.normal` as the kernel, `0.5 erfc(-x / sqrt 2)`. Price, deltas,
+theta and both rhos move in the last bits (at most 2.1e-14 relative to
+`max(1, |value|)`); the table is in VALIDATION.md section 7.
+`tests/test_carry_twin.py` at the repository root pins
 how closely equity-with-yield and FX-with-foreign-rate agree today.

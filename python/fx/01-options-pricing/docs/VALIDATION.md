@@ -200,3 +200,39 @@ RR = 0 gives equal butterflies; broker-to-smile-to-broker round trip to
 lists, plus specials (2022 jubilee and funeral, 2023 coronation, 2021
 Olympic moves, Juneteenth from 2022); every calendar deterministic and
 weekday-only from 2010 to 2099; `"auto"` wired into spot and tenor dates.
+
+## 7. One normal distribution in `analytic_greeks`
+
+Plain idea: the closed-form Greeks needed the standard normal CDF and used
+SciPy's, while every other path in the package, and the shared kernel,
+used `0.5 erfc(-x / sqrt 2)` from `qp_core.normal`. Two implementations of
+the same function round differently in the last bit, so the package now
+uses one.
+
+Formally, `analytic_greeks` evaluates `N(phi d1)`, `N(phi d2)` and `n(d1)`
+with `qp_core.normal.norm_cdf` / `norm_pdf` instead of
+`scipy.stats.norm.cdf` / `.pdf`. Gamma, vega, vanna and volga already came
+from the kernel and do not change. The other fields are now plain Python
+floats rather than `numpy.float64`.
+
+Before/after on 5,944 quotes (the 1,944-point grid of
+`tests/test_carry_twin.py` plus 4,000 seeded random quotes, S in [0.5, 200],
+K/S in [0.6, 1.6], T in [0.01, 5], rates in [-2%, 10%], sigma in [2%, 100%],
+calls and puts). Change is `|after - before| / max(1, |before|)`:
+
+| field | values changed | max change | example before -> after |
+|---|---|---|---|
+| `price` | 2,850 | 2.13e-14 | 0.3740294378463602 -> 0.3740294378463389 |
+| `delta_spot` | 2,221 | 2.22e-16 | 0.8803435300848723 -> 0.8803435300848721 |
+| `delta_forward` | 2,326 | 2.22e-16 | 0.8803435300848723 -> 0.8803435300848721 |
+| `theta` | 2,110 | 2.66e-15 | 0.2698331797540936 -> 0.26983317975409093 |
+| `rho_domestic` | 2,318 | 1.93e-15 | 2.53592785836373 -> 2.535927858363735 |
+| `rho_foreign` | 2,183 | 2.50e-15 | 1.06660907934164 -> 1.0666090793416427 |
+| `gamma`, `vega`, `vanna`, `volga` | 0 | 0 | |
+
+Worked example: the largest price move is an out-of-the-money call with
+S = 144.10, K = 152.53, T = 0.049, r_d = 4.26%, r_f = 3.61%, sigma = 21.0%.
+The price 0.374 is the difference of two legs, 16.77 and 16.40, so a
+last-bit change in either N(.) term moves the price by about 2e-14. The golden file
+`tests/golden/golden_vectors.json` is unchanged (`generate_golden.py
+--check` passes) and the full package suite passes.

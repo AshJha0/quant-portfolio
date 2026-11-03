@@ -22,7 +22,7 @@ import math
 from dataclasses import asdict, dataclass
 
 from qp_core.black_scholes import CarryGreeks, carry_greeks
-from scipy.stats import norm
+from qp_core.normal import norm_cdf, norm_pdf
 
 from ._common import validate_inputs, validate_option_type
 from .garman_kohlhagen import d1 as _d1_fn
@@ -128,15 +128,15 @@ def analytic_greeks(S: float, K: float, T: float, r_d: float, r_f: float,
         raise ValueError("analytic_greeks requires T > 0 and sigma > 0")
     g = _core(S, K, T, r_d, r_f, sigma, phi > 0)
     # gamma, vega, vanna and volga come from the shared kernel. The terms in
-    # N(phi d1) and N(phi d2) still use scipy's norm.cdf, as they always have
-    # here; the kernel's 0.5 erfc(-x / sqrt 2) differs from it in the last
-    # bits (docs/METHODOLOGY.md, "Shared Black-Scholes kernel").
+    # N(phi d1) and N(phi d2) use the same normal as the kernel,
+    # 0.5 erfc(-x / sqrt 2); before 2026-11 they used scipy's norm.cdf,
+    # which differs in the last bits (docs/VALIDATION.md has the table).
     sqrt_t = math.sqrt(T)
     df_f = math.exp(-r_f * T)
     df_d = math.exp(-r_d * T)
-    n_d1 = norm.pdf(g.d1)
-    N_pd1 = norm.cdf(phi * g.d1)
-    N_pd2 = norm.cdf(phi * g.d2)
+    n_d1 = norm_pdf(g.d1)
+    N_pd1 = norm_cdf(phi * g.d1)
+    N_pd2 = norm_cdf(phi * g.d2)
 
     price = phi * (S * df_f * N_pd1 - K * df_d * N_pd2)
     delta_spot = phi * df_f * N_pd1
