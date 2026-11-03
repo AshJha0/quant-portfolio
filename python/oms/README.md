@@ -1,9 +1,9 @@
 # qp-oms: order state machine, event log and FIX session
 
-Order management for the quant-portfolio projects (workstream W28). This
-release holds parts W28a and W28b. The OMS/EMS, drop copy and
-reconciliation (W28c) and the pre-trade risk, kill hierarchy, crash recovery
-and clock work (W28d) come next and build on these modules.
+Order management for the quant-portfolio projects (workstream W28):
+the order state machine, event log and FIX session (W28a, W28b), the
+OMS/EMS with drop copy and reconciliation (W28c), and pre-trade risk, the
+kill-switch hierarchy, crash recovery and the clock (W28d).
 
 Nothing here connects to a real venue. Two FIX sessions talk to each other
 over an in-memory link, which is enough to test every session rule.
@@ -17,6 +17,12 @@ over an in-memory link, which is enough to test every session rule.
 | `qp_oms.core.book` | `OrderBook`: checks the event, logs it, then applies it. `OrderBook.replay(log)` rebuilds the same book from the log alone. |
 | `qp_oms.fix.codec` | Tag=value encoder and strict decoder (BodyLength, CheckSum, field order). |
 | `qp_oms.fix.session` | Logon with acceptor authentication, heartbeats and TestRequest, persisted sequence numbers, ResendRequest with PossDup resends and gap fill, SequenceReset, Logout, ExecID de-duplication. |
+| `qp_oms.ems` | Parent orders, children cut by a `Slicer` (default whole-lot TWAP), ExecID de-duplication, an overfill guard, largest-remainder allocation at the parent average price, kill with mass cancel. |
+| `qp_oms.risk` | Pre-trade checks: fat finger, notional, price band, credit and position limits including working-order exposure (a pending cancel counts in full, a pending amend at max(old, new)), ClOrdID and content duplicates, restricted list, self-trade prevention (cancel newest), a per-session throttle that rejects and never queues. |
+| `qp_oms.kill` | The kill-switch hierarchy (firm, desk, strategy, symbol) of [docs/KILL_CONTRACT.md](../../docs/KILL_CONTRACT.md), rules K1-K7, with `replay()` and the golden `kill/vectors.json` that the C++, Rust and Java gateways replay byte for byte. |
+| `qp_oms.dropcopy` | An independent position keeper fed from drop copies; a reused ExecID with different content is an error. |
+| `qp_oms.recon` | Fill-level and position breaks, explained (in flight) or unexplained, written as a JSON-lines break report. One missing fill gives one break. |
+| `qp_oms.recovery` | Hash-chained write-ahead journal with an fsync per record before send, torn-tail repair; `WallClock` (monotonic, with its source and a stated 5 ms error bound, the MiFID II RTS 25 context) and `SimClock`; `recover()` (order mass status and execution resend), tested over 1,000 seeded kill points and real process kills. |
 
 ## The rules, in one paragraph each
 
@@ -62,7 +68,13 @@ o.ord_status, o.cum_qty, o.leaves_qty               # PARTIALLY_FILLED, 400, 600
 ## Limits
 
 - One outstanding cancel or replace per order. FIX allows a chain of them.
-- A lost ResendRequest is not retried yet. That needs the W28d timers.
+- A lost ResendRequest is not retried yet.
+- The `ems`, `risk`, `kill`, `dropcopy`, `recon` and `recovery` folders sit
+  outside `src/` and join `qp_oms` through their test `conftest.py`, so they
+  are collected by pytest but not installed with the distribution. Moving
+  them under `src/qp_oms/` waits on the Java parity test, which reads
+  `python/oms/kill/vectors.json` by path.
+- The journal fsyncs every record; group commit is not implemented.
 - FIX 4.4 only, no encryption, no network transport. A QuickFIX
   interoperability job is planned as optional.
 - The Appendix D tests follow the scenario groups (vanilla, cancel,

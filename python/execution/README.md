@@ -1,8 +1,9 @@
 # qp-exec
 
 Execution research code: a reference limit order book, order flow, fills
-and markouts, impact fitting, Hawkes order-flow models and execution
-schedules. Distribution `qp-exec`, import `qp_exec`. Depends on numpy and
+and markouts, impact fitting, Hawkes order-flow models, execution
+schedules, market making, a central risk book, RFQ pricing and a smart
+order router. Distribution `qp-exec`, import `qp_exec`. Depends on numpy and
 scipy only. The C++ fast book that mirrors the reference book is in
 `cpp/exec-core`.
 
@@ -24,6 +25,10 @@ python -m pytest -p no:cacheprovider python/execution
 | `qp_exec.schedules.volume` | Calibrated intraday volume curves; VWAP and POV on a forecast with catch-up, a live participation cap and a closing-auction slice | W25d |
 | `qp_exec.schedules.transient` | Optimal schedules under transient impact: Obizhaeva-Wang exponential and Gatheral power-law kernels; manipulation checks | W25/W26 |
 | `qp_exec.schedules.placement` | Post or cross: fill probability from queue position, adverse selection, fees and drift | W25/W26 |
+| `qp_exec.mm` | Market making: Avellaneda-Stoikov (2008) and Gueant-Lehalle-Fernandez-Tapia (2013) quotes, operational controls (stale-book pull, inventory widen and pull, throttle) and a simulator against the reference book | W26 |
+| `qp_exec.crb` | Central risk book: netting, internalisation, factor exposure, stand-alone versus CRB cost, hedge-delay policy with an exact P&L decomposition; hedges leave as `qp_oms` submit arguments | W26 |
+| `qp_exec.rfq` | RFQ: hit-ratio model, optimal and inventory-skewed quotes, win-rate, markout and last-look reports (FX Global Code 2021, principle 17) | W26 |
+| `qp_exec.sor` | Smart order router over several lit books and dark venues: allocation, fees (`venues/fee_schedules.toml`), dark participation for anti-gaming, TCA and a gaming-cost study; see [`sor/README.md`](src/qp_exec/sor/README.md) for the measured results | W27 |
 
 ## The interface other work builds on
 
@@ -54,7 +59,8 @@ python python/execution/tools/lob_differential.py 10000000 2026 <workdir> build/
 
 The test runs 2 x 50,000 events by default (`QP_EXEC_DIFF_EVENTS` raises
 it). The acceptance run of 10,000,000 events is recorded in the lane
-handback (`review/2026-11-03/handbacks/r8x/r12-l1-book.md`) with its output.
+handback of Round 12 (a review note kept outside the package) with its
+output; CI runs the 2 x 50,000 default.
 
 ## Stylised facts and their bands
 
@@ -75,6 +81,7 @@ evidence about equities.
 ## What is not here
 
 * No licensed exchange or vendor order-book data (no accounts; data/README.md lists the excluded sources).
-* Self-trade prevention is not modelled.
+* Self-trade prevention is not modelled in the book; the OMS pre-trade checks
+  (`qp_oms.risk`) cancel the newest order of a self-trading pair.
 * The C++ book has no Python binding yet; Python talks to it through the
   replay tool and the shared event file.
