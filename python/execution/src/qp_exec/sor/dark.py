@@ -243,6 +243,7 @@ class Predator:
     ping_prob: float = 0.3
     front_qty: int = 5
     hold_steps: int = 20
+    fish_qty: int = 20
     detections: list[tuple[int, Side, str]] = field(default_factory=list)
     pings: int = 0
     pnl_ticks: float = 0.0
@@ -250,6 +251,12 @@ class Predator:
     def step(self, t0: int) -> None:
         m = self.mkt
         for dv in m.dark.values():
+            if dv.kind == "conditional" and m.rng.random() < self.ping_prob:
+                # fishing: a conditional it rarely firms up, to learn sides
+                dv.submit(DarkOrder(m.new_id(), PRED, Side.BUY if m.rng.random() < 0.5
+                                    else Side.SELL, self.fish_qty, 0, m.t,
+                                    m.t + 5 * m.p.step_us))
+                continue
             if dv.kind != "midpoint-continuous" or dv.sched.min_qty > 1:
                 continue  # a 1-lot ping cannot meet a venue min-qty floor
             for side in (Side.BUY, Side.SELL):

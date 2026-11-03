@@ -101,6 +101,9 @@ class SmartRouter:
     scores: VenueScores | None = None
     window: int = 20
     seed: int = 0
+    ioi: str | None = None  # None, "actionable" or "non-actionable": IOI each interval
+    ioi_venue: str = "DARK_MID"
+    decisions: list[dict] = field(default_factory=list)  # LP inputs/outputs, for audit
     _filled: int = 0
     _sent: dict[str, int] = field(default_factory=dict)
     _fills: list[ExecFill] = field(default_factory=list)
@@ -195,8 +198,13 @@ class SmartRouter:
             costs = [costs[i] for i in keep]
             taker = min(v.sched.taker_ticks for v in m.lit.values())
             D = self._scenarios(venues, queue, rng)
+            if self.ioi is not None:
+                m.ioi(self.side, need, self.ioi == "actionable", self.ioi_venue)
             if venues:
                 alloc = solve_allocation(S=need, h=h, f=taker, c=costs, lam_u=lam, D=D)
+                self.decisions.append({"S": need, "h": h, "f": taker, "c": list(costs),
+                                       "lam_u": lam, "D": D, "venues": list(venues),
+                                       "alloc": alloc})
                 lim = [int(math.floor(x + 1e-9)) for x in alloc.limits]
                 mq = int(round(alloc.market))
             else:
