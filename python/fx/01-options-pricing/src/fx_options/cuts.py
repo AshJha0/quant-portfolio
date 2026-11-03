@@ -9,13 +9,18 @@ is the calendar time from now to the cut, which moves with daylight saving.
 Formal statement (Clark 2011, "Foreign Exchange Option Pricing", Wiley,
 ch. 1; Wystup 2017, "FX Options and Structured Products", 2nd ed., section
 1.5). Business days skip Saturdays, Sundays and holidays. ``holidays`` is
-either a collection of dates supplied by the caller or the string
-``"auto"``, which uses the shipped joint calendar of the pair's two
-currencies (:mod:`fx_options.holidays`).
+``"auto"`` (the default) or a collection of dates supplied by the caller.
 
-* Spot date: trade date plus ``spot_lag`` business days (1 for USDCAD,
-  USDTRY and USDRUB, else 2). The rule that the first day of a T+2 lag may
-  be a USD holiday is not modelled; pass a joint holiday set instead.
+* Spot date. With ``"auto"`` this is :func:`qp_core.holidays.fx_spot_date`,
+  the one FX spot rule in the repository: ``spot_lag`` business days (1 for
+  USDCAD, USDTRY, USDRUB and USDPHP, else 2) counted on the non-USD
+  centres, then rolled forward until both centres and New York are open.
+  A USD holiday on T+1 does not stop the count for a USD pair, and a cross
+  never settles on a USD holiday. With a caller-supplied set the lag is
+  counted on that set alone. Until round 7 the default was an empty set
+  (no holidays at all) and ``"auto"`` counted the lag on the joint pair
+  calendar, so EURUSD traded on the day before Thanksgiving 2026 got Mon
+  30 Nov instead of Fri 27 Nov.
 * Day and week tenors: expiry = trade date plus the calendar days, rolled
   forward to a business day; delivery = spot date of the expiry.
 * Month and year tenors: delivery = spot date plus the months, modified
@@ -37,6 +42,9 @@ import datetime as dt
 from collections.abc import Collection
 from zoneinfo import ZoneInfo
 
+from qp_core.holidays import fx_spot_date
+from qp_core.holidays import spot_lag as _spot_lag
+
 from .holidays import pair_holidays
 
 __all__ = ["CUTS", "add_business_days", "cut_datetime_utc", "expiry_and_delivery",
@@ -48,15 +56,10 @@ CUTS = {
     "ECB": ("Europe/Berlin", 14, 15),
 }
 
-_T1_PAIRS = {"USDCAD", "CADUSD", "USDTRY", "TRYUSD", "USDRUB", "RUBUSD"}
-
-
 def spot_lag(pair: str) -> int:
-    """Spot lag in business days for a six-letter pair such as ``"EURUSD"``."""
-    p = pair.upper().replace("/", "")
-    if len(p) != 6 or not p.isalpha():
-        raise ValueError(f"pair must be six letters, got {pair!r}")
-    return 1 if p in _T1_PAIRS else 2
+    """Spot lag in business days for a six-letter pair such as ``"EURUSD"``
+    (:func:`qp_core.holidays.spot_lag`)."""
+    return _spot_lag(pair)
 
 
 Holidays = Collection[dt.date] | str
@@ -91,9 +94,16 @@ def add_business_days(d: dt.date, n: int, holidays: Collection[dt.date] = ()) ->
     return d
 
 
-def spot_date(trade_date: dt.date, pair: str, holidays: Holidays = ()) -> dt.date:
-    """Spot date of a trade (business days after the trade date)."""
-    holidays = _resolve(holidays, pair, trade_date.year, trade_date.year + 1)
+def spot_date(trade_date: dt.date, pair: str, holidays: Holidays = "auto") -> dt.date:
+    """Spot date of a trade.
+
+    ``"auto"`` delegates to :func:`qp_core.holidays.fx_spot_date`; a
+    collection of dates counts ``spot_lag`` business days on that set.
+    """
+    if isinstance(holidays, str):
+        if holidays != "auto":
+            raise ValueError(f'holidays must be a collection of dates or "auto", got {holidays!r}')
+        return fx_spot_date(trade_date, pair)
     return add_business_days(trade_date, spot_lag(pair), holidays)
 
 
@@ -117,22 +127,26 @@ def _add_months(d: dt.date, months: int, holidays: Collection[dt.date]) -> dt.da
 
 
 def expiry_and_delivery(trade_date: dt.date, tenor: str, pair: str,
-                        holidays: Holidays = ()) -> tuple[dt.date, dt.date]:
+                        holidays: Holidays = "auto") -> tuple[dt.date, dt.date]:
     """Expiry and delivery dates for a tenor such as ``"1W"``, ``"3M"``, ``"1Y"``."""
     t = tenor.strip().upper()
     if len(t) < 2 or not t[:-1].isdigit() or t[-1] not in "DWMY" or int(t[:-1]) <= 0:
         raise ValueError(f"tenor must look like 1D, 2W, 3M or 1Y, got {tenor!r}")
     n, unit = int(t[:-1]), t[-1]
     span = n // 365 + 1 if unit == "D" else n // 52 + 1 if unit == "W" else n // 12 + 1         if unit == "M" else n + 1
+    spot_cal: Holidays = holidays
     holidays = _resolve(holidays, pair, trade_date.year, trade_date.year + span)
+
+    def spot(d: dt.date) -> dt.date:
+        return spot_date(d, pair, spot_cal)
+
     if unit in "DW":
         expiry = _roll_following(trade_date + dt.timedelta(days=n * (7 if unit == "W" else 1)),
                                  holidays)
-        return expiry, spot_date(expiry, pair, holidays)
-    delivery = _add_months(spot_date(trade_date, pair, holidays), n * (12 if unit == "Y" else 1),
-                           holidays)
+        return expiry, spot(expiry)
+    delivery = _add_months(spot(trade_date), n * (12 if unit == "Y" else 1), holidays)
     expiry = delivery - dt.timedelta(days=1)
-    while not _is_business(expiry, holidays) or spot_date(expiry, pair, holidays) > delivery:
+    while not _is_business(expiry, holidays) or spot(expiry) > delivery:
         expiry -= dt.timedelta(days=1)
     return expiry, delivery
 

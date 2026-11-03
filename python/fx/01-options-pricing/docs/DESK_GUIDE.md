@@ -145,6 +145,7 @@ Build the smile from the broker's ATM/RR/BF run with `smile_from_quotes`,
 then read strikes for any delta (10-delta wings, 35-delta) with
 `Smile3.strike_from_delta`. Quote premium in the pair's market style with
 `convert_premium`. Book expiry and delivery from the tenor with
-`expiry_and_delivery`, passing `holidays="auto"` to use the shipped joint
-calendar of both currencies (add any late-announced closure yourself),
+`expiry_and_delivery`; the default `holidays="auto"` uses the shipped
+calendars and the repository's one FX spot rule,
+`qp_core.holidays.fx_spot_date` (add any late-announced closure yourself),
 and compute `T` to the cut with `time_to_expiry`, not to midnight.

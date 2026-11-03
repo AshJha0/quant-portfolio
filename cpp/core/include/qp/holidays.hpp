@@ -9,6 +9,11 @@
 //   * USD (Federal Reserve), EUR (TARGET2), GBP (England and Wales bank
 //     holidays with the 2002, 2011, 2012, 2020, 2022 and 2023
 //     proclamations), JPY, CHF, CAD, AUD; years 2000-2099.
+//   * USD-GOVT (alias SIFMA): SIFMA US bond-market calendar for Treasury
+//     schedules: Fed list plus Good Friday (a first-Friday Good Friday is an
+//     early close, so open), Saturday Jul 4 / Juneteenth / Christmas
+//     observed Friday, one-off closures 2001-09-11/12, 2004-06-11,
+//     2012-10-30, 2018-12-05, 2025-01-09. Early closes are not modelled.
 //   * FX spot: T+2, or T+1 for USDCAD, USDTRY, USDRUB, USDPHP. The lag is
 //     counted on the shipped non-USD centres, then the date is rolled
 //     forward until both centres and New York are open (Clark 2011, ch. 1;
@@ -37,6 +42,9 @@ inline constexpr int kMinYear = 2000;
 inline constexpr int kMaxYear = 2099;
 inline constexpr std::array<std::string_view, 7> kCurrencies{"USD", "EUR", "GBP", "JPY",
                                                              "CHF", "CAD", "AUD"};
+/// Every calendar code: the currencies plus USD-GOVT (SIFMA bond market).
+inline constexpr std::array<std::string_view, 8> kCalendarCodes{"USD", "EUR", "GBP", "JPY",
+                                                                "CHF", "CAD", "AUD", "USD-GOVT"};
 
 inline Date ymd(int y, unsigned m, unsigned d) {
     return Date{std::chrono::year{y} / std::chrono::month{m} / std::chrono::day{d}};
@@ -88,6 +96,27 @@ inline void xmas_boxing(int y, std::set<Date>& out) {
         out.insert({c, ymd(y, 12, 28)});
     } else {
         out.insert({c, b});
+    }
+}
+
+inline void usd_govt(int y, std::set<Date>& out) {
+    out.insert({nth_weekday(y, 1, 0, 3), nth_weekday(y, 2, 0, 3), nth_weekday(y, 5, 0, -1),
+                nth_weekday(y, 9, 0, 1), nth_weekday(y, 10, 0, 2), nth_weekday(y, 11, 3, 4)});
+    for (Date d : {ymd(y, 1, 1), ymd(y, 11, 11)}) {  // Sunday -> Monday; Saturday not moved
+        if (weekday(d) == 5) continue;
+        out.insert(weekday(d) == 6 ? add_days(d, 1) : d);
+    }
+    std::vector<Date> fixed{ymd(y, 7, 4), ymd(y, 12, 25)};
+    if (y >= 2022) fixed.push_back(ymd(y, 6, 19));
+    for (Date d : fixed) {
+        const unsigned w = weekday(d);
+        out.insert(w == 5 ? add_days(d, -1) : w == 6 ? add_days(d, 1) : d);
+    }
+    const Date good_friday = add_days(easter_sunday(y), -2);
+    if (unsigned(std::chrono::year_month_day{good_friday}.day()) > 7) out.insert(good_friday);
+    for (Date d : {ymd(2001, 9, 11), ymd(2001, 9, 12), ymd(2004, 6, 11), ymd(2012, 10, 30),
+                   ymd(2018, 12, 5), ymd(2025, 1, 9)}) {
+        if (year_of(d) == y) out.insert(d);
     }
 }
 
@@ -232,6 +261,8 @@ inline std::set<Date> holidays(std::string_view ccy, int year) {
         detail::cad(year, out);
     } else if (ccy == "AUD") {
         detail::aud(year, out);
+    } else if (ccy == "USD-GOVT" || ccy == "SIFMA") {
+        detail::usd_govt(year, out);
     } else {
         throw std::invalid_argument("no calendar for this currency");
     }
@@ -291,6 +322,24 @@ inline double ndf_value(double notional_base, double strike, double forward, dou
                         bool base_settled) {
     return base_settled ? notional_base * df_settle * (1.0 - strike / forward)
                         : notional_base * df_settle * (forward - strike);
+}
+
+/// Value today (quote ccy) of buying n base at k for value at t: one FX swap
+/// leg or an outright, n (s_today P_f(t) - k P_d(t)), s_today = S P_d(t_s)/P_f(t_s).
+inline double fx_leg_value(double n, double k, double s_today, double pf_t, double pd_t) {
+    return n * (s_today * pf_t - k * pd_t);
+}
+
+/// Far rate that makes an FX swap worth zero: F(T_f) - V_near / (n_f P_d(T_f)).
+inline double fx_swap_far_rate(double forward_far, double v_near, double n_far, double pd_far) {
+    return forward_far - v_near / (n_far * pd_far);
+}
+
+/// Cross-currency swap initial exchange on the spot date:
+/// sign P_d(t_s) (N_quote - S N_base).
+inline double xccy_initial_exchange(double sign, double n_quote, double n_base, double spot,
+                                    double pd_ts) {
+    return sign * pd_ts * (n_quote - spot * n_base);
 }
 
 }  // namespace qp::holidays

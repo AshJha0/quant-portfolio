@@ -29,6 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
+from .calendars import TREASURY_CALENDAR, get_calendar
 from .curve import DiscountCurve, ExtrapolationWarning
 from .daycount import (
     SUPPORTED_CONVENTIONS,
@@ -96,6 +97,10 @@ class FixedRateBond:
         ``ACT/ACT-ICMA`` for Treasuries and other government bonds.
     face : float
         Redemption amount per bond (default 100).
+    calendar : str or None
+        Payment calendar for :meth:`payment_dates` (default ``"USD-GOVT"``,
+        the SIFMA bond-market calendar; ``None`` means weekends only).
+        Accrual and pricing use the unadjusted schedule.
     eom : bool
         End-of-month rule for the coupon schedule (default True). A
         month-end maturity then keeps every coupon on a month end.
@@ -108,6 +113,7 @@ class FixedRateBond:
     daycount: str = "30/360US"
     face: float = 100.0
     eom: bool = True
+    calendar: str | None = TREASURY_CALENDAR
 
     def __post_init__(self) -> None:
         if self.frequency not in SUPPORTED_FREQUENCIES:
@@ -136,6 +142,14 @@ class FixedRateBond:
         return generate_schedule(
             self.effective, self.maturity, self.frequency, eom=self.eom
         )
+
+    def payment_dates(self) -> list[dt.date]:
+        """Coupon payment dates: the schedule rolled to the next business day
+        on ``calendar``. Accrual still uses :meth:`schedule` (no extra
+        interest for the delay; the uniform offering circular, 31 CFR Part 356).
+        """
+        cal = get_calendar(self.calendar)
+        return [cal.adjust(d, "following") for d in self.schedule()]
 
     def periods(self) -> list[tuple[dt.date, dt.date, dt.date]]:
         """Coupon periods as ``(accrual_start, accrual_end, reference_start)``.

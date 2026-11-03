@@ -80,6 +80,8 @@ docs/                    METHODOLOGY.md, VALIDATION.md, DESK_GUIDE.md
 
 ## November 2026 additions
 
+- `swaps.py`: dated FX swaps: swap points, tom-next, rolls (market or
+  historical rate), both legs' mark-to-market, uneven notionals and carry
 - `xccy_float.py`: float-float cross-currency swaps on four curves
   (projection and discount per currency), constant-notional or
   mark-to-market resetting, with a par-spread solver. Tests:

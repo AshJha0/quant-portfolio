@@ -6,8 +6,8 @@ mark-to-market resetting variant is not implemented.
 
 Structure (receive_base = True, e.g. receive EUR / pay USD on EURUSD):
 
-- optional initial exchange at t = 0: pay ``notional_base`` (base ccy),
-  receive ``notional_quote`` (quote ccy);
+- optional initial exchange on the spot date t_s: pay ``notional_base``
+  (base ccy), receive ``notional_quote`` (quote ccy);
 - periodic fixed coupons: receive ``rate_base`` on ``notional_base`` in the
   base currency, pay ``rate_quote`` on ``notional_quote`` in the quote
   currency, ``frequency`` payments per year with unit accrual 1/frequency
@@ -23,6 +23,23 @@ bond in its own currency; the base-currency bond is discounted on the
 
 with sign = +1 for receive_base.  Setting the basis to zero recovers pure
 CIP pricing (tested).
+
+Initial exchange. A spot-starting swap exchanges notionals on the spot
+date t_s at the quoted spot rate S, which is the price for delivery on t_s
+(Clark 2011, ch. 1). Today's value of that exchange is
+
+    sign * ( N_quote * P_d(t_s) - N_base * P_f(t_s) * S_today )
+        = sign * P_d(t_s) * (N_quote - S * N_base),
+
+because ``S_today = S * P_d(t_s) / P_f(t_s)`` (``MarketState.spot_today``).
+It is zero at inception when ``N_quote = S * N_base``. ``exchange_time``
+overrides t_s (forward-starting swaps). Until round 7 the exchange was
+valued undiscounted as ``sign * (N_quote - S * N_base)``; for a 150,000 USD
+off-market exchange on EURUSD at 4.5% with spot four days out that is
+150,000.00 against the correct 149,926.05. The basis swap had the same
+issue in a worse form: it converted the base notional at ``S_today`` and
+left the quote notional undiscounted, so an at-market exchange on 10m EUR
+was worth -2,377.82 USD instead of zero.
 """
 
 from __future__ import annotations
@@ -42,6 +59,21 @@ __all__ = [
     "solve_par_rate_base",
     "solve_par_rate_quote",
 ]
+
+
+def _check_exchange_time(te: float | None) -> None:
+    if te is not None:
+        require_finite(exchange_time=te)
+        if te < 0.0:
+            raise ValueError(f"exchange_time must be >= 0, got {te}")
+
+
+def _exchange_time(te: float | None, market: MarketState | None) -> float:
+    if te is not None:
+        return float(te)
+    if market is None or market.spot_time is None:
+        return 0.0
+    return float(market.spot_time)
 
 
 @dataclass(frozen=True)
@@ -64,9 +96,12 @@ class CrossCurrencySwap:
     receive_base : bool
         True: receive base-currency leg, pay quote leg.
     include_initial_exchange : bool
-        Include the t = 0 notional exchange (at-inception valuation).  At
+        Include the initial notional exchange (at-inception valuation).  At
         inception with ``notional_quote = notional_base * spot`` the initial
         exchange is worth zero, so seasoned valuation usually omits it.
+    exchange_time : float or None
+        Time (years) of the initial exchange; ``None`` means the market's
+        spot date (``MarketState.spot_time``).
     """
 
     notional_base: float
@@ -79,12 +114,14 @@ class CrossCurrencySwap:
     include_initial_exchange: bool = False
     pair: tuple[str, str] = ("EUR", "USD")
     label: str = ""
+    exchange_time: float | None = None
 
     def __post_init__(self) -> None:
         if self.pair[0] == self.pair[1]:
             raise ValueError(
                 f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected"
             )
+        _check_exchange_time(self.exchange_time)
         require_finite(notional_base=self.notional_base,
                        notional_quote=self.notional_quote,
                        rate_base=self.rate_base, rate_quote=self.rate_quote,
@@ -114,15 +151,17 @@ class CrossCurrencySwap:
         n = int(round(self.maturity * self.frequency))
         return np.arange(1, n + 1, dtype=float) / self.frequency
 
-    def cashflows(self) -> list[tuple[str, float, float]]:
+    def cashflows(self, market: MarketState | None = None) -> list[tuple[str, float, float]]:
         """All cashflows as (currency, time, signed amount) from the
-        perspective of the position holder."""
+        perspective of the position holder. The initial exchange is at
+        ``exchange_time``, else the spot time of ``market``, else 0."""
         sign = 1.0 if self.receive_base else -1.0
         base, quote = self.pair
         cfs: list[tuple[str, float, float]] = []
         if self.include_initial_exchange:
-            cfs.append((base, 0.0, -sign * self.notional_base))
-            cfs.append((quote, 0.0, sign * self.notional_quote))
+            te = _exchange_time(self.exchange_time, market)
+            cfs.append((base, te, -sign * self.notional_base))
+            cfs.append((quote, te, sign * self.notional_quote))
         tau = 1.0 / self.frequency
         times = self.payment_times()
         for t in times:
@@ -161,7 +200,10 @@ class CrossCurrencySwap:
         sign = 1.0 if self.receive_base else -1.0
         v = sign * (market.spot_today * self.leg_pv_base(market) - self.leg_pv_quote(market))
         if self.include_initial_exchange:
-            v += sign * (self.notional_quote - market.spot * self.notional_base)
+            te = _exchange_time(self.exchange_time, market)
+            v += sign * (self.notional_quote * market.domestic_curve_adjusted.df(te)
+                         - self.notional_base * market.foreign_curve_adjusted.df(te)
+                         * market.spot_today)
         return v
 
 
@@ -177,7 +219,8 @@ class BasisSwap:
     floating rate flat. Floating rates are projected off each currency's
     own curve (``domestic_curve`` / ``foreign_curve``) and discounted on
     the collateral-consistent curves. Notionals are exchanged at maturity
-    and, when ``include_initial_exchange``, at t = 0.
+    and, when ``include_initial_exchange``, on the spot date (or at
+    ``exchange_time``), valued as for :class:`CrossCurrencySwap`.
 
     Parameters
     ----------
@@ -202,10 +245,12 @@ class BasisSwap:
     include_initial_exchange: bool = False
     pair: tuple[str, str] = ("EUR", "USD")
     label: str = ""
+    exchange_time: float | None = None
 
     def __post_init__(self) -> None:
         if self.pair[0] == self.pair[1]:
             raise ValueError(f"same-currency 'cross' {self.pair[0]}/{self.pair[1]} rejected")
+        _check_exchange_time(self.exchange_time)
         require_finite(notional_base=self.notional_base, notional_quote=self.notional_quote,
                        spread=self.spread, maturity=self.maturity)
         if self.maturity <= 0.0:
@@ -226,7 +271,8 @@ class BasisSwap:
         n = int(round(self.maturity * self.frequency))
         return np.arange(1, n + 1, dtype=float) / self.frequency
 
-    def _leg_pv(self, projection, discount, notional: float, spread: float) -> float:
+    def _leg_pv(self, projection, discount, notional: float, spread: float,
+                te: float = 0.0) -> float:
         t = self.payment_times()
         tau = 1.0 / self.frequency
         p = np.asarray(projection.df(t))
@@ -235,7 +281,7 @@ class BasisSwap:
         coupons = float(np.sum((p_prev / p - 1.0 + spread * tau) * d))
         pv = notional * (coupons + d[-1])
         if self.include_initial_exchange:
-            pv -= notional
+            pv -= notional * float(discount.df(te))
         return pv
 
     def value(self, market: MarketState) -> float:
@@ -246,10 +292,11 @@ class BasisSwap:
             )
         s_base = self.spread if market.basis_ccy == market.base_ccy else 0.0
         s_quote = self.spread if market.basis_ccy == market.quote_ccy else 0.0
+        te = _exchange_time(self.exchange_time, market)
         pv_base = self._leg_pv(market.foreign_curve, market.foreign_curve_adjusted,
-                               self.notional_base, s_base)
+                               self.notional_base, s_base, te)
         pv_quote = self._leg_pv(market.domestic_curve, market.domestic_curve_adjusted,
-                                self.notional_quote, s_quote)
+                                self.notional_quote, s_quote, te)
         sign = 1.0 if self.receive_base else -1.0
         return sign * (market.spot_today * pv_base - pv_quote)
 
