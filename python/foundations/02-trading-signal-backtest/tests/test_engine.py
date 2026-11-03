@@ -80,8 +80,13 @@ class TestTransactionCosts:
 
         day2_ret_costed = costed.equity.iloc[2] / costed.equity.iloc[1] - 1
         day2_ret_free = free.equity.iloc[2] / free.equity.iloc[1] - 1
+        # The fill is at 107.5 (f = 0.5); the cost is paid out of the trade, so
+        # the entry buys 1/(1+c) of NAV and the drag is (1 + b) c / (1 + c),
+        # b = 110/107.5 - 1. (Before qp_bt the drag was c of opening NAV.)
+        c = cost_bps / 10_000
+        b = 110.0 / 107.5 - 1.0
         assert day2_ret_free - day2_ret_costed == pytest.approx(
-            cost_bps / 10_000, abs=1e-12
+            (1 + b) * c / (1 + c), abs=1e-15
         )
         assert costed.n_trades == 1
 

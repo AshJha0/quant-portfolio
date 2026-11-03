@@ -73,7 +73,14 @@ def test_close_auction_charges_exact_auction_cost():
     free, _, _ = strategy_returns(prices, signal, 5.0,
                                   ExecutionConfig("close_auction", auction_cost_bp=0.0))
     diff = (free - with_cost).to_numpy()
-    np.testing.assert_allclose(diff, trades.to_numpy() * 10.0 / 10_000, atol=1e-15)
+    # Entry at close 1 (booked on day 2, return r = 102/101 - 1): the book buys
+    # 1/(1+c) of NAV, so the extra 10 bp costs (1+r)(1/(1+5bp) - 1/(1+15bp)).
+    # Exit at close 3 (booked on day 4, a = 0): it costs exactly the 10 bp.
+    r = 102.0 / 101.0 - 1.0
+    want = np.zeros(5)
+    want[2] = (1 + r) * (1 / (1 + 5e-4) - 1 / (1 + 15e-4))
+    want[4] = 10.0 / 10_000
+    np.testing.assert_allclose(diff, want, atol=1e-15)
     assert trades.sum() == 2
 
 

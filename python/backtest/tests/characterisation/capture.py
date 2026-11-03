@@ -17,9 +17,8 @@ from __future__ import annotations
 import pathlib
 import warnings
 
-import numpy as np
-
 import cases
+import numpy as np
 
 OUT = pathlib.Path(__file__).with_name("corpus.npz")
 

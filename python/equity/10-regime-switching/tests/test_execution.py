@@ -83,12 +83,21 @@ class TestCloseAuction:
         w = pd.Series([1.0, 0.25, 0.75], index=rets.index[:3])
         ex = ExecutionConfig("close_auction", auction_cost_bp=12.0)
         led = run_ledger(w, rets, cost_bps=5.0, borrow_spread_bps=0.0, execution=ex)
-        dw = np.array([1.0, 0.75, 0.5])
-        np.testing.assert_allclose(led["cost"], (5.0 + 12.0) / 1e4 * dw, rtol=1e-14)
-        np.testing.assert_allclose(led["gross_ret"], w.to_numpy() * rets.iloc[1:].to_numpy(),
-                                   rtol=1e-14)
+        # By hand, in shares and cash: fill at the decision close (a = 0), the
+        # cost c = 17 bp of the notional is paid out of the trade.
+        c = (5.0 + 12.0) / 1e4
+        r = rets.iloc[1:].to_numpy()
+        h, cost, net = 0.0, [], []
+        for wt, rt in zip(w.to_numpy(), r, strict=True):
+            sgn = np.sign(wt - h)
+            n = (1 + c * sgn * h) / (1 + c * sgn * wt)   # N = 1 - c |w N - h|
+            cost.append(1 - n)
+            net.append(n * (1 + wt * rt) - 1)
+            h = wt * n * (1 + rt) / (1 + net[-1])
+        np.testing.assert_allclose(led["cost"], cost, rtol=0, atol=1e-15)
+        np.testing.assert_allclose(led["net_ret"], net, rtol=0, atol=1e-15)
         nxt = run_ledger(w, rets, cost_bps=5.0, borrow_spread_bps=0.0)
-        np.testing.assert_allclose(led["cost"] - nxt["cost"], 12.0 / 1e4 * dw, rtol=1e-12)
+        assert (led["cost"] > nxt["cost"]).all()
 
 
 class TestFinancing:
@@ -98,11 +107,15 @@ class TestFinancing:
         led = run_ledger(w, rets, cost_bps=0.0, cash_rate=0.02, borrow_spread_bps=50.0,
                          execution=ExecutionConfig("next", fill_fraction=0.5))
         borrow, cash = 0.025 / 252, 0.02 / 252
-        # day 1: time-weighted weight 0.75 -> 0.25 in cash
-        # day 2: 1.5 all day -> 0.5 borrowed
-        # day 3: 0.5 * 1.5 + 0.5 * 0.5 = 1.0 -> nothing
-        np.testing.assert_allclose(led["financing"], [0.25 * cash, -0.5 * borrow, 0.0],
-                                   rtol=1e-12, atol=1e-18)
+        # Financing is on the cash held overnight (h = weight at the previous
+        # close): day 1 holds all cash; days 2 and 3 hold 1.5 (0.5 borrowed),
+        # slightly less after the financing moved NAV.
+        fin1 = 1.0 * cash
+        h1 = 1.5 / (1 + fin1)
+        fin2 = (1 - h1) * borrow
+        h2 = 1.5 / (1 + fin2)
+        fin3 = (1 - h2) * borrow
+        np.testing.assert_allclose(led["financing"], [fin1, fin2, fin3], rtol=1e-12, atol=1e-18)
         np.testing.assert_allclose(led["net_ret"], led["financing"], rtol=1e-12, atol=1e-18)
 
     def test_unlevered_book_pays_nothing(self):

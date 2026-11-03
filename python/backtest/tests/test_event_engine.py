@@ -65,6 +65,7 @@ def test_partial_fills_respect_participation_and_finish_later():
     assert [f.quantity for f in res.fills] == [100.0, 100.0, 50.0]
     assert [f.bar for f in res.fills] == [1, 2, 3]
     assert [f.leaves_qty for f in res.fills] == [150.0, 50.0, 0.0]
+    assert [f.cum_qty for f in res.fills] == [100.0, 200.0, 250.0]
     assert res.positions["A"].tolist() == [0.0, 100.0, 200.0, 250.0, 250.0, 250.0]
 
 

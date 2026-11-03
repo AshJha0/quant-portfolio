@@ -226,23 +226,51 @@ class BacktestLedger:
 def solve_post_trade_nav(m: float, held: FloatArray, w: FloatArray,
                          cost: Callable[[FloatArray], float],
                          max_iter: int = 200) -> float:
-    """Post-trade NAV ``N`` solving ``N = m - cost(w N - held)``.
+    """Post-trade NAV ``N`` solving ``N = m - cost(w N - held)``; 0 if wiped out.
 
     ``held`` is the value of the holdings at the fill and ``m`` the NAV at
-    the fill, both in the same unit. The map is a contraction whenever the
-    marginal cost per unit traded is below 1 / sum|w|; the iteration stops at
-    machine precision and raises if it does not get there, or if the costs
-    would take the post-trade NAV to zero or below.
+    the fill, both in the same unit. Fixed-point iteration converges whenever
+    the marginal cost per unit traded is below ``1 / sum|w|`` (every realistic
+    cost). Otherwise the root of ``g(N) = N - m + cost(w N - held)`` is found
+    by bisection on ``[0, m]`` (``g(m) >= 0``). If ``g(0) >= 0`` the trade
+    costs at least the whole NAV: the book is wiped out and ``0`` is returned,
+    which callers treat as an absorbing state.
     """
+    if m <= 0.0:
+        return 0.0
     n = m
     for _ in range(max_iter):
         n_new = m - cost(w * n - held)
-        if n_new <= 0.0:
-            raise RuntimeError("trade costs exceed the NAV at the fill")
+        if not n_new > 0.0:
+            break
         if abs(n_new - n) <= 4e-16 * max(1.0, abs(n_new)):
             return n_new
         n = n_new
-    raise RuntimeError("post-trade NAV did not converge: cost per unit traded too high")
+
+    def g(x: float) -> float:
+        return x - m + cost(w * x - held)
+
+    if g(0.0) >= 0.0:
+        return 0.0
+    lo, hi = 0.0, m
+    for _ in range(2000):
+        mid = 0.5 * (lo + hi)
+        if mid in (lo, hi):
+            break
+        if g(mid) < 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return hi
+
+
+_SNAP = 1e-12
+
+
+def _no_trade(w: FloatArray, held: FloatArray, m: float) -> bool:
+    """A target already met to 1e-12 of NAV is no order: what is left is
+    floating-point drift (a restated weight of 1 on one asset), not a trade."""
+    return bool(np.max(np.abs(w * m - held), initial=0.0) <= _SNAP * max(abs(m), 1e-300))
 
 
 def _with_extra(cost: CostModel, extra_bp: float, bar: int) -> Callable[[FloatArray], float]:
@@ -312,12 +340,18 @@ def run_fast(
     h = np.zeros(n_assets)
     nav = 1.0
     for s in range(t_n):
+        if nav <= 0.0:          # wiped out: an absorbing state
+            out[s, -1] = 0.0
+            continue
         r = r_all[s]
         a = phi * r
         fin = _fin(financing, 1.0 - float(h.sum()), rf_all[s], tau_all[s])
         borrow = beta * float(np.sum(np.maximum(-h, 0.0) * (1.0 + a)))
         dec = s - fm.lag
         w = tgt[dec] if dec >= 0 else None
+        if w is not None and not np.isnan(w).any() and _no_trade(w, h * (1.0 + a),
+                                                                 1.0 + float(h @ a)):
+            w = None
         if w is None or np.isnan(w).all():
             gross = float(h @ r)
             cost_v = turnover = 0.0
@@ -335,7 +369,10 @@ def run_fast(
             post = w * n_post * (1.0 + b)
         net = gross - cost_v - borrow + fin
         nav *= 1.0 + net
-        h = post / (1.0 + net)
+        if nav <= 0.0:
+            net, nav, post = -1.0, 0.0, np.zeros(n_assets)
+            gross = net + cost_v + borrow - fin
+        h = post / (1.0 + net) if nav > 0.0 else post
         w_close[s] = h
         out[s] = (gross, cost_v, borrow, fin, net, rf_all[s], net - rf_all[s], turnover, nav)
     cols = getattr(returns, "columns", None)
@@ -442,6 +479,10 @@ class EventEngine:
         while queue:
             ev = heapq.heappop(queue)
             s = ev.bar
+            if nav_prev <= 0.0:           # wiped out: an absorbing state
+                if ev.kind == "close":
+                    pnl_rows.append({})
+                continue
             p_prev = self.p[s - 1] if s > 0 else self.p[0]
             pf = p_prev + self.fill.fraction * (self.p[s] - p_prev)
             if "bar" not in state or state["bar"] != s:
@@ -465,11 +506,13 @@ class EventEngine:
                     # this event (larger seq) and before CLOSE
                     heapq.heappush(queue, _Event(s + lag, _FILL if lag else _DECIDE,
                                                  next(seq), "fill",
-                                                 (next(order_ids), s, intent)))
+                                                 (next(order_ids), s, intent, None)))
             else:  # close
                 carry_total = float(sum(state["carry"].values()))
                 cash += state["fin"] - carry_total
                 nav = cash + float(q @ self.p[s])
+                if nav <= 0.0 and float(np.abs(q).sum()) == 0.0:
+                    nav = 0.0
                 cost_total = float(sum(state["cost"].values()))
                 net = nav / nav_prev - 1.0
                 c = cost_total / nav_prev
@@ -483,7 +526,7 @@ class EventEngine:
                                  **{f"carry_{k}": v for k, v in state["carry"].items()},
                                  "financing": state["fin"]})
                 pos[s] = q
-                wts[s] = q * self.p[s] / nav
+                wts[s] = q * self.p[s] / nav if nav > 0.0 else 0.0
                 nav_prev = nav
         cols = self.prices.columns
         return BacktestLedger(
@@ -498,7 +541,8 @@ class EventEngine:
     def _execute(self, ev: _Event, s: int, q: FloatArray, cash: float, nav_prev: float,
                  state: dict[str, Any], fills: list[FillRecord], order_ids: Any,
                  queue: list[_Event], seq: Any) -> tuple[float, FloatArray]:
-        oid, dec, intent = ev.payload
+        oid, dec, intent, done_before = ev.payload
+        done = 0.0 if done_before is None else float(done_before)
         pf = state["pf"]
         extra = self.fill.extra_cost_bp * 1e-4
 
@@ -516,6 +560,8 @@ class EventEngine:
             w = np.asarray(intent.weights, dtype=float)
             held = q * pf
             m = cash + float(held.sum())
+            if _no_trade(w, held, m):
+                return cash, q
             base = _with_extra(self.cost, 0.0, dec)
 
             def c_dollars(dv: FloatArray) -> float:
@@ -547,20 +593,21 @@ class EventEngine:
             if self.fill.max_participation is not None and self.vol is not None:
                 cap = self.fill.max_participation * float(self.vol[s, asset])
                 dq = float(np.sign(dq) * min(abs(dq), cap))
-            if self.unit_cost is not None:
-                comp = self.unit_cost(s, asset, dq, float(pf[asset]))
-            else:
-                dv = np.zeros(len(q))
-                dv[asset] = dq * pf[asset] / nav_prev
-                comp = {"model": nav_prev * self.cost(dec, dv)}
-            if extra:
-                comp = {**comp, "extra": extra * abs(dq) * float(pf[asset])}
             leaves = abs(want - dq)
-            if dq != 0.0 or self.unit_cost is not None:
-                book(asset, dq, comp, abs(dq), leaves, getattr(intent, "tag", ""))
-            q[asset] += dq
-            cash -= dq * float(pf[asset]) + float(sum(comp.values()))
+            if dq != 0.0:
+                if self.unit_cost is not None:
+                    comp = self.unit_cost(s, asset, dq, float(pf[asset]))
+                else:
+                    dv = np.zeros(len(q))
+                    dv[asset] = dq * pf[asset] / nav_prev
+                    comp = {"model": nav_prev * self.cost(dec, dv)}
+                if extra:
+                    comp = {**comp, "extra": extra * abs(dq) * float(pf[asset])}
+                book(asset, dq, comp, done + abs(dq), leaves, getattr(intent, "tag", ""))
+                q[asset] += dq
+                cash -= dq * float(pf[asset]) + float(sum(comp.values()))
             if leaves > 0.0 and s + 1 < len(self.p):
                 rest = MarketOrder(asset, want - dq, getattr(intent, "tag", ""))
-                heapq.heappush(queue, _Event(s + 1, _FILL, next(seq), "fill", (oid, dec, rest)))
+                heapq.heappush(queue, _Event(s + 1, _FILL, next(seq), "fill",
+                                             (oid, dec, rest, done + abs(dq))))
         return cash, q

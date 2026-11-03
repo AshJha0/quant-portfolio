@@ -9,8 +9,11 @@ Design decisions that matter (expanded in ``docs/METHODOLOGY.md``):
    position earns p_{t+1} / p_fill - 1. See :class:`ExecutionConfig` and
    ``tests/test_execution.py``.
 
-2. TRANSACTION COSTS. A fixed cost in basis points is charged on every
-   change in position (0->1 or 1->0), on the day of the fill. A
+2. TRANSACTION COSTS. A fixed cost in basis points of the traded notional
+   at the fill price is charged on every change in position (0->1 or
+   1->0), on the day of the fill, and paid out of the trade: an entry buys
+   ``1/(1+c)`` of NAV, an exit keeps ``(1+a)(1-c)``. The fill, the cost and
+   the P&L come from the shared core ``qp_bt`` (``qp_bt.run_fast``). A
    zero-cost variant is available (``cost_bps=0.0``) so the drag is
    visible.
 
@@ -31,6 +34,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from qp_bt import LinearCost, NextBarFill, run_fast
 from qp_core.execution import ExecutionConfig
 
 TRADING_DAYS = 252
@@ -123,8 +127,10 @@ def strategy_returns(
     """Daily net strategy returns, executed position, and trade flags.
 
     The single source of truth for how a signal becomes a P&L stream:
-    modelled t+1 fill (see :class:`ExecutionConfig`), cost charged on every position change, daily
-    return floored at ``-1.0``. :func:`run_backtest` and
+    modelled t+1 fill (see :class:`ExecutionConfig`), cost charged on every
+    position change, computed by the shared core ``qp_bt``. A cost that
+    exceeds the NAV wipes the book out: the return is ``-1.0`` and the book
+    stays flat at zero after it. :func:`run_backtest` and
     :func:`eq_signal_backtest.split.walk_forward_backtest` both go through
     here, so the walk-forward path cannot silently drift away from the
     single-shot path (they were separate copies of this arithmetic before,
@@ -165,22 +171,18 @@ def strategy_returns(
 
     # The signal decided at the close of day d-1 is filled during day d.
     # ``position`` is the holding after that fill; ``old`` is the holding
-    # before it.
+    # before it. The P&L, the fill and the costs come from the shared core
+    # (qp_bt): an order is sent only on the days the signal changes.
     position = signal.shift(1).fillna(0.0)
     old = signal.shift(2).fillna(0.0)
-
     trades = (position - old).abs()
-    if execution.mode == "next":
-        f = execution.fill_fraction
-        before = f * rets  # p_fill / p_{d-1} - 1
-        after = (1.0 + rets) / (1.0 + f * rets) - 1.0  # p_d / p_fill - 1
-        gross = (1.0 + old * before) * (1.0 + position * after) - 1.0
-        costs = trades * cost_bps / 10_000
-    else:
-        gross = position * rets
-        costs = trades * (cost_bps + execution.auction_cost_bp) / 10_000
 
-    strat_rets = (gross - costs).clip(lower=-1.0)
+    sig = signal.to_numpy(dtype=float)
+    changed = sig != np.concatenate([[0.0], sig[:-1]])
+    targets = np.where(changed, sig, np.nan)[:, None]
+    fill = NextBarFill.from_execution(execution, auction_booked="next")
+    run = run_fast(rets.to_frame(), targets, fill, LinearCost(cost_bps))
+    strat_rets = run.ledger["net_ret"].rename(prices.name)
     return strat_rets, position, trades
 
 
