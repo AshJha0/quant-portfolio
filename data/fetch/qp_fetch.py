@@ -7,11 +7,13 @@ Sources and their status (checked 2026-11-02):
   third-party copyright (for example ``SP500``); this module refuses them.
 - ECB Data Portal SDMX API (``data-api.ecb.europa.eu``): no key, no login;
   reuse is allowed with attribution to the ECB.
-- Nasdaq Data Link: every call needs an API key, so an account and its
-  terms of use. Not fetched. ``nasdaq_data_link`` raises until the owner
-  decides.
-- LOBSTER sample files: the download page sits behind LOBSTER's terms. Not
-  downloaded. ``read_lobster_sample`` parses files the owner places by hand.
+- Sources that need an account, a key or payment details are not fetched
+  (owner rule; see ``data/README.md``).
+
+New code should use ``qp_data`` (``python/data``): it adds retries, a
+content-addressed store, a manifest and publication lags. This module stays
+because the research scripts import it by path; its parsers agree with
+``qp_data.sources``.
 
 Downloads land in ``data/raw/`` (git-ignored). Each file gets a
 ``.sha256`` sidecar so a study can record exactly which bytes it used.
@@ -34,9 +36,15 @@ ECB_URL = (
     "?format=csvdata&startPeriod={start}&endPeriod={end}"
 )
 
-# FRED series known to carry third-party copyright. Not exhaustive: a new
-# series must be checked on its FRED page before it is added to a study.
-FRED_RESTRICTED = frozenset({"SP500", "NASDAQCOM", "DJIA", "VIXCLS", "WILL5000IND"})
+# FRED series cleared for use: Federal Reserve and BLS series, which are
+# public domain. FRED also hosts third-party series under copyright (equity
+# indices, for example), so this is an allow-list: a new series is checked
+# on its FRED page, then added here.
+FRED_PERMITTED_PREFIXES = ("DEX", "DGS", "DTB", "DFF", "SOFR", "FEDFUNDS", "CPIAUCSL")
+
+
+def fred_permitted(series: str) -> bool:
+    return series.upper().startswith(FRED_PERMITTED_PREFIXES)
 
 ECB_G10 = ("USD", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD", "SEK", "NOK")
 
@@ -69,8 +77,8 @@ def parse_fred_csv(text: str, series: str) -> pd.Series:
 
 
 def fetch_fred(series: str, raw_dir: Path = RAW_DIR) -> pd.Series:
-    if series.upper() in FRED_RESTRICTED:
-        raise SourceNotPermitted(f"FRED series {series} is third-party copyright")
+    if not fred_permitted(series):
+        raise SourceNotPermitted(f"FRED series {series} is not on the public-domain allow-list")
     payload = _download(FRED_URL.format(series=series))
     _store(f"fred_{series}.csv", payload, raw_dir)
     return parse_fred_csv(payload.decode("utf-8"), series)
@@ -98,39 +106,6 @@ def fetch_ecb_fx(
     payload = _download(ECB_URL.format(ccys="+".join(ccys), start=start, end=end))
     _store(f"ecb_exr_{start}_{end}.csv", payload, raw_dir)
     return parse_ecb_csv(payload.decode("utf-8"))
-
-
-def nasdaq_data_link(*_args, **_kwargs):
-    raise SourceNotPermitted(
-        "Nasdaq Data Link needs an API key (account and terms). Owner decision required."
-    )
-
-
-LOBSTER_MESSAGE_COLUMNS = ("time", "type", "order_id", "size", "price", "direction")
-
-
-def read_lobster_sample(message_csv: Path, orderbook_csv: Path, levels: int = 1) -> pd.DataFrame:
-    """Join a LOBSTER message file with its order-book file (level ``levels``).
-
-    LOBSTER prices are integer dollars x 10,000; time is seconds after
-    midnight. Reference: LOBSTER data structure note, lobsterdata.com.
-    """
-    msg = pd.read_csv(message_csv, header=None).iloc[:, :6]
-    msg.columns = list(LOBSTER_MESSAGE_COLUMNS)
-    book = pd.read_csv(orderbook_csv, header=None)
-    if len(book) != len(msg):
-        raise ValueError("message and order-book files have different row counts")
-    if book.shape[1] < 4 * levels:
-        raise ValueError(f"order book has fewer than {levels} levels")
-    cols = []
-    for lvl in range(1, levels + 1):
-        cols += [f"ask_px_{lvl}", f"ask_sz_{lvl}", f"bid_px_{lvl}", f"bid_sz_{lvl}"]
-    book = book.iloc[:, : 4 * levels]
-    book.columns = cols
-    out = pd.concat([msg, book], axis=1)
-    for c in ["price"] + [c for c in cols if "_px_" in c]:
-        out[c] = out[c] / 10_000.0
-    return out
 
 
 if __name__ == "__main__":  # pragma: no cover

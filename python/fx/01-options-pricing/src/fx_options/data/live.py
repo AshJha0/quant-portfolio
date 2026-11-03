@@ -7,16 +7,25 @@ e.g. seeding examples with a current EURUSD spot.
 The ECB publishes daily reference rates around 16:00 CET; they are
 indicative mid rates, not tradable quotes, and are quoted EUR-based
 (units of currency per 1 EUR).
+
+Deprecated: use ``qp_data.fetch("frankfurter:EUR")`` or
+``qp_data.fetch("ecb:EXR:USD")``. This function now delegates to qp_data and
+is removed in v4.0.0.
 """
 
 from __future__ import annotations
 
-import json
-import urllib.request
-
 __all__ = ["LiveDataUnavailable", "fetch_ecb_rates"]
 
-_API = "https://api.frankfurter.app/latest"
+
+def _qp_data():  # imported lazily: qp_data is optional for this project
+    try:
+        from qp_data import legacy
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError(
+            "live data now comes from qp_data: pip install -e python/data"
+        ) from exc
+    return legacy
 
 
 class LiveDataUnavailable(RuntimeError):
@@ -48,14 +57,13 @@ def fetch_ecb_rates(base: str = "EUR", symbols: tuple[str, ...] = ("USD", "JPY",
         On any network or parsing failure: callers should degrade to
         synthetic data (`fx_options.data.synthetic`).
     """
-    url = f"{_API}?base={base}&symbols={','.join(symbols)}"
+    legacy = _qp_data()
+    legacy.deprecated("fx_options.data.live.fetch_ecb_rates", 'qp_data.fetch("frankfurter:EUR")')
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        rates = {str(k): float(v) for k, v in payload["rates"].items()}
-        rates["_date"] = payload.get("date", "unknown")
+        frame = legacy.frankfurter(base, symbols, timeout=timeout)
+        row = frame.iloc[-1]
+        rates: dict[str, float] = {str(k): float(v) for k, v in row.items()}
+        rates["_date"] = frame.index[-1].date().isoformat()  # type: ignore[assignment]
         return rates
     except Exception as exc:
-        raise LiveDataUnavailable(
-            f"could not fetch ECB rates from {url}: {exc}"
-        ) from exc
+        raise LiveDataUnavailable(f"could not fetch ECB rates for {base}: {exc}") from exc

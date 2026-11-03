@@ -1,22 +1,20 @@
-"""Guarded live FX data loader (Frankfurter API).  NOT used by tests.
+"""Live FX data loader (Frankfurter API). NOT used by tests.
 
-Network access is confined to this module per CONVENTIONS.md: importing it is
-side-effect free, and the fetch function raises a clear ``RuntimeError`` when
-offline.  The rest of the package (and the entire test suite) runs on the
-deterministic generators in :mod:`fx_pairs.data.synthetic`.
+Deprecated: use ``qp_data.fetch("frankfurter:USD:EUR,GBP,...", start, end)``
+and invert. :func:`fetch_frankfurter_legs` now delegates to qp_data
+(retries, backoff, one parser) and is removed in v4.0.0.
+
+Importing this module is side-effect free, and the fetch function raises a
+clear ``RuntimeError`` when offline. The rest of the package (and the entire
+test suite) runs on the deterministic generators in
+:mod:`fx_pairs.data.synthetic`.
 """
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
-
 import pandas as pd
 
 __all__ = ["fetch_frankfurter_legs"]
-
-_BASE_URL = "https://api.frankfurter.app"
 
 
 def fetch_frankfurter_legs(
@@ -27,30 +25,28 @@ def fetch_frankfurter_legs(
 ) -> pd.DataFrame:
     """Fetch daily ECB reference rates and return a CCYUSD USD-leg panel.
 
-    Frankfurter serves ECB reference rates.  We request USD-based quotes
+    Frankfurter serves ECB reference rates. We request USD-based quotes
     (units of CCY per USD) and invert to USD legs (USD per 1 CCY), matching
     the convention of :mod:`fx_pairs.universe`.
 
     Raises
     ------
     RuntimeError
-        If the network is unavailable or the API cannot be reached.
+        If qp_data is missing, the network is unavailable or the API cannot
+        be reached.
     """
-    end = end or pd.Timestamp.today().strftime("%Y-%m-%d")
-    symbols = ",".join(c.upper() for c in currencies)
-    url = f"{_BASE_URL}/{start}..{end}?from=USD&to={symbols}"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        from qp_data import legacy
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError("live data now comes from qp_data: pip install -e python/data") from exc
+    legacy.deprecated("fx_pairs.data.live.fetch_frankfurter_legs", 'qp_data.fetch("frankfurter:USD:...")')
+    end = end or pd.Timestamp.today().strftime("%Y-%m-%d")
+    try:
+        df = legacy.frankfurter("USD", [c.upper() for c in currencies], start, end, timeout=timeout)
+    except Exception as exc:
         raise RuntimeError(
             "could not reach the Frankfurter API (offline?); use "
             "fx_pairs.data.synthetic for deterministic offline data"
         ) from exc
-    rates = payload.get("rates", {})
-    if not rates:
-        raise RuntimeError("Frankfurter returned no rates for the request")
-    df = pd.DataFrame.from_dict(rates, orient="index").sort_index()
-    df.index = pd.to_datetime(df.index)
     # payload is CCY per USD; invert to USD per CCY (USD legs)
     return (1.0 / df).rename_axis("date")
