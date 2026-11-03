@@ -61,6 +61,7 @@ pub mod philox;
 pub mod pool;
 pub mod quantile;
 pub mod rates_vol;
+pub mod resample;
 pub mod risk;
 pub mod rng;
 pub mod roots;

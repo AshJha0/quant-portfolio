@@ -459,25 +459,16 @@ fn bootstrap_estimates(
     };
     let per = n_boot.div_ceil(threads).max(1);
     // Replicate b draws its n indices from its own Philox stream (seed, b)
-    // (W4(b)), batched 32 words at a time; same words as PathRng::uniform.
+    // (W4(b)), 32 words at a time; same words as PathRng::uniform. The
+    // losses are ranked once, and a replicate counts how often each of the
+    // largest few is drawn instead of filling a buffer and selecting
+    // (`qp_core::resample`; the same bits as the selection).
+    let ranked = qp_core::resample::RankedLosses::new(pnl);
+    let ranked = &ranked;
     let work = |first: usize, chunk: &mut [f64]| {
-        let lanes = qp_core::path_rng::LANES;
-        let mut buf = vec![0.0; n];
-        let mut u = vec![0.0; 2 * lanes];
+        let mut counts = Vec::new();
         for (r, e) in chunk.iter_mut().enumerate() {
-            let b = (first + r) as u64;
-            let mut block = 0u64;
-            for part in buf.chunks_mut(2 * lanes) {
-                let uc = u.get_mut(..part.len()).unwrap_or(&mut []);
-                qp_core::path_rng::philox_uniforms(seed, b, block, uc);
-                block += lanes as u64;
-                for (slot, &ui) in part.iter_mut().zip(uc.iter()) {
-                    let i = ((ui * n as f64) as usize).min(n - 1);
-                    *slot = -pnl.get(i).copied().unwrap_or(0.0);
-                }
-            }
-            let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
-            *e = *lm;
+            *e = ranked.kth_largest(m, seed, (first + r) as u64, &mut counts);
         }
     };
     if threads == 1 {
