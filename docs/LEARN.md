@@ -521,7 +521,7 @@ For a delta-hedged option under Black-Scholes, `theta + 0.5 sigma^2 S^2 gamma = 
 
 **Q16. What is vega, and how does a desk manage vega exposure?**
 
-Vega (`dV/dsigma`) is `bs_greeks(...).vega`, `S e^{-qT} phi(d1) sqrt(T)`, currency per unit of annualised vol (divide by 100 for "per vol point," per the `greeks.py` docstring). `DESK_GUIDE.md` §1.1 gives a market-making example: a 1y ATM option has vega ≈ 37.8 per unit vol (0.378 per vol point), so a market quoted 0.4 vols wide spans about $0.15 on a $9.83 option, about $0.076 of edge on each side of mid. §1.2 aggregates vega to book level by expiry bucket, with vanna/volga limits layered on top for the skew book, vega alone doesn't capture how the position moves when the *smile* moves, only a parallel shift.
+Vega (`dV/dsigma`) is `bs_greeks(...).vega`, `S e^{-qT} phi(d1) sqrt(T)`, currency per unit of annualised vol (divide by 100 for "per vol point," per the `greeks.py` docstring). `DESK_GUIDE.md` §1.1 gives a market-making example: a 1y ATM call (S = K = 100, sigma = 20%, r = 4%, q = 0) is worth $9.93 with vega ≈ 38.1 per unit vol (0.381 per vol point), so a market quoted 0.4 vols wide spans about $0.15, about $0.076 of edge on each side of mid. §1.2 aggregates vega to book level by expiry bucket, with vanna/volga limits layered on top for the skew book, vega alone doesn't capture how the position moves when the *smile* moves, only a parallel shift.
 
 **Q17. What is rho, and why is it usually a lower-priority Greek?**
 
@@ -755,7 +755,7 @@ GJR-GARCH (`eq_vol/gjr.py`): `sigma2_t = omega + (alpha + gamma*1[r_{t-1}<0]) r_
 
 **Q13. How does the historical/realized estimator suite differ from just squaring daily returns, and why does it matter?**
 
-`eq_vol/historical.py` implements four range-based one-day variance estimators beyond plain close-to-close `r_t^2`: Parkinson (~4.9x more efficient), Garman–Klass (~7.4x), and Rogers–Satchell (~6x, and uniquely drift-robust). "Efficiency" means lower sampling variance for the same data, METHODOLOGY.md notes a 21-day Parkinson estimate is roughly as precise as a ~100-day close-to-close one. The price is stronger assumptions (continuous monitoring, no overnight gaps, no microstructure noise); discrete trading biases the observed range down and bid–ask bounce biases it up, both demonstrated in `tests/test_historical.py`.
+`eq_vol/historical.py` implements four range-based one-day variance estimators beyond plain close-to-close `r_t^2`: Parkinson (~4.9x more efficient), Garman–Klass (~7.4x), Rogers–Satchell (~6x, and drift-robust), and Yang–Zhang (`yang_zhang_var`, which also handles the overnight gap). "Efficiency" means lower sampling variance for the same data, METHODOLOGY.md notes a 21-day Parkinson estimate is roughly as precise as a ~100-day close-to-close one. The price is stronger assumptions (continuous monitoring, no overnight gaps, no microstructure noise); discrete trading biases the observed range down and bid–ask bounce biases it up, both demonstrated in `tests/test_historical.py`.
 
 **Q14. How is a GARCH-type forecast actually validated in this codebase: what's the real backtest?**
 
