@@ -72,7 +72,7 @@ The ring-hop tail is the WSL2 hypervisor descheduling the second vCPU, not
 the ring; it is the clearest example of why these numbers are labelled
 indicative. Running the open-loop case at 1e6 packets/s, above the
 measured capacity of about 6e5 packets/s, sent response time to 0.1 s
-while service time stayed near 1.5 µs: the queue, not the code, is what a
+while service time stayed near 1.5 Âµs: the queue, not the code, is what a
 closed-loop benchmark would have hidden. The default rate is now 2e5.
 
 ## 3. Histogram
