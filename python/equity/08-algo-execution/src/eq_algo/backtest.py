@@ -316,7 +316,8 @@ def run_backtest(prices: pd.DataFrame, signal: pd.DataFrame,
 def capacity_backtest(prices: pd.DataFrame, signal: pd.DataFrame, volumes: pd.DataFrame,
                       config: BacktestConfig, aum_grid, impact_coefs=(0.3, 0.7, 1.0),
                       execution: ExecutionConfig | None = None, start: int = 0,
-                      adv_window: int = 21) -> pd.DataFrame:
+                      adv_window: int = 21,
+                      financing: Financing | None = None) -> pd.DataFrame:
     """Capacity by re-running the full backtest at each AUM and impact coefficient.
 
     Every run uses per-name trailing ADV$ and daily vol known at the decision
@@ -325,6 +326,10 @@ def capacity_backtest(prices: pd.DataFrame, signal: pd.DataFrame, volumes: pd.Da
     ``net_sharpe``, ``drag_bps_per_day`` (mean cost plus borrow),
     ``p95_participation`` (95th percentile of traded dollars over trailing
     ADV$ across all name-day trades). ``start`` drops warm-up rows.
+
+    ``net_sharpe`` is computed on excess returns (``excess_ret``: net return
+    less the risk-free return). ``financing`` is passed to ``run_backtest``;
+    with ``financing=None`` the excess and net returns are identical.
     """
     if volumes is None:
         raise ValueError("volumes are required for a capacity run")
@@ -342,9 +347,11 @@ def capacity_backtest(prices: pd.DataFrame, signal: pd.DataFrame, volumes: pd.Da
                 raise ValueError("AUM values must be finite and > 0")
             cfg = _replace(config, impact_coef=float(y), aum=float(aum))
             res = run_backtest(prices, signal, cfg, volumes=volumes,
-                               adv_window=adv_window, execution=execution)
+                               adv_window=adv_window, execution=execution,
+                               financing=financing)
             led = res.ledger.iloc[start:]
             net = led["net_ret"]
+            exc = led["excess_ret"]
             dw = res.weights.diff().to_numpy(dtype=float)[start:]
             a = adv[start:]
             with np.errstate(divide="ignore", invalid="ignore"):
@@ -354,7 +361,7 @@ def capacity_backtest(prices: pd.DataFrame, signal: pd.DataFrame, volumes: pd.Da
                 "impact_coef": float(y),
                 "aum": float(aum),
                 "ann_net_return": float(net.mean() * 252.0),
-                "net_sharpe": float(net.mean() / net.std(ddof=1) * np.sqrt(252.0)),
+                "net_sharpe": float(exc.mean() / exc.std(ddof=1) * np.sqrt(252.0)),
                 "drag_bps_per_day": float((led["cost"] + led["borrow"]).mean() * 1e4),
                 "p95_participation": float(np.quantile(part, 0.95)) if part.size else 0.0,
             })

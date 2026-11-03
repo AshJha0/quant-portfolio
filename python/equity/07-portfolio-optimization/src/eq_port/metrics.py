@@ -68,6 +68,8 @@ def sharpe_ratio(
     """Annualised Sharpe: mean(r - rf) / std(r, ddof=1) * sqrt(ppy).
 
     ``rf`` is the PER-PERIOD risk-free rate. Returns 0.0 when vol is 0.
+    For a backtest, pass ``BacktestResult.excess_returns`` with ``rf=0``:
+    those are already net of the financed risk-free return, day by day.
     """
     r = _as_vector(returns) - rf
     if r.size < 2:

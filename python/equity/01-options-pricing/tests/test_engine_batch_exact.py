@@ -5,9 +5,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from qp_core.engines import engine_available
-
 from eq_options.engine import bs_price_batch
+from qp_core.engines import engine_available
 
 
 def _cols(n=3000, seed=5):
