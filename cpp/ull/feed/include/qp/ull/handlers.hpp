@@ -19,8 +19,10 @@
 // other: the handler resets, the book is stale, and the recovery snapshot
 // re-centres the window. Binance frames are decoded by the non-allocating
 // fastdepth.hpp first; in sync and in order they are applied with no heap
-// allocation (tests/test_noalloc.cpp). Coinbase frames still go through
-// json::parse, which allocates; their book operations do not.
+// allocation (tests/test_noalloc.cpp). Coinbase level2 updates are decoded by
+// the same header without allocating, but that handler's duplicate filter and
+// map book still can. Coinbase `full` frames still go through json::parse,
+// which allocates; their book operations do not.
 //
 // The handlers never open sockets. The caller owns transport, which keeps
 // the tests offline and lets the recorder sit in front of the parser.
@@ -286,8 +288,11 @@ private:
 
 class CoinbaseLevel2 {
 public:
-    explicit CoinbaseLevel2(std::string product, std::size_t dedupe_window = 4096)
-        : product_(std::move(product)), window_(dedupe_window) {}
+    explicit CoinbaseLevel2(std::string product, std::size_t dedupe_window = 4096,
+                            std::size_t fast_changes = 4096)
+        : product_(std::move(product)), window_(dedupe_window) {
+        scratch_.reserve(fast_changes);
+    }
 
     std::function<void(bool)> on_stale;
 
@@ -303,6 +308,15 @@ public:
         if (order_.size() > window_) {
             seen_.erase(order_.front());
             order_.pop_front();
+        }
+        if (decode_level2(raw, product_, scratch_)) {
+            ++fast_;
+            if (stale_) {
+                ++hs_.ignored;
+                return;
+            }
+            for (const auto& c : scratch_) book_.set(c.side, c.px, c.qty);
+            return;
         }
         try {
             json::Value m = json::parse(raw);
@@ -337,11 +351,15 @@ public:
     bool stale() const { return stale_; }
     const L2Book& book() const { return book_; }
     std::uint64_t duplicates() const { return dups_; }
+    // Frames decoded by the non-allocating path.
+    std::uint64_t fast_decoded() const { return fast_; }
     const HandlerStats& stats() const { return hs_; }
 
 private:
     std::string product_;
     std::size_t window_;
+    std::vector<LevelChange> scratch_;
+    std::uint64_t fast_ = 0;
     L2Book book_;
     bool stale_ = true;
     std::unordered_set<std::size_t> seen_;

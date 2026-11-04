@@ -6,18 +6,24 @@
 // duplicate), which must allocate exactly zero times. Half the frames carry
 // the combined-stream wrapper. A second case drives FlatL3Book (the Coinbase
 // `full` book) through open/match/resize/done with string ids, also with zero
-// allocations.
+// allocations. Two more cases cover the Coinbase level2 decoder: zero
+// allocations on the live recordings, and agreement with the generic path on
+// those recordings, generated frames and mutated bytes.
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <new>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "qp/ull/handlers.hpp"
 #include "qp/ull/recorder.hpp"
 #include "qp/ull/testing.hpp"
+#include "inflate.hpp"
 
 static std::atomic<std::uint64_t> g_allocs{0};
 
@@ -139,6 +145,178 @@ TEST(flat_l3_book_ops_allocate_nothing) {
     const std::uint64_t after = g_allocs.load();
     CHECK_EQ(after - before, 0u);
     CHECK_EQ(b.order_count(), 2u);
+}
+
+// Every frame of every recorded Coinbase session.
+static std::vector<std::string> coinbase_frames() {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(QP_FEED_FIXTURES) / ".." / ".." / ".." / ".." / ".." / "tools" /
+                         "recorder" / "recordings";
+    std::vector<std::string> frames;
+    for (const auto& e : fs::directory_iterator(dir)) {
+        const std::string name = e.path().filename().string();
+        if (name.rfind("coinbase_", 0) != 0 || !name.ends_with(".qprc.gz")) continue;
+        std::ifstream in(e.path(), std::ios::binary);
+        std::stringstream packed;
+        packed << in.rdbuf();
+        std::istringstream raw(gz::gunzip(packed.str()));
+        Reader rd(raw);
+        while (auto r = rd.next()) frames.push_back(r->bytes);
+    }
+    return frames;
+}
+
+// What the generic path would apply: nullopt unless the frame is an l2update
+// for `product` whose every change is valid.
+static std::optional<std::vector<LevelChange>> generic_level2(const std::string& raw,
+                                                              const std::string& product) {
+    try {
+        const json::Value m = json::parse(raw);
+        if (!m.has("type") || m.at("type").str() != "l2update") return std::nullopt;
+        if (m.has("product_id") && m.at("product_id").str() != product) return std::nullopt;
+        std::vector<LevelChange> out;
+        for (const auto& c : m.at("changes").arr)
+            out.push_back(
+                {side_of(c.at(0).str()), parse_fixed(c.at(1).str()), parse_fixed(c.at(2).str())});
+        return out;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+namespace {
+struct Rng {
+    std::uint64_t x;
+    std::uint64_t next() {
+        x ^= x << 13, x ^= x >> 7, x ^= x << 17;
+        return x;
+    }
+    std::size_t below(std::size_t n) { return static_cast<std::size_t>(next() % n); }
+};
+}  // namespace
+
+static std::string generated_l2update(Rng& r) {
+    std::string c;
+    const std::size_t n = r.below(6);
+    for (std::size_t k = 0; k < n; ++k) {
+        char b[80];
+        std::snprintf(b, sizeof b, "%s[\"%s\",\"%zu.%02zu\",\"0.%08zu\"]", k ? "," : "",
+                      r.below(2) ? "buy" : "sell", 70000 + r.below(9000), r.below(100),
+                      r.below(100000000));
+        c += b;
+    }
+    const std::string t = "\"type\":\"l2update\"", pid = "\"product_id\":\"BTC-USD\"",
+                      ch = "\"changes\":[" + c + "]",
+                      time = "\"time\":\"2026-11-03T19:08:00.498600Z\"";
+    switch (r.below(4)) {
+        case 0:
+            return "{" + ch + "," + t + "," + time + "," + pid + "}";
+        case 1:
+            return " { " + t + " , " + pid + " ,\n" + ch + " , " + time + " }\r\n";
+        default:
+            return "{" + t + "," + pid + "," + ch + "," + time + "}";
+    }
+}
+
+static void mutate(Rng& r, std::string& m) {
+    switch (r.below(3)) {
+        case 0:
+            m.resize(r.below(m.size()));
+            break;
+        case 1:
+            for (std::size_t k = 0, n = 1 + r.below(3); k < n; ++k)
+                m[r.below(m.size())] = static_cast<char>(r.next());
+            break;
+        default:
+            m.insert(r.below(m.size()), 1, " ,:[]{}\"0.9e-\\"[r.below(14)]);
+    }
+}
+
+// Decode `raw`; when the fast path accepts, the generic path must agree.
+static bool agrees(const std::string& raw, std::vector<LevelChange>& out) {
+    if (decode_level2(raw, "BTC-USD", out)) {
+        const auto g = generic_level2(raw, "BTC-USD");
+        CHECK(g.has_value());
+        CHECK(g && *g == out);
+        return true;
+    }
+    CHECK(out.empty());
+    return false;
+}
+
+TEST(coinbase_level2_decoder_allocates_nothing) {
+    const auto frames = coinbase_frames();
+    CHECK(!frames.empty());
+    std::uint64_t updates = 0;
+    for (const auto& f : frames)
+        if (generic_level2(f, "BTC-USD")) ++updates;
+    CHECK(updates > 0);
+    std::vector<LevelChange> out;
+    out.reserve(4096);
+    std::uint64_t fast = 0;
+    const std::uint64_t before = g_allocs.load();
+    for (int pass = 0; pass < 20; ++pass)
+        for (const auto& f : frames)
+            if (decode_level2(f, "BTC-USD", out)) ++fast;
+    const std::uint64_t after = g_allocs.load();
+    CHECK_EQ(after - before, 0u);
+    CHECK_EQ(fast, 20 * updates);
+}
+
+TEST(coinbase_level2_decoder_agrees_with_generic_path) {
+    Rng r{88172645463325252ull};
+    std::vector<LevelChange> out;
+    out.reserve(4096);
+    std::uint64_t fuzzed = 0, accepted = 0;
+    const auto frames = coinbase_frames();
+    CHECK(!frames.empty());
+    for (const auto& f : frames) {
+        CHECK_EQ(agrees(f, out), generic_level2(f, "BTC-USD").has_value());
+        for (int k = 0; k < 50; ++k) {
+            std::string m = f;
+            mutate(r, m);
+            ++fuzzed;
+            accepted += agrees(m, out) ? 1 : 0;
+        }
+    }
+    for (int k = 0; k < 20000; ++k) {
+        std::string m = generated_l2update(r);
+        CHECK(agrees(m, out));
+        mutate(r, m);
+        ++fuzzed;
+        accepted += agrees(m, out) ? 1 : 0;
+    }
+    std::printf("fuzzed %llu, accepted %llu\n", (unsigned long long)fuzzed,
+                (unsigned long long)accepted);
+    CHECK(accepted > 0 && accepted < fuzzed);
+
+    for (const char* bad : {
+             R"({"type":"snapshot","product_id":"BTC-USD","bids":[],"asks":[]})",
+             R"({"type":"subscriptions","channels":[]})",
+             R"({"type":"l2update","changes":[]})",
+             R"({"type":"l2update","product_id":"ETH-USD","changes":[]})",
+             R"({"type":"l2update","product_id":"BTC-USD","product_id":"BTC-USD","changes":[]})",
+             R"({"type":"l2update","product_id":"BTC-USD","changes":[],"changes":[]})",
+             R"({"type":"l2update","product_id":"BTC-USD","changes":[["bid","1","2"]]})",
+             R"({"type":"l2update","product_id":"BTC-USD","changes":[["buy","1","2","3"]]})",
+             R"({"type":"l2update","product_id":"BTC-USD","changes":[["buy","1","-2"]]})",
+             R"({"type":"l2update","product_id":"BTC-USD","changes":"x"})",
+             "{\"type\":\"l2update\",\"product_id\":\"BTC-US\\u0044\",\"changes\":[]}",
+         })
+        CHECK(!decode_level2(bad, "BTC-USD", out));
+
+    // The handler gives the same book and stale flag with and without the
+    // decoder, frame by frame, including the frames before the snapshot.
+    CoinbaseLevel2 fast_h("BTC-USD"), generic_h("BTC-USD", 4096, 0);
+    for (const auto& f : frames) {
+        fast_h.on_message(f);
+        generic_h.on_message(f);
+        CHECK(fast_h.book() == generic_h.book());
+        CHECK_EQ(fast_h.stale(), generic_h.stale());
+    }
+    CHECK(fast_h.fast_decoded() > 0);
+    CHECK_EQ(fast_h.stats().malformed, generic_h.stats().malformed);
+    CHECK_EQ(fast_h.stats().ignored, generic_h.stats().ignored);
 }
 
 QPT_MAIN()

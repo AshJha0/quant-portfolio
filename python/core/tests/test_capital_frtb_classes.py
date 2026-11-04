@@ -262,7 +262,7 @@ def test_commodity_delta_hand_fixture() -> None:
 
 def test_commodity_vega() -> None:
     sens = [C.ComVega(6, "NG", 1.0, 100.0, "HH"), C.ComVega(6, "LNG", 2.0, -60.0, "JKM")]
-    rho = 0.65 * 0.999 * math.exp(-0.01)
+    rho = 0.65 * math.exp(-0.01)
     want = math.sqrt(100**2 + 60**2 - 2 * rho * 6000)
     assert C.com_vega(sens)["medium"] == pytest.approx(want, rel=1e-14)
 
@@ -367,7 +367,7 @@ def test_csr_curvature_name_only_correlation() -> None:
 
 def test_commodity_curvature() -> None:
     rows = [V.Cvr(2, "BRENT", 10.0, 0.0, "LH"), V.Cvr(2, "WTI", 10.0, 0.0, "OK"), V.Cvr(7, "GOLD", 4.0, 0.0)]
-    r = (0.95 * 0.999) ** 2
+    r = 0.95**2
     k2 = math.sqrt(200 + 2 * r * 100)
     want = math.sqrt(k2**2 + 16 + 2 * 0.04 * 20 * 4)
     assert V.com_curvature(rows)["medium"] == pytest.approx(want, rel=1e-14)

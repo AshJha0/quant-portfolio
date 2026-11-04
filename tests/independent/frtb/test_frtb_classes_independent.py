@@ -5,11 +5,9 @@ final charge, to 1e-10 relative. Portfolios mix signs, repeat risk factors so
 netting runs, and draw every bucket including the other-sector buckets.
 ``test_branches_are_reached`` proves the draws reach the rarer rules.
 
-Open disagreement, kept as strict xfails so that either side changing shows
-up: MAR21.13(2)-(3), the MAR21.94 FAQ and MAR21.100 leave delivery location
-out of commodity vega and curvature risk factors; qp_core keeps it. The
-comparisons below therefore hold location constant, and the two
-``*_location_disagreement`` tests vary it.
+This oracle found that qp_core kept delivery location as a commodity vega and
+curvature dimension, which MAR21.13(2)-(3) leave out. qp_core was changed; the
+two ``*_location_nets`` tests pin the result.
 """
 
 from __future__ import annotations
@@ -31,10 +29,6 @@ CSR_T = (0.5, 1.0, 3.0, 5.0, 10.0)
 COM_T = (0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0)
 NAMES = ("A", "B", "C", "D", "E")
 LOCS = ("", "ROTTERDAM", "CUSHING")
-LOCATION_DISAGREEMENT = (
-    "qp_core treats location as a commodity vega and curvature dimension; "
-    "MAR21.13(2)-(3), the MAR21.94 FAQ and MAR21.100 do not"
-)
 CCYS = ("USD", "EUR", "GBP", "JPY", "CHF")
 PAIRS = ("EURUSD", "USDJPY", "GBPUSD", "USDTRY", "USDTHB")
 
@@ -130,8 +124,7 @@ def test_com_vega(seed: int) -> None:
     _close(impl.com_vega([impl.ComVega(*x) for x in rows]), ref.com_vega(rows))
 
 
-@pytest.mark.xfail(strict=True, reason=LOCATION_DISAGREEMENT)
-def test_com_vega_location_disagreement() -> None:
+def test_com_vega_location_nets() -> None:
     """Same commodity and maturity, two locations: one factor, so it nets to 0."""
     rows = [(1, "A", 1.0, 100.0, "X"), (1, "A", 1.0, -100.0, "Y")]
     _close(impl.com_vega([impl.ComVega(*x) for x in rows]), ref.com_vega(rows))
@@ -172,8 +165,7 @@ def test_com_curvature(seed: int) -> None:
     _close(curv.com_curvature([curv.Cvr(*x) for x in rows]), ref.com_curvature(rows))
 
 
-@pytest.mark.xfail(strict=True, reason=LOCATION_DISAGREEMENT)
-def test_com_curvature_location_disagreement() -> None:
+def test_com_curvature_location_nets() -> None:
     """MAR21.13(3): one curve per commodity, so 10 and -4 net to 6."""
     got = curv.com_curvature([curv.Cvr(1, "A", 10.0, 0.0, "X"), curv.Cvr(1, "A", -4.0, 0.0, "Y")])
     _close(got, ref.com_curvature([(1, "A", 10.0, 0.0), (1, "A", -4.0, 0.0)]))

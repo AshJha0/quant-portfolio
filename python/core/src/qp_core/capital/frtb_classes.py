@@ -38,7 +38,8 @@ BCBS d457 (2019), MAR21:
 
 Interpretations (stated, tested, and listed in the handback): a CSR or
 commodity vega risk factor has no underlying tenor, so its rho_delta is the
-name/commodity times basis/location factor without the tenor factor; for
+name/commodity times basis factor without the tenor factor (commodity vega
+has no location dimension, MAR21.13(2)); for
 repo-repo in the index buckets 12-13 we use the 80 % of 21.78(2)(e).
 
 Worked example
@@ -342,6 +343,10 @@ class ComDelta:
 
 @dataclass(frozen=True)
 class ComVega:
+    """Commodity vega (MAR21.13(2)): one factor per commodity and option
+    maturity. ``location`` is kept for the record and is not a risk factor:
+    rows that differ only in location net."""
+
     bucket: int
     commodity: str
     option_tenor: float
@@ -374,7 +379,7 @@ def com_vega(sens: Sequence[ComVega]) -> dict[str, float]:
     """Commodity vega charge (MAR21.92-95)."""
     for v in sens:
         _check_bucket(v.bucket, T.COM_RW, "commodity")
-    rows = [(v.bucket, (v.commodity, float(v.option_tenor), v.location), v.sensitivity) for v in sens]
+    rows = [(v.bucket, (v.commodity, float(v.option_tenor), ""), v.sensitivity) for v in sens]
     w = vega_rw("COMMODITY")
 
     def rho(b: int, p: Key, q: Key) -> float:
