@@ -1,9 +1,12 @@
 // Risk kernels: quote-to-node Jacobian algebra, par-rate DV01, quote gamma
 // with the bootstrap-curvature term, vega bucketing on vol grids and the
-// P&L-explain Taylor attribution (plan W14, C++ parity D1).
+// P&L-explain Taylor attribution, smile-consistent Greeks and the
+// reporting-currency conversion (plan W14, C++ parity D1).
 //
-// C++ port of python/core/src/qp_core/risk/{jacobian,vega_grid,pnl_explain}.py
-// and of the algebra in python/equity/04-fixed-income/src/fi_rates/risk/par.py;
+// C++ port of
+// python/core/src/qp_core/risk/{jacobian,vega_grid,pnl_explain,smile_dynamics}.py,
+// of the algebra in python/equity/04-fixed-income/src/fi_rates/risk/par.py and
+// of the pure parts of python/fx/03-var-es-engine/src/fx_var/reporting.py;
 // the Rust port is rust/core/src/risk.rs. Plain idea, formal statement,
 // worked examples and sources are in the Python docstrings. In short:
 //
@@ -14,7 +17,13 @@
 //     measured about 200% off on the Python lane's test book;
 //   * multilinear vol-grid weights (flat extrapolation, partition of unity)
 //     and bucket vegas by central differences;
-//   * per-factor P&L delta_i dx_i + 0.5 dx_i (S dx)_i, S = (G + G^T)/2.
+//   * per-factor P&L delta_i dx_i + 0.5 dx_i (S dx)_i, S = (G + G^T)/2;
+//   * smile delta dV/dS|_sigma + vega d sigma/dS under a stated regime
+//     (Derman 1999), premium-adjusted delta Delta_spot - V/S (Clark 2011
+//     ch. 3);
+//   * reporting_conversion is the currency conversion only:
+//     fx_var.reporting.reporting_pnl also revalues a Book, which is not a pure
+//     kernel and stays in Python.
 //
 // Matrices are row-major std::vector<double>. tests/test_risk.cpp checks the
 // Python reference values (rust/core/tests/data/risk_parity.txt, shared with
@@ -22,6 +31,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -29,7 +39,10 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "qp/black_scholes.hpp"
 
 namespace qp::risk {
 
@@ -399,6 +412,226 @@ inline PnlExplain explain(double hpl, std::span<const double> time, std::span<co
     if (!finite) throw std::invalid_argument("explain inputs must be finite (NaN policy: refuse)");
     return PnlExplain{hpl, std::vector<double>(time.begin(), time.end()), std::move(risk),
                       new_trades};
+}
+
+// How the smile moves with spot (Derman 1999; Bergomi 2016 ch. 2).
+enum class SmileDynamics { StickyStrike, StickyMoneyness, StickyDelta };
+
+// The three regimes in the order rank_smile_dynamics reports them.
+inline constexpr std::array<SmileDynamics, 3> kSmileDynamics{
+    SmileDynamics::StickyStrike, SmileDynamics::StickyMoneyness, SmileDynamics::StickyDelta};
+
+// Relative steps of the vol0' central difference and of smile_gamma (the
+// Python defaults).
+inline constexpr double kDvolRelStep = 1e-5;
+inline constexpr double kGammaRelStep = 1e-4;
+
+namespace detail {
+
+inline void check_positive(double v, const char* name) {
+    if (!std::isfinite(v) || v <= 0.0)
+        throw std::invalid_argument(std::string(name) + " must be finite and > 0");
+}
+
+inline double check_finite(double v, const char* name) {
+    if (!std::isfinite(v))
+        throw std::invalid_argument(std::string(name) + " is not finite (NaN policy: refuse)");
+    return v;
+}
+
+}  // namespace detail
+
+// One expiry's smile observed at a reference market; vol_of_strike is vol0(K).
+class Smile {
+public:
+    Smile(double spot0, double expiry, double r, double q,
+          std::function<double(double)> vol_of_strike)
+        : spot0_(spot0), expiry_(expiry), r_(r), q_(q), vol_of_strike_(std::move(vol_of_strike)) {
+        detail::check_positive(spot0, "spot0");
+        detail::check_positive(expiry, "expiry");
+        if (!std::isfinite(r) || !std::isfinite(q))
+            throw std::invalid_argument("r and q must be finite");
+    }
+
+    double spot0() const { return spot0_; }
+    double expiry() const { return expiry_; }
+    double r() const { return r_; }
+    double q() const { return q_; }
+
+    // The same smile with another expiry (rank_smile_dynamics walks a path).
+    Smile with_expiry(double expiry) const { return Smile(spot0_, expiry, r_, q_, vol_of_strike_); }
+
+    // F = S e^{(r-q)T}.
+    double forward(double spot) const { return spot * std::exp((r_ - q_) * expiry_); }
+
+    // Implied vol of strike when spot is spot; refuses a vol that is not
+    // finite and positive.
+    double vol(double strike, double spot, SmileDynamics dynamics) const {
+        const double v = vol_of_strike_(shifted_strike(strike, spot, dynamics));
+        if (!std::isfinite(v) || v <= 0.0)
+            throw std::invalid_argument("smile returned a non-positive vol");
+        return v;
+    }
+
+    // d sigma / dS: the chain rule, with vol0' by a central difference of
+    // relative step rel_step in strike.
+    double dvol_dspot(double strike, double spot, SmileDynamics dynamics,
+                      double rel_step = kDvolRelStep) const {
+        if (dynamics == SmileDynamics::StickyStrike) return 0.0;
+        const double k_eff = shifted_strike(strike, spot, dynamics);
+        const double hk = rel_step * k_eff;
+        const double slope = (vol_of_strike_(k_eff + hk) - vol_of_strike_(k_eff - hk)) / (2.0 * hk);
+        // k_eff = strike * c / spot for both moneyness forms, so
+        // d k_eff / dS = -k_eff / S.
+        return slope * (-k_eff / spot);
+    }
+
+private:
+    double shifted_strike(double strike, double spot, SmileDynamics dynamics) const {
+        switch (dynamics) {
+            case SmileDynamics::StickyStrike:
+                return strike;
+            case SmileDynamics::StickyMoneyness:
+                return strike * spot0_ / spot;
+            case SmileDynamics::StickyDelta:
+                break;
+        }
+        return strike * forward(spot0_) / forward(spot);
+    }
+
+    double spot0_, expiry_, r_, q_;
+    std::function<double(double)> vol_of_strike_;
+};
+
+namespace detail {
+
+inline CarryGreeks smile_greeks(const Smile& smile, double strike, double spot, bool is_call,
+                                SmileDynamics dynamics) {
+    check_positive(strike, "strike");
+    check_positive(spot, "spot");
+    const double sigma = smile.vol(strike, spot, dynamics);
+    return carry_greeks(spot, strike, smile.expiry(), smile.r(), smile.q(), sigma,
+                        is_call ? 1.0 : -1.0);
+}
+
+}  // namespace detail
+
+// Black-Scholes price at spot with the vol the dynamic implies.
+inline double smile_price(const Smile& smile, double strike, double spot, bool is_call,
+                          SmileDynamics dynamics) {
+    return detail::check_finite(detail::smile_greeks(smile, strike, spot, is_call, dynamics).price,
+                                "smile price");
+}
+
+// Smile-consistent spot delta dV/dS|_sigma + vega d sigma/dS.
+inline double smile_delta(const Smile& smile, double strike, double spot, bool is_call,
+                          SmileDynamics dynamics) {
+    const auto g = detail::smile_greeks(smile, strike, spot, is_call, dynamics);
+    return detail::check_finite(g.delta + g.vega * smile.dvol_dspot(strike, spot, dynamics),
+                                "smile delta");
+}
+
+// Smile-consistent gamma: central difference of smile_delta.
+inline double smile_gamma(const Smile& smile, double strike, double spot, bool is_call,
+                          SmileDynamics dynamics, double rel_step = kGammaRelStep) {
+    const double h = rel_step * spot;
+    const double up = smile_delta(smile, strike, spot + h, is_call, dynamics);
+    const double dn = smile_delta(smile, strike, spot - h, is_call, dynamics);
+    return (up - dn) / (2.0 * h);
+}
+
+// Premium-adjusted spot delta Delta_spot - V/S (premium in the base currency;
+// Clark 2011 ch. 3).
+inline double premium_adjusted_delta(double spot, double strike, double expiry, double r_d,
+                                     double r_f, double sigma, bool is_call) {
+    detail::check_positive(spot, "spot");
+    detail::check_positive(strike, "strike");
+    detail::check_positive(expiry, "expiry");
+    detail::check_positive(sigma, "sigma");
+    const auto g = carry_greeks(spot, strike, expiry, r_d, r_f, sigma, is_call ? 1.0 : -1.0);
+    return detail::check_finite(g.delta - g.price / spot, "premium-adjusted delta");
+}
+
+// Root-mean-square unexplained P&L of a realised path under each dynamic, in
+// kSmileDynamics order; the smallest is the dynamic the path supports. Step i
+// explains Delta dS + 0.5 Gamma dS^2 + Theta dt at remaining life
+// expiry - times[i], with vol0 held fixed over the path.
+inline std::array<double, 3> rank_smile_dynamics(std::span<const double> spots,
+                                                 std::span<const double> prices,
+                                                 std::span<const double> times, const Smile& smile,
+                                                 double strike, bool is_call) {
+    const std::size_t n = spots.size();
+    if (n < 2 || prices.size() != n || times.size() != n)
+        throw std::invalid_argument("spots, prices and times must be of equal length >= 2");
+    std::array<double, 3> out{};
+    for (std::size_t j = 0; j < kSmileDynamics.size(); ++j) {
+        const SmileDynamics d = kSmileDynamics[j];
+        double sum_sq = 0.0;
+        for (std::size_t i = 0; i + 1 < n; ++i) {
+            const Smile local = smile.with_expiry(smile.expiry() - times[i]);
+            const auto g = detail::smile_greeks(local, strike, spots[i], is_call, d);
+            const double delta = g.delta + g.vega * local.dvol_dspot(strike, spots[i], d);
+            const double gamma = smile_gamma(local, strike, spots[i], is_call, d);
+            const double ds = spots[i + 1] - spots[i];
+            const double explained =
+                delta * ds + 0.5 * gamma * ds * ds + g.theta * (times[i + 1] - times[i]);
+            const double resid = (prices[i + 1] - prices[i]) - explained;
+            sum_sq += resid * resid;
+        }
+        out[j] = detail::check_finite(std::sqrt(sum_sq / static_cast<double>(n - 1)),
+                                      "unexplained P&L");
+    }
+    return out;
+}
+
+// How a USD P&L becomes a reporting-currency P&L (fx_var.reporting): Scenario
+// is V(s)/X(s) - V(0)/X(0), each scenario at its own rate; Spot is
+// (V(s) - V(0))/X(0), translated at today's rate.
+enum class Conversion { Scenario, Spot };
+
+// The currency conversion inside fx_var.reporting.reporting_pnl, from book
+// values already computed (v0 today, v1[s] per scenario, in USD; x0 and x1[s]
+// the USD price of the reporting currency). Revaluing the book stays in Python.
+inline std::vector<double> reporting_conversion(double v0, std::span<const double> v1, double x0,
+                                                std::span<const double> x1,
+                                                Conversion conversion) {
+    if (v1.size() != x1.size()) throw std::invalid_argument("v1 and x1 must have equal length");
+    detail::check_positive(x0, "x0");
+    std::vector<double> out(v1.size());
+    for (std::size_t s = 0; s < v1.size(); ++s) {
+        double pnl = 0.0;
+        if (conversion == Conversion::Spot) {
+            pnl = (v1[s] - v0) / x0;
+        } else {
+            detail::check_positive(x1[s], "x1");
+            pnl = v1[s] / x1[s] - v0 / x0;
+        }
+        out[s] = detail::check_finite(pnl, "reporting P&L");
+    }
+    return out;
+}
+
+// Linear split of expiry over increasing bucket tenors (flat outside; sums to one).
+inline std::vector<double> tenor_weights(double expiry, std::span<const double> buckets) {
+    bool ok = !buckets.empty();
+    for (std::size_t i = 0; ok && i < buckets.size(); ++i)
+        ok = std::isfinite(buckets[i]) && (i == 0 || buckets[i] > buckets[i - 1]);
+    if (!ok) throw std::invalid_argument("tenor buckets must be a non-empty increasing sequence");
+    detail::check_finite(expiry, "expiry");
+    const std::size_t last = buckets.size() - 1;
+    std::vector<double> w(buckets.size(), 0.0);
+    if (expiry <= buckets[0]) {
+        w[0] = 1.0;
+    } else if (expiry >= buckets[last]) {
+        w[last] = 1.0;
+    } else {
+        const auto it = std::upper_bound(buckets.begin(), buckets.end(), expiry);
+        const auto i = static_cast<std::size_t>(it - buckets.begin()) - 1;
+        const double t = (expiry - buckets[i]) / (buckets[i + 1] - buckets[i]);
+        w[i] = 1.0 - t;
+        w[i + 1] = t;
+    }
+    return w;
 }
 
 }  // namespace qp::risk

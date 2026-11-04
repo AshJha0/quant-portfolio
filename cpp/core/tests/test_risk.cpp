@@ -53,11 +53,17 @@ void close(const std::vector<double>& got, const std::vector<double>& want, cons
             << what << "[" << k << "] " << got[k] << " vs " << want[k];
 }
 
+// close() entry by entry: outputs of unrelated scale.
+void close_each(const std::vector<double>& got, const std::vector<double>& want, const char* what) {
+    ASSERT_EQ(got.size(), want.size()) << what;
+    for (std::size_t k = 0; k < got.size(); ++k) close({got[k]}, {want[k]}, what);
+}
+
 }  // namespace
 
 TEST(Risk, MatchesPython) {
     const auto rows = load();
-    int n_curve = 0, n_grid = 0, n_ta = 0;
+    int n_curve = 0, n_grid = 0, n_ta = 0, n_sd = 0, n_rank = 0, n_pa = 0, n_rc = 0, n_tw = 0;
     for (std::size_t i = 0; i < rows.size();) {
         const auto& r = rows[i];
         if (r.tag == "N") {
@@ -112,6 +118,60 @@ TEST(Risk, MatchesPython) {
             close(rk::vega_grid(pv, grid, 1e-4), rows[i].nums(), "vega");
             ++n_grid;
             ++i;
+        } else if (r.tag == "SM") {
+            const auto p = r.nums();
+            const double k0 = p[4], a = p[5], b = p[6], c = p[7];
+            const rk::Smile smile(p[0], p[1], p[2], p[3], [=](double k) {
+                const double x = k - k0;
+                return a + b * x + c * x * x;
+            });
+            ++i;
+            while (rows[i].tag == "SD") {
+                const auto v = rows[i].nums();
+                const double k = v[0], s = v[1];
+                const bool call = v[2] == 1.0;
+                const auto d = rk::kSmileDynamics[static_cast<std::size_t>(v[3])];
+                close({rk::smile_price(smile, k, s, call, d)}, {v[4]}, "smile price");
+                close({rk::smile_delta(smile, k, s, call, d)}, {v[5]}, "smile delta");
+                // Gamma differences two deltas 2h apart, so it gets the 1e-12
+                // of those deltas, not 1e-12 of itself (see the generator).
+                const double h = rk::kGammaRelStep * s;
+                close({rk::smile_delta(smile, k, s + h, call, d)}, {v[7]}, "bumped smile delta");
+                close({rk::smile_delta(smile, k, s - h, call, d)}, {v[8]}, "bumped smile delta");
+                EXPECT_LE(std::fabs(rk::smile_gamma(smile, k, s, call, d) - v[6]),
+                          1e-12 * std::max(std::fabs(v[7]), std::fabs(v[8])) / h);
+                ++n_sd;
+                ++i;
+            }
+            ASSERT_EQ(rows[i].tag, "RK");
+            const auto h = rows[i].nums();
+            const auto got = rk::rank_smile_dynamics(rows[i + 1].nums(), rows[i + 2].nums(),
+                                                     rows[i + 3].nums(), smile, h[0], h[1] == 1.0);
+            close_each({got.begin(), got.end()}, rows[i + 4].nums(), "rank");
+            ++n_rank;
+            i += 5;
+        } else if (r.tag == "PA") {
+            const auto v = r.nums();
+            close({rk::premium_adjusted_delta(v[0], v[1], v[2], v[3], v[4], v[5], v[6] == 1.0)},
+                  {v[7]}, "premium-adjusted delta");
+            ++n_pa;
+            ++i;
+        } else if (r.tag == "RC") {
+            const auto h = r.nums();
+            const auto conv = h[0] == 1.0 ? rk::Conversion::Spot : rk::Conversion::Scenario;
+            close(rk::reporting_conversion(h[1], rows[i + 1].nums(), h[2], rows[i + 2].nums(), conv),
+                  rows[i + 3].nums(), "reporting P&L");
+            ++n_rc;
+            i += 4;
+        } else if (r.tag == "TB") {
+            const auto b = r.nums();
+            ++i;
+            while (i < rows.size() && rows[i].tag == "TW") {
+                const auto v = rows[i].nums();
+                close(rk::tenor_weights(v[0], b), {v.begin() + 1, v.end()}, "tenor weights");
+                ++n_tw;
+                ++i;
+            }
         } else {
             ASSERT_EQ(r.tag, "TA");
             const bool with_g = r.rest[1] == "1";
@@ -130,6 +190,11 @@ TEST(Risk, MatchesPython) {
     EXPECT_EQ(n_curve, 1);
     EXPECT_EQ(n_grid, 2);
     EXPECT_EQ(n_ta, 3);
+    EXPECT_EQ(n_sd, 96);
+    EXPECT_EQ(n_rank, 3);
+    EXPECT_EQ(n_pa, 6);
+    EXPECT_EQ(n_rc, 4);
+    EXPECT_EQ(n_tw, 8);
 }
 
 TEST(Risk, RefusesSingularJacobianAndBadInputs) {
@@ -172,4 +237,56 @@ TEST(Risk, LinearVegaEqualsWeightsIncludingZeroVolNode) {
     const auto w = g.weights(c);
     const auto v = rk::vega_grid([&](const rk::VolGrid& gr) { return gr.vol(c); }, g, 1e-4);
     for (std::size_t k = 0; k < w.size(); ++k) EXPECT_NEAR(v[k], w[k], 1e-10);
+}
+
+TEST(Risk, SmileWorkedExampleAndDeltaIsTheDerivativeOfPrice) {
+    const rk::Smile s(100.0, 1.0, 0.0, 0.0, [](double k) { return 0.20 - 0.001 * (k - 100.0); });
+    EXPECT_NEAR(rk::smile_delta(s, 100.0, 100.0, true, rk::SmileDynamics::StickyStrike), 0.5398,
+                5e-5);
+    EXPECT_NEAR(rk::smile_delta(s, 100.0, 100.0, true, rk::SmileDynamics::StickyMoneyness), 0.5795,
+                5e-5);
+    const double h = 1e-3;
+    for (auto d : rk::kSmileDynamics) {
+        const double fd = (rk::smile_price(s, 95.0, 100.0 + h, false, d) -
+                           rk::smile_price(s, 95.0, 100.0 - h, false, d)) /
+                          (2.0 * h);
+        EXPECT_NEAR(fd, rk::smile_delta(s, 95.0, 100.0, false, d), 1e-7);
+    }
+}
+
+TEST(Risk, PremiumAdjustedCallDeltaIsTheClarkClosedForm) {
+    const double s = 1.1, k = 1.12, t = 0.5, rd = 0.05, rf = 0.03, v = 0.08;
+    const auto d = qp::carry_d1_d2(s, k, t, rd, rf, v);
+    EXPECT_NEAR(rk::premium_adjusted_delta(s, k, t, rd, rf, v, true),
+                k / s * std::exp(-rd * t) * qp::norm_cdf(d.d2), 1e-14);
+}
+
+TEST(Risk, SmileKernelsRefuseBadInputs) {
+    auto flat = [](double) { return 0.2; };
+    EXPECT_THROW(rk::Smile(0.0, 1.0, 0.0, 0.0, flat), std::invalid_argument);
+    EXPECT_THROW(rk::Smile(1.0, 1.0, std::nan(""), 0.0, flat), std::invalid_argument);
+    const rk::Smile neg(100.0, 1.0, 0.0, 0.0, [](double) { return -0.2; });
+    const rk::Smile s(100.0, 1.0, 0.0, 0.0, flat);
+    const auto ss = rk::SmileDynamics::StickyStrike;
+    EXPECT_THROW(rk::smile_delta(neg, 100.0, 100.0, true, ss), std::invalid_argument);
+    EXPECT_THROW(rk::smile_delta(s, 100.0, -1.0, true, ss), std::invalid_argument);
+    EXPECT_THROW(rk::premium_adjusted_delta(1.0, 1.0, 0.0, 0.0, 0.0, 0.1, true),
+                 std::invalid_argument);
+    const std::vector<double> one{100.0}, two{1.0, 1.0}, late{1.0, 2.0};
+    EXPECT_THROW(rk::rank_smile_dynamics(one, one, one, s, 100.0, true), std::invalid_argument);
+    // A path that reaches the expiry has no remaining life to price.
+    EXPECT_THROW(rk::rank_smile_dynamics(two, two, late, s, 1.0, true), std::invalid_argument);
+}
+
+TEST(Risk, CashInTheReportingCurrencyHasNoScenarioRisk) {
+    // EUR 1m at 1.10 moving to 1.21: USD value moves, EUR value does not.
+    const std::vector<double> v1{1.21e6}, x1{1.21}, none{}, zero{0.0}, dup{1.0, 1.0};
+    EXPECT_NEAR(rk::reporting_conversion(1.1e6, v1, 1.1, x1, rk::Conversion::Scenario)[0], 0.0,
+                1e-9);
+    EXPECT_NEAR(rk::reporting_conversion(1.1e6, v1, 1.1, x1, rk::Conversion::Spot)[0], 1e5, 1e-8);
+    EXPECT_THROW(rk::reporting_conversion(1.0, v1, 1.0, none, rk::Conversion::Spot),
+                 std::invalid_argument);
+    EXPECT_THROW(rk::reporting_conversion(1.0, v1, 1.0, zero, rk::Conversion::Scenario),
+                 std::invalid_argument);
+    EXPECT_THROW(rk::tenor_weights(1.0, dup), std::invalid_argument);
 }
