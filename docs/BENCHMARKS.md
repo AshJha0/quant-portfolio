@@ -157,5 +157,8 @@ VaR engines, about 1.4-1.5x the v2.0 timing on the CI runner. The cost comes
 from drawing each bootstrap resample from its own Philox4x32-10 stream, which
 makes the result identical on any number of threads and bit-identical between
 the C++ and Rust engines; the old xoshiro stream could not do either.
-Vectorising the Philox rounds is the follow-up; when a row is back inside the
-gate it is removed from the file.
+The Philox rounds themselves are close to the SSE2 limit, so the follow-up
+sped up the code around them instead, with unchanged output bits. A local A/B
+(WSL, one pinned core, noisy machine, Rust rows only) read 1.21x and 1.14x for
+the equity rows and about 1.0x for the FX row. These are not CI readings. A row
+is removed from the file once a CI bench run shows it inside the gate.

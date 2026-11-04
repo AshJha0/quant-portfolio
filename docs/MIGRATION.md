@@ -53,6 +53,59 @@ own heading, and the v3.0.0 notes are the sum of them.
   calendar (it used to refuse anything but USD, EUR, GBP; JPY, CHF, CAD
   and AUD now work, and USDCAD is T+1). Dates outside 2000-2099 raise.
 
+### Round 18 follow-up
+
+#### FX Monte Carlo numbers moved (C++ and Rust)
+
+- Each scenario now draws from its own Philox4x32-10 stream with AS 241
+  normals, as equity does. For the same seed, FX MC VaR, ES, bootstrap SE
+  and KDE SE change within Monte Carlo error. **What to do:** regenerate
+  any stored FX MC numbers. On the Rust pinned book:
+
+  | Model | VaR before | VaR after | Change |
+  |---|---:|---:|---:|
+  | Normal | 180,882.24 | 181,000.51 | +0.07% |
+  | Student-t | 201,107.92 | 203,542.07 | +1.2% |
+  | Jump | 196,459.16 | 197,134.06 | +0.3% |
+
+  The standard errors moved by 2-20%; they are noisy estimates.
+- C++ jump scenarios: given n jumps, a factor moves by
+  `n mu + sd sqrt(n) z`, the same law as before. C++ now rejects a Poisson
+  mean `lam h > 700`, as Rust already did.
+- `eqvar::detail::PathRng` and `eq_var_engine::rng::PathRng` now re-export
+  `qp::PathRng` and `qp_core::path_rng::PathRng`.
+
+#### Feed handlers (C++ and Rust)
+
+- C++: `BinanceDepth::book()` returns `FlatL2Book` (use `.to_l2()` for an
+  `L2Book`). `CoinbaseFull::book()` returns `FlatL3Book`, and its `.l2()`
+  and `.orders()` return by value. `BinanceDepth::sync()` is
+  `SeqSync<DepthDelta>`. Constructors take an optional `ProductSpec`.
+  `SeqSync::on_update` takes the message by forwarding reference.
+- Rust: `CryptoBook::reset` returns `Result`. `ApplyError` gains
+  `OutOfWindow` and `Full`. `Handler::with_spec` and
+  `SyncEngine::with_spec` are new. `SyncStats` gains `out_of_window`,
+  `snapshots_rejected` and `snapshots_not_newer`.
+- Coinbase `full` and `level2` need authentication (server reply,
+  2026-11-03). Use `level2_batch` for no-account work.
+
+#### Python
+
+- `fx_surface.heston.heston_cf` raises `ValueError` for `T < 0`. Prices do
+  not move.
+- `qp_core.aad.Tape` internals changed (`_a`, `_b`, `_da`, `_db` became
+  `_nodes`); the public methods did not. The Rust `Real` trait gained four
+  provided methods, so existing `impl Real` types still compile.
+- `smile_dynamics=` is a new keyword-only argument on the flat-vol risk
+  calls of `eq_options`, `fx_options` and `fx_var.book.Book`. It defaults to
+  `"sticky_strike"` and changes no number. A pricer passed to
+  `eq_options.greeks.fd_greeks` can no longer receive a keyword with that
+  name through `**pricer_kwargs`.
+- `QuoteController.decide` takes `extra_ticks=0`. `MMConfig` gains `tiers`,
+  `toxicity` and `markout_horizon`; `MMResult` gains `widen_path`,
+  `tier_stats` and `fill_markouts`. Runs without tiers are bit-identical.
+- New dependency group `recorder`: `uv sync --group recorder`.
+
 ### Milestone v2.1 (Rounds 6-7)
 
 #### Versions

@@ -11,12 +11,23 @@ section below whose heading matches the version.
 ## [Unreleased]
 
 Toward v3.0.0, the only planned tag; `VERSION` is `3.0.0.dev0`. This
-section collects milestone v2.1 (Rounds 6 and 7). Numbers come from seeded
+section collects Rounds 6 to 18. Numbers come from seeded
 synthetic data unless an entry names a reference. What callers need to do
 is in `docs/MIGRATION.md`.
 
 ### Fixed
 
+- **Rust feed handler.** `SyncEngine::on_snapshot` reloaded a REST snapshot
+  no newer than the live book, which dropped levels beyond the snapshot
+  depth while the book still reported fresh: 1,083 of 1,130 fresh states
+  differed from the reference on one live recording. It now ignores such a
+  snapshot, as C++ does.
+- **AAD cost ratio.** `rust/aad/examples/cost_ratio.rs` let the compiler
+  fold most of the plain Black-Scholes price, so Round 17's 13-34x was
+  really about 10-12x.
+- **Shared CRR tree speed (C++ and Rust).** Back to the speed of the old FX
+  trees with the same results: the C++ American tree is about 5x faster,
+  the Rust one about 2x.
 - **ISDA CDS accrued-on-default (`eq_credit.isda_cds`).** The premium leg
   had no ISDA half-day bias, so wide-spread names were mispriced: at a flat
   17% hazard, 5y, the clean upfront was 379 per 10mm away from QuantLib's
@@ -133,6 +144,25 @@ is in `docs/MIGRATION.md`.
 
 ### Changed
 
+- **FX Monte Carlo VaR (C++ and Rust).** Each scenario draws from its own
+  Philox4x32-10 stream with AS 241 normals, as equity does. The two engines
+  give the same bits on any thread count, and the C++ simulation is about
+  4x faster. Numbers move within Monte Carlo error; see `docs/MIGRATION.md`.
+- **Bootstrap standard errors (Rust).** Faster with the same results: about
+  20% on the equity 250-day case and about 25% on the FX 100k case (local
+  A/B).
+- **Heston.** The characteristic function lives once, in
+  `qp_core.vol.heston.heston_cf`; the `eq_surface` and `fx_surface` versions
+  are shims. Prices are bit-identical, checked against both old copies, the
+  kernel corpus and QuantLib `AnalyticHestonEngine`.
+- **AAD.** Black-Scholes reuses a per-thread tape and records fused nodes.
+  The cost ratio falls to 4.85-4.9x in Rust (from about 10-12x) and
+  12.5-13x in Python (from 20-21x), measured on a loaded laptop. The Rust
+  margin under 5x is thin.
+- **Feed handlers (C++ and Rust).** Books sit on the flat L3 book with a
+  per-product tick window, order-id interning and an exact side store. A
+  non-allocating Binance decoder gives zero heap allocations on that path
+  (tested). Coinbase frames still allocate.
 - **Workspace.** `python/backtest` (qp-bt), `python/oms` (qp-oms),
   `python/execution` (qp-exec) and `python/posttrade` (qp-posttrade) are uv
   workspace members, type-checked by mypy and tested in CI as projects of
@@ -217,6 +247,41 @@ is in `docs/MIGRATION.md`.
 
 ### Added
 
+- FRTB SBM delta and vega for CSR non-securitisation, equity and commodity
+  (`qp_core.capital.frtb_classes`, MAR21.51-95), curvature for GIRR, CSR
+  non-securitisation, equity, commodity and FX (`frtb_curvature`, MAR21.5
+  and 21.96-101), and checksum-tested parameter tables (`frtb_tables`).
+  Python only.
+- `tests/independent/frtb`: a second implementation of GIRR and FX delta
+  and vega from the MAR21 text, agreeing with `frtb_sbm` to 1e-10 relative
+  on 1,750 seeded cases.
+- `qp_core.xva.collateral`: exposure with variation margin (margin period
+  of risk, thresholds, MTA) and initial margin, checked against Brownian
+  closed forms and limiting cases. Python only.
+- `qp_exec.mm`: toxicity-aware spreads (markout EWMA with decay, VPIN) and
+  a fill-rate and markout report by counterparty tier, on synthetic tiered
+  flow. In this simulator markout widening also fires on benign flow,
+  because a maker's own fill moves the displayed mid.
+- `tools/recorder`: a free, no-account recorder for Binance diff-depth and
+  Coinbase `level2_batch`, three short live recordings with a SHA-256
+  manifest, and a CI job replaying them through the C++ and Rust handlers
+  against an independent Python reference book. Full-day recordings have
+  not been made.
+- Rust `qp_core::risk` and C++ `qp/risk.hpp`: quote-space risk through the
+  bootstrap Jacobian, par DV01, quote gamma with the bootstrap-curvature
+  term, vol grids with bucket vegas, and P&L explain, matching Python to
+  1e-12 on a shared fixture. Smile delta and `reporting_pnl` are not ported.
+- `smile_dynamics=` on the flat-vol option risk calls of `eq_options`,
+  `fx_options` and `fx_var.book.Book`. All three values give the same
+  numbers there, because those calls use one flat vol.
+- Simulated power files for the combination panel, UST and TSMOM drafts.
+  The combination design reaches 80% power only with an IC of about 0.05 and
+  30 currencies; the free data has a median of 21.
+- `qp_data`: OECD MEI interbank rates and CPI (CC BY 4.0) through keyless
+  FRED, released at month m+2.
+- `research/exploratory/r18`: the 2000-2015 FX carry, value and momentum
+  panel and a SOFR 2024 compounding check against the NY Fed SOFR Index
+  (within 0.0009 bp). No preregistration, so neither supports a claim.
 - `qp_core.holidays.spot_lag` and `fx_spot_date`; `MarketState`
   `valuation_date=` / `spot_time=` and `spot_today`; `forward_for_date`,
   `forward_points_for_date`, `curve_from_forward_points` (reprices an input
