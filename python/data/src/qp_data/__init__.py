@@ -86,15 +86,20 @@ def fetch(
     allow_network: bool | None = None,
     opener: Opener | None = None,
     retrieved_at: str | dt.datetime | None = None,
+    timeout: float = 30.0,
 ) -> ManifestEntry:
     """Download ``key``, store it as a new vintage and return its manifest entry.
 
     Raises :class:`UnknownReleaseRule` before downloading if the series has no
     publication-lag rule, so nothing unlagged ever enters the store.
+    ``timeout`` is the limit in seconds for each attempt; raise it for slow
+    sources (the whole ECB EXR history takes about 27 s).
     """
     release.rule_for(key)
     st = store or Store()
-    frame, payload, url = fetch_frame(key, start, end, allow_network=allow_network, opener=opener)
+    frame, payload, url = fetch_frame(
+        key, start, end, allow_network=allow_network, opener=opener, timeout=timeout
+    )
     return st.put(key, key.split(":", 1)[0], url, payload, frame, retrieved_at=retrieved_at)
 
 
