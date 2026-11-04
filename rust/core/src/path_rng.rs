@@ -103,6 +103,100 @@ pub const LANES: usize = 16;
 /// [`PhiloxStream`] (a test checks it).
 #[inline]
 pub fn philox_uniforms(seed: u64, path: u64, block: u64, out: &mut [f64]) {
+    let w = philox_words(seed, path, block);
+    for (o, &wk) in out.iter_mut().zip(w.iter()) {
+        *o = word_to_uniform(wk);
+    }
+}
+
+/// Resampling indices `min(n - 1, floor(u n))` for the `2 * LANES` words
+/// `2 * block ..` of stream `(seed, path)`, with `u` from
+/// [`word_to_uniform`]: the same indices, bit for bit, as
+/// `((u * n as f64) as usize).min(n - 1)` (a test checks it), but without
+/// the saturating float-to-integer cast, so the loop vectorises. `n >= 1`.
+#[inline]
+pub fn philox_indices(seed: u64, path: u64, block: u64, n: usize, out: &mut [usize; 2 * LANES]) {
+    let nf = n as f64;
+    let last = n.saturating_sub(1);
+    if nf < MAGIC_LIMIT {
+        let [c0, c1, c2, c3] = philox_lanes(seed, path, block);
+        let mut even = [0usize; LANES];
+        let mut odd = [0usize; LANES];
+        for l in 0..LANES {
+            even[l] = (floor_small(uniform_from_halves(c1[l], c0[l]) * nf) as usize).min(last);
+            odd[l] = (floor_small(uniform_from_halves(c3[l], c2[l]) * nf) as usize).min(last);
+        }
+        for (l, pair) in out.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+            pair[0] = even[l];
+            pair[1] = odd[l];
+        }
+    } else {
+        let w = philox_words(seed, path, block);
+        for (o, &wk) in out.iter_mut().zip(w.iter()) {
+            *o = ((word_to_uniform(wk) * nf) as usize).min(last);
+        }
+    }
+}
+
+/// [`word_to_uniform`] of the word `(hi << 32) | lo`, without a 64-bit
+/// integer-to-float conversion (SSE2 has none for packed lanes). With
+/// `x = w >> 11 = hi 2^21 + (lo >> 11)`, both parts are made exactly by the
+/// 2^52 exponent trick, their sum is `x` exactly (`x < 2^53`), and the
+/// final `+ 0.5` and scaling are the same operations as in
+/// `word_to_uniform`, so the result has the same bits.
+#[inline(always)]
+fn uniform_from_halves(hi: u32, lo: u32) -> f64 {
+    const BIG: f64 = 4_503_599_627_370_496.0; // 2^52
+    const SCALE: f64 = 1.0 / 9_007_199_254_740_992.0;
+    const TWO21: f64 = 2_097_152.0;
+    let h = (f64::from_bits(BIG.to_bits() | u64::from(hi)) - BIG) * TWO21;
+    let l = f64::from_bits(BIG.to_bits() | u64::from(lo >> 11)) - BIG;
+    ((h + l) + 0.5) * SCALE
+}
+
+/// Inputs below this go through [`floor_small`].
+const MAGIC_LIMIT: f64 = 2_251_799_813_685_248.0; // 2^51
+
+/// `floor(y)` as an integer for `0 <= y < 2^51`, equal to `y as u64` there.
+/// Adding and removing 2^52 rounds `y` to the nearest integer `r` exactly;
+/// one is taken off when that rounded up. The bits of `r + 2^52` minus the
+/// bits of 2^52 are `r`.
+#[inline(always)]
+fn floor_small(y: f64) -> u64 {
+    const BIG: f64 = 4_503_599_627_370_496.0; // 2^52
+    let r = (y + BIG) - BIG;
+    let r = if r > y { r - 1.0 } else { r };
+    (r + BIG).to_bits() - BIG.to_bits()
+}
+
+/// Uniform on (0, 1) from one 64-bit Philox word: `((w >> 11) + 0.5) 2^-53`,
+/// the conversion [`PhiloxStream`] uses.
+#[inline(always)]
+pub fn word_to_uniform(w: u64) -> f64 {
+    const SCALE: f64 = 1.0 / 9_007_199_254_740_992.0;
+    ((w >> 11) as f64 + 0.5) * SCALE
+}
+
+/// Words `2 * block .. 2 * block + 2 * LANES` of stream `(seed, path)`:
+/// Philox4x32-10 on `LANES` counters at once, structure-of-arrays so the
+/// rounds vectorise. Word `2 l` is `(x1 << 32) | x0` and word `2 l + 1` is
+/// `(x3 << 32) | x2` of block `block + l`, as in [`PhiloxStream`].
+#[inline]
+pub fn philox_words(seed: u64, path: u64, block: u64) -> [u64; 2 * LANES] {
+    let [c0, c1, c2, c3] = philox_lanes(seed, path, block);
+    let mut w = [0u64; 2 * LANES];
+    for (l, pair) in w.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+        pair[0] = (u64::from(c1[l]) << 32) | u64::from(c0[l]);
+        pair[1] = (u64::from(c3[l]) << 32) | u64::from(c2[l]);
+    }
+    w
+}
+
+/// The four 32-bit outputs `[x0, x1, x2, x3]` of blocks `block ..
+/// block + LANES` of stream `(seed, path)`, one array per output word,
+/// lane `l` holding block `block + l`.
+#[inline(always)]
+fn philox_lanes(seed: u64, path: u64, block: u64) -> [[u32; LANES]; 4] {
     const M0: u64 = 0xD251_1F53;
     const M1: u64 = 0xCD9E_8D57;
     const W0: u32 = 0x9E37_79B9;
@@ -133,16 +227,7 @@ pub fn philox_uniforms(seed: u64, path: u64, block: u64, out: &mut [f64]) {
             c3[l] = p0 as u32;
         }
     }
-    const SCALE: f64 = 1.0 / 9_007_199_254_740_992.0;
-    for (k, o) in out.iter_mut().enumerate() {
-        let l = k / 2;
-        let w = if k.is_multiple_of(2) {
-            (u64::from(c1[l]) << 32) | u64::from(c0[l])
-        } else {
-            (u64::from(c3[l]) << 32) | u64::from(c2[l])
-        };
-        *o = ((w >> 11) as f64 + 0.5) * SCALE;
-    }
+    [c0, c1, c2, c3]
 }
 
 /// In-place [`norm_ppf_as241`] of uniforms: the central rational for every
@@ -382,5 +467,61 @@ mod path_rng_tests {
         assert_ne!(PathRng::new(7, 4).standard_normal(), z[0]);
         assert!(PathRng::new(7, 1).chi_square(f64::NAN).is_nan());
         assert!(PathRng::new(7, 1).chi_square(1.0).is_nan());
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+
+    #[test]
+    fn floor_small_equals_cast_near_integers() {
+        let mut ys = vec![0.0, f64::MIN_POSITIVE, 0.5, 0.999_999_999_999_999_9];
+        for k in [
+            1.0f64,
+            2.0,
+            3.0,
+            249.0,
+            250.0,
+            99_999.0,
+            1e9,
+            4e15,
+            2_251_799_813_685_247.0,
+        ] {
+            let (mut lo, mut hi) = (k, k);
+            for _ in 0..4 {
+                lo = f64::from_bits(lo.to_bits() - 1);
+                hi = f64::from_bits(hi.to_bits() + 1);
+                ys.extend([lo, hi, k - 0.5, k + 0.5]);
+            }
+        }
+        for y in ys.into_iter().filter(|y| *y < MAGIC_LIMIT) {
+            assert_eq!(floor_small(y), y as u64, "y={y:e}");
+        }
+    }
+
+    #[test]
+    fn uniform_from_halves_equals_word_to_uniform() {
+        let mut x = 0x0123_4567_89AB_CDEFu64;
+        let mut ws = vec![
+            0,
+            1,
+            2047,
+            2048,
+            u64::MAX,
+            u64::MAX - 2047,
+            1 << 63,
+            (1 << 63) - 1,
+        ];
+        for _ in 0..10_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            ws.push(x);
+        }
+        for w in ws {
+            let got = uniform_from_halves((w >> 32) as u32, w as u32);
+            assert_eq!(got.to_bits(), word_to_uniform(w).to_bits(), "w={w:#x}");
+        }
     }
 }

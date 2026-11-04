@@ -294,9 +294,7 @@ fn bootstrap_core(
     let buf = buf.get_mut(..n).ok_or(VarFault::WorkspaceTooSmall)?;
     let est = est.get_mut(..n_boot).ok_or(VarFault::WorkspaceTooSmall)?;
     let m = rank(n, alpha);
-    for (b, e) in est.iter_mut().enumerate() {
-        *e = crate::monte_carlo::bootstrap_resample_var(pnl, m, seed, b as u64, buf);
-    }
+    crate::monte_carlo::bootstrap_var_estimates(pnl, m, seed, 0, est, buf);
     let sum: f64 = est.iter().sum();
     let mean = sum / n_boot as f64;
     let ss: f64 = est.iter().map(|v| (v - mean) * (v - mean)).sum();
