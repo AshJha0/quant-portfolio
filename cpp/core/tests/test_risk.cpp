@@ -159,8 +159,9 @@ TEST(Risk, MatchesPython) {
         } else if (r.tag == "RC") {
             const auto h = r.nums();
             const auto conv = h[0] == 1.0 ? rk::Conversion::Spot : rk::Conversion::Scenario;
-            close(rk::reporting_conversion(h[1], rows[i + 1].nums(), h[2], rows[i + 2].nums(), conv),
-                  rows[i + 3].nums(), "reporting P&L");
+            close(
+                rk::reporting_conversion(h[1], rows[i + 1].nums(), h[2], rows[i + 2].nums(), conv),
+                rows[i + 3].nums(), "reporting P&L");
             ++n_rc;
             i += 4;
         } else if (r.tag == "TB") {

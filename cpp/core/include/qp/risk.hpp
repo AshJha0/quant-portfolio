@@ -578,8 +578,8 @@ inline std::array<double, 3> rank_smile_dynamics(std::span<const double> spots,
             const double resid = (prices[i + 1] - prices[i]) - explained;
             sum_sq += resid * resid;
         }
-        out[j] = detail::check_finite(std::sqrt(sum_sq / static_cast<double>(n - 1)),
-                                      "unexplained P&L");
+        out[j] =
+            detail::check_finite(std::sqrt(sum_sq / static_cast<double>(n - 1)), "unexplained P&L");
     }
     return out;
 }
@@ -593,8 +593,7 @@ enum class Conversion { Scenario, Spot };
 // values already computed (v0 today, v1[s] per scenario, in USD; x0 and x1[s]
 // the USD price of the reporting currency). Revaluing the book stays in Python.
 inline std::vector<double> reporting_conversion(double v0, std::span<const double> v1, double x0,
-                                                std::span<const double> x1,
-                                                Conversion conversion) {
+                                                std::span<const double> x1, Conversion conversion) {
     if (v1.size() != x1.size()) throw std::invalid_argument("v1 and x1 must have equal length");
     detail::check_positive(x0, "x0");
     std::vector<double> out(v1.size());
