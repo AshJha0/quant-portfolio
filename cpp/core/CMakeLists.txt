@@ -78,7 +78,7 @@ if(QP_CORE_TESTS)
   endif()
   add_executable(qp_core_tests tests/test_core.cpp tests/test_perf.cpp tests/test_holidays.cpp
     tests/test_rates_vol.cpp tests/test_xva_capital.cpp tests/test_credit_bondfut.cpp tests/test_var_stats.cpp
-    tests/test_risk.cpp)
+    tests/test_risk.cpp tests/test_frtb_collateral.cpp)
   target_link_libraries(qp_core_tests PRIVATE qp::core GTest::gtest GTest::gtest_main)
   # QuantLib holiday extract shared with the Rust calendar tests.
   target_compile_definitions(qp_core_tests PRIVATE
@@ -90,6 +90,7 @@ if(QP_CORE_TESTS)
     QP_CREDIT_BONDFUT_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/credit_bondfut_parity.txt"
     # Python reference values for the W14 risk kernels (Round 18).
     QP_RISK_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/risk_parity.txt"
+    QP_FRTB_COLLATERAL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../../rust/core/tests/data/frtb_collateral_parity.txt"
     QP_VAR_STATS_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/var_stats_corpus.txt")
   target_compile_options(qp_core_tests PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>

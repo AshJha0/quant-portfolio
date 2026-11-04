@@ -31,6 +31,8 @@ Header-only C++23 library shared by the four C++ engines
 | `qp/crr.hpp` | The one Cox-Ross-Rubinstein lattice for the equity and FX trees | eqopt, fxopt |
 | `qp/rates_vol.hpp` | SABR implied vol and the Hull-White trinomial Bermudan, port of `qp_core.vol.sabr` | parity tests |
 | `qp/xva.hpp` | SA-CCR (BCBS 279 / CRE52), Hull-White bond and swaption closed forms, CVA / DVA / FVA / effective-EPE sums | parity tests |
+| `qp/frtb.hpp` | FRTB SBM scenario aggregation, curvature charge and `net_cvr`; port of `qp_core.capital` | parity tests |
+| `qp/collateral.hpp` | CSA margin balance, MPOR lag and pathwise collateralised exposure; port of `qp_core.xva.collateral` | parity tests |
 | `qp/credit_index.hpp` | ISDA CDS Standard Model legs, port of `qp_core.credit_index.isda` | parity tests |
 | `qp/bond_futures.hpp` | CME conversion factor, implied repo, net basis, basic delivery option | parity tests |
 | `qp/bench/latency.hpp`, `qp/tools/jsonl.hpp` | bench harness and JSON-lines reader for the shims | benches, shims |
