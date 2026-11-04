@@ -60,7 +60,7 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           PATH="$RUNNER_TEMP/venv/bin:$PATH" bash .github/scripts/hashed_install.sh --editable \
-            python/core python/fx/05-pairs-trading python/fx/10-regime-switching
+            python/core python/backtest python/fx/05-pairs-trading python/fx/10-regime-switching
       - name: Check out the forward-log branch (created empty on the first run)
         run: |
           git config user.name "github-actions[bot]"

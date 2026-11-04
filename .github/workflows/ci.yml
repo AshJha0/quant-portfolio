@@ -834,8 +834,9 @@ jobs:
         env:
           # The bench-accepted label lets the rows named in
           # .github/bench-accepted.json pass as ACCEPTED (each capped by its
-          # max_ratio); every other slowdown still fails.
-          ALLOW_ACCEPTED: ${{ contains(github.event.pull_request.labels.*.name, 'bench-accepted') }}
+          # max_ratio); every other slowdown still fails. A push to main has no
+          # labels, and the rows were already accepted on its pull request.
+          ALLOW_ACCEPTED: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'bench-accepted') }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/bench"
