@@ -80,11 +80,18 @@ def test_real_process_kill(tmp_path: Path, seed: int) -> None:
     assert p.stdout is not None and p.stdout.readline().strip() == b"ready"
     import time
 
+    # Wait for the first order to reach the venue, not for a fixed time: a slow
+    # runner may not have traded at all after a fixed sleep. The kill then
+    # still lands at a random moment after that.
+    deadline = time.monotonic() + 60.0
+    while not (v.exists() and v.read_bytes().count(10)):
+        assert time.monotonic() < deadline, "child never traded"
+        time.sleep(0.005)
     time.sleep(random.Random(seed).uniform(0.05, 0.4))
     p.kill()
     p.wait()
     acc = sim.Acceptor.load(seed, v)
-    assert acc.orders, "child was killed before trading; raise the sleep"
+    assert acc.orders, "child was killed before trading"
     res = sim.recover(j, acc)
     assert res.unexplained == []
     # The venue log is never ahead of the journal by more than the one in-flight order.

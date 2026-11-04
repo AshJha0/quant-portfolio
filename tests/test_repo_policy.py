@@ -227,3 +227,16 @@ class TestApiDiff:
         for name, src in pkgs:
             init = (REPO / src / name / "__init__.py").read_text(encoding="utf-8")
             assert mod.dunder_all(init), name
+
+
+def test_docs_are_valid_utf8():
+    """GitHub Pages builds docs/ with Jekyll; one bad byte fails the whole site."""
+    root = Path(__file__).resolve().parents[1] / "docs"
+    bad = []
+    for path in root.rglob("*"):
+        if path.suffix.lower() in {".md", ".html"} and path.is_file():
+            try:
+                path.read_bytes().decode("utf-8")
+            except UnicodeDecodeError as exc:
+                bad.append(f"{path.relative_to(root)}: {exc}")
+    assert not bad, bad
