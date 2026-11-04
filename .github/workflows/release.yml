@@ -12,7 +12,8 @@
 #
 # What a release carries (owner decision D7: GitHub Releases only, nothing
 # goes to PyPI or TestPyPI):
-#   * a wheel and an sdist for python/core and each of the 23 projects;
+#   * a wheel and an sdist for python/core and each of the 23 projects and the
+#     shared stacks (29 packages);
 #   * qp-cpp and qp-rust wheels, CPython 3.11-3.13, for Linux x86_64
 #     (manylinux_2_34), Windows amd64 and macOS arm64, built by cibuildwheel
 #     and smoke-tested in a clean environment (bindings/wheel_smoke.py);
@@ -150,7 +151,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         package: [cpp-nanobind, rust-pyo3]
         os: [ubuntu-24.04, windows-2025, macos-15]
@@ -225,12 +226,12 @@ jobs:
       - name: Install the build backends (hashed, from uv.lock)
         run: bash .github/scripts/hashed_install.sh --group build
       # No build isolation: setuptools and maturin are the hashed copies.
-      - name: Build python/core and the 23 projects (sdist and wheel each)
+      - name: Build all 29 workspace packages (sdist and wheel each)
         run: |
           uv build --all-packages --no-build-isolation --python "$RUNNER_TEMP/venv/bin/python" -o dist
           n_sdist=$(ls dist/*.tar.gz | wc -l); n_wheel=$(ls dist/*.whl | wc -l)
           echo "sdists: $n_sdist, wheels: $n_wheel"
-          test "$n_sdist" -eq 24 && test "$n_wheel" -eq 24
+          test "$n_sdist" -eq 29 && test "$n_wheel" -eq 29
       - name: Build the qp-rust sdist
         run: uv build --sdist --no-build-isolation --python "$RUNNER_TEMP/venv/bin/python" -o dist bindings/rust-pyo3
       # A dry run may build a .devN version; the check then only reports.
