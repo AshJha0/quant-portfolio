@@ -163,6 +163,31 @@ only on the error path.
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `gk_price` | 43.5 | 47.8 * | 153 * |
+| `analytic_greeks` | 34.6 | 36.6 * | 135 * |
+| `implied_vol` | 467 | 578 * | 1,523 * |
+| `strike_from_delta_spot_pa` | 1,058 | 1,280 * | 3,654 * |
+| `binomial_price_american_500` | 45,771 | 58,855 | 142,228 |
+| `mc_price_100k_anti_cv` | 3,868,446 | 4,594,219 | 5,481,712 |
+| `fast::gk_price_k` | 40.3 | 43.7 * | 146 * |
+| `fast::greeks_k` | 19.8 | 23.8 * | 70.4 * |
+| `fast::implied_vol_k` | 462 | 943 * | 1,864 * |
+| `fast::gk_price_batch_per_option` | 37.1 | 48.3 * | 89.3 * |
+| `fast::greeks_batch_per_option` | 41.5 | 56.4 * | 96.0 * |
+| `fast::binomial_price_ws_american_500` | 45,613 | 58,680 | 90,435 |
+| `fast::mc_price_ws_100k_anti_cv` | 3,777,914 | 4,727,887 | 6,194,344 |
+| `fast::mc_price_par_1m_anti_cv_all_threads` | 38,540,656 | 42,345,645 | 42,345,645 |
+| `mc_price_1m_anti_cv` | 43,259,051 | 45,374,137 | 45,374,137 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Per-call latency from `cargo run --release --bin bench` (writes
 [bench/results.json](bench/results.json)). Numbers from this machine: Intel
 Core 5 120U, 12 threads, under WSL2, Rust 1.99.1, release profile

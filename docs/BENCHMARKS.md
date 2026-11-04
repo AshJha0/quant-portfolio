@@ -170,23 +170,23 @@ line. The CO-aware p99.9 is the scheduler stalling the VM, charged to every
 message queued behind the stall.
 
 Engine kernels, nanoseconds, pinned to one CPU. Fast kernels report the p99
-of batch means, marked `*`, which is not a per-call tail and must not be used
+and p99.9 of batch means, marked `*`, which is not a per-call tail and must not be used
 for an SLO (see above). The others are single calls.
 
-| Engine | Kernel | p50 | p99 |
-|---|---|---:|---:|
-| C++ equity options | `bs_price` | 77 | 98 * |
-| C++ equity options | `implied_vol` | 698 | 947 * |
-| C++ equity options | `crr_price` American, n = 1000 | 166,290 | 203,393 |
-| C++ equity VaR | `historical_var`, n = 1000 | 3,904 | 6,726 |
-| C++ FX options | `gk_price` | 81 | 105 * |
-| C++ FX VaR | `try_pnl`, 1 scenario, 250 positions | 1,355 | 1,574 * |
-| Rust equity options | `bs_price` | 42 | 119 * |
-| Rust equity options | `implied_vol` | 455 | 653 * |
-| Rust equity VaR | `historical_var_ws`, n = 1000 | 1,406 | 1,675 * |
-| Rust equity VaR | `var_bootstrap_se`, n = 250, B = 200 | 224,577 | 294,612 |
-| Rust FX options | `gk_price` | 44 | 48 * |
-| Rust FX VaR | `portfolio_sigma_50f` | 2,347 | 2,458 |
+| Language | Engine | Kernel | p50 | p99 | p99.9 |
+|---|---|---|---:|---:|---:|
+| C++ | equity-options | `bs_price` | 77.4 | 98.4 * | 379 * |
+| C++ | equity-options | `implied_vol` | 698 | 947 * | 2,514 * |
+| C++ | equity-options | `crr_price am n=1000` | 166,290 | 203,393 | 365,203 |
+| C++ | equity-var | `historical_var n=1000` | 3,904 | 6,726 | 15,018 |
+| C++ | fx-options | `gk_price` | 80.6 | 105 * | 402 * |
+| C++ | fx-var | `try_pnl 1 scen 250 pos` | 1,355 | 1,574 * | 5,010 * |
+| Rust | equity-options | `bs_price` | 42.4 | 119 * | 220 * |
+| Rust | equity-options | `implied_vol` | 455 | 653 * | 1,767 * |
+| Rust | equity-var | `historical_var_ws n=1000 (fast)` | 1,406 | 1,675 * | 4,446 * |
+| Rust | equity-var | `var_bootstrap_se n=250 B=200 (main API)` | 224,577 | 294,612 | 564,941 |
+| Rust | fx-options | `gk_price` | 43.5 | 47.8 * | 153 * |
+| Rust | fx-var | `portfolio_sigma_50f` | 2,347 | 2,458 | 7,950 |
 
 Java, Windows, HotSpot 27, threads not pinned. JMH reports averages, so it has
 no p99; the p99 comes from `LatencyMain` below. JMH average time, in

@@ -138,6 +138,32 @@ figure).
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `historical_var n=250 (main API)` | 593 | 639 * | 2,390 * |
+| `historical_var_ws n=250 (fast)` | 428 | 530 * | 1,150 * |
+| `historical_var n=1000 (main API)` | 1,920 | 2,446 * | 5,374 * |
+| `historical_var_ws n=1000 (fast)` | 1,406 | 1,675 * | 4,446 * |
+| `expected_shortfall n=250 a=2.5% (main API)` | 603 | 657 * | 2,216 * |
+| `expected_shortfall_ws n=250 a=2.5% (fast)` | 437 | 461 * | 1,215 * |
+| `parametric_var normal 100 assets (main API)` | 6,714 | 11,654 | 23,599 |
+| `parametric_var_fast normal 100 assets (fast)` | 4,065 | 5,216 | 14,276 |
+| `parametric_var t df=6 100 assets (main API)` | 13,262 | 20,173 | 39,382 |
+| `parametric_var_fast t df=6 100 assets (fast)` | 10,660 | 15,881 | 30,264 |
+| `var_bootstrap_se n=250 B=200 (main API)` | 224,577 | 294,612 | 564,941 |
+| `var_bootstrap_se_ws n=250 B=200 (fast)` | 216,588 | 255,544 | 300,790 |
+| `monte_carlo_run 20x10k B=50 (main API)` | 4,788,164 | 5,283,798 | 6,902,108 |
+| `McWorkspace::run 20x10k B=50 (fast)` | 4,727,300 | 5,992,874 | 8,535,208 |
+| `monte_carlo_var 20x10k (main API)` | 1,952,266 | 3,082,890 | 4,241,049 |
+| `McWorkspace::var 20x10k (fast)` | 1,925,234 | 2,705,717 | 4,130,592 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 `cargo run --release --bin bench` times each kernel call by call after a
 warm-up, over 16 rotating inputs, and writes `bench/results.json`. Calls
 under a few microseconds are timed in batches of K and divided by K. The

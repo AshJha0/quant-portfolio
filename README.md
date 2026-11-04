@@ -579,8 +579,27 @@ figure to read: it shows what the slowest 1 in 100 calls cost.
 The Java rows cover three threads and two ring hops, charged from each order's
 intended send time, with no collections in the window. The rows time different
 things, so do not rank languages from them. A virtual machine stalls threads
-now and then, which is where the far tails come from. More rows, including
-engine kernels, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+now and then, which is where the far tails come from. 
+Engine kernels, nanoseconds, one CPU (`*`: tail of batch means, not a per-call
+tail):
+
+| Language | Engine | Kernel | p50 | p99 | p99.9 |
+|---|---|---|---:|---:|---:|
+| C++ | equity-options | `bs_price` | 77.4 | 98.4 * | 379 * |
+| C++ | equity-options | `implied_vol` | 698 | 947 * | 2,514 * |
+| C++ | equity-options | `crr_price am n=1000` | 166,290 | 203,393 | 365,203 |
+| C++ | equity-var | `historical_var n=1000` | 3,904 | 6,726 | 15,018 |
+| C++ | fx-options | `gk_price` | 80.6 | 105 * | 402 * |
+| C++ | fx-var | `try_pnl 1 scen 250 pos` | 1,355 | 1,574 * | 5,010 * |
+| Rust | equity-options | `bs_price` | 42.4 | 119 * | 220 * |
+| Rust | equity-options | `implied_vol` | 455 | 653 * | 1,767 * |
+| Rust | equity-var | `historical_var_ws n=1000 (fast)` | 1,406 | 1,675 * | 4,446 * |
+| Rust | equity-var | `var_bootstrap_se n=250 B=200 (main API)` | 224,577 | 294,612 | 564,941 |
+| Rust | fx-options | `gk_price` | 43.5 | 47.8 * | 153 * |
+| Rust | fx-var | `portfolio_sigma_50f` | 2,347 | 2,458 | 7,950 |
+
+Every kernel is in each engine's README and `bench/results.json`; the method is
+in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 How latency is measured now, and where current figures are, is in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and

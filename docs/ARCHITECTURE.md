@@ -274,6 +274,34 @@ at least 31 samples, median with p10/p90), and the CI `bench` job compares
 base and head on the same runner. Current figures are in that job's
 `bench-results` artifact.
 
+v3.0.0 idle-machine run (2026-11-04), low-latency track and Java:
+
+| Measure | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| C++ book apply | 56 ns | 151 ns | 264 ns |
+| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us |
+| Rust decode and book apply | 56 ns | 192 ns | 325 ns |
+| Rust ring round trip | 184 ns | 234 ns | 270 ns |
+| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us |
+| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms |
+
+Engine kernels, nanoseconds (`*`: tail of batch means, not a per-call tail):
+
+| Language | Engine | Kernel | p50 | p99 | p99.9 |
+|---|---|---|---:|---:|---:|
+| C++ | equity-options | `bs_price` | 77.4 | 98.4 * | 379 * |
+| C++ | equity-options | `implied_vol` | 698 | 947 * | 2,514 * |
+| C++ | equity-options | `crr_price am n=1000` | 166,290 | 203,393 | 365,203 |
+| C++ | equity-var | `historical_var n=1000` | 3,904 | 6,726 | 15,018 |
+| C++ | fx-options | `gk_price` | 80.6 | 105 * | 402 * |
+| C++ | fx-var | `try_pnl 1 scen 250 pos` | 1,355 | 1,574 * | 5,010 * |
+| Rust | equity-options | `bs_price` | 42.4 | 119 * | 220 * |
+| Rust | equity-options | `implied_vol` | 455 | 653 * | 1,767 * |
+| Rust | equity-var | `historical_var_ws n=1000 (fast)` | 1,406 | 1,675 * | 4,446 * |
+| Rust | equity-var | `var_bootstrap_se n=250 B=200 (main API)` | 224,577 | 294,612 | 564,941 |
+| Rust | fx-options | `gk_price` | 43.5 | 47.8 * | 153 * |
+| Rust | fx-var | `portfolio_sigma_50f` | 2,347 | 2,458 | 7,950 |
+
 The tables below are older. They are one laptop run (Intel Core 5 120U,
 WSL2, 2026-11-01; GCC 15.2 at `-O3 -DNDEBUG`, rustc 1.99.1 with
 `lto = "fat"`) with the previous harnesses, kept for the record. Then the
