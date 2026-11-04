@@ -8,7 +8,7 @@ root-find, and `career-prep/tests/test_numeric_packs.py` compares them.
 
 Code in this repository that does these things for real: the prereg and
 trials ledger (`research/`), and the purged cross-validation in
-`python/quant_portfolio/`. References: Grinold and Kahn (2000); Lo (2002),
+`python/equity/05-pairs-trading/`, `python/equity/10-regime-switching/`, `research/`. References: Grinold and Kahn (2000); Lo (2002),
 "The statistics of Sharpe ratios"; Bailey and Lopez de Prado (2012, 2014) on
 the probabilistic and deflated Sharpe ratio; Lopez de Prado (2018), *Advances
 in Financial Machine Learning*, ch. 7; Harvey, Liu and Zhu (2016).

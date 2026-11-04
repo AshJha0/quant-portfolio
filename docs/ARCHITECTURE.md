@@ -498,6 +498,10 @@ the same engine and platform.
 | `cpp exec-core, rates-curves, aad, ull` | Builds and ctests each project with GCC (long-labelled tests run nightly), then runs the Python reference book against the exec-core replay with no skips allowed. |
 | `java (Temurin 21, mvnw verify)` | `./mvnw -B verify` for `java/`, including the kill-switch parity test against `python/oms/kill/vectors.json`. |
 | `py backtest`, `py oms`, `py execution`, `py posttrade` | The shared stacks on Python 3.11 to 3.13, each with its transitive workspace dependencies installed. |
+| `quantlib` | The QuantLib 1.44 cross-checks from hash-locked wheels, with no skips. |
+| `api diff` | On pull requests, compares the public API with the base; a break needs the `api-break` label. |
+| `cookbook` | Runs every Python recipe in `docs/COOKBOOK.md` and checks its quoted output (`tests/test_cookbook.py`). |
+| `recorder` | `tools/recorder/tests`, with the C++ and Rust replay required. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 

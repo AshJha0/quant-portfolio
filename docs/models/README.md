@@ -18,6 +18,11 @@ drift silently.
 | `VALIDATION_TEMPLATE.md` | The headings every validation write-up uses. |
 | `VALIDATION.md` | The validation pack: one section per model, in template order. |
 
+Scope. The register lists the main models of the Python projects and the
+FRTB and collateral capital code. Most of the newer shared stacks
+(`qp_core.xva` CVA, `qp_core.exotics`, `qp_core.aad`, `qp_exec`) are not
+listed yet, so their absence here says nothing about their testing.
+
 ## The formal statement
 
 **Model.** Any function or class whose output is a price, a sensitivity, a

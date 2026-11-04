@@ -6148,7 +6148,12 @@ multiplier times the add-on, scaled by 1.4, giving `saccr_ead`. It is a
 regulatory capital input with fixed supervisory factors. `bilateral_cva` is a
 pricing adjustment: expected exposure profiles weighted by default
 probabilities of both parties, with collateral terms (threshold, MTA, margin
-period of risk) and wrong-way risk.
+period of risk) and wrong-way risk. `qp_core.xva.collateral` does the same for
+simulated paths: under perfect daily margin the expected exposure of a
+Brownian position is still sigma sqrt(MPOR) phi(0), because the last call is
+stale when the counterparty fails. Market-risk capital is a separate stack:
+`qp_core.capital` has FRTB SBM delta, vega and curvature, where curvature
+charges what a full-risk-weight revaluation loses beyond the delta estimate.
 
 </details>
 
@@ -7287,6 +7292,10 @@ position the model forbids, so it is not quoted; likewise no ask at `-Q`.
 The bound has value of its own, which is why GLFT and Avellaneda-Stoikov
 differ even at small risk aversion when `Q` is small; the tests compare them
 at `Q = 20`. Source: `python/execution/src/qp_exec/mm/quotes.py` (`GLFT`).
+Neither model knows who is trading with it. `qp_exec.mm.toxicity` adds that:
+a markout average or VPIN widens both quotes when flow turns informed. In
+this simulator markout widening also fires on benign flow, because a maker's
+own fill moves the displayed mid, so treat that signal with care.
 
 </details>
 

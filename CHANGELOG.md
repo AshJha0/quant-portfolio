@@ -277,6 +277,9 @@ is in `docs/MIGRATION.md`.
 - Simulated power files for the combination panel, UST and TSMOM drafts.
   The combination design reaches 80% power only with an IC of about 0.05 and
   30 currencies; the free data has a median of 21.
+- Model inventory entries `CORE-FRTB-SBM`, `CORE-FRTB-CURV` and
+  `CORE-XVA-COLLATERAL`, and three COOKBOOK recipes (curvature of a short
+  call, exposure under a margin period of risk, toxicity-aware quotes).
 - `qp_data`: OECD MEI interbank rates and CPI (CC BY 4.0) through keyless
   FRED, released at month m+2.
 - `research/exploratory/r18`: the 2000-2015 FX carry, value and momentum

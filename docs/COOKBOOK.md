@@ -2779,6 +2779,62 @@ from the swaption price (14,303). `xva` adds DVA and funding adjustments,
 and `eepe` gives effective EPE for the IMM capital formula (Gregory, *The
 xVA Challenge*, 4th ed., 2020, ch. 11 and 14).
 
+### How do I compute the FRTB curvature charge of a short call?
+
+Needs `python/core`.
+
+Plain idea: delta capital assumes a straight line, and an option is curved.
+Curvature moves the spot by the full risk weight, revalues, and charges what
+the delta estimate missed. A short call loses more than the line says in both
+directions.
+
+```python
+from qp_core.black_scholes import carry_price
+from qp_core.capital.frtb_curvature import curvature_charge, curvature_rw, net_cvr
+
+
+def short_call(s):
+    return -carry_price(s, 100.0, 1.0, 0.03, 0.0, 0.2, 1.0)
+
+
+rw = curvature_rw("EQ", 5)
+s0, h = 100.0, 1e-4
+sens = (short_call(s0 * (1 + h)) - short_call(s0 * (1 - h))) / (2 * h)
+up, down = net_cvr(short_call(s0), short_call(s0 * (1 + rw)), short_call(s0 * (1 - rw)), rw, sens)
+res = curvature_charge({5: [("X", up, down)]}, lambda b, k, l: 0.0, lambda b, c: 0.0)
+print(rw, round(sens, 4), round(up, 4), round(down, 4), round(res["charge"], 4))
+```
+
+Output: `0.3 -59.8706 6.2961 8.9005 8.9005`. The risk weight is 30%, and the
+down move is the worse side, so it sets the charge. A long call gives negative
+CVRs on both sides and no charge (BCBS d457 MAR21.5 and 21.96-101).
+
+### How do I see what a 10-day margin period of risk leaves as exposure?
+
+Needs `python/core`.
+
+Plain idea: even with perfect daily margin, the last collateral call is
+stale when a counterparty fails, so exposure is the value move over the margin
+period of risk. For a Brownian position the expected exposure is
+sigma sqrt(MPOR) phi(0), whatever the date.
+
+```python
+import numpy as np
+from qp_core.xva.collateral import Csa, brownian_ee_mpor, collateralised_exposure, lagged_grid
+
+sigma, mpor = 1_000_000.0, 10 / 250
+times = lagged_grid([0.25, 0.5, 0.75, 1.0], mpor)
+rng = np.random.default_rng(7)
+steps = rng.standard_normal((200_000, len(times))) * sigma * np.sqrt(np.diff(times, prepend=0.0))
+out = collateralised_exposure(times, steps.cumsum(axis=1), Csa(mpor=mpor))
+ee = out.exposure.mean(axis=0)[-1]
+se = out.exposure.std(axis=0)[-1] / np.sqrt(len(steps))
+print(round(float(ee), 0), round(brownian_ee_mpor(sigma, mpor), 0), round(float(se), 0))
+```
+
+Output: `79480.0 79788.0 261.0`. The simulated figure is 1.2 standard errors
+from the closed form. `lagged_grid` adds the lagged dates so the lag is exact.
+
 ### How do I price a standard CDS on ISDA conventions, with and without the half-day bias?
 
 Needs `python/equity/06-credit-risk`.
@@ -2859,6 +2915,30 @@ two units of inventory move the reservation price by `2 * 0.1 * 4 = 0.8`.
 `GLFT` adds an inventory bound (Gueant, Lehalle and Fernandez-Tapia 2013),
 `run_mm` simulates fills, and `QuoteController` pulls quotes when the feed
 goes stale.
+
+### How do I widen quotes when flow turns toxic (markouts and VPIN)?
+
+Needs `python/execution`.
+
+Plain idea: if the mid keeps moving against you just after your fills, the
+people hitting you know something. A markout average widens both quotes; VPIN
+measures how one-sided recent volume is.
+
+```python
+from qp_exec.mm.toxicity import VPIN, MarkoutToxicity
+
+tox = MarkoutToxicity(horizon=1, lam=0.5, beta=1.0, max_widen=3)
+tox.on_fill(step=0, side=1, price_ticks=99)
+tox.on_mid(1, 98.0)
+vpin = VPIN(bucket_volume=10, n_buckets=2)
+for side, size in [(1, 8), (-1, 2), (1, 5), (-1, 5)]:
+    vpin.on_trade(side, size)
+print(tox.mean, tox.widen_ticks(), vpin.value())
+```
+
+Output: `-1.0 1 0.3`. One fill lost a tick by the next step, so quotes widen by
+one tick. VPIN is the average order imbalance per bucket (Easley, Lopez de
+Prado and O'Hara, 2012). `run_mm` uses these on synthetic tiered flow only.
 
 ### How do I split an order across lit venues and market orders (Cont-Kukanov)?
 

@@ -977,3 +977,95 @@ tests = [
   "python/fx/04-fixed-income/tests/test_xccy.py::TestParSolvers.test_par_basis_zeroes_pv",
 ]
 independent_checks = []
+
+[[model]]
+id = "CORE-FRTB-SBM"
+name = "FRTB SBM delta and vega aggregation (CSR non-sec, equity, commodity)"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Delta and vega capital across buckets and the three MAR21.6 correlation scenarios."
+entrypoints = [
+  "python/core/src/qp_core/capital/frtb_classes.py::aggregate",
+]
+assumptions = [
+  "BCBS d457 (2019) MAR21 parameters, transcribed and checksum-tested",
+]
+limitations = [
+  "no CSR securitisation, RRAO or DRC",
+  "Python only, no second implementation for these classes",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "published footnote values and hand fixtures",
+]
+tests = [
+  "python/core/tests/test_capital_frtb_classes.py::test_footnote_examples",
+  "python/core/tests/test_capital_frtb_classes.py::test_csr_delta_hand_fixture",
+  "python/core/tests/test_capital_frtb_classes.py::test_equity_delta_hand_fixture",
+  "python/core/tests/test_capital_frtb_classes.py::test_commodity_delta_hand_fixture",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-FRTB-CURV"
+name = "FRTB SBM curvature charge"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Curvature capital for GIRR, CSR non-sec, equity, commodity and FX."
+entrypoints = [
+  "python/core/src/qp_core/capital/frtb_curvature.py::curvature_charge",
+]
+assumptions = [
+  "CVR inputs come from the caller's full revaluation",
+  "squared delta correlations (MAR21.100-101)",
+]
+limitations = [
+  "Python only, no second implementation",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "hand fixtures for selection, psi and other-sector buckets",
+]
+tests = [
+  "python/core/tests/test_capital_frtb_classes.py::test_curvature_within_bucket_psi_and_selection",
+  "python/core/tests/test_capital_frtb_classes.py::test_curvature_across_buckets_uses_selected_side",
+  "python/core/tests/test_capital_frtb_classes.py::test_net_cvr_linear_is_zero_and_option_positive",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-XVA-COLLATERAL"
+name = "Collateralised exposure (variation and initial margin)"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Exposure paths under a CSA: thresholds, MTA, margin period of risk and initial margin."
+entrypoints = [
+  "python/core/src/qp_core/xva/collateral.py::collateralised_exposure",
+]
+assumptions = [
+  "no payment during the margin period of risk",
+  "the lag sits on the simulation grid",
+]
+limitations = [
+  "Python only",
+  "the swap exposure simulator values only on reset dates",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "Brownian closed forms within 4 standard errors",
+]
+tests = [
+  "python/core/tests/test_xva_collateral.py::test_mpor_closed_form",
+  "python/core/tests/test_xva_collateral.py::test_mpor_with_initial_margin_closed_form",
+  "python/core/tests/test_xva_collateral.py::test_perfect_csa_no_lag_is_zero",
+]
+independent_checks = []

@@ -25,7 +25,7 @@ python -m pytest -p no:cacheprovider python/execution
 | `qp_exec.schedules.volume` | Calibrated intraday volume curves; VWAP and POV on a forecast with catch-up, a live participation cap and a closing-auction slice | W25d |
 | `qp_exec.schedules.transient` | Optimal schedules under transient impact: Obizhaeva-Wang exponential and Gatheral power-law kernels; manipulation checks | W25/W26 |
 | `qp_exec.schedules.placement` | Post or cross: fill probability from queue position, adverse selection, fees and drift | W25/W26 |
-| `qp_exec.mm` | Market making: Avellaneda-Stoikov (2008) and Gueant-Lehalle-Fernandez-Tapia (2013) quotes, operational controls (stale-book pull, inventory widen and pull, throttle) and a simulator against the reference book | W26 |
+| `qp_exec.mm` | Market making: Avellaneda-Stoikov (2008) and Gueant-Lehalle-Fernandez-Tapia (2013) quotes, operational controls (stale-book pull, inventory widen and pull, throttle) and a simulator against the reference book; `toxicity` (markout EWMA with decay, VPIN, `tier_report` by counterparty tier) | W26 |
 | `qp_exec.crb` | Central risk book: netting, internalisation, factor exposure, stand-alone versus CRB cost, hedge-delay policy with an exact P&L decomposition; hedges leave as `qp_oms` submit arguments | W26 |
 | `qp_exec.rfq` | RFQ: hit-ratio model, optimal and inventory-skewed quotes, win-rate, markout and last-look reports (FX Global Code 2021, principle 17) | W26 |
 | `qp_exec.sor` | Smart order router over several lit books and dark venues: allocation, fees (`venues/fee_schedules.toml`), dark participation for anti-gaming, TCA and a gaming-cost study; see [`sor/README.md`](src/qp_exec/sor/README.md) for the measured results | W27 |

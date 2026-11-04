@@ -12,7 +12,7 @@ with zero mean; VaR and ES are reported as positive loss amounts; "99% VaR"
 is the 1% quantile of the loss; days are independent. Give money to the
 nearest unit, ratios to four significant figures.
 
-Background for the code in this repository: `python/quant_portfolio/risk/`
+Background for the code in this repository: `python/equity/03-var-es-engine/`
 (VaR, ES and backtests). Reference texts: Jorion, *Value at Risk* (3rd ed.);
 Hull, *Risk Management and Financial Institutions*; McNeil, Frey and
 Embrechts, *Quantitative Risk Management*; Basel Committee (1996),
