@@ -109,7 +109,10 @@ stalls are charged (coordinated-omission correction, after Gil Tene):
 
 Those runs shared the machine with other work. On an idle machine
 (2026-11-04, [docs/BENCHMARKS.md](../docs/BENCHMARKS.md)) the p50 was 2.88 us at
-10,000/s and 2.69 us at 100,000/s, with p99 near 65 us and no collections.
+10,000/s and 2.69 us at 100,000/s, p99 63.5 us and 67.6 us, p99.9 463 us and
+1,180 us, with no collections. JMH on the same machine read `ringPublishPoll`
+0.013 us, `killCheck` 0.035 us and `orderRoundTrip` 0.583 us; JMH reports
+averages, so it has no p99.
 
 How to read this. The 1.7 us median is what the path costs when its three
 threads keep their cores. The millisecond figures are the OS taking those

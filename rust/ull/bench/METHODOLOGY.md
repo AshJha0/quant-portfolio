@@ -75,7 +75,18 @@ scheduler adds millisecond-scale preemption.
 | book_apply fixed 0.2 M/s, naive | 387 | 939 | 3,879 | 29,407 |
 | spsc_ring_round_trip | 518 | 1,228 | 3,051 | 132,223 |
 
-Reading the table: the naive and CO-aware rows come from one run. The
+Idle-machine run (2026-11-04, WSL2, pinned to CPUs 2 and 4, same message count):
+
+| Bench | p50 ns | p99 ns | p99.9 ns | p99.99 ns |
+|---|---|---|---|---|
+| timer_overhead | 14 | 16 | 17 | 18 |
+| qpbf_decode_msg | 30 | 68 | 185 | 368 |
+| decode_plus_book_apply | 56 | 192 | 325 | 4,475 |
+| book_apply fixed 0.2 M/s, CO-aware | 175 | 5,847 | 1,392,639 | 3,602,431 |
+| book_apply fixed 0.2 M/s, naive | 121 | 364 | 3,783 | 14,631 |
+| spsc_ring_round_trip | 184 | 234 | 270 | 11,103 |
+
+Reading the first table: the naive and CO-aware rows come from one run. The
 naive p99 of about 1 us says the code is fast; the CO-aware p99 of about
 0.3 ms and p99.9 of about 1.5 ms say that on this host about 1% of the calls
 offered at 200,000 per second were delayed by a few hundred microseconds or

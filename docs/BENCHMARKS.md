@@ -169,7 +169,27 @@ The C++ and Rust rows time different things, so do not compare them line by
 line. The CO-aware p99.9 is the scheduler stalling the VM, charged to every
 message queued behind the stall.
 
-Java, Windows, HotSpot 27, threads not pinned. JMH average time, in
+Engine kernels, nanoseconds, pinned to one CPU. Fast kernels report the p99
+of batch means, marked `*`, which is not a per-call tail and must not be used
+for an SLO (see above). The others are single calls.
+
+| Engine | Kernel | p50 | p99 |
+|---|---|---:|---:|
+| C++ equity options | `bs_price` | 77 | 98 * |
+| C++ equity options | `implied_vol` | 698 | 947 * |
+| C++ equity options | `crr_price` American, n = 1000 | 166,290 | 203,393 |
+| C++ equity VaR | `historical_var`, n = 1000 | 3,904 | 6,726 |
+| C++ FX options | `gk_price` | 81 | 105 * |
+| C++ FX VaR | `try_pnl`, 1 scenario, 250 positions | 1,355 | 1,574 * |
+| Rust equity options | `bs_price` | 42 | 119 * |
+| Rust equity options | `implied_vol` | 455 | 653 * |
+| Rust equity VaR | `historical_var_ws`, n = 1000 | 1,406 | 1,675 * |
+| Rust equity VaR | `var_bootstrap_se`, n = 250, B = 200 | 224,577 | 294,612 |
+| Rust FX options | `gk_price` | 44 | 48 * |
+| Rust FX VaR | `portfolio_sigma_50f` | 2,347 | 2,458 |
+
+Java, Windows, HotSpot 27, threads not pinned. JMH reports averages, so it has
+no p99; the p99 comes from `LatencyMain` below. JMH average time, in
 microseconds, allocation about 0 B/op: `ringPublishPoll` 0.013, `killCheck`
 0.035, `orderRoundTrip` 0.583. `LatencyMain`, three spinning threads, two ring
 hops, coordinated-omission corrected, no collections in the window:

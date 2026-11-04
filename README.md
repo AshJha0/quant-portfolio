@@ -563,6 +563,25 @@ Every latency figure in this repository is software, in-process latency
 measured on one machine, not wire-to-wire ([docs/LATENCY_METHOD.md](docs/LATENCY_METHOD.md)).
 No network card, kernel bypass or exchange is involved.
 
+The v3.0.0 run, on an idle machine (2026-11-04, Intel Core 5 120U; C++ and
+Rust under WSL2 pinned to two CPUs, Java on Windows unpinned). The p99 is the
+figure to read: it shows what the slowest 1 in 100 calls cost.
+
+| Measure | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| C++ book apply | 56 ns | 151 ns | 264 ns |
+| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us |
+| Rust decode and book apply | 56 ns | 192 ns | 325 ns |
+| Rust ring round trip | 184 ns | 234 ns | 270 ns |
+| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us |
+| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms |
+
+The Java rows cover three threads and two ring hops, charged from each order's
+intended send time, with no collections in the window. The rows time different
+things, so do not rank languages from them. A virtual machine stalls threads
+now and then, which is where the far tails come from. More rows, including
+engine kernels, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 How latency is measured now, and where current figures are, is in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and
 a CI job that compares base and head on the same runner (`bench-results`
