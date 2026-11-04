@@ -41,10 +41,12 @@ import math
 from dataclasses import dataclass
 
 from qp_core.execution import ExecutionConfig
+from qp_core.model import model
 
 __all__ = ["NextBarFill"]
 
 
+@model(id="BT-FILL-NEXTBAR")
 @dataclass(frozen=True)
 class NextBarFill:
     """Next-bar fill model with a signal-to-fill lag and optional partial fills.

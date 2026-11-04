@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import math
 
+from qp_core.model import model
+
 from ..normal import norm_cdf as N
 
 __all__ = [
@@ -109,6 +111,7 @@ def _rr_terms(
     return A, B, C, D, E, F
 
 
+@model(id="CORE-EXO-BARRIER")
 def barrier_price(
     kind: str, cp: str, S: float, X: float, H: float, T: float, r: float, b: float,
     sigma: float, rebate: float = 0.0,
@@ -149,6 +152,7 @@ def barrier_price(
     return hi if above else lo
 
 
+@model(id="CORE-EXO-TOUCH")
 def touch_price(
     kind: str, S: float, H: float, T: float, r: float, b: float, sigma: float,
     cash: float = 1.0, pay_at_hit: bool = False,
@@ -188,6 +192,7 @@ def touch_price(
     return float(cash * (hs ** (mu + lam) * N(eta * z) + hs ** (mu - lam) * N(eta * z - 2.0 * eta * lam * v)))
 
 
+@model(id="CORE-EXO-BARRIER")
 def double_knockout_price(
     cp: str, S: float, X: float, L: float, U: float, T: float, r: float, b: float,
     sigma: float, n_terms: int = 10,
@@ -243,6 +248,7 @@ def double_knockout_price(
     return fx * s2_ - fs * s1
 
 
+@model(id="CORE-EXO-TOUCH")
 def double_no_touch(
     S: float, L: float, U: float, T: float, r: float, b: float, sigma: float,
     cash: float = 1.0, n_terms: int = 50,

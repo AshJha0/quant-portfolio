@@ -47,6 +47,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..errors import InputError
 from .hull_white import HullWhite, HullWhitePaths
 
@@ -76,6 +78,7 @@ class ExposureProfile:
     ee_disc_se: np.ndarray
 
 
+@model(id="CORE-XVA-EXPOSURE")
 def profile(
     times: np.ndarray, values: np.ndarray, disc: np.ndarray | None = None, *, q: float = 0.95
 ) -> ExposureProfile:
@@ -105,6 +108,7 @@ def profile(
     )
 
 
+@model(id="CORE-XVA-EXPOSURE")
 def eepe(times: Sequence[float], ee: Sequence[float], maturity: float) -> float:
     """Effective EPE over the first year (CRE53.19), left-point rectangle rule:
     sum_{k>=1, t_k <= h} EEE(t_k) (t_k - t_{k-1}) / h with h = min(1, maturity).
@@ -175,6 +179,7 @@ def _swap_value(hw: HullWhite, spec: SwapSpec, t: float, x: np.ndarray) -> np.nd
     return spec.notional * (pay if spec.payer else -pay)
 
 
+@model(id="CORE-XVA-EXPOSURE")
 def swap_exposure(
     hw: HullWhite, spec: SwapSpec, n_paths: int, seed: int, *, q: float = 0.95
 ) -> tuple[ExposureProfile, HullWhitePaths, np.ndarray]:

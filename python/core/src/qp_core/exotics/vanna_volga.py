@@ -49,6 +49,8 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..normal import norm_pdf
 from .barriers import barrier_price, touch_price, vanilla_price
 
@@ -77,6 +79,7 @@ def _fd_vvv(f: Callable[[float, float], float], S: float, sig: float) -> np.ndar
     return np.array([vega, vanna, volga])
 
 
+@model(id="CORE-EXO-VV")
 def vv_weights(
     target: np.ndarray, S: float, T: float, rd: float, rf: float,
     pillar_strikes: Sequence[float], sig_atm: float,
@@ -107,6 +110,7 @@ def _hedge_cost(
     return float(cost)
 
 
+@model(id="CORE-EXO-VV")
 def vanna_volga_vanilla(
     cp: str, S: float, X: float, T: float, rd: float, rf: float,
     pillar_strikes: Sequence[float], pillar_vols: Sequence[float],
@@ -119,6 +123,7 @@ def vanna_volga_vanilla(
         target, S, T, rd, rf, pillar_strikes, pillar_vols)
 
 
+@model(id="CORE-EXO-VV")
 def vanna_volga_barrier(
     kind: str, cp: str, S: float, X: float, H: float, T: float, rd: float, rf: float,
     pillar_strikes: Sequence[float], pillar_vols: Sequence[float],

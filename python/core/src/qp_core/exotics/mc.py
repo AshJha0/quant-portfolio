@@ -37,6 +37,8 @@ import math
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["barrier_mc", "double_barrier_mc"]
 
 
@@ -61,6 +63,7 @@ def _payoff(cp: str, s: np.ndarray, X: float) -> np.ndarray:
     raise ValueError(f"cp must be 'call' or 'put', got {cp!r}")
 
 
+@model(id="CORE-EXO-BARRIER-MC")
 def barrier_mc(
     spec: str, S: float, X: float, H: float, T: float, r: float, b: float, sigma: float,
     n_paths: int = 100_000, n_steps: int = 100, seed: int = 0,
@@ -98,6 +101,7 @@ def barrier_mc(
     return float(pay.mean()), float(pay.std(ddof=1) / math.sqrt(n_paths))
 
 
+@model(id="CORE-EXO-BARRIER-MC")
 def double_barrier_mc(
     spec: str, S: float, X: float, L: float, U: float, T: float, r: float, b: float,
     sigma: float, n_paths: int = 100_000, n_steps: int = 100, seed: int = 0,

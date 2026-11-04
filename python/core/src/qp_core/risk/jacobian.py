@@ -42,6 +42,8 @@ from collections.abc import Callable
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = [
     "cross_gamma",
     "fd_gradient",
@@ -95,6 +97,7 @@ def fd_gradient(f: ScalarFn, x: np.ndarray | list[float], h: float = 1e-6) -> np
     return np.asarray(fd_jacobian(lambda v: np.atleast_1d(f(v)), x, h)[0], dtype=float)
 
 
+@model(id="CORE-RISK-JACOBIAN")
 def cross_gamma(f: ScalarFn, x: np.ndarray | list[float], h: float = 1e-4) -> np.ndarray:
     """Full Hessian ``H[i, j] = d^2 f / dx_i dx_j`` by central differences.
 
@@ -121,6 +124,7 @@ def cross_gamma(f: ScalarFn, x: np.ndarray | list[float], h: float = 1e-4) -> np
     return hess
 
 
+@model(id="CORE-RISK-JACOBIAN")
 def node_to_quote_risk(node_risk: np.ndarray, jacobian: np.ndarray) -> np.ndarray:
     """Map node sensitivities ``dP/dz`` to quote sensitivities ``dP/dq``.
 
@@ -144,6 +148,7 @@ def node_to_quote_risk(node_risk: np.ndarray, jacobian: np.ndarray) -> np.ndarra
     return np.asarray(np.linalg.solve(jac.T, g), dtype=float)
 
 
+@model(id="CORE-RISK-JACOBIAN")
 def quote_to_node_risk(quote_risk: np.ndarray, jacobian: np.ndarray) -> np.ndarray:
     """Inverse map: ``dP/dz = J^T dP/dq``."""
     jac = np.asarray(jacobian, dtype=float)

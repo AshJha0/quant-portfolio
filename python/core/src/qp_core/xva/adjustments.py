@@ -50,6 +50,8 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from qp_core.model import model
+
 from ..errors import InputError
 
 __all__ = ["HazardCurve", "XvaResult", "cva", "dva", "fva", "xva"]
@@ -117,6 +119,7 @@ def _default_leg(
     return (1.0 - rec) * acc
 
 
+@model(id="CORE-XVA-ADJ")
 def cva(
     times: Sequence[float],
     ee_disc: Sequence[float],
@@ -129,6 +132,7 @@ def cva(
     return _default_leg(times, ee_disc, counterparty, recovery, bank)
 
 
+@model(id="CORE-XVA-ADJ")
 def dva(
     times: Sequence[float],
     ene_disc: Sequence[float],
@@ -141,6 +145,7 @@ def dva(
     return _default_leg(times, [-float(e) for e in ene_disc], bank, recovery, counterparty)
 
 
+@model(id="CORE-XVA-ADJ")
 def fva(
     times: Sequence[float],
     ee_disc: Sequence[float],
@@ -174,6 +179,7 @@ class XvaResult:
         return -self.cva + self.dva - self.fca + self.fba
 
 
+@model(id="CORE-XVA-ADJ")
 def xva(
     times: Sequence[float],
     ee_disc: Sequence[float],

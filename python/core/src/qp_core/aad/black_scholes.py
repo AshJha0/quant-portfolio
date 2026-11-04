@@ -21,6 +21,8 @@ from __future__ import annotations
 import threading
 from typing import NamedTuple
 
+from qp_core.model import model
+
 from .tape import Real, Tape, exp_neg_mul, half_square, ln_div, ncdf_scaled, sqrt
 
 
@@ -43,6 +45,7 @@ class AadGreeks(NamedTuple):
     dT: float
 
 
+@model(id="CORE-AAD-BS")
 def bs_greeks_aad(S: float, K: float, T: float, r: float, q: float, sigma: float,
                   is_call: bool = True) -> AadGreeks:
     """Price and all first-order Greeks from one forward and one backward pass.
@@ -59,6 +62,7 @@ def bs_greeks_aad(S: float, K: float, T: float, r: float, q: float, sigma: float
 _LOCAL = threading.local()
 
 
+@model(id="CORE-AAD-BS")
 def bs_greeks_aad_on(tape: Tape, S: float, K: float, T: float, r: float, q: float,
                      sigma: float, is_call: bool = True) -> AadGreeks:
     """:func:`bs_greeks_aad` recorded on ``tape``, which is cleared first."""

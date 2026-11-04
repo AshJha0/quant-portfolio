@@ -64,6 +64,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import ArrayLike
+from qp_core.model import model
 from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 
@@ -79,6 +80,7 @@ class Allocation:
     exact: bool  # every scenario fill sits at min(L_k, D_nk) to 1e-9
 
 
+@model(id="EXEC-SOR-ALLOC")
 def expected_cost(market: float, limits: Sequence[float], *, S: float, h: float, f: float,
                   c: Sequence[float], lam_u: float, D: ArrayLike) -> float:
     """The objective evaluated directly (no LP), for checks and plots."""
@@ -90,6 +92,7 @@ def expected_cost(market: float, limits: Sequence[float], *, S: float, h: float,
     return float(cost.mean())
 
 
+@model(id="EXEC-SOR-ALLOC")
 def solve_allocation(*, S: float, h: float, f: float, c: Sequence[float], lam_u: float,
                      D: ArrayLike) -> Allocation:
     """Solve the no-oversubscription Cont-Kukanov LP on scenarios ``D`` (N x K).
@@ -137,6 +140,7 @@ def solve_allocation(*, S: float, h: float, f: float, c: Sequence[float], lam_u:
     return Allocation(m, tuple(float(v) for v in lim), cost, exact)
 
 
+@model(id="EXEC-SOR-ALLOC")
 def single_venue_optimum(*, S: float, h: float, f: float, r: float, lam_u: float,
                          D: ArrayLike) -> tuple[float, float]:
     """Closed form for one lit venue (the variant above), as ``(M*, L*)``.
@@ -159,6 +163,7 @@ def single_venue_optimum(*, S: float, h: float, f: float, r: float, lam_u: float
     return float(S) - lstar, lstar
 
 
+@model(id="EXEC-SOR-ALLOC")
 def deterministic_optimum(*, S: float, h: float, f: float, c: Sequence[float],
                           lam_u: float, D: Sequence[float]) -> tuple[float, tuple[float, ...]]:
     """Closed form when the flow behind each queue is known: fill greedily

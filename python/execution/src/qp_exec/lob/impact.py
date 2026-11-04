@@ -41,6 +41,7 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+from qp_core.model import model
 
 FloatArray = NDArray[np.float64]
 
@@ -132,6 +133,7 @@ def window_imbalance(times: FloatArray, signed_qty: FloatArray, mid_before: Floa
     return q[:-1], r[:-1]
 
 
+@model(id="EXEC-IMPACT-FIT")
 def fit_impact_exponent(q: FloatArray, r: FloatArray, n_bins: int = 15, n_boot: int = 300,
                         seed: int = 0) -> ImpactFit:
     """``delta`` in ``E[R | Q] ~ sign(Q)|Q|^delta`` with a bootstrap 95% CI.

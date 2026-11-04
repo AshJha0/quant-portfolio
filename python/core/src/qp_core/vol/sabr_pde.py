@@ -84,6 +84,8 @@ import numpy as np
 from scipy.linalg import solve_banded
 from scipy.optimize import brentq
 
+from qp_core.model import model
+
 from .sabr import black76_price
 
 __all__ = ["SabrPdeResult", "sabr_pde"]
@@ -164,6 +166,7 @@ class SabrPdeResult:
         return float(brentq(g, 1e-8, 20.0, xtol=1e-14, rtol=1e-14))
 
 
+@model(id="CORE-VOL-SABR-PDE")
 def sabr_pde(
     F: float,
     T: float,

@@ -53,6 +53,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = [
     "HestonParams",
     "LSVCalibration",
@@ -127,6 +129,7 @@ def _step(
     return x_new, v_new
 
 
+@model(id="CORE-EXO-LSV")
 def calibrate_lsv_particles(
     w: TotalVariance, S0: float, r: float, q: float, T: float, heston: HestonParams,
     n_particles: int = 50_000, n_steps: int = 100, n_grid: int = 61, bandwidth: float = 1.0,
@@ -183,6 +186,7 @@ def calibrate_lsv_particles(
     return LSVCalibration(tgrid, tuple(grids), tuple(levs), S0, r, q, heston)
 
 
+@model(id="CORE-EXO-LSV")
 def lsv_price_vanillas(
     cal: LSVCalibration, strikes: np.ndarray, T: float, n_paths: int = 100_000, seed: int = 1,
     control_variate: bool = True,

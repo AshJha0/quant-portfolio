@@ -66,6 +66,8 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 
+from qp_core.model import model
+
 __all__ = [
     "ESSVIFit",
     "ESSVISlice",
@@ -182,6 +184,7 @@ def _essvi_objective(
     return obj
 
 
+@model(id="CORE-VOL-ESSVI")
 def fit_essvi_slices(
     strikes: Sequence[Sequence[float]],
     vols: Sequence[Sequence[float]],
@@ -301,6 +304,7 @@ def _svi_objective(
     return obj
 
 
+@model(id="CORE-VOL-ESSVI")
 def fit_svi_slices(
     strikes: Sequence[Sequence[float]],
     vols: Sequence[Sequence[float]],

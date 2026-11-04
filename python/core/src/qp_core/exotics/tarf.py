@@ -41,9 +41,12 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["tarf_mc"]
 
 
+@model(id="CORE-EXO-TARF")
 def tarf_mc(
     S: float, K: float, fixings: Sequence[float], rd: float, rf: float, sigma: float,
     target: float, leverage: float = 1.0, notional: float = 1.0, final: str = "full",

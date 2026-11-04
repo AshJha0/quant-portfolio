@@ -18,6 +18,7 @@ from typing import Protocol
 
 import numpy as np
 from numpy.typing import NDArray
+from qp_core.model import model
 
 __all__ = ["ZERO_COST", "CostModel", "HalfSpreadCost", "LinearCost", "SqrtImpactCost"]
 
@@ -30,6 +31,7 @@ class CostModel(Protocol):
     def __call__(self, decision_bar: int, dv: FloatArray, /) -> float: ...
 
 
+@model(id="BT-COST")
 @dataclass(frozen=True)
 class LinearCost:
     """``bps * 1e-4 * sum |dv|``: commission, fees and half-spread.
@@ -49,6 +51,7 @@ class LinearCost:
         return float(self.bps * 1e-4 * np.abs(dv).sum())
 
 
+@model(id="BT-COST")
 @dataclass(frozen=True)
 class HalfSpreadCost:
     """``sum_i |dv_i| * rate_i``: a per-asset (and optionally per-bar) rate.
@@ -75,6 +78,7 @@ class HalfSpreadCost:
         return float(np.abs(dv) @ r)
 
 
+@model(id="BT-COST")
 @dataclass(frozen=True)
 class SqrtImpactCost:
     """Square-root impact ``Y * sigma_i * sqrt(aum |dv_i| / ADV$_i) * |dv_i|``.

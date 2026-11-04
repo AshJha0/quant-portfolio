@@ -72,7 +72,10 @@ import math
 from collections import deque
 from dataclasses import dataclass
 
+from qp_core.model import model
 
+
+@model(id="EXEC-MM-TOXICITY")
 class MarkoutToxicity:
     """EWMA of matured fill markouts, in ticks; widens when it is negative."""
 
@@ -115,6 +118,7 @@ class MarkoutToxicity:
         return min(self.max_widen, max(0, math.ceil(self.beta * max(0.0, -self.mean) - 1e-9)))
 
 
+@model(id="EXEC-MM-TOXICITY")
 class VPIN:
     """Volume-synchronised probability of informed trading, aggressor side known."""
 
