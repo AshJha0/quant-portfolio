@@ -11,8 +11,10 @@
 //! diff-depth events are read by the non-allocating decoder in [`fast`]. In
 //! sync and in order, a Binance message is decoded, arbitrated and applied
 //! with zero heap allocations (tests/no_alloc.rs counts them). Coinbase
-//! `full` still goes through the generic JSON reader, which allocates; its
-//! book operations do not.
+//! `level2` updates have the same kind of decoder,
+//! [`fast::coinbase_level2_into`], also counted at zero. Coinbase `full`
+//! still goes through the generic JSON reader, which allocates; its book
+//! operations do not.
 //!
 //! No network code lives here and no default test opens a socket. Recording a
 //! live day needs a websocket client with TLS, which this std-only crate does

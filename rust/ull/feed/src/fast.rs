@@ -32,13 +32,28 @@
 //! `{"e":"depthUpdate","E":1,"s":"X","U":5,"u":6,"b":[["1.5","2"]],"a":[]}`
 //! fills `d` with `first = 5`, `last = 6` and one change, bid 1.5 -> 2.
 //! The same text with `"s":"X\u0041"` falls back (string escape).
+//!
+//! # Coinbase level2
+//!
+//! `coinbase_level2_into(raw, out)` applies the same rule to the `l2update`
+//! message of the Coinbase `level2` and `level2_batch` channels. It returns
+//! `Fast::Delta` only if `raw` is a strict JSON object with exactly one
+//! `"type":"l2update"` and exactly one `changes` array of
+//! `[side, price, size]` string triples, `side` being `buy` or `sell`. Then
+//! `*out` equals the vector in `venue::coinbase_level2(raw)`'s
+//! `Msg::Unsequenced`. Snapshots, subscription acks, four-element changes and
+//! everything else fall back. `product_id` is not read here, as it is not in
+//! the generic parser.
+//!
+//! `{"type":"l2update","changes":[["buy","1.5","2"]]}` gives one change, bid
+//! 1.5 -> 2.
 
 use crate::book::{Change, Delta, Side, parse_fixed};
 
 /// Outcome of the fast decoder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fast {
-    /// `d` holds the decoded delta.
+    /// The output argument holds the decoded message.
     Delta,
     /// Use the generic parser for this message.
     Fallback,
@@ -234,9 +249,7 @@ impl<'a> Cur<'a> {
             self.eat(b',')?;
             let q = self.str()?;
             self.eat(b']')?;
-            // The strings are ASCII (checked in `str`), so this cannot fail.
-            let px = parse_fixed(std::str::from_utf8(p).map_err(|_| ())?).ok_or(())?;
-            let qty = parse_fixed(std::str::from_utf8(q).map_err(|_| ())?).ok_or(())?;
+            let (px, qty) = (fixed(p)?, fixed(q)?);
             if out.len() == out.capacity() {
                 return Err(()); // would allocate
             }
@@ -252,6 +265,50 @@ impl<'a> Cur<'a> {
             }
         }
     }
+    /// `[["buy","px","qty"], ...]` appended to `out`, without growing it past
+    /// its capacity. A change with extra elements falls back.
+    fn changes(&mut self, out: &mut Vec<Change>) -> R<()> {
+        self.eat(b'[')?;
+        self.ws();
+        if self.peek() == Some(b']') {
+            self.i += 1;
+            return Ok(());
+        }
+        loop {
+            self.eat(b'[')?;
+            let side = match self.str()? {
+                b"buy" => Side::Bid,
+                b"sell" => Side::Ask,
+                _ => return Err(()),
+            };
+            self.eat(b',')?;
+            let p = self.str()?;
+            self.eat(b',')?;
+            let q = self.str()?;
+            self.eat(b']')?;
+            let (px, qty) = (fixed(p)?, fixed(q)?);
+            if out.len() == out.capacity() {
+                return Err(()); // would allocate
+            }
+            out.push(Change::Level { side, px, qty });
+            self.ws();
+            match self.peek() {
+                Some(b',') => self.i += 1,
+                Some(b']') => {
+                    self.i += 1;
+                    return Ok(());
+                }
+                _ => return Err(()),
+            }
+        }
+    }
+}
+
+/// `parse_fixed` on bytes `Cur::str` returned. They are ASCII, so the UTF-8
+/// check cannot fail.
+#[inline]
+fn fixed(s: &[u8]) -> R<i64> {
+    parse_fixed(std::str::from_utf8(s).map_err(|_| ())?).ok_or(())
 }
 
 /// Decode one event object starting at `c.i`. `wrapped` is true inside the
@@ -340,10 +397,64 @@ pub fn binance_into(raw: &[u8], d: &mut Delta) -> Fast {
     }
 }
 
+fn l2update(c: &mut Cur<'_>, out: &mut Vec<Change>) -> R<()> {
+    c.eat(b'{')?;
+    let (mut ty, mut ch) = (false, false);
+    c.ws();
+    if c.peek() == Some(b'}') {
+        return Err(());
+    }
+    loop {
+        let k = c.str()?;
+        c.eat(b':')?;
+        match k {
+            b"type" if !ty => {
+                if c.str()? != b"l2update" {
+                    return Err(());
+                }
+                ty = true;
+            }
+            b"changes" if !ch => {
+                c.changes(out)?;
+                ch = true;
+            }
+            b"type" | b"changes" => return Err(()),
+            _ => c.skip(1)?,
+        }
+        c.ws();
+        match c.peek() {
+            Some(b',') => c.i += 1,
+            Some(b'}') => {
+                c.i += 1;
+                break;
+            }
+            _ => return Err(()),
+        }
+    }
+    if ty && ch { Ok(()) } else { Err(()) }
+}
+
+/// Decode a Coinbase `l2update` into `out` without allocating. On
+/// [`Fast::Fallback`] `out` is empty and the generic parser must decide.
+pub fn coinbase_level2_into(raw: &[u8], out: &mut Vec<Change>) -> Fast {
+    out.clear();
+    let mut c = Cur { b: raw, i: 0 };
+    let ok = l2update(&mut c, out).is_ok() && {
+        c.ws();
+        c.i == raw.len()
+    };
+    if ok {
+        Fast::Delta
+    } else {
+        out.clear();
+        Fast::Fallback
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::venue::{Msg, binance};
+    use crate::venue::{Msg, binance, coinbase_level2};
 
     fn both(raw: &str) -> (Fast, Delta, Msg) {
         let mut d = Delta {
@@ -365,6 +476,46 @@ mod tests {
         let (f, _, _) =
             both(r#"{"e":"depthUpdate","E":1,"s":"X\u0041","U":5,"u":6,"b":[],"a":[]}"#);
         assert_eq!(f, Fast::Fallback);
+    }
+
+    #[test]
+    fn coinbase_worked_example_and_fallbacks() {
+        let mut out = Vec::with_capacity(16);
+        let raw = br#" {"time":"t","changes":[["buy","1.5","2"],["sell","3","0.0"]],"product_id":"X","type":"l2update"} "#;
+        assert_eq!(coinbase_level2_into(raw, &mut out), Fast::Delta);
+        assert_eq!(out.len(), 2);
+        assert_eq!(coinbase_level2(raw), Ok(Msg::Unsequenced(out.clone())));
+        for raw in [
+            r#"{"type":"snapshot","bids":[],"asks":[]}"#,
+            r#"{"type":"subscriptions","channels":[]}"#,
+            r#"{"changes":[]}"#,
+            r#"{"type":"l2update"}"#,
+            r#"{"type":"l2update","type":"l2update","changes":[]}"#,
+            r#"{"type":"l2update","changes":[],"changes":[]}"#,
+            r#"{"typ\u0065":"l2update","changes":[]}"#,
+            r#"{"type":"l2update","changes":[["bid","1","2"]]}"#,
+            r#"{"type":"l2update","changes":[["buy","1","2","3"]]}"#,
+            r#"{"type":"l2update","changes":[["buy","1"]]}"#,
+            r#"{"type":"l2update","changes":[["buy","-1","2"]]}"#,
+            r#"{"type":"l2update","changes":[["buy",1,"2"]]}"#,
+            r#"{"type":"l2update","changes":[["buy","1.000000001","2"]]}"#,
+            r#"{"type":"l2update","changes":{}}"#,
+            r#"{"type":"l2update","changes":[]} x"#,
+            r#"{"type":"l2update","x":01,"changes":[]}"#,
+            "",
+        ] {
+            assert_eq!(
+                coinbase_level2_into(raw.as_bytes(), &mut out),
+                Fast::Fallback,
+                "{raw}"
+            );
+            assert!(out.is_empty());
+        }
+        // Capacity is a hard limit here too.
+        let mut none = Vec::new();
+        let raw = br#"{"type":"l2update","changes":[["buy","1","2"]]}"#;
+        assert_eq!(coinbase_level2_into(raw, &mut none), Fast::Fallback);
+        assert_eq!(none.capacity(), 0);
     }
 
     #[test]
