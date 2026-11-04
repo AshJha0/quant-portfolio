@@ -35,6 +35,8 @@ import math
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["crr_american", "lsm_american"]
 
 
@@ -46,6 +48,7 @@ def _check(cp: str, S: float, K: float, T: float, sigma: float) -> float:
     return 1.0 if cp == "call" else -1.0
 
 
+@model(id="CORE-EXO-LSM")
 def crr_american(
     cp: str, S: float, K: float, T: float, r: float, q: float, sigma: float, n_steps: int = 1000
 ) -> float:
@@ -80,6 +83,7 @@ def _laguerre_basis(x: np.ndarray, degree: int) -> np.ndarray:
     return np.column_stack(cols)
 
 
+@model(id="CORE-EXO-LSM")
 def lsm_american(
     cp: str, S: float, K: float, T: float, r: float, q: float, sigma: float,
     n_paths: int = 100_000, n_steps: int = 50, degree: int = 3, seed: int = 0,

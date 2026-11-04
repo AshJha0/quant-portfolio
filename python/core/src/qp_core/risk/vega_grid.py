@@ -46,6 +46,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["VolGrid", "vega_grid"]
 
 
@@ -124,6 +126,7 @@ class VolGrid:
         return self.with_vols(np.array(self.vols) + h)
 
 
+@model(id="CORE-RISK-VEGA-GRID")
 def vega_grid(
     pv: Callable[[VolGrid], float], grid: VolGrid, h: float = 1e-4
 ) -> np.ndarray:

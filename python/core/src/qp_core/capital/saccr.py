@@ -67,6 +67,8 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from qp_core.model import model
+
 from ..errors import InputError
 from ..normal import norm_cdf
 
@@ -432,6 +434,7 @@ class SaccrResult:
     addon_by_class: dict[str, float]
 
 
+@model(id="CORE-CAP-SACCR")
 def ead(ns: NettingSet) -> SaccrResult:
     """EAD = 1.4 (RC + multiplier AddOn) for one netting set (CRE52.1)."""
     v, c = _finite(ns.mtm, "mtm"), _finite(ns.collateral, "collateral")

@@ -62,6 +62,8 @@ from enum import StrEnum
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..black_scholes import carry_greeks
 
 __all__ = [
@@ -166,6 +168,7 @@ class Smile:
         return float(slope * (-k_eff / spot))
 
 
+@model(id="CORE-RISK-SMILE")
 def smile_price(
     smile: Smile, strike: float, spot: float, is_call: bool, *,
     smile_dynamics: SmileDynamics | str,
@@ -175,6 +178,7 @@ def smile_price(
     return carry_greeks(spot, strike, smile.expiry, smile.r, smile.q, sigma, is_call).price
 
 
+@model(id="CORE-RISK-SMILE")
 def smile_delta(
     smile: Smile, strike: float, spot: float, is_call: bool, *,
     smile_dynamics: SmileDynamics | str,
@@ -185,6 +189,7 @@ def smile_delta(
     return g.delta + g.vega * smile.dvol_dspot(strike, spot, smile_dynamics=smile_dynamics)
 
 
+@model(id="CORE-RISK-SMILE")
 def smile_gamma(
     smile: Smile, strike: float, spot: float, is_call: bool, *,
     smile_dynamics: SmileDynamics | str, rel_step: float = 1e-4,
@@ -196,6 +201,7 @@ def smile_gamma(
     return (up - dn) / (2.0 * h)
 
 
+@model(id="CORE-RISK-SMILE")
 def premium_adjusted_delta(
     spot: float, strike: float, expiry: float, r_d: float, r_f: float, sigma: float,
     is_call: bool,
@@ -207,6 +213,7 @@ def premium_adjusted_delta(
     return g.delta - g.price / spot
 
 
+@model(id="CORE-RISK-SMILE")
 def rank_smile_dynamics(
     spots: Sequence[float],
     prices: Sequence[float],

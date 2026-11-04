@@ -39,6 +39,7 @@ from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import NDArray
+from qp_core.model import model
 
 FloatArray = NDArray[np.float64]
 Kernel = Callable[[FloatArray], FloatArray]
@@ -65,11 +66,13 @@ def impact_matrix(times: FloatArray, kernel: Kernel) -> FloatArray:
     return m
 
 
+@model(id="EXEC-IMPACT-TRANSIENT")
 def expected_cost(x: FloatArray, times: FloatArray, kernel: Kernel) -> float:
     g = impact_matrix(times, kernel)
     return float(0.5 * x @ g @ x)
 
 
+@model(id="EXEC-IMPACT-TRANSIENT")
 def optimal_schedule(parent: float, times: FloatArray, kernel: Kernel) -> FloatArray:
     g = impact_matrix(times, kernel)
     w = np.linalg.solve(g, np.ones(len(times)))

@@ -49,6 +49,8 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from qp_core.model import model
+
 from .book_view import BookView, Side
 
 __all__ = [
@@ -98,6 +100,7 @@ def _check_qty(qty: float) -> None:
         raise ValueError(f"qty must be positive and finite, got {qty}")
 
 
+@model(id="BT-FILL-QUEUE")
 def fill_marketable(
     book: BookView, side: Side, qty: float, limit: float | None = None, oid: int = 0
 ) -> MarketableResult:
@@ -127,6 +130,7 @@ def fill_marketable(
     return MarketableResult(tuple(fills), qty - remaining, remaining)
 
 
+@model(id="BT-FILL-QUEUE")
 def prob_ahead_power(ahead: float, behind: float, n: float = 1.0) -> float:
     """Share of a cancel that came from in front: ``A^n / (A^n + B^n)``."""
     if ahead < 0 or behind < 0 or n < 0:
@@ -159,6 +163,7 @@ class PassiveOrder:
         return self.remaining <= _EPS
 
 
+@model(id="BT-FILL-QUEUE")
 @dataclass
 class QueueAwareFillModel:
     """Tracks the queue position of resting simulated orders against a book.

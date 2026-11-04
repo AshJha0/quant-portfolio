@@ -54,6 +54,8 @@ from datetime import date
 
 from scipy.optimize import brentq
 
+from qp_core.model import model
+
 from .isda import (
     CdsContract,
     FlatForwardCurve,
@@ -215,6 +217,7 @@ def _alive_legs(index: CreditIndex, trade_date: date, curves: Mapping[str, Hazar
     return out
 
 
+@model(id="CORE-CR-INDEX")
 def intrinsic(index: CreditIndex, trade_date: date, curves: Mapping[str, HazardCurve],
               disc: FlatForwardCurve, recoveries: Mapping[str, float] | None = None
               ) -> dict[str, float]:
@@ -228,6 +231,7 @@ def intrinsic(index: CreditIndex, trade_date: date, curves: Mapping[str, HazardC
     return {"upfront": up, "spread": prot / rpv if rpv > 0 else math.nan}
 
 
+@model(id="CORE-CR-INDEX")
 def index_basis(index: CreditIndex, trade_date: date, quoted_spread: float,
                 curves: Mapping[str, HazardCurve], disc: FlatForwardCurve,
                 recoveries: Mapping[str, float] | None = None) -> float:
@@ -236,6 +240,7 @@ def index_basis(index: CreditIndex, trade_date: date, quoted_spread: float,
             - intrinsic(index, trade_date, curves, disc, recoveries)["upfront"])
 
 
+@model(id="CORE-CR-INDEX")
 def adjust_to_index(index: CreditIndex, trade_date: date, quoted_spread: float,
                     curves: Mapping[str, HazardCurve], disc: FlatForwardCurve,
                     recoveries: Mapping[str, float] | None = None) -> tuple[float, dict[str, HazardCurve]]:

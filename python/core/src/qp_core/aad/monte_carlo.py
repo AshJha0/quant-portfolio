@@ -30,6 +30,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from qp_core.model import model
+
 from .tape import Real, Tape, Var, exp, log, sqrt
 
 PAYOFFS = ("european", "asian")
@@ -78,6 +80,7 @@ class McGreeks(NamedTuple):
     std_error: float
 
 
+@model(id="CORE-AAD-MC")
 def mc_greeks_aad(S: float, K: float, T: float, r: float, q: float, sigma: float,
                   normals: np.ndarray, payoff: str = "european") -> McGreeks:
     """Price and pathwise adjoint Greeks; one backward sweep per path."""

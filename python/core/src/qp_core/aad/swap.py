@@ -34,6 +34,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from qp_core.model import model
+
 from .tape import Real, Tape, Var, exp, value
 
 DAYS_PER_YEAR = 365.0
@@ -102,6 +104,7 @@ class PillarGreeks(NamedTuple):
     d_log_df: tuple[float, ...]
 
 
+@model(id="CORE-AAD-SWAP")
 def pillar_greeks(days: Sequence[int], dfs: Sequence[float], swap: Swap) -> PillarGreeks:
     """PV and ``dPV / d ln P(days[j])`` from one backward sweep."""
     tape = Tape()
@@ -133,6 +136,7 @@ class QuoteGreeks(NamedTuple):
     d_log_df: tuple[float, ...]
 
 
+@model(id="CORE-AAD-SWAP")
 def quote_greeks(quotes: Sequence[Any], days: Sequence[int], dfs: Sequence[float],
                  swap: Swap) -> QuoteGreeks:
     """``dPV / d quote_k`` (in quote order) through the implicit function theorem.

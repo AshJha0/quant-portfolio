@@ -53,6 +53,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import least_squares
 
+from qp_core.model import model
 from qp_core.normal import norm_cdf
 
 __all__ = ["SabrFit", "black76_price", "sabr_calibrate", "sabr_density_check", "sabr_vol"]
@@ -105,6 +106,7 @@ def _check(F: float, K: float, T: float, alpha: float, beta: float, rho: float, 
         raise ValueError("need T >= 0, alpha > 0, nu >= 0, 0 <= beta <= 1, -1 < rho < 1")
 
 
+@model(id="CORE-VOL-SABR")
 def sabr_vol(F: float, K: float, T: float, alpha: float, beta: float, rho: float, nu: float,
              shift: float = 0.0, variant: str = "obloj") -> float:
     """Black (lognormal) implied vol of the SABR model at strike ``K``."""
@@ -170,6 +172,7 @@ class SabrFit:
     rmse: float
 
 
+@model(id="CORE-VOL-SABR")
 def sabr_calibrate(F: float, T: float, strikes: ArrayLike, vols: ArrayLike, beta: float,
                    shift: float = 0.0, variant: str = "obloj",
                    weights: ArrayLike | None = None) -> SabrFit:
