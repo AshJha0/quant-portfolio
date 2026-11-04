@@ -33,6 +33,8 @@ differential test passes unchanged.
 | `exotics` | Closed-form exotic pricers, the twin of `qp_core.exotics` | parity tests |
 | `rates_vol` | SABR implied vol and the Hull-White trinomial Bermudan, twin of `qp_core.vol.sabr` | parity tests |
 | `xva` | SA-CCR (BCBS 279 / CRE52), Hull-White bond and swaption closed forms, CVA / DVA / FVA / effective-EPE sums; parity with `qp_core.xva` and `qp/xva.hpp` | parity tests |
+| `frtb` | FRTB SBM scenario aggregation, curvature charge and `net_cvr`; twin of `qp_core.capital` | parity tests |
+| `collateral` | CSA margin balance, MPOR lag and pathwise collateralised exposure; twin of `qp_core.xva.collateral` | parity tests |
 | `credit_index` | ISDA CDS Standard Model legs under the CDX and iTraxx indices | parity tests |
 | `bond_futures` | CME conversion factor, implied repo, net basis, basic delivery option | parity tests |
 
