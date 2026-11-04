@@ -152,13 +152,19 @@ ratio ceiling and a reason, and the pull request carries the `bench-accepted`
 label. Listed rows are reported as `ACCEPTED`; a listed row above its ceiling,
 or any row not listed, still fails.
 
-Listed today: the Rust bootstrap standard-error kernels in the equity and FX
-VaR engines, about 1.4-1.5x the v2.0 timing on the CI runner. The cost comes
-from drawing each bootstrap resample from its own Philox4x32-10 stream, which
-makes the result identical on any number of threads and bit-identical between
-the C++ and Rust engines; the old xoshiro stream could not do either.
+Listed today: nothing. The Rust bootstrap standard-error kernels were listed
+at about 1.4-1.5x the v2.0 timing, the cost of drawing each resample from its
+own Philox4x32-10 stream, which makes the result identical on any number of
+threads and bit-identical between the C++ and Rust engines. After the follow-up
+below, CI read them at 0.82x, 0.82x and 0.71x of the previous `main`, so the rows
+were removed.
 The Philox rounds themselves are close to the SSE2 limit, so the follow-up
 sped up the code around them instead, with unchanged output bits. A local A/B
 (WSL, one pinned core, noisy machine, Rust rows only) read 1.21x and 1.14x for
-the equity rows and about 1.0x for the FX row. These are not CI readings. A row
-is removed from the file once a CI bench run shows it inside the gate.
+the equity rows and about 1.0x for the FX row against v2.0. A row is removed
+from the file once a CI bench run shows it inside the gate.
+
+One row to read with care: `portfolio_sigma_50f` (Rust FX) read 1.24x and 1.31x
+on the CI runner after that change, although its code did not change. A local
+A/B on one pinned core read the same on both sides (about 2,340 ns), so this is
+code placement on the runner, not a slowdown.

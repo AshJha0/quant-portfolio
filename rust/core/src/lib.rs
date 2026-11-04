@@ -28,6 +28,8 @@
 //! | [`credit_index`] | ISDA CDS Standard Model legs (credit indices, plan W18) | new, opt-in |
 //! | [`bond_futures`] | CME conversion factor, implied repo, net basis, delivery option (plan W18) | new, opt-in |
 //! | [`rates_vol`] | SABR implied vol (Hagan, Obloj, shifted) and the Hull-White trinomial Bermudan | new, opt-in |
+//! | [`frtb`] | FRTB SBM scenario aggregation, curvature charge and `net_cvr` | new, opt-in |
+//! | [`collateral`] | CSA margin balance, margin period of risk lag, collateralised exposure | new, opt-in |
 //! | [`risk`] | Quote-to-node Jacobian algebra, par DV01, quote gamma with the bootstrap-curvature term, vega grids, P&L-explain attribution (W14) | new, opt-in |
 //! | [`exotics`] | Closed-form barriers, touches, double barriers, Asians, eSSVI/SVI slices; twin of Python `qp_core.exotics` | new, opt-in |
 //! | [`stats`] | Incomplete gamma/beta, gamma-based erfc and normal, Student-t, chi-square, binomial, moments (W20) | both VaR engines |

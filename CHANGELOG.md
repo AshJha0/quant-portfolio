@@ -17,6 +17,12 @@ is in `docs/MIGRATION.md`.
 
 ### Fixed
 
+- **Data before 2000.** `qp_data` can store rows dated before 2000, so
+  `cboe:VIX` and `french:*` load. Before 2000, release dates count every
+  weekday as a publishing day and follow today's rules, so they are notional
+  and can be early. `qp_core.holidays` still raises outside 2000-2099. A live
+  `cboe:VIX` fetch may meet a redirect; that is untested.
+- **`qp_data.fetch` timeout.** `fetch` takes `timeout=` (default 30 seconds).
 - **Rust feed handler.** `SyncEngine::on_snapshot` reloaded a REST snapshot
   no newer than the live book, which dropped levels beyond the snapshot
   depth while the book still reported fresh: 1,083 of 1,130 fresh states
@@ -162,7 +168,11 @@ is in `docs/MIGRATION.md`.
 - **Feed handlers (C++ and Rust).** Books sit on the flat L3 book with a
   per-product tick window, order-id interning and an exact side store. A
   non-allocating Binance decoder gives zero heap allocations on that path
-  (tested). Coinbase frames still allocate.
+  (tested). Coinbase `l2update` messages have non-allocating decoders too
+  (Rust `fast::coinbase_level2_into`, C++ `decode_level2`), checked against
+  the generic parser on generated, mutated and recorded input. The C++
+  handler's duplicate filter and map book can still allocate, the Rust decoder
+  has no production caller yet, and `full` uses the generic parser.
 - **Workspace.** `python/backtest` (qp-bt), `python/oms` (qp-oms),
   `python/execution` (qp-exec) and `python/posttrade` (qp-posttrade) are uv
   workspace members, type-checked by mypy and tested in CI as projects of
@@ -251,13 +261,20 @@ is in `docs/MIGRATION.md`.
   (`qp_core.capital.frtb_classes`, MAR21.51-95), curvature for GIRR, CSR
   non-securitisation, equity, commodity and FX (`frtb_curvature`, MAR21.5
   and 21.96-101), and checksum-tested parameter tables (`frtb_tables`).
-  Python only.
+  Commodity vega is per commodity and option maturity, and curvature per
+  commodity: delivery location is not a factor (MAR21.13(2)-(3)).
+- Rust `qp_core::frtb`, `qp_core::collateral` and C++ `qp/frtb.hpp`,
+  `qp/collateral.hpp`: scenario aggregation, curvature charge, `net_cvr`, margin
+  balance, lag and exposure, matching Python to 1e-12 relative on a shared
+  fixture. The per-class wrappers stay in Python.
 - `tests/independent/frtb`: a second implementation of GIRR and FX delta
   and vega from the MAR21 text, agreeing with `frtb_sbm` to 1e-10 relative
-  on 1,750 seeded cases.
+  on 1,750 seeded cases, and a second oracle for CSR, equity and commodity
+  delta and vega and curvature for all five classes on 4,000 more. It found
+  the commodity location error above before release.
 - `qp_core.xva.collateral`: exposure with variation margin (margin period
   of risk, thresholds, MTA) and initial margin, checked against Brownian
-  closed forms and limiting cases. Python only.
+  closed forms and limiting cases.
 - `qp_exec.mm`: toxicity-aware spreads (markout EWMA with decay, VPIN) and
   a fill-rate and markout report by counterparty tier, on synthetic tiered
   flow. In this simulator markout widening also fires on benign flow,
@@ -270,15 +287,19 @@ is in `docs/MIGRATION.md`.
 - Rust `qp_core::risk` and C++ `qp/risk.hpp`: quote-space risk through the
   bootstrap Jacobian, par DV01, quote gamma with the bootstrap-curvature
   term, vol grids with bucket vegas, and P&L explain, matching Python to
-  1e-12 on a shared fixture. Smile delta and `reporting_pnl` are not ported.
+  1e-12 on a shared fixture. Also `Smile`, `smile_delta`, `smile_gamma`,
+  `premium_adjusted_delta`, `rank_smile_dynamics`, `tenor_weights` and
+  `reporting_conversion`; book revaluation stays in Python. `smile_gamma` is
+  held to the tolerance of the two deltas it differences.
 - `smile_dynamics=` on the flat-vol option risk calls of `eq_options`,
   `fx_options` and `fx_var.book.Book`. All three values give the same
   numbers there, because those calls use one flat vol.
 - Simulated power files for the combination panel, UST and TSMOM drafts.
   The combination design reaches 80% power only with an IC of about 0.05 and
   30 currencies; the free data has a median of 21.
-- Model inventory entries `CORE-FRTB-SBM`, `CORE-FRTB-CURV` and
-  `CORE-XVA-COLLATERAL`, and three COOKBOOK recipes (curvature of a short
+- Model inventory grows from 33 to 74 entries, covering the shared stacks,
+  each tagged in code with a section in `VALIDATION.md`; a port that reproduces
+  a Python fixture is not counted as independent. Three COOKBOOK recipes (curvature of a short
   call, exposure under a margin period of risk, toxicity-aware quotes).
 - `qp_data`: OECD MEI interbank rates and CPI (CC BY 4.0) through keyless
   FRED, released at month m+2.
