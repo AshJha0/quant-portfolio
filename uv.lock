@@ -905,7 +905,7 @@ wheels = [
 
 [[package]]
 name = "eq-algo"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/08-algo-execution" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -945,7 +945,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-bs-replication"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/foundations/03-black-scholes-replication" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -978,7 +978,7 @@ provides-extras = ["plots", "test", "dev"]
 
 [[package]]
 name = "eq-credit"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/06-credit-risk" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1016,7 +1016,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "eq-options"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/01-options-pricing" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1056,7 +1056,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-pairs"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/05-pairs-trading" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1098,7 +1098,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-port"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/07-portfolio-optimization" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1140,7 +1140,7 @@ provides-extras = ["live", "dev", "test"]
 
 [[package]]
 name = "eq-regime"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/10-regime-switching" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1186,7 +1186,7 @@ provides-extras = ["crosscheck", "plots", "dev"]
 
 [[package]]
 name = "eq-risk-metrics"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/foundations/01-risk-metrics" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1224,7 +1224,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-signal-backtest"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/foundations/02-trading-signal-backtest" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1264,7 +1264,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-surface"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/09-vol-surface" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1294,7 +1294,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "eq-var"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/03-var-es-engine" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1334,7 +1334,7 @@ provides-extras = ["live", "plots", "dev"]
 
 [[package]]
 name = "eq-vol"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/02-volatility-modeling" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1388,7 +1388,7 @@ wheels = [
 
 [[package]]
 name = "fi-rates"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/equity/04-fixed-income" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1525,7 +1525,7 @@ wheels = [
 
 [[package]]
 name = "fx-algo"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/08-algo-execution" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1557,7 +1557,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-credit"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/06-credit-risk" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1589,7 +1589,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "fx-options"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/01-options-pricing" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1625,7 +1625,7 @@ provides-extras = ["plots", "dev"]
 
 [[package]]
 name = "fx-pairs"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/05-pairs-trading" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1659,7 +1659,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-port"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/07-portfolio-optimization" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1697,7 +1697,7 @@ provides-extras = ["dev", "test"]
 
 [[package]]
 name = "fx-rates"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/04-fixed-income" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1729,7 +1729,7 @@ provides-extras = ["test", "dev"]
 
 [[package]]
 name = "fx-regime"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/10-regime-switching" }
 dependencies = [
     { name = "hmmlearn" },
@@ -1765,7 +1765,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-surface"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/09-vol-surface" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1801,7 +1801,7 @@ provides-extras = ["test", "dev"]
 
 [[package]]
 name = "fx-var"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/03-var-es-engine" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1835,7 +1835,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "fx-vol"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/fx/02-volatility-modeling" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -3881,7 +3881,7 @@ wheels = [
 
 [[package]]
 name = "qp-bt"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/backtest" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -3897,6 +3897,7 @@ dev = [
     { name = "hypothesis" },
     { name = "pytest" },
     { name = "qp-exec" },
+    { name = "scikit-learn" },
 ]
 
 [package.metadata]
@@ -3907,13 +3908,14 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
     { name = "qp-core", editable = "python/core" },
     { name = "qp-exec", marker = "extra == 'dev'", editable = "python/execution" },
+    { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.3" },
     { name = "scipy", specifier = ">=1.10" },
 ]
 provides-extras = ["dev"]
 
 [[package]]
 name = "qp-core"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/core" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -3941,7 +3943,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "qp-data"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/data" }
 dependencies = [
     { name = "pandas" },
@@ -3967,7 +3969,7 @@ provides-extras = ["parquet", "test"]
 
 [[package]]
 name = "qp-exec"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/execution" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -3999,7 +4001,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "qp-oms"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/oms" }
 dependencies = [
     { name = "qp-core" },
@@ -4021,7 +4023,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "qp-posttrade"
-version = "3.0.0.dev0"
+version = "3.0.0"
 source = { editable = "python/posttrade" }
 dependencies = [
     { name = "qp-core" },

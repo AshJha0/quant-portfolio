@@ -20,7 +20,7 @@ try:
 except ImportError as exc:  # pragma: no cover - only when the build is broken
     _IMPORT_ERROR = exc
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 
 def available() -> bool:

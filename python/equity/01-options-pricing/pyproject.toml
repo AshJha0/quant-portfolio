@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-options"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Equity options pricing and Greeks engine: Black-Scholes, CRR binomial, Black-76, Monte Carlo, delta hedging, model comparison."
 readme = "README.md"
 requires-python = ">=3.11"

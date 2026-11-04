@@ -53,7 +53,7 @@ November 2026 release started parts of stages two and three.
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
 | 2. Research platform | Free public data, pre-registered experiments, reported results | Started: one keyless data layer (`qp_data`: FRED, ECB, Frankfurter, NY Fed, BoE, US Treasury, CBOE, Coinbase/Binance) with publication-lag checks; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
-| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Toward v3.0.0: dated rates schedules, trade and market-snapshot objects, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA and a low-latency track (see below). Nothing sends orders to a real venue; `tools/recorder` only reads public market data |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Since v3.0.0: dated rates schedules, trade and market-snapshot objects, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA, FRTB capital, a model inventory and a low-latency track (see below). Nothing sends orders to a real venue; `tools/recorder` only reads public market data |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
 The CI `counts` job writes the executed pass counts to `counts.json` and shows
@@ -136,10 +136,10 @@ Foundations projects are smaller: one asset, Python only, no FX version.
 Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
 
-## What the v3.0.0 milestone adds (Rounds 8-18, not yet released)
+## What v3.0.0 adds
 
-The plain idea: until now each area priced, risked and backtested its own
-toy objects. The milestone adds the layers a trading desk has around those
+The plain idea: before this release each area priced, risked and backtested
+its own toy objects. v3.0.0 adds the layers a trading desk has around those
 models (trades and market data as objects, one backtest core, order
 management, execution research, post-trade) and a low-latency track in C++,
 Rust and Java. Nothing here is connected to a venue. Order books, fills and
@@ -563,10 +563,50 @@ Every latency figure in this repository is software, in-process latency
 measured on one machine, not wire-to-wire ([docs/LATENCY_METHOD.md](docs/LATENCY_METHOD.md)).
 No network card, kernel bypass or exchange is involved.
 
+The v3.0.0 run, on an idle machine (2026-11-04, Intel Core 5 120U; C++ and
+Rust under WSL2 pinned to two CPUs, Java on Windows unpinned). The p99 is the
+figure to read: it shows what the slowest 1 in 100 calls cost.
+
+| Measure | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| C++ book apply | 56 ns | 151 ns | 264 ns |
+| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us |
+| Rust decode and book apply | 56 ns | 192 ns | 325 ns |
+| Rust ring round trip | 184 ns | 234 ns | 270 ns |
+| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us |
+| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms |
+
+The Java rows cover three threads and two ring hops, charged from each order's
+intended send time, with no collections in the window. The rows time different
+things, so do not rank languages from them. A virtual machine stalls threads
+now and then, which is where the far tails come from. 
+Engine kernels, nanoseconds, one CPU (`*`: tail of batch means, not a per-call
+tail):
+
+| Language | Engine | Kernel | p50 | p99 | p99.9 |
+|---|---|---|---:|---:|---:|
+| C++ | equity-options | `bs_price` | 77.4 | 98.4 * | 379 * |
+| C++ | equity-options | `implied_vol` | 698 | 947 * | 2,514 * |
+| C++ | equity-options | `crr_price am n=1000` | 166,290 | 203,393 | 365,203 |
+| C++ | equity-var | `historical_var n=1000` | 3,904 | 6,726 | 15,018 |
+| C++ | fx-options | `gk_price` | 80.6 | 105 * | 402 * |
+| C++ | fx-var | `try_pnl 1 scen 250 pos` | 1,355 | 1,574 * | 5,010 * |
+| Rust | equity-options | `bs_price` | 42.4 | 119 * | 220 * |
+| Rust | equity-options | `implied_vol` | 455 | 653 * | 1,767 * |
+| Rust | equity-var | `historical_var_ws n=1000 (fast)` | 1,406 | 1,675 * | 4,446 * |
+| Rust | equity-var | `var_bootstrap_se n=250 B=200 (main API)` | 224,577 | 294,612 | 564,941 |
+| Rust | fx-options | `gk_price` | 43.5 | 47.8 * | 153 * |
+| Rust | fx-var | `portfolio_sigma_50f` | 2,347 | 2,458 | 7,950 |
+
+Every kernel is in each engine's README and `bench/results.json`; the method is
+in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 How latency is measured now, and where current figures are, is in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and
 a CI job that compares base and head on the same runner (`bench-results`
-artifact). The tables below are older: one laptop run with the previous
+artifact). The v3.0.0 idle-machine run, with the low-latency track and Java,
+is in the same page; the raw records are each engine's `bench/results.json`.
+The tables below are older: one laptop run with the previous
 harnesses, kept for the record. Intel Core 5 120U (12 threads) under WSL2 on
 Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
 figures are in each engine README). Rust figures are rustc 1.99.1, release

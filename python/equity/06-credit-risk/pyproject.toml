@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-credit"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Corporate credit risk / PD modelling: bank-style WOE scorecard with from-scratch IRLS logistic regression, discrimination/calibration/stability validation, expected loss, Basel IRB capital and Vasicek one-factor portfolio loss distribution."
 readme = "README.md"
 requires-python = ">=3.11"

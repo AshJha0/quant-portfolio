@@ -15,4 +15,4 @@ schedules
     impact (Obizhaeva-Wang, Gatheral), and the passive-or-cross decision.
 """
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"

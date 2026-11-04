@@ -37,7 +37,7 @@ from .net import Opener, download, network_allowed
 from .release import check_release, release_date
 from .store import ManifestEntry, Store
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
     "DataError",

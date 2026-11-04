@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-options"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "FX options pricing & Greeks engine: Garman-Kohlhagen, binomial, Black-76, Monte Carlo, FX delta conventions, delta hedging"
 readme = "README.md"
 requires-python = ">=3.11"

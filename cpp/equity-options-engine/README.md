@@ -136,6 +136,33 @@ C++23 build. CMake 3.25 or newer is required.
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `bs_price` | 77.4 | 98.4 * | 379 * |
+| `bs_greeks` | 82.3 | 105 * | 313 * |
+| `black76_price` | 74.6 | 92.5 * | 303 * |
+| `implied_vol` | 698 | 947 * | 2,514 * |
+| `crr_price eu n=1000` | 87,557 | 111,625 | 188,472 |
+| `crr_price am n=1000` | 166,290 | 203,393 | 365,203 |
+| `mc_price 10k paths 1 thr` | 300,998 | 354,533 | 571,153 |
+| `mc_price 10k paths 4 thr` | 302,738 | 362,345 | 591,923 |
+| `mc_price 1M paths 4 thr` | 36,891,585 | 44,366,949 | 44,366,949 |
+| `try_bs_price` | 77.0 | 96.6 * | 282 * |
+| `try_bs_greeks` | 79.5 | 101 * | 306 * |
+| `try_implied_vol` | 694 | 938 * | 2,464 * |
+| `try_crr_price am n=1000 (ws)` | 166,220 | 204,745 | 354,483 |
+| `try_mc_price 10k paths 4 thr (pool)` | 300,912 | 347,703 | 455,968 |
+| `try_mc_price 1M paths 4 thr (pool)` | 31,507,983 | 34,451,752 | 34,451,752 |
+| `bs_price_batch x1024` | 76,390 | 104,191 | 199,440 |
+| `bs_greeks_batch x1024` | 79,020 | 97,560 | 173,725 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Per-call latency, `./build/eqopt_bench --out results.json` (raw records for
 every run, both compilers, before and after, are in
 [bench/results.json](bench/results.json)). Sizes and inputs are in

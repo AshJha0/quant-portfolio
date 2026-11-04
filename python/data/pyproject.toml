@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qp-data"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "One data layer for the quant-portfolio projects: keyless free sources, retries, a content-addressed cache, a manifest, publication lags and as-of queries"
 readme = "README.md"
 requires-python = ">=3.11"

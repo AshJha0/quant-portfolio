@@ -80,7 +80,7 @@ from .signals import (
 )
 from .tca import ISReport, aggregate_tca, is_decomposition, slippage_attribution, tca_report
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
                        # Sorted alphabetically (ruff RUF022); see the import blocks above for the module of each name.

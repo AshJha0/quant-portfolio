@@ -1259,7 +1259,7 @@ Tier 2, risk, status `independently-checked`, validated 2026-11-04, next review 
 
 **Ongoing monitoring.** KPIs: agreement with scikit-learn to 1e-12. Review trigger: a failure of any cited test, or a change to the cited reference.
 
-**Limitations and compensating controls.** the scikit-learn test skips where scikit-learn is absent.
+**Limitations and compensating controls.** the shrinkage target is the scaled identity only.
 
 **Findings.** None.
 

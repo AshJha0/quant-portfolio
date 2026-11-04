@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-pairs"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Equity statistical pairs trading on synthetic data: correlation/SSD screens, Engle-Granger cointegration with MacKinnon critical values, Ornstein-Uhlenbeck spreads, z-score signals, next-period-fill backtest with impact, borrow and financing costs, walk-forward validation, deflated Sharpe and PBO."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
-    "qp-bt>=3.0.0.dev0",
+    "qp-bt>=3.0.0",
     "qp-core>=1.0",
     "numpy>=1.24",
     "scipy>=1.10",

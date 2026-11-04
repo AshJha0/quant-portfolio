@@ -33,7 +33,7 @@ from .greeks import GreeksResult, analytic_greeks, finite_difference_greeks, gam
 from .hedging import HedgeResult, hedge_frequency_study, simulate_delta_hedge
 from .monte_carlo import MCResult, digital_price, mc_digital_price, mc_price
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
                          "CONVENTIONS",

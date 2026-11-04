@@ -212,7 +212,7 @@ class TestDiscover:
         proj("python/oms", "qp-oms", ["qp-core"])
         proj("python/execution", "qp-exec", ["qp-core", "numpy>=1.24"], dev=["qp-oms>=3"])
         proj("python/backtest", "qp-bt", ["qp-core"], dev=["qp-exec"])
-        proj("python/equity/05-a", "eq-a", ["qp-bt>=3.0.0.dev0"], dev=["pytest"])
+        proj("python/equity/05-a", "eq-a", ["qp-bt>=3.0.0"], dev=["pytest"])
         got = {p["path"]: p["deps"] for p in disc.discover(tmp_path)}
         # the dev extra is followed only for the project itself
         assert got["python/equity/05-a"] == "python/backtest"

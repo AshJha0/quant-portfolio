@@ -102,6 +102,27 @@ let k = kupiec_pof(&KupiecInput { n_obs: 250, n_exceptions: 8, alpha: 0.01 })?;
 
 ## Benchmark
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `pnl_one_scenario_250pos` | 1,418 | 3,370 * | 4,773 * |
+| `portfolio_sigma_50f` | 2,347 | 2,458 | 7,950 |
+| `normal_var_closed_form` | 211 | 251 * | 897 * |
+| `empirical_var_es_100k` | 172,865 | 218,349 | 283,888 |
+| `empirical_var_es_into_100k` | 142,561 | 176,934 | 323,913 |
+| `pnl_aligned_into_500scen` | 724,692 | 902,434 | 1,562,635 |
+| `historical_var_500scen` | 918,453 | 994,260 | 1,281,298 |
+| `parametric_var_normal` | 428,869 | 537,590 | 1,017,434 |
+| `var_se_bootstrap_100k_x200` | 79,319,546 | 82,238,878 | 82,238,878 |
+| `monte_carlo_var_100k_normal` | 306,231,510 | 319,352,018 | 319,352,018 |
+| `monte_carlo_var_100k_t5` | 312,822,539 | 319,906,798 | 319,906,798 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 250 positions (200 spots across 45 currencies, 50 forwards), 50 factors
 (45 FX, 5 IR), 500-day history (sinusoid plus seeded noise, full-rank
 covariance), full revaluation, release build with `lto = "fat"` and

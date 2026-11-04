@@ -200,6 +200,34 @@ to (`docs/VALIDATION.md`).
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `historical_var n=1000` | 3,904 | 6,726 | 15,018 |
+| `historical_var n=10000` | 52,489 | 89,717 | 122,567 |
+| `expected_shortfall n=10000` | 52,233 | 89,330 | 121,831 |
+| `age_weighted_var n=1000` | 44,639 | 57,878 | 111,342 |
+| `parametric_var normal 50 assets` | 1,563 | 1,601 * | 5,030 * |
+| `parametric_var student-t 50 assets` | 9,583 | 13,121 | 26,930 |
+| `cholesky 50x50` | 7,524 | 8,506 | 19,169 |
+| `cholesky 200x200` | 428,620 | 506,912 | 1,236,237 |
+| `portfolio_pnl 10000x50` | 437,139 | 590,204 | 1,012,618 |
+| `monte_carlo_var 10k scen 50 assets` | 11,049,948 | 19,524,552 | 21,163,738 |
+| `kupiec + christoffersen n=1000` | 1,912 | 2,076 * | 5,383 * |
+| `try_historical_var n=1000 (ws)` | 3,871 | 7,888 | 15,254 |
+| `try_historical_var n=10000 (ws)` | 51,534 | 86,610 | 114,437 |
+| `try_parametric_var normal 50 assets` | 1,563 | 1,768 * | 4,850 * |
+| `try_cholesky_lower 50x50 (ws)` | 7,437 | 7,635 | 16,998 |
+| `try_cholesky_lower 200x200 (ws)` | 424,233 | 495,894 | 844,198 |
+| `try_matvec scenario pnl 10000x50` | 254,778 | 333,023 | 758,158 |
+| `try_monte_carlo_var_factored 10k 50` | 10,920,247 | 13,144,338 | 14,499,846 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Per-call latency, `./build/bench_eqvar --out results.json` (raw records for
 every run, both compilers, before and after, are in
 [bench/results.json](bench/results.json)). Sizes and inputs are in

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-var"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "FX market risk: VaR & Expected Shortfall engine for a multi-currency book (historical, parametric, Monte Carlo, backtesting, Basel traffic light, stress testing)"
 readme = "README.md"
 requires-python = ">=3.11"

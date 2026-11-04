@@ -181,6 +181,34 @@ previous and the current library, with GCC 15.2 and Clang 21.1.
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `gk_price` | 80.6 | 105 * | 402 * |
+| `analytic_greeks` | 89.5 | 210 * | 385 * |
+| `black76_price` | 77.8 | 88.4 * | 308 * |
+| `implied_vol` | 696 | 894 * | 2,511 * |
+| `strike_from_delta 25d spot` | 100 | 104 * | 336 * |
+| `binomial_price eu n=1000` | 87,421 | 113,252 | 150,531 |
+| `binomial_price am n=1000` | 167,410 | 207,412 | 405,703 |
+| `mc_price 10k paths 1 thr` | 541,822 | 780,595 | 1,166,615 |
+| `mc_price 1M paths 1 thr` | 60,037,858 | 65,978,836 | 65,978,836 |
+| `try_gk_price` | 78.7 | 103 * | 291 * |
+| `try_analytic_greeks` | 87.8 | 103 * | 319 * |
+| `try_implied_vol` | 696 | 896 * | 2,403 * |
+| `try_binomial_price am n=1000 (ws)` | 166,256 | 254,281 | 483,816 |
+| `try_mc_price 10k paths 1 thr (ws)` | 539,313 | 623,853 | 848,465 |
+| `try_mc_price 10k paths 4 thr (pool)` | 541,484 | 611,401 | 799,318 |
+| `try_mc_price 1M paths 4 thr (pool)` | 55,286,151 | 57,839,004 | 57,839,004 |
+| `gk_price_batch x1024` | 78,840 | 108,146 | 171,479 |
+| `gk_greeks_batch x1024` | 81,039 | 103,573 | 180,475 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Per-call latency, `./build/fxopt_bench --out results.json` (raw records for
 every run, both compilers, before and after, are in
 [bench/results.json](bench/results.json)). Sizes and inputs are in

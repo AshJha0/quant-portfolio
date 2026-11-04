@@ -113,6 +113,38 @@ buffer.
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `historical_var 1k obs 250 pos` | 1,550,685 | 1,645,041 | 1,762,473 |
+| `empirical_var_es n=1000` | 7,844 | 11,178 | 23,860 |
+| `empirical_var_es n=10000` | 77,350 | 110,743 | 188,441 |
+| `var_standard_error n=10000` | 242,641 | 304,735 | 472,653 |
+| `parametric_var 1k obs 50 factors` | 641,367 | 1,025,934 | 1,333,756 |
+| `var_covar 50 factors` | 2,985 | 3,053 | 9,411 |
+| `cholesky 50x50` | 7,511 | 10,945 | 20,941 |
+| `matvec 50x50` | 578 | 583 * | 2,031 * |
+| `monte_carlo_var 10k scen normal` | 26,185,360 | 30,268,513 | 30,268,513 |
+| `compiled pnl 10k scen 250 pos` | 13,318,705 | 15,499,107 | 15,499,107 |
+| `run_stress library` | 146,791 | 175,478 | 242,992 |
+| `evaluate_var_backtest 1000 days` | 4,200 | 4,604 | 16,810 |
+| `try_empirical_var_es n=1000 (ws)` | 7,781 | 10,846 | 16,866 |
+| `try_empirical_var_es n=10000 (ws)` | 76,735 | 107,493 | 215,316 |
+| `try_var_standard_error n=10000` | 242,057 | 383,489 | 563,069 |
+| `try_var_covar 50 factors` | 2,985 | 6,736 | 9,507 |
+| `try_cholesky_lower 50x50` | 5,545 | 5,599 | 14,625 |
+| `try_matvec 50x50` | 559 | 1,146 * | 1,957 * |
+| `try_simulate 10k scen 50 factors` | 7,939,164 | 11,205,193 | 11,205,193 |
+| `try_pnl_batch 10k scen 250 pos` | 12,585,002 | 15,782,498 | 15,782,498 |
+| `try_pnl 1 scen 250 pos` | 1,355 | 1,574 * | 5,010 * |
+| `MC VaR pipeline 10k (try_*, ws)` | 20,591,275 | 26,695,757 | 26,695,757 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Per-call latency, `./build/fxvar_bench --out results.json` (raw records for
 every run, both compilers, before and after, are in
 [bench/results.json](bench/results.json)). Sizes and inputs are in

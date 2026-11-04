@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-regime"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Equity regime-switching strategy: regime features, from-scratch PCA / Gaussian mixture / Gaussian HMM (cross-checked vs scikit-learn and hmmlearn), online filtered-probability regime detection, hysteresis-banded regime-conditional allocation with vol targeting, walk-forward backtest and regime-conditional risk analytics."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
-    "qp-bt>=3.0.0.dev0",
+    "qp-bt>=3.0.0",
     "qp-core>=1.0",
     "numpy>=1.24",
     "scipy>=1.10",

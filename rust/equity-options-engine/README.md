@@ -62,6 +62,38 @@ On Windows, Application Control may block the doctest executables
 
 ## Latency
 
+v3.0.0 idle-machine run (2026-11-04, WSL2, pinned to one CPU, nanoseconds;
+`bench/results.json` holds the raw records). Older figures below are kept for
+the record.
+
+| Kernel | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| `bs_price` | 42.4 | 119 * | 220 * |
+| `bs_greeks` | 45.0 | 54.4 * | 154 * |
+| `black76_price` | 37.8 | 42.4 * | 137 * |
+| `implied_vol` | 455 | 653 * | 1,767 * |
+| `crr_price n=100 european` | 1,406 | 1,798 * | 9,412 * |
+| `crr_price n=100 american` | 2,758 | 2,974 | 8,944 |
+| `crr_price n=1000 european` | 82,235 | 101,930 | 145,639 |
+| `crr_price n=1000 american` | 174,825 | 221,254 | 285,731 |
+| `mc_price 10k paths anti+cv` | 110,705 | 138,604 | 291,237 |
+| `mc_price 1M paths anti+cv` | 13,756,175 | 15,299,900 | 15,299,900 |
+| `try_bs_price` | 42.9 | 47.2 * | 154 * |
+| `try_bs_greeks` | 44.4 | 49.2 * | 170 * |
+| `try_implied_vol` | 429 | 505 * | 1,385 * |
+| `bs_price_batch (per row)` | 42.7 | 54.1 * | 98.6 * |
+| `bs_greeks_batch (per row)` | 42.5 | 50.6 * | 130 * |
+| `try_crr_price n=100 european` | 1,388 | 1,772 * | 4,566 * |
+| `try_crr_price n=100 american` | 2,734 | 3,520 | 8,365 |
+| `try_crr_price n=1000 european` | 82,055 | 100,257 | 158,215 |
+| `try_crr_price n=1000 american` | 174,745 | 219,116 | 375,529 |
+| `try_mc_price 10k paths anti+cv 1 thread` | 110,624 | 137,867 | 177,679 |
+| `try_mc_price 1M paths anti+cv 1 thread` | 11,663,599 | 12,430,953 | 12,430,953 |
+| `try_mc_price 1M paths anti+cv 8 threads` | 13,796,193 | 14,450,272 | 14,450,272 |
+
+`*` marks the tail of batch means, not a single-call tail; do not use it for
+an SLO ([docs/BENCHMARKS.md](../../docs/BENCHMARKS.md)).
+
 Numbers from this machine: Intel Core 5 120U (12 threads), WSL2 on
 Windows 11, Rust 1.99.1, release profile with `lto = "fat"` and
 `codegen-units = 1`. Command: `cargo run --release --bin bench`, which

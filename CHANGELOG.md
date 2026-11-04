@@ -10,8 +10,9 @@ section below whose heading matches the version.
 
 ## [Unreleased]
 
-Toward v3.0.0, the only planned tag; `VERSION` is `3.0.0.dev0`. This
-section collects Rounds 6 to 18. Numbers come from seeded
+## [3.0.0] - 2026-11-04
+
+This release collects Rounds 6 to 18 and the work first planned for v3.1. Numbers come from seeded
 synthetic data unless an entry names a reference. What callers need to do
 is in `docs/MIGRATION.md`.
 
@@ -1259,6 +1260,7 @@ of the fixes changed a golden-vector value.
 - The Kupiec test uses the chi-squared(1) approximation. At 250 days and 99%
   its actual size is 9.5%, not 5%. Treat p-values near 0.05 as inconclusive.
 
-[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/AshJha0/quant-portfolio/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/AshJha0/quant-portfolio/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/AshJha0/quant-portfolio/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/AshJha0/quant-portfolio/releases/tag/v1.1.0

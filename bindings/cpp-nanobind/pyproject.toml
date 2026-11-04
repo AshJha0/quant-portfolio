@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "qp-cpp"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Python bindings (nanobind) for the quant-portfolio C++ option and VaR engines"
 readme = "README.md"
 requires-python = ">=3.11"

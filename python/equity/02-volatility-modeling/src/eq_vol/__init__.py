@@ -64,7 +64,7 @@ from .historical import (
     yang_zhang_var,
 )
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
     "TRADING_DAYS",

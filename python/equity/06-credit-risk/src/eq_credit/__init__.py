@@ -126,4 +126,4 @@ __all__ = [
     "woe_iv_from_counts",
 ]
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"

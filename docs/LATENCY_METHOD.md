@@ -68,7 +68,12 @@ indicative, no huge pages, busy-poll 0), nanoseconds:
 | decode_book (8 messages) | 1589 | 3811 | 82820 |
 | ring_hop | 288 | 8.3e6 | 2.4e7 |
 
-The ring-hop tail is the WSL2 hypervisor descheduling the second vCPU, not
+On an idle machine (2026-11-04, pinned to CPUs 2 and 4), the same harness read
+book_apply 56, 151, 264; decode_book 388, 609, 1823; ring_hop 103, 227, 26076
+(p50, p99, p99.9). A ring hop needs two CPUs: pinned to one, its two threads
+take turns and the figure is about 3.7 ms, which measures the scheduler.
+
+The ring-hop tail in the first table is the WSL2 hypervisor descheduling the second vCPU, not
 the ring; it is the clearest example of why these numbers are labelled
 indicative. Running the open-loop case at 1e6 packets/s, above the
 measured capacity of about 6e5 packets/s, sent response time to 0.1 s

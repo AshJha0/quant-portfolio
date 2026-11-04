@@ -51,7 +51,7 @@ from .vol_premium import (
     vol_risk_premium,
 )
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
     "ConvergenceError",

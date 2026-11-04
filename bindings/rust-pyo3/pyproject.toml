@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "qp-rust"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Python bindings (PyO3) for the quant-portfolio Rust option and VaR engines"
 readme = "README.md"
 requires-python = ">=3.11"
