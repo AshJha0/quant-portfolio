@@ -148,4 +148,4 @@ __all__ = [
     "vols_from_quotes",
 ]
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"

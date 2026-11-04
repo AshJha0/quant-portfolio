@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qp-core"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Shared statistics, fill model, calendars, day counts, input guards and performance metrics for the quant-portfolio Python projects"
 readme = "README.md"
 requires-python = ">=3.11"

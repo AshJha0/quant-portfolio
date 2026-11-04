@@ -54,7 +54,7 @@ counted in them:
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
-## Desk stacks (toward v3.0.0, Rounds 8-18)
+## Desk stacks (v3.0.0)
 
 The plain idea: the 31 sub-projects price and risk models in isolation. A
 desk also needs trades as objects, one way to backtest, orders, venues and

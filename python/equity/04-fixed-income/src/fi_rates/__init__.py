@@ -82,7 +82,7 @@ from .scenarios import (
 )
 from .schedule import make_schedule
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
     # keyrates

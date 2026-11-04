@@ -389,7 +389,7 @@ cannot change the outcome.
 
 ---
 
-## 12. Desk stacks: from an order to post-trade (toward v3.0.0)
+## 12. Desk stacks: from an order to post-trade
 
 ```mermaid
 flowchart LR

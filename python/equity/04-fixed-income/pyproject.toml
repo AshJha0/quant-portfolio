@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fi-rates"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Fixed income pricing & risk analytics: yield curve bootstrapping, bond pricing (YTM, z-spread, FRN), duration/convexity/DV01, key-rate durations, scenario analysis and carry/roll-down."
 readme = "README.md"
 requires-python = ">=3.11"

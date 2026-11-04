@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-vol"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "FX volatility modeling & forecasting: realized estimators, EWMA, GARCH / EGARCH / GJR from scratch, forecasting and evaluation, specialized for FX"
 readme = "README.md"
 requires-python = ">=3.11"

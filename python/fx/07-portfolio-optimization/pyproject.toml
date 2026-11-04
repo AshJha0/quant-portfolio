@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fx-port"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "FX portfolio optimization & currency risk allocation: carry/momentum/value style portfolios, shrinkage covariance, mean-variance & risk parity, CVaR-constrained sizing (Rockafellar-Uryasev LP), optimal currency hedging, walk-forward backtesting with carry accrual"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "qp-core>=1.0",
-    "qp-bt>=3.0.0.dev0",
+    "qp-bt>=3.0.0",
     "numpy>=1.24",
     "scipy>=1.10",
     "pandas>=2.0",

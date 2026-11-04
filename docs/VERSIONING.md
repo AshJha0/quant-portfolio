@@ -13,17 +13,16 @@ The top-level `VERSION` file holds the version. Every Python package
 the same number. `tests/test_repo_policy.py` fails on any mismatch.
 
 Between releases the version is a development release of the next
-release, `3.0.0.dev0` today (PEP 440; Cargo spells it `3.0.0-dev.0`). The
-release commit changes it to the plain version (`3.0.0`), and `release.yml`
-refuses to tag unless `VERSION` equals the version being released.
+release, such as `3.1.0.dev0` (PEP 440; Cargo spells it `3.1.0-dev.0`). The
+release commit changes it to the plain version, and `release.yml` refuses to
+tag unless `VERSION` equals the version being released. The current release
+is `3.0.0`.
 
-There is one release ahead: **v3.0.0, after Round 18** (owner decision,
-2026-11-03). There are no v2.x tags. On the way, work lands in milestone
-pull requests: milestone v2.1 is Rounds 6 and 7, then v2.2, v2.3 and v2.4.
-A milestone is a merge to `main` when CI is green, not a release: nothing
-is tagged or published, and `release.yml` runs only when started by hand
-for v3.0.0 (or as a dry run). `docs/MIGRATION.md` collects the notes under
-"Unreleased (toward v3.0.0)", one sub-heading per milestone.
+v3.0.0 followed Round 18 and took in the work first planned for v3.1 (owner
+decisions, 2026-11-03 and 2026-11-04). There were no v2.x tags after 2.0.0.
+A milestone is a merge to `main` when CI is green, not a release: nothing is
+tagged or published, and `release.yml` runs only when started by hand.
+`docs/MIGRATION.md` holds the v3.0.0 notes, one sub-heading per milestone.
 
 ## What a version number promises
 

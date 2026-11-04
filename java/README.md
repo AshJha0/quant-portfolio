@@ -107,6 +107,10 @@ stalls are charged (coordinated-omission correction, after Gil Tene):
 | 10,000/s (a later run) | 100,000 | 1,343 | 8,126 | 12,452 | 16,738 | 0 |
 | 100,000/s | 1,000,000 | 2,015 | 14,287 | 25,690 | 31,801 | 0 |
 
+Those runs shared the machine with other work. On an idle machine
+(2026-11-04, [docs/BENCHMARKS.md](../docs/BENCHMARKS.md)) the p50 was 2.88 us at
+10,000/s and 2.69 us at 100,000/s, with p99 near 65 us and no collections.
+
 How to read this. The 1.7 us median is what the path costs when its three
 threads keep their cores. The millisecond figures are the OS taking those
 cores away from spinning threads on a machine with about 20 other busy

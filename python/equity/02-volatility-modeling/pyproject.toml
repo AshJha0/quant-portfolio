@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-vol"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Equity volatility modeling & forecasting: historical/range estimators, EWMA, GARCH(1,1), EGARCH(1,1), GJR-GARCH(1,1), forecasting and forecast evaluation"
 readme = "README.md"
 requires-python = ">=3.11"

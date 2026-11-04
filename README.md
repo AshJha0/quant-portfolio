@@ -53,7 +53,7 @@ November 2026 release started parts of stages two and three.
 |---|---|---|
 | 1. Study portfolio | Correct, tested implementations with plain documentation | In progress |
 | 2. Research platform | Free public data, pre-registered experiments, reported results | Started: one keyless data layer (`qp_data`: FRED, ECB, Frankfurter, NY Fed, BoE, US Treasury, CBOE, Coinbase/Binance) with publication-lag checks; one study scored on the 2022-2025 hold-out (null result), one withdrawn before it; two signed registrations scored once on forward data from 2026-11-03, on or after 2028-11-13 |
-| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Toward v3.0.0: dated rates schedules, trade and market-snapshot objects, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA and a low-latency track (see below). Nothing sends orders to a real venue; `tools/recorder` only reads public market data |
+| 3. Desk library | Shared core, bindings, option revaluation in the compiled VaR engines | Started: shared core with one cost-of-carry option kernel in Python, C++ and Rust; bindings and the `engine=` switch; full option revaluation with vol scenarios in all four compiled VaR engines; batch and NumPy array pricers; CMake package and CI-built wheels. Since v3.0.0: dated rates schedules, trade and market-snapshot objects, one backtest core, order management with a kill switch, simulated venues with a smart order router, post-trade, AAD, XVA, FRTB capital, a model inventory and a low-latency track (see below). Nothing sends orders to a real venue; `tools/recorder` only reads public market data |
 
 **Status.** See the CI badge above. Test counts are not typed into the docs.
 The CI `counts` job writes the executed pass counts to `counts.json` and shows
@@ -136,10 +136,10 @@ Foundations projects are smaller: one asset, Python only, no FX version.
 Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
 
-## What the v3.0.0 milestone adds (Rounds 8-18, not yet released)
+## What v3.0.0 adds
 
-The plain idea: until now each area priced, risked and backtested its own
-toy objects. The milestone adds the layers a trading desk has around those
+The plain idea: before this release each area priced, risked and backtested
+its own toy objects. v3.0.0 adds the layers a trading desk has around those
 models (trades and market data as objects, one backtest core, order
 management, execution research, post-trade) and a low-latency track in C++,
 Rust and Java. Nothing here is connected to a venue. Order books, fills and
@@ -566,7 +566,9 @@ No network card, kernel bypass or exchange is involved.
 How latency is measured now, and where current figures are, is in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md): one harness for C++ and Rust, and
 a CI job that compares base and head on the same runner (`bench-results`
-artifact). The tables below are older: one laptop run with the previous
+artifact). The v3.0.0 idle-machine run, with the low-latency track and Java,
+is in the same page; the raw records are each engine's `bench/results.json`.
+The tables below are older: one laptop run with the previous
 harnesses, kept for the record. Intel Core 5 120U (12 threads) under WSL2 on
 Windows 11, 2026-11-01. C++ figures are GCC 15.2 at `-O3 -DNDEBUG` (Clang 21.1
 figures are in each engine README). Rust figures are rustc 1.99.1, release

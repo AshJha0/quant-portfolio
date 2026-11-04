@@ -143,6 +143,42 @@ Fuzzing is not benchmarking, but the two share CI time on free runners:
 the nightly fuzz workflow (`.github/workflows/fuzz.yml`) spends 100 s per
 target and runs at 03:17 UTC, away from the bench jobs.
 
+## Idle-machine run for v3.0.0 (2026-11-04)
+
+One run of commit a1f5b59 on the development laptop with nothing else running:
+Intel Core 5 120U, WSL2 for C++ and Rust, Windows 11 for Java. This is
+shared-VM indicative, software, in-process latency, not wire-to-wire. The eight
+engine benches ran pinned to one CPU, and their records are in each engine's
+`bench/results.json`.
+
+Low-latency track, nanoseconds, pinned to two CPUs so the ring's two threads
+each have one:
+
+| Bench | p50 | p99 | p99.9 |
+|---|---:|---:|---:|
+| C++ `book_apply` | 56 | 151 | 264 |
+| C++ `decode_book` (8 messages) | 388 | 609 | 1,823 |
+| C++ `ring_hop` | 103 | 227 | 26,076 |
+| Rust `qpbf_decode_msg` | 30 | 68 | 185 |
+| Rust `decode_plus_book_apply` | 56 | 192 | 325 |
+| Rust `book_apply` fixed 0.2 M/s, naive | 121 | 364 | 3,783 |
+| Rust `book_apply` fixed 0.2 M/s, CO-aware | 175 | 5,847 | 1,392,639 |
+| Rust `spsc_ring_round_trip` | 184 | 234 | 270 |
+
+The C++ and Rust rows time different things, so do not compare them line by
+line. The CO-aware p99.9 is the scheduler stalling the VM, charged to every
+message queued behind the stall.
+
+Java, Windows, HotSpot 27, threads not pinned. JMH average time, in
+microseconds, allocation about 0 B/op: `ringPublishPoll` 0.013, `killCheck`
+0.035, `orderRoundTrip` 0.583. `LatencyMain`, three spinning threads, two ring
+hops, coordinated-omission corrected, no collections in the window:
+
+| Rate | Orders | p50 us | p99 us | p99.9 us | max us |
+|---|---:|---:|---:|---:|---:|
+| 10,000/s | 100,000 | 2.88 | 63.5 | 463 | 3,623 |
+| 100,000/s | 1,000,000 | 2.69 | 67.6 | 1,180 | 4,031 |
+
 ## Deliberate slowdowns (`bench-accepted`)
 
 The bench gate fails a kernel whose head median is more than 25% above the

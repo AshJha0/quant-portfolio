@@ -85,4 +85,4 @@ __all__ = [
     "svi_total_variance",
 ]
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"

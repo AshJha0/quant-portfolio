@@ -1,6 +1,6 @@
 [package]
 name = "qp-rust"
-version = "3.0.0-dev.0"
+version = "3.0.0"
 edition = "2024"
 rust-version = "1.99"
 publish = false

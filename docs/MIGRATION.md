@@ -8,12 +8,11 @@ The policy behind these notes is in `docs/VERSIONING.md`.
 If you skip releases, read every section between your version and the one
 you are moving to; the notes are cumulative, so you can migrate once.
 
-## Unreleased (toward v3.0.0)
+## 3.0.0 (2026-11-04)
 
-The next release is v3.0.0, after Round 18; there are no v2.x tags (owner
-decision, 2026-11-03). `main` carries `3.0.0.dev0` until then. Work lands
-in milestone pull requests; each milestone adds its notes below under its
-own heading, and the v3.0.0 notes are the sum of them.
+There were no v2.x tags after 2.0.0 (owner decision, 2026-11-03). The work
+landed in milestone pull requests; the notes below are grouped by milestone,
+and the v3.0.0 notes are the sum of them.
 
 ### Milestone v2.1 (Rounds 8-17)
 

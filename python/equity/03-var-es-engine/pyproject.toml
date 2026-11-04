@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eq-var"
-version = "3.0.0.dev0"
+version = "3.0.0"
 description = "Equity market risk engine: historical / parametric / Monte Carlo VaR, Expected Shortfall, Kupiec-Christoffersen backtesting, Basel traffic light, stress testing."
 readme = "README.md"
 requires-python = ">=3.11"

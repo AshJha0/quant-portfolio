@@ -2223,7 +2223,7 @@ assumptions = [
   "scaled-identity target; i.i.d. rows",
 ]
 limitations = [
-  "the scikit-learn test skips where scikit-learn is absent",
+  "the shrinkage target is the scaled identity only",
 ]
 validation_status = "independently-checked"
 validated_on = 2026-11-04

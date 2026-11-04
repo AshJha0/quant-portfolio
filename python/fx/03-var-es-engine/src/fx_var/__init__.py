@@ -70,7 +70,7 @@ from .stress_testing import (
     usd_broad_move,
 )
 
-__version__ = "3.0.0.dev0"
+__version__ = "3.0.0"
 
 __all__ = [
     "PEG_VOL_THRESHOLD",
