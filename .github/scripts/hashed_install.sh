@@ -31,7 +31,7 @@ while (($#)); do
 done
 
 packages=()
-for p in "${paths[@]}"; do
+for p in ${paths[@]+"${paths[@]}"}; do
   name=$(tr -d '\r' < "$p/pyproject.toml" | sed -n 's/^name *= *"\(.*\)"/\1/p' | head -n1)
   test -n "$name" || { echo "no project name in $p/pyproject.toml" >&2; exit 1; }
   packages+=(--package "$name")
@@ -39,7 +39,7 @@ done
 
 req="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hashed-requirements.txt"
 uv export --frozen --format requirements-txt --no-header --no-emit-workspace \
-  --no-editable "${packages[@]}" "${extras[@]}" "${groups[@]}" -o "$req" >/dev/null
+  --no-editable ${packages[@]+"${packages[@]}"} ${extras[@]+"${extras[@]}"} "${groups[@]}" -o "$req" >/dev/null
 echo "hashed_install.sh: $(grep -c '^[A-Za-z0-9]' "$req") locked packages for ${paths[*]:-(groups only)}"
 
 python -m pip install --require-hashes --only-binary :all: --no-deps -r "$req"
