@@ -265,8 +265,7 @@ inline bool depth_event(DepthCursor& c, std::string_view sym, DepthDelta& d) {
     return e && s && U && u && b && a && d.first <= d.last;
 }
 
-inline bool level2_event(DepthCursor& c, std::string_view product,
-                         std::vector<LevelChange>& out) {
+inline bool level2_event(DepthCursor& c, std::string_view product, std::vector<LevelChange>& out) {
     if (!c.eat('{')) return false;
     bool type = false, pid = false, ch = false;
     if (c.eat('}')) return false;

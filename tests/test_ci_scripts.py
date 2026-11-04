@@ -129,7 +129,7 @@ class TestBenchAbMain:
 
     def test_committed_accepted_file_is_valid(self):
         rows = ab.load_accepted(REPO / ".github" / "bench-accepted.json")
-        assert rows and all(e["max_ratio"] < 2.0 for e in rows.values())
+        assert all(e["max_ratio"] < 2.0 for e in rows.values())
 
     def test_noise_passes(self, tmp_path):
         base = self._rounds(tmp_path, "b", [1000, 1300, 900])

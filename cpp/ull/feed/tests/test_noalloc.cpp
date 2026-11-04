@@ -20,10 +20,10 @@
 #include <string>
 #include <vector>
 
+#include "inflate.hpp"
 #include "qp/ull/handlers.hpp"
 #include "qp/ull/recorder.hpp"
 #include "qp/ull/testing.hpp"
-#include "inflate.hpp"
 
 static std::atomic<std::uint64_t> g_allocs{0};
 
