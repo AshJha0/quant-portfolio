@@ -567,14 +567,14 @@ The v3.0.0 run, on an idle machine (2026-11-04, Intel Core 5 120U; C++ and
 Rust under WSL2 pinned to two CPUs, Java on Windows unpinned). The p99 is the
 figure to read: it shows what the slowest 1 in 100 calls cost.
 
-| Measure | p50 | p99 | p99.9 |
-|---|---:|---:|---:|
-| C++ book apply | 56 ns | 151 ns | 264 ns |
-| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us |
-| Rust decode and book apply | 56 ns | 192 ns | 325 ns |
-| Rust ring round trip | 184 ns | 234 ns | 270 ns |
-| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us |
-| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms |
+| Measure | p50 | p99 | p99.9 | p99.99 |
+|---|---:|---:|---:|---:|
+| C++ book apply | 56 ns | 151 ns | 264 ns | 4.43 us |
+| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us | 141 us |
+| Rust decode and book apply | 56 ns | 192 ns | 325 ns | 4.48 us |
+| Rust ring round trip | 184 ns | 234 ns | 270 ns | 11.1 us |
+| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us | 2.62 ms |
+| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms | 3.15 ms |
 
 The Java rows cover three threads and two ring hops, charged from each order's
 intended send time, with no collections in the window. The rows time different

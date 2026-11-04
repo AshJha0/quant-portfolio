@@ -53,8 +53,8 @@ repository.
 | `FX-CR-CVA` | 2 | risk | self-tested |
 | `FX-FI-BOOTSTRAP` | 2 | price | self-tested |
 | `FX-FI-XCCY` | 2 | price | self-tested |
-| `CORE-FRTB-SBM` | 2 | risk | self-tested |
-| `CORE-FRTB-CURV` | 2 | risk | self-tested |
+| `CORE-FRTB-SBM` | 2 | risk | independently-checked |
+| `CORE-FRTB-CURV` | 2 | risk | independently-checked |
 | `CORE-XVA-COLLATERAL` | 2 | risk | self-tested |
 | `CORE-XVA-ADJ` | 2 | risk | self-tested |
 | `CORE-XVA-EXPOSURE` | 2 | risk | self-tested |
@@ -625,33 +625,33 @@ Tier 2, price, status `self-tested`, validated 2026-11-03, next review 2027-11-0
 
 ### `CORE-FRTB-SBM`: FRTB SBM delta and vega aggregation (CSR non-sec, equity, commodity)
 
-Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+Tier 2, risk, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
 
 **Purpose.** Delta and vega capital across buckets and the three MAR21.6 correlation scenarios.
 
 **Conceptual soundness.** Entrypoints: `python/core/src/qp_core/capital/frtb_classes.py::aggregate`. Assumptions: BCBS d457 (2019) MAR21 parameters, transcribed and checksum-tested. Reference: BCBS d457 (2019) MAR21; Gregory, *The xVA Challenge*, 4th ed. (2020) for collateral.
 
-**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_frtb_classes.py::test_footnote_examples`; `python/core/tests/test_capital_frtb_classes.py::test_csr_delta_hand_fixture`; `python/core/tests/test_capital_frtb_classes.py::test_equity_delta_hand_fixture`; `python/core/tests/test_capital_frtb_classes.py::test_commodity_delta_hand_fixture`. Independent checks: none cited.
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_frtb_classes.py::test_footnote_examples`; `python/core/tests/test_capital_frtb_classes.py::test_csr_delta_hand_fixture`; `python/core/tests/test_capital_frtb_classes.py::test_equity_delta_hand_fixture`; `python/core/tests/test_capital_frtb_classes.py::test_commodity_delta_hand_fixture`. Independent checks: `tests/independent/frtb/test_frtb_classes_independent.py::test_csr_delta`; `tests/independent/frtb/test_frtb_classes_independent.py::test_csr_vega`; `tests/independent/frtb/test_frtb_classes_independent.py::test_eq_delta`; `tests/independent/frtb/test_frtb_classes_independent.py::test_eq_vega`; `tests/independent/frtb/test_frtb_classes_independent.py::test_com_delta`; `tests/independent/frtb/test_frtb_classes_independent.py::test_com_vega`.
 
 **Ongoing monitoring.** KPIs: published footnote values and hand fixtures. Review trigger: a change to the Basel text or a failed fixture.
 
-**Limitations and compensating controls.** no CSR securitisation, RRAO or DRC; Python only, no second implementation for these classes. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
+**Limitations and compensating controls.** no CSR securitisation, RRAO or DRC; the oracle was written in this repository, so a shared misreading of the text would pass. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
 
 **Findings.** None.
 
 ### `CORE-FRTB-CURV`: FRTB SBM curvature charge
 
-Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+Tier 2, risk, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
 
 **Purpose.** Curvature capital for GIRR, CSR non-sec, equity, commodity and FX.
 
 **Conceptual soundness.** Entrypoints: `python/core/src/qp_core/capital/frtb_curvature.py::curvature_charge`. Assumptions: CVR inputs come from the caller's full revaluation; squared delta correlations (MAR21.100-101). Reference: BCBS d457 (2019) MAR21; Gregory, *The xVA Challenge*, 4th ed. (2020) for collateral.
 
-**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_frtb_classes.py::test_curvature_within_bucket_psi_and_selection`; `python/core/tests/test_capital_frtb_classes.py::test_curvature_across_buckets_uses_selected_side`; `python/core/tests/test_capital_frtb_classes.py::test_net_cvr_linear_is_zero_and_option_positive`. Independent checks: none cited.
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_frtb_classes.py::test_curvature_within_bucket_psi_and_selection`; `python/core/tests/test_capital_frtb_classes.py::test_curvature_across_buckets_uses_selected_side`; `python/core/tests/test_capital_frtb_classes.py::test_net_cvr_linear_is_zero_and_option_positive`. Independent checks: `tests/independent/frtb/test_frtb_classes_independent.py::test_girr_curvature`; `tests/independent/frtb/test_frtb_classes_independent.py::test_fx_curvature`; `tests/independent/frtb/test_frtb_classes_independent.py::test_csr_curvature`; `tests/independent/frtb/test_frtb_classes_independent.py::test_eq_curvature`; `tests/independent/frtb/test_frtb_classes_independent.py::test_com_curvature`.
 
 **Ongoing monitoring.** KPIs: hand fixtures for selection, psi and other-sector buckets. Review trigger: a change to the Basel text or a failed fixture.
 
-**Limitations and compensating controls.** Python only, no second implementation. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
+**Limitations and compensating controls.** the oracle was written in this repository, so a shared misreading of the text would pass. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
 
 **Findings.** None.
 
@@ -667,7 +667,7 @@ Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04
 
 **Ongoing monitoring.** KPIs: Brownian closed forms within 4 standard errors. Review trigger: a change to the Basel text or a failed fixture.
 
-**Limitations and compensating controls.** Python only; the swap exposure simulator values only on reset dates. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
+**Limitations and compensating controls.** the swap exposure simulator values only on reset dates. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
 
 **Findings.** None.
 
