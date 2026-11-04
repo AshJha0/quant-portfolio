@@ -26,6 +26,8 @@ Header-only C++23 library shared by the four C++ engines
 | `qp/holidays.hpp` | rule-based settlement calendars (2000-2099), FX spot dates, spot-date forwards and NDF value; tested against the same QuantLib extract as Rust (`rust/core/tests/data/ql_holidays_2000_2030.txt`) | new, opt-in |
 | `qp/vmath.hpp` | `qp::vm::exp_batch`, `erfc_batch`, `norm_cdf_batch`: branch-free batch kernels with documented tolerances | new, opt-in |
 | `qp/var_stats.hpp` | Checked special functions and sample moments shared by both VaR engines; `eqvar/stats.hpp` and the FX equivalent are thin wrappers | eqvar, fxvar |
+| `qp/path_rng.hpp` | Per-path and per-resample Philox streams with AS 241 normals (`qp::PathRng`); same words as `qp_core::path_rng` | eqvar, fxvar |
+| `qp/risk.hpp` | Quote-space risk through the bootstrap Jacobian, par DV01, quote gamma, vol grids, P&L explain; port of `qp_core.risk` | parity tests |
 | `qp/crr.hpp` | The one Cox-Ross-Rubinstein lattice for the equity and FX trees | eqopt, fxopt |
 | `qp/rates_vol.hpp` | SABR implied vol and the Hull-White trinomial Bermudan, port of `qp_core.vol.sabr` | parity tests |
 | `qp/xva.hpp` | SA-CCR (BCBS 279 / CRE52), Hull-White bond and swaption closed forms, CVA / DVA / FVA / effective-EPE sums | parity tests |

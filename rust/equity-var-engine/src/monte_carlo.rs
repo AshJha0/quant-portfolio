@@ -509,9 +509,7 @@ pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Re
         qp_core::par::default_threads(),
         |first, chunk| {
             let mut buf = vec![0.0; n];
-            for (k, e) in chunk.iter_mut().enumerate() {
-                *e = bootstrap_resample_var(pnl, m, seed, (first + k) as u64, &mut buf);
-            }
+            bootstrap_var_estimates(pnl, m, seed, first as u64, chunk, &mut buf);
         },
     );
     let sum: f64 = est.iter().sum();
@@ -520,9 +518,78 @@ pub fn var_bootstrap_se(pnl: &[f64], alpha: f64, n_boot: usize, seed: u64) -> Re
     Ok((ss / (n_boot - 1) as f64).sqrt())
 }
 
-/// VaR (`m`-th largest loss) of bootstrap resample `b`: `n` indices
+/// VaR (`m`-th largest loss) of bootstrap resamples `first_b ..
+/// first_b + est.len()` into `est`: resample `b` draws `n` indices
 /// `min(n - 1, floor(u n))` from Philox stream `(seed, b)` (W4(b)).
 /// `buf` is scratch of length `pnl.len()`.
+pub(crate) fn bootstrap_var_estimates(
+    pnl: &[f64],
+    m: usize,
+    seed: u64,
+    first_b: u64,
+    est: &mut [f64],
+    buf: &mut [f64],
+) {
+    if m > TOP_M_MAX {
+        for (k, e) in est.iter_mut().enumerate() {
+            *e = bootstrap_resample_var(pnl, m, seed, first_b + k as u64, buf);
+        }
+        return;
+    }
+    // Small rank (the usual 99 % VaR on a few hundred days): keep the m
+    // largest losses as they are drawn, instead of filling a buffer and
+    // selecting. Losses are compared by their `total_cmp` key, so the m-th
+    // largest is the same value, bit for bit, as the selection in
+    // `bootstrap_resample_var` returns (equal keys are equal bits). The keys
+    // of the n losses are computed once into `buf` (as raw bits) and shared
+    // by every resample.
+    let n = pnl.len();
+    for (slot, &p) in buf.iter_mut().zip(pnl.iter()) {
+        *slot = f64::from_bits(total_key(-p) as u64);
+    }
+    let keys = &buf[..n];
+    for (k, e) in est.iter_mut().enumerate() {
+        *e = top_m_resample(keys, m, seed, first_b + k as u64);
+    }
+}
+
+/// [`bootstrap_resample_var`] for `m <= TOP_M_MAX`, from the loss keys.
+fn top_m_resample(keys: &[f64], m: usize, seed: u64, b: u64) -> f64 {
+    let n = keys.len();
+    let mut top = [i64::MIN; TOP_M_MAX];
+    let top = &mut top[..m];
+    let mut thr = i64::MIN;
+    let mut block = 0u64;
+    let mut done = 0usize;
+    let mut idx = [0usize; 2 * crate::rng::LANES];
+    while done < n {
+        let len = (n - done).min(2 * crate::rng::LANES);
+        // Philox words for LANES blocks side by side (the same words as
+        // `PhiloxStream::new(seed, b)`; a test checks it), turned into
+        // indices without a 64-bit float-to-integer cast.
+        qp_core::path_rng::philox_indices(seed, b, block, n, &mut idx);
+        block += crate::rng::LANES as u64;
+        for &i in &idx[..len] {
+            // `i <= n - 1`; `get` keeps the path panic-free.
+            let k = keys.get(i).map_or(i64::MIN, |v| v.to_bits() as i64);
+            if k > thr {
+                let mut j = m - 1;
+                while j > 0 && top[j - 1] < k {
+                    top[j] = top[j - 1];
+                    j -= 1;
+                }
+                top[j] = k;
+                thr = top[m - 1];
+            }
+        }
+        done += len;
+    }
+    from_total_key(thr)
+}
+
+/// VaR (`m`-th largest loss) of bootstrap resample `b`: `n` indices
+/// `min(n - 1, floor(u n))` from Philox stream `(seed, b)` (W4(b)), then a
+/// selection. `buf` is scratch of length `pnl.len()`.
 pub(crate) fn bootstrap_resample_var(
     pnl: &[f64],
     m: usize,
@@ -551,6 +618,12 @@ pub(crate) fn bootstrap_resample_var(
     let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
     *lm
 }
+
+/// Largest rank `m` that [`bootstrap_var_estimates`] tracks with a running
+/// top-m list instead of a full buffer and a selection.
+const TOP_M_MAX: usize = 16;
+
+use qp_core::resample::{from_total_key, total_key};
 
 /// Kernel-density standard error of the VaR (diagnostic only).
 ///
@@ -610,4 +683,52 @@ pub fn var_kde_se(pnl: &[f64], alpha: f64) -> Result<f64> {
         ));
     }
     Ok((alpha * (1.0 - alpha) / nf).sqrt() / dens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pre-Round-8 resample: fill a buffer from the same Philox words,
+    /// then select. The running top-m path must return the same bits.
+    fn resample_by_selection(pnl: &[f64], m: usize, seed: u64, b: u64) -> f64 {
+        let n = pnl.len();
+        let mut rng = crate::rng::PathRng::new(seed, b);
+        let mut buf: Vec<f64> = (0..n)
+            .map(|_| -pnl[((rng.uniform() * n as f64) as usize).min(n - 1)])
+            .collect();
+        let (_, lm, _) = buf.select_nth_unstable_by(m - 1, |a, b| b.total_cmp(a));
+        *lm
+    }
+
+    #[test]
+    fn top_m_resample_matches_selection_bit_for_bit() {
+        let mut cases = 0;
+        for n in [10usize, 11, 31, 32, 33, 64, 250, 257, 1000] {
+            // Heavy ties and both signed zeros, so equal keys are exercised.
+            let pnl: Vec<f64> = (0..n)
+                .map(|i| match i % 7 {
+                    0 => 0.0,
+                    1 => -0.0,
+                    2 => 5.0,
+                    _ => ((i * 7919) % 1013) as f64 * 0.37 - 180.0,
+                })
+                .collect();
+            let mut buf = vec![0.0; n];
+            for m in 1..=(TOP_M_MAX + 2).min(n) {
+                let seed = 0x5EED ^ (m as u64) << 7 ^ n as u64;
+                let mut est = vec![0.0; 12];
+                bootstrap_var_estimates(&pnl, m, seed, 3, &mut est, &mut buf);
+                for (k, got) in est.iter().enumerate() {
+                    let b = 3 + k as u64;
+                    let want = resample_by_selection(&pnl, m, seed, b);
+                    assert_eq!(got.to_bits(), want.to_bits(), "n={n} m={m} b={b}");
+                    let single = bootstrap_resample_var(&pnl, m, seed, b, &mut buf.clone());
+                    assert_eq!(single.to_bits(), want.to_bits(), "n={n} m={m} b={b}");
+                    cases += 1;
+                }
+            }
+        }
+        assert!(cases > 1000);
+    }
 }

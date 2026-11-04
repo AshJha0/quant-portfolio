@@ -25,6 +25,9 @@ differential test passes unchanged.
 | `gemm` | Cache-blocked GEMM and `D^T D`; same bits as the naive loops | eq VaR `sample_covariance` |
 | `vmath` | Branch-free batch exp, erfc, normal CDF; exp 2 ulp, erfc 2e-15 relative, CDF 4e-16 absolute (see the module docs) | new, opt-in |
 | `stats` | Special functions and sample moments for both VaR engines (one copy since Round 8; each engine's `stats.rs` is a wrapper) | both VaR engines |
+| `path_rng` | Per-path and per-resample Philox streams with AS 241 normals (`PathRng`, batched `philox_uniforms`, `philox_indices`); same words as `qp/path_rng.hpp` | both VaR engines |
+| `resample` | `RankedLosses`: bootstrap quantiles by counting draws of the largest losses, same bits as buffer-and-select | FX VaR |
+| `risk` | Quote-space risk through the bootstrap Jacobian, par DV01, quote gamma, vol grids, P&L explain; twin of `qp_core.risk` | parity tests |
 | `crr` | The one Cox-Ross-Rubinstein lattice (`crr_lattice`, `CrrWorkspace`, `CrrError`) | both options engines |
 | `holidays` | Rule-based settlement calendars, FX spot dates, spot-date forwards and NDF values | FX, rates |
 | `exotics` | Closed-form exotic pricers, the twin of `qp_core.exotics` | parity tests |

@@ -66,6 +66,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..errors import InputError
+from ..model import model
 from .exposure import ExposureProfile, profile
 
 __all__ = [
@@ -150,6 +151,7 @@ class CollateralisedExposure:
     negative_exposure: np.ndarray
 
 
+@model(id="CORE-XVA-COLLATERAL")
 def collateralised_exposure(times: np.ndarray, values: np.ndarray, csa: Csa) -> CollateralisedExposure:
     """Pathwise collateral C(t), exposure E(t) and negative exposure N(t)."""
     t = np.asarray(times, dtype=float)

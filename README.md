@@ -136,7 +136,7 @@ Foundations projects are smaller: one asset, Python only, no FX version.
 Every project has `src/`, `tests/`, `examples/run_pipeline.py` and
 `docs/{METHODOLOGY,VALIDATION,DESK_GUIDE}.md`. See `CONVENTIONS.md`.
 
-## What the v3.0.0 milestone adds (Rounds 8-17, not yet released)
+## What the v3.0.0 milestone adds (Rounds 8-18, not yet released)
 
 The plain idea: until now each area priced, risked and backtested its own
 toy objects. The milestone adds the layers a trading desk has around those
@@ -154,14 +154,16 @@ example and sources:
 |---|---|---|
 | Trade layer | [`python/core`](python/core/README.md) `qp_core.instruments`, `qp_core.market` | `Instrument` protocol (`pv(MarketSnapshot) -> Money`, `cashflows()`, `risk()`), trades, a market snapshot; adapters from the per-package trade classes |
 | Shared maths | `qp_core.vol` (SABR, SABR PDE, SSVI, eSSVI, Dupire), `qp_core.trees`, `qp_core.rng`, `qp_core.exotics`, `qp_core.risk`, `qp_core.scenarios`, `qp_core.hedging`, `qp_core.eventlog` | Moved out of the packages that first had them; the packages re-export |
-| Counterparty and capital | `qp_core.xva`, `qp_core.capital` (SA-CCR, FRTB SBM), `qp_core.credit_index` | CVA/DVA exposure on Hull-White, SA-CCR, CDS index and ISDA standard model |
+| Counterparty and capital | `qp_core.xva` (with `collateral`), `qp_core.capital` (SA-CCR, FRTB SBM), `qp_core.credit_index` | CVA/DVA exposure on Hull-White, collateralised exposure (thresholds, MTA, margin period of risk, initial margin), SA-CCR, CDS index and ISDA standard model. FRTB SBM has delta and vega for GIRR, FX, CSR non-securitisation, equity and commodity, and curvature for all five. Securitisation, RRAO, DRC and CVA capital are not covered, and the Round 18 classes and collateral are Python only for now |
 | AAD | `qp_core.aad`, [`cpp/aad`](cpp/aad/README.md), [`rust/aad`](rust/aad/README.md) | Tape-based reverse mode, same tape layout in three languages |
 | Backtest core | [`python/backtest`](python/backtest/README.md) (`qp_bt`) | One fill, cost and ledger core used by the equity and FX backtesters |
 | Data | [`python/data`](python/data/README.md) (`qp_data`) | Keyless public sources, content-addressed store, release-lag checks |
 | Order management | [`python/oms`](python/oms/README.md) (`qp_oms`) | Order state machine, event log, FIX session, EMS, drop copy, reconciliation, pre-trade risk, kill switch ([KILL_CONTRACT](docs/KILL_CONTRACT.md)) |
-| Execution research | [`python/execution`](python/execution/README.md) (`qp_exec`), [`cpp/exec-core`](cpp/exec-core) | Reference limit order book, order flow, impact, market making (Avellaneda-Stoikov, GLFT), smart order router, central risk book, RFQ |
+| Execution research | [`python/execution`](python/execution/README.md) (`qp_exec`), [`cpp/exec-core`](cpp/exec-core) | Reference limit order book, order flow, impact, market making (Avellaneda-Stoikov, GLFT, toxicity-aware spreads from markouts and VPIN), smart order router, central risk book, RFQ |
 | Post-trade | [`python/posttrade`](python/posttrade/README.md) | Settlement dates, booking and confirmation matching, best-execution reports, surveillance |
-| Low latency | [`cpp/ull`](cpp/ull/feed/README.md), [`rust/ull`](rust/ull/bench/METHODOLOGY.md), [`java`](java/README.md) | Binary feed format ([QPBF](docs/QPBF.md)), SPSC ring, L3 book, feed handler with gap recovery, order gateway with the shared kill contract, latency harness |
+| Low latency | [`cpp/ull`](cpp/ull/feed/README.md), [`rust/ull`](rust/ull/bench/METHODOLOGY.md), [`java`](java/README.md) | Binary feed format ([QPBF](docs/QPBF.md)), SPSC ring, L3 book, feed handler with gap recovery on the flat book (no heap allocation on the Binance path, tested), order gateway with the shared kill contract, latency harness |
+| Recorder | [`tools/recorder`](tools/recorder/README.md) | Free, no-account recorder for Binance diff-depth and Coinbase `level2_batch`; short live recordings replayed through the C++ and Rust handlers. Coinbase `full` and `level2` now need authentication, so there are no Coinbase L3 recordings |
+| Exploratory research | [`research/exploratory/r18`](research/exploratory/r18/README.md) | Real-data runs with no preregistration, so they support no claim: the 2000-2015 FX panel and the SOFR 2024 compounding check |
 | Rates curves | [`cpp/rates-curves`](cpp/rates-curves), [`rust/rates-curves`](rust/rates-curves) | Dated curve bootstrap ports |
 
 A worked example of how the pieces meet: a parent order enters `qp_oms`,
@@ -186,6 +188,10 @@ levelled study path [docs/learn](docs/learn/README.md) (L0 to L4).
 | AAD Greeks | `qp_core.aad`, `cpp/aad`, `rust/aad` tests | Bump-and-reprice to 1e-6; Black-Scholes Greeks equal the closed form to 1e-12. Cost ratios per language in [`rust/aad/README.md`](rust/aad/README.md) |
 | Ledoit-Wolf shrinkage | `qp_bt.portfolio.covariance`, `python/backtest/tests/test_portfolio_layer.py` | scikit-learn `ledoit_wolf` to 1e-12 (same 1/T sample covariance) |
 | HAC regression | `research/attribution`, `research/attribution/tests/test_attribution.py` | statsmodels OLS `cov_type="HAC"` to 1e-10 |
+| FRTB SBM, GIRR and FX delta and vega | `tests/independent/frtb` | A second implementation written from the MAR21 text alone agrees to 1e-10 relative on 1,750 seeded cases. The newer classes and curvature have hand fixtures and the published worked numbers, not a second implementation |
+| Collateralised exposure | `qp_core.xva.collateral`, `test_xva_collateral.py` | Seeded Monte Carlo within 4 SE of the Brownian closed forms (margin period of risk, initial margin, threshold), plus exact limiting cases |
+| Heston characteristic function | `qp_core.vol.heston`, `test_vol_heston.py` | Bit-equal to both old copies; prices unchanged against QuantLib 1.44 `AnalyticHestonEngine` |
+| Feed handlers on live data | `tools/recorder/tests` | C++ and Rust books equal an independent Python reference book on every fresh record of the live recordings |
 | Kill switch | `qp_oms.kill`, `cpp/ull/gateway`, `rust/ull/gateway`, `java` | One vector file replayed byte for byte in four languages |
 | Settlement dates | `qp_posttrade.settlement` | Generated NYSE and Federal Reserve calendars reproduce the old hand tables for 2026 exactly |
 
@@ -206,6 +212,10 @@ the code; the main ones:
   ES, bootstrap SE and option MC results change within Monte Carlo error
   ([docs/MIGRATION.md](docs/MIGRATION.md)). Historical VaR gained
   `rule="kth_worst"` (default, unchanged) or `"interpolated"`.
+- **Monte Carlo VaR (FX, C++ and Rust).** FX moved to the same per-scenario
+  Philox streams, so C++ and Rust give the same bits on any thread count.
+  On the Rust pinned book VaR moved by +0.07% (normal), +1.2% (Student-t)
+  and +0.3% (jump), within Monte Carlo error.
 - **Execution costs.** The equity schedule-level costs rose about 3 to 4
   times when a double-counted bucket width was removed (equity 08
   `docs/VALIDATION.md` section 6).

@@ -56,6 +56,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from ..errors import InputError
+from ..model import model
 from . import frtb_tables as T
 from .frtb_classes import com_gamma, csr_gamma, eq_gamma
 from .frtb_sbm import FX_RW, GIRR_RW, SCENARIOS, scenario_corr
@@ -114,6 +115,7 @@ def _k_side(c: Sequence[float], rho: Callable[[int, int], float]) -> float:
     return math.sqrt(max(q, 0.0))
 
 
+@model(id="CORE-FRTB-CURV")
 def curvature_charge(
     buckets: dict[int, list[tuple[object, float, float]]],
     delta_rho: Callable[[int, object, object], float],

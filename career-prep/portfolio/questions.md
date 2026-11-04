@@ -9,7 +9,7 @@ compares them.
 Unless stated: two assets with vols 10% and 20%, correlation 0.2, expected
 returns 8% and 12%, risk-free rate 2%; weights sum to one; shorting allowed.
 Code in this repository: `portfolio-construction` style optimisers live in
-`python/quant_portfolio/portfolio/`. References: Markowitz (1952); Grinold
+`python/equity/07-portfolio-optimization/`. References: Markowitz (1952); Grinold
 and Kahn, *Active Portfolio Management* (2nd ed.); Maillard, Roncalli and
 Teiletche (2010) on risk parity; Kelly (1956); Thorp (2006).
 

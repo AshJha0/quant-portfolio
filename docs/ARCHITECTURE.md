@@ -54,7 +54,7 @@ counted in them:
 | `bindings/cpp-nanobind` | `qp-cpp` (import `qp_cpp`) | nanobind bindings over the four C++ engines |
 | `bindings/rust-pyo3` | `qp-rust` (import `qp_rust`) | PyO3 bindings over the four Rust crates |
 
-## Desk stacks (toward v3.0.0, Rounds 8-17)
+## Desk stacks (toward v3.0.0, Rounds 8-18)
 
 The plain idea: the 31 sub-projects price and risk models in isolation. A
 desk also needs trades as objects, one way to backtest, orders, venues and
@@ -72,7 +72,8 @@ table:
 | Execution research | `python/execution` (`qp_exec`) and `cpp/exec-core` | Reference limit order book (`lob`), Hawkes flow, schedules, market making (`mm`), smart order router (`sor`), central risk book (`crb`), RFQ | numpy, scipy; `qp_oms` for order kwargs |
 | Post-trade | `python/posttrade` (`qp_posttrade`) | Settlement dates on `qp_core.holidays`, booking and confirmation matching, TCA, best execution, surveillance; reports stamped `synthetic venue` | `qp_core` |
 | Low latency | `cpp/ull/{ring,qpbf,book,feed,gateway,mcast,bench}`, `rust/ull/{ring,qpbf,book,feed,gateway,bench}`, `java/` | SPSC ring, the QPBF binary feed (`docs/QPBF.md`), L3 book, feed handler with gap recovery, order gateway, latency harness (`docs/LATENCY_METHOD.md`) | standard library only (Java: JDK 21, JMH for benches) |
-| AAD and curves (compiled) | `cpp/aad`, `rust/aad`, `cpp/rates-curves`, `rust/rates-curves` | Ports of `qp_core.aad` and the dated bootstrap | `qp::core`, `qp-core` |
+| AAD, curves and risk (compiled) | `cpp/aad`, `rust/aad`, `cpp/rates-curves`, `rust/rates-curves`, `qp/risk.hpp`, `qp_core::risk` | Ports of `qp_core.aad`, the dated bootstrap and the W14 risk kernels (quote-space risk through the bootstrap Jacobian, vol grids, P&L explain) | `qp::core`, `qp-core` |
+| Recorder | `tools/recorder` | No-account Binance and Coinbase `level2_batch` capture in the QPRC format, an independent Python reference book, replay through the C++ and Rust handlers | `websockets` (group `recorder`) |
 
 Formally, the flow of one order is: `qp_oms` accepts a parent order, runs
 pre-trade checks and the kill switch, `qp_exec.sor` splits it across
@@ -90,6 +91,23 @@ pytest but not installed with the distribution; moving them would break the
 Java parity test's path to `kill/vectors.json`. And every latency figure
 from the low-latency track is software, in-process latency on one machine,
 not wire-to-wire.
+
+Feed books. The C++ and Rust handlers keep the levels near the touch in the
+flat book, inside a per-product tick window (`ProductSpec`). Deep levels,
+off-grid prices and very large sizes go to an exact side store, so the book
+always equals the venue's. If the touch leaves the window, the book goes
+stale, asks for a snapshot and re-centres. A snapshot no newer than the
+live book is ignored in both languages. Coinbase frames still use the
+allocating JSON reader; only the Binance path is allocation-free.
+
+Capital and collateral limits. `qp_core.capital.frtb_classes`,
+`frtb_curvature` and `qp_core.xva.collateral` have no C++ or Rust port yet.
+The swap exposure simulator values only on reset dates, so a collateralised
+swap on an arbitrary lagged grid is not available.
+
+Research that has no preregistration lives in `research/exploratory`, which
+the prereg check does not cover. Registered results stay in
+`research/results`.
 
 Fuzzing (W12): `cpp/core/fuzz` (implied vol, Cholesky repair, JSONL parse;
 libFuzzer), `rust/core/fuzz` and `rust/equity-var-engine/fuzz`
@@ -480,6 +498,10 @@ the same engine and platform.
 | `cpp exec-core, rates-curves, aad, ull` | Builds and ctests each project with GCC (long-labelled tests run nightly), then runs the Python reference book against the exec-core replay with no skips allowed. |
 | `java (Temurin 21, mvnw verify)` | `./mvnw -B verify` for `java/`, including the kill-switch parity test against `python/oms/kill/vectors.json`. |
 | `py backtest`, `py oms`, `py execution`, `py posttrade` | The shared stacks on Python 3.11 to 3.13, each with its transitive workspace dependencies installed. |
+| `quantlib` | The QuantLib 1.44 cross-checks from hash-locked wheels, with no skips. |
+| `api diff` | On pull requests, compares the public API with the base; a break needs the `api-break` label. |
+| `cookbook` | Runs every Python recipe in `docs/COOKBOOK.md` and checks its quoted output (`tests/test_cookbook.py`). |
+| `recorder` | `tools/recorder/tests`, with the C++ and Rust replay required. |
 | `counts` | Aggregates executed test counts from the JUnit and cargo artefacts into `counts.json`, uploads it, and runs `tests/test_docs_counts.py` against it. |
 | `ci-ok` | Succeeds only when every job above succeeded. This is the required check. |
 

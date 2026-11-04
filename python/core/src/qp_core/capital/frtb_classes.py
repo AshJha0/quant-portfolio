@@ -65,6 +65,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import InputError
+from ..model import model
 from . import frtb_tables as T
 from .frtb_sbm import SCENARIOS, across_buckets, scenario_corr, tenor_rho, vega_rw, within_bucket
 
@@ -111,6 +112,7 @@ def _scen(m: np.ndarray, sc: str) -> np.ndarray:
     return out
 
 
+@model(id="CORE-FRTB-SBM")
 def aggregate(buckets: dict[int, BucketInput], gamma: Callable[[int, int], float]) -> dict[str, float]:
     """Charge per MAR21.6 scenario plus ``charge`` = their max."""
     names = sorted(buckets)
