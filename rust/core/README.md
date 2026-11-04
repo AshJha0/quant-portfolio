@@ -27,12 +27,14 @@ differential test passes unchanged.
 | `stats` | Special functions and sample moments for both VaR engines (one copy since Round 8; each engine's `stats.rs` is a wrapper) | both VaR engines |
 | `path_rng` | Per-path and per-resample Philox streams with AS 241 normals (`PathRng`, batched `philox_uniforms`, `philox_indices`); same words as `qp/path_rng.hpp` | both VaR engines |
 | `resample` | `RankedLosses`: bootstrap quantiles by counting draws of the largest losses, same bits as buffer-and-select | FX VaR |
-| `risk` | Quote-space risk through the bootstrap Jacobian, par DV01, quote gamma, vol grids, P&L explain; twin of `qp_core.risk` | parity tests |
+| `risk` | Quote-space risk through the bootstrap Jacobian, par DV01, quote gamma, vol grids, P&L explain, smile delta and gamma, premium-adjusted delta, reporting conversion; twin of `qp_core.risk` | parity tests |
 | `crr` | The one Cox-Ross-Rubinstein lattice (`crr_lattice`, `CrrWorkspace`, `CrrError`) | both options engines |
 | `holidays` | Rule-based settlement calendars, FX spot dates, spot-date forwards and NDF values | FX, rates |
 | `exotics` | Closed-form exotic pricers, the twin of `qp_core.exotics` | parity tests |
 | `rates_vol` | SABR implied vol and the Hull-White trinomial Bermudan, twin of `qp_core.vol.sabr` | parity tests |
 | `xva` | SA-CCR (BCBS 279 / CRE52), Hull-White bond and swaption closed forms, CVA / DVA / FVA / effective-EPE sums; parity with `qp_core.xva` and `qp/xva.hpp` | parity tests |
+| `frtb` | FRTB SBM scenario aggregation, curvature charge and `net_cvr`; twin of `qp_core.capital` | parity tests |
+| `collateral` | CSA margin balance, MPOR lag and pathwise collateralised exposure; twin of `qp_core.xva.collateral` | parity tests |
 | `credit_index` | ISDA CDS Standard Model legs under the CDX and iTraxx indices | parity tests |
 | `bond_futures` | CME conversion factor, implied repo, net basis, basic delivery option | parity tests |
 

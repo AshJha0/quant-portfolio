@@ -174,7 +174,8 @@ def curvature_charge(
 class Cvr:
     """Net CVR of one curvature risk factor. ``bucket`` is an int bucket
     (CSR, equity, commodity) or a currency/pair string (GIRR, FX); ``name``
-    the issuer/commodity; ``location`` the commodity delivery location;
+    the issuer/commodity; ``location`` is kept for the record and is not a
+    risk factor (MAR21.13(3): one curve per commodity);
     ``fx_scalar`` divides an FX factor's CVR by 1.5 (21.98)."""
 
     bucket: int | str
@@ -242,12 +243,12 @@ def eq_curvature(rows: Sequence[Cvr]) -> dict[str, float]:
 
 
 def com_curvature(rows: Sequence[Cvr]) -> dict[str, float]:
-    """Commodity: one factor per (commodity, location) curve;
-    rho = (rho_cty rho_basis)^2 (the tenor term is 1 for a parallel shift)."""
-    b = _int_buckets(rows, T.COM_RW, "commodity", lambda r: (r.name, r.location))
+    """Commodity: one factor per commodity (MAR21.13(3)), so rows that differ
+    only in location net; rho = rho_cty^2 (the tenor term is 1 for a parallel
+    shift, and there is no location dimension)."""
+    b = _int_buckets(rows, T.COM_RW, "commodity", lambda r: r.name)
 
     def rho(bk: int, k: object, l: object) -> float:
-        p, q = k, l
-        return (1.0 if p[0] == q[0] else T.COM_RHO[bk]) * (1.0 if p[1] == q[1] else T.COM_RHO_BASIS)  # type: ignore[index]
+        return 1.0 if k == l else T.COM_RHO[bk]
 
     return curvature_charge(b, rho, com_gamma)

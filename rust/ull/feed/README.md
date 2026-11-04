@@ -58,15 +58,18 @@ none after). `cpp/ull/feed` already behaved this way.
 
 In sync and in order, a Binance message is decoded, arbitrated and applied
 with **zero heap allocations** (`tests/no_alloc.rs`, a counting global
-allocator, per thread). Coinbase messages still go through the generic JSON
-reader, which allocates; their book operations near the touch do not.
+allocator, per thread). Coinbase `level2` updates are read by
+`fast::coinbase_level2_into`, also counted at zero allocations on the live
+recordings; `tools/recorder` still replays them through the generic parser.
+Coinbase `full` messages go through the generic JSON reader, which allocates;
+their book operations near the touch do not.
 
 ## Tests
 
 `cargo test --release -p qp-ull-feed` from `rust/`: unit tests in each
 module, `tests/inject.rs` (drop, duplicate, reorder, burst on lines A/B,
 fuzzing, recorder replay) and `tests/no_alloc.rs` (zero allocations, fast
-versus generic decoder, a touch move out of the window going stale and
+versus generic decoders on generated, mutated and recorded messages, a touch move out of the window going stale and
 recovering, order-feed book operations). Live recordings are replayed by
 `tools/recorder/tests/test_replay_live.py`.
 

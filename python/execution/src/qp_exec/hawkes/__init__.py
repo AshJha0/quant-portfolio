@@ -43,6 +43,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from qp_core.model import model
 from scipy import optimize, stats
 
 FloatArray = NDArray[np.float64]
@@ -149,6 +150,7 @@ def loglik_univariate(t: FloatArray, horizon: float, mu: float, alpha: float, be
     return float(np.sum(np.log(lam)) - comp)
 
 
+@model(id="EXEC-HAWKES")
 def fit_univariate(t: FloatArray, horizon: float, x0: tuple[float, float, float] | None = None) -> UniFit:
     t = np.asarray(t, float)
     if x0 is None:
@@ -184,6 +186,7 @@ def _stderr(fn: Callable[[FloatArray], float], x: FloatArray) -> tuple[float, fl
     return (float(d[0]), float(d[1]), float(d[2]))
 
 
+@model(id="EXEC-HAWKES")
 def fit_multivariate(times: list[FloatArray], horizon: float, beta0: float = 1.0) -> MultiFit:
     """MLE of ``mu``, ``alpha`` and the shared ``beta`` (L-BFGS-B, box bounds)."""
     m = len(times)

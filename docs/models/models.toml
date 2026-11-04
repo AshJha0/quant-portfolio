@@ -1069,3 +1069,1199 @@ tests = [
   "python/core/tests/test_xva_collateral.py::test_perfect_csa_no_lag_is_zero",
 ]
 independent_checks = []
+
+[[model]]
+id = "CORE-XVA-ADJ"
+name = "CVA, DVA and FVA from exposure profiles"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Valuation adjustments on an exposure profile for the shared xVA stack."
+entrypoints = [
+  "python/core/src/qp_core/xva/adjustments.py::cva",
+  "python/core/src/qp_core/xva/adjustments.py::dva",
+  "python/core/src/qp_core/xva/adjustments.py::fva",
+  "python/core/src/qp_core/xva/adjustments.py::xva",
+]
+assumptions = [
+  "exposure independent of default (no wrong-way risk)",
+  "piecewise-flat hazard curves",
+]
+limitations = [
+  "no wrong-way risk",
+  "the Rust and C++ ports match a fixture Python generates, which catches port drift, not a wrong formula",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "flat-profile closed form",
+]
+tests = [
+  "python/core/tests/test_xva.py::test_cva_closed_form_flat",
+  "python/core/tests/test_xva.py::test_fva_and_total_sign",
+  "python/core/tests/test_xva.py::test_piecewise_hazard_survival",
+  "python/core/tests/test_xva_parity_fixture.py::test_fixture_matches_python",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-XVA-EXPOSURE"
+name = "Exposure profiles, PFE and EEPE"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "EE, PFE and EEPE from simulated values, and swap exposure paths."
+entrypoints = [
+  "python/core/src/qp_core/xva/exposure.py::profile",
+  "python/core/src/qp_core/xva/exposure.py::eepe",
+  "python/core/src/qp_core/xva/exposure.py::swap_exposure",
+]
+assumptions = [
+  "paths come from the Hull-White simulator",
+  "PFE is an order statistic of the simulated paths",
+]
+limitations = [
+  "swap values only on the simulation grid",
+  "the Rust and C++ ports match a fixture Python generates, which catches port drift, not a wrong formula",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "swaption-strip agreement within the cited tolerance",
+]
+tests = [
+  "python/core/tests/test_xva.py::test_profile_and_pfe_definition",
+  "python/core/tests/test_xva.py::test_eepe_non_decreasing_and_horizon",
+  "python/core/tests/test_xva.py::test_irs_cva_matches_swaption_strip",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-XVA-HW"
+name = "Hull-White simulator for exposure"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Curve-fitted short-rate paths and bond prices behind the exposure engine."
+entrypoints = [
+  "python/core/src/qp_core/xva/hull_white.py::HullWhite",
+]
+assumptions = [
+  "Gaussian short rate with constant mean reversion and volatility",
+]
+limitations = [
+  "one factor",
+  "the QuantLib Hull-White checks exercise fi_rates, a different implementation, so they are not cited here",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "curve repricing; Jamshidian against Monte Carlo",
+]
+tests = [
+  "python/core/tests/test_xva.py::test_zcb_reprices_curve_and_mc_martingale",
+  "python/core/tests/test_xva.py::test_jamshidian_matches_mc",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-CAP-SACCR"
+name = "SA-CCR exposure at default, all asset classes"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "Counterparty EAD under BCBS 279 for netting sets across asset classes."
+entrypoints = [
+  "python/core/src/qp_core/capital/saccr.py::ead",
+]
+assumptions = [
+  "BCBS 279 supervisory parameters, transcribed and checksum-tested",
+]
+limitations = [
+  "the FX add-on is not in Annex 4a, so it has own-property tests only",
+  "the published examples are checked to their printed rounding",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-05-04
+kpis = [
+  "BCBS 279 Annex 4a examples at published rounding",
+]
+tests = [
+  "python/core/tests/test_capital_saccr.py::test_supervisory_table_checksum",
+  "python/core/tests/test_capital_saccr.py::test_multiplier_limits",
+  "python/core/tests/test_capital_saccr.py::test_fx_addon_nets_within_pair",
+  "python/core/tests/test_capital_saccr.py::test_margined_capped_at_unmargined",
+]
+independent_checks = [
+  "python/core/tests/test_capital_saccr.py::test_example1_interest_rates",
+  "python/core/tests/test_capital_saccr.py::test_example2_credit",
+  "python/core/tests/test_capital_saccr.py::test_example3_commodity",
+  "python/core/tests/test_capital_saccr.py::test_example4_ir_plus_credit",
+  "python/core/tests/test_capital_saccr.py::test_example5_margined",
+]
+
+[[model]]
+id = "CORE-FRTB-SBM-GIRR-FX"
+name = "FRTB SBM delta and vega for GIRR and FX"
+owner = "maintainer"
+tier = 1
+kind = "risk"
+purpose = "Delta and vega capital for GIRR and FX across the three MAR21.6 correlation scenarios."
+entrypoints = [
+  "python/core/src/qp_core/capital/frtb_sbm.py::girr_delta",
+  "python/core/src/qp_core/capital/frtb_sbm.py::girr_vega",
+  "python/core/src/qp_core/capital/frtb_sbm.py::fx_delta",
+  "python/core/src/qp_core/capital/frtb_sbm.py::fx_vega",
+]
+assumptions = [
+  "BCBS d457 (2019) MAR21 parameters",
+]
+limitations = [
+  "the oracle was written in this repository from the Basel text, so a shared misreading of that text would pass",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-05-04
+kpis = [
+  "oracle agreement to 1e-10 relative on 250 seeded portfolios per measure",
+]
+tests = [
+  "python/core/tests/test_capital_frtb_sbm.py::test_footnote_examples",
+  "python/core/tests/test_capital_frtb_sbm.py::test_girr_delta_hand_fixture",
+  "python/core/tests/test_capital_frtb_sbm.py::test_fx_delta_hand_fixture",
+  "python/core/tests/test_capital_frtb_sbm.py::test_girr_vega_hand_fixture",
+]
+independent_checks = [
+  "tests/independent/frtb/test_frtb_sbm_independent.py::test_girr_delta",
+  "tests/independent/frtb/test_frtb_sbm_independent.py::test_girr_vega",
+  "tests/independent/frtb/test_frtb_sbm_independent.py::test_fx_delta",
+  "tests/independent/frtb/test_frtb_sbm_independent.py::test_fx_vega",
+]
+
+[[model]]
+id = "CORE-EXO-BARRIER"
+name = "Closed-form single and double barrier options"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Reiner-Rubinstein single barriers and Ikeda-Kunitomo double knock-outs."
+entrypoints = [
+  "python/core/src/qp_core/exotics/barriers.py::barrier_price",
+  "python/core/src/qp_core/exotics/barriers.py::double_knockout_price",
+]
+assumptions = [
+  "Black-Scholes dynamics with continuous monitoring",
+]
+limitations = [
+  "no smile",
+  "the 90/110 row of Haug table 4.15 could not be confirmed and is not used",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "Haug tables to 4 decimal places",
+]
+tests = [
+  "python/core/tests/test_exotics_barriers.py::test_in_out_parity_without_rebate",
+  "python/core/tests/test_exotics_barriers.py::test_barrier_mc_within_three_se",
+  "python/core/tests/test_exotics_barriers.py::test_double_knockout_series_has_converged_and_limits",
+]
+independent_checks = [
+  "python/core/tests/test_exotics_barriers.py::test_reiner_rubinstein_matches_haug_table_4_13",
+  "python/core/tests/test_exotics_barriers.py::test_ikeda_kunitomo_matches_haug_table_4_15",
+]
+
+[[model]]
+id = "CORE-EXO-TOUCH"
+name = "One-touch, no-touch and double no-touch"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Closed-form digital barrier prices."
+entrypoints = [
+  "python/core/src/qp_core/exotics/barriers.py::touch_price",
+  "python/core/src/qp_core/exotics/barriers.py::double_no_touch",
+]
+assumptions = [
+  "Black-Scholes dynamics with continuous monitoring",
+]
+limitations = [
+  "no smile",
+  "no published table cited",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "Monte Carlo within three standard errors",
+]
+tests = [
+  "python/core/tests/test_exotics_barriers.py::test_touch_parity",
+  "python/core/tests/test_exotics_barriers.py::test_touch_mc_within_three_se",
+  "python/core/tests/test_exotics_barriers.py::test_double_no_touch_mc_and_limits",
+  "python/core/tests/test_exotics_barriers.py::test_dnt_series_converged",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-EXO-BARRIER-MC"
+name = "Monte Carlo barrier pricers"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Simulation reference for the barrier closed forms."
+entrypoints = [
+  "python/core/src/qp_core/exotics/mc.py::barrier_mc",
+  "python/core/src/qp_core/exotics/mc.py::double_barrier_mc",
+]
+assumptions = [
+  "geometric Brownian motion on a time grid",
+]
+limitations = [
+  "statistical error; checked only against this repository's closed forms",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "closed form within three standard errors",
+]
+tests = [
+  "python/core/tests/test_exotics_barriers.py::test_barrier_mc_within_three_se",
+  "python/core/tests/test_exotics_barriers.py::test_double_knockout_mc_within_three_se",
+  "python/core/tests/test_exotics_barriers.py::test_narrow_corridor_double_knockout_mc",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-EXO-ASIAN"
+name = "Asian options"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Geometric closed form, Turnbull-Wakeman approximation and control-variate Monte Carlo."
+entrypoints = [
+  "python/core/src/qp_core/exotics/asian.py::geometric_asian_price",
+  "python/core/src/qp_core/exotics/asian.py::turnbull_wakeman_price",
+  "python/core/src/qp_core/exotics/asian.py::turnbull_wakeman_continuous",
+  "python/core/src/qp_core/exotics/asian.py::asian_mc",
+]
+assumptions = [
+  "lognormal spot",
+  "Turnbull-Wakeman matches two moments of the average",
+]
+limitations = [
+  "the arithmetic closed form is an approximation",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "Turnbull-Wakeman against control-variate Monte Carlo",
+]
+tests = [
+  "python/core/tests/test_exotics_other.py::test_geometric_closed_form_vs_plain_mc",
+  "python/core/tests/test_exotics_other.py::test_turnbull_wakeman_vs_control_variate_mc",
+  "python/core/tests/test_exotics_other.py::test_tw_discrete_tends_to_continuous",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-EXO-LSM"
+name = "American options by Longstaff-Schwartz and CRR"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "American exercise by regression Monte Carlo, with a CRR tree as the reference."
+entrypoints = [
+  "python/core/src/qp_core/exotics/lsm.py::crr_american",
+  "python/core/src/qp_core/exotics/lsm.py::lsm_american",
+]
+assumptions = [
+  "geometric Brownian motion",
+  "polynomial regression basis",
+]
+limitations = [
+  "LSM is a low-biased estimate of the exercise policy",
+  "the published check is one table cell with a tolerance of three standard errors plus 0.02",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "distance to Longstaff-Schwartz table 1",
+]
+tests = [
+  "python/core/tests/test_exotics_other.py::test_lsm_vs_crr_tree",
+  "python/core/tests/test_exotics_other.py::test_american_call_no_dividend_equals_european",
+]
+independent_checks = [
+  "python/core/tests/test_exotics_other.py::test_lsm_longstaff_schwartz_table_1",
+]
+
+[[model]]
+id = "CORE-EXO-LSV"
+name = "Local-stochastic volatility by particle calibration"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Leverage function fitted to a surface, then vanilla repricing under LSV."
+entrypoints = [
+  "python/core/src/qp_core/exotics/lsv.py::calibrate_lsv_particles",
+  "python/core/src/qp_core/exotics/lsv.py::lsv_price_vanillas",
+]
+assumptions = [
+  "Heston variance with a leverage function",
+  "an arbitrage-free input surface",
+]
+limitations = [
+  "no outside implementation to compare with",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "vanillas within 3 standard errors and 0.2 vol points",
+]
+tests = [
+  "python/core/tests/test_exotics_lsv.py::test_lsv_reprices_vanillas_within_3se_and_02_vol",
+  "python/core/tests/test_exotics_lsv.py::test_pure_local_vol_limit_xi_zero",
+  "python/core/tests/test_exotics_lsv.py::test_dupire_flat_surface_is_flat",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-EXO-TARF"
+name = "Target redemption forward"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Monte Carlo price of a TARF."
+entrypoints = [
+  "python/core/src/qp_core/exotics/tarf.py::tarf_mc",
+]
+assumptions = [
+  "lognormal spot, flat vol",
+]
+limitations = [
+  "settlement lag ignored",
+  "no smile, which matters for this product",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "forward-strip limit and orderings",
+]
+tests = [
+  "python/core/tests/test_exotics_other.py::test_tarf_unreachable_target_is_forward_strip",
+  "python/core/tests/test_exotics_other.py::test_tarf_orderings",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-EXO-VV"
+name = "Vanna-volga vanilla and barrier adjustment"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Market-practice FX smile adjustment from three pillars."
+entrypoints = [
+  "python/core/src/qp_core/exotics/vanna_volga.py::vv_weights",
+  "python/core/src/qp_core/exotics/vanna_volga.py::vanna_volga_vanilla",
+  "python/core/src/qp_core/exotics/vanna_volga.py::vanna_volga_barrier",
+]
+assumptions = [
+  "three pillar quotes describe the smile",
+]
+limitations = [
+  "a market heuristic, not an arbitrage-free model",
+  "the barrier survival weight is a convention",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "pillars repriced exactly; flat smile gives Black-Scholes",
+]
+tests = [
+  "python/core/tests/test_exotics_other.py::test_vv_reproduces_pillars_exactly",
+  "python/core/tests/test_exotics_other.py::test_vv_flat_smile_is_black_scholes",
+  "python/core/tests/test_exotics_other.py::test_vv_knock_in_out_parity_and_far_barrier",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-AAD-BS"
+name = "Adjoint Black-Scholes Greeks"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "All first-order Greeks from one reverse sweep."
+entrypoints = [
+  "python/core/src/qp_core/aad/black_scholes.py::bs_greeks_aad",
+  "python/core/src/qp_core/aad/black_scholes.py::bs_greeks_aad_on",
+]
+assumptions = [
+  "Black-Scholes with continuous carry",
+]
+limitations = [
+  "compared with this repository's closed form and bumps, not an outside library",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with closed-form Greeks to 1e-12",
+]
+tests = [
+  "python/core/tests/test_aad_python.py::test_bs_matches_analytic_greeks",
+  "python/core/tests/test_aad_python.py::test_bs_matches_bumps",
+  "python/core/tests/test_aad_tape_reuse.py::test_reused_tape_gives_identical_greeks",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-AAD-MC"
+name = "Adjoint Monte Carlo Greeks"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "Pathwise adjoint Greeks of a simulated option price."
+entrypoints = [
+  "python/core/src/qp_core/aad/monte_carlo.py::mc_greeks_aad",
+]
+assumptions = [
+  "geometric Brownian motion",
+  "a payoff differentiable almost everywhere",
+]
+limitations = [
+  "pathwise Greeks do not apply to discontinuous payoffs",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "bumps on the same normals",
+]
+tests = [
+  "python/core/tests/test_aad_python.py::test_mc_pathwise_matches_bumps_same_normals",
+  "python/core/tests/test_aad_python.py::test_mc_european_converges_to_black_scholes",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-AAD-SWAP"
+name = "Adjoint swap curve Greeks"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "Swap risk to curve pillars and, through the Jacobian, to market quotes."
+entrypoints = [
+  "python/core/src/qp_core/aad/swap.py::pillar_greeks",
+  "python/core/src/qp_core/aad/swap.py::quote_greeks",
+]
+assumptions = [
+  "one quote per pillar, so the Jacobian is square",
+]
+limitations = [
+  "the rebootstrap check needs fi_rates importable",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "bumped pillars and rebuilt curves to 1e-6",
+]
+tests = [
+  "python/core/tests/test_aad_python.py::test_swap_pillar_greeks_match_bumps",
+  "python/core/tests/test_aad_python.py::test_swap_quote_greeks_match_rebootstrap",
+  "python/core/tests/test_aad_python.py::test_swap_pv_float_and_tape_agree",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-VOL-SABR"
+name = "SABR implied volatility and calibration (shared)"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Shared Hagan and Obloj expansions, with calibration to a smile."
+entrypoints = [
+  "python/core/src/qp_core/vol/sabr.py::sabr_vol",
+  "python/core/src/qp_core/vol/sabr.py::sabr_calibrate",
+]
+assumptions = [
+  "SABR dynamics, short-expiry asymptotic expansion",
+]
+limitations = [
+  "QuantLib checks the hagan variant only; the default obloj variant is checked against stored values and the ATM formula",
+  "negative densities at low strikes for long expiries",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with QuantLib to 1e-12 relative",
+]
+tests = [
+  "python/core/tests/test_vol_sabr.py::test_docstring_worked_example",
+  "python/core/tests/test_vol_sabr.py::test_atm_matches_hagan_atm_formula",
+  "python/core/tests/test_vol_sabr.py::test_calibration_recovers_parameters",
+]
+independent_checks = [
+  "python/core/tests/test_vol_sabr_quantlib.py::test_hagan_variant_matches_quantlib",
+  "python/core/tests/test_vol_sabr_quantlib.py::test_shifted_matches_quantlib_shifted",
+]
+
+[[model]]
+id = "CORE-VOL-SABR-PDE"
+name = "Arbitrage-free SABR density PDE"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Finite-difference SABR density that stays non-negative where the expansion fails."
+entrypoints = [
+  "python/core/src/qp_core/vol/sabr_pde.py::sabr_pde",
+]
+assumptions = [
+  "SABR collapsed to one dimension",
+]
+limitations = [
+  "no outside implementation to compare with",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "mass and forward conserved; grid convergence",
+]
+tests = [
+  "python/core/tests/test_vol_sabr_pde.py::test_mass_and_forward_conserved",
+  "python/core/tests/test_vol_sabr_pde.py::test_short_expiry_matches_hagan_expansion",
+  "python/core/tests/test_vol_sabr_pde.py::test_grid_convergence",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-VOL-ESSVI"
+name = "eSSVI and raw SVI slice fits"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Per-slice smile fits with arbitrage checks."
+entrypoints = [
+  "python/core/src/qp_core/vol/essvi.py::fit_essvi_slices",
+  "python/core/src/qp_core/vol/essvi.py::fit_svi_slices",
+]
+assumptions = [
+  "SVI family describes each slice",
+]
+limitations = [
+  "the eSSVI shape limits the fit on USDJPY",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "fit error in vol points; density factor",
+]
+tests = [
+  "python/core/tests/test_vol_essvi.py::test_svi_per_slice_closes_f10_within_01_vol",
+  "python/core/tests/test_vol_essvi.py::test_essvi_by_slice_improves_f10_but_shape_limits_usdjpy",
+  "python/core/tests/test_vol_essvi.py::test_svi_density_factor_flags_arbitrage",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-VOL-HESTON-CF"
+name = "Heston characteristic function (shared)"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "The characteristic function behind the equity and FX Heston pricers."
+entrypoints = [
+  "python/core/src/qp_core/vol/heston.py::heston_cf",
+]
+assumptions = [
+  "Heston variance dynamics",
+]
+limitations = [
+  "the QuantLib check needs Gil-Pelaez inversion in the test; the function itself returns no price",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with QuantLib AnalyticHestonEngine",
+]
+tests = [
+  "python/core/tests/test_vol_heston.py::test_martingale_and_normalisation",
+  "python/core/tests/test_vol_heston.py::test_equals_old_equity_copy_bit_for_bit",
+]
+independent_checks = [
+  "python/core/tests/test_vol_heston.py::test_gil_pelaez_on_shared_cf_matches_quantlib",
+]
+
+[[model]]
+id = "CORE-CR-ISDA"
+name = "ISDA standard CDS model (shared)"
+owner = "maintainer"
+tier = 1
+kind = "price"
+purpose = "CDS legs, hazard bootstrap and quote-to-upfront conversion for the index stack."
+entrypoints = [
+  "python/core/src/qp_core/credit_index/isda.py::cds_legs",
+  "python/core/src/qp_core/credit_index/isda.py::bootstrap_hazard",
+  "python/core/src/qp_core/credit_index/isda.py::upfront_from_quoted_spread",
+  "python/core/src/qp_core/credit_index/isda.py::quoted_spread_from_upfront",
+]
+assumptions = [
+  "piecewise-constant hazard; ISDA standard model conventions",
+]
+limitations = [
+  "recovery is an input, not estimated",
+  "the QuantLib test checks the frozen discount curve; the prices are checked against Markit's values",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-05-04
+kpis = [
+  "Markit upfronts to 1e-3 per 1e7 notional",
+]
+tests = [
+  "python/core/tests/test_credit_index.py::test_bootstrap_reprices_par_spreads",
+  "python/core/tests/test_credit_index.py::test_spread_upfront_round_trip",
+  "python/core/tests/test_credit_index.py::test_without_half_day_bias_the_markit_values_are_missed",
+]
+independent_checks = [
+  "python/core/tests/test_credit_index.py::test_markit_published_upfronts",
+  "python/core/tests/test_credit_index.py::test_frozen_curve_matches_quantlib",
+]
+
+[[model]]
+id = "CORE-CR-INDEX"
+name = "CDS index intrinsic value and basis"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Index intrinsic from constituents, the quoted basis and the curve adjustment."
+entrypoints = [
+  "python/core/src/qp_core/credit_index/index.py::intrinsic",
+  "python/core/src/qp_core/credit_index/index.py::index_basis",
+  "python/core/src/qp_core/credit_index/index.py::adjust_to_index",
+]
+assumptions = [
+  "one flat curve at the standard recovery for the quote",
+]
+limitations = [
+  "no outside index data",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "homogeneous intrinsic equals the index",
+]
+tests = [
+  "python/core/tests/test_credit_index.py::test_homogeneous_intrinsic_equals_index",
+  "python/core/tests/test_credit_index.py::test_heterogeneous_basis_and_adjustment",
+  "python/core/tests/test_credit_index.py::test_factor_and_defaults",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-RISK-JACOBIAN"
+name = "Node and quote risk through a Jacobian"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "Moves risk between curve nodes and market quotes; cross gamma by differences."
+entrypoints = [
+  "python/core/src/qp_core/risk/jacobian.py::node_to_quote_risk",
+  "python/core/src/qp_core/risk/jacobian.py::quote_to_node_risk",
+  "python/core/src/qp_core/risk/jacobian.py::cross_gamma",
+]
+assumptions = [
+  "a square, invertible Jacobian",
+  "local linearity",
+]
+limitations = [
+  "finite-difference error depends on the step",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "reparametrised gradient agreement",
+]
+tests = [
+  "python/core/tests/test_risk_core.py::test_node_to_quote_worked_example",
+  "python/core/tests/test_risk_core.py::test_node_to_quote_matches_reparametrised_gradient",
+  "python/core/tests/test_risk_core.py::test_cross_gamma_of_quadratic_is_exact_and_symmetric",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-RISK-VEGA-GRID"
+name = "Bucketed vega grid"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "Splits vega across expiry and strike buckets."
+entrypoints = [
+  "python/core/src/qp_core/risk/vega_grid.py::vega_grid",
+]
+assumptions = [
+  "linear bucket weights",
+]
+limitations = [
+  "bucket boundaries are a convention",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "buckets sum to parallel vega",
+]
+tests = [
+  "python/core/tests/test_risk_core.py::test_vega_grid_splits_between_expiry_buckets",
+  "python/core/tests/test_risk_core.py::test_vega_grid_sums_to_parallel_vega_2d_and_3d",
+  "python/core/tests/test_risk_core.py::test_grid_weights_partition_of_unity_and_validation",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-RISK-SMILE"
+name = "Smile dynamics and smile-aware Greeks"
+owner = "maintainer"
+tier = 2
+kind = "sensitivity"
+purpose = "Delta and gamma under sticky-strike, sticky-delta and sticky-moneyness rules."
+entrypoints = [
+  "python/core/src/qp_core/risk/smile_dynamics.py::smile_price",
+  "python/core/src/qp_core/risk/smile_dynamics.py::smile_delta",
+  "python/core/src/qp_core/risk/smile_dynamics.py::smile_gamma",
+  "python/core/src/qp_core/risk/smile_dynamics.py::premium_adjusted_delta",
+  "python/core/src/qp_core/risk/smile_dynamics.py::rank_smile_dynamics",
+]
+assumptions = [
+  "one of the named smile rules holds over the move",
+]
+limitations = [
+  "the rules are conventions, not a dynamic model",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with differences of the shifted surface",
+]
+tests = [
+  "python/core/tests/test_risk_core.py::test_worked_example_numbers",
+  "python/core/tests/test_risk_core.py::test_delta_matches_fd_of_surface_shifted_the_matching_way",
+  "python/core/tests/test_risk_core.py::test_premium_adjusted_delta_closed_form",
+]
+independent_checks = []
+
+[[model]]
+id = "CORE-RISK-PNL"
+name = "P&L explain"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Attributes P&L to Greeks and picks the smile rule that fits a realised path."
+entrypoints = [
+  "python/core/src/qp_core/risk/pnl_explain.py::explain",
+  "python/core/src/qp_core/risk/pnl_explain.py::taylor_attribution",
+]
+assumptions = [
+  "a second-order Taylor expansion over the period",
+]
+limitations = [
+  "large moves land in the unexplained term",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "attribution sums to the quadratic form",
+]
+tests = [
+  "python/core/tests/test_risk_core.py::test_explain_worked_example",
+  "python/core/tests/test_risk_core.py::test_taylor_attribution_sums_to_quadratic_form",
+  "python/core/tests/test_risk_core.py::test_explain_identifies_the_dynamic_of_a_realised_path",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-IMPACT-FIT"
+name = "Impact exponent estimate"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Fits the power of price impact against order-flow imbalance, with a bootstrap interval."
+entrypoints = [
+  "python/execution/src/qp_exec/lob/impact.py::fit_impact_exponent",
+]
+assumptions = [
+  "a power law between binned imbalance and return",
+]
+limitations = [
+  "tested on synthetic flow; no outside estimate",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "exponent recovered inside its interval",
+]
+tests = [
+  "python/execution/tests/test_flow_fills_impact.py::test_impact_exponent_recovered_with_ci",
+  "python/execution/tests/test_flow_fills_impact.py::test_window_imbalance_shapes",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-IMPACT-TRANSIENT"
+name = "Transient impact optimal schedules"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Expected cost and the optimal schedule under a decay kernel."
+entrypoints = [
+  "python/execution/src/qp_exec/schedules/transient.py::expected_cost",
+  "python/execution/src/qp_exec/schedules/transient.py::optimal_schedule",
+]
+assumptions = [
+  "linear propagator with a known kernel",
+]
+limitations = [
+  "a non-convex kernel gives a sign-alternating optimum, so kernels should pass the Gatheral condition",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "Obizhaeva-Wang structure of the optimum",
+]
+tests = [
+  "python/execution/tests/test_schedules.py::test_obizhaeva_wang_structure_and_cost",
+  "python/execution/tests/test_schedules.py::test_power_law_kernel_optimum_is_valid_and_cheaper",
+  "python/execution/tests/test_schedules.py::test_non_convex_kernel_gives_sign_alternating_optimum",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-MM-AS"
+name = "Avellaneda-Stoikov quotes"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Reservation price and spread for an inventory-averse market maker."
+entrypoints = [
+  "python/execution/src/qp_exec/mm/quotes.py::avellaneda_stoikov",
+]
+assumptions = [
+  "Brownian mid, exponential fill intensity",
+]
+limitations = [
+  "the paper-parameter test is worked by hand, not read from a printed table",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "spread at the paper's parameters",
+]
+tests = [
+  "python/execution/tests/test_mm.py::test_as_paper_numbers",
+  "python/execution/tests/test_mm.py::test_as_limits",
+  "python/execution/tests/test_mm.py::test_as_inventory_skew_and_bound",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-MM-GLFT"
+name = "Gueant-Lehalle-Fernandez-Tapia quotes"
+owner = "maintainer"
+tier = 2
+kind = "price"
+purpose = "Quotes under an inventory bound: exact, stationary and asymptotic forms."
+entrypoints = [
+  "python/execution/src/qp_exec/mm/quotes.py::GLFT",
+  "python/execution/src/qp_exec/mm/quotes.py::glft_asymptotic",
+]
+assumptions = [
+  "Brownian mid, exponential fill intensity, bounded inventory",
+]
+limitations = [
+  "scipy's matrix exponential checks the solver, not the model, so it is not counted as independent",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "matrix exponential agreement to 1e-10",
+]
+tests = [
+  "python/execution/tests/test_mm.py::test_glft_matches_matrix_exponential_and_ground_state",
+  "python/execution/tests/test_mm.py::test_glft_asymptotic_close_to_exact_stationary",
+  "python/execution/tests/test_mm.py::test_glft_small_gamma_matches_as",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-MM-TOXICITY"
+name = "Markout toxicity and VPIN"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Flow toxicity signals that widen quotes."
+entrypoints = [
+  "python/execution/src/qp_exec/mm/toxicity.py::MarkoutToxicity",
+  "python/execution/src/qp_exec/mm/toxicity.py::VPIN",
+]
+assumptions = [
+  "the aggressor side is known",
+]
+limitations = [
+  "VPIN's predictive value is disputed (Andersen and Bondarenko, 2014)",
+  "evidence is from the repository's simulator",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "hand fixtures; widening reacts more to toxic flow",
+]
+tests = [
+  "python/execution/tests/test_mm_toxicity.py::test_markout_ewma_by_hand",
+  "python/execution/tests/test_mm_toxicity.py::test_vpin_buckets_by_hand",
+  "python/execution/tests/test_mm_toxicity.py::test_vpin_widens_only_under_toxic_flow_and_pays",
+]
+independent_checks = []
+
+[[model]]
+id = "EXEC-SOR-ALLOC"
+name = "Cont-Kukanov order allocation"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Splits an order between market and limit orders across venues to minimise expected cost."
+entrypoints = [
+  "python/execution/src/qp_exec/sor/allocation.py::expected_cost",
+  "python/execution/src/qp_exec/sor/allocation.py::solve_allocation",
+  "python/execution/src/qp_exec/sor/allocation.py::single_venue_optimum",
+  "python/execution/src/qp_exec/sor/allocation.py::deterministic_optimum",
+]
+assumptions = [
+  "sampled venue flow stands for the fill distribution",
+]
+limitations = [
+  "the cvxpy tests skip where cvxpy is absent (the qp-exec dev extra installs it)",
+  "convex venues only; a non-convex venue is refused",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "cost agreement with cvxpy (Clarabel) to 1e-6",
+]
+tests = [
+  "python/execution/src/qp_exec/sor/tests/test_lit.py::test_single_venue_matches_quantile_rule",
+  "python/execution/src/qp_exec/sor/tests/test_lit.py::test_deterministic_flow_is_greedy",
+  "python/execution/src/qp_exec/sor/tests/test_lit.py::test_lp_cost_equals_direct_evaluation",
+]
+independent_checks = [
+  "python/execution/src/qp_exec/sor/tests/test_lit.py::test_matches_cvxpy",
+  "python/execution/src/qp_exec/sor/tests/test_dark.py::test_live_lit_dark_split_matches_cvxpy",
+]
+
+[[model]]
+id = "EXEC-HAWKES"
+name = "Hawkes process fits"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Exponential-kernel Hawkes maximum likelihood for order-arrival clustering."
+entrypoints = [
+  "python/execution/src/qp_exec/hawkes/__init__.py::fit_univariate",
+  "python/execution/src/qp_exec/hawkes/__init__.py::fit_multivariate",
+]
+assumptions = [
+  "exponential kernel, stationary (branching ratio below one)",
+]
+limitations = [
+  "one shared decay in the multivariate fit",
+  "no outside estimator compared",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "parameters within 3 standard errors; time-rescaling test",
+]
+tests = [
+  "python/execution/tests/test_hawkes.py::test_loglik_matches_brute_force",
+  "python/execution/tests/test_hawkes.py::test_univariate_mle_recovers_parameters_within_3_se",
+  "python/execution/tests/test_hawkes.py::test_time_rescaling_accepts_true_model_rejects_poisson",
+  "python/execution/tests/test_hawkes.py::test_multivariate_mle_recovers_cross_excitation",
+]
+independent_checks = []
+
+[[model]]
+id = "BT-FILL-QUEUE"
+name = "Queue-aware fill model"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Estimates when a simulated resting order would fill, from book and trade events."
+entrypoints = [
+  "python/backtest/src/qp_bt/fills/queue.py::fill_marketable",
+  "python/backtest/src/qp_bt/fills/queue.py::prob_ahead_power",
+  "python/backtest/src/qp_bt/fills/queue.py::QueueAwareFillModel",
+]
+assumptions = [
+  "cancels are spread through the queue by the chosen probability",
+]
+limitations = [
+  "the simulated order never removes liquidity from the real book",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with a FIFO book under the matching cancel rule",
+]
+tests = [
+  "python/backtest/tests/test_queue_fills.py::test_worked_example_from_docstring",
+  "python/backtest/tests/test_queue_fills.py::test_matches_fifo_when_cancels_behind",
+  "python/backtest/tests/test_queue_fills.py::test_matches_fifo_when_cancels_in_front",
+  "python/backtest/tests/test_queue_fills.py::test_mutation_wrong_cancel_assumption_is_caught_w25",
+]
+independent_checks = []
+
+[[model]]
+id = "BT-FILL-NEXTBAR"
+name = "Next-bar fill model"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Bar-level fills with a signal-to-fill lag and optional partial fills."
+entrypoints = [
+  "python/backtest/src/qp_bt/fills/nextbar.py::NextBarFill",
+]
+assumptions = [
+  "the fill price is taken from a later bar than the decision",
+]
+limitations = [
+  "no book, so no queue or spread effects",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "no use of the decision close; fast and event engines agree",
+]
+tests = [
+  "python/backtest/tests/test_event_engine.py::test_next_bar_fill_never_uses_the_decision_close",
+  "python/backtest/tests/test_event_engine.py::test_lag_moves_the_fill_and_drops_orders_past_the_end",
+  "python/backtest/tests/test_event_engine.py::test_partial_fills_respect_participation_and_finish_later",
+]
+independent_checks = []
+
+[[model]]
+id = "BT-COST"
+name = "Backtest cost models"
+owner = "maintainer"
+tier = 2
+kind = "forecast"
+purpose = "Linear, half-spread and square-root impact costs, each with a named source."
+entrypoints = [
+  "python/backtest/src/qp_bt/costs.py::LinearCost",
+  "python/backtest/src/qp_bt/costs.py::HalfSpreadCost",
+  "python/backtest/src/qp_bt/costs.py::SqrtImpactCost",
+]
+assumptions = [
+  "inputs are known at the decision close",
+  "square-root coefficient in the published 0.5 to 1 range",
+]
+limitations = [
+  "a non-positive ADV is treated as infinite depth, so impact is zero",
+  "SqrtImpactCost is exercised through engine equality, not a hand value",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "hand ledger fixtures",
+]
+tests = [
+  "python/backtest/tests/test_hand_fixtures.py::test_three_asset_ten_day_fixture_matches_exact_oracle",
+  "python/backtest/tests/test_event_engine.py::test_half_spread_cost_per_asset_and_per_bar",
+  "python/backtest/tests/test_fast_equals_event.py::test_fast_equals_event",
+]
+independent_checks = []
+
+[[model]]
+id = "BT-COV-LW"
+name = "Ledoit-Wolf covariance shrinkage"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Well-conditioned covariance for portfolio construction."
+entrypoints = [
+  "python/backtest/src/qp_bt/portfolio/covariance.py::ledoit_wolf",
+]
+assumptions = [
+  "scaled-identity target; i.i.d. rows",
+]
+limitations = [
+  "the scikit-learn test skips where scikit-learn is absent",
+]
+validation_status = "independently-checked"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "agreement with scikit-learn to 1e-12",
+]
+tests = [
+  "python/backtest/tests/test_portfolio_layer.py::test_ledoit_wolf_intensity_in_unit_interval_and_pd",
+]
+independent_checks = [
+  "python/backtest/tests/test_portfolio_layer.py::test_ledoit_wolf_matches_sklearn",
+]
+
+[[model]]
+id = "BT-COV-PCA"
+name = "Sample and PCA covariance"
+owner = "maintainer"
+tier = 2
+kind = "risk"
+purpose = "Plain and factor-truncated covariance estimates."
+entrypoints = [
+  "python/backtest/src/qp_bt/portfolio/covariance.py::sample_cov",
+  "python/backtest/src/qp_bt/portfolio/covariance.py::pca_cov",
+]
+assumptions = [
+  "k factors capture the common variation; the diagonal is kept",
+]
+limitations = [
+  "noisy when assets approach observations",
+]
+validation_status = "self-tested"
+validated_on = 2026-11-04
+next_review = 2027-11-04
+kpis = [
+  "full-rank PCA recovers the sample covariance",
+]
+tests = [
+  "python/backtest/tests/test_portfolio_layer.py::test_pca_full_rank_recovers_sample_and_keeps_diagonal",
+]
+independent_checks = []

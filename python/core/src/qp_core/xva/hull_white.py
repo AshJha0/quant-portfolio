@@ -53,6 +53,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..errors import ConvergenceError, InputError
 from ..market import DiscountCurve
 from ..normal import norm_cdf
@@ -70,6 +72,7 @@ class HullWhitePaths:
     disc: np.ndarray
 
 
+@model(id="CORE-XVA-HW")
 class HullWhite:
     """Hull-White one-factor model fitted to ``curve`` with mean reversion
     ``a`` > 0 and volatility ``sigma`` > 0."""

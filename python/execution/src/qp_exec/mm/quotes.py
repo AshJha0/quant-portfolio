@@ -71,6 +71,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from qp_core.model import model
 from scipy.linalg import eigh_tridiagonal, expm
 
 
@@ -109,6 +110,7 @@ def _half_spread_floor(gamma: float, k: float) -> float:
     return math.log1p(gamma / k) / gamma
 
 
+@model(id="EXEC-MM-AS")
 def avellaneda_stoikov(mid: float, q: int, tau: float, p: ASParams) -> Quote:
     """Avellaneda-Stoikov (2008) quotes with ``tau = T - t`` time left."""
     if tau < 0:
@@ -149,6 +151,7 @@ class GLFTParams:
         return self.A * (1.0 + self.gamma / self.k) ** (-(1.0 + self.k / self.gamma))
 
 
+@model(id="EXEC-MM-GLFT")
 class GLFT:
     """Exact finite-horizon GLFT quotes plus the stationary and asymptotic forms.
 
@@ -199,6 +202,7 @@ class GLFT:
         return Quote(mid, r, bid, ask)
 
 
+@model(id="EXEC-MM-GLFT")
 def glft_asymptotic(mid: float, q: int, p: GLFTParams) -> Quote:
     """The closed-form asymptotic GLFT quotes (GLFT 2013, section 4)."""
     base = _half_spread_floor(p.gamma, p.k)

@@ -61,6 +61,7 @@ All keyless; nothing needs an account, a key or payment details.
 | `cboe:VIX` | CBOE VIX history | same US business day |
 | `coinbase:<PRODUCT>:1d` | Coinbase Exchange public candles | next UTC day |
 | `binance:<SYMBOL>:1d` | Binance public klines (`data-api.binance.vision`) | next UTC day |
+| `french:<DATASET>` | Kenneth R. French Data Library zip files | 45 US business days after month end |
 
 The sources and the evidence for each rule are in the docstrings of
 `qp_data.release` and `qp_data.sources`. A series with no rule cannot be
@@ -72,15 +73,47 @@ issuer's calendar first.
 not recoverable from FRED; only revisions seen by this store's own downloads
 are kept. Release *times* inside the day are not modelled; a value released
 on day `r` counts as known on `r`, so trade it at `r + 1` (the t+1 fill
-rule). Not yet wired: Fed GSW curves, the Kenneth French library, OECD, BIS,
+rule). Not yet wired: Fed GSW curves, BIS,
 SEC EDGAR, Verdelhan's portfolios, and the crypto websockets (W25/W30).
+
+## Rows dated before 2000
+
+`cboe:VIX` starts in 1990, `french:*` in 1926, and several FRED series go back
+further than 2000 too, but the holiday calendars in `qp_core.holidays` start
+in 2000. We have no sourced holiday history before then and do not make one
+up. So release dates use one plain rule: **before 1 January 2000, every Monday
+to Friday counts as a publishing day.** From that date the real calendar
+applies, even when one count crosses the boundary (30 November 1999 plus 45
+days for `french:*` lands on 2 February 2000 because MLK day 2000 is skipped).
+
+The rule exists only inside `qp_data.release`. `qp_core.holidays` still raises
+for any year outside 2000-2099, so pricing and settlement cannot use it, and
+every release date that could be computed before this rule existed is
+unchanged.
+
+Its limits:
+
+- A holiday before 2000 is not skipped, so a release date can be too early:
+  the H.15 value for 3 July 1990 shows as released on 4 July. Expect one
+  publishing day on next-day rules and up to a week on the 45-day `french:*`
+  bound (the worst gaps on the 2000-2099 US calendar, used as a guide).
+- The rules describe today's publication schedules and have not been checked
+  against the issuers' older ones, so the "never earlier than the true date"
+  promise is not made before 2000. CPI's bound at the 20th is the one to
+  distrust first.
+- Much old history was published long after its date: the 1926 French factors
+  did not exist in 1926. A pre-2000 release date is a notional lag, not a
+  record of publication. Do not rely on it where a day of timing around a
+  holiday matters. `release.register_rule` replaces a rule if you have a
+  sourced schedule.
 
 ## Network and tests
 
 Network access is off unless the caller passes `allow_network=True` or sets
 `QP_DATA_ALLOW_NETWORK=1`. Downloads retry on timeouts, dropped connections,
 HTTP 429 and 5xx with waits of 0.5, 1 and 2 seconds; other HTTP errors fail
-at once. The tests run every parser on responses recorded on 2026-11-03 in
+at once. Each attempt is limited to 30 seconds; pass `timeout=` to `fetch` for
+a slow source (the ECB EXR history takes about 27 seconds). The tests run every parser on responses recorded on 2026-11-03 in
 `tests/fixtures/` and never open a socket. `tests/test_live.py` hits the
 real endpoints and runs only with `QP_DATA_LIVE_TESTS=1`.
 

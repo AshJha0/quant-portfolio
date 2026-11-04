@@ -61,6 +61,7 @@ from scipy.optimize import brentq
 from qp_core.holidays import Calendar
 from qp_core.holidays import add_business_days as _add_bd
 from qp_core.holidays import adjust_following as _adj
+from qp_core.model import model
 
 __all__ = [
     "CdsContract",
@@ -310,6 +311,7 @@ class CdsContract:
         }
 
 
+@model(id="CORE-CR-ISDA")
 def cds_legs(cds: CdsContract, hazard: HazardCurve, disc: FlatForwardCurve) -> dict[str, float]:
     """Protection PV, RPV01 and upfronts per unit notional.
 
@@ -336,6 +338,7 @@ def par_spread(cds: CdsContract, hazard: HazardCurve, disc: FlatForwardCurve) ->
     return legs["protection"] / (legs["rpv01"] - acc * legs["df_cash"])
 
 
+@model(id="CORE-CR-ISDA")
 def bootstrap_hazard(trade_date: date, maturities: Sequence[date], spreads: Sequence[float],
                      disc: FlatForwardCurve, recovery: float = 0.4,
                      calendar: Calendar = None) -> HazardCurve:
@@ -367,6 +370,7 @@ def bootstrap_hazard(trade_date: date, maturities: Sequence[date], spreads: Sequ
     return HazardCurve(tuple(times), tuple(hz))
 
 
+@model(id="CORE-CR-ISDA")
 def upfront_from_quoted_spread(trade_date: date, maturity: date, quoted_spread: float,
                                coupon: float, disc: FlatForwardCurve, recovery: float = 0.4,
                                calendar: Calendar = None) -> dict[str, float]:
@@ -375,6 +379,7 @@ def upfront_from_quoted_spread(trade_date: date, maturity: date, quoted_spread: 
     return cds_legs(CdsContract(trade_date, maturity, coupon, recovery, calendar), flat, disc)
 
 
+@model(id="CORE-CR-ISDA")
 def quoted_spread_from_upfront(trade_date: date, maturity: date, clean_upfront: float,
                                coupon: float, disc: FlatForwardCurve, recovery: float = 0.4,
                                calendar: Calendar = None) -> float:

@@ -5,7 +5,9 @@
 //! cross-language parity bound.
 
 use qp_core::risk::{
-    VolGrid, explain, node_to_quote_risk, par_dv01, quote_gamma, taylor_attribution, vega_grid,
+    Conversion, GAMMA_REL_STEP, Smile, SmileDynamics, VolGrid, explain, node_to_quote_risk,
+    par_dv01, premium_adjusted_delta, quote_gamma, rank_smile_dynamics, reporting_conversion,
+    smile_delta, smile_gamma, smile_price, taylor_attribution, tenor_weights, vega_grid,
 };
 
 fn floats(p: &[&str]) -> Vec<f64> {
@@ -26,6 +28,14 @@ fn close(got: &[f64], want: &[f64], what: &str) {
     }
 }
 
+/// [`close`] entry by entry: scalars and outputs of unrelated scale.
+fn close_each(got: &[f64], want: &[f64], what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}: length");
+    for (g, w) in got.iter().zip(want) {
+        close(&[*g], &[*w], what);
+    }
+}
+
 #[test]
 fn matches_python() {
     let text = include_str!("data/risk_parity.txt");
@@ -36,6 +46,7 @@ fn matches_python() {
         .collect();
     let mut i = 0;
     let (mut n_curve, mut n_grid, mut n_ta) = (0, 0, 0);
+    let (mut n_sd, mut n_rank, mut n_pa, mut n_rc, mut n_tw) = (0, 0, 0, 0, 0);
     while i < rows.len() {
         let r = &rows[i];
         match r[0] {
@@ -134,8 +145,95 @@ fn matches_python() {
                 n_ta += 1;
                 i = k + 4;
             }
+            "SM" => {
+                let p = floats(&r[1..]);
+                let (k0, a, b, c) = (p[4], p[5], p[6], p[7]);
+                let vol0 = move |k: f64| {
+                    let x = k - k0;
+                    a + b * x + c * x * x
+                };
+                let smile = Smile::new(p[0], p[1], p[2], p[3], vol0).unwrap();
+                i += 1;
+                while rows[i][0] == "SD" {
+                    let v = floats(&rows[i][1..]);
+                    let (k, s, call) = (v[0], v[1], v[2] == 1.0);
+                    let d = SmileDynamics::ALL[v[3] as usize];
+                    let got = [
+                        smile_price(&smile, k, s, call, d).unwrap(),
+                        smile_delta(&smile, k, s, call, d).unwrap(),
+                    ];
+                    close_each(&got, &v[4..6], "smile price and delta");
+                    // Gamma differences two deltas 2h apart, so it gets the
+                    // 1e-12 of those deltas, not 1e-12 of itself (see the
+                    // generator's docstring).
+                    let h = GAMMA_REL_STEP * s;
+                    close_each(
+                        &[
+                            smile_delta(&smile, k, s + h, call, d).unwrap(),
+                            smile_delta(&smile, k, s - h, call, d).unwrap(),
+                        ],
+                        &v[7..9],
+                        "bumped smile delta",
+                    );
+                    let gamma = smile_gamma(&smile, k, s, call, d, GAMMA_REL_STEP).unwrap();
+                    let bound = 1e-12 * v[7].abs().max(v[8].abs()) / h;
+                    assert!(
+                        (gamma - v[6]).abs() <= bound,
+                        "smile gamma: {gamma} vs {} (bound {bound})",
+                        v[6]
+                    );
+                    n_sd += 1;
+                    i += 1;
+                }
+                assert_eq!(rows[i][0], "RK");
+                let h = floats(&rows[i][1..]);
+                let (sp, pr, tt) = (
+                    floats(&rows[i + 1][1..]),
+                    floats(&rows[i + 2][1..]),
+                    floats(&rows[i + 3][1..]),
+                );
+                let got = rank_smile_dynamics(&sp, &pr, &tt, &smile, h[0], h[1] == 1.0).unwrap();
+                close_each(&got, &floats(&rows[i + 4][1..]), "rank");
+                n_rank += 1;
+                i += 5;
+            }
+            "PA" => {
+                let v = floats(&r[1..]);
+                let got = premium_adjusted_delta(v[0], v[1], v[2], v[3], v[4], v[5], v[6] == 1.0)
+                    .unwrap();
+                close_each(&[got], &v[7..8], "premium-adjusted delta");
+                n_pa += 1;
+                i += 1;
+            }
+            "RC" => {
+                let h = floats(&r[1..]);
+                let conv = if h[0] == 1.0 {
+                    Conversion::Spot
+                } else {
+                    Conversion::Scenario
+                };
+                let (v1, x1) = (floats(&rows[i + 1][1..]), floats(&rows[i + 2][1..]));
+                close(
+                    &reporting_conversion(h[1], &v1, h[2], &x1, conv).unwrap(),
+                    &floats(&rows[i + 3][1..]),
+                    "reporting P&L",
+                );
+                n_rc += 1;
+                i += 4;
+            }
+            "TB" => {
+                let b = floats(&r[1..]);
+                i += 1;
+                while i < rows.len() && rows[i][0] == "TW" {
+                    let v = floats(&rows[i][1..]);
+                    close(&tenor_weights(v[0], &b).unwrap(), &v[1..], "tenor weights");
+                    n_tw += 1;
+                    i += 1;
+                }
+            }
             other => panic!("unexpected tag {other}"),
         }
     }
     assert_eq!((n_curve, n_grid, n_ta), (1, 2, 3));
+    assert_eq!((n_sd, n_rank, n_pa, n_rc, n_tw), (96, 3, 6, 4, 8));
 }

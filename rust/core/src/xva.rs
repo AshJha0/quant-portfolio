@@ -183,7 +183,7 @@ impl HullWhite {
         })
     }
 
-    /// European swaption by Jamshidian; `p_pay[i]` = P(0, pay_times[i]).
+    /// European swaption by Jamshidian; `p_pay[i]` = `P(0, pay_times[i])`.
     #[allow(clippy::too_many_arguments)]
     pub fn swaption(
         &self,
@@ -259,7 +259,7 @@ impl HullWhite {
 // --------------------------------------------------------------------- xVA
 
 /// Survival to `t` under a piecewise-flat hazard (`hazards[i]` on
-/// (times[i-1], times[i]], the last extended flat).
+/// `(times[i-1], times[i]]`, the last extended flat).
 pub fn survival(times: &[f64], hazards: &[f64], t: f64) -> f64 {
     if t <= 0.0 {
         return 1.0;

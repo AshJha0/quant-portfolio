@@ -26,6 +26,23 @@ Release times inside the day are not modelled: an observation released at
 at the close of ``r`` must therefore fill at ``r + 1`` (the repository's t+1
 fill rule, ``qp_core.execution``).
 
+Before 2000
+-----------
+``qp_core.holidays`` starts in 2000 and refuses earlier years, and this module
+does not invent holiday history. For a day before 2000 the release arithmetic
+counts every Monday to Friday as a publishing day; from 1 January 2000 it uses
+the real calendar, even inside one walk that crosses the boundary. The
+fallback is private to this module: pricing and settlement still raise.
+
+Three limits follow. A holiday before 2000 is not skipped, so a release date
+can be earlier than the true one: by one publishing day on a next-day rule, by up to
+a week on the 45-day ``french:`` bound. The rules describe today's publication
+schedules and have not been checked against the issuers' older ones, so the
+"upper bound" promise above is not made for these rows. And much of the
+history was published long after its date (the French factors for 1926 did
+not exist in 1926). A pre-2000 release date is a notional lag, not a record
+of publication.
+
 Worked example
 --------------
 Monday 1 July 2024 for DGS10 (H.15, next US business day); the Friday 5 July
@@ -75,7 +92,7 @@ import datetime as dt
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from qp_core.holidays import add_business_days, adjust_following
+from qp_core.holidays import MIN_YEAR, is_business_day
 
 from .errors import UnknownReleaseRule
 
@@ -91,6 +108,39 @@ __all__ = [
     "release_date",
     "rule_for",
 ]
+
+
+_DAY = dt.timedelta(days=1)
+_CHECK_DAY = dt.date(MIN_YEAR, 1, 3)  # a Monday inside the calendar range
+
+
+def _open(day: dt.date, calendar: str) -> bool:
+    """Is ``day`` a publishing day? Before ``MIN_YEAR``, any weekday is.
+
+    The fallback is for release-date arithmetic only and is decided day by
+    day, so a walk that crosses into 2000 meets the real calendar from then
+    on. Past ``MAX_YEAR`` the calendar still raises.
+    """
+    if day.year >= MIN_YEAR:
+        return is_business_day(day, calendar)
+    is_business_day(_CHECK_DAY, calendar)  # an unknown calendar raises here too
+    return day.weekday() < 5
+
+
+def _roll(day: dt.date, calendar: str) -> dt.date:
+    """First publishing day on or after ``day``."""
+    while not _open(day, calendar):
+        day += _DAY
+    return day
+
+
+def _advance(day: dt.date, n: int, calendar: str) -> dt.date:
+    """Move ``n >= 0`` publishing days forward."""
+    while n > 0:
+        day += _DAY
+        if _open(day, calendar):
+            n -= 1
+    return day
 
 
 class ReleaseRule:
@@ -112,8 +162,8 @@ class BusinessDayLag(ReleaseRule):
 
     def __call__(self, obs: dt.date) -> dt.date:
         if self.n == 0:
-            return adjust_following(obs, self.calendar)
-        return add_business_days(obs, self.n, self.calendar)
+            return _roll(obs, self.calendar)
+        return _advance(obs, self.n, self.calendar)
 
 
 @dataclass(frozen=True)
@@ -139,7 +189,7 @@ class WeeklyRelease(ReleaseRule):
     def __call__(self, obs: dt.date) -> dt.date:
         week_end = obs + dt.timedelta(days=6 - obs.weekday())  # Sunday of the obs week
         day = week_end + dt.timedelta(days=1 + self.weekday)
-        return adjust_following(day, self.calendar)
+        return _roll(day, self.calendar)
 
 
 @dataclass(frozen=True)
@@ -160,7 +210,7 @@ class MonthlyBound(ReleaseRule):
             return self.overrides[first]
         m = first.month - 1 + self.months
         target = dt.date(first.year + m // 12, m % 12 + 1, self.day)
-        return adjust_following(target, self.calendar)
+        return _roll(target, self.calendar)
 
 
 @dataclass(frozen=True)
@@ -174,7 +224,7 @@ class MonthEndLag(ReleaseRule):
 
     def __call__(self, obs: dt.date) -> dt.date:
         nxt = (obs.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
-        return add_business_days(nxt - dt.timedelta(days=1), self.n, self.calendar)
+        return _advance(nxt - _DAY, self.n, self.calendar)
 
 
 _H15 = BusinessDayLag(1, "USD", "H.15: prior business day, published the next US business day")

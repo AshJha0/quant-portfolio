@@ -55,12 +55,15 @@ from __future__ import annotations
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["DETERMINISTIC_XI", "heston_cf"]
 
 #: Below this vol-of-vol the variance path is treated as deterministic.
 DETERMINISTIC_XI = 1e-12
 
 
+@model(id="CORE-VOL-HESTON-CF")
 def heston_cf(
     u: np.ndarray | complex | float,
     T: float,

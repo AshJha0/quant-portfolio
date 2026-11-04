@@ -42,6 +42,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..normal import norm_cdf as N
 
 __all__ = [
@@ -71,6 +73,7 @@ def _black(cp: str, F: float, X: float, v: float, df: float) -> float:
     return df * (X * N(-d2) - F * N(-d1))
 
 
+@model(id="CORE-EXO-ASIAN")
 def geometric_asian_price(
     cp: str, S: float, X: float, fixings: Sequence[float], T: float, r: float, b: float, sigma: float
 ) -> float:
@@ -83,6 +86,7 @@ def geometric_asian_price(
     return _black(cp, F, X, math.sqrt(var), math.exp(-r * T))
 
 
+@model(id="CORE-EXO-ASIAN")
 def turnbull_wakeman_price(
     cp: str, S: float, X: float, fixings: Sequence[float], T: float, r: float, b: float, sigma: float
 ) -> float:
@@ -96,6 +100,7 @@ def turnbull_wakeman_price(
     return _black(cp, m1, X, v, math.exp(-r * T))
 
 
+@model(id="CORE-EXO-ASIAN")
 def turnbull_wakeman_continuous(
     cp: str, S: float, X: float, T: float, r: float, b: float, sigma: float, tau: float = 0.0
 ) -> float:
@@ -122,6 +127,7 @@ def turnbull_wakeman_continuous(
     return _black(cp, S * m1, X, v, math.exp(-r * T))
 
 
+@model(id="CORE-EXO-ASIAN")
 def asian_mc(
     cp: str, S: float, X: float, fixings: Sequence[float], T: float, r: float, b: float, sigma: float,
     n_paths: int = 100_000, seed: int = 0, control_variate: bool = True,

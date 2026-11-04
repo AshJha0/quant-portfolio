@@ -20,6 +20,7 @@ intensity ``delta`` and the diagonal towards 2.5.
 from __future__ import annotations
 
 import numpy as np
+from qp_core.model import model
 
 __all__ = ["ledoit_wolf", "pca_cov", "sample_cov"]
 
@@ -33,11 +34,13 @@ def _panel(x: np.ndarray) -> np.ndarray:
     return a
 
 
+@model(id="BT-COV-PCA")
 def sample_cov(returns: np.ndarray) -> np.ndarray:
     """Unbiased sample covariance of a T x N return panel."""
     return np.atleast_2d(np.cov(_panel(returns), rowvar=False, ddof=1))
 
 
+@model(id="BT-COV-LW")
 def ledoit_wolf(returns: np.ndarray) -> tuple[np.ndarray, float]:
     """Ledoit-Wolf (2004) shrinkage to a scaled identity.
 
@@ -56,6 +59,7 @@ def ledoit_wolf(returns: np.ndarray) -> tuple[np.ndarray, float]:
     return delta * mu * np.eye(n) + (1 - delta) * s, delta
 
 
+@model(id="BT-COV-PCA")
 def pca_cov(returns: np.ndarray, k: int) -> np.ndarray:
     """k-factor PCA covariance: ``V_k L_k V_k' + diag(residual)``."""
     s = sample_cov(returns)

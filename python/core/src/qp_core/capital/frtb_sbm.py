@@ -64,6 +64,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from qp_core.model import model
+
 from ..errors import InputError
 
 __all__ = [
@@ -271,6 +273,7 @@ def _aggregate(buckets: dict[str, tuple[list[float], np.ndarray]], gamma: float)
     return res
 
 
+@model(id="CORE-FRTB-SBM-GIRR-FX")
 def girr_delta(sens: Sequence[GirrDelta], *, specified_relief: bool = True) -> dict[str, float]:
     """GIRR delta charge per scenario plus ``charge`` = max (MAR21.4-6, 21.42-50).
 
@@ -297,6 +300,7 @@ def girr_delta(sens: Sequence[GirrDelta], *, specified_relief: bool = True) -> d
     return _aggregate(buckets, 0.5)
 
 
+@model(id="CORE-FRTB-SBM-GIRR-FX")
 def girr_vega(sens: Sequence[GirrVega]) -> dict[str, float]:
     """GIRR vega charge per scenario (MAR21.92-95)."""
     net = _net(sens, lambda v: (v.currency, float(v.option_tenor), float(v.underlying_tenor)))  # type: ignore[attr-defined]
@@ -327,6 +331,7 @@ def _fx_rw(pair: str, relief: bool) -> float:
     return FX_RW / math.sqrt(2.0) if relief and spec else FX_RW
 
 
+@model(id="CORE-FRTB-SBM-GIRR-FX")
 def fx_delta(sens: Sequence[FxDelta], *, specified_relief: bool = True) -> dict[str, float]:
     """FX delta charge per scenario (MAR21.86-89). Each pair string is its own
     bucket, so quote every pair in one direction (the caller converts
@@ -340,6 +345,7 @@ def fx_delta(sens: Sequence[FxDelta], *, specified_relief: bool = True) -> dict[
     return _aggregate(buckets, 0.6)
 
 
+@model(id="CORE-FRTB-SBM-GIRR-FX")
 def fx_vega(sens: Sequence[FxVega]) -> dict[str, float]:
     """FX vega charge per scenario (MAR21.92-95)."""
     net = _net(sens, lambda v: (v.pair, float(v.option_tenor)))  # type: ignore[attr-defined]

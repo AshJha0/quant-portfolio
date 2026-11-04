@@ -116,8 +116,12 @@ L3 book (`cpp/ull/book/l3_book.hpp`) through `flatbook.hpp`:
 In sync and in order, a Binance frame is decoded, sequenced and applied
 with **zero heap allocations** (`tests/test_noalloc.cpp` replaces `operator
 new` and counts). The same frames through the generic `json::parse` path
-allocate on every frame. Coinbase frames still go through `json::parse`;
-their book operations do not allocate.
+allocate on every frame. Coinbase `level2` updates are read by
+`decode_level2` in the same header, also counted at zero allocations on the
+live recordings. The `CoinbaseLevel2` handler around it can still allocate:
+its duplicate filter stores one hash per frame and its map book adds a node
+per new level. Coinbase `full` frames still go through `json::parse`; their
+book operations do not allocate.
 
 ## Prices
 
@@ -138,7 +142,7 @@ through it.
 
 ## Tests
 
-`tests/test_feed.cpp`, 17 cases, and `tests/test_noalloc.cpp`, 2 cases:
+`tests/test_feed.cpp`, 17 cases, and `tests/test_noalloc.cpp`, 4 cases:
 
 - Fixture replay to the expected final book, on 2 Coinbase `full` sessions
   and 2 Binance sessions.
@@ -152,7 +156,9 @@ through it.
 - Flat books against the map books; the id interner against a hash map;
   the fast Binance decoder against the generic one; a touch move out of the
   window going stale and recovering.
-- Zero allocations on the Binance hot path, and in flat L3 book operations.
+- Zero allocations on the Binance hot path, in flat L3 book operations, and
+  in the Coinbase `level2` decoder. That decoder is also checked against the
+  generic path on generated frames, mutated bytes and the live recordings.
 
 The fixtures are **synthetic**. See `tests/fixtures/README.md`.
 
@@ -167,7 +173,8 @@ cmake -S cpp/ull/feed -B build/ull-feed && cmake --build build/ull-feed && ctest
 - Recorded days. The acceptance was re-scoped by the owner (2026-11-03) to 3
   recorded days each of Binance diff-depth and Coinbase `level2_batch`;
   `tools/recorder` holds the capture tool and the recordings so far.
-- A non-allocating Coinbase decoder; Coinbase frames still parse to a DOM.
+- A non-allocating Coinbase `full` decoder; those frames still parse to a
+  DOM, and only fixtures exist because the channel needs an account.
 
 ## Sources
 

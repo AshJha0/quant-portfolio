@@ -1,9 +1,12 @@
 //! Risk kernels: quote-to-node Jacobian algebra, par-rate DV01, quote gamma
 //! with the bootstrap-curvature term, vega bucketing on vol grids and the
-//! P&L-explain Taylor attribution (plan W14, Rust parity D1).
+//! P&L-explain Taylor attribution, smile-consistent Greeks and the
+//! reporting-currency conversion (plan W14, Rust parity D1).
 //!
-//! Rust port of `python/core/src/qp_core/risk/{jacobian,vega_grid,pnl_explain}.py`
-//! and of the algebra in `python/equity/04-fixed-income/src/fi_rates/risk/par.py`.
+//! Rust port of
+//! `python/core/src/qp_core/risk/{jacobian,vega_grid,pnl_explain,smile_dynamics}.py`,
+//! of the algebra in `python/equity/04-fixed-income/src/fi_rates/risk/par.py`
+//! and of the pure parts of `python/fx/03-var-es-engine/src/fx_var/reporting.py`.
 //! The C++ port is `cpp/core/include/qp/risk.hpp`. Plain idea, formal
 //! statement, worked examples and sources are in the Python docstrings; in
 //! short:
@@ -22,6 +25,13 @@
 //!   differences of a caller's PV.
 //! * P&L explain: per-factor `delta_i dx_i + 0.5 dx_i (S dx)_i` with
 //!   `S = (Gamma + Gamma^T) / 2`, which sums to the second-order Taylor term.
+//! * Smile dynamics: delta is `dV/dS|_sigma + vega d sigma/dS`, with
+//!   `d sigma/dS` set by the regime (sticky strike, moneyness or delta;
+//!   Derman 1999). [`rank_smile_dynamics`] asks which regime a realised path
+//!   supports. Premium-adjusted delta is `Delta_spot - V/S` (Clark 2011 ch. 3).
+//! * Reporting currency: [`reporting_conversion`] is the conversion only.
+//!   `fx_var.reporting.reporting_pnl` also revalues a `Book`, which is not a
+//!   pure kernel and stays in Python.
 //!
 //! Parity: `tests/risk_parity.rs` reproduces the Python values in
 //! `tests/data/risk_parity.txt` to 1e-12 (relative to the largest entry of
@@ -29,7 +39,8 @@
 //! in that file because a 1e-6 central difference amplifies last-bit `exp`
 //! differences far beyond 1e-12; the algebra on top of them is what is
 //! compared. [`fd_jacobian`] and [`cross_gamma`] are ported too and checked
-//! against analytic derivatives.
+//! against analytic derivatives. [`smile_gamma`] has the same trouble: it is
+//! checked to the 1e-12 of the two deltas it differences, not of itself.
 //!
 //! # Example
 //!
@@ -42,6 +53,7 @@
 //! ```
 
 use crate::Error;
+use crate::black_scholes::{ErfcNormal, carry_greeks};
 
 /// Largest 1-norm condition number accepted by [`node_to_quote_risk`].
 ///
@@ -550,6 +562,337 @@ pub fn explain(
     })
 }
 
+/// How the smile moves with spot (Derman 1999; Bergomi 2016 ch. 2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SmileDynamics {
+    /// `sigma(K; S) = vol0(K)`.
+    StickyStrike,
+    /// `sigma(K; S) = vol0(K S0 / S)`.
+    StickyMoneyness,
+    /// `sigma(K; S) = vol0(K F0 / F)`.
+    StickyDelta,
+}
+
+impl SmileDynamics {
+    /// The three regimes in the order [`rank_smile_dynamics`] reports them.
+    pub const ALL: [SmileDynamics; 3] = [
+        SmileDynamics::StickyStrike,
+        SmileDynamics::StickyMoneyness,
+        SmileDynamics::StickyDelta,
+    ];
+}
+
+/// Relative strike step of the `vol0'` central difference in
+/// [`Smile::dvol_dspot`] (the Python default).
+pub const DVOL_REL_STEP: f64 = 1e-5;
+/// Relative spot step of [`smile_gamma`] (the Python default).
+pub const GAMMA_REL_STEP: f64 = 1e-4;
+
+/// One expiry's smile observed at a reference market.
+#[derive(Clone, Copy, Debug)]
+pub struct Smile<F> {
+    spot0: f64,
+    expiry: f64,
+    r: f64,
+    q: f64,
+    vol_of_strike: F,
+}
+
+impl<F: Fn(f64) -> f64> Smile<F> {
+    /// `spot0` and `expiry` must be finite and positive, `r` and `q` finite;
+    /// `vol_of_strike` is `vol0(K)`.
+    pub fn new(spot0: f64, expiry: f64, r: f64, q: f64, vol_of_strike: F) -> Result<Self, Error> {
+        if !(spot0.is_finite() && spot0 > 0.0 && expiry.is_finite() && expiry > 0.0) {
+            return Err(Error::InvalidInput(format!(
+                "spot0 and expiry must be finite and > 0, got {spot0} and {expiry}"
+            )));
+        }
+        if !(r.is_finite() && q.is_finite()) {
+            return Err(Error::InvalidInput("r and q must be finite".into()));
+        }
+        Ok(Self {
+            spot0,
+            expiry,
+            r,
+            q,
+            vol_of_strike,
+        })
+    }
+
+    /// `F = S e^{(r-q)T}`.
+    pub fn forward(&self, spot: f64) -> f64 {
+        spot * ((self.r - self.q) * self.expiry).exp()
+    }
+
+    fn shifted_strike(&self, strike: f64, spot: f64, dynamics: SmileDynamics) -> f64 {
+        match dynamics {
+            SmileDynamics::StickyStrike => strike,
+            SmileDynamics::StickyMoneyness => strike * self.spot0 / spot,
+            SmileDynamics::StickyDelta => strike * self.forward(self.spot0) / self.forward(spot),
+        }
+    }
+
+    /// Implied vol of `strike` when spot is `spot`; refuses a vol that is
+    /// not finite and positive.
+    pub fn vol(&self, strike: f64, spot: f64, dynamics: SmileDynamics) -> Result<f64, Error> {
+        let v = (self.vol_of_strike)(self.shifted_strike(strike, spot, dynamics));
+        if !v.is_finite() || v <= 0.0 {
+            return Err(Error::InvalidInput(format!(
+                "smile returned a non-positive vol {v} at strike {strike}"
+            )));
+        }
+        Ok(v)
+    }
+
+    /// `d sigma / dS` under the dynamic: the chain rule, with `vol0'` by a
+    /// central difference of relative step `rel_step` in strike.
+    pub fn dvol_dspot(
+        &self,
+        strike: f64,
+        spot: f64,
+        dynamics: SmileDynamics,
+        rel_step: f64,
+    ) -> f64 {
+        if dynamics == SmileDynamics::StickyStrike {
+            return 0.0;
+        }
+        let k_eff = self.shifted_strike(strike, spot, dynamics);
+        let hk = rel_step * k_eff;
+        let slope =
+            ((self.vol_of_strike)(k_eff + hk) - (self.vol_of_strike)(k_eff - hk)) / (2.0 * hk);
+        // k_eff = strike * c / spot for both moneyness forms, so
+        // d k_eff / dS = -k_eff / S.
+        slope * (-k_eff / spot)
+    }
+}
+
+fn phi(is_call: bool) -> f64 {
+    if is_call { 1.0 } else { -1.0 }
+}
+
+fn check_positive(pairs: &[(f64, &str)]) -> Result<(), Error> {
+    for (v, name) in pairs {
+        if !v.is_finite() || *v <= 0.0 {
+            return Err(Error::InvalidInput(format!(
+                "{name} must be finite and > 0, got {v}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn finite(v: f64, name: &str) -> Result<f64, Error> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(Error::InvalidInput(format!(
+            "{name} is not finite (NaN policy: refuse)"
+        )))
+    }
+}
+
+/// Black-Scholes price at `spot` with the vol the dynamic implies.
+pub fn smile_price<F: Fn(f64) -> f64>(
+    smile: &Smile<F>,
+    strike: f64,
+    spot: f64,
+    is_call: bool,
+    dynamics: SmileDynamics,
+) -> Result<f64, Error> {
+    check_positive(&[(strike, "strike"), (spot, "spot")])?;
+    let sigma = smile.vol(strike, spot, dynamics)?;
+    let g = carry_greeks::<ErfcNormal>(
+        spot,
+        strike,
+        smile.expiry,
+        smile.r,
+        smile.q,
+        sigma,
+        phi(is_call),
+    );
+    finite(g.price, "smile price")
+}
+
+/// Smile-consistent spot delta `dV/dS|_sigma + vega d sigma/dS`.
+pub fn smile_delta<F: Fn(f64) -> f64>(
+    smile: &Smile<F>,
+    strike: f64,
+    spot: f64,
+    is_call: bool,
+    dynamics: SmileDynamics,
+) -> Result<f64, Error> {
+    check_positive(&[(strike, "strike"), (spot, "spot")])?;
+    let sigma = smile.vol(strike, spot, dynamics)?;
+    let g = carry_greeks::<ErfcNormal>(
+        spot,
+        strike,
+        smile.expiry,
+        smile.r,
+        smile.q,
+        sigma,
+        phi(is_call),
+    );
+    finite(
+        g.delta + g.vega * smile.dvol_dspot(strike, spot, dynamics, DVOL_REL_STEP),
+        "smile delta",
+    )
+}
+
+/// Smile-consistent gamma: central difference of [`smile_delta`] with
+/// relative spot step `rel_step` ([`GAMMA_REL_STEP`] in Python).
+pub fn smile_gamma<F: Fn(f64) -> f64>(
+    smile: &Smile<F>,
+    strike: f64,
+    spot: f64,
+    is_call: bool,
+    dynamics: SmileDynamics,
+    rel_step: f64,
+) -> Result<f64, Error> {
+    let h = rel_step * spot;
+    let up = smile_delta(smile, strike, spot + h, is_call, dynamics)?;
+    let dn = smile_delta(smile, strike, spot - h, is_call, dynamics)?;
+    Ok((up - dn) / (2.0 * h))
+}
+
+/// Premium-adjusted spot delta `Delta_spot - V/S` (premium in the base
+/// currency; Clark 2011 ch. 3).
+pub fn premium_adjusted_delta(
+    spot: f64,
+    strike: f64,
+    expiry: f64,
+    r_d: f64,
+    r_f: f64,
+    sigma: f64,
+    is_call: bool,
+) -> Result<f64, Error> {
+    check_positive(&[
+        (spot, "spot"),
+        (strike, "strike"),
+        (expiry, "expiry"),
+        (sigma, "sigma"),
+    ])?;
+    let g = carry_greeks::<ErfcNormal>(spot, strike, expiry, r_d, r_f, sigma, phi(is_call));
+    finite(g.delta - g.price / spot, "premium-adjusted delta")
+}
+
+/// Root-mean-square unexplained P&L of a realised path under each dynamic,
+/// in [`SmileDynamics::ALL`] order; the smallest is the dynamic the path
+/// supports. Step `i` explains `Delta dS + 0.5 Gamma dS^2 + Theta dt` at
+/// remaining life `expiry - times[i]`, with `vol0` held fixed over the path.
+pub fn rank_smile_dynamics<F: Fn(f64) -> f64>(
+    spots: &[f64],
+    prices: &[f64],
+    times: &[f64],
+    smile: &Smile<F>,
+    strike: f64,
+    is_call: bool,
+) -> Result<[f64; 3], Error> {
+    let n = spots.len();
+    if n < 2 || prices.len() != n || times.len() != n {
+        return Err(Error::InvalidInput(
+            "spots, prices and times must be of equal length >= 2".into(),
+        ));
+    }
+    let mut out = [0.0; 3];
+    for (slot, d) in out.iter_mut().zip(SmileDynamics::ALL) {
+        let mut sum_sq = 0.0;
+        for i in 0..n - 1 {
+            let tau = smile.expiry - times[i];
+            let local = Smile::new(smile.spot0, tau, smile.r, smile.q, &smile.vol_of_strike)?;
+            check_positive(&[(strike, "strike"), (spots[i], "spot")])?;
+            let sigma = local.vol(strike, spots[i], d)?;
+            let g = carry_greeks::<ErfcNormal>(
+                spots[i],
+                strike,
+                tau,
+                smile.r,
+                smile.q,
+                sigma,
+                phi(is_call),
+            );
+            let delta = g.delta + g.vega * local.dvol_dspot(strike, spots[i], d, DVOL_REL_STEP);
+            let gamma = smile_gamma(&local, strike, spots[i], is_call, d, GAMMA_REL_STEP)?;
+            let ds = spots[i + 1] - spots[i];
+            let explained =
+                delta * ds + 0.5 * gamma * ds * ds + g.theta * (times[i + 1] - times[i]);
+            let resid = (prices[i + 1] - prices[i]) - explained;
+            sum_sq += resid * resid;
+        }
+        *slot = finite((sum_sq / (n - 1) as f64).sqrt(), "unexplained P&L")?;
+    }
+    Ok(out)
+}
+
+/// How a USD P&L becomes a reporting-currency P&L (`fx_var.reporting`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Conversion {
+    /// `V(s) / X(s) - V(0) / X(0)`: each scenario at its own exchange rate.
+    Scenario,
+    /// `(V(s) - V(0)) / X(0)`: translated at today's rate.
+    Spot,
+}
+
+/// The currency conversion inside `fx_var.reporting.reporting_pnl`, from
+/// book values already computed: `v0` today, `v1[s]` per scenario, in USD;
+/// `x0` and `x1[s]` the USD price of the reporting currency. Revaluing the
+/// book stays in Python (it needs the `fx_var` position types).
+pub fn reporting_conversion(
+    v0: f64,
+    v1: &[f64],
+    x0: f64,
+    x1: &[f64],
+    conversion: Conversion,
+) -> Result<Vec<f64>, Error> {
+    if v1.len() != x1.len() {
+        return Err(Error::InvalidInput(format!(
+            "v1 and x1 must have equal length, got {} and {}",
+            v1.len(),
+            x1.len()
+        )));
+    }
+    check_positive(&[(x0, "x0")])?;
+    v1.iter()
+        .zip(x1)
+        .map(|(&v, &x)| {
+            let pnl = match conversion {
+                Conversion::Spot => (v - v0) / x0,
+                Conversion::Scenario => {
+                    check_positive(&[(x, "x1")])?;
+                    v / x - v0 / x0
+                }
+            };
+            finite(pnl, "reporting P&L")
+        })
+        .collect()
+}
+
+/// Linear split of `expiry` over increasing bucket tenors (flat outside;
+/// sums to one).
+pub fn tenor_weights(expiry: f64, buckets: &[f64]) -> Result<Vec<f64>, Error> {
+    if buckets.is_empty()
+        || buckets.iter().any(|b| !b.is_finite())
+        || buckets.windows(2).any(|w| w[1] <= w[0])
+    {
+        return Err(Error::InvalidInput(
+            "tenor buckets must be a non-empty increasing sequence".into(),
+        ));
+    }
+    finite(expiry, "expiry")?;
+    let last = buckets.len() - 1;
+    let mut w = vec![0.0; buckets.len()];
+    if expiry <= buckets[0] {
+        w[0] = 1.0;
+    } else if expiry >= buckets[last] {
+        w[last] = 1.0;
+    } else {
+        let i = buckets.partition_point(|b| *b <= expiry) - 1;
+        let t = (expiry - buckets[i]) / (buckets[i + 1] - buckets[i]);
+        w[i] = 1.0 - t;
+        w[i + 1] = t;
+    }
+    Ok(w)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -619,5 +962,57 @@ mod tests {
         assert!(explain(f64::NAN, &[], &[1.0], &[1.0], None, 0.0).is_err());
         let ex = explain(10.0, &[-1.0], &[100.0], &[0.1], Some(&[40.0]), 0.0).unwrap();
         assert!((ex.rtpl() - 9.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn smile_worked_example_and_delta_is_the_derivative_of_price() {
+        let vol0 = |k: f64| 0.20 - 0.001 * (k - 100.0);
+        let s = Smile::new(100.0, 1.0, 0.0, 0.0, vol0).unwrap();
+        let ss = smile_delta(&s, 100.0, 100.0, true, SmileDynamics::StickyStrike).unwrap();
+        let sm = smile_delta(&s, 100.0, 100.0, true, SmileDynamics::StickyMoneyness).unwrap();
+        assert!((ss - 0.5398).abs() < 5e-5 && (sm - 0.5795).abs() < 5e-5);
+        let h = 1e-3;
+        for d in SmileDynamics::ALL {
+            let up = smile_price(&s, 95.0, 100.0 + h, false, d).unwrap();
+            let dn = smile_price(&s, 95.0, 100.0 - h, false, d).unwrap();
+            let got = smile_delta(&s, 95.0, 100.0, false, d).unwrap();
+            assert!(((up - dn) / (2.0 * h) - got).abs() < 1e-7, "{d:?}");
+        }
+    }
+
+    #[test]
+    fn premium_adjusted_call_delta_is_the_clark_closed_form() {
+        let (s, k, t, rd, rf, v) = (1.1, 1.12, 0.5, 0.05, 0.03, 0.08);
+        let (_, d2) = crate::black_scholes::carry_d1_d2(s, k, t, rd, rf, v);
+        let want = k / s * (-rd * t).exp() * crate::special::norm_cdf(d2);
+        let got = premium_adjusted_delta(s, k, t, rd, rf, v, true).unwrap();
+        assert!((got - want).abs() < 1e-14);
+    }
+
+    #[test]
+    fn smile_kernels_refuse_bad_inputs() {
+        assert!(Smile::new(0.0, 1.0, 0.0, 0.0, |_| 0.2).is_err());
+        assert!(Smile::new(1.0, 1.0, f64::NAN, 0.0, |_| 0.2).is_err());
+        let s = Smile::new(100.0, 1.0, 0.0, 0.0, |_: f64| -0.2).unwrap();
+        assert!(smile_delta(&s, 100.0, 100.0, true, SmileDynamics::StickyStrike).is_err());
+        let s = Smile::new(100.0, 1.0, 0.0, 0.0, |_: f64| 0.2).unwrap();
+        assert!(smile_delta(&s, 100.0, -1.0, true, SmileDynamics::StickyStrike).is_err());
+        assert!(premium_adjusted_delta(1.0, 1.0, 0.0, 0.0, 0.0, 0.1, true).is_err());
+        assert!(rank_smile_dynamics(&[100.0], &[1.0], &[0.0], &s, 100.0, true).is_err());
+        // A path that reaches the expiry has no remaining life to price.
+        assert!(rank_smile_dynamics(&[1.0, 1.0], &[1.0, 1.0], &[1.0, 2.0], &s, 1.0, true).is_err());
+    }
+
+    #[test]
+    fn cash_in_the_reporting_currency_has_no_scenario_risk() {
+        // EUR 1m at 1.10 moving to 1.21: USD value moves, EUR value does not.
+        let pnl = reporting_conversion(1.1e6, &[1.21e6], 1.1, &[1.21], Conversion::Scenario);
+        assert!(pnl.unwrap()[0].abs() < 1e-9);
+        let pnl = reporting_conversion(1.1e6, &[1.21e6], 1.1, &[1.21], Conversion::Spot);
+        assert!((pnl.unwrap()[0] - 1e5).abs() < 1e-8);
+        assert!(reporting_conversion(1.0, &[1.0], 1.0, &[], Conversion::Spot).is_err());
+        assert!(reporting_conversion(1.0, &[1.0], 1.0, &[0.0], Conversion::Scenario).is_err());
+        assert!(tenor_weights(1.0, &[1.0, 1.0]).is_err());
+        assert!(tenor_weights(f64::NAN, &[1.0]).is_err());
     }
 }

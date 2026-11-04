@@ -105,6 +105,14 @@ own heading, and the v3.0.0 notes are the sum of them.
   `toxicity` and `markout_horizon`; `MMResult` gains `widen_path`,
   `tier_stats` and `fill_markouts`. Runs without tiers are bit-identical.
 - New dependency group `recorder`: `uv sync --group recorder`.
+- `ComVega.location` and `Cvr.location` are still accepted but are no longer
+  risk factors: rows that differ only in location net.
+- `qp_data.Store.put` and `release_date` no longer raise for observations
+  before 2000. Code that relied on that error must filter old rows itself.
+  `qp_data.fetch` gains `timeout: float = 30.0`.
+- The Rust and C++ FRTB and collateral ports refuse NaN and infinite inputs
+  that Python lets through; infinite thresholds, MTA, MPOR and margin stay
+  legal. Initial margin is an explicit `Margin` shape.
 
 ### Milestone v2.1 (Rounds 6-7)
 

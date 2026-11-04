@@ -97,11 +97,16 @@ flat book, inside a per-product tick window (`ProductSpec`). Deep levels,
 off-grid prices and very large sizes go to an exact side store, so the book
 always equals the venue's. If the touch leaves the window, the book goes
 stale, asks for a snapshot and re-centres. A snapshot no newer than the
-live book is ignored in both languages. Coinbase frames still use the
-allocating JSON reader; only the Binance path is allocation-free.
+live book is ignored in both languages. Coinbase `l2update` frames have
+non-allocating decoders too, but the C++ handler's duplicate filter and map
+book still allocate, the Rust decoder has no production caller yet, and
+`full` uses the generic parser.
 
-Capital and collateral limits. `qp_core.capital.frtb_classes`,
-`frtb_curvature` and `qp_core.xva.collateral` have no C++ or Rust port yet.
+Capital and collateral limits. `qp_core::frtb`, `qp_core::collateral` and
+their C++ twins port the aggregation, curvature charge and collateral kernels;
+the per-class wrappers and tables stay in Python. A curvature near-tie that
+differs only by rounding could select a different side in a port (exact ties
+agree; this is not tested).
 The swap exposure simulator values only on reset dates, so a collateralised
 swap on an arbitrary lagged grid is not available.
 

@@ -47,9 +47,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from qp_core.model import model
+
 __all__ = ["PnLExplain", "explain", "taylor_attribution"]
 
 
+@model(id="CORE-RISK-PNL")
 def taylor_attribution(
     delta: np.ndarray | Sequence[float],
     move: np.ndarray | Sequence[float],
@@ -110,6 +113,7 @@ class PnLExplain:
         return out
 
 
+@model(id="CORE-RISK-PNL")
 def explain(
     *,
     hpl: float,

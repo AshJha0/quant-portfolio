@@ -13,6 +13,11 @@ against its code and tests on that date by the maintainer. Owner is
 this pack means agreement with code or data the model does not share,
 not a separate validation team (see `README.md`, "What this is not").
 
+Second edition (2026-11-04): added the shared stacks in `qp_core`, `qp_exec`
+and `qp_bt`. A port that reproduces a Python-generated fixture is not
+counted as independent, and neither is a test against another model in this
+repository.
+
 | Id | Tier | Kind | Status |
 |---|---|---|---|
 | `CORE-BS-CARRY` | 1 | price | independently-checked |
@@ -51,6 +56,44 @@ not a separate validation team (see `README.md`, "What this is not").
 | `CORE-FRTB-SBM` | 2 | risk | self-tested |
 | `CORE-FRTB-CURV` | 2 | risk | self-tested |
 | `CORE-XVA-COLLATERAL` | 2 | risk | self-tested |
+| `CORE-XVA-ADJ` | 2 | risk | self-tested |
+| `CORE-XVA-EXPOSURE` | 2 | risk | self-tested |
+| `CORE-XVA-HW` | 2 | price | self-tested |
+| `CORE-CAP-SACCR` | 1 | risk | independently-checked |
+| `CORE-FRTB-SBM-GIRR-FX` | 1 | risk | independently-checked |
+| `CORE-EXO-BARRIER` | 2 | price | independently-checked |
+| `CORE-EXO-TOUCH` | 2 | price | self-tested |
+| `CORE-EXO-BARRIER-MC` | 2 | price | self-tested |
+| `CORE-EXO-ASIAN` | 2 | price | self-tested |
+| `CORE-EXO-LSM` | 2 | price | independently-checked |
+| `CORE-EXO-LSV` | 2 | price | self-tested |
+| `CORE-EXO-TARF` | 2 | price | self-tested |
+| `CORE-EXO-VV` | 2 | price | self-tested |
+| `CORE-AAD-BS` | 2 | sensitivity | self-tested |
+| `CORE-AAD-MC` | 2 | sensitivity | self-tested |
+| `CORE-AAD-SWAP` | 2 | sensitivity | self-tested |
+| `CORE-VOL-SABR` | 2 | price | independently-checked |
+| `CORE-VOL-SABR-PDE` | 2 | price | self-tested |
+| `CORE-VOL-ESSVI` | 2 | price | self-tested |
+| `CORE-VOL-HESTON-CF` | 2 | price | independently-checked |
+| `CORE-CR-ISDA` | 1 | price | independently-checked |
+| `CORE-CR-INDEX` | 2 | price | self-tested |
+| `CORE-RISK-JACOBIAN` | 2 | sensitivity | self-tested |
+| `CORE-RISK-VEGA-GRID` | 2 | sensitivity | self-tested |
+| `CORE-RISK-SMILE` | 2 | sensitivity | self-tested |
+| `CORE-RISK-PNL` | 2 | risk | self-tested |
+| `EXEC-IMPACT-FIT` | 2 | forecast | self-tested |
+| `EXEC-IMPACT-TRANSIENT` | 2 | forecast | self-tested |
+| `EXEC-MM-AS` | 2 | price | self-tested |
+| `EXEC-MM-GLFT` | 2 | price | self-tested |
+| `EXEC-MM-TOXICITY` | 2 | forecast | self-tested |
+| `EXEC-SOR-ALLOC` | 2 | forecast | independently-checked |
+| `EXEC-HAWKES` | 2 | forecast | self-tested |
+| `BT-FILL-QUEUE` | 2 | forecast | self-tested |
+| `BT-FILL-NEXTBAR` | 2 | forecast | self-tested |
+| `BT-COST` | 2 | forecast | self-tested |
+| `BT-COV-LW` | 2 | risk | independently-checked |
+| `BT-COV-PCA` | 2 | risk | self-tested |
 
 ### `CORE-BS-CARRY`: Black-Scholes-Merton with continuous carry (shared kernel)
 
@@ -625,5 +668,613 @@ Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04
 **Ongoing monitoring.** KPIs: Brownian closed forms within 4 standard errors. Review trigger: a change to the Basel text or a failed fixture.
 
 **Limitations and compensating controls.** Python only; the swap exposure simulator values only on reset dates. Inputs are validated at the entrypoint and bad input raises rather than returning a number.
+
+**Findings.** None.
+
+### `CORE-XVA-ADJ`: CVA, DVA and FVA from exposure profiles
+
+Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Valuation adjustments on an exposure profile for the shared xVA stack.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/xva/adjustments.py::cva`; `python/core/src/qp_core/xva/adjustments.py::dva`; `python/core/src/qp_core/xva/adjustments.py::fva`; `python/core/src/qp_core/xva/adjustments.py::xva`. Assumptions: exposure independent of default (no wrong-way risk); piecewise-flat hazard curves. Reference: Gregory, *The xVA Challenge*, 4th ed. (2020).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_xva.py::test_cva_closed_form_flat`; `python/core/tests/test_xva.py::test_fva_and_total_sign`; `python/core/tests/test_xva.py::test_piecewise_hazard_survival`; `python/core/tests/test_xva_parity_fixture.py::test_fixture_matches_python`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: flat-profile closed form. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no wrong-way risk; the Rust and C++ ports match a fixture Python generates, which catches port drift, not a wrong formula.
+
+**Findings.** None.
+
+### `CORE-XVA-EXPOSURE`: Exposure profiles, PFE and EEPE
+
+Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** EE, PFE and EEPE from simulated values, and swap exposure paths.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/xva/exposure.py::profile`; `python/core/src/qp_core/xva/exposure.py::eepe`; `python/core/src/qp_core/xva/exposure.py::swap_exposure`. Assumptions: paths come from the Hull-White simulator; PFE is an order statistic of the simulated paths. Reference: Gregory, *The xVA Challenge*, 4th ed. (2020); Basel CRE53 for EEPE.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_xva.py::test_profile_and_pfe_definition`; `python/core/tests/test_xva.py::test_eepe_non_decreasing_and_horizon`; `python/core/tests/test_xva.py::test_irs_cva_matches_swaption_strip`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: swaption-strip agreement within the cited tolerance. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** swap values only on the simulation grid; the Rust and C++ ports match a fixture Python generates, which catches port drift, not a wrong formula.
+
+**Findings.** None.
+
+### `CORE-XVA-HW`: Hull-White simulator for exposure
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Curve-fitted short-rate paths and bond prices behind the exposure engine.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/xva/hull_white.py::HullWhite`. Assumptions: Gaussian short rate with constant mean reversion and volatility. Reference: Hull and White (1990); Jamshidian (1989).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_xva.py::test_zcb_reprices_curve_and_mc_martingale`; `python/core/tests/test_xva.py::test_jamshidian_matches_mc`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: curve repricing; Jamshidian against Monte Carlo. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** one factor; the QuantLib Hull-White checks exercise fi_rates, a different implementation, so they are not cited here.
+
+**Findings.** None.
+
+### `CORE-CAP-SACCR`: SA-CCR exposure at default, all asset classes
+
+Tier 1, risk, status `independently-checked`, validated 2026-11-04, next review 2027-05-04.
+
+**Purpose.** Counterparty EAD under BCBS 279 for netting sets across asset classes.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/capital/saccr.py::ead`. Assumptions: BCBS 279 supervisory parameters, transcribed and checksum-tested. Reference: BCBS 279 (2014), Annex 4a.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_saccr.py::test_supervisory_table_checksum`; `python/core/tests/test_capital_saccr.py::test_multiplier_limits`; `python/core/tests/test_capital_saccr.py::test_fx_addon_nets_within_pair`; `python/core/tests/test_capital_saccr.py::test_margined_capped_at_unmargined`. Independent checks: `python/core/tests/test_capital_saccr.py::test_example1_interest_rates`; `python/core/tests/test_capital_saccr.py::test_example2_credit`; `python/core/tests/test_capital_saccr.py::test_example3_commodity`; `python/core/tests/test_capital_saccr.py::test_example4_ir_plus_credit`; `python/core/tests/test_capital_saccr.py::test_example5_margined`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: BCBS 279 Annex 4a examples at published rounding. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the FX add-on is not in Annex 4a, so it has own-property tests only; the published examples are checked to their printed rounding.
+
+**Findings.** None.
+
+### `CORE-FRTB-SBM-GIRR-FX`: FRTB SBM delta and vega for GIRR and FX
+
+Tier 1, risk, status `independently-checked`, validated 2026-11-04, next review 2027-05-04.
+
+**Purpose.** Delta and vega capital for GIRR and FX across the three MAR21.6 correlation scenarios.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/capital/frtb_sbm.py::girr_delta`; `python/core/src/qp_core/capital/frtb_sbm.py::girr_vega`; `python/core/src/qp_core/capital/frtb_sbm.py::fx_delta`; `python/core/src/qp_core/capital/frtb_sbm.py::fx_vega`. Assumptions: BCBS d457 (2019) MAR21 parameters. Reference: BCBS d457 (2019) MAR21.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_capital_frtb_sbm.py::test_footnote_examples`; `python/core/tests/test_capital_frtb_sbm.py::test_girr_delta_hand_fixture`; `python/core/tests/test_capital_frtb_sbm.py::test_fx_delta_hand_fixture`; `python/core/tests/test_capital_frtb_sbm.py::test_girr_vega_hand_fixture`. Independent checks: `tests/independent/frtb/test_frtb_sbm_independent.py::test_girr_delta`; `tests/independent/frtb/test_frtb_sbm_independent.py::test_girr_vega`; `tests/independent/frtb/test_frtb_sbm_independent.py::test_fx_delta`; `tests/independent/frtb/test_frtb_sbm_independent.py::test_fx_vega`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: oracle agreement to 1e-10 relative on 250 seeded portfolios per measure. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the oracle was written in this repository from the Basel text, so a shared misreading of that text would pass.
+
+**Findings.** None.
+
+### `CORE-EXO-BARRIER`: Closed-form single and double barrier options
+
+Tier 2, price, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Reiner-Rubinstein single barriers and Ikeda-Kunitomo double knock-outs.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/barriers.py::barrier_price`; `python/core/src/qp_core/exotics/barriers.py::double_knockout_price`. Assumptions: Black-Scholes dynamics with continuous monitoring. Reference: Reiner and Rubinstein (1991); Ikeda and Kunitomo (1992); Haug, *Option Pricing Formulas*, tables 4.13 and 4.15.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_barriers.py::test_in_out_parity_without_rebate`; `python/core/tests/test_exotics_barriers.py::test_barrier_mc_within_three_se`; `python/core/tests/test_exotics_barriers.py::test_double_knockout_series_has_converged_and_limits`. Independent checks: `python/core/tests/test_exotics_barriers.py::test_reiner_rubinstein_matches_haug_table_4_13`; `python/core/tests/test_exotics_barriers.py::test_ikeda_kunitomo_matches_haug_table_4_15`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: Haug tables to 4 decimal places. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no smile; the 90/110 row of Haug table 4.15 could not be confirmed and is not used.
+
+**Findings.** None.
+
+### `CORE-EXO-TOUCH`: One-touch, no-touch and double no-touch
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Closed-form digital barrier prices.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/barriers.py::touch_price`; `python/core/src/qp_core/exotics/barriers.py::double_no_touch`. Assumptions: Black-Scholes dynamics with continuous monitoring. Reference: Reiner and Rubinstein (1991).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_barriers.py::test_touch_parity`; `python/core/tests/test_exotics_barriers.py::test_touch_mc_within_three_se`; `python/core/tests/test_exotics_barriers.py::test_double_no_touch_mc_and_limits`; `python/core/tests/test_exotics_barriers.py::test_dnt_series_converged`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: Monte Carlo within three standard errors. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no smile; no published table cited.
+
+**Findings.** None.
+
+### `CORE-EXO-BARRIER-MC`: Monte Carlo barrier pricers
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Simulation reference for the barrier closed forms.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/mc.py::barrier_mc`; `python/core/src/qp_core/exotics/mc.py::double_barrier_mc`. Assumptions: geometric Brownian motion on a time grid. Reference: Glasserman, *Monte Carlo Methods in Financial Engineering* (2003).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_barriers.py::test_barrier_mc_within_three_se`; `python/core/tests/test_exotics_barriers.py::test_double_knockout_mc_within_three_se`; `python/core/tests/test_exotics_barriers.py::test_narrow_corridor_double_knockout_mc`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: closed form within three standard errors. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** statistical error; checked only against this repository's closed forms.
+
+**Findings.** None.
+
+### `CORE-EXO-ASIAN`: Asian options
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Geometric closed form, Turnbull-Wakeman approximation and control-variate Monte Carlo.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/asian.py::geometric_asian_price`; `python/core/src/qp_core/exotics/asian.py::turnbull_wakeman_price`; `python/core/src/qp_core/exotics/asian.py::turnbull_wakeman_continuous`; `python/core/src/qp_core/exotics/asian.py::asian_mc`. Assumptions: lognormal spot; Turnbull-Wakeman matches two moments of the average. Reference: Kemna and Vorst (1990); Turnbull and Wakeman (1991).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_other.py::test_geometric_closed_form_vs_plain_mc`; `python/core/tests/test_exotics_other.py::test_turnbull_wakeman_vs_control_variate_mc`; `python/core/tests/test_exotics_other.py::test_tw_discrete_tends_to_continuous`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: Turnbull-Wakeman against control-variate Monte Carlo. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the arithmetic closed form is an approximation.
+
+**Findings.** None.
+
+### `CORE-EXO-LSM`: American options by Longstaff-Schwartz and CRR
+
+Tier 2, price, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** American exercise by regression Monte Carlo, with a CRR tree as the reference.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/lsm.py::crr_american`; `python/core/src/qp_core/exotics/lsm.py::lsm_american`. Assumptions: geometric Brownian motion; polynomial regression basis. Reference: Longstaff and Schwartz (2001), table 1.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_other.py::test_lsm_vs_crr_tree`; `python/core/tests/test_exotics_other.py::test_american_call_no_dividend_equals_european`. Independent checks: `python/core/tests/test_exotics_other.py::test_lsm_longstaff_schwartz_table_1`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: distance to Longstaff-Schwartz table 1. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** LSM is a low-biased estimate of the exercise policy; the published check is one table cell with a tolerance of three standard errors plus 0.02.
+
+**Findings.** None.
+
+### `CORE-EXO-LSV`: Local-stochastic volatility by particle calibration
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Leverage function fitted to a surface, then vanilla repricing under LSV.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/lsv.py::calibrate_lsv_particles`; `python/core/src/qp_core/exotics/lsv.py::lsv_price_vanillas`. Assumptions: Heston variance with a leverage function; an arbitrage-free input surface. Reference: Guyon and Henry-Labordere (2012).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_lsv.py::test_lsv_reprices_vanillas_within_3se_and_02_vol`; `python/core/tests/test_exotics_lsv.py::test_pure_local_vol_limit_xi_zero`; `python/core/tests/test_exotics_lsv.py::test_dupire_flat_surface_is_flat`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: vanillas within 3 standard errors and 0.2 vol points. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no outside implementation to compare with.
+
+**Findings.** None.
+
+### `CORE-EXO-TARF`: Target redemption forward
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Monte Carlo price of a TARF.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/tarf.py::tarf_mc`. Assumptions: lognormal spot, flat vol. Reference: Wystup, *FX Options and Structured Products* (2017).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_other.py::test_tarf_unreachable_target_is_forward_strip`; `python/core/tests/test_exotics_other.py::test_tarf_orderings`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: forward-strip limit and orderings. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** settlement lag ignored; no smile, which matters for this product.
+
+**Findings.** None.
+
+### `CORE-EXO-VV`: Vanna-volga vanilla and barrier adjustment
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Market-practice FX smile adjustment from three pillars.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/exotics/vanna_volga.py::vv_weights`; `python/core/src/qp_core/exotics/vanna_volga.py::vanna_volga_vanilla`; `python/core/src/qp_core/exotics/vanna_volga.py::vanna_volga_barrier`. Assumptions: three pillar quotes describe the smile. Reference: Castagna and Mercurio (2007).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_exotics_other.py::test_vv_reproduces_pillars_exactly`; `python/core/tests/test_exotics_other.py::test_vv_flat_smile_is_black_scholes`; `python/core/tests/test_exotics_other.py::test_vv_knock_in_out_parity_and_far_barrier`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: pillars repriced exactly; flat smile gives Black-Scholes. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** a market heuristic, not an arbitrage-free model; the barrier survival weight is a convention.
+
+**Findings.** None.
+
+### `CORE-AAD-BS`: Adjoint Black-Scholes Greeks
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** All first-order Greeks from one reverse sweep.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/aad/black_scholes.py::bs_greeks_aad`; `python/core/src/qp_core/aad/black_scholes.py::bs_greeks_aad_on`. Assumptions: Black-Scholes with continuous carry. Reference: Giles and Glasserman (2006).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_aad_python.py::test_bs_matches_analytic_greeks`; `python/core/tests/test_aad_python.py::test_bs_matches_bumps`; `python/core/tests/test_aad_tape_reuse.py::test_reused_tape_gives_identical_greeks`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with closed-form Greeks to 1e-12. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** compared with this repository's closed form and bumps, not an outside library.
+
+**Findings.** None.
+
+### `CORE-AAD-MC`: Adjoint Monte Carlo Greeks
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Pathwise adjoint Greeks of a simulated option price.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/aad/monte_carlo.py::mc_greeks_aad`. Assumptions: geometric Brownian motion; a payoff differentiable almost everywhere. Reference: Giles and Glasserman (2006).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_aad_python.py::test_mc_pathwise_matches_bumps_same_normals`; `python/core/tests/test_aad_python.py::test_mc_european_converges_to_black_scholes`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: bumps on the same normals. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** pathwise Greeks do not apply to discontinuous payoffs.
+
+**Findings.** None.
+
+### `CORE-AAD-SWAP`: Adjoint swap curve Greeks
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Swap risk to curve pillars and, through the Jacobian, to market quotes.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/aad/swap.py::pillar_greeks`; `python/core/src/qp_core/aad/swap.py::quote_greeks`. Assumptions: one quote per pillar, so the Jacobian is square. Reference: Henrard, *Algorithmic Differentiation in Finance Explained* (2017).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_aad_python.py::test_swap_pillar_greeks_match_bumps`; `python/core/tests/test_aad_python.py::test_swap_quote_greeks_match_rebootstrap`; `python/core/tests/test_aad_python.py::test_swap_pv_float_and_tape_agree`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: bumped pillars and rebuilt curves to 1e-6. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the rebootstrap check needs fi_rates importable.
+
+**Findings.** None.
+
+### `CORE-VOL-SABR`: SABR implied volatility and calibration (shared)
+
+Tier 2, price, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Shared Hagan and Obloj expansions, with calibration to a smile.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/vol/sabr.py::sabr_vol`; `python/core/src/qp_core/vol/sabr.py::sabr_calibrate`. Assumptions: SABR dynamics, short-expiry asymptotic expansion. Reference: Hagan et al. (2002); Obloj (2008).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_vol_sabr.py::test_docstring_worked_example`; `python/core/tests/test_vol_sabr.py::test_atm_matches_hagan_atm_formula`; `python/core/tests/test_vol_sabr.py::test_calibration_recovers_parameters`. Independent checks: `python/core/tests/test_vol_sabr_quantlib.py::test_hagan_variant_matches_quantlib`; `python/core/tests/test_vol_sabr_quantlib.py::test_shifted_matches_quantlib_shifted`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with QuantLib to 1e-12 relative. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** QuantLib checks the hagan variant only; the default obloj variant is checked against stored values and the ATM formula; negative densities at low strikes for long expiries.
+
+**Findings.** None.
+
+### `CORE-VOL-SABR-PDE`: Arbitrage-free SABR density PDE
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Finite-difference SABR density that stays non-negative where the expansion fails.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/vol/sabr_pde.py::sabr_pde`. Assumptions: SABR collapsed to one dimension. Reference: Hagan et al. (2014), "Arbitrage-free SABR"; Le Floc'h and Kennedy (2017).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_vol_sabr_pde.py::test_mass_and_forward_conserved`; `python/core/tests/test_vol_sabr_pde.py::test_short_expiry_matches_hagan_expansion`; `python/core/tests/test_vol_sabr_pde.py::test_grid_convergence`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: mass and forward conserved; grid convergence. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no outside implementation to compare with.
+
+**Findings.** None.
+
+### `CORE-VOL-ESSVI`: eSSVI and raw SVI slice fits
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Per-slice smile fits with arbitrage checks.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/vol/essvi.py::fit_essvi_slices`; `python/core/src/qp_core/vol/essvi.py::fit_svi_slices`. Assumptions: SVI family describes each slice. Reference: Gatheral and Jacquier (2014); Hendriks and Martini (2019).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_vol_essvi.py::test_svi_per_slice_closes_f10_within_01_vol`; `python/core/tests/test_vol_essvi.py::test_essvi_by_slice_improves_f10_but_shape_limits_usdjpy`; `python/core/tests/test_vol_essvi.py::test_svi_density_factor_flags_arbitrage`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: fit error in vol points; density factor. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the eSSVI shape limits the fit on USDJPY.
+
+**Findings.** None.
+
+### `CORE-VOL-HESTON-CF`: Heston characteristic function (shared)
+
+Tier 2, price, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** The characteristic function behind the equity and FX Heston pricers.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/vol/heston.py::heston_cf`. Assumptions: Heston variance dynamics. Reference: Heston (1993); Albrecher et al. (2007).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_vol_heston.py::test_martingale_and_normalisation`; `python/core/tests/test_vol_heston.py::test_equals_old_equity_copy_bit_for_bit`. Independent checks: `python/core/tests/test_vol_heston.py::test_gil_pelaez_on_shared_cf_matches_quantlib`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with QuantLib AnalyticHestonEngine. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the QuantLib check needs Gil-Pelaez inversion in the test; the function itself returns no price.
+
+**Findings.** None.
+
+### `CORE-CR-ISDA`: ISDA standard CDS model (shared)
+
+Tier 1, price, status `independently-checked`, validated 2026-11-04, next review 2027-05-04.
+
+**Purpose.** CDS legs, hazard bootstrap and quote-to-upfront conversion for the index stack.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/credit_index/isda.py::cds_legs`; `python/core/src/qp_core/credit_index/isda.py::bootstrap_hazard`; `python/core/src/qp_core/credit_index/isda.py::upfront_from_quoted_spread`; `python/core/src/qp_core/credit_index/isda.py::quoted_spread_from_upfront`. Assumptions: piecewise-constant hazard; ISDA standard model conventions. Reference: ISDA CDS Standard Model; Markit values as carried in QuantLib `testIsdaEngine`.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_credit_index.py::test_bootstrap_reprices_par_spreads`; `python/core/tests/test_credit_index.py::test_spread_upfront_round_trip`; `python/core/tests/test_credit_index.py::test_without_half_day_bias_the_markit_values_are_missed`. Independent checks: `python/core/tests/test_credit_index.py::test_markit_published_upfronts`; `python/core/tests/test_credit_index.py::test_frozen_curve_matches_quantlib`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: Markit upfronts to 1e-3 per 1e7 notional. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** recovery is an input, not estimated; the QuantLib test checks the frozen discount curve; the prices are checked against Markit's values.
+
+**Findings.** None.
+
+### `CORE-CR-INDEX`: CDS index intrinsic value and basis
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Index intrinsic from constituents, the quoted basis and the curve adjustment.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/credit_index/index.py::intrinsic`; `python/core/src/qp_core/credit_index/index.py::index_basis`; `python/core/src/qp_core/credit_index/index.py::adjust_to_index`. Assumptions: one flat curve at the standard recovery for the quote. Reference: O'Kane, *Modelling Single-name and Multi-name Credit Derivatives* (2008).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_credit_index.py::test_homogeneous_intrinsic_equals_index`; `python/core/tests/test_credit_index.py::test_heterogeneous_basis_and_adjustment`; `python/core/tests/test_credit_index.py::test_factor_and_defaults`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: homogeneous intrinsic equals the index. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no outside index data.
+
+**Findings.** None.
+
+### `CORE-RISK-JACOBIAN`: Node and quote risk through a Jacobian
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Moves risk between curve nodes and market quotes; cross gamma by differences.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/risk/jacobian.py::node_to_quote_risk`; `python/core/src/qp_core/risk/jacobian.py::quote_to_node_risk`; `python/core/src/qp_core/risk/jacobian.py::cross_gamma`. Assumptions: a square, invertible Jacobian; local linearity. Reference: Henrard, *Interest Rate Modelling in the Multi-curve Framework* (2014).
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_risk_core.py::test_node_to_quote_worked_example`; `python/core/tests/test_risk_core.py::test_node_to_quote_matches_reparametrised_gradient`; `python/core/tests/test_risk_core.py::test_cross_gamma_of_quadratic_is_exact_and_symmetric`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: reparametrised gradient agreement. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** finite-difference error depends on the step.
+
+**Findings.** None.
+
+### `CORE-RISK-VEGA-GRID`: Bucketed vega grid
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Splits vega across expiry and strike buckets.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/risk/vega_grid.py::vega_grid`. Assumptions: linear bucket weights. Reference: Bergomi, *Stochastic Volatility Modeling* (2016), on smile risk.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_risk_core.py::test_vega_grid_splits_between_expiry_buckets`; `python/core/tests/test_risk_core.py::test_vega_grid_sums_to_parallel_vega_2d_and_3d`; `python/core/tests/test_risk_core.py::test_grid_weights_partition_of_unity_and_validation`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: buckets sum to parallel vega. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** bucket boundaries are a convention.
+
+**Findings.** None.
+
+### `CORE-RISK-SMILE`: Smile dynamics and smile-aware Greeks
+
+Tier 2, sensitivity, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Delta and gamma under sticky-strike, sticky-delta and sticky-moneyness rules.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/risk/smile_dynamics.py::smile_price`; `python/core/src/qp_core/risk/smile_dynamics.py::smile_delta`; `python/core/src/qp_core/risk/smile_dynamics.py::smile_gamma`; `python/core/src/qp_core/risk/smile_dynamics.py::premium_adjusted_delta`; `python/core/src/qp_core/risk/smile_dynamics.py::rank_smile_dynamics`. Assumptions: one of the named smile rules holds over the move. Reference: Derman (1999); Wystup (2017) for premium-adjusted delta.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_risk_core.py::test_worked_example_numbers`; `python/core/tests/test_risk_core.py::test_delta_matches_fd_of_surface_shifted_the_matching_way`; `python/core/tests/test_risk_core.py::test_premium_adjusted_delta_closed_form`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with differences of the shifted surface. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the rules are conventions, not a dynamic model.
+
+**Findings.** None.
+
+### `CORE-RISK-PNL`: P&L explain
+
+Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Attributes P&L to Greeks and picks the smile rule that fits a realised path.
+
+**Conceptual soundness.** Entrypoints: `python/core/src/qp_core/risk/pnl_explain.py::explain`; `python/core/src/qp_core/risk/pnl_explain.py::taylor_attribution`. Assumptions: a second-order Taylor expansion over the period. Reference: Taylor expansion of the pricing function; no single paper.
+
+**Outcomes analysis.** Own-property tests: `python/core/tests/test_risk_core.py::test_explain_worked_example`; `python/core/tests/test_risk_core.py::test_taylor_attribution_sums_to_quadratic_form`; `python/core/tests/test_risk_core.py::test_explain_identifies_the_dynamic_of_a_realised_path`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: attribution sums to the quadratic form. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** large moves land in the unexplained term.
+
+**Findings.** None.
+
+### `EXEC-IMPACT-FIT`: Impact exponent estimate
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Fits the power of price impact against order-flow imbalance, with a bootstrap interval.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/lob/impact.py::fit_impact_exponent`. Assumptions: a power law between binned imbalance and return. Reference: Bouchaud, Bonart, Donier and Gould, *Trades, Quotes and Prices* (2018).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_flow_fills_impact.py::test_impact_exponent_recovered_with_ci`; `python/execution/tests/test_flow_fills_impact.py::test_window_imbalance_shapes`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: exponent recovered inside its interval. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** tested on synthetic flow; no outside estimate.
+
+**Findings.** None.
+
+### `EXEC-IMPACT-TRANSIENT`: Transient impact optimal schedules
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Expected cost and the optimal schedule under a decay kernel.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/schedules/transient.py::expected_cost`; `python/execution/src/qp_exec/schedules/transient.py::optimal_schedule`. Assumptions: linear propagator with a known kernel. Reference: Obizhaeva and Wang (2013); Gatheral (2010).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_schedules.py::test_obizhaeva_wang_structure_and_cost`; `python/execution/tests/test_schedules.py::test_power_law_kernel_optimum_is_valid_and_cheaper`; `python/execution/tests/test_schedules.py::test_non_convex_kernel_gives_sign_alternating_optimum`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: Obizhaeva-Wang structure of the optimum. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** a non-convex kernel gives a sign-alternating optimum, so kernels should pass the Gatheral condition.
+
+**Findings.** None.
+
+### `EXEC-MM-AS`: Avellaneda-Stoikov quotes
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Reservation price and spread for an inventory-averse market maker.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/mm/quotes.py::avellaneda_stoikov`. Assumptions: Brownian mid, exponential fill intensity. Reference: Avellaneda and Stoikov (2008).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_mm.py::test_as_paper_numbers`; `python/execution/tests/test_mm.py::test_as_limits`; `python/execution/tests/test_mm.py::test_as_inventory_skew_and_bound`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: spread at the paper's parameters. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the paper-parameter test is worked by hand, not read from a printed table.
+
+**Findings.** None.
+
+### `EXEC-MM-GLFT`: Gueant-Lehalle-Fernandez-Tapia quotes
+
+Tier 2, price, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Quotes under an inventory bound: exact, stationary and asymptotic forms.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/mm/quotes.py::GLFT`; `python/execution/src/qp_exec/mm/quotes.py::glft_asymptotic`. Assumptions: Brownian mid, exponential fill intensity, bounded inventory. Reference: Gueant, Lehalle and Fernandez-Tapia (2013).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_mm.py::test_glft_matches_matrix_exponential_and_ground_state`; `python/execution/tests/test_mm.py::test_glft_asymptotic_close_to_exact_stationary`; `python/execution/tests/test_mm.py::test_glft_small_gamma_matches_as`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: matrix exponential agreement to 1e-10. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** scipy's matrix exponential checks the solver, not the model, so it is not counted as independent.
+
+**Findings.** None.
+
+### `EXEC-MM-TOXICITY`: Markout toxicity and VPIN
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Flow toxicity signals that widen quotes.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/mm/toxicity.py::MarkoutToxicity`; `python/execution/src/qp_exec/mm/toxicity.py::VPIN`. Assumptions: the aggressor side is known. Reference: Easley, Lopez de Prado and O'Hara (2012).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_mm_toxicity.py::test_markout_ewma_by_hand`; `python/execution/tests/test_mm_toxicity.py::test_vpin_buckets_by_hand`; `python/execution/tests/test_mm_toxicity.py::test_vpin_widens_only_under_toxic_flow_and_pays`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: hand fixtures; widening reacts more to toxic flow. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** VPIN's predictive value is disputed (Andersen and Bondarenko, 2014); evidence is from the repository's simulator.
+
+**Findings.** None.
+
+### `EXEC-SOR-ALLOC`: Cont-Kukanov order allocation
+
+Tier 2, forecast, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Splits an order between market and limit orders across venues to minimise expected cost.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/sor/allocation.py::expected_cost`; `python/execution/src/qp_exec/sor/allocation.py::solve_allocation`; `python/execution/src/qp_exec/sor/allocation.py::single_venue_optimum`; `python/execution/src/qp_exec/sor/allocation.py::deterministic_optimum`. Assumptions: sampled venue flow stands for the fill distribution. Reference: Cont and Kukanov (2017).
+
+**Outcomes analysis.** Own-property tests: `python/execution/src/qp_exec/sor/tests/test_lit.py::test_single_venue_matches_quantile_rule`; `python/execution/src/qp_exec/sor/tests/test_lit.py::test_deterministic_flow_is_greedy`; `python/execution/src/qp_exec/sor/tests/test_lit.py::test_lp_cost_equals_direct_evaluation`. Independent checks: `python/execution/src/qp_exec/sor/tests/test_lit.py::test_matches_cvxpy`; `python/execution/src/qp_exec/sor/tests/test_dark.py::test_live_lit_dark_split_matches_cvxpy`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: cost agreement with cvxpy (Clarabel) to 1e-6. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the cvxpy tests skip where cvxpy is absent (the qp-exec dev extra installs it); convex venues only; a non-convex venue is refused.
+
+**Findings.** None.
+
+### `EXEC-HAWKES`: Hawkes process fits
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Exponential-kernel Hawkes maximum likelihood for order-arrival clustering.
+
+**Conceptual soundness.** Entrypoints: `python/execution/src/qp_exec/hawkes/__init__.py::fit_univariate`; `python/execution/src/qp_exec/hawkes/__init__.py::fit_multivariate`. Assumptions: exponential kernel, stationary (branching ratio below one). Reference: Hawkes (1971); Ozaki (1979); Bacry, Mastromatteo and Muzy (2015).
+
+**Outcomes analysis.** Own-property tests: `python/execution/tests/test_hawkes.py::test_loglik_matches_brute_force`; `python/execution/tests/test_hawkes.py::test_univariate_mle_recovers_parameters_within_3_se`; `python/execution/tests/test_hawkes.py::test_time_rescaling_accepts_true_model_rejects_poisson`; `python/execution/tests/test_hawkes.py::test_multivariate_mle_recovers_cross_excitation`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: parameters within 3 standard errors; time-rescaling test. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** one shared decay in the multivariate fit; no outside estimator compared.
+
+**Findings.** None.
+
+### `BT-FILL-QUEUE`: Queue-aware fill model
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Estimates when a simulated resting order would fill, from book and trade events.
+
+**Conceptual soundness.** Entrypoints: `python/backtest/src/qp_bt/fills/queue.py::fill_marketable`; `python/backtest/src/qp_bt/fills/queue.py::prob_ahead_power`; `python/backtest/src/qp_bt/fills/queue.py::QueueAwareFillModel`. Assumptions: cancels are spread through the queue by the chosen probability. Reference: Moallemi and Yuan (2017).
+
+**Outcomes analysis.** Own-property tests: `python/backtest/tests/test_queue_fills.py::test_worked_example_from_docstring`; `python/backtest/tests/test_queue_fills.py::test_matches_fifo_when_cancels_behind`; `python/backtest/tests/test_queue_fills.py::test_matches_fifo_when_cancels_in_front`; `python/backtest/tests/test_queue_fills.py::test_mutation_wrong_cancel_assumption_is_caught_w25`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with a FIFO book under the matching cancel rule. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the simulated order never removes liquidity from the real book.
+
+**Findings.** None.
+
+### `BT-FILL-NEXTBAR`: Next-bar fill model
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Bar-level fills with a signal-to-fill lag and optional partial fills.
+
+**Conceptual soundness.** Entrypoints: `python/backtest/src/qp_bt/fills/nextbar.py::NextBarFill`. Assumptions: the fill price is taken from a later bar than the decision. Reference: Backtest convention; no single paper.
+
+**Outcomes analysis.** Own-property tests: `python/backtest/tests/test_event_engine.py::test_next_bar_fill_never_uses_the_decision_close`; `python/backtest/tests/test_event_engine.py::test_lag_moves_the_fill_and_drops_orders_past_the_end`; `python/backtest/tests/test_event_engine.py::test_partial_fills_respect_participation_and_finish_later`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: no use of the decision close; fast and event engines agree. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** no book, so no queue or spread effects.
+
+**Findings.** None.
+
+### `BT-COST`: Backtest cost models
+
+Tier 2, forecast, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Linear, half-spread and square-root impact costs, each with a named source.
+
+**Conceptual soundness.** Entrypoints: `python/backtest/src/qp_bt/costs.py::LinearCost`; `python/backtest/src/qp_bt/costs.py::HalfSpreadCost`; `python/backtest/src/qp_bt/costs.py::SqrtImpactCost`. Assumptions: inputs are known at the decision close; square-root coefficient in the published 0.5 to 1 range. Reference: Almgren, Thum, Hauptmann and Li (2005); Toth et al. (2011).
+
+**Outcomes analysis.** Own-property tests: `python/backtest/tests/test_hand_fixtures.py::test_three_asset_ten_day_fixture_matches_exact_oracle`; `python/backtest/tests/test_event_engine.py::test_half_spread_cost_per_asset_and_per_bar`; `python/backtest/tests/test_fast_equals_event.py::test_fast_equals_event`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: hand ledger fixtures. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** a non-positive ADV is treated as infinite depth, so impact is zero; SqrtImpactCost is exercised through engine equality, not a hand value.
+
+**Findings.** None.
+
+### `BT-COV-LW`: Ledoit-Wolf covariance shrinkage
+
+Tier 2, risk, status `independently-checked`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Well-conditioned covariance for portfolio construction.
+
+**Conceptual soundness.** Entrypoints: `python/backtest/src/qp_bt/portfolio/covariance.py::ledoit_wolf`. Assumptions: scaled-identity target; i.i.d. rows. Reference: Ledoit and Wolf (2004).
+
+**Outcomes analysis.** Own-property tests: `python/backtest/tests/test_portfolio_layer.py::test_ledoit_wolf_intensity_in_unit_interval_and_pd`. Independent checks: `python/backtest/tests/test_portfolio_layer.py::test_ledoit_wolf_matches_sklearn`. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: agreement with scikit-learn to 1e-12. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** the scikit-learn test skips where scikit-learn is absent.
+
+**Findings.** None.
+
+### `BT-COV-PCA`: Sample and PCA covariance
+
+Tier 2, risk, status `self-tested`, validated 2026-11-04, next review 2027-11-04.
+
+**Purpose.** Plain and factor-truncated covariance estimates.
+
+**Conceptual soundness.** Entrypoints: `python/backtest/src/qp_bt/portfolio/covariance.py::sample_cov`; `python/backtest/src/qp_bt/portfolio/covariance.py::pca_cov`. Assumptions: k factors capture the common variation; the diagonal is kept. Reference: Standard estimators; Jolliffe, *Principal Component Analysis* (2002).
+
+**Outcomes analysis.** Own-property tests: `python/backtest/tests/test_portfolio_layer.py::test_pca_full_rank_recovers_sample_and_keeps_diagonal`. Independent checks: none cited. Tolerances are stated in each test.
+
+**Ongoing monitoring.** KPIs: full-rank PCA recovers the sample covariance. Review trigger: a failure of any cited test, or a change to the cited reference.
+
+**Limitations and compensating controls.** noisy when assets approach observations.
 
 **Findings.** None.

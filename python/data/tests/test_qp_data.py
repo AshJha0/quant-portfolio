@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import qp_data
+from qp_core import holidays
 from qp_data import release, sources
 from qp_data.errors import (
     FetchError,
@@ -439,3 +440,153 @@ def test_oecd_mei_on_fred_permitted_with_m_plus_2_release():
     # March 2015 observation is known from 1 May 2015 (a Friday, not a US holiday).
     assert release.release_date("fred:IR3TIB01GBM156N", D(2015, 3, 1)) == D(2015, 5, 1)
     assert release.release_date("fred:JPNCPIALLMINMEI", D(2015, 3, 1)) == D(2015, 5, 1)
+
+
+# ------------------------------------------- rows before the calendar range --
+def test_pricing_calendars_still_refuse_pre_2000():
+    """The weekday fallback lives in qp_data.release only."""
+    old = D(1999, 12, 30)
+    for call in (
+        lambda: holidays.holidays("USD", 1999),
+        lambda: holidays.is_business_day(old, "USD"),
+        lambda: holidays.adjust_following(old, "USD"),
+        lambda: holidays.add_business_days(D(1999, 12, 1), 1, "USD"),
+    ):
+        with pytest.raises(ValueError, match="year must be"):
+            call()
+    assert holidays.MIN_YEAR == 2000
+
+
+@pytest.mark.parametrize(
+    ("key", "obs", "expect"),
+    [
+        ("cboe:VIX", D(1990, 1, 2), D(1990, 1, 2)),  # same day
+        ("cboe:VIX", D(1990, 1, 6), D(1990, 1, 8)),  # a Saturday rolls to Monday
+        ("fred:DGS10", D(1990, 1, 5), D(1990, 1, 8)),  # Friday -> Monday
+        ("fred:DGS10", D(1990, 7, 3), D(1990, 7, 4)),  # 4 July NOT skipped: the limit
+        ("fred:DEXUSEU", D(1990, 1, 10), D(1990, 1, 15)),  # weekly Monday
+        ("fred:CPIAUCSL", D(1990, 3, 1), D(1990, 4, 20)),
+        ("fred:CPIAUCSL", D(1990, 9, 1), D(1990, 10, 22)),  # 20 Oct 1990 is a Saturday
+        ("fred:FEDFUNDS", D(1990, 6, 1), D(1990, 7, 2)),
+        ("french:F-F_Research_Data_Factors", D(1926, 7, 31), D(1926, 10, 1)),
+    ],
+)
+def test_release_dates_before_calendar_range_count_weekdays(key, obs, expect):
+    assert release.release_date(key, obs) == expect
+
+
+@pytest.mark.parametrize(
+    ("key", "obs", "expect"),
+    [
+        ("fred:DGS10", D(1999, 12, 31), D(2000, 1, 3)),
+        ("fred:FEDFUNDS", D(1999, 12, 1), D(2000, 1, 3)),
+        ("fred:DEXUSEU", D(1999, 12, 30), D(2000, 1, 3)),
+        ("fred:CPIAUCSL", D(1999, 12, 1), D(2000, 1, 20)),
+        # 45 days from 30 Nov 1999: 23 weekdays in December, then the real
+        # calendar skips MLK day in January 2000, so 2 Feb and not 1 Feb.
+        ("french:F-F_Research_Data_Factors", D(1999, 11, 30), D(2000, 2, 2)),
+    ],
+)
+def test_walk_across_2000_uses_the_real_calendar_from_2000(key, obs, expect):
+    assert release.release_date(key, obs) == expect
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        release.BusinessDayLag(0, "USD"),
+        release.BusinessDayLag(1, "EUR"),
+        release.WeeklyRelease(0, "USD"),
+        release.MonthlyBound(1, 20, "USD"),
+        release.MonthEndLag(45, "USD"),
+    ],
+)
+def test_rules_in_range_equal_the_plain_calendar_arithmetic(rule):
+    """Every day of sample years: the release helpers change nothing from 2000 on."""
+    cal = rule.calendar
+
+    def plain(obs: dt.date) -> dt.date:
+        if isinstance(rule, release.BusinessDayLag):
+            if rule.n == 0:
+                return holidays.adjust_following(obs, cal)
+            return holidays.add_business_days(obs, rule.n, cal)
+        if isinstance(rule, release.WeeklyRelease):
+            monday = obs + dt.timedelta(days=7 - obs.weekday())
+            return holidays.adjust_following(monday, cal)
+        if isinstance(rule, release.MonthlyBound):
+            nxt = (obs.replace(day=28) + dt.timedelta(days=4)).replace(day=20)
+            return holidays.adjust_following(nxt, cal)
+        nxt = (obs.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+        return holidays.add_business_days(nxt - dt.timedelta(days=1), rule.n, cal)
+
+    for year in (2000, 2001, 2013, 2024, 2098):
+        day = D(year, 1, 1)
+        while day.year == year:
+            assert rule(day) == plain(day), day
+            day += dt.timedelta(days=1)
+
+
+def test_rules_still_refuse_past_the_calendar_range():
+    with pytest.raises(ValueError, match="year must be"):
+        release.release_date("fred:DGS10", D(2100, 1, 4))
+
+
+def test_unknown_calendar_is_refused_before_2000_too():
+    with pytest.raises(ValueError, match="no calendar"):
+        release.BusinessDayLag(1, "XXX")(D(1990, 1, 2))
+
+
+def test_vix_from_1990_is_stored(store):
+    # The recorded cboe_vix.csv starts in 2024, so this is its layout with 1990
+    # dates; the prices are placeholders, not CBOE history.
+    head = fx("cboe_vix.csv").split(b"\n", 1)[0].strip()
+    rows = [b"01/02/1990,20.0,20.0,20.0,20.0", b"01/03/1990,21.0,21.0,21.0,21.0", b"01/04/1990,22.0,22.0,22.0,22.0"]
+    body = b"\n".join([head, *rows]) + b"\n"
+    e = qp_data.fetch(
+        "cboe:VIX", store=store, opener=lambda url, timeout: body, retrieved_at="2026-11-04T00:00:00Z"
+    )
+    assert e.first_obs == "1990-01-02" and e.n_rows == 3
+    assert store.get("cboe:VIX", as_of=D(1990, 1, 3)).index.max() == pd.Timestamp("1990-01-03")
+    f = store.get("cboe:VIX")
+    assert (f["release_date"] == f.index).all()
+
+
+def test_french_from_1926_is_stored(store):
+    key = "french:F-F_Research_Data_Factors"
+    e = qp_data.fetch(
+        key,
+        store=store,
+        opener=recorded("F-F_Research_Data_Factors.zip"),
+        retrieved_at="2026-11-04T00:00:00Z",
+    )
+    assert e.first_obs == "1926-07-31" and e.last_obs == "2026-09-30"
+    assert store.get(key, as_of=D(1926, 9, 30)).empty
+    assert store.get(key, as_of=D(1926, 10, 1)).index.max() == pd.Timestamp("1926-07-31")
+    f = store.get(key)
+    assert f["release_date"].is_monotonic_increasing and (f["release_date"] > f.index).all()
+
+
+# --------------------------------------------------------------- timeout --
+def _timed(seen: list[float]):
+    def opener(url: str, timeout: float) -> bytes:
+        seen.append(timeout)
+        return fx("cboe_vix.csv")
+
+    return opener
+
+
+def test_fetch_passes_timeout_to_the_download(store):
+    seen: list[float] = []
+    qp_data.fetch("cboe:VIX", store=store, opener=_timed(seen), timeout=90.0)
+    assert seen == [90.0]
+
+
+def test_fetch_default_timeout_is_unchanged(store):
+    seen: list[float] = []
+    qp_data.fetch("cboe:VIX", store=store, opener=_timed(seen))
+    assert seen == [30.0]
+
+
+def test_fetch_refuses_a_non_positive_timeout(store):
+    with pytest.raises(ValueError, match="timeout"):
+        qp_data.fetch("cboe:VIX", store=store, opener=_timed([]), timeout=0)

@@ -24,6 +24,20 @@
 //
 // Worked example: {"e":"depthUpdate","s":"X","U":5,"u":6,"b":[["1.5","2"]],"a":[]}
 // with sym "X" gives first 5, last 6 and one change (Bid, 150000000, 200000000).
+//
+// Coinbase level2: decode_level2(raw, product, out) applies the same rule to
+// the `l2update` message of the `level2` and `level2_batch` channels. It
+// returns true only if raw is a JSON object that json::parse accepts with
+// exactly one "type":"l2update", exactly one "product_id" equal to product,
+// and exactly one "changes" array of [side, price, size] string triples, side
+// being buy or sell and both decimals non-negative. Then out equals the
+// changes the generic path applies. Snapshots, subscription acks, another
+// product, the bid/ask spellings side_of also takes and four-element changes
+// all return false. tests/test_noalloc.cpp checks every accepted frame against
+// the generic path, on generated frames, mutated bytes and the live recordings.
+//
+// Worked example: {"type":"l2update","product_id":"X","changes":[["buy","1.5","2"]]}
+// with product "X" gives one change (Bid, 150000000, 200000000).
 #pragma once
 
 #include <cstdint>
@@ -182,6 +196,30 @@ public:
             return eat(']');
         }
     }
+    // [["buy","px","qty"], ...]. A negative value returns false: L2Book::set
+    // throws on it, and the generic path owns that error.
+    bool changes(std::vector<LevelChange>& out) {
+        if (!eat('[')) return false;
+        if (eat(']')) return true;
+        for (;;) {
+            std::string_view sd, p, q;
+            if (!eat('[') || !str(sd) || !eat(',') || !str(p) || !eat(',') || !str(q) || !eat(']'))
+                return false;
+            if (sd != "buy" && sd != "sell") return false;
+            if (out.size() == out.capacity()) return false;  // would allocate
+            std::int64_t px = 0, qty = 0;
+            try {
+                px = parse_fixed(p);
+                qty = parse_fixed(q);
+            } catch (...) {
+                return false;
+            }
+            if (px < 0 || qty < 0) return false;
+            out.push_back({sd == "buy" ? Side::Bid : Side::Ask, px, qty});
+            if (eat(',')) continue;
+            return eat(']');
+        }
+    }
 
 private:
     std::string_view b_;
@@ -227,6 +265,36 @@ inline bool depth_event(DepthCursor& c, std::string_view sym, DepthDelta& d) {
     return e && s && U && u && b && a && d.first <= d.last;
 }
 
+inline bool level2_event(DepthCursor& c, std::string_view product, std::vector<LevelChange>& out) {
+    if (!c.eat('{')) return false;
+    bool type = false, pid = false, ch = false;
+    if (c.eat('}')) return false;
+    for (;;) {
+        std::string_view k;
+        if (!c.str(k) || !c.eat(':')) return false;
+        if (k == "type" && !type) {
+            std::string_view v;
+            if (!c.str(v) || v != "l2update") return false;
+            type = true;
+        } else if (k == "product_id" && !pid) {
+            std::string_view v;
+            if (!c.str(v) || v != product) return false;
+            pid = true;
+        } else if (k == "changes" && !ch) {
+            if (!c.changes(out)) return false;
+            ch = true;
+        } else if (k == "type" || k == "product_id" || k == "changes") {
+            return false;
+        } else if (!c.skip(1)) {
+            return false;
+        }
+        if (c.eat(',')) continue;
+        if (!c.eat('}')) return false;
+        break;
+    }
+    return type && pid && ch;
+}
+
 }  // namespace detail
 
 // Decode one Binance diff-depth frame into `d` without allocating. Returns
@@ -247,6 +315,17 @@ inline bool decode_depth(std::string_view raw, std::string_view sym, DepthDelta&
         ok = detail::depth_event(c, sym, d) && c.at_end();
     }
     if (!ok) d.changes.clear();
+    return ok;
+}
+
+// Decode one Coinbase l2update frame into `out` without allocating. Returns
+// false (and leaves `out` empty) when the generic path must decide.
+inline bool decode_level2(std::string_view raw, std::string_view product,
+                          std::vector<LevelChange>& out) {
+    out.clear();
+    detail::DepthCursor c(raw);
+    const bool ok = detail::level2_event(c, product, out) && c.at_end();
+    if (!ok) out.clear();
     return ok;
 }
 
