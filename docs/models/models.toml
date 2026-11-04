@@ -993,9 +993,9 @@ assumptions = [
 ]
 limitations = [
   "no CSR securitisation, RRAO or DRC",
-  "Python only, no second implementation for these classes",
+  "the oracle was written in this repository, so a shared misreading of the text would pass",
 ]
-validation_status = "self-tested"
+validation_status = "independently-checked"
 validated_on = 2026-11-04
 next_review = 2027-11-04
 kpis = [
@@ -1007,7 +1007,14 @@ tests = [
   "python/core/tests/test_capital_frtb_classes.py::test_equity_delta_hand_fixture",
   "python/core/tests/test_capital_frtb_classes.py::test_commodity_delta_hand_fixture",
 ]
-independent_checks = []
+independent_checks = [
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_csr_delta",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_csr_vega",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_eq_delta",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_eq_vega",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_com_delta",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_com_vega",
+]
 
 [[model]]
 id = "CORE-FRTB-CURV"
@@ -1024,9 +1031,9 @@ assumptions = [
   "squared delta correlations (MAR21.100-101)",
 ]
 limitations = [
-  "Python only, no second implementation",
+  "the oracle was written in this repository, so a shared misreading of the text would pass",
 ]
-validation_status = "self-tested"
+validation_status = "independently-checked"
 validated_on = 2026-11-04
 next_review = 2027-11-04
 kpis = [
@@ -1037,7 +1044,13 @@ tests = [
   "python/core/tests/test_capital_frtb_classes.py::test_curvature_across_buckets_uses_selected_side",
   "python/core/tests/test_capital_frtb_classes.py::test_net_cvr_linear_is_zero_and_option_positive",
 ]
-independent_checks = []
+independent_checks = [
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_girr_curvature",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_fx_curvature",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_csr_curvature",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_eq_curvature",
+  "tests/independent/frtb/test_frtb_classes_independent.py::test_com_curvature",
+]
 
 [[model]]
 id = "CORE-XVA-COLLATERAL"
@@ -1054,7 +1067,6 @@ assumptions = [
   "the lag sits on the simulation grid",
 ]
 limitations = [
-  "Python only",
   "the swap exposure simulator values only on reset dates",
 ]
 validation_status = "self-tested"

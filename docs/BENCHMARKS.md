@@ -102,13 +102,13 @@ the head's harness (the job prints a warning naming the engine). Pinning
 to one CPU also serialises the multi-threaded Monte Carlo kernels; both sides
 pay that equally.
 
-## Per-call tails: the specification (W12, not yet implemented)
+## Per-call tails: the specification (W12)
 
 The batch-mean tails above cannot support a latency objective
 (`docs/SLO.md`, S6). W12 replaces them for SLOs and the gate with per-call
-timing. This section is the contract that implementation must meet; until
-it lands, every tail figure in this repository is a batch-mean figure and
-is labelled so.
+timing. This section is the contract that implementation must meet. The
+low-latency track and slow engine kernels already time single calls. Fast
+engine kernels do not yet: their tails are batch means and are labelled so.
 
 The plain idea. Time every call on its own, with a clock cheap and fine
 enough that its own cost is small next to a 100 ns call, and report how
