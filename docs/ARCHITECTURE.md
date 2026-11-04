@@ -276,14 +276,14 @@ base and head on the same runner. Current figures are in that job's
 
 v3.0.0 idle-machine run (2026-11-04), low-latency track and Java:
 
-| Measure | p50 | p99 | p99.9 |
-|---|---:|---:|---:|
-| C++ book apply | 56 ns | 151 ns | 264 ns |
-| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us |
-| Rust decode and book apply | 56 ns | 192 ns | 325 ns |
-| Rust ring round trip | 184 ns | 234 ns | 270 ns |
-| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us |
-| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms |
+| Measure | p50 | p99 | p99.9 | p99.99 |
+|---|---:|---:|---:|---:|
+| C++ book apply | 56 ns | 151 ns | 264 ns | 4.43 us |
+| C++ ring hop, one way | 103 ns | 227 ns | 26.1 us | 141 us |
+| Rust decode and book apply | 56 ns | 192 ns | 325 ns | 4.48 us |
+| Rust ring round trip | 184 ns | 234 ns | 270 ns | 11.1 us |
+| Java order path, 10,000 orders/s | 2.88 us | 63.5 us | 463 us | 2.62 ms |
+| Java order path, 100,000 orders/s | 2.69 us | 67.6 us | 1.18 ms | 3.15 ms |
 
 Engine kernels, nanoseconds (`*`: tail of batch means, not a per-call tail):
 

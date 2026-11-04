@@ -69,8 +69,8 @@ indicative, no huge pages, busy-poll 0), nanoseconds:
 | ring_hop | 288 | 8.3e6 | 2.4e7 |
 
 On an idle machine (2026-11-04, pinned to CPUs 2 and 4), the same harness read
-book_apply 56, 151, 264; decode_book 388, 609, 1823; ring_hop 103, 227, 26076
-(p50, p99, p99.9). A ring hop needs two CPUs: pinned to one, its two threads
+book_apply 56, 151, 264, 4432; decode_book 388, 609, 1823, 12711; ring_hop 103,
+227, 26076, 141435 (p50, p99, p99.9, p99.99). A ring hop needs two CPUs: pinned to one, its two threads
 take turns and the figure is about 3.7 ms, which measures the scheduler.
 
 The ring-hop tail in the first table is the WSL2 hypervisor descheduling the second vCPU, not

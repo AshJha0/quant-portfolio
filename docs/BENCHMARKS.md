@@ -154,20 +154,27 @@ engine benches ran pinned to one CPU, and their records are in each engine's
 Low-latency track, nanoseconds, pinned to two CPUs so the ring's two threads
 each have one:
 
-| Bench | p50 | p99 | p99.9 |
-|---|---:|---:|---:|
-| C++ `book_apply` | 56 | 151 | 264 |
-| C++ `decode_book` (8 messages) | 388 | 609 | 1,823 |
-| C++ `ring_hop` | 103 | 227 | 26,076 |
-| Rust `qpbf_decode_msg` | 30 | 68 | 185 |
-| Rust `decode_plus_book_apply` | 56 | 192 | 325 |
-| Rust `book_apply` fixed 0.2 M/s, naive | 121 | 364 | 3,783 |
-| Rust `book_apply` fixed 0.2 M/s, CO-aware | 175 | 5,847 | 1,392,639 |
-| Rust `spsc_ring_round_trip` | 184 | 234 | 270 |
+| Bench | p50 | p99 | p99.9 | p99.99 |
+|---|---:|---:|---:|---:|
+| C++ `book_apply` | 56 | 151 | 264 | 4,432 |
+| C++ `decode_book` (8 messages) | 388 | 609 | 1,823 | 12,711 |
+| C++ `ring_hop` | 103 | 227 | 26,076 | 141,435 |
+| Rust `qpbf_decode_msg` | 30 | 68 | 185 | 368 |
+| Rust `decode_plus_book_apply` | 56 | 192 | 325 | 4,475 |
+| Rust `book_apply` fixed 0.2 M/s, naive | 121 | 364 | 3,783 | 14,631 |
+| Rust `book_apply` fixed 0.2 M/s, CO-aware | 175 | 5,847 | 1,392,639 | 3,602,431 |
+| Rust `spsc_ring_round_trip` | 184 | 234 | 270 | 11,103 |
 
 The C++ and Rust rows time different things, so do not compare them line by
 line. The CO-aware p99.9 is the scheduler stalling the VM, charged to every
 message queued behind the stall.
+
+We stop at p99.99. It is reported only for this track, where each row has at
+least 200,000 single-call samples. p99.999 is not published: at these sample
+sizes it rests on a handful of calls, and on a shared VM those calls are the
+hypervisor and scheduler, not this code. A credible figure needs bare-metal
+Linux with isolated cores. The harnesses' `max` shows the worst case. Engine
+kernels stop at p99.9, because fast kernels report batch means.
 
 Engine kernels, nanoseconds, pinned to one CPU. Fast kernels report the p99
 and p99.9 of batch means, marked `*`, which is not a per-call tail and must not be used
@@ -194,10 +201,10 @@ microseconds, allocation about 0 B/op: `ringPublishPoll` 0.013, `killCheck`
 0.035, `orderRoundTrip` 0.583. `LatencyMain`, three spinning threads, two ring
 hops, coordinated-omission corrected, no collections in the window:
 
-| Rate | Orders | p50 us | p99 us | p99.9 us | max us |
-|---|---:|---:|---:|---:|---:|
-| 10,000/s | 100,000 | 2.88 | 63.5 | 463 | 3,623 |
-| 100,000/s | 1,000,000 | 2.69 | 67.6 | 1,180 | 4,031 |
+| Rate | Orders | p50 us | p99 us | p99.9 us | p99.99 us | max us |
+|---|---:|---:|---:|---:|---:|---:|
+| 10,000/s | 100,000 | 2.88 | 63.5 | 463 | 2,621 | 3,623 |
+| 100,000/s | 1,000,000 | 2.69 | 67.6 | 1,180 | 3,146 | 4,031 |
 
 ## Deliberate slowdowns (`bench-accepted`)
 
