@@ -16,7 +16,7 @@ close* is a convention, not a fact of nature.
 
 | Time (NY) | Event | Engine touchpoint |
 |---|---|---|
-| 17:00 | **Official close.** 5pm NY is the standard FX "end of day". The WM/Refinitiv 4pm London fix is the benchmark for many mandates. Positions are snapped and `Market` is built from official closing spots, points and vols. | `demo_market()`-style snapshot. `Book` frozen for the EOD run. |
+| 17:00 | **Official close.** 5pm NY is the standard FX "end of day". The WM/R 4pm London fix is the benchmark for many mandates. Positions are snapped and `Market` is built from official closing spots, points and vols. | `demo_market()`-style snapshot. `Book` frozen for the EOD run. |
 | 17:30 | EOD batch appends factor returns. NaN policy: a missing fixing **fails the run loudly**. Tokyo and São Paulo holidays do not line up. The desk decides fill or drop explicitly. The engine never imputes. | `validate_returns` |
 | 18:00 | VaR/ES for all methods at alpha 0.05 and 0.01, 1d and 10d. Stress table including peg add-ons. Backtest updated with yesterday's *hypothetical* (static-book) P&L. | `historical_var` (FHS headline), `parametric_var`, `monte_carlo_var`, `run_stress`, `rolling_backtest` |
 | 19:00 | Risk report to desk heads and the CRO: VaR vs limits per currency pair and tenor bucket, traffic-light status, method-disagreement flags. An HS vs parametric gap above 20 % is a tail-shape alert. | result objects, `basel_traffic_light` |

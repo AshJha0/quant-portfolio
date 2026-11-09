@@ -15,8 +15,8 @@ data arrives in the research platform of the repository plan.
 
 Spot FX is an over-the-counter dealer market. There is no exchange, no
 consolidated tape and no official volume print. Liquidity is fragmented
-across dealer streams (single-bank platforms, RFQ), ECNs (EBS, LSEG
-Matching, ParFX) and internalisation pools. Published volume is partial,
+across dealer streams (single-bank platforms, RFQ), ECNs (the main interdealer
+platforms) and internalisation pools. Published volume is partial,
 survey-based (BIS triennial) or venue-proprietary.
 
 Consequences for the design:
@@ -39,7 +39,7 @@ parameters.
 
 ## 2. The WM/R fix: print model and self-impact
 
-The WM/Reuters (now LSEG) London 4pm fix is the reference rate for index
+The WM/R London 4pm fix is the reference rate for index
 funds, corporate hedging and custody pricing. Large flow is benchmarked to
 it, especially at month-end.
 
