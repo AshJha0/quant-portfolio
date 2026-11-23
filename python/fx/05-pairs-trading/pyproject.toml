@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,14 +12,14 @@ authors = [{ name = "Ashish Nath Jha", email = "ashishnathjha@gmail.com" }]
 dependencies = [
     "qp-core>=1.0",
     "qp-bt>=3.0.0",
-    "numpy>=1.24",
-    "scipy>=1.10",
-    "pandas>=2.0",
-    "statsmodels>=0.14",
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+    "pandas>=3.1.1",
+    "statsmodels>=0.15.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "hypothesis>=6.0"]
+dev = ["pytest>=9.2.0", "hypothesis>=6.170.17"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
